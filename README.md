@@ -176,9 +176,9 @@ LOBSTER_LLM_PROVIDER=anthropic  # or "bedrock"
 
 ## 📚 Documentation
 
-- [Full Documentation](docs/) - Guides and tutorials
-- [Example Analyses](examples/) - Real-world use cases
-- [Architecture Overview](docs/architecture_diagram.md) - Technical details
+- [Full Documentation](https://github.com/the-omics-os/lobster-local/wiki) - Guides and tutorials
+- [Example Analyses](https://github.com/the-omics-os/lobster-local/wiki/27-examples-cookbook) - Real-world use cases
+- [Architecture Overview](https://github.com/the-omics-os/lobster-local/wiki/18-architecture-overview) - Technical details
 
 ## 🤝 Community & Support
 
