@@ -642,7 +642,7 @@ def init_client(
         console.print("[bold blue]🌩️  Cloud API key detected...[/bold blue]")
         
         try:
-            from lobster_cloud.client import CloudLobsterClient
+            from lobster.lobster_cloud.client import CloudLobsterClient
             
             console.print("[bold blue]   Initializing Lobster Cloud...[/bold blue]")
             if cloud_endpoint:

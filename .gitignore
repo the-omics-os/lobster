@@ -10,6 +10,7 @@ cdk.out/*
 
 #kevin notes
 kevin_notes/*
+kevin_notes_completed/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
