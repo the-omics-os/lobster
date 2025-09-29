@@ -216,7 +216,7 @@ jobs:
         semgrep --config=auto lobster/
     
     - name: Upload security scan results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: pr-security-scan-results
@@ -280,7 +280,7 @@ jobs:
           -v
     
     - name: Upload test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: change-specific-test-results
@@ -334,7 +334,7 @@ jobs:
           -v
     
     - name: Upload test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: cross-platform-test-results-${{ matrix.os }}-${{ matrix.python-version }}
@@ -449,7 +449,7 @@ jobs:
         cat performance-comparison.md
     
     - name: Upload performance comparison
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: performance-comparison
         path: |

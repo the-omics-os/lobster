@@ -57,7 +57,7 @@ jobs:
       run: safety check --json --output safety-report.json || true
     
     - name: Upload security reports
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: security-reports
@@ -125,7 +125,7 @@ jobs:
         name: unit-tests-${{ matrix.python-version }}
     
     - name: Upload test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: unit-test-results-${{ matrix.os }}-${{ matrix.python-version }}
@@ -225,7 +225,7 @@ jobs:
         name: integration-tests
     
     - name: Upload test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: integration-test-results
@@ -301,7 +301,7 @@ jobs:
         name: system-tests
     
     - name: Upload comprehensive test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: system-test-results
@@ -386,7 +386,7 @@ jobs:
         " | tee performance-report.md
     
     - name: Upload performance results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: performance-test-results
@@ -457,7 +457,7 @@ jobs:
         python -c "import lobster; print(f'Lobster version: {lobster.__version__}')"
     
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: build-artifacts
         path: dist/
@@ -507,7 +507,7 @@ jobs:
     
     steps:
     - name: Download all test artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
     
     - name: Generate test summary
       run: |
@@ -533,7 +533,7 @@ jobs:
         fi
     
     - name: Upload test summary
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: test-summary
         path: test-summary.md
