@@ -1,0 +1,292 @@
+name: PR Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main, develop]
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  PYTEST_ADDOPTS: "--color=yes --tb=short"
+
+jobs:
+  # =====================================================================
+  # Basic PR Analysis
+  # =====================================================================
+  pr-analysis:
+    name: PR Analysis
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    outputs:
+      files_changed: ${{ steps.changes.outputs.files_changed }}
+      has_core_changes: ${{ steps.changes.outputs.has_core_changes }}
+      
+    steps:
+    - name: Checkout PR
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ github.event.pull_request.head.sha }}
+    
+    - name: Analyze PR changes
+      id: changes
+      run: |
+        # Count changed files
+        files_changed=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}..HEAD | wc -l)
+        echo "files_changed=$files_changed" >> $GITHUB_OUTPUT
+        
+        # Check for core changes
+        core_files=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}..HEAD | grep -E "^lobster/(core|agents|config)/" | wc -l)
+        has_core_changes="false"
+        if [ $core_files -gt 0 ]; then
+          has_core_changes="true"
+        fi
+        echo "has_core_changes=$has_core_changes" >> $GITHUB_OUTPUT
+        
+        # Create PR comment with basic analysis
+        echo "## 🔍 PR Analysis" > pr_analysis.md
+        echo "- **Files Changed**: $files_changed" >> pr_analysis.md
+        echo "- **Core Changes**: $has_core_changes" >> pr_analysis.md
+        
+        if [ $files_changed -gt 20 ]; then
+          echo "- ⚠️ **Large PR**: Consider breaking into smaller changes" >> pr_analysis.md
+        fi
+        
+        if [ "$has_core_changes" = "true" ]; then
+          echo "- 🔧 **Core Changes**: Extra review recommended" >> pr_analysis.md
+        fi
+        
+        cat pr_analysis.md
+    
+    - name: Comment on PR
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          try {
+            const analysis = fs.readFileSync('pr_analysis.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: analysis
+            });
+          } catch (error) {
+            console.log('Could not create PR comment:', error);
+          }
+
+  # =====================================================================
+  # Fast Validation (Linting + Unit Tests)
+  # =====================================================================
+  fast-validation:
+    name: Fast Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+    - name: Checkout PR
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.12
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+    
+    - name: Run basic linting
+      run: |
+        # Get list of changed Python files
+        changed_files=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}..HEAD | grep '\.py$' | head -20)
+        
+        if [ -n "$changed_files" ]; then
+          echo "Linting changed Python files: $changed_files"
+          
+          # Basic linting with ruff if available
+          if command -v ruff &> /dev/null; then
+            echo "Running ruff on changed files..."
+            ruff check $changed_files || echo "Ruff linting completed with issues"
+          elif pip show flake8 &> /dev/null; then
+            echo "Running flake8 on changed files..."
+            flake8 $changed_files || echo "Flake8 linting completed with issues"
+          else
+            echo "Installing ruff for linting..."
+            pip install ruff
+            ruff check $changed_files || echo "Ruff linting completed with issues"
+          fi
+        else
+          echo "No Python files changed, skipping linting"
+        fi
+    
+    - name: Run unit tests for changed areas
+      run: |
+        # Run unit tests with focus on changed areas
+        python -m pytest tests/unit/ \
+          --maxfail=5 \
+          --cov=lobster \
+          --cov-report=xml \
+          --junit-xml=pr-test-results.xml \
+          --durations=5 \
+          -v
+    
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: pr-test-results
+        path: |
+          pr-test-results.xml
+          coverage.xml
+        retention-days: 14
+
+  # =====================================================================
+  # Security Check
+  # =====================================================================
+  security-check:
+    name: Security Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+    - name: Checkout PR
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.12
+    
+    - name: Install security tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install safety bandit
+        pip install -e .
+    
+    - name: Run security checks
+      run: |
+        # Check for known vulnerabilities
+        safety check || echo "Safety check completed with warnings"
+        
+        # Scan for security issues in changed files
+        changed_files=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}..HEAD | grep '\.py$' | head -20)
+        if [ -n "$changed_files" ]; then
+          echo "Scanning changed Python files for security issues..."
+          bandit $changed_files -f txt || echo "Bandit scan completed with warnings"
+        fi
+
+  # =====================================================================
+  # Extended Tests (for core changes)
+  # =====================================================================
+  extended-tests:
+    name: Extended Tests
+    runs-on: ubuntu-latest
+    needs: [pr-analysis, fast-validation]
+    if: needs.pr-analysis.outputs.has_core_changes == 'true'
+    timeout-minutes: 25
+    
+    steps:
+    - name: Checkout PR
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.12
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+    
+    - name: Run integration tests
+      run: |
+        if [ -d "tests/integration" ]; then
+          python -m pytest tests/integration/ \
+            --maxfail=3 \
+            --timeout=300 \
+            --junit-xml=extended-test-results.xml \
+            -v
+        else
+          echo "No integration tests found, skipping"
+        fi
+    
+    - name: Upload extended test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: extended-test-results
+        path: extended-test-results.xml
+        retention-days: 14
+
+  # =====================================================================
+  # PR Status Summary
+  # =====================================================================
+  pr-status:
+    name: PR Status Summary
+    runs-on: ubuntu-latest
+    needs: [pr-analysis, fast-validation, security-check, extended-tests]
+    if: always()
+    
+    steps:
+    - name: Generate PR status summary
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const getIcon = (result) => {
+            switch(result) {
+              case 'success': return '✅';
+              case 'failure': return '❌';
+              case 'cancelled': return '⏹️';
+              case 'skipped': return '⏭️';
+              default: return '⏳';
+            }
+          };
+          
+          const jobs = {
+            'PR Analysis': '${{ needs.pr-analysis.result }}',
+            'Fast Validation': '${{ needs.fast-validation.result }}',
+            'Security Check': '${{ needs.security-check.result }}',
+            'Extended Tests': '${{ needs.extended-tests.result }}'
+          };
+          
+          let summary = '## 🎯 PR Validation Summary\n\n';
+          
+          for (const [jobName, result] of Object.entries(jobs)) {
+            if (result && result !== 'skipped') {
+              summary += `${getIcon(result)} **${jobName}**: ${result}\n`;
+            }
+          }
+          
+          const coreJobs = ['${{ needs.pr-analysis.result }}', '${{ needs.fast-validation.result }}', '${{ needs.security-check.result }}'];
+          const allCoreJobsPassed = coreJobs.every(result => result === 'success');
+          
+          summary += `\n**Overall Status:** ${allCoreJobsPassed ? '✅ Ready for review' : '❌ Needs attention'}`;
+          
+          const filesChanged = '${{ needs.pr-analysis.outputs.files_changed }}';
+          const hasCoreChanges = '${{ needs.pr-analysis.outputs.has_core_changes }}';
+          
+          summary += `\n\n**PR Details:**`;
+          summary += `\n- Files changed: ${filesChanged}`;
+          summary += `\n- Core changes: ${hasCoreChanges}`;
+          
+          if (!allCoreJobsPassed) {
+            summary += '\n\n⚠️ Please address failing checks before requesting review.';
+          }
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: summary
+          });
