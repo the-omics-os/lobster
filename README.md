@@ -6,7 +6,7 @@
 
 **Transform your bioinformatics research with AI agents that understand your data and provide expert analysis insights.**
 
-## 📋 Table of Contents 
+## 📋 Table of Contents
 
 - [✨ What is Lobster AI?](#-what-is-lobster-ai)
 - [🚀 Quick Start](#-quick-start)

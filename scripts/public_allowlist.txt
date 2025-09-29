@@ -1,15 +1,50 @@
 # Allowlist for public repository sync
 # Patterns use gitignore syntax
 
+# FUNCTIONAL files
+verify_installation.py
+uv.lock
+setup.py
+pyproject.toml
+main.py
+scripts/install.sh
+
+
+# README
+README.md
+!README_FULL.md
+!kevin_notes_completed/
+!kevin_notes_completed/*
+!kevin_notes/*
+
+# Agentic
+!CLAUDE.md
+!LOBSTER_PROJECT_SUMMARY_FOR_CLOUD_BACKEND.md
+!activate_claude_code.sh
+
 # Core engine code
-lobster/**/*.py
+lobster/*
+lobster/
 !lobster/api/**
 !lobster/cdk/**
 !*ALPHA.py
 !*websocket*.py
 
 # Cloud client (important for upgrades)
-lobster/lobster_cloud/**
+lobster/lobster_cloud/
+lobster/lobster_cloud/*
+!lobster/streamlit_app.py
+
+#Agents in Development
+!lobster/agents/ms_proteomics_expert.py
+!lobster/agents/affinity_proteomics_expert.py
+!lobster/core/adapters/proteomics_adapter.py
+!lobster/core/schemas/proteomics.py
+!lobster/tools/proteomics_analysis_service.py
+!lobster/tools/proteomics_differential_service.py
+!lobster/tools/proteomics_visualization_service.py
+!lobster/tools/proteomics_quality_service.py
+!lobster/tools/proteomics_preprocessing_service.py
 
 # Configuration (safe defaults only)
 lobster/config/**
@@ -17,13 +52,20 @@ lobster/config/**
 !lobster/config/*_private.py
 
 # Tests and examples
-!tests/**/*.py
+!tests/
+!tests/*
 examples/**
+
+# Container files
+!Dockerfile
+!docker-compose.yml
 
 # Documentation
 *.md
 docs/**
 LICENSE
+!wiki/
+!wiki/*
 
 # Package files
 pyproject.toml

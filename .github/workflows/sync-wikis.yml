@@ -37,25 +37,15 @@ jobs:
         git config --global user.name "Lobster Bot"
         git config --global user.email "bot@omics-os.com"
         
-    - name: Setup SSH for wiki repositories
-      uses: webfactory/ssh-agent@v0.8.0
-      with:
-        ssh-private-key: |
-          ${{ secrets.WIKI_DEPLOY_KEY }}
-          ${{ secrets.WIKI_LOCAL_DEPLOY_KEY }}
-    
-    - name: Test SSH connections
-      run: |
-        ssh -T git@github.com || true
-        echo "SSH connection test completed"
-        
     - name: Run wiki sync
+      env:
+        WIKI_SYNC_PAT: ${{ secrets.WIKI_SYNC_PAT }}
       run: |
         python scripts/sync_wikis.py \
           --source wiki \
           --allowlist scripts/wiki_public_allowlist.txt \
-          --lobster-wiki git@github.com:the-omics-os/lobster.wiki.git \
-          --lobster-local-wiki git@github.com:the-omics-os/lobster-local.wiki.git \
+          --lobster-wiki https://github.com/the-omics-os/lobster.wiki.git \
+          --lobster-local-wiki https://github.com/the-omics-os/lobster-local.wiki.git \
           ${{ github.event.inputs.force == 'true' && '--force' || '' }} \
           ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
           

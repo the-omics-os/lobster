@@ -15,7 +15,7 @@ from datetime import datetime
 
 class WikiSync:
     """Handles wiki synchronization to GitHub wiki repositories."""
-    
+
     def __init__(self, source_dir: Path, allowlist_file: Path = None):
         self.source_dir = source_dir
         self.allowlist_file = allowlist_file
@@ -24,6 +24,29 @@ class WikiSync:
             "files_skipped": 0,
             "total_size": 0
         }
+        # Get PAT from environment for HTTPS authentication
+        self.wiki_pat = os.environ.get('WIKI_SYNC_PAT', '')
+
+    def inject_pat_token(self, url: str) -> str:
+        """Inject PAT token into HTTPS URLs for authentication.
+
+        Args:
+            url: Git repository URL (SSH or HTTPS format)
+
+        Returns:
+            URL with PAT token injected if HTTPS, otherwise unchanged
+        """
+        # If no PAT token available, return URL as-is
+        if not self.wiki_pat:
+            return url
+
+        # Only inject token into HTTPS URLs
+        if url.startswith('https://github.com/'):
+            # Format: https://TOKEN@github.com/org/repo.git
+            return url.replace('https://github.com/', f'https://{self.wiki_pat}@github.com/')
+
+        # Return SSH URLs unchanged
+        return url
     
     def load_allowlist(self) -> set:
         """Load and parse allowlist patterns."""
@@ -53,31 +76,34 @@ class WikiSync:
         
         return False
     
-    def sync_to_repo(self, wiki_repo_url: str, branch: str = "master", 
+    def sync_to_repo(self, wiki_repo_url: str, branch: str = "master",
                      use_allowlist: bool = False, force: bool = False):
         """Sync wiki files to a GitHub wiki repository."""
         print(f"\n{'='*60}")
         print(f"Syncing to: {wiki_repo_url}")
         print(f"Using allowlist: {use_allowlist}")
         print(f"{'='*60}\n")
-        
+
+        # Inject PAT token into URL if using HTTPS
+        authenticated_url = self.inject_pat_token(wiki_repo_url)
+
         # Load allowlist if needed
         allowed_files = None
         if use_allowlist:
             allowed_files = self.load_allowlist()
             if allowed_files:
                 print(f"Loaded {len(allowed_files)} allowed patterns")
-        
+
         # Create temporary directory for wiki clone
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             wiki_path = temp_path / "wiki"
-            
+
             # Clone wiki repository
             print(f"Cloning wiki repository...")
             try:
                 subprocess.run(
-                    ['git', 'clone', wiki_repo_url, str(wiki_path)],
+                    ['git', 'clone', authenticated_url, str(wiki_path)],
                     check=True,
                     capture_output=True,
                     text=True
@@ -155,12 +181,19 @@ class WikiSync:
             
             subprocess.run(['git', 'commit', '-m', commit_msg], check=True)
             
+            # Update remote URL to use authenticated URL for push
+            subprocess.run(
+                ['git', 'remote', 'set-url', 'origin', authenticated_url],
+                check=True,
+                capture_output=True
+            )
+
             # Push changes
             print("\nPushing changes...")
             push_cmd = ['git', 'push', 'origin', branch]
             if force:
                 push_cmd.insert(2, '--force')
-            
+
             try:
                 subprocess.run(push_cmd, check=True, capture_output=True, text=True)
                 print(f"\n✅ Successfully synced to {wiki_repo_url}")
@@ -192,13 +225,13 @@ def main():
     )
     parser.add_argument(
         '--lobster-wiki',
-        default='git@github.com:the-omics-os/lobster.wiki.git',
-        help='Lobster wiki repository URL'
+        default='https://github.com/the-omics-os/lobster.wiki.git',
+        help='Lobster wiki repository URL (HTTPS or SSH format)'
     )
     parser.add_argument(
         '--lobster-local-wiki',
-        default='git@github.com:the-omics-os/lobster-local.wiki.git',
-        help='Lobster-local wiki repository URL'
+        default='https://github.com/the-omics-os/lobster-local.wiki.git',
+        help='Lobster-local wiki repository URL (HTTPS or SSH format)'
     )
     parser.add_argument(
         '--force',
