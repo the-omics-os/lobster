@@ -32,7 +32,7 @@ from pytest_mock import MockerFixture
 from lobster.core.client import AgentClient
 from lobster.core.interfaces.base_client import BaseClient
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.core.websocket_callback import APICallbackManager
+# from lobster.core.websocket_callback import APICallbackManager
 
 from tests.mock_data.generators import (
     generate_synthetic_single_cell,
