@@ -125,6 +125,12 @@ jobs:
         fi
     
     - name: Run unit tests for changed areas
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        AWS_BEDROCK_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_ACCESS_KEY }}
+        AWS_BEDROCK_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_SECRET_ACCESS_KEY }}
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
       run: |
         # Run unit tests with focus on changed areas
         python -m pytest tests/unit/ \
@@ -210,6 +216,12 @@ jobs:
         pip install -e ".[dev]"
     
     - name: Run integration tests
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        AWS_BEDROCK_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_ACCESS_KEY }}
+        AWS_BEDROCK_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_SECRET_ACCESS_KEY }}
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
       run: |
         if [ -d "tests/integration" ]; then
           python -m pytest tests/integration/ \

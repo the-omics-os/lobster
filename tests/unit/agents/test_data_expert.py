@@ -45,7 +45,7 @@ class MockState:
 
 
 @pytest.fixture
-def mock_data_manager():
+def mock_data_manager(mock_agent_environment):
     """Create mock data manager."""
     with patch('lobster.core.data_manager_v2.DataManagerV2') as MockDataManager:
         mock_dm = MockDataManager.return_value

@@ -120,13 +120,13 @@ def temp_workspace(test_config: Dict[str, Any]) -> Generator[Path, None, None]:
             shutil.rmtree(workspace_path, ignore_errors=True)
 
 
-@pytest.fixture(scope="function") 
+@pytest.fixture(scope="function")
 def isolated_environment(temp_workspace: Path, monkeypatch):
     """Create completely isolated environment for testing."""
     # Set temporary workspace as working directory
     original_cwd = os.getcwd()
     monkeypatch.chdir(temp_workspace)
-    
+
     # Mock environment variables
     test_env = {
         "LOBSTER_WORKSPACE": str(temp_workspace),
@@ -134,15 +134,58 @@ def isolated_environment(temp_workspace: Path, monkeypatch):
         "AWS_BEDROCK_ACCESS_KEY": "test-aws-access-key",
         "AWS_BEDROCK_SECRET_ACCESS_KEY": "test-aws-secret-key",
         "NCBI_API_KEY": "test-ncbi-key",
+        "ANTHROPIC_API_KEY": "test-anthropic-key",
     }
-    
+
     for key, value in test_env.items():
         monkeypatch.setenv(key, value)
-    
+
     yield temp_workspace
-    
+
     # Restore original working directory
     os.chdir(original_cwd)
+
+
+@pytest.fixture(scope="function")
+def mock_agent_environment(isolated_environment, mocker: MockerFixture):
+    """Complete agent testing environment with mocked LLMs and settings.
+
+    This fixture provides a unified environment for testing all agents with:
+    - Mocked settings that return test API keys
+    - Mocked LLM creation to prevent real API calls
+    - Isolated workspace and environment variables
+    """
+    # Mock the settings to ensure they use our test environment
+    mock_settings = mocker.patch('lobster.config.settings.get_settings')
+    mock_settings_instance = Mock()
+    mock_settings_instance.OPENAI_API_KEY = "test-openai-key"
+    mock_settings_instance.AWS_BEDROCK_ACCESS_KEY = "test-aws-access-key"
+    mock_settings_instance.AWS_BEDROCK_SECRET_ACCESS_KEY = "test-aws-secret-key"
+    mock_settings_instance.ANTHROPIC_API_KEY = "test-anthropic-key"
+    mock_settings_instance.NCBI_API_KEY = "test-ncbi-key"
+    mock_settings_instance.llm_provider = "anthropic"
+    mock_settings.return_value = mock_settings_instance
+
+    # Mock agent configurator
+    mock_agent_config = mocker.patch('lobster.config.agent_config.initialize_configurator')
+    mock_agent_config.return_value.get_agent_llm_params.return_value = {
+        'model': 'claude-3-sonnet-20240229',
+        'temperature': 0.1,
+        'max_tokens': 4096
+    }
+
+    # Mock LLM creation to prevent any real API calls
+    mock_llm = Mock()
+    mock_llm.with_config.return_value = mock_llm
+    mock_create_llm = mocker.patch('lobster.config.llm_factory.create_llm')
+    mock_create_llm.return_value = mock_llm
+
+    return {
+        'workspace': isolated_environment,
+        'settings': mock_settings_instance,
+        'llm': mock_llm,
+        'agent_config': mock_agent_config.return_value
+    }
 
 
 # ==============================================================================

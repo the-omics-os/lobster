@@ -48,7 +48,7 @@ class MockState:
 
 
 @pytest.fixture
-def mock_data_manager():
+def mock_data_manager(mock_agent_environment):
     """Create mock data manager with single-cell data."""
     mock_dm = Mock(spec=DataManagerV2)
     mock_dm.list_modalities.return_value = ['sc_data', 'sc_data_filtered']
@@ -66,7 +66,7 @@ def mock_data_manager():
 
 
 @pytest.fixture
-def singlecell_agent(mock_data_manager):
+def singlecell_agent(mock_data_manager, mock_agent_environment):
     """Create single-cell expert agent for testing."""
     return singlecell_expert(
         data_manager=mock_data_manager,

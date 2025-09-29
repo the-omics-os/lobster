@@ -44,7 +44,7 @@ class MockState:
 
 
 @pytest.fixture
-def mock_data_manager():
+def mock_data_manager(mock_agent_environment):
     """Mock DataManagerV2 instance."""
     mock_dm = Mock(spec=DataManagerV2)
     mock_dm.metadata_store = {}

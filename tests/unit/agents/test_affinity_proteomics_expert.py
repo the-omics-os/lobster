@@ -34,7 +34,7 @@ def get_agent_tool(agent, tool_name):
     return None
 
 @pytest.fixture
-def mock_data_manager():
+def mock_data_manager(mock_agent_environment):
     """Create mock DataManagerV2 instance with affinity proteomics data."""
     dm = Mock(spec=DataManagerV2)
 
