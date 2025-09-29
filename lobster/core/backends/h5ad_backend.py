@@ -142,6 +142,10 @@ class H5ADBackend(BaseBackend):
         adata.varm = {sanitize_key(k): v for k, v in adata.varm.items()}
         adata.layers = {sanitize_key(k): v for k, v in adata.layers.items()}
 
+        # Sanitize DataFrame column names in obs and var
+        adata.obs.columns = [sanitize_key(col) for col in adata.obs.columns]
+        adata.var.columns = [sanitize_key(col) for col in adata.var.columns]
+
         return adata
     
 

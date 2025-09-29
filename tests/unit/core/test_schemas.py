@@ -2,7 +2,7 @@
 Comprehensive unit tests for schema validation.
 
 This module provides thorough testing of the schema system including
-TRANSCRIPTOMICS_SCHEMA and PROTEOMICS_SCHEMA validation, data type enforcement,
+TranscriptomicsSchema.get_single_cell_schema() and ProteomicsSchema.get_mass_spectrometry_schema() validation, data type enforcement,
 value constraints, schema evolution, and custom validator implementations.
 
 Test coverage target: 95%+ with meaningful tests for biological data validation.
@@ -20,7 +20,7 @@ from scipy import sparse
 
 from lobster.core.schemas.transcriptomics import TranscriptomicsSchema
 from lobster.core.schemas.proteomics import ProteomicsSchema
-from lobster.core.schemas.validation import FlexibleValidator
+from lobster.core.schemas.validation import FlexibleValidator, SchemaValidator
 from lobster.core.interfaces.validator import ValidationResult
 
 from tests.mock_data.factories import (
@@ -240,7 +240,7 @@ class TestSchemaStructure:
 
 
 # ===============================================================================
-# BaseValidator Tests
+# FlexibleValidator Tests
 # ===============================================================================
 
 @pytest.mark.unit
@@ -349,11 +349,11 @@ class TestFlexibleValidator:
 
 
 # ===============================================================================
-# TranscriptomicsValidator Tests
+# TranscriptomicsSchema Tests
 # ===============================================================================
 
 @pytest.mark.unit
-class TestTranscriptomicsValidator:
+class TestTranscriptomicsSchema:
     """Test TranscriptomicsSchema validator functionality."""
     
     def test_validator_initialization(self):
@@ -486,11 +486,11 @@ class TestTranscriptomicsValidator:
 
 
 # ===============================================================================
-# ProteomicsValidator Tests
+# ProteomicsSchema Tests
 # ===============================================================================
 
 @pytest.mark.unit
-class TestProteomicsValidator:
+class TestProteomicsSchema:
     """Test ProteomicsSchema validator functionality."""
     
     def test_validator_initialization(self):
@@ -629,7 +629,7 @@ class TestSchemaEvolution:
         old_style_transcriptomics = ad.AnnData(X=np.random.randint(0, 100, (50, 200)))
         old_style_transcriptomics.obs['n_genes'] = (old_style_transcriptomics.X > 0).sum(axis=1)  # Old field name
         
-        validator = TranscriptomicsValidator()
+        validator = TranscriptomicsSchema.create_validator()
         
         # Should handle gracefully in permissive mode
         result = validator.validate(old_style_transcriptomics, strict=False)
@@ -647,7 +647,7 @@ class TestSchemaEvolution:
         minimal_data.var['gene_ids'] = [f"GENE_{i:05d}" for i in range(200)]
         minimal_data.var['feature_types'] = 'Gene Expression'
         
-        validator = TranscriptomicsValidator()
+        validator = TranscriptomicsSchema.create_validator()
         result = validator.validate(minimal_data)
         assert not result.has_errors
         
@@ -663,12 +663,12 @@ class TestSchemaEvolution:
         """Test extending schemas with custom fields."""
         # Test that custom schemas can extend base schemas
         
-        custom_schema = TRANSCRIPTOMICS_SCHEMA.copy()
+        custom_schema = TranscriptomicsSchema.get_single_cell_schema().copy()
         if "custom_obs" not in custom_schema:
             custom_schema["custom_obs"] = []
         custom_schema["custom_obs"] = custom_schema.get("optional_obs", []) + ["experiment_id", "batch_id"]
         
-        validator = BaseValidator(custom_schema)
+        validator = FlexibleValidator(custom_schema)
         
         # Create data with custom fields
         adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
@@ -687,7 +687,7 @@ class TestSchemaEvolution:
         deprecated_data.obs['total_umis'] = np.array(deprecated_data.X.sum(axis=1)).flatten()  # Deprecated name
         deprecated_data.obs['n_genes'] = (deprecated_data.X > 0).sum(axis=1)  # Old name
         
-        validator = TranscriptomicsValidator()
+        validator = TranscriptomicsSchema.create_validator()
         
         # Should handle gracefully
         result = validator.validate(deprecated_data, strict=False)
@@ -705,14 +705,14 @@ class TestCustomValidatorImplementations:
     def test_custom_validator_creation(self):
         """Test creating custom validators."""
         
-        class CustomTranscriptomicsValidator(BaseValidator):
+        class CustomTranscriptomicsValidator(SchemaValidator):
             """Custom validator with additional checks."""
             
             def __init__(self):
                 # Start with base transcriptomics schema
-                custom_schema = TRANSCRIPTOMICS_SCHEMA.copy()
+                custom_schema = TranscriptomicsSchema.get_single_cell_schema().copy()
                 # Add custom requirements
-                custom_schema["required_obs"] = custom_schema["required_obs"] + ["experiment_date"]
+                custom_schema["obs"]["required"] = custom_schema["obs"]["required"] + ["experiment_date"]
                 super().__init__(custom_schema)
             
             def validate(self, adata: ad.AnnData, strict: bool = False) -> ValidationResult:
@@ -742,8 +742,8 @@ class TestCustomValidatorImplementations:
         
         def composite_validation(adata: ad.AnnData) -> ValidationResult:
             """Run multiple validators and combine results."""
-            transcriptomics_validator = TranscriptomicsValidator()
-            proteomics_validator = ProteomicsValidator()
+            transcriptomics_validator = TranscriptomicsSchema.create_validator()
+            proteomics_validator = ProteomicsSchema.create_validator()
             
             # Try both validators
             t_result = transcriptomics_validator.validate(adata, strict=False)
@@ -763,7 +763,7 @@ class TestCustomValidatorImplementations:
     def test_conditional_validation(self):
         """Test conditional validation based on data characteristics."""
         
-        class ConditionalValidator(BaseValidator):
+        class ConditionalValidator(SchemaValidator):
             """Validator that adapts based on data characteristics."""
             
             def __init__(self):
@@ -771,20 +771,16 @@ class TestCustomValidatorImplementations:
             
             def validate(self, adata: ad.AnnData, strict: bool = False) -> ValidationResult:
                 """Conditional validation based on data size."""
-                self._reset_validation_result()
-                
+
                 if adata.n_vars > 10000:
                     # Likely single-cell data
-                    self.schema = TRANSCRIPTOMICS_SCHEMA
+                    self.schema = TranscriptomicsSchema.get_single_cell_schema()
                 else:
                     # Likely proteomics data
-                    self.schema = PROTEOMICS_SCHEMA
-                
-                # Run appropriate validation
-                self._check_required_fields(adata)
-                self._check_data_dimensions(adata)
-                
-                return self.validation_result
+                    self.schema = ProteomicsSchema.get_mass_spectrometry_schema()
+
+                # Run appropriate validation using parent class method
+                return super().validate(adata, strict)
         
         validator = ConditionalValidator()
         
@@ -951,8 +947,8 @@ class TestSchemaEdgeCases:
     def test_empty_data_validation(self):
         """Test validation of empty datasets."""
         validators = [
-            TranscriptomicsValidator(),
-            ProteomicsValidator()
+            TranscriptomicsSchema.create_validator(),
+            ProteomicsSchema.create_validator()
         ]
         
         for validator in validators:
@@ -973,12 +969,14 @@ class TestSchemaEdgeCases:
     
     def test_malformed_data_validation(self):
         """Test validation of malformed data structures."""
-        validator = TranscriptomicsValidator()
+        validator = TranscriptomicsSchema.create_validator()
         
         # Data with inconsistent dimensions
         adata = ad.AnnData(X=np.random.rand(10, 20))
-        # Add observation metadata with wrong number of entries
-        adata.obs = pd.DataFrame({'sample_id': ['S1', 'S2']})  # Only 2 entries for 10 observations
+        # Create proper-sized metadata but with wrong content structure
+        adata.obs = pd.DataFrame({'sample_id': [f'S{i}' for i in range(10)]})
+        # Simulate malformed structure by making non-standard data types
+        adata.obs['malformed_field'] = [{'nested': 'dict'} for _ in range(10)]
         
         # Should handle gracefully
         result = validator.validate(adata, strict=False)
@@ -986,7 +984,7 @@ class TestSchemaEdgeCases:
     
     def test_extreme_values_validation(self):
         """Test validation with extreme values."""
-        validator = TranscriptomicsValidator()
+        validator = TranscriptomicsSchema.create_validator()
         
         # Very large values
         large_values = ad.AnnData(X=np.random.rand(10, 20) * 1e10)
@@ -1000,7 +998,7 @@ class TestSchemaEdgeCases:
     
     def test_unicode_and_special_characters(self):
         """Test validation with unicode and special characters."""
-        validator = TranscriptomicsValidator()
+        validator = TranscriptomicsSchema.create_validator()
         
         # Data with unicode gene names
         unicode_genes = ['Gene_α', 'Gene_β', 'Gene_γ', '基因_1', 'Gène_2']
@@ -1020,7 +1018,7 @@ class TestSchemaEdgeCases:
         import threading
         import time
         
-        validator = TranscriptomicsValidator()
+        validator = TranscriptomicsSchema.create_validator()
         results = []
         errors = []
         

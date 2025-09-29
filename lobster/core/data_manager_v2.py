@@ -30,6 +30,7 @@ from lobster.core.provenance import ProvenanceTracker
 
 # Import available backends and adapters
 from lobster.core.backends.h5ad_backend import H5ADBackend
+from lobster.core.adapters.base import BaseAdapter
 from lobster.core.adapters.transcriptomics_adapter import TranscriptomicsAdapter
 from lobster.core.adapters.proteomics_adapter import ProteomicsAdapter
 
@@ -602,7 +603,6 @@ class DataManagerV2:
             else:
                 # Use basic metrics if no specific adapter found
                 logger.warning(f"No specific adapter found for modality '{modality}', using basic metrics")
-                from lobster.core.adapters.base import BaseAdapter
                 base_adapter = BaseAdapter()
                 return base_adapter.get_quality_metrics(self.modalities[modality])
         
@@ -681,7 +681,6 @@ class DataManagerV2:
             else:
                 # Use basic validation if no specific adapter found
                 logger.warning(f"No specific adapter found for modality '{name}', using basic validation")
-                from lobster.core.adapters.base import BaseAdapter
                 base_adapter = BaseAdapter()
                 results[name] = base_adapter._validate_basic_structure(adata)
         
@@ -1078,6 +1077,9 @@ class DataManagerV2:
             logger.info(f"🔍 DIAGNOSTIC: add_plot() completed. Current plots: {plot_ids}")
             return plot_id
 
+        except ValueError:
+            # Re-raise ValueError as documented in docstring
+            raise
         except Exception as e:
             logger.exception(f"Error in add_plot: {e}")
             return None
@@ -1821,10 +1823,16 @@ class DataManagerV2:
         adata = self.modalities[modality].copy()
         processing_steps = []
         
+        # Import sklearn components (always needed)
         try:
-            import scanpy as sc
             from sklearn.feature_selection import VarianceThreshold, SelectKBest, chi2, mutual_info_classif
             from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
+        except ImportError:
+            raise ImportError("scikit-learn is required for ML feature preparation. Install with: pip install scikit-learn")
+
+        # Import scanpy separately
+        try:
+            import scanpy as sc
             scanpy_available = True
         except ImportError:
             scanpy_available = False

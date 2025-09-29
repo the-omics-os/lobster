@@ -703,8 +703,8 @@ def _validate_cell_metrics(adata) -> 'ValidationResult':
 
 def _validate_sample_metrics(adata) -> 'ValidationResult':
     """Validate bulk RNA-seq specific metrics."""
-    
-    
+    from lobster.core.interfaces.validator import ValidationResult
+
     result = ValidationResult()
     
     # Check mapping rate if available

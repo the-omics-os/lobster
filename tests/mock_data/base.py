@@ -5,10 +5,11 @@ This module provides the foundational classes and configuration
 for generating synthetic biological datasets for testing.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 import json
+import copy
 
 
 @dataclass
@@ -48,10 +49,14 @@ class MockDataConfig:
     # Missing data simulation (for proteomics)
     missing_data_rate: float = 0.2
     
+    def copy(self) -> "MockDataConfig":
+        """Create a deep copy of this configuration."""
+        return replace(self)
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary."""
         return {
-            field.name: getattr(self, field.name) 
+            field.name: getattr(self, field.name)
             for field in self.__dataclass_fields__.values()
         }
     

@@ -58,11 +58,9 @@ class TestGPUDetector:
     
     def test_check_apple_silicon_non_mac(self):
         """Test Apple Silicon detection on non-Mac systems."""
-        with patch('platform.system') as mock_system:
-            mock_system.return_value = "Linux"
-            
+        with patch('lobster.tools.gpu_detector.IS_MACOS', False):
             is_apple_silicon = GPUDetector.check_apple_silicon()
-            
+
             assert is_apple_silicon is False
     
     def test_get_hardware_recommendation_nvidia(self):

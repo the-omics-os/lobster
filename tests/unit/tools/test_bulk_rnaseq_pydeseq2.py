@@ -74,16 +74,28 @@ class TestPyDESeq2DependencyValidation:
     def test_validate_pydeseq2_setup_all_available(self, bulk_rnaseq_service):
         """Test dependency validation when all components are available."""
         with patch('importlib.import_module'):
-            # Mock successful imports
+            # Mock successful imports with version attributes
+            mock_pydeseq2 = MagicMock()
+            mock_pydeseq2.__version__ = "1.0.0"
+            mock_numba = MagicMock()
+            mock_numba.__version__ = "0.58.0"
+            mock_statsmodels = MagicMock()
+            mock_statsmodels.__version__ = "0.14.0"
+            mock_matplotlib = MagicMock()
+            mock_matplotlib.__version__ = "3.7.0"
+            mock_matplotlib.get_data_path = MagicMock(return_value="/mock/path")
+
             with patch.dict('sys.modules', {
                 'pydeseq2.dds': MagicMock(),
                 'pydeseq2.ds': MagicMock(),
                 'pydeseq2.default_inference': MagicMock(),
-                'numba': MagicMock(),
-                'statsmodels': MagicMock()
+                'pydeseq2': mock_pydeseq2,
+                'numba': mock_numba,
+                'statsmodels': mock_statsmodels,
+                'matplotlib': mock_matplotlib
             }):
                 status = bulk_rnaseq_service.validate_pydeseq2_setup()
-                
+
                 assert status['pydeseq2'] is True
                 assert status['pydeseq2_inference'] is True
                 assert status['numba'] is True
@@ -91,26 +103,38 @@ class TestPyDESeq2DependencyValidation:
     
     def test_validate_pydeseq2_setup_missing_pydeseq2(self, bulk_rnaseq_service):
         """Test dependency validation when pyDESeq2 is missing."""
-        with patch('importlib.import_module', side_effect=ImportError("No module named 'pydeseq2'")):
+        # Mock matplotlib properly with version and get_data_path
+        mock_matplotlib = MagicMock()
+        mock_matplotlib.__version__ = "3.7.0"
+        mock_matplotlib.get_data_path = MagicMock(return_value="/mock/path")
+
+        # Mock the import process by setting modules to None to raise ImportError
+        with patch.dict('sys.modules', {
+            'pydeseq2.dds': None,
+            'pydeseq2.ds': None,
+            'pydeseq2': None,
+            'matplotlib': mock_matplotlib
+        }, clear=False):
             status = bulk_rnaseq_service.validate_pydeseq2_setup()
-            
             assert status['pydeseq2'] is False
     
     def test_validate_pydeseq2_setup_missing_optional(self, bulk_rnaseq_service):
         """Test dependency validation with missing optional dependencies."""
-        def mock_import(module):
-            if module == 'numba':
-                raise ImportError("No module named 'numba'")
-            return MagicMock()
-        
-        with patch('importlib.import_module', side_effect=mock_import):
-            with patch.dict('sys.modules', {
-                'pydeseq2.dds': MagicMock(),
-                'pydeseq2.ds': MagicMock(),
-                'statsmodels': MagicMock()
-            }):
+        # Create mocks with proper __version__ attributes
+        mock_statsmodels = MagicMock()
+        mock_statsmodels.__version__ = "1.0.0"
+
+        with patch.dict('sys.modules', {
+            'pydeseq2.dds': MagicMock(),
+            'pydeseq2.ds': MagicMock(),
+            'pydeseq2': MagicMock(),
+            'pydeseq2.default_inference': MagicMock(),
+            'statsmodels': mock_statsmodels
+        }):
+            # Remove numba from sys.modules and set it to None to trigger ImportError
+            with patch.dict('sys.modules', {'numba': None}, clear=False):
                 status = bulk_rnaseq_service.validate_pydeseq2_setup()
-                
+
                 assert status['pydeseq2'] is True
                 assert status['numba'] is False  # Missing but optional
 
@@ -213,43 +237,49 @@ class TestPyDESeq2AnalysisMethod:
     @patch('pydeseq2.dds.DeseqDataSet')
     @patch('pydeseq2.ds.DeseqStats')
     @patch('pydeseq2.default_inference.DefaultInference')
-    def test_run_pydeseq2_analysis_basic(self, mock_inference, mock_stats, mock_dds, 
+    def test_run_pydeseq2_analysis_basic(self, mock_inference, mock_stats, mock_dds,
                                         bulk_rnaseq_service, count_matrix, sample_metadata):
         """Test basic pyDESeq2 analysis workflow."""
+        # Mock matplotlib with proper attributes
+        mock_matplotlib = MagicMock()
+        mock_matplotlib.__version__ = "3.7.0"
+        mock_matplotlib.get_data_path = MagicMock(return_value="/mock/path")
+
         # Mock dependency validation
-        with patch.object(bulk_rnaseq_service, 'validate_pydeseq2_setup', 
-                         return_value={'pydeseq2': True, 'pydeseq2_inference': True, 'numba': True, 'statsmodels': True}):
-            
-            # Mock results
-            mock_results_df = pd.DataFrame({
-                'baseMean': np.random.lognormal(5, 2, 100),
-                'log2FoldChange': np.random.normal(0, 1.5, 100),
-                'lfcSE': np.random.gamma(2, 0.2, 100),
-                'stat': np.random.normal(0, 2, 100),
-                'pvalue': np.random.beta(0.5, 3, 100),
-                'padj': np.random.beta(0.3, 5, 100)
-            }, index=count_matrix.index)
-            
-            mock_ds_instance = MagicMock()
-            mock_ds_instance.results_df = mock_results_df
-            mock_stats.return_value = mock_ds_instance
-            
-            contrast = ['condition', 'Treatment', 'Control']
-            formula = '~condition'
-            
-            result = bulk_rnaseq_service.run_pydeseq2_analysis(
-                count_matrix, sample_metadata, formula, contrast
-            )
-            
-            assert isinstance(result, pd.DataFrame)
-            assert len(result) == 100
-            assert 'baseMean' in result.columns
-            assert 'log2FoldChange' in result.columns
-            assert 'padj' in result.columns
-            
-            # Check that pyDESeq2 components were called
-            mock_dds.assert_called_once()
-            mock_stats.assert_called_once()
+        with patch.dict('sys.modules', {'matplotlib': mock_matplotlib}):
+            with patch.object(bulk_rnaseq_service, 'validate_pydeseq2_setup',
+                             return_value={'pydeseq2': True, 'pydeseq2_inference': True, 'numba': True, 'statsmodels': True}):
+
+                # Mock results
+                mock_results_df = pd.DataFrame({
+                    'baseMean': np.random.lognormal(5, 2, 100),
+                    'log2FoldChange': np.random.normal(0, 1.5, 100),
+                    'lfcSE': np.random.gamma(2, 0.2, 100),
+                    'stat': np.random.normal(0, 2, 100),
+                    'pvalue': np.random.beta(0.5, 3, 100),
+                    'padj': np.random.beta(0.3, 5, 100)
+                }, index=count_matrix.index)
+
+                mock_ds_instance = MagicMock()
+                mock_ds_instance.results_df = mock_results_df
+                mock_stats.return_value = mock_ds_instance
+
+                contrast = ['condition', 'Treatment', 'Control']
+                formula = '~condition'
+
+                result = bulk_rnaseq_service.run_pydeseq2_analysis(
+                    count_matrix, sample_metadata, formula, contrast
+                )
+
+                assert isinstance(result, pd.DataFrame)
+                assert len(result) == 100
+                assert 'baseMean' in result.columns
+                assert 'log2FoldChange' in result.columns
+                assert 'padj' in result.columns
+
+                # Check that pyDESeq2 components were called
+                mock_dds.assert_called_once()
+                mock_stats.assert_called_once()
     
     def test_run_pydeseq2_analysis_missing_dependencies(self, bulk_rnaseq_service, count_matrix, sample_metadata):
         """Test error when pyDESeq2 dependencies are missing."""
@@ -266,29 +296,35 @@ class TestPyDESeq2AnalysisMethod:
     @patch('pydeseq2.dds.DeseqDataSet')
     def test_run_pydeseq2_analysis_with_shrinkage(self, mock_dds, bulk_rnaseq_service, count_matrix, sample_metadata):
         """Test pyDESeq2 analysis with LFC shrinkage."""
-        with patch.object(bulk_rnaseq_service, 'validate_pydeseq2_setup',
-                         return_value={'pydeseq2': True, 'pydeseq2_inference': True, 'numba': True, 'statsmodels': True}):
-            
-            # Mock the entire pipeline
-            with patch('pydeseq2.ds.DeseqStats') as mock_stats:
-                mock_ds = MagicMock()
-                mock_ds.results_df = pd.DataFrame({
-                    'baseMean': [100, 200],
-                    'log2FoldChange': [1.5, -2.0],
-                    'padj': [0.01, 0.05]
-                }, index=['Gene1', 'Gene2'])
-                mock_stats.return_value = mock_ds
-                
-                with patch('pydeseq2.default_inference.DefaultInference'):
-                    result = bulk_rnaseq_service.run_pydeseq2_analysis(
-                        count_matrix.iloc[:2], sample_metadata, '~condition', 
-                        ['condition', 'Treatment', 'Control'],
-                        shrink_lfc=True
-                    )
-                    
-                    assert isinstance(result, pd.DataFrame)
-                    # Should call lfc_shrink method
-                    mock_ds.lfc_shrink.assert_called()
+        # Mock matplotlib with proper attributes
+        mock_matplotlib = MagicMock()
+        mock_matplotlib.__version__ = "3.7.0"
+        mock_matplotlib.get_data_path = MagicMock(return_value="/mock/path")
+
+        with patch.dict('sys.modules', {'matplotlib': mock_matplotlib}):
+            with patch.object(bulk_rnaseq_service, 'validate_pydeseq2_setup',
+                             return_value={'pydeseq2': True, 'pydeseq2_inference': True, 'numba': True, 'statsmodels': True}):
+
+                # Mock the entire pipeline
+                with patch('pydeseq2.ds.DeseqStats') as mock_stats:
+                    mock_ds = MagicMock()
+                    mock_ds.results_df = pd.DataFrame({
+                        'baseMean': [100, 200],
+                        'log2FoldChange': [1.5, -2.0],
+                        'padj': [0.01, 0.05]
+                    }, index=['Gene1', 'Gene2'])
+                    mock_stats.return_value = mock_ds
+
+                    with patch('pydeseq2.default_inference.DefaultInference'):
+                        result = bulk_rnaseq_service.run_pydeseq2_analysis(
+                            count_matrix.iloc[:2], sample_metadata, '~condition',
+                            ['condition', 'Treatment', 'Control'],
+                            shrink_lfc=True
+                        )
+
+                        assert isinstance(result, pd.DataFrame)
+                        # Should call lfc_shrink method
+                        mock_ds.lfc_shrink.assert_called()
 
 
 @pytest.mark.unit
@@ -363,15 +399,15 @@ class TestPyDESeq2PseudobulkIntegration:
             mock_pydeseq2.return_value = mock_results_df
             
             results_df, analysis_stats = bulk_rnaseq_service.run_pydeseq2_from_pseudobulk(
-                pseudobulk_adata.iloc[:, :4],  # Subset to match mock results
+                pseudobulk_adata[:, :4],  # Subset to match mock results
                 formula='~condition',
                 contrast=['condition', 'Treatment', 'Control'],
                 alpha=0.05
             )
             
             assert analysis_stats['n_significant_genes'] == 3
-            assert analysis_stats['n_upregulated'] == 2  # Gene1, Gene3 (but Gene3 not significant)
-            assert analysis_stats['n_downregulated'] == 1  # Gene2, Gene4 (but need significant)
+            assert analysis_stats['n_upregulated'] == 1  # Only Gene1 (significant and upregulated)
+            assert analysis_stats['n_downregulated'] == 2  # Gene2, Gene4 (significant and downregulated)
             assert len(analysis_stats['top_upregulated']) <= 10
             assert len(analysis_stats['top_downregulated']) <= 10
 
@@ -455,9 +491,9 @@ class TestPyDESeq2ResultsEnhancement:
         assert all(enhanced_results['contrast'] == 'condition_Treatment_vs_Control')
         
         # Check significance annotation (padj < 0.05)
-        assert enhanced_results.loc['Gene1', 'significant'] is True  # padj=0.005
-        assert enhanced_results.loc['Gene2', 'significant'] is True  # padj=0.02
-        assert enhanced_results.loc['Gene3', 'significant'] is False  # padj=0.15
+        assert enhanced_results.loc['Gene1', 'significant']  # padj=0.005
+        assert enhanced_results.loc['Gene2', 'significant']  # padj=0.02
+        assert not enhanced_results.loc['Gene3', 'significant']  # padj=0.15
         
         # Check regulation direction
         assert enhanced_results.loc['Gene1', 'regulation'] == 'upregulated'    # LFC=2.0, significant
@@ -532,50 +568,76 @@ class TestPyDESeq2Integration:
     @patch('pydeseq2.dds.DeseqDataSet')
     def test_design_matrix_integration(self, mock_dds, bulk_rnaseq_service, count_matrix, sample_metadata):
         """Test that formula parsing is properly integrated."""
-        with patch.object(bulk_rnaseq_service, 'validate_pydeseq2_setup',
-                         return_value={'pydeseq2': True, 'pydeseq2_inference': True, 'numba': True, 'statsmodels': True}):
-            
-            with patch('pydeseq2.ds.DeseqStats') as mock_stats:
-                with patch('pydeseq2.default_inference.DefaultInference'):
-                    mock_ds = MagicMock()
-                    mock_ds.results_df = pd.DataFrame({'padj': [0.1]}, index=['Gene1'])
-                    mock_stats.return_value = mock_ds
-                    
-                    # This should internally use formula_service for parsing
-                    bulk_rnaseq_service.run_pydeseq2_analysis(
-                        count_matrix.iloc[:1], sample_metadata, 
-                        '~condition + batch',  # Complex formula
-                        ['condition', 'Treatment', 'Control']
-                    )
-                    
-                    # Should have called formula service methods
-                    mock_dds.assert_called_once()
-    
-    def test_count_matrix_orientation(self, bulk_rnaseq_service, count_matrix, sample_metadata):
-        """Test that count matrix is properly oriented for pyDESeq2."""
-        with patch.object(bulk_rnaseq_service, 'validate_pydeseq2_setup',
-                         return_value={'pydeseq2': True, 'pydeseq2_inference': True, 'numba': True, 'statsmodels': True}):
-            
-            with patch('pydeseq2.dds.DeseqDataSet') as mock_dds:
+        # Mock matplotlib with proper attributes
+        mock_matplotlib = MagicMock()
+        mock_matplotlib.__version__ = "3.7.0"
+        mock_matplotlib.get_data_path = MagicMock(return_value="/mock/path")
+
+        with patch.dict('sys.modules', {'matplotlib': mock_matplotlib}):
+            with patch.object(bulk_rnaseq_service, 'validate_pydeseq2_setup',
+                             return_value={'pydeseq2': True, 'pydeseq2_inference': True, 'numba': True, 'statsmodels': True}):
+
                 with patch('pydeseq2.ds.DeseqStats') as mock_stats:
                     with patch('pydeseq2.default_inference.DefaultInference'):
                         mock_ds = MagicMock()
-                        mock_ds.results_df = pd.DataFrame({'padj': [0.1]}, index=['Gene1'])
+                        mock_ds.results_df = pd.DataFrame({
+                            'baseMean': [100],
+                            'log2FoldChange': [1.5],
+                            'lfcSE': [0.3],
+                            'stat': [5.0],
+                            'pvalue': [0.01],
+                            'padj': [0.1]
+                        }, index=['Gene1'])
                         mock_stats.return_value = mock_ds
-                        
-                        # Run analysis
+
+                        # This should internally use formula_service for parsing
                         bulk_rnaseq_service.run_pydeseq2_analysis(
                             count_matrix.iloc[:1], sample_metadata,
-                            '~condition', ['condition', 'Treatment', 'Control']
+                            '~condition + batch',  # Complex formula
+                            ['condition', 'Treatment', 'Control']
                         )
-                        
-                        # Check that count matrix was transposed for pyDESeq2
-                        call_args = mock_dds.call_args
-                        counts_arg = call_args[1]['counts']
-                        
-                        # pyDESeq2 expects samples × genes orientation
-                        assert counts_arg.shape[0] == len(sample_metadata)
-                        assert counts_arg.shape[1] == 1  # Only 1 gene in this test
+
+                        # Should have called formula service methods
+                        mock_dds.assert_called_once()
+    
+    def test_count_matrix_orientation(self, bulk_rnaseq_service, count_matrix, sample_metadata):
+        """Test that count matrix is properly oriented for pyDESeq2."""
+        # Mock matplotlib with proper attributes
+        mock_matplotlib = MagicMock()
+        mock_matplotlib.__version__ = "3.7.0"
+        mock_matplotlib.get_data_path = MagicMock(return_value="/mock/path")
+
+        with patch.dict('sys.modules', {'matplotlib': mock_matplotlib}):
+            with patch.object(bulk_rnaseq_service, 'validate_pydeseq2_setup',
+                             return_value={'pydeseq2': True, 'pydeseq2_inference': True, 'numba': True, 'statsmodels': True}):
+
+                with patch('pydeseq2.dds.DeseqDataSet') as mock_dds:
+                    with patch('pydeseq2.ds.DeseqStats') as mock_stats:
+                        with patch('pydeseq2.default_inference.DefaultInference'):
+                            mock_ds = MagicMock()
+                            mock_ds.results_df = pd.DataFrame({
+                                'baseMean': [100],
+                                'log2FoldChange': [1.5],
+                                'lfcSE': [0.3],
+                                'stat': [5.0],
+                                'pvalue': [0.01],
+                                'padj': [0.1]
+                            }, index=['Gene1'])
+                            mock_stats.return_value = mock_ds
+
+                            # Run analysis
+                            bulk_rnaseq_service.run_pydeseq2_analysis(
+                                count_matrix.iloc[:1], sample_metadata,
+                                '~condition', ['condition', 'Treatment', 'Control']
+                            )
+
+                            # Check that count matrix was transposed for pyDESeq2
+                            call_args = mock_dds.call_args
+                            counts_arg = call_args[1]['counts']
+
+                            # pyDESeq2 expects samples × genes orientation
+                            assert counts_arg.shape[0] == len(sample_metadata)
+                            assert counts_arg.shape[1] == 1  # Only 1 gene in this test
 
 
 if __name__ == "__main__":

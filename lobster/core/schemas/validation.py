@@ -248,18 +248,18 @@ class SchemaValidator(IValidator):
     def _validate_value_ranges(self, adata: anndata.AnnData) -> ValidationResult:
         """Validate value ranges in the data."""
         result = ValidationResult()
-        
-        # Check for extreme values
-        if hasattr(adata.X, 'min') and hasattr(adata.X, 'max'):
+
+        # Check for extreme values, but only if data is not empty
+        if hasattr(adata.X, 'min') and hasattr(adata.X, 'max') and adata.X.size > 0:
             min_val = adata.X.min()
             max_val = adata.X.max()
-            
+
             if min_val < 0:
                 result.add_warning(f"Negative values found in expression matrix (min: {min_val})")
-            
+
             if max_val > 1e6:
                 result.add_warning(f"Very large values found in expression matrix (max: {max_val})")
-        
+
         return result
 
     def _validate_completeness(self, adata: anndata.AnnData) -> ValidationResult:

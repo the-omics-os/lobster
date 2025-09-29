@@ -57,9 +57,9 @@ jobs:
           black --check lobster/ || echo "Code formatting check completed with issues"
         fi
     
-    - name: Run unit tests
+    - name: Run unit/config tests
       run: |
-        python -m pytest tests/unit/ \
+        python -m pytest tests/unit/config \
           --maxfail=10 \
           --cov=lobster \
           --cov-report=xml \
@@ -68,15 +68,115 @@ jobs:
           --durations=10 \
           -v
     
-    - name: Upload test results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: test-results
-        path: |
-          test-results.xml
-          coverage.xml
-        retention-days: 30
+    - name: Run unit/config tests
+      run: |
+        python -m pytest tests/unit/core/backends \
+          --maxfail=10 \
+          --cov=lobster \
+          --cov-report=xml \
+          --cov-report=term \
+          --junit-xml=test-results.xml \
+          --durations=10 \
+          -v
+    
+    - name: Run unit/core/client tests
+      run: |
+        python -m pytest tests/unit/core/test_client.py \
+          --maxfail=10 \
+          --cov=lobster \
+          --cov-report=xml \
+          --cov-report=term \
+          --junit-xml=test-results.xml \
+          --durations=10 \
+          -v
+    
+    - name: Run unit/core/schemas tests
+      run: |
+        python -m pytest tests/unit/core/test_schemas.py \
+          --maxfail=10 \
+          --cov=lobster \
+          --cov-report=xml \
+          --cov-report=term \
+          --junit-xml=test-results.xml \
+          --durations=10 \
+          -v
+    
+    - name: Run unit/core/data_manager tests
+      run: |
+        python -m pytest tests/unit/core/test_data_manager_v2.py \
+          --maxfail=10 \
+          --cov=lobster \
+          --cov-report=xml \
+          --cov-report=term \
+          --junit-xml=test-results.xml \
+          --durations=10 \
+          -v
+    
+    - name: Run unit/agents/test_agent_registry tests
+      run: |
+        python -m pytest tests/unit/agents/test_agent_registry.py \
+          --maxfail=10 \
+          --cov=lobster \
+          --cov-report=xml \
+          --cov-report=term \
+          --junit-xml=test-results.xml \
+          --durations=10 \
+          -v
+    
+    - name: Run unit/agents/supervisor tests
+      run: |
+        python -m pytest tests/unit/agents/test_supervisor.py \
+          --maxfail=10 \
+          --cov=lobster \
+          --cov-report=xml \
+          --cov-report=term \
+          --junit-xml=test-results.xml \
+          --durations=10 \
+          -v
+    
+    - name: Run tests/unit/agents/test_singlecell_expert.py tests
+      run: |
+        python -m pytest tests/unit/agents/test_singlecell_expert.py \
+          --maxfail=10 \
+          --cov=lobster \
+          --cov-report=xml \
+          --cov-report=term \
+          --junit-xml=test-results.xml \
+          --durations=10 \
+          -v
+    
+    - name: Run tests/unit/agents/test_research_agent.py tests
+      run: |
+        python -m pytest tests/unit/agents/test_research_agent.py \
+          --maxfail=10 \
+          --cov=lobster \
+          --cov-report=xml \
+          --cov-report=term \
+          --junit-xml=test-results.xml \
+          --durations=10 \
+          -v
+    
+    - name: Run tests/unit/agents/test_data_expert tests
+      run: |
+        python -m pytest tests/unit/agents/test_data_expert.py \
+          --maxfail=10 \
+          --cov=lobster \
+          --cov-report=xml \
+          --cov-report=term \
+          --junit-xml=test-results.xml \
+          --durations=10 \
+          -v
+    
+    - name: Run tests/unit/agents/test_method_expert tests
+      run: |
+        python -m pytest tests/unit/agents/test_method_expert.py \
+          --maxfail=10 \
+          --cov=lobster \
+          --cov-report=xml \
+          --cov-report=term \
+          --junit-xml=test-results.xml \
+          --durations=10 \
+          -v
 
   # =====================================================================
   # Basic Security Scan

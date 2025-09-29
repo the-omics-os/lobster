@@ -598,15 +598,18 @@ class TestDataExpertErrorHandling:
     
     def test_large_dataset_memory_management(self, mock_data_manager):
         """Test memory management with large datasets."""
-        # Simulate large dataset scenario
-        mock_data_manager.get_modality.return_value.n_obs = 1000000  # 1M cells
-        mock_data_manager.get_modality.return_value.n_vars = 50000   # 50k genes
-        
+        # Simulate large dataset scenario by creating a proper mock
+        mock_adata = Mock()
+        # Use property() to create read-only properties that return the desired values
+        type(mock_adata).n_obs = property(lambda self: 1000000)  # 1M cells
+        type(mock_adata).n_vars = property(lambda self: 50000)   # 50k genes
+        mock_data_manager.get_modality.return_value = mock_adata
+
         with patch('lobster.agents.data_expert.examine_data_modality') as mock_examine:
             mock_examine.return_value = "Large dataset: 1M cells × 50k genes (memory optimized)"
-            
+
             result = mock_examine("large_dataset")
-            
+
             assert "1M cells" in result
             assert "memory optimized" in result
 

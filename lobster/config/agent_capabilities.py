@@ -13,6 +13,9 @@ from dataclasses import dataclass
 from functools import lru_cache
 from lobster.utils.logger import get_logger
 
+# Import registry functions at module level for easier mocking in tests
+from lobster.config.agent_registry import get_agent_registry_config, get_all_agent_names
+
 logger = get_logger(__name__)
 
 
@@ -177,8 +180,6 @@ class AgentCapabilityExtractor:
         Returns:
             AgentCapabilities object containing all discovered capabilities
         """
-        from lobster.config.agent_registry import get_agent_registry_config
-
         # Get agent config from registry
         config = get_agent_registry_config(agent_name)
         if not config:
@@ -262,8 +263,6 @@ class AgentCapabilityExtractor:
         Returns:
             Dict mapping agent names to their capabilities
         """
-        from lobster.config.agent_registry import get_all_agent_names
-
         capabilities = {}
         for agent_name in get_all_agent_names():
             capabilities[agent_name] = cls.extract_capabilities(agent_name)

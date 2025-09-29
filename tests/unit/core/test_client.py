@@ -66,7 +66,7 @@ def mock_data_manager_v2():
     # Mock methods with realistic behavior
     mock_dm.list_modalities.return_value = list(mock_dm.modalities.keys())
     mock_dm.get_modality.side_effect = lambda name: mock_dm.modalities.get(name)
-    mock_dm.has_data.side_effect = lambda: len(mock_dm.modalities) > 0
+    mock_dm.has_data.return_value = False  # Default to False, can be overridden in tests
     mock_dm.get_data_summary.return_value = {
         "modality_count": len(mock_dm.modalities),
         "total_cells": 1000,

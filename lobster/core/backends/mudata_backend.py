@@ -385,10 +385,13 @@ class MuDataBackend(BaseBackend):
         
         # Add modality-specific summary statistics to global obs
         for mod_name, mod_data in mdata.mod.items():
-            # Add basic metrics
-            if hasattr(mod_data.X, 'sum'):
+            # Add basic metrics only if observation names match
+            if hasattr(mod_data.X, 'sum') and mdata.obs.index.equals(mod_data.obs.index):
                 mdata.obs[f'{mod_name}_total_counts'] = np.array(mod_data.X.sum(axis=1)).flatten()
                 mdata.obs[f'{mod_name}_n_features'] = (mod_data.X > 0).sum(axis=1)
+            elif hasattr(mod_data.X, 'sum'):
+                # If observation names don't match, skip adding these metrics to avoid index mismatch
+                self.logger.warning(f"Skipping summary statistics for modality '{mod_name}' due to observation name mismatch")
 
     def validate_file_integrity(self, path: Union[str, Path]) -> Dict[str, Any]:
         """

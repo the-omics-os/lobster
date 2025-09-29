@@ -154,7 +154,13 @@ def mock_ftp_client():
 @pytest.fixture
 def geo_service():
     """Create GEOService instance for testing."""
-    return GEOService(email="test@example.com", cache_dir="test_cache")
+    # Create a mock DataManagerV2 instance
+    mock_data_manager = Mock()
+    mock_data_manager.cache_dir = Path("test_cache")
+    mock_data_manager.metadata_store = {}
+    mock_data_manager.list_modalities.return_value = []
+
+    return GEOService(data_manager=mock_data_manager, cache_dir="test_cache")
 
 
 @pytest.fixture
@@ -175,48 +181,58 @@ class TestGEOServiceCore:
     
     def test_geo_service_initialization(self):
         """Test GEOService initialization."""
-        service = GEOService(email="test@example.com")
-        
-        assert service.email == "test@example.com"
+        mock_data_manager = Mock()
+        mock_data_manager.cache_dir = Path("test_cache")
+        mock_data_manager.metadata_store = {}
+
+        service = GEOService(data_manager=mock_data_manager)
+
+        assert service.data_manager == mock_data_manager
         assert service.cache_dir is not None
-        assert hasattr(service, 'base_url')
-    
-    def test_geo_service_with_api_key(self):
-        """Test GEOService initialization with API key."""
+        assert hasattr(service, 'geo_downloader')
+
+    def test_geo_service_with_custom_cache(self):
+        """Test GEOService initialization with custom cache directory."""
+        mock_data_manager = Mock()
+        mock_data_manager.cache_dir = Path("test_cache")
+        mock_data_manager.metadata_store = {}
+
         service = GEOService(
-            email="test@example.com",
-            api_key="test_api_key",
+            data_manager=mock_data_manager,
             cache_dir="custom_cache"
         )
-        
-        assert service.email == "test@example.com"
-        assert service.api_key == "test_api_key"
-        assert service.cache_dir == "custom_cache"
+
+        assert service.data_manager == mock_data_manager
+        assert str(service.cache_dir) == "custom_cache"
     
-    def test_validate_geo_accession_valid(self, geo_service):
-        """Test validation of valid GEO accessions."""
-        valid_accessions = [
-            "GSE123456",
-            "GSM987654",
-            "GPL123456",
-            "GDS123456"
-        ]
-        
-        for accession in valid_accessions:
-            assert geo_service._validate_accession(accession) == True
-    
-    def test_validate_geo_accession_invalid(self, geo_service):
-        """Test validation of invalid GEO accessions."""
-        invalid_accessions = [
-            "INVALID123",
-            "GSE",
-            "12345",
-            "GSE-123456",
-            ""
-        ]
-        
-        for accession in invalid_accessions:
-            assert geo_service._validate_accession(accession) == False
+    def test_validate_expression_matrix_valid(self, geo_service):
+        """Test validation of valid expression matrices."""
+        import numpy as np
+        import pandas as pd
+
+        # Create a valid expression matrix
+        valid_matrix = pd.DataFrame(
+            np.random.randint(0, 100, size=(100, 50)),
+            index=[f"cell_{i}" for i in range(100)],
+            columns=[f"gene_{i}" for i in range(50)]
+        )
+
+        assert geo_service._is_valid_expression_matrix(valid_matrix) == True
+
+    def test_validate_expression_matrix_invalid(self, geo_service):
+        """Test validation of invalid expression matrices."""
+        import numpy as np
+        import pandas as pd
+
+        # Test with non-DataFrame
+        assert geo_service._is_valid_expression_matrix("not_a_dataframe") == False
+
+        # Test with non-numeric data
+        invalid_matrix = pd.DataFrame(
+            [["a", "b"], ["c", "d"]],
+            columns=["col1", "col2"]
+        )
+        assert geo_service._is_valid_expression_matrix(invalid_matrix) == False
 
 
 # ===============================================================================

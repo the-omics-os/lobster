@@ -175,8 +175,8 @@ class PseudobulkService:
                 pseudobulk_adata,
                 validate_schema=True,
                 aggregation_metadata={
-                    'pseudobulk_params': pseudobulk_adata.uns['pseudobulk_params'],
-                    'aggregation_stats': pseudobulk_adata.uns['aggregation_stats']
+                    'pseudobulk_params': pseudobulk_adata.uns.get('pseudobulk_params', {}),
+                    'aggregation_stats': pseudobulk_adata.uns.get('aggregation_stats', {})
                 },
                 original_dataset_info={
                     'n_original_cells': adata.n_obs,
@@ -192,7 +192,7 @@ class PseudobulkService:
                     "n_pseudobulk_samples": pseudobulk_adata.n_obs,
                     "n_genes": pseudobulk_adata.n_vars,
                     "aggregation_method": aggregation_method,
-                    "total_cells_aggregated": pseudobulk_adata.uns['aggregation_stats']['total_cells_aggregated']
+                    "total_cells_aggregated": pseudobulk_adata.uns.get('aggregation_stats', {}).get('total_cells_aggregated', 0)
                 }
             )
             
@@ -514,8 +514,16 @@ class PseudobulkService:
         # Aggregation statistics
         sample_counts = pseudobulk_adata.obs['sample_id'].value_counts().to_dict()
         celltype_counts = pseudobulk_adata.obs['cell_type'].value_counts().to_dict()
-        total_cells = pseudobulk_adata.obs['n_cells_aggregated'].sum()
-        
+
+        # Handle missing n_cells_aggregated column (safety check)
+        if 'n_cells_aggregated' in pseudobulk_adata.obs.columns:
+            total_cells = pseudobulk_adata.obs['n_cells_aggregated'].sum()
+            mean_cells_per_pseudobulk = float(pseudobulk_adata.obs['n_cells_aggregated'].mean())
+        else:
+            # Fallback: estimate from filtered_stats or use default
+            total_cells = filtered_stats.get('total_cells_processed', pseudobulk_adata.n_obs * min_cells)
+            mean_cells_per_pseudobulk = float(total_cells / max(1, pseudobulk_adata.n_obs))
+
         pseudobulk_adata.uns['aggregation_stats'] = {
             'n_samples': pseudobulk_adata.obs['sample_id'].nunique(),
             'n_cell_types': pseudobulk_adata.obs['cell_type'].nunique(),
@@ -523,7 +531,7 @@ class PseudobulkService:
             'total_cells_aggregated': int(total_cells),
             'cells_per_sample': sample_counts,
             'cells_per_celltype': celltype_counts,
-            'mean_cells_per_pseudobulk': float(pseudobulk_adata.obs['n_cells_aggregated'].mean()),
+            'mean_cells_per_pseudobulk': mean_cells_per_pseudobulk,
             'min_cells_threshold': min_cells,
             **filtered_stats
         }
@@ -574,7 +582,7 @@ class PseudobulkService:
                     activity['result_summary'] = {
                         "n_pseudobulk_samples": result_adata.n_obs,
                         "n_genes": result_adata.n_vars,
-                        "total_cells_aggregated": result_adata.uns['aggregation_stats']['total_cells_aggregated']
+                        "total_cells_aggregated": result_adata.uns.get('aggregation_stats', {}).get('total_cells_aggregated', 0)
                     }
                     break
         except Exception as e:

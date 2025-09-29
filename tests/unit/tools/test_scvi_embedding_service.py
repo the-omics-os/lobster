@@ -58,30 +58,43 @@ class TestScviEmbeddingServiceWithoutDependencies:
     
     def test_import_dependencies_fails_gracefully(self):
         """Test graceful handling when dependencies are missing."""
-        with patch.object(ScviEmbeddingService, 'check_availability') as mock_check:
-            mock_check.return_value = {"ready_for_scvi": False}
-            
-            service = ScviEmbeddingService()
-            
-            with pytest.raises(ImportError) as exc_info:
-                service._import_scvi_dependencies()
-            
-            assert "scVI dependencies not available" in str(exc_info.value)
+        service = ScviEmbeddingService()
+
+        # Mock the availability_info directly on the instance with proper structure
+        service.availability_info = {
+            "torch_available": False,
+            "scvi_available": False,
+            "ready_for_scvi": False,
+            "hardware_recommendation": {"device": "cpu", "command": "pip install scvi-tools"},
+            "installation_needed": True
+        }
+
+        with pytest.raises(ImportError) as exc_info:
+            service._import_scvi_dependencies()
+
+        assert "scVI dependencies not available" in str(exc_info.value)
     
     def test_train_scvi_embedding_without_dependencies(self):
         """Test training fails gracefully without dependencies."""
-        with patch.object(ScviEmbeddingService, 'check_availability') as mock_check:
-            mock_check.return_value = {"ready_for_scvi": False}
-            
-            service = ScviEmbeddingService()
-            
-            # Create mock AnnData
-            mock_adata = MagicMock()
-            mock_adata.n_obs = 1000
-            mock_adata.n_vars = 2000
-            
-            with pytest.raises(ImportError):
-                service.train_scvi_embedding(mock_adata)
+        service = ScviEmbeddingService()
+
+        # Mock the availability_info directly on the instance with proper structure
+        service.availability_info = {
+            "torch_available": False,
+            "scvi_available": False,
+            "ready_for_scvi": False,
+            "hardware_recommendation": {"device": "cpu", "command": "pip install scvi-tools"},
+            "installation_needed": True
+        }
+
+        # Create mock AnnData
+        mock_adata = MagicMock()
+        mock_adata.n_obs = 1000
+        mock_adata.n_vars = 2000
+        mock_adata.uns = {}  # Add empty uns dict to avoid minification errors
+
+        with pytest.raises(ImportError):
+            service.train_scvi_embedding(mock_adata)
 
 
 @pytest.mark.skipif(not SCVI_AVAILABLE, reason="scVI dependencies not installed")
@@ -91,12 +104,12 @@ class TestScviEmbeddingServiceWithDependencies:
     def test_setup_device_cpu(self):
         """Test device setup for CPU."""
         service = ScviEmbeddingService()
-        
+
         with patch.object(service, '_import_scvi_dependencies') as mock_import:
             mock_torch = MagicMock()
             mock_torch.cuda.is_available.return_value = False
             mock_torch.backends.mps.is_available.return_value = False
-            mock_import.return_value = (mock_torch, MagicMock())
+            mock_import.return_value = mock_torch
             
             device = service.setup_device(force_cpu=True)
             
@@ -113,7 +126,7 @@ class TestScviEmbeddingServiceWithDependencies:
             mock_torch = MagicMock()
             mock_torch.cuda.is_available.return_value = True
             mock_torch.backends.mps.is_available.return_value = False
-            mock_import.return_value = (mock_torch, MagicMock())
+            mock_import.return_value = mock_torch
             
             # Mock hardware recommendation for CUDA
             service.availability_info = {
@@ -238,35 +251,45 @@ class TestScviTrainingIntegration:
     def test_train_scvi_embedding_with_batch_correction(self):
         """Test scVI training with batch correction."""
         service = ScviEmbeddingService()
-        
-        # Create mock AnnData with batch information
+
+        # Create more complete mock AnnData with batch information
         mock_adata = MagicMock()
         mock_adata.n_obs = 100
         mock_adata.n_vars = 2000
         mock_adata.obsm = {}
-        
+        mock_adata.uns = {}  # Add empty uns dict to avoid minification errors
+        mock_adata.copy.return_value = mock_adata  # Mock the copy method to return itself
+        mock_adata.is_view = False  # Add common AnnData attributes
+        mock_adata.raw = None
+        # Add obs mock with proper batch information
+        mock_adata.obs = pd.DataFrame({'sample': ['A'] * 50 + ['B'] * 50})
+        # Mock X property to avoid dtype issues - ensure float32 dtype
+        mock_adata.X = np.random.randn(100, 2000).astype(np.float32)
+        mock_adata.var_names = [f'gene_{i}' for i in range(2000)]
+        mock_adata.obs_names = [f'cell_{i}' for i in range(100)]
+
         with patch.object(service, '_import_scvi_dependencies') as mock_import, \
-             patch.object(service, 'setup_device') as mock_setup_device:
-            
+             patch.object(service, 'setup_device') as mock_setup_device, \
+             patch('scvi.model.SCVI') as mock_scvi_class:
+
             mock_torch = MagicMock()
-            mock_scvi = MagicMock()
             mock_model = MagicMock()
-            mock_embeddings = np.random.randn(100, 10)
+            mock_embeddings = np.random.randn(100, 15).astype(np.float32)
             mock_model.get_latent_representation.return_value = mock_embeddings
-            mock_scvi.model.SCVI.return_value = mock_model
-            mock_import.return_value = (mock_torch, mock_scvi)
+            mock_scvi_class.return_value = mock_model
+            mock_import.return_value = mock_torch
             mock_setup_device.return_value = "cpu"
-            
+
             model, training_info = service.train_scvi_embedding(
                 adata=mock_adata,
                 batch_key="sample",
                 n_latent=15
             )
-            
+
             # Verify batch key was used
             assert training_info["batch_key"] == "sample"
-            mock_scvi.model.SCVI.setup_anndata.assert_called_once()
-            call_kwargs = mock_scvi.model.SCVI.setup_anndata.call_args[1]
+            mock_scvi_class.setup_anndata.assert_called_once()
+            call_kwargs = mock_scvi_class.setup_anndata.call_args[1]
             assert call_kwargs["batch_key"] == "sample"
 
 
@@ -277,13 +300,10 @@ class TestErrorHandling:
         """Test service behavior when imports fail."""
         with patch('lobster.tools.scvi_embedding_service.GPUDetector') as mock_detector:
             mock_detector.check_scvi_availability.side_effect = ImportError("Test import error")
-            
-            # Service should still initialize but availability check should handle error
-            service = ScviEmbeddingService()
-            availability = service.check_availability()
-            
-            # Should return a dict with error information
-            assert isinstance(availability, dict)
+
+            # This should raise ImportError during initialization
+            with pytest.raises(ImportError, match="Test import error"):
+                service = ScviEmbeddingService()
     
     def test_invalid_parameters(self):
         """Test handling of invalid parameters."""

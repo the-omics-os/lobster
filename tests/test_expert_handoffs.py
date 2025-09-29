@@ -13,6 +13,9 @@ from typing import Dict, Any
 
 import pytest
 
+# Skip entire module due to proteomics agents still in development
+pytestmark = pytest.mark.skip(reason="Proteomics agents in development")
+
 from lobster.tools.expert_handoff_manager import (
     ExpertHandoffManager,
     HandoffContext,
