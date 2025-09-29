@@ -1,0 +1,64 @@
+name: Sync to Public Repository
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'private/**'
+      - '.github/**'
+      - '**/*_secret*'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force push to public repo'
+        required: false
+        default: 'false'
+      dry_run:
+        description: 'Dry run only'
+        required: false
+        default: 'false'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - name: Checkout private repo
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1  # Shallow clone (no history)
+        
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Configure Git
+      run: |
+        git config --global user.name "Lobster Bot"
+        git config --global user.email "bot@omics-os.com"
+        
+    - name: Setup SSH for public repo
+      uses: webfactory/ssh-agent@v0.8.0
+      with:
+        ssh-private-key: ${{ secrets.PUBLIC_REPO_DEPLOY_KEY }}
+        
+    - name: Run sync script
+      env:
+        PUBLIC_REPO: git@github.com:the-omics-os/lobster-local.git
+      run: |
+        python scripts/sync_to_public.py \
+          --repo $PUBLIC_REPO \
+          --branch main \
+          ${{ github.event.inputs.force == 'true' && '--force' || '' }} \
+          ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
+          
+    - name: Create sync report
+      if: success()
+      run: |
+        echo "## Sync Report" >> $GITHUB_STEP_SUMMARY
+        echo "- Source: ${{ github.repository }}@${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Target: lobster-local" >> $GITHUB_STEP_SUMMARY
+        echo "- Time: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
+        echo "- Status: ✅ Success" >> $GITHUB_STEP_SUMMARY

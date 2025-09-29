@@ -1,0 +1,47 @@
+# Allowlist for public repository sync
+# Patterns use gitignore syntax
+
+# Core engine code
+lobster/**/*.py
+!lobster/api/**
+!lobster/cdk/**
+!*ALPHA.py
+!*websocket*.py
+
+# Cloud client (important for upgrades)
+lobster/lobster_cloud/**
+
+# Configuration (safe defaults only)
+lobster/config/**
+!lobster/config/*_secrets.py
+!lobster/config/*_private.py
+
+# Tests and examples
+!tests/**/*.py
+examples/**
+
+# Documentation
+*.md
+docs/**
+LICENSE
+
+# Package files
+pyproject.toml
+setup.py
+setup.cfg
+requirements*.txt
+Makefile
+
+# Development files
+.pre-commit-config.yaml
+pytest.ini
+.gitignore
+
+# Exclude patterns (double-check)
+!**/__pycache__/**
+!**/*.pyc
+!**/.env*
+!**/private/**
+!**/customer/**
+!**/*_secret*
+!**/*_private*

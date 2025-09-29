@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=42", "wheel", "build>=0.10.0", "packaging"]
+requires = ["setuptools>=65.0", "wheel", "setuptools-scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -166,9 +166,9 @@ all = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/the-omics-os/lobster"
+"Homepage" = "https://www.omics-os.com"
 "Bug Tracker" = "https://github.com/the-omics-os/lobster/issues"
-"Documentation" = "https://docs.lobster-ai.com"
+"Documentation" = "https://github.com/the-omics-os/lobster.wiki"
 "Source Code" = "https://github.com/the-omics-os/lobster"
 
 [project.scripts]
@@ -182,6 +182,11 @@ version = {attr = "lobster.version.__version__"}
 
 [tool.setuptools.package-data]
 lobster = ["**/*.json", "**/*.yaml", "**/*.yml"]
+
+[tool.setuptools-scm]
+write_to = "lobster/_version.py"
+version_scheme = "release-branch-semver"
+local_scheme = "node-and-date"
 
 # Development tools configurations
 [tool.black]
