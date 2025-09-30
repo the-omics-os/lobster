@@ -54,7 +54,7 @@ jobs:
       run: |
         python scripts/sync_to_public.py \
           --repo $PUBLIC_REPO \
-          --branch dev \
+          --branch main \
           ${{ github.event.inputs.force == 'true' && '--force' || '' }} \
           ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
           
