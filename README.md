@@ -5,7 +5,7 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
 **Transform your bioinformatics research with AI agents that understand your data and provide expert analysis insights.**
- 
+  
 ## 📋 Table of Contents
 
 - [✨ What is Lobster AI?](#-what-is-lobster-ai)
