@@ -1,0 +1,321 @@
+name: Publish Package
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (leave empty to use git tag)'
+        required: false
+        type: string
+      pypi_repository:
+        description: 'PyPI repository'
+        required: false
+        default: 'pypi'
+        type: choice
+        options:
+          - pypi
+          - testpypi
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+
+jobs:
+  # =====================================================================
+  # Build and Test Package
+  # =====================================================================
+  build:
+    name: Build Package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history needed for setuptools-scm
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.12
+        cache: 'pip'
+
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine setuptools-scm
+
+    - name: Verify version from tag
+      if: github.event_name == 'push'
+      run: |
+        TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+        echo "Building version from tag: $TAG_VERSION"
+
+        # Verify setuptools-scm can read the version
+        python -m setuptools_scm
+
+    - name: Build package
+      run: |
+        echo "Building package..."
+        python -m build
+
+        echo "Build artifacts:"
+        ls -lh dist/
+
+    - name: Verify package integrity
+      run: |
+        echo "Checking package with twine..."
+        twine check dist/*
+
+        echo "Inspecting wheel contents..."
+        unzip -l dist/*.whl | head -50
+
+    - name: Test installation
+      run: |
+        echo "Testing package installation..."
+        pip install dist/*.whl
+
+        # Verify imports
+        python -c "import lobster; print(f'✅ Lobster version: {lobster.__version__}')"
+
+        # Verify CLI is available
+        lobster --help
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist-packages
+        path: dist/
+        retention-days: 30
+
+  # =====================================================================
+  # Run Tests Before Publishing
+  # =====================================================================
+  test:
+    name: Pre-publish Tests
+    runs-on: ubuntu-latest
+    needs: [build]
+    timeout-minutes: 20
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.12
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+
+    - name: Run unit tests
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        AWS_BEDROCK_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_ACCESS_KEY }}
+        AWS_BEDROCK_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_SECRET_ACCESS_KEY }}
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
+      run: |
+        python -m pytest tests/unit/ \
+          --maxfail=5 \
+          --cov=lobster \
+          --cov-report=term \
+          -v
+
+    - name: Run integration tests
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        AWS_BEDROCK_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_ACCESS_KEY }}
+        AWS_BEDROCK_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_SECRET_ACCESS_KEY }}
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
+      run: |
+        if [ -d "tests/integration" ]; then
+          python -m pytest tests/integration/ \
+            --maxfail=3 \
+            --timeout=300 \
+            -v
+        else
+          echo "No integration tests found, skipping"
+        fi
+
+  # =====================================================================
+  # Publish to PyPI
+  # =====================================================================
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: [build, test]
+    timeout-minutes: 10
+
+    # Use GitHub's trusted publishing for PyPI
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: dist-packages
+        path: dist/
+
+    - name: Verify artifacts
+      run: |
+        echo "Distribution artifacts to publish:"
+        ls -lh dist/
+
+        # Count artifacts
+        wheel_count=$(ls dist/*.whl 2>/dev/null | wc -l)
+        tar_count=$(ls dist/*.tar.gz 2>/dev/null | wc -l)
+
+        echo "Wheels: $wheel_count"
+        echo "Source distributions: $tar_count"
+
+        if [ $wheel_count -eq 0 ] || [ $tar_count -eq 0 ]; then
+          echo "❌ Missing distribution artifacts!"
+          exit 1
+        fi
+
+    - name: Publish to Test PyPI
+      if: github.event.inputs.pypi_repository == 'testpypi'
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        repository-url: https://test.pypi.org/legacy/
+        skip-existing: true
+
+    - name: Publish to PyPI
+      if: github.event.inputs.pypi_repository != 'testpypi'
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        skip-existing: true
+
+    - name: Create GitHub Release
+      if: github.event_name == 'push'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const tagName = context.ref.replace('refs/tags/', '');
+          const version = tagName.replace('v', '');
+
+          // Create release notes
+          let releaseNotes = `# Lobster AI v${version}\n\n`;
+          releaseNotes += `## Installation\n\n`;
+          releaseNotes += '```bash\n';
+          releaseNotes += `pip install lobster-ai==${version}\n`;
+          releaseNotes += '```\n\n';
+          releaseNotes += `## Package Information\n\n`;
+          releaseNotes += `- **Version**: ${version}\n`;
+          releaseNotes += `- **Python**: 3.12+\n`;
+          releaseNotes += `- **PyPI**: https://pypi.org/project/lobster-ai/${version}/\n\n`;
+          releaseNotes += `## What's New\n\n`;
+          releaseNotes += `See [CHANGELOG.md](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/CHANGELOG.md) for detailed changes.\n\n`;
+          releaseNotes += `---\n\n`;
+          releaseNotes += `📦 *Built and published automatically via GitHub Actions*`;
+
+          // Create release
+          const release = await github.rest.repos.createRelease({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            tag_name: tagName,
+            name: `Release ${tagName}`,
+            body: releaseNotes,
+            draft: false,
+            prerelease: version.includes('alpha') || version.includes('beta') || version.includes('rc')
+          });
+
+          console.log(`Created release: ${release.data.html_url}`);
+
+  # =====================================================================
+  # Post-publish Verification
+  # =====================================================================
+  verify:
+    name: Post-publish Verification
+    runs-on: ubuntu-latest
+    needs: [publish]
+    timeout-minutes: 10
+
+    steps:
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.12
+
+    - name: Wait for package availability
+      run: |
+        echo "Waiting 60 seconds for package to be available on PyPI..."
+        sleep 60
+
+    - name: Install from PyPI
+      run: |
+        TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+
+        echo "Installing lobster-ai==$TAG_VERSION from PyPI..."
+        pip install lobster-ai==$TAG_VERSION
+
+    - name: Verify installation
+      run: |
+        echo "Verifying package installation..."
+
+        # Check version
+        python -c "import lobster; print(f'Installed version: {lobster.__version__}')"
+
+        # Check CLI
+        lobster --help
+
+        # Check key imports
+        python -c "from lobster.core import AgentClient"
+        python -c "from lobster.config import AgentRegistry"
+
+        echo "✅ Package successfully published and verified!"
+
+  # =====================================================================
+  # Publish Summary
+  # =====================================================================
+  summary:
+    name: Publish Summary
+    runs-on: ubuntu-latest
+    needs: [build, test, publish, verify]
+    if: always()
+
+    steps:
+    - name: Generate publish summary
+      run: |
+        TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+
+        echo "## 📦 Package Publish Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Version**: $TAG_VERSION" >> $GITHUB_STEP_SUMMARY
+        echo "- **Build**: ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Tests**: ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Publish**: ${{ needs.publish.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Verification**: ${{ needs.verify.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [[ "${{ needs.build.result }}" == "success" &&
+              "${{ needs.test.result }}" == "success" &&
+              "${{ needs.publish.result }}" == "success" &&
+              "${{ needs.verify.result }}" == "success" ]]; then
+          echo "### ✅ Publication Successful!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Package is now available at:" >> $GITHUB_STEP_SUMMARY
+          echo "- PyPI: https://pypi.org/project/lobster-ai/$TAG_VERSION/" >> $GITHUB_STEP_SUMMARY
+          echo "- GitHub: https://github.com/${{ github.repository }}/releases/tag/v$TAG_VERSION" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "### ❌ Publication Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Please review the job outputs above for details." >> $GITHUB_STEP_SUMMARY
+        fi

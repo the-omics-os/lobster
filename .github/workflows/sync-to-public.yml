@@ -9,10 +9,6 @@ on:
       - '**/*_secret*'
   workflow_dispatch:
     inputs:
-      force:
-        description: 'Force push to public repo'
-        required: false
-        default: 'false'
       dry_run:
         description: 'Dry run only'
         required: false
@@ -32,7 +28,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: '3.12'
         
     - name: Configure Git
       run: |

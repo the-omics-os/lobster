@@ -21,7 +21,7 @@ class PublicRepoSync:
     """Handles safe synchronization to public repository."""
     
     def __init__(self, source_dir: Path, allowlist_file: Path, 
-                 public_repo_url: str, branch: str = "dev"):
+                 public_repo_url: str, branch: str = "main"):
         self.source_dir = source_dir
         self.allowlist_file = allowlist_file
         self.public_repo_url = public_repo_url
@@ -131,56 +131,152 @@ class PublicRepoSync:
         """Create a clean commit in the public repository."""
         os.chdir(self.temp_dir)
 
+        print("\n" + "="*60)
+        print("DEBUG: Creating public commit")
+        print("="*60)
+
         # Setup SSH environment for all git operations
         env = os.environ.copy()
         env["GIT_SSH_COMMAND"] = "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no"
 
         # Initialize git if needed
         if not (self.temp_dir / '.git').exists():
+            print("\nDEBUG: Initializing new git repository...")
             subprocess.run(['git', 'init'], check=True)
+
+            print(f"DEBUG: Adding remote origin: {self.public_repo_url}")
             subprocess.run(['git', 'remote', 'add', 'origin', self.public_repo_url], check=True)
 
             # Fetch existing remote state if it exists
-            subprocess.run(['git', 'fetch', 'origin', self.branch], check=False, env=env)
+            print(f"DEBUG: Fetching origin/{self.branch}...")
+            fetch_result = subprocess.run(['git', 'fetch', 'origin', self.branch],
+                                        capture_output=True, text=True, env=env)
+            if fetch_result.returncode == 0:
+                print("  Fetch successful - remote branch exists")
+            else:
+                print(f"  Fetch failed - remote branch may not exist: {fetch_result.stderr}")
 
             # Try to checkout existing branch or create new one
-            result = subprocess.run(['git', 'checkout', self.branch], check=False, capture_output=True)
+            print(f"DEBUG: Attempting to checkout branch '{self.branch}'...")
+            result = subprocess.run(['git', 'checkout', self.branch],
+                                  capture_output=True, text=True)
             if result.returncode != 0:
+                print(f"  Checkout failed: {result.stderr}")
+                print(f"  Creating new branch '{self.branch}'...")
                 subprocess.run(['git', 'checkout', '-b', self.branch], check=True)
+                print(f"  Created new branch '{self.branch}'")
+            else:
+                print(f"  Checked out existing branch '{self.branch}'")
+
+            # Show current state
+            print("\nDEBUG: Current branch status after initialization:")
+            subprocess.run(['git', 'status', '-sb'], env=env)
 
         # Configure git
+        print("\nDEBUG: Configuring git user...")
         subprocess.run(['git', 'config', 'user.name', 'cewinharhar'], check=True)
         subprocess.run(['git', 'config', 'user.email', 'kevin.yar@outlook.com'], check=True)
 
         # Add all files
+        print("DEBUG: Adding all files to staging...")
         subprocess.run(['git', 'add', '-A'], check=True)
+
+        # Show what will be committed
+        print("\nDEBUG: Files to be committed:")
+        subprocess.run(['git', 'status', '--short'])
 
         # Create commit with metadata
         commit_msg = f"Sync from private repository\n\nTimestamp: {datetime.now().isoformat()}\n"
         commit_msg += f"Files: {self.stats['files_copied']} copied, {self.stats['files_skipped']} skipped\n"
         commit_msg += f"Size: {self.stats['total_size'] / 1024 / 1024:.2f} MB"
 
+        print("\nDEBUG: Creating commit...")
         subprocess.run(['git', 'commit', '-m', commit_msg], check=True)
+
+        # Show the commit that was created
+        print("\nDEBUG: Commit created:")
+        subprocess.run(['git', 'log', '--oneline', '-n', '1'])
     
     def push_to_public(self, force: bool = False):
         """Push changes to public repository."""
         os.chdir(self.temp_dir)
 
+        print("\n" + "="*60)
+        print("DEBUG: Push to public repository")
+        print(f"  Force parameter: {force} (type: {type(force)})")
+        print("="*60)
+
         # Setup SSH environment - explicitly use the SSH key
         env = os.environ.copy()
         env["GIT_SSH_COMMAND"] = "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no"
 
+        # Debug: Show current git state
+        print("\nDEBUG: Current git status:")
+        subprocess.run(['git', 'status', '--short'], env=env)
+
+        print("\nDEBUG: Current branch:")
+        subprocess.run(['git', 'branch', '--show-current'], env=env)
+
+        print("\nDEBUG: Remote configuration:")
+        subprocess.run(['git', 'remote', '-v'], env=env)
+
+        print("\nDEBUG: Recent commits:")
+        subprocess.run(['git', 'log', '--oneline', '-n', '3'], env=env)
+
         # Fetch current state with SSH auth
-        subprocess.run(['git', 'fetch', 'origin', self.branch], check=False, env=env)
+        print("\nDEBUG: Fetching from origin...")
+        fetch_result = subprocess.run(['git', 'fetch', 'origin', self.branch],
+                                    capture_output=True, text=True, env=env)
+        if fetch_result.returncode != 0:
+            print(f"  Fetch stderr: {fetch_result.stderr}")
+        else:
+            print("  Fetch successful")
 
         # Build push command
         push_cmd = ['git', 'push', '--set-upstream', 'origin', f'HEAD:{self.branch}']
         if force:
             push_cmd.insert(2, '--force')
+            print(f"\nDEBUG: Force flag is True, inserting --force at position 2")
+        else:
+            print(f"\nDEBUG: Force flag is False, not adding --force")
 
-        print(f"Pushing with command: {' '.join(push_cmd)}")
+        print(f"\nDEBUG: Final push command: {push_cmd}")
+        print(f"       Command string: {' '.join(push_cmd)}")
 
-        subprocess.run(push_cmd, check=True, env=env)
+        # Execute push with detailed error capture
+        print("\nExecuting push...")
+        try:
+            result = subprocess.run(push_cmd, capture_output=True, text=True,
+                                  check=False, env=env)
+
+            if result.returncode == 0:
+                print("✅ Push successful!")
+                if result.stdout:
+                    print(f"Stdout: {result.stdout}")
+            else:
+                print(f"❌ Push failed with return code: {result.returncode}")
+                print(f"Stderr: {result.stderr}")
+                print(f"Stdout: {result.stdout}")
+
+                # Provide helpful debugging info
+                print("\nDEBUG: Checking divergence...")
+                subprocess.run(['git', 'status', '-sb'], env=env)
+
+                print("\nDEBUG: Comparing with origin...")
+                subprocess.run(['git', 'log', '--oneline', f'origin/{self.branch}..HEAD'],
+                             env=env)
+
+                # Re-raise the error for proper handling
+                result.check_returncode()
+
+        except subprocess.CalledProcessError as e:
+            print(f"\n❌ Git push failed: {e}")
+            print("\nTroubleshooting suggestions:")
+            print("1. Check if SSH key is properly configured")
+            print("2. Verify repository permissions")
+            print("3. Check if branch protection rules are blocking the push")
+            print("4. Try running with --force flag if this is intentional replacement")
+            raise
     
     def sync(self, force: bool = False, dry_run: bool = False):
         """Execute full sync process."""
@@ -188,6 +284,8 @@ class PublicRepoSync:
         print(f"Source: {self.source_dir}")
         print(f"Target: {self.public_repo_url}")
         print(f"Branch: {self.branch}")
+        print(f"DEBUG: Force push enabled: {force}")
+        print(f"DEBUG: Dry run: {dry_run}")
         print()
         
         # Create temp directory
@@ -218,6 +316,7 @@ class PublicRepoSync:
             
             # Push
             print("\nPushing to public repository...")
+            print(f"DEBUG: Calling push_to_public with force={force}")
             self.push_to_public(force)
             
             print("\n✅ Sync completed successfully!")
@@ -234,7 +333,19 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help='Dry run only')
     
     args = parser.parse_args()
-    
+
+    # Debug: Print parsed arguments
+    print("="*60)
+    print("DEBUG: Parsed arguments:")
+    print(f"  Source: {args.source}")
+    print(f"  Allowlist: {args.allowlist}")
+    print(f"  Repo: {args.repo}")
+    print(f"  Branch: {args.branch}")
+    print(f"  Force: {args.force} (type: {type(args.force)})")
+    print(f"  Dry-run: {args.dry_run}")
+    print("="*60)
+    print()
+
     syncer = PublicRepoSync(
         source_dir=Path(args.source).resolve(),
         allowlist_file=Path(args.allowlist).resolve(),
