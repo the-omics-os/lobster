@@ -157,12 +157,18 @@ class PublicRepoSync:
         # Fetch current state
         subprocess.run(['git', 'fetch', 'origin', self.branch], check=False)
         
-        # Push (force overwrites public repo completely)
-        push_cmd = ['git', 'push', 'origin', f'HEAD:{self.branch}']
+        # Build push command
+        push_cmd = ['git', 'push', '--set-upstream', 'origin', f'HEAD:{self.branch}']
         if force:
             push_cmd.insert(2, '--force')
         
-        subprocess.run(push_cmd, check=True)
+        print(f"Pushing with command: {' '.join(push_cmd)}")
+        
+        # Use explicit SSH key from env
+        env = os.environ.copy()
+        env["GIT_SSH_COMMAND"] = "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no"
+        
+        subprocess.run(push_cmd, check=True, env=env)
     
     def sync(self, force: bool = False, dry_run: bool = False):
         """Execute full sync process."""
