@@ -72,7 +72,8 @@ class PublicRepoSync:
             
             root_path = Path(root)
             for file in files:
-                if file.startswith('.'):
+                # Skip hidden files except for specific allowed ones
+                if file.startswith('.') and file not in ['.env.example', '.gitignore', '.pre-commit-config.yaml']:
                     continue
                     
                 filepath = root_path / file
@@ -127,8 +128,12 @@ class PublicRepoSync:
                 if response.lower() != 'y':
                     raise Exception("Sync aborted due to security concerns")
     
-    def create_public_commit(self):
-        """Create a clean commit in the public repository."""
+    def create_public_commit(self) -> bool:
+        """Create a clean commit in the public repository.
+
+        Returns:
+            bool: True if commit was created, False if no changes to commit
+        """
         os.chdir(self.temp_dir)
 
         print("\n" + "="*60)
@@ -143,6 +148,15 @@ class PublicRepoSync:
         # Add all files
         print("DEBUG: Adding all files to staging...")
         subprocess.run(['git', 'add', '-A'], check=True)
+
+        # Check if there are any changes to commit
+        print("\nDEBUG: Checking for changes...")
+        status_result = subprocess.run(['git', 'status', '--porcelain'],
+                                      capture_output=True, text=True, check=True)
+
+        if not status_result.stdout.strip():
+            print("⚠️  No changes detected - all files are identical to public repository")
+            return False
 
         # Show what will be committed
         print("\nDEBUG: Files to be committed:")
@@ -159,6 +173,8 @@ class PublicRepoSync:
         # Show the commit that was created
         print("\nDEBUG: Commit created:")
         subprocess.run(['git', 'log', '--oneline', '-n', '1'])
+
+        return True
     
     def push_to_public(self, force: bool = False):
         """Push changes to public repository."""
@@ -297,7 +313,11 @@ class PublicRepoSync:
 
             # Create commit
             print("\nCreating public commit...")
-            self.create_public_commit()
+            has_changes = self.create_public_commit()
+
+            if not has_changes:
+                print("\n✅ Sync completed - repository is already up to date!")
+                return
 
             # Push
             print("\nPushing to public repository...")

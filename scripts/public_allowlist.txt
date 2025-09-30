@@ -83,8 +83,8 @@ pytest.ini
 # Exclude patterns (double-check)
 !**/__pycache__/**
 !**/*.pyc
-!**/.env*
 .env.example
+!.env
 !**/private/**
 !**/customer/**
 !**/*_secret*
