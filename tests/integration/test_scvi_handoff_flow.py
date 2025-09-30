@@ -23,6 +23,9 @@ from lobster.tools.expert_handoff_manager import expert_handoff_manager
 from lobster.tools.enhanced_handoff_tool import create_expert_handoff_tool, SCVI_CONTEXT_SCHEMA
 from lobster.config.agent_registry import create_expert_handoff_tools
 
+# Skip entire module - direct sub-agent handoffs currently disabled (supervisor-mediated flow)
+pytestmark = pytest.mark.skip(reason="Direct sub-agent handoffs are currently disabled. Use supervisor-mediated flow.")
+
 
 class TestScviHandoffFlow(unittest.TestCase):
     """Test complete Single Cell -> ML Expert -> Single Cell handoff workflow."""

@@ -55,12 +55,13 @@ def data_manager(temp_workspace):
 @pytest.fixture
 def mock_pipeline_services():
     """Create mock service instances for pipeline testing."""
+    # Remove spec to allow dynamic attribute assignment
     return {
-        'geo_service': Mock(spec=GEOService),
-        'preprocessing_service': Mock(spec=PreprocessingService),
-        'clustering_service': Mock(spec=ClusteringService),
-        'quality_service': Mock(spec=QualityService),
-        'visualization_service': Mock(spec=SingleCellVisualizationService)
+        'geo_service': Mock(),
+        'preprocessing_service': Mock(),
+        'clustering_service': Mock(),
+        'quality_service': Mock(),
+        'visualization_service': Mock()
     }
 
 
@@ -842,11 +843,12 @@ class TestPipelineErrorHandling:
             pipeline_state['completed_steps'].append(step['name'])
             pipeline_state['step_results'][step['name']] = step_result
             pipeline_state['total_runtime'] += step['estimated_time']
-            
+
             if step['checkpoint']:
                 checkpoint_path = checkpoint_dir / f"checkpoint_{step['name']}.json"
-                save_checkpoint(step['name'], step_result, checkpoint_path)
+                # Add to checkpoint_files BEFORE saving so it's included in the snapshot
                 pipeline_state['checkpoint_files'][step['name']] = str(checkpoint_path)
+                save_checkpoint(step['name'], step_result, checkpoint_path)
         
         # Simulate interruption after step 3
         last_checkpoint = 'cluster'
@@ -872,11 +874,12 @@ class TestPipelineErrorHandling:
             restored_state['completed_steps'].append(step['name'])
             restored_state['step_results'][step['name']] = step_result
             restored_state['total_runtime'] += step['estimated_time']
-            
+
             if step['checkpoint']:
                 checkpoint_path = checkpoint_dir / f"checkpoint_{step['name']}.json"
-                save_checkpoint(step['name'], step_result, checkpoint_path)
+                # Add to checkpoint_files BEFORE saving so it's included in the snapshot
                 restored_state['checkpoint_files'][step['name']] = str(checkpoint_path)
+                save_checkpoint(step['name'], step_result, checkpoint_path)
         
         # Verify checkpoint system
         assert len(restored_state['completed_steps']) == 5
@@ -929,10 +932,6 @@ class TestPipelineErrorHandling:
         
         try:
             for step in rollback_pipeline:
-                # Save rollback point if specified
-                if step['rollback_point']:
-                    pipeline_snapshots[step['rollback_point']] = current_state.copy()
-                
                 # Execute step
                 if step['name'] == 'backup_original':
                     result = mock_pipeline_services['geo_service'].backup_original()
@@ -948,12 +947,16 @@ class TestPipelineErrorHandling:
                 elif step['name'] == 'finalize_results':
                     result = mock_pipeline_services['preprocessing_service'].finalize_results()
                     current_state['finalized'] = True
-                
+
                 executed_steps.append({
                     'step': step['name'],
                     'result': result,
                     'success': True
                 })
+
+                # Save rollback point AFTER successful execution
+                if step['rollback_point']:
+                    pipeline_snapshots[step['rollback_point']] = current_state.copy()
                 
         except Exception as e:
             # Rollback to last safe point

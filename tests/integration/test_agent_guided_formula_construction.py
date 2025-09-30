@@ -70,15 +70,16 @@ class TestAgentGuidedFormulaConstruction:
     
     def test_formula_service_suggest_formulas(self, formula_service):
         """Test formula suggestion functionality."""
-        # Create test metadata
+        # Create test metadata with sufficient samples for formula detection
+        # Need at least 6 samples so that 2 unique values < n_samples/2
         metadata = pd.DataFrame({
-            'condition': ['treatment', 'treatment', 'control', 'control'],
-            'batch': ['batch1', 'batch2', 'batch1', 'batch2'],
-            'age': [25, 30, 35, 40]
+            'condition': ['treatment'] * 3 + ['control'] * 3,
+            'batch': ['batch1', 'batch2', 'batch1', 'batch2', 'batch1', 'batch2'],
+            'age': [25, 30, 35, 40, 28, 33]
         })
-        
+
         suggestions = formula_service.suggest_formulas(metadata)
-        
+
         # Should suggest at least 2 formulas
         assert len(suggestions) >= 2
         

@@ -3,6 +3,10 @@ Integration tests for Lobster client components.
 
 These tests verify end-to-end functionality, client interactions,
 and real-world usage scenarios for AgentClient and APIAgentClient.
+
+Note: Tests automatically adapt to available clients:
+- AgentClient tests (public): Always run
+- APIAgentClient tests (private): Only run when API client is available
 """
 
 import asyncio
@@ -17,18 +21,21 @@ from unittest.mock import Mock, MagicMock, patch, AsyncMock
 from uuid import uuid4
 
 import pytest
-
-# Skip entire module due to proteomics agents still in development
-pytestmark = pytest.mark.skip(reason="Proteomics agents in development")
-
 import pandas as pd
 import numpy as np
 import anndata as ad
 
 from lobster.core.client import AgentClient
-from lobster.core.api_client import APIAgentClient
 from lobster.core.interfaces.base_client import BaseClient
 from lobster.core.data_manager_v2 import DataManagerV2
+
+# Conditional import for APIAgentClient (only available in private repo)
+try:
+    from lobster.core.api_client import APIAgentClient
+    HAS_API_CLIENT = True
+except ImportError:
+    HAS_API_CLIENT = False
+    APIAgentClient = None
 
 
 # ===============================================================================
@@ -80,12 +87,12 @@ def sample_csv_data(temp_integration_workspace):
 
 
 # ===============================================================================
-# Client Integration Tests
+# Client Integration Tests - AgentClient (Public)
 # ===============================================================================
 
 @pytest.mark.integration
 class TestAgentClientIntegration:
-    """Integration tests for AgentClient functionality."""
+    """Integration tests for AgentClient functionality (public repo compatible)."""
 
     def test_client_initialization_with_real_workspace(self, temp_integration_workspace):
         """Test client initialization with real workspace."""
@@ -228,8 +235,11 @@ class TestAgentClientIntegration:
 
             # Third query succeeds (recovery)
             mock_graph.stream.side_effect = None
+            # Use AIMessage instead of Mock for proper response extraction
+            from langchain_core.messages import AIMessage
+            recovery_message = AIMessage(content="Recovery successful")
             mock_graph.stream.return_value = [
-                {"supervisor": {"messages": [Mock(content="Recovery successful")]}}
+                {"supervisor": {"messages": [recovery_message]}}
             ]
             result3 = client.query("Third query after recovery")
             assert result3["success"] is True
@@ -237,104 +247,110 @@ class TestAgentClientIntegration:
 
             # Verify conversation history includes both success and failure
             history = client.get_conversation_history()
-            assert len(history) == 6  # 3 user + 3 assistant messages
-
-
-# @pytest.mark.integration
-# @pytest.mark.asyncio
-# class TestAPIAgentClientIntegration:
-#     """Integration tests for APIAgentClient functionality."""
-
-#     async def test_api_client_initialization_integration(self, temp_integration_workspace):
-#         """Test APIAgentClient initialization with real dependencies."""
-#         session_id = uuid4()
-#         mock_session_manager = Mock()
-
-#         with patch('lobster.core.api_client.AgentClient') as mock_agent_client:
-#             with patch('lobster.core.api_client.APICallbackManager'):
-#                 with patch('lobster.core.api_client.setup_websocket_logging'):
-#                     client = APIAgentClient(
-#                         session_id=session_id,
-#                         session_manager=mock_session_manager,
-#                         workspace_path=temp_integration_workspace
-#                     )
-
-#         assert client.session_id == session_id
-#         assert client.workspace_path == temp_integration_workspace
-#         assert client.workspace_path.exists()
-
-#     async def test_file_upload_integration(self, temp_integration_workspace):
-#         """Test file upload functionality."""
-#         session_id = uuid4()
-#         mock_session_manager = Mock()
-
-#         with patch('lobster.core.api_client.AgentClient'):
-#             with patch('lobster.core.api_client.APICallbackManager') as mock_callback_manager:
-#                 mock_callback_instance = Mock()
-#                 mock_callback_instance.send_data_update = AsyncMock()
-#                 mock_callback_manager.return_value = mock_callback_instance
-
-#                 with patch('lobster.core.api_client.setup_websocket_logging'):
-#                     mock_data_manager = Mock()
-#                     mock_data_manager.set_data = Mock()
-
-#                     client = APIAgentClient(
-#                         session_id=session_id,
-#                         session_manager=mock_session_manager,
-#                         workspace_path=temp_integration_workspace
-#                     )
-#                     client.data_manager = mock_data_manager
-#                     client.callback_manager = mock_callback_instance
-
-#         # Test file upload
-#         test_content = b"sample,value1,value2\nA,1,2\nB,3,4"
-#         result = await client.upload_file("test_upload.csv", test_content)
-
-#         assert result["success"] is True
-#         assert result["data_loaded"] is True
-#         assert "uploaded and loaded successfully" in result["message"]
-
-#         # Verify file was saved
-#         uploaded_file = temp_integration_workspace / "data" / "test_upload.csv"
-#         assert uploaded_file.exists()
-#         assert uploaded_file.read_bytes() == test_content
-
-#     async def test_workspace_files_integration(self, temp_integration_workspace, sample_csv_data):
-#         """Test workspace file listing integration."""
-#         session_id = uuid4()
-#         mock_session_manager = Mock()
-
-#         with patch('lobster.core.api_client.AgentClient'):
-#             with patch('lobster.core.api_client.APICallbackManager'):
-#                 with patch('lobster.core.api_client.setup_websocket_logging'):
-#                     client = APIAgentClient(
-#                         session_id=session_id,
-#                         session_manager=mock_session_manager,
-#                         workspace_path=temp_integration_workspace
-#                     )
-
-#         # Test file listing
-#         files = client.list_workspace_files()
-
-#         # Should return at least the sample CSV file
-#         assert len(files) >= 1
-#         file_names = [f["name"] for f in files]
-#         assert sample_csv_data.name in file_names
-
-#         # Verify file metadata
-#         csv_file_info = next(f for f in files if f["name"] == sample_csv_data.name)
-#         assert csv_file_info["file_type"] == "csv"
-#         assert csv_file_info["size_bytes"] > 0
+            # When query fails, no assistant message is added, so: 3 user + 2 assistant = 5
+            assert len(history) == 5
 
 
 # ===============================================================================
-# Performance and Stress Tests
+# Client Integration Tests - APIAgentClient (Private Only)
+# ===============================================================================
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.skipif(not HAS_API_CLIENT, reason="APIAgentClient not available (private repo only)")
+class TestAPIAgentClientIntegration:
+    """Integration tests for APIAgentClient functionality (private repo only)."""
+
+    async def test_api_client_initialization_integration(self, temp_integration_workspace):
+        """Test APIAgentClient initialization with real dependencies."""
+        session_id = uuid4()
+        mock_session_manager = Mock()
+
+        with patch('lobster.core.api_client.AgentClient') as mock_agent_client:
+            with patch('lobster.core.api_client.APICallbackManager'):
+                with patch('lobster.core.api_client.setup_websocket_logging'):
+                    client = APIAgentClient(
+                        session_id=session_id,
+                        session_manager=mock_session_manager,
+                        workspace_path=temp_integration_workspace
+                    )
+
+        assert client.session_id == session_id
+        assert client.workspace_path == temp_integration_workspace
+        assert client.workspace_path.exists()
+
+    async def test_file_upload_integration(self, temp_integration_workspace):
+        """Test file upload functionality."""
+        session_id = uuid4()
+        mock_session_manager = Mock()
+
+        with patch('lobster.core.api_client.AgentClient'):
+            with patch('lobster.core.api_client.APICallbackManager') as mock_callback_manager:
+                mock_callback_instance = Mock()
+                mock_callback_instance.send_data_update = AsyncMock()
+                mock_callback_manager.return_value = mock_callback_instance
+
+                with patch('lobster.core.api_client.setup_websocket_logging'):
+                    mock_data_manager = Mock()
+                    mock_data_manager.set_data = Mock()
+
+                    client = APIAgentClient(
+                        session_id=session_id,
+                        session_manager=mock_session_manager,
+                        workspace_path=temp_integration_workspace
+                    )
+                    client.data_manager = mock_data_manager
+                    client.callback_manager = mock_callback_instance
+
+        # Test file upload
+        test_content = b"sample,value1,value2\nA,1,2\nB,3,4"
+        result = await client.upload_file("test_upload.csv", test_content)
+
+        assert result["success"] is True
+        assert result["data_loaded"] is True
+        assert "uploaded and loaded successfully" in result["message"]
+
+        # Verify file was saved
+        uploaded_file = temp_integration_workspace / "data" / "test_upload.csv"
+        assert uploaded_file.exists()
+        assert uploaded_file.read_bytes() == test_content
+
+    async def test_workspace_files_integration(self, temp_integration_workspace, sample_csv_data):
+        """Test workspace file listing integration."""
+        session_id = uuid4()
+        mock_session_manager = Mock()
+
+        with patch('lobster.core.api_client.AgentClient'):
+            with patch('lobster.core.api_client.APICallbackManager'):
+                with patch('lobster.core.api_client.setup_websocket_logging'):
+                    client = APIAgentClient(
+                        session_id=session_id,
+                        session_manager=mock_session_manager,
+                        workspace_path=temp_integration_workspace
+                    )
+
+        # Test file listing
+        files = client.list_workspace_files()
+
+        # Should return at least the sample CSV file
+        assert len(files) >= 1
+        file_names = [f["name"] for f in files]
+        assert sample_csv_data.name in file_names
+
+        # Verify file metadata
+        csv_file_info = next(f for f in files if f["name"] == sample_csv_data.name)
+        assert csv_file_info["file_type"] == "csv"
+        assert csv_file_info["size_bytes"] > 0
+
+
+# ===============================================================================
+# Performance and Stress Tests (Public Compatible)
 # ===============================================================================
 
 @pytest.mark.integration
 @pytest.mark.performance
 class TestClientPerformanceIntegration:
-    """Performance tests for client components."""
+    """Performance tests for client components (public repo compatible)."""
 
     def test_concurrent_client_operations(self, temp_integration_workspace):
         """Test concurrent client operations."""
@@ -444,12 +460,12 @@ class TestClientPerformanceIntegration:
 
 
 # ===============================================================================
-# Edge Cases and Error Handling
+# Edge Cases and Error Handling (Public Compatible)
 # ===============================================================================
 
 @pytest.mark.integration
 class TestClientEdgeCasesIntegration:
-    """Test edge cases and error scenarios."""
+    """Test edge cases and error scenarios (public repo compatible)."""
 
     def test_workspace_permission_issues(self):
         """Test handling of workspace permission issues."""
@@ -503,30 +519,31 @@ class TestClientEdgeCasesIntegration:
             assert (end_time - start_time) >= 0.1  # Should include the delay
             assert result["duration"] >= 0.1
 
-    # @pytest.mark.asyncio
-    # async def test_api_client_cleanup_integration(self, temp_integration_workspace):
-    #     """Test proper cleanup of API client resources."""
-    #     session_id = uuid4()
-    #     mock_session_manager = Mock()
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(not HAS_API_CLIENT, reason="APIAgentClient not available (private repo only)")
+    async def test_api_client_cleanup_integration(self, temp_integration_workspace):
+        """Test proper cleanup of API client resources (private repo only)."""
+        session_id = uuid4()
+        mock_session_manager = Mock()
 
-    #     with patch('lobster.core.api_client.AgentClient'):
-    #         with patch('lobster.core.api_client.APICallbackManager'):
-    #             with patch('lobster.core.api_client.setup_websocket_logging'):
-    #                 with patch('lobster.core.api_client.remove_websocket_logging') as mock_remove:
-    #                     client = APIAgentClient(
-    #                         session_id=session_id,
-    #                         session_manager=mock_session_manager,
-    #                         workspace_path=temp_integration_workspace
-    #                     )
+        with patch('lobster.core.api_client.AgentClient'):
+            with patch('lobster.core.api_client.APICallbackManager'):
+                with patch('lobster.core.api_client.setup_websocket_logging'):
+                    with patch('lobster.core.api_client.remove_websocket_logging') as mock_remove:
+                        client = APIAgentClient(
+                            session_id=session_id,
+                            session_manager=mock_session_manager,
+                            workspace_path=temp_integration_workspace
+                        )
 
-    #                     # Set up mock logging handler
-    #                     client.websocket_logging_handler = Mock()
+                        # Set up mock logging handler
+                        client.websocket_logging_handler = Mock()
 
-    #                     # Test cleanup
-    #                     await client.cleanup()
+                        # Test cleanup
+                        await client.cleanup()
 
-    #                     # Verify cleanup was called
-    #                     mock_remove.assert_called_once()
+                        # Verify cleanup was called
+                        mock_remove.assert_called_once()
 
 
 if __name__ == "__main__":
