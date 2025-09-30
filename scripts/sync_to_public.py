@@ -130,44 +130,56 @@ class PublicRepoSync:
     def create_public_commit(self):
         """Create a clean commit in the public repository."""
         os.chdir(self.temp_dir)
-        
+
+        # Setup SSH environment for all git operations
+        env = os.environ.copy()
+        env["GIT_SSH_COMMAND"] = "ssh -o StrictHostKeyChecking=no"
+
         # Initialize git if needed
         if not (self.temp_dir / '.git').exists():
             subprocess.run(['git', 'init'], check=True)
             subprocess.run(['git', 'remote', 'add', 'origin', self.public_repo_url], check=True)
-        
+
+            # Fetch existing remote state if it exists
+            subprocess.run(['git', 'fetch', 'origin', self.branch], check=False, env=env)
+
+            # Try to checkout existing branch or create new one
+            result = subprocess.run(['git', 'checkout', self.branch], check=False, capture_output=True)
+            if result.returncode != 0:
+                subprocess.run(['git', 'checkout', '-b', self.branch], check=True)
+
         # Configure git
         subprocess.run(['git', 'config', 'user.name', 'Lobster Bot'], check=True)
         subprocess.run(['git', 'config', 'user.email', 'bot@omics-os.com'], check=True)
-        
+
         # Add all files
         subprocess.run(['git', 'add', '-A'], check=True)
-        
+
         # Create commit with metadata
         commit_msg = f"Sync from private repository\n\nTimestamp: {datetime.now().isoformat()}\n"
         commit_msg += f"Files: {self.stats['files_copied']} copied, {self.stats['files_skipped']} skipped\n"
         commit_msg += f"Size: {self.stats['total_size'] / 1024 / 1024:.2f} MB"
-        
+
         subprocess.run(['git', 'commit', '-m', commit_msg], check=True)
     
     def push_to_public(self, force: bool = False):
         """Push changes to public repository."""
         os.chdir(self.temp_dir)
-        
-        # Fetch current state
-        subprocess.run(['git', 'fetch', 'origin', self.branch], check=False)
-        
+
+        # Setup SSH environment - use ssh-agent (already configured in CI)
+        env = os.environ.copy()
+        env["GIT_SSH_COMMAND"] = "ssh -o StrictHostKeyChecking=no"
+
+        # Fetch current state with SSH auth
+        subprocess.run(['git', 'fetch', 'origin', self.branch], check=False, env=env)
+
         # Build push command
         push_cmd = ['git', 'push', '--set-upstream', 'origin', f'HEAD:{self.branch}']
         if force:
             push_cmd.insert(2, '--force')
-        
+
         print(f"Pushing with command: {' '.join(push_cmd)}")
-        
-        # Use explicit SSH key from env
-        env = os.environ.copy()
-        env["GIT_SSH_COMMAND"] = "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no"
-        
+
         subprocess.run(push_cmd, check=True, env=env)
     
     def sync(self, force: bool = False, dry_run: bool = False):
