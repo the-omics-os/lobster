@@ -133,7 +133,7 @@ class PublicRepoSync:
 
         # Setup SSH environment for all git operations
         env = os.environ.copy()
-        env["GIT_SSH_COMMAND"] = "ssh -o StrictHostKeyChecking=no"
+        env["GIT_SSH_COMMAND"] = "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no"
 
         # Initialize git if needed
         if not (self.temp_dir / '.git').exists():
@@ -166,9 +166,9 @@ class PublicRepoSync:
         """Push changes to public repository."""
         os.chdir(self.temp_dir)
 
-        # Setup SSH environment - use ssh-agent (already configured in CI)
+        # Setup SSH environment - explicitly use the SSH key
         env = os.environ.copy()
-        env["GIT_SSH_COMMAND"] = "ssh -o StrictHostKeyChecking=no"
+        env["GIT_SSH_COMMAND"] = "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no"
 
         # Fetch current state with SSH auth
         subprocess.run(['git', 'fetch', 'origin', self.branch], check=False, env=env)
