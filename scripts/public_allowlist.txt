@@ -84,6 +84,7 @@ pytest.ini
 !**/__pycache__/**
 !**/*.pyc
 !**/.env*
+.env.example
 !**/private/**
 !**/customer/**
 !**/*_secret*
