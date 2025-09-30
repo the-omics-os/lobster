@@ -22,7 +22,7 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     steps:
     - name: Checkout private repo
       uses: actions/checkout@v4
@@ -40,9 +40,11 @@ jobs:
         git config --global user.email "kevin.yar@outlook.com"
         
     - name: Setup SSH for public repo
-      uses: webfactory/ssh-agent@v0.8.0
-      with:
-        ssh-private-key: ${{ secrets.PUBLIC_REPO_DEPLOY_KEY }}
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.PUBLIC_REPO_DEPLOY_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan github.com >> ~/.ssh/known_hosts
         
     - name: Run sync script
       env:
