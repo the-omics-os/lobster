@@ -149,8 +149,8 @@ class PublicRepoSync:
                 subprocess.run(['git', 'checkout', '-b', self.branch], check=True)
 
         # Configure git
-        subprocess.run(['git', 'config', 'user.name', 'Lobster Bot'], check=True)
-        subprocess.run(['git', 'config', 'user.email', 'bot@omics-os.com'], check=True)
+        subprocess.run(['git', 'config', 'user.name', 'cewinharhar'], check=True)
+        subprocess.run(['git', 'config', 'user.email', 'kevin.yar@outlook.com'], check=True)
 
         # Add all files
         subprocess.run(['git', 'add', '-A'], check=True)
