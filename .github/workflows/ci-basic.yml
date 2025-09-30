@@ -68,7 +68,7 @@ jobs:
           --durations=10 \
           -v
     
-    - name: Run unit/config tests
+    - name: Run unit/backend tests
       run: |
         python -m pytest tests/unit/core/backends \
           --maxfail=10 \

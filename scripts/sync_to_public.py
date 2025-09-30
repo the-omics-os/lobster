@@ -20,7 +20,7 @@ class PublicRepoSync:
     """Handles safe synchronization to public repository."""
     
     def __init__(self, source_dir: Path, allowlist_file: Path, 
-                 public_repo_url: str, branch: str = "main"):
+                 public_repo_url: str, branch: str = "dev"):
         self.source_dir = source_dir
         self.allowlist_file = allowlist_file
         self.public_repo_url = public_repo_url

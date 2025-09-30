@@ -36,8 +36,8 @@ jobs:
         
     - name: Configure Git
       run: |
-        git config --global user.name "Lobster Bot"
-        git config --global user.email "bot@omics-os.com"
+        git config --global user.name "cewinharhar"
+        git config --global user.email "kevin.yar@outlook.com"
         
     - name: Setup SSH for public repo
       uses: webfactory/ssh-agent@v0.8.0
