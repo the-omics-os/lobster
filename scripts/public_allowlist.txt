@@ -55,6 +55,7 @@ lobster/config/**
 !tests/
 !tests/*
 examples/**
+!integration-results.xml
 
 # Container files
 !Dockerfile
