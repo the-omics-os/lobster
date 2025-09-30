@@ -13,6 +13,10 @@ on:
         description: 'Dry run only'
         required: false
         default: 'false'
+      force_push:
+        description: 'Force push (use only for intentional history reset)'
+        required: false
+        default: 'false'
 
 jobs:
   sync:
@@ -46,12 +50,12 @@ jobs:
       env:
         PUBLIC_REPO: git@github.com:the-omics-os/lobster-local.git
       run: |
-        # Force push is intentional - this sync completely replaces the public repo
-        # with filtered content from the private repo (one-way synchronization)
+        # Normal sync preserves git history for continuous updates
+        # Force push only used when manually triggered with force_push=true
         python scripts/sync_to_public.py \
           --repo $PUBLIC_REPO \
           --branch main \
-          --force \
+          ${{ github.event.inputs.force_push == 'true' && '--force' || '' }} \
           ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
           
     - name: Create sync report

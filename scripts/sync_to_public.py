@@ -135,44 +135,7 @@ class PublicRepoSync:
         print("DEBUG: Creating public commit")
         print("="*60)
 
-        # Setup SSH environment for all git operations
-        env = os.environ.copy()
-        env["GIT_SSH_COMMAND"] = "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no"
-
-        # Initialize git if needed
-        if not (self.temp_dir / '.git').exists():
-            print("\nDEBUG: Initializing new git repository...")
-            subprocess.run(['git', 'init'], check=True)
-
-            print(f"DEBUG: Adding remote origin: {self.public_repo_url}")
-            subprocess.run(['git', 'remote', 'add', 'origin', self.public_repo_url], check=True)
-
-            # Fetch existing remote state if it exists
-            print(f"DEBUG: Fetching origin/{self.branch}...")
-            fetch_result = subprocess.run(['git', 'fetch', 'origin', self.branch],
-                                        capture_output=True, text=True, env=env)
-            if fetch_result.returncode == 0:
-                print("  Fetch successful - remote branch exists")
-            else:
-                print(f"  Fetch failed - remote branch may not exist: {fetch_result.stderr}")
-
-            # Try to checkout existing branch or create new one
-            print(f"DEBUG: Attempting to checkout branch '{self.branch}'...")
-            result = subprocess.run(['git', 'checkout', self.branch],
-                                  capture_output=True, text=True)
-            if result.returncode != 0:
-                print(f"  Checkout failed: {result.stderr}")
-                print(f"  Creating new branch '{self.branch}'...")
-                subprocess.run(['git', 'checkout', '-b', self.branch], check=True)
-                print(f"  Created new branch '{self.branch}'")
-            else:
-                print(f"  Checked out existing branch '{self.branch}'")
-
-            # Show current state
-            print("\nDEBUG: Current branch status after initialization:")
-            subprocess.run(['git', 'status', '-sb'], env=env)
-
-        # Configure git
+        # Configure git user
         print("\nDEBUG: Configuring git user...")
         subprocess.run(['git', 'config', 'user.name', 'cewinharhar'], check=True)
         subprocess.run(['git', 'config', 'user.email', 'kevin.yar@outlook.com'], check=True)
@@ -223,22 +186,13 @@ class PublicRepoSync:
         print("\nDEBUG: Recent commits:")
         subprocess.run(['git', 'log', '--oneline', '-n', '3'], env=env)
 
-        # Fetch current state with SSH auth
-        print("\nDEBUG: Fetching from origin...")
-        fetch_result = subprocess.run(['git', 'fetch', 'origin', self.branch],
-                                    capture_output=True, text=True, env=env)
-        if fetch_result.returncode != 0:
-            print(f"  Fetch stderr: {fetch_result.stderr}")
-        else:
-            print("  Fetch successful")
-
-        # Build push command
-        push_cmd = ['git', 'push', '--set-upstream', 'origin', f'HEAD:{self.branch}']
+        # Build push command - simplified since branch is already tracking remote
+        push_cmd = ['git', 'push']
         if force:
-            push_cmd.insert(2, '--force')
-            print(f"\nDEBUG: Force flag is True, inserting --force at position 2")
+            push_cmd.append('--force')
+            print(f"\nDEBUG: Force flag is True, adding --force")
         else:
-            print(f"\nDEBUG: Force flag is False, not adding --force")
+            print(f"\nDEBUG: Force flag is False, using normal push")
 
         print(f"\nDEBUG: Final push command: {push_cmd}")
         print(f"       Command string: {' '.join(push_cmd)}")
@@ -287,39 +241,75 @@ class PublicRepoSync:
         print(f"DEBUG: Force push enabled: {force}")
         print(f"DEBUG: Dry run: {dry_run}")
         print()
-        
-        # Create temp directory
-        with tempfile.TemporaryDirectory() as temp_dir:
+
+        # Setup SSH environment for git operations
+        env = os.environ.copy()
+        env["GIT_SSH_COMMAND"] = "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no"
+
+        # Create temp directory and clone existing repo to preserve history
+        temp_dir = tempfile.mkdtemp()
+        try:
             self.temp_dir = Path(temp_dir)
-            
+
+            print(f"Cloning existing public repository to preserve git history...")
+            clone_result = subprocess.run(
+                ['git', 'clone', '--branch', self.branch, self.public_repo_url, str(temp_dir)],
+                capture_output=True, text=True, env=env
+            )
+
+            if clone_result.returncode != 0:
+                # Handle first-time sync or empty repo
+                print(f"  Clone failed (may be first sync): {clone_result.stderr}")
+                print(f"  Initializing new repository...")
+                subprocess.run(['git', 'init'], cwd=temp_dir, check=True)
+                subprocess.run(['git', 'remote', 'add', 'origin', self.public_repo_url],
+                             cwd=temp_dir, check=True)
+                subprocess.run(['git', 'checkout', '-b', self.branch], cwd=temp_dir, check=True)
+            else:
+                print(f"  ✅ Cloned existing repository with history")
+
+            # Clear all files except .git directory
+            print("Clearing existing files (preserving .git)...")
+            for item in self.temp_dir.iterdir():
+                if item.name != '.git':
+                    if item.is_dir():
+                        shutil.rmtree(item)
+                    else:
+                        item.unlink()
+
             # Load patterns
             patterns = self.load_allowlist()
             print(f"Loaded {len(patterns)} allowlist patterns")
-            
+
             # Copy files
             self.copy_allowed_files(patterns)
             print(f"\nCopied {self.stats['files_copied']} files")
             print(f"Skipped {self.stats['files_skipped']} files")
             print(f"Total size: {self.stats['total_size'] / 1024 / 1024:.2f} MB")
-            
+
             # Security scan
             print("\nPerforming security scan...")
             self.scan_for_secrets()
-            
+
             if dry_run:
                 print("\n🔍 Dry run complete. No changes pushed.")
                 return
-            
+
             # Create commit
             print("\nCreating public commit...")
             self.create_public_commit()
-            
+
             # Push
             print("\nPushing to public repository...")
             print(f"DEBUG: Calling push_to_public with force={force}")
             self.push_to_public(force)
-            
+
             print("\n✅ Sync completed successfully!")
+
+        finally:
+            # Clean up temp directory
+            if self.temp_dir and self.temp_dir.exists():
+                shutil.rmtree(temp_dir)
 
 
 def main():
