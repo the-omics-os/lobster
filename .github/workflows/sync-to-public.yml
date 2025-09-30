@@ -50,10 +50,12 @@ jobs:
       env:
         PUBLIC_REPO: git@github.com:the-omics-os/lobster-local.git
       run: |
+        # Force push is intentional - this sync completely replaces the public repo
+        # with filtered content from the private repo (one-way synchronization)
         python scripts/sync_to_public.py \
           --repo $PUBLIC_REPO \
           --branch main \
-          ${{ github.event.inputs.force == 'true' && '--force' || '' }} \
+          --force \
           ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
           
     - name: Create sync report
