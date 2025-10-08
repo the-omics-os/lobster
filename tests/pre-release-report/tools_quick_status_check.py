@@ -9,12 +9,16 @@ Usage:
 
 import subprocess
 import sys
+import importlib
 from pathlib import Path
 
 def run_command(cmd, capture_output=True):
     """Run a command and return result."""
     try:
-        result = subprocess.run(cmd, shell=True, capture_output=capture_output, text=True)
+        # Split command string into list for safe execution without shell=True
+        import shlex
+        cmd_list = shlex.split(cmd)
+        result = subprocess.run(cmd_list, capture_output=capture_output, text=True)
         return result.returncode == 0, result.stdout, result.stderr
     except Exception as e:
         return False, "", str(e)
@@ -36,7 +40,9 @@ def check_critical_services_import():
     for service in critical_services:
         module_path, class_name = service.rsplit('.', 1)
         try:
-            exec(f"from {module_path} import {class_name}")
+            # Use importlib instead of exec() for secure dynamic imports
+            module = importlib.import_module(module_path)
+            getattr(module, class_name)  # Verify the class exists
             import_results[service] = "✅ OK"
         except Exception as e:
             import_results[service] = f"❌ FAILED: {str(e)[:50]}..."
