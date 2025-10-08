@@ -32,10 +32,10 @@ import shutil
 from lobster.core.client import AgentClient
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.provenance import ProvenanceTracker
-from lobster.agents.singlecell_expert import SingleCellExpert
-from lobster.agents.bulk_rnaseq_expert import BulkRNASeqExpert
-from lobster.agents.data_expert import DataExpert
-from lobster.agents.supervisor import SupervisorAgent
+from lobster.agents.singlecell_expert import singlecell_expert
+from lobster.agents.bulk_rnaseq_expert import bulk_rnaseq_expert
+from lobster.agents.data_expert import data_expert
+# Note: Supervisor uses different pattern - imported via graph module if needed
 
 from tests.mock_data.factories import SingleCellDataFactory, BulkRNASeqDataFactory
 from tests.mock_data.base import SMALL_DATASET_CONFIG

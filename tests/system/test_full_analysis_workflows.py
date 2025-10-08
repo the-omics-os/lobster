@@ -26,18 +26,19 @@ from dataclasses import dataclass, asdict
 from lobster.core.client import AgentClient
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.provenance import ProvenanceTracker
-from lobster.agents.singlecell_expert import SingleCellExpert
-from lobster.agents.bulk_rnaseq_expert import BulkRNASeqExpert
-from lobster.agents.proteomics_expert import ProteomicsExpert
-from lobster.agents.data_expert import DataExpert
-from lobster.agents.research_agent import ResearchAgent
-from lobster.agents.supervisor import SupervisorAgent
+from lobster.agents.singlecell_expert import singlecell_expert
+from lobster.agents.bulk_rnaseq_expert import bulk_rnaseq_expert
+from lobster.agents.ms_proteomics_expert import ms_proteomics_expert
+from lobster.agents.affinity_proteomics_expert import affinity_proteomics_expert
+from lobster.agents.data_expert import data_expert
+from lobster.agents.research_agent import research_agent
+# Note: Supervisor uses different pattern - imported via graph module if needed
 
 from tests.mock_data.factories import (
     SingleCellDataFactory,
     BulkRNASeqDataFactory,
-    ProteomicsDataFactory,
-    SpatialDataFactory
+    ProteomicsDataFactory
+    # Note: SpatialDataFactory not yet implemented
 )
 from tests.mock_data.base import SMALL_DATASET_CONFIG, LARGE_DATASET_CONFIG
 

@@ -30,16 +30,16 @@ from memory_profiler import profile
 import functools
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.agents.singlecell_expert import SingleCellExpert
-from lobster.agents.bulk_rnaseq_expert import BulkRNASeqExpert
+from lobster.agents.singlecell_expert import singlecell_expert
+from lobster.agents.bulk_rnaseq_expert import bulk_rnaseq_expert
 from lobster.tools.preprocessing_service import PreprocessingService
 from lobster.tools.clustering_service import ClusteringService
 from lobster.tools.quality_service import QualityService
 
 from tests.mock_data.factories import (
-    SingleCellDataFactory, 
-    BulkRNASeqDataFactory,
-    SpatialDataFactory
+    SingleCellDataFactory,
+    BulkRNASeqDataFactory
+    # Note: SpatialDataFactory not yet implemented
 )
 from tests.mock_data.base import LARGE_DATASET_CONFIG
 

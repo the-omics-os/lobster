@@ -40,10 +40,10 @@ from lobster.core.backends.h5ad_backend import H5ADBackend
 from lobster.tools.geo_service import GEOService
 
 from tests.mock_data.factories import (
-    SingleCellDataFactory, 
+    SingleCellDataFactory,
     BulkRNASeqDataFactory,
-    ProteomicsDataFactory,
-    SpatialDataFactory
+    ProteomicsDataFactory
+    # Note: SpatialDataFactory not yet implemented
 )
 from tests.mock_data.base import SMALL_DATASET_CONFIG, LARGE_DATASET_CONFIG
 
