@@ -26,6 +26,8 @@ README.md
 lobster/*
 lobster/
 !lobster/api/**
+!lobster/core/api_client.py
+!lobster/core/websocket*
 !lobster/cdk/**
 !*ALPHA.py
 !*websocket*.py

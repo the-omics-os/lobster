@@ -29,13 +29,10 @@ from lobster.core.client import AgentClient
 from lobster.core.interfaces.base_client import BaseClient
 from lobster.core.data_manager_v2 import DataManagerV2
 
-# Conditional import for APIAgentClient (only available in private repo)
-try:
-    from lobster.core.api_client import APIAgentClient
-    HAS_API_CLIENT = True
-except ImportError:
-    HAS_API_CLIENT = False
-    APIAgentClient = None
+# Note: APIAgentClient was legacy code for web UI integration (removed)
+# Cloud implementation is now in lobster-cloud/api/core/cloud_processing_client.py
+HAS_API_CLIENT = False
+APIAgentClient = None
 
 
 # ===============================================================================
