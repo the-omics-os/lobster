@@ -17,7 +17,7 @@ This guide covers all installation methods for Lobster AI, from quick setup to a
 ### System Requirements
 
 **Minimum Requirements:**
-- **Python**: 3.11+ (Python 3.12+ strongly recommended)
+- **Python**: 3.12+
 - **Memory**: 4GB RAM (8GB+ recommended for large datasets)
 - **Storage**: 2GB free space (more for data analysis)
 - **Network**: Internet connection for API access and data downloads
@@ -41,11 +41,19 @@ Lobster AI automatically detects and uses the best available package manager:
 Choose ONE of the following LLM providers:
 
 1. **Claude API Key** (Recommended for most users)
+
+   ⚠️ **Important: Rate Limits** - Anthropic applies conservative rate limits to new accounts. For production use or heavy workloads, we recommend AWS Bedrock. If you encounter rate limit errors, see [Troubleshooting Guide](28-troubleshooting.md#rate-limit-errors-429).
+
    - Visit [Anthropic Console](https://console.anthropic.com/)
    - Create account and generate API key
    - Add to `.env`: `ANTHROPIC_API_KEY=sk-ant-...`
+   - **Recommended for**: Quick testing, development with small datasets
+   - **Not recommended for**: Production deployments, large-scale analysis
 
-2. **AWS Bedrock Access** (For AWS users)
+2. **AWS Bedrock Access** (Recommended for Production)
+
+   ✅ **Best for production** - AWS Bedrock provides enterprise-grade rate limits and reliability. Recommended for heavy workloads and production deployments.
+
    - AWS account with Bedrock access
    - Create IAM user with Bedrock permissions
    - Add to `.env`:
@@ -53,6 +61,8 @@ Choose ONE of the following LLM providers:
      AWS_BEDROCK_ACCESS_KEY=...
      AWS_BEDROCK_SECRET_ACCESS_KEY=...
      ```
+   - **Recommended for**: Production deployments, large-scale analysis, enterprise use
+   - **Benefits**: Higher rate limits, better reliability, enterprise SLA
 
 3. **NCBI API Key** (Optional)
    - Visit [NCBI E-utilities](https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/)
@@ -132,19 +142,23 @@ make install-global
 
 This creates a symlink in `/usr/local/bin/lobster` allowing you to run `lobster` from anywhere.
 
-### Method 5: Package Manager Installation
+### Method 5: Package Manager Installation (Future)
 
-When available on PyPI (coming soon):
+The `lobster` package is not yet available on PyPI. Once it is published, you will be able to install it using pip.
+
+**For now, please install the package directly from the repository by following Method 1 (Quick Install) or Method 3 (Manual Installation).**
+
+When available on PyPI, the commands will be:
 
 ```bash
 # Standard installation
-pip install lobster-ai
+pip install lobster
 
 # Development installation
-pip install lobster-ai[dev]
+pip install lobster[dev]
 
 # All extras
-pip install lobster-ai[all]
+pip install lobster[all]
 ```
 
 ## Platform-Specific Instructions
@@ -233,7 +247,7 @@ Follow the Linux installation instructions within WSL.
 ### Python Version Considerations
 
 **Python 3.12+ Requirements:**
-- **pyproject.toml specifies**: `>=3.11`
+- **pyproject.toml specifies**: `>=3.12`
 - **Makefile enforces**: `>=3.12`
 - **Recommendation**: Use Python 3.12+ for best performance
 

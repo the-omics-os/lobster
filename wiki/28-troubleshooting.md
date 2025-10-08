@@ -5,6 +5,12 @@ This comprehensive troubleshooting guide provides solutions to common issues enc
 ## Table of Contents
 
 1. [Installation & Setup Issues](#installation--setup-issues)
+   - API Keys Not Working
+   - CLI Interface Not Working
+   - **Rate Limit Errors (429)** ⚠️
+   - **Authentication Errors (401)**
+   - **Network Errors**
+   - **Quota Exceeded Errors**
 2. [Data Loading Problems](#data-loading-problems)
 3. [Analysis Failures](#analysis-failures)
 4. [Performance Issues](#performance-issues)
@@ -140,6 +146,251 @@ FORCE_RICH=1 lobster chat
 
 # Or disable if causing issues
 DISABLE_RICH=1 lobster chat
+```
+
+### Issue: Rate Limit Errors (429)
+
+**Symptoms:**
+```
+⚠️  Rate Limit Exceeded
+Error code: 429 - {'type': 'error', 'error': {'type': 'rate_limit_error', 'message': 'This request would exceed your organization's maximum usage increase rate...'}}
+```
+
+**Causes:**
+- Anthropic's conservative rate limits for new accounts
+- Exceeded requests per minute/hour quota
+- Burst usage patterns triggering throttling
+- Organization-level limits reached
+
+**Solutions:**
+
+#### Immediate Actions (Quick Fix)
+```bash
+# Wait 60 seconds and retry
+# Rate limits typically reset within 1-2 minutes
+
+# Check current rate limit status
+🦞 You: "What are my current API rate limits?"
+```
+
+#### Short-term Solutions
+```bash
+# 1. Request rate limit increase from Anthropic
+# Visit: https://docs.anthropic.com/en/api/rate-limits
+# Fill out their rate increase request form
+
+# 2. Reduce concurrent requests
+# Run analysis tasks sequentially instead of parallel
+
+# 3. Use retry logic with exponential backoff
+# Lobster AI will automatically retry with delays
+```
+
+#### Long-term Solutions (Recommended)
+```bash
+# Switch to AWS Bedrock (enterprise-grade limits)
+# 1. Set up AWS Bedrock credentials
+cat > .env << EOF
+AWS_BEDROCK_ACCESS_KEY=your-aws-access-key
+AWS_BEDROCK_SECRET_ACCESS_KEY=your-aws-secret-key
+EOF
+
+# 2. Restart Lobster
+lobster chat
+
+# 3. Verify Bedrock connection
+🦞 You: "/status"  # Check which provider is active
+```
+
+#### Contact Support
+```bash
+# For urgent rate limit increases or assistance:
+# Email: info@omics-os.com
+# Include:
+# - Your organization ID (from error message)
+# - Use case description
+# - Expected usage volume
+```
+
+**Prevention:**
+- Use AWS Bedrock for production deployments
+- Request rate increases proactively before large analyses
+- Monitor usage patterns to stay within limits
+- Consider batch processing for large datasets
+
+### Issue: Authentication Errors (401)
+
+**Symptoms:**
+```
+🔑 Authentication Failed
+Error code: 401 - {'type': 'error', 'error': {'type': 'invalid_api_key'}}
+```
+
+**Causes:**
+- Invalid or expired API key
+- API key not configured in environment
+- Incorrect key format
+- Missing required permissions (AWS Bedrock)
+
+**Solutions:**
+
+#### Verify API Key Configuration
+```bash
+# Check environment variables
+echo $ANTHROPIC_API_KEY    # Should show: sk-ant-api03-...
+echo $AWS_BEDROCK_ACCESS_KEY  # For AWS users
+
+# Check .env file
+cat .env
+
+# Ensure proper format (no quotes, spaces, or line breaks)
+ANTHROPIC_API_KEY=sk-ant-api03-your-actual-key-here
+```
+
+#### Fix Common Issues
+```bash
+# 1. Key in .env but not loaded
+source .env && lobster chat
+
+# 2. Key has extra whitespace
+# Edit .env and remove any spaces:
+# ✓ ANTHROPIC_API_KEY=sk-ant-...
+# ✗ ANTHROPIC_API_KEY = sk-ant-...
+# ✗ ANTHROPIC_API_KEY="sk-ant-..."
+
+# 3. Generate new key
+# Visit https://console.anthropic.com/settings/keys
+# Create new key and update .env
+```
+
+#### Test API Connection
+```bash
+# Test authentication
+python -c "
+import os
+from anthropic import Anthropic
+client = Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
+print('✓ Authentication successful')
+"
+```
+
+#### AWS Bedrock Permissions
+```bash
+# If using AWS Bedrock, verify IAM permissions include:
+# - bedrock:InvokeModel
+# - bedrock:InvokeModelWithResponseStream
+
+# Test AWS credentials
+aws bedrock list-foundation-models --region us-east-1
+```
+
+### Issue: Network Errors
+
+**Symptoms:**
+```
+🌐 Network Error
+Connection timeout / Connection refused / DNS resolution failed
+```
+
+**Causes:**
+- No internet connectivity
+- Firewall blocking HTTPS connections
+- DNS resolution issues
+- API service temporary outage
+- Proxy misconfiguration
+
+**Solutions:**
+
+#### Check Basic Connectivity
+```bash
+# Test internet connection
+ping -c 3 anthropic.com
+ping -c 3 api.anthropic.com
+
+# Test HTTPS access
+curl -I https://api.anthropic.com/v1/messages
+
+# Check DNS resolution
+nslookup api.anthropic.com
+```
+
+#### Firewall Configuration
+```bash
+# Ensure firewall allows HTTPS (port 443)
+# For corporate networks, contact IT to whitelist:
+# - api.anthropic.com
+# - bedrock-runtime.*.amazonaws.com (for AWS)
+
+# Test with firewall temporarily disabled
+sudo ufw disable  # Linux
+# Try connection, then re-enable
+sudo ufw enable
+```
+
+#### Proxy Configuration
+```bash
+# If behind a proxy, set environment variables
+export HTTP_PROXY=http://proxy.example.com:8080
+export HTTPS_PROXY=http://proxy.example.com:8080
+export NO_PROXY=localhost,127.0.0.1
+
+# Test with proxy
+lobster chat
+```
+
+#### Check API Status
+```bash
+# Check Anthropic service status
+# Visit: https://status.anthropic.com
+
+# For AWS Bedrock
+# Visit: https://status.aws.amazon.com
+```
+
+### Issue: Quota Exceeded Errors
+
+**Symptoms:**
+```
+💳 Usage Quota Exceeded
+Error code: 402 - insufficient_quota
+```
+
+**Causes:**
+- Monthly spending limit reached
+- Usage quota exhausted
+- Payment method issues
+- Billing not set up
+
+**Solutions:**
+
+#### Check Billing Status
+```bash
+# 1. Visit billing dashboard
+# Anthropic: https://console.anthropic.com/settings/billing
+# Check current usage and limits
+
+# 2. Review usage metrics
+# - Current month usage
+# - Remaining quota
+# - Next reset date
+```
+
+#### Increase Quota
+```bash
+# 1. Upgrade plan or add credits
+# 2. Set up automatic billing
+# 3. Contact billing support for enterprise quotas
+
+# For AWS Bedrock users:
+# Contact AWS support for quota increases
+# Visit: https://console.aws.amazon.com/support
+```
+
+#### Alternative: Switch Providers
+```bash
+# Switch to AWS Bedrock for higher quotas
+# See installation guide for AWS setup
+# wiki/02-installation.md#aws-bedrock-access
 ```
 
 ---
