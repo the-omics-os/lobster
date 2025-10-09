@@ -6,18 +6,18 @@ file I/O operations, data serialization/deserialization, error handling,
 performance, and S3-ready functionality.
 """
 
-import pytest
-import tempfile
-import shutil
-import numpy as np
-import pandas as pd
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
 import collections
-import time
 import gc
+import shutil
+import tempfile
+import time
+from pathlib import Path
+from unittest.mock import MagicMock, Mock, patch
 
 import anndata
+import numpy as np
+import pandas as pd
+import pytest
 import scanpy as sc
 from scipy import sparse as sp_sparse
 
@@ -70,30 +70,38 @@ class TestH5ADDataCreation:
         np.random.seed(42)
 
         if sparse:
-            X = sp_sparse.random(n_obs, n_vars, density=0.3, format='csr', random_state=42)
+            X = sp_sparse.random(
+                n_obs, n_vars, density=0.3, format="csr", random_state=42
+            )
         else:
             X = np.random.randn(n_obs, n_vars).astype(np.float32)
 
-        obs = pd.DataFrame({
-            'cell_type': np.random.choice(['TypeA', 'TypeB', 'TypeC'], n_obs),
-            'batch': np.random.choice(['batch1', 'batch2'], n_obs),
-            'n_genes': np.random.randint(100, 1000, n_obs)
-        }, index=[f'cell_{i}' for i in range(n_obs)])
+        obs = pd.DataFrame(
+            {
+                "cell_type": np.random.choice(["TypeA", "TypeB", "TypeC"], n_obs),
+                "batch": np.random.choice(["batch1", "batch2"], n_obs),
+                "n_genes": np.random.randint(100, 1000, n_obs),
+            },
+            index=[f"cell_{i}" for i in range(n_obs)],
+        )
 
-        var = pd.DataFrame({
-            'gene_name': [f'Gene_{i}' for i in range(n_vars)],
-            'highly_variable': np.random.choice([True, False], n_vars),
-            'mean': np.random.uniform(0, 10, n_vars)
-        }, index=[f'ENSG{i:05d}' for i in range(n_vars)])
+        var = pd.DataFrame(
+            {
+                "gene_name": [f"Gene_{i}" for i in range(n_vars)],
+                "highly_variable": np.random.choice([True, False], n_vars),
+                "mean": np.random.uniform(0, 10, n_vars),
+            },
+            index=[f"ENSG{i:05d}" for i in range(n_vars)],
+        )
 
         adata = anndata.AnnData(X=X, obs=obs, var=var)
 
         # Add some layers, obsm, varm, uns
-        adata.layers['raw'] = X.copy()
-        adata.obsm['X_pca'] = np.random.randn(n_obs, 10)
-        adata.varm['PCs'] = np.random.randn(n_vars, 10)
-        adata.uns['method'] = 'test_data'
-        adata.uns['parameters'] = {'param1': 1.5, 'param2': 'value'}
+        adata.layers["raw"] = X.copy()
+        adata.obsm["X_pca"] = np.random.randn(n_obs, 10)
+        adata.varm["PCs"] = np.random.randn(n_vars, 10)
+        adata.uns["method"] = "test_data"
+        adata.uns["parameters"] = {"param1": 1.5, "param2": "value"}
 
         return adata
 
@@ -108,34 +116,46 @@ class TestH5ADDataCreation:
         X[1, 1] = -np.inf  # Negative infinity
         X[2, 2] = np.nan  # NaN value
 
-        obs = pd.DataFrame({
-            'cell_type': ['Type/A', 'Type\\B', 'Type with spaces'] * (n_obs // 3) + ['TypeA'] * (n_obs % 3),
-            'unicode_col': ['αβγ', 'δεζ', 'ηθι'] * (n_obs // 3) + ['abc'] * (n_obs % 3),
-            'numeric_col': np.random.randn(n_obs)
-        }, index=[f'cell_{i}' for i in range(n_obs)])
+        obs = pd.DataFrame(
+            {
+                "cell_type": ["Type/A", "Type\\B", "Type with spaces"] * (n_obs // 3)
+                + ["TypeA"] * (n_obs % 3),
+                "unicode_col": ["αβγ", "δεζ", "ηθι"] * (n_obs // 3)
+                + ["abc"] * (n_obs % 3),
+                "numeric_col": np.random.randn(n_obs),
+            },
+            index=[f"cell_{i}" for i in range(n_obs)],
+        )
 
-        var = pd.DataFrame({
-            'gene/name': [f'Gene/_{i}' for i in range(n_vars)],  # Forward slash in key
-            'gene\\name': [f'Gene\\_{i}' for i in range(n_vars)],  # Backslash in key
-        }, index=[f'ENSG{i:05d}' for i in range(n_vars)])
+        var = pd.DataFrame(
+            {
+                "gene/name": [
+                    f"Gene/_{i}" for i in range(n_vars)
+                ],  # Forward slash in key
+                "gene\\name": [
+                    f"Gene\\_{i}" for i in range(n_vars)
+                ],  # Backslash in key
+            },
+            index=[f"ENSG{i:05d}" for i in range(n_vars)],
+        )
 
         adata = anndata.AnnData(X=X, obs=obs, var=var)
 
         # Add problematic uns data
-        adata.uns['ordered_dict'] = collections.OrderedDict([('a', 1), ('b', 2)])
-        adata.uns['tuple_data'] = (1, 2, 3)
-        adata.uns['numpy_scalar'] = np.float64(3.14)
-        adata.uns['nested_dict'] = {
-            'level1': {
-                'level2/with/slashes': 'value',
-                'level2_ordered': collections.OrderedDict([('x', 1), ('y', 2)])
+        adata.uns["ordered_dict"] = collections.OrderedDict([("a", 1), ("b", 2)])
+        adata.uns["tuple_data"] = (1, 2, 3)
+        adata.uns["numpy_scalar"] = np.float64(3.14)
+        adata.uns["nested_dict"] = {
+            "level1": {
+                "level2/with/slashes": "value",
+                "level2_ordered": collections.OrderedDict([("x", 1), ("y", 2)]),
             }
         }
 
         # Add obsm, varm with slashes in keys
-        adata.obsm['X/pca'] = np.random.randn(n_obs, 5)
-        adata.varm['loadings/pca'] = np.random.randn(n_vars, 5)
-        adata.layers['raw/counts'] = X.copy()
+        adata.obsm["X/pca"] = np.random.randn(n_obs, 5)
+        adata.varm["loadings/pca"] = np.random.randn(n_vars, 5)
+        adata.layers["raw/counts"] = X.copy()
 
         return adata
 
@@ -185,9 +205,11 @@ class TestH5ADFileOperations:
         adata_loaded = self.backend.load(file_path)
 
         # Verify sparsity is preserved
-        assert hasattr(adata_loaded.X, 'nnz')  # Is sparse
+        assert hasattr(adata_loaded.X, "nnz")  # Is sparse
         assert adata_loaded.X.format == adata_original.X.format
-        np.testing.assert_array_almost_equal(adata_loaded.X.toarray(), adata_original.X.toarray())
+        np.testing.assert_array_almost_equal(
+            adata_loaded.X.toarray(), adata_original.X.toarray()
+        )
 
     def test_save_with_custom_compression(self):
         """Test saving with custom compression settings."""
@@ -215,7 +237,7 @@ class TestH5ADFileOperations:
         adata_loaded = self.backend.load(file_path)
 
         # Verify density
-        assert not hasattr(adata_loaded.X, 'nnz')  # Is dense
+        assert not hasattr(adata_loaded.X, "nnz")  # Is dense
         np.testing.assert_array_almost_equal(adata_loaded.X, adata.X.toarray())
 
     def test_load_backed_mode(self):
@@ -281,50 +303,52 @@ class TestH5ADDataSanitization:
         assert adata_loaded.shape == adata.shape
 
         # Verify sanitization worked
-        assert 'ordered_dict' in adata_loaded.uns
-        assert isinstance(adata_loaded.uns['ordered_dict'], dict)  # Converted from OrderedDict
+        assert "ordered_dict" in adata_loaded.uns
+        assert isinstance(
+            adata_loaded.uns["ordered_dict"], dict
+        )  # Converted from OrderedDict
 
         # Verify tuple to list conversion (may become numpy array after H5AD round-trip)
-        assert 'tuple_data' in adata_loaded.uns
-        tuple_data = adata_loaded.uns['tuple_data']
+        assert "tuple_data" in adata_loaded.uns
+        tuple_data = adata_loaded.uns["tuple_data"]
         assert isinstance(tuple_data, (list, np.ndarray))
         # Check the values are correct
         np.testing.assert_array_equal(tuple_data, [1, 2, 3])
 
         # Check slash replacement in keys
         obsm_keys = list(adata_loaded.obsm.keys())
-        assert any('__' in key for key in obsm_keys)  # Slashes should be replaced
+        assert any("__" in key for key in obsm_keys)  # Slashes should be replaced
 
     def test_sanitize_anndata_method(self):
         """Test the static sanitize_anndata method directly."""
         # Create test data with problematic elements
         adata = anndata.AnnData(X=np.random.randn(10, 5))
-        adata.uns['ordered'] = collections.OrderedDict([('a', 1), ('b', 2)])
-        adata.uns['tuple'] = (1, 2, 3)
-        adata.uns['numpy_scalar'] = np.float64(3.14)
-        adata.uns['nested'] = {
-            'level1/slash': 'value',
-            'ordered_nested': collections.OrderedDict([('x', 1)])
+        adata.uns["ordered"] = collections.OrderedDict([("a", 1), ("b", 2)])
+        adata.uns["tuple"] = (1, 2, 3)
+        adata.uns["numpy_scalar"] = np.float64(3.14)
+        adata.uns["nested"] = {
+            "level1/slash": "value",
+            "ordered_nested": collections.OrderedDict([("x", 1)]),
         }
-        adata.obsm['X/pca'] = np.random.randn(10, 2)
-        adata.layers['raw/counts'] = np.random.randn(10, 5)
+        adata.obsm["X/pca"] = np.random.randn(10, 2)
+        adata.layers["raw/counts"] = np.random.randn(10, 5)
 
         # Sanitize
         adata_sanitized = H5ADBackend.sanitize_anndata(adata)
 
         # Check conversions
-        assert isinstance(adata_sanitized.uns['ordered'], dict)
-        assert isinstance(adata_sanitized.uns['tuple'], list)
-        assert isinstance(adata_sanitized.uns['numpy_scalar'], float)
-        assert 'level1__slash' in adata_sanitized.uns['nested']
-        assert 'X__pca' in adata_sanitized.obsm
-        assert 'raw__counts' in adata_sanitized.layers
+        assert isinstance(adata_sanitized.uns["ordered"], dict)
+        assert isinstance(adata_sanitized.uns["tuple"], list)
+        assert isinstance(adata_sanitized.uns["numpy_scalar"], float)
+        assert "level1__slash" in adata_sanitized.uns["nested"]
+        assert "X__pca" in adata_sanitized.obsm
+        assert "raw__counts" in adata_sanitized.layers
 
     def test_variable_names_make_unique(self):
         """Test that variable names are made unique."""
         # Create data with duplicate var names
         X = np.random.randn(10, 5)
-        var_names = ['Gene1', 'Gene2', 'Gene1', 'Gene3', 'Gene2']  # Duplicates
+        var_names = ["Gene1", "Gene2", "Gene1", "Gene3", "Gene2"]  # Duplicates
 
         adata = anndata.AnnData(X=X)
         adata.var_names = var_names
@@ -338,8 +362,8 @@ class TestH5ADDataSanitization:
         assert len(var_names_loaded) == len(set(var_names_loaded))
 
         # Verify duplicates were handled
-        assert 'Gene1' in var_names_loaded
-        assert 'Gene1__1' in var_names_loaded or 'Gene1-1' in var_names_loaded
+        assert "Gene1" in var_names_loaded
+        assert "Gene1__1" in var_names_loaded or "Gene1-1" in var_names_loaded
 
 
 class TestH5ADErrorHandling:
@@ -377,7 +401,10 @@ class TestH5ADErrorHandling:
 
         try:
             adata = TestH5ADDataCreation.create_simple_adata()
-            with pytest.raises((ValueError, PermissionError), match="(Failed to save H5AD file|Permission denied)"):
+            with pytest.raises(
+                (ValueError, PermissionError),
+                match="(Failed to save H5AD file|Permission denied)",
+            ):
                 self.backend.save(adata, readonly_dir / "test.h5ad")
         finally:
             # Restore permissions for cleanup
@@ -396,7 +423,9 @@ class TestH5ADErrorHandling:
         file_path = Path(self.temp_dir) / "test_cleanup.h5ad"
 
         # Mock write_h5ad to fail
-        with patch.object(anndata.AnnData, 'write_h5ad', side_effect=Exception("Write failed")):
+        with patch.object(
+            anndata.AnnData, "write_h5ad", side_effect=Exception("Write failed")
+        ):
             with pytest.raises(ValueError, match="Failed to save H5AD file"):
                 self.backend.save(adata, file_path)
 
@@ -424,7 +453,7 @@ class TestH5ADErrorHandling:
         self.backend.save(adata, file_path)
 
         # Corrupt the file by truncating it
-        with open(file_path, 'r+b') as f:
+        with open(file_path, "r+b") as f:
             f.truncate(100)  # Truncate to 100 bytes
 
         # Loading should fail gracefully
@@ -506,7 +535,9 @@ class TestH5ADPerformanceOptimization:
 
     def test_optimize_for_reading_sparse(self):
         """Test optimization analysis for sparse data."""
-        adata = TestH5ADDataCreation.create_simple_adata(n_obs=1000, n_vars=500, sparse=True)
+        adata = TestH5ADDataCreation.create_simple_adata(
+            n_obs=1000, n_vars=500, sparse=True
+        )
         file_path = "test_optimize_sparse.h5ad"
 
         self.backend.save(adata, file_path)
@@ -523,7 +554,9 @@ class TestH5ADPerformanceOptimization:
 
     def test_optimize_for_reading_dense(self):
         """Test optimization analysis for dense data."""
-        adata = TestH5ADDataCreation.create_simple_adata(n_obs=100, n_vars=50, sparse=False)
+        adata = TestH5ADDataCreation.create_simple_adata(
+            n_obs=100, n_vars=50, sparse=False
+        )
         file_path = "test_optimize_dense.h5ad"
 
         self.backend.save(adata, file_path)
@@ -563,13 +596,17 @@ class TestH5ADS3Functionality:
 
     def test_s3_load_not_implemented(self):
         """Test that S3 loading raises NotImplementedError."""
-        with pytest.raises(NotImplementedError, match="S3 support is not yet implemented"):
+        with pytest.raises(
+            NotImplementedError, match="S3 support is not yet implemented"
+        ):
             self.backend._load_from_s3("s3://bucket/file.h5ad")
 
     def test_s3_save_not_implemented(self):
         """Test that S3 saving raises NotImplementedError."""
         adata = TestH5ADDataCreation.create_simple_adata()
-        with pytest.raises(NotImplementedError, match="S3 support is not yet implemented"):
+        with pytest.raises(
+            NotImplementedError, match="S3 support is not yet implemented"
+        ):
             self.backend._save_to_s3(adata, "s3://bucket/file.h5ad")
 
     def test_configure_s3(self):
@@ -578,7 +615,7 @@ class TestH5ADS3Functionality:
             bucket="test-bucket",
             region="us-west-2",
             access_key="access",
-            secret_key="secret"
+            secret_key="secret",
         )
 
         assert self.backend.s3_config["bucket"] == "test-bucket"
@@ -662,7 +699,9 @@ class TestH5ADPerformanceAndMemory:
     def test_large_file_handling(self):
         """Test handling of reasonably large files."""
         # Create moderately large dataset
-        adata = TestH5ADDataCreation.create_simple_adata(n_obs=2000, n_vars=1000, sparse=True)
+        adata = TestH5ADDataCreation.create_simple_adata(
+            n_obs=2000, n_vars=1000, sparse=True
+        )
         file_path = "test_large.h5ad"
 
         # Measure save time

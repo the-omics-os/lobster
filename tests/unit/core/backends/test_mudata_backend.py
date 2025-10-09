@@ -6,21 +6,22 @@ multi-modal data handling, file I/O operations, modality management,
 data serialization/deserialization, and error handling.
 """
 
-import pytest
-import tempfile
 import shutil
-import numpy as np
-import pandas as pd
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+import tempfile
 import time
+from pathlib import Path
+from unittest.mock import MagicMock, Mock, patch
 
 import anndata
+import numpy as np
+import pandas as pd
+import pytest
 from scipy import sparse as sp_sparse
 
 # Try to import mudata - backend will handle the fallback
 try:
     import mudata
+
     MUDATA_AVAILABLE = True
 except ImportError:
     MUDATA_AVAILABLE = False
@@ -81,27 +82,35 @@ class TestMuDataCreation:
         np.random.seed(42)
 
         if sparse:
-            X = sp_sparse.random(n_obs, n_vars, density=0.3, format='csr', random_state=42)
+            X = sp_sparse.random(
+                n_obs, n_vars, density=0.3, format="csr", random_state=42
+            )
         else:
             X = np.random.randn(n_obs, n_vars).astype(np.float32)
 
-        obs = pd.DataFrame({
-            'cell_type': np.random.choice(['T_cell', 'B_cell', 'NK_cell'], n_obs),
-            'batch': np.random.choice(['batch1', 'batch2'], n_obs),
-            'n_genes_rna': np.random.randint(1000, 5000, n_obs)
-        }, index=[f'cell_{i}' for i in range(n_obs)])
+        obs = pd.DataFrame(
+            {
+                "cell_type": np.random.choice(["T_cell", "B_cell", "NK_cell"], n_obs),
+                "batch": np.random.choice(["batch1", "batch2"], n_obs),
+                "n_genes_rna": np.random.randint(1000, 5000, n_obs),
+            },
+            index=[f"cell_{i}" for i in range(n_obs)],
+        )
 
-        var = pd.DataFrame({
-            'gene_name': [f'Gene_{i}' for i in range(n_vars)],
-            'highly_variable': np.random.choice([True, False], n_vars),
-            'gene_type': 'protein_coding'
-        }, index=[f'ENSG{i:05d}' for i in range(n_vars)])
+        var = pd.DataFrame(
+            {
+                "gene_name": [f"Gene_{i}" for i in range(n_vars)],
+                "highly_variable": np.random.choice([True, False], n_vars),
+                "gene_type": "protein_coding",
+            },
+            index=[f"ENSG{i:05d}" for i in range(n_vars)],
+        )
 
         adata = anndata.AnnData(X=X, obs=obs, var=var)
-        adata.layers['raw'] = X.copy()
-        adata.obsm['X_pca'] = np.random.randn(n_obs, 10)
-        adata.varm['PCs'] = np.random.randn(n_vars, 10)
-        adata.uns['method'] = 'rna_seq'
+        adata.layers["raw"] = X.copy()
+        adata.obsm["X_pca"] = np.random.randn(n_obs, 10)
+        adata.varm["PCs"] = np.random.randn(n_vars, 10)
+        adata.uns["method"] = "rna_seq"
 
         return adata
 
@@ -111,24 +120,32 @@ class TestMuDataCreation:
         np.random.seed(43)
 
         # Protein data is typically less sparse
-        X = np.random.exponential(scale=2.0, size=(n_obs, n_proteins)).astype(np.float32)
+        X = np.random.exponential(scale=2.0, size=(n_obs, n_proteins)).astype(
+            np.float32
+        )
 
-        obs = pd.DataFrame({
-            'cell_type': np.random.choice(['T_cell', 'B_cell', 'NK_cell'], n_obs),
-            'batch': np.random.choice(['batch1', 'batch2'], n_obs),
-            'n_proteins': np.random.randint(15, 20, n_obs)
-        }, index=[f'cell_{i}' for i in range(n_obs)])
+        obs = pd.DataFrame(
+            {
+                "cell_type": np.random.choice(["T_cell", "B_cell", "NK_cell"], n_obs),
+                "batch": np.random.choice(["batch1", "batch2"], n_obs),
+                "n_proteins": np.random.randint(15, 20, n_obs),
+            },
+            index=[f"cell_{i}" for i in range(n_obs)],
+        )
 
-        var = pd.DataFrame({
-            'protein_name': [f'CD{i}' for i in range(n_proteins)],
-            'antibody_clone': [f'clone_{i}' for i in range(n_proteins)],
-            'protein_type': 'surface'
-        }, index=[f'PROT{i:03d}' for i in range(n_proteins)])
+        var = pd.DataFrame(
+            {
+                "protein_name": [f"CD{i}" for i in range(n_proteins)],
+                "antibody_clone": [f"clone_{i}" for i in range(n_proteins)],
+                "protein_type": "surface",
+            },
+            index=[f"PROT{i:03d}" for i in range(n_proteins)],
+        )
 
         adata = anndata.AnnData(X=X, obs=obs, var=var)
-        adata.layers['raw'] = X.copy()
-        adata.obsm['X_pca'] = np.random.randn(n_obs, 5)
-        adata.uns['method'] = 'cite_seq'
+        adata.layers["raw"] = X.copy()
+        adata.obsm["X_pca"] = np.random.randn(n_obs, 5)
+        adata.uns["method"] = "cite_seq"
 
         return adata
 
@@ -138,24 +155,30 @@ class TestMuDataCreation:
         np.random.seed(44)
 
         # ATAC data is typically very sparse
-        X = sp_sparse.random(n_obs, n_peaks, density=0.1, format='csr', random_state=44)
+        X = sp_sparse.random(n_obs, n_peaks, density=0.1, format="csr", random_state=44)
 
-        obs = pd.DataFrame({
-            'cell_type': np.random.choice(['T_cell', 'B_cell', 'NK_cell'], n_obs),
-            'batch': np.random.choice(['batch1', 'batch2'], n_obs),
-            'n_peaks': np.random.randint(100, 300, n_obs)
-        }, index=[f'cell_{i}' for i in range(n_obs)])
+        obs = pd.DataFrame(
+            {
+                "cell_type": np.random.choice(["T_cell", "B_cell", "NK_cell"], n_obs),
+                "batch": np.random.choice(["batch1", "batch2"], n_obs),
+                "n_peaks": np.random.randint(100, 300, n_obs),
+            },
+            index=[f"cell_{i}" for i in range(n_obs)],
+        )
 
-        var = pd.DataFrame({
-            'peak_name': [f'peak_{i}' for i in range(n_peaks)],
-            'chromosome': np.random.choice(['chr1', 'chr2', 'chr3'], n_peaks),
-            'peak_type': 'accessible'
-        }, index=[f'PEAK{i:05d}' for i in range(n_peaks)])
+        var = pd.DataFrame(
+            {
+                "peak_name": [f"peak_{i}" for i in range(n_peaks)],
+                "chromosome": np.random.choice(["chr1", "chr2", "chr3"], n_peaks),
+                "peak_type": "accessible",
+            },
+            index=[f"PEAK{i:05d}" for i in range(n_peaks)],
+        )
 
         adata = anndata.AnnData(X=X, obs=obs, var=var)
-        adata.layers['raw'] = X.copy()
-        adata.obsm['X_lsi'] = np.random.randn(n_obs, 8)
-        adata.uns['method'] = 'atac_seq'
+        adata.layers["raw"] = X.copy()
+        adata.obsm["X_lsi"] = np.random.randn(n_obs, 8)
+        adata.uns["method"] = "atac_seq"
 
         return adata
 
@@ -165,7 +188,7 @@ class TestMuDataCreation:
         rna_data = TestMuDataCreation.create_rna_data(n_obs=50, n_vars=30)
         protein_data = TestMuDataCreation.create_protein_data(n_obs=50, n_proteins=15)
 
-        mdata = mudata.MuData({'rna': rna_data, 'protein': protein_data})
+        mdata = mudata.MuData({"rna": rna_data, "protein": protein_data})
         return mdata
 
     @staticmethod
@@ -175,15 +198,15 @@ class TestMuDataCreation:
         protein_data = TestMuDataCreation.create_protein_data(n_obs=100, n_proteins=20)
         atac_data = TestMuDataCreation.create_atac_data(n_obs=100, n_peaks=100)
 
-        mdata = mudata.MuData({
-            'rna': rna_data,
-            'protein': protein_data,
-            'atac': atac_data
-        })
+        mdata = mudata.MuData(
+            {"rna": rna_data, "protein": protein_data, "atac": atac_data}
+        )
 
         # Add global observations
-        mdata.obs['global_cell_type'] = np.random.choice(['TypeA', 'TypeB'], 100)
-        mdata.obs['sample_id'] = np.random.choice(['sample1', 'sample2', 'sample3'], 100)
+        mdata.obs["global_cell_type"] = np.random.choice(["TypeA", "TypeB"], 100)
+        mdata.obs["sample_id"] = np.random.choice(
+            ["sample1", "sample2", "sample3"], 100
+        )
 
         return mdata
 
@@ -224,7 +247,9 @@ class TestMuDataFileOperations:
 
         # Check individual modalities
         for mod_name in mdata_original.mod.keys():
-            assert mdata_loaded.mod[mod_name].shape == mdata_original.mod[mod_name].shape
+            assert (
+                mdata_loaded.mod[mod_name].shape == mdata_original.mod[mod_name].shape
+            )
 
     def test_save_and_load_complex_mudata(self):
         """Test saving and loading complex multi-modal data."""
@@ -237,13 +262,13 @@ class TestMuDataFileOperations:
 
         # Verify structure
         assert len(mdata_loaded.mod) == 3
-        assert 'rna' in mdata_loaded.mod
-        assert 'protein' in mdata_loaded.mod
-        assert 'atac' in mdata_loaded.mod
+        assert "rna" in mdata_loaded.mod
+        assert "protein" in mdata_loaded.mod
+        assert "atac" in mdata_loaded.mod
 
         # Verify global observations
-        assert 'global_cell_type' in mdata_loaded.obs.columns
-        assert 'sample_id' in mdata_loaded.obs.columns
+        assert "global_cell_type" in mdata_loaded.obs.columns
+        assert "sample_id" in mdata_loaded.obs.columns
 
     def test_save_anndata_as_mudata(self):
         """Test saving AnnData object as single-modality MuData."""
@@ -251,13 +276,13 @@ class TestMuDataFileOperations:
         file_path = "test_anndata_to_mudata.h5mu"
 
         # Save AnnData as MuData (should auto-convert)
-        self.backend.save(adata, file_path, modality_name='transcriptomics')
+        self.backend.save(adata, file_path, modality_name="transcriptomics")
         mdata_loaded = self.backend.load(file_path)
 
         # Verify conversion
         assert isinstance(mdata_loaded, mudata.MuData)
-        assert 'transcriptomics' in mdata_loaded.mod
-        assert mdata_loaded.mod['transcriptomics'].shape == adata.shape
+        assert "transcriptomics" in mdata_loaded.mod
+        assert mdata_loaded.mod["transcriptomics"].shape == adata.shape
 
     def test_save_with_custom_compression(self):
         """Test saving with custom compression settings."""
@@ -331,12 +356,12 @@ class TestMuDataModalityManagement:
         new_modality = self.test_data_creator.create_atac_data(n_obs=50, n_peaks=30)
 
         # Add new modality
-        updated_mdata = self.backend.add_modality(mdata, 'atac', new_modality)
+        updated_mdata = self.backend.add_modality(mdata, "atac", new_modality)
 
         # Verify addition
-        assert 'atac' in updated_mdata.mod
+        assert "atac" in updated_mdata.mod
         assert len(updated_mdata.mod) == 3
-        assert updated_mdata.mod['atac'].shape == new_modality.shape
+        assert updated_mdata.mod["atac"].shape == new_modality.shape
 
     def test_add_modality_existing_name_fails(self):
         """Test that adding modality with existing name fails."""
@@ -344,7 +369,7 @@ class TestMuDataModalityManagement:
         duplicate_rna = self.test_data_creator.create_rna_data()
 
         with pytest.raises(ValueError, match="Modality 'rna' already exists"):
-            self.backend.add_modality(mdata, 'rna', duplicate_rna)
+            self.backend.add_modality(mdata, "rna", duplicate_rna)
 
     def test_remove_modality(self):
         """Test removing a modality from MuData."""
@@ -352,38 +377,38 @@ class TestMuDataModalityManagement:
         original_count = len(mdata.mod)
 
         # Remove protein modality
-        updated_mdata = self.backend.remove_modality(mdata, 'protein')
+        updated_mdata = self.backend.remove_modality(mdata, "protein")
 
         # Verify removal
-        assert 'protein' not in updated_mdata.mod
+        assert "protein" not in updated_mdata.mod
         assert len(updated_mdata.mod) == original_count - 1
-        assert 'rna' in updated_mdata.mod  # Others should remain
+        assert "rna" in updated_mdata.mod  # Others should remain
 
     def test_remove_nonexistent_modality_fails(self):
         """Test that removing non-existent modality fails."""
         mdata = self.test_data_creator.create_simple_mudata()
 
         with pytest.raises(ValueError, match="Modality 'nonexistent' does not exist"):
-            self.backend.remove_modality(mdata, 'nonexistent')
+            self.backend.remove_modality(mdata, "nonexistent")
 
     def test_get_modality(self):
         """Test extracting a specific modality."""
         mdata = self.test_data_creator.create_simple_mudata()
 
         # Get RNA modality
-        rna_data = self.backend.get_modality(mdata, 'rna')
+        rna_data = self.backend.get_modality(mdata, "rna")
 
         # Verify extraction
         assert isinstance(rna_data, anndata.AnnData)
-        assert rna_data.shape == mdata.mod['rna'].shape
-        assert 'method' in rna_data.uns
+        assert rna_data.shape == mdata.mod["rna"].shape
+        assert "method" in rna_data.uns
 
     def test_get_nonexistent_modality_fails(self):
         """Test that getting non-existent modality fails."""
         mdata = self.test_data_creator.create_simple_mudata()
 
         with pytest.raises(ValueError, match="Modality 'nonexistent' does not exist"):
-            self.backend.get_modality(mdata, 'nonexistent')
+            self.backend.get_modality(mdata, "nonexistent")
 
     def test_list_modalities(self):
         """Test listing all modalities."""
@@ -392,7 +417,7 @@ class TestMuDataModalityManagement:
         modalities = self.backend.list_modalities(mdata)
 
         assert isinstance(modalities, list)
-        assert set(modalities) == {'rna', 'protein', 'atac'}
+        assert set(modalities) == {"rna", "protein", "atac"}
 
     def test_get_modality_info(self):
         """Test getting information about all modalities."""
@@ -402,20 +427,20 @@ class TestMuDataModalityManagement:
 
         # Verify structure
         assert isinstance(info, dict)
-        assert 'rna' in info
-        assert 'protein' in info
+        assert "rna" in info
+        assert "protein" in info
 
         # Verify RNA info
-        rna_info = info['rna']
-        assert 'shape' in rna_info
-        assert 'n_obs' in rna_info
-        assert 'n_vars' in rna_info
-        assert 'obs_columns' in rna_info
-        assert 'var_columns' in rna_info
+        rna_info = info["rna"]
+        assert "shape" in rna_info
+        assert "n_obs" in rna_info
+        assert "n_vars" in rna_info
+        assert "obs_columns" in rna_info
+        assert "var_columns" in rna_info
 
         # Verify content
-        assert rna_info['n_obs'] == mdata.mod['rna'].n_obs
-        assert rna_info['n_vars'] == mdata.mod['rna'].n_vars
+        assert rna_info["n_obs"] == mdata.mod["rna"].n_obs
+        assert rna_info["n_vars"] == mdata.mod["rna"].n_vars
 
 
 @pytest.mark.skipif(not MUDATA_AVAILABLE, reason="MuData not available")
@@ -431,24 +456,24 @@ class TestMuDataConversionOperations:
         """Test converting AnnData to MuData."""
         adata = self.test_data_creator.create_rna_data()
 
-        mdata = self.backend.convert_to_mudata(adata, modality_name='transcripts')
+        mdata = self.backend.convert_to_mudata(adata, modality_name="transcripts")
 
         # Verify conversion
         assert isinstance(mdata, mudata.MuData)
-        assert 'transcripts' in mdata.mod
-        assert mdata.mod['transcripts'].shape == adata.shape
+        assert "transcripts" in mdata.mod
+        assert mdata.mod["transcripts"].shape == adata.shape
 
     def test_convert_dict_to_mudata(self):
         """Test converting dictionary of AnnData to MuData."""
         rna_data = self.test_data_creator.create_rna_data()
         protein_data = self.test_data_creator.create_protein_data()
 
-        modality_dict = {'rna': rna_data, 'protein': protein_data}
+        modality_dict = {"rna": rna_data, "protein": protein_data}
         mdata = self.backend.convert_to_mudata(modality_dict)
 
         # Verify conversion
         assert isinstance(mdata, mudata.MuData)
-        assert set(mdata.mod.keys()) == {'rna', 'protein'}
+        assert set(mdata.mod.keys()) == {"rna", "protein"}
 
     def test_convert_invalid_type_fails(self):
         """Test that converting invalid data type fails."""
@@ -462,28 +487,30 @@ class TestMuDataConversionOperations:
         rna_data = self.test_data_creator.create_rna_data(n_obs=30)
         protein_data = self.test_data_creator.create_protein_data(n_obs=30)
 
-        modality_dict = {'rna': rna_data, 'protein': protein_data}
-        global_obs = {'experiment': 'test_experiment', 'date': '2023-01-01'}
+        modality_dict = {"rna": rna_data, "protein": protein_data}
+        global_obs = {"experiment": "test_experiment", "date": "2023-01-01"}
 
         mdata = self.backend.create_mudata_from_dict(modality_dict, global_obs)
 
         # Verify creation
         assert len(mdata.mod) == 2
-        assert 'experiment' in mdata.obs.columns
-        assert 'date' in mdata.obs.columns
+        assert "experiment" in mdata.obs.columns
+        assert "date" in mdata.obs.columns
 
     def test_merge_mudata_objects(self):
         """Test merging multiple MuData objects."""
         mdata1 = self.test_data_creator.create_simple_mudata()
-        mdata2 = mudata.MuData({'atac': self.test_data_creator.create_atac_data(n_obs=50)})
+        mdata2 = mudata.MuData(
+            {"atac": self.test_data_creator.create_atac_data(n_obs=50)}
+        )
 
         merged = self.backend.merge_mudata_objects([mdata1, mdata2])
 
         # Verify merge
         assert len(merged.mod) == 3
-        assert 'rna' in merged.mod
-        assert 'protein' in merged.mod
-        assert 'atac' in merged.mod
+        assert "rna" in merged.mod
+        assert "protein" in merged.mod
+        assert "atac" in merged.mod
 
     def test_merge_empty_list_fails(self):
         """Test that merging empty list fails."""
@@ -503,17 +530,19 @@ class TestMuDataConversionOperations:
     def test_merge_with_conflicting_modality_names(self):
         """Test merging objects with conflicting modality names."""
         mdata1 = self.test_data_creator.create_simple_mudata()
-        mdata2 = mudata.MuData({'rna': self.test_data_creator.create_rna_data()})  # Conflicting 'rna'
+        mdata2 = mudata.MuData(
+            {"rna": self.test_data_creator.create_rna_data()}
+        )  # Conflicting 'rna'
 
         merged = self.backend.merge_mudata_objects([mdata1, mdata2])
 
         # Should have renamed the conflicting modality
         modality_names = list(merged.mod.keys())
-        rna_modalities = [name for name in modality_names if name.startswith('rna')]
+        rna_modalities = [name for name in modality_names if name.startswith("rna")]
 
         assert len(rna_modalities) == 2
-        assert 'rna' in rna_modalities
-        assert any(name != 'rna' for name in rna_modalities)
+        assert "rna" in rna_modalities
+        assert any(name != "rna" for name in rna_modalities)
 
     def test_merge_invalid_strategy_fails(self):
         """Test that invalid merge strategy fails."""
@@ -521,7 +550,9 @@ class TestMuDataConversionOperations:
         mdata2 = self.test_data_creator.create_simple_mudata()
 
         with pytest.raises(ValueError, match="Unknown merge strategy"):
-            self.backend.merge_mudata_objects([mdata1, mdata2], merge_strategy="invalid")
+            self.backend.merge_mudata_objects(
+                [mdata1, mdata2], merge_strategy="invalid"
+            )
 
 
 @pytest.mark.skipif(not MUDATA_AVAILABLE, reason="MuData not available")
@@ -564,7 +595,7 @@ class TestMuDataErrorHandling:
         file_path = Path(self.temp_dir) / "test_cleanup.h5mu"
 
         # Mock mudata.write_h5mu to fail
-        with patch('mudata.write_h5mu', side_effect=Exception("Write failed")):
+        with patch("mudata.write_h5mu", side_effect=Exception("Write failed")):
             with pytest.raises(ValueError, match="Failed to save MuData file"):
                 self.backend.save(mdata, file_path)
 
@@ -581,7 +612,7 @@ class TestMuDataErrorHandling:
         self.backend.save(mdata, file_path)
 
         # Corrupt the file by truncating it
-        with open(file_path, 'r+b') as f:
+        with open(file_path, "r+b") as f:
             f.truncate(100)  # Truncate to 100 bytes
 
         # Loading should fail gracefully
@@ -613,7 +644,7 @@ class TestMuDataFileIntegrity:
         assert validation["valid"] is True
         assert validation["readable"] is True
         assert validation["n_modalities"] == 2
-        assert set(validation["modalities"]) == {'rna', 'protein'}
+        assert set(validation["modalities"]) == {"rna", "protein"}
         assert validation["global_shape"] == mdata.shape
         assert len(validation["errors"]) == 0
 
@@ -629,7 +660,7 @@ class TestMuDataFileIntegrity:
         """Test validation of MuData with empty modalities."""
         # Create MuData with empty modality
         empty_adata = anndata.AnnData(X=np.array([]).reshape(0, 10))
-        mdata = mudata.MuData({'empty': empty_adata})
+        mdata = mudata.MuData({"empty": empty_adata})
         file_path = "test_empty_modality.h5mu"
 
         self.backend.save(mdata, file_path)
@@ -711,10 +742,12 @@ class TestMuDataPerformanceAndMemory:
     def test_large_multimodal_file_handling(self):
         """Test handling of reasonably large multi-modal files."""
         # Create moderately large multi-modal dataset
-        rna_data = TestMuDataCreation.create_rna_data(n_obs=500, n_vars=200, sparse=True)
+        rna_data = TestMuDataCreation.create_rna_data(
+            n_obs=500, n_vars=200, sparse=True
+        )
         protein_data = TestMuDataCreation.create_protein_data(n_obs=500, n_proteins=50)
 
-        mdata = mudata.MuData({'rna': rna_data, 'protein': protein_data})
+        mdata = mudata.MuData({"rna": rna_data, "protein": protein_data})
         file_path = "test_large_multimodal.h5mu"
 
         # Measure save time
@@ -740,7 +773,7 @@ class TestMuDataPerformanceAndMemory:
         rna_data = TestMuDataCreation.create_rna_data(n_obs=300, n_vars=100)
         protein_data = TestMuDataCreation.create_protein_data(n_obs=300, n_proteins=30)
 
-        mdata = mudata.MuData({'rna': rna_data, 'protein': protein_data})
+        mdata = mudata.MuData({"rna": rna_data, "protein": protein_data})
         file_path = "test_memory.h5mu"
 
         self.backend.save(mdata, file_path)
@@ -753,8 +786,8 @@ class TestMuDataPerformanceAndMemory:
         assert mdata_backed.shape == mdata.shape
 
         # Should be able to access modality data
-        assert 'rna' in mdata_backed.mod
-        assert mdata_backed.mod['rna'].X[0, 0] is not None
+        assert "rna" in mdata_backed.mod
+        assert mdata_backed.mod["rna"].X[0, 0] is not None
 
     def test_concurrent_multimodal_access_simulation(self):
         """Test simulation of concurrent access to multi-modal data."""
@@ -791,7 +824,7 @@ class TestMuDataGlobalObservations:
         rna_data = TestMuDataCreation.create_rna_data(n_obs=30)
         protein_data = TestMuDataCreation.create_protein_data(n_obs=30)
 
-        mdata = mudata.MuData({'rna': rna_data, 'protein': protein_data})
+        mdata = mudata.MuData({"rna": rna_data, "protein": protein_data})
 
         # Record initial number of columns (might not be empty due to MuData initialization)
         initial_columns = len(mdata.obs.columns)
@@ -800,7 +833,12 @@ class TestMuDataGlobalObservations:
         self.backend._update_global_obs(mdata)
 
         # Should now have summary statistics
-        expected_columns = {'rna_total_counts', 'rna_n_features', 'protein_total_counts', 'protein_n_features'}
+        expected_columns = {
+            "rna_total_counts",
+            "rna_n_features",
+            "protein_total_counts",
+            "protein_n_features",
+        }
         actual_columns = set(mdata.obs.columns)
 
         # Should have at least some of the expected new columns
@@ -815,9 +853,9 @@ class TestMuDataGlobalObservations:
         protein_data = TestMuDataCreation.create_protein_data(n_obs=20)
 
         # Change protein obs names to be different
-        protein_data.obs_names = [f'protein_cell_{i}' for i in range(20)]
+        protein_data.obs_names = [f"protein_cell_{i}" for i in range(20)]
 
-        mdata = mudata.MuData({'rna': rna_data, 'protein': protein_data})
+        mdata = mudata.MuData({"rna": rna_data, "protein": protein_data})
 
         # This should handle the mismatch gracefully
         self.backend._update_global_obs(mdata)

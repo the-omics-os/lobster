@@ -2,12 +2,14 @@
 Unit tests for the Agent Capability Extraction System.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
+
 from lobster.config.agent_capabilities import (
-    AgentCapability,
     AgentCapabilities,
-    AgentCapabilityExtractor
+    AgentCapability,
+    AgentCapabilityExtractor,
 )
 
 
@@ -20,7 +22,7 @@ class TestAgentCapability:
             tool_name="test_tool",
             description="Test tool description",
             parameters={"param1": "string", "param2": "int"},
-            return_type="str"
+            return_type="str",
         )
 
         assert capability.tool_name == "test_tool"
@@ -38,14 +40,14 @@ class TestAgentCapabilities:
             tool_name="test_tool",
             description="Test tool",
             parameters={},
-            return_type="str"
+            return_type="str",
         )
 
         capabilities = AgentCapabilities(
             agent_name="test_agent",
             display_name="Test Agent",
             description="Test agent description",
-            tools=[tool]
+            tools=[tool],
         )
 
         assert capabilities.agent_name == "test_agent"
@@ -60,7 +62,7 @@ class TestAgentCapabilities:
             display_name="Test Agent",
             description="Test agent description",
             tools=[],
-            error="Failed to load agent module"
+            error="Failed to load agent module",
         )
 
         assert capabilities.error == "Failed to load agent module"
@@ -133,7 +135,7 @@ class TestAgentCapabilityExtractor:
         regular_func = lambda x: x
         assert AgentCapabilityExtractor._is_tool_function(regular_func) is False
 
-    @patch('lobster.config.agent_capabilities.get_agent_registry_config')
+    @patch("lobster.config.agent_capabilities.get_agent_registry_config")
     def test_extract_capabilities_agent_not_found(self, mock_get_config):
         """Test extracting capabilities for non-existent agent."""
         mock_get_config.return_value = None
@@ -146,8 +148,8 @@ class TestAgentCapabilityExtractor:
         assert len(result.tools) == 0
         assert "not found in registry" in result.error
 
-    @patch('lobster.config.agent_capabilities.importlib.import_module')
-    @patch('lobster.config.agent_capabilities.get_agent_registry_config')
+    @patch("lobster.config.agent_capabilities.importlib.import_module")
+    @patch("lobster.config.agent_capabilities.get_agent_registry_config")
     def test_extract_capabilities_import_error(self, mock_get_config, mock_import):
         """Test handling import errors during capability extraction."""
         mock_config = MagicMock()
@@ -166,14 +168,17 @@ class TestAgentCapabilityExtractor:
 
     def test_get_agent_capability_summary(self):
         """Test getting agent capability summary."""
-        with patch.object(AgentCapabilityExtractor, 'extract_capabilities') as mock_extract:
+        with patch.object(
+            AgentCapabilityExtractor, "extract_capabilities"
+        ) as mock_extract:
             # Setup mock capabilities
             tools = [
                 AgentCapability(
                     tool_name=f"tool_{i}",
-                    description=f"Tool {i} description that is quite long and should be truncated" * 5,
+                    description=f"Tool {i} description that is quite long and should be truncated"
+                    * 5,
                     parameters={},
-                    return_type="str"
+                    return_type="str",
                 )
                 for i in range(7)
             ]
@@ -182,13 +187,15 @@ class TestAgentCapabilityExtractor:
                 agent_name="test_agent",
                 display_name="Test Agent",
                 description="Test agent for testing",
-                tools=tools
+                tools=tools,
             )
 
             mock_extract.return_value = mock_caps
 
             # Test with default max_tools
-            summary = AgentCapabilityExtractor.get_agent_capability_summary("test_agent")
+            summary = AgentCapabilityExtractor.get_agent_capability_summary(
+                "test_agent"
+            )
 
             assert "Test Agent" in summary
             assert "Test agent for testing" in summary
@@ -198,32 +205,38 @@ class TestAgentCapabilityExtractor:
             assert "tool_6" not in summary  # Should be truncated
 
             # Test with custom max_tools
-            summary = AgentCapabilityExtractor.get_agent_capability_summary("test_agent", max_tools=2)
+            summary = AgentCapabilityExtractor.get_agent_capability_summary(
+                "test_agent", max_tools=2
+            )
             assert "tool_1" in summary
             assert "tool_2" not in summary
             assert "...and 5 more tools" in summary
 
     def test_get_agent_capability_summary_with_error(self):
         """Test capability summary when there's an error."""
-        with patch.object(AgentCapabilityExtractor, 'extract_capabilities') as mock_extract:
+        with patch.object(
+            AgentCapabilityExtractor, "extract_capabilities"
+        ) as mock_extract:
             mock_caps = AgentCapabilities(
                 agent_name="test_agent",
                 display_name="Test Agent",
                 description="Test agent description",
                 tools=[],
-                error="Failed to load"
+                error="Failed to load",
             )
 
             mock_extract.return_value = mock_caps
 
-            summary = AgentCapabilityExtractor.get_agent_capability_summary("test_agent")
+            summary = AgentCapabilityExtractor.get_agent_capability_summary(
+                "test_agent"
+            )
 
             assert "Test Agent" in summary
             assert "Test agent description" in summary
             assert "Key capabilities" not in summary
 
-    @patch('lobster.config.agent_capabilities.get_all_agent_names')
-    @patch.object(AgentCapabilityExtractor, 'extract_capabilities')
+    @patch("lobster.config.agent_capabilities.get_all_agent_names")
+    @patch.object(AgentCapabilityExtractor, "extract_capabilities")
     def test_get_all_agent_capabilities(self, mock_extract, mock_get_names):
         """Test getting capabilities for all agents."""
         mock_get_names.return_value = ["agent1", "agent2"]
@@ -232,14 +245,14 @@ class TestAgentCapabilityExtractor:
             agent_name="agent1",
             display_name="Agent 1",
             description="First agent",
-            tools=[]
+            tools=[],
         )
 
         mock_caps2 = AgentCapabilities(
             agent_name="agent2",
             display_name="Agent 2",
             description="Second agent",
-            tools=[]
+            tools=[],
         )
 
         mock_extract.side_effect = [mock_caps1, mock_caps2]

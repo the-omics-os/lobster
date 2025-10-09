@@ -7,37 +7,37 @@ enhanced handoff tools, and handoff patterns.
 
 import unittest
 import uuid
-from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any, Dict
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
 # Skip entire module due to proteomics agents still in development
 pytestmark = pytest.mark.skip(reason="Proteomics agents in development")
 
+from lobster.config.agent_registry import (
+    create_expert_handoff_tools,
+    get_handoff_tools_for_agent,
+    validate_handoff_compatibility,
+)
+from lobster.tools.enhanced_handoff_tool import (
+    SCVI_CONTEXT_SCHEMA,
+    create_expert_handoff_tool,
+    validate_context_schema,
+)
 from lobster.tools.expert_handoff_manager import (
     ExpertHandoffManager,
     HandoffContext,
     HandoffResult,
     create_handoff_context,
-    create_handoff_result
-)
-from lobster.tools.enhanced_handoff_tool import (
-    create_expert_handoff_tool,
-    validate_context_schema,
-    SCVI_CONTEXT_SCHEMA
+    create_handoff_result,
 )
 from lobster.tools.expert_handoff_patterns import (
+    EXPERT_HANDOFF_PATTERNS,
+    get_context_schema_for_handoff,
     get_handoff_pattern,
     validate_handoff_pattern,
-    get_context_schema_for_handoff,
-    EXPERT_HANDOFF_PATTERNS
-)
-from lobster.config.agent_registry import (
-    create_expert_handoff_tools,
-    get_handoff_tools_for_agent,
-    validate_handoff_compatibility
 )
 
 
@@ -75,13 +75,11 @@ class TestExpertHandoffManager(unittest.TestCase):
             task_type="scvi_training",
             parameters={"modality_name": "test_data", "n_latent": 10},
             return_expectations={"embedding_key": "X_scvi"},
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
 
         command = self.manager.create_context_preserving_handoff(
-            to_expert="machine_learning_expert",
-            context=context,
-            return_to_sender=True
+            to_expert="machine_learning_expert", context=context, return_to_sender=True
         )
 
         # Verify command structure
@@ -112,12 +110,14 @@ class TestExpertHandoffManager(unittest.TestCase):
             task_type="scvi_training",
             parameters={},
             return_expectations={},
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
         self.manager.active_handoffs[self.test_handoff_id] = context
 
         # Test simple return path
-        return_path = self.manager.get_return_path("machine_learning_expert", self.test_handoff_id)
+        return_path = self.manager.get_return_path(
+            "machine_learning_expert", self.test_handoff_id
+        )
         self.assertEqual(return_path, "singlecell_expert")
 
         # Test unknown handoff
@@ -134,7 +134,7 @@ class TestExpertHandoffManager(unittest.TestCase):
             task_type="scvi_training",
             parameters={},
             return_expectations={},
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
         self.manager.active_handoffs[self.test_handoff_id] = context
 
@@ -142,12 +142,14 @@ class TestExpertHandoffManager(unittest.TestCase):
         result = HandoffResult(
             handoff_id=self.test_handoff_id,
             success=True,
-            result_data={"embedding_key": "X_scvi", "shape": (1000, 10)}
+            result_data={"embedding_key": "X_scvi", "shape": (1000, 10)},
         )
 
         # Complete handoff
         state = {"messages": []}
-        completion_command = self.manager.complete_handoff(self.test_handoff_id, result, state)
+        completion_command = self.manager.complete_handoff(
+            self.test_handoff_id, result, state
+        )
 
         # Verify completion command
         self.assertEqual(completion_command.goto, "singlecell_expert")
@@ -164,7 +166,7 @@ class TestExpertHandoffManager(unittest.TestCase):
             task_type="scvi_training",
             parameters={},
             return_expectations={},
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
         self.manager.active_handoffs[self.test_handoff_id] = context
         self.manager.handoff_chains[self.test_handoff_id] = ["machine_learning_expert"]
@@ -186,7 +188,7 @@ class TestExpertHandoffManager(unittest.TestCase):
             task_type="scvi_training",
             parameters={},
             return_expectations={},
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
 
         # Create a deep chain that exceeds max depth
@@ -196,9 +198,7 @@ class TestExpertHandoffManager(unittest.TestCase):
         # Should raise ValueError for chain depth exceeded
         with self.assertRaises(ValueError) as cm:
             self.manager.create_context_preserving_handoff(
-                to_expert="another_agent",
-                context=context,
-                return_to_sender=True
+                to_expert="another_agent", context=context, return_to_sender=True
             )
 
         self.assertIn("Maximum handoff chain depth", str(cm.exception))
@@ -214,7 +214,7 @@ class TestEnhancedHandoffTool(unittest.TestCase):
             "n_latent": 10,
             "batch_key": "sample_id",
             "max_epochs": 400,
-            "use_gpu": False
+            "use_gpu": False,
         }
 
         validated = validate_context_schema(context, SCVI_CONTEXT_SCHEMA)
@@ -228,10 +228,7 @@ class TestEnhancedHandoffTool(unittest.TestCase):
     def test_validate_context_schema_failure(self):
         """Test context validation failure."""
         # Missing required field
-        context = {
-            "n_latent": 10,
-            "use_gpu": False
-        }
+        context = {"n_latent": 10, "use_gpu": False}
 
         with self.assertRaises(ValueError) as cm:
             validate_context_schema(context, SCVI_CONTEXT_SCHEMA)
@@ -245,7 +242,7 @@ class TestEnhancedHandoffTool(unittest.TestCase):
             "n_latent": "invalid_string",  # Should be int
             "batch_key": None,
             "max_epochs": 400,
-            "use_gpu": False
+            "use_gpu": False,
         }
 
         with self.assertRaises(ValueError) as cm:
@@ -253,7 +250,7 @@ class TestEnhancedHandoffTool(unittest.TestCase):
 
         self.assertIn("must be int", str(cm.exception))
 
-    @patch('lobster.tools.enhanced_handoff_tool.expert_handoff_manager')
+    @patch("lobster.tools.enhanced_handoff_tool.expert_handoff_manager")
     def test_create_expert_handoff_tool(self, mock_manager):
         """Test expert handoff tool creation."""
         # Mock the manager methods
@@ -265,15 +262,15 @@ class TestEnhancedHandoffTool(unittest.TestCase):
             to_expert="machine_learning_expert",
             task_type="scvi_training",
             context_schema=SCVI_CONTEXT_SCHEMA,
-            return_to_sender=True
+            return_to_sender=True,
         )
 
         # Verify tool was registered
         mock_manager.register_handoff.assert_called_once()
 
         # Verify tool properties
-        self.assertTrue(hasattr(tool, 'name'))
-        self.assertTrue(hasattr(tool, 'description'))
+        self.assertTrue(hasattr(tool, "name"))
+        self.assertTrue(hasattr(tool, "description"))
 
 
 class TestExpertHandoffPatterns(unittest.TestCase):
@@ -281,7 +278,9 @@ class TestExpertHandoffPatterns(unittest.TestCase):
 
     def test_get_handoff_pattern_success(self):
         """Test successful handoff pattern retrieval."""
-        pattern = get_handoff_pattern("singlecell_expert", "machine_learning_expert", "scvi_training")
+        pattern = get_handoff_pattern(
+            "singlecell_expert", "machine_learning_expert", "scvi_training"
+        )
 
         self.assertIsNotNone(pattern)
         self.assertEqual(pattern.from_expert, "singlecell_expert")
@@ -290,25 +289,33 @@ class TestExpertHandoffPatterns(unittest.TestCase):
 
     def test_get_handoff_pattern_not_found(self):
         """Test handoff pattern not found."""
-        pattern = get_handoff_pattern("nonexistent_expert", "another_expert", "unknown_task")
+        pattern = get_handoff_pattern(
+            "nonexistent_expert", "another_expert", "unknown_task"
+        )
 
         self.assertIsNone(pattern)
 
     def test_validate_handoff_pattern_success(self):
         """Test successful handoff pattern validation."""
-        is_valid = validate_handoff_pattern("singlecell_expert", "machine_learning_expert", "scvi_training")
+        is_valid = validate_handoff_pattern(
+            "singlecell_expert", "machine_learning_expert", "scvi_training"
+        )
 
         self.assertTrue(is_valid)
 
     def test_validate_handoff_pattern_failure(self):
         """Test handoff pattern validation failure."""
-        is_valid = validate_handoff_pattern("nonexistent_expert", "another_expert", "unknown_task")
+        is_valid = validate_handoff_pattern(
+            "nonexistent_expert", "another_expert", "unknown_task"
+        )
 
         self.assertFalse(is_valid)
 
     def test_get_context_schema_for_handoff(self):
         """Test context schema retrieval for handoff."""
-        schema = get_context_schema_for_handoff("singlecell_expert", "machine_learning_expert", "scvi_training")
+        schema = get_context_schema_for_handoff(
+            "singlecell_expert", "machine_learning_expert", "scvi_training"
+        )
 
         self.assertIsNotNone(schema)
         self.assertIn("modality_name", schema)
@@ -335,7 +342,7 @@ class TestAgentRegistryIntegration(unittest.TestCase):
         available_agents = [
             "singlecell_expert_agent",
             "machine_learning_expert_agent",
-            "bulk_rnaseq_expert_agent"
+            "bulk_rnaseq_expert_agent",
         ]
 
         handoff_tools = create_expert_handoff_tools(available_agents)
@@ -344,7 +351,9 @@ class TestAgentRegistryIntegration(unittest.TestCase):
         self.assertGreater(len(handoff_tools), 0)
 
         # Check specific tool exists
-        expected_tool_name = "handoff_singlecell_expert_to_machine_learning_expert_scvi_training"
+        expected_tool_name = (
+            "handoff_singlecell_expert_to_machine_learning_expert_scvi_training"
+        )
         self.assertIn(expected_tool_name, handoff_tools)
 
     def test_get_handoff_tools_for_agent(self):
@@ -352,7 +361,7 @@ class TestAgentRegistryIntegration(unittest.TestCase):
         available_agents = [
             "singlecell_expert_agent",
             "machine_learning_expert_agent",
-            "bulk_rnaseq_expert_agent"
+            "bulk_rnaseq_expert_agent",
         ]
 
         tools = get_handoff_tools_for_agent("singlecell_expert_agent", available_agents)
@@ -362,23 +371,19 @@ class TestAgentRegistryIntegration(unittest.TestCase):
 
         # Tools should be for handoffs from singlecell_expert
         for tool in tools:
-            self.assertTrue(hasattr(tool, 'name'))
+            self.assertTrue(hasattr(tool, "name"))
 
     def test_validate_handoff_compatibility(self):
         """Test handoff compatibility validation."""
         # Test valid handoff
         is_compatible = validate_handoff_compatibility(
-            "singlecell_expert_agent",
-            "machine_learning_expert_agent",
-            "scvi_training"
+            "singlecell_expert_agent", "machine_learning_expert_agent", "scvi_training"
         )
         self.assertTrue(is_compatible)
 
         # Test invalid handoff
         is_compatible = validate_handoff_compatibility(
-            "nonexistent_agent",
-            "another_agent",
-            "unknown_task"
+            "nonexistent_agent", "another_agent", "unknown_task"
         )
         self.assertFalse(is_compatible)
 
@@ -392,7 +397,7 @@ class TestHandoffContextAndResult(unittest.TestCase):
             from_expert="singlecell_expert",
             to_expert="machine_learning_expert",
             task_type="scvi_training",
-            parameters={"modality_name": "test_data", "n_latent": 10}
+            parameters={"modality_name": "test_data", "n_latent": 10},
         )
 
         self.assertEqual(context.from_expert, "singlecell_expert")
@@ -414,7 +419,7 @@ class TestHandoffContextAndResult(unittest.TestCase):
         result = create_handoff_result(
             handoff_id="test-id",
             success=True,
-            result_data={"embedding_key": "X_scvi", "shape": (1000, 10)}
+            result_data={"embedding_key": "X_scvi", "shape": (1000, 10)},
         )
 
         self.assertEqual(result.handoff_id, "test-id")
@@ -427,5 +432,5 @@ class TestHandoffContextAndResult(unittest.TestCase):
         self.assertIn("handoff_id", result_dict)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

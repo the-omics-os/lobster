@@ -7,34 +7,37 @@ Lobster AI - Streamlit Interface (Enhanced with CLI Feature Parity)
 - Enhanced terminal integration
 """
 
-import os
-import sys
 import json
 import logging
-import subprocess
+import os
 import platform
-from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
+import subprocess
+import sys
 from datetime import datetime
 from io import StringIO
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
-import streamlit as st
 import plotly.graph_objects as go
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
+import streamlit as st
 from rich import box
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+
+from lobster.config.agent_config import get_agent_configurator, initialize_configurator
+from lobster.config.settings import get_settings
 
 # --- Your core stack ---
 from lobster.core.client import AgentClient
+
 # Updated to use DataManagerV2 - Modern modular data management
 from lobster.core.data_manager_v2 import DataManagerV2
+
 # Fixed import - TerminalCallbackHandler is properly exported from utils
 from lobster.utils import TerminalCallbackHandler
 from lobster.utils.auth import Auth
-from lobster.config.settings import get_settings
-from lobster.config.agent_config import get_agent_configurator, initialize_configurator
 
 # -----------------------
 # Basic login
@@ -48,8 +51,10 @@ is_logged_in = authenticator.login()
 if not is_logged_in:
     st.stop()
 
+
 def logout():
     authenticator.logout()
+
 
 # -----------------------
 # Basic setup & styling
@@ -65,7 +70,8 @@ st.set_page_config(
 )
 
 # --- Enhanced UI Styling ---
-st.markdown("""
+st.markdown(
+    """
 <style>
     /* Enhanced styling for feature parity with CLI */
     .stChatMessage.user {
@@ -107,7 +113,9 @@ st.markdown("""
         color: #333;
     }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
 # -----------------------
@@ -119,22 +127,32 @@ class SimpleLogCollector:
         self.step = 0
 
     def add_log(self, level: str, agent: str, message: str):
-        self.logs.append({
-            "timestamp": datetime.now().strftime("%H:%M:%S"),
-            "level": level,
-            "agent": agent,
-            "message": message,
-            "step": self.step
-        })
+        self.logs.append(
+            {
+                "timestamp": datetime.now().strftime("%H:%M:%S"),
+                "level": level,
+                "agent": agent,
+                "message": message,
+                "step": self.step,
+            }
+        )
         self.step += 1
 
     def get_formatted_logs(self) -> str:
         if not self.logs:
             return "No logs available"
-        icon_map = {"START":"🤖","TOOL":"🔧","COMPLETE":"✅","ERROR":"❌","INFO":"ℹ️","REASONING":"💭","THINKING":"💭"}
+        icon_map = {
+            "START": "🤖",
+            "TOOL": "🔧",
+            "COMPLETE": "✅",
+            "ERROR": "❌",
+            "INFO": "ℹ️",
+            "REASONING": "💭",
+            "THINKING": "💭",
+        }
         out = []
         for log in self.logs:
-            agent = (log["agent"] or "System").replace("_"," ").title()
+            agent = (log["agent"] or "System").replace("_", " ").title()
             icon = icon_map.get(log["level"], "•")
             out.append(f"{log['timestamp']} {icon} {agent}: {log['message']}")
         return "\n".join(out)
@@ -146,30 +164,32 @@ class SimpleLogCollector:
 
 class StreamlitCallbackHandler(TerminalCallbackHandler):
     """Enhanced callback handler for Streamlit with proper inheritance."""
-    
+
     def __init__(self, log_collector: SimpleLogCollector = None, *args, **kwargs):
         # Create a dummy console for the parent class
         dummy_console = Console(file=StringIO(), force_terminal=False)
-        
+
         # Initialize parent with proper parameters
         super().__init__(
             console=dummy_console,
-            verbose=kwargs.get('verbose', True),
-            show_reasoning=kwargs.get('show_reasoning', True),
-            show_tools=kwargs.get('show_tools', True),
-            max_length=kwargs.get('max_length', 500),
-            use_panels=False  # Disable panels for Streamlit
+            verbose=kwargs.get("verbose", True),
+            show_reasoning=kwargs.get("show_reasoning", True),
+            show_tools=kwargs.get("show_tools", True),
+            max_length=kwargs.get("max_length", 500),
+            use_panels=False,  # Disable panels for Streamlit
         )
-        
+
         # Store log collector
         self.log_collector = log_collector or SimpleLogCollector()
-    
+
     def _display_agent_event(self, event):
         """Override to use log collector instead of console."""
         agent_display = self._format_agent_name(event.agent_name)
-        
+
         if event.type.name == "AGENT_START":
-            self.log_collector.add_log("START", event.agent_name, "Starting analysis...")
+            self.log_collector.add_log(
+                "START", event.agent_name, "Starting analysis..."
+            )
         elif event.type.name == "AGENT_THINKING" and self.show_reasoning:
             if event.content:
                 content = self._truncate_content(event.content)
@@ -178,32 +198,50 @@ class StreamlitCallbackHandler(TerminalCallbackHandler):
             if event.content:
                 self.log_collector.add_log("INFO", event.agent_name, event.content)
         elif event.type.name == "AGENT_COMPLETE":
-            self.log_collector.add_log("COMPLETE", event.agent_name, "Analysis complete")
+            self.log_collector.add_log(
+                "COMPLETE", event.agent_name, "Analysis complete"
+            )
         elif event.type.name == "HANDOFF":
             from_agent = event.metadata.get("from", "Unknown")
             to_agent = event.metadata.get("to", "Unknown")
             handoff_msg = f"Handoff: {self._format_agent_name(from_agent)} → {self._format_agent_name(to_agent)}"
             self.log_collector.add_log("INFO", "system", handoff_msg)
             if event.content:
-                self.log_collector.add_log("INFO", "system", f"Task: {self._truncate_content(event.content)}")
-    
+                self.log_collector.add_log(
+                    "INFO", "system", f"Task: {self._truncate_content(event.content)}"
+                )
+
     def _display_tool_event(self, event):
         """Override to use log collector instead of console."""
         if not self.show_tools:
             return
-        
+
         tool_name = event.metadata.get("tool_name", "Unknown Tool")
-        
+
         if event.type.name == "TOOL_START":
-            self.log_collector.add_log("TOOL", event.agent_name, f"Using tool: {tool_name}")
+            self.log_collector.add_log(
+                "TOOL", event.agent_name, f"Using tool: {tool_name}"
+            )
             if self.verbose and event.content:
-                self.log_collector.add_log("INFO", event.agent_name, f"Input: {self._truncate_content(event.content)}")
+                self.log_collector.add_log(
+                    "INFO",
+                    event.agent_name,
+                    f"Input: {self._truncate_content(event.content)}",
+                )
         elif event.type.name == "TOOL_COMPLETE":
-            self.log_collector.add_log("COMPLETE", event.agent_name, f"Tool {tool_name} complete")
+            self.log_collector.add_log(
+                "COMPLETE", event.agent_name, f"Tool {tool_name} complete"
+            )
             if self.verbose and event.content:
-                self.log_collector.add_log("INFO", event.agent_name, f"Result: {self._truncate_content(event.content)}")
+                self.log_collector.add_log(
+                    "INFO",
+                    event.agent_name,
+                    f"Result: {self._truncate_content(event.content)}",
+                )
         elif event.type.name == "TOOL_ERROR":
-            self.log_collector.add_log("ERROR", event.agent_name, f"Tool {tool_name} failed: {event.content}")
+            self.log_collector.add_log(
+                "ERROR", event.agent_name, f"Tool {tool_name} failed: {event.content}"
+            )
 
 
 # -----------------------
@@ -211,112 +249,118 @@ class StreamlitCallbackHandler(TerminalCallbackHandler):
 # -----------------------
 class CommandProcessor:
     """Handles slash and shell command processing."""
-    
+
     def __init__(self, client: AgentClient, data_manager: DataManagerV2):
         self.client = client
         self.data_manager = data_manager
-        self.current_directory = st.session_state.get('current_directory', Path.cwd())
-    
-    def process_command(self, command: str) -> Tuple[bool, Optional[str], Optional[Any]]:
+        self.current_directory = st.session_state.get("current_directory", Path.cwd())
+
+    def process_command(
+        self, command: str
+    ) -> Tuple[bool, Optional[str], Optional[Any]]:
         """
         Process a command and return (is_command, response, data).
-        
+
         Returns:
             Tuple of (is_command, response_text, additional_data)
         """
         command = command.strip()
-        
+
         # Check for slash commands
         if command.startswith("/"):
             return self.process_slash_command(command)
-        
+
         # Check for shell commands
-        shell_commands = ['cd', 'pwd', 'ls', 'cat', 'mkdir', 'touch', 'cp', 'mv', 'rm']
+        shell_commands = ["cd", "pwd", "ls", "cat", "mkdir", "touch", "cp", "mv", "rm"]
         first_word = command.split()[0] if command else ""
         if first_word in shell_commands:
             return self.process_shell_command(command)
-        
+
         return False, None, None
-    
-    def process_slash_command(self, command: str) -> Tuple[bool, Optional[str], Optional[Any]]:
+
+    def process_slash_command(
+        self, command: str
+    ) -> Tuple[bool, Optional[str], Optional[Any]]:
         """Process slash commands."""
         parts = command.lower().strip().split(maxsplit=1)
         cmd = parts[0]
         args = parts[1] if len(parts) > 1 else ""
-        
+
         if cmd == "/help":
             return True, self.show_help(), None
-        
+
         elif cmd == "/status":
             return True, self.show_status(), None
-        
+
         elif cmd == "/data":
             return True, self.show_data_summary(), None
-        
+
         elif cmd == "/metadata":
             return True, self.show_metadata_details(), None
-        
+
         elif cmd == "/workspace":
             return True, self.show_workspace_info(), None
-        
+
         elif cmd == "/modalities":
             return True, self.show_modalities(), None
-        
+
         elif cmd == "/plots":
             return True, self.show_plot_history(), None
-        
+
         elif cmd == "/plot":
             return True, self.manage_plots(args), None
-        
+
         elif cmd == "/files":
             return True, self.list_files(), None
-        
+
         elif cmd == "/read":
             if args:
                 return True, self.read_file(args), None
             return True, "Usage: /read <filename>", None
-        
+
         elif cmd == "/save":
             saved = self.data_manager.auto_save_state()
             msg = "✅ Saved: " + ", ".join(saved) if saved else "Nothing to save"
             return True, msg, None
-        
+
         elif cmd == "/export":
             try:
                 path = self.client.export_session()
                 return True, f"✅ Session exported to: {path}", None
             except Exception as e:
                 return True, f"❌ Export failed: {e}", None
-        
+
         elif cmd == "/modes":
             return True, self.list_modes(), None
-        
+
         elif cmd == "/mode":
             if args:
                 return True, self.change_mode(args), None
             return True, "Usage: /mode <mode_name>", None
-        
+
         elif cmd == "/reset":
             st.session_state.messages = []
             if self.client:
                 self.client.reset()
             return True, "✅ Conversation reset", None
-        
+
         elif cmd == "/clear":
             st.session_state.messages = []
             return True, "✅ Chat cleared", None
-        
+
         else:
             return True, f"❌ Unknown command: {cmd}", None
-    
-    def process_shell_command(self, command: str) -> Tuple[bool, Optional[str], Optional[Any]]:
+
+    def process_shell_command(
+        self, command: str
+    ) -> Tuple[bool, Optional[str], Optional[Any]]:
         """Process shell commands."""
         parts = command.strip().split()
         if not parts:
             return False, None, None
-        
+
         cmd = parts[0].lower()
-        
+
         try:
             if cmd == "cd":
                 if len(parts) == 1:
@@ -328,9 +372,13 @@ class CommandProcessor:
                     elif target.startswith("~/"):
                         new_dir = Path.home() / target[2:]
                     else:
-                        new_dir = self.current_directory / target if not Path(target).is_absolute() else Path(target)
+                        new_dir = (
+                            self.current_directory / target
+                            if not Path(target).is_absolute()
+                            else Path(target)
+                        )
                     new_dir = new_dir.resolve()
-                
+
                 if new_dir.exists() and new_dir.is_dir():
                     self.current_directory = new_dir
                     st.session_state.current_directory = new_dir
@@ -338,10 +386,10 @@ class CommandProcessor:
                     return True, f"📁 {new_dir}", None
                 else:
                     return True, f"❌ cd: no such directory: {target}", None
-            
+
             elif cmd == "pwd":
                 return True, f"📁 {self.current_directory}", None
-            
+
             elif cmd == "ls":
                 target_dir = self.current_directory
                 if len(parts) > 1:
@@ -349,71 +397,98 @@ class CommandProcessor:
                     if target_path.startswith("~/"):
                         target_dir = Path.home() / target_path[2:]
                     else:
-                        target_dir = self.current_directory / target_path if not Path(target_path).is_absolute() else Path(target_path)
-                
+                        target_dir = (
+                            self.current_directory / target_path
+                            if not Path(target_path).is_absolute()
+                            else Path(target_path)
+                        )
+
                 if target_dir.exists() and target_dir.is_dir():
                     items = list(target_dir.iterdir())
                     if not items:
                         return True, f"📁 Empty directory: {target_dir.name}", None
-                    
+
                     # Format directory listing
-                    dirs = sorted([f"📁 {item.name}/" for item in items if item.is_dir()])
-                    files = sorted([f"📄 {item.name}" for item in items if item.is_file()])
-                    
+                    dirs = sorted(
+                        [f"📁 {item.name}/" for item in items if item.is_dir()]
+                    )
+                    files = sorted(
+                        [f"📄 {item.name}" for item in items if item.is_file()]
+                    )
+
                     output = f"**Directory: {target_dir.name}**\n\n"
                     if dirs:
                         output += "**Directories:**\n" + "\n".join(dirs) + "\n\n"
                     if files:
                         output += "**Files:**\n" + "\n".join(files)
-                    
+
                     return True, output, None
                 else:
-                    return True, f"❌ ls: cannot access '{target_dir}': No such directory", None
-            
+                    return (
+                        True,
+                        f"❌ ls: cannot access '{target_dir}': No such directory",
+                        None,
+                    )
+
             elif cmd == "cat":
                 if len(parts) < 2:
                     return True, "❌ cat: missing file argument", None
-                
+
                 file_path = " ".join(parts[1:])
                 if not file_path.startswith("/") and not file_path.startswith("~/"):
                     file_path = self.current_directory / file_path
                 else:
                     file_path = Path(file_path).expanduser()
-                
+
                 try:
                     if file_path.exists() and file_path.is_file():
-                        content = file_path.read_text(encoding='utf-8', errors='replace')
-                        
+                        content = file_path.read_text(
+                            encoding="utf-8", errors="replace"
+                        )
+
                         # Return formatted content
-                        return True, f"**📄 {file_path.name}**\n```\n{content}\n```", None
+                        return (
+                            True,
+                            f"**📄 {file_path.name}**\n```\n{content}\n```",
+                            None,
+                        )
                     else:
                         return True, f"❌ cat: {file_path}: No such file", None
                 except Exception as e:
                     return True, f"❌ cat: {file_path}: {e}", None
-            
+
             elif cmd in ["mkdir", "touch", "cp", "mv", "rm"]:
                 # Execute the command
-                result = subprocess.run(command, shell=True, cwd=self.current_directory,
-                                      capture_output=True, text=True)
-                
+                result = subprocess.run(
+                    command,
+                    shell=True,
+                    cwd=self.current_directory,
+                    capture_output=True,
+                    text=True,
+                )
+
                 if result.returncode == 0:
                     success_msgs = {
                         "mkdir": f"✅ Created directory: {parts[1] if len(parts) > 1 else ''}",
                         "touch": f"✅ Created file: {parts[1] if len(parts) > 1 else ''}",
                         "cp": f"✅ Copied: {parts[1] if len(parts) > 1 else ''} → {parts[2] if len(parts) > 2 else ''}",
                         "mv": f"✅ Moved: {parts[1] if len(parts) > 1 else ''} → {parts[2] if len(parts) > 2 else ''}",
-                        "rm": f"✅ Removed: {parts[1] if len(parts) > 1 else ''}"
+                        "rm": f"✅ Removed: {parts[1] if len(parts) > 1 else ''}",
                     }
-                    return True, success_msgs.get(cmd, result.stdout or "✅ Command executed"), None
+                    return (
+                        True,
+                        success_msgs.get(cmd, result.stdout or "✅ Command executed"),
+                        None,
+                    )
                 else:
                     return True, f"❌ {result.stderr or 'Command failed'}", None
-            
+
             else:
                 return False, None, None
-                
+
         except Exception as e:
             return True, f"❌ Error executing command: {e}", None
-    
+
     def show_help(self) -> str:
         """Show help information."""
         return """
@@ -448,149 +523,171 @@ class CommandProcessor:
 - `mv <src> <dst>` - Move/rename file/directory
 - `rm <file>` - Remove file
 """
-    
+
     def show_status(self) -> str:
         """Show system status."""
         status = self.client.get_status()
         configurator = get_agent_configurator()
         current_mode = configurator.get_current_profile()
-        
+
         output = "## 🦞 System Status\n\n"
         output += f"- **Session ID:** {status['session_id']}\n"
         output += f"- **Mode:** {current_mode}\n"
         output += f"- **Messages:** {status['message_count']}\n"
         output += f"- **Workspace:** {status['workspace']}\n"
         output += f"- **Data Loaded:** {'✓' if status['has_data'] else '✗'}\n"
-        
-        if status['has_data'] and status['data_summary']:
-            summary = status['data_summary']
+
+        if status["has_data"] and status["data_summary"]:
+            summary = status["data_summary"]
             output += f"- **Data Shape:** {summary.get('shape', 'N/A')}\n"
             output += f"- **Memory Usage:** {summary.get('memory_usage', 'N/A')}\n"
-        
+
         return output
-    
+
     def show_data_summary(self) -> str:
         """Show data summary."""
         if self.data_manager.has_data():
             summary = self.data_manager.get_data_summary()
-            
+
             output = "## 📊 Current Data Summary\n\n"
             output += f"- **Status:** {summary['status']}\n"
             output += f"- **Shape:** {summary['shape'][0]} × {summary['shape'][1]}\n"
             output += f"- **Memory Usage:** {summary['memory_usage']}\n"
-            
-            if summary.get('columns'):
-                cols_preview = ", ".join(summary['columns'][:5])
-                if len(summary['columns']) > 5:
+
+            if summary.get("columns"):
+                cols_preview = ", ".join(summary["columns"][:5])
+                if len(summary["columns"]) > 5:
                     cols_preview += f" ... (+{len(summary['columns'])-5} more)"
                 output += f"- **Columns:** {cols_preview}\n"
-            
-            if summary.get('processing_log'):
+
+            if summary.get("processing_log"):
                 output += "\n### Recent Processing Steps:\n"
-                for step in summary['processing_log'][-5:]:
+                for step in summary["processing_log"][-5:]:
                     output += f"- {step}\n"
-            
+
             return output
         else:
             return "No data currently loaded."
-    
+
     def show_metadata_details(self) -> str:
         """Show detailed metadata."""
         output = "## 📋 Metadata Information\n\n"
-        
+
         # Check metadata store
-        if hasattr(self.data_manager, 'metadata_store') and self.data_manager.metadata_store:
+        if (
+            hasattr(self.data_manager, "metadata_store")
+            and self.data_manager.metadata_store
+        ):
             output += "### 🗄️ Metadata Store (Cached GEO/External Data):\n\n"
             for dataset_id, metadata_info in self.data_manager.metadata_store.items():
-                metadata = metadata_info.get('metadata', {})
-                validation = metadata_info.get('validation', {})
-                
+                metadata = metadata_info.get("metadata", {})
+                validation = metadata_info.get("validation", {})
+
                 output += f"**{dataset_id}**\n"
                 output += f"- Title: {metadata.get('title', 'N/A')}\n"
-                output += f"- Type: {validation.get('predicted_data_type', 'unknown')}\n"
+                output += (
+                    f"- Type: {validation.get('predicted_data_type', 'unknown')}\n"
+                )
                 output += f"- Samples: {len(metadata.get('samples', {}))}\n"
                 output += f"- Cached: {metadata_info.get('fetch_timestamp', 'N/A')}\n\n"
-        
+
         # Show current metadata
-        if hasattr(self.data_manager, 'current_metadata') and self.data_manager.current_metadata:
+        if (
+            hasattr(self.data_manager, "current_metadata")
+            and self.data_manager.current_metadata
+        ):
             output += "### 📊 Current Data Metadata:\n\n"
             for key, value in list(self.data_manager.current_metadata.items())[:10]:
                 if isinstance(value, (list, dict)):
                     display_value = f"{type(value).__name__} with {len(value)} items"
                 else:
-                    display_value = str(value)[:50] + "..." if len(str(value)) > 50 else str(value)
+                    display_value = (
+                        str(value)[:50] + "..." if len(str(value)) > 50 else str(value)
+                    )
                 output += f"- **{key}:** {display_value}\n"
-        
-        return output if output != "## 📋 Metadata Information\n\n" else "No metadata available."
-    
+
+        return (
+            output
+            if output != "## 📋 Metadata Information\n\n"
+            else "No metadata available."
+        )
+
     def show_workspace_info(self) -> str:
         """Show workspace information."""
-        if hasattr(self.data_manager, 'get_workspace_status'):
+        if hasattr(self.data_manager, "get_workspace_status"):
             status = self.data_manager.get_workspace_status()
-            
+
             output = "## 🏗️ Workspace Information\n\n"
             output += f"- **Path:** {status.get('workspace_path', 'N/A')}\n"
             output += f"- **Modalities Loaded:** {status.get('modalities_loaded', 0)}\n"
-            output += f"- **Backends:** {', '.join(status.get('registered_backends', []))}\n"
-            output += f"- **Adapters:** {', '.join(status.get('registered_adapters', []))}\n"
+            output += (
+                f"- **Backends:** {', '.join(status.get('registered_backends', []))}\n"
+            )
+            output += (
+                f"- **Adapters:** {', '.join(status.get('registered_adapters', []))}\n"
+            )
             output += f"- **Default Backend:** {status.get('default_backend', 'N/A')}\n"
             output += f"- **Provenance:** {'✓' if status.get('provenance_enabled') else '✗'}\n"
-            output += f"- **MuData:** {'✓' if status.get('mudata_available') else '✗'}\n"
-            
-            if status.get('modality_names'):
+            output += (
+                f"- **MuData:** {'✓' if status.get('mudata_available') else '✗'}\n"
+            )
+
+            if status.get("modality_names"):
                 output += f"\n### 🧬 Loaded Modalities:\n"
-                for modality in status['modality_names']:
+                for modality in status["modality_names"]:
                     output += f"- {modality}\n"
-            
+
             return output
         else:
             return "Workspace information not available."
-    
+
     def show_modalities(self) -> str:
         """Show modality information."""
-        if hasattr(self.data_manager, 'list_modalities'):
+        if hasattr(self.data_manager, "list_modalities"):
             modalities = self.data_manager.list_modalities()
-            
+
             if modalities:
                 output = "## 🧬 Modality Details\n\n"
-                
+
                 for modality_name in modalities:
                     try:
                         adata = self.data_manager.get_modality(modality_name)
                         output += f"### {modality_name}\n"
-                        output += f"- **Shape:** {adata.n_obs} obs × {adata.n_vars} vars\n"
-                        
+                        output += (
+                            f"- **Shape:** {adata.n_obs} obs × {adata.n_vars} vars\n"
+                        )
+
                         if list(adata.obs.columns):
                             obs_cols = ", ".join(list(adata.obs.columns)[:5])
                             if len(adata.obs.columns) > 5:
                                 obs_cols += f" ... (+{len(adata.obs.columns)-5} more)"
                             output += f"- **Obs Columns:** {obs_cols}\n"
-                        
+
                         if list(adata.var.columns):
                             var_cols = ", ".join(list(adata.var.columns)[:5])
                             if len(adata.var.columns) > 5:
                                 var_cols += f" ... (+{len(adata.var.columns)-5} more)"
                             output += f"- **Var Columns:** {var_cols}\n"
-                        
+
                         if adata.layers:
                             output += f"- **Layers:** {', '.join(list(adata.layers.keys()))}\n"
-                        
+
                         output += "\n"
-                        
+
                     except Exception as e:
                         output += f"### {modality_name}\n"
                         output += f"- Error accessing modality: {e}\n\n"
-                
+
                 return output
             else:
                 return "No modalities loaded."
         else:
             return "Modality information not available."
-    
+
     def show_plot_history(self) -> str:
         """Show plot history."""
         plots = self.data_manager.get_plot_history()
-        
+
         if plots:
             output = "## 📊 Generated Plots\n\n"
             for i, plot in enumerate(plots[-10:], 1):  # Show last 10 plots
@@ -601,7 +698,7 @@ class CommandProcessor:
             return output
         else:
             return "No plots generated yet."
-    
+
     def manage_plots(self, args: str) -> str:
         """Manage plots - open or display specific plot."""
         if not args:
@@ -611,33 +708,40 @@ class CommandProcessor:
                 return f"✅ Saved {len(saved_files)} plot files to workspace"
             else:
                 return "No plots to save"
-        
+
         # Find plot by ID or name
         plot_id = args.strip()
         for plot_entry in self.data_manager.latest_plots:
-            if plot_entry["id"] == plot_id or plot_id.lower() in plot_entry["title"].lower():
+            if (
+                plot_entry["id"] == plot_id
+                or plot_id.lower() in plot_entry["title"].lower()
+            ):
                 return f"✅ Found plot: {plot_entry['title']}\nID: {plot_entry['id']}\nCreated: {plot_entry['timestamp']}"
-        
+
         return f"❌ Plot not found: {plot_id}"
-    
+
     def list_files(self) -> str:
         """List workspace files."""
         files = self.data_manager.list_workspace_files()
-        
+
         output = "## 📁 Workspace Files\n\n"
-        
+
         for category, items in files.items():
             if items:
                 output += f"### {category.title()} ({len(items)})\n"
                 for item in items[:10]:  # Show first 10
-                    size_kb = item['size'] / 1024
+                    size_kb = item["size"] / 1024
                     output += f"- **{item['name']}** ({size_kb:.1f} KB)\n"
                 if len(items) > 10:
                     output += f"- ... and {len(items)-10} more\n"
                 output += "\n"
-        
-        return output if output != "## 📁 Workspace Files\n\n" else "No files in workspace."
-    
+
+        return (
+            output
+            if output != "## 📁 Workspace Files\n\n"
+            else "No files in workspace."
+        )
+
     def read_file(self, filename: str) -> str:
         """Read a file from workspace."""
         try:
@@ -645,76 +749,83 @@ class CommandProcessor:
             if content:
                 # Determine file type for syntax highlighting hint
                 ext = Path(filename).suffix
-                lang_map = {'.py': 'python', '.js': 'javascript', '.json': 'json', 
-                           '.md': 'markdown', '.txt': 'text', '.yaml': 'yaml', '.yml': 'yaml'}
-                lang = lang_map.get(ext, 'text')
-                
+                lang_map = {
+                    ".py": "python",
+                    ".js": "javascript",
+                    ".json": "json",
+                    ".md": "markdown",
+                    ".txt": "text",
+                    ".yaml": "yaml",
+                    ".yml": "yaml",
+                }
+                lang = lang_map.get(ext, "text")
+
                 return f"**📄 {filename}**\n```{lang}\n{content}\n```"
             else:
                 return f"❌ Could not read file: {filename}"
         except Exception as e:
             return f"❌ Error reading file: {e}"
-    
+
     def list_modes(self) -> str:
         """List available modes."""
         configurator = get_agent_configurator()
         current_mode = configurator.get_current_profile()
         profiles = configurator.list_available_profiles()
-        
+
         output = "## 🎮 Available Modes\n\n"
-        
+
         descriptions = {
             "development": "Claude 3.7 Sonnet for all agents, 3.5 Sonnet v2 for assistant - fast development",
             "production": "Claude 4 Sonnet for all agents, 3.5 Sonnet v2 for assistant - production ready",
-            "cost-optimized": "Claude 3.7 Sonnet for all agents, 3.5 Sonnet v2 for assistant - cost optimized"
+            "cost-optimized": "Claude 3.7 Sonnet for all agents, 3.5 Sonnet v2 for assistant - cost optimized",
         }
-        
+
         for profile in sorted(profiles.keys()):
             status = " **[ACTIVE]**" if profile == current_mode else ""
             desc = descriptions.get(profile, "")
             output += f"- **{profile}**{status} - {desc}\n"
-        
+
         return output
-    
+
     def change_mode(self, new_mode: str) -> str:
         """Change operation mode."""
         configurator = get_agent_configurator()
         profiles = configurator.list_available_profiles()
-        
+
         if new_mode not in profiles:
             return f"❌ Invalid mode: {new_mode}\n\nAvailable modes: {', '.join(sorted(profiles.keys()))}"
-        
+
         try:
             # Store current settings
             current_workspace = Path(self.client.workspace_path)
             current_reasoning = self.client.enable_reasoning
-            
+
             # Initialize new configurator with the specified profile
             initialize_configurator(profile=new_mode)
-            
+
             # Reinitialize the client with new profile settings
             from rich.console import Console
+
             console = Console() if st.session_state.callbacks else None
             data_manager = DataManagerV2(
-                workspace_path=current_workspace,
-                console=console
+                workspace_path=current_workspace, console=console
             )
-            
+
             # Create new client with updated configuration
             new_client = AgentClient(
                 data_manager=data_manager,
                 session_id=st.session_state.session_id,
                 workspace_path=current_workspace,
                 enable_reasoning=current_reasoning,
-                custom_callbacks=st.session_state.callbacks
+                custom_callbacks=st.session_state.callbacks,
             )
-            
+
             # Update session state
             st.session_state.client = new_client
             st.session_state.current_mode = new_mode
-            
+
             return f"✅ Mode changed to: **{new_mode}**"
-            
+
         except Exception as e:
             return f"❌ Failed to change mode: {e}"
 
@@ -744,7 +855,7 @@ def init_session_state():
     st.session_state.session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     st.session_state.processing = False
     st.session_state.saved_uploads = {}
-    
+
     # Enhanced features for CLI parity
     st.session_state.current_directory = Path.cwd()
     st.session_state.command_history = []
@@ -756,7 +867,7 @@ def init_session_state():
         StreamlitCallbackHandler(
             log_collector=st.session_state.log_collector,
             show_reasoning=st.session_state.enable_reasoning,
-            verbose=True
+            verbose=True,
         )
     ]
 
@@ -775,7 +886,7 @@ def init_client() -> AgentClient:
             session_id=st.session_state.session_id,
             workspace_path=st.session_state.workspace_path,
             enable_reasoning=st.session_state.enable_reasoning,
-            custom_callbacks=st.session_state.callbacks
+            custom_callbacks=st.session_state.callbacks,
         )
     return st.session_state.client
 
@@ -783,37 +894,35 @@ def init_client() -> AgentClient:
 def change_mode(new_mode: str, current_client: AgentClient) -> AgentClient:
     """
     Change the operation mode and reinitialize client with the new configuration.
-    
+
     Args:
         new_mode: The new mode/profile to switch to
         current_client: The current AgentClient instance
-        
+
     Returns:
         Updated AgentClient instance
     """
     # Store current settings before reinitializing
     current_workspace = Path(current_client.workspace_path)
     current_reasoning = current_client.enable_reasoning
-    
+
     # Initialize a new configurator with the specified profile
     initialize_configurator(profile=new_mode)
-    
+
     # Reinitialize the client with the new profile settings
     from rich.console import Console
+
     console = Console() if st.session_state.callbacks else None
-    data_manager = DataManagerV2(
-        workspace_path=current_workspace,
-        console=console
-    )
-    
+    data_manager = DataManagerV2(workspace_path=current_workspace, console=console)
+
     client = AgentClient(
         data_manager=data_manager,
         session_id=st.session_state.session_id,
         workspace_path=current_workspace,
         enable_reasoning=current_reasoning,
-        custom_callbacks=st.session_state.callbacks
+        custom_callbacks=st.session_state.callbacks,
     )
-    
+
     return client
 
 
@@ -851,7 +960,9 @@ def display_sidebar():
             if st.button("📊 Data", key="quick_data"):
                 st.session_state.messages.append({"role": "user", "content": "/data"})
             if st.button("🧬 Modalities", key="quick_mod"):
-                st.session_state.messages.append({"role": "user", "content": "/modalities"})
+                st.session_state.messages.append(
+                    {"role": "user", "content": "/modalities"}
+                )
         with col2:
             if st.button("📈 Plots", key="quick_plots"):
                 st.session_state.messages.append({"role": "user", "content": "/plots"})
@@ -872,7 +983,7 @@ def display_sidebar():
         )
         if dm.has_data():
             summary = dm.get_data_summary()
-            shape = summary.get('shape', [0, 0])
+            shape = summary.get("shape", [0, 0])
             st.markdown(
                 f"""<div class="status-item"><span class="status-label">Data:</span><span class="status-value">✓ {shape[0]} × {shape[1]}</span></div>""",
                 unsafe_allow_html=True,
@@ -890,21 +1001,31 @@ def display_sidebar():
     with st.sidebar.expander("⚙️ **Configuration**", expanded=False):
         configurator = get_agent_configurator()
         profiles = list(getattr(configurator, "list_available_profiles")().keys())
-        
+
         # Ensure current mode is valid
         if st.session_state.current_mode not in profiles and profiles:
             st.session_state.current_mode = profiles[0]
 
-        selected = st.selectbox("Operation Mode", options=profiles, index=profiles.index(st.session_state.current_mode))
+        selected = st.selectbox(
+            "Operation Mode",
+            options=profiles,
+            index=profiles.index(st.session_state.current_mode),
+        )
         if selected != st.session_state.current_mode and st.button("🔄 Apply Mode"):
             # Use command processor to change mode
-            st.session_state.messages.append({"role": "user", "content": f"/mode {selected}"})
+            st.session_state.messages.append(
+                {"role": "user", "content": f"/mode {selected}"}
+            )
 
         # Check if reasoning setting changed
         old_reasoning = st.session_state.enable_reasoning
-        st.session_state.enable_reasoning = st.checkbox("Show Agent Reasoning", value=st.session_state.enable_reasoning)
-        st.session_state.show_terminal = st.checkbox("Show Terminal Output", value=st.session_state.show_terminal)
-        
+        st.session_state.enable_reasoning = st.checkbox(
+            "Show Agent Reasoning", value=st.session_state.enable_reasoning
+        )
+        st.session_state.show_terminal = st.checkbox(
+            "Show Terminal Output", value=st.session_state.show_terminal
+        )
+
         # If reasoning setting changed, update callback and recreate client
         if old_reasoning != st.session_state.enable_reasoning:
             # Update the callback handler with new reasoning setting
@@ -912,7 +1033,7 @@ def display_sidebar():
                 StreamlitCallbackHandler(
                     log_collector=st.session_state.log_collector,
                     show_reasoning=st.session_state.enable_reasoning,
-                    verbose=True
+                    verbose=True,
                 )
             ]
             # Force client recreation with new callbacks
@@ -920,7 +1041,9 @@ def display_sidebar():
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📤 **Upload File**")
-    uploaded = st.sidebar.file_uploader("Choose a file", type=['csv', 'tsv', 'xlsx', 'xls', 'txt', 'json', 'h5', 'h5ad'])
+    uploaded = st.sidebar.file_uploader(
+        "Choose a file", type=["csv", "tsv", "xlsx", "xls", "txt", "json", "h5", "h5ad"]
+    )
     if uploaded is not None:
         # De-duplicate saves across reruns
         size = getattr(uploaded, "size", None)
@@ -948,7 +1071,9 @@ def display_sidebar():
                     st.session_state.data_manager.set_data(df)
                     st.sidebar.success(f"✓ Data loaded: {df.shape}")
             except Exception as e:
-                st.sidebar.warning(f"Loaded to workspace (agent can parse). Preview failed: {e}")
+                st.sidebar.warning(
+                    f"Loaded to workspace (agent can parse). Preview failed: {e}"
+                )
         else:
             st.sidebar.info("File already uploaded (skipped re-save).")
 
@@ -960,7 +1085,9 @@ def display_sidebar():
         items = files.get(group_key, [])
         if not items:
             return
-        with st.sidebar.expander(f"{label} ({len(items)})", expanded=(group_key == "data")):
+        with st.sidebar.expander(
+            f"{label} ({len(items)})", expanded=(group_key == "data")
+        ):
             for i, meta in enumerate(items[:5]):  # Show first 5
                 name = meta["name"]
                 path = Path(meta["path"])
@@ -970,7 +1097,12 @@ def display_sidebar():
                 with cols[1]:
                     if path.exists():
                         with open(path, "rb") as fh:
-                            st.download_button("📥", data=fh.read(), file_name=name, key=f"dl_{group_key}_{i}")
+                            st.download_button(
+                                "📥",
+                                data=fh.read(),
+                                file_name=name,
+                                key=f"dl_{group_key}_{i}",
+                            )
 
     _render_file_group("📊 Data Files", "data")
     _render_file_group("📈 Plots", "plots")
@@ -1010,20 +1142,23 @@ def display_chat_interface():
                     st.plotly_chart(plot_entry["figure"], use_container_width=True)
 
     # Input
-    new_prompt = st.chat_input("Ask about your data or use commands (/, cd, ls, cat, etc.)…", disabled=st.session_state.processing)
+    new_prompt = st.chat_input(
+        "Ask about your data or use commands (/, cd, ls, cat, etc.)…",
+        disabled=st.session_state.processing,
+    )
 
     if new_prompt:
         # Initialize command processor
         cmd_processor = CommandProcessor(client, st.session_state.data_manager)
-        
+
         # Check if it's a command
         is_command, response, data = cmd_processor.process_command(new_prompt)
-        
+
         if is_command:
             # Handle command response
             st.session_state.messages.append({"role": "user", "content": new_prompt})
             st.session_state.messages.append({"role": "assistant", "content": response})
-            
+
             # Display immediately
             with st.chat_message("user"):
                 st.markdown(new_prompt)
@@ -1031,10 +1166,10 @@ def display_chat_interface():
                 st.markdown(response)
                 if data:  # If there's additional data like plots
                     st.write(data)
-            
+
             # Add to command history
             st.session_state.command_history.append(new_prompt)
-            
+
         else:
             # Regular agent query
             st.session_state.messages.append({"role": "user", "content": new_prompt})
@@ -1068,10 +1203,16 @@ def display_chat_interface():
                                 st.markdown("---")
                                 st.markdown("### 📊 Generated Visualizations")
                                 for plot_entry in plots:
-                                    if isinstance(plot_entry, dict) and "figure" in plot_entry:
+                                    if (
+                                        isinstance(plot_entry, dict)
+                                        and "figure" in plot_entry
+                                    ):
                                         if "title" in plot_entry:
                                             st.markdown(f"**{plot_entry['title']}**")
-                                        st.plotly_chart(plot_entry["figure"], use_container_width=True)
+                                        st.plotly_chart(
+                                            plot_entry["figure"],
+                                            use_container_width=True,
+                                        )
                                         # Optional: download as HTML
                                         html_str = plot_entry["figure"].to_html()
                                         st.download_button(
@@ -1085,18 +1226,24 @@ def display_chat_interface():
                             # Persist assistant message (+ plots) to history
                             save_msg = {"role": "assistant", "content": response}
                             if st.session_state.data_manager.latest_plots:
-                                save_msg["plots"] = st.session_state.data_manager.latest_plots.copy()
+                                save_msg["plots"] = (
+                                    st.session_state.data_manager.latest_plots.copy()
+                                )
                             st.session_state.messages.append(save_msg)
 
                         else:
                             err = f"❌ Error: {result.get('error','Unknown error')}"
                             st.error(err)
-                            st.session_state.messages.append({"role": "assistant", "content": err})
+                            st.session_state.messages.append(
+                                {"role": "assistant", "content": err}
+                            )
 
                     except Exception as e:
                         err = f"❌ System error: {e}"
                         st.error(err)
-                        st.session_state.messages.append({"role": "assistant", "content": err})
+                        st.session_state.messages.append(
+                            {"role": "assistant", "content": err}
+                        )
                         logger.exception("Agent error")
 
                     finally:
@@ -1119,7 +1266,7 @@ def main():
         🦞 <b>Lobster AI</b> v2.0 | Multi-Agent Bioinformatics System | © 2025 Omics-OS
         </div>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
 

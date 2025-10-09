@@ -9,25 +9,24 @@ test coverage and ensure all functionality is properly tested.
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
+import anndata as ad
 import numpy as np
 import pandas as pd
 import pytest
-import anndata as ad
 
 from lobster.core.interfaces.adapter import IModalityAdapter
 from lobster.core.interfaces.backend import IDataBackend
-from lobster.core.interfaces.validator import IValidator, ValidationResult
 from lobster.core.interfaces.base_client import BaseClient
-
-from tests.mock_data.factories import SingleCellDataFactory, ProteomicsDataFactory
+from lobster.core.interfaces.validator import IValidator, ValidationResult
 from tests.mock_data.base import SMALL_DATASET_CONFIG
-
+from tests.mock_data.factories import ProteomicsDataFactory, SingleCellDataFactory
 
 # ===============================================================================
 # Concrete Method Testing for IModalityAdapter
 # ===============================================================================
+
 
 class ConcreteModalityAdapter(IModalityAdapter):
     """Concrete implementation for testing default methods."""
@@ -59,7 +58,9 @@ class TestModalityAdapterConcreteMethods:
 
         # Should extract from class name
         name = adapter.get_modality_name()
-        assert name == "concretemodality"  # Class name lowercased with 'adapter' removed
+        assert (
+            name == "concretemodality"
+        )  # Class name lowercased with 'adapter' removed
 
     def test_detect_format_various_extensions(self):
         """Test format detection with various file extensions."""
@@ -77,12 +78,14 @@ class TestModalityAdapterConcreteMethods:
             ("data.mtx", "mtx"),
             ("data.h5mu", "h5mu"),
             ("unknown.abc", None),
-            ("no_extension", None)
+            ("no_extension", None),
         ]
 
         for filepath, expected in test_cases:
             result = adapter.detect_format(filepath)
-            assert result == expected, f"Failed for {filepath}: expected {expected}, got {result}"
+            assert (
+                result == expected
+            ), f"Failed for {filepath}: expected {expected}, got {result}"
 
     def test_detect_format_with_path_objects(self):
         """Test format detection with Path objects."""
@@ -147,6 +150,7 @@ class TestModalityAdapterConcreteMethods:
 
         # Create sparse data - most values are zero
         from scipy.sparse import csr_matrix
+
         dense_data = np.random.rand(50, 100)
         dense_data[dense_data < 0.8] = 0  # 80% zeros
         sparse_X = csr_matrix(dense_data)
@@ -178,10 +182,7 @@ class TestModalityAdapterConcreteMethods:
         adata.obs["old_column"] = range(adata.n_obs)
         adata.var["old_var_column"] = range(adata.n_vars)
 
-        mapping = {
-            "old_column": "new_column",
-            "old_var_column": "new_var_column"
-        }
+        mapping = {"old_column": "new_column", "old_var_column": "new_var_column"}
 
         result = adapter.standardize_metadata(adata, mapping)
 
@@ -265,6 +266,7 @@ class TestModalityAdapterConcreteMethods:
 # ===============================================================================
 # Concrete Method Testing for IDataBackend
 # ===============================================================================
+
 
 class ConcreteDataBackend(IDataBackend):
     """Concrete implementation for testing default methods."""
@@ -360,17 +362,24 @@ class TestDataBackendConcreteMethods:
 # Concrete Method Testing for IValidator
 # ===============================================================================
 
+
 class ConcreteValidator(IValidator):
     """Concrete implementation for testing default methods."""
 
-    def validate(self, adata: ad.AnnData, strict: bool = False,
-                check_types: bool = True, check_ranges: bool = True,
-                check_completeness: bool = True) -> ValidationResult:
+    def validate(
+        self,
+        adata: ad.AnnData,
+        strict: bool = False,
+        check_types: bool = True,
+        check_ranges: bool = True,
+        check_completeness: bool = True,
+    ) -> ValidationResult:
         """Minimal implementation."""
         return ValidationResult()
 
-    def validate_schema_compliance(self, adata: ad.AnnData,
-                                 schema: Dict[str, Any]) -> ValidationResult:
+    def validate_schema_compliance(
+        self, adata: ad.AnnData, schema: Dict[str, Any]
+    ) -> ValidationResult:
         """Minimal implementation."""
         return ValidationResult()
 
@@ -408,7 +417,9 @@ class TestValidatorConcreteMethods:
         validator = ConcreteValidator()
         adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
 
-        result = validator.validate_obs_metadata(adata, required_columns=["missing_column"])
+        result = validator.validate_obs_metadata(
+            adata, required_columns=["missing_column"]
+        )
 
         assert result.has_errors
         assert "missing_column" in result.errors[0]
@@ -436,9 +447,9 @@ class TestValidatorConcreteMethods:
         adata.obs["extra1"] = range(adata.n_obs)
         adata.obs["extra2"] = range(adata.n_obs)
 
-        result = validator.validate_obs_metadata(adata,
-                                               required_columns=["required"],
-                                               optional_columns=["optional"])
+        result = validator.validate_obs_metadata(
+            adata, required_columns=["required"], optional_columns=["optional"]
+        )
 
         assert result.info  # Should have info about unexpected columns
         assert "extra1" in result.info[0] or "extra2" in result.info[0]
@@ -460,7 +471,9 @@ class TestValidatorConcreteMethods:
         validator = ConcreteValidator()
         adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
 
-        result = validator.validate_var_metadata(adata, required_columns=["missing_gene_column"])
+        result = validator.validate_var_metadata(
+            adata, required_columns=["missing_gene_column"]
+        )
 
         assert result.has_errors
         assert "missing_gene_column" in result.errors[0]
@@ -571,6 +584,7 @@ class TestValidatorConcreteMethods:
 # ValidationResult Additional Testing
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestValidationResultMethods:
     """Test ValidationResult methods more comprehensively."""
@@ -611,8 +625,15 @@ class TestValidationResultMethods:
 
         result_dict = result.to_dict()
 
-        expected_keys = ["errors", "warnings", "info", "metadata",
-                        "has_errors", "has_warnings", "is_valid"]
+        expected_keys = [
+            "errors",
+            "warnings",
+            "info",
+            "metadata",
+            "has_errors",
+            "has_warnings",
+            "is_valid",
+        ]
 
         for key in expected_keys:
             assert key in result_dict
@@ -727,6 +748,7 @@ class TestValidationResultMethods:
 # ===============================================================================
 # BaseClient Optional Methods Testing
 # ===============================================================================
+
 
 class ConcreteBaseClient(BaseClient):
     """Concrete implementation for testing optional methods."""

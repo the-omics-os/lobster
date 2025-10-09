@@ -15,6 +15,7 @@ This module provides extensive testing for DataManagerV2 covering:
 - Data integrity and performance testing
 """
 
+import concurrent.futures
 import json
 import os
 import shutil
@@ -24,14 +25,13 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from unittest.mock import Mock, MagicMock, patch, call
-import concurrent.futures
+from unittest.mock import MagicMock, Mock, call, patch
 
+import anndata as ad
 import numpy as np
 import pandas as pd
-import pytest
-import anndata as ad
 import plotly.graph_objects as go
+import pytest
 from pytest_mock import MockerFixture
 
 from lobster.core.data_manager_v2 import DataManagerV2
@@ -39,26 +39,25 @@ from lobster.core.interfaces.adapter import IModalityAdapter
 from lobster.core.interfaces.backend import IDataBackend
 from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.provenance import ProvenanceTracker
-
-from tests.mock_data.factories import (
-    SingleCellDataFactory,
-    BulkRNASeqDataFactory,
-    ProteomicsDataFactory,
-    MultiModalDataFactory
-)
 from tests.mock_data.base import (
+    BATCH_EFFECT_CONFIG,
+    HIGH_NOISE_CONFIG,
+    LARGE_DATASET_CONFIG,
+    LOW_QUALITY_CONFIG,
     MEDIUM_DATASET_CONFIG,
     SMALL_DATASET_CONFIG,
-    LARGE_DATASET_CONFIG,
-    HIGH_NOISE_CONFIG,
-    LOW_QUALITY_CONFIG,
-    BATCH_EFFECT_CONFIG
 )
-
+from tests.mock_data.factories import (
+    BulkRNASeqDataFactory,
+    MultiModalDataFactory,
+    ProteomicsDataFactory,
+    SingleCellDataFactory,
+)
 
 # ===============================================================================
 # Test Fixtures
 # ===============================================================================
+
 
 @pytest.fixture
 def temp_workspace():
@@ -81,7 +80,7 @@ def mock_adapter():
         "optional_var": ["gene_names", "gene_symbols"],
         "layers": ["counts", "logcounts"],
         "obsm": ["X_pca", "X_umap"],
-        "uns": ["processing_info", "metadata"]
+        "uns": ["processing_info", "metadata"],
     }
 
     # Mock validation result
@@ -98,7 +97,7 @@ def mock_adapter():
         "n_vars": 2000,
         "mean_counts_per_cell": 5000,
         "median_genes_per_cell": 1200,
-        "total_counts": 5000000
+        "total_counts": 5000000,
     }
 
     return adapter
@@ -113,7 +112,7 @@ def mock_backend():
         "supports_multimodal": True,
         "compression": ["gzip", "lzf"],
         "max_file_size": "10GB",
-        "supported_formats": ["h5ad", "zarr"]
+        "supported_formats": ["h5ad", "zarr"],
     }
     backend.save.return_value = None
     backend.load.return_value = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
@@ -129,7 +128,7 @@ def sample_datasets():
         "single_cell": SingleCellDataFactory(config=MEDIUM_DATASET_CONFIG),
         "bulk_rna": BulkRNASeqDataFactory(config=MEDIUM_DATASET_CONFIG),
         "proteomics": ProteomicsDataFactory(config=MEDIUM_DATASET_CONFIG),
-        "multimodal": MultiModalDataFactory(config=MEDIUM_DATASET_CONFIG)
+        "multimodal": MultiModalDataFactory(config=MEDIUM_DATASET_CONFIG),
     }
 
 
@@ -137,23 +136,30 @@ def sample_datasets():
 # Multi-Modal Data Orchestration Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestMultiModalOrchestration:
     """Test multi-modal data orchestration capabilities."""
 
-    def test_multi_modal_data_loading(self, temp_workspace, mock_adapter, sample_datasets):
+    def test_multi_modal_data_loading(
+        self, temp_workspace, mock_adapter, sample_datasets
+    ):
         """Test loading multiple data modalities."""
         dm = DataManagerV2(workspace_path=temp_workspace)
 
         # Register adapters for different modalities
-        for modality_type in ["transcriptomics_single_cell", "transcriptomics_bulk", "proteomics_ms"]:
+        for modality_type in [
+            "transcriptomics_single_cell",
+            "transcriptomics_bulk",
+            "proteomics_ms",
+        ]:
             dm.register_adapter(modality_type, mock_adapter)
 
         # Load different data types
         mock_adapter.from_source.side_effect = [
             sample_datasets["single_cell"],
             sample_datasets["bulk_rna"],
-            sample_datasets["proteomics"]
+            sample_datasets["proteomics"],
         ]
 
         dm.load_modality("sc_rna", "path/sc.h5ad", "transcriptomics_single_cell")
@@ -181,13 +187,15 @@ class TestMultiModalOrchestration:
         dm.modalities["protein"] = multimodal_data["protein"]
 
         # Test quality metrics across modalities
-        with patch.object(dm, '_match_modality_to_adapter') as mock_match:
+        with patch.object(dm, "_match_modality_to_adapter") as mock_match:
             mock_match.return_value = None  # Force base adapter usage
 
-            with patch('lobster.core.adapters.base.BaseAdapter') as mock_base:
+            with patch("lobster.core.adapters.base.BaseAdapter") as mock_base:
                 mock_base_instance = Mock()
                 mock_base.return_value = mock_base_instance
-                mock_base_instance.get_quality_metrics.return_value = {"basic": "metrics"}
+                mock_base_instance.get_quality_metrics.return_value = {
+                    "basic": "metrics"
+                }
 
                 all_metrics = dm.get_quality_metrics()
 
@@ -197,8 +205,10 @@ class TestMultiModalOrchestration:
 
     def test_mudata_integration(self, temp_workspace, sample_datasets):
         """Test MuData integration for multi-modal data."""
-        with patch('lobster.core.data_manager_v2.MUDATA_AVAILABLE', True), \
-             patch('lobster.core.data_manager_v2.mudata') as mock_mudata:
+        with (
+            patch("lobster.core.data_manager_v2.MUDATA_AVAILABLE", True),
+            patch("lobster.core.data_manager_v2.mudata") as mock_mudata,
+        ):
 
             mock_mdata = Mock()
             mock_mudata.MuData.return_value = mock_mdata
@@ -225,10 +235,10 @@ class TestMultiModalOrchestration:
         dm.modalities["good_data"] = sample_datasets["single_cell"]
         dm.modalities["bulk_data"] = sample_datasets["bulk_rna"]
 
-        with patch.object(dm, '_match_modality_to_adapter') as mock_match:
+        with patch.object(dm, "_match_modality_to_adapter") as mock_match:
             mock_match.return_value = None
 
-            with patch('lobster.core.adapters.base.BaseAdapter') as mock_base:
+            with patch("lobster.core.adapters.base.BaseAdapter") as mock_base:
                 mock_base_instance = Mock()
                 mock_base.return_value = mock_base_instance
 
@@ -242,7 +252,10 @@ class TestMultiModalOrchestration:
                 bulk_result.has_warnings = True
                 bulk_result.warnings = ["Missing optional field"]
 
-                mock_base_instance._validate_basic_structure.side_effect = [good_result, bulk_result]
+                mock_base_instance._validate_basic_structure.side_effect = [
+                    good_result,
+                    bulk_result,
+                ]
 
                 results = dm.validate_modalities()
 
@@ -254,6 +267,7 @@ class TestMultiModalOrchestration:
 # ===============================================================================
 # Named Biological Datasets Management Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestNamedDatasetsManagement:
@@ -276,30 +290,32 @@ class TestNamedDatasetsManagement:
             "clustered",
             "markers_identified",
             "annotated",
-            "pseudobulk_aggregated"
+            "pseudobulk_aggregated",
         ]
 
         for step in processing_steps:
-            with patch('lobster.utils.file_naming.BioinformaticsFileNaming') as mock_naming:
-                mock_naming.generate_filename.return_value = f"geo_gse123456_{step}.h5ad"
-                mock_naming.generate_metadata_filename.return_value = f"geo_gse123456_{step}_metadata.json"
+            with patch(
+                "lobster.utils.file_naming.BioinformaticsFileNaming"
+            ) as mock_naming:
+                mock_naming.generate_filename.return_value = (
+                    f"geo_gse123456_{step}.h5ad"
+                )
+                mock_naming.generate_metadata_filename.return_value = (
+                    f"geo_gse123456_{step}_metadata.json"
+                )
                 mock_naming.suggest_next_step.return_value = "next_step"
                 mock_naming.get_processing_step_order.return_value = 1
 
-                with patch.object(dm, 'save_modality') as mock_save:
+                with patch.object(dm, "save_modality") as mock_save:
                     mock_save.return_value = f"/path/to/geo_gse123456_{step}.h5ad"
 
                     result = dm.save_processed_data(
-                        processing_step=step,
-                        data_source="GEO",
-                        dataset_id="GSE123456"
+                        processing_step=step, data_source="GEO", dataset_id="GSE123456"
                     )
 
                     assert result is not None
                     mock_naming.generate_filename.assert_called_with(
-                        data_source="GEO",
-                        dataset_id="GSE123456",
-                        processing_step=step
+                        data_source="GEO", dataset_id="GSE123456", processing_step=step
                     )
 
     def test_dataset_lineage_tracking(self, temp_workspace, sample_datasets):
@@ -314,7 +330,7 @@ class TestNamedDatasetsManagement:
             ("geo_gse123456_quality_assessed", "quality_control"),
             ("geo_gse123456_filtered_normalized", "preprocessing"),
             ("geo_gse123456_clustered", "clustering"),
-            ("geo_gse123456_annotated", "annotation")
+            ("geo_gse123456_annotated", "annotation"),
         ]
 
         for dataset_name, tool in processing_chain:
@@ -325,12 +341,14 @@ class TestNamedDatasetsManagement:
             dm.log_tool_usage(
                 tool_name=tool,
                 parameters={"source_dataset": list(dm.modalities.keys())[-2]},
-                description=f"Applied {tool} to create {dataset_name}"
+                description=f"Applied {tool} to create {dataset_name}",
             )
 
         # Verify lineage in tool usage history
         assert len(dm.tool_usage_history) == 4
-        assert all("source_dataset" in entry["parameters"] for entry in dm.tool_usage_history)
+        assert all(
+            "source_dataset" in entry["parameters"] for entry in dm.tool_usage_history
+        )
 
         # Verify naming consistency
         for dataset_name, _ in processing_chain:
@@ -348,15 +366,15 @@ class TestNamedDatasetsManagement:
                 "organism": "Homo sapiens",
                 "tissue": "brain",
                 "technology": "10x Genomics",
-                "n_samples": 8
+                "n_samples": 8,
             },
             "geo_gse789012": {
                 "title": "Bulk RNA-seq of liver samples",
                 "organism": "Mus musculus",
                 "tissue": "liver",
                 "technology": "Illumina HiSeq",
-                "n_samples": 24
-            }
+                "n_samples": 24,
+            },
         }
 
         for dataset_id, metadata in datasets_metadata.items():
@@ -367,7 +385,10 @@ class TestNamedDatasetsManagement:
         for dataset_id in datasets_metadata:
             retrieved_metadata = dm.get_stored_metadata(dataset_id)
             assert retrieved_metadata is not None
-            assert retrieved_metadata["metadata"]["title"] == datasets_metadata[dataset_id]["title"]
+            assert (
+                retrieved_metadata["metadata"]["title"]
+                == datasets_metadata[dataset_id]["title"]
+            )
             assert retrieved_metadata["validation"]["validated"] is True
 
         # Test dataset listing
@@ -378,6 +399,7 @@ class TestNamedDatasetsManagement:
 # ===============================================================================
 # Workspace Restoration and Session Management Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestWorkspaceRestoration:
@@ -391,7 +413,7 @@ class TestWorkspaceRestoration:
         test_files = {
             "dataset1.h5ad": sample_datasets["single_cell"],
             "dataset2.h5ad": sample_datasets["bulk_rna"],
-            "processed_data.h5ad": sample_datasets["proteomics"]
+            "processed_data.h5ad": sample_datasets["proteomics"],
         }
 
         for filename, adata in test_files.items():
@@ -423,7 +445,7 @@ class TestWorkspaceRestoration:
         # Pre-populate workspace with saved datasets
         test_datasets = {
             "experiment_1": sample_datasets["single_cell"],
-            "experiment_2": sample_datasets["bulk_rna"]
+            "experiment_2": sample_datasets["bulk_rna"],
         }
 
         for name, adata in test_datasets.items():
@@ -478,7 +500,7 @@ class TestWorkspaceRestoration:
             "geo_gse123456_raw": sample_datasets["single_cell"],
             "geo_gse123456_processed": sample_datasets["single_cell"],
             "geo_gse789012_raw": sample_datasets["bulk_rna"],
-            "experiment_control": sample_datasets["proteomics"]
+            "experiment_control": sample_datasets["proteomics"],
         }
 
         # Save datasets to workspace
@@ -516,7 +538,7 @@ class TestWorkspaceRestoration:
         dm._update_session_file("test_operation")
 
         # Load session data
-        with open(dm.session_file, 'r') as f:
+        with open(dm.session_file, "r") as f:
             session_data = json.load(f)
 
         # Verify comprehensive tracking
@@ -540,6 +562,7 @@ class TestWorkspaceRestoration:
 # Tool Usage History and Provenance Tracking Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestProvenanceTracking:
     """Test W3C-PROV compliant provenance tracking."""
@@ -547,12 +570,16 @@ class TestProvenanceTracking:
     def test_provenance_initialization(self, temp_workspace):
         """Test provenance tracker initialization and configuration."""
         # With provenance enabled
-        dm_with_prov = DataManagerV2(workspace_path=temp_workspace, enable_provenance=True)
+        dm_with_prov = DataManagerV2(
+            workspace_path=temp_workspace, enable_provenance=True
+        )
         assert dm_with_prov.provenance is not None
         assert isinstance(dm_with_prov.provenance, ProvenanceTracker)
 
         # With provenance disabled
-        dm_without_prov = DataManagerV2(workspace_path=temp_workspace, enable_provenance=False)
+        dm_without_prov = DataManagerV2(
+            workspace_path=temp_workspace, enable_provenance=False
+        )
         assert dm_without_prov.provenance is None
 
     def test_comprehensive_tool_usage_logging(self, temp_workspace, sample_datasets):
@@ -564,23 +591,31 @@ class TestProvenanceTracking:
             {
                 "tool": "data_loading",
                 "parameters": {"file_path": "/path/to/data.h5ad", "format": "h5ad"},
-                "description": "Loaded single-cell RNA-seq data"
+                "description": "Loaded single-cell RNA-seq data",
             },
             {
                 "tool": "quality_control",
-                "parameters": {"min_genes": 200, "max_genes": 5000, "mt_pct_threshold": 20},
-                "description": "Applied quality control filters"
+                "parameters": {
+                    "min_genes": 200,
+                    "max_genes": 5000,
+                    "mt_pct_threshold": 20,
+                },
+                "description": "Applied quality control filters",
             },
             {
                 "tool": "normalization",
                 "parameters": {"method": "log1p", "target_sum": 10000},
-                "description": "Normalized gene expression data"
+                "description": "Normalized gene expression data",
             },
             {
                 "tool": "clustering",
-                "parameters": {"algorithm": "leiden", "resolution": 0.5, "n_neighbors": 15},
-                "description": "Performed cell clustering"
-            }
+                "parameters": {
+                    "algorithm": "leiden",
+                    "resolution": 0.5,
+                    "n_neighbors": 15,
+                },
+                "description": "Performed cell clustering",
+            },
         ]
 
         # Log all operations
@@ -598,9 +633,11 @@ class TestProvenanceTracking:
             assert logged_op["description"] == operation["description"]
             assert "timestamp" in logged_op
 
-    def test_provenance_entity_creation(self, temp_workspace, mock_adapter, sample_datasets):
+    def test_provenance_entity_creation(
+        self, temp_workspace, mock_adapter, sample_datasets
+    ):
         """Test W3C-PROV entity creation and tracking."""
-        with patch('lobster.core.data_manager_v2.ProvenanceTracker') as mock_prov_class:
+        with patch("lobster.core.data_manager_v2.ProvenanceTracker") as mock_prov_class:
             mock_prov = Mock(spec=ProvenanceTracker)
             mock_prov.activities = {}
             mock_prov.entities = {}
@@ -623,12 +660,12 @@ class TestProvenanceTracking:
 
     def test_provenance_export(self, temp_workspace):
         """Test provenance information export."""
-        with patch('lobster.core.data_manager_v2.ProvenanceTracker') as mock_prov_class:
+        with patch("lobster.core.data_manager_v2.ProvenanceTracker") as mock_prov_class:
             mock_prov = Mock(spec=ProvenanceTracker)
             mock_prov.to_dict.return_value = {
                 "activities": {"act_1": {"type": "data_loading"}},
                 "entities": {"ent_1": {"type": "dataset"}},
-                "agents": {"agent_1": {"type": "software"}}
+                "agents": {"agent_1": {"type": "software"}},
             }
             mock_prov_class.return_value = mock_prov
 
@@ -642,7 +679,7 @@ class TestProvenanceTracking:
             mock_prov.to_dict.assert_called_once()
 
             # Verify export content
-            with open(export_path, 'r') as f:
+            with open(export_path, "r") as f:
                 exported_data = json.load(f)
 
             assert "activities" in exported_data
@@ -658,7 +695,7 @@ class TestProvenanceTracking:
             dm.log_tool_usage(
                 tool_name=f"tool_{i}",
                 parameters={"iteration": i, "data": f"dataset_{i}"},
-                description=f"Operation {i}"
+                description=f"Operation {i}",
             )
 
         # Verify all entries are stored (no automatic limiting in current implementation)
@@ -668,7 +705,7 @@ class TestProvenanceTracking:
         dm._update_session_file("large_history_test")
 
         # Verify session file contains recent commands (limited to 50)
-        with open(dm.session_file, 'r') as f:
+        with open(dm.session_file, "r") as f:
             session_data = json.load(f)
 
         assert len(session_data["command_history"]) == 50
@@ -679,6 +716,7 @@ class TestProvenanceTracking:
 # ===============================================================================
 # Backend/Adapter Registry and Schema Validation Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestBackendAdapterRegistry:
@@ -693,7 +731,7 @@ class TestBackendAdapterRegistry:
             "h5ad_fast": mock_backend,
             "h5ad_compressed": mock_backend,
             "zarr_backend": mock_backend,
-            "custom_backend": mock_backend
+            "custom_backend": mock_backend,
         }
 
         for name, backend in backends.items():
@@ -720,14 +758,14 @@ class TestBackendAdapterRegistry:
                 "required_obs": ["cell_id", "sample_id", "batch"],
                 "required_var": ["gene_id", "gene_symbol"],
                 "optional_obs": ["cell_type", "condition"],
-                "optional_var": ["chromosome", "gene_biotype"]
+                "optional_var": ["chromosome", "gene_biotype"],
             },
             "flexible_proteomics": {
                 "required_obs": ["sample_id"],
                 "required_var": ["protein_id"],
                 "optional_obs": ["condition", "replicate"],
-                "optional_var": ["protein_name", "molecular_weight"]
-            }
+                "optional_var": ["protein_name", "molecular_weight"],
+            },
         }
 
         for adapter_name, schema in adapters_configs.items():
@@ -745,7 +783,9 @@ class TestBackendAdapterRegistry:
             assert adapter_name in adapter_info
             assert adapter_info[adapter_name]["schema"] == expected_schema
 
-    def test_validation_result_handling(self, temp_workspace, mock_adapter, sample_datasets):
+    def test_validation_result_handling(
+        self, temp_workspace, mock_adapter, sample_datasets
+    ):
         """Test comprehensive validation result handling."""
         dm = DataManagerV2(workspace_path=temp_workspace)
         dm.register_adapter("test_adapter", mock_adapter)
@@ -757,22 +797,28 @@ class TestBackendAdapterRegistry:
                 "has_errors": False,
                 "has_warnings": False,
                 "errors": [],
-                "warnings": []
+                "warnings": [],
             },
             {
                 "name": "warnings_only",
                 "has_errors": False,
                 "has_warnings": True,
                 "errors": [],
-                "warnings": ["Missing optional field 'gene_symbols'", "Low expression variance"]
+                "warnings": [
+                    "Missing optional field 'gene_symbols'",
+                    "Low expression variance",
+                ],
             },
             {
                 "name": "errors_present",
                 "has_errors": True,
                 "has_warnings": False,
-                "errors": ["Missing required field 'cell_id'", "Invalid gene identifiers"],
-                "warnings": []
-            }
+                "errors": [
+                    "Missing required field 'cell_id'",
+                    "Invalid gene identifiers",
+                ],
+                "warnings": [],
+            },
         ]
 
         for scenario in validation_scenarios:
@@ -788,10 +834,14 @@ class TestBackendAdapterRegistry:
             if scenario["has_errors"]:
                 # Should raise exception for errors
                 with pytest.raises(ValueError, match="Validation failed"):
-                    dm.load_modality(scenario["name"], "source", "test_adapter", validate=True)
+                    dm.load_modality(
+                        scenario["name"], "source", "test_adapter", validate=True
+                    )
             else:
                 # Should succeed for warnings or no issues
-                adata = dm.load_modality(scenario["name"], "source", "test_adapter", validate=True)
+                adata = dm.load_modality(
+                    scenario["name"], "source", "test_adapter", validate=True
+                )
                 assert adata is not None
                 assert scenario["name"] in dm.modalities
 
@@ -805,12 +855,12 @@ class TestBackendAdapterRegistry:
         dm.modalities["proteomics_data"] = sample_datasets["proteomics"]
 
         # Test validation with adapter matching
-        with patch.object(dm, '_match_modality_to_adapter') as mock_match:
+        with patch.object(dm, "_match_modality_to_adapter") as mock_match:
             # Mock different adapter matches
             adapter_matches = {
                 "single_cell_data": "transcriptomics_single_cell",
                 "bulk_rna_data": "transcriptomics_bulk",
-                "proteomics_data": "proteomics_ms"
+                "proteomics_data": "proteomics_ms",
             }
 
             mock_match.side_effect = lambda name: adapter_matches.get(name)
@@ -834,6 +884,7 @@ class TestBackendAdapterRegistry:
 # ===============================================================================
 # Memory Efficiency and Performance Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestMemoryEfficiencyPerformance:
@@ -920,7 +971,9 @@ class TestMemoryEfficiencyPerformance:
         results = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             futures = [executor.submit(add_modality, i) for i in range(10)]
-            results = [future.result() for future in concurrent.futures.as_completed(futures)]
+            results = [
+                future.result() for future in concurrent.futures.as_completed(futures)
+            ]
 
         # Verify all operations succeeded
         assert all(results)
@@ -968,13 +1021,15 @@ class TestMemoryEfficiencyPerformance:
         assert loading_time < 1.0
 
         # Benchmark quality metrics calculation
-        with patch.object(dm, '_match_modality_to_adapter') as mock_match:
+        with patch.object(dm, "_match_modality_to_adapter") as mock_match:
             mock_match.return_value = None
 
-            with patch('lobster.core.adapters.base.BaseAdapter') as mock_base:
+            with patch("lobster.core.adapters.base.BaseAdapter") as mock_base:
                 mock_base_instance = Mock()
                 mock_base.return_value = mock_base_instance
-                mock_base_instance.get_quality_metrics.return_value = {"test": "metrics"}
+                mock_base_instance.get_quality_metrics.return_value = {
+                    "test": "metrics"
+                }
 
                 start_time = time.time()
                 metrics = dm.get_quality_metrics()
@@ -988,6 +1043,7 @@ class TestMemoryEfficiencyPerformance:
 # ===============================================================================
 # Error Handling and Edge Cases Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestErrorHandlingEdgeCases:
@@ -1020,7 +1076,7 @@ class TestErrorHandlingEdgeCases:
             ("empty_data", Mock(shape=(0, 0))),
             ("invalid_matrix", Mock(X=None)),
             ("missing_obs", Mock(obs=None)),
-            ("missing_var", Mock(var=None))
+            ("missing_var", Mock(var=None)),
         ]
 
         for scenario_name, corrupted_data in corruption_scenarios:
@@ -1028,11 +1084,15 @@ class TestErrorHandlingEdgeCases:
             mock_adapter.from_source.return_value = corrupted_data
 
             try:
-                dm.load_modality(scenario_name, "source", "test_adapter", validate=False)
+                dm.load_modality(
+                    scenario_name, "source", "test_adapter", validate=False
+                )
 
                 # Test that helper methods handle corrupted data gracefully
                 shape = dm._get_safe_shape(corrupted_data)
-                memory = dm._get_safe_memory_usage(corrupted_data.X if hasattr(corrupted_data, 'X') else None)
+                memory = dm._get_safe_memory_usage(
+                    corrupted_data.X if hasattr(corrupted_data, "X") else None
+                )
 
                 # Should return safe defaults
                 assert isinstance(shape, tuple)
@@ -1054,7 +1114,9 @@ class TestErrorHandlingEdgeCases:
             try:
                 if operation_id % 2 == 0:
                     # Add modality
-                    dm.modalities[f"dataset_{operation_id}"] = sample_datasets["single_cell"].copy()
+                    dm.modalities[f"dataset_{operation_id}"] = sample_datasets[
+                        "single_cell"
+                    ].copy()
                 else:
                     # Try to remove modality (might fail if already removed)
                     try:
@@ -1074,7 +1136,9 @@ class TestErrorHandlingEdgeCases:
         # Run concurrent modifications
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             futures = [executor.submit(modify_modalities, i) for i in range(20)]
-            results = [future.result() for future in concurrent.futures.as_completed(futures)]
+            results = [
+                future.result() for future in concurrent.futures.as_completed(futures)
+            ]
 
         # Verify system remained stable
         assert len(dm.tool_usage_history) == 20  # All operations logged
@@ -1085,7 +1149,9 @@ class TestErrorHandlingEdgeCases:
         dm = DataManagerV2(workspace_path=temp_workspace)
 
         # Simulate memory exhaustion during large operation
-        with patch('lobster.core.data_manager_v2.np.random.negative_binomial') as mock_random:
+        with patch(
+            "lobster.core.data_manager_v2.np.random.negative_binomial"
+        ) as mock_random:
             mock_random.side_effect = MemoryError("Insufficient memory")
 
             # Should handle memory error gracefully
@@ -1097,11 +1163,15 @@ class TestErrorHandlingEdgeCases:
         # Test with invalid backend
         dm = DataManagerV2(workspace_path=temp_workspace)
 
-        with pytest.raises(ValueError, match="Backend 'invalid_backend' not registered"):
+        with pytest.raises(
+            ValueError, match="Backend 'invalid_backend' not registered"
+        ):
             dm.save_modality("nonexistent", "path", backend="invalid_backend")
 
         # Test with invalid adapter
-        with pytest.raises(ValueError, match="Adapter 'invalid_adapter' not registered"):
+        with pytest.raises(
+            ValueError, match="Adapter 'invalid_adapter' not registered"
+        ):
             dm.load_modality("test", "source", "invalid_adapter")
 
     def test_data_integrity_verification(self, temp_workspace, sample_datasets):

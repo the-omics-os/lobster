@@ -340,17 +340,15 @@ List available operation modes with descriptions.
 ```
 
 **Available Modes**:
-- `development`: Claude 3.7 Sonnet for all agents, 3.5 Sonnet v2 for assistant - fast development
-- `production`: Claude 4 Sonnet for all agents, 3.5 Sonnet v2 for assistant - production ready
-- `cost-optimized`: Claude 3.7 Sonnet for all agents, 3.5 Sonnet v2 for assistant - cost optimized
+- `development`: Claude 4.5 Sonnet supervisor, Claude 3.7 Sonnet workers - fast development with balanced performance
+- `production`: Claude 4.5 Sonnet for all agents - production-ready quality across all agents
 
 #### `/mode <name>`
 Change operation mode and agent configurations.
 
 ```
-/mode production                   # Switch to production mode
-/mode development                 # Use development models
-/mode cost-optimized             # Switch to cost-optimized mode
+/mode production                   # Switch to production mode (Claude 4.5 Sonnet all agents)
+/mode development                  # Use development profile (mixed models for cost efficiency)
 ```
 
 **Effects**:
@@ -641,8 +639,8 @@ lobster chat --verbose --debug
 # Check resource usage
 /dashboard
 
-# Switch to lighter mode
-/mode cost-optimized
+# Switch to development mode for lighter resource usage
+/mode development
 
 # Monitor active operations
 /progress

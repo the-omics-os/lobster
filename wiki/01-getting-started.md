@@ -175,7 +175,7 @@ lobster config test  # Test API connectivity
 
 **Memory issues?**
 ```bash
-export LOBSTER_PROFILE=cost-optimized  # Use lighter models
+export LOBSTER_PROFILE=development  # Use lighter resource profile
 ```
 
 **Need help?**

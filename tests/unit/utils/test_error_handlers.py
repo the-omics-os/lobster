@@ -4,19 +4,20 @@ Unit tests for the modular error handling system.
 Tests all error handlers, registry functionality, and error guidance generation.
 """
 
-import pytest
 from unittest.mock import Mock, patch
 
+import pytest
+
 from lobster.utils.error_handlers import (
+    AuthenticationErrorHandler,
     ErrorGuidance,
     ErrorHandler,
-    RateLimitErrorHandler,
-    AuthenticationErrorHandler,
+    ErrorHandlerRegistry,
     NetworkErrorHandler,
     QuotaExceededErrorHandler,
-    ErrorHandlerRegistry,
+    RateLimitErrorHandler,
     get_error_registry,
-    reset_error_registry
+    reset_error_registry,
 )
 
 
@@ -34,7 +35,7 @@ class TestErrorGuidance:
             support_email="test@example.com",
             documentation_url="https://example.com",
             can_retry=True,
-            retry_delay=30
+            retry_delay=30,
         )
 
         assert guidance.error_type == "test"
@@ -46,10 +47,7 @@ class TestErrorGuidance:
     def test_error_guidance_defaults(self):
         """Test ErrorGuidance with default values."""
         guidance = ErrorGuidance(
-            error_type="test",
-            title="Test",
-            description="Test",
-            solutions=[]
+            error_type="test", title="Test", description="Test", solutions=[]
         )
 
         assert guidance.severity == "error"
@@ -246,6 +244,7 @@ class TestErrorHandlerRegistry:
 
     def test_register_custom_handler(self):
         """Test registering a custom handler."""
+
         class CustomHandler(ErrorHandler):
             def can_handle(self, error, error_str):
                 return "custom" in error_str.lower()
@@ -255,7 +254,7 @@ class TestErrorHandlerRegistry:
                     error_type="custom",
                     title="Custom Error",
                     description="Custom",
-                    solutions=[]
+                    solutions=[],
                 )
 
         initial_count = len(self.registry.handlers)
@@ -308,6 +307,7 @@ class TestErrorHandlerRegistry:
 
     def test_handler_exception_does_not_break_registry(self):
         """Test that handler exceptions don't break the system."""
+
         class FaultyHandler(ErrorHandler):
             def can_handle(self, error, error_str):
                 return True  # Always claims to handle
@@ -407,7 +407,9 @@ class TestIntegration:
         assert guidance.error_type == "rate_limit"
         assert "Rate Limit" in guidance.title
         assert len(guidance.solutions) >= 4
-        assert "Anthropic" in guidance.solutions[1]  # Should mention requesting increase
+        assert (
+            "Anthropic" in guidance.solutions[1]
+        )  # Should mention requesting increase
         assert "Bedrock" in guidance.solutions[2]  # Should recommend AWS
         assert guidance.support_email == "info@omics-os.com"
         assert guidance.can_retry is True
@@ -421,7 +423,7 @@ class TestIntegration:
             Exception("429 rate limit"),
             Exception("401 unauthorized"),
             Exception("Connection timeout"),
-            Exception("quota exceeded")
+            Exception("quota exceeded"),
         ]
 
         expected_types = ["rate_limit", "authentication", "network", "quota"]

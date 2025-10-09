@@ -13,11 +13,12 @@ Tests focus on the critical fixes made to:
 - setup.py (version reading)
 """
 
-import pytest
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-import shutil
+
+import pytest
 
 
 class TestCommandInjectionPrevention:
@@ -30,7 +31,7 @@ class TestCommandInjectionPrevention:
             "lobster/lobster",
             "lobster/core",
             "lobster/tools",
-            "lobster/agents"
+            "lobster/agents",
         ]
 
         violations = []
@@ -40,18 +41,21 @@ class TestCommandInjectionPrevention:
                 continue
 
             for py_file in prod_path.rglob("*.py"):
-                with open(py_file, 'r') as f:
+                with open(py_file, "r") as f:
                     content = f.read()
                     # Look for subprocess calls with shell=True
                     if "shell=True" in content and "subprocess." in content:
                         # Find the line numbers
-                        lines = content.split('\n')
+                        lines = content.split("\n")
                         for i, line in enumerate(lines, 1):
-                            if "shell=True" in line and not line.strip().startswith('#'):
+                            if "shell=True" in line and not line.strip().startswith(
+                                "#"
+                            ):
                                 violations.append(f"{py_file}:{i}")
 
-        assert len(violations) == 0, \
-            f"Found shell=True in production code: {violations}"
+        assert (
+            len(violations) == 0
+        ), f"Found shell=True in production code: {violations}"
 
     def test_no_exec_in_production_code(self):
         """Verify that exec() is not used in production code."""
@@ -60,7 +64,7 @@ class TestCommandInjectionPrevention:
             "lobster/lobster",
             "lobster/core",
             "lobster/tools",
-            "lobster/agents"
+            "lobster/agents",
         ]
 
         violations = []
@@ -70,18 +74,17 @@ class TestCommandInjectionPrevention:
                 continue
 
             for py_file in prod_path.rglob("*.py"):
-                with open(py_file, 'r') as f:
+                with open(py_file, "r") as f:
                     content = f.read()
                     # Look for exec() calls
                     if "exec(" in content:
                         # Find the line numbers
-                        lines = content.split('\n')
+                        lines = content.split("\n")
                         for i, line in enumerate(lines, 1):
-                            if "exec(" in line and not line.strip().startswith('#'):
+                            if "exec(" in line and not line.strip().startswith("#"):
                                 violations.append(f"{py_file}:{i}")
 
-        assert len(violations) == 0, \
-            f"Found exec() in production code: {violations}"
+        assert len(violations) == 0, f"Found exec() in production code: {violations}"
 
     def test_no_eval_in_production_code(self):
         """Verify that eval() is not used in production code."""
@@ -90,7 +93,7 @@ class TestCommandInjectionPrevention:
             "lobster/lobster",
             "lobster/core",
             "lobster/tools",
-            "lobster/agents"
+            "lobster/agents",
         ]
 
         violations = []
@@ -100,18 +103,17 @@ class TestCommandInjectionPrevention:
                 continue
 
             for py_file in prod_path.rglob("*.py"):
-                with open(py_file, 'r') as f:
+                with open(py_file, "r") as f:
                     content = f.read()
                     # Look for eval() calls
                     if "eval(" in content:
                         # Find the line numbers
-                        lines = content.split('\n')
+                        lines = content.split("\n")
                         for i, line in enumerate(lines, 1):
-                            if "eval(" in line and not line.strip().startswith('#'):
+                            if "eval(" in line and not line.strip().startswith("#"):
                                 violations.append(f"{py_file}:{i}")
 
-        assert len(violations) == 0, \
-            f"Found eval() in production code: {violations}"
+        assert len(violations) == 0, f"Found eval() in production code: {violations}"
 
 
 class TestFileOperationSafety:
@@ -202,8 +204,9 @@ class TestPathTraversalPrevention:
 
             # For these malicious paths, we expect them to be outside base_dir
             # In production code, SafeFileOps would raise ValueError
-            assert not safe or not outside_file.exists() or resolved_path != outside_file, \
-                f"Path traversal not detected for: {malicious_path}"
+            assert (
+                not safe or not outside_file.exists() or resolved_path != outside_file
+            ), f"Path traversal not detected for: {malicious_path}"
 
 
 class TestSetupPySecurity:
@@ -215,18 +218,19 @@ class TestSetupPySecurity:
         if not setup_file.exists():
             pytest.skip("setup.py not found")
 
-        with open(setup_file, 'r') as f:
+        with open(setup_file, "r") as f:
             content = f.read()
 
         # Verify that setup.py does NOT use exec()
-        assert "exec(" not in content or "exec(f.read()" not in content, \
-            "setup.py still uses exec() for version reading"
+        assert (
+            "exec(" not in content or "exec(f.read()" not in content
+        ), "setup.py still uses exec() for version reading"
 
         # Verify that setup.py uses regex for version extraction
-        assert "re.search" in content, \
-            "setup.py should use regex for safe version extraction"
-        assert "__version__" in content, \
-            "setup.py should extract __version__"
+        assert (
+            "re.search" in content
+        ), "setup.py should use regex for safe version extraction"
+        assert "__version__" in content, "setup.py should extract __version__"
 
 
 class TestSubprocessUsage:
@@ -239,7 +243,7 @@ class TestSubprocessUsage:
             ["echo", "test"],  # List arguments - safe
             capture_output=True,
             text=True,
-            shell=False  # Explicitly False
+            shell=False,  # Explicitly False
         )
         assert result.returncode == 0
 
@@ -253,7 +257,7 @@ class TestSubprocessUsage:
             ["echo", user_input],  # user_input is separate argument
             capture_output=True,
             text=True,
-            shell=False
+            shell=False,
         )
 
         # The malicious command is not executed, just echoed as text

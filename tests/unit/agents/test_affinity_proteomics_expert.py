@@ -8,30 +8,32 @@ variation analysis, and antibody validation metrics functionality.
 Test coverage target: 95%+ with meaningful tests for affinity proteomics agent operations.
 """
 
-import pytest
-from typing import Dict, Any, List, Optional, Union, Tuple
-from unittest.mock import Mock, MagicMock, patch, mock_open
+import os
+import tempfile
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
+from unittest.mock import MagicMock, Mock, mock_open, patch
+
+import anndata as ad
 import numpy as np
 import pandas as pd
-import anndata as ad
-from pathlib import Path
-import tempfile
-import os
+import pytest
 
 from lobster.agents.affinity_proteomics_expert import affinity_proteomics_expert
 from lobster.core.data_manager_v2 import DataManagerV2
-
 
 # ===============================================================================
 # Mock Data and Fixtures
 # ===============================================================================
 
+
 def get_agent_tool(agent, tool_name):
     """Helper function to extract a tool from an agent by name."""
     for tool in agent.tools:
-        if hasattr(tool, 'name') and tool.name == tool_name:
+        if hasattr(tool, "name") and tool.name == tool_name:
             return tool
     return None
+
 
 @pytest.fixture
 def mock_data_manager(mock_agent_environment):
@@ -53,24 +55,24 @@ def mock_data_manager(mock_agent_environment):
     adata.var_names = [f"protein_{i}" for i in range(n_proteins)]
 
     # Add affinity-specific metadata
-    adata.obs['plate'] = [f"plate_{i//24 + 1}" for i in range(n_samples)]  # 4 plates
-    adata.obs['well'] = [f"{chr(65 + i//12)}{(i%12)+1:02d}" for i in range(n_samples)]
-    adata.obs['condition'] = ['control'] * 48 + ['treatment'] * 48
-    adata.obs['batch'] = ['batch1'] * 32 + ['batch2'] * 32 + ['batch3'] * 32
-    adata.obs['dilution_factor'] = [1] * n_samples
+    adata.obs["plate"] = [f"plate_{i//24 + 1}" for i in range(n_samples)]  # 4 plates
+    adata.obs["well"] = [f"{chr(65 + i//12)}{(i%12)+1:02d}" for i in range(n_samples)]
+    adata.obs["condition"] = ["control"] * 48 + ["treatment"] * 48
+    adata.obs["batch"] = ["batch1"] * 32 + ["batch2"] * 32 + ["batch3"] * 32
+    adata.obs["dilution_factor"] = [1] * n_samples
 
     # Add protein metadata typical for affinity assays
-    adata.var['protein_names'] = [f"PROTEIN_{i}" for i in range(n_proteins)]
-    adata.var['uniprot_id'] = [f"P{i:05d}" for i in range(n_proteins)]
-    adata.var['panel'] = ['inflammation'] * 30 + ['oncology'] * 30 + ['neurology'] * 32
-    adata.var['antibody_pair'] = [f"AB{i:03d}" for i in range(n_proteins)]
-    adata.var['cross_reactivity_score'] = np.random.uniform(0.01, 0.15, n_proteins)
-    adata.var['detection_limit'] = np.random.uniform(0.1, 1.0, n_proteins)
+    adata.var["protein_names"] = [f"PROTEIN_{i}" for i in range(n_proteins)]
+    adata.var["uniprot_id"] = [f"P{i:05d}" for i in range(n_proteins)]
+    adata.var["panel"] = ["inflammation"] * 30 + ["oncology"] * 30 + ["neurology"] * 32
+    adata.var["antibody_pair"] = [f"AB{i:03d}" for i in range(n_proteins)]
+    adata.var["cross_reactivity_score"] = np.random.uniform(0.01, 0.15, n_proteins)
+    adata.var["detection_limit"] = np.random.uniform(0.1, 1.0, n_proteins)
 
     # Mock DataManager methods
-    dm.list_modalities.return_value = ['olink_inflammation', 'olink_oncology']
+    dm.list_modalities.return_value = ["olink_inflammation", "olink_oncology"]
     dm.get_modality.return_value = adata
-    dm.modalities = {'olink_inflammation': adata}
+    dm.modalities = {"olink_inflammation": adata}
     dm.log_tool_usage = Mock()
 
     return dm
@@ -79,7 +81,7 @@ def mock_data_manager(mock_agent_environment):
 @pytest.fixture
 def mock_affinity_agent():
     """Create affinity proteomics expert agent instance."""
-    with patch('lobster.agents.affinity_proteomics_expert.data_manager') as mock_dm:
+    with patch("lobster.agents.affinity_proteomics_expert.data_manager") as mock_dm:
         agent = affinity_proteomics_expert()
         agent.data_manager = mock_dm
         return agent
@@ -102,13 +104,13 @@ def mock_olink_data():
     adata.var_names = [f"olink_protein_{i}" for i in range(n_proteins)]
 
     # Add Olink-specific metadata
-    adata.obs['plate_id'] = ['plate_001'] * 96 + ['plate_002'] * 96
-    adata.obs['well_position'] = list(range(1, 97)) * 2
-    adata.obs['assay_version'] = ['v4.1'] * n_samples
-    adata.obs['sample_type'] = ['plasma'] * 96 + ['serum'] * 96
-    adata.var['panel_name'] = ['Inflammation'] * n_proteins
-    adata.var['antibody_lot'] = [f"LOT{i:04d}" for i in range(n_proteins)]
-    adata.var['qc_warning'] = [False] * 90 + [True] * 2  # 2 proteins with QC warnings
+    adata.obs["plate_id"] = ["plate_001"] * 96 + ["plate_002"] * 96
+    adata.obs["well_position"] = list(range(1, 97)) * 2
+    adata.obs["assay_version"] = ["v4.1"] * n_samples
+    adata.obs["sample_type"] = ["plasma"] * 96 + ["serum"] * 96
+    adata.var["panel_name"] = ["Inflammation"] * n_proteins
+    adata.var["antibody_lot"] = [f"LOT{i:04d}" for i in range(n_proteins)]
+    adata.var["qc_warning"] = [False] * 90 + [True] * 2  # 2 proteins with QC warnings
 
     return adata
 
@@ -129,12 +131,12 @@ def mock_antibody_array_data():
     adata.var_names = [f"array_protein_{i}" for i in range(n_proteins)]
 
     # Add array-specific metadata
-    adata.obs['array_id'] = [f"array_{i//8 + 1}" for i in range(n_samples)]  # 6 arrays
-    adata.obs['scanner_id'] = ['scanner_A'] * 24 + ['scanner_B'] * 24
-    adata.obs['scan_date'] = ['2024-01-15'] * 24 + ['2024-01-16'] * 24
-    adata.var['antibody_clone'] = [f"clone_{i}" for i in range(n_proteins)]
-    adata.var['antibody_concentration'] = np.random.uniform(0.1, 10.0, n_proteins)
-    adata.var['signal_to_noise'] = np.random.uniform(2.0, 50.0, n_proteins)
+    adata.obs["array_id"] = [f"array_{i//8 + 1}" for i in range(n_samples)]  # 6 arrays
+    adata.obs["scanner_id"] = ["scanner_A"] * 24 + ["scanner_B"] * 24
+    adata.obs["scan_date"] = ["2024-01-15"] * 24 + ["2024-01-16"] * 24
+    adata.var["antibody_clone"] = [f"clone_{i}" for i in range(n_proteins)]
+    adata.var["antibody_concentration"] = np.random.uniform(0.1, 10.0, n_proteins)
+    adata.var["signal_to_noise"] = np.random.uniform(2.0, 50.0, n_proteins)
 
     return adata
 
@@ -142,6 +144,7 @@ def mock_antibody_array_data():
 # ===============================================================================
 # Tool Testing - Data Status and Quality Assessment
 # ===============================================================================
+
 
 @pytest.mark.skip(reason="Affinity proteomics agent in development")
 class TestAffinityProteomicsDataStatus:
@@ -155,11 +158,16 @@ class TestAffinityProteomicsDataStatus:
         # Extract the tool from the agent
         check_status_tool = None
         for tool in agent.tools:
-            if hasattr(tool, 'name') and tool.name == 'check_affinity_proteomics_data_status':
+            if (
+                hasattr(tool, "name")
+                and tool.name == "check_affinity_proteomics_data_status"
+            ):
                 check_status_tool = tool
                 break
 
-        assert check_status_tool is not None, "check_affinity_proteomics_data_status tool not found"
+        assert (
+            check_status_tool is not None
+        ), "check_affinity_proteomics_data_status tool not found"
 
         result = check_status_tool.invoke({})
 
@@ -168,7 +176,9 @@ class TestAffinityProteomicsDataStatus:
         assert "96 samples" in result or "samples" in result
         assert "92 proteins" in result or "proteins" in result
 
-    def test_check_affinity_proteomics_data_status_specific_modality(self, mock_data_manager):
+    def test_check_affinity_proteomics_data_status_specific_modality(
+        self, mock_data_manager
+    ):
         """Test data status check for specific modality."""
         # Create agent with mock data manager
         agent = affinity_proteomics_expert(mock_data_manager)
@@ -176,11 +186,16 @@ class TestAffinityProteomicsDataStatus:
         # Extract the tool from the agent
         check_status_tool = None
         for tool in agent.tools:
-            if hasattr(tool, 'name') and tool.name == 'check_affinity_proteomics_data_status':
+            if (
+                hasattr(tool, "name")
+                and tool.name == "check_affinity_proteomics_data_status"
+            ):
                 check_status_tool = tool
                 break
 
-        assert check_status_tool is not None, "check_affinity_proteomics_data_status tool not found"
+        assert (
+            check_status_tool is not None
+        ), "check_affinity_proteomics_data_status tool not found"
 
         result = check_status_tool.invoke({"modality_name": "olink_inflammation"})
 
@@ -198,11 +213,16 @@ class TestAffinityProteomicsDataStatus:
         # Extract the tool from the agent
         check_status_tool = None
         for tool in agent.tools:
-            if hasattr(tool, 'name') and tool.name == 'check_affinity_proteomics_data_status':
+            if (
+                hasattr(tool, "name")
+                and tool.name == "check_affinity_proteomics_data_status"
+            ):
                 check_status_tool = tool
                 break
 
-        assert check_status_tool is not None, "check_affinity_proteomics_data_status tool not found"
+        assert (
+            check_status_tool is not None
+        ), "check_affinity_proteomics_data_status tool not found"
 
         result = check_status_tool.invoke({})
 
@@ -222,11 +242,16 @@ class TestAffinityProteomicsQualityAssessment:
         # Extract the tool from the agent
         quality_tool = None
         for tool in agent.tools:
-            if hasattr(tool, 'name') and tool.name == 'assess_affinity_proteomics_quality':
+            if (
+                hasattr(tool, "name")
+                and tool.name == "assess_affinity_proteomics_quality"
+            ):
                 quality_tool = tool
                 break
 
-        assert quality_tool is not None, "assess_affinity_proteomics_quality tool not found"
+        assert (
+            quality_tool is not None
+        ), "assess_affinity_proteomics_quality tool not found"
 
         result = quality_tool.invoke({"modality_name": "olink_inflammation"})
 
@@ -234,7 +259,9 @@ class TestAffinityProteomicsQualityAssessment:
         assert "quality" in result.lower()
         # Should contain information about CV, missing values, plate effects
 
-    def test_assess_affinity_proteomics_quality_custom_thresholds(self, mock_data_manager):
+    def test_assess_affinity_proteomics_quality_custom_thresholds(
+        self, mock_data_manager
+    ):
         """Test quality assessment with custom thresholds."""
         # Create agent with mock data manager
         agent = affinity_proteomics_expert(mock_data_manager)
@@ -242,25 +269,34 @@ class TestAffinityProteomicsQualityAssessment:
         # Extract the tool from the agent
         quality_tool = None
         for tool in agent.tools:
-            if hasattr(tool, 'name') and tool.name == 'assess_affinity_proteomics_quality':
+            if (
+                hasattr(tool, "name")
+                and tool.name == "assess_affinity_proteomics_quality"
+            ):
                 quality_tool = tool
                 break
 
-        assert quality_tool is not None, "assess_affinity_proteomics_quality tool not found"
+        assert (
+            quality_tool is not None
+        ), "assess_affinity_proteomics_quality tool not found"
 
-        result = quality_tool.invoke({
-            "modality_name": "olink_inflammation",
-            "missing_value_threshold": 0.1,  # Very low for affinity
-            "cv_threshold": 20.0,  # Tighter CV threshold
-            "plate_effect_threshold": 0.05
-        })
+        result = quality_tool.invoke(
+            {
+                "modality_name": "olink_inflammation",
+                "missing_value_threshold": 0.1,  # Very low for affinity
+                "cv_threshold": 20.0,  # Tighter CV threshold
+                "plate_effect_threshold": 0.05,
+            }
+        )
 
         assert isinstance(result, str)
         assert "quality" in result.lower()
 
-    def test_assess_affinity_proteomics_quality_nonexistent_modality(self, mock_data_manager):
+    def test_assess_affinity_proteomics_quality_nonexistent_modality(
+        self, mock_data_manager
+    ):
         """Test quality assessment with nonexistent modality."""
-        mock_data_manager.list_modalities.return_value = ['other_data']
+        mock_data_manager.list_modalities.return_value = ["other_data"]
 
         # Create agent with mock data manager
         agent = affinity_proteomics_expert(mock_data_manager)
@@ -268,11 +304,16 @@ class TestAffinityProteomicsQualityAssessment:
         # Extract the tool from the agent
         quality_tool = None
         for tool in agent.tools:
-            if hasattr(tool, 'name') and tool.name == 'assess_affinity_proteomics_quality':
+            if (
+                hasattr(tool, "name")
+                and tool.name == "assess_affinity_proteomics_quality"
+            ):
                 quality_tool = tool
                 break
 
-        assert quality_tool is not None, "assess_affinity_proteomics_quality tool not found"
+        assert (
+            quality_tool is not None
+        ), "assess_affinity_proteomics_quality tool not found"
 
         result = quality_tool.invoke({"modality_name": "nonexistent_modality"})
 
@@ -283,6 +324,7 @@ class TestAffinityProteomicsQualityAssessment:
 # ===============================================================================
 # Tool Testing - Data Filtering and Preprocessing
 # ===============================================================================
+
 
 @pytest.mark.skip(reason="Affinity proteomics agent in development")
 class TestAffinityProteomicsFiltering:
@@ -296,7 +338,7 @@ class TestAffinityProteomicsFiltering:
         # Extract the tool from the agent
         filter_tool = None
         for tool in agent.tools:
-            if hasattr(tool, 'name') and tool.name == 'filter_affinity_proteomics_data':
+            if hasattr(tool, "name") and tool.name == "filter_affinity_proteomics_data":
                 filter_tool = tool
                 break
 
@@ -316,19 +358,21 @@ class TestAffinityProteomicsFiltering:
         # Extract the tool from the agent
         filter_tool = None
         for tool in agent.tools:
-            if hasattr(tool, 'name') and tool.name == 'filter_affinity_proteomics_data':
+            if hasattr(tool, "name") and tool.name == "filter_affinity_proteomics_data":
                 filter_tool = tool
                 break
 
         assert filter_tool is not None, "filter_affinity_proteomics_data tool not found"
 
-        result = filter_tool.invoke({
-            "modality_name": "olink_inflammation",
-            "max_missing_per_sample": 0.1,  # Very low for affinity
-            "max_missing_per_protein": 0.2,
-            "max_cv_threshold": 25.0,
-            "remove_failed_antibodies": True
-        })
+        result = filter_tool.invoke(
+            {
+                "modality_name": "olink_inflammation",
+                "max_missing_per_sample": 0.1,  # Very low for affinity
+                "max_missing_per_protein": 0.2,
+                "max_cv_threshold": 25.0,
+                "remove_failed_antibodies": True,
+            }
+        )
 
         assert isinstance(result, str)
         assert "filtered" in result.lower()
@@ -341,15 +385,13 @@ class TestAffinityProteomicsFiltering:
         # Extract the tool from the agent
         filter_tool = None
         for tool in agent.tools:
-            if hasattr(tool, 'name') and tool.name == 'filter_affinity_proteomics_data':
+            if hasattr(tool, "name") and tool.name == "filter_affinity_proteomics_data":
                 filter_tool = tool
                 break
 
         assert filter_tool is not None, "filter_affinity_proteomics_data tool not found"
 
-        result = filter_tool.invoke({
-            "modality_name": "olink_inflammation"
-        })
+        result = filter_tool.invoke({"modality_name": "olink_inflammation"})
 
         assert isinstance(result, str)
         assert "filtered" in result.lower()
@@ -367,11 +409,16 @@ class TestAffinityProteomicsNormalization:
         # Extract the tool from the agent
         normalize_tool = None
         for tool in agent.tools:
-            if hasattr(tool, 'name') and tool.name == 'normalize_affinity_proteomics_data':
+            if (
+                hasattr(tool, "name")
+                and tool.name == "normalize_affinity_proteomics_data"
+            ):
                 normalize_tool = tool
                 break
 
-        assert normalize_tool is not None, "normalize_affinity_proteomics_data tool not found"
+        assert (
+            normalize_tool is not None
+        ), "normalize_affinity_proteomics_data tool not found"
 
         result = normalize_tool.invoke({"modality_name": "olink_inflammation"})
 
@@ -382,29 +429,38 @@ class TestAffinityProteomicsNormalization:
         """Test different normalization methods suitable for affinity data."""
         methods = ["quantile", "median", "z_score", "robust_scale"]
 
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
-            from lobster.agents.affinity_proteomics_expert import normalize_affinity_proteomics_data
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
+            from lobster.agents.affinity_proteomics_expert import (
+                normalize_affinity_proteomics_data,
+            )
 
             for method in methods:
                 result = normalize_affinity_proteomics_data(
-                    "olink_inflammation",
-                    normalization_method=method
+                    "olink_inflammation", normalization_method=method
                 )
 
                 assert isinstance(result, str)
                 assert "normalized" in result.lower()
 
-    def test_normalize_affinity_proteomics_data_plate_correction(self, mock_data_manager):
+    def test_normalize_affinity_proteomics_data_plate_correction(
+        self, mock_data_manager
+    ):
         """Test normalization with plate effect correction."""
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
-            from lobster.agents.affinity_proteomics_expert import normalize_affinity_proteomics_data
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
+            from lobster.agents.affinity_proteomics_expert import (
+                normalize_affinity_proteomics_data,
+            )
 
             result = normalize_affinity_proteomics_data(
                 "olink_inflammation",
                 correct_plate_effects=True,
                 handle_missing="impute_knn",  # Conservative imputation for affinity
                 batch_correction=True,
-                batch_column="batch"
+                batch_column="batch",
             )
 
             assert isinstance(result, str)
@@ -415,18 +471,22 @@ class TestAffinityProteomicsNormalization:
 # Tool Testing - Statistical Analysis
 # ===============================================================================
 
+
 @pytest.mark.skip(reason="Affinity proteomics agent in development")
 class TestAffinityProteomicsPatternAnalysis:
     """Test suite for affinity proteomics pattern analysis functionality."""
 
     def test_analyze_affinity_proteomics_patterns_pca(self, mock_data_manager):
         """Test PCA pattern analysis."""
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
-            from lobster.agents.affinity_proteomics_expert import analyze_affinity_proteomics_patterns
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
+            from lobster.agents.affinity_proteomics_expert import (
+                analyze_affinity_proteomics_patterns,
+            )
 
             result = analyze_affinity_proteomics_patterns(
-                "olink_inflammation",
-                analysis_type="pca_clustering"
+                "olink_inflammation", analysis_type="pca_clustering"
             )
 
             assert isinstance(result, str)
@@ -436,29 +496,39 @@ class TestAffinityProteomicsPatternAnalysis:
         """Test clustering pattern analysis."""
         clustering_methods = ["kmeans", "hierarchical", "gaussian_mixture"]
 
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
-            from lobster.agents.affinity_proteomics_expert import analyze_affinity_proteomics_patterns
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
+            from lobster.agents.affinity_proteomics_expert import (
+                analyze_affinity_proteomics_patterns,
+            )
 
             for method in clustering_methods:
                 result = analyze_affinity_proteomics_patterns(
                     "olink_inflammation",
                     analysis_type="pca_clustering",
                     clustering_method=method,
-                    n_clusters=4
+                    n_clusters=4,
                 )
 
                 assert isinstance(result, str)
                 assert "cluster" in result.lower() or "pattern" in result.lower()
 
-    def test_analyze_affinity_proteomics_patterns_correlation_network(self, mock_data_manager):
+    def test_analyze_affinity_proteomics_patterns_correlation_network(
+        self, mock_data_manager
+    ):
         """Test correlation network analysis."""
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
-            from lobster.agents.affinity_proteomics_expert import analyze_affinity_proteomics_patterns
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
+            from lobster.agents.affinity_proteomics_expert import (
+                analyze_affinity_proteomics_patterns,
+            )
 
             result = analyze_affinity_proteomics_patterns(
                 "olink_inflammation",
                 analysis_type="correlation_network",
-                correlation_threshold=0.7
+                correlation_threshold=0.7,
             )
 
             assert isinstance(result, str)
@@ -471,12 +541,15 @@ class TestAffinityProteomicsDifferentialAnalysis:
 
     def test_find_differential_proteins_affinity_basic(self, mock_data_manager):
         """Test basic differential protein analysis."""
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
-            from lobster.agents.affinity_proteomics_expert import find_differential_proteins_affinity
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
+            from lobster.agents.affinity_proteomics_expert import (
+                find_differential_proteins_affinity,
+            )
 
             result = find_differential_proteins_affinity(
-                "olink_inflammation",
-                group_column="condition"
+                "olink_inflammation", group_column="condition"
             )
 
             assert isinstance(result, str)
@@ -486,15 +559,19 @@ class TestAffinityProteomicsDifferentialAnalysis:
         """Test different differential analysis methods suitable for affinity data."""
         methods = ["t_test", "mann_whitney", "limma", "linear_mixed"]
 
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
-            from lobster.agents.affinity_proteomics_expert import find_differential_proteins_affinity
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
+            from lobster.agents.affinity_proteomics_expert import (
+                find_differential_proteins_affinity,
+            )
 
             for method in methods:
                 result = find_differential_proteins_affinity(
                     "olink_inflammation",
                     group_column="condition",
                     method=method,
-                    comparison="pairwise"
+                    comparison="pairwise",
                 )
 
                 assert isinstance(result, str)
@@ -502,8 +579,12 @@ class TestAffinityProteomicsDifferentialAnalysis:
 
     def test_find_differential_proteins_affinity_plate_effects(self, mock_data_manager):
         """Test differential analysis with plate effect correction."""
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
-            from lobster.agents.affinity_proteomics_expert import find_differential_proteins_affinity
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
+            from lobster.agents.affinity_proteomics_expert import (
+                find_differential_proteins_affinity,
+            )
 
             result = find_differential_proteins_affinity(
                 "olink_inflammation",
@@ -511,7 +592,7 @@ class TestAffinityProteomicsDifferentialAnalysis:
                 adjust_plate_effects=True,
                 plate_column="plate",
                 fold_change_threshold=1.2,  # Smaller FC threshold for affinity
-                p_value_threshold=0.05
+                p_value_threshold=0.05,
             )
 
             assert isinstance(result, str)
@@ -522,14 +603,19 @@ class TestAffinityProteomicsDifferentialAnalysis:
 # Tool Testing - Antibody Validation and Affinity-Specific Features
 # ===============================================================================
 
+
 @pytest.mark.skip(reason="Affinity proteomics agent in development")
 class TestAffinityProteomicsAntibodyValidation:
     """Test suite for affinity proteomics antibody validation functionality."""
 
     def test_validate_antibody_specificity_basic(self, mock_data_manager):
         """Test basic antibody specificity validation."""
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
-            from lobster.agents.affinity_proteomics_expert import validate_antibody_specificity
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
+            from lobster.agents.affinity_proteomics_expert import (
+                validate_antibody_specificity,
+            )
 
             result = validate_antibody_specificity("olink_inflammation")
 
@@ -538,13 +624,17 @@ class TestAffinityProteomicsAntibodyValidation:
 
     def test_validate_antibody_specificity_custom_threshold(self, mock_data_manager):
         """Test antibody validation with custom cross-reactivity threshold."""
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
-            from lobster.agents.affinity_proteomics_expert import validate_antibody_specificity
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
+            from lobster.agents.affinity_proteomics_expert import (
+                validate_antibody_specificity,
+            )
 
             result = validate_antibody_specificity(
                 "olink_inflammation",
                 cross_reactivity_threshold=0.05,  # Stricter threshold
-                save_result=True
+                save_result=True,
             )
 
             assert isinstance(result, str)
@@ -554,11 +644,15 @@ class TestAffinityProteomicsAntibodyValidation:
         """Test antibody validation when cross-reactivity data is missing."""
         # Remove cross-reactivity metadata
         adata = mock_data_manager.get_modality("olink_inflammation")
-        adata.var = adata.var.drop('cross_reactivity_score', axis=1)
+        adata.var = adata.var.drop("cross_reactivity_score", axis=1)
         mock_data_manager.get_modality.return_value = adata
 
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
-            from lobster.agents.affinity_proteomics_expert import validate_antibody_specificity
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
+            from lobster.agents.affinity_proteomics_expert import (
+                validate_antibody_specificity,
+            )
 
             result = validate_antibody_specificity("olink_inflammation")
 
@@ -570,16 +664,22 @@ class TestAffinityProteomicsAntibodyValidation:
 # Tool Testing - Summary and Reporting
 # ===============================================================================
 
+
 @pytest.mark.skip(reason="Affinity proteomics agent in development")
 class TestAffinityProteomicsSummary:
     """Test suite for affinity proteomics summary functionality."""
 
     def test_create_affinity_proteomics_summary_no_analysis(self):
         """Test summary creation when no analysis has been performed."""
-        from lobster.agents.affinity_proteomics_expert import create_affinity_proteomics_summary
+        from lobster.agents.affinity_proteomics_expert import (
+            create_affinity_proteomics_summary,
+        )
 
         # Clear any existing analysis results
-        with patch('lobster.agents.affinity_proteomics_expert.analysis_results', {"details": []}):
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.analysis_results",
+            {"details": []},
+        ):
             result = create_affinity_proteomics_summary()
 
             assert isinstance(result, str)
@@ -595,7 +695,7 @@ class TestAffinityProteomicsSummary:
                     "input_modality": "olink_inflammation",
                     "output_modality": "olink_inflammation_quality",
                     "parameters": {"cv_threshold": 20.0},
-                    "summary": "Quality assessment completed"
+                    "summary": "Quality assessment completed",
                 },
                 {
                     "step": "normalization",
@@ -603,20 +703,25 @@ class TestAffinityProteomicsSummary:
                     "input_modality": "olink_inflammation_quality",
                     "output_modality": "olink_inflammation_normalized",
                     "parameters": {"method": "quantile", "plate_correction": True},
-                    "summary": "Normalization with plate correction completed"
+                    "summary": "Normalization with plate correction completed",
                 },
                 {
                     "step": "antibody_validation",
                     "timestamp": "2024-01-01 12:10:00",
                     "input_modality": "olink_inflammation_normalized",
                     "parameters": {"cross_reactivity_threshold": 0.1},
-                    "summary": "Antibody specificity validated"
-                }
+                    "summary": "Antibody specificity validated",
+                },
             ]
         }
 
-        with patch('lobster.agents.affinity_proteomics_expert.analysis_results', mock_analysis_results):
-            from lobster.agents.affinity_proteomics_expert import create_affinity_proteomics_summary
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.analysis_results",
+            mock_analysis_results,
+        ):
+            from lobster.agents.affinity_proteomics_expert import (
+                create_affinity_proteomics_summary,
+            )
 
             result = create_affinity_proteomics_summary()
 
@@ -631,6 +736,7 @@ class TestAffinityProteomicsSummary:
 # Integration Testing - Workflow Scenarios
 # ===============================================================================
 
+
 @pytest.mark.skip(reason="Affinity proteomics agent in development")
 class TestAffinityProteomicsWorkflows:
     """Test suite for complete affinity proteomics workflow scenarios."""
@@ -639,16 +745,18 @@ class TestAffinityProteomicsWorkflows:
         """Test complete Olink proteomics workflow."""
         # Update mock data manager with Olink data
         mock_data_manager.get_modality.return_value = mock_olink_data
-        mock_data_manager.list_modalities.return_value = ['olink_inflammation']
-        mock_data_manager.modalities = {'olink_inflammation': mock_olink_data}
+        mock_data_manager.list_modalities.return_value = ["olink_inflammation"]
+        mock_data_manager.modalities = {"olink_inflammation": mock_olink_data}
 
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
             from lobster.agents.affinity_proteomics_expert import (
                 assess_affinity_proteomics_quality,
                 filter_affinity_proteomics_data,
+                find_differential_proteins_affinity,
                 normalize_affinity_proteomics_data,
                 validate_antibody_specificity,
-                find_differential_proteins_affinity
             )
 
             # Step 1: Quality assessment
@@ -656,7 +764,7 @@ class TestAffinityProteomicsWorkflows:
                 "olink_inflammation",
                 missing_value_threshold=0.05,  # Very low for Olink
                 cv_threshold=15.0,  # Tight CV threshold
-                plate_effect_threshold=0.1
+                plate_effect_threshold=0.1,
             )
             assert isinstance(quality_result, str)
 
@@ -664,7 +772,7 @@ class TestAffinityProteomicsWorkflows:
             filter_result = filter_affinity_proteomics_data(
                 "olink_inflammation",
                 max_missing_per_protein=0.1,
-                remove_qc_warnings=True
+                remove_qc_warnings=True,
             )
             assert isinstance(filter_result, str)
 
@@ -673,14 +781,13 @@ class TestAffinityProteomicsWorkflows:
                 "olink_inflammation",
                 normalization_method="quantile",
                 correct_plate_effects=True,
-                handle_missing="impute_knn"
+                handle_missing="impute_knn",
             )
             assert isinstance(norm_result, str)
 
             # Step 4: Antibody validation
             antibody_result = validate_antibody_specificity(
-                "olink_inflammation",
-                cross_reactivity_threshold=0.1
+                "olink_inflammation", cross_reactivity_threshold=0.1
             )
             assert isinstance(antibody_result, str)
 
@@ -690,30 +797,32 @@ class TestAffinityProteomicsWorkflows:
                 group_column="condition",
                 method="t_test",
                 adjust_plate_effects=True,
-                plate_column="plate_id"
+                plate_column="plate_id",
             )
             assert isinstance(diff_result, str)
 
-    def test_complete_antibody_array_workflow(self, mock_data_manager, mock_antibody_array_data):
+    def test_complete_antibody_array_workflow(
+        self, mock_data_manager, mock_antibody_array_data
+    ):
         """Test complete antibody array workflow."""
         # Update mock data manager with array data
         mock_data_manager.get_modality.return_value = mock_antibody_array_data
-        mock_data_manager.list_modalities.return_value = ['antibody_array']
-        mock_data_manager.modalities = {'antibody_array': mock_antibody_array_data}
+        mock_data_manager.list_modalities.return_value = ["antibody_array"]
+        mock_data_manager.modalities = {"antibody_array": mock_antibody_array_data}
 
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
             from lobster.agents.affinity_proteomics_expert import (
-                assess_affinity_proteomics_quality,
-                normalize_affinity_proteomics_data,
                 analyze_affinity_proteomics_patterns,
-                find_differential_proteins_affinity
+                assess_affinity_proteomics_quality,
+                find_differential_proteins_affinity,
+                normalize_affinity_proteomics_data,
             )
 
             # Step 1: Quality assessment
             quality_result = assess_affinity_proteomics_quality(
-                "antibody_array",
-                missing_value_threshold=0.1,
-                cv_threshold=25.0
+                "antibody_array", missing_value_threshold=0.1, cv_threshold=25.0
             )
             assert isinstance(quality_result, str)
 
@@ -721,7 +830,7 @@ class TestAffinityProteomicsWorkflows:
             norm_result = normalize_affinity_proteomics_data(
                 "antibody_array",
                 normalization_method="robust_scale",
-                handle_missing="impute_median"
+                handle_missing="impute_median",
             )
             assert isinstance(norm_result, str)
 
@@ -730,15 +839,13 @@ class TestAffinityProteomicsWorkflows:
                 "antibody_array",
                 analysis_type="pca_clustering",
                 n_components=8,
-                clustering_method="kmeans"
+                clustering_method="kmeans",
             )
             assert isinstance(pattern_result, str)
 
             # Step 4: Differential analysis
             diff_result = find_differential_proteins_affinity(
-                "antibody_array",
-                group_column="condition",
-                method="limma"
+                "antibody_array", group_column="condition", method="limma"
             )
             assert isinstance(diff_result, str)
 
@@ -747,14 +854,19 @@ class TestAffinityProteomicsWorkflows:
 # Error Handling and Edge Cases
 # ===============================================================================
 
+
 @pytest.mark.skip(reason="Affinity proteomics agent in development")
 class TestAffinityProteomicsErrorHandling:
     """Test suite for error handling and edge cases."""
 
     def test_tool_with_empty_modality_name(self, mock_data_manager):
         """Test tools with empty modality name."""
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
-            from lobster.agents.affinity_proteomics_expert import assess_affinity_proteomics_quality
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
+            from lobster.agents.affinity_proteomics_expert import (
+                assess_affinity_proteomics_quality,
+            )
 
             result = assess_affinity_proteomics_quality("")
 
@@ -763,12 +875,15 @@ class TestAffinityProteomicsErrorHandling:
 
     def test_tool_with_invalid_parameters(self, mock_data_manager):
         """Test tools with invalid parameters."""
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
-            from lobster.agents.affinity_proteomics_expert import normalize_affinity_proteomics_data
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
+            from lobster.agents.affinity_proteomics_expert import (
+                normalize_affinity_proteomics_data,
+            )
 
             result = normalize_affinity_proteomics_data(
-                "olink_inflammation",
-                normalization_method="invalid_method"
+                "olink_inflammation", normalization_method="invalid_method"
             )
 
             assert isinstance(result, str)
@@ -778,15 +893,18 @@ class TestAffinityProteomicsErrorHandling:
         """Test tools when required plate metadata is missing."""
         # Create data without plate column
         adata = mock_data_manager.get_modality("olink_inflammation")
-        adata.obs = adata.obs.drop('plate', axis=1)
+        adata.obs = adata.obs.drop("plate", axis=1)
         mock_data_manager.get_modality.return_value = adata
 
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
-            from lobster.agents.affinity_proteomics_expert import normalize_affinity_proteomics_data
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
+            from lobster.agents.affinity_proteomics_expert import (
+                normalize_affinity_proteomics_data,
+            )
 
             result = normalize_affinity_proteomics_data(
-                "olink_inflammation",
-                correct_plate_effects=True
+                "olink_inflammation", correct_plate_effects=True
             )
 
             assert isinstance(result, str)
@@ -794,12 +912,20 @@ class TestAffinityProteomicsErrorHandling:
 
     def test_tool_service_failure(self, mock_data_manager):
         """Test tool behavior when underlying service fails."""
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
-            with patch('lobster.tools.proteomics_preprocessing_service.ProteomicsPreprocessingService') as MockService:
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
+            with patch(
+                "lobster.tools.proteomics_preprocessing_service.ProteomicsPreprocessingService"
+            ) as MockService:
                 # Make service raise an exception
-                MockService.return_value.normalize_intensities.side_effect = Exception("Service error")
+                MockService.return_value.normalize_intensities.side_effect = Exception(
+                    "Service error"
+                )
 
-                from lobster.agents.affinity_proteomics_expert import normalize_affinity_proteomics_data
+                from lobster.agents.affinity_proteomics_expert import (
+                    normalize_affinity_proteomics_data,
+                )
 
                 result = normalize_affinity_proteomics_data("olink_inflammation")
 
@@ -810,6 +936,7 @@ class TestAffinityProteomicsErrorHandling:
 # ===============================================================================
 # Scientific Accuracy Validation
 # ===============================================================================
+
 
 @pytest.mark.skip(reason="Affinity proteomics agent in development")
 class TestAffinityProteomicsScientificAccuracy:
@@ -825,22 +952,27 @@ class TestAffinityProteomicsScientificAccuracy:
         for i in range(n_proteins):
             protein_cv = np.random.uniform(0.05, 0.25)  # 5-25% CV
             protein_values = X[:, i]
-            X[:, i] = protein_values + np.random.normal(0, np.mean(protein_values) * protein_cv, n_samples)
+            X[:, i] = protein_values + np.random.normal(
+                0, np.mean(protein_values) * protein_cv, n_samples
+            )
 
         adata = ad.AnnData(X=X)
         adata.obs_names = [f"sample_{i}" for i in range(n_samples)]
         adata.var_names = [f"protein_{i}" for i in range(n_proteins)]
-        adata.obs['condition'] = ['control'] * 48 + ['treatment'] * 48
-        adata.obs['plate'] = [f"plate_{i//24 + 1}" for i in range(n_samples)]
+        adata.obs["condition"] = ["control"] * 48 + ["treatment"] * 48
+        adata.obs["plate"] = [f"plate_{i//24 + 1}" for i in range(n_samples)]
 
         mock_data_manager.get_modality.return_value = adata
 
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
-            from lobster.agents.affinity_proteomics_expert import assess_affinity_proteomics_quality
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
+            from lobster.agents.affinity_proteomics_expert import (
+                assess_affinity_proteomics_quality,
+            )
 
             result = assess_affinity_proteomics_quality(
-                "test_modality",
-                cv_threshold=30.0
+                "test_modality", cv_threshold=30.0
             )
 
             assert isinstance(result, str)
@@ -861,17 +993,20 @@ class TestAffinityProteomicsScientificAccuracy:
         adata = ad.AnnData(X=X)
         adata.obs_names = [f"sample_{i}" for i in range(n_samples)]
         adata.var_names = [f"protein_{i}" for i in range(n_proteins)]
-        adata.obs['condition'] = ['control'] * 48 + ['treatment'] * 48
-        adata.obs['plate'] = [f"plate_{i//24 + 1}" for i in range(n_samples)]
+        adata.obs["condition"] = ["control"] * 48 + ["treatment"] * 48
+        adata.obs["plate"] = [f"plate_{i//24 + 1}" for i in range(n_samples)]
 
         mock_data_manager.get_modality.return_value = adata
 
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
-            from lobster.agents.affinity_proteomics_expert import assess_affinity_proteomics_quality
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
+            from lobster.agents.affinity_proteomics_expert import (
+                assess_affinity_proteomics_quality,
+            )
 
             result = assess_affinity_proteomics_quality(
-                "test_modality",
-                plate_effect_threshold=0.2
+                "test_modality", plate_effect_threshold=0.2
             )
 
             assert isinstance(result, str)
@@ -887,12 +1022,16 @@ class TestAffinityProteomicsScientificAccuracy:
         adata = ad.AnnData(X=X)
         adata.obs_names = [f"sample_{i}" for i in range(n_samples)]
         adata.var_names = [f"protein_{i}" for i in range(n_proteins)]
-        adata.obs['condition'] = ['control'] * 48 + ['treatment'] * 48
+        adata.obs["condition"] = ["control"] * 48 + ["treatment"] * 48
 
         mock_data_manager.get_modality.return_value = adata
 
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
-            from lobster.agents.affinity_proteomics_expert import assess_affinity_proteomics_quality
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
+            from lobster.agents.affinity_proteomics_expert import (
+                assess_affinity_proteomics_quality,
+            )
 
             result = assess_affinity_proteomics_quality("test_modality")
 
@@ -907,10 +1046,14 @@ class TestAffinityProteomicsScientificAccuracy:
         n_proteins = 92
 
         # Control group
-        X_control = np.random.normal(loc=6, scale=1.2, size=(n_samples_per_group, n_proteins))
+        X_control = np.random.normal(
+            loc=6, scale=1.2, size=(n_samples_per_group, n_proteins)
+        )
 
         # Treatment group with small effect sizes (0.3-0.5 NPX units)
-        X_treatment = np.random.normal(loc=6, scale=1.2, size=(n_samples_per_group, n_proteins))
+        X_treatment = np.random.normal(
+            loc=6, scale=1.2, size=(n_samples_per_group, n_proteins)
+        )
         # 15% of proteins have small but significant changes
         de_proteins = np.random.choice(n_proteins, 14, replace=False)
         X_treatment[:, de_proteins] += np.random.uniform(0.3, 0.8, 14)
@@ -920,20 +1063,28 @@ class TestAffinityProteomicsScientificAccuracy:
         adata = ad.AnnData(X=X)
         adata.obs_names = [f"sample_{i}" for i in range(2 * n_samples_per_group)]
         adata.var_names = [f"protein_{i}" for i in range(n_proteins)]
-        adata.obs['condition'] = ['control'] * n_samples_per_group + ['treatment'] * n_samples_per_group
-        adata.obs['plate'] = [f"plate_{i//24 + 1}" for i in range(2 * n_samples_per_group)]
+        adata.obs["condition"] = ["control"] * n_samples_per_group + [
+            "treatment"
+        ] * n_samples_per_group
+        adata.obs["plate"] = [
+            f"plate_{i//24 + 1}" for i in range(2 * n_samples_per_group)
+        ]
 
         mock_data_manager.get_modality.return_value = adata
 
-        with patch('lobster.agents.affinity_proteomics_expert.data_manager', mock_data_manager):
-            from lobster.agents.affinity_proteomics_expert import find_differential_proteins_affinity
+        with patch(
+            "lobster.agents.affinity_proteomics_expert.data_manager", mock_data_manager
+        ):
+            from lobster.agents.affinity_proteomics_expert import (
+                find_differential_proteins_affinity,
+            )
 
             result = find_differential_proteins_affinity(
                 "test_modality",
                 group_column="condition",
                 method="t_test",
                 fold_change_threshold=1.2,  # Small FC threshold appropriate for affinity
-                p_value_threshold=0.05
+                p_value_threshold=0.05,
             )
 
             assert isinstance(result, str)

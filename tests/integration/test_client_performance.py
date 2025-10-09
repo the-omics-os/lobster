@@ -9,27 +9,27 @@ private and public repos.
 """
 
 import gc
-import psutil
+import tempfile
 import threading
 import time
 import weakref
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 from unittest.mock import Mock, patch
-import tempfile
 
-import pytest
 import numpy as np
 import pandas as pd
+import psutil
+import pytest
 
 from lobster.core.client import AgentClient
 from lobster.core.data_manager_v2 import DataManagerV2
 
-
 # ===============================================================================
 # Performance Test Utilities
 # ===============================================================================
+
 
 class MemoryMonitor:
     """Monitor memory usage during test execution."""
@@ -70,7 +70,7 @@ class MemoryMonitor:
             "current_mb": current_memory,
             "peak_mb": self.peak_memory,
             "increase_mb": current_memory - self.initial_memory,
-            "peak_increase_mb": self.peak_memory - self.initial_memory
+            "peak_increase_mb": self.peak_memory - self.initial_memory,
         }
 
 
@@ -94,6 +94,7 @@ def temp_perf_workspace():
 # Memory Leak Tests
 # ===============================================================================
 
+
 @pytest.mark.performance
 class TestClientMemoryLeaks:
     """Test for memory leaks in client components."""
@@ -105,7 +106,9 @@ class TestClientMemoryLeaks:
             {"supervisor": {"messages": [Mock(content="Test response")]}}
         ]
 
-        with patch('lobster.core.client.create_bioinformatics_graph', return_value=mock_graph):
+        with patch(
+            "lobster.core.client.create_bioinformatics_graph", return_value=mock_graph
+        ):
             clients = []
 
             # Create and use multiple clients
@@ -130,7 +133,9 @@ class TestClientMemoryLeaks:
             memory_stats = memory_monitor.get_memory_stats()
 
             # Memory increase should be reasonable (less than 100MB for 50 clients)
-            assert memory_stats["increase_mb"] < 100, f"Memory increase too high: {memory_stats}"
+            assert (
+                memory_stats["increase_mb"] < 100
+            ), f"Memory increase too high: {memory_stats}"
 
             # Most clients should be garbage collected
             alive_clients = sum(1 for ref in clients if ref() is not None)
@@ -143,7 +148,9 @@ class TestClientMemoryLeaks:
             {"supervisor": {"messages": [Mock(content="Response")]}}
         ]
 
-        with patch('lobster.core.client.create_bioinformatics_graph', return_value=mock_graph):
+        with patch(
+            "lobster.core.client.create_bioinformatics_graph", return_value=mock_graph
+        ):
             client = AgentClient(workspace_path=temp_perf_workspace)
 
             # Generate large conversation
@@ -153,7 +160,9 @@ class TestClientMemoryLeaks:
             memory_stats = memory_monitor.get_memory_stats()
 
             # Memory usage should be reasonable for 1000 messages
-            assert memory_stats["increase_mb"] < 50, f"Memory usage too high: {memory_stats}"
+            assert (
+                memory_stats["increase_mb"] < 50
+            ), f"Memory usage too high: {memory_stats}"
 
             # Test memory after reset
             initial_reset_memory = memory_stats["current_mb"]
@@ -170,20 +179,21 @@ class TestClientMemoryLeaks:
             # Memory should either be freed or remain stable (not increase)
             # Relaxed assertion: memory should not significantly increase after reset
             memory_increase = final_memory_stats["current_mb"] - initial_reset_memory
-            assert memory_increase < 5, f"Memory increased by {memory_increase}MB after reset (should be stable or decrease)"
+            assert (
+                memory_increase < 5
+            ), f"Memory increased by {memory_increase}MB after reset (should be stable or decrease)"
 
     def test_file_operations_memory(self, temp_perf_workspace, memory_monitor):
         """Test memory usage during file operations."""
-        with patch('lobster.core.client.create_bioinformatics_graph'):
+        with patch("lobster.core.client.create_bioinformatics_graph"):
             client = AgentClient(workspace_path=temp_perf_workspace)
 
             # Create multiple test files
             for i in range(100):
                 test_file = temp_perf_workspace / f"test_file_{i}.csv"
-                data = pd.DataFrame({
-                    'col1': np.random.randn(1000),
-                    'col2': np.random.randn(1000)
-                })
+                data = pd.DataFrame(
+                    {"col1": np.random.randn(1000), "col2": np.random.randn(1000)}
+                )
                 data.to_csv(test_file, index=False)
 
             # Perform file operations
@@ -198,12 +208,15 @@ class TestClientMemoryLeaks:
             memory_stats = memory_monitor.get_memory_stats()
 
             # Memory usage should be reasonable
-            assert memory_stats["increase_mb"] < 200, f"File operations memory too high: {memory_stats}"
+            assert (
+                memory_stats["increase_mb"] < 200
+            ), f"File operations memory too high: {memory_stats}"
 
 
 # ===============================================================================
 # Performance Benchmarks
 # ===============================================================================
+
 
 @pytest.mark.performance
 class TestClientPerformanceBenchmarks:
@@ -216,7 +229,9 @@ class TestClientPerformanceBenchmarks:
             {"supervisor": {"messages": [Mock(content="Benchmark response")]}}
         ]
 
-        with patch('lobster.core.client.create_bioinformatics_graph', return_value=mock_graph):
+        with patch(
+            "lobster.core.client.create_bioinformatics_graph", return_value=mock_graph
+        ):
             client = AgentClient(workspace_path=temp_perf_workspace)
 
             # Benchmark single query
@@ -225,7 +240,9 @@ class TestClientPerformanceBenchmarks:
             single_query_time = time.time() - start_time
 
             assert result["success"] is True
-            assert single_query_time < 1.0, f"Single query too slow: {single_query_time}s"
+            assert (
+                single_query_time < 1.0
+            ), f"Single query too slow: {single_query_time}s"
 
             # Benchmark batch queries
             start_time = time.time()
@@ -235,7 +252,9 @@ class TestClientPerformanceBenchmarks:
             batch_time = time.time() - start_time
 
             avg_query_time = batch_time / 100
-            assert avg_query_time < 0.1, f"Average query time too slow: {avg_query_time}s"
+            assert (
+                avg_query_time < 0.1
+            ), f"Average query time too slow: {avg_query_time}s"
 
     def test_concurrent_query_performance(self, temp_perf_workspace):
         """Test performance under concurrent load."""
@@ -244,7 +263,9 @@ class TestClientPerformanceBenchmarks:
             {"supervisor": {"messages": [Mock(content="Concurrent response")]}}
         ]
 
-        with patch('lobster.core.client.create_bioinformatics_graph', return_value=mock_graph):
+        with patch(
+            "lobster.core.client.create_bioinformatics_graph", return_value=mock_graph
+        ):
             client = AgentClient(workspace_path=temp_perf_workspace)
 
             def worker_task(worker_id):
@@ -255,7 +276,7 @@ class TestClientPerformanceBenchmarks:
                 return {
                     "worker_id": worker_id,
                     "success": result["success"],
-                    "duration": end_time - start_time
+                    "duration": end_time - start_time,
                 }
 
             # Test with different thread counts
@@ -263,7 +284,9 @@ class TestClientPerformanceBenchmarks:
                 start_time = time.time()
 
                 with ThreadPoolExecutor(max_workers=num_threads) as executor:
-                    futures = [executor.submit(worker_task, i) for i in range(num_threads)]
+                    futures = [
+                        executor.submit(worker_task, i) for i in range(num_threads)
+                    ]
                     results = [future.result() for future in as_completed(futures)]
 
                 total_time = time.time() - start_time
@@ -272,15 +295,19 @@ class TestClientPerformanceBenchmarks:
                 assert all(r["success"] for r in results)
 
                 # Total time should be reasonable
-                assert total_time < 5.0, f"Concurrent execution too slow: {total_time}s with {num_threads} threads"
+                assert (
+                    total_time < 5.0
+                ), f"Concurrent execution too slow: {total_time}s with {num_threads} threads"
 
                 # Average response time should be reasonable
                 avg_response_time = sum(r["duration"] for r in results) / len(results)
-                assert avg_response_time < 1.0, f"Average response time too slow: {avg_response_time}s"
+                assert (
+                    avg_response_time < 1.0
+                ), f"Average response time too slow: {avg_response_time}s"
 
     def test_file_operation_performance(self, temp_perf_workspace):
         """Benchmark file operations performance."""
-        with patch('lobster.core.client.create_bioinformatics_graph'):
+        with patch("lobster.core.client.create_bioinformatics_graph"):
             client = AgentClient(workspace_path=temp_perf_workspace)
 
             # Create test files of various sizes
@@ -291,10 +318,9 @@ class TestClientPerformanceBenchmarks:
                 filename = f"test_data_{size}.csv"
                 file_path = temp_perf_workspace / filename
 
-                data = pd.DataFrame({
-                    f'col_{i}': np.random.randn(size)
-                    for i in range(10)
-                })
+                data = pd.DataFrame(
+                    {f"col_{i}": np.random.randn(size) for i in range(10)}
+                )
                 data.to_csv(file_path, index=False)
                 test_files.append((filename, size))
 
@@ -306,7 +332,9 @@ class TestClientPerformanceBenchmarks:
                 detection_time = time.time() - start_time
 
                 assert file_info["type"] == "delimited_data"
-                assert detection_time < 0.1, f"File detection too slow for {size} rows: {detection_time}s"
+                assert (
+                    detection_time < 0.1
+                ), f"File detection too slow for {size} rows: {detection_time}s"
 
                 # File location
                 start_time = time.time()
@@ -314,7 +342,9 @@ class TestClientPerformanceBenchmarks:
                 location_time = time.time() - start_time
 
                 assert location_result["found"] is True
-                assert location_time < 0.5, f"File location too slow for {size} rows: {location_time}s"
+                assert (
+                    location_time < 0.5
+                ), f"File location too slow for {size} rows: {location_time}s"
 
             # Benchmark file listing
             start_time = time.time()
@@ -331,7 +361,9 @@ class TestClientPerformanceBenchmarks:
             {"supervisor": {"messages": [Mock(content="Load test response")]}}
         ]
 
-        with patch('lobster.core.client.create_bioinformatics_graph', return_value=mock_graph):
+        with patch(
+            "lobster.core.client.create_bioinformatics_graph", return_value=mock_graph
+        ):
             client = AgentClient(workspace_path=temp_perf_workspace)
 
             # Sustained load test
@@ -345,8 +377,9 @@ class TestClientPerformanceBenchmarks:
                 memory_stats = memory_monitor.get_memory_stats()
 
                 # Memory shouldn't grow excessively
-                assert memory_stats["current_mb"] < memory_stats["initial_mb"] + 100, \
-                    f"Memory growth too high after batch {batch}: {memory_stats}"
+                assert (
+                    memory_stats["current_mb"] < memory_stats["initial_mb"] + 100
+                ), f"Memory growth too high after batch {batch}: {memory_stats}"
 
                 # Force garbage collection between batches
                 gc.collect()
@@ -355,6 +388,7 @@ class TestClientPerformanceBenchmarks:
 # ===============================================================================
 # Resource Cleanup Tests
 # ===============================================================================
+
 
 @pytest.mark.performance
 class TestResourceCleanup:
@@ -369,7 +403,9 @@ class TestResourceCleanup:
 
         client_refs = []
 
-        with patch('lobster.core.client.create_bioinformatics_graph', return_value=mock_graph):
+        with patch(
+            "lobster.core.client.create_bioinformatics_graph", return_value=mock_graph
+        ):
             # Create multiple clients
             for i in range(20):
                 workspace = temp_perf_workspace / f"client_{i}"
@@ -390,7 +426,9 @@ class TestResourceCleanup:
 
         # Check that most clients were garbage collected
         alive_clients = sum(1 for ref in client_refs if ref() is not None)
-        assert alive_clients < 5, f"Too many clients not garbage collected: {alive_clients}"
+        assert (
+            alive_clients < 5
+        ), f"Too many clients not garbage collected: {alive_clients}"
 
     def test_thread_cleanup(self, temp_perf_workspace):
         """Test that background threads are properly cleaned up."""
@@ -401,12 +439,16 @@ class TestResourceCleanup:
             {"supervisor": {"messages": [Mock(content="Thread test")]}}
         ]
 
-        with patch('lobster.core.client.create_bioinformatics_graph', return_value=mock_graph):
+        with patch(
+            "lobster.core.client.create_bioinformatics_graph", return_value=mock_graph
+        ):
             clients = []
 
             # Create clients that might spawn threads
             for i in range(10):
-                client = AgentClient(workspace_path=temp_perf_workspace / f"thread_test_{i}")
+                client = AgentClient(
+                    workspace_path=temp_perf_workspace / f"thread_test_{i}"
+                )
                 client.query(f"Thread test {i}")
                 clients.append(client)
 
@@ -416,7 +458,7 @@ class TestResourceCleanup:
             # Clean up clients
             for client in clients:
                 # Simulate cleanup operations
-                if hasattr(client, 'cleanup'):
+                if hasattr(client, "cleanup"):
                     client.cleanup()
                 del client
 
@@ -434,7 +476,7 @@ class TestResourceCleanup:
 
     def test_file_handle_cleanup(self, temp_perf_workspace):
         """Test that file handles are properly closed."""
-        with patch('lobster.core.client.create_bioinformatics_graph'):
+        with patch("lobster.core.client.create_bioinformatics_graph"):
             client = AgentClient(workspace_path=temp_perf_workspace)
 
             # Create many files

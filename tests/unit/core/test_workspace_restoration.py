@@ -17,23 +17,23 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
-import h5py
 
-import pytest
+import anndata as ad
+import h5py
 import numpy as np
 import pandas as pd
-import anndata as ad
+import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from tests.mock_data.factories import (
-    SingleCellDataFactory,
-    BulkRNASeqDataFactory,
-    ProteomicsDataFactory
-)
 from tests.mock_data.base import (
-    SMALL_DATASET_CONFIG,
+    LARGE_DATASET_CONFIG,
     MEDIUM_DATASET_CONFIG,
-    LARGE_DATASET_CONFIG
+    SMALL_DATASET_CONFIG,
+)
+from tests.mock_data.factories import (
+    BulkRNASeqDataFactory,
+    ProteomicsDataFactory,
+    SingleCellDataFactory,
 )
 
 
@@ -58,7 +58,7 @@ def populated_workspace(temp_workspace):
         "geo_gse789012_bulk": BulkRNASeqDataFactory(config=SMALL_DATASET_CONFIG),
         "proteomics_experiment": ProteomicsDataFactory(config=SMALL_DATASET_CONFIG),
         "pilot_study_data": SingleCellDataFactory(config=SMALL_DATASET_CONFIG),
-        "validation_cohort": BulkRNASeqDataFactory(config=SMALL_DATASET_CONFIG)
+        "validation_cohort": BulkRNASeqDataFactory(config=SMALL_DATASET_CONFIG),
     }
 
     # Save datasets to workspace
@@ -75,6 +75,7 @@ def populated_workspace(temp_workspace):
 # ===============================================================================
 # Workspace Scanning Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestWorkspaceScanning:
@@ -138,7 +139,9 @@ class TestWorkspaceScanning:
         # Verify metadata extraction
         dataset_info = dm.available_datasets["test_dataset"]
         assert dataset_info["path"] == str(filepath)
-        assert abs(dataset_info["size_mb"] - expected_size_mb) < 0.1  # Allow small variance
+        assert (
+            abs(dataset_info["size_mb"] - expected_size_mb) < 0.1
+        )  # Allow small variance
         assert dataset_info["shape"] == test_adata.shape
         assert dataset_info["type"] == "h5ad"
         assert "modified" in dataset_info
@@ -153,7 +156,7 @@ class TestWorkspaceScanning:
 
         # Create corrupted file
         corrupted_path = dm.data_dir / "corrupted.h5ad"
-        with open(corrupted_path, 'w') as f:
+        with open(corrupted_path, "w") as f:
             f.write("This is not a valid h5ad file")
 
         # Scan should handle corrupted files gracefully
@@ -187,6 +190,7 @@ class TestWorkspaceScanning:
 # Session Management Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestSessionManagement:
     """Test session persistence and management."""
@@ -206,12 +210,17 @@ class TestSessionManagement:
         # Verify session file exists and has correct structure
         assert dm.session_file.exists()
 
-        with open(dm.session_file, 'r') as f:
+        with open(dm.session_file, "r") as f:
             session_data = json.load(f)
 
         required_keys = [
-            "session_id", "created_at", "last_modified", "lobster_version",
-            "active_modalities", "workspace_stats", "command_history"
+            "session_id",
+            "created_at",
+            "last_modified",
+            "lobster_version",
+            "active_modalities",
+            "workspace_stats",
+            "command_history",
         ]
 
         for key in required_keys:
@@ -259,7 +268,7 @@ class TestSessionManagement:
         dm._update_session_file("many_commands")
 
         # Load session data
-        with open(dm.session_file, 'r') as f:
+        with open(dm.session_file, "r") as f:
             session_data = json.load(f)
 
         # Should limit to 50 most recent commands
@@ -274,7 +283,7 @@ class TestSessionManagement:
         # Create test workspace with datasets
         datasets = {
             "dataset_1": SingleCellDataFactory(config=SMALL_DATASET_CONFIG),
-            "dataset_2": BulkRNASeqDataFactory(config=SMALL_DATASET_CONFIG)
+            "dataset_2": BulkRNASeqDataFactory(config=SMALL_DATASET_CONFIG),
         }
 
         total_size = 0
@@ -288,7 +297,7 @@ class TestSessionManagement:
         dm._update_session_file("accuracy_test")
 
         # Load and verify session data
-        with open(dm.session_file, 'r') as f:
+        with open(dm.session_file, "r") as f:
             session_data = json.load(f)
 
         workspace_stats = session_data["workspace_stats"]
@@ -300,6 +309,7 @@ class TestSessionManagement:
 # ===============================================================================
 # Lazy Loading Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestLazyLoading:
@@ -359,7 +369,7 @@ class TestLazyLoading:
         # Should update session file
         assert dm.session_file.exists()
 
-        with open(dm.session_file, 'r') as f:
+        with open(dm.session_file, "r") as f:
             session_data = json.load(f)
 
         # Should track loaded dataset
@@ -395,6 +405,7 @@ class TestLazyLoading:
 # ===============================================================================
 # Pattern-Based Restoration Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestPatternBasedRestoration:
@@ -440,7 +451,11 @@ class TestPatternBasedRestoration:
         result = dm.restore_session(pattern="geo_gse123456*", max_size_mb=1000)
 
         # Should match all GSE123456 datasets
-        expected_matches = ["geo_gse123456_raw", "geo_gse123456_filtered", "geo_gse123456_clustered"]
+        expected_matches = [
+            "geo_gse123456_raw",
+            "geo_gse123456_filtered",
+            "geo_gse123456_clustered",
+        ]
         assert len(result["restored"]) == 3
         assert set(result["restored"]) == set(expected_matches)
 
@@ -509,6 +524,7 @@ class TestPatternBasedRestoration:
 # Performance and Stress Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestWorkspacePerformance:
     """Test workspace performance under various conditions."""
@@ -553,7 +569,7 @@ class TestWorkspacePerformance:
             ("small", SMALL_DATASET_CONFIG),
             ("medium", MEDIUM_DATASET_CONFIG),
             ("small2", SMALL_DATASET_CONFIG),
-            ("medium2", MEDIUM_DATASET_CONFIG)
+            ("medium2", MEDIUM_DATASET_CONFIG),
         ]
 
         total_expected_size = 0
@@ -566,7 +582,9 @@ class TestWorkspacePerformance:
         # Scan and verify size calculations
         dm._scan_workspace()
 
-        total_scanned_size = sum(info["size_mb"] for info in dm.available_datasets.values())
+        total_scanned_size = sum(
+            info["size_mb"] for info in dm.available_datasets.values()
+        )
         assert abs(total_scanned_size - total_expected_size) < 1.0  # Allow 1MB variance
 
     def test_concurrent_workspace_operations(self, temp_workspace):
@@ -592,7 +610,9 @@ class TestWorkspacePerformance:
         # Run concurrent operations
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             futures = [executor.submit(create_and_scan, i) for i in range(5)]
-            results = [future.result() for future in concurrent.futures.as_completed(futures)]
+            results = [
+                future.result() for future in concurrent.futures.as_completed(futures)
+            ]
 
         # All operations should succeed
         assert all(results)
@@ -611,7 +631,9 @@ class TestWorkspacePerformance:
 
         # Add many modalities
         for i in range(20):
-            dm.modalities[f"dataset_{i}"] = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+            dm.modalities[f"dataset_{i}"] = SingleCellDataFactory(
+                config=SMALL_DATASET_CONFIG
+            )
 
         # Time session update
         start_time = time.time()
@@ -624,7 +646,7 @@ class TestWorkspacePerformance:
         # Verify file was created and is readable
         assert dm.session_file.exists()
 
-        with open(dm.session_file, 'r') as f:
+        with open(dm.session_file, "r") as f:
             session_data = json.load(f)
 
         # Should contain recent commands (limited to 50)

@@ -5,26 +5,31 @@ This module tests the complete workflow including actual handoff execution,
 context preservation, and proper return flow.
 """
 
+import shutil
+import tempfile
 import unittest
 import uuid
-from unittest.mock import Mock, patch, MagicMock
-from typing import Dict, Any
-import tempfile
-import shutil
 from pathlib import Path
+from typing import Any, Dict
+from unittest.mock import MagicMock, Mock, patch
 
-import pandas as pd
-import numpy as np
 import anndata as ad
+import numpy as np
+import pandas as pd
 import pytest
 
-from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.expert_handoff_manager import expert_handoff_manager
-from lobster.tools.enhanced_handoff_tool import create_expert_handoff_tool, SCVI_CONTEXT_SCHEMA
 from lobster.config.agent_registry import create_expert_handoff_tools
+from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.tools.enhanced_handoff_tool import (
+    SCVI_CONTEXT_SCHEMA,
+    create_expert_handoff_tool,
+)
+from lobster.tools.expert_handoff_manager import expert_handoff_manager
 
 # Skip entire module - direct sub-agent handoffs currently disabled (supervisor-mediated flow)
-pytestmark = pytest.mark.skip(reason="Direct sub-agent handoffs are currently disabled. Use supervisor-mediated flow.")
+pytestmark = pytest.mark.skip(
+    reason="Direct sub-agent handoffs are currently disabled. Use supervisor-mediated flow."
+)
 
 
 class TestScviHandoffFlow(unittest.TestCase):
@@ -65,18 +70,20 @@ class TestScviHandoffFlow(unittest.TestCase):
 
         # Create observation metadata
         obs_data = {
-            'cell_type': np.random.choice(['T_cell', 'B_cell', 'NK_cell', 'Monocyte'], n_obs),
-            'sample_id': np.random.choice(['sample_1', 'sample_2', 'sample_3'], n_obs),
-            'batch': np.random.choice(['batch_A', 'batch_B'], n_obs),
-            'n_genes': np.random.randint(500, 1500, n_obs),
-            'total_counts': np.random.randint(1000, 10000, n_obs)
+            "cell_type": np.random.choice(
+                ["T_cell", "B_cell", "NK_cell", "Monocyte"], n_obs
+            ),
+            "sample_id": np.random.choice(["sample_1", "sample_2", "sample_3"], n_obs),
+            "batch": np.random.choice(["batch_A", "batch_B"], n_obs),
+            "n_genes": np.random.randint(500, 1500, n_obs),
+            "total_counts": np.random.randint(1000, 10000, n_obs),
         }
         obs = pd.DataFrame(obs_data, index=[f"cell_{i}" for i in range(n_obs)])
 
         # Create variable metadata
         var_data = {
-            'gene_name': [f"gene_{i}" for i in range(n_vars)],
-            'highly_variable': np.random.choice([True, False], n_vars, p=[0.2, 0.8])
+            "gene_name": [f"gene_{i}" for i in range(n_vars)],
+            "highly_variable": np.random.choice([True, False], n_vars, p=[0.2, 0.8]),
         }
         var = pd.DataFrame(var_data, index=[f"ENSG{i:08d}" for i in range(n_vars)])
 
@@ -84,11 +91,11 @@ class TestScviHandoffFlow(unittest.TestCase):
         adata = ad.AnnData(X=X, obs=obs, var=var)
 
         # Add some basic preprocessing info
-        adata.uns['log1p'] = {'base': None}
-        adata.layers['raw'] = X.copy()
+        adata.uns["log1p"] = {"base": None}
+        adata.layers["raw"] = X.copy()
 
         # Store in data manager
-        self.data_manager.modalities['test_singlecell'] = adata
+        self.data_manager.modalities["test_singlecell"] = adata
 
     def test_end_to_end_scvi_workflow(self):
         """Test complete workflow: Single Cell -> ML -> Single Cell -> Supervisor."""
@@ -98,7 +105,7 @@ class TestScviHandoffFlow(unittest.TestCase):
             to_expert="machine_learning_expert",
             task_type="scvi_training",
             context_schema=SCVI_CONTEXT_SCHEMA,
-            return_to_sender=True
+            return_to_sender=True,
         )
 
         # Step 2: Prepare handoff context
@@ -111,8 +118,8 @@ class TestScviHandoffFlow(unittest.TestCase):
             "task_type": "scvi_training",
             "return_expectations": {
                 "embedding_key": "X_scvi",
-                "success_message": "scVI training completed successfully"
-            }
+                "success_message": "scVI training completed successfully",
+            },
         }
 
         task_description = """Train scVI embedding for single-cell modality 'test_singlecell'.
@@ -132,18 +139,17 @@ Expected outcome:
 Context: This is for enhanced single-cell clustering and batch correction."""
 
         # Step 3: Mock state for handoff
-        mock_state = {
-            "messages": [],
-            "current_agent": "singlecell_expert"
-        }
+        mock_state = {"messages": [], "current_agent": "singlecell_expert"}
 
         # Step 4: Execute handoff
-        handoff_command = ml_handoff_tool.invoke({
-            "task_description": task_description,
-            "context": handoff_context,
-            "state": mock_state,
-            "tool_call_id": str(uuid.uuid4())
-        })
+        handoff_command = ml_handoff_tool.invoke(
+            {
+                "task_description": task_description,
+                "context": handoff_context,
+                "state": mock_state,
+                "tool_call_id": str(uuid.uuid4()),
+            }
+        )
 
         # Verify handoff command structure
         self.assertEqual(handoff_command.goto, "machine_learning_expert")
@@ -161,11 +167,11 @@ Context: This is for enhanced single-cell clustering and batch correction."""
 
         # Mock scVI embeddings (normally done by ML Expert)
         mock_embeddings = np.random.randn(adata.n_obs, 10).astype(np.float32)
-        adata.obsm['X_scvi'] = mock_embeddings
+        adata.obsm["X_scvi"] = mock_embeddings
 
         # Step 6: Simulate ML Expert completion
-        from lobster.tools.expert_handoff_manager import create_handoff_result
         from lobster.tools.enhanced_handoff_tool import create_handoff_completion_tool
+        from lobster.tools.expert_handoff_manager import create_handoff_result
 
         completion_tool = create_handoff_completion_tool("machine_learning_expert")
 
@@ -173,23 +179,25 @@ Context: This is for enhanced single-cell clustering and batch correction."""
         ml_completion_state = {
             "messages": mock_state["messages"],
             "handoff_context": handoff_command.update["handoff_context"],
-            "current_agent": "machine_learning_expert"
+            "current_agent": "machine_learning_expert",
         }
 
         # Execute completion
-        completion_result = completion_tool.invoke({
-            "success": True,
-            "result_data": {
-                "modality_name": "test_singlecell",
-                "embedding_key": "X_scvi",
-                "embedding_shape": (adata.n_obs, 10),
-                "training_epochs": 100,
-                "final_loss": 1234.56
-            },
-            "error_message": None,
-            "state": ml_completion_state,
-            "tool_call_id": str(uuid.uuid4())
-        })
+        completion_result = completion_tool.invoke(
+            {
+                "success": True,
+                "result_data": {
+                    "modality_name": "test_singlecell",
+                    "embedding_key": "X_scvi",
+                    "embedding_shape": (adata.n_obs, 10),
+                    "training_epochs": 100,
+                    "final_loss": 1234.56,
+                },
+                "error_message": None,
+                "state": ml_completion_state,
+                "tool_call_id": str(uuid.uuid4()),
+            }
+        )
 
         # Verify completion command
         self.assertEqual(completion_result.goto, "singlecell_expert")
@@ -212,16 +220,16 @@ Context: This is for enhanced single-cell clustering and batch correction."""
 
         # Simulate successful scVI handoff (embeddings already stored)
         mock_embeddings = np.random.randn(adata.n_obs, 15).astype(np.float32)
-        adata.obsm['X_scvi'] = mock_embeddings
+        adata.obsm["X_scvi"] = mock_embeddings
 
         # Test that embeddings can be used for downstream analysis
-        self.assertIn('X_scvi', adata.obsm)
-        self.assertEqual(adata.obsm['X_scvi'].shape[0], adata.n_obs)
-        self.assertEqual(adata.obsm['X_scvi'].shape[1], 15)
+        self.assertIn("X_scvi", adata.obsm)
+        self.assertEqual(adata.obsm["X_scvi"].shape[0], adata.n_obs)
+        self.assertEqual(adata.obsm["X_scvi"].shape[1], 15)
 
         # Test embeddings are numeric and finite
-        self.assertTrue(np.all(np.isfinite(adata.obsm['X_scvi'])))
-        self.assertEqual(adata.obsm['X_scvi'].dtype, np.float32)
+        self.assertTrue(np.all(np.isfinite(adata.obsm["X_scvi"])))
+        self.assertEqual(adata.obsm["X_scvi"].dtype, np.float32)
 
         # Simulate using embeddings for clustering (would be done by Single Cell Expert)
         # This tests that the handoff result can be used for downstream analysis
@@ -230,15 +238,15 @@ Context: This is for enhanced single-cell clustering and batch correction."""
 
         # Test that embeddings can be used for clustering
         kmeans = KMeans(n_clusters=4, random_state=42, n_init=10)
-        cluster_labels = kmeans.fit_predict(adata.obsm['X_scvi'])
+        cluster_labels = kmeans.fit_predict(adata.obsm["X_scvi"])
 
         self.assertEqual(len(cluster_labels), adata.n_obs)
         self.assertTrue(len(np.unique(cluster_labels)) <= 4)
 
         # Test that embeddings can be used for neighbor finding
         nn = NearestNeighbors(n_neighbors=10)
-        nn.fit(adata.obsm['X_scvi'])
-        distances, indices = nn.kneighbors(adata.obsm['X_scvi'][:10])
+        nn.fit(adata.obsm["X_scvi"])
+        distances, indices = nn.kneighbors(adata.obsm["X_scvi"][:10])
 
         self.assertEqual(distances.shape, (10, 10))
         self.assertEqual(indices.shape, (10, 10))
@@ -251,7 +259,7 @@ Context: This is for enhanced single-cell clustering and batch correction."""
             to_expert="machine_learning_expert",
             task_type="scvi_training",
             context_schema=SCVI_CONTEXT_SCHEMA,
-            return_to_sender=True
+            return_to_sender=True,
         )
 
         # Prepare handoff context
@@ -264,25 +272,24 @@ Context: This is for enhanced single-cell clustering and batch correction."""
             "task_type": "scvi_training",
             "return_expectations": {
                 "embedding_key": "X_scvi",
-                "success_message": "scVI training completed successfully"
-            }
+                "success_message": "scVI training completed successfully",
+            },
         }
 
         task_description = "Train scVI embedding for test data"
 
         # Mock state
-        mock_state = {
-            "messages": [],
-            "current_agent": "singlecell_expert"
-        }
+        mock_state = {"messages": [], "current_agent": "singlecell_expert"}
 
         # Execute handoff
-        handoff_command = ml_handoff_tool.invoke({
-            "task_description": task_description,
-            "context": handoff_context,
-            "state": mock_state,
-            "tool_call_id": str(uuid.uuid4())
-        })
+        handoff_command = ml_handoff_tool.invoke(
+            {
+                "task_description": task_description,
+                "context": handoff_context,
+                "state": mock_state,
+                "tool_call_id": str(uuid.uuid4()),
+            }
+        )
 
         handoff_id = handoff_command.update["handoff_id"]
 
@@ -295,17 +302,19 @@ Context: This is for enhanced single-cell clustering and batch correction."""
         ml_completion_state = {
             "messages": mock_state["messages"],
             "handoff_context": handoff_command.update["handoff_context"],
-            "current_agent": "machine_learning_expert"
+            "current_agent": "machine_learning_expert",
         }
 
         # Execute completion with failure
-        completion_result = completion_tool.invoke({
-            "success": False,
-            "result_data": {},
-            "error_message": "scVI training failed: insufficient memory",
-            "state": ml_completion_state,
-            "tool_call_id": str(uuid.uuid4())
-        })
+        completion_result = completion_tool.invoke(
+            {
+                "success": False,
+                "result_data": {},
+                "error_message": "scVI training failed: insufficient memory",
+                "state": ml_completion_state,
+                "tool_call_id": str(uuid.uuid4()),
+            }
+        )
 
         # Verify failure handling
         self.assertEqual(completion_result.goto, "singlecell_expert")
@@ -315,7 +324,9 @@ Context: This is for enhanced single-cell clustering and batch correction."""
         # Verify failure was recorded
         handoff_result = completion_result.update["handoff_result"]
         self.assertFalse(handoff_result["success"])
-        self.assertEqual(handoff_result["error_message"], "scVI training failed: insufficient memory")
+        self.assertEqual(
+            handoff_result["error_message"], "scVI training failed: insufficient memory"
+        )
 
         # Verify no embeddings were created
         adata = self.data_manager.get_modality("test_singlecell")
@@ -332,7 +343,7 @@ Context: This is for enhanced single-cell clustering and batch correction."""
             to_expert="machine_learning_expert",
             task_type="scvi_training",
             context_schema=SCVI_CONTEXT_SCHEMA,
-            return_to_sender=True
+            return_to_sender=True,
         )
 
         # Prepare invalid handoff context (missing required field)
@@ -340,23 +351,22 @@ Context: This is for enhanced single-cell clustering and batch correction."""
             "n_latent": 10,
             "batch_key": "batch",
             "max_epochs": 100,
-            "use_gpu": False
+            "use_gpu": False,
             # Missing required "modality_name"
         }
 
         # Mock state
-        mock_state = {
-            "messages": [],
-            "current_agent": "singlecell_expert"
-        }
+        mock_state = {"messages": [], "current_agent": "singlecell_expert"}
 
         # Execute handoff with invalid context
-        result_command = ml_handoff_tool.invoke({
-            "task_description": "Test task",
-            "context": invalid_context,
-            "state": mock_state,
-            "tool_call_id": str(uuid.uuid4())
-        })
+        result_command = ml_handoff_tool.invoke(
+            {
+                "task_description": "Test task",
+                "context": invalid_context,
+                "state": mock_state,
+                "tool_call_id": str(uuid.uuid4()),
+            }
+        )
 
         # Should return error command instead of handoff
         self.assertEqual(result_command.goto, "__end__")
@@ -374,7 +384,7 @@ Context: This is for enhanced single-cell clustering and batch correction."""
             "n_latent": 10,
             "batch_key": None,
             "max_epochs": 100,
-            "use_gpu": False
+            "use_gpu": False,
         }
 
         # In a real scenario, the single cell expert would validate the modality exists
@@ -395,7 +405,7 @@ Context: This is for enhanced single-cell clustering and batch correction."""
             to_expert="machine_learning_expert",
             task_type="scvi_training",
             context_schema=SCVI_CONTEXT_SCHEMA,
-            return_to_sender=True
+            return_to_sender=True,
         )
 
         bulk_handoff_tool = create_expert_handoff_tool(
@@ -407,9 +417,9 @@ Context: This is for enhanced single-cell clustering and batch correction."""
                 "groupby": str,
                 "layer": type(None),  # Optional[str] simplified
                 "method": str,
-                "min_cells": int
+                "min_cells": int,
             },
-            return_to_sender=True
+            return_to_sender=True,
         )
 
         # Create two different contexts
@@ -418,7 +428,7 @@ Context: This is for enhanced single-cell clustering and batch correction."""
             "n_latent": 10,
             "batch_key": "batch",
             "max_epochs": 100,
-            "use_gpu": False
+            "use_gpu": False,
         }
 
         bulk_context = {
@@ -426,30 +436,31 @@ Context: This is for enhanced single-cell clustering and batch correction."""
             "groupby": "cell_type",
             "layer": None,
             "method": "sum",
-            "min_cells": 10
+            "min_cells": 10,
         }
 
         # Mock state
-        mock_state = {
-            "messages": [],
-            "current_agent": "singlecell_expert"
-        }
+        mock_state = {"messages": [], "current_agent": "singlecell_expert"}
 
         # Execute first handoff
-        ml_command = ml_handoff_tool.invoke({
-            "task_description": "Train scVI embeddings",
-            "context": ml_context,
-            "state": mock_state,
-            "tool_call_id": str(uuid.uuid4())
-        })
+        ml_command = ml_handoff_tool.invoke(
+            {
+                "task_description": "Train scVI embeddings",
+                "context": ml_context,
+                "state": mock_state,
+                "tool_call_id": str(uuid.uuid4()),
+            }
+        )
 
         # Execute second handoff
-        bulk_command = bulk_handoff_tool.invoke({
-            "task_description": "Create pseudobulk data",
-            "context": bulk_context,
-            "state": mock_state,
-            "tool_call_id": str(uuid.uuid4())
-        })
+        bulk_command = bulk_handoff_tool.invoke(
+            {
+                "task_description": "Create pseudobulk data",
+                "context": bulk_context,
+                "state": mock_state,
+                "tool_call_id": str(uuid.uuid4()),
+            }
+        )
 
         # Verify both handoffs are tracked
         ml_handoff_id = ml_command.update["handoff_id"]
@@ -469,5 +480,5 @@ Context: This is for enhanced single-cell clustering and batch correction."""
         self.assertEqual(bulk_context_stored.task_type, "pseudobulk_analysis")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

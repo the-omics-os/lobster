@@ -7,21 +7,24 @@ Usage:
     python tests/pre-release-report/tools_quick_status_check.py
 """
 
+import importlib
 import subprocess
 import sys
-import importlib
 from pathlib import Path
+
 
 def run_command(cmd, capture_output=True):
     """Run a command and return result."""
     try:
         # Split command string into list for safe execution without shell=True
         import shlex
+
         cmd_list = shlex.split(cmd)
         result = subprocess.run(cmd_list, capture_output=capture_output, text=True)
         return result.returncode == 0, result.stdout, result.stderr
     except Exception as e:
         return False, "", str(e)
+
 
 def check_critical_services_import():
     """Check if critical services can be imported."""
@@ -31,14 +34,14 @@ def check_critical_services_import():
         "lobster.tools.clustering_service.ClusteringService",
         "lobster.tools.enhanced_singlecell_service.EnhancedSingleCellService",
         "lobster.tools.geo_service.GEOService",
-        "lobster.tools.visualization_service.SingleCellVisualizationService"
+        "lobster.tools.visualization_service.SingleCellVisualizationService",
     ]
 
     print("🔍 CHECKING CRITICAL SERVICE IMPORTS...")
     import_results = {}
 
     for service in critical_services:
-        module_path, class_name = service.rsplit('.', 1)
+        module_path, class_name = service.rsplit(".", 1)
         try:
             # Use importlib instead of exec() for secure dynamic imports
             module = importlib.import_module(module_path)
@@ -49,23 +52,27 @@ def check_critical_services_import():
 
     return import_results
 
+
 def run_working_tests():
     """Run tests that are known to work."""
     print("\n🧪 RUNNING WORKING TESTS...")
 
     working_tests = [
         "tests/unit/tools/test_concatenation_service.py",
-        "tests/unit/tools/test_manual_annotation_service.py"
+        "tests/unit/tools/test_manual_annotation_service.py",
     ]
 
     for test_file in working_tests:
-        success, stdout, stderr = run_command(f".venv/bin/pytest {test_file} -v --tb=no")
+        success, stdout, stderr = run_command(
+            f".venv/bin/pytest {test_file} -v --tb=no"
+        )
         if success:
             print(f"✅ {test_file}: PASSED")
         else:
             print(f"❌ {test_file}: FAILED")
 
     return True
+
 
 def check_critical_failures():
     """Check for critical test failures."""
@@ -74,17 +81,19 @@ def check_critical_failures():
     critical_test_files = [
         "tests/unit/tools/test_pseudobulk_service.py",
         "tests/unit/tools/test_differential_formula_service.py",
-        "tests/unit/tools/test_bulk_rnaseq_service.py"
+        "tests/unit/tools/test_bulk_rnaseq_service.py",
     ]
 
     failure_summary = {}
 
     for test_file in critical_test_files:
         if Path(test_file).exists():
-            success, stdout, stderr = run_command(f".venv/bin/pytest {test_file} --tb=no -q")
+            success, stdout, stderr = run_command(
+                f".venv/bin/pytest {test_file} --tb=no -q"
+            )
             if not success:
                 # Count failures
-                failure_count = stderr.count('FAILED') + stdout.count('FAILED')
+                failure_count = stderr.count("FAILED") + stdout.count("FAILED")
                 failure_summary[test_file] = f"❌ {failure_count} failures"
             else:
                 failure_summary[test_file] = "✅ All passed"
@@ -92,6 +101,7 @@ def check_critical_failures():
             failure_summary[test_file] = "⚠️ File not found"
 
     return failure_summary
+
 
 def check_test_coverage():
     """Get basic coverage information."""
@@ -102,7 +112,7 @@ def check_test_coverage():
     )
 
     if success and "TOTAL" in stdout:
-        lines = stdout.split('\n')
+        lines = stdout.split("\n")
         for line in lines:
             if "TOTAL" in line:
                 parts = line.split()
@@ -111,6 +121,7 @@ def check_test_coverage():
                     return f"Current coverage: {coverage_pct}"
 
     return "Coverage check failed"
+
 
 def count_services_without_tests():
     """Count services that have no unit tests."""
@@ -136,6 +147,7 @@ def count_services_without_tests():
             services_without_tests.append(service_file.name)
 
     return len(services_without_tests), len(service_files), services_without_tests
+
 
 def generate_status_report():
     """Generate comprehensive status report."""
@@ -173,7 +185,7 @@ def generate_status_report():
             "clustering_service.py",
             "enhanced_singlecell_service.py",
             "geo_service.py",
-            "visualization_service.py"
+            "visualization_service.py",
         ]
 
         for service in critical_services:
@@ -184,13 +196,17 @@ def generate_status_report():
 
     # Overall status
     print("\n" + "=" * 60)
-    if untested_count < 5 and len([r for r in import_results.values() if "FAILED" in r]) == 0:
+    if (
+        untested_count < 5
+        and len([r for r in import_results.values() if "FAILED" in r]) == 0
+    ):
         print("🟡 STATUS: IMPROVING - Some critical issues remain")
     elif untested_count > 15:
         print("🔴 STATUS: RELEASE BLOCKED - Major testing gaps")
     else:
         print("🟠 STATUS: NEEDS WORK - Significant issues to address")
     print("=" * 60)
+
 
 if __name__ == "__main__":
     generate_status_report()

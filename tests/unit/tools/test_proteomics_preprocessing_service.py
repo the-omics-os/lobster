@@ -8,28 +8,32 @@ for proteomics data analysis.
 Test coverage target: 95%+ with meaningful tests for proteomics preprocessing operations.
 """
 
+from typing import Any, Dict, List, Optional, Tuple, Union
+
 import pytest
-from typing import Dict, Any, List, Optional, Union, Tuple
 
 # Skip all proteomics tests as they are in development
 pytestmark = pytest.mark.skip(reason="Proteomics services are still in development")
-from unittest.mock import Mock, MagicMock, patch, mock_open
+import os
+import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock, Mock, mock_open, patch
+
+import anndata as ad
 import numpy as np
 import pandas as pd
-import anndata as ad
-from pathlib import Path
-import tempfile
-import os
 
-from lobster.tools.proteomics_preprocessing_service import ProteomicsPreprocessingService, ProteomicsPreprocessingError
-
+from lobster.tools.proteomics_preprocessing_service import (
+    ProteomicsPreprocessingError,
+    ProteomicsPreprocessingService,
+)
+from tests.mock_data.base import LARGE_DATASET_CONFIG, SMALL_DATASET_CONFIG
 from tests.mock_data.factories import ProteomicsDataFactory
-from tests.mock_data.base import SMALL_DATASET_CONFIG, LARGE_DATASET_CONFIG
-
 
 # ===============================================================================
 # Mock Data and Fixtures
 # ===============================================================================
+
 
 @pytest.fixture
 def mock_proteomics_data():
@@ -58,9 +62,9 @@ def mock_adata_with_missing():
     adata.var_names = [f"protein_{i}" for i in range(n_proteins)]
 
     # Add metadata
-    adata.obs['batch'] = ['batch1'] * 16 + ['batch2'] * 16 + ['batch3'] * 16
-    adata.obs['condition'] = ['control'] * 24 + ['treatment'] * 24
-    adata.var['protein_names'] = [f"PROT_{i}" for i in range(n_proteins)]
+    adata.obs["batch"] = ["batch1"] * 16 + ["batch2"] * 16 + ["batch3"] * 16
+    adata.obs["condition"] = ["control"] * 24 + ["treatment"] * 24
+    adata.var["protein_names"] = [f"PROT_{i}" for i in range(n_proteins)]
 
     return adata
 
@@ -76,8 +80,8 @@ def mock_adata_no_missing():
     adata.var_names = [f"protein_{i}" for i in range(n_proteins)]
 
     # Add metadata
-    adata.obs['batch'] = ['batch1'] * 16 + ['batch2'] * 16 + ['batch3'] * 16
-    adata.obs['condition'] = ['control'] * 24 + ['treatment'] * 24
+    adata.obs["batch"] = ["batch1"] * 16 + ["batch2"] * 16 + ["batch3"] * 16
+    adata.obs["condition"] = ["control"] * 24 + ["treatment"] * 24
 
     return adata
 
@@ -100,8 +104,8 @@ def mock_adata_with_batches():
     adata.var_names = [f"protein_{i}" for i in range(n_proteins)]
 
     # Add batch labels
-    adata.obs['batch'] = ['batch1'] * 20 + ['batch2'] * 20 + ['batch3'] * 20
-    adata.obs['condition'] = ['control'] * 30 + ['treatment'] * 30
+    adata.obs["batch"] = ["batch1"] * 20 + ["batch2"] * 20 + ["batch3"] * 20
+    adata.obs["condition"] = ["control"] * 30 + ["treatment"] * 30
 
     return adata
 
@@ -109,6 +113,7 @@ def mock_adata_with_batches():
 # ===============================================================================
 # Service Initialization Tests
 # ===============================================================================
+
 
 class TestProteomicsPreprocessingServiceInitialization:
     """Test suite for ProteomicsPreprocessingService initialization."""
@@ -124,6 +129,7 @@ class TestProteomicsPreprocessingServiceInitialization:
 # Missing Value Imputation Tests
 # ===============================================================================
 
+
 class TestMissingValueImputation:
     """Test suite for missing value imputation functionality."""
 
@@ -132,87 +138,81 @@ class TestMissingValueImputation:
         original_missing = np.isnan(mock_adata_with_missing.X).sum()
 
         result_adata, stats = service.impute_missing_values(
-            mock_adata_with_missing,
-            method='knn',
-            knn_neighbors=5
+            mock_adata_with_missing, method="knn", knn_neighbors=5
         )
 
         assert result_adata is not None
         assert isinstance(stats, dict)
-        assert stats['method'] == 'knn'
-        assert stats['missing_values_found'] is True
-        assert stats['imputation_performed'] is True
-        assert stats['original_missing_count'] == original_missing
-        assert stats['remaining_missing_count'] == 0  # All should be imputed
+        assert stats["method"] == "knn"
+        assert stats["missing_values_found"] is True
+        assert stats["imputation_performed"] is True
+        assert stats["original_missing_count"] == original_missing
+        assert stats["remaining_missing_count"] == 0  # All should be imputed
         assert not np.any(np.isnan(result_adata.X))
 
     def test_impute_missing_values_min_prob(self, service, mock_adata_with_missing):
         """Test minimum probability imputation."""
         result_adata, stats = service.impute_missing_values(
-            mock_adata_with_missing,
-            method='min_prob',
-            min_prob_percentile=2.5
+            mock_adata_with_missing, method="min_prob", min_prob_percentile=2.5
         )
 
         assert result_adata is not None
-        assert stats['method'] == 'min_prob'
+        assert stats["method"] == "min_prob"
         assert not np.any(np.isnan(result_adata.X))
 
     def test_impute_missing_values_mnar(self, service, mock_adata_with_missing):
         """Test MNAR imputation."""
         result_adata, stats = service.impute_missing_values(
-            mock_adata_with_missing,
-            method='mnar',
-            mnar_width=0.3,
-            mnar_downshift=1.8
+            mock_adata_with_missing, method="mnar", mnar_width=0.3, mnar_downshift=1.8
         )
 
         assert result_adata is not None
-        assert stats['method'] == 'mnar'
+        assert stats["method"] == "mnar"
         assert not np.any(np.isnan(result_adata.X))
 
     def test_impute_missing_values_mixed(self, service, mock_adata_with_missing):
         """Test mixed imputation strategy."""
         result_adata, stats = service.impute_missing_values(
             mock_adata_with_missing,
-            method='mixed',
+            method="mixed",
             knn_neighbors=5,
-            min_prob_percentile=2.5
+            min_prob_percentile=2.5,
         )
 
         assert result_adata is not None
-        assert stats['method'] == 'mixed'
+        assert stats["method"] == "mixed"
         assert not np.any(np.isnan(result_adata.X))
 
     def test_impute_missing_values_no_missing(self, service, mock_adata_no_missing):
         """Test imputation when no missing values are present."""
         result_adata, stats = service.impute_missing_values(
-            mock_adata_no_missing,
-            method='knn'
+            mock_adata_no_missing, method="knn"
         )
 
         assert result_adata is not None
-        assert stats['missing_values_found'] is False
-        assert stats['imputation_performed'] is False
+        assert stats["missing_values_found"] is False
+        assert stats["imputation_performed"] is False
 
-    def test_impute_missing_values_invalid_method(self, service, mock_adata_with_missing):
+    def test_impute_missing_values_invalid_method(
+        self, service, mock_adata_with_missing
+    ):
         """Test imputation with invalid method."""
         with pytest.raises(ProteomicsPreprocessingError) as exc_info:
             service.impute_missing_values(
-                mock_adata_with_missing,
-                method='invalid_method'
+                mock_adata_with_missing, method="invalid_method"
             )
 
         assert "Unknown imputation method" in str(exc_info.value)
 
-    def test_impute_missing_values_preserves_raw(self, service, mock_adata_with_missing):
+    def test_impute_missing_values_preserves_raw(
+        self, service, mock_adata_with_missing
+    ):
         """Test that imputation preserves raw data."""
         # Remove raw if it exists to test creation
         mock_adata_with_missing.raw = None
 
         result_adata, stats = service.impute_missing_values(
-            mock_adata_with_missing,
-            method='knn'
+            mock_adata_with_missing, method="knn"
         )
 
         assert result_adata.raw is not None
@@ -229,16 +229,17 @@ class TestMissingValueImputation:
 
         adata = ad.AnnData(X=X)
 
-        result_adata, stats = service.impute_missing_values(adata, method='knn')
+        result_adata, stats = service.impute_missing_values(adata, method="knn")
 
-        assert stats['original_missing_count'] == 4
-        assert stats['original_missing_percentage'] == 8.0  # 4/50 * 100
-        assert stats['remaining_missing_count'] == 0
+        assert stats["original_missing_count"] == 4
+        assert stats["original_missing_percentage"] == 8.0  # 4/50 * 100
+        assert stats["remaining_missing_count"] == 0
 
 
 # ===============================================================================
 # Helper Methods Tests for Imputation
 # ===============================================================================
+
 
 class TestImputationHelperMethods:
     """Test suite for imputation helper methods."""
@@ -292,8 +293,12 @@ class TestImputationHelperMethods:
         X[0:12, 1] = np.nan  # 60% missing
 
         result = service._mixed_imputation(
-            X, knn_neighbors=5, min_prob_percentile=2.5,
-            mnar_width=0.3, mnar_downshift=1.8, mcar_threshold=0.4
+            X,
+            knn_neighbors=5,
+            min_prob_percentile=2.5,
+            mnar_width=0.3,
+            mnar_downshift=1.8,
+            mcar_threshold=0.4,
         )
 
         assert result is not None
@@ -305,94 +310,89 @@ class TestImputationHelperMethods:
 # Intensity Normalization Tests
 # ===============================================================================
 
+
 class TestIntensityNormalization:
     """Test suite for intensity normalization functionality."""
 
     def test_normalize_intensities_median(self, service, mock_adata_no_missing):
         """Test median normalization."""
         result_adata, stats = service.normalize_intensities(
-            mock_adata_no_missing,
-            method='median',
-            log_transform=False
+            mock_adata_no_missing, method="median", log_transform=False
         )
 
         assert result_adata is not None
         assert isinstance(stats, dict)
-        assert stats['method'] == 'median'
-        assert stats['log_transform'] is False
-        assert 'normalized' in result_adata.layers
+        assert stats["method"] == "median"
+        assert stats["log_transform"] is False
+        assert "normalized" in result_adata.layers
         assert result_adata.raw is not None
 
     def test_normalize_intensities_with_log(self, service, mock_adata_no_missing):
         """Test normalization with log transformation."""
         result_adata, stats = service.normalize_intensities(
             mock_adata_no_missing,
-            method='median',
+            method="median",
             log_transform=True,
-            pseudocount_strategy='adaptive'
+            pseudocount_strategy="adaptive",
         )
 
         assert result_adata is not None
-        assert stats['log_transform'] is True
-        assert 'log2_normalized' in result_adata.layers
-        assert 'pseudocount' in stats
-        assert 'pseudocount_strategy' in stats
+        assert stats["log_transform"] is True
+        assert "log2_normalized" in result_adata.layers
+        assert "pseudocount" in stats
+        assert "pseudocount_strategy" in stats
 
     def test_normalize_intensities_quantile(self, service, mock_adata_no_missing):
         """Test quantile normalization."""
         result_adata, stats = service.normalize_intensities(
-            mock_adata_no_missing,
-            method='quantile'
+            mock_adata_no_missing, method="quantile"
         )
 
         assert result_adata is not None
-        assert stats['method'] == 'quantile'
+        assert stats["method"] == "quantile"
 
     def test_normalize_intensities_vsn(self, service, mock_adata_no_missing):
         """Test VSN normalization."""
         result_adata, stats = service.normalize_intensities(
-            mock_adata_no_missing,
-            method='vsn'
+            mock_adata_no_missing, method="vsn"
         )
 
         assert result_adata is not None
-        assert stats['method'] == 'vsn'
+        assert stats["method"] == "vsn"
 
     def test_normalize_intensities_total_sum(self, service, mock_adata_no_missing):
         """Test total sum normalization."""
         result_adata, stats = service.normalize_intensities(
-            mock_adata_no_missing,
-            method='total_sum'
+            mock_adata_no_missing, method="total_sum"
         )
 
         assert result_adata is not None
-        assert stats['method'] == 'total_sum'
+        assert stats["method"] == "total_sum"
 
     def test_normalize_intensities_invalid_method(self, service, mock_adata_no_missing):
         """Test normalization with invalid method."""
         with pytest.raises(ProteomicsPreprocessingError) as exc_info:
             service.normalize_intensities(
-                mock_adata_no_missing,
-                method='invalid_method'
+                mock_adata_no_missing, method="invalid_method"
             )
 
         assert "Unknown normalization method" in str(exc_info.value)
 
     def test_different_pseudocount_strategies(self, service, mock_adata_no_missing):
         """Test different pseudocount strategies."""
-        strategies = ['adaptive', 'fixed', 'min_observed']
+        strategies = ["adaptive", "fixed", "min_observed"]
 
         for strategy in strategies:
             result_adata, stats = service.normalize_intensities(
                 mock_adata_no_missing,
-                method='median',
+                method="median",
                 log_transform=True,
-                pseudocount_strategy=strategy
+                pseudocount_strategy=strategy,
             )
 
             assert result_adata is not None
-            assert stats['pseudocount_strategy'] == strategy
-            assert 'pseudocount' in stats
+            assert stats["pseudocount_strategy"] == strategy
+            assert "pseudocount" in stats
 
     def test_normalization_with_negative_values(self, service):
         """Test normalization handling negative values."""
@@ -400,27 +400,27 @@ class TestIntensityNormalization:
         adata = ad.AnnData(X=X)
 
         # Should still work but may log warning
-        result_adata, stats = service.normalize_intensities(adata, method='median')
+        result_adata, stats = service.normalize_intensities(adata, method="median")
 
         assert result_adata is not None
 
     def test_normalization_statistics(self, service, mock_adata_no_missing):
         """Test normalization statistics calculation."""
         result_adata, stats = service.normalize_intensities(
-            mock_adata_no_missing,
-            method='median'
+            mock_adata_no_missing, method="median"
         )
 
-        assert 'median_intensity_before' in stats
-        assert 'median_intensity_after' in stats
-        assert 'samples_processed' in stats
-        assert 'proteins_processed' in stats
-        assert stats['analysis_type'] == 'intensity_normalization'
+        assert "median_intensity_before" in stats
+        assert "median_intensity_after" in stats
+        assert "samples_processed" in stats
+        assert "proteins_processed" in stats
+        assert stats["analysis_type"] == "intensity_normalization"
 
 
 # ===============================================================================
 # Helper Methods Tests for Normalization
 # ===============================================================================
+
 
 class TestNormalizationHelperMethods:
     """Test suite for normalization helper methods."""
@@ -469,21 +469,22 @@ class TestNormalizationHelperMethods:
         """Test log transformation helper method."""
         X = np.array([[100, 200, 300], [400, 500, 600]])
 
-        strategies = ['adaptive', 'fixed', 'min_observed']
+        strategies = ["adaptive", "fixed", "min_observed"]
 
         for strategy in strategies:
             result, log_stats = service._apply_log_transformation(X, strategy)
 
             assert result is not None
             assert result.shape == X.shape
-            assert 'pseudocount' in log_stats
-            assert 'pseudocount_strategy' in log_stats
-            assert log_stats['pseudocount_strategy'] == strategy
+            assert "pseudocount" in log_stats
+            assert "pseudocount_strategy" in log_stats
+            assert log_stats["pseudocount_strategy"] == strategy
 
 
 # ===============================================================================
 # Batch Correction Tests
 # ===============================================================================
+
 
 class TestBatchCorrection:
     """Test suite for batch correction functionality."""
@@ -491,60 +492,61 @@ class TestBatchCorrection:
     def test_correct_batch_effects_combat(self, service, mock_adata_with_batches):
         """Test ComBat batch correction."""
         result_adata, stats = service.correct_batch_effects(
-            mock_adata_with_batches,
-            batch_key='batch',
-            method='combat'
+            mock_adata_with_batches, batch_key="batch", method="combat"
         )
 
         assert result_adata is not None
         assert isinstance(stats, dict)
-        assert stats['method'] == 'combat'
-        assert stats['batch_correction_performed'] is True
-        assert stats['n_batches'] == 3
-        assert 'batch_corrected' in result_adata.layers
+        assert stats["method"] == "combat"
+        assert stats["batch_correction_performed"] is True
+        assert stats["n_batches"] == 3
+        assert "batch_corrected" in result_adata.layers
         assert result_adata.raw is not None
 
-    def test_correct_batch_effects_median_centering(self, service, mock_adata_with_batches):
+    def test_correct_batch_effects_median_centering(
+        self, service, mock_adata_with_batches
+    ):
         """Test median centering batch correction."""
         result_adata, stats = service.correct_batch_effects(
-            mock_adata_with_batches,
-            batch_key='batch',
-            method='median_centering'
+            mock_adata_with_batches, batch_key="batch", method="median_centering"
         )
 
         assert result_adata is not None
-        assert stats['method'] == 'median_centering'
+        assert stats["method"] == "median_centering"
 
-    def test_correct_batch_effects_reference_based(self, service, mock_adata_with_batches):
+    def test_correct_batch_effects_reference_based(
+        self, service, mock_adata_with_batches
+    ):
         """Test reference-based batch correction."""
         result_adata, stats = service.correct_batch_effects(
             mock_adata_with_batches,
-            batch_key='batch',
-            method='reference_based',
-            reference_batch='batch1'
+            batch_key="batch",
+            method="reference_based",
+            reference_batch="batch1",
         )
 
         assert result_adata is not None
-        assert stats['method'] == 'reference_based'
-        assert stats['reference_batch'] == 'batch1'
+        assert stats["method"] == "reference_based"
+        assert stats["reference_batch"] == "batch1"
 
-    def test_correct_batch_effects_auto_reference(self, service, mock_adata_with_batches):
+    def test_correct_batch_effects_auto_reference(
+        self, service, mock_adata_with_batches
+    ):
         """Test reference-based correction with automatic reference selection."""
         result_adata, stats = service.correct_batch_effects(
-            mock_adata_with_batches,
-            batch_key='batch',
-            method='reference_based'
+            mock_adata_with_batches, batch_key="batch", method="reference_based"
         )
 
         assert result_adata is not None
-        assert stats['reference_batch'] is not None  # Should auto-select
+        assert stats["reference_batch"] is not None  # Should auto-select
 
-    def test_correct_batch_effects_invalid_batch_key(self, service, mock_adata_with_batches):
+    def test_correct_batch_effects_invalid_batch_key(
+        self, service, mock_adata_with_batches
+    ):
         """Test batch correction with invalid batch key."""
         with pytest.raises(ProteomicsPreprocessingError) as exc_info:
             service.correct_batch_effects(
-                mock_adata_with_batches,
-                batch_key='nonexistent_batch'
+                mock_adata_with_batches, batch_key="nonexistent_batch"
             )
 
         assert "Batch key 'nonexistent_batch' not found" in str(exc_info.value)
@@ -553,24 +555,21 @@ class TestBatchCorrection:
         """Test batch correction with single batch (should skip)."""
         X = np.random.randn(10, 5)
         adata = ad.AnnData(X=X)
-        adata.obs['batch'] = ['batch1'] * 10  # Only one batch
+        adata.obs["batch"] = ["batch1"] * 10  # Only one batch
 
-        result_adata, stats = service.correct_batch_effects(
-            adata,
-            batch_key='batch'
-        )
+        result_adata, stats = service.correct_batch_effects(adata, batch_key="batch")
 
         assert result_adata is not None
-        assert stats['batch_correction_performed'] is False
-        assert stats['n_batches'] == 1
+        assert stats["batch_correction_performed"] is False
+        assert stats["n_batches"] == 1
 
-    def test_correct_batch_effects_invalid_method(self, service, mock_adata_with_batches):
+    def test_correct_batch_effects_invalid_method(
+        self, service, mock_adata_with_batches
+    ):
         """Test batch correction with invalid method."""
         with pytest.raises(ProteomicsPreprocessingError) as exc_info:
             service.correct_batch_effects(
-                mock_adata_with_batches,
-                batch_key='batch',
-                method='invalid_method'
+                mock_adata_with_batches, batch_key="batch", method="invalid_method"
             )
 
         assert "Unknown batch correction method" in str(exc_info.value)
@@ -578,19 +577,19 @@ class TestBatchCorrection:
     def test_batch_correction_statistics(self, service, mock_adata_with_batches):
         """Test batch correction statistics calculation."""
         result_adata, stats = service.correct_batch_effects(
-            mock_adata_with_batches,
-            batch_key='batch'
+            mock_adata_with_batches, batch_key="batch"
         )
 
-        assert 'batch_counts' in stats
-        assert 'samples_processed' in stats
-        assert 'proteins_processed' in stats
-        assert stats['analysis_type'] == 'batch_correction'
+        assert "batch_counts" in stats
+        assert "samples_processed" in stats
+        assert "proteins_processed" in stats
+        assert stats["analysis_type"] == "batch_correction"
 
 
 # ===============================================================================
 # Helper Methods Tests for Batch Correction
 # ===============================================================================
+
 
 class TestBatchCorrectionHelperMethods:
     """Test suite for batch correction helper methods."""
@@ -598,7 +597,7 @@ class TestBatchCorrectionHelperMethods:
     def test_combat_correction_helper(self, service):
         """Test ComBat correction helper method."""
         X = np.array([[100, 200], [300, 400], [150, 250], [350, 450]])
-        batch_labels = pd.Series(['batch1', 'batch1', 'batch2', 'batch2'])
+        batch_labels = pd.Series(["batch1", "batch1", "batch2", "batch2"])
 
         result = service._combat_correction(X, batch_labels)
 
@@ -608,7 +607,7 @@ class TestBatchCorrectionHelperMethods:
     def test_median_centering_correction_helper(self, service):
         """Test median centering correction helper method."""
         X = np.array([[100, 200], [300, 400], [150, 250], [350, 450]])
-        batch_labels = pd.Series(['batch1', 'batch1', 'batch2', 'batch2'])
+        batch_labels = pd.Series(["batch1", "batch1", "batch2", "batch2"])
 
         result = service._median_centering_correction(X, batch_labels)
 
@@ -618,9 +617,9 @@ class TestBatchCorrectionHelperMethods:
     def test_reference_based_correction_helper(self, service):
         """Test reference-based correction helper method."""
         X = np.array([[100, 200], [300, 400], [150, 250], [350, 450]])
-        batch_labels = pd.Series(['batch1', 'batch1', 'batch2', 'batch2'])
+        batch_labels = pd.Series(["batch1", "batch1", "batch2", "batch2"])
 
-        result = service._reference_based_correction(X, batch_labels, 'batch1')
+        result = service._reference_based_correction(X, batch_labels, "batch1")
 
         assert result is not None
         assert result.shape == X.shape
@@ -629,7 +628,7 @@ class TestBatchCorrectionHelperMethods:
         """Test reference-based correction with auto reference selection."""
         X = np.array([[100, 200], [300, 400], [150, 250]])
         # batch1 has more samples, should be auto-selected as reference
-        batch_labels = pd.Series(['batch1', 'batch1', 'batch2'])
+        batch_labels = pd.Series(["batch1", "batch1", "batch2"])
 
         result = service._reference_based_correction(X, batch_labels, None)
 
@@ -640,7 +639,7 @@ class TestBatchCorrectionHelperMethods:
         """Test batch correction statistics calculation helper."""
         X_before = np.random.randn(20, 10)
         X_after = np.random.randn(20, 10)
-        batch_labels = pd.Series(['batch1'] * 10 + ['batch2'] * 10)
+        batch_labels = pd.Series(["batch1"] * 10 + ["batch2"] * 10)
 
         stats = service._calculate_batch_correction_stats(
             X_before, X_after, batch_labels, n_pcs=5
@@ -654,6 +653,7 @@ class TestBatchCorrectionHelperMethods:
 # Error Handling and Edge Cases Tests
 # ===============================================================================
 
+
 class TestErrorHandlingAndEdgeCases:
     """Test suite for error handling and edge cases."""
 
@@ -662,7 +662,7 @@ class TestErrorHandlingAndEdgeCases:
         adata = ad.AnnData(X=np.array([]).reshape(0, 0))
 
         with pytest.raises(ProteomicsPreprocessingError):
-            service.impute_missing_values(adata, method='knn')
+            service.impute_missing_values(adata, method="knn")
 
     def test_imputation_with_all_missing_protein(self, service):
         """Test imputation when a protein has all missing values."""
@@ -671,7 +671,7 @@ class TestErrorHandlingAndEdgeCases:
 
         adata = ad.AnnData(X=X)
 
-        result_adata, stats = service.impute_missing_values(adata, method='knn')
+        result_adata, stats = service.impute_missing_values(adata, method="knn")
 
         assert result_adata is not None
         # Should handle gracefully
@@ -681,7 +681,7 @@ class TestErrorHandlingAndEdgeCases:
         X = np.array([[0, 100, 200], [0, 200, 400]])
         adata = ad.AnnData(X=X)
 
-        result_adata, stats = service.normalize_intensities(adata, method='median')
+        result_adata, stats = service.normalize_intensities(adata, method="median")
 
         assert result_adata is not None
 
@@ -691,9 +691,9 @@ class TestErrorHandlingAndEdgeCases:
         X[0:5, 0:3] = np.nan  # Add some missing values
 
         adata = ad.AnnData(X=X)
-        adata.obs['batch'] = ['batch1'] * 10 + ['batch2'] * 10
+        adata.obs["batch"] = ["batch1"] * 10 + ["batch2"] * 10
 
-        result_adata, stats = service.correct_batch_effects(adata, batch_key='batch')
+        result_adata, stats = service.correct_batch_effects(adata, batch_key="batch")
 
         assert result_adata is not None
 
@@ -702,7 +702,9 @@ class TestErrorHandlingAndEdgeCases:
         X = np.array([[1.0, np.nan], [np.nan, 2.0]])
         adata = ad.AnnData(X=X)
 
-        result_adata, stats = service.impute_missing_values(adata, method='knn', knn_neighbors=1)
+        result_adata, stats = service.impute_missing_values(
+            adata, method="knn", knn_neighbors=1
+        )
 
         assert result_adata is not None
 
@@ -711,7 +713,7 @@ class TestErrorHandlingAndEdgeCases:
         X = np.array([[100, 200, 300]])  # Single sample
         adata = ad.AnnData(X=X)
 
-        result_adata, stats = service.normalize_intensities(adata, method='median')
+        result_adata, stats = service.normalize_intensities(adata, method="median")
 
         assert result_adata is not None
 
@@ -720,39 +722,37 @@ class TestErrorHandlingAndEdgeCases:
 # Integration Tests
 # ===============================================================================
 
+
 class TestIntegrationScenarios:
     """Test suite for integration scenarios."""
 
     def test_complete_preprocessing_workflow(self, service, mock_adata_with_missing):
         """Test complete preprocessing workflow: imputation -> normalization -> batch correction."""
         # Add batch information
-        mock_adata_with_missing.obs['batch'] = ['batch1'] * 16 + ['batch2'] * 16 + ['batch3'] * 16
+        mock_adata_with_missing.obs["batch"] = (
+            ["batch1"] * 16 + ["batch2"] * 16 + ["batch3"] * 16
+        )
 
         # Step 1: Imputation
         adata_imputed, _ = service.impute_missing_values(
-            mock_adata_with_missing,
-            method='mixed'
+            mock_adata_with_missing, method="mixed"
         )
 
         # Step 2: Normalization
         adata_normalized, _ = service.normalize_intensities(
-            adata_imputed,
-            method='median',
-            log_transform=True
+            adata_imputed, method="median", log_transform=True
         )
 
         # Step 3: Batch correction
         adata_corrected, _ = service.correct_batch_effects(
-            adata_normalized,
-            batch_key='batch',
-            method='combat'
+            adata_normalized, batch_key="batch", method="combat"
         )
 
         # Verify final result has all preprocessing components
         assert not np.any(np.isnan(adata_corrected.X))  # No missing values
-        assert 'normalized' in adata_corrected.layers
-        assert 'log2_normalized' in adata_corrected.layers
-        assert 'batch_corrected' in adata_corrected.layers
+        assert "normalized" in adata_corrected.layers
+        assert "log2_normalized" in adata_corrected.layers
+        assert "batch_corrected" in adata_corrected.layers
         assert adata_corrected.raw is not None
 
     def test_preprocessing_preserves_metadata(self, service, mock_adata_with_missing):
@@ -763,8 +763,7 @@ class TestIntegrationScenarios:
         original_var_names = mock_adata_with_missing.var_names.tolist()
 
         result_adata, _ = service.impute_missing_values(
-            mock_adata_with_missing,
-            method='knn'
+            mock_adata_with_missing, method="knn"
         )
 
         # Metadata should be preserved
@@ -773,28 +772,29 @@ class TestIntegrationScenarios:
         assert result_adata.obs_names.tolist() == original_obs_names
         assert result_adata.var_names.tolist() == original_var_names
 
-    def test_multiple_normalization_methods_consistency(self, service, mock_adata_no_missing):
+    def test_multiple_normalization_methods_consistency(
+        self, service, mock_adata_no_missing
+    ):
         """Test consistency across different normalization methods."""
-        methods = ['median', 'quantile', 'total_sum']
+        methods = ["median", "quantile", "total_sum"]
         results = {}
 
         for method in methods:
             result_adata, stats = service.normalize_intensities(
-                mock_adata_no_missing,
-                method=method,
-                log_transform=False
+                mock_adata_no_missing, method=method, log_transform=False
             )
             results[method] = stats
 
         # All methods should process same number of samples/proteins
         for method in methods:
-            assert results[method]['samples_processed'] == mock_adata_no_missing.n_obs
-            assert results[method]['proteins_processed'] == mock_adata_no_missing.n_vars
+            assert results[method]["samples_processed"] == mock_adata_no_missing.n_obs
+            assert results[method]["proteins_processed"] == mock_adata_no_missing.n_vars
 
 
 # ===============================================================================
 # Performance and Memory Tests
 # ===============================================================================
+
 
 class TestPerformanceAndMemory:
     """Test suite for performance and memory considerations."""
@@ -811,11 +811,11 @@ class TestPerformanceAndMemory:
 
         adata = ad.AnnData(X=X)
 
-        result_adata, stats = service.impute_missing_values(adata, method='knn')
+        result_adata, stats = service.impute_missing_values(adata, method="knn")
 
         assert result_adata is not None
-        assert stats['samples_processed'] == n_samples
-        assert stats['proteins_processed'] == n_proteins
+        assert stats["samples_processed"] == n_samples
+        assert stats["proteins_processed"] == n_proteins
 
     @pytest.mark.slow
     def test_memory_efficient_normalization(self, service):
@@ -826,9 +826,7 @@ class TestPerformanceAndMemory:
         adata = ad.AnnData(X=X)
 
         result_adata, stats = service.normalize_intensities(
-            adata,
-            method='quantile',
-            log_transform=True
+            adata, method="quantile", log_transform=True
         )
 
         assert result_adata is not None
@@ -841,13 +839,11 @@ class TestPerformanceAndMemory:
         adata = ad.AnnData(X=X)
 
         # Create 5 batches
-        adata.obs['batch'] = [f'batch{i//20 + 1}' for i in range(n_samples)]
+        adata.obs["batch"] = [f"batch{i//20 + 1}" for i in range(n_samples)]
 
         result_adata, stats = service.correct_batch_effects(
-            adata,
-            batch_key='batch',
-            method='combat'
+            adata, batch_key="batch", method="combat"
         )
 
         assert result_adata is not None
-        assert stats['n_batches'] == 5
+        assert stats["n_batches"] == 5

@@ -8,29 +8,29 @@ and error handling for bioinformatics data files.
 Test coverage target: 95%+ with meaningful tests for file upload operations.
 """
 
-import pytest
-from typing import Dict, Any, List, Optional, Union, Tuple
-from unittest.mock import Mock, MagicMock, patch, mock_open
+import gzip
+import os
+import tempfile
+from io import BytesIO, StringIO
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
+from unittest.mock import MagicMock, Mock, mock_open, patch
+
+import anndata as ad
 import numpy as np
 import pandas as pd
-import anndata as ad
-from pathlib import Path
-import tempfile
-import os
-import gzip
-from io import BytesIO, StringIO
+import pytest
 
 # Import the service (commented out in source, so we'll mock the expected interface)
 # from lobster.tools.file_upload_service import FileUploadService
 from lobster.core.data_manager_v2 import DataManagerV2
-
-from tests.mock_data.factories import SingleCellDataFactory, BulkRNASeqDataFactory
-from tests.mock_data.base import SMALL_DATASET_CONFIG, LARGE_DATASET_CONFIG
-
+from tests.mock_data.base import LARGE_DATASET_CONFIG, SMALL_DATASET_CONFIG
+from tests.mock_data.factories import BulkRNASeqDataFactory, SingleCellDataFactory
 
 # ===============================================================================
 # Mock Classes and Fixtures
 # ===============================================================================
+
 
 class MockUploadedFile:
     """Mock uploaded file object for testing."""
@@ -61,15 +61,15 @@ class MockFileUploadService:
         self.data_manager = data_manager or Mock()
         self.upload_dir = Path(upload_dir or "/tmp/uploads")
         self.supported_formats = {
-            '.csv': self._process_csv,
-            '.tsv': self._process_tsv,
-            '.txt': self._process_txt,
-            '.xlsx': self._process_excel,
-            '.h5': self._process_h5,
-            '.h5ad': self._process_h5ad,
-            '.mtx': self._process_mtx,
-            '.fastq': self._process_fastq,
-            '.fq': self._process_fastq
+            ".csv": self._process_csv,
+            ".tsv": self._process_tsv,
+            ".txt": self._process_txt,
+            ".xlsx": self._process_excel,
+            ".h5": self._process_h5,
+            ".h5ad": self._process_h5ad,
+            ".mtx": self._process_mtx,
+            ".fastq": self._process_fastq,
+            ".fq": self._process_fastq,
         }
 
     def upload_expression_matrix(self, uploaded_file, file_type="auto"):
@@ -79,7 +79,7 @@ class MockFileUploadService:
 
         if file_type == "auto":
             # Mock data for detection
-            mock_data = pd.DataFrame({'gene1': [1, 2, 3], 'gene2': [4, 5, 6]})
+            mock_data = pd.DataFrame({"gene1": [1, 2, 3], "gene2": [4, 5, 6]})
             detected_type = self._detect_data_type(mock_data)
             return f"Mock upload result for {uploaded_file.name} (detected: {detected_type})"
         return f"Mock upload result for {uploaded_file.name}"
@@ -107,7 +107,7 @@ class MockFileUploadService:
 
     def _process_tsv(self, file_path):
         """Process TSV file."""
-        df = pd.read_csv(file_path, sep='\t', index_col=0)
+        df = pd.read_csv(file_path, sep="\t", index_col=0)
         return df, {}
 
     def _process_excel(self, file_path):
@@ -137,7 +137,7 @@ class MockFileUploadService:
 
     def _process_fastq(self, file_path):
         """Process FASTQ file."""
-        return pd.DataFrame(), {'requires_processing': True}
+        return pd.DataFrame(), {"requires_processing": True}
 
 
 @pytest.fixture
@@ -162,12 +162,8 @@ def temp_upload_dir():
 @pytest.fixture
 def sample_csv_content():
     """Create sample CSV content for testing."""
-    data = {
-        'Gene1': [100, 200, 150],
-        'Gene2': [50, 75, 80],
-        'Gene3': [300, 250, 280]
-    }
-    df = pd.DataFrame(data, index=['Cell1', 'Cell2', 'Cell3'])
+    data = {"Gene1": [100, 200, 150], "Gene2": [50, 75, 80], "Gene3": [300, 250, 280]}
+    df = pd.DataFrame(data, index=["Cell1", "Cell2", "Cell3"])
     return df.to_csv()
 
 
@@ -192,12 +188,13 @@ def large_file_content():
     # Generate 10MB of CSV data
     data = np.random.randn(50000, 100)
     df = pd.DataFrame(data, columns=[f"Gene_{i}" for i in range(100)])
-    return df.to_csv().encode('utf-8')
+    return df.to_csv().encode("utf-8")
 
 
 # ===============================================================================
 # FileUploadService Core Functionality Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestFileUploadServiceCore:
@@ -210,14 +207,15 @@ class TestFileUploadServiceCore:
         assert service.data_manager is not None
         assert service.upload_dir is not None
         assert len(service.supported_formats) > 0
-        assert '.csv' in service.supported_formats
-        assert '.h5ad' in service.supported_formats
+        assert ".csv" in service.supported_formats
+        assert ".h5ad" in service.supported_formats
 
-    def test_service_initialization_with_custom_dir(self, mock_data_manager, temp_upload_dir):
+    def test_service_initialization_with_custom_dir(
+        self, mock_data_manager, temp_upload_dir
+    ):
         """Test FileUploadService initialization with custom directory."""
         service = MockFileUploadService(
-            data_manager=mock_data_manager,
-            upload_dir=str(temp_upload_dir)
+            data_manager=mock_data_manager, upload_dir=str(temp_upload_dir)
         )
 
         assert service.upload_dir == temp_upload_dir
@@ -225,7 +223,17 @@ class TestFileUploadServiceCore:
 
     def test_supported_file_formats(self, file_upload_service):
         """Test supported file format detection."""
-        supported_extensions = ['.csv', '.tsv', '.txt', '.xlsx', '.h5', '.h5ad', '.mtx', '.fastq', '.fq']
+        supported_extensions = [
+            ".csv",
+            ".tsv",
+            ".txt",
+            ".xlsx",
+            ".h5",
+            ".h5ad",
+            ".mtx",
+            ".fastq",
+            ".fq",
+        ]
 
         for ext in supported_extensions:
             assert ext in file_upload_service.supported_formats
@@ -238,7 +246,7 @@ class TestFileUploadServiceCore:
             temp_upload_dir / "data.csv",
             temp_upload_dir / "data.tsv",
             temp_upload_dir / "data.h5ad",
-            temp_upload_dir / "data.xlsx"
+            temp_upload_dir / "data.xlsx",
         ]
 
         for file_path in valid_files:
@@ -249,7 +257,7 @@ class TestFileUploadServiceCore:
         invalid_files = [
             temp_upload_dir / "data.pdf",
             temp_upload_dir / "data.doc",
-            temp_upload_dir / "data.zip"
+            temp_upload_dir / "data.zip",
         ]
 
         for file_path in invalid_files:
@@ -261,22 +269,29 @@ class TestFileUploadServiceCore:
 # File Upload Processing Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestFileUploadProcessing:
     """Test file upload processing functionality."""
 
-    def test_upload_expression_matrix_csv(self, file_upload_service, sample_csv_content):
+    def test_upload_expression_matrix_csv(
+        self, file_upload_service, sample_csv_content
+    ):
         """Test CSV expression matrix upload."""
-        uploaded_file = MockUploadedFile("expression_matrix.csv", sample_csv_content.encode('utf-8'))
+        uploaded_file = MockUploadedFile(
+            "expression_matrix.csv", sample_csv_content.encode("utf-8")
+        )
 
-        result = file_upload_service.upload_expression_matrix(uploaded_file, "single_cell")
+        result = file_upload_service.upload_expression_matrix(
+            uploaded_file, "single_cell"
+        )
 
         assert "Mock upload result" in result
         assert "expression_matrix.csv" in result
 
     def test_upload_expression_matrix_h5ad(self, file_upload_service, sample_h5ad_file):
         """Test H5AD expression matrix upload."""
-        with open(sample_h5ad_file, 'rb') as f:
+        with open(sample_h5ad_file, "rb") as f:
             content = f.read()
 
         uploaded_file = MockUploadedFile("data.h5ad", content)
@@ -284,11 +299,13 @@ class TestFileUploadProcessing:
 
         assert "Mock upload result" in result
 
-    def test_upload_expression_matrix_auto_detection(self, file_upload_service, sample_csv_content):
+    def test_upload_expression_matrix_auto_detection(
+        self, file_upload_service, sample_csv_content
+    ):
         """Test automatic data type detection."""
-        uploaded_file = MockUploadedFile("data.csv", sample_csv_content.encode('utf-8'))
+        uploaded_file = MockUploadedFile("data.csv", sample_csv_content.encode("utf-8"))
 
-        with patch.object(file_upload_service, '_detect_data_type') as mock_detect:
+        with patch.object(file_upload_service, "_detect_data_type") as mock_detect:
             mock_detect.return_value = "single_cell"
 
             result = file_upload_service.upload_expression_matrix(uploaded_file, "auto")
@@ -299,7 +316,9 @@ class TestFileUploadProcessing:
     def test_upload_sample_metadata(self, file_upload_service):
         """Test sample metadata upload."""
         metadata_content = "sample_id,condition,batch\nSample1,Control,Batch1\nSample2,Treatment,Batch1"
-        uploaded_file = MockUploadedFile("metadata.csv", metadata_content.encode('utf-8'))
+        uploaded_file = MockUploadedFile(
+            "metadata.csv", metadata_content.encode("utf-8")
+        )
 
         result = file_upload_service.upload_sample_metadata(uploaded_file)
 
@@ -311,7 +330,7 @@ class TestFileUploadProcessing:
         fastq_files = [
             MockUploadedFile("sample1_R1.fastq", b"@read1\nACGT\n+\nIIII\n"),
             MockUploadedFile("sample1_R2.fastq", b"@read1\nTGCA\n+\nIIII\n"),
-            MockUploadedFile("sample2_R1.fastq", b"@read1\nGCTA\n+\nIIII\n")
+            MockUploadedFile("sample2_R1.fastq", b"@read1\nGCTA\n+\nIIII\n"),
         ]
 
         result = file_upload_service.upload_fastq_files(fastq_files)
@@ -340,11 +359,14 @@ class TestFileUploadProcessing:
 # File Format Processing Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestFileFormatProcessing:
     """Test file format specific processing."""
 
-    def test_process_csv_file(self, file_upload_service, temp_upload_dir, sample_csv_content):
+    def test_process_csv_file(
+        self, file_upload_service, temp_upload_dir, sample_csv_content
+    ):
         """Test CSV file processing."""
         csv_file = temp_upload_dir / "test.csv"
         csv_file.write_text(sample_csv_content)
@@ -365,14 +387,16 @@ class TestFileFormatProcessing:
         assert isinstance(data, pd.DataFrame)
         assert isinstance(metadata, dict)
 
-    @pytest.mark.skip(reason="Excel processing is not yet implemented - method is commented out")
+    @pytest.mark.skip(
+        reason="Excel processing is not yet implemented - method is commented out"
+    )
     def test_process_excel_file(self, file_upload_service, temp_upload_dir):
         """Test Excel file processing."""
         # Create mock Excel file
         excel_file = temp_upload_dir / "test.xlsx"
 
-        with patch('pandas.read_excel') as mock_read:
-            mock_read.return_value = pd.DataFrame({'A': [1, 2], 'B': [3, 4]})
+        with patch("pandas.read_excel") as mock_read:
+            mock_read.return_value = pd.DataFrame({"A": [1, 2], "B": [3, 4]})
 
             data, metadata = file_upload_service._process_excel(excel_file)
 
@@ -381,7 +405,7 @@ class TestFileFormatProcessing:
 
     def test_process_h5ad_file(self, file_upload_service, sample_h5ad_file):
         """Test H5AD file processing."""
-        with patch('anndata.read_h5ad') as mock_read:
+        with patch("anndata.read_h5ad") as mock_read:
             mock_adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
             mock_read.return_value = mock_adata
 
@@ -394,7 +418,7 @@ class TestFileFormatProcessing:
         """Test Matrix Market file processing."""
         mtx_file = temp_upload_dir / "matrix.mtx"
 
-        with patch('scipy.io.mmread') as mock_read:
+        with patch("scipy.io.mmread") as mock_read:
             mock_matrix = np.array([[1, 0, 2], [0, 3, 0]])
             mock_read.return_value = mock_matrix
 
@@ -413,13 +437,14 @@ class TestFileFormatProcessing:
 
         assert isinstance(data, pd.DataFrame)
         assert isinstance(metadata, dict)
-        assert 'requires_processing' in metadata
-        assert metadata['requires_processing'] == True
+        assert "requires_processing" in metadata
+        assert metadata["requires_processing"] == True
 
 
 # ===============================================================================
 # File Validation and Quality Control Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestFileValidationQC:
@@ -432,7 +457,9 @@ class TestFileValidationQC:
         assert small_file.size < 1024 * 1024  # < 1MB
 
         # Large file should trigger warnings
-        large_file = MockUploadedFile("large.csv", b"data" * 10000000, size=100*1024*1024)  # 100MB
+        large_file = MockUploadedFile(
+            "large.csv", b"data" * 10000000, size=100 * 1024 * 1024
+        )  # 100MB
         assert large_file.size > 50 * 1024 * 1024  # > 50MB
 
     def test_file_integrity_validation(self, file_upload_service, temp_upload_dir):
@@ -449,13 +476,15 @@ class TestFileValidationQC:
 
         assert not file_upload_service._validate_file_format(invalid_file)
 
-    def test_corrupted_file_handling(self, file_upload_service, temp_upload_dir, corrupted_file_content):
+    def test_corrupted_file_handling(
+        self, file_upload_service, temp_upload_dir, corrupted_file_content
+    ):
         """Test handling of corrupted files."""
         corrupted_file = temp_upload_dir / "corrupted.csv"
         corrupted_file.write_bytes(corrupted_file_content)
 
         # Mock processing should handle corrupted files gracefully
-        with patch.object(file_upload_service, '_process_csv') as mock_process:
+        with patch.object(file_upload_service, "_process_csv") as mock_process:
             mock_process.side_effect = Exception("Corrupted file")
 
             with pytest.raises(Exception, match="Corrupted file"):
@@ -473,11 +502,11 @@ class TestFileValidationQC:
         file_content = "gene,sample1\nGENE1,100"
 
         # First upload
-        file1 = MockUploadedFile("data.csv", file_content.encode('utf-8'))
+        file1 = MockUploadedFile("data.csv", file_content.encode("utf-8"))
         result1 = file_upload_service.upload_expression_matrix(file1)
 
         # Duplicate upload (same filename)
-        file2 = MockUploadedFile("data.csv", file_content.encode('utf-8'))
+        file2 = MockUploadedFile("data.csv", file_content.encode("utf-8"))
         result2 = file_upload_service.upload_expression_matrix(file2)
 
         # Both should succeed (service should handle duplicates)
@@ -489,19 +518,22 @@ class TestFileValidationQC:
 # Compressed File Handling Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestCompressedFileHandling:
     """Test compressed file handling functionality."""
 
-    def test_gzip_file_processing(self, file_upload_service, temp_upload_dir, sample_csv_content):
+    def test_gzip_file_processing(
+        self, file_upload_service, temp_upload_dir, sample_csv_content
+    ):
         """Test gzip compressed file processing."""
         # Create gzipped CSV file
         gz_file = temp_upload_dir / "data.csv.gz"
-        with gzip.open(gz_file, 'wt') as f:
+        with gzip.open(gz_file, "wt") as f:
             f.write(sample_csv_content)
 
         # Read back and verify
-        with gzip.open(gz_file, 'rt') as f:
+        with gzip.open(gz_file, "rt") as f:
             content = f.read()
             assert content == sample_csv_content
 
@@ -510,7 +542,7 @@ class TestCompressedFileHandling:
         # Create mock compressed H5AD file
         adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
         h5ad_file = temp_upload_dir / "data.h5ad"
-        adata.write_h5ad(h5ad_file, compression='gzip')
+        adata.write_h5ad(h5ad_file, compression="gzip")
 
         assert h5ad_file.exists()
         assert h5ad_file.stat().st_size > 0
@@ -518,17 +550,17 @@ class TestCompressedFileHandling:
     def test_multiple_compression_formats(self, file_upload_service, temp_upload_dir):
         """Test multiple compression format detection."""
         # Test different compression extensions
-        compression_formats = ['.gz', '.bz2', '.xz']
+        compression_formats = [".gz", ".bz2", ".xz"]
 
         for comp_ext in compression_formats:
-            if comp_ext == '.gz':  # Only test gzip for now
+            if comp_ext == ".gz":  # Only test gzip for now
                 compressed_file = temp_upload_dir / f"data.csv{comp_ext}"
 
                 # Create content based on compression type
                 content = "gene,sample1\nGENE1,100"
 
-                if comp_ext == '.gz':
-                    with gzip.open(compressed_file, 'wt') as f:
+                if comp_ext == ".gz":
+                    with gzip.open(compressed_file, "wt") as f:
                         f.write(content)
 
                     assert compressed_file.exists()
@@ -537,6 +569,7 @@ class TestCompressedFileHandling:
 # ===============================================================================
 # Concurrent Upload Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestConcurrentUploads:
@@ -554,7 +587,9 @@ class TestConcurrentUploads:
             """Worker function for concurrent uploads."""
             try:
                 content = f"gene,sample{worker_id}\nGENE1,{worker_id * 100}"
-                uploaded_file = MockUploadedFile(f"data_{worker_id}.csv", content.encode('utf-8'))
+                uploaded_file = MockUploadedFile(
+                    f"data_{worker_id}.csv", content.encode("utf-8")
+                )
 
                 result = file_upload_service.upload_expression_matrix(uploaded_file)
                 results.append((worker_id, result))
@@ -583,7 +618,7 @@ class TestConcurrentUploads:
         files = []
         for i in range(5):
             content = f"gene,sample{i}\nGENE1,{i * 100}"
-            files.append(MockUploadedFile(f"file_{i}.csv", content.encode('utf-8')))
+            files.append(MockUploadedFile(f"file_{i}.csv", content.encode("utf-8")))
 
         results = []
         for uploaded_file in files:
@@ -598,6 +633,7 @@ class TestConcurrentUploads:
 # ===============================================================================
 # Large File Handling Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestLargeFileHandling:
@@ -620,12 +656,14 @@ class TestLargeFileHandling:
         large_data = pd.DataFrame(
             np.random.randn(n_cells, n_genes),
             columns=[f"Gene_{i}" for i in range(n_genes)],
-            index=[f"Cell_{i}" for i in range(n_cells)]
+            index=[f"Cell_{i}" for i in range(n_cells)],
         )
 
         # Test data type detection on large dataset
         detected_type = file_upload_service._detect_data_type(large_data)
-        assert detected_type == "single_cell"  # Should detect as single-cell due to size
+        assert (
+            detected_type == "single_cell"
+        )  # Should detect as single-cell due to size
 
     def test_chunked_file_processing(self, file_upload_service, temp_upload_dir):
         """Test chunked processing for very large files."""
@@ -635,10 +673,12 @@ class TestLargeFileHandling:
 
         chunks_processed = []
         for i in range(0, total_rows, chunk_size):
-            chunk_data = pd.DataFrame({
-                'gene1': np.random.randn(min(chunk_size, total_rows - i)),
-                'gene2': np.random.randn(min(chunk_size, total_rows - i))
-            })
+            chunk_data = pd.DataFrame(
+                {
+                    "gene1": np.random.randn(min(chunk_size, total_rows - i)),
+                    "gene2": np.random.randn(min(chunk_size, total_rows - i)),
+                }
+            )
             chunks_processed.append(chunk_data.shape[0])
 
         # Verify all chunks were processed
@@ -649,6 +689,7 @@ class TestLargeFileHandling:
 # ===============================================================================
 # Error Handling and Edge Cases
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestFileUploadErrorHandling:
@@ -669,15 +710,17 @@ class TestFileUploadErrorHandling:
 
     def test_network_error_simulation(self, file_upload_service, temp_upload_dir):
         """Test handling of network/IO errors during upload."""
-        with patch('builtins.open', side_effect=IOError("Disk full")):
+        with patch("builtins.open", side_effect=IOError("Disk full")):
             with pytest.raises(IOError, match="Disk full"):
                 # This should raise an error if we were actually writing files
-                open(temp_upload_dir / "test.csv", 'w')
+                open(temp_upload_dir / "test.csv", "w")
 
-    def test_insufficient_disk_space_handling(self, file_upload_service, temp_upload_dir):
+    def test_insufficient_disk_space_handling(
+        self, file_upload_service, temp_upload_dir
+    ):
         """Test handling of insufficient disk space."""
         # Mock insufficient disk space scenario
-        with patch('os.statvfs') as mock_statvfs:
+        with patch("os.statvfs") as mock_statvfs:
             # Mock filesystem stats showing low space
             mock_stat = Mock()
             mock_stat.f_bavail = 100  # Very low available blocks
@@ -685,7 +728,7 @@ class TestFileUploadErrorHandling:
             mock_statvfs.return_value = mock_stat
 
             # Available space would be 100 * 4096 = ~400KB
-            if hasattr(os, 'statvfs'):
+            if hasattr(os, "statvfs"):
                 stat = os.statvfs(str(temp_upload_dir))
                 available_space = stat.f_bavail * stat.f_frsize
                 # This would be low in the mocked scenario
@@ -715,7 +758,7 @@ class TestFileUploadErrorHandling:
         malformed_csv.write_text(malformed_content)
 
         # Mock processing should handle malformed data
-        with patch.object(file_upload_service, '_process_csv') as mock_process:
+        with patch.object(file_upload_service, "_process_csv") as mock_process:
             mock_process.side_effect = pd.errors.ParserError("Malformed CSV")
 
             with pytest.raises(pd.errors.ParserError):
@@ -726,6 +769,7 @@ class TestFileUploadErrorHandling:
 # Performance and Benchmarking Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestFileUploadPerformance:
     """Test file upload performance characteristics."""
@@ -735,7 +779,7 @@ class TestFileUploadPerformance:
         import time
 
         content = "gene,sample1\nGENE1,100" * 1000  # Repeat for larger content
-        uploaded_file = MockUploadedFile("perf_test.csv", content.encode('utf-8'))
+        uploaded_file = MockUploadedFile("perf_test.csv", content.encode("utf-8"))
 
         start_time = time.time()
         result = file_upload_service.upload_expression_matrix(uploaded_file)
@@ -754,7 +798,9 @@ class TestFileUploadPerformance:
 
         for size in file_sizes:
             content = "gene,sample1\n" + "GENE,100\n" * size
-            uploaded_file = MockUploadedFile(f"size_{size}.csv", content.encode('utf-8'))
+            uploaded_file = MockUploadedFile(
+                f"size_{size}.csv", content.encode("utf-8")
+            )
 
             result = file_upload_service.upload_expression_matrix(uploaded_file)
             assert "Mock upload result" in result
@@ -769,7 +815,9 @@ class TestFileUploadPerformance:
 
         def upload_worker(worker_id):
             content = f"gene,sample{worker_id}\nGENE1,{worker_id}"
-            uploaded_file = MockUploadedFile(f"concurrent_{worker_id}.csv", content.encode('utf-8'))
+            uploaded_file = MockUploadedFile(
+                f"concurrent_{worker_id}.csv", content.encode("utf-8")
+            )
             result = file_upload_service.upload_expression_matrix(uploaded_file)
             results.append(result)
 

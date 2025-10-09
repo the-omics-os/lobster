@@ -14,21 +14,21 @@ import json
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List
-from unittest.mock import Mock, patch, mock_open
+from unittest.mock import Mock, mock_open, patch
 
+import anndata as ad
 import numpy as np
 import pandas as pd
 import pytest
-import anndata as ad
 
 from lobster.core.provenance import ProvenanceTracker
-from tests.mock_data.factories import SingleCellDataFactory, ProteomicsDataFactory
 from tests.mock_data.base import SMALL_DATASET_CONFIG
-
+from tests.mock_data.factories import ProteomicsDataFactory, SingleCellDataFactory
 
 # ===============================================================================
 # ProvenanceTracker Core Functionality Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestProvenanceTrackerInitialization:
@@ -77,7 +77,7 @@ class TestProvenanceActivityManagement:
         activity_id = tracker.create_activity(
             activity_type="test_activity",
             agent="test_agent",
-            description="Test activity description"
+            description="Test activity description",
         )
 
         # Check return value
@@ -111,7 +111,7 @@ class TestProvenanceActivityManagement:
             agent="processor_agent",
             inputs=inputs,
             outputs=outputs,
-            parameters=parameters
+            parameters=parameters,
         )
 
         activity = tracker.activities[0]
@@ -128,7 +128,7 @@ class TestProvenanceActivityManagement:
             activity_id = tracker.create_activity(
                 activity_type=f"activity_{i}",
                 agent=f"agent_{i}",
-                description=f"Activity {i}"
+                description=f"Activity {i}",
             )
             activity_ids.append(activity_id)
 
@@ -145,8 +145,7 @@ class TestProvenanceActivityManagement:
         tracker = ProvenanceTracker()
 
         activity_id = tracker.create_activity(
-            activity_type="test_activity",
-            agent="test_agent"
+            activity_type="test_activity", agent="test_agent"
         )
 
         activity = tracker.activities[0]
@@ -156,15 +155,14 @@ class TestProvenanceActivityManagement:
         parsed_timestamp = datetime.datetime.fromisoformat(timestamp)
         assert parsed_timestamp.tzinfo is not None
 
-    @patch('lobster.core.provenance.ProvenanceTracker._get_software_versions')
+    @patch("lobster.core.provenance.ProvenanceTracker._get_software_versions")
     def test_activity_includes_software_versions(self, mock_versions):
         """Test that activities include software version information."""
         mock_versions.return_value = {"numpy": "1.21.0", "pandas": "1.3.0"}
 
         tracker = ProvenanceTracker()
         activity_id = tracker.create_activity(
-            activity_type="test_activity",
-            agent="test_agent"
+            activity_type="test_activity", agent="test_agent"
         )
 
         activity = tracker.activities[0]
@@ -180,10 +178,7 @@ class TestProvenanceEntityManagement:
         """Test basic entity creation."""
         tracker = ProvenanceTracker()
 
-        entity_id = tracker.create_entity(
-            entity_type="dataset",
-            format="h5ad"
-        )
+        entity_id = tracker.create_entity(entity_type="dataset", format="h5ad")
 
         # Check return value
         assert isinstance(entity_id, str)
@@ -207,11 +202,9 @@ class TestProvenanceEntityManagement:
         tracker = ProvenanceTracker()
         test_path = Path("/test/path/data.h5ad")
 
-        with patch.object(tracker, '_calculate_checksum', return_value="abc123"):
+        with patch.object(tracker, "_calculate_checksum", return_value="abc123"):
             entity_id = tracker.create_entity(
-                entity_type="dataset",
-                uri=test_path,
-                format="h5ad"
+                entity_type="dataset", uri=test_path, format="h5ad"
             )
 
         entity = tracker.entities[entity_id]
@@ -224,9 +217,7 @@ class TestProvenanceEntityManagement:
         metadata = {"source": "experiment_1", "version": "v1.0"}
 
         entity_id = tracker.create_entity(
-            entity_type="dataset",
-            format="h5ad",
-            metadata=metadata
+            entity_type="dataset", format="h5ad", metadata=metadata
         )
 
         entity = tracker.entities[entity_id]
@@ -238,10 +229,7 @@ class TestProvenanceEntityManagement:
 
         entity_ids = []
         for i in range(3):
-            entity_id = tracker.create_entity(
-                entity_type=f"entity_{i}",
-                format="h5ad"
-            )
+            entity_id = tracker.create_entity(entity_type=f"entity_{i}", format="h5ad")
             entity_ids.append(entity_id)
 
         assert len(tracker.entities) == 3
@@ -254,10 +242,7 @@ class TestProvenanceEntityManagement:
         """Test that entity timestamps are in ISO format with timezone."""
         tracker = ProvenanceTracker()
 
-        entity_id = tracker.create_entity(
-            entity_type="dataset",
-            format="h5ad"
-        )
+        entity_id = tracker.create_entity(entity_type="dataset", format="h5ad")
 
         entity = tracker.entities[entity_id]
         timestamp = entity["created"]
@@ -276,9 +261,7 @@ class TestProvenanceAgentManagement:
         tracker = ProvenanceTracker()
 
         agent_id = tracker.create_agent(
-            name="Test Agent",
-            agent_type="software",
-            description="A test agent"
+            name="Test Agent", agent_type="software", description="A test agent"
         )
 
         # Check return value format
@@ -301,9 +284,7 @@ class TestProvenanceAgentManagement:
         tracker = ProvenanceTracker()
 
         agent_id = tracker.create_agent(
-            name="Versioned Agent",
-            agent_type="software",
-            version="1.0.0"
+            name="Versioned Agent", agent_type="software", version="1.0.0"
         )
 
         agent = tracker.agents[agent_id]
@@ -353,6 +334,7 @@ class TestProvenanceAgentManagement:
 # W3C-PROV Compliance Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestW3CProvCompliance:
     """Test W3C-PROV standard compliance."""
@@ -365,7 +347,7 @@ class TestW3CProvCompliance:
             activity_type="prov:Activity",
             agent="test_agent",
             inputs=[{"entity": "input_entity", "role": "prov:used"}],
-            outputs=[{"entity": "output_entity", "role": "prov:generated"}]
+            outputs=[{"entity": "output_entity", "role": "prov:generated"}],
         )
 
         activity = tracker.activities[0]
@@ -383,9 +365,7 @@ class TestW3CProvCompliance:
         tracker = ProvenanceTracker()
 
         entity_id = tracker.create_entity(
-            entity_type="prov:Entity",
-            uri="/path/to/data",
-            format="h5ad"
+            entity_type="prov:Entity", uri="/path/to/data", format="h5ad"
         )
 
         entity = tracker.entities[entity_id]
@@ -401,9 +381,7 @@ class TestW3CProvCompliance:
         tracker = ProvenanceTracker()
 
         agent_id = tracker.create_agent(
-            name="Test Software",
-            agent_type="prov:SoftwareAgent",
-            version="1.0.0"
+            name="Test Software", agent_type="prov:SoftwareAgent", version="1.0.0"
         )
 
         agent = tracker.agents[agent_id]
@@ -429,19 +407,23 @@ class TestW3CProvCompliance:
             activity_type="data_processing",
             agent=agent_id,
             inputs=[{"entity": input_entity, "role": "used"}],
-            outputs=[{"entity": output_entity, "role": "generated"}]
+            outputs=[{"entity": output_entity, "role": "generated"}],
         )
 
         activity = tracker.activities[0]
 
         # Check W3C-PROV relation patterns
         # prov:used relation
-        assert any(inp["entity"] == input_entity and inp["role"] == "used"
-                  for inp in activity["inputs"])
+        assert any(
+            inp["entity"] == input_entity and inp["role"] == "used"
+            for inp in activity["inputs"]
+        )
 
         # prov:generated relation
-        assert any(out["entity"] == output_entity and out["role"] == "generated"
-                  for out in activity["outputs"])
+        assert any(
+            out["entity"] == output_entity and out["role"] == "generated"
+            for out in activity["outputs"]
+        )
 
         # prov:wasAssociatedWith relation
         assert activity["agent"] == agent_id
@@ -469,6 +451,7 @@ class TestW3CProvCompliance:
 # ===============================================================================
 # Provenance Data Integrity Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestProvenanceDataIntegrity:
@@ -509,7 +492,7 @@ class TestProvenanceDataIntegrity:
             ("/path/to/file.xlsx", "excel"),
             ("/path/to/file.h5mu", "h5mu"),
             ("/path/to/file.unknown", "unknown"),
-            ("file_no_extension", "unknown")
+            ("file_no_extension", "unknown"),
         ]
 
         for file_path, expected_format in format_tests:
@@ -521,7 +504,7 @@ class TestProvenanceDataIntegrity:
         tracker = ProvenanceTracker()
 
         # Mock available packages
-        with patch('importlib.import_module') as mock_import:
+        with patch("importlib.import_module") as mock_import:
             # Mock successful imports
             mock_pandas = Mock()
             mock_pandas.__version__ = "1.3.0"
@@ -549,8 +532,9 @@ class TestProvenanceDataIntegrity:
         # Create initial data
         entity1 = tracker.create_entity("data1", format="csv")
         agent1 = tracker.create_agent("processor1")
-        activity1 = tracker.create_activity("process1", agent1,
-                                           inputs=[{"entity": entity1, "role": "input"}])
+        activity1 = tracker.create_activity(
+            "process1", agent1, inputs=[{"entity": entity1, "role": "input"}]
+        )
 
         # Verify initial state
         assert len(tracker.entities) == 1
@@ -559,9 +543,12 @@ class TestProvenanceDataIntegrity:
 
         # Add more data
         entity2 = tracker.create_entity("data2", format="h5ad")
-        activity2 = tracker.create_activity("process2", agent1,
-                                           inputs=[{"entity": entity1, "role": "input"}],
-                                           outputs=[{"entity": entity2, "role": "output"}])
+        activity2 = tracker.create_activity(
+            "process2",
+            agent1,
+            inputs=[{"entity": entity1, "role": "input"}],
+            outputs=[{"entity": entity2, "role": "output"}],
+        )
 
         # Verify consistency
         assert len(tracker.entities) == 2
@@ -577,6 +564,7 @@ class TestProvenanceDataIntegrity:
 # ===============================================================================
 # Provenance Serialization and Deserialization Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestProvenanceSerialization:
@@ -616,7 +604,7 @@ class TestProvenanceSerialization:
             "namespace": "imported",
             "activities": [{"id": "test_activity", "type": "test"}],
             "entities": {"test_entity": {"id": "test_entity", "type": "dataset"}},
-            "agents": {"test_agent": {"id": "test_agent", "name": "Test Agent"}}
+            "agents": {"test_agent": {"id": "test_agent", "name": "Test Agent"}},
         }
 
         tracker.from_dict(test_data)
@@ -636,15 +624,19 @@ class TestProvenanceSerialization:
         tracker1 = ProvenanceTracker(namespace="round_trip")
 
         # Create complex provenance data
-        entity1 = tracker1.create_entity("input_data", uri="/path/input.csv", format="csv")
-        entity2 = tracker1.create_entity("output_data", uri="/path/output.h5ad", format="h5ad")
+        entity1 = tracker1.create_entity(
+            "input_data", uri="/path/input.csv", format="csv"
+        )
+        entity2 = tracker1.create_entity(
+            "output_data", uri="/path/output.h5ad", format="h5ad"
+        )
         agent1 = tracker1.create_agent("Data Processor", version="1.0.0")
         activity1 = tracker1.create_activity(
             "data_processing",
             agent1,
             inputs=[{"entity": entity1, "role": "source"}],
             outputs=[{"entity": entity2, "role": "result"}],
-            parameters={"method": "normalization", "threshold": 0.5}
+            parameters={"method": "normalization", "threshold": 0.5},
         )
 
         # Export to dict
@@ -672,11 +664,13 @@ class TestProvenanceSerialization:
         tracker = ProvenanceTracker()
 
         # Add data with various types
-        entity_id = tracker.create_entity("test", format="h5ad",
-                                        metadata={"count": 42, "valid": True})
+        entity_id = tracker.create_entity(
+            "test", format="h5ad", metadata={"count": 42, "valid": True}
+        )
         agent_id = tracker.create_agent("test_agent", version="1.0.0")
-        activity_id = tracker.create_activity("test", agent_id,
-                                            parameters={"param": [1, 2, 3]})
+        activity_id = tracker.create_activity(
+            "test", agent_id, parameters={"param": [1, 2, 3]}
+        )
 
         data_dict = tracker.to_dict()
 
@@ -692,6 +686,7 @@ class TestProvenanceSerialization:
 # ===============================================================================
 # Provenance AnnData Integration Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestProvenanceAnnDataIntegration:
@@ -752,7 +747,7 @@ class TestProvenanceAnnDataIntegration:
         test_provenance = {
             "activities": [{"id": "test_activity", "type": "test"}],
             "entities": {"entity1": {"id": "entity1", "type": "dataset"}},
-            "agents": {"agent1": {"id": "agent1", "name": "Test Agent"}}
+            "agents": {"agent1": {"id": "agent1", "name": "Test Agent"}},
         }
         adata.uns["provenance"] = test_provenance
 
@@ -805,8 +800,9 @@ class TestProvenanceAnnDataIntegration:
         # Create provenance data
         entity_id = tracker1.create_entity("test_data", format="h5ad")
         agent_id = tracker1.create_agent("test_agent", version="1.0")
-        activity_id = tracker1.create_activity("test_activity", agent_id,
-                                             parameters={"test": True})
+        activity_id = tracker1.create_activity(
+            "test_activity", agent_id, parameters={"test": True}
+        )
 
         # Add to AnnData
         adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
@@ -834,6 +830,7 @@ class TestProvenanceAnnDataIntegration:
 # Provenance Lineage and History Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestProvenanceLineage:
     """Test provenance lineage tracking and history reconstruction."""
@@ -851,7 +848,7 @@ class TestProvenanceLineage:
             "processing",
             agent_id,
             inputs=[{"entity": input_entity, "role": "input"}],
-            outputs=[{"entity": output_entity, "role": "output"}]
+            outputs=[{"entity": output_entity, "role": "output"}],
         )
 
         # Get lineage for output entity
@@ -877,7 +874,7 @@ class TestProvenanceLineage:
             "step1",
             agent_id,
             inputs=[{"entity": entity_a, "role": "input"}],
-            outputs=[{"entity": entity_b, "role": "output"}]
+            outputs=[{"entity": entity_b, "role": "output"}],
         )
 
         # B -> C
@@ -885,7 +882,7 @@ class TestProvenanceLineage:
             "step2",
             agent_id,
             inputs=[{"entity": entity_b, "role": "input"}],
-            outputs=[{"entity": entity_c, "role": "output"}]
+            outputs=[{"entity": entity_c, "role": "output"}],
         )
 
         # Get lineage for final entity
@@ -912,9 +909,9 @@ class TestProvenanceLineage:
             agent_id,
             inputs=[
                 {"entity": entity_a, "role": "input1"},
-                {"entity": entity_b, "role": "input2"}
+                {"entity": entity_b, "role": "input2"},
             ],
-            outputs=[{"entity": entity_c, "role": "merged_output"}]
+            outputs=[{"entity": entity_c, "role": "merged_output"}],
         )
 
         # Get lineage
@@ -949,8 +946,8 @@ class TestProvenanceLineage:
                 activity = tracker.create_activity(
                     f"step_{i}",
                     "processor",
-                    inputs=[{"entity": entities[i-1], "role": "input"}],
-                    outputs=[{"entity": entities[i], "role": "output"}]
+                    inputs=[{"entity": entities[i - 1], "role": "input"}],
+                    outputs=[{"entity": entities[i], "role": "output"}],
                 )
                 activities.append(activity)
 
@@ -964,6 +961,7 @@ class TestProvenanceLineage:
 # ===============================================================================
 # Provenance High-Level Workflow Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestProvenanceWorkflows:
@@ -981,7 +979,7 @@ class TestProvenanceWorkflows:
             source_path="/path/to/source.csv",
             output_entity_id=output_entity,
             adapter_name="TranscriptomicsAdapter",
-            parameters={"delimiter": ",", "header": True}
+            parameters={"delimiter": ",", "header": True},
         )
 
         # Verify activity was created
@@ -1018,7 +1016,7 @@ class TestProvenanceWorkflows:
             processing_type="normalization",
             agent_name="NormalizationService",
             parameters={"method": "log1p", "scale": True},
-            description="Log normalization with scaling"
+            description="Log normalization with scaling",
         )
 
         # Verify activity
@@ -1050,7 +1048,7 @@ class TestProvenanceWorkflows:
             input_entity_id=input_entity,
             output_path="/path/to/saved/data.h5ad",
             backend_name="H5ADBackend",
-            parameters={"compression": "gzip", "backup": True}
+            parameters={"compression": "gzip", "backup": True},
         )
 
         # Verify activity
@@ -1079,7 +1077,7 @@ class TestProvenanceWorkflows:
         loading_activity = tracker.log_data_loading(
             source_path="/data/experiment.csv",
             output_entity_id=loaded_entity,
-            adapter_name="CSVAdapter"
+            adapter_name="CSVAdapter",
         )
 
         # Step 2: Quality control
@@ -1089,7 +1087,7 @@ class TestProvenanceWorkflows:
             output_entity_id=qc_entity,
             processing_type="quality_control",
             agent_name="QCService",
-            parameters={"min_genes": 200, "max_genes": 5000}
+            parameters={"min_genes": 200, "max_genes": 5000},
         )
 
         # Step 3: Normalization
@@ -1099,14 +1097,14 @@ class TestProvenanceWorkflows:
             output_entity_id=norm_entity,
             processing_type="normalization",
             agent_name="NormalizationService",
-            parameters={"method": "log1p"}
+            parameters={"method": "log1p"},
         )
 
         # Step 4: Save results
         save_activity = tracker.log_data_saving(
             input_entity_id=norm_entity,
             output_path="/results/normalized_data.h5ad",
-            backend_name="H5ADBackend"
+            backend_name="H5ADBackend",
         )
 
         # Verify complete workflow
@@ -1122,6 +1120,7 @@ class TestProvenanceWorkflows:
 # ===============================================================================
 # Performance and Edge Case Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestProvenancePerformanceAndEdgeCases:
@@ -1145,8 +1144,8 @@ class TestProvenancePerformanceAndEdgeCases:
             tracker.create_activity(
                 f"process_{i}",
                 agent_id,
-                inputs=[{"entity": entities[i-1], "role": "input"}],
-                outputs=[{"entity": entities[i], "role": "output"}]
+                inputs=[{"entity": entities[i - 1], "role": "input"}],
+                outputs=[{"entity": entities[i], "role": "output"}],
             )
 
         # Verify scale
@@ -1168,7 +1167,7 @@ class TestProvenancePerformanceAndEdgeCases:
             "file-with-dashes.h5ad",
             "file_with_underscores.txt",
             "file.with.dots.xlsx",
-            "file(with)parentheses.h5mu"
+            "file(with)parentheses.h5mu",
         ]
 
         for name in special_names:
@@ -1181,7 +1180,7 @@ class TestProvenancePerformanceAndEdgeCases:
             "Agent With Spaces",
             "Agent-With-Dashes",
             "Agent_With_Underscores",
-            "Agent.With.Dots"
+            "Agent.With.Dots",
         ]
 
         for name in agent_names:
@@ -1198,7 +1197,7 @@ class TestProvenancePerformanceAndEdgeCases:
             "файл.csv",  # Cyrillic
             "文件.h5ad",  # Chinese
             "ファイル.txt",  # Japanese
-            "🧬data.h5mu"  # Emoji
+            "🧬data.h5mu",  # Emoji
         ]
 
         for name in unicode_names:
@@ -1216,9 +1215,11 @@ class TestProvenancePerformanceAndEdgeCases:
         tracker = ProvenanceTracker()
 
         # Measure initial memory usage
-        initial_size = sys.getsizeof(tracker.activities) + \
-                      sys.getsizeof(tracker.entities) + \
-                      sys.getsizeof(tracker.agents)
+        initial_size = (
+            sys.getsizeof(tracker.activities)
+            + sys.getsizeof(tracker.entities)
+            + sys.getsizeof(tracker.agents)
+        )
 
         # Add substantial amount of data
         for i in range(50):
@@ -1227,9 +1228,11 @@ class TestProvenancePerformanceAndEdgeCases:
             activity_id = tracker.create_activity(f"activity_{i}", agent_id)
 
         # Measure final memory usage
-        final_size = sys.getsizeof(tracker.activities) + \
-                    sys.getsizeof(tracker.entities) + \
-                    sys.getsizeof(tracker.agents)
+        final_size = (
+            sys.getsizeof(tracker.activities)
+            + sys.getsizeof(tracker.entities)
+            + sys.getsizeof(tracker.agents)
+        )
 
         # Memory should scale reasonably (not test specific values, just ensure it doesn't explode)
         assert final_size > initial_size

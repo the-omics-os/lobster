@@ -76,8 +76,8 @@ The easiest and most reliable installation method:
 
 ```bash
 # Clone repository
-git clone https://github.com/the-omics-os/lobster.git
-cd lobster
+git clone https://github.com/the-omics-os/lobster-local.git
+cd lobster-local
 
 # One-command installation
 make install
@@ -95,8 +95,8 @@ make install
 For contributors and developers:
 
 ```bash
-git clone https://github.com/the-omics-os/lobster.git
-cd lobster
+git clone https://github.com/the-omics-os/lobster-local.git
+cd lobster-local
 
 # Install with development dependencies
 make dev-install
@@ -113,10 +113,8 @@ make dev-install
 For full control over the installation process:
 
 ```bash
-# Clone and enter directory
-git clone https://github.com/the-omics-os/lobster.git
-cd lobster
-
+git clone https://github.com/the-omics-os/lobster-local.git
+cd lobster-local
 # Create virtual environment
 python3 -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
@@ -173,9 +171,8 @@ brew install python@3.12
 # Optional: Install uv for faster package management
 brew install uv
 
-# Clone and install Lobster
-git clone https://github.com/the-omics-os/lobster.git
-cd lobster
+git clone https://github.com/the-omics-os/lobster-local.git
+cd lobster-local
 make install
 ```
 
@@ -198,12 +195,9 @@ sudo apt update
 # Install Python 3.12+
 sudo apt install python3.12 python3.12-venv python3.12-dev
 
-# Install build essentials (for compiled dependencies)
-sudo apt install build-essential
-
 # Clone and install
-git clone https://github.com/the-omics-os/lobster.git
-cd lobster
+git clone https://github.com/the-omics-os/lobster-local.git
+cd lobster-local
 make install
 ```
 
@@ -215,10 +209,9 @@ sudo dnf install python3.12 python3.12-devel
 # Install development tools
 sudo dnf groupinstall "Development Tools"
 
-# Clone and install
-git clone https://github.com/the-omics-os/lobster.git
-cd lobster
-make install
+    # Clone and install
+    git clone https://github.com/the-omics-os/lobster-local.git
+    cd lobster-localmake install
 ```
 
 ### Windows
@@ -229,8 +222,8 @@ make install
 # Ensure Python is in PATH
 
 # Clone repository
-git clone https://github.com/the-omics-os/lobster.git
-cd lobster
+git clone https://github.com/the-omics-os/lobster-local.git
+cd lobster-local
 
 # Create virtual environment
 python -m venv .venv
@@ -315,8 +308,8 @@ lobster config test
 ### Full Development Setup
 
 ```bash
-git clone https://github.com/the-omics-os/lobster.git
-cd lobster
+git clone https://github.com/the-omics-os/lobster-local.git
+cd lobster-local
 
 # Development installation
 make dev-install
@@ -373,7 +366,7 @@ pre-commit run --all-files
 make docker-build
 
 # Or manually
-docker build -t lobster-ai:latest .
+docker build -t omicsos/lobster:latest .
 ```
 
 ### Run with Docker
@@ -389,7 +382,7 @@ docker run -it --rm \
   -v ~/.lobster:/root/.lobster \
   -v $(pwd)/data:/app/data \
   -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
-  lobster-ai:latest
+  omicsos/lobster:latest
 
 # Or with AWS Bedrock
 docker run -it --rm \
@@ -397,7 +390,7 @@ docker run -it --rm \
   -v $(pwd)/data:/app/data \
   -e AWS_BEDROCK_ACCESS_KEY=$AWS_BEDROCK_ACCESS_KEY \
   -e AWS_BEDROCK_SECRET_ACCESS_KEY=$AWS_BEDROCK_SECRET_ACCESS_KEY \
-  lobster-ai:latest
+  omicsos/lobster:latest
 ```
 
 ### Docker Compose
@@ -524,8 +517,8 @@ sudo swapon /swapfile
 # Install with limited parallelism
 pip install -e . --no-build-isolation
 
-# Use lighter installation
-export LOBSTER_PROFILE=cost-optimized
+# Use development profile for lighter resource usage
+export LOBSTER_PROFILE=development
 make install
 ```
 
@@ -568,8 +561,8 @@ python -c "import sys; print(sys.path)"
 
 **Solutions:**
 ```bash
-# Use lighter model profile
-export LOBSTER_PROFILE=cost-optimized
+# Use development profile (lighter than production)
+export LOBSTER_PROFILE=development
 
 # Reduce file size limits
 export LOBSTER_MAX_FILE_SIZE_MB=100

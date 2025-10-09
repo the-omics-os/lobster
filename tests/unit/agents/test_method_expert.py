@@ -8,27 +8,27 @@ reproducibility validation, and integration with research workflows.
 Test coverage target: 95%+ with meaningful tests for method expertise.
 """
 
-import pytest
-from typing import Dict, Any, List, Optional, Union
-from unittest.mock import Mock, MagicMock, patch
 import json
+from typing import Any, Dict, List, Optional, Union
+from unittest.mock import MagicMock, Mock, patch
+
 import numpy as np
 import pandas as pd
+import pytest
 
 from lobster.agents.method_expert import method_expert
 from lobster.core.data_manager_v2 import DataManagerV2
-
-from tests.mock_data.factories import SingleCellDataFactory, BulkRNASeqDataFactory
 from tests.mock_data.base import SMALL_DATASET_CONFIG
-
+from tests.mock_data.factories import BulkRNASeqDataFactory, SingleCellDataFactory
 
 # ===============================================================================
 # Mock Objects and Fixtures
 # ===============================================================================
 
+
 class MockMessage:
     """Mock LangGraph message object."""
-    
+
     def __init__(self, content: str, sender: str = "human"):
         self.content = content
         self.sender = sender
@@ -37,7 +37,7 @@ class MockMessage:
 
 class MockState:
     """Mock LangGraph state object."""
-    
+
     def __init__(self, messages=None, **kwargs):
         self.messages = messages or []
         for key, value in kwargs.items():
@@ -46,7 +46,7 @@ class MockState:
 
 class MockPaper:
     """Mock paper object for method extraction."""
-    
+
     def __init__(self, pmid: str, title: str, methods_section: str, **kwargs):
         self.pmid = pmid
         self.title = title
@@ -60,10 +60,12 @@ class MockPaper:
 @pytest.fixture
 def mock_data_manager(mock_agent_environment):
     """Create mock data manager."""
-    with patch('lobster.core.data_manager_v2.DataManagerV2') as MockDataManager:
+    with patch("lobster.core.data_manager_v2.DataManagerV2") as MockDataManager:
         mock_dm = MockDataManager.return_value
-        mock_dm.list_modalities.return_value = ['test_sc_data', 'test_bulk_data']
-        mock_dm.get_modality.return_value = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        mock_dm.list_modalities.return_value = ["test_sc_data", "test_bulk_data"]
+        mock_dm.get_modality.return_value = SingleCellDataFactory(
+            config=SMALL_DATASET_CONFIG
+        )
         mock_dm.get_summary.return_value = "Test dataset with 1000 cells and 2000 genes"
         yield mock_dm
 
@@ -71,9 +73,9 @@ def mock_data_manager(mock_agent_environment):
 @pytest.fixture
 def mock_pubmed_service():
     """Mock PubMed service for paper retrieval."""
-    with patch('lobster.tools.providers.pubmed_provider.PubMedProvider') as MockPubMed:
+    with patch("lobster.tools.providers.pubmed_provider.PubMedProvider") as MockPubMed:
         mock_service = MockPubMed.return_value
-        
+
         # Mock clustering paper
         mock_service.get_paper_details.return_value = MockPaper(
             pmid="12345678",
@@ -93,9 +95,9 @@ def mock_pubmed_service():
             abstract="We present an optimized approach for single-cell RNA-seq clustering...",
             authors=["Smith J", "Doe A", "Johnson B"],
             journal="Nature Methods",
-            year="2023"
+            year="2023",
         )
-        
+
         # Mock differential expression paper
         mock_service.search_papers.return_value = [
             {
@@ -103,10 +105,10 @@ def mock_pubmed_service():
                 "title": "Improved differential expression analysis with DESeq2 parameter optimization",
                 "authors": ["Wilson C", "Brown D"],
                 "journal": "Genome Biology",
-                "year": "2023"
+                "year": "2023",
             }
         ]
-        
+
         yield mock_service
 
 
@@ -116,7 +118,7 @@ def method_expert_state():
     return MockState(
         messages=[MockMessage("Extract clustering parameters from this paper")],
         data_manager=Mock(),
-        current_agent="method_expert_agent"
+        current_agent="method_expert_agent",
     )
 
 
@@ -124,13 +126,16 @@ def method_expert_state():
 # Method Expert Core Functionality Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestMethodExpertCore:
     """Test method expert core functionality."""
-    
+
     def test_extract_parameters_from_paper(self, mock_pubmed_service):
         """Test parameter extraction from research papers using PublicationService."""
-        with patch('lobster.tools.publication_service.PublicationService') as MockPublicationService:
+        with patch(
+            "lobster.tools.publication_service.PublicationService"
+        ) as MockPublicationService:
             mock_service = MockPublicationService.return_value
             mock_service.extract_computational_methods.return_value = """
                 Found scanpy parameters:
@@ -140,16 +145,14 @@ class TestMethodExpertCore:
                 """
 
             result = mock_service.extract_computational_methods(
-                doi_or_pmid="12345678",
-                method_type="all",
-                include_parameters=True
+                doi_or_pmid="12345678", method_type="all", include_parameters=True
             )
 
             assert "scanpy parameters" in result
             assert "normalize_total" in result
             assert "leiden" in result
             mock_service.extract_computational_methods.assert_called_once()
-    
+
     def test_analyze_method_section(self, mock_pubmed_service):
         """Test analysis of methods section text."""
         methods_text = """
@@ -158,7 +161,9 @@ class TestMethodExpertCore:
         PCA used n_comps=50, neighbors with n_neighbors=15.
         """
 
-        with patch('lobster.tools.publication_service.PublicationService') as MockPublicationService:
+        with patch(
+            "lobster.tools.publication_service.PublicationService"
+        ) as MockPublicationService:
             mock_service = MockPublicationService.return_value
             mock_service.extract_computational_methods.return_value = """
                 Extracted parameters:
@@ -171,18 +176,18 @@ class TestMethodExpertCore:
                 """
 
             result = mock_service.extract_computational_methods(
-                doi_or_pmid="test_id",
-                method_type="all",
-                include_parameters=True
+                doi_or_pmid="test_id", method_type="all", include_parameters=True
             )
 
             assert "min_genes: 200" in result
             assert "quality_control_filtering" in result
             mock_service.extract_computational_methods.assert_called_once()
-    
+
     def test_optimize_parameters_for_dataset(self, mock_data_manager):
         """Test parameter optimization for specific datasets."""
-        with patch('lobster.tools.publication_service.PublicationService') as MockPublicationService:
+        with patch(
+            "lobster.tools.publication_service.PublicationService"
+        ) as MockPublicationService:
             mock_service = MockPublicationService.return_value
             mock_service.extract_computational_methods.return_value = """
                 Parameter optimization for leiden clustering:
@@ -195,16 +200,18 @@ class TestMethodExpertCore:
             result = mock_service.extract_computational_methods(
                 doi_or_pmid="optimization_study",
                 method_type="clustering",
-                include_parameters=True
+                include_parameters=True,
             )
 
             assert "resolution: 0.8" in result
             assert "Silhouette score: 0.65" in result
             assert "better cluster separation" in result
-    
+
     def test_validate_method_reproducibility(self, mock_data_manager):
         """Test method reproducibility validation."""
-        with patch('lobster.tools.publication_service.PublicationService') as MockPublicationService:
+        with patch(
+            "lobster.tools.publication_service.PublicationService"
+        ) as MockPublicationService:
             mock_service = MockPublicationService.return_value
             mock_service.extract_computational_methods.return_value = """
                 Method reproducibility analysis:
@@ -216,9 +223,7 @@ class TestMethodExpertCore:
                 """
 
             result = mock_service.extract_computational_methods(
-                doi_or_pmid="test_method",
-                method_type="all",
-                include_parameters=True
+                doi_or_pmid="test_method", method_type="all", include_parameters=True
             )
 
             assert "Reproducible: True" in result
@@ -230,10 +235,11 @@ class TestMethodExpertCore:
 # Parameter Extraction and Analysis Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestParameterExtractionAnalysis:
     """Test parameter extraction and analysis functionality."""
-    
+
     def test_parse_scanpy_parameters(self):
         """Test parsing Scanpy-specific parameters."""
         methods_text = """
@@ -251,20 +257,20 @@ class TestParameterExtractionAnalysis:
         import re
 
         # Extract min_genes parameter
-        min_genes_match = re.search(r'min_genes=([0-9]+)', methods_text)
+        min_genes_match = re.search(r"min_genes=([0-9]+)", methods_text)
         assert min_genes_match is not None
         assert int(min_genes_match.group(1)) == 200
 
         # Extract leiden resolution
-        resolution_match = re.search(r'resolution=([0-9.]+)', methods_text)
+        resolution_match = re.search(r"resolution=([0-9.]+)", methods_text)
         assert resolution_match is not None
         assert float(resolution_match.group(1)) == 0.5
 
         # Extract target_sum
-        target_sum_match = re.search(r'target_sum=([0-9e]+)', methods_text)
+        target_sum_match = re.search(r"target_sum=([0-9e]+)", methods_text)
         assert target_sum_match is not None
-        assert target_sum_match.group(1) == '1e4'
-    
+        assert target_sum_match.group(1) == "1e4"
+
     def test_parse_seurat_parameters(self):
         """Test parsing Seurat-specific parameters."""
         methods_text = """
@@ -282,20 +288,22 @@ class TestParameterExtractionAnalysis:
         import re
 
         # Extract min.cells parameter
-        min_cells_match = re.search(r'min\.cells\s*=\s*([0-9]+)', methods_text)
+        min_cells_match = re.search(r"min\.cells\s*=\s*([0-9]+)", methods_text)
         assert min_cells_match is not None
         assert int(min_cells_match.group(1)) == 3
 
         # Extract min.features parameter
-        min_features_match = re.search(r'min\.features\s*=\s*([0-9]+)', methods_text)
+        min_features_match = re.search(r"min\.features\s*=\s*([0-9]+)", methods_text)
         assert min_features_match is not None
         assert int(min_features_match.group(1)) == 200
 
         # Extract FindClusters resolution
-        resolution_match = re.search(r'FindClusters.*resolution\s*=\s*([0-9.]+)', methods_text)
+        resolution_match = re.search(
+            r"FindClusters.*resolution\s*=\s*([0-9.]+)", methods_text
+        )
         assert resolution_match is not None
         assert float(resolution_match.group(1)) == 0.5
-    
+
     def test_extract_statistical_parameters(self):
         """Test extraction of statistical analysis parameters."""
         methods_text = """
@@ -309,25 +317,27 @@ class TestParameterExtractionAnalysis:
         import re
 
         # Extract method name
-        method_match = re.search(r'using\s+(\w+)', methods_text)
+        method_match = re.search(r"using\s+(\w+)", methods_text)
         assert method_match is not None
         assert method_match.group(1) == "DESeq2"
 
         # Extract p-value threshold
-        pvalue_match = re.search(r'p-value\s*<\s*([0-9.]+)', methods_text)
+        pvalue_match = re.search(r"p-value\s*<\s*([0-9.]+)", methods_text)
         assert pvalue_match is not None
         assert float(pvalue_match.group(1)) == 0.05
 
         # Extract log2 fold change threshold
-        log2fc_match = re.search(r'log2 fold change\s*>\s*([0-9]+\.?[0-9]*)', methods_text)
+        log2fc_match = re.search(
+            r"log2 fold change\s*>\s*([0-9]+\.?[0-9]*)", methods_text
+        )
         assert log2fc_match is not None
         assert float(log2fc_match.group(1)) == 1.5
 
         # Extract multiple testing correction method
-        correction_match = re.search(r'(Benjamini-Hochberg)', methods_text)
+        correction_match = re.search(r"(Benjamini-Hochberg)", methods_text)
         assert correction_match is not None
         assert correction_match.group(1) == "Benjamini-Hochberg"
-    
+
     def test_identify_software_versions(self):
         """Test identification of software versions."""
         methods_text = """
@@ -340,22 +350,22 @@ class TestParameterExtractionAnalysis:
         import re
 
         # Extract Python version
-        python_match = re.search(r'Python\s+([0-9.]+)', methods_text)
+        python_match = re.search(r"Python\s+([0-9.]+)", methods_text)
         assert python_match is not None
         assert python_match.group(1) == "3.8.5"
 
         # Extract scanpy version
-        scanpy_match = re.search(r'scanpy\s+([0-9.]+)', methods_text)
+        scanpy_match = re.search(r"scanpy\s+([0-9.]+)", methods_text)
         assert scanpy_match is not None
         assert scanpy_match.group(1) == "1.9.1"
 
         # Extract pandas version
-        pandas_match = re.search(r'pandas\s+([0-9.]+)', methods_text)
+        pandas_match = re.search(r"pandas\s+([0-9.]+)", methods_text)
         assert pandas_match is not None
         assert pandas_match.group(1) == "1.3.0"
 
         # Extract Seurat version
-        seurat_match = re.search(r'Seurat\s+([0-9.]+)', methods_text)
+        seurat_match = re.search(r"Seurat\s+([0-9.]+)", methods_text)
         assert seurat_match is not None
         assert seurat_match.group(1) == "4.0.3"
 
@@ -364,13 +374,16 @@ class TestParameterExtractionAnalysis:
 # Method Optimization Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestMethodOptimization:
     """Test method optimization functionality."""
-    
+
     def test_optimize_clustering_parameters(self, mock_data_manager):
         """Test clustering parameter optimization."""
-        with patch('lobster.tools.publication_service.PublicationService') as MockPublicationService:
+        with patch(
+            "lobster.tools.publication_service.PublicationService"
+        ) as MockPublicationService:
             mock_service = MockPublicationService.return_value
             mock_service.extract_computational_methods.return_value = """
                 Clustering parameter optimization for Leiden method:
@@ -383,16 +396,18 @@ class TestMethodOptimization:
             result = mock_service.extract_computational_methods(
                 doi_or_pmid="clustering_study",
                 method_type="clustering",
-                include_parameters=True
+                include_parameters=True,
             )
 
             assert "resolution=0.8" in result
             assert "silhouette=0.72" in result
             assert "high impact" in result
-    
+
     def test_optimize_normalization_parameters(self, mock_data_manager):
         """Test normalization parameter optimization."""
-        with patch('lobster.tools.publication_service.PublicationService') as MockPublicationService:
+        with patch(
+            "lobster.tools.publication_service.PublicationService"
+        ) as MockPublicationService:
             mock_service = MockPublicationService.return_value
             mock_service.extract_computational_methods.return_value = """
                 Normalization method comparison:
@@ -405,16 +420,18 @@ class TestMethodOptimization:
             result = mock_service.extract_computational_methods(
                 doi_or_pmid="normalization_study",
                 method_type="normalization",
-                include_parameters=True
+                include_parameters=True,
             )
 
             assert "LogNormalize" in result
             assert "target_sum=10000" in result
             assert "variance_stabilization=0.85" in result
-    
+
     def test_optimize_dimensionality_reduction(self, mock_data_manager):
         """Test dimensionality reduction optimization."""
-        with patch('lobster.tools.publication_service.PublicationService') as MockPublicationService:
+        with patch(
+            "lobster.tools.publication_service.PublicationService"
+        ) as MockPublicationService:
             mock_service = MockPublicationService.return_value
             mock_service.extract_computational_methods.return_value = """
                 Dimensionality reduction optimization:
@@ -425,16 +442,18 @@ class TestMethodOptimization:
             result = mock_service.extract_computational_methods(
                 doi_or_pmid="dimred_study",
                 method_type="dimensionality_reduction",
-                include_parameters=True
+                include_parameters=True,
             )
 
             assert "optimal_components=45" in result
             assert "best_min_dist=0.3" in result
             assert "embedding_quality=0.78" in result
-    
+
     def test_benchmark_method_performance(self, mock_data_manager):
         """Test method performance benchmarking."""
-        with patch('lobster.tools.publication_service.PublicationService') as MockPublicationService:
+        with patch(
+            "lobster.tools.publication_service.PublicationService"
+        ) as MockPublicationService:
             mock_service = MockPublicationService.return_value
             mock_service.extract_computational_methods.return_value = """
                 Method performance benchmarking:
@@ -450,7 +469,7 @@ class TestMethodOptimization:
             result = mock_service.extract_computational_methods(
                 doi_or_pmid="benchmark_study",
                 method_type="all",
-                include_parameters=True
+                include_parameters=True,
             )
 
             assert "Best method: leiden" in result
@@ -462,13 +481,16 @@ class TestMethodOptimization:
 # Protocol Analysis Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestProtocolAnalysis:
     """Test protocol analysis functionality."""
-    
+
     def test_analyze_experimental_protocol(self, mock_pubmed_service):
         """Test experimental protocol analysis using PublicationService."""
-        with patch('lobster.tools.publication_service.PublicationService') as MockPublicationService:
+        with patch(
+            "lobster.tools.publication_service.PublicationService"
+        ) as MockPublicationService:
             mock_service = MockPublicationService.return_value
             mock_service.extract_computational_methods.return_value = """
                 Protocol analysis for single-cell RNA-seq:
@@ -479,18 +501,18 @@ class TestProtocolAnalysis:
                 """
 
             result = mock_service.extract_computational_methods(
-                doi_or_pmid="12345678",
-                method_type="all",
-                include_parameters=True
+                doi_or_pmid="12345678", method_type="all", include_parameters=True
             )
 
             assert "single_cell_rna_seq" in result
             assert "10X Chromium" in result
             assert "min_genes_per_cell 200" in result
-    
+
     def test_compare_protocols(self, mock_pubmed_service):
         """Test protocol comparison using PublicationService."""
-        with patch('lobster.tools.publication_service.PublicationService') as MockPublicationService:
+        with patch(
+            "lobster.tools.publication_service.PublicationService"
+        ) as MockPublicationService:
             mock_service = MockPublicationService.return_value
             mock_service.extract_computational_methods.return_value = """
                 Protocol comparison analysis:
@@ -504,16 +526,18 @@ class TestProtocolAnalysis:
             result = mock_service.extract_computational_methods(
                 doi_or_pmid="protocol_comparison_study",
                 method_type="all",
-                include_parameters=True
+                include_parameters=True,
             )
 
             assert "protocol_A (0.85)" in result
             assert "for sensitivity use protocol_A" in result
             assert "for cost effectiveness use protocol_B" in result
-    
+
     def test_validate_protocol_compatibility(self, mock_data_manager):
         """Test protocol compatibility validation using PublicationService."""
-        with patch('lobster.tools.publication_service.PublicationService') as MockPublicationService:
+        with patch(
+            "lobster.tools.publication_service.PublicationService"
+        ) as MockPublicationService:
             mock_service = MockPublicationService.return_value
             mock_service.extract_computational_methods.return_value = """
                 Protocol compatibility validation:
@@ -527,7 +551,7 @@ class TestProtocolAnalysis:
             result = mock_service.extract_computational_methods(
                 doi_or_pmid="protocol_validation_study",
                 method_type="all",
-                include_parameters=True
+                include_parameters=True,
             )
 
             assert "Compatible: True" in result
@@ -539,10 +563,11 @@ class TestProtocolAnalysis:
 # Method Validation and Reproducibility Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestMethodValidationReproducibility:
     """Test method validation and reproducibility functionality."""
-    
+
     def test_validate_method_implementation(self):
         """Test method implementation validation using text analysis."""
         method_code = """import scanpy as sc
@@ -569,7 +594,7 @@ sc.tl.leiden(adata, resolution=0.5)"""
         assert "filter_cells" in method_code
         assert "normalize_total" in method_code
         assert "leiden" in method_code
-    
+
     def test_assess_reproducibility_factors(self, mock_data_manager):
         """Test reproducibility factors assessment using simple checks."""
         # Test that we can identify reproducibility factors from method descriptions
@@ -591,25 +616,34 @@ sc.tl.leiden(adata, resolution=0.5)"""
         # Check for software dependencies
         assert "scanpy>=1.8.0" in method_description
         assert "numpy>=1.20.0" in method_description
-    
+
     def test_generate_reproducible_protocol(self):
         """Test reproducible protocol generation using template approach."""
         # Test that we can generate a basic reproducible protocol structure
         protocol_template = {
             "protocol_id": "reproducible_clustering_v1.0",
             "method_steps": [
-                {"step": "quality_control", "parameters": {"min_genes": 200, "min_cells": 3}},
+                {
+                    "step": "quality_control",
+                    "parameters": {"min_genes": 200, "min_cells": 3},
+                },
                 {"step": "normalization", "parameters": {"target_sum": 10000}},
                 {"step": "feature_selection", "parameters": {"n_top_genes": 2000}},
                 {"step": "pca", "parameters": {"n_comps": 50, "random_state": 42}},
-                {"step": "neighbors", "parameters": {"n_neighbors": 10, "random_state": 42}},
-                {"step": "clustering", "parameters": {"resolution": 0.5, "random_state": 42}}
+                {
+                    "step": "neighbors",
+                    "parameters": {"n_neighbors": 10, "random_state": 42},
+                },
+                {
+                    "step": "clustering",
+                    "parameters": {"resolution": 0.5, "random_state": 42},
+                },
             ],
             "environment_specs": {
                 "python": "3.8+",
                 "scanpy": "1.9.1",
-                "required_packages": ["pandas>=1.3.0", "numpy>=1.20.0"]
-            }
+                "required_packages": ["pandas>=1.3.0", "numpy>=1.20.0"],
+            },
         }
 
         # Verify the protocol structure
@@ -623,7 +657,7 @@ sc.tl.leiden(adata, resolution=0.5)"""
             if step["step"] in random_state_steps:
                 assert "random_state" in step["parameters"]
                 assert step["parameters"]["random_state"] == 42
-    
+
     def test_cross_validate_method_results(self, mock_data_manager):
         """Test cross-validation concept using simple validation."""
         # Test basic cross-validation structure and metrics
@@ -632,14 +666,14 @@ sc.tl.leiden(adata, resolution=0.5)"""
             "consistency_metrics": {
                 "cluster_stability": 0.88,
                 "marker_gene_consistency": 0.92,
-                "parameter_robustness": 0.85
+                "parameter_robustness": 0.85,
             },
             "variance_analysis": {
                 "cluster_count_variance": 0.15,
                 "silhouette_score_variance": 0.08,
-                "modularity_variance": 0.12
+                "modularity_variance": 0.12,
             },
-            "reliability_assessment": "high"
+            "reliability_assessment": "high",
         }
 
         # Verify cross-validation structure
@@ -659,26 +693,33 @@ sc.tl.leiden(adata, resolution=0.5)"""
 # Integration and Workflow Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestMethodExpertIntegration:
     """Test method expert integration functionality."""
-    
+
     def test_integrate_with_research_workflow(self, method_expert_state):
         """Test integration with research workflow."""
-        method_expert_state.messages = [MockMessage("Extract and optimize parameters from paper PMID:12345678")]
+        method_expert_state.messages = [
+            MockMessage("Extract and optimize parameters from paper PMID:12345678")
+        ]
 
         # Test that the method expert can be instantiated and used
         from lobster.agents.method_expert import method_expert
         from lobster.core.data_manager_v2 import DataManagerV2
 
         # Mock the data manager and publication service
-        with patch('lobster.core.data_manager_v2.DataManagerV2') as MockDataManager:
+        with patch("lobster.core.data_manager_v2.DataManagerV2") as MockDataManager:
             mock_dm = MockDataManager.return_value
-            mock_dm.list_modalities.return_value = ['test_data']
+            mock_dm.list_modalities.return_value = ["test_data"]
 
-            with patch('lobster.tools.publication_service.PublicationService') as MockPublicationService:
+            with patch(
+                "lobster.tools.publication_service.PublicationService"
+            ) as MockPublicationService:
                 mock_service = MockPublicationService.return_value
-                mock_service.extract_computational_methods.return_value = "Parameters extracted: leiden_resolution=0.8, n_neighbors=15"
+                mock_service.extract_computational_methods.return_value = (
+                    "Parameters extracted: leiden_resolution=0.8, n_neighbors=15"
+                )
 
                 # Create the agent
                 agent = method_expert(data_manager=mock_dm)
@@ -686,8 +727,8 @@ class TestMethodExpertIntegration:
                 # Verify agent was created successfully
                 assert agent is not None
                 # The agent should have tools available
-                assert hasattr(agent, 'invoke') or hasattr(agent, 'call')
-    
+                assert hasattr(agent, "invoke") or hasattr(agent, "call")
+
     def test_method_recommendation_system(self, mock_data_manager):
         """Test method recommendation system using rule-based logic."""
         # Test basic method recommendation logic
@@ -695,7 +736,7 @@ class TestMethodExpertIntegration:
             "n_cells": 5000,
             "n_genes": 20000,
             "sparsity": 0.92,
-            "data_type": "single_cell_rna_seq"
+            "data_type": "single_cell_rna_seq",
         }
 
         # Simple recommendation logic based on dataset size
@@ -719,14 +760,14 @@ class TestMethodExpertIntegration:
         assert clustering_confidence == 0.95
         assert recommended_normalization == "sctransform_normalization"
         assert normalization_confidence == 0.88
-    
+
     def test_adaptive_parameter_tuning(self, mock_data_manager):
         """Test adaptive parameter tuning logic."""
         # Test basic adaptive tuning simulation
         parameter_evolution = {
             "iteration_1": {"resolution": 0.5, "silhouette": 0.65},
             "iteration_2": {"resolution": 0.7, "silhouette": 0.71},
-            "iteration_3": {"resolution": 0.8, "silhouette": 0.72}
+            "iteration_3": {"resolution": 0.8, "silhouette": 0.72},
         }
 
         # Verify improvement over iterations
@@ -743,30 +784,40 @@ class TestMethodExpertIntegration:
 
         # Verify convergence criteria
         convergence_threshold = 0.02  # Adjusted threshold
-        last_improvement = abs(parameter_evolution["iteration_3"]["silhouette"] -
-                             parameter_evolution["iteration_2"]["silhouette"])
+        last_improvement = abs(
+            parameter_evolution["iteration_3"]["silhouette"]
+            - parameter_evolution["iteration_2"]["silhouette"]
+        )
         convergence_achieved = last_improvement <= convergence_threshold
 
         assert convergence_achieved == True
-    
+
     def test_method_pipeline_construction(self, mock_data_manager):
         """Test method pipeline construction using template approach."""
         # Test basic pipeline construction
         pipeline_template = {
             "pipeline_id": "optimized_sc_analysis_v1",
             "pipeline_steps": [
-                {"name": "quality_control", "function": "filter_cells_genes", "order": 1},
+                {
+                    "name": "quality_control",
+                    "function": "filter_cells_genes",
+                    "order": 1,
+                },
                 {"name": "normalization", "function": "normalize_total", "order": 2},
-                {"name": "feature_selection", "function": "highly_variable_genes", "order": 3},
+                {
+                    "name": "feature_selection",
+                    "function": "highly_variable_genes",
+                    "order": 3,
+                },
                 {"name": "dimensionality_reduction", "function": "pca", "order": 4},
                 {"name": "neighborhood", "function": "neighbors", "order": 5},
-                {"name": "clustering", "function": "leiden", "order": 6}
+                {"name": "clustering", "function": "leiden", "order": 6},
             ],
             "parameter_set": {
                 "quality_control": {"min_genes": 200, "min_cells": 3},
                 "normalization": {"target_sum": 10000},
-                "clustering": {"resolution": 0.8}
-            }
+                "clustering": {"resolution": 0.8},
+            },
         }
 
         # Verify pipeline structure
@@ -788,26 +839,31 @@ class TestMethodExpertIntegration:
 # Error Handling and Edge Cases
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestMethodExpertErrorHandling:
     """Test method expert error handling and edge cases."""
-    
+
     def test_invalid_paper_handling(self, mock_pubmed_service):
         """Test handling of invalid or inaccessible papers."""
-        with patch('lobster.tools.publication_service.PublicationService') as MockPublicationService:
+        with patch(
+            "lobster.tools.publication_service.PublicationService"
+        ) as MockPublicationService:
             mock_service = MockPublicationService.return_value
-            mock_service.extract_computational_methods.side_effect = ValueError("Paper PMID:INVALID not found or inaccessible")
+            mock_service.extract_computational_methods.side_effect = ValueError(
+                "Paper PMID:INVALID not found or inaccessible"
+            )
 
             with pytest.raises(ValueError, match="Paper PMID:INVALID not found"):
                 mock_service.extract_computational_methods(
-                    doi_or_pmid="INVALID",
-                    method_type="all",
-                    include_parameters=True
+                    doi_or_pmid="INVALID", method_type="all", include_parameters=True
                 )
-    
+
     def test_unparseable_methods_section(self, mock_pubmed_service):
         """Test handling of unparseable methods sections."""
-        with patch('lobster.tools.publication_service.PublicationService') as MockPublicationService:
+        with patch(
+            "lobster.tools.publication_service.PublicationService"
+        ) as MockPublicationService:
             mock_service = MockPublicationService.return_value
             mock_service.extract_computational_methods.return_value = """
                 Parsing results: No specific parameters found
@@ -817,28 +873,30 @@ class TestMethodExpertErrorHandling:
                 """
 
             result = mock_service.extract_computational_methods(
-                doi_or_pmid="vague_paper",
-                method_type="all",
-                include_parameters=True
+                doi_or_pmid="vague_paper", method_type="all", include_parameters=True
             )
 
             assert "No specific parameters found" in result
             assert "Confidence: low" in result
             assert "Manual parameter extraction may be required" in result
-    
+
     def test_parameter_optimization_failure(self, mock_data_manager):
         """Test handling of parameter optimization failures."""
-        with patch('lobster.tools.publication_service.PublicationService') as MockPublicationService:
+        with patch(
+            "lobster.tools.publication_service.PublicationService"
+        ) as MockPublicationService:
             mock_service = MockPublicationService.return_value
-            mock_service.extract_computational_methods.side_effect = RuntimeError("Optimization failed: insufficient data variance")
+            mock_service.extract_computational_methods.side_effect = RuntimeError(
+                "Optimization failed: insufficient data variance"
+            )
 
             with pytest.raises(RuntimeError, match="Optimization failed"):
                 mock_service.extract_computational_methods(
                     doi_or_pmid="insufficient_data",
                     method_type="clustering",
-                    include_parameters=True
+                    include_parameters=True,
                 )
-    
+
     def test_incompatible_method_dataset(self, mock_data_manager):
         """Test handling of incompatible method-dataset combinations using basic validation."""
         # Test basic compatibility validation logic
@@ -846,8 +904,10 @@ class TestMethodExpertErrorHandling:
         method_requirements = {"min_cells": 100, "min_genes": 2000}  # Complex method
 
         # Check compatibility
-        compatible = (dataset_characteristics["n_cells"] >= method_requirements["min_cells"] and
-                     dataset_characteristics["n_genes"] >= method_requirements["min_genes"])
+        compatible = (
+            dataset_characteristics["n_cells"] >= method_requirements["min_cells"]
+            and dataset_characteristics["n_genes"] >= method_requirements["min_genes"]
+        )
 
         assert compatible == False
 
@@ -856,13 +916,13 @@ class TestMethodExpertErrorHandling:
             alternative_methods = ["simpler_clustering", "reduced_parameter_method"]
             adaptation_steps = [
                 "Reduce parameter complexity",
-                "Use alternative preprocessing pipeline"
+                "Use alternative preprocessing pipeline",
             ]
 
             assert len(alternative_methods) == 2
             assert "simpler_clustering" in alternative_methods
             assert "Reduce parameter complexity" in adaptation_steps
-    
+
     def test_software_version_conflicts(self):
         """Test handling of software version conflicts using version comparison."""
         # Test basic version conflict detection
@@ -874,11 +934,9 @@ class TestMethodExpertErrorHandling:
             installed = installed_versions.get(package, "0.0.0")
             # Simple version comparison (works for these specific versions)
             if installed < required:
-                conflicts.append({
-                    "package": package,
-                    "required": required,
-                    "installed": installed
-                })
+                conflicts.append(
+                    {"package": package, "required": required, "installed": installed}
+                )
 
         compatible = len(conflicts) == 0
         assert compatible == False
@@ -887,11 +945,13 @@ class TestMethodExpertErrorHandling:
         # Generate resolution steps
         resolution_steps = []
         for conflict in conflicts:
-            resolution_steps.append(f"Upgrade {conflict['package']} to version {conflict['required']}")
+            resolution_steps.append(
+                f"Upgrade {conflict['package']} to version {conflict['required']}"
+            )
 
         assert "Upgrade scanpy to version 1.9.1" in resolution_steps
         assert "Upgrade numpy to version 1.20.0" in resolution_steps
-    
+
     def test_concurrent_optimization_handling(self, mock_data_manager):
         """Test handling of concurrent parameter optimization using simple simulation."""
         import threading
@@ -912,7 +972,7 @@ class TestMethodExpertErrorHandling:
                     result = {
                         "worker_id": worker_id,
                         "dataset": dataset_name,
-                        "optimized_parameters": {"resolution": 0.5 + worker_id * 0.1}
+                        "optimized_parameters": {"resolution": 0.5 + worker_id * 0.1},
                     }
                     results.append(result)
 
@@ -923,7 +983,9 @@ class TestMethodExpertErrorHandling:
         # Create multiple concurrent optimizations
         threads = []
         for i in range(3):
-            thread = threading.Thread(target=optimization_worker, args=(i, f"dataset_{i}"))
+            thread = threading.Thread(
+                target=optimization_worker, args=(i, f"dataset_{i}")
+            )
             threads.append(thread)
             thread.start()
 
@@ -938,7 +1000,7 @@ class TestMethodExpertErrorHandling:
         # Verify each worker produced a unique result
         worker_ids = [result["worker_id"] for result in results]
         assert len(set(worker_ids)) == 3  # All unique worker IDs
-    
+
     def test_large_parameter_space_handling(self, mock_data_manager):
         """Test handling of large parameter optimization spaces using simulation."""
         # Simulate large parameter space optimization
@@ -949,20 +1011,30 @@ class TestMethodExpertErrorHandling:
             "early_stopping_triggered": True,
             "best_parameters": {"resolution": 0.7, "n_neighbors": 12},
             "optimization_time": 45.2,
-            "convergence_reason": "improvement_threshold_reached"
+            "convergence_reason": "improvement_threshold_reached",
         }
 
         # Verify early stopping logic
         assert optimization_result["early_stopping_triggered"] == True
-        assert optimization_result["evaluated_combinations"] < optimization_result["parameter_space_size"]
+        assert (
+            optimization_result["evaluated_combinations"]
+            < optimization_result["parameter_space_size"]
+        )
 
         # Verify optimization efficiency (evaluated < 5% of total space)
-        efficiency_ratio = optimization_result["evaluated_combinations"] / optimization_result["parameter_space_size"]
+        efficiency_ratio = (
+            optimization_result["evaluated_combinations"]
+            / optimization_result["parameter_space_size"]
+        )
         assert efficiency_ratio < 0.05
 
         # Verify reasonable optimization time
         assert optimization_result["optimization_time"] > 0
-        assert optimization_result["convergence_reason"] in ["improvement_threshold_reached", "max_iterations", "time_limit"]
+        assert optimization_result["convergence_reason"] in [
+            "improvement_threshold_reached",
+            "max_iterations",
+            "time_limit",
+        ]
 
 
 if __name__ == "__main__":

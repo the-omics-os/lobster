@@ -16,18 +16,18 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Dict, Any
-from unittest.mock import Mock, MagicMock, patch, AsyncMock
+from typing import Any, Dict
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from uuid import uuid4
 
-import pytest
-import pandas as pd
-import numpy as np
 import anndata as ad
+import numpy as np
+import pandas as pd
+import pytest
 
 from lobster.core.client import AgentClient
-from lobster.core.interfaces.base_client import BaseClient
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.interfaces.base_client import BaseClient
 
 # Note: APIAgentClient was legacy code for web UI integration (removed)
 # Cloud implementation is now in lobster-cloud/api/core/cloud_processing_client.py
@@ -38,6 +38,7 @@ APIAgentClient = None
 # ===============================================================================
 # Test Fixtures
 # ===============================================================================
+
 
 @pytest.fixture
 def temp_integration_workspace():
@@ -52,17 +53,23 @@ def sample_dataset():
     n_obs, n_vars = 100, 50
     X = np.random.poisson(2, size=(n_obs, n_vars)).astype(np.float32)
 
-    obs = pd.DataFrame({
-        'cell_id': [f'cell_{i}' for i in range(n_obs)],
-        'sample_id': np.random.choice(['sample_A', 'sample_B'], n_obs),
-        'condition': np.random.choice(['treated', 'control'], n_obs),
-        'n_genes': np.random.randint(1000, 5000, n_obs)
-    }, index=[f'cell_{i}' for i in range(n_obs)])
+    obs = pd.DataFrame(
+        {
+            "cell_id": [f"cell_{i}" for i in range(n_obs)],
+            "sample_id": np.random.choice(["sample_A", "sample_B"], n_obs),
+            "condition": np.random.choice(["treated", "control"], n_obs),
+            "n_genes": np.random.randint(1000, 5000, n_obs),
+        },
+        index=[f"cell_{i}" for i in range(n_obs)],
+    )
 
-    var = pd.DataFrame({
-        'gene_id': [f'gene_{i}' for i in range(n_vars)],
-        'gene_name': [f'GENE{i}' for i in range(n_vars)],
-    }, index=[f'gene_{i}' for i in range(n_vars)])
+    var = pd.DataFrame(
+        {
+            "gene_id": [f"gene_{i}" for i in range(n_vars)],
+            "gene_name": [f"GENE{i}" for i in range(n_vars)],
+        },
+        index=[f"gene_{i}" for i in range(n_vars)],
+    )
 
     return ad.AnnData(X=X, obs=obs, var=var)
 
@@ -70,13 +77,15 @@ def sample_dataset():
 @pytest.fixture
 def sample_csv_data(temp_integration_workspace):
     """Create sample CSV data file."""
-    data = pd.DataFrame({
-        'sample': [f'sample_{i}' for i in range(20)],
-        'gene1': np.random.randn(20),
-        'gene2': np.random.randn(20),
-        'gene3': np.random.randn(20),
-        'treatment': np.random.choice(['A', 'B'], 20)
-    })
+    data = pd.DataFrame(
+        {
+            "sample": [f"sample_{i}" for i in range(20)],
+            "gene1": np.random.randn(20),
+            "gene2": np.random.randn(20),
+            "gene3": np.random.randn(20),
+            "treatment": np.random.choice(["A", "B"], 20),
+        }
+    )
 
     csv_path = temp_integration_workspace / "test_data.csv"
     data.to_csv(csv_path, index=False)
@@ -87,13 +96,16 @@ def sample_csv_data(temp_integration_workspace):
 # Client Integration Tests - AgentClient (Public)
 # ===============================================================================
 
+
 @pytest.mark.integration
 class TestAgentClientIntegration:
     """Integration tests for AgentClient functionality (public repo compatible)."""
 
-    def test_client_initialization_with_real_workspace(self, temp_integration_workspace):
+    def test_client_initialization_with_real_workspace(
+        self, temp_integration_workspace
+    ):
         """Test client initialization with real workspace."""
-        with patch('lobster.core.client.create_bioinformatics_graph') as mock_graph:
+        with patch("lobster.core.client.create_bioinformatics_graph") as mock_graph:
             mock_graph.return_value = Mock()
 
             client = AgentClient(workspace_path=temp_integration_workspace)
@@ -104,9 +116,11 @@ class TestAgentClientIntegration:
             assert isinstance(client.data_manager, DataManagerV2)
             assert client.session_id.startswith("session_")
 
-    def test_file_operations_integration(self, temp_integration_workspace, sample_csv_data):
+    def test_file_operations_integration(
+        self, temp_integration_workspace, sample_csv_data
+    ):
         """Test integrated file operations."""
-        with patch('lobster.core.client.create_bioinformatics_graph') as mock_graph:
+        with patch("lobster.core.client.create_bioinformatics_graph") as mock_graph:
             mock_graph.return_value = Mock()
 
             client = AgentClient(workspace_path=temp_integration_workspace)
@@ -134,26 +148,26 @@ class TestAgentClientIntegration:
         """Test complete conversation flow."""
         mock_graph = Mock()
         mock_events = [
-            {"supervisor": {
-                "messages": [Mock(content="I'll help you analyze your data.")]
-            }},
-            {"data_expert": {
-                "messages": [Mock(content="Loading your dataset...")]
-            }},
-            {"supervisor": {
-                "messages": [Mock(content="Analysis complete.")]
-            }}
+            {
+                "supervisor": {
+                    "messages": [Mock(content="I'll help you analyze your data.")]
+                }
+            },
+            {"data_expert": {"messages": [Mock(content="Loading your dataset...")]}},
+            {"supervisor": {"messages": [Mock(content="Analysis complete.")]}},
         ]
         mock_graph.stream.return_value = mock_events
 
-        with patch('lobster.core.client.create_bioinformatics_graph', return_value=mock_graph):
+        with patch(
+            "lobster.core.client.create_bioinformatics_graph", return_value=mock_graph
+        ):
             client = AgentClient(workspace_path=temp_integration_workspace)
 
             # Test conversation flow
             queries = [
                 "Hello, can you help me analyze my data?",
                 "Load the dataset from my workspace",
-                "Perform quality control analysis"
+                "Perform quality control analysis",
             ]
 
             results = []
@@ -180,13 +194,13 @@ class TestAgentClientIntegration:
         mock_data_manager.get_workspace_status.return_value = {
             "workspace_path": str(temp_integration_workspace),
             "modalities": 0,
-            "plots": 0
+            "plots": 0,
         }
 
-        with patch('lobster.core.client.create_bioinformatics_graph'):
+        with patch("lobster.core.client.create_bioinformatics_graph"):
             client = AgentClient(
                 data_manager=mock_data_manager,
-                workspace_path=temp_integration_workspace
+                workspace_path=temp_integration_workspace,
             )
 
             # Add some conversation history
@@ -217,7 +231,9 @@ class TestAgentClientIntegration:
             {"supervisor": {"messages": [Mock(content="First query successful")]}}
         ]
 
-        with patch('lobster.core.client.create_bioinformatics_graph', return_value=mock_graph):
+        with patch(
+            "lobster.core.client.create_bioinformatics_graph", return_value=mock_graph
+        ):
             client = AgentClient(workspace_path=temp_integration_workspace)
 
             # First query succeeds
@@ -234,6 +250,7 @@ class TestAgentClientIntegration:
             mock_graph.stream.side_effect = None
             # Use AIMessage instead of Mock for proper response extraction
             from langchain_core.messages import AIMessage
+
             recovery_message = AIMessage(content="Recovery successful")
             mock_graph.stream.return_value = [
                 {"supervisor": {"messages": [recovery_message]}}
@@ -252,24 +269,29 @@ class TestAgentClientIntegration:
 # Client Integration Tests - APIAgentClient (Private Only)
 # ===============================================================================
 
+
 @pytest.mark.integration
 @pytest.mark.asyncio
-@pytest.mark.skipif(not HAS_API_CLIENT, reason="APIAgentClient not available (private repo only)")
+@pytest.mark.skipif(
+    not HAS_API_CLIENT, reason="APIAgentClient not available (private repo only)"
+)
 class TestAPIAgentClientIntegration:
     """Integration tests for APIAgentClient functionality (private repo only)."""
 
-    async def test_api_client_initialization_integration(self, temp_integration_workspace):
+    async def test_api_client_initialization_integration(
+        self, temp_integration_workspace
+    ):
         """Test APIAgentClient initialization with real dependencies."""
         session_id = uuid4()
         mock_session_manager = Mock()
 
-        with patch('lobster.core.api_client.AgentClient') as mock_agent_client:
-            with patch('lobster.core.api_client.APICallbackManager'):
-                with patch('lobster.core.api_client.setup_websocket_logging'):
+        with patch("lobster.core.api_client.AgentClient") as mock_agent_client:
+            with patch("lobster.core.api_client.APICallbackManager"):
+                with patch("lobster.core.api_client.setup_websocket_logging"):
                     client = APIAgentClient(
                         session_id=session_id,
                         session_manager=mock_session_manager,
-                        workspace_path=temp_integration_workspace
+                        workspace_path=temp_integration_workspace,
                     )
 
         assert client.session_id == session_id
@@ -281,20 +303,22 @@ class TestAPIAgentClientIntegration:
         session_id = uuid4()
         mock_session_manager = Mock()
 
-        with patch('lobster.core.api_client.AgentClient'):
-            with patch('lobster.core.api_client.APICallbackManager') as mock_callback_manager:
+        with patch("lobster.core.api_client.AgentClient"):
+            with patch(
+                "lobster.core.api_client.APICallbackManager"
+            ) as mock_callback_manager:
                 mock_callback_instance = Mock()
                 mock_callback_instance.send_data_update = AsyncMock()
                 mock_callback_manager.return_value = mock_callback_instance
 
-                with patch('lobster.core.api_client.setup_websocket_logging'):
+                with patch("lobster.core.api_client.setup_websocket_logging"):
                     mock_data_manager = Mock()
                     mock_data_manager.set_data = Mock()
 
                     client = APIAgentClient(
                         session_id=session_id,
                         session_manager=mock_session_manager,
-                        workspace_path=temp_integration_workspace
+                        workspace_path=temp_integration_workspace,
                     )
                     client.data_manager = mock_data_manager
                     client.callback_manager = mock_callback_instance
@@ -312,18 +336,20 @@ class TestAPIAgentClientIntegration:
         assert uploaded_file.exists()
         assert uploaded_file.read_bytes() == test_content
 
-    async def test_workspace_files_integration(self, temp_integration_workspace, sample_csv_data):
+    async def test_workspace_files_integration(
+        self, temp_integration_workspace, sample_csv_data
+    ):
         """Test workspace file listing integration."""
         session_id = uuid4()
         mock_session_manager = Mock()
 
-        with patch('lobster.core.api_client.AgentClient'):
-            with patch('lobster.core.api_client.APICallbackManager'):
-                with patch('lobster.core.api_client.setup_websocket_logging'):
+        with patch("lobster.core.api_client.AgentClient"):
+            with patch("lobster.core.api_client.APICallbackManager"):
+                with patch("lobster.core.api_client.setup_websocket_logging"):
                     client = APIAgentClient(
                         session_id=session_id,
                         session_manager=mock_session_manager,
-                        workspace_path=temp_integration_workspace
+                        workspace_path=temp_integration_workspace,
                     )
 
         # Test file listing
@@ -344,6 +370,7 @@ class TestAPIAgentClientIntegration:
 # Performance and Stress Tests (Public Compatible)
 # ===============================================================================
 
+
 @pytest.mark.integration
 @pytest.mark.performance
 class TestClientPerformanceIntegration:
@@ -356,7 +383,9 @@ class TestClientPerformanceIntegration:
             {"supervisor": {"messages": [Mock(content="Concurrent response")]}}
         ]
 
-        with patch('lobster.core.client.create_bioinformatics_graph', return_value=mock_graph):
+        with patch(
+            "lobster.core.client.create_bioinformatics_graph", return_value=mock_graph
+        ):
             client = AgentClient(workspace_path=temp_integration_workspace)
 
             results = []
@@ -391,14 +420,13 @@ class TestClientPerformanceIntegration:
 
     def test_large_file_handling(self, temp_integration_workspace):
         """Test handling of large files."""
-        with patch('lobster.core.client.create_bioinformatics_graph'):
+        with patch("lobster.core.client.create_bioinformatics_graph"):
             client = AgentClient(workspace_path=temp_integration_workspace)
 
             # Create large CSV file
-            large_data = pd.DataFrame({
-                f'feature_{i}': np.random.randn(1000)
-                for i in range(100)
-            })
+            large_data = pd.DataFrame(
+                {f"feature_{i}": np.random.randn(1000) for i in range(100)}
+            )
 
             large_file_path = temp_integration_workspace / "large_dataset.csv"
             large_data.to_csv(large_file_path, index=False)
@@ -431,7 +459,9 @@ class TestClientPerformanceIntegration:
             {"supervisor": {"messages": [Mock(content="Response")]}}
         ]
 
-        with patch('lobster.core.client.create_bioinformatics_graph', return_value=mock_graph):
+        with patch(
+            "lobster.core.client.create_bioinformatics_graph", return_value=mock_graph
+        ):
             client = AgentClient(workspace_path=temp_integration_workspace)
 
             # Simulate long conversation
@@ -460,6 +490,7 @@ class TestClientPerformanceIntegration:
 # Edge Cases and Error Handling (Public Compatible)
 # ===============================================================================
 
+
 @pytest.mark.integration
 class TestClientEdgeCasesIntegration:
     """Test edge cases and error scenarios (public repo compatible)."""
@@ -470,16 +501,16 @@ class TestClientEdgeCasesIntegration:
         with tempfile.TemporaryDirectory() as temp_dir:
             restricted_path = Path(temp_dir) / "restricted"
 
-            with patch('pathlib.Path.mkdir') as mock_mkdir:
+            with patch("pathlib.Path.mkdir") as mock_mkdir:
                 mock_mkdir.side_effect = PermissionError("Permission denied")
 
                 with pytest.raises(PermissionError):
-                    with patch('lobster.core.client.create_bioinformatics_graph'):
+                    with patch("lobster.core.client.create_bioinformatics_graph"):
                         AgentClient(workspace_path=restricted_path)
 
     def test_corrupted_file_handling(self, temp_integration_workspace):
         """Test handling of corrupted or invalid files."""
-        with patch('lobster.core.client.create_bioinformatics_graph'):
+        with patch("lobster.core.client.create_bioinformatics_graph"):
             client = AgentClient(workspace_path=temp_integration_workspace)
 
             # Create corrupted CSV file
@@ -505,7 +536,9 @@ class TestClientEdgeCasesIntegration:
 
         mock_graph.stream.side_effect = slow_stream
 
-        with patch('lobster.core.client.create_bioinformatics_graph', return_value=mock_graph):
+        with patch(
+            "lobster.core.client.create_bioinformatics_graph", return_value=mock_graph
+        ):
             client = AgentClient(workspace_path=temp_integration_workspace)
 
             start_time = time.time()
@@ -517,20 +550,24 @@ class TestClientEdgeCasesIntegration:
             assert result["duration"] >= 0.1
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(not HAS_API_CLIENT, reason="APIAgentClient not available (private repo only)")
+    @pytest.mark.skipif(
+        not HAS_API_CLIENT, reason="APIAgentClient not available (private repo only)"
+    )
     async def test_api_client_cleanup_integration(self, temp_integration_workspace):
         """Test proper cleanup of API client resources (private repo only)."""
         session_id = uuid4()
         mock_session_manager = Mock()
 
-        with patch('lobster.core.api_client.AgentClient'):
-            with patch('lobster.core.api_client.APICallbackManager'):
-                with patch('lobster.core.api_client.setup_websocket_logging'):
-                    with patch('lobster.core.api_client.remove_websocket_logging') as mock_remove:
+        with patch("lobster.core.api_client.AgentClient"):
+            with patch("lobster.core.api_client.APICallbackManager"):
+                with patch("lobster.core.api_client.setup_websocket_logging"):
+                    with patch(
+                        "lobster.core.api_client.remove_websocket_logging"
+                    ) as mock_remove:
                         client = APIAgentClient(
                             session_id=session_id,
                             session_manager=mock_session_manager,
-                            workspace_path=temp_integration_workspace
+                            workspace_path=temp_integration_workspace,
                         )
 
                         # Set up mock logging handler

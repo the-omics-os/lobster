@@ -42,6 +42,9 @@ lobster/lobster_cloud/*
 !lobster/agents/affinity_proteomics_expert.py
 !lobster/core/adapters/proteomics_adapter.py
 !lobster/core/schemas/proteomics.py
+
+!lobster/lobster/config/agent_config_comprehensive.py
+
 !lobster/tools/proteomics_analysis_service.py
 !lobster/tools/proteomics_differential_service.py
 !lobster/tools/proteomics_visualization_service.py

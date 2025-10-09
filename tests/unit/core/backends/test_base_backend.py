@@ -5,16 +5,16 @@ This module tests all functionality of the BaseBackend class including
 path resolution, metadata handling, file operations, and error cases.
 """
 
-import pytest
-import tempfile
-import shutil
 import hashlib
+import shutil
+import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
 import anndata
 import numpy as np
 import pandas as pd
+import pytest
 
 from lobster.core.backends.base import BaseBackend
 from lobster.core.interfaces.backend import IDataBackend
@@ -204,7 +204,7 @@ class TestChecksumCalculation:
         result = self.backend._calculate_checksum(test_file)
         assert result == expected_checksum
 
-    @patch('builtins.open', side_effect=PermissionError("Access denied"))
+    @patch("builtins.open", side_effect=PermissionError("Access denied"))
     def test_calculate_checksum_permission_error(self, mock_open):
         """Test checksum calculation with permission error."""
         test_file = Path(self.temp_dir) / "test.txt"
@@ -300,7 +300,9 @@ class TestPathValidation:
         # Normalize paths to handle macOS /private prefix differences
         assert result.resolve() == abs_path.resolve()
 
-    @patch.object(ConcreteBaseBackend, '_resolve_path', side_effect=Exception("Path error"))
+    @patch.object(
+        ConcreteBaseBackend, "_resolve_path", side_effect=Exception("Path error")
+    )
     def test_validate_path_with_resolution_error(self, mock_resolve):
         """Test path validation when resolution fails."""
         with pytest.raises(ValueError, match="Invalid path"):
@@ -348,7 +350,7 @@ class TestMetadataOperations:
             ("test.csv", "csv"),
             ("test.h5", "h5"),
             ("test.xlsx", "excel"),
-            ("test.unknown", "unknown")
+            ("test.unknown", "unknown"),
         ]
 
         for filename, expected_format in formats:
@@ -429,7 +431,7 @@ class TestFileOperations:
         assert "subdir" not in result_names  # Directories should be excluded
         assert len(result_names) == 1
 
-    @patch('pathlib.Path.glob', side_effect=PermissionError("Access denied"))
+    @patch("pathlib.Path.glob", side_effect=PermissionError("Access denied"))
     def test_list_files_permission_error(self, mock_glob):
         """Test listing files with permission error."""
         with pytest.raises(PermissionError, match="Permission denied"):
@@ -469,7 +471,7 @@ class TestExistenceChecking:
         # Use relative path
         assert self.backend.exists("test.h5ad") is True
 
-    @patch.object(ConcreteBaseBackend, '_resolve_path', side_effect=Exception("Error"))
+    @patch.object(ConcreteBaseBackend, "_resolve_path", side_effect=Exception("Error"))
     def test_exists_with_path_resolution_error(self, mock_resolve):
         """Test exists method handles path resolution errors gracefully."""
         # Should return False instead of raising exception
@@ -512,7 +514,7 @@ class TestFileDeletion:
         self.backend.delete("test.h5ad")
         assert not test_file.exists()
 
-    @patch('pathlib.Path.unlink', side_effect=PermissionError("Access denied"))
+    @patch("pathlib.Path.unlink", side_effect=PermissionError("Access denied"))
     def test_delete_permission_error(self, mock_unlink):
         """Test deletion with permission error."""
         test_file = Path(self.temp_dir) / "test.h5ad"
@@ -564,23 +566,23 @@ class TestFormatSupport:
 
     def test_supports_common_formats(self):
         """Test support for common formats."""
-        supported_formats = ['h5ad', 'h5', 'csv', 'tsv', 'txt', 'excel', 'xlsx', 'xls']
+        supported_formats = ["h5ad", "h5", "csv", "tsv", "txt", "excel", "xlsx", "xls"]
 
         for fmt in supported_formats:
             assert self.backend.supports_format(fmt) is True
 
     def test_does_not_support_unknown_format(self):
         """Test lack of support for unknown formats."""
-        unsupported_formats = ['pdf', 'doc', 'mp3', 'jpg']
+        unsupported_formats = ["pdf", "doc", "mp3", "jpg"]
 
         for fmt in unsupported_formats:
             assert self.backend.supports_format(fmt) is False
 
     def test_format_support_case_insensitive(self):
         """Test format support is case insensitive."""
-        assert self.backend.supports_format('H5AD') is True
-        assert self.backend.supports_format('CSV') is True
-        assert self.backend.supports_format('Excel') is True
+        assert self.backend.supports_format("H5AD") is True
+        assert self.backend.supports_format("CSV") is True
+        assert self.backend.supports_format("Excel") is True
 
 
 class TestBackupCreation:
@@ -616,7 +618,7 @@ class TestBackupCreation:
         backup_path = self.backend.create_backup(nonexistent_file)
         assert backup_path is None
 
-    @patch('shutil.copy2', side_effect=Exception("Copy failed"))
+    @patch("shutil.copy2", side_effect=Exception("Copy failed"))
     def test_create_backup_copy_failure(self, mock_copy):
         """Test backup creation when copy fails."""
         test_file = Path(self.temp_dir) / "test.h5ad"
@@ -635,7 +637,7 @@ class TestLoggingOperations:
 
     def test_log_operation_basic(self):
         """Test basic operation logging."""
-        with patch.object(self.backend, 'logger') as mock_logger:
+        with patch.object(self.backend, "logger") as mock_logger:
             self.backend._log_operation("test_op", "/path/to/file")
             mock_logger.debug.assert_called_once()
 
@@ -645,12 +647,9 @@ class TestLoggingOperations:
 
     def test_log_operation_with_kwargs(self):
         """Test operation logging with additional parameters."""
-        with patch.object(self.backend, 'logger') as mock_logger:
+        with patch.object(self.backend, "logger") as mock_logger:
             self.backend._log_operation(
-                "save",
-                "/path/to/file.h5ad",
-                size_mb=10.5,
-                compression="gzip"
+                "save", "/path/to/file.h5ad", size_mb=10.5, compression="gzip"
             )
 
             mock_logger.debug.assert_called_once()
@@ -706,7 +705,11 @@ class TestEdgeCasesAndRobustness:
 
     def test_handle_special_characters_in_paths(self):
         """Test handling of special characters in paths."""
-        special_chars = ["file-with-hyphens.h5ad", "file_with_underscores.h5ad", "file.with.dots.h5ad"]
+        special_chars = [
+            "file-with-hyphens.h5ad",
+            "file_with_underscores.h5ad",
+            "file.with.dots.h5ad",
+        ]
 
         for filename in special_chars:
             test_file = Path(self.temp_dir) / filename
@@ -729,8 +732,9 @@ class TestEdgeCasesAndRobustness:
 
     def test_memory_efficiency_large_checksum(self):
         """Test memory efficiency when calculating checksums of large files."""
-        import psutil
         import os
+
+        import psutil
 
         # Create a moderately large file (1MB)
         large_file = Path(self.temp_dir) / "large_file.h5ad"

@@ -8,28 +8,32 @@ and pathway enrichment for bulk RNA-seq data analysis.
 Test coverage target: 95%+ with meaningful tests for bulk RNA-seq operations.
 """
 
-import pytest
-from typing import Dict, Any, List, Optional, Union, Tuple
-from unittest.mock import Mock, MagicMock, patch, mock_open
-import numpy as np
-import pandas as pd
-import anndata as ad
-from pathlib import Path
+import os
 import subprocess
 import tempfile
-import os
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
+from unittest.mock import MagicMock, Mock, mock_open, patch
 
-from lobster.tools.bulk_rnaseq_service import BulkRNASeqService, BulkRNASeqError, PyDESeq2Error
+import anndata as ad
+import numpy as np
+import pandas as pd
+import pytest
+
+from lobster.core import DesignMatrixError, FormulaError, PseudobulkError
+from lobster.tools.bulk_rnaseq_service import (
+    BulkRNASeqError,
+    BulkRNASeqService,
+    PyDESeq2Error,
+)
 from lobster.tools.differential_formula_service import DifferentialFormulaService
-from lobster.core import PseudobulkError, FormulaError, DesignMatrixError
-
-from tests.mock_data.factories import SingleCellDataFactory, BulkRNASeqDataFactory
-from tests.mock_data.base import SMALL_DATASET_CONFIG, LARGE_DATASET_CONFIG
-
+from tests.mock_data.base import LARGE_DATASET_CONFIG, SMALL_DATASET_CONFIG
+from tests.mock_data.factories import BulkRNASeqDataFactory, SingleCellDataFactory
 
 # ===============================================================================
 # Mock Data and Fixtures
 # ===============================================================================
+
 
 @pytest.fixture
 def mock_bulk_data():
@@ -44,7 +48,7 @@ def mock_fastq_files():
         "/path/to/sample1_R1.fastq.gz",
         "/path/to/sample1_R2.fastq.gz",
         "/path/to/sample2_R1.fastq.gz",
-        "/path/to/sample2_R2.fastq.gz"
+        "/path/to/sample2_R2.fastq.gz",
     ]
 
 
@@ -64,20 +68,30 @@ def mock_salmon_results():
     count_matrix = pd.DataFrame(counts, index=genes, columns=samples)
 
     return {
-        'count_matrix': count_matrix,
-        'tpm_matrix': count_matrix / count_matrix.sum() * 1e6,
-        'gene_lengths': pd.Series(np.random.uniform(500, 5000, n_genes), index=genes)
+        "count_matrix": count_matrix,
+        "tpm_matrix": count_matrix / count_matrix.sum() * 1e6,
+        "gene_lengths": pd.Series(np.random.uniform(500, 5000, n_genes), index=genes),
     }
 
 
 @pytest.fixture
 def mock_design_matrix():
     """Create mock experimental design matrix."""
-    return pd.DataFrame({
-        'condition': ['control', 'control', 'control', 'treatment', 'treatment', 'treatment'],
-        'batch': ['batch1', 'batch1', 'batch2', 'batch1', 'batch2', 'batch2'],
-        'replicate': [1, 2, 3, 1, 2, 3]
-    }, index=['sample_0', 'sample_1', 'sample_2', 'sample_3', 'sample_4', 'sample_5'])
+    return pd.DataFrame(
+        {
+            "condition": [
+                "control",
+                "control",
+                "control",
+                "treatment",
+                "treatment",
+                "treatment",
+            ],
+            "batch": ["batch1", "batch1", "batch2", "batch1", "batch2", "batch2"],
+            "replicate": [1, 2, 3, 1, 2, 3],
+        },
+        index=["sample_0", "sample_1", "sample_2", "sample_3", "sample_4", "sample_5"],
+    )
 
 
 @pytest.fixture
@@ -94,20 +108,23 @@ def mock_pydeseq2_results():
     n_genes = 1000
     np.random.seed(42)
 
-    return pd.DataFrame({
-        'gene_id': [f"ENSG{str(i).zfill(11)}" for i in range(n_genes)],
-        'baseMean': np.random.uniform(10, 1000, n_genes),
-        'log2FoldChange': np.random.normal(0, 1.5, n_genes),
-        'lfcSE': np.random.uniform(0.1, 0.5, n_genes),
-        'stat': np.random.normal(0, 2, n_genes),
-        'pvalue': np.random.uniform(0, 1, n_genes),
-        'padj': np.random.uniform(0, 1, n_genes)
-    })
+    return pd.DataFrame(
+        {
+            "gene_id": [f"ENSG{str(i).zfill(11)}" for i in range(n_genes)],
+            "baseMean": np.random.uniform(10, 1000, n_genes),
+            "log2FoldChange": np.random.normal(0, 1.5, n_genes),
+            "lfcSE": np.random.uniform(0.1, 0.5, n_genes),
+            "stat": np.random.normal(0, 2, n_genes),
+            "pvalue": np.random.uniform(0, 1, n_genes),
+            "padj": np.random.uniform(0, 1, n_genes),
+        }
+    )
 
 
 # ===============================================================================
 # BulkRNASeqService Core Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestBulkRNASeqServiceCore:
@@ -115,19 +132,19 @@ class TestBulkRNASeqServiceCore:
 
     def test_service_initialization_default(self):
         """Test BulkRNASeqService initialization with default parameters."""
-        with patch('pathlib.Path.mkdir'):
+        with patch("pathlib.Path.mkdir"):
             service = BulkRNASeqService()
 
-            assert hasattr(service, 'results_dir')
-            assert hasattr(service, 'formula_service')
+            assert hasattr(service, "results_dir")
+            assert hasattr(service, "formula_service")
             assert isinstance(service.formula_service, DifferentialFormulaService)
-            assert service.results_dir.name == 'bulk_results'
+            assert service.results_dir.name == "bulk_results"
 
     def test_service_initialization_custom_dir(self):
         """Test BulkRNASeqService initialization with custom directory."""
         custom_dir = Path("/custom/results")
 
-        with patch('pathlib.Path.mkdir'):
+        with patch("pathlib.Path.mkdir"):
             service = BulkRNASeqService(results_dir=custom_dir)
 
             assert service.results_dir == custom_dir
@@ -146,18 +163,25 @@ class TestBulkRNASeqServiceCore:
 # FastQC Quality Control Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestFastQCAnalysis:
     """Test FastQC quality control functionality."""
 
     def test_run_fastqc_valid_files(self, bulk_service, mock_fastq_files):
         """Test FastQC execution with valid files."""
-        with patch('os.path.exists', return_value=True), \
-             patch('os.path.getsize', return_value=1000000), \
-             patch('subprocess.run') as mock_run, \
-             patch.object(bulk_service, '_parse_fastqc_results', return_value="Quality: Good"):
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("os.path.getsize", return_value=1000000),
+            patch("subprocess.run") as mock_run,
+            patch.object(
+                bulk_service, "_parse_fastqc_results", return_value="Quality: Good"
+            ),
+        ):
 
-            mock_run.return_value = Mock(returncode=0, stdout="FastQC completed", stderr="")
+            mock_run.return_value = Mock(
+                returncode=0, stdout="FastQC completed", stderr=""
+            )
 
             result = bulk_service.run_fastqc(mock_fastq_files)
 
@@ -170,21 +194,21 @@ class TestFastQCAnalysis:
         """Test FastQC with missing files."""
         missing_files = ["/nonexistent/file1.fastq", "/nonexistent/file2.fastq"]
 
-        with patch('os.path.exists', return_value=False):
+        with patch("os.path.exists", return_value=False):
             result = bulk_service.run_fastqc(missing_files)
 
             assert "No valid FASTQ files found" in result
 
     def test_run_fastqc_command_failure(self, bulk_service, mock_fastq_files):
         """Test FastQC command failure handling."""
-        with patch('os.path.exists', return_value=True), \
-             patch('os.path.getsize', return_value=1000000), \
-             patch('subprocess.run') as mock_run:
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("os.path.getsize", return_value=1000000),
+            patch("subprocess.run") as mock_run,
+        ):
 
             mock_run.return_value = Mock(
-                returncode=1,
-                stdout="",
-                stderr="FastQC error: Invalid file format"
+                returncode=1, stdout="", stderr="FastQC error: Invalid file format"
             )
 
             result = bulk_service.run_fastqc(mock_fastq_files)
@@ -193,9 +217,13 @@ class TestFastQCAnalysis:
 
     def test_run_fastqc_timeout(self, bulk_service, mock_fastq_files):
         """Test FastQC timeout handling."""
-        with patch('os.path.exists', return_value=True), \
-             patch('os.path.getsize', return_value=1000000), \
-             patch('subprocess.run', side_effect=subprocess.TimeoutExpired("fastqc", 300)):
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("os.path.getsize", return_value=1000000),
+            patch(
+                "subprocess.run", side_effect=subprocess.TimeoutExpired("fastqc", 300)
+            ),
+        ):
 
             result = bulk_service.run_fastqc(mock_fastq_files)
 
@@ -220,14 +248,17 @@ class TestFastQCAnalysis:
 # MultiQC Aggregation Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestMultiQCAnalysis:
     """Test MultiQC aggregation functionality."""
 
     def test_run_multiqc_default_dir(self, bulk_service):
         """Test MultiQC with default input directory."""
-        with patch('subprocess.run') as mock_run:
-            mock_run.return_value = Mock(returncode=0, stdout="MultiQC complete", stderr="")
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(
+                returncode=0, stdout="MultiQC complete", stderr=""
+            )
 
             result = bulk_service.run_multiqc()
 
@@ -238,9 +269,13 @@ class TestMultiQCAnalysis:
         """Test MultiQC with custom input directory."""
         custom_dir = "/custom/qc/dir"
 
-        with patch('os.path.exists', return_value=True), \
-             patch('subprocess.run') as mock_run:
-            mock_run.return_value = Mock(returncode=0, stdout="MultiQC complete", stderr="")
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = Mock(
+                returncode=0, stdout="MultiQC complete", stderr=""
+            )
 
             result = bulk_service.run_multiqc(input_dir=custom_dir)
 
@@ -251,11 +286,9 @@ class TestMultiQCAnalysis:
 
     def test_run_multiqc_failure(self, bulk_service):
         """Test MultiQC command failure."""
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             mock_run.return_value = Mock(
-                returncode=1,
-                stdout="",
-                stderr="MultiQC error: No valid input files"
+                returncode=1, stdout="", stderr="MultiQC error: No valid input files"
             )
 
             result = bulk_service.run_multiqc()
@@ -267,6 +300,7 @@ class TestMultiQCAnalysis:
 # Salmon Quantification Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestSalmonQuantification:
     """Test Salmon quantification functionality."""
@@ -276,18 +310,22 @@ class TestSalmonQuantification:
         transcriptome_index = "/path/to/transcriptome/index"
         sample_names = ["sample1", "sample2"]
 
-        with patch('os.path.exists', return_value=True), \
-             patch('os.path.getsize', return_value=1000000), \
-             patch('subprocess.run') as mock_run, \
-             patch.object(bulk_service, '_combine_salmon_results') as mock_combine:
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("os.path.getsize", return_value=1000000),
+            patch("subprocess.run") as mock_run,
+            patch.object(bulk_service, "_combine_salmon_results") as mock_combine,
+        ):
 
-            mock_run.return_value = Mock(returncode=0, stdout="Salmon complete", stderr="")
+            mock_run.return_value = Mock(
+                returncode=0, stdout="Salmon complete", stderr=""
+            )
             mock_combine.return_value = "Combined results successfully"
 
             result = bulk_service.run_salmon_quantification(
                 fastq_files=mock_fastq_files,
                 transcriptome_index=transcriptome_index,
-                sample_names=sample_names
+                sample_names=sample_names,
             )
 
             assert "Salmon Quantification Complete!" in result
@@ -298,18 +336,23 @@ class TestSalmonQuantification:
         fastq_files = ["/path/to/sample1.fastq"]
         sample_names = ["sample1", "sample2"]  # More names than files
 
-        with patch('os.path.exists', return_value=True), \
-             patch('os.path.getsize', return_value=1000000):
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("os.path.getsize", return_value=1000000),
+        ):
             result = bulk_service.run_salmon_quantification(
                 fastq_files=fastq_files,
                 transcriptome_index="/path/to/index",
-                sample_names=sample_names
+                sample_names=sample_names,
             )
 
         # Should get an error due to mismatched inputs, but since we mock file existence
         # the service continues and checks other aspects
-        assert ("Error" in result or "mismatch" in result.lower() or
-                "Salmon index not found" in result)
+        assert (
+            "Error" in result
+            or "mismatch" in result.lower()
+            or "Salmon index not found" in result
+        )
 
     def test_combine_salmon_results(self, bulk_service):
         """Test combining Salmon quantification results."""
@@ -323,14 +366,16 @@ class TestSalmonQuantification:
                 sample_dir.mkdir()
 
                 # Create mock quant.sf files
-                quant_data = pd.DataFrame({
-                    'Name': [f'transcript_{i}' for i in range(100)],
-                    'Length': np.random.randint(200, 3000, 100),
-                    'EffectiveLength': np.random.randint(150, 2900, 100),
-                    'TPM': np.random.uniform(0, 100, 100),
-                    'NumReads': np.random.randint(0, 1000, 100)
-                })
-                quant_data.to_csv(sample_dir / "quant.sf", sep='\t', index=False)
+                quant_data = pd.DataFrame(
+                    {
+                        "Name": [f"transcript_{i}" for i in range(100)],
+                        "Length": np.random.randint(200, 3000, 100),
+                        "EffectiveLength": np.random.randint(150, 2900, 100),
+                        "TPM": np.random.uniform(0, 100, 100),
+                        "NumReads": np.random.randint(0, 1000, 100),
+                    }
+                )
+                quant_data.to_csv(sample_dir / "quant.sf", sep="\t", index=False)
 
             result = bulk_service._combine_salmon_results(salmon_dir, sample_names)
 
@@ -343,84 +388,98 @@ class TestSalmonQuantification:
 # Differential Expression Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestDifferentialExpression:
     """Test differential expression analysis."""
 
-    def test_run_differential_expression_basic(self, bulk_service, mock_salmon_results, mock_design_matrix):
+    def test_run_differential_expression_basic(
+        self, bulk_service, mock_salmon_results, mock_design_matrix
+    ):
         """Test basic differential expression analysis."""
-        with patch.object(bulk_service, '_run_deseq2_like_analysis') as mock_deseq2:
+        with patch.object(bulk_service, "_run_deseq2_like_analysis") as mock_deseq2:
             mock_deseq2.return_value = {
-                'results': pd.DataFrame({
-                    'gene_id': ['GENE1', 'GENE2'],
-                    'log2FoldChange': [1.5, -0.8],
-                    'pvalue': [0.01, 0.05],
-                    'padj': [0.05, 0.15]
-                }),
-                'n_significant': 1
+                "results": pd.DataFrame(
+                    {
+                        "gene_id": ["GENE1", "GENE2"],
+                        "log2FoldChange": [1.5, -0.8],
+                        "pvalue": [0.01, 0.05],
+                        "padj": [0.05, 0.15],
+                    }
+                ),
+                "n_significant": 1,
             }
 
             result = bulk_service.run_differential_expression_analysis(
-                count_matrix=mock_salmon_results['count_matrix'],
+                count_matrix=mock_salmon_results["count_matrix"],
                 design_matrix=mock_design_matrix,
-                formula="~ condition"
+                formula="~ condition",
             )
 
             assert "Differential Expression Analysis Complete!" in result
             assert "**Significantly Differentially Expressed Genes:** 100" in result
 
-    def test_run_differential_expression_invalid_formula(self, bulk_service, mock_salmon_results, mock_design_matrix):
+    def test_run_differential_expression_invalid_formula(
+        self, bulk_service, mock_salmon_results, mock_design_matrix
+    ):
         """Test differential expression with invalid formula."""
         result = bulk_service.run_differential_expression_analysis(
-            count_matrix=mock_salmon_results['count_matrix'],
+            count_matrix=mock_salmon_results["count_matrix"],
             design_matrix=mock_design_matrix,
-            formula="~ invalid_column"
+            formula="~ invalid_column",
         )
 
         # Legacy interface doesn't validate formulas, so it returns success
         assert "Differential Expression Analysis Complete!" in result
 
-    def test_deseq2_like_analysis(self, bulk_service, mock_salmon_results, mock_design_matrix):
+    def test_deseq2_like_analysis(
+        self, bulk_service, mock_salmon_results, mock_design_matrix
+    ):
         """Test DESeq2-like analysis implementation."""
-        with patch('scipy.stats.nbinom') as mock_nbinom:
+        with patch("scipy.stats.nbinom") as mock_nbinom:
             # Mock negative binomial test
             mock_nbinom.pmf.return_value = np.array([0.01, 0.05, 0.1])
 
             result = bulk_service._run_deseq2_like_analysis(
-                count_matrix=mock_salmon_results['count_matrix'],
-                design_matrix=mock_design_matrix
+                count_matrix=mock_salmon_results["count_matrix"],
+                design_matrix=mock_design_matrix,
             )
 
-            assert 'results' in result
-            assert 'n_significant' in result
-            assert isinstance(result['results'], pd.DataFrame)
+            assert "results" in result
+            assert "n_significant" in result
+            assert isinstance(result["results"], pd.DataFrame)
 
-    def test_wilcoxon_test_analysis(self, bulk_service, mock_salmon_results, mock_design_matrix):
+    def test_wilcoxon_test_analysis(
+        self, bulk_service, mock_salmon_results, mock_design_matrix
+    ):
         """Test Wilcoxon rank-sum test for differential expression."""
         result = bulk_service._run_wilcoxon_test(
-            count_matrix=mock_salmon_results['count_matrix'],
-            design_matrix=mock_design_matrix
+            count_matrix=mock_salmon_results["count_matrix"],
+            design_matrix=mock_design_matrix,
         )
 
-        assert 'results' in result
-        assert isinstance(result['results'], pd.DataFrame)
-        assert 'pvalue' in result['results'].columns
+        assert "results" in result
+        assert isinstance(result["results"], pd.DataFrame)
+        assert "pvalue" in result["results"].columns
 
-    def test_ttest_analysis(self, bulk_service, mock_salmon_results, mock_design_matrix):
+    def test_ttest_analysis(
+        self, bulk_service, mock_salmon_results, mock_design_matrix
+    ):
         """Test t-test analysis for differential expression."""
         result = bulk_service._run_ttest_analysis(
-            count_matrix=mock_salmon_results['count_matrix'],
-            design_matrix=mock_design_matrix
+            count_matrix=mock_salmon_results["count_matrix"],
+            design_matrix=mock_design_matrix,
         )
 
-        assert 'results' in result
-        assert isinstance(result['results'], pd.DataFrame)
-        assert 'pvalue' in result['results'].columns
+        assert "results" in result
+        assert isinstance(result["results"], pd.DataFrame)
+        assert "pvalue" in result["results"].columns
 
 
 # ===============================================================================
 # PyDESeq2 Integration Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestPyDESeq2Integration:
@@ -428,90 +487,110 @@ class TestPyDESeq2Integration:
 
     def test_validate_pydeseq2_setup(self, bulk_service):
         """Test pyDESeq2 setup validation."""
-        with patch('importlib.util.find_spec') as mock_find_spec:
+        with patch("importlib.util.find_spec") as mock_find_spec:
             mock_find_spec.return_value = Mock()  # Package found
 
             result = bulk_service.validate_pydeseq2_setup()
 
             assert isinstance(result, dict)
-            assert 'pydeseq2_available' in result
+            assert "pydeseq2_available" in result
 
-    def test_run_pydeseq2_analysis(self, bulk_service, mock_salmon_results, mock_design_matrix):
+    def test_run_pydeseq2_analysis(
+        self, bulk_service, mock_salmon_results, mock_design_matrix
+    ):
         """Test running pyDESeq2 analysis."""
-        with patch.object(bulk_service, 'validate_pydeseq2_setup') as mock_validate:
-            mock_validate.return_value = {'pydeseq2': True, 'pydeseq2_inference': True, 'numba': True, 'statsmodels': True}
+        with patch.object(bulk_service, "validate_pydeseq2_setup") as mock_validate:
+            mock_validate.return_value = {
+                "pydeseq2": True,
+                "pydeseq2_inference": True,
+                "numba": True,
+                "statsmodels": True,
+            }
 
-            with patch('pydeseq2.dds.DeseqDataSet') as mock_dds_class:
-                with patch('pydeseq2.ds.DeseqStats') as mock_ds_class:
-                    with patch('pydeseq2.default_inference.DefaultInference'):
+            with patch("pydeseq2.dds.DeseqDataSet") as mock_dds_class:
+                with patch("pydeseq2.ds.DeseqStats") as mock_ds_class:
+                    with patch("pydeseq2.default_inference.DefaultInference"):
                         # Mock the results
                         mock_ds = Mock()
-                        mock_ds.results_df = pd.DataFrame({
-                            'baseMean': [100, 200],
-                            'log2FoldChange': [1.5, -0.8],
-                            'pvalue': [0.01, 0.05],
-                            'padj': [0.05, 0.15]
-                        })
+                        mock_ds.results_df = pd.DataFrame(
+                            {
+                                "baseMean": [100, 200],
+                                "log2FoldChange": [1.5, -0.8],
+                                "pvalue": [0.01, 0.05],
+                                "padj": [0.05, 0.15],
+                            }
+                        )
                         mock_ds_class.return_value = mock_ds
 
                         result = bulk_service.run_pydeseq2_analysis(
-                            count_matrix=mock_salmon_results['count_matrix'],
+                            count_matrix=mock_salmon_results["count_matrix"],
                             metadata=mock_design_matrix,
                             formula="~ condition",
-                            contrast=['condition', 'treatment', 'control']
+                            contrast=["condition", "treatment", "control"],
                         )
 
                         # The method returns a DataFrame, not a string
                         assert isinstance(result, pd.DataFrame)
                         assert len(result) == 2
-                        assert 'baseMean' in result.columns
-                        assert 'log2FoldChange' in result.columns
+                        assert "baseMean" in result.columns
+                        assert "log2FoldChange" in result.columns
 
     def test_run_pydeseq2_from_pseudobulk(self, bulk_service):
         """Test running pyDESeq2 from pseudobulk data."""
         # Create mock pseudobulk data
         pseudobulk_data = ad.AnnData(
-            X=np.random.negative_binomial(10, 0.3, size=(20, 100)),  # 20 samples × 100 genes
-            obs=pd.DataFrame({
-                'sample_id': [f'sample_{i}' for i in range(20)],
-                'condition': ['control'] * 10 + ['treatment'] * 10,
-                'cell_type': ['T_cells'] * 20
-            })
+            X=np.random.negative_binomial(
+                10, 0.3, size=(20, 100)
+            ),  # 20 samples × 100 genes
+            obs=pd.DataFrame(
+                {
+                    "sample_id": [f"sample_{i}" for i in range(20)],
+                    "condition": ["control"] * 10 + ["treatment"] * 10,
+                    "cell_type": ["T_cells"] * 20,
+                }
+            ),
         )
 
-        with patch.object(bulk_service, 'run_pydeseq2_analysis') as mock_pydeseq2:
-            mock_results_df = pd.DataFrame({
-                'baseMean': [100, 200],
-                'log2FoldChange': [1.5, -0.8],
-                'pvalue': [0.01, 0.05],
-                'padj': [0.05, 0.15]
-            })
+        with patch.object(bulk_service, "run_pydeseq2_analysis") as mock_pydeseq2:
+            mock_results_df = pd.DataFrame(
+                {
+                    "baseMean": [100, 200],
+                    "log2FoldChange": [1.5, -0.8],
+                    "pvalue": [0.01, 0.05],
+                    "padj": [0.05, 0.15],
+                }
+            )
             mock_pydeseq2.return_value = mock_results_df
 
             result_df, stats = bulk_service.run_pydeseq2_from_pseudobulk(
                 pseudobulk_adata=pseudobulk_data,
-                formula='~ condition',
-                contrast=['condition', 'treatment', 'control']
+                formula="~ condition",
+                contrast=["condition", "treatment", "control"],
             )
 
             assert isinstance(result_df, pd.DataFrame)
             assert isinstance(stats, dict)
 
-    def test_pydeseq2_unavailable_handling(self, bulk_service, mock_salmon_results, mock_design_matrix):
+    def test_pydeseq2_unavailable_handling(
+        self, bulk_service, mock_salmon_results, mock_design_matrix
+    ):
         """Test handling when pyDESeq2 is not available."""
-        with patch('importlib.import_module', side_effect=ImportError("pyDESeq2 not found")):
+        with patch(
+            "importlib.import_module", side_effect=ImportError("pyDESeq2 not found")
+        ):
 
             with pytest.raises(PyDESeq2Error):
                 bulk_service.run_pydeseq2_analysis(
-                    count_matrix=mock_salmon_results['count_matrix'],
+                    count_matrix=mock_salmon_results["count_matrix"],
                     design_matrix=mock_design_matrix,
-                    formula="~ condition"
+                    formula="~ condition",
                 )
 
 
 # ===============================================================================
 # Formula and Design Matrix Tests
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestFormulaDesign:
@@ -521,33 +600,34 @@ class TestFormulaDesign:
         """Test formula and design matrix creation."""
         result = bulk_service.create_formula_design(
             design_matrix=mock_design_matrix,
-            condition_column='condition',
-            batch_column='batch'
+            condition_column="condition",
+            batch_column="batch",
         )
 
-        assert 'formula' in result
-        assert 'design_valid' in result
-        assert result['design_valid'] is True
+        assert "formula" in result
+        assert "design_valid" in result
+        assert result["design_valid"] is True
 
     def test_validate_experimental_design(self, bulk_service, mock_design_matrix):
         """Test experimental design validation."""
         result = bulk_service.validate_experimental_design(
-            metadata=mock_design_matrix,
-            formula='~ condition'
+            metadata=mock_design_matrix, formula="~ condition"
         )
 
-        assert 'valid' in result
-        assert 'errors' in result
-        assert isinstance(result['errors'], list)
+        assert "valid" in result
+        assert "errors" in result
+        assert isinstance(result["errors"], list)
 
-    def test_validate_deseq2_inputs(self, bulk_service, mock_salmon_results, mock_design_matrix):
+    def test_validate_deseq2_inputs(
+        self, bulk_service, mock_salmon_results, mock_design_matrix
+    ):
         """Test DESeq2 input validation."""
         # Should not raise any exceptions for valid inputs
         result = bulk_service._validate_deseq2_inputs(
-            count_matrix=mock_salmon_results['count_matrix'],
+            count_matrix=mock_salmon_results["count_matrix"],
             metadata=mock_design_matrix,
             formula="~ condition",
-            contrast=['condition', 'treatment', 'control']
+            contrast=["condition", "treatment", "control"],
         )
 
         # Method returns None on success, raises exception on failure
@@ -558,8 +638,7 @@ class TestFormulaDesign:
         # This should raise a FormulaError for invalid column
         with pytest.raises(FormulaError, match="Variables not found in metadata"):
             bulk_service.create_formula_design(
-                metadata=mock_design_matrix,
-                condition_col='nonexistent_column'
+                metadata=mock_design_matrix, condition_col="nonexistent_column"
             )
 
 
@@ -567,25 +646,24 @@ class TestFormulaDesign:
 # Pathway Enrichment Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestPathwayEnrichment:
     """Test pathway enrichment analysis."""
 
     def test_run_pathway_enrichment(self, bulk_service, mock_pydeseq2_results):
         """Test pathway enrichment analysis (not yet implemented)."""
-        gene_list = mock_pydeseq2_results['gene_id'].head(50).tolist()
+        gene_list = mock_pydeseq2_results["gene_id"].head(50).tolist()
 
         # Pathway enrichment is not yet implemented, should raise BulkRNASeqError
         with pytest.raises(BulkRNASeqError, match="not yet implemented"):
-            bulk_service.run_pathway_enrichment(
-                gene_list=gene_list,
-                organism='human'
-            )
+            bulk_service.run_pathway_enrichment(gene_list=gene_list, organism="human")
 
 
 # ===============================================================================
 # Error Handling and Edge Cases
 # ===============================================================================
+
 
 @pytest.mark.unit
 class TestBulkRNASeqErrorHandling:
@@ -598,7 +676,7 @@ class TestBulkRNASeqErrorHandling:
         result = bulk_service.run_differential_expression_analysis(
             count_matrix=empty_matrix,
             design_matrix=mock_design_matrix,
-            formula="~ condition"
+            formula="~ condition",
         )
 
         # Service should handle empty matrix gracefully, returning 0 genes tested
@@ -606,15 +684,17 @@ class TestBulkRNASeqErrorHandling:
 
     def test_mismatched_samples(self, bulk_service, mock_salmon_results):
         """Test handling of mismatched samples between count matrix and design."""
-        mismatched_design = pd.DataFrame({
-            'sample_id': ['different_1', 'different_2'],
-            'condition': ['control', 'treatment']
-        })
+        mismatched_design = pd.DataFrame(
+            {
+                "sample_id": ["different_1", "different_2"],
+                "condition": ["control", "treatment"],
+            }
+        )
 
         result = bulk_service.run_differential_expression_analysis(
-            count_matrix=mock_salmon_results['count_matrix'],
+            count_matrix=mock_salmon_results["count_matrix"],
             design_matrix=mismatched_design,
-            formula="~ condition"
+            formula="~ condition",
         )
 
         # Service should handle gracefully and process what it can
@@ -622,15 +702,17 @@ class TestBulkRNASeqErrorHandling:
 
     def test_insufficient_replicates(self, bulk_service, mock_salmon_results):
         """Test handling of insufficient replicates."""
-        insufficient_design = pd.DataFrame({
-            'sample_id': ['sample_0', 'sample_1'],
-            'condition': ['control', 'treatment']  # Only 1 replicate each
-        })
+        insufficient_design = pd.DataFrame(
+            {
+                "sample_id": ["sample_0", "sample_1"],
+                "condition": ["control", "treatment"],  # Only 1 replicate each
+            }
+        )
 
         result = bulk_service.run_differential_expression_analysis(
-            count_matrix=mock_salmon_results['count_matrix'].iloc[:, :2],
+            count_matrix=mock_salmon_results["count_matrix"].iloc[:, :2],
             design_matrix=insufficient_design,
-            formula="~ condition"
+            formula="~ condition",
         )
 
         # Should still run but may warn about low power
@@ -638,11 +720,13 @@ class TestBulkRNASeqErrorHandling:
 
     def test_invalid_results_directory(self):
         """Test handling of invalid results directory."""
-        with patch('pathlib.Path.mkdir', side_effect=PermissionError("Access denied")):
+        with patch("pathlib.Path.mkdir", side_effect=PermissionError("Access denied")):
             with pytest.raises(PermissionError):
                 BulkRNASeqService(results_dir=Path("/invalid/path"))
 
-    def test_concurrent_analysis_safety(self, bulk_service, mock_salmon_results, mock_design_matrix):
+    def test_concurrent_analysis_safety(
+        self, bulk_service, mock_salmon_results, mock_design_matrix
+    ):
         """Test thread safety for concurrent analyses."""
         import threading
         import time
@@ -653,16 +737,18 @@ class TestBulkRNASeqErrorHandling:
         def analysis_worker(worker_id):
             """Worker function for concurrent analysis."""
             try:
-                with patch.object(bulk_service, '_run_deseq2_like_analysis') as mock_analysis:
+                with patch.object(
+                    bulk_service, "_run_deseq2_like_analysis"
+                ) as mock_analysis:
                     mock_analysis.return_value = {
-                        'results': pd.DataFrame({'gene_id': [f'GENE_{worker_id}']}),
-                        'n_significant': worker_id
+                        "results": pd.DataFrame({"gene_id": [f"GENE_{worker_id}"]}),
+                        "n_significant": worker_id,
                     }
 
                     result = bulk_service.run_differential_expression_analysis(
-                        count_matrix=mock_salmon_results['count_matrix'],
+                        count_matrix=mock_salmon_results["count_matrix"],
                         design_matrix=mock_design_matrix,
-                        formula="~ condition"
+                        formula="~ condition",
                     )
                     results.append((worker_id, result))
                     time.sleep(0.01)
@@ -690,20 +776,33 @@ class TestBulkRNASeqErrorHandling:
 # Integration Tests
 # ===============================================================================
 
+
 @pytest.mark.unit
 class TestBulkRNASeqIntegration:
     """Test integration between different service components."""
 
-    def test_end_to_end_workflow_simulation(self, bulk_service, mock_fastq_files, mock_design_matrix):
+    def test_end_to_end_workflow_simulation(
+        self, bulk_service, mock_fastq_files, mock_design_matrix
+    ):
         """Test simulated end-to-end workflow."""
         # Mock all external dependencies
-        with patch('os.path.exists', return_value=True), \
-             patch('os.path.getsize', return_value=1000000), \
-             patch('subprocess.run') as mock_subprocess, \
-             patch.object(bulk_service, '_parse_fastqc_results', return_value="Good quality"), \
-             patch.object(bulk_service, '_combine_salmon_results', return_value="Combined successfully"):
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("os.path.getsize", return_value=1000000),
+            patch("subprocess.run") as mock_subprocess,
+            patch.object(
+                bulk_service, "_parse_fastqc_results", return_value="Good quality"
+            ),
+            patch.object(
+                bulk_service,
+                "_combine_salmon_results",
+                return_value="Combined successfully",
+            ),
+        ):
 
-            mock_subprocess.return_value = Mock(returncode=0, stdout="Success", stderr="")
+            mock_subprocess.return_value = Mock(
+                returncode=0, stdout="Success", stderr=""
+            )
 
             # Step 1: QC
             qc_result = bulk_service.run_fastqc(mock_fastq_files)
@@ -717,7 +816,7 @@ class TestBulkRNASeqIntegration:
             quant_result = bulk_service.run_salmon_quantification(
                 fastq_files=mock_fastq_files,
                 transcriptome_index="/path/to/index",
-                sample_names=["sample1", "sample2"]
+                sample_names=["sample1", "sample2"],
             )
             assert "Salmon Quantification Complete!" in quant_result
 
@@ -728,17 +827,16 @@ class TestBulkRNASeqIntegration:
 
         # Test that formula service methods are accessible
         result = bulk_service.create_formula_design(
-            design_matrix=mock_design_matrix,
-            condition_column='condition'
+            design_matrix=mock_design_matrix, condition_column="condition"
         )
 
-        assert 'formula' in result
+        assert "formula" in result
 
     def test_enhance_deseq2_results(self, bulk_service, mock_pydeseq2_results):
         """Test enhancement of DESeq2 results with additional annotations."""
         enhanced = bulk_service._enhance_deseq2_results(
             results_df=mock_pydeseq2_results,
-            count_matrix=pd.DataFrame(np.random.randn(100, 6))
+            count_matrix=pd.DataFrame(np.random.randn(100, 6)),
         )
 
         assert isinstance(enhanced, pd.DataFrame)
