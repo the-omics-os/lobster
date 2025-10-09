@@ -35,7 +35,7 @@
 # Tutorials
 23-tutorial-single-cell.md
 24-tutorial-bulk-rnaseq.md
-25-tutorial-proteomics.md
+!25-tutorial-proteomics.md
 26-tutorial-custom-agent.md
 27-examples-cookbook.md
 
@@ -47,7 +47,7 @@
 # Advanced topics
 31-data-expert-agent-enhancements.md
 32-agent-guided-formula-construction.md
-33-api-documentation.md
+!33-api-documentation.md
 34-architecture-diagram.md
 35-manual-annotation-service.md
 36-supervisor-configuration.md

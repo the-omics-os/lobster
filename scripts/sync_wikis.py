@@ -111,12 +111,10 @@ class WikiSync:
             except subprocess.CalledProcessError as e:
                 print(f"Error cloning repository: {e.stderr}")
                 return False
-            
-            os.chdir(wiki_path)
-            
+
             # Configure git
-            subprocess.run(['git', 'config', 'user.name', 'Lobster Bot'], check=True)
-            subprocess.run(['git', 'config', 'user.email', 'bot@omics-os.com'], check=True)
+            subprocess.run(['git', 'config', 'user.name', 'cewinharhar'], check=True, cwd=wiki_path)
+            subprocess.run(['git', 'config', 'user.email', 'kevin.yar@outlook.com'], check=True, cwd=wiki_path)
             
             # Remove all existing files (except .git)
             print("Cleaning existing wiki files...")
@@ -161,7 +159,8 @@ class WikiSync:
             result = subprocess.run(
                 ['git', 'status', '--porcelain'],
                 capture_output=True,
-                text=True
+                text=True,
+                cwd=wiki_path
             )
             
             if not result.stdout.strip():
@@ -169,7 +168,7 @@ class WikiSync:
                 return True
             
             # Add all files
-            subprocess.run(['git', 'add', '-A'], check=True)
+            subprocess.run(['git', 'add', '-A'], check=True, cwd=wiki_path)
             
             # Create commit
             commit_msg = f"Sync wiki from lobster repository\n\n"
@@ -179,13 +178,14 @@ class WikiSync:
                 commit_msg += f"Files excluded: {self.stats['files_skipped']}\n"
             commit_msg += f"Total size: {self.stats['total_size'] / 1024 / 1024:.2f} MB"
             
-            subprocess.run(['git', 'commit', '-m', commit_msg], check=True)
+            subprocess.run(['git', 'commit', '-m', commit_msg], check=True, cwd=wiki_path)
             
             # Update remote URL to use authenticated URL for push
             subprocess.run(
                 ['git', 'remote', 'set-url', 'origin', authenticated_url],
                 check=True,
-                capture_output=True
+                capture_output=True,
+                cwd=wiki_path
             )
 
             # Push changes
@@ -195,7 +195,7 @@ class WikiSync:
                 push_cmd.insert(2, '--force')
 
             try:
-                subprocess.run(push_cmd, check=True, capture_output=True, text=True)
+                subprocess.run(push_cmd, check=True, capture_output=True, text=True, cwd=wiki_path)
                 print(f"\n✅ Successfully synced to {wiki_repo_url}")
             except subprocess.CalledProcessError as e:
                 print(f"Error pushing changes: {e.stderr}")

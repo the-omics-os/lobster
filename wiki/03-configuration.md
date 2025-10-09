@@ -87,13 +87,24 @@ Lobster AI uses a profile-based system to manage agent and model configurations.
 
 ### Available Profiles
 
--   **`production` (Default)**: Uses the latest and most capable models (currently Claude 4.5 Sonnet) for all agents. Recommended for best performance and accuracy.
+-   **`production` (Default)**: Uses Claude 4 Sonnet for all agents. Recommended for production deployments with balanced performance and cost.
 -   **`development`**: Uses a high-performance model for the supervisor (Claude 4.5 Sonnet) and a faster, more cost-effective model for worker agents (Claude 3.7 Sonnet). Ideal for development and testing.
+-   **`godmode`**: Uses Claude 4.5 Sonnet for all agents. Maximum performance and capability for demanding analyses.
 
 **Set the profile in your `.env` file:**
 ```env
-LOBSTER_PROFILE=development
+LOBSTER_PROFILE=production    # Default
+LOBSTER_PROFILE=development   # Development/testing
+LOBSTER_PROFILE=godmode       # Maximum performance
 ```
+
+### Available Models
+
+The following models are available in Lobster AI:
+
+-   **`claude-3-7-sonnet`**: Claude 3.7 Sonnet - Development and worker tier model
+-   **`claude-4-sonnet`**: Claude 4 Sonnet - Production tier model (balanced performance)
+-   **`claude-4-5-sonnet`**: Claude 4.5 Sonnet - Highest performance model for demanding tasks
 
 ### Custom Model Configuration
 
@@ -101,10 +112,10 @@ You can override the model for all agents or for specific agents using environme
 
 ```env
 # Override the model for ALL agents
-LOBSTER_GLOBAL_MODEL=claude-3-7-sonnet
+LOBSTER_GLOBAL_MODEL=claude-4-5-sonnet
 
 # Override the model for a specific agent
-LOBSTER_SINGLECELL_EXPERT_AGENT_MODEL=claude-4-5-sonnet
+LOBSTER_SINGLECELL_EXPERT_AGENT_MODEL=claude-4-sonnet
 
 # Override the temperature for a specific agent (0.0 to 1.0)
 LOBSTER_SUPERVISOR_TEMPERATURE=0.3

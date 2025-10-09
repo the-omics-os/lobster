@@ -3,6 +3,9 @@ Unit tests for expert handoff functionality.
 
 This module tests the core handoff infrastructure including the ExpertHandoffManager,
 enhanced handoff tools, and handoff patterns.
+
+⚠️ CURRENTLY DISABLED: Direct sub-agent handoffs are disabled for supervisor-mediated flow.
+This test module is preserved for future implementation when direct handoffs are re-enabled.
 """
 
 import unittest
@@ -13,32 +16,52 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-# Skip entire module due to proteomics agents still in development
-pytestmark = pytest.mark.skip(reason="Proteomics agents in development")
+# Skip entire module - handoff functionality is currently disabled for supervisor-mediated flow
+pytestmark = pytest.mark.skip(reason="Direct sub-agent handoffs disabled for supervisor-mediated flow")
 
-from lobster.config.agent_registry import (
-    create_expert_handoff_tools,
-    get_handoff_tools_for_agent,
-    validate_handoff_compatibility,
-)
-from lobster.tools.enhanced_handoff_tool import (
-    SCVI_CONTEXT_SCHEMA,
-    create_expert_handoff_tool,
-    validate_context_schema,
-)
-from lobster.tools.expert_handoff_manager import (
-    ExpertHandoffManager,
-    HandoffContext,
-    HandoffResult,
-    create_handoff_context,
-    create_handoff_result,
-)
-from lobster.tools.expert_handoff_patterns import (
-    EXPERT_HANDOFF_PATTERNS,
-    get_context_schema_for_handoff,
-    get_handoff_pattern,
-    validate_handoff_pattern,
-)
+# Conditional imports - only import what's actually available
+try:
+    from lobster.config.agent_registry import (
+        create_expert_handoff_tools,
+        get_handoff_tools_for_agent,
+        validate_handoff_compatibility,
+    )
+    from lobster.tools.enhanced_handoff_tool import (
+        SCVI_CONTEXT_SCHEMA,
+        create_expert_handoff_tool,
+        validate_context_schema,
+    )
+    from lobster.tools.expert_handoff_manager import (
+        ExpertHandoffManager,
+        HandoffContext,
+        HandoffResult,
+        create_handoff_context,
+        create_handoff_result,
+    )
+    from lobster.tools.expert_handoff_patterns import (
+        EXPERT_HANDOFF_PATTERNS,
+        get_context_schema_for_handoff,
+        get_handoff_pattern,
+        validate_handoff_pattern,
+    )
+except (ImportError, NotImplementedError) as e:
+    # If imports fail, create mock objects for test structure
+    # Tests will be skipped anyway due to pytestmark above
+    ExpertHandoffManager = Mock
+    HandoffContext = Mock
+    HandoffResult = Mock
+    create_handoff_context = Mock()
+    create_handoff_result = Mock()
+    create_expert_handoff_tools = Mock()
+    get_handoff_tools_for_agent = Mock()
+    validate_handoff_compatibility = Mock()
+    SCVI_CONTEXT_SCHEMA = {}
+    create_expert_handoff_tool = Mock()
+    validate_context_schema = Mock()
+    EXPERT_HANDOFF_PATTERNS = {}
+    get_context_schema_for_handoff = Mock()
+    get_handoff_pattern = Mock()
+    validate_handoff_pattern = Mock()
 
 
 class TestExpertHandoffManager(unittest.TestCase):
