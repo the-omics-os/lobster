@@ -45,7 +45,7 @@ You'll see the welcome screen with orange branding:
 │  Multi-Agent Bioinformatics Analysis System v2.0                    │
 │                                                                      │
 │  🧬 Key Tasks:                                                       │
-│  • Analyze RNA-seq & genomics data                                  │
+│  • Analyze RNA-seq data                                  │
 │  • Generate visualizations and plots                                │
 │  • Extract insights from bioinformatics datasets                    │
 │  • Access GEO & literature databases                               │
