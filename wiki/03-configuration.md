@@ -87,9 +87,9 @@ Lobster AI uses a profile-based system to manage agent and model configurations.
 
 ### Available Profiles
 
--   **`production` (Default)**: Uses Claude 4 Sonnet for all agents. Recommended for production deployments with balanced performance and cost.
--   **`development`**: Uses a high-performance model for the supervisor (Claude 4.5 Sonnet) and a faster, more cost-effective model for worker agents (Claude 3.7 Sonnet). Ideal for development and testing.
--   **`godmode`**: Uses Claude 4.5 Sonnet for all agents. Maximum performance and capability for demanding analyses.
+-   **`production` (Default)**: Supervisor uses Claude 4.5 Sonnet, expert agents use Claude 4 Sonnet, assistant uses Claude 3.7 Sonnet. Recommended for production deployments with optimal coordination and balanced analysis.
+-   **`development`**: Supervisor and expert agents use Claude 4 Sonnet, assistant uses Claude 3.7 Sonnet. Ideal for development and testing with consistent expert-tier performance.
+-   **`godmode`**: All agents (supervisor, experts, and assistant) use Claude 4.5 Sonnet. Maximum performance and capability for demanding analyses.
 
 **Set the profile in your `.env` file:**
 ```env
