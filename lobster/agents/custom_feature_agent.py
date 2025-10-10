@@ -600,35 +600,46 @@ Begin implementation now."""
                 "debug_info": debug_info
             }
 
-    def generate_registry_instructions(feature_name: str, feature_type: str) -> str:
+    def generate_integration_instructions(feature_name: str, feature_type: str) -> str:
         """
-        Generate instructions for manually adding to agent registry.
+        Generate comprehensive integration instructions for registry AND configuration.
 
         Args:
             feature_name: Name of the feature
             feature_type: Type of feature created
 
         Returns:
-            Formatted instructions with code snippet
+            Formatted instructions with code snippets for both registry and config
         """
         if feature_type in ["agent", "agent_with_service"]:
-            registry_code = f"""    '{feature_name}': AgentConfig(
-        name='{feature_name}',
-        display_name='{feature_name.replace('_', ' ').title()} Agent',
+            # Agent name for configuration (with _agent suffix)
+            agent_config_name = f"{feature_name}_expert_agent"
+
+            # Registry code snippet
+            registry_code = f"""    '{feature_name}_expert_agent': AgentRegistryConfig(
+        name='{feature_name}_expert_agent',
+        display_name='{feature_name.replace('_', ' ').title()} Expert',
         description='[Add description of what this agent does]',
         factory_function='lobster.agents.{feature_name}_expert.{feature_name}_expert',
-        handoff_tool_name='handoff_to_{feature_name}',
+        handoff_tool_name='handoff_to_{feature_name}_expert_agent',
         handoff_tool_description='Hand off to the {feature_name} expert when [describe when to use].'
-    )"""
+    ),"""
+
+            # Configuration code snippets
+            default_agents_code = f"""        "{agent_config_name}",  # Add to the DEFAULT_AGENTS list"""
+
+            profile_config_code = f"""            "{agent_config_name}": "claude-4-sonnet",  # Add to each profile"""
 
             instructions = f"""
-📝 **Manual Registry Update Required**
+📝 **Manual Integration Required (2 Files)**
 
-To make your new agent available in Lobster, add it to the agent registry:
+To make your new agent fully functional in Lobster, you need to update TWO configuration files:
+
+## Step 1: Agent Registry (lobster/config/agent_registry.py)
 
 1. Open: `lobster/config/agent_registry.py`
 
-2. Add this entry to the `AGENT_REGISTRY` dictionary:
+2. Add this entry to the `AGENT_REGISTRY` dictionary (around line 100):
 
 ```python
 {registry_code}
@@ -636,16 +647,51 @@ To make your new agent available in Lobster, add it to the agent registry:
 
 3. Update the description and handoff_tool_description with specifics about your agent
 
-4. Save the file and restart Lobster
+## Step 2: Agent Configuration (lobster/config/agent_config.py)
 
-After registration, the agent will be available via the supervisor!
+**⚠️ CRITICAL: Without this step, you'll get a KeyError at runtime!**
+
+1. Open: `lobster/config/agent_config.py`
+
+2. Add to `DEFAULT_AGENTS` list (around line 151):
+
+```python
+{default_agents_code}
+```
+
+3. Add to ALL THREE testing profiles in `TESTING_PROFILES`:
+
+   **a) In "development" profile (around line 180):**
+```python
+{profile_config_code}
+```
+
+   **b) In "production" profile (around line 197):**
+```python
+{profile_config_code}
+```
+
+   **c) In "godmode" profile (around line 213):**
+```python
+{profile_config_code}
+```
+
+## Step 3: Verify & Restart
+
+1. Save both files
+2. Restart Lobster: `lobster chat`
+3. The agent will now be available via the supervisor without KeyError!
+
+**Why both files are needed:**
+- `agent_registry.py` → Registers the agent in the system (handoff tools, routing)
+- `agent_config.py` → Configures LLM model for the agent (prevents KeyError)
 """
         else:
             # Service only
             instructions = f"""
 📝 **Service Integration**
 
-Your service is ready to use! Services don't require registry updates.
+Your service is ready to use! Services don't require registry or configuration updates.
 
 To use in an existing agent:
 1. Import: `from lobster.tools.{feature_name}_service import {feature_name.title().replace('_', '')}Service`
@@ -882,9 +928,9 @@ If the error persists, please report it to the Lobster team with the debug infor
                 for f in wiki:
                     response += f"  ✓ {Path(f).relative_to(lobster_root)}\n"
 
-            # 8. Add registry instructions
-            registry_instructions = generate_registry_instructions(feature_name, feature_type)
-            response += f"\n\n{registry_instructions}"
+            # 8. Add integration instructions (registry + configuration)
+            integration_instructions = generate_integration_instructions(feature_name, feature_type)
+            response += f"\n\n{integration_instructions}"
 
             # 9. Add next steps
             response += f"""
@@ -907,8 +953,9 @@ If the error persists, please report it to the Lobster team with the debug infor
    make type-check
    ```
 
-4. **Update Registry** (if agent was created)
-   - Follow the instructions above to add to agent_registry.py
+4. **Update Registry & Configuration** (if agent was created)
+   - Follow the instructions above to add to agent_registry.py AND agent_config.py
+   - BOTH files must be updated to avoid KeyError
 
 5. **Restart Lobster**
    ```bash
@@ -1160,7 +1207,7 @@ You create new Lobster features following these steps:
    - Ensure patterns were followed
 
 4. **Provide Instructions**
-   - Generate registry update instructions
+   - Generate integration instructions (registry + configuration)
    - List all created files
    - Provide next steps for testing
    - Suggest integration steps
@@ -1286,7 +1333,7 @@ for spatial-specific operations. Support both H5AD and VisiumHD formats."
 1. **ONLY create features explicitly requested by the supervisor**
 3. **Validate feature names before creation**
 4. **Check for existing files to avoid conflicts**
-5. **Provide clear instructions for manual steps** (registry update)
+5. **Provide clear instructions for manual steps** (registry + configuration update)
 6. **Report ALL created files with full paths**
 7. **Include troubleshooting guidance if creation fails**
 8. **NEVER HALLUCINATE** - only report files that were actually created
@@ -1313,10 +1360,11 @@ Common issues:
 <Integration Notes>
 
 Created features require manual steps:
-  1. Agent registry update (for agents)
-  2. Running tests to verify
-  3. Restarting Lobster
-  4. Testing through supervisor
+  1. Agent registry update (for agents) - agent_registry.py
+  2. Agent configuration update (for agents) - agent_config.py (prevents KeyError)
+  3. Running tests to verify
+  4. Restarting Lobster
+  5. Testing through supervisor
 
 Always provide clear, copy-paste ready instructions for these steps.
 
