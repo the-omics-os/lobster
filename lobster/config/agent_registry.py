@@ -89,6 +89,14 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
         handoff_tool_name="handoff_to_machine_learning_expert_agent",
         handoff_tool_description="Assign all machine learning related tasks (scVI, classification etc) to the machine learning expert agent",
     ),
+    "custom_feature_agent": AgentRegistryConfig(
+        name="custom_feature_agent",
+        display_name="Custom Feature Agent",
+        description="Creates new Lobster agents, services, tools, tests, and documentation using Claude Code SDK",
+        factory_function="lobster.agents.custom_feature_agent.custom_feature_agent",
+        handoff_tool_name="handoff_to_custom_feature_agent",
+        handoff_tool_description="Hand off to the custom feature agent when the user wants to create new agents, services, or extend Lobster with new capabilities. Use when user requests feature development, new analysis types, or custom tools.",
+    ),
     "visualization_expert_agent": AgentRegistryConfig(
         name="visualization_expert_agent",
         display_name="Visualization Expert",
