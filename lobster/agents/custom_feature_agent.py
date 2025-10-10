@@ -6,6 +6,7 @@ architectural patterns defined in lobster/agents/CLAUDE.md.
 """
 
 import asyncio
+import concurrent.futures
 import os
 import re
 from datetime import date
@@ -26,11 +27,6 @@ logger = get_logger(__name__)
 
 class CustomFeatureError(Exception):
     """Base exception for custom feature operations."""
-    pass
-
-
-class SDKConnectionError(CustomFeatureError):
-    """Raised when Claude Code SDK connection fails."""
     pass
 
 
@@ -139,18 +135,57 @@ def custom_feature_agent(
         if test_service.exists():
             existing.append(str(test_service))
 
-        # Check wiki
-        wiki_name = feature_name.replace('_', '-').title()
+        # Check wiki (using lowercase kebab-case convention)
+        wiki_name = feature_name.replace('_', '-').lower()
         wiki_file = lobster_root / "lobster" / "wiki" / f"{wiki_name}.md"
         if wiki_file.exists():
             existing.append(str(wiki_file))
 
         return existing
 
+    def display_sdk_message(msg):
+        """Display SDK message content in real-time to terminal."""
+        try:
+            from claude_agent_sdk import (
+                AssistantMessage,
+                ResultMessage,
+                SystemMessage,
+                TextBlock,
+                ToolResultBlock,
+                ToolUseBlock,
+                UserMessage,
+            )
+
+            if isinstance(msg, UserMessage):
+                for block in msg.content:
+                    if isinstance(block, TextBlock):
+                        logger.info(f"[SDK User] {block.text}")
+                    elif isinstance(block, ToolResultBlock):
+                        content_preview = block.content[:100] if block.content else 'None'
+                        logger.info(f"[SDK Tool Result] {content_preview}...")
+            elif isinstance(msg, AssistantMessage):
+                for block in msg.content:
+                    if isinstance(block, TextBlock):
+                        logger.info(f"[SDK Claude] {block.text}")
+                    elif isinstance(block, ToolUseBlock):
+                        logger.info(f"[SDK Tool] Using tool: {block.name}")
+                        if block.input:
+                            logger.info(f"[SDK Tool]   Input: {block.input}")
+            elif isinstance(msg, SystemMessage):
+                # System messages are usually verbose, skip or log at debug level
+                logger.debug(f"[SDK System] {msg}")
+            elif isinstance(msg, ResultMessage):
+                logger.info("[SDK Result] Generation completed")
+                if hasattr(msg, 'total_cost_usd') and msg.total_cost_usd:
+                    logger.info(f"[SDK Cost] ${msg.total_cost_usd:.6f}")
+        except Exception as e:
+            logger.debug(f"Error displaying SDK message: {e}")
+
     async def create_with_claude_sdk(
         feature_type: str,
         feature_name: str,
-        requirements: str
+        requirements: str,
+        debug: bool = True
     ) -> Dict[str, Any]:
         """
         Use Claude Code SDK to create new feature files.
@@ -159,6 +194,7 @@ def custom_feature_agent(
             feature_type: Type of feature (agent, service, agent_with_service)
             feature_name: Name for the feature
             requirements: User requirements and specifications
+            debug: Enable detailed debug logging
 
         Returns:
             Dictionary with creation results:
@@ -166,27 +202,83 @@ def custom_feature_agent(
                 - created_files: List[str]
                 - error: Optional[str]
                 - sdk_output: str
+                - debug_info: Dict[str, Any]
         """
+        debug_info = {
+            "feature_type": feature_type,
+            "feature_name": feature_name,
+            "lobster_root": str(lobster_root),
+            "steps": [],
+            "errors": [],
+            "sdk_messages": []
+        }
+
         try:
+            logger.info(f"[DEBUG] Starting feature creation: {feature_type} - {feature_name}")
+            debug_info["steps"].append("Starting feature creation")
+
+            # Set environment variables for Claude Code SDK with AWS Bedrock
+            logger.info("[DEBUG] Setting AWS Bedrock environment variables...")
+            os.environ['CLAUDE_CODE_USE_BEDROCK'] = '1'
+            os.environ['AWS_REGION'] = 'us-east-1'
+            os.environ['ANTHROPIC_MODEL'] = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'
+            os.environ['ANTHROPIC_SMALL_FAST_MODEL'] = 'us.anthropic.claude-sonnet-4-20250514-v1:0'
+            os.environ['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] = '60024'
+            os.environ['MAX_THINKING_TOKENS'] = '2024'
+            debug_info["steps"].append("Environment variables configured")
+            logger.info("[DEBUG] AWS Bedrock environment variables set successfully")
+
             # Import Claude Code SDK
             try:
-                from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+                logger.debug("[DEBUG] Importing Claude Agent SDK...")
+                debug_info["steps"].append("Importing Claude Agent SDK")
+                from claude_agent_sdk import (
+                    ClaudeSDKClient,
+                    ClaudeAgentOptions,
+                    AssistantMessage,
+                    TextBlock,
+                    ResultMessage,
+                    CLINotFoundError,
+                    ProcessError,
+                    CLIConnectionError,
+                    CLIJSONDecodeError
+                )
+                logger.debug("[DEBUG] Claude Agent SDK imported successfully")
+                debug_info["steps"].append("SDK imported successfully")
             except ImportError as e:
-                logger.error(f"Claude Agent SDK not installed: {e}")
+                error_msg = f"Claude Agent SDK not installed: {e}"
+                logger.error(f"[DEBUG] {error_msg}")
+                debug_info["errors"].append(error_msg)
+                debug_info["steps"].append("SDK import failed")
                 return {
                     "success": False,
                     "created_files": [],
                     "error": "Claude Agent SDK not installed. Please install with: pip install claude-agent-sdk",
-                    "sdk_output": ""
+                    "sdk_output": "",
+                    "debug_info": debug_info
                 }
 
             # Configure SDK options
-            options = ClaudeAgentOptions(
-                setting_sources=["project"],  # Loads lobster/agents/CLAUDE.md
-                system_prompt={
-                    "type": "preset",
-                    "preset": "claude_code",
-                    "append": """You are creating a new feature for the Lobster bioinformatics platform.
+            try:
+                logger.info(f"[DEBUG] Configuring SDK options...")
+                logger.info(f"[DEBUG] Working directory: {lobster_root}")
+                logger.info(f"[DEBUG] CLAUDE.md path: {lobster_root / 'lobster' / 'agents' / 'CLAUDE.md'}")
+
+                debug_info["steps"].append("Configuring SDK options")
+                debug_info["sdk_config"] = {
+                    "cwd": str(lobster_root),
+                    "setting_sources": ["project"],
+                    "allowed_tools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
+                    "permission_mode": "bypassPermissions",
+                    "max_turns": 50
+                }
+
+                options = ClaudeAgentOptions(
+                    setting_sources=["project"],  # Loads lobster/agents/CLAUDE.md
+                    system_prompt={
+                        "type": "preset",
+                        "preset": "claude_code",
+                        "append": """You are creating a new feature for the Lobster bioinformatics platform.
 
 CRITICAL RULES:
 1. Follow ALL patterns in CLAUDE.md EXACTLY
@@ -194,25 +286,41 @@ CRITICAL RULES:
 3. Create complete, working implementations
 4. Include comprehensive docstrings
 5. Follow Lobster naming conventions
-6. Report ALL files you create with their full paths"""
-                },
-                cwd=str(lobster_root),
-                allowed_tools=["Read", "Write", "Edit", "Glob", "Grep"],
-                permission_mode="acceptEdits",
-                max_turns=50
-            )
+6. Report ALL files you create with their full paths
+7. You have FULL PERMISSIONS to create all necessary files"""
+                    },
+                    cwd=str(lobster_root),
+                    allowed_tools=["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
+                    permission_mode="bypassPermissions",
+                    max_turns=50
+                )
+                logger.debug("[DEBUG] SDK options configured successfully")
+                debug_info["steps"].append("SDK options configured")
+            except Exception as e:
+                error_msg = f"Failed to configure SDK options: {e}"
+                logger.error(f"[DEBUG] {error_msg}")
+                debug_info["errors"].append(error_msg)
+                debug_info["steps"].append("SDK configuration failed")
+                return {
+                    "success": False,
+                    "created_files": [],
+                    "error": error_msg,
+                    "sdk_output": "",
+                    "debug_info": debug_info
+                }
 
             # Construct detailed prompt
+            wiki_filename = feature_name.replace('_', '-').lower()
             if feature_type == "agent":
                 files_to_create = f"""1. Agent: lobster/agents/{feature_name}_expert.py
 2. State: Add {feature_name.title().replace('_', '')}ExpertState to lobster/agents/state.py
 3. Tests: tests/unit/agents/test_{feature_name}_expert.py
-4. Wiki: lobster/wiki/{feature_name.replace('_', '-').title()}.md"""
+4. Wiki: lobster/wiki/{wiki_filename}.md"""
 
             elif feature_type == "service":
                 files_to_create = f"""1. Service: lobster/tools/{feature_name}_service.py
 2. Tests: tests/unit/tools/test_{feature_name}_service.py
-3. Wiki: lobster/wiki/{feature_name.replace('_', '-').title()}.md"""
+3. Wiki: lobster/wiki/{wiki_filename}.md"""
 
             elif feature_type == "agent_with_service":
                 files_to_create = f"""1. Agent: lobster/agents/{feature_name}_expert.py
@@ -220,7 +328,7 @@ CRITICAL RULES:
 3. State: Add {feature_name.title().replace('_', '')}ExpertState to lobster/agents/state.py
 4. Tests (Agent): tests/unit/agents/test_{feature_name}_expert.py
 5. Tests (Service): tests/unit/tools/test_{feature_name}_service.py
-6. Wiki: lobster/wiki/{feature_name.replace('_', '-').title()}.md"""
+6. Wiki: lobster/wiki/{wiki_filename}.md"""
 
             else:
                 return {
@@ -257,78 +365,239 @@ After creating all files, provide a summary listing EVERY file you created with 
 Begin implementation now."""
 
             # Spawn Claude Code SDK
-            sdk_output_lines = []
-            created_files = []
+            try:
+                logger.info(f"[DEBUG] Spawning Claude Code SDK...")
+                debug_info["steps"].append("Spawning SDK client")
 
-            async with ClaudeSDKClient(options=options) as client:
-                logger.info(f"Starting Claude Code SDK for {feature_type} creation: {feature_name}")
+                sdk_output_lines = []
+                created_files = []
+                message_count = 0
 
-                # Send prompt
-                await client.query(prompt)
+                async with ClaudeSDKClient(options=options) as client:
+                    logger.info(f"[DEBUG] SDK client connected successfully")
+                    debug_info["steps"].append("SDK client connected")
 
-                # Collect responses
-                async for message in client.receive_response():
-                    # Capture message content for logging
-                    message_str = str(message)
-                    sdk_output_lines.append(message_str)
+                    # Send prompt
+                    try:
+                        logger.info("=" * 80)
+                        logger.info(f"[SDK START] Creating {feature_type}: {feature_name}")
+                        logger.info("=" * 80)
+                        logger.info(f"\n[SDK Prompt]\n{prompt}\n")
+                        logger.info(f"[DEBUG] Sending prompt to SDK (length: {len(prompt)} characters)...")
+                        debug_info["steps"].append("Sending prompt to SDK")
+                        debug_info["prompt_length"] = len(prompt)
 
-                    # Try to extract created file paths from messages
-                    if hasattr(message, 'content'):
-                        content = message.content if isinstance(message.content, str) else str(message.content)
+                        await client.query(prompt)
+                        logger.info(f"[DEBUG] Prompt sent successfully")
+                        debug_info["steps"].append("Prompt sent")
+                    except Exception as e:
+                        error_msg = f"Failed to send prompt to SDK: {e}"
+                        logger.error(f"[DEBUG] {error_msg}")
+                        debug_info["errors"].append(error_msg)
+                        debug_info["steps"].append("Prompt sending failed")
+                        raise
 
-                        # Look for file path patterns
-                        patterns = [
-                            r'lobster/agents/\w+_expert\.py',
-                            r'lobster/tools/\w+_service\.py',
-                            r'lobster/agents/state\.py',
-                            r'tests/unit/agents/test_\w+_expert\.py',
-                            r'tests/unit/tools/test_\w+_service\.py',
-                            r'lobster/wiki/[\w-]+\.md'
-                        ]
+                    # Collect responses
+                    try:
+                        logger.info(f"[DEBUG] Receiving SDK responses...")
+                        debug_info["steps"].append("Receiving SDK responses")
 
-                        for pattern in patterns:
-                            matches = re.findall(pattern, content)
-                            for match in matches:
-                                full_path = lobster_root / match
-                                if full_path.exists() and str(full_path) not in created_files:
-                                    created_files.append(str(full_path))
+                        async for message in client.receive_response():
+                            message_count += 1
+                            logger.debug(f"[DEBUG] Received message {message_count}: {type(message).__name__}")
 
-                logger.info(f"Claude Code SDK completed. Detected {len(created_files)} created files.")
+                            # Display message in real-time to terminal
+                            display_sdk_message(message)
+
+                            # Capture message content for logging
+                            message_str = str(message)
+                            sdk_output_lines.append(message_str)
+                            debug_info["sdk_messages"].append({
+                                "index": message_count,
+                                "type": type(message).__name__,
+                                "content_preview": message_str[:200] if len(message_str) > 200 else message_str
+                            })
+
+                            # Parse SDK messages correctly to extract created file paths
+                            if isinstance(message, AssistantMessage):
+                                # Iterate through content blocks to find TextBlocks
+                                for block in message.content:
+                                    if isinstance(block, TextBlock):
+                                        text = block.text
+
+                                        # Look for file path patterns (more robust regex)
+                                        patterns = [
+                                            r'lobster/agents/[a-z0-9_]+_expert\.py',
+                                            r'lobster/tools/[a-z0-9_]+_service\.py',
+                                            r'lobster/agents/state\.py',
+                                            r'tests/unit/agents/test_[a-z0-9_]+_expert\.py',
+                                            r'tests/unit/tools/test_[a-z0-9_]+_service\.py',
+                                            r'lobster/wiki/[a-z0-9\-]+\.md'
+                                        ]
+
+                                        for pattern in patterns:
+                                            matches = re.findall(pattern, text)
+                                            for match in matches:
+                                                full_path = lobster_root / match
+                                                if full_path.exists() and str(full_path) not in created_files:
+                                                    created_files.append(str(full_path))
+                                                    logger.info(f"[DEBUG] Detected created file: {full_path}")
+                            elif isinstance(message, ResultMessage):
+                                # Optionally use message.result if SDK summarizes file list
+                                logger.debug(f"[DEBUG] Result message received: {message.result if hasattr(message, 'result') else 'N/A'}")
+
+                        logger.info("=" * 80)
+                        logger.info(f"[SDK END] Completed. Received {message_count} messages")
+                        logger.info(f"[SDK END] Detected {len(created_files)} created files from messages")
+                        logger.info("=" * 80)
+                        debug_info["steps"].append(f"SDK completed ({message_count} messages)")
+                        debug_info["total_messages"] = message_count
+                        debug_info["detected_files_count"] = len(created_files)
+                    except Exception as e:
+                        error_msg = f"Error receiving SDK responses: {e}"
+                        logger.error(f"[DEBUG] {error_msg}")
+                        debug_info["errors"].append(error_msg)
+                        debug_info["steps"].append("SDK response receiving failed")
+                        raise
+
+            except CLINotFoundError as e:
+                error_msg = "Claude Code CLI not found"
+                logger.error(f"[DEBUG] {error_msg}: {e}")
+                debug_info["errors"].append(error_msg)
+                debug_info["steps"].append("CLI not found")
+                return {
+                    "success": False,
+                    "created_files": [],
+                    "error": "Claude Code not found. Install CLI: npm i -g @anthropic-ai/claude-code",
+                    "sdk_output": "\n".join(sdk_output_lines) if sdk_output_lines else "",
+                    "debug_info": debug_info
+                }
+            except CLIConnectionError as e:
+                error_msg = f"Failed to connect to Claude Code CLI: {e}"
+                logger.error(f"[DEBUG] {error_msg}")
+                debug_info["errors"].append(error_msg)
+                debug_info["steps"].append("CLI connection failed")
+                return {
+                    "success": False,
+                    "created_files": [],
+                    "error": error_msg,
+                    "sdk_output": "\n".join(sdk_output_lines) if sdk_output_lines else "",
+                    "debug_info": debug_info
+                }
+            except ProcessError as e:
+                error_msg = f"Claude Code process error: {e}"
+                logger.error(f"[DEBUG] {error_msg}")
+                debug_info["errors"].append(error_msg)
+                debug_info["steps"].append("CLI process error")
+                return {
+                    "success": False,
+                    "created_files": [],
+                    "error": error_msg,
+                    "sdk_output": "\n".join(sdk_output_lines) if sdk_output_lines else "",
+                    "debug_info": debug_info
+                }
+            except CLIJSONDecodeError as e:
+                error_msg = f"Failed to parse CLI response: {e}"
+                logger.error(f"[DEBUG] {error_msg}")
+                debug_info["errors"].append(error_msg)
+                debug_info["steps"].append("CLI JSON decode error")
+                return {
+                    "success": False,
+                    "created_files": [],
+                    "error": error_msg,
+                    "sdk_output": "\n".join(sdk_output_lines) if sdk_output_lines else "",
+                    "debug_info": debug_info
+                }
+            except Exception as e:
+                error_msg = f"SDK client error: {e}"
+                logger.error(f"[DEBUG] {error_msg}", exc_info=True)
+                debug_info["errors"].append(error_msg)
+                debug_info["steps"].append("SDK client failed")
+                return {
+                    "success": False,
+                    "created_files": [],
+                    "error": error_msg,
+                    "sdk_output": "\n".join(sdk_output_lines) if 'sdk_output_lines' in locals() else "",
+                    "debug_info": debug_info
+                }
 
             # Verify files were created
-            expected_files = []
-            if feature_type in ["agent", "agent_with_service"]:
-                expected_files.append(lobster_root / "lobster" / "agents" / f"{feature_name}_expert.py")
-                expected_files.append(lobster_root / "tests" / "unit" / "agents" / f"test_{feature_name}_expert.py")
+            try:
+                logger.info(f"[DEBUG] Verifying created files...")
+                debug_info["steps"].append("Verifying created files")
 
-            if feature_type in ["service", "agent_with_service"]:
-                expected_files.append(lobster_root / "lobster" / "tools" / f"{feature_name}_service.py")
-                expected_files.append(lobster_root / "tests" / "unit" / "tools" / f"test_{feature_name}_service.py")
+                expected_files = []
+                if feature_type in ["agent", "agent_with_service"]:
+                    expected_files.append(lobster_root / "lobster" / "agents" / f"{feature_name}_expert.py")
+                    expected_files.append(lobster_root / "tests" / "unit" / "agents" / f"test_{feature_name}_expert.py")
+                    # Add state.py to expected files for state updates
+                    expected_files.append(lobster_root / "lobster" / "agents" / "state.py")
 
-            wiki_file = lobster_root / "lobster" / "wiki" / f"{feature_name.replace('_', '-').title()}.md"
-            expected_files.append(wiki_file)
+                if feature_type in ["service", "agent_with_service"]:
+                    expected_files.append(lobster_root / "lobster" / "tools" / f"{feature_name}_service.py")
+                    expected_files.append(lobster_root / "tests" / "unit" / "tools" / f"test_{feature_name}_service.py")
 
-            verified_files = []
-            for file_path in expected_files:
-                if file_path.exists():
-                    verified_files.append(str(file_path))
-                else:
-                    logger.warning(f"Expected file not created: {file_path}")
+                wiki_file = lobster_root / "lobster" / "wiki" / f"{feature_name.replace('_', '-').lower()}.md"
+                expected_files.append(wiki_file)
 
-            return {
-                "success": len(verified_files) > 0,
-                "created_files": verified_files,
-                "error": None if len(verified_files) > 0 else "No files were created",
-                "sdk_output": "\n".join(sdk_output_lines)
-            }
+                logger.info(f"[DEBUG] Expected {len(expected_files)} files:")
+                for exp_file in expected_files:
+                    logger.info(f"[DEBUG]   - {exp_file}")
+
+                debug_info["expected_files"] = [str(f) for f in expected_files]
+
+                # Perform filesystem scan as source of truth
+                verified_files = []
+                missing_files = []
+                for file_path in expected_files:
+                    if file_path.exists():
+                        verified_files.append(str(file_path))
+                        logger.info(f"[DEBUG] ✓ File exists: {file_path}")
+                    else:
+                        missing_files.append(str(file_path))
+                        logger.warning(f"[DEBUG] ✗ File missing: {file_path}")
+
+                debug_info["verified_files"] = verified_files
+                debug_info["missing_files"] = missing_files
+                debug_info["steps"].append(f"Verification complete: {len(verified_files)}/{len(expected_files)} files")
+
+                logger.info(f"[DEBUG] Verification complete: {len(verified_files)}/{len(expected_files)} files created")
+
+                # Require ALL expected files to be present for success
+                all_present = len(verified_files) == len(expected_files)
+                error_msg = None if all_present else f"Missing files: {', '.join(missing_files)}"
+
+                return {
+                    "success": all_present,
+                    "created_files": verified_files,
+                    "error": error_msg,
+                    "sdk_output": "\n".join(sdk_output_lines),
+                    "debug_info": debug_info
+                }
+            except Exception as e:
+                error_msg = f"Error during file verification: {e}"
+                logger.error(f"[DEBUG] {error_msg}", exc_info=True)
+                debug_info["errors"].append(error_msg)
+                debug_info["steps"].append("File verification failed")
+                return {
+                    "success": False,
+                    "created_files": verified_files if 'verified_files' in locals() else [],
+                    "error": error_msg,
+                    "sdk_output": "\n".join(sdk_output_lines),
+                    "debug_info": debug_info
+                }
 
         except Exception as e:
-            logger.error(f"Error in Claude SDK creation: {e}", exc_info=True)
+            error_msg = f"Unexpected error in Claude SDK creation: {e}"
+            logger.error(f"[DEBUG] {error_msg}", exc_info=True)
+            debug_info["errors"].append(error_msg)
+            debug_info["steps"].append("Fatal error occurred")
             return {
                 "success": False,
                 "created_files": [],
                 "error": str(e),
-                "sdk_output": ""
+                "sdk_output": "",
+                "debug_info": debug_info
             }
 
     def generate_registry_instructions(feature_name: str, feature_type: str) -> str:
@@ -485,20 +754,71 @@ Minimum 20 characters required."""
             # 5. Create feature using Claude Code SDK
             logger.info(f"Spawning Claude Code SDK for {feature_type}: {feature_name}")
 
-            # Run async SDK call
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                result = loop.run_until_complete(
+            # Run async SDK call safely (avoids event loop conflicts)
+            def _run_coro(coro):
+                """Run coroutine in a new event loop (thread-safe)."""
+                return asyncio.run(coro)
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                result = executor.submit(
+                    _run_coro,
                     create_with_claude_sdk(feature_type, feature_name, requirements)
-                )
-            finally:
-                loop.close()
+                ).result()
 
             # 6. Check results
             if not result["success"]:
                 error = result.get("error", "Unknown error")
+                debug_info = result.get("debug_info", {})
+                sdk_output = result.get("sdk_output", "")
+
                 logger.error(f"Feature creation failed: {error}")
+
+                # Format debug information
+                debug_section = ""
+                if debug_info:
+                    debug_section = "\n\n**🔍 Debug Information:**\n"
+
+                    # Show steps taken
+                    if debug_info.get("steps"):
+                        debug_section += "\n**Steps completed:**\n"
+                        for step in debug_info["steps"]:
+                            debug_section += f"  ✓ {step}\n"
+
+                    # Show errors
+                    if debug_info.get("errors"):
+                        debug_section += "\n**Errors encountered:**\n"
+                        for err in debug_info["errors"]:
+                            debug_section += f"  ✗ {err}\n"
+
+                    # Show SDK configuration
+                    if debug_info.get("sdk_config"):
+                        debug_section += "\n**SDK Configuration:**\n"
+                        for key, value in debug_info["sdk_config"].items():
+                            debug_section += f"  - {key}: {value}\n"
+
+                    # Show message stats
+                    if debug_info.get("total_messages"):
+                        debug_section += f"\n**SDK Messages:** {debug_info['total_messages']} received\n"
+
+                    # Show detected files
+                    if debug_info.get("detected_files_count") is not None:
+                        debug_section += f"**Files detected:** {debug_info['detected_files_count']}\n"
+
+                    # Show expected vs verified
+                    if debug_info.get("expected_files"):
+                        debug_section += f"\n**Expected files:** {len(debug_info['expected_files'])}\n"
+                        if debug_info.get("verified_files"):
+                            debug_section += f"**Verified files:** {len(debug_info['verified_files'])}\n"
+                        if debug_info.get("missing_files"):
+                            debug_section += f"\n**Missing files:**\n"
+                            for missing in debug_info["missing_files"]:
+                                debug_section += f"  ✗ {missing}\n"
+
+                # Show SDK output if available (limited)
+                sdk_output_section = ""
+                if sdk_output:
+                    output_preview = sdk_output[:500] if len(sdk_output) > 500 else sdk_output
+                    sdk_output_section = f"\n\n**SDK Output (preview):**\n```\n{output_preview}\n{'...' if len(sdk_output) > 500 else ''}\n```"
 
                 return f"""❌ Feature creation failed
 
@@ -508,20 +828,27 @@ Minimum 20 characters required."""
 1. Ensure claude-agent-sdk is installed: `pip install claude-agent-sdk`
 2. Check that you have write permissions in the Lobster directory
 3. Verify the requirements are clear and specific
-4. Try again with more detailed requirements
+4. Try again with more detailed requirements{debug_section}{sdk_output_section}
 
-If the error persists, please report it to the Lobster team."""
+**Full logs:** Check the Lobster logs for complete debug information
+
+If the error persists, please report it to the Lobster team with the debug information above."""
 
             # 7. Success! Format response
             created_files = result["created_files"]
             creation_results["created_files"] = created_files
 
-            # Group files by type
-            agents = [f for f in created_files if "/agents/" in f and not "test_" in f and not "state.py" in f]
-            services = [f for f in created_files if "/tools/" in f and not "test_" in f]
-            tests = [f for f in created_files if "/tests/" in f]
-            wiki = [f for f in created_files if "/wiki/" in f]
-            state = [f for f in created_files if "state.py" in f]
+            # Helper function for robust path grouping
+            def in_dir(path_str: str, dirname: str) -> bool:
+                """Check if path contains directory using Path.parts (platform-independent)."""
+                return dirname in Path(path_str).parts
+
+            # Group files by type using Path.parts for robustness
+            agents = [f for f in created_files if in_dir(f, "agents") and "test_" not in Path(f).name and "state.py" not in f]
+            services = [f for f in created_files if in_dir(f, "tools") and "test_" not in Path(f).name]
+            tests = [f for f in created_files if in_dir(f, "tests")]
+            wiki = [f for f in created_files if in_dir(f, "wiki")]
+            state = [f for f in created_files if Path(f).name == "state.py"]
 
             response = f"""✅ Successfully created new {feature_type} for Lobster!
 
@@ -592,7 +919,7 @@ If the error persists, please report it to the Lobster team."""
    - Interact with the new agent through the supervisor
    - Try different workflows and edge cases
 
-📚 **Documentation:** See lobster/wiki/{feature_name.replace('_', '-').title()}.md for usage examples
+📚 **Documentation:** See lobster/wiki/{feature_name.replace('_', '-').lower()}.md for usage examples
 
 The new {feature_type} is ready to use! 🚀
 """
@@ -613,19 +940,6 @@ The new {feature_type} is ready to use! 🚀
             )
 
             return response
-
-        except SDKConnectionError as e:
-            logger.error(f"SDK connection error: {e}")
-            return f"""❌ Failed to connect to Claude Code SDK
-
-**Error:** {str(e)}
-
-**Solutions:**
-1. Install Claude Code SDK: `pip install claude-agent-sdk`
-2. Ensure Claude Code is properly configured
-3. Check your internet connection
-
-Try again after resolving the issue."""
 
         except Exception as e:
             logger.error(f"Unexpected error in create_new_feature: {e}", exc_info=True)
@@ -970,7 +1284,6 @@ for spatial-specific operations. Support both H5AD and VisiumHD formats."
 <Critical Operating Principles>
 
 1. **ONLY create features explicitly requested by the supervisor**
-2. **Always report results to supervisor, never directly to users**
 3. **Validate feature names before creation**
 4. **Check for existing files to avoid conflicts**
 5. **Provide clear instructions for manual steps** (registry update)
