@@ -386,8 +386,8 @@ class ProteomicsAdapter(BaseAdapter):
         original_shape = adata.shape
 
         # Calculate missing rates
-        obs_missing_rate = np.isnan(adata.X).sum(axis=1) / adata.n_vars
-        vars_missing_rate = np.isnan(adata.X).sum(axis=0) / adata.n_obs
+        obs_missing_rate = np.array(np.isnan(adata.X).sum(axis=1)).flatten() / adata.n_vars
+        vars_missing_rate = np.array(np.isnan(adata.X).sum(axis=0)).flatten() / adata.n_obs
 
         # Filter observations
         obs_keep = obs_missing_rate <= max_missing_obs
@@ -482,9 +482,9 @@ class ProteomicsAdapter(BaseAdapter):
         if "n_proteins" not in adata.obs.columns:
             # Count detected proteins (non-NaN values)
             if hasattr(adata.X, "isnan"):
-                adata.obs["n_proteins"] = (~np.isnan(adata.X)).sum(axis=1)
+                adata.obs["n_proteins"] = np.array((~np.isnan(adata.X)).sum(axis=1)).flatten()
             else:
-                adata.obs["n_proteins"] = (adata.X > 0).sum(axis=1)
+                adata.obs["n_proteins"] = np.array((adata.X > 0).sum(axis=1)).flatten()
 
         if "total_intensity" not in adata.obs.columns:
             # Sum of all intensities (excluding NaN)
@@ -497,16 +497,16 @@ class ProteomicsAdapter(BaseAdapter):
         if "pct_missing" not in adata.obs.columns and hasattr(adata.X, "isnan"):
             # Percentage of missing values per sample
             adata.obs["pct_missing"] = (
-                np.isnan(adata.X).sum(axis=1) / adata.n_vars * 100
+                np.array(np.isnan(adata.X).sum(axis=1)).flatten() / adata.n_vars * 100
             )
 
         # Calculate per-protein metrics
         if "n_samples" not in adata.var.columns:
             # Count samples with detection
             if hasattr(adata.X, "isnan"):
-                adata.var["n_samples"] = (~np.isnan(adata.X)).sum(axis=0)
+                adata.var["n_samples"] = np.array((~np.isnan(adata.X)).sum(axis=0)).flatten()
             else:
-                adata.var["n_samples"] = (adata.X > 0).sum(axis=0)
+                adata.var["n_samples"] = np.array((adata.X > 0).sum(axis=0)).flatten()
 
         if "mean_intensity" not in adata.var.columns:
             # Mean intensity per protein
@@ -518,7 +518,7 @@ class ProteomicsAdapter(BaseAdapter):
 
         if "pct_missing" not in adata.var.columns and hasattr(adata.X, "isnan"):
             # Percentage of missing values per protein
-            adata.var["pct_missing"] = np.isnan(adata.X).sum(axis=0) / adata.n_obs * 100
+            adata.var["pct_missing"] = np.array(np.isnan(adata.X).sum(axis=0)).flatten() / adata.n_obs * 100
 
         # Calculate coefficient of variation
         if "cv" not in adata.var.columns:
