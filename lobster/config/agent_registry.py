@@ -52,10 +52,10 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
     "research_agent": AgentRegistryConfig(
         name="research_agent",
         display_name="Research Agent",
-        description="Handles literature discovery and dataset identification tasks",
+        description="Handles literature discovery, dataset identification, PDF extraction, and computational method analysis from publications",
         factory_function="lobster.agents.research_agent.research_agent",
         handoff_tool_name="handoff_to_research_agent",
-        handoff_tool_description="Assign literature search and dataset discovery tasks to the research agent",
+        handoff_tool_description="Assign literature search, dataset discovery, PDF extraction, method analysis, and supplementary material download tasks to the research agent",
     ),
     "method_expert_agent": AgentRegistryConfig(
         name="method_expert_agent",

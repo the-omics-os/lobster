@@ -71,6 +71,10 @@ dependencies = [
     "aiofiles>=23.0.0",
     "xmltodict>=0.13.0",
     "boto3>=1.26.0",
+    # PDF and HTML parsing (for publication intelligence)
+    "pypdf2>=3.0.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=4.9.0",
     # API support
     "fastapi>=0.100.0",
     "uvicorn>=0.23.0",
@@ -90,6 +94,7 @@ dependencies = [
     # PyTorch support (required by scvi-tools)
     "torch>=2.0.0",
     "langchain-anthropic>=0.3.20",
+    "responses>=0.25.8",
 ]
 
 [project.optional-dependencies]
@@ -129,6 +134,7 @@ dev = [
     "mypy>=1.0.0",
     "bandit>=1.7.0",
     "ruff>=0.0.300",
+    "responses>=0.25.8",
     
     # Development tools
     "pre-commit>=3.0.0",

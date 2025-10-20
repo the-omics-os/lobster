@@ -20,6 +20,7 @@ from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.providers.base_provider import DatasetType, PublicationSource
 from lobster.tools.publication_service import PublicationService
+from lobster.tools.publication_intelligence_service import PublicationIntelligenceService
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -474,6 +475,87 @@ def research_agent(
             logger.error(f"Error in metadata validation: {e}")
             return f"Error validating dataset metadata: {str(e)}"
 
+    @tool
+    def extract_paper_methods(url_or_pmid: str) -> str:
+        """
+        Extract computational analysis methods from a research paper.
+
+        This tool downloads and analyzes research papers to extract:
+        - Software/tools used (e.g., Scanpy, Seurat, DESeq2)
+        - Parameter values and cutoffs
+        - Statistical methods
+        - Data sources and sample sizes
+        - Normalization and QC methods
+
+        Provide either:
+        - Direct PDF URL (e.g., https://nature.com/articles/paper.pdf)
+        - Paper webpage URL (will auto-detect PDF)
+
+        Note: PMID resolution requires direct PDF URL for now.
+
+        Args:
+            url_or_pmid: Paper URL (PDF or webpage with PDF link)
+
+        Returns:
+            JSON-formatted extraction of methods, parameters, and software used
+
+        Examples:
+            - extract_paper_methods("https://www.biorxiv.org/content/10.1101/2024.01.001.pdf")
+            - extract_paper_methods("https://elifesciences.org/articles/12345")
+        """
+        try:
+            # Initialize intelligence service
+            intelligence_service = PublicationIntelligenceService(data_manager=data_manager)
+
+            # Extract methods using LLM
+            methods = intelligence_service.extract_methods_from_paper(url_or_pmid)
+
+            # Format for agent response
+            formatted = json.dumps(methods, indent=2)
+            logger.info(f"Successfully extracted methods from paper: {url_or_pmid[:80]}...")
+
+            return f"## Extracted Methods from Paper\n\n{formatted}"
+
+        except Exception as e:
+            logger.error(f"Error extracting paper methods: {e}")
+            return f"Error extracting methods from paper: {str(e)}\n\nPlease ensure you provide a direct PDF URL or a webpage containing a PDF link."
+
+    @tool
+    def download_supplementary_materials(doi: str, output_dir: str = None) -> str:
+        """
+        Download supplementary materials from a paper's DOI.
+
+        This tool:
+        - Resolves DOI to publisher page
+        - Finds supplementary material links
+        - Downloads all supplementary files
+        - Returns download report with file locations
+
+        Args:
+            doi: Paper DOI (e.g., "10.1038/s41586-021-12345-6")
+            output_dir: Directory to save files (default: .lobster_workspace/supplements/<doi>)
+
+        Returns:
+            Download report with list of downloaded files
+
+        Examples:
+            - download_supplementary_materials("10.1038/s41586-021-12345-6")
+            - download_supplementary_materials("10.1126/science.abc1234", "/path/to/output")
+        """
+        try:
+            # Initialize intelligence service
+            intelligence_service = PublicationIntelligenceService(data_manager=data_manager)
+
+            # Download supplementary materials
+            result = intelligence_service.fetch_supplementary_info_from_doi(doi, output_dir)
+
+            logger.info(f"Supplementary download completed for DOI: {doi}")
+            return f"## Supplementary Materials Download Report\n\n{result}"
+
+        except Exception as e:
+            logger.error(f"Error downloading supplementary materials: {e}")
+            return f"Error downloading supplementary materials for DOI {doi}: {str(e)}"
+
     base_tools = [
         search_literature,
         find_datasets_from_publication,
@@ -483,6 +565,8 @@ def research_agent(
         extract_publication_metadata,
         get_research_capabilities,
         validate_dataset_metadata,
+        extract_paper_methods,
+        download_supplementary_materials,
     ]
 
     # Combine base tools with handoff tools if provided
@@ -559,6 +643,27 @@ You work closely with:
 - `extract_publication_metadata`: Comprehensive metadata extraction
   * Full bibliographic information, abstracts, author lists
   * Standardized format across different sources
+
+### Publication Intelligence (NEW - PDF Analysis)
+- `extract_paper_methods`: Extract computational methods from research papers
+  * Provide direct PDF URL or webpage containing PDF
+  * Uses LLM to analyze full paper text and extract:
+    - Software/tools used (e.g., Scanpy, Seurat, DESeq2)
+    - Parameter values and cutoffs (e.g., min_genes=200, p<0.05)
+    - Statistical methods (e.g., Wilcoxon test, FDR correction)
+    - Data sources (e.g., GEO datasets, cell lines)
+    - Sample sizes and normalization methods
+  * Returns structured JSON with extracted information
+  * Enables competitive intelligence: "What methods did Competitor X use?"
+  * Example: extract_paper_methods("https://www.nature.com/articles/paper.pdf")
+
+- `download_supplementary_materials`: Download supplementary files from DOI
+  * Provide paper DOI (e.g., "10.1038/s41586-021-12345-6")
+  * Automatically finds and downloads all supplementary materials
+  * Saves to .lobster_workspace/supplements/<doi>/
+  * Returns download report with file locations
+  * Useful for accessing protocols, code, raw data
+  * Example: download_supplementary_materials("10.1038/s41586-021-12345-6")
 
 ### Dataset Discovery
 - `find_datasets_from_publication`: Discover datasets from publications
@@ -716,6 +821,57 @@ search_datasets_directly(
 Example 5: CAR-T Cell Exhaustion in Solid Tumors
 
 Pharma Context: "Our CD19 CAR-T works in lymphoma but fails in solid tumors. I need single-cell datasets comparing CAR-T cells from responders vs non-responders to understand exhaustion mechanisms."
+
+Optimized Search Strategy:
+
+# ... (CAR-T search strategy)
+
+Example 6: Competitive Intelligence - Extract Competitor's Methods (NEW)
+
+Pharma Context: "Our competitor just published a Nature paper on their single-cell analysis pipeline. I need to know exactly what methods, parameters, and software they used so we can replicate or improve upon their approach."
+
+Optimized Search Strategy:
+
+# Step 1: Find the paper using literature search
+search_literature(
+    query='competitor_name AND "single-cell" AND "analysis pipeline"',
+    sources="pubmed",
+    max_results=3
+)
+
+# Step 2: Extract computational methods from the PDF
+extract_paper_methods("https://www.nature.com/articles/competitor-paper.pdf")
+
+# Expected Output:
+{
+  "software_used": ["Scanpy 1.9", "Seurat 4.0", "CellTypist"],
+  "parameters": {
+    "min_genes": "200",
+    "min_cells": "3",
+    "max_percent_mito": "5%",
+    "n_neighbors": "15",
+    "resolution": "0.5"
+  },
+  "statistical_methods": ["Wilcoxon rank-sum test", "Benjamini-Hochberg FDR"],
+  "normalization_methods": ["log1p transformation", "total-count normalization"],
+  "quality_control": ["doublet detection with Scrublet", "cell cycle regression"]
+}
+
+# Step 3: Download supplementary materials for code/protocols
+download_supplementary_materials("10.1038/s41586-2024-12345-6")
+
+# Downloads: analysis_code.zip, supplementary_tables.xlsx, protocol.pdf
+
+Use Cases:
+✅ Replicate competitor methods exactly
+✅ Identify gaps in competitor's QC pipeline
+✅ Extract parameter values for optimization
+✅ Access supplementary code and protocols
+✅ Due diligence for acquisition targets
+
+Example 7: Method Extraction for Protocol Standardization (NEW)
+
+Pharma Context: "We're standardizing our single-cell analysis pipeline. I need to extract methods from 5 top papers to identify consensus best practices."
 
 Optimized Search Strategy:
 
