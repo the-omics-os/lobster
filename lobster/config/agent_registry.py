@@ -52,10 +52,10 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
     "research_agent": AgentRegistryConfig(
         name="research_agent",
         display_name="Research Agent",
-        description="Handles literature discovery, dataset identification, PDF extraction, and computational method analysis from publications",
+        description="Handles literature discovery, dataset identification, PDF extraction with AUTOMATIC PMID/DOI resolution, batch method extraction (5 papers), and computational method analysis from publications",
         factory_function="lobster.agents.research_agent.research_agent",
         handoff_tool_name="handoff_to_research_agent",
-        handoff_tool_description="Assign literature search, dataset discovery, PDF extraction, method analysis, and supplementary material download tasks to the research agent",
+        handoff_tool_description="Assign literature search, dataset discovery, PDF extraction with auto-resolution (PMC/bioRxiv/preprints), batch method extraction, method analysis, and supplementary downloads to the research agent",
     ),
     "method_expert_agent": AgentRegistryConfig(
         name="method_expert_agent",

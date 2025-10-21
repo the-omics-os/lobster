@@ -480,6 +480,8 @@ def research_agent(
         """
         Extract computational analysis methods from a research paper.
 
+        ✨ NEW IN PHASE 1: Now automatically resolves PMIDs and DOIs to PDF URLs!
+
         This tool downloads and analyzes research papers to extract:
         - Software/tools used (e.g., Scanpy, Seurat, DESeq2)
         - Parameter values and cutoffs
@@ -487,19 +489,24 @@ def research_agent(
         - Data sources and sample sizes
         - Normalization and QC methods
 
-        Provide either:
+        Accepts multiple identifier types:
+        - PMID (e.g., "PMID:12345678" or "12345678") - Auto-resolves via PMC/bioRxiv
+        - DOI (e.g., "10.1038/s41586-021-12345-6") - Auto-resolves to open access PDF
         - Direct PDF URL (e.g., https://nature.com/articles/paper.pdf)
-        - Paper webpage URL (will auto-detect PDF)
+        - Webpage URL (will auto-detect PDF link)
 
-        Note: PMID resolution requires direct PDF URL for now.
+        Resolution priority: PMC → bioRxiv/medRxiv → Publisher Open Access
 
         Args:
-            url_or_pmid: Paper URL (PDF or webpage with PDF link)
+            url_or_pmid: PMID, DOI, or PDF URL
 
         Returns:
             JSON-formatted extraction of methods, parameters, and software used
+            OR helpful suggestions if paper is paywalled
 
         Examples:
+            - extract_paper_methods("PMID:12345678")  # NEW: Auto-resolves!
+            - extract_paper_methods("10.1038/s41586-021-12345-6")  # NEW: Auto-resolves!
             - extract_paper_methods("https://www.biorxiv.org/content/10.1101/2024.01.001.pdf")
             - extract_paper_methods("https://elifesciences.org/articles/12345")
         """
@@ -507,7 +514,7 @@ def research_agent(
             # Initialize intelligence service
             intelligence_service = PublicationIntelligenceService(data_manager=data_manager)
 
-            # Extract methods using LLM
+            # Extract methods using LLM (NOW WITH AUTO-RESOLUTION!)
             methods = intelligence_service.extract_methods_from_paper(url_or_pmid)
 
             # Format for agent response
@@ -518,7 +525,192 @@ def research_agent(
 
         except Exception as e:
             logger.error(f"Error extracting paper methods: {e}")
-            return f"Error extracting methods from paper: {str(e)}\n\nPlease ensure you provide a direct PDF URL or a webpage containing a PDF link."
+            error_msg = str(e)
+
+            # Check if it's a paywalled paper with suggestions
+            if "not openly accessible" in error_msg:
+                return f"## Paper Access Issue\n\n{error_msg}"
+            else:
+                return f"Error extracting methods from paper: {error_msg}"
+
+    @tool
+    def resolve_paper_access(identifier: str) -> str:
+        """
+        Check if a paper is accessible and get PDF URL or access suggestions.
+
+        ✨ NEW IN PHASE 1: Essential diagnostic tool for paper accessibility!
+
+        Use this tool BEFORE extract_paper_methods to:
+        - Verify paper accessibility
+        - Get direct PDF URL
+        - Receive guidance if paywalled (PMC links, preprints, author contact)
+
+        Resolution Strategy:
+        1. PubMed Central (PMC) - Free full text
+        2. bioRxiv/medRxiv - Preprint servers
+        3. Publisher Open Access
+        4. Helpful suggestions if paywalled
+
+        Args:
+            identifier: PMID (e.g., "PMID:12345678"), DOI, or paper identifier
+
+        Returns:
+            Access report with PDF URL OR alternative suggestions
+
+        Examples:
+            - resolve_paper_access("PMID:12345678")
+            - resolve_paper_access("10.1038/s41586-021-12345-6")
+
+        When to use this tool:
+        - BEFORE calling extract_paper_methods to check accessibility
+        - When user asks "Can I access this paper?"
+        - To diagnose why PDF extraction failed
+        """
+        try:
+            # Use research assistant to resolve
+            result = research_assistant.resolve_publication_to_pdf(identifier)
+
+            # Format the result
+            report = research_assistant.format_resolution_report(result)
+
+            logger.info(f"Resolved access for {identifier}: {result.access_type}")
+
+            return report
+
+        except Exception as e:
+            logger.error(f"Error resolving paper access: {e}")
+            return f"Error checking paper access: {str(e)}"
+
+    @tool
+    def extract_methods_batch(identifiers: str, max_papers: int = 5) -> str:
+        """
+        Extract computational methods from multiple papers in batch.
+
+        ✨ NEW IN PHASE 1: Batch processing for competitive analysis!
+
+        This tool:
+        1. Accepts comma-separated PMIDs, DOIs, or URLs
+        2. Resolves identifiers to PDFs automatically
+        3. Extracts methods from each paper
+        4. Returns aggregated results with success/failure report
+        5. Conservative limit: 5 papers per batch (configurable up to 10)
+
+        Args:
+            identifiers: Comma-separated list (e.g., "PMID:12345,10.1038/s41586-021-12345-6")
+            max_papers: Maximum papers to process (default: 5, max: 10)
+
+        Returns:
+            Batch extraction report with individual results and summary
+
+        Examples:
+            - extract_methods_batch("PMID:12345678,PMID:87654321,10.1038/s41586-021-12345-6")
+            - extract_methods_batch("https://biorxiv.org/paper1.pdf,PMID:12345", max_papers=3)
+
+        When to use this tool:
+        - User asks to "analyze methods from these 5 papers"
+        - Competitive intelligence workflows
+        - Literature review with method comparison
+        - When user provides a list of PMIDs/DOIs
+
+        ⚠️ IMPORTANT: This tool processes papers SEQUENTIALLY to be conservative.
+        For >5 papers, consider breaking into multiple batches.
+        """
+        try:
+            # Parse identifiers
+            id_list = [id_.strip() for id_ in identifiers.split(",") if id_.strip()]
+
+            # Validate and limit batch size
+            if not id_list:
+                return "Error: No identifiers provided. Please provide comma-separated PMIDs, DOIs, or URLs."
+
+            if len(id_list) > 10:
+                return f"Error: Batch size {len(id_list)} exceeds maximum of 10. Please reduce the number of papers or break into multiple batches."
+
+            if len(id_list) > max_papers:
+                logger.warning(f"Limiting batch from {len(id_list)} to {max_papers} papers")
+                id_list = id_list[:max_papers]
+
+            logger.info(f"Starting batch extraction for {len(id_list)} papers")
+
+            # First, resolve all identifiers to check accessibility
+            resolution_results = research_assistant.batch_resolve_publications(id_list, max_batch=max_papers)
+
+            # Track results
+            successful_extractions = []
+            paywalled_papers = []
+            failed_extractions = []
+
+            # Initialize intelligence service
+            intelligence_service = PublicationIntelligenceService(data_manager=data_manager)
+
+            # Process each paper
+            for i, (identifier, resolution) in enumerate(zip(id_list, resolution_results), 1):
+                logger.info(f"Processing paper {i}/{len(id_list)}: {identifier}")
+
+                if not resolution.is_accessible():
+                    # Paper is paywalled or inaccessible
+                    paywalled_papers.append({
+                        "identifier": identifier,
+                        "reason": resolution.access_type,
+                        "suggestions": resolution.suggestions
+                    })
+                    continue
+
+                try:
+                    # Extract methods
+                    methods = intelligence_service.extract_methods_from_paper(resolution.pdf_url)
+                    successful_extractions.append({
+                        "identifier": identifier,
+                        "source": resolution.source,
+                        "methods": methods
+                    })
+                    logger.info(f"✅ Successfully extracted methods from {identifier}")
+
+                except Exception as e:
+                    logger.error(f"❌ Failed to extract methods from {identifier}: {e}")
+                    failed_extractions.append({
+                        "identifier": identifier,
+                        "error": str(e)
+                    })
+
+            # Generate comprehensive report
+            report = f"""
+## Batch Method Extraction Report
+
+**Total Papers:** {len(id_list)}
+**Successful:** ✅ {len(successful_extractions)} ({len(successful_extractions)*100//len(id_list) if id_list else 0}%)
+**Paywalled:** ❌ {len(paywalled_papers)} ({len(paywalled_papers)*100//len(id_list) if id_list else 0}%)
+**Failed:** ⚠️ {len(failed_extractions)} ({len(failed_extractions)*100//len(id_list) if id_list else 0}%)
+
+---
+
+### ✅ Successfully Extracted ({len(successful_extractions)}):
+"""
+
+            for result in successful_extractions:
+                report += f"\n**{result['identifier']}** (Source: {result['source']})\n"
+                report += f"```json\n{json.dumps(result['methods'], indent=2)}\n```\n\n"
+
+            if paywalled_papers:
+                report += f"\n### ❌ Paywalled Papers ({len(paywalled_papers)}):\n"
+                for paper in paywalled_papers:
+                    report += f"\n**{paper['identifier']}**\n"
+                    report += f"- Status: {paper['reason']}\n"
+                    report += f"- Suggestions:\n{paper['suggestions']}\n\n"
+
+            if failed_extractions:
+                report += f"\n### ⚠️ Failed Extractions ({len(failed_extractions)}):\n"
+                for paper in failed_extractions:
+                    report += f"\n**{paper['identifier']}**\n"
+                    report += f"- Error: {paper['error']}\n\n"
+
+            logger.info(f"Batch extraction complete: {len(successful_extractions)}/{len(id_list)} successful")
+
+            return report
+
+        except Exception as e:
+            logger.error(f"Error in batch extraction: {e}")
+            return f"Error in batch method extraction: {str(e)}"
 
     @tool
     def download_supplementary_materials(doi: str, output_dir: str = None) -> str:
@@ -565,7 +757,10 @@ def research_agent(
         extract_publication_metadata,
         get_research_capabilities,
         validate_dataset_metadata,
-        extract_paper_methods,
+        # Phase 1: Enhanced PDF resolution tools
+        extract_paper_methods,  # NOW supports PMIDs/DOIs!
+        resolve_paper_access,  # NEW: Check accessibility before extraction
+        extract_methods_batch,  # NEW: Batch processing (5 papers)
         download_supplementary_materials,
     ]
 
@@ -691,6 +886,257 @@ You work closely with:
   * Returns recommendation: "proceed" | "skip" | "manual_check"
   * Example: validate_dataset_metadata("GSE179994", "treatment_response,timepoint", '{{"treatment_response": ["responder", "non-responder"]}}')
 </Available Research Tools>
+
+<Critical_Tool_Usage_Workflows>
+## 🔄 PHASE 1: Automatic PDF Resolution - NEW CAPABILITIES!
+
+### ✨ What Changed in Phase 1:
+1. **`extract_paper_methods()` NOW ACCEPTS PMIDs/DOIs!** - No more manual URL finding!
+2. **NEW `resolve_paper_access()` tool** - Check accessibility BEFORE extraction
+3. **NEW `extract_methods_batch()` tool** - Process up to 5 papers at once
+4. **Automatic resolution** through PMC → bioRxiv → Publisher Open Access
+
+### 📘 Workflow 1: Extract Methods from Literature Search Results
+
+**Scenario**: User asks "Find papers on KRAS G12C resistance and extract their methods"
+
+**CORRECT Workflow**:
+```
+Step 1: Search for papers
+search_literature("KRAS G12C resistance mechanisms", max_results=5)
+→ Returns 5 papers with PMIDs
+
+Step 2: For EACH PMID, directly extract methods (auto-resolution happens internally!)
+extract_paper_methods("PMID:12345678")
+extract_paper_methods("PMID:23456789")
+...
+
+Step 3: If extraction fails with "paywalled" message:
+- Present the alternative access suggestions provided
+- Do NOT give up - the suggestions include PMC links, preprints, author contact
+- Ask user if they want to try alternative sources
+```
+
+**❌ WRONG Workflow** (OLD WAY - Don't do this anymore!):
+```
+Step 1: search_literature(...)
+Step 2: Tell user "Please provide PDF URLs" ← WRONG! We auto-resolve now!
+Step 3: Wait for user to manually find URLs ← WRONG! Not needed anymore!
+```
+
+### 📘 Workflow 2: Batch Method Extraction (NEW!)
+
+**Scenario**: User asks "Extract methods from these 5 papers: PMID:123, PMID:456, PMID:789, DOI:10.1038/..., DOI:10.1016/..."
+
+**CORRECT Workflow**:
+```
+Step 1: Use the NEW batch tool
+extract_methods_batch("PMID:123,PMID:456,PMID:789,10.1038/...,10.1016/...", max_papers=5)
+
+Step 2: Review the batch report:
+- ✅ Successfully extracted papers → Present methods
+- ❌ Paywalled papers → Present alternative access suggestions
+- ⚠️ Failed papers → Explain what went wrong
+
+Step 3: For paywalled papers, offer to help:
+"Papers X and Y are paywalled. Would you like me to:
+1. Check alternative sources (PMC, bioRxiv)?
+2. Provide author contact information?
+3. Continue with the accessible papers only?"
+```
+
+**When to use batch vs individual**:
+- Batch (extract_methods_batch): User provides 2-5 papers at once
+- Individual (extract_paper_methods): One paper at a time, or iterative workflow
+
+### 📘 Workflow 3: Check Accessibility First (NEW!)
+
+**Scenario**: User uncertain about paper access, or previous extraction failed
+
+**CORRECT Workflow**:
+```
+Step 1: Check accessibility FIRST with the NEW diagnostic tool
+resolve_paper_access("PMID:12345678")
+
+Step 2: Interpret the result:
+- If ✅ ACCESSIBLE: Shows PDF URL and source (PMC, bioRxiv, etc.)
+  → Proceed with extract_paper_methods("PMID:12345678")
+
+- If ❌ NOT ACCESSIBLE: Shows alternative access options
+  → Present suggestions to user
+  → Ask if they want to try alternatives
+  → Do NOT attempt extraction (will fail)
+
+Step 3: If user wants alternatives:
+- Check PMC accepted manuscript link
+- Search bioRxiv/medRxiv for preprints
+- Suggest contacting corresponding author
+```
+
+**When to use resolve_paper_access**:
+- User asks "Can I access this paper?"
+- Previous extract_paper_methods failed
+- Diagnosing accessibility issues
+- BEFORE batch processing to preview accessibility
+
+### 📘 Workflow 4: Handle Paywalled Papers Gracefully
+
+**Scenario**: Paper is not openly accessible
+
+**CORRECT Workflow**:
+```
+Step 1: When extract_paper_methods returns "Paper Access Issue":
+- Read the suggestions carefully
+- Present ALL alternative options to user
+- Do NOT say "I cannot access this paper" and stop
+
+Step 2: Present structured alternatives:
+"❌ This paper is paywalled at the publisher, but here are alternatives:
+
+1. 🔓 PubMed Central: Check for accepted manuscript
+   → [PMC search link]
+
+2. 📄 Preprint Servers: May have early version
+   → bioRxiv: [search link]
+   → medRxiv: [search link]
+
+3. 🏛️ Institutional Access: Try through your library
+   → Use VPN or library proxy
+   → Request via interlibrary loan
+
+4. 📧 Author Contact: Request PDF directly
+   → Email corresponding author: [author info]
+   → Check ResearchGate/Academia.edu profiles
+
+5. 🔗 Unpaywall: Legal open access checker
+   → [unpaywall link]
+
+Would you like me to try any of these alternatives?"
+
+Step 3: If user provides alternative URL:
+extract_paper_methods("[alternative URL]")
+```
+
+**❌ NEVER say**: "I cannot access this paper" and stop
+**✅ ALWAYS say**: "This paper is paywalled, but here are 5 ways to access it..."
+
+### 📘 Workflow 5: Competitive Intelligence Analysis
+
+**Scenario**: "Analyze competitor's methods from their 5 recent papers"
+
+**CORRECT Workflow**:
+```
+Step 1: Search for competitor's recent papers
+search_literature(
+    "competitor_name AND (2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
+    max_results=5,
+    sources="pubmed",
+    filters='{{"date_range": {{"start": "2023", "end": "2025"}}}}'
+)
+
+Step 2: Extract PMIDs from results
+
+Step 3: Use batch extraction for efficiency
+extract_methods_batch("PMID:123,PMID:456,PMID:789,PMID:012,PMID:345")
+
+Step 4: Analyze the successfully extracted methods:
+- Common software/tools across papers
+- Parameter consistency or evolution
+- Statistical approaches used
+- Trends over time (2023 → 2024 → 2025)
+
+Step 5: Present comparative analysis:
+"## Competitor Method Analysis
+
+**Papers Analyzed**: 5 (3 accessible, 2 paywalled)
+
+**Common Tools**:
+- Scanpy: Used in 3/3 papers
+- Seurat: Used in 2/3 papers
+- DESeq2: Used in 1/3 papers
+
+**Parameter Patterns**:
+- min_genes: 200 (consistent across papers)
+- resolution: 0.5 → 0.8 (increased over time)
+
+**Statistical Methods**:
+- Wilcoxon test: Standard approach
+- FDR correction: Always applied
+
+**Trends**: Moving from Seurat to Scanpy in recent work"
+```
+
+### 🧠 Tool Selection Decision Tree
+
+**Question**: Which tool should I use for this user request?
+
+```
+User wants to extract methods from paper(s)
+├─ Single paper?
+│  ├─ Has direct PDF URL?
+│  │  └─ YES → extract_paper_methods(url)
+│  └─ Has PMID/DOI?
+│     ├─ Uncertain about access?
+│     │  └─ resolve_paper_access(identifier) FIRST
+│     └─ Then → extract_paper_methods(identifier)
+│
+└─ Multiple papers (2-5)?
+   ├─ User wants quick diagnosis?
+   │  └─ resolve_paper_access for each to preview
+   └─ User wants extraction?
+      └─ extract_methods_batch("id1,id2,id3,...")
+
+User wants to check paper accessibility?
+└─ resolve_paper_access(identifier)
+
+User wants literature search?
+├─ Just search? → search_literature(...)
+└─ Search + extract? → search_literature(...) THEN extract_methods_batch(pmids)
+```
+
+### 🚨 Error Recovery Strategies
+
+#### Problem 1: "Paper not openly accessible"
+
+**Recovery Steps**:
+1. ✅ Read the suggestions in the error message
+2. ✅ Present ALL 5 alternative options to user
+3. ✅ Offer to check PMC accepted manuscript
+4. ✅ Offer to search bioRxiv/medRxiv
+5. ✅ Suggest author contact information
+6. ❌ NEVER stop at "cannot access"
+
+#### Problem 2: Batch processing has failures
+
+**Recovery Steps**:
+1. ✅ Review extract_methods_batch() report
+2. ✅ For each failure, identify reason:
+   - Paywalled → Apply recovery for Problem 1
+   - Network error → Offer to retry
+   - Invalid identifier → Ask user to verify
+3. ✅ Present partial results: "Successfully extracted 3/5 papers"
+4. ✅ Offer to retry failed papers individually
+5. ✅ Aggregate successful results and continue analysis
+
+#### Problem 3: PMID resolution failed
+
+**Recovery Steps**:
+1. ✅ Check if recent publication (PMC lag 6-12 months)
+2. ✅ Try preprint servers (bioRxiv/medRxiv)
+3. ✅ Search publisher page for open access
+4. ✅ Suggest checking back later
+5. ✅ Offer to work with abstract/methods from PubMed
+
+#### Problem 4: All papers in batch are paywalled
+
+**Recovery Steps**:
+1. ✅ Present all alternative access options
+2. ✅ Suggest narrowing search to open-access journals
+3. ✅ Offer to search bioRxiv/medRxiv directly
+4. ✅ Recommend institutional access methods
+5. ❌ NEVER say "all papers are inaccessible, cannot proceed"
+
+</Critical_Tool_Usage_Workflows>
 
 <Pharmaceutical_Research_Examples>
 

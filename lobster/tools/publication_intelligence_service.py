@@ -351,6 +351,88 @@ class PublicationIntelligenceService:
             research_log.append(f"Error: {str(e)}")
             return "\n".join(research_log)
 
+    def resolve_and_extract_methods(
+        self,
+        identifier: str,
+        llm=None,
+        max_text_length: int = 10000
+    ) -> Dict[str, Any]:
+        """
+        Resolve identifier to PDF and extract methods (combined workflow).
+
+        This method combines resolution + extraction in one step for convenience.
+
+        Args:
+            identifier: PMID, DOI, or PDF URL
+            llm: LLM instance for analysis (uses default if None)
+            max_text_length: Maximum text length to send to LLM (default: 10000)
+
+        Returns:
+            Dictionary with structured method extraction or error information:
+            {
+                "status": "success" | "paywalled" | "error",
+                "methods": Dict,           # If successful
+                "suggestions": str,        # If paywalled
+                "source": str,            # Resolution source
+                "metadata": Dict          # Resolution metadata
+            }
+
+        Examples:
+            >>> service = PublicationIntelligenceService()
+            >>> result = service.resolve_and_extract_methods("PMID:12345678")
+            >>> if result['status'] == 'success':
+            ...     print(result['methods']['software_used'])
+            >>> elif result['status'] == 'paywalled':
+            ...     print(result['suggestions'])
+        """
+        logger.info(f"Resolving and extracting methods from: {identifier}")
+
+        try:
+            # First, try to resolve to PDF URL if not already a direct URL
+            from lobster.agents.research_agent_assistant import ResearchAgentAssistant
+
+            assistant = ResearchAgentAssistant()
+
+            # Check if it's already a direct URL
+            if identifier.startswith("http"):
+                # Direct URL, no resolution needed
+                url = identifier
+                source = "direct_url"
+            else:
+                # Try to resolve
+                resolution = assistant.resolve_publication_to_pdf(identifier)
+
+                if not resolution.is_accessible():
+                    # Paper is paywalled or inaccessible
+                    logger.warning(f"Paper {identifier} is not accessible: {resolution.access_type}")
+                    return {
+                        "status": "paywalled",
+                        "suggestions": resolution.suggestions,
+                        "source": resolution.source,
+                        "metadata": resolution.metadata,
+                    }
+
+                url = resolution.pdf_url
+                source = resolution.source
+
+            # Now extract methods
+            methods = self.extract_methods_from_paper(url, llm=llm, max_text_length=max_text_length)
+
+            return {
+                "status": "success",
+                "methods": methods,
+                "source": source,
+                "metadata": {"identifier": identifier, "pdf_url": url},
+            }
+
+        except Exception as e:
+            logger.error(f"Error in resolve_and_extract_methods: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "suggestions": f"Failed to extract methods: {str(e)}",
+            }
+
     def extract_methods_from_paper(
         self,
         url_or_pmid: str,
@@ -359,6 +441,8 @@ class PublicationIntelligenceService:
     ) -> Dict[str, Any]:
         """
         Extract computational analysis methods from a research paper using LLM.
+
+        NOW SUPPORTS: Direct PDF URLs, PMIDs, and DOIs with automatic resolution!
 
         Uses LLM to analyze full paper text and extract:
         - Software/tools used
@@ -370,7 +454,7 @@ class PublicationIntelligenceService:
         - Quality control steps
 
         Args:
-            url_or_pmid: Paper URL or PubMed ID (PMID)
+            url_or_pmid: Paper URL, PMID (e.g., "PMID:12345678"), or DOI
             llm: LLM instance for analysis (uses default if None)
             max_text_length: Maximum text length to send to LLM (default: 10000)
 
@@ -379,26 +463,38 @@ class PublicationIntelligenceService:
 
         Examples:
             >>> service = PublicationIntelligenceService()
+            >>> # Now works with PMIDs!
             >>> methods = service.extract_methods_from_paper("PMID:12345678")
             >>> print(methods['software_used'])
             ['Scanpy', 'Seurat', 'DESeq2']
+            >>> # Also works with DOIs
+            >>> methods = service.extract_methods_from_paper("10.1038/s41586-021-12345-6")
+            >>> # And still works with direct URLs
+            >>> methods = service.extract_methods_from_paper("https://biorxiv.org/paper.pdf")
         """
         logger.info(f"Extracting methods from: {url_or_pmid}")
 
         try:
-            # Step 1: Get full text
-            if url_or_pmid.startswith("PMID:") or url_or_pmid.isdigit():
-                # For PMID, we need to construct a URL
-                # This is simplified - in production, use PubMed API to get actual PDF URL
-                pmid = url_or_pmid.replace("PMID:", "")
-                logger.warning(f"PMID resolution not fully implemented. Using PMID: {pmid}")
-                # For now, raise an error suggesting to use direct URL
-                raise ValueError(
-                    f"Please provide a direct PDF URL instead of PMID. "
-                    f"PMID resolution requires additional API integration."
-                )
-            else:
-                url = url_or_pmid
+            # Step 1: Resolve to PDF URL if needed (ENHANCED - Phase 1)
+            url = url_or_pmid
+
+            if not url_or_pmid.startswith("http"):
+                # Not a direct URL - try to resolve
+                from lobster.agents.research_agent_assistant import ResearchAgentAssistant
+
+                assistant = ResearchAgentAssistant()
+                resolution = assistant.resolve_publication_to_pdf(url_or_pmid)
+
+                if not resolution.is_accessible():
+                    # Paper is paywalled - raise informative error
+                    raise ValueError(
+                        f"Paper {url_or_pmid} is not openly accessible.\n\n"
+                        f"{resolution.suggestions}\n\n"
+                        f"Please provide a direct PDF URL or try alternative sources."
+                    )
+
+                url = resolution.pdf_url
+                logger.info(f"Resolved {url_or_pmid} to PDF URL via {resolution.source}")
 
             # Extract text from PDF
             full_text = self.extract_pdf_content(url)
