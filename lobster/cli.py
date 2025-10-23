@@ -1747,7 +1747,7 @@ def init_client_with_animation(
         "singlecell_expert_agent": "🧬",
         "bulk_rnaseq_expert_agent": "📊",
         "research_agent": "📚",
-        "method_expert_agent": "🔬",
+        # "method_expert_agent": "🔬",  # DEPRECATED v2.2+
         "ms_proteomics_expert_agent": "🧪",
         "affinity_proteomics_expert_agent": "🔗",
         "machine_learning_expert_agent": "🤖",

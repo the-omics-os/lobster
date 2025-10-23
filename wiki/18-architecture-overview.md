@@ -123,8 +123,7 @@ The heart of Lobster AI is its multi-agent architecture, where specialized AI ag
 - **Bulk RNA-seq Expert** - Handles bulk transcriptomics
 - **MS Proteomics Expert** - Mass spectrometry proteomics analysis
 - **Affinity Proteomics Expert** - Targeted protein analysis
-- **Research Agent** - Literature mining and dataset discovery
-- **Method Expert** - Parameter extraction from publications
+- **Research Agent** - Literature mining, dataset discovery, and method extraction (Phase 1)
 
 ### 2. Service Layer
 

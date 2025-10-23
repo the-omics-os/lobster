@@ -91,7 +91,6 @@ flowchart TD
     SUPERVISOR --> |Bulk RNA-seq| BULK_EXPERT[Bulk RNA-seq Expert]
     SUPERVISOR --> |MS Proteomics| MS_EXPERT[MS Proteomics Expert]
     SUPERVISOR --> |Affinity Proteomics| AF_EXPERT[Affinity Proteomics Expert]
-    SUPERVISOR --> |Method Extraction| METHOD_EXPERT[Method Expert]
     SUPERVISOR --> |ML Tasks| ML_EXPERT[ML Expert]
 
     classDef supervisor fill:#4caf50,stroke:#2e7d32,stroke-width:3px
@@ -99,7 +98,7 @@ flowchart TD
     classDef response fill:#ffb74d,stroke:#f57c00,stroke-width:2px
 
     class SUPERVISOR supervisor
-    class DATA_EXPERT,RESEARCH,SC_EXPERT,BULK_EXPERT,MS_EXPERT,AF_EXPERT,METHOD_EXPERT,ML_EXPERT agent
+    class DATA_EXPERT,RESEARCH,SC_EXPERT,BULK_EXPERT,MS_EXPERT,AF_EXPERT,ML_EXPERT agent
     class DIRECT response
 ```
 
@@ -148,11 +147,8 @@ Each specialist agent focuses on a specific domain of bioinformatics analysis:
 - **Antibody Validation** - Quality control metrics for targeted assays
 - **Panel Harmonization** - Cross-platform data integration
 
-#### Method Expert Agent
-- **Parameter Extraction** - Computational method details from publications
-- **Protocol Analysis** - Cross-study methodology comparison
-- **Parameter Consensus** - Evidence-based parameter recommendations
-- **Method Validation** - Computational approach assessment
+#### ~~Method Expert Agent~~ (DEPRECATED v2.2+)
+**Merged into Research Agent** - All method extraction capabilities now in Research Agent with Phase 1 auto-resolution.
 
 #### ML Expert Agent
 - **Data Preparation** - Feature selection and normalization for ML

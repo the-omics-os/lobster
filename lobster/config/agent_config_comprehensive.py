@@ -214,7 +214,7 @@ class LobsterAgentConfigurator:
         "supervisor",
         "singlecell_expert_agent",
         "bulk_rnaseq_expert_agent",
-        "method_expert_agent",
+        # "method_expert_agent",  # DEPRECATED v2.2+: merged into research_agent
         "research_agent",
         "data_expert_agent",
         "machine_learning_expert_agent",
@@ -239,7 +239,7 @@ class LobsterAgentConfigurator:
             "supervisor": "claude-3-7-sonnet",
             "singlecell_expert_agent": "claude-3-7-sonnet",
             "bulk_rnaseq_expert_agent": "claude-3-7-sonnet",
-            "method_expert_agent": "claude-3-7-sonnet",
+            # "method_expert_agent": "claude-3-7-sonnet",  # DEPRECATED v2.2+
             "data_expert_agent": "claude-3-7-sonnet",
             "machine_learning_expert_agent": "claude-3-7-sonnet",
             "research_agent": "claude-3-7-sonnet",
@@ -253,7 +253,7 @@ class LobsterAgentConfigurator:
             "supervisor": "claude-4-sonnet",
             "singlecell_expert_agent": "claude-4-sonnet",
             "bulk_rnaseq_expert_agent": "claude-4-sonnet",
-            "method_expert_agent": "claude-4-sonnet",
+            # "method_expert_agent": "claude-4-sonnet",  # DEPRECATED v2.2+
             "data_expert_agent": "claude-4-sonnet",
             "machine_learning_expert_agent": "claude-4-sonnet",
             "research_agent": "claude-4-sonnet",
@@ -267,7 +267,7 @@ class LobsterAgentConfigurator:
             "supervisor": "claude-3-7-sonnet",
             "singlecell_expert_agent": "claude-3-7-sonnet",
             "bulk_rnaseq_expert_agent": "claude-3-7-sonnet",
-            "method_expert_agent": "claude-3-7-sonnet",
+            # "method_expert_agent": "claude-3-7-sonnet",  # DEPRECATED v2.2+
             "data_expert_agent": "claude-3-7-sonnet",
             "machine_learning_expert_agent": "claude-3-7-sonnet",
             "research_agent": "claude-3-7-sonnet",

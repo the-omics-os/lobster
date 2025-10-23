@@ -215,7 +215,8 @@ def data_expert(
     def download_geo_dataset(
         geo_id: str,
         modality_type: str = "single_cell",
-        manual_strategy_override="MATRIX_FIRST",
+        manual_strategy_override: str = "MATRIX_FIRST",
+        concatenation_strategy: str = "auto",
         **kwargs,
     ) -> str:
         """
@@ -226,9 +227,32 @@ def data_expert(
             geo_id: GEO accession number (e.g., GSE12345 or GDS5826)
             modality_type: Type of data modality ('single_cell', 'bulk', or 'auto_detect')
             manual_strategy_override: Optional manual override for download strategy
+                (MATRIX_FIRST, SAMPLES_FIRST, RAW_FIRST, H5_FIRST, etc.)
+            concatenation_strategy: How to merge multiple samples ('auto', 'intersection', 'union')
+                - 'auto' (RECOMMENDED): Intelligently decides based on gene coverage variance
+                  * If genes vary significantly (CV > 30%): Uses UNION (all genes preserved)
+                  * If genes are consistent (CV ≤ 30%): Uses INTERSECTION (common genes only)
+                - 'intersection': Keep only genes present in ALL samples (inner join)
+                  * Use when samples should have similar gene coverage
+                  * Results in smaller, more consistent dataset
+                  * Warning: May lose genes unique to specific samples
+                - 'union': Include all genes from all samples (outer join)
+                  * Use when samples have different gene coverage
+                  * Preserves maximum biological information
+                  * Missing values filled with zeros
 
         Returns:
-            str: Summary of downloaded data with modality information
+            str: Summary of downloaded data with modality information and concatenation details
+
+        Example:
+            # Let auto-detection choose the best strategy
+            download_geo_dataset("GSE200161", manual_strategy_override="SAMPLES_FIRST")
+
+            # Force union of all genes (useful for variable coverage datasets)
+            download_geo_dataset("GSE200161", concatenation_strategy="union")
+
+            # Force intersection (useful for consistent coverage datasets)
+            download_geo_dataset("GSE123456", concatenation_strategy="intersection")
         """
         try:
             # Clean the GEO ID
@@ -265,13 +289,33 @@ Use this modality for quality control, filtering, or downstream analysis."""
             console = getattr(data_manager, "console", None)
             geo_service = GEOService(data_manager, console=console)
 
+            # Map concatenation_strategy to use_intersecting_genes_only parameter
+            if concatenation_strategy == "auto":
+                use_intersecting = None  # Triggers intelligent auto-detection
+            elif concatenation_strategy == "intersection":
+                use_intersecting = True  # Inner join - only common genes
+            elif concatenation_strategy == "union":
+                use_intersecting = False  # Outer join - all genes
+            else:
+                logger.warning(
+                    f"Unknown concatenation_strategy '{concatenation_strategy}', defaulting to 'auto'"
+                )
+                use_intersecting = None
+
+            # Add to kwargs for passing through to geo_service
+            kwargs["use_intersecting_genes_only"] = use_intersecting
+
+            logger.info(
+                f"Concatenation strategy: {concatenation_strategy} (use_intersecting_genes_only={use_intersecting})"
+            )
+
             # Use the enhanced download_dataset method (handles all scenarios with fallbacks)
             result = geo_service.download_dataset(
                 geo_id=clean_geo_id,
                 # modality_type=modality_type,
                 manual_strategy_override=manual_strategy_override,
                 **kwargs,
-            )  # This kwargs contains the config dict
+            )  # This kwargs contains the config dict and concatenation strategy
 
             return result
 
@@ -884,9 +928,29 @@ Depending on the return of the tool you have to decide if the given files are re
 This tool is used to understand certain files in the metadata better to finaly choose the download strategy. 
 It returns the head of a file (for example annoation, txt, csv, xlsx etc) to understand the columns and row logic and to see if this file is relevant for the final annotation. 
 
-- **download_geo_dataset**: 
-This tool is used after understanding the metadata logic of a GEO entry. This tool downloads data from GEO and load as modality. 
-Before using this tool always fetch metadata first and get a good understand what the relevant files are. 
+- **download_geo_dataset**:
+This tool is used after understanding the metadata logic of a GEO entry. This tool downloads data from GEO and load as modality.
+Before using this tool always fetch metadata first and get a good understand what the relevant files are.
+
+**NEW: Intelligent Concatenation Strategy (v2.3+)**
+When downloading datasets with multiple samples (e.g., SAMPLES_FIRST strategy), the system now automatically decides how to merge samples:
+  - `concatenation_strategy='auto'` (DEFAULT & RECOMMENDED): Intelligently analyzes gene coverage using DUAL CRITERIA
+    * CV criterion: If coefficient of variation > 20% → UNION
+    * Range criterion: If max/min gene ratio > 1.5x → UNION (e.g., 5400/2700 = 2.0x triggers union)
+    * BOTH criteria must pass for INTERSECTION, otherwise uses UNION (preserves genes)
+    * Decision is logged to console with detailed reasoning and stored in provenance for transparency
+  - `concatenation_strategy='union'`: Force include all genes (outer join with zero-filling)
+    * Use when samples have different gene coverage
+    * Preserves maximum biological information
+  - `concatenation_strategy='intersection'`: Force only common genes (inner join)
+    * Use when samples should have similar gene coverage
+    * May lose genes unique to specific samples
+
+**IMPORTANT**: The concatenation decision is automatically:
+  - Logged to console with detailed reasoning (INFO level)
+  - Stored in DataManager.metadata_store["geo_gseXXXXX"]["concatenation_decision"]
+  - Tracked in W3C-PROV compliant provenance chain (tool_usage_history)
+  - Accessible to supervisor for reporting to user
 
 - **concatenate_samples**:
 This tool concatenates multiple sample modalities into a single combined modality. This is particularly useful after downloading individual samples with the SAMPLES_FIRST strategy.
@@ -978,21 +1042,34 @@ Always report back after fetching the metadata. Once confirmed by the supervisor
 </important>
 
 Step 1: Download the dataset with appropriate modality type and strategy:
-Scenario A: Let the system decide which strategy
+
+Scenario A: Let the system decide which strategy (RECOMMENDED)
 download_geo_dataset("<GEO ID>", modality_type="<Adapters>")
 
-Scenario B: Download the dataset with appropriate modality type, choice of strategy was MATRIX_FIRST:
+Scenario B: Download with MATRIX_FIRST strategy
 download_geo_dataset("<GEO ID>", modality_type="<Adapters>", manual_strategy_override='MATRIX_FIRST')
 
-Scenario C: Download the dataset with appropriate modality type, choice of strategy was SAMPLES_FIRST:
+Scenario C: Download with SAMPLES_FIRST strategy (auto-detects concatenation strategy)
 download_geo_dataset("<GEO ID>", modality_type="<Adapters>", manual_strategy_override='SAMPLES_FIRST')
+# Auto-detection will analyze gene coverage and choose union or intersection automatically
 
-Other strategies include: 
+Scenario D: Download with SAMPLES_FIRST and force union of all genes
+download_geo_dataset("<GEO ID>", modality_type="<Adapters>", manual_strategy_override='SAMPLES_FIRST', concatenation_strategy='union')
+# Use when samples have different gene coverage - preserves all genes
+
+Scenario E: Download with SAMPLES_FIRST and force intersection
+download_geo_dataset("<GEO ID>", modality_type="<Adapters>", manual_strategy_override='SAMPLES_FIRST', concatenation_strategy='intersection')
+# Use only when samples should have identical gene coverage - may lose genes
+
+Other strategies include:
 RAW_FIRST               # Prioritize raw UMI/count matrices
-SAMPLES_FIRST           # Download individual samples
+SAMPLES_FIRST           # Download individual samples (NOW WITH SMART CONCATENATION)
 H5_FIRST                # Prioritize H5/H5AD files
 ARCHIVE_FIRST           # Extract from archives first
 FALLBACK                # Use fallback mechanisms
+
+**IMPORTANT**: After download, check DataManager.metadata_store[modality_name]["concatenation_decision"]
+to see the chosen strategy and reasoning. This helps explain results to the user.
 
 once the dataset is downloaded you will see summary information about the download with the exact name of the modality ID
 

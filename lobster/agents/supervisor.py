@@ -195,11 +195,7 @@ def _get_agent_delegation_rules(agent_name: str, agent_config) -> str:
        - Loading raw count matrices (e.g., CSV, H5AD).
        - Managing or listing datasets already loaded.
        - Providing summaries of available data.""",
-        "method_expert_agent": """       - Extracting computational parameters from specific publications (identified by research_agent).
-       - Analyzing methodologies across multiple studies for parameter consensus.
-       - Finding protocol information for specific bioinformatics techniques.
-       - Providing parameter recommendations for loaded modalities.
-       - Comparative analysis of computational approaches.""",
+        # "method_expert_agent": DEPRECATED v2.2+ - merged into research_agent
         "singlecell_expert_agent": """       - Questions about single-cell data analysis.
        - Performing QC on single-cell datasets (cell/gene filtering, mitochondrial/ribosomal content checks).
        - Detecting/removing doublets in single-cell data.
@@ -267,7 +263,7 @@ def _build_workflow_section(active_agents: List[str], config: SupervisorConfig) 
       2. singlecell_expert_agent runs QC -> normalization -> doublet detection.
       3. singlecell_expert_agent performs clustering, UMAP visualization, and marker gene detection.
       4. singlecell_expert_agent annotates cell types.
-      5. method_expert_agent consulted for parameter optimization if needed.\n\n"""
+      5. research_agent consulted for parameter extraction if needed.\n\n"""
 
     if "bulk_rnaseq_expert_agent" in active_agents:
         section += """    **Bulk RNA-seq Workflow:**
@@ -276,7 +272,7 @@ def _build_workflow_section(active_agents: List[str], config: SupervisorConfig) 
       2. bulk_rnaseq_expert_agent runs QC -> normalization.
       3. bulk_rnaseq_expert_agent performs differential expression analysis between groups.
       4. bulk_rnaseq_expert_agent runs pathway enrichment analysis.
-      5. method_expert_agent consulted for statistical method selection if needed.\n\n"""
+      5. research_agent consulted for statistical method selection if needed.\n\n"""
 
     if (
         "ms_proteomics_expert_agent" in active_agents
@@ -445,8 +441,8 @@ def _build_examples_section() -> str:
 
     **Parameter Extraction:**
     - User: "Extract parameters from this paper <DOI>"
-    - You delegate to method_expert_agent to extract computational parameters
-    - If additional related publications are needed, delegate to research_agent first
+    - You delegate to research_agent to extract computational parameters (Phase 1: auto PMID/DOI resolution)
+    - Research agent handles all method extraction with automatic PDF resolution
 
     **Visualization Requests:**
     - User: "Create a UMAP plot" or "Show gene expression for CD3D, CD4, CD8A"

@@ -495,7 +495,9 @@ coordinated changes across molecular layers"
 
 **Goal**: Integrate literature knowledge with experimental data analysis.
 
-**Agent**: Research Agent and Method Expert coordinate literature integration.
+**Agent**: Research Agent with **automatic PMID/DOI → PDF resolution** (Phase 1 Enhancement, v2.2+).
+
+**Key Capability**: Automatic resolution of PMIDs and DOIs to accessible PDFs (70-80% success rate) using tiered waterfall strategy: PMC → bioRxiv/medRxiv → Publisher → Alternative suggestions.
 
 ### Step 1: Literature Search
 
@@ -503,16 +505,36 @@ coordinated changes across molecular layers"
 "Find papers about single-cell RNA-seq analysis of liver fibrosis"
 ```
 
-### Step 2: Parameter Extraction
+### Step 2: Method Extraction (Automatic Resolution)
+
+**Enhanced (v2.2+)**: Directly provide PMIDs or DOIs - automatic resolution to PDFs happens internally.
 
 ```
-"Extract the analysis parameters used in similar studies for my liver single-cell data"
+"Extract methods from PMID:12345678"
 ```
 
-### Step 3: Method Application
+Or batch processing for competitive analysis:
 
 ```
-"Apply the methods from Smith et al. 2023 to analyze my data using their parameters"
+"Extract methods from these papers: PMID:12345678, PMID:23456789, DOI:10.1038/s41586-021-12345-6"
+```
+
+**Automatic handling**:
+- ✅ Accessible papers → Methods extracted immediately
+- ❌ Paywalled papers → 5 alternative access strategies provided (PMC accepted manuscripts, preprints, institutional access, author contact, Unpaywall)
+
+### Step 3: Check Accessibility (Optional)
+
+For competitive analysis, check accessibility before extraction:
+
+```
+"Check if PMID:12345678 is accessible"
+```
+
+### Step 4: Method Application
+
+```
+"Apply the methods from PMID:12345678 to analyze my data using their parameters"
 ```
 
 ## GEO Database Integration Workflow

@@ -510,7 +510,9 @@ Validate antibody performance using CV analysis.
 
 ## Research Agent
 
-Handles literature discovery and dataset identification.
+Handles literature discovery, dataset identification, and **automatic PMID/DOI → PDF resolution** for computational method extraction.
+
+**Phase 1 Enhancement (v2.2+)**: Automatic resolution of PMIDs and DOIs to accessible PDF URLs using tiered waterfall strategy (PMC → bioRxiv/medRxiv → Publisher → Suggestions). Achieves 70-80% automatic resolution success rate with graceful fallback to alternative access strategies for paywalled papers.
 
 ### Factory Function
 
@@ -522,6 +524,10 @@ def research_agent(
     handoff_tools: List = None
 )
 ```
+
+### Core Components
+
+**ResearchAgentAssistant**: Helper class providing PDF resolution methods, batch processing, and formatted reporting. Uses `PublicationResolver` for tiered waterfall resolution strategy.
 
 ### Tools
 
@@ -563,47 +569,75 @@ def search_geo_datasets(
 
 Search GEO database for relevant datasets.
 
-## Method Expert Agent
-
-Handles computational method extraction and parameter analysis from publications.
-
-### Factory Function
-
-```python
-def method_expert(
-    data_manager: DataManagerV2,
-    callback_handler=None,
-    agent_name: str = "method_expert_agent",
-    handoff_tools: List = None
-)
-```
-
-### Tools
-
-#### extract_methods_from_paper
+#### extract_paper_methods ✨ (Phase 1 Enhanced)
 
 ```python
 @tool
-def extract_methods_from_paper(
-    pmid: str,
-    analysis_type: str = "general"
-) -> str
+def extract_paper_methods(url_or_pmid: str) -> str
 ```
 
-Extract computational methods and parameters from a publication.
+Extract computational analysis methods from a research paper. **NOW automatically resolves PMIDs and DOIs to PDF URLs** using tiered waterfall strategy:
+1. PubMed Central (PMC) - Free full text
+2. bioRxiv/medRxiv - Preprint servers
+3. Publisher Direct - Open access detection
+4. Generate alternative access suggestions if paywalled
 
-#### recommend_analysis_parameters
+**Input formats**: PMID (e.g., "PMID:12345678"), DOI (e.g., "10.1038/s41586-021-12345-6"), or direct PDF URL.
+
+**Returns**: Structured JSON with software packages, parameters, quality control steps, and analysis workflows.
+
+#### resolve_paper_access ✨ (Phase 1 New)
 
 ```python
 @tool
-def recommend_analysis_parameters(
-    data_type: str,
-    analysis_goal: str,
-    sample_size: int = None
+def resolve_paper_access(identifier: str) -> str
+```
+
+Diagnostic tool to check paper accessibility before extraction. Returns resolution result with PDF URL (if accessible) or alternative access strategies (if paywalled). Useful for competitive analysis workflows where accessibility needs to be checked first.
+
+**Resolution sources**: PMC, bioRxiv, medRxiv, publisher direct access, institutional repositories.
+
+#### extract_methods_batch ✨ (Phase 1 New)
+
+```python
+@tool
+def extract_methods_batch(
+    identifiers: str,  # Comma-separated
+    max_papers: int = 5
 ) -> str
 ```
 
-Recommend analysis parameters based on data characteristics.
+Extract computational methods from multiple papers in batch (2-5 papers recommended). Conservative sequential processing to avoid API rate limits. Returns aggregated report with accessible/paywalled/failed breakdown.
+
+**Use case**: Competitive analysis of methods across multiple publications.
+
+## ~~Method Expert Agent~~ (DEPRECATED v2.2+)
+
+**Deprecated:** Method Expert functionality has been merged into Research Agent with Phase 1 enhancements. The Research Agent now handles all method extraction with automatic PMID/DOI → PDF resolution (70-80% success rate).
+
+### Replacement
+
+For method extraction, use **Research Agent** tools:
+- `extract_paper_methods` - Extract methods with auto-resolution (accepts PMIDs, DOIs, URLs)
+- `extract_methods_batch` - Batch method extraction (2-5 papers)
+- `resolve_paper_access` - Check PDF accessibility before extraction
+
+See [Research Agent](#research-agent) section for complete documentation.
+
+### Migration Guide
+
+**Old workflow (deprecated):**
+```python
+# ❌ No longer works
+handoff_to_method_expert_agent("Extract methods from PMID:12345678")
+```
+
+**New workflow (Phase 1):**
+```python
+# ✅ Use research_agent instead
+handoff_to_research_agent("Extract methods from PMID:12345678")
+# Auto-resolves PMID → PDF → extracts methods
+```
 
 ## Machine Learning Expert Agent
 

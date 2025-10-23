@@ -2834,27 +2834,143 @@ The actual expression data download will be much faster now that metadata is pre
             logger.error(f"Error storing samples as AnnData: {e}")
             return stored_samples
 
+    def _analyze_gene_coverage_and_decide_join(
+        self, sample_modalities: List[str]
+    ) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Analyze gene coverage variance across samples and decide optimal join strategy.
+
+        This method examines the coefficient of variation (CV) in gene counts across
+        samples to intelligently select between inner join (intersection) and outer
+        join (union) concatenation strategies.
+
+        Args:
+            sample_modalities: List of modality names to analyze
+
+        Returns:
+            Tuple of (use_intersecting_genes_only, analysis_metadata)
+                - use_intersecting_genes_only: True for inner join, False for outer join
+                - analysis_metadata: Dict with statistics and reasoning
+        """
+        from datetime import datetime
+
+        try:
+            # Collect gene counts from all samples
+            gene_counts = []
+            for modality in sample_modalities:
+                try:
+                    adata = self.data_manager.get_modality(modality)
+                    gene_counts.append(adata.n_vars)
+                except Exception as e:
+                    logger.warning(f"Could not get gene count for {modality}: {e}")
+                    continue
+
+            if not gene_counts:
+                logger.warning("No valid gene counts found, defaulting to inner join")
+                return True, {"decision": "inner", "reasoning": "No valid samples found"}
+
+            # Calculate statistics
+            min_genes = int(np.min(gene_counts))
+            max_genes = int(np.max(gene_counts))
+            mean_genes = float(np.mean(gene_counts))
+            std_genes = float(np.std(gene_counts))
+            cv = std_genes / mean_genes if mean_genes > 0 else 0.0
+
+            # Decision logic: Use outer join if high variability
+            # Check both CV and absolute range ratio for robustness
+            VARIANCE_THRESHOLD = 0.20  # Lowered from 0.30 to be more conservative
+            RANGE_RATIO_THRESHOLD = 1.5  # Max/min ratio - if > 1.5x difference, use outer join
+
+            range_ratio = max_genes / min_genes if min_genes > 0 else float('inf')
+            use_inner_join = cv <= VARIANCE_THRESHOLD and range_ratio <= RANGE_RATIO_THRESHOLD
+
+            # Build decision metadata
+            metadata = {
+                "timestamp": datetime.now().isoformat(),
+                "n_samples_analyzed": len(gene_counts),
+                "min_genes": min_genes,
+                "max_genes": max_genes,
+                "mean_genes": mean_genes,
+                "std_genes": std_genes,
+                "coefficient_variation": cv,
+                "range_ratio": range_ratio,
+                "variance_threshold": VARIANCE_THRESHOLD,
+                "range_ratio_threshold": RANGE_RATIO_THRESHOLD,
+                "decision": "inner" if use_inner_join else "outer",
+                "reasoning": (
+                    f"Gene coverage CV={cv:.1%} <= {VARIANCE_THRESHOLD:.1%} AND range ratio={range_ratio:.2f}x <= {RANGE_RATIO_THRESHOLD:.2f}x: Consistent coverage"
+                    if use_inner_join
+                    else (
+                        f"Gene coverage variability detected: CV={cv:.1%} (threshold: {VARIANCE_THRESHOLD:.1%}) OR range ratio={range_ratio:.2f}x (threshold: {RANGE_RATIO_THRESHOLD:.2f}x) - using union to preserve all genes"
+                    )
+                ),
+            }
+
+            # LOG DECISION TO USER (INFO level)
+            logger.info("=" * 70)
+            logger.info("🔍 CONCATENATION STRATEGY DECISION")
+            logger.info("=" * 70)
+            logger.info(f"📊 Analyzing {len(sample_modalities)} samples for gene coverage...")
+            logger.info(f"   Gene count range: {min_genes:,} - {max_genes:,} ({range_ratio:.2f}x difference)")
+            logger.info(f"   Mean: {mean_genes:,.0f} ± {std_genes:,.0f}")
+            logger.info(f"   Coefficient of Variation: {cv:.1%}")
+            logger.info("")
+            logger.info(f"📐 Decision Criteria:")
+            logger.info(f"   CV threshold: {VARIANCE_THRESHOLD:.1%}, Range ratio threshold: {RANGE_RATIO_THRESHOLD:.2f}x")
+            logger.info("")
+
+            if use_inner_join:
+                logger.info("✓ Selected: INNER JOIN (intersection of genes)")
+                logger.info(f"  📌 Reason: {metadata['reasoning']}")
+                logger.info(f"  📍 Effect: Only genes present in ALL samples will be retained")
+                logger.info(f"  ⚠️  Warning: Genes unique to some samples will be excluded")
+            else:
+                logger.info("⚠️  VARIABILITY DETECTED")
+                logger.info("✓ Selected: OUTER JOIN (union of all genes)")
+                logger.info(f"  📌 Reason: {metadata['reasoning']}")
+                logger.info(f"  📍 Effect: ALL genes included, missing values filled with zeros")
+                logger.info(f"  ℹ️  Note: This preserves maximum biological information")
+
+            logger.info("=" * 70)
+
+            return use_inner_join, metadata
+
+        except Exception as e:
+            logger.error(f"Error analyzing gene coverage: {e}")
+            logger.warning("Defaulting to outer join for safety")
+            return False, {
+                "decision": "outer",
+                "reasoning": f"Error during analysis: {str(e)}",
+                "error": str(e),
+            }
+
     def _concatenate_stored_samples(
         self,
         geo_id: str,
         stored_samples: List[str],
-        use_intersecting_genes_only: bool = True,
+        use_intersecting_genes_only: bool = None,
     ) -> Optional[pd.DataFrame]:
         """
-        Concatenate stored AnnData samples using ConcatenationService.
+        Concatenate stored AnnData samples using ConcatenationService with intelligent strategy selection.
 
         This function delegates to ConcatenationService to eliminate code duplication
-        while maintaining the same interface for backward compatibility.
+        while adding intelligent auto-detection of the optimal join strategy based on
+        gene coverage variance. When use_intersecting_genes_only is None (default),
+        automatically analyzes gene coverage and selects the appropriate join type.
 
         Args:
             geo_id: GEO series ID
             stored_samples: List of modality names that were stored
-            use_intersecting_genes_only: If True, use only common genes across all samples.
-                                       If False, use all genes (filling missing with zeros).
+            use_intersecting_genes_only: Join strategy selection:
+                - None (default): Auto-detect based on gene coverage variance
+                - True: Use inner join (intersection - only common genes)
+                - False: Use outer join (union - all genes with zero-filling)
 
         Returns:
-            DataFrame: Concatenated expression matrix or None if concatenation fails
+            AnnData: Concatenated AnnData object or None if concatenation fails
         """
+        from datetime import datetime
+
         try:
             # Import and initialize ConcatenationService
             from lobster.tools.concatenation_service import ConcatenationService
@@ -2865,9 +2981,32 @@ The actual expression data download will be much faster now that metadata is pre
                 f"Using ConcatenationService to concatenate {len(stored_samples)} stored samples for {geo_id}"
             )
 
-            # Use ConcatenationService for concatenation
-            output_name = f"geo_{geo_id.lower()}_concatenated_temp"
+            # AUTO-DETECT join strategy if not explicitly specified
+            analysis_metadata = {}
+            auto_detected = False
 
+            if use_intersecting_genes_only is None:
+                logger.info(
+                    "No explicit join strategy specified - performing intelligent auto-detection..."
+                )
+                use_intersecting_genes_only, analysis_metadata = (
+                    self._analyze_gene_coverage_and_decide_join(stored_samples)
+                )
+                auto_detected = True
+                logger.info(
+                    f"Auto-detection complete: using {'INNER' if use_intersecting_genes_only else 'OUTER'} join"
+                )
+            else:
+                # Manual specification
+                join_type = "inner" if use_intersecting_genes_only else "outer"
+                logger.info(f"Using explicitly specified join strategy: {join_type.upper()} join")
+                analysis_metadata = {
+                    "decision": join_type,
+                    "reasoning": f"Explicitly specified by user: use_intersecting_genes_only={use_intersecting_genes_only}",
+                    "timestamp": datetime.now().isoformat(),
+                }
+
+            # Perform concatenation
             concatenated_adata, statistics = concat_service.concatenate_from_modalities(
                 modality_names=stored_samples,
                 output_name=None,  # Don't store, just return
@@ -2875,7 +3014,52 @@ The actual expression data download will be much faster now that metadata is pre
                 batch_key="batch",
             )
 
+            # PROVENANCE TRACKING: Log to DataManager tool usage history
+            provenance_info = {
+                **analysis_metadata,
+                **statistics,
+                "samples_concatenated": len(stored_samples),
+                "resulting_shape": (concatenated_adata.n_obs, concatenated_adata.n_vars),
+                "auto_detected": auto_detected,
+                "timestamp": datetime.now().isoformat(),
+            }
+
+            self.data_manager.log_tool_usage(
+                tool_name="concatenate_geo_samples",
+                parameters={
+                    "geo_id": geo_id,
+                    "n_samples": len(stored_samples),
+                    "join_strategy": "inner" if use_intersecting_genes_only else "outer",
+                    "auto_detected": auto_detected,
+                },
+                result=provenance_info,
+            )
+
+            # METADATA STORAGE: Store concatenation decision for supervisor access
+            modality_name = f"geo_{geo_id.lower()}"
+            if modality_name not in self.data_manager.metadata_store:
+                self.data_manager.metadata_store[modality_name] = {}
+
+            self.data_manager.metadata_store[modality_name]["concatenation_decision"] = {
+                "join_strategy": "inner" if use_intersecting_genes_only else "outer",
+                "auto_detected": auto_detected,
+                "analysis": analysis_metadata,
+                "statistics": statistics,
+                "quality_impact": (
+                    "Only genes present in all samples retained"
+                    if use_intersecting_genes_only
+                    else "All genes included, missing values filled with zeros"
+                ),
+                "provenance_tracked": True,
+                "timestamp": datetime.now().isoformat(),
+            }
+
+            logger.info(
+                f"✓ Concatenation decision stored in metadata_store for supervisor access"
+            )
+            logger.info(f"✓ Provenance tracked in tool_usage_history")
             logger.info(f"ConcatenationService completed: {statistics}")
+
             return concatenated_adata
 
         except Exception as e:

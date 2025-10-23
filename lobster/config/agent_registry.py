@@ -52,19 +52,21 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
     "research_agent": AgentRegistryConfig(
         name="research_agent",
         display_name="Research Agent",
-        description="Handles literature discovery, dataset identification, PDF extraction with AUTOMATIC PMID/DOI resolution, batch method extraction (5 papers), and computational method analysis from publications",
+        description="Handles literature discovery, dataset identification, PDF extraction with AUTOMATIC PMID/DOI resolution, batch method extraction (5 papers), computational method analysis, and parameter extraction from publications. Replaces deprecated method_expert_agent.",
         factory_function="lobster.agents.research_agent.research_agent",
         handoff_tool_name="handoff_to_research_agent",
-        handoff_tool_description="Assign literature search, dataset discovery, PDF extraction with auto-resolution (PMC/bioRxiv/preprints), batch method extraction, method analysis, and supplementary downloads to the research agent",
+        handoff_tool_description="Assign literature search, dataset discovery, PDF extraction with auto-resolution (PMC/bioRxiv/preprints), batch method extraction, method analysis, parameter extraction, and supplementary downloads to the research agent",
     ),
-    "method_expert_agent": AgentRegistryConfig(
-        name="method_expert_agent",
-        display_name="Method Expert",
-        description="Handles computational method extraction and parameter analysis from publications",
-        factory_function="lobster.agents.method_expert.method_expert",
-        handoff_tool_name="handoff_to_method_expert_agent",
-        handoff_tool_description="Assign computational parameter extraction tasks to the method expert agent",
-    ),
+    # DEPRECATED (v2.2+): method_expert_agent functionality merged into research_agent (Phase 1)
+    # Research agent now handles all method extraction with automatic PMID/DOI resolution
+    # "method_expert_agent": AgentRegistryConfig(
+    #     name="method_expert_agent",
+    #     display_name="Method Expert",
+    #     description="Handles computational method extraction and parameter analysis from publications",
+    #     factory_function="lobster.agents.method_expert.method_expert",
+    #     handoff_tool_name="handoff_to_method_expert_agent",
+    #     handoff_tool_description="Assign computational parameter extraction tasks to the method expert agent",
+    # ),
     # 'ms_proteomics_expert_agent': AgentRegistryConfig(
     #     name='ms_proteomics_expert_agent',
     #     display_name='MS Proteomics Expert',
