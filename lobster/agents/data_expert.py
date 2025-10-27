@@ -229,9 +229,10 @@ def data_expert(
             manual_strategy_override: Optional manual override for download strategy
                 (MATRIX_FIRST, SAMPLES_FIRST, RAW_FIRST, H5_FIRST, etc.)
             concatenation_strategy: How to merge multiple samples ('auto', 'intersection', 'union')
-                - 'auto' (RECOMMENDED): Intelligently decides based on gene coverage variance
-                  * If genes vary significantly (CV > 30%): Uses UNION (all genes preserved)
-                  * If genes are consistent (CV ≤ 30%): Uses INTERSECTION (common genes only)
+                - 'auto' (RECOMMENDED): Intelligently decides based on DUAL CRITERIA
+                  * CV criterion: If coefficient of variation > 20% → UNION
+                  * Range criterion: If max/min gene ratio > 1.5x → UNION
+                  * BOTH criteria must pass (CV ≤ 20% AND ratio ≤ 1.5x) for INTERSECTION, otherwise uses UNION
                 - 'intersection': Keep only genes present in ALL samples (inner join)
                   * Use when samples should have similar gene coverage
                   * Results in smaller, more consistent dataset

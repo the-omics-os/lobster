@@ -38,9 +38,13 @@ class PreprocessingService:
     current single-cell analysis pipelines.
     """
 
-    def __init__(self):
+    def __init__(self, config=None, **kwargs):
         """
         Initialize the preprocessing service.
+
+        Args:
+            config: Optional configuration dict (ignored, for backward compatibility)
+            **kwargs: Additional arguments (ignored, for backward compatibility)
 
         This service is stateless and doesn't require a data manager instance.
         """

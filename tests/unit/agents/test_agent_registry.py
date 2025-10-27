@@ -659,12 +659,12 @@ class TestRegistryPersistenceLoading:
         """Test that default agents are properly registered."""
         agent_names = get_all_agent_names()
 
-        # Check for expected default agents
+        # Check for expected default agents (method_expert_agent deprecated v2.2+)
         expected_agents = [
             "data_expert_agent",
             "singlecell_expert_agent",
             "research_agent",
-            "method_expert_agent",
+            # "method_expert_agent",  # DEPRECATED v2.2+: merged into research_agent
             "bulk_rnaseq_expert_agent",
             "machine_learning_expert_agent",
             "visualization_expert_agent",

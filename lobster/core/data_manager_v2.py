@@ -231,36 +231,46 @@ class DataManagerV2:
                 ProteomicsAdapter(data_type="affinity", strict_validation=False),
             )
 
-    def register_backend(self, name: str, backend: IDataBackend) -> None:
+    def register_backend(self, name: str, backend: IDataBackend, overwrite: bool = False) -> None:
         """
         Register a storage backend.
 
         Args:
             name: Name for the backend
             backend: Backend implementation
+            overwrite: If True, allow overwriting existing backend
 
         Raises:
-            ValueError: If backend name already exists
+            ValueError: If backend name already exists and overwrite=False
         """
         if name in self.backends:
-            raise ValueError(f"Backend '{name}' already registered")
+            if overwrite:
+                logger.warning(f"Overwriting existing backend: {name}")
+            else:
+                logger.debug(f"Backend '{name}' already registered, skipping")
+                return  # Idempotent: silently skip if already registered
 
         self.backends[name] = backend
         logger.debug(f"Registered backend: {name} ({backend.__class__.__name__})")
 
-    def register_adapter(self, name: str, adapter: IModalityAdapter) -> None:
+    def register_adapter(self, name: str, adapter: IModalityAdapter, overwrite: bool = False) -> None:
         """
         Register a modality adapter.
 
         Args:
             name: Name for the adapter
             adapter: Adapter implementation
+            overwrite: If True, allow overwriting existing adapter
 
         Raises:
-            ValueError: If adapter name already exists
+            ValueError: If adapter name already exists and overwrite=False
         """
         if name in self.adapters:
-            raise ValueError(f"Adapter '{name}' already registered")
+            if overwrite:
+                logger.warning(f"Overwriting existing adapter: {name}")
+            else:
+                logger.debug(f"Adapter '{name}' already registered, skipping")
+                return  # Idempotent: silently skip if already registered
 
         self.adapters[name] = adapter
         logger.debug(f"Registered adapter: {name} ({adapter.__class__.__name__})")

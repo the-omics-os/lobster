@@ -20,7 +20,7 @@ def data_manager(tmp_path):
     """Create a DataManagerV2 instance for testing."""
     workspace_dir = tmp_path / "workspace"
     workspace_dir.mkdir()
-    return DataManagerV2(workspace_dir=str(workspace_dir))
+    return DataManagerV2(workspace_path=str(workspace_dir))
 
 
 @pytest.fixture
@@ -281,7 +281,7 @@ class TestResearchAgentToolIntegration:
 
         # Create temporary workspace
         with tempfile.TemporaryDirectory() as tmp_dir:
-            dm = DataManagerV2(workspace_dir=str(Path(tmp_dir) / "workspace"))
+            dm = DataManagerV2(workspace_path=str(Path(tmp_dir) / "workspace"))
 
             # Create agent
             agent = research_agent(data_manager=dm, handoff_tools=[])

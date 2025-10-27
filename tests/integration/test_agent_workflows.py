@@ -219,43 +219,6 @@ class TestBasicAgentWorkflows:
             assert "literature_summary" in result
             assert "recommended_datasets" in result
 
-    def test_method_expert_parameter_extraction(
-        self, mock_agent_client, mock_workflow_state
-    ):
-        """Test method expert workflow for parameter extraction."""
-        state = mock_workflow_state.copy()
-        state["messages"] = [
-            {
-                "content": "Extract clustering parameters from PMID:12345678",
-                "sender": "human",
-            }
-        ]
-        state["current_agent"] = "method_expert_agent"
-
-        with patch("lobster.agents.method_expert.method_expert_agent") as mock_method:
-            mock_method.return_value = {
-                "messages": state["messages"]
-                + [
-                    {
-                        "content": "Extracted parameters from the paper",
-                        "sender": "method_expert_agent",
-                    }
-                ],
-                "extracted_parameters": {
-                    "leiden_resolution": 0.5,
-                    "n_neighbors": 15,
-                    "normalization_method": "log1p",
-                    "target_sum": 10000,
-                },
-                "parameter_confidence": 0.9,
-                "method_reproducibility": "high",
-            }
-
-            result = method_expert_agent(state)
-
-            assert "extracted_parameters" in result
-            assert result["extracted_parameters"]["leiden_resolution"] == 0.5
-            assert result["parameter_confidence"] == 0.9
 
 
 # ===============================================================================
@@ -370,13 +333,13 @@ class TestComplexMultiAgentWorkflows:
     def test_research_guided_analysis_workflow(
         self, mock_agent_client, mock_workflow_state
     ):
-        """Test workflow where research agent guides method selection."""
+        """Test workflow where research agent guides method selection (method extraction now handled by research agent)."""
         workflow_states = []
 
-        # Step 1: Research agent finds relevant papers
+        # Step 1: Research agent finds relevant papers and extracts parameters (Phase 1)
         research_state = mock_workflow_state.copy()
         research_state["messages"] = [
-            {"content": "Find best methods for T cell analysis", "sender": "human"}
+            {"content": "Find best methods for T cell analysis and extract parameters", "sender": "human"}
         ]
         research_state["current_agent"] = "research_agent"
 
@@ -385,7 +348,7 @@ class TestComplexMultiAgentWorkflows:
                 "messages": research_state["messages"]
                 + [
                     {
-                        "content": "Found optimal methods for T cell analysis",
+                        "content": "Found optimal methods and extracted parameters for T cell analysis",
                         "sender": "research_agent",
                     }
                 ],
@@ -394,29 +357,6 @@ class TestComplexMultiAgentWorkflows:
                         "pmid": "12345678",
                         "title": "Optimal T cell clustering",
                         "relevance": 0.95,
-                    }
-                ],
-                "next_agent": "method_expert_agent",
-                "handoff_data": {
-                    "target_pmid": "12345678",
-                    "analysis_type": "t_cell_clustering",
-                },
-            }
-
-            research_result = research_agent(research_state)
-            workflow_states.append(research_result)
-
-        # Step 2: Method expert extracts parameters
-        method_state = research_result.copy()
-        method_state["current_agent"] = "method_expert_agent"
-
-        with patch("lobster.agents.method_expert.method_expert_agent") as mock_method:
-            mock_method.return_value = {
-                "messages": method_state["messages"]
-                + [
-                    {
-                        "content": "Extracted optimal parameters for T cell analysis",
-                        "sender": "method_expert_agent",
                     }
                 ],
                 "extracted_parameters": {
@@ -432,11 +372,11 @@ class TestComplexMultiAgentWorkflows:
                 },
             }
 
-            method_result = method_expert_agent(method_state)
-            workflow_states.append(method_result)
+            research_result = research_agent(research_state)
+            workflow_states.append(research_result)
 
-        # Step 3: Single-cell expert applies optimized parameters
-        sc_state = method_result.copy()
+        # Step 2: Single-cell expert applies optimized parameters
+        sc_state = research_result.copy()
         sc_state["current_agent"] = "singlecell_expert_agent"
 
         with patch(
@@ -461,15 +401,15 @@ class TestComplexMultiAgentWorkflows:
             sc_result = singlecell_expert_agent(sc_state)
             workflow_states.append(sc_result)
 
-        # Verify research-guided workflow
-        assert len(workflow_states) == 3
-        assert workflow_states[1]["optimization_confidence"] == 0.92
+        # Verify research-guided workflow (now 2 steps: research agent + singlecell expert)
+        assert len(workflow_states) == 2
+        assert workflow_states[0]["optimization_confidence"] == 0.92
         assert (
-            workflow_states[2]["analysis_results"]["parameter_source"]
+            workflow_states[1]["analysis_results"]["parameter_source"]
             == "literature_optimized"
         )
         assert (
-            workflow_states[2]["analysis_results"]["improvement_over_default"] == 0.25
+            workflow_states[1]["analysis_results"]["improvement_over_default"] == 0.25
         )
 
     def test_parallel_agent_execution(self, mock_agent_client, mock_workflow_state):
@@ -480,7 +420,7 @@ class TestComplexMultiAgentWorkflows:
         tasks = [
             {"agent": "research_agent", "task": "Find T cell papers"},
             {"agent": "research_agent", "task": "Find B cell papers"},
-            {"agent": "method_expert_agent", "task": "Extract clustering parameters"},
+            {"agent": "research_agent", "task": "Extract clustering parameters from PMID:12345678"},
         ]
 
         def execute_agent_task(task):
@@ -493,23 +433,20 @@ class TestComplexMultiAgentWorkflows:
                 with patch(
                     "lobster.agents.research_agent.research_agent"
                 ) as mock_agent:
-                    mock_agent.return_value = {
-                        "task_id": f"task_{task['task'][:10]}",
-                        "papers_found": 5,
-                        "execution_time": 2.5,
-                    }
+                    # Different response based on task type
+                    if "Extract" in task["task"]:
+                        mock_agent.return_value = {
+                            "task_id": f"task_{task['task'][:10]}",
+                            "parameters_extracted": 8,
+                            "execution_time": 1.8,
+                        }
+                    else:
+                        mock_agent.return_value = {
+                            "task_id": f"task_{task['task'][:10]}",
+                            "papers_found": 5,
+                            "execution_time": 2.5,
+                        }
                     return research_agent(state)
-
-            elif task["agent"] == "method_expert_agent":
-                with patch(
-                    "lobster.agents.method_expert.method_expert_agent"
-                ) as mock_agent:
-                    mock_agent.return_value = {
-                        "task_id": f"task_{task['task'][:10]}",
-                        "parameters_extracted": 8,
-                        "execution_time": 1.8,
-                    }
-                    return method_expert_agent(state)
 
         # Execute tasks in parallel
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
@@ -665,11 +602,11 @@ class TestAgentCommunication:
         assert sc_result["context"]["novel_cell_types_found"] == 3  # From SC expert
 
     def test_cross_agent_data_references(self, mock_agent_client, mock_workflow_state):
-        """Test cross-agent data references and sharing."""
+        """Test cross-agent data references and sharing (research agent now handles parameter extraction)."""
         # Setup shared data registry
         shared_data = {"datasets": {}, "analysis_results": {}, "literature_refs": {}}
 
-        # Research agent adds literature references
+        # Research agent adds literature references and extracts parameters (Phase 1)
         research_state = mock_workflow_state.copy()
         research_state["shared_data"] = shared_data
 
@@ -681,25 +618,9 @@ class TestAgentCommunication:
                         "t_cell_markers": ["PMID:12345678", "PMID:87654321"],
                         "clustering_methods": ["PMID:11111111"],
                     },
-                },
-                "next_agent": "method_expert_agent",
-            }
-
-            research_result = research_agent(research_state)
-
-        # Method expert uses literature references
-        method_state = research_result.copy()
-        method_state["current_agent"] = "method_expert_agent"
-
-        with patch("lobster.agents.method_expert.method_expert_agent") as mock_method:
-            mock_method.return_value = {
-                "shared_data": {
-                    **research_result["shared_data"],
                     "analysis_results": {
                         "optimized_parameters": {
-                            "source_papers": research_result["shared_data"][
-                                "literature_refs"
-                            ]["clustering_methods"],
+                            "source_papers": ["PMID:11111111"],
                             "parameters": {"resolution": 0.5, "n_neighbors": 15},
                         }
                     },
@@ -707,10 +628,10 @@ class TestAgentCommunication:
                 "next_agent": "singlecell_expert_agent",
             }
 
-            method_result = method_expert_agent(method_state)
+            research_result = research_agent(research_state)
 
-        # Single-cell expert applies parameters from method expert
-        sc_state = method_result.copy()
+        # Single-cell expert applies parameters from research agent
+        sc_state = research_result.copy()
         sc_state["current_agent"] = "singlecell_expert_agent"
 
         with patch(
@@ -718,10 +639,10 @@ class TestAgentCommunication:
         ) as mock_sc:
             mock_sc.return_value = {
                 "shared_data": {
-                    **method_result["shared_data"],
+                    **research_result["shared_data"],
                     "datasets": {
                         "clustered_data": {
-                            "parameters_used": method_result["shared_data"][
+                            "parameters_used": research_result["shared_data"][
                                 "analysis_results"
                             ]["optimized_parameters"]["parameters"],
                             "literature_validated": True,

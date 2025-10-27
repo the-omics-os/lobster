@@ -515,17 +515,24 @@ The dataset is now available as modality '{modality_name}' for other agents to u
     # ████████████████████████████████████████████████████████████████████████████████
 
     def download_with_strategy(
-        self, geo_id: str, manual_strategy_override: PipelineType = None
+        self,
+        geo_id: str,
+        manual_strategy_override: PipelineType = None,
+        use_intersecting_genes_only: bool = None,
     ) -> GEOResult:
         """
         Master function implementing layered download approach using dynamic pipeline strategy.
 
         Args:
             geo_id: GEO accession ID
+            manual_strategy_override: Optional manual pipeline override
+            use_intersecting_genes_only: Concatenation strategy (None=auto, True=inner, False=outer)
 
         Returns:
             GEOResult: Comprehensive result with data and metadata
         """
+        # Store concatenation strategy for use in pipeline functions
+        self._use_intersecting_genes_only = use_intersecting_genes_only
         clean_geo_id = geo_id.strip().upper()
 
         logger.debug(f"Starting strategic download for {clean_geo_id}")
@@ -1020,7 +1027,7 @@ The dataset is now available as modality '{modality_name}' for other agents to u
         self,
         geo_id: str,
         metadata: Dict[str, Any],
-        use_intersecting_genes_only: bool = True,
+        use_intersecting_genes_only: bool = None,
     ) -> GEOResult:
         """Pipeline step: Try standard GEOparse download with proper single-cell/bulk handling."""
         try:
@@ -1030,6 +1037,11 @@ The dataset is now available as modality '{modality_name}' for other agents to u
             # Determine data type from metadata
             data_type = self._determine_data_type_from_metadata(metadata)
             is_single_cell = data_type == "single_cell_rna_seq"
+
+            # Use instance variable if set, otherwise use parameter default
+            concat_strategy = getattr(
+                self, "_use_intersecting_genes_only", use_intersecting_genes_only
+            )
 
             # Try sample matrices
             sample_info = self._get_sample_info(gse)
@@ -1048,7 +1060,7 @@ The dataset is now available as modality '{modality_name}' for other agents to u
                             # Immediately concatenate for a complete dataset
                             concatinated_dataset_annDataObject = (
                                 self._concatenate_stored_samples(
-                                    geo_id, stored_samples, use_intersecting_genes_only
+                                    geo_id, stored_samples, concat_strategy
                                 )
                             )
 
@@ -1062,7 +1074,7 @@ The dataset is now available as modality '{modality_name}' for other agents to u
                                         "data_type": data_type,
                                         "n_samples": len(validated_matrices),
                                         "stored_sample_ids": stored_samples,
-                                        "use_intersecting_genes_only": use_intersecting_genes_only,
+                                        "use_intersecting_genes_only": concat_strategy,
                                         "batch_info": {
                                             gsm_id: gsm_id
                                             for gsm_id in validated_matrices.keys()
@@ -1074,7 +1086,7 @@ The dataset is now available as modality '{modality_name}' for other agents to u
                     else:
                         # For bulk RNA-seq or single sample: concatenate directly
                         combined_matrix = self._concatenate_matrices(
-                            validated_matrices, geo_id, use_intersecting_genes_only
+                            validated_matrices, geo_id, concat_strategy
                         )
 
                         if combined_matrix is not None:

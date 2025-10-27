@@ -46,8 +46,14 @@ class ProteomicsVisualizationService:
     All plots are interactive using Plotly for publication-quality figures.
     """
 
-    def __init__(self):
-        """Initialize the proteomics visualization service."""
+    def __init__(self, config=None, **kwargs):
+        """
+        Initialize the proteomics visualization service.
+
+        Args:
+            config: Optional configuration dict (ignored, for backward compatibility)
+            **kwargs: Additional arguments (ignored, for backward compatibility)
+        """
         logger.debug("Initializing ProteomicsVisualizationService")
 
         # Color palettes optimized for proteomics data
