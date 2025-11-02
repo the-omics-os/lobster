@@ -96,7 +96,7 @@ def mock_backend():
 def mock_provenance():
     """Create a mock provenance tracker."""
     provenance = Mock(spec=ProvenanceTracker)
-    provenance.activities = {}
+    provenance.activities = []  # List of activity dicts, not dict
     provenance.entities = {}
     provenance.agents = {}
     provenance.create_entity.return_value = "test_entity_id"
@@ -1361,7 +1361,7 @@ class TestLegacyCompatibility:
         assert "legacy_proteomics" in dm.modalities
 
     def test_log_tool_usage(self, temp_workspace):
-        """Test logging tool usage for reproducibility."""
+        """Test logging tool usage for reproducibility via provenance."""
         dm = DataManagerV2(workspace_path=temp_workspace)
 
         dm.log_tool_usage(
@@ -1370,9 +1370,10 @@ class TestLegacyCompatibility:
             description="Test tool execution",
         )
 
-        assert len(dm.tool_usage_history) == 1
-        entry = dm.tool_usage_history[0]
-        assert entry["tool"] == "test_tool"
+        # Tool usage now tracked in provenance.activities
+        assert len(dm.provenance.activities) == 1
+        entry = dm.provenance.activities[0]
+        assert entry["type"] == "test_tool"  # "type" key instead of "tool"
         assert entry["parameters"]["param1"] == "value1"
         assert entry["description"] == "Test tool execution"
         assert "timestamp" in entry
@@ -1828,13 +1829,12 @@ class TestExportDocumentation:
         # Add some data and history
         dm.modalities["test_mod"] = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
         dm.processing_log.append("Test processing step")
-        dm.tool_usage_history.append(
-            {
-                "tool": "test_tool",
-                "timestamp": "2024-01-01 12:00:00",
-                "parameters": {"param1": "value1"},
-                "description": "Test tool usage",
-            }
+
+        # Use provenance system for tool tracking
+        dm.log_tool_usage(
+            tool_name="test_tool",
+            parameters={"param1": "value1"},
+            description="Test tool usage",
         )
 
         summary = dm.get_technical_summary()
@@ -1843,7 +1843,7 @@ class TestExportDocumentation:
         assert "DataManagerV2 Technical Summary" in summary
         assert "Loaded Modalities" in summary
         assert "Processing Log" in summary
-        assert "Tool Usage History" in summary
+        assert "Provenance-Tracked Activities" in summary  # Updated to match new implementation
 
     def test_get_technical_summary_empty(self, temp_workspace):
         """Test technical summary with no data."""
@@ -2147,7 +2147,9 @@ class TestErrorHandling:
             # Add various resources
             dm.modalities["test_mod"] = Mock()
             dm.latest_plots.append({"id": "plot1", "figure": Mock()})
-            dm.tool_usage_history.append({"tool": "test"})
+
+            # Add activity to provenance (manual since using mock)
+            mock_provenance.activities.append({"type": "test", "agent": "test"})
 
             dm.clear_workspace(confirm=True)
 
@@ -2215,7 +2217,7 @@ class TestIntegrationScenarios:
 
         # Validate workflow completion
         assert len(dm.modalities) == 1
-        assert len(dm.tool_usage_history) == 2
+        assert len(dm.provenance.activities) == 2  # Updated to use provenance
         assert len(dm.latest_plots) == 1
         mock_backend.save.assert_called_once()
 
@@ -2368,12 +2370,12 @@ class TestIntegrationScenarios:
                 dm.add_plot(fig, f"Plot {i//10}")
 
         # Test that history is maintained appropriately
-        assert len(dm.tool_usage_history) == 100
+        assert len(dm.provenance.activities) == 100
         assert len(dm.latest_plots) == 10
 
         # Test summary generation with extensive history
         summary = dm.get_technical_summary()
-        assert "Tool Usage History" in summary
+        assert "Provenance-Tracked Activities" in summary
         assert isinstance(summary, str)
         assert len(summary) > 1000  # Should be substantial
 

@@ -431,7 +431,6 @@ def mock_llm_responses(mocker: MockerFixture) -> Mock:
         "data_expert": "I can help you load and analyze your dataset. Let me check the data format.",
         "singlecell_expert": "I'll perform single-cell RNA-seq analysis including QC, normalization, and clustering.",
         "research_agent": "I can search for relevant datasets and literature for your research question.",
-        "method_expert": "I'll extract optimal parameters from recent publications for your analysis.",
     }
 
     # Mock OpenAI API calls

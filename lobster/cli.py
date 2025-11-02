@@ -1747,7 +1747,6 @@ def init_client_with_animation(
         "singlecell_expert_agent": "🧬",
         "bulk_rnaseq_expert_agent": "📊",
         "research_agent": "📚",
-        # "method_expert_agent": "🔬",  # DEPRECATED v2.2+
         "ms_proteomics_expert_agent": "🧪",
         "affinity_proteomics_expert_agent": "🔗",
         "machine_learning_expert_agent": "🤖",
@@ -2036,6 +2035,10 @@ def _execute_command(cmd: str, client: AgentClient) -> Optional[str]:
 [{LobsterTheme.PRIMARY_ORANGE}]/save[/{LobsterTheme.PRIMARY_ORANGE}]         [grey50]-[/grey50] Save current state to workspace
 [{LobsterTheme.PRIMARY_ORANGE}]/read[/{LobsterTheme.PRIMARY_ORANGE}] <file>  [grey50]-[/grey50] Read a file from workspace (supports glob patterns like *.h5ad)
 [{LobsterTheme.PRIMARY_ORANGE}]/export[/{LobsterTheme.PRIMARY_ORANGE}]       [grey50]-[/grey50] Export session data
+[{LobsterTheme.PRIMARY_ORANGE}]/pipeline export[/{LobsterTheme.PRIMARY_ORANGE}] [grey50]-[/grey50] Export session as Jupyter notebook
+[{LobsterTheme.PRIMARY_ORANGE}]/pipeline list[/{LobsterTheme.PRIMARY_ORANGE}] [grey50]-[/grey50] List available notebooks
+[{LobsterTheme.PRIMARY_ORANGE}]/pipeline run[/{LobsterTheme.PRIMARY_ORANGE}] [grey50]-[/grey50] Execute saved notebook with new data
+[{LobsterTheme.PRIMARY_ORANGE}]/pipeline info[/{LobsterTheme.PRIMARY_ORANGE}] [grey50]-[/grey50] Show notebook details
 [{LobsterTheme.PRIMARY_ORANGE}]/reset[/{LobsterTheme.PRIMARY_ORANGE}]        [grey50]-[/grey50] Reset conversation
 [{LobsterTheme.PRIMARY_ORANGE}]/mode[/{LobsterTheme.PRIMARY_ORANGE}] <name>  [grey50]-[/grey50] Change operation mode
 [{LobsterTheme.PRIMARY_ORANGE}]/modes[/{LobsterTheme.PRIMARY_ORANGE}]        [grey50]-[/grey50] List available modes
@@ -2802,6 +2805,255 @@ when they are started by agents or analysis workflows.
             f"[bold red]✓[/bold red] [white]Session exported to:[/white] [grey74]{export_path}[/grey74]"
         )
         return f"Session exported to: {export_path}"
+
+    elif cmd == "/pipeline export":
+        """Export current session as Jupyter notebook."""
+        try:
+            # Check if data manager supports notebook export
+            if not hasattr(client, "data_manager"):
+                console.print("[red]Notebook export not available for cloud client[/red]")
+                return "Notebook export only available for local client"
+
+            if not hasattr(client.data_manager, "export_notebook"):
+                console.print("[red]Notebook export not available - update Lobster[/red]")
+                return "Notebook export not available"
+
+            # Interactive prompts
+            console.print("[bold white]📓 Export Session as Jupyter Notebook[/bold white]\n")
+
+            name = Prompt.ask("Notebook name (no extension)", default="analysis_workflow")
+            if not name:
+                console.print("[red]Name required[/red]")
+                return "Export cancelled - no name provided"
+
+            description = Prompt.ask("Description (optional)", default="")
+
+            # Export via DataManagerV2
+            console.print(f"\n[yellow]Exporting notebook...[/yellow]")
+            path = client.data_manager.export_notebook(name, description)
+
+            console.print(f"\n[green]✓ Notebook exported:[/green] {path}")
+            console.print("\n[bold white]Next steps:[/bold white]")
+            console.print(f"  1. [yellow]Review:[/yellow]  jupyter notebook {path}")
+            console.print(f"  2. [yellow]Commit:[/yellow]  git add {path} && git commit -m 'Add {name}'")
+            console.print(f"  3. [yellow]Run:[/yellow]     /pipeline run {path.name} <modality>")
+
+            return f"Exported notebook: {path}"
+
+        except ValueError as e:
+            console.print(f"[red]Export failed: {e}[/red]")
+            return f"Export failed: {e}"
+        except Exception as e:
+            console.print(f"[red]Export error: {e}[/red]")
+            logger.exception("Notebook export error")
+            return f"Export error: {e}"
+
+    elif cmd == "/pipeline list":
+        """List available notebooks."""
+        try:
+            if not hasattr(client, "data_manager"):
+                console.print("[red]Notebook listing not available for cloud client[/red]")
+                return "Notebook listing only available for local client"
+
+            notebooks = client.data_manager.list_notebooks()
+
+            if not notebooks:
+                console.print("[yellow]No notebooks found in .lobster/notebooks/[/yellow]")
+                console.print("Export one with: [green]/pipeline export[/green]")
+                return "No notebooks found"
+
+            # Create table
+            table = Table(
+                title="📓 Available Notebooks",
+                box=box.ROUNDED,
+                border_style="blue",
+                title_style="bold blue on white",
+            )
+            table.add_column("Name", style="cyan")
+            table.add_column("Steps", justify="right")
+            table.add_column("Created By")
+            table.add_column("Created", style="dim")
+            table.add_column("Size", justify="right")
+
+            for nb in notebooks:
+                created_date = nb['created_at'].split('T')[0] if nb['created_at'] else "unknown"
+                table.add_row(
+                    nb['name'],
+                    str(nb['n_steps']),
+                    nb['created_by'],
+                    created_date,
+                    f"{nb['size_kb']:.1f} KB"
+                )
+
+            console.print(table)
+            return f"Found {len(notebooks)} notebooks"
+
+        except Exception as e:
+            console.print(f"[red]List error: {e}[/red]")
+            logger.exception("Notebook list error")
+            return f"List error: {e}"
+
+    elif cmd.startswith("/pipeline run"):
+        """Run saved notebook with new data."""
+        try:
+            if not hasattr(client, "data_manager"):
+                console.print("[red]Notebook execution not available for cloud client[/red]")
+                return "Notebook execution only available for local client"
+
+            parts = cmd.split()
+
+            # Get notebook name
+            if len(parts) > 2:
+                notebook_name = parts[2]
+            else:
+                # Interactive selection
+                notebooks = client.data_manager.list_notebooks()
+                if not notebooks:
+                    console.print("[red]No notebooks available[/red]")
+                    return "No notebooks available"
+
+                console.print("[bold]Available notebooks:[/bold]")
+                for i, nb in enumerate(notebooks, 1):
+                    console.print(f"  {i}. [cyan]{nb['name']}[/cyan] ({nb['n_steps']} steps)")
+
+                selection = Prompt.ask("Select notebook number", default="1")
+                try:
+                    idx = int(selection) - 1
+                    notebook_name = notebooks[idx]['filename']
+                except (ValueError, IndexError):
+                    console.print("[red]Invalid selection[/red]")
+                    return "Invalid notebook selection"
+
+            # Get input modality
+            if len(parts) > 3:
+                input_modality = parts[3]
+            else:
+                modalities = client.data_manager.list_modalities()
+                if not modalities:
+                    console.print("[red]No data loaded. Use /read first.[/red]")
+                    return "No data loaded"
+
+                console.print("[bold]Available modalities:[/bold]")
+                for i, mod in enumerate(modalities, 1):
+                    adata = client.data_manager.modalities[mod]
+                    console.print(f"  {i}. [cyan]{mod}[/cyan] ({adata.n_obs} obs × {adata.n_vars} vars)")
+
+                selection = Prompt.ask("Select modality number", default="1")
+                try:
+                    idx = int(selection) - 1
+                    input_modality = modalities[idx]
+                except (ValueError, IndexError):
+                    console.print("[red]Invalid selection[/red]")
+                    return "Invalid modality selection"
+
+            # Dry run first
+            console.print("\n[yellow]Running validation...[/yellow]")
+            dry_result = client.data_manager.run_notebook(
+                notebook_name,
+                input_modality,
+                dry_run=True
+            )
+
+            # Show validation
+            validation = dry_result.get('validation')
+            if validation and hasattr(validation, 'has_errors') and validation.has_errors:
+                console.print("[red]✗ Validation failed:[/red]")
+                for error in validation.errors:
+                    console.print(f"  • {error}")
+                return "Validation failed"
+
+            if validation and hasattr(validation, 'has_warnings') and validation.has_warnings:
+                console.print("[yellow]⚠ Warnings:[/yellow]")
+                for warning in validation.warnings:
+                    console.print(f"  • {warning}")
+
+            console.print(f"\n[green]✓ Validation passed[/green]")
+            console.print(f"  Steps to execute: {dry_result['steps_to_execute']}")
+            console.print(f"  Estimated time: {dry_result['estimated_duration_minutes']} min")
+
+            # Confirm execution
+            if not Confirm.ask("\nExecute notebook?"):
+                console.print("Cancelled")
+                return "Execution cancelled"
+
+            # Execute
+            console.print("\n[yellow]Executing notebook...[/yellow]")
+            with create_progress(client_arg=client) as progress:
+                task = progress.add_task("Running analysis...", total=None)
+                result = client.data_manager.run_notebook(
+                    notebook_name,
+                    input_modality
+                )
+
+            if result['status'] == 'success':
+                console.print(f"\n[green]✓ Execution complete![/green]")
+                console.print(f"  Output: {result['output_notebook']}")
+                console.print(f"  Duration: {result['execution_time']:.1f}s")
+                return f"Notebook executed successfully in {result['execution_time']:.1f}s"
+            else:
+                console.print(f"\n[red]✗ Execution failed[/red]")
+                console.print(f"  Error: {result.get('error', 'Unknown')}")
+                console.print(f"  Partial output: {result.get('output_notebook', 'N/A')}")
+                return f"Execution failed: {result.get('error', 'Unknown')}"
+
+        except FileNotFoundError as e:
+            console.print(f"[red]File not found: {e}[/red]")
+            return f"Notebook not found: {e}"
+        except Exception as e:
+            console.print(f"[red]Execution error: {e}[/red]")
+            logger.exception("Notebook execution error")
+            return f"Execution error: {e}"
+
+    elif cmd == "/pipeline info":
+        """Show notebook details."""
+        try:
+            if not hasattr(client, "data_manager"):
+                console.print("[red]Notebook info not available for cloud client[/red]")
+                return "Notebook info only available for local client"
+
+            notebooks = client.data_manager.list_notebooks()
+            if not notebooks:
+                console.print("[red]No notebooks found[/red]")
+                return "No notebooks found"
+
+            console.print("[bold]Select notebook:[/bold]")
+            for i, nb in enumerate(notebooks, 1):
+                console.print(f"  {i}. [cyan]{nb['name']}[/cyan]")
+
+            selection = Prompt.ask("Selection", default="1")
+            try:
+                idx = int(selection) - 1
+                nb = notebooks[idx]
+            except (ValueError, IndexError):
+                console.print("[red]Invalid selection[/red]")
+                return "Invalid selection"
+
+            # Load full notebook
+            import nbformat
+            nb_path = Path(nb['path'])
+            with open(nb_path) as f:
+                notebook = nbformat.read(f, as_version=4)
+
+            metadata = notebook.metadata.get('lobster', {})
+
+            # Display info
+            console.print(f"\n[bold cyan]{nb['name']}[/bold cyan]")
+            console.print(f"Created by: {metadata.get('created_by', 'unknown')}")
+            console.print(f"Date: {metadata.get('created_at', 'unknown')}")
+            console.print(f"Lobster version: {metadata.get('lobster_version', 'unknown')}")
+            console.print(f"\nDependencies:")
+            for pkg, ver in metadata.get('dependencies', {}).items():
+                console.print(f"  {pkg}: {ver}")
+
+            console.print(f"\nSteps: {nb['n_steps']}")
+            console.print(f"Size: {nb['size_kb']:.1f} KB")
+
+            return f"Notebook info: {nb['name']}"
+
+        except Exception as e:
+            console.print(f"[red]Info error: {e}[/red]")
+            logger.exception("Notebook info error")
+            return f"Info error: {e}"
 
     elif cmd == "/reset":
         if Confirm.ask("[red]🦞 Reset conversation?[/red]"):

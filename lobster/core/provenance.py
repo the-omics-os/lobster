@@ -14,6 +14,12 @@ from typing import Any, Dict, List, Optional, Union
 
 import anndata
 
+# Import for IR support (TYPE_CHECKING to avoid circular import)
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from lobster.core.analysis_ir import AnalysisStep
+
 logger = logging.getLogger(__name__)
 
 
@@ -46,6 +52,7 @@ class ProvenanceTracker:
         outputs: Optional[List[Dict[str, Any]]] = None,
         parameters: Optional[Dict[str, Any]] = None,
         description: Optional[str] = None,
+        ir: Optional["AnalysisStep"] = None,
     ) -> str:
         """
         Create a new provenance activity record.
@@ -57,9 +64,15 @@ class ProvenanceTracker:
             outputs: List of output entities
             parameters: Parameters used in the activity
             description: Human-readable description
+            ir: Optional AnalysisStep Intermediate Representation for notebook export
 
         Returns:
             str: Unique activity ID
+
+        Notes:
+            The `ir` parameter enables automatic Jupyter notebook generation.
+            Services should emit AnalysisStep objects that contain complete
+            information for reproducible code generation without manual mapping.
         """
         activity_id = f"{self.namespace}:activity:{uuid.uuid4()}"
         timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -75,6 +88,13 @@ class ProvenanceTracker:
             "description": description,
             "software_versions": self._get_software_versions(),
         }
+
+        # Store IR if provided (serialize to dict for JSON compatibility)
+        if ir is not None:
+            activity["ir"] = ir.to_dict()
+            self.logger.debug(f"Stored IR for operation: {ir.operation}")
+        else:
+            activity["ir"] = None
 
         self.activities.append(activity)
         self.logger.debug(f"Created activity: {activity_id} ({activity_type})")

@@ -18,6 +18,7 @@ from plotly.subplots import make_subplots
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
+from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -49,6 +50,7 @@ class PreprocessingService:
         This service is stateless and doesn't require a data manager instance.
         """
         logger.debug("Initializing stateless PreprocessingService")
+        self.config = config or {}
         logger.debug("PreprocessingService initialized successfully")
 
     def correct_ambient_rna(
@@ -134,6 +136,140 @@ class PreprocessingService:
             logger.exception(f"Error in ambient RNA correction: {e}")
             raise PreprocessingError(f"Ambient RNA correction failed: {str(e)}")
 
+    def _create_filter_normalize_ir(
+        self,
+        min_genes_per_cell: int,
+        max_genes_per_cell: int,
+        min_cells_per_gene: int,
+        max_mito_percent: float,
+        max_ribo_percent: float,
+        normalization_method: str,
+        target_sum: int,
+    ) -> AnalysisStep:
+        """
+        Create Intermediate Representation for filter and normalization operation.
+
+        Args:
+            min_genes_per_cell: Minimum genes per cell threshold
+            max_genes_per_cell: Maximum genes per cell threshold
+            min_cells_per_gene: Minimum cells per gene threshold
+            max_mito_percent: Maximum mitochondrial percentage
+            max_ribo_percent: Maximum ribosomal percentage
+            normalization_method: Normalization method to use
+            target_sum: Target sum for normalization
+
+        Returns:
+            AnalysisStep with filter and normalize code template
+        """
+        # Parameter schema
+        parameter_schema = {
+            "min_genes_per_cell": ParameterSpec(
+                param_type="int",
+                papermill_injectable=True,
+                default_value=min_genes_per_cell,
+                required=False,
+                validation_rule="min_genes_per_cell > 0",
+                description="Minimum number of genes per cell",
+            ),
+            "max_genes_per_cell": ParameterSpec(
+                param_type="int",
+                papermill_injectable=True,
+                default_value=max_genes_per_cell,
+                required=False,
+                validation_rule="max_genes_per_cell > min_genes_per_cell",
+                description="Maximum number of genes per cell",
+            ),
+            "min_cells_per_gene": ParameterSpec(
+                param_type="int",
+                papermill_injectable=True,
+                default_value=min_cells_per_gene,
+                required=False,
+                validation_rule="min_cells_per_gene > 0",
+                description="Minimum number of cells per gene",
+            ),
+            "max_mito_percent": ParameterSpec(
+                param_type="float",
+                papermill_injectable=True,
+                default_value=max_mito_percent,
+                required=False,
+                validation_rule="0 <= max_mito_percent <= 100",
+                description="Maximum percentage of mitochondrial genes",
+            ),
+            "max_ribo_percent": ParameterSpec(
+                param_type="float",
+                papermill_injectable=True,
+                default_value=max_ribo_percent,
+                required=False,
+                validation_rule="0 <= max_ribo_percent <= 100",
+                description="Maximum percentage of ribosomal genes",
+            ),
+            "target_sum": ParameterSpec(
+                param_type="int",
+                papermill_injectable=True,
+                default_value=target_sum,
+                required=False,
+                validation_rule="target_sum > 0",
+                description="Target sum for normalization",
+            ),
+        }
+
+        # Jinja2 template with parameters
+        code_template = """# Filter cells and genes based on quality metrics
+# Filtering thresholds:
+# - Genes per cell: {{ min_genes_per_cell }} to {{ max_genes_per_cell }}
+# - Cells per gene: minimum {{ min_cells_per_gene }}
+# - Mitochondrial content: maximum {{ max_mito_percent }}%
+# - Ribosomal content: maximum {{ max_ribo_percent }}%
+
+# Calculate QC metrics
+sc.pp.calculate_qc_metrics(adata, qc_vars=['mt', 'ribo'], percent_top=None, log1p=False, inplace=True)
+
+# Filter cells
+adata = adata[adata.obs['n_genes_by_counts'] >= {{ min_genes_per_cell }}, :].copy()
+adata = adata[adata.obs['n_genes_by_counts'] <= {{ max_genes_per_cell }}, :].copy()
+adata = adata[adata.obs['pct_counts_mt'] <= {{ max_mito_percent }}, :].copy()
+adata = adata[adata.obs['pct_counts_ribo'] <= {{ max_ribo_percent }}, :].copy()
+
+# Filter genes
+sc.pp.filter_genes(adata, min_cells={{ min_cells_per_gene }})
+
+print(f"After filtering: {adata.n_obs} cells × {adata.n_vars} genes")
+
+# Normalize expression data
+sc.pp.normalize_total(adata, target_sum={{ target_sum }})
+sc.pp.log1p(adata)
+
+print(f"Normalization complete (target_sum={{ target_sum }}, log1p transformed)")
+"""
+
+        return AnalysisStep(
+            operation="scanpy.pp.filter_normalize",
+            tool_name="filter_and_normalize_cells",
+            description=f"Filter cells/genes and normalize expression data (target_sum={target_sum})",
+            library="scanpy",
+            code_template=code_template,
+            imports=["import scanpy as sc", "import numpy as np"],
+            parameters={
+                "min_genes_per_cell": min_genes_per_cell,
+                "max_genes_per_cell": max_genes_per_cell,
+                "min_cells_per_gene": min_cells_per_gene,
+                "max_mito_percent": max_mito_percent,
+                "max_ribo_percent": max_ribo_percent,
+                "target_sum": target_sum,
+                "normalization_method": normalization_method,
+            },
+            parameter_schema=parameter_schema,
+            input_entities=["adata"],
+            output_entities=["adata"],
+            execution_context={
+                "operation_type": "preprocessing",
+                "normalization_method": normalization_method,
+                "filtering_strategy": "qc_based",
+            },
+            validates_on_export=True,
+            requires_validation=False,
+        )
+
     def filter_and_normalize_cells(
         self,
         adata: anndata.AnnData,
@@ -144,7 +280,7 @@ class PreprocessingService:
         max_ribo_percent: float = 50.0,
         normalization_method: str = "log1p",
         target_sum: int = 10000,
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Filter cells and genes based on quality metrics and normalize expression data.
 
@@ -159,7 +295,7 @@ class PreprocessingService:
             target_sum: Target sum for normalization (e.g., 10,000)
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: Filtered/normalized AnnData and processing stats
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]: Filtered/normalized AnnData, processing stats, and IR
 
         Raises:
             PreprocessingError: If filtering or normalization fails
@@ -226,7 +362,18 @@ class PreprocessingService:
                 f"{original_shape[1]} → {adata_processed.n_vars} genes"
             )
 
-            return adata_processed, processing_stats
+            # Create IR for notebook export
+            ir = self._create_filter_normalize_ir(
+                min_genes_per_cell=min_genes_per_cell,
+                max_genes_per_cell=max_genes_per_cell,
+                min_cells_per_gene=min_cells_per_gene,
+                max_mito_percent=max_mito_percent,
+                max_ribo_percent=max_ribo_percent,
+                normalization_method=normalization_method,
+                target_sum=target_sum,
+            )
+
+            return adata_processed, processing_stats, ir
 
         except Exception as e:
             logger.exception(f"Error in filtering and normalization: {e}")

@@ -188,7 +188,7 @@ def singlecell_expert(
             adata = data_manager.get_modality(modality_name)
 
             # Run quality assessment using service with single-cell specific parameters
-            adata_qc, assessment_stats = quality_service.assess_quality(
+            adata_qc, assessment_stats, ir = quality_service.assess_quality(
                 adata=adata,
                 min_genes=min_genes,
                 max_mt_pct=max_mt_pct,
@@ -210,6 +210,7 @@ def singlecell_expert(
                     "max_ribo_pct": max_ribo_pct,
                 },
                 description=f"Single-cell quality assessment for {modality_name}",
+                ir=ir,
             )
 
             # Format professional response with single-cell context
@@ -284,7 +285,7 @@ Proceed with filtering and normalization, then doublet detection before clusteri
             )
 
             # Use preprocessing service with single-cell optimized parameters
-            adata_processed, processing_stats = (
+            adata_processed, processing_stats, ir = (
                 preprocessing_service.filter_and_normalize_cells(
                     adata=adata,
                     min_genes_per_cell=min_genes_per_cell,
@@ -317,6 +318,7 @@ Proceed with filtering and normalization, then doublet detection before clusteri
                     "target_sum": target_sum,
                 },
                 description=f"Single-cell filtered and normalized {modality_name}",
+                ir=ir,
             )
 
             # Format professional response
@@ -490,7 +492,7 @@ Proceed with filtering and normalization, then doublet detection before clusteri
             )
 
             # Use clustering service
-            adata_clustered, clustering_stats = (
+            adata_clustered, clustering_stats, ir = (
                 clustering_service.cluster_and_visualize(
                     adata=adata,
                     resolution=resolution,
@@ -520,6 +522,7 @@ Proceed with filtering and normalization, then doublet detection before clusteri
                     "demo_mode": demo_mode,
                 },
                 description=f"Single-cell clustered {modality_name} into {clustering_stats['n_clusters']} clusters",
+                ir=ir,
             )
 
             # Format professional response

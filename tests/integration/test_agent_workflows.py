@@ -30,7 +30,6 @@ import pandas as pd
 # from lobster.agents.data_expert import data_expert_agent
 # from lobster.agents.singlecell_expert import singlecell_expert_agent
 # from lobster.agents.research_agent import research_agent
-# from lobster.agents.method_expert import method_expert_agent
 
 # from tests.mock_data.factories import SingleCellDataFactory, BulkRNASeqDataFactory
 # from tests.mock_data.base import SMALL_DATASET_CONFIG, LARGE_DATASET_CONFIG

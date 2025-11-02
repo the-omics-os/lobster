@@ -732,7 +732,7 @@ The MuData object contains all selected modalities and is ready for cross-modal 
                 return f"Modality '{output_modality_name}' already exists. Use remove_modality first or choose a different name."
 
             # Use ConcatenationService for the actual concatenation
-            concatenated_adata, statistics = concat_service.concatenate_from_modalities(
+            concatenated_adata, statistics, ir = concat_service.concatenate_from_modalities(
                 modality_names=sample_modalities,
                 output_name=output_modality_name if save_to_file else None,
                 use_intersecting_genes_only=use_intersecting_genes_only,
@@ -763,6 +763,7 @@ The MuData object contains all selected modalities and is ready for cross-modal 
                     "save_to_file": save_to_file,
                 },
                 description=f"Concatenated {len(sample_modalities)} samples into modality '{output_modality_name}'",
+                ir=ir,
             )
 
             # Format results for user display

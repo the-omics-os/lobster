@@ -13,6 +13,7 @@ Lobster AI is a professional **multi-agent bioinformatics analysis platform** th
 - **Affinity Proteomics**: Olink panels, antibody arrays, targeted protein panels, CV analysis, low missing values (<30%)
 - **Multi-Omics Integration**: (Future feature) Cross-platform analysis using MuData framework
 - **Literature Mining**: Automated parameter extraction from publications via PubMed and GEO
+- **Jupyter Notebook Export**: Transform interactive sessions into reproducible, executable notebooks with Papermill integration
 
 ### Supported Data Formats
 - **Input**: CSV, Excel, H5AD, 10X MTX, MaxQuant output, Spectronaut results, Olink NPX values
@@ -94,6 +95,10 @@ The CLI (`lobster/cli.py`) features a modern terminal interface with comprehensi
 - `/workspace load <name>` - Load specific dataset by name (v2.2+)
 - `/restore [pattern]` - Restore previous session datasets (v2.2+)
 - `/modes` - List available operation modes
+- `/pipeline export` - Export current session as Jupyter notebook (v2.3+)
+- `/pipeline list` - List available exported notebooks (v2.3+)
+- `/pipeline run <notebook> <modality>` - Execute notebook with validation (v2.3+)
+- `/pipeline info` - Show detailed notebook metadata (v2.3+)
 
 ## Architecture Overview
 
@@ -115,6 +120,8 @@ The CLI (`lobster/cli.py`) features a modern terminal interface with comprehensi
 - `data_manager_v2.py` - DataManagerV2 (multi-omics orchestrator with modality management)
 - `interfaces/base_client.py` - BaseClient interface for cloud/local consistency
 - `provenance.py` - W3C-PROV compliant analysis history tracking
+- `notebook_exporter.py` - Jupyter notebook generation from provenance records (v2.3+)
+- `notebook_executor.py` - Notebook validation and Papermill execution (v2.3+)
 - `schemas/` - Transcriptomics and proteomics metadata validation
 
 #### **`lobster/tools/`** - Stateless analysis services
@@ -246,6 +253,101 @@ geo_gse12345                          # Raw downloaded data
    - Coefficient of variation analysis
    - Antibody validation metrics
    - Panel comparison and harmonization
+
+5. **Jupyter Notebook Export Workflow (v2.3+):**
+   - Convert interactive sessions to reproducible notebooks
+   - Provenance-to-code transformation using tool mapping registry
+   - Papermill integration for parameterized execution
+   - Schema validation before execution (data shape, columns, types)
+   - Dry run capability for validation without execution
+   - Standard library output (scanpy, pyDESeq2) - no Lobster dependencies
+   - Git-friendly .ipynb format for version control
+   - Batch execution support for multiple datasets
+
+**Notebook Export System Components:**
+
+```python
+# lobster/core/notebook_exporter.py
+class NotebookExporter:
+    """Convert W3C-PROV activity records to executable Jupyter notebooks."""
+
+    TOOL_TO_CODE = {
+        "quality_control": "_qc_code",          # scanpy.pp.calculate_qc_metrics
+        "filter_cells": "_filter_cells_code",   # scanpy.pp.filter_cells/genes
+        "normalize": "_normalize_code",         # scanpy.pp.normalize_total + log1p
+        "highly_variable_genes": "_hvg_code",   # scanpy.pp.highly_variable_genes
+        "pca": "_pca_code",                     # scanpy.tl.pca
+        "neighbors": "_neighbors_code",         # scanpy.pp.neighbors
+        "cluster": "_cluster_code",             # scanpy.tl.leiden
+        "umap": "_umap_code",                   # scanpy.tl.umap
+        "find_markers": "_find_markers_code",   # scanpy.tl.rank_genes_groups
+        "differential_expression": "_de_code",  # pyDESeq2 workflow
+    }
+
+    def export(self, name: str, description: str,
+               filter_strategy: str = "successful") -> Path:
+        """Generate notebook with Papermill parameters and provenance metadata."""
+
+# lobster/core/notebook_executor.py
+class NotebookExecutor:
+    """Validate and execute notebooks with comprehensive error handling."""
+
+    def validate_input(self, notebook_path, input_data) -> ValidationResult:
+        """Check data shape, required columns, data type compatibility."""
+
+    def dry_run(self, notebook_path, input_data) -> Dict[str, Any]:
+        """Simulate execution, show steps, estimate time, validate schema."""
+
+    def execute(self, notebook_path, input_data, parameters) -> Dict[str, Any]:
+        """Run notebook with Papermill, preserve partial results on failure."""
+```
+
+**Notebook Structure:**
+```
+# ============================================
+# Header (Markdown)
+# ============================================
+# Workflow name, description, creation metadata
+
+# ============================================
+# Parameters Cell (Tagged for Papermill)
+# ============================================
+input_data = "dataset.h5ad"
+output_prefix = "results"
+random_seed = 42
+
+# ============================================
+# Step 1: Quality Control
+# ============================================
+import scanpy as sc
+adata = sc.read_h5ad(input_data)
+sc.pp.calculate_qc_metrics(adata, qc_vars=['mt', 'ribo'], inplace=True)
+
+# ... more steps ...
+
+# ============================================
+# Footer (Markdown)
+# ============================================
+# Results export, Git workflow, usage instructions
+```
+
+**Key Implementation Details:**
+- **Lazy Initialization**: Notebook modules loaded via @property to avoid circular imports
+- **Provenance Integration**: Uses W3C-PROV activities as source for code generation
+- **Tool Mapping Registry**: 10 core tools mapped to standard library equivalents
+- **Validation System**: ValidationResult dataclass with errors/warnings
+- **Error Recovery**: Partial result preservation on execution failure
+- **Metadata Tracking**: Captures dependencies, versions, processing parameters
+- **Storage Location**: `~/.lobster/notebooks/*.ipynb` for Git version control
+
+**CLI Workflow:**
+1. Perform analysis interactively via natural language
+2. `/pipeline export` - Convert session to notebook with name/description
+3. Review notebook in Jupyter, commit to Git
+4. `/pipeline run <notebook> <modality>` - Execute on new data with validation
+5. Results saved as output notebook with preserved provenance
+
+For detailed documentation, see: `docs/notebook-pipeline-export.md`
 
 ## Development Guidelines
 
@@ -437,11 +539,17 @@ DataManagerV2 (lobster/core/data_manager_v2.py)
 ├── Tracks provenance and tool usage
 ├── Validates schemas (transcriptomics/proteomics)
 ├── Delegates to backends (H5AD, MuData)
-└── Workspace restoration (v2.2+):
-    ├── _scan_workspace() - Detect available datasets
-    ├── load_dataset(name) - Lazy load specific dataset
-    ├── restore_session(pattern) - Pattern-based restoration
-    └── .session.json - Persistent session tracking
+├── Workspace restoration (v2.2+):
+│   ├── _scan_workspace() - Detect available datasets
+│   ├── load_dataset(name) - Lazy load specific dataset
+│   ├── restore_session(pattern) - Pattern-based restoration
+│   └── .session.json - Persistent session tracking
+└── Notebook pipeline (v2.3+):
+    ├── notebook_exporter (lazy @property) - Generate notebooks
+    ├── notebook_executor (lazy @property) - Validate and execute
+    ├── export_notebook() - CLI entry point for export
+    ├── run_notebook() - CLI entry point for execution
+    └── list_notebooks() - Show available notebooks
 ```
 
 ### Testing Connectivity
@@ -449,3 +557,4 @@ DataManagerV2 (lobster/core/data_manager_v2.py)
 - Service Integration: `pytest tests/integration/`
 - CLI Commands: Test with both `AgentClient` and mock `CloudLobsterClient`
 - Data Flow: Verify modality naming convention maintained throughout pipeline
+- Notebook Export: `pytest tests/unit/core/test_notebook_exporter.py tests/unit/core/test_notebook_executor.py tests/integration/test_notebook_workflow.py`

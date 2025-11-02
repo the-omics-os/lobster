@@ -8,6 +8,7 @@ flexible multi-omics data analysis with complete provenance tracking.
 
 import json
 import logging
+import nbformat
 import os
 import tempfile
 import threading
@@ -15,7 +16,7 @@ import time
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import anndata
 import numpy as np
@@ -32,6 +33,11 @@ from lobster.core.interfaces.adapter import IModalityAdapter
 from lobster.core.interfaces.backend import IDataBackend
 from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.provenance import ProvenanceTracker
+from lobster.core.analysis_ir import create_data_loading_ir, create_data_saving_ir
+
+# Import for IR support (TYPE_CHECKING to avoid circular import)
+if TYPE_CHECKING:
+    from lobster.core.analysis_ir import AnalysisStep
 
 # Try to import ProteomicsAdapter - may not be available in public distribution
 try:
@@ -129,8 +135,7 @@ class DataManagerV2:
         # Metadata storage for GEO datasets and other sources temporary until data is loaded
         self.metadata_store: Dict[str, Dict[str, Any]] = {}
 
-        # Legacy compatibility attributes for tool usage tracking
-        self.tool_usage_history: List[Dict[str, Any]] = []
+        # Processing log for user-facing messages
         self.processing_log: List[str] = []
 
         # Plot management
@@ -166,6 +171,11 @@ class DataManagerV2:
         # Provenance tracking
         self.provenance = ProvenanceTracker() if enable_provenance else None
 
+        # Notebook-based pipeline support (lazy initialization to avoid circular imports)
+        self._notebook_exporter = None
+        self._notebook_executor = None
+        self._enable_notebooks = enable_provenance
+
         # Setup workspace
         self._setup_workspace()
 
@@ -182,6 +192,23 @@ class DataManagerV2:
         self._register_default_adapters()
 
         logger.debug(f"Initialized DataManagerV2 with workspace: {self.workspace_path}")
+
+    @property
+    def notebook_exporter(self):
+        """Lazy initialize notebook exporter."""
+        if self._notebook_exporter is None and self._enable_notebooks:
+            from lobster.core.notebook_exporter import NotebookExporter
+            self._notebook_exporter = NotebookExporter(self.provenance, self)
+        return self._notebook_exporter
+
+    @property
+    def notebook_executor(self):
+        """Lazy initialize notebook executor."""
+        if self._notebook_executor is None:
+            from lobster.core.notebook_executor import NotebookExecutor
+            self._notebook_executor = NotebookExecutor(self)
+        return self._notebook_executor
+
 
     def _setup_workspace(self) -> None:
         """Set up workspace directories."""
@@ -247,8 +274,7 @@ class DataManagerV2:
             if overwrite:
                 logger.warning(f"Overwriting existing backend: {name}")
             else:
-                logger.debug(f"Backend '{name}' already registered, skipping")
-                return  # Idempotent: silently skip if already registered
+                raise ValueError(f"Backend '{name}' already registered. Use overwrite=True to replace.")
 
         self.backends[name] = backend
         logger.debug(f"Registered backend: {name} ({backend.__class__.__name__})")
@@ -269,8 +295,7 @@ class DataManagerV2:
             if overwrite:
                 logger.warning(f"Overwriting existing adapter: {name}")
             else:
-                logger.debug(f"Adapter '{name}' already registered, skipping")
-                return  # Idempotent: silently skip if already registered
+                raise ValueError(f"Adapter '{name}' already registered. Use overwrite=True to replace.")
 
         self.adapters[name] = adapter
         logger.debug(f"Registered adapter: {name} ({adapter.__class__.__name__})")
@@ -338,12 +363,25 @@ class DataManagerV2:
                 },
             )
 
-            # self.provenance.log_data_loading(
-            #     source_path=source,
-            #     output_entity_id=entity_id,
-            #     adapter_name=adapter,
-            #     parameters=kwargs
-            # )
+            # Create IR for data loading operation
+            source_path = str(source) if not isinstance(source, anndata.AnnData) else "AnnData object"
+            loading_ir = create_data_loading_ir(
+                input_param_name="input_data",
+                description=f"Load {name} data from {source_path}",
+            )
+
+            # Log data loading operation with IR
+            self.log_tool_usage(
+                tool_name="load_dataset",
+                parameters={
+                    "name": name,
+                    "source": source_path,
+                    "adapter": adapter,
+                    **kwargs,
+                },
+                description=f"Loaded modality '{name}' using {adapter} adapter",
+                ir=loading_ir,
+            )
 
             # Add provenance to AnnData
             adata = self.provenance.add_to_anndata(adata)
@@ -394,6 +432,27 @@ class DataManagerV2:
                 entity_type="modality_data",
                 uri=path,  # Use in-memory representation as source
                 metadata={"modality_name": name, "shape": adata.shape},
+            )
+
+            # Create IR for data saving operation
+            saving_ir = create_data_saving_ir(
+                output_prefix_param="output_prefix",
+                filename_suffix=Path(path).stem,
+                description=f"Save {name} data to {path}",
+                compression=kwargs.get("compression", "gzip"),
+            )
+
+            # Log data saving operation with IR
+            self.log_tool_usage(
+                tool_name="save_dataset",
+                parameters={
+                    "name": name,
+                    "path": str(path),
+                    "backend": backend_name,
+                    **kwargs,
+                },
+                description=f"Saved modality '{name}' to {path} using {backend_name} backend",
+                ir=saving_ir,
             )
 
         logger.info(f"Saved modality '{name}' to {path} using backend '{backend_name}'")
@@ -796,29 +855,53 @@ class DataManagerV2:
             }
         return info
 
-    # Legacy compatibility methods for tools
+    # Tool usage tracking via provenance
     def log_tool_usage(
-        self, tool_name: str, parameters: Dict[str, Any], description: str = None
-    ) -> None:
+        self,
+        tool_name: str,
+        parameters: Dict[str, Any],
+        description: str = None,
+        ir: Optional["AnalysisStep"] = None,
+    ) -> Optional[Dict[str, Any]]:
         """
-        Log tool usage for reproducibility tracking.
+        Log tool usage for reproducibility tracking via W3C-PROV provenance system.
 
         Args:
             tool_name: Name of the tool used
             parameters: Parameters used with the tool
             description: Optional description of what was done
-        """
-        import datetime
+            ir: Optional AnalysisStep Intermediate Representation for notebook export
 
-        self.tool_usage_history.append(
-            {
-                "tool": tool_name,
-                "parameters": parameters,
-                "description": description,
-                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            }
-        )
-        logger.info(f"Tool usage logged: {tool_name}")
+        Returns:
+            Optional[Dict[str, Any]]: The created activity record, or None if no provenance
+
+        Notes:
+            The `ir` parameter enables automatic Jupyter notebook generation.
+            Services should emit AnalysisStep objects alongside their results,
+            and agents should pass these IR objects to this method for storage
+            in the provenance record.
+        """
+        if self.provenance:
+            activity_id = self.provenance.create_activity(
+                activity_type=tool_name,
+                agent="data_manager",
+                parameters=parameters,
+                description=description or f"{tool_name} operation",
+                ir=ir,
+            )
+
+            # Find and return the activity dict
+            for activity in self.provenance.activities:
+                if activity["id"] == activity_id:
+                    if ir is not None:
+                        logger.info(
+                            f"Tool usage logged with IR: {tool_name} (operation: {ir.operation})"
+                        )
+                    else:
+                        logger.info(f"Tool usage logged: {tool_name}")
+                    return activity
+
+        return None
 
     def save_processed_data(
         self,
@@ -978,13 +1061,23 @@ class DataManagerV2:
             except Exception as e:
                 logger.error(f"Failed to auto-save modality {modality_name}: {e}")
 
-        # Save processing log and tool usage history
-        if self.processing_log or self.tool_usage_history:
+        # Save processing log and provenance
+        if self.processing_log or (self.provenance and self.provenance.activities):
             try:
                 log_path = self.exports_dir / "processing_log.json"
                 log_data = {
                     "processing_log": self.processing_log,
-                    "tool_usage_history": self.tool_usage_history,
+                    "provenance_summary": {
+                        "n_activities": len(self.provenance.activities) if self.provenance else 0,
+                        "activities": [
+                            {
+                                "type": act.get("type"),
+                                "timestamp": act.get("timestamp"),
+                                "parameters": act.get("parameters", {})
+                            }
+                            for act in (self.provenance.activities if self.provenance else [])
+                        ]
+                    },
                     "timestamp": pd.Timestamp.now().isoformat(),
                 }
                 import json
@@ -2569,30 +2662,31 @@ class DataManagerV2:
                 summary += f"- {entry}\n"
             summary += "\n"
 
-        # Add tool usage history
-        if self.tool_usage_history:
-            summary += "## Tool Usage History\n\n"
-            for i, entry in enumerate(self.tool_usage_history, 1):
-                summary += f"### {i}. {entry['tool']} ({entry['timestamp']})\n\n"
-                if entry.get("description"):
-                    summary += f"{entry['description']}\n\n"
-                summary += "**Parameters:**\n\n"
-                for param_name, param_value in entry["parameters"].items():
-                    # Format parameter value based on its type
-                    if isinstance(param_value, (list, tuple)) and len(param_value) > 5:
-                        param_str = f"[{', '.join(str(x) for x in param_value[:5])}...] (length: {len(param_value)})"
-                    else:
-                        param_str = str(param_value)
-                    summary += f"- {param_name}: {param_str}\n"
-                summary += "\n"
-
-        # Add provenance information
+        # Add provenance information with detailed activities
         if self.provenance and self.provenance.activities:
-            summary += "## Provenance Information\n\n"
-            summary += f"- Activities: {len(self.provenance.activities)}\n"
-            summary += f"- Entities: {len(self.provenance.entities)}\n"
-            summary += f"- Agents: {len(self.provenance.agents)}\n"
-            summary += "\n"
+            summary += "## Provenance-Tracked Activities\n\n"
+            summary += f"**Summary**: {len(self.provenance.activities)} activities, "
+            summary += f"{len(self.provenance.entities)} entities, "
+            summary += f"{len(self.provenance.agents)} agents\n\n"
+
+            for i, activity in enumerate(self.provenance.activities, 1):
+                activity_type = activity.get("type", "unknown")
+                timestamp = activity.get("timestamp", "N/A")
+                summary += f"### {i}. {activity_type} ({timestamp})\n\n"
+
+                if activity.get("description"):
+                    summary += f"{activity['description']}\n\n"
+
+                if activity.get("parameters"):
+                    summary += "**Parameters:**\n\n"
+                    for param_name, param_value in activity["parameters"].items():
+                        # Format parameter value based on its type
+                        if isinstance(param_value, (list, tuple)) and len(param_value) > 5:
+                            param_str = f"[{', '.join(str(x) for x in param_value[:5])}...] (length: {len(param_value)})"
+                        else:
+                            param_str = str(param_value)
+                        summary += f"- {param_name}: {param_str}\n"
+                    summary += "\n"
 
         return summary
 
@@ -2957,13 +3051,13 @@ https://github.com/OmicsOS/lobster
                         "type": "in_memory",
                     }
 
-            # Add command history if available
-            if self.tool_usage_history:
-                # Keep last 50 commands
-                recent_commands = self.tool_usage_history[-50:]
+            # Add command history from provenance if available
+            if self.provenance and self.provenance.activities:
+                # Keep last 50 activities
+                recent_activities = self.provenance.activities[-50:]
                 session_data["command_history"] = [
-                    {"timestamp": cmd.get("timestamp"), "command": cmd.get("tool")}
-                    for cmd in recent_commands
+                    {"timestamp": act.get("timestamp"), "command": act.get("type")}
+                    for act in recent_activities
                 ]
 
             # Write atomically
@@ -3073,3 +3167,154 @@ https://github.com/OmicsOS/lobster
             "total_size_mb": total_size,
             "pattern": pattern,
         }
+
+    # ========================================
+    # NOTEBOOK PIPELINE SUPPORT
+    # ========================================
+
+    def export_notebook(
+        self,
+        name: str,
+        description: str = "",
+        filter_strategy: str = "successful",
+    ) -> Path:
+        """
+        Export current session as Jupyter notebook.
+
+        Args:
+            name: Notebook filename (no extension)
+            description: Human-readable description
+            filter_strategy: "successful" | "all" | "manual"
+
+        Returns:
+            Path to generated .ipynb file
+
+        Raises:
+            ValueError: If provenance tracking disabled or no activities
+
+        Example:
+            >>> path = dm.export_notebook(
+            ...     name="standard_qc_workflow",
+            ...     description="Quality control and clustering for 10X data"
+            ... )
+            >>> print(f"Exported: {path}")
+            Exported: /Users/kevin/.lobster/notebooks/standard_qc_workflow.ipynb
+        """
+        if not self.provenance:
+            raise ValueError("Provenance tracking disabled - cannot export notebook")
+
+        if not self.notebook_exporter:
+            raise ValueError("Notebook exporter not initialized")
+
+        if not self.provenance.activities:
+            raise ValueError("No activities recorded - nothing to export")
+
+        path = self.notebook_exporter.export(name, description, filter_strategy)
+
+        logger.info(f"Notebook exported: {path}")
+        logger.info("Next steps:")
+        logger.info(f"  1. Review: jupyter notebook {path}")
+        logger.info(f"  2. Commit: git add {path} && git commit -m 'Add {name}'")
+        logger.info(f"  3. Run: /pipeline run {path.name} <modality>")
+
+        return path
+
+    def run_notebook(
+        self,
+        notebook_path: Union[str, Path],
+        input_modality: str,
+        parameters: Optional[Dict[str, Any]] = None,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Execute saved notebook with new data.
+
+        Args:
+            notebook_path: Path to .ipynb file or filename in .lobster/notebooks/
+            input_modality: Name of modality to use as input
+            parameters: Optional parameter overrides
+            dry_run: If True, validate but don't execute
+
+        Returns:
+            Execution result with status, output_notebook, etc.
+
+        Example:
+            >>> # Dry run first
+            >>> result = dm.run_notebook(
+            ...     "standard_qc_workflow.ipynb",
+            ...     "my_new_dataset",
+            ...     dry_run=True
+            ... )
+            >>> print(result['validation'])
+
+            >>> # Actually run
+            >>> result = dm.run_notebook(
+            ...     "standard_qc_workflow.ipynb",
+            ...     "my_new_dataset"
+            ... )
+            >>> print(f"Output: {result['output_notebook']}")
+        """
+        # Resolve notebook path
+        nb_path = Path(notebook_path)
+        if not nb_path.exists():
+            # Try .lobster/notebooks/
+            nb_path = Path.home() / ".lobster" / "notebooks" / notebook_path
+
+        if not nb_path.exists():
+            raise FileNotFoundError(f"Notebook not found: {notebook_path}")
+
+        # Get input data
+        if input_modality not in self.modalities:
+            raise ValueError(f"Modality '{input_modality}' not loaded")
+
+        # Save input modality as H5AD for notebook
+        import tempfile
+
+        temp_dir = Path(tempfile.mkdtemp())
+        temp_input = temp_dir / "input.h5ad"
+        self.save_modality(input_modality, temp_input)
+
+        # Execute
+        if dry_run:
+            result = self.notebook_executor.dry_run(nb_path, temp_input)
+        else:
+            result = self.notebook_executor.execute(nb_path, temp_input, parameters)
+
+        return result
+
+    def list_notebooks(self) -> List[Dict[str, Any]]:
+        """
+        List available notebooks in .lobster/notebooks/
+
+        Returns:
+            List of notebook metadata
+        """
+        notebooks_dir = Path.home() / ".lobster" / "notebooks"
+        if not notebooks_dir.exists():
+            return []
+
+        notebooks = []
+        for nb_file in notebooks_dir.glob("*.ipynb"):
+            # Read metadata
+            try:
+                with open(nb_file) as f:
+                    nb = nbformat.read(f, as_version=4)
+
+                metadata = nb.metadata.get('lobster', {})
+
+                notebooks.append(
+                    {
+                        "filename": nb_file.name,
+                        "path": str(nb_file),
+                        "name": nb_file.stem,
+                        "created_by": metadata.get("created_by", "unknown"),
+                        "created_at": metadata.get("created_at", ""),
+                        "lobster_version": metadata.get("lobster_version", ""),
+                        "n_steps": len([c for c in nb.cells if c.cell_type == 'code']),
+                        "size_kb": nb_file.stat().st_size / 1024,
+                    }
+                )
+            except Exception as e:
+                logger.warning(f"Could not read notebook {nb_file}: {e}")
+
+        return notebooks

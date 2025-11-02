@@ -129,14 +129,14 @@ class GEOParser:
             available_memory = vm.available
             total_required = int(required_memory * safety_factor)
 
-            # Keep at least 20% of total memory free
-            min_free_memory = vm.total * 0.2
+            # Keep a reasonable safety buffer (500 MB)
+            safety_buffer = 500 * 1024 * 1024  # 500 MB
 
-            if available_memory - total_required < min_free_memory:
+            if available_memory < total_required + safety_buffer:
                 logger.warning(
                     f"Insufficient memory: Required={self._format_bytes(total_required)}, "
                     f"Available={self._format_bytes(available_memory)}, "
-                    f"Minimum free={self._format_bytes(int(min_free_memory))}"
+                    f"Safety buffer={self._format_bytes(safety_buffer)}"
                 )
                 return False
 

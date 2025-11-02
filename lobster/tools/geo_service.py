@@ -125,7 +125,7 @@ class GEOService:
     """
 
     def __init__(
-        self, data_manager: DataManagerV2, cache_dir: Optional[str] = None, console=None
+        self, data_manager: DataManagerV2, cache_dir: Optional[str] = None, console=None, email: Optional[str] = None
     ):
         """
         Initialize the GEO service with modular architecture.
@@ -134,6 +134,7 @@ class GEOService:
             data_manager: DataManagerV2 instance for storing processed data as modalities
             cache_dir: Directory to cache downloaded files
             console: Rich console instance for display (creates new if None)
+            email: Optional email for NCBI Entrez (for backward compatibility, not currently used)
         """
         if GEOparse is None:
             raise ImportError(

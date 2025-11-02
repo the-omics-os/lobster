@@ -509,8 +509,8 @@ class PublicationIntelligenceService:
                 from lobster.config.llm_factory import create_llm
                 from lobster.config.settings import get_settings
                 settings = get_settings()
-                model_params = settings.get_agent_llm_params("method_expert_agent")
-                llm = create_llm("method_expert_agent", model_params)
+                model_params = settings.get_agent_llm_params("research_agent")
+                llm = create_llm("research_agent", model_params)
 
             # Construct extraction prompt
             prompt = f"""

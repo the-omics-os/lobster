@@ -257,7 +257,7 @@ Proceed with filtering and normalization for differential expression analysis.""
             )
 
             # Use preprocessing service with bulk RNA-seq optimized parameters
-            adata_processed, processing_stats = (
+            adata_processed, processing_stats, ir = (
                 preprocessing_service.filter_and_normalize_cells(
                     adata=adata,
                     min_genes_per_cell=min_genes_per_sample,
@@ -290,6 +290,7 @@ Proceed with filtering and normalization for differential expression analysis.""
                     "target_sum": target_sum,
                 },
                 description=f"Bulk RNA-seq filtered and normalized {modality_name}",
+                ir=ir,
             )
 
             # Format professional response
