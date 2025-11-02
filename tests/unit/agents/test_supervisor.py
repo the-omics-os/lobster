@@ -245,7 +245,6 @@ class TestSupervisorHandoffCoordination:
         assert handoff_tool.name == "transfer_to_research_agent"
         assert "research agent" in handoff_tool.description.lower()
 
-
     def test_invalid_handoff_handling(self, mock_llm):
         """Test handling of invalid handoff requests."""
         # Test that supervisor can be created without issues
@@ -275,7 +274,10 @@ class TestSupervisorDecisionMaking:
             ("Load GEO dataset GSE12345", "data_expert_agent"),
             ("Perform single-cell clustering", "singlecell_expert_agent"),
             ("Find papers about T cells", "research_agent"),
-            ("Extract parameters from PMID:12345678", "research_agent"),  # Phase 1: research_agent handles method extraction
+            (
+                "Extract parameters from PMID:12345678",
+                "research_agent",
+            ),  # Phase 1: research_agent handles method extraction
             ("Analyze proteomics data", "proteomics_expert_agent"),
         ],
     )

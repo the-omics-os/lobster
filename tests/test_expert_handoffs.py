@@ -17,7 +17,9 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 # Skip entire module - handoff functionality is currently disabled for supervisor-mediated flow
-pytestmark = pytest.mark.skip(reason="Direct sub-agent handoffs disabled for supervisor-mediated flow")
+pytestmark = pytest.mark.skip(
+    reason="Direct sub-agent handoffs disabled for supervisor-mediated flow"
+)
 
 # Conditional imports - only import what's actually available
 try:

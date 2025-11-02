@@ -495,9 +495,11 @@ coordinated changes across molecular layers"
 
 **Goal**: Integrate literature knowledge with experimental data analysis.
 
-**Agent**: Research Agent with **automatic PMID/DOI → PDF resolution** (Phase 1 Enhancement, v2.2+).
+**Agent**: Research Agent with **automatic PMID/DOI → PDF resolution** (v2.2+) and **structure-aware Docling parsing** (v2.3+).
 
-**Key Capability**: Automatic resolution of PMIDs and DOIs to accessible PDFs (70-80% success rate) using tiered waterfall strategy: PMC → bioRxiv/medRxiv → Publisher → Alternative suggestions.
+**Key Capabilities**:
+- **v2.2+**: Automatic resolution of PMIDs and DOIs to accessible PDFs (70-80% success rate) using tiered waterfall strategy: PMC → bioRxiv/medRxiv → Publisher → Alternative suggestions
+- **v2.3+**: Structure-aware PDF parsing with Docling for intelligent Methods section detection (>90% hit rate vs ~30% previously), complete section extraction, table and formula preservation, and document caching
 
 ### Step 1: Literature Search
 
@@ -505,9 +507,11 @@ coordinated changes across molecular layers"
 "Find papers about single-cell RNA-seq analysis of liver fibrosis"
 ```
 
-### Step 2: Method Extraction (Automatic Resolution)
+### Step 2: Method Extraction (Enhanced with Docling v2.3+)
 
 **Enhanced (v2.2+)**: Directly provide PMIDs or DOIs - automatic resolution to PDFs happens internally.
+
+**Enhanced (v2.3+)**: Structure-aware extraction with Docling intelligently locates Methods sections, extracts parameter tables, and preserves formulas. Results cached for fast subsequent access (<100ms vs 2-5s).
 
 ```
 "Extract methods from PMID:12345678"
@@ -520,8 +524,20 @@ Or batch processing for competitive analysis:
 ```
 
 **Automatic handling**:
-- ✅ Accessible papers → Methods extracted immediately
+- ✅ Accessible papers → Methods extracted immediately using Docling structure-aware parsing
+- ✅ Complete Methods sections extracted (no arbitrary truncation)
+- ✅ Parameter tables and formulas preserved
+- ✅ Results cached for fast repeat access
 - ❌ Paywalled papers → 5 alternative access strategies provided (PMC accepted manuscripts, preprints, institutional access, author contact, Unpaywall)
+
+**Quality Improvement (v2.3+)**:
+- Methods section detection: >90% success rate (vs ~30% with naive truncation)
+- Complete section extraction (no 10K character limit)
+- Table extraction: 80%+ of parameter tables detected
+- Smart image filtering: 40-60% context size reduction
+- Document caching: 30-50x faster on repeat access
+
+**See also**: [37-publication-intelligence-deep-dive.md](37-publication-intelligence-deep-dive.md) for comprehensive Docling integration details.
 
 ### Step 3: Check Accessibility (Optional)
 

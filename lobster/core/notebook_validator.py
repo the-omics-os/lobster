@@ -72,39 +72,39 @@ class NotebookValidationResult:
     @property
     def has_errors(self) -> bool:
         """Check if validation has blocking errors."""
-        return any(issue.severity == 'error' for issue in self.issues)
+        return any(issue.severity == "error" for issue in self.issues)
 
     @property
     def has_warnings(self) -> bool:
         """Check if validation has warnings."""
-        return any(issue.severity == 'warning' for issue in self.issues)
+        return any(issue.severity == "warning" for issue in self.issues)
 
     @property
     def error_count(self) -> int:
         """Count of blocking errors."""
-        return sum(1 for issue in self.issues if issue.severity == 'error')
+        return sum(1 for issue in self.issues if issue.severity == "error")
 
     @property
     def warning_count(self) -> int:
         """Count of non-blocking warnings."""
-        return sum(1 for issue in self.issues if issue.severity == 'warning')
+        return sum(1 for issue in self.issues if issue.severity == "warning")
 
     def add_error(
         self,
         message: str,
         cell_index: int,
         line_number: Optional[int] = None,
-        code_snippet: Optional[str] = None
+        code_snippet: Optional[str] = None,
     ) -> None:
         """Add an error issue."""
         self.is_valid = False
         self.issues.append(
             ValidationIssue(
-                severity='error',
+                severity="error",
                 cell_index=cell_index,
                 line_number=line_number,
                 message=message,
-                code_snippet=code_snippet
+                code_snippet=code_snippet,
             )
         )
 
@@ -113,16 +113,16 @@ class NotebookValidationResult:
         message: str,
         cell_index: int,
         line_number: Optional[int] = None,
-        code_snippet: Optional[str] = None
+        code_snippet: Optional[str] = None,
     ) -> None:
         """Add a warning issue."""
         self.issues.append(
             ValidationIssue(
-                severity='warning',
+                severity="warning",
                 cell_index=cell_index,
                 line_number=line_number,
                 message=message,
-                code_snippet=code_snippet
+                code_snippet=code_snippet,
             )
         )
 
@@ -188,15 +188,12 @@ class NotebookValidator:
             with open(notebook_path) as f:
                 nb = nbformat.read(f, as_version=4)
         except Exception as e:
-            result.add_error(
-                message=f"Cannot read notebook file: {e}",
-                cell_index=-1
-            )
+            result.add_error(message=f"Cannot read notebook file: {e}", cell_index=-1)
             return result
 
         # Validate each code cell
         for cell_idx, cell in enumerate(nb.cells):
-            if cell.cell_type != 'code':
+            if cell.cell_type != "code":
                 continue
 
             # Skip empty cells
@@ -223,18 +220,19 @@ class NotebookValidator:
             if self.strict_imports:
                 result.add_error(
                     message=f"Cannot import '{module_name}': {error_msg}",
-                    cell_index=-1  # Import check is global
+                    cell_index=-1,  # Import check is global
                 )
             else:
                 result.add_warning(
-                    message=f"Cannot import '{module_name}': {error_msg}",
-                    cell_index=-1
+                    message=f"Cannot import '{module_name}': {error_msg}", cell_index=-1
                 )
 
         # Update is_valid based on errors
         result.is_valid = not result.has_errors
 
-        logger.info(f"Validation complete: {result.error_count} errors, {result.warning_count} warnings")
+        logger.info(
+            f"Validation complete: {result.error_count} errors, {result.warning_count} warnings"
+        )
 
         return result
 
@@ -255,7 +253,7 @@ class NotebookValidator:
             ast.parse(source)
         except SyntaxError as e:
             # Extract relevant code snippet
-            lines = source.split('\n')
+            lines = source.split("\n")
             if e.lineno and 0 < e.lineno <= len(lines):
                 snippet = lines[e.lineno - 1].strip()
             else:
@@ -263,20 +261,20 @@ class NotebookValidator:
 
             issues.append(
                 ValidationIssue(
-                    severity='error',
+                    severity="error",
                     cell_index=cell_idx,
                     line_number=e.lineno,
                     message=f"Syntax error: {e.msg}",
-                    code_snippet=snippet
+                    code_snippet=snippet,
                 )
             )
         except Exception as e:
             issues.append(
                 ValidationIssue(
-                    severity='error',
+                    severity="error",
                     cell_index=cell_idx,
                     message=f"Failed to parse cell: {e}",
-                    code_snippet=None
+                    code_snippet=None,
                 )
             )
 
@@ -302,13 +300,13 @@ class NotebookValidator:
                 if isinstance(node, ast.Import):
                     for alias in node.names:
                         # Get base module name (e.g., 'numpy' from 'numpy.linalg')
-                        base_module = alias.name.split('.')[0]
+                        base_module = alias.name.split(".")[0]
                         imports.add(base_module)
 
                 elif isinstance(node, ast.ImportFrom):
                     if node.module:
                         # Get base module name
-                        base_module = node.module.split('.')[0]
+                        base_module = node.module.split(".")[0]
                         imports.add(base_module)
 
         except Exception as e:
@@ -358,35 +356,35 @@ class NotebookValidator:
         # This is a simplified check - full analysis would require execution context
 
         # Check for potentially problematic patterns
-        if 'exec(' in source or 'eval(' in source:  # noqa: S102
+        if "exec(" in source or "eval(" in source:  # noqa: S102
             issues.append(
                 ValidationIssue(
-                    severity='warning',
+                    severity="warning",
                     cell_index=cell_idx,
                     message="Use of exec() or eval() detected - potential security risk",
-                    code_snippet=None
+                    code_snippet=None,
                 )
             )
 
         # Check for bare except clauses
-        if 'except:' in source and 'except Exception' not in source:
+        if "except:" in source and "except Exception" not in source:
             issues.append(
                 ValidationIssue(
-                    severity='warning',
+                    severity="warning",
                     cell_index=cell_idx,
                     message="Bare except clause detected - consider catching specific exceptions",
-                    code_snippet=None
+                    code_snippet=None,
                 )
             )
 
         # Check for print statements in production code (optional warning)
-        if source.count('print(') > 5:
+        if source.count("print(") > 5:
             issues.append(
                 ValidationIssue(
-                    severity='warning',
+                    severity="warning",
                     cell_index=cell_idx,
                     message=f"Many print statements ({source.count('print(')}) - consider using logging",
-                    code_snippet=None
+                    code_snippet=None,
                 )
             )
 
@@ -407,7 +405,7 @@ class NotebookValidator:
                 nb = nbformat.read(f, as_version=4)
 
             for cell in nb.cells:
-                if cell.cell_type == 'code' and cell.source.strip():
+                if cell.cell_type == "code" and cell.source.strip():
                     try:
                         ast.parse(cell.source)
                     except SyntaxError:

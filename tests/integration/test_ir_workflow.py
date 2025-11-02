@@ -94,7 +94,9 @@ class TestQualityServiceIRWorkflow:
         # Verify code template contains scanpy call
         assert "sc.pp.calculate_qc_metrics" in ir.code_template
 
-    def test_quality_ir_stored_in_provenance(self, test_adata, data_manager, provenance_tracker):
+    def test_quality_ir_stored_in_provenance(
+        self, test_adata, data_manager, provenance_tracker
+    ):
         """Test that IR is properly stored in provenance."""
         service = QualityService()
 
@@ -216,7 +218,10 @@ class TestClusteringServiceIRWorkflow:
         assert len(ir.parameters) > 0
 
         # Verify code template contains clustering steps
-        assert "highly_variable_genes" in ir.code_template or "sc.pp.highly_variable_genes" in ir.code_template
+        assert (
+            "highly_variable_genes" in ir.code_template
+            or "sc.pp.highly_variable_genes" in ir.code_template
+        )
         assert "pca" in ir.code_template or "sc.tl.pca" in ir.code_template
         assert "neighbors" in ir.code_template or "sc.pp.neighbors" in ir.code_template
         assert "leiden" in ir.code_template or "sc.tl.leiden" in ir.code_template
@@ -254,7 +259,9 @@ class TestClusteringServiceIRWorkflow:
 class TestCompleteIRPipeline:
     """Test complete multi-step IR pipeline."""
 
-    @pytest.mark.skip(reason="Sequential preprocessing of random data results in 0 HVGs, causing PCA to fail. Individual steps verified in other tests.")
+    @pytest.mark.skip(
+        reason="Sequential preprocessing of random data results in 0 HVGs, causing PCA to fail. Individual steps verified in other tests."
+    )
     def test_quality_to_preprocessing_to_clustering(self, test_adata, data_manager):
         """Test complete pipeline: QC → Preprocessing → Clustering."""
         quality_service = QualityService()
@@ -272,10 +279,12 @@ class TestCompleteIRPipeline:
         )
 
         # Step 2: Preprocessing
-        adata_preprocessed, prep_stats, prep_ir = preprocessing_service.filter_and_normalize_cells(
-            adata_qc,
-            min_genes_per_cell=100,
-            target_sum=10000,
+        adata_preprocessed, prep_stats, prep_ir = (
+            preprocessing_service.filter_and_normalize_cells(
+                adata_qc,
+                min_genes_per_cell=100,
+                target_sum=10000,
+            )
         )
         data_manager.modalities["step2_preprocessed"] = adata_preprocessed
         prep_activity = data_manager.log_tool_usage(
@@ -286,10 +295,12 @@ class TestCompleteIRPipeline:
         )
 
         # Step 3: Clustering
-        adata_clustered, cluster_stats, cluster_ir = clustering_service.cluster_and_visualize(
-            adata_preprocessed,
-            resolution=0.5,
-            demo_mode=True,
+        adata_clustered, cluster_stats, cluster_ir = (
+            clustering_service.cluster_and_visualize(
+                adata_preprocessed,
+                resolution=0.5,
+                demo_mode=True,
+            )
         )
         data_manager.modalities["step3_clustered"] = adata_clustered
         cluster_activity = data_manager.log_tool_usage(
@@ -349,7 +360,9 @@ class TestNotebookExportWithIR:
         result = validator.validate(exported_path)
 
         # Notebook should be syntactically valid
-        assert result.is_valid or result.has_warnings  # Allow warnings for missing imports
+        assert (
+            result.is_valid or result.has_warnings
+        )  # Allow warnings for missing imports
 
         # Check that notebook contains expected code
         import nbformat
@@ -381,9 +394,11 @@ class TestNotebookExportWithIR:
         )
 
         # Step 2: Preprocessing
-        adata_prep, prep_stats, prep_ir = preprocessing_service.filter_and_normalize_cells(
-            adata_qc,
-            min_genes_per_cell=100,
+        adata_prep, prep_stats, prep_ir = (
+            preprocessing_service.filter_and_normalize_cells(
+                adata_qc,
+                min_genes_per_cell=100,
+            )
         )
         data_manager.modalities["step2"] = adata_prep
         data_manager.log_tool_usage(
@@ -450,6 +465,7 @@ class TestIRParameterValidation:
         # Schema should define expected parameter types
         # Values are ParameterSpec objects, not dicts
         from lobster.core.analysis_ir import ParameterSpec
+
         for param_name, param_spec in ir.parameter_schema.items():
             assert isinstance(param_spec, ParameterSpec)
             assert hasattr(param_spec, "param_type")

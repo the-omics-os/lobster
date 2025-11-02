@@ -131,6 +131,7 @@ class TestQualityServiceCore:
 
         # Verify IR structure
         from lobster.core.analysis_ir import AnalysisStep
+
         assert isinstance(ir, AnalysisStep)
         assert ir.operation == "scanpy.pp.calculate_qc_metrics"
         assert ir.code_template is not None
@@ -185,11 +186,12 @@ class TestQCMetricsCalculation:
 
         # Verify mitochondrial metrics are calculated
         assert "pct_counts_mt" in result_adata.obs.columns
-        assert "n_genes_mt" in result_adata.obs.columns or "pct_counts_mt" in result_adata.obs.columns
+        assert (
+            "n_genes_mt" in result_adata.obs.columns
+            or "pct_counts_mt" in result_adata.obs.columns
+        )
 
-    def test_ribosomal_gene_detection(
-        self, quality_service, mock_raw_single_cell_data
-    ):
+    def test_ribosomal_gene_detection(self, quality_service, mock_raw_single_cell_data):
         """Test detection and calculation of ribosomal gene metrics."""
         adata = mock_raw_single_cell_data.copy()
 
@@ -206,7 +208,10 @@ class TestQCMetricsCalculation:
 
         # Verify ribosomal metrics are calculated
         assert "pct_counts_ribo" in result_adata.obs.columns
-        assert "n_genes_ribo" in result_adata.obs.columns or "pct_counts_ribo" in result_adata.obs.columns
+        assert (
+            "n_genes_ribo" in result_adata.obs.columns
+            or "pct_counts_ribo" in result_adata.obs.columns
+        )
 
     def test_gene_level_metrics_in_var(
         self, quality_service, mock_raw_single_cell_data
@@ -223,9 +228,7 @@ class TestQCMetricsCalculation:
         assert result_adata.n_vars == adata.n_vars
         # assess_quality focuses on cell-level QC, var is preserved
 
-    def test_qc_stats_structure(
-        self, quality_service, mock_raw_single_cell_data
-    ):
+    def test_qc_stats_structure(self, quality_service, mock_raw_single_cell_data):
         """Test that assess_quality returns properly structured stats."""
         adata = mock_raw_single_cell_data.copy()
 
@@ -268,7 +271,9 @@ class TestQCMetricsCalculation:
 class TestCellQualityAssessment:
     """Test cell quality assessment functionality."""
 
-    @pytest.mark.skip(reason="Method identify_low_quality_cells() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method identify_low_quality_cells() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_identify_low_quality_cells(self, quality_service, mock_processed_data):
         """Test identification of low quality cells."""
         adata = mock_processed_data.copy()
@@ -288,7 +293,9 @@ class TestCellQualityAssessment:
         assert low_quality_results["n_cells_failed"] >= 0
         assert "failure_breakdown" in low_quality_results
 
-    @pytest.mark.skip(reason="Method detect_outliers() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method detect_outliers() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_outlier_detection_iqr(self, quality_service, mock_processed_data):
         """Test outlier detection using IQR method."""
         adata = mock_processed_data.copy()
@@ -305,7 +312,9 @@ class TestCellQualityAssessment:
         assert outlier_results["n_outliers"] >= 0
         assert outlier_results["outlier_rate"] >= 0
 
-    @pytest.mark.skip(reason="Method detect_outliers() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method detect_outliers() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_outlier_detection_zscore(self, quality_service, mock_processed_data):
         """Test outlier detection using z-score method."""
         adata = mock_processed_data.copy()
@@ -321,7 +330,9 @@ class TestCellQualityAssessment:
         assert "outlier_score_zscore" in adata.obs.columns
         assert outlier_results["method"] == "zscore"
 
-    @pytest.mark.skip(reason="Method detect_outliers_isolation_forest() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method detect_outliers_isolation_forest() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_outlier_detection_isolation_forest(
         self, quality_service, mock_processed_data
     ):
@@ -345,7 +356,9 @@ class TestCellQualityAssessment:
             assert outlier_results["n_outliers"] > 0
             assert "anomaly_scores" in outlier_results
 
-    @pytest.mark.skip(reason="Method detect_empty_droplets() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method detect_empty_droplets() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_empty_droplet_detection(self, quality_service, mock_raw_single_cell_data):
         """Test empty droplet detection."""
         adata = mock_raw_single_cell_data.copy()
@@ -367,7 +380,9 @@ class TestCellQualityAssessment:
                 == adata.n_obs
             )
 
-    @pytest.mark.skip(reason="Method assess_ambient_rna() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method assess_ambient_rna() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_ambient_rna_assessment(self, quality_service, mock_raw_single_cell_data):
         """Test ambient RNA contamination assessment."""
         adata = mock_raw_single_cell_data.copy()
@@ -396,7 +411,9 @@ class TestCellQualityAssessment:
 class TestDoubletDetection:
     """Test doublet detection functionality."""
 
-    @pytest.mark.skip(reason="Method detect_doublets_scrublet() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method detect_doublets_scrublet() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_scrublet_doublet_detection(
         self, quality_service, mock_raw_single_cell_data
     ):
@@ -422,7 +439,9 @@ class TestDoubletDetection:
             assert "predicted_doublet" in doublet_results
             assert doublet_results["doublet_rate"] == 0.08
 
-    @pytest.mark.skip(reason="Method detect_doublets_doubletfinder() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method detect_doublets_doubletfinder() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_doubletfinder_detection(self, quality_service, mock_raw_single_cell_data):
         """Test doublet detection using DoubletFinder-like method."""
         adata = mock_raw_single_cell_data.copy()
@@ -443,7 +462,9 @@ class TestDoubletDetection:
             assert "pK_optimal" in doublet_results
             assert doublet_results["n_doublets"] > 0
 
-    @pytest.mark.skip(reason="Method compare_doublet_methods() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method compare_doublet_methods() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_doublet_detection_comparison(
         self, quality_service, mock_raw_single_cell_data
     ):
@@ -473,7 +494,9 @@ class TestDoubletDetection:
             assert "consensus_doublets" in comparison
             assert comparison["recommended_method"] in comparison["methods_compared"]
 
-    @pytest.mark.skip(reason="Method validate_doublet_detection() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method validate_doublet_detection() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_doublet_validation(self, quality_service, mock_processed_data):
         """Test doublet detection validation."""
         adata = mock_processed_data.copy()
@@ -503,7 +526,9 @@ class TestDoubletDetection:
 class TestGeneQualityAssessment:
     """Test gene quality assessment functionality."""
 
-    @pytest.mark.skip(reason="Method identify_low_quality_genes() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method identify_low_quality_genes() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_identify_low_quality_genes(self, quality_service, mock_processed_data):
         """Test identification of low quality genes."""
         adata = mock_processed_data.copy()
@@ -517,7 +542,9 @@ class TestGeneQualityAssessment:
         assert gene_qc_results["n_genes_passed"] <= adata.n_vars
         assert gene_qc_results["n_genes_failed"] >= 0
 
-    @pytest.mark.skip(reason="Method detect_housekeeping_genes() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method detect_housekeeping_genes() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_detect_housekeeping_genes(self, quality_service, mock_processed_data):
         """Test detection of housekeeping genes."""
         adata = mock_processed_data.copy()
@@ -538,7 +565,9 @@ class TestGeneQualityAssessment:
             assert len(hk_results["housekeeping_genes"]) == 5
             assert hk_results["n_housekeeping"] > 0
 
-    @pytest.mark.skip(reason="Method identify_spike_in_genes() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method identify_spike_in_genes() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_identify_spike_in_genes(self, quality_service, mock_processed_data):
         """Test identification of spike-in control genes."""
         adata = mock_processed_data.copy()
@@ -555,7 +584,9 @@ class TestGeneQualityAssessment:
         assert spikein_results["n_spike_ins"] == len(ercc_genes)
         assert "spike_in_patterns" in spikein_results
 
-    @pytest.mark.skip(reason="Method assess_gene_stability() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method assess_gene_stability() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_gene_expression_stability(self, quality_service, mock_processed_data):
         """Test gene expression stability assessment."""
         adata = mock_processed_data.copy()
@@ -578,7 +609,9 @@ class TestGeneQualityAssessment:
 class TestBatchEffectAssessment:
     """Test batch effect assessment functionality."""
 
-    @pytest.mark.skip(reason="Method detect_batch_effects() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method detect_batch_effects() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_detect_batch_effects_pca(
         self, quality_service, mock_bulk_data_with_issues
     ):
@@ -599,7 +632,9 @@ class TestBatchEffectAssessment:
         assert batch_results["method"] == "pca"
         assert 0 <= batch_results["batch_effect_score"] <= 1
 
-    @pytest.mark.skip(reason="Method batch_silhouette_analysis() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method batch_silhouette_analysis() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_batch_effect_silhouette_analysis(
         self, quality_service, mock_bulk_data_with_issues
     ):
@@ -628,7 +663,9 @@ class TestBatchEffectAssessment:
                 "high",
             ]
 
-    @pytest.mark.skip(reason="Method kbet_analysis() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method kbet_analysis() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_kbet_batch_assessment(self, quality_service, mock_bulk_data_with_issues):
         """Test kBET batch effect assessment."""
         adata = mock_bulk_data_with_issues.copy()
@@ -648,7 +685,9 @@ class TestBatchEffectAssessment:
             assert "kbet_pvalue" in kbet_results
             assert "well_mixed" in kbet_results
 
-    @pytest.mark.skip(reason="Method calculate_lisi_score() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method calculate_lisi_score() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_lisi_score_calculation(self, quality_service, mock_bulk_data_with_issues):
         """Test LISI (Local Inverse Simpson's Index) score calculation."""
         adata = mock_bulk_data_with_issues.copy()
@@ -686,7 +725,9 @@ class TestBatchEffectAssessment:
 class TestDataValidation:
     """Test data validation functionality."""
 
-    @pytest.mark.skip(reason="Method validate_count_data() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method validate_count_data() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_validate_count_data(self, quality_service, mock_raw_single_cell_data):
         """Test validation of count data properties."""
         adata = mock_raw_single_cell_data.copy()
@@ -704,7 +745,9 @@ class TestDataValidation:
             "unknown",
         ]
 
-    @pytest.mark.skip(reason="Method validate_data_structure() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method validate_data_structure() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_validate_data_structure(self, quality_service, mock_raw_single_cell_data):
         """Test validation of data structure."""
         adata = mock_raw_single_cell_data.copy()
@@ -717,7 +760,9 @@ class TestDataValidation:
         assert "obs_names_unique" in structure_results
         assert "var_names_unique" in structure_results
 
-    @pytest.mark.skip(reason="Method check_data_completeness() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method check_data_completeness() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_check_data_completeness(self, quality_service, mock_raw_single_cell_data):
         """Test checking data completeness."""
         adata = mock_raw_single_cell_data.copy()
@@ -729,7 +774,9 @@ class TestDataValidation:
         assert "complete_observations" in completeness_results
         assert "sparsity" in completeness_results
 
-    @pytest.mark.skip(reason="Method validate_gene_names() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method validate_gene_names() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_validate_gene_names(self, quality_service, mock_raw_single_cell_data):
         """Test validation of gene names."""
         adata = mock_raw_single_cell_data.copy()
@@ -753,7 +800,9 @@ class TestDataValidation:
                 "unknown",
             ]
 
-    @pytest.mark.skip(reason="Method check_technical_artifacts() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method check_technical_artifacts() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_check_technical_artifacts(
         self, quality_service, mock_raw_single_cell_data
     ):
@@ -777,7 +826,9 @@ class TestDataValidation:
 class TestQualityReporting:
     """Test quality reporting functionality."""
 
-    @pytest.mark.skip(reason="Method generate_qc_report() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method generate_qc_report() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_generate_qc_report(self, quality_service, mock_processed_data):
         """Test generation of comprehensive QC report."""
         adata = mock_processed_data.copy()
@@ -810,7 +861,9 @@ class TestQualityReporting:
             assert "quality_metrics" in report
             assert "recommendations" in report
 
-    @pytest.mark.skip(reason="Method create_qc_plots() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method create_qc_plots() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_create_qc_plots(self, quality_service, mock_processed_data):
         """Test creation of QC plots."""
         adata = mock_processed_data.copy()
@@ -825,7 +878,9 @@ class TestQualityReporting:
             assert "histogram_plots" in plot_info["plots_created"]
             assert plot_info["n_plots"] > 0
 
-    @pytest.mark.skip(reason="Method export_qc_metrics() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method export_qc_metrics() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_export_qc_metrics(self, quality_service, mock_processed_data):
         """Test export of QC metrics to file."""
         adata = mock_processed_data.copy()
@@ -839,7 +894,9 @@ class TestQualityReporting:
             assert export_info["metrics_included"] > 0
             mock_to_csv.assert_called_once()
 
-    @pytest.mark.skip(reason="Method prepare_dashboard_data() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method prepare_dashboard_data() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_qc_dashboard_data(self, quality_service, mock_processed_data):
         """Test preparation of data for QC dashboard."""
         adata = mock_processed_data.copy()
@@ -867,7 +924,9 @@ class TestQualityReporting:
 class TestQualityServiceErrorHandling:
     """Test quality service error handling and edge cases."""
 
-    @pytest.mark.skip(reason="Method calculate_qc_metrics() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method calculate_qc_metrics() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_empty_dataset_handling(self, quality_service):
         """Test handling of empty datasets."""
         empty_adata = ad.AnnData(X=np.array([]).reshape(0, 0))
@@ -875,7 +934,9 @@ class TestQualityServiceErrorHandling:
         with pytest.raises(ValueError, match="Empty dataset"):
             quality_service.calculate_qc_metrics(empty_adata)
 
-    @pytest.mark.skip(reason="Method calculate_qc_metrics() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method calculate_qc_metrics() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_single_cell_dataset_handling(self, quality_service):
         """Test handling of single-cell datasets."""
         single_cell_adata = ad.AnnData(X=np.array([[1, 2, 3, 4, 5]]))
@@ -885,7 +946,9 @@ class TestQualityServiceErrorHandling:
         assert qc_results is not None
         assert "warning" in qc_results
 
-    @pytest.mark.skip(reason="Method calculate_qc_metrics() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method calculate_qc_metrics() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_all_zero_data_handling(self, quality_service):
         """Test handling of all-zero expression data."""
         zero_adata = ad.AnnData(X=np.zeros((100, 50)))
@@ -895,7 +958,9 @@ class TestQualityServiceErrorHandling:
         assert qc_results["mean_counts_per_cell"] == 0
         assert "all_zero_warning" in qc_results
 
-    @pytest.mark.skip(reason="Method validate_gene_names() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method validate_gene_names() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_missing_gene_names_handling(self, quality_service):
         """Test handling of missing or invalid gene names."""
         adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
@@ -910,7 +975,9 @@ class TestQualityServiceErrorHandling:
         assert "empty_gene_names" in validation_results
         assert validation_results["empty_gene_names"] > 0
 
-    @pytest.mark.skip(reason="Method calculate_qc_metrics() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method calculate_qc_metrics() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_memory_efficient_qc(self, quality_service):
         """Test memory-efficient QC for large datasets."""
         # Create large sparse dataset
@@ -924,7 +991,9 @@ class TestQualityServiceErrorHandling:
         assert qc_results is not None
         assert qc_results["n_cells"] == 50000
 
-    @pytest.mark.skip(reason="Method calculate_qc_metrics() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method calculate_qc_metrics() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_concurrent_qc_processing(self, quality_service, mock_raw_single_cell_data):
         """Test thread safety for concurrent QC operations."""
         import threading
@@ -960,7 +1029,9 @@ class TestQualityServiceErrorHandling:
         assert len(errors) == 0, f"Concurrent QC processing errors: {errors}"
         assert len(results) == 3
 
-    @pytest.mark.skip(reason="Method calculate_qc_metrics() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method calculate_qc_metrics() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_corrupted_data_handling(self, quality_service):
         """Test handling of corrupted or inconsistent data."""
         # Create data with mismatched dimensions
@@ -972,7 +1043,9 @@ class TestQualityServiceErrorHandling:
             corrupted_adata = ad.AnnData(X=corrupted_X, obs=obs_df, var=var_df)
             quality_service.calculate_qc_metrics(corrupted_adata)
 
-    @pytest.mark.skip(reason="Method detect_outliers() removed in simplified interface - functionality integrated into assess_quality()")
+    @pytest.mark.skip(
+        reason="Method detect_outliers() removed in simplified interface - functionality integrated into assess_quality()"
+    )
     def test_extreme_outlier_handling(self, quality_service):
         """Test handling of extreme outlier values."""
         # Create data with extreme outliers

@@ -19,8 +19,10 @@ from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.providers.base_provider import DatasetType, PublicationSource
+from lobster.tools.publication_intelligence_service import (
+    PublicationIntelligenceService,
+)
 from lobster.tools.publication_service import PublicationService
-from lobster.tools.publication_intelligence_service import PublicationIntelligenceService
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -480,8 +482,6 @@ def research_agent(
         """
         Extract computational analysis methods from a research paper.
 
-        ✨ NEW IN PHASE 1: Now automatically resolves PMIDs and DOIs to PDF URLs!
-
         This tool downloads and analyzes research papers to extract:
         - Software/tools used (e.g., Scanpy, Seurat, DESeq2)
         - Parameter values and cutoffs
@@ -505,21 +505,25 @@ def research_agent(
             OR helpful suggestions if paper is paywalled
 
         Examples:
-            - extract_paper_methods("PMID:12345678")  # NEW: Auto-resolves!
-            - extract_paper_methods("10.1038/s41586-021-12345-6")  # NEW: Auto-resolves!
+            - extract_paper_methods("PMID:12345678")
+            - extract_paper_methods("10.1038/s41586-021-12345-6")
             - extract_paper_methods("https://www.biorxiv.org/content/10.1101/2024.01.001.pdf")
             - extract_paper_methods("https://elifesciences.org/articles/12345")
         """
         try:
             # Initialize intelligence service
-            intelligence_service = PublicationIntelligenceService(data_manager=data_manager)
+            intelligence_service = PublicationIntelligenceService(
+                data_manager=data_manager
+            )
 
-            # Extract methods using LLM (NOW WITH AUTO-RESOLUTION!)
+            # Extract methods using LLM with automatic identifier resolution
             methods = intelligence_service.extract_methods_from_paper(url_or_pmid)
 
             # Format for agent response
             formatted = json.dumps(methods, indent=2)
-            logger.info(f"Successfully extracted methods from paper: {url_or_pmid[:80]}...")
+            logger.info(
+                f"Successfully extracted methods from paper: {url_or_pmid[:80]}..."
+            )
 
             return f"## Extracted Methods from Paper\n\n{formatted}"
 
@@ -538,9 +542,7 @@ def research_agent(
         """
         Check if a paper is accessible and get PDF URL or access suggestions.
 
-        ✨ NEW IN PHASE 1: Essential diagnostic tool for paper accessibility!
-
-        Use this tool BEFORE extract_paper_methods to:
+        Use this tool before extract_paper_methods to:
         - Verify paper accessibility
         - Get direct PDF URL
         - Receive guidance if paywalled (PMC links, preprints, author contact)
@@ -562,7 +564,7 @@ def research_agent(
             - resolve_paper_access("10.1038/s41586-021-12345-6")
 
         When to use this tool:
-        - BEFORE calling extract_paper_methods to check accessibility
+        - Before calling extract_paper_methods to check accessibility
         - When user asks "Can I access this paper?"
         - To diagnose why PDF extraction failed
         """
@@ -585,8 +587,6 @@ def research_agent(
     def extract_methods_batch(identifiers: str, max_papers: int = 5) -> str:
         """
         Extract computational methods from multiple papers in batch.
-
-        ✨ NEW IN PHASE 1: Batch processing for competitive analysis!
 
         This tool:
         1. Accepts comma-separated PMIDs, DOIs, or URLs
@@ -612,8 +612,8 @@ def research_agent(
         - Literature review with method comparison
         - When user provides a list of PMIDs/DOIs
 
-        ⚠️ IMPORTANT: This tool processes papers SEQUENTIALLY to be conservative.
-        For >5 papers, consider breaking into multiple batches.
+        Note: This tool processes papers sequentially to be conservative.
+        For more than 5 papers, consider breaking into multiple batches.
         """
         try:
             # Parse identifiers
@@ -627,13 +627,17 @@ def research_agent(
                 return f"Error: Batch size {len(id_list)} exceeds maximum of 10. Please reduce the number of papers or break into multiple batches."
 
             if len(id_list) > max_papers:
-                logger.warning(f"Limiting batch from {len(id_list)} to {max_papers} papers")
+                logger.warning(
+                    f"Limiting batch from {len(id_list)} to {max_papers} papers"
+                )
                 id_list = id_list[:max_papers]
 
             logger.info(f"Starting batch extraction for {len(id_list)} papers")
 
             # First, resolve all identifiers to check accessibility
-            resolution_results = research_assistant.batch_resolve_publications(id_list, max_batch=max_papers)
+            resolution_results = research_assistant.batch_resolve_publications(
+                id_list, max_batch=max_papers
+            )
 
             # Track results
             successful_extractions = []
@@ -641,37 +645,46 @@ def research_agent(
             failed_extractions = []
 
             # Initialize intelligence service
-            intelligence_service = PublicationIntelligenceService(data_manager=data_manager)
+            intelligence_service = PublicationIntelligenceService(
+                data_manager=data_manager
+            )
 
             # Process each paper
-            for i, (identifier, resolution) in enumerate(zip(id_list, resolution_results), 1):
+            for i, (identifier, resolution) in enumerate(
+                zip(id_list, resolution_results), 1
+            ):
                 logger.info(f"Processing paper {i}/{len(id_list)}: {identifier}")
 
                 if not resolution.is_accessible():
                     # Paper is paywalled or inaccessible
-                    paywalled_papers.append({
-                        "identifier": identifier,
-                        "reason": resolution.access_type,
-                        "suggestions": resolution.suggestions
-                    })
+                    paywalled_papers.append(
+                        {
+                            "identifier": identifier,
+                            "reason": resolution.access_type,
+                            "suggestions": resolution.suggestions,
+                        }
+                    )
                     continue
 
                 try:
                     # Extract methods
-                    methods = intelligence_service.extract_methods_from_paper(resolution.pdf_url)
-                    successful_extractions.append({
-                        "identifier": identifier,
-                        "source": resolution.source,
-                        "methods": methods
-                    })
+                    methods = intelligence_service.extract_methods_from_paper(
+                        resolution.pdf_url
+                    )
+                    successful_extractions.append(
+                        {
+                            "identifier": identifier,
+                            "source": resolution.source,
+                            "methods": methods,
+                        }
+                    )
                     logger.info(f"✅ Successfully extracted methods from {identifier}")
 
                 except Exception as e:
                     logger.error(f"❌ Failed to extract methods from {identifier}: {e}")
-                    failed_extractions.append({
-                        "identifier": identifier,
-                        "error": str(e)
-                    })
+                    failed_extractions.append(
+                        {"identifier": identifier, "error": str(e)}
+                    )
 
             # Generate comprehensive report
             report = f"""
@@ -704,7 +717,9 @@ def research_agent(
                     report += f"\n**{paper['identifier']}**\n"
                     report += f"- Error: {paper['error']}\n\n"
 
-            logger.info(f"Batch extraction complete: {len(successful_extractions)}/{len(id_list)} successful")
+            logger.info(
+                f"Batch extraction complete: {len(successful_extractions)}/{len(id_list)} successful"
+            )
 
             return report
 
@@ -736,10 +751,14 @@ def research_agent(
         """
         try:
             # Initialize intelligence service
-            intelligence_service = PublicationIntelligenceService(data_manager=data_manager)
+            intelligence_service = PublicationIntelligenceService(
+                data_manager=data_manager
+            )
 
             # Download supplementary materials
-            result = intelligence_service.fetch_supplementary_info_from_doi(doi, output_dir)
+            result = intelligence_service.fetch_supplementary_info_from_doi(
+                doi, output_dir
+            )
 
             logger.info(f"Supplementary download completed for DOI: {doi}")
             return f"## Supplementary Materials Download Report\n\n{result}"
@@ -747,6 +766,104 @@ def research_agent(
         except Exception as e:
             logger.error(f"Error downloading supplementary materials: {e}")
             return f"Error downloading supplementary materials for DOI {doi}: {str(e)}"
+
+    @tool
+    def read_cached_publication(identifier: str) -> str:
+        """
+        Read detailed methods from a previously analyzed publication.
+
+        This tool retrieves the full methods extraction from publications that were
+        analyzed earlier in the current session. Use this when the supervisor
+        references a specific paper from the session publication list.
+
+        The tool provides access to:
+        - Full methods section text
+        - Extracted tables (parameter tables from Methods)
+        - Mathematical formulas
+        - Software tools mentioned
+        - Extraction metadata (parser used, timestamp)
+
+        Args:
+            identifier: Publication identifier (PMID, DOI, or URL) exactly as shown
+                       in the supervisor's session publication list
+
+        Returns:
+            Complete methods extraction with all available metadata
+
+        Examples:
+            - read_cached_publication("PMID:12345678")
+            - read_cached_publication("10.1038/s41586-021-12345-6")
+            - read_cached_publication("https://biorxiv.org/content/10.1101/2024.01.001")
+
+        When to use this tool:
+            - Supervisor says "read the methods from PMID:12345678"
+            - User asks follow-up questions about previously analyzed papers
+            - Need to reference extraction details from earlier in the conversation
+            - Performing comparative analysis across multiple session papers
+        """
+        try:
+            # Initialize intelligence service
+            intelligence_service = PublicationIntelligenceService(
+                data_manager=data_manager
+            )
+
+            # Get cached publication
+            cached_pub = intelligence_service.get_cached_publication(identifier)
+
+            if not cached_pub:
+                return f"## Publication Not Found\n\nNo cached extraction found for: {identifier}\n\nThis publication has not been analyzed in the current session. Use list_session_publications (via supervisor) to see available publications, or use extract_paper_methods to analyze a new paper."
+
+            # Format the cached publication for display
+            response = f"## Cached Publication: {cached_pub['identifier']}\n\n"
+            response += f"**Cache Source**: {cached_pub.get('cache_source', 'unknown')}\n"
+
+            # Add methods section
+            methods_text = cached_pub.get('methods_markdown') or cached_pub.get('methods_text', '')
+            if methods_text:
+                response += "\n### Methods Section\n\n"
+                response += methods_text[:5000]  # Limit to 5000 chars for readability
+                if len(methods_text) > 5000:
+                    response += f"\n\n... [Methods section truncated, showing first 5000 of {len(methods_text)} characters]"
+
+            # Add tables if present
+            tables = cached_pub.get('tables', [])
+            if tables and isinstance(tables, list) and len(tables) > 0:
+                response += f"\n\n### Extracted Tables ({len(tables)})\n\n"
+                for i, table in enumerate(tables[:3], 1):  # Show first 3 tables
+                    response += f"**Table {i}**: [Table data available]\n"
+                if len(tables) > 3:
+                    response += f"\n... [Showing 3 of {len(tables)} tables]\n"
+
+            # Add formulas if present
+            formulas = cached_pub.get('formulas', [])
+            if formulas and isinstance(formulas, list) and len(formulas) > 0:
+                response += f"\n\n### Extracted Formulas ({len(formulas)})\n\n"
+                for i, formula in enumerate(formulas[:5], 1):  # Show first 5 formulas
+                    response += f"**Formula {i}**: `{formula}`\n"
+                if len(formulas) > 5:
+                    response += f"\n... [Showing 5 of {len(formulas)} formulas]\n"
+
+            # Add software mentions
+            software = cached_pub.get('software_mentioned', [])
+            if software and isinstance(software, list) and len(software) > 0:
+                response += f"\n\n### Software Tools Detected\n\n"
+                response += ", ".join(f"`{sw}`" for sw in software)
+
+            # Add provenance metadata
+            provenance = cached_pub.get('provenance', {})
+            if provenance:
+                response += "\n\n### Extraction Metadata\n\n"
+                response += f"- **Parser**: {provenance.get('parser', 'unknown')}\n"
+                response += f"- **Fallback Used**: {provenance.get('fallback_used', False)}\n"
+                if provenance.get('timestamp'):
+                    response += f"- **Timestamp**: {provenance.get('timestamp')}\n"
+
+            logger.info(f"Retrieved cached publication: {identifier}")
+            return response
+
+        except Exception as e:
+            logger.error(f"Error reading cached publication: {e}")
+            return f"Error reading cached publication {identifier}: {str(e)}"
 
     base_tools = [
         search_literature,
@@ -758,10 +875,12 @@ def research_agent(
         get_research_capabilities,
         validate_dataset_metadata,
         # Phase 1: Enhanced PDF resolution tools
-        extract_paper_methods,  # NOW supports PMIDs/DOIs!
-        resolve_paper_access,  # NEW: Check accessibility before extraction
-        extract_methods_batch,  # NEW: Batch processing (5 papers)
+        extract_paper_methods,
+        resolve_paper_access,
+        extract_methods_batch,
         download_supplementary_materials,
+        # Session publication access
+        read_cached_publication,
     ]
 
     # Combine base tools with handoff tools if provided
@@ -771,7 +890,7 @@ def research_agent(
 You are a research specialist focused on scientific literature discovery and dataset identification in bioinformatics and computational biology, supporting pharmaceutical early research and drug discovery.
 
 <Role>
-Your expertise lies in comprehensive literature search, dataset discovery, research context provision, and computational method extraction (Phase 1) for drug target validation and biomarker discovery.
+Your expertise lies in comprehensive literature search, dataset discovery, research context provision, and computational method extraction for drug target validation and biomarker discovery.
 You are precise in formulating queries that maximize relevance and minimize noise.
 You work closely with:
 - **Data Experts**: who download and preprocess datasets
@@ -838,9 +957,9 @@ You work closely with:
   * Full bibliographic information, abstracts, author lists
   * Standardized format across different sources
 
-### Publication Intelligence (NEW - PDF Analysis)
+### Publication Intelligence
 - `extract_paper_methods`: Extract computational methods from research papers
-  * Provide direct PDF URL or webpage containing PDF
+  * Accepts PMIDs, DOIs, or direct PDF URLs (automatic resolution via PMC, bioRxiv, publisher)
   * Uses LLM to analyze full paper text and extract:
     - Software/tools used (e.g., Scanpy, Seurat, DESeq2)
     - Parameter values and cutoffs (e.g., min_genes=200, p<0.05)
@@ -858,6 +977,22 @@ You work closely with:
   * Returns download report with file locations
   * Useful for accessing protocols, code, raw data
   * Example: download_supplementary_materials("10.1038/s41586-021-12345-6")
+
+- `read_cached_publication`: Read detailed methods from previously analyzed publications
+  * Use when supervisor references a specific paper from session publication list
+  * Retrieves full methods extraction from publications analyzed earlier in session
+  * Returns:
+    - Full methods section text (up to 5000 chars preview)
+    - Extracted tables (parameter tables from Methods)
+    - Mathematical formulas
+    - Software tools mentioned
+    - Extraction metadata (parser used, timestamp)
+  * Example: read_cached_publication("PMID:12345678")
+  * Use cases:
+    - Supervisor says "read the methods from PMID:12345678"
+    - User asks follow-up questions about previously analyzed papers
+    - Performing comparative analysis across multiple session papers
+  * Note: Only works for publications extracted in current session
 
 ### Dataset Discovery
 - `find_datasets_from_publication`: Discover datasets from publications
@@ -887,25 +1022,21 @@ You work closely with:
 </Available Research Tools>
 
 <Critical_Tool_Usage_Workflows>
-## 🔄 PHASE 1: Automatic PDF Resolution - NEW CAPABILITIES!
+## PDF Access and Method Extraction
 
-### ✨ What Changed in Phase 1:
-1. **`extract_paper_methods()` NOW ACCEPTS PMIDs/DOIs!** - No more manual URL finding!
-2. **NEW `resolve_paper_access()` tool** - Check accessibility BEFORE extraction
-3. **NEW `extract_methods_batch()` tool** - Process up to 5 papers at once
-4. **Automatic resolution** through PMC → bioRxiv → Publisher Open Access
+The system supports automatic publication resolution through PMC → bioRxiv → Publisher Open Access pathways.
 
-### 📘 Workflow 1: Extract Methods from Literature Search Results
+### Workflow 1: Extract Methods from Literature Search Results
 
 **Scenario**: User asks "Find papers on KRAS G12C resistance and extract their methods"
 
-**CORRECT Workflow**:
+**Workflow**:
 ```
 Step 1: Search for papers
 search_literature("KRAS G12C resistance mechanisms", max_results=5)
 → Returns 5 papers with PMIDs
 
-Step 2: For EACH PMID, directly extract methods (auto-resolution happens internally!)
+Step 2: For EACH PMID, directly extract methods (automatic resolution occurs internally)
 extract_paper_methods("PMID:12345678")
 extract_paper_methods("PMID:23456789")
 ...
@@ -916,20 +1047,13 @@ Step 3: If extraction fails with "paywalled" message:
 - Ask user if they want to try alternative sources
 ```
 
-**❌ WRONG Workflow** (OLD WAY - Don't do this anymore!):
-```
-Step 1: search_literature(...)
-Step 2: Tell user "Please provide PDF URLs" ← WRONG! We auto-resolve now!
-Step 3: Wait for user to manually find URLs ← WRONG! Not needed anymore!
-```
-
-### 📘 Workflow 2: Batch Method Extraction (NEW!)
+### Workflow 2: Batch Method Extraction
 
 **Scenario**: User asks "Extract methods from these 5 papers: PMID:123, PMID:456, PMID:789, DOI:10.1038/..., DOI:10.1016/..."
 
-**CORRECT Workflow**:
+**Workflow**:
 ```
-Step 1: Use the NEW batch tool
+Step 1: Use batch extraction tool
 extract_methods_batch("PMID:123,PMID:456,PMID:789,10.1038/...,10.1016/...", max_papers=5)
 
 Step 2: Review the batch report:
@@ -948,13 +1072,13 @@ Step 3: For paywalled papers, offer to help:
 - Batch (extract_methods_batch): User provides 2-5 papers at once
 - Individual (extract_paper_methods): One paper at a time, or iterative workflow
 
-### 📘 Workflow 3: Check Accessibility First (NEW!)
+### Workflow 3: Check Accessibility First
 
 **Scenario**: User uncertain about paper access, or previous extraction failed
 
-**CORRECT Workflow**:
+**Workflow**:
 ```
-Step 1: Check accessibility FIRST with the NEW diagnostic tool
+Step 1: Check accessibility with diagnostic tool
 resolve_paper_access("PMID:12345678")
 
 Step 2: Interpret the result:
@@ -976,13 +1100,13 @@ Step 3: If user wants alternatives:
 - User asks "Can I access this paper?"
 - Previous extract_paper_methods failed
 - Diagnosing accessibility issues
-- BEFORE batch processing to preview accessibility
+- Before batch processing to preview accessibility
 
-### 📘 Workflow 4: Handle Paywalled Papers Gracefully
+### Workflow 4: Handle Paywalled Papers Gracefully
 
 **Scenario**: Paper is not openly accessible
 
-**CORRECT Workflow**:
+**Workflow**:
 ```
 Step 1: When extract_paper_methods returns "Paper Access Issue":
 - Read the suggestions carefully
@@ -990,25 +1114,25 @@ Step 1: When extract_paper_methods returns "Paper Access Issue":
 - Do NOT say "I cannot access this paper" and stop
 
 Step 2: Present structured alternatives:
-"❌ This paper is paywalled at the publisher, but here are alternatives:
+"This paper is paywalled at the publisher, but here are alternatives:
 
-1. 🔓 PubMed Central: Check for accepted manuscript
-   → [PMC search link]
+1. PubMed Central: Check for accepted manuscript
+   - PMC search link
 
-2. 📄 Preprint Servers: May have early version
-   → bioRxiv: [search link]
-   → medRxiv: [search link]
+2. Preprint Servers: May have early version
+   - bioRxiv search
+   - medRxiv search
 
-3. 🏛️ Institutional Access: Try through your library
-   → Use VPN or library proxy
-   → Request via interlibrary loan
+3. Institutional Access: Try through your library
+   - Use VPN or library proxy
+   - Request via interlibrary loan
 
-4. 📧 Author Contact: Request PDF directly
-   → Email corresponding author: [author info]
-   → Check ResearchGate/Academia.edu profiles
+4. Author Contact: Request PDF directly
+   - Email corresponding author
+   - Check ResearchGate/Academia.edu profiles
 
-5. 🔗 Unpaywall: Legal open access checker
-   → [unpaywall link]
+5. Unpaywall: Legal open access checker
+   - Check unpaywall.org
 
 Would you like me to try any of these alternatives?"
 
@@ -1016,14 +1140,13 @@ Step 3: If user provides alternative URL:
 extract_paper_methods("[alternative URL]")
 ```
 
-**❌ NEVER say**: "I cannot access this paper" and stop
-**✅ ALWAYS say**: "This paper is paywalled, but here are 5 ways to access it..."
+**Important**: Do not stop at "I cannot access this paper". Always present the 5 alternative access options.
 
-### 📘 Workflow 5: Competitive Intelligence Analysis
+### Workflow 5: Competitive Intelligence Analysis
 
 **Scenario**: "Analyze competitor's methods from their 5 recent papers"
 
-**CORRECT Workflow**:
+**Workflow**:
 ```
 Step 1: Search for competitor's recent papers
 search_literature(
@@ -1065,7 +1188,7 @@ Step 5: Present comparative analysis:
 **Trends**: Moving from Seurat to Scanpy in recent work"
 ```
 
-### 🧠 Tool Selection Decision Tree
+### Tool Selection Decision Tree
 
 **Question**: Which tool should I use for this user request?
 
@@ -1093,47 +1216,47 @@ User wants literature search?
 └─ Search + extract? → search_literature(...) THEN extract_methods_batch(pmids)
 ```
 
-### 🚨 Error Recovery Strategies
+### Error Recovery Strategies
 
 #### Problem 1: "Paper not openly accessible"
 
 **Recovery Steps**:
-1. ✅ Read the suggestions in the error message
-2. ✅ Present ALL 5 alternative options to user
-3. ✅ Offer to check PMC accepted manuscript
-4. ✅ Offer to search bioRxiv/medRxiv
-5. ✅ Suggest author contact information
-6. ❌ NEVER stop at "cannot access"
+1. Read the suggestions in the error message
+2. Present ALL 5 alternative options to user
+3. Offer to check PMC accepted manuscript
+4. Offer to search bioRxiv/medRxiv
+5. Suggest author contact information
+6. Do not stop at "cannot access"
 
 #### Problem 2: Batch processing has failures
 
 **Recovery Steps**:
-1. ✅ Review extract_methods_batch() report
-2. ✅ For each failure, identify reason:
+1. Review extract_methods_batch() report
+2. For each failure, identify reason:
    - Paywalled → Apply recovery for Problem 1
    - Network error → Offer to retry
    - Invalid identifier → Ask user to verify
-3. ✅ Present partial results: "Successfully extracted 3/5 papers"
-4. ✅ Offer to retry failed papers individually
-5. ✅ Aggregate successful results and continue analysis
+3. Present partial results: "Successfully extracted 3/5 papers"
+4. Offer to retry failed papers individually
+5. Aggregate successful results and continue analysis
 
 #### Problem 3: PMID resolution failed
 
 **Recovery Steps**:
-1. ✅ Check if recent publication (PMC lag 6-12 months)
-2. ✅ Try preprint servers (bioRxiv/medRxiv)
-3. ✅ Search publisher page for open access
-4. ✅ Suggest checking back later
-5. ✅ Offer to work with abstract/methods from PubMed
+1. Check if recent publication (PMC lag 6-12 months)
+2. Try preprint servers (bioRxiv/medRxiv)
+3. Search publisher page for open access
+4. Suggest checking back later
+5. Offer to work with abstract/methods from PubMed
 
 #### Problem 4: All papers in batch are paywalled
 
 **Recovery Steps**:
-1. ✅ Present all alternative access options
-2. ✅ Suggest narrowing search to open-access journals
-3. ✅ Offer to search bioRxiv/medRxiv directly
-4. ✅ Recommend institutional access methods
-5. ❌ NEVER say "all papers are inaccessible, cannot proceed"
+1. Present all alternative access options
+2. Suggest narrowing search to open-access journals
+3. Offer to search bioRxiv/medRxiv directly
+4. Recommend institutional access methods
+5. Do not say "all papers are inaccessible, cannot proceed"
 
 </Critical_Tool_Usage_Workflows>
 
@@ -1271,7 +1394,7 @@ Optimized Search Strategy:
 
 # ... (CAR-T search strategy)
 
-Example 6: Competitive Intelligence - Extract Competitor's Methods (NEW)
+Example 6: Competitive Intelligence - Extract Competitor's Methods
 
 Pharma Context: "Our competitor just published a Nature paper on their single-cell analysis pipeline. I need to know exactly what methods, parameters, and software they used so we can replicate or improve upon their approach."
 
@@ -1314,7 +1437,7 @@ Use Cases:
 ✅ Access supplementary code and protocols
 ✅ Due diligence for acquisition targets
 
-Example 7: Method Extraction for Protocol Standardization (NEW)
+Example 7: Method Extraction for Protocol Standardization
 
 Pharma Context: "We're standardizing our single-cell analysis pipeline. I need to extract methods from 5 top papers to identify consensus best practices."
 

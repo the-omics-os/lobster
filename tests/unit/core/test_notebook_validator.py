@@ -11,8 +11,8 @@ import nbformat
 import pytest
 
 from lobster.core.notebook_validator import (
-    NotebookValidator,
     NotebookValidationResult,
+    NotebookValidator,
     ValidationIssue,
 )
 
@@ -32,9 +32,7 @@ def create_test_notebook(cells_code: list) -> Path:
     for code in cells_code:
         nb.cells.append(nbformat.v4.new_code_cell(code))
 
-    temp_file = tempfile.NamedTemporaryFile(
-        mode='w', suffix='.ipynb', delete=False
-    )
+    temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".ipynb", delete=False)
     nbformat.write(nb, temp_file)
     temp_file.close()
 
@@ -47,29 +45,27 @@ class TestValidationIssue:
     def test_issue_creation(self):
         """Test creating a validation issue."""
         issue = ValidationIssue(
-            severity='error',
+            severity="error",
             cell_index=0,
             line_number=5,
-            message='Test error',
-            code_snippet='x = y'
+            message="Test error",
+            code_snippet="x = y",
         )
 
-        assert issue.severity == 'error'
+        assert issue.severity == "error"
         assert issue.cell_index == 0
         assert issue.line_number == 5
-        assert 'Test error' in str(issue)
-        assert 'x = y' in str(issue)
+        assert "Test error" in str(issue)
+        assert "x = y" in str(issue)
 
     def test_issue_without_line_number(self):
         """Test issue without line number."""
         issue = ValidationIssue(
-            severity='warning',
-            cell_index=2,
-            message='Test warning'
+            severity="warning", cell_index=2, message="Test warning"
         )
 
-        assert 'Cell 2' in str(issue)
-        assert 'WARNING' in str(issue)
+        assert "Cell 2" in str(issue)
+        assert "WARNING" in str(issue)
 
 
 class TestNotebookValidationResult:
@@ -85,7 +81,7 @@ class TestNotebookValidationResult:
     def test_add_error_invalidates_result(self):
         """Test adding error sets is_valid to False."""
         result = NotebookValidationResult()
-        result.add_error('Test error', cell_index=0)
+        result.add_error("Test error", cell_index=0)
 
         assert not result.is_valid
         assert result.has_errors
@@ -94,7 +90,7 @@ class TestNotebookValidationResult:
     def test_add_warning_keeps_valid(self):
         """Test adding warning doesn't invalidate result."""
         result = NotebookValidationResult()
-        result.add_warning('Test warning', cell_index=0)
+        result.add_warning("Test warning", cell_index=0)
 
         # Initially valid, but has_warnings should be True
         assert result.is_valid  # No errors
@@ -104,9 +100,9 @@ class TestNotebookValidationResult:
     def test_multiple_issues(self):
         """Test handling multiple issues."""
         result = NotebookValidationResult()
-        result.add_error('Error 1', cell_index=0)
-        result.add_error('Error 2', cell_index=1)
-        result.add_warning('Warning 1', cell_index=2)
+        result.add_error("Error 1", cell_index=0)
+        result.add_error("Error 2", cell_index=1)
+        result.add_warning("Warning 1", cell_index=2)
 
         assert not result.is_valid
         assert result.error_count == 2
@@ -118,13 +114,13 @@ class TestNotebookValidationResult:
         result = NotebookValidationResult()
 
         # Valid result
-        assert '✓' in str(result)
+        assert "✓" in str(result)
 
         # Result with errors
-        result.add_error('Test error', cell_index=0)
+        result.add_error("Test error", cell_index=0)
         result_str = str(result)
-        assert '✗' in result_str
-        assert 'error' in result_str.lower()
+        assert "✗" in result_str
+        assert "error" in result_str.lower()
 
 
 class TestNotebookValidator:
@@ -146,7 +142,7 @@ class TestNotebookValidator:
         code_cells = [
             "import numpy as np",
             "x = np.array([1, 2, 3])",
-            "print(x.mean())"
+            "print(x.mean())",
         ]
 
         notebook_path = create_test_notebook(code_cells)
@@ -157,18 +153,14 @@ class TestNotebookValidator:
 
             assert result.is_valid
             assert not result.has_errors
-            assert 'numpy' in result.imports_found
+            assert "numpy" in result.imports_found
 
         finally:
             notebook_path.unlink()
 
     def test_validate_syntax_error(self):
         """Test detection of syntax errors."""
-        code_cells = [
-            "import numpy as np",
-            "x = y z  # Syntax error",
-            "print(x)"
-        ]
+        code_cells = ["import numpy as np", "x = y z  # Syntax error", "print(x)"]
 
         notebook_path = create_test_notebook(code_cells)
 
@@ -178,7 +170,7 @@ class TestNotebookValidator:
 
             assert not result.is_valid
             assert result.has_errors
-            assert any('syntax' in issue.message.lower() for issue in result.issues)
+            assert any("syntax" in issue.message.lower() for issue in result.issues)
 
         finally:
             notebook_path.unlink()
@@ -188,7 +180,7 @@ class TestNotebookValidator:
         code_cells = [
             "import numpy as np",
             "import nonexistent_module_xyz123",  # This should fail
-            "print('test')"
+            "print('test')",
         ]
 
         notebook_path = create_test_notebook(code_cells)
@@ -200,7 +192,7 @@ class TestNotebookValidator:
             # Should have error due to missing import
             assert not result.is_valid
             assert result.has_errors
-            assert 'nonexistent_module_xyz123' in result.missing_imports
+            assert "nonexistent_module_xyz123" in result.missing_imports
 
         finally:
             notebook_path.unlink()
@@ -210,7 +202,7 @@ class TestNotebookValidator:
         code_cells = [
             "import numpy as np",
             "import nonexistent_module_xyz123",
-            "print('test')"
+            "print('test')",
         ]
 
         notebook_path = create_test_notebook(code_cells)
@@ -222,7 +214,7 @@ class TestNotebookValidator:
             # Should be valid (warnings don't block)
             # But should have warnings
             assert result.has_warnings
-            assert 'nonexistent_module_xyz123' in result.missing_imports
+            assert "nonexistent_module_xyz123" in result.missing_imports
 
         finally:
             notebook_path.unlink()
@@ -233,7 +225,7 @@ class TestNotebookValidator:
             "import numpy as np",
             "from pandas import DataFrame",
             "import scipy.stats as stats",
-            "from matplotlib.pyplot import plot"
+            "from matplotlib.pyplot import plot",
         ]
 
         notebook_path = create_test_notebook(code_cells)
@@ -242,10 +234,10 @@ class TestNotebookValidator:
             validator = NotebookValidator()
             result = validator.validate(notebook_path)
 
-            assert 'numpy' in result.imports_found
-            assert 'pandas' in result.imports_found
-            assert 'scipy' in result.imports_found
-            assert 'matplotlib' in result.imports_found
+            assert "numpy" in result.imports_found
+            assert "pandas" in result.imports_found
+            assert "scipy" in result.imports_found
+            assert "matplotlib" in result.imports_found
 
         finally:
             notebook_path.unlink()
@@ -255,7 +247,7 @@ class TestNotebookValidator:
         code_cells = [
             "import numpy as np",
             "try:\n    x = 1/0\nexcept:\n    pass  # Bare except",
-            "result = eval('1 + 1')  # Dangerous eval"
+            "result = eval('1 + 1')  # Dangerous eval",
         ]
 
         notebook_path = create_test_notebook(code_cells)
@@ -267,13 +259,17 @@ class TestNotebookValidator:
             # Should have warnings for common issues
             assert result.has_warnings
 
-            warning_messages = [issue.message.lower() for issue in result.issues if issue.severity == 'warning']
+            warning_messages = [
+                issue.message.lower()
+                for issue in result.issues
+                if issue.severity == "warning"
+            ]
 
             # Check for bare except warning
-            assert any('except' in msg for msg in warning_messages)
+            assert any("except" in msg for msg in warning_messages)
 
             # Check for eval warning
-            assert any('eval' in msg or 'exec' in msg for msg in warning_messages)
+            assert any("eval" in msg or "exec" in msg for msg in warning_messages)
 
         finally:
             notebook_path.unlink()
@@ -284,7 +280,7 @@ class TestNotebookValidator:
             "import numpy as np",
             "",  # Empty cell
             "   ",  # Whitespace only
-            "print('test')"
+            "print('test')",
         ]
 
         notebook_path = create_test_notebook(code_cells)
@@ -301,11 +297,7 @@ class TestNotebookValidator:
 
     def test_validate_quick_success(self):
         """Test quick validation with valid notebook."""
-        code_cells = [
-            "import numpy as np",
-            "x = np.array([1, 2, 3])",
-            "print(x)"
-        ]
+        code_cells = ["import numpy as np", "x = np.array([1, 2, 3])", "print(x)"]
 
         notebook_path = create_test_notebook(code_cells)
 
@@ -320,10 +312,7 @@ class TestNotebookValidator:
 
     def test_validate_quick_failure(self):
         """Test quick validation with syntax error."""
-        code_cells = [
-            "import numpy as np",
-            "x = y z  # Syntax error"
-        ]
+        code_cells = ["import numpy as np", "x = y z  # Syntax error"]
 
         notebook_path = create_test_notebook(code_cells)
 
@@ -343,14 +332,14 @@ class TestNotebookValidator:
 
         assert not result.is_valid
         assert result.has_errors
-        assert any('cannot read' in issue.message.lower() for issue in result.issues)
+        assert any("cannot read" in issue.message.lower() for issue in result.issues)
 
     def test_multiple_syntax_errors(self):
         """Test handling of multiple syntax errors."""
         code_cells = [
             "import numpy as np",
             "x = y z  # Error 1",
-            "def broken(:\n    pass  # Error 2"
+            "def broken(:\n    pass  # Error 2",
         ]
 
         notebook_path = create_test_notebook(code_cells)

@@ -44,6 +44,7 @@ Deep dive into system design
 - [**20 - Data Management**](20-data-management.md) - DataManagerV2 and modality system
 - [**21 - Cloud/Local Architecture**](21-cloud-local-architecture.md) - Hybrid deployment design
 - [**22 - Performance Optimization**](22-performance-optimization.md) - Memory and speed optimizations
+- [**37 - Publication Intelligence Deep Dive**](37-publication-intelligence-deep-dive.md) 🆕 - Docling integration & PDF parsing ✨
 
 ### 🎯 **Tutorials & Examples**
 Learn by doing with practical tutorials
@@ -115,6 +116,14 @@ Help and additional resources
 - Batch effect detection and correction
 
 ## 📈 Version Highlights
+
+### **v2.3+ Features** 🆕
+- 📄 **Docling PDF Parsing** - Structure-aware Methods section extraction ([Details](37-publication-intelligence-deep-dive.md))
+- 🎯 **Intelligent Detection** - >90% Methods section hit rate (vs ~30% previously)
+- 📊 **Table Extraction** - Parameter tables from scientific publications
+- 🧮 **Formula Preservation** - Mathematical formulas in LaTeX format
+- 💾 **Document Caching** - 30-50x faster repeat access (<100ms cached)
+- 🔄 **Comprehensive Retry Logic** - Automatic PyPDF2 fallback for reliability
 
 ### **v2.2+ Features**
 - 🔄 **Workspace Restoration** - Seamless session continuity ([Details](31-data-expert-agent-enhancements.md))

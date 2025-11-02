@@ -104,7 +104,9 @@ def _build_role_section() -> str:
 def _build_tools_section() -> str:
     """Build the available tools section."""
     return """<Available Tools>
-    **list_available_modalities**: A tool that lists all data modalities currently loaded in the system. Use this to inform your decisions about analysis steps and agent delegation. You can use this tool if a user asks to do something with a loaded modality."""
+    **list_available_modalities**: A tool that lists all data modalities currently loaded in the system. Use this to inform your decisions about analysis steps and agent delegation. You can use this tool if a user asks to do something with a loaded modality.
+
+    **list_session_publications**: A tool that lists all publications analyzed during the current session. Use this when users ask about previously extracted methods, want to reference earlier literature analysis, or need to coordinate follow-up tasks on papers already processed. After listing publications, handoff to research_agent or data_expert with specific paper identifiers for detailed reading and analysis."""
 
 
 def _build_agents_section(active_agents: List[str], config: SupervisorConfig) -> str:
@@ -471,12 +473,3 @@ def _build_response_quality_section() -> str:
     - Summarize and guide the next step if applicable.
     - Present expert outputs clearly and suggest logical next steps.
     - Maintain scientific rigor and accuracy in all responses."""
-
-
-# Keep the old function signature for backward compatibility
-def create_supervisor_prompt_legacy(data_manager) -> str:
-    """Legacy function for backward compatibility.
-
-    Uses the new dynamic system with default configuration.
-    """
-    return create_supervisor_prompt(data_manager)

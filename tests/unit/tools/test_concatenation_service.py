@@ -609,7 +609,9 @@ class TestIntegration:
         assert memory_info.required_gb > 0
 
         # Test concatenation
-        result_adata, statistics, _ = service.concatenate_samples(sample_anndata_objects)
+        result_adata, statistics, _ = service.concatenate_samples(
+            sample_anndata_objects
+        )
         assert result_adata is not None
         assert statistics["strategy_used"] == "smart_sparse"
 

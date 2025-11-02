@@ -495,10 +495,17 @@ class TestTranscriptomicsAdapter:
         adapter = TranscriptomicsAdapter()
 
         # Create AnnData with mixed gene names
-        gene_names = ["Gene1", "MT-ATP6", "MT-CO1", "MT_ND1", "MTRNR1", "Gene2", "RPL18"]
+        gene_names = [
+            "Gene1",
+            "MT-ATP6",
+            "MT-CO1",
+            "MT_ND1",
+            "MTRNR1",
+            "Gene2",
+            "RPL18",
+        ]
         data = pd.DataFrame(
-            np.random.randint(0, 100, (10, len(gene_names))),
-            columns=gene_names
+            np.random.randint(0, 100, (10, len(gene_names))), columns=gene_names
         )
         adata = ad.AnnData(data)
 
@@ -518,8 +525,7 @@ class TestTranscriptomicsAdapter:
         # Create AnnData with ribosomal genes
         gene_names = ["Gene1", "RPL18", "RPS6", "RPL19", "RPS5", "Gene2"]
         data = pd.DataFrame(
-            np.random.randint(0, 100, (10, len(gene_names))),
-            columns=gene_names
+            np.random.randint(0, 100, (10, len(gene_names))), columns=gene_names
         )
         adata = ad.AnnData(data)
 
@@ -761,8 +767,7 @@ class TestProteomicsAdapter:
             "CON_ALBU_HUMAN",
         ]
         data = pd.DataFrame(
-            np.random.rand(3, len(protein_names)) * 1000,
-            columns=protein_names
+            np.random.rand(3, len(protein_names)) * 1000, columns=protein_names
         )
 
         # Use public from_source() which flags contaminants
@@ -789,8 +794,7 @@ class TestProteomicsAdapter:
             "N22222",
         ]
         data = pd.DataFrame(
-            np.random.rand(3, len(protein_names)) * 1000,
-            columns=protein_names
+            np.random.rand(3, len(protein_names)) * 1000, columns=protein_names
         )
 
         # Use public from_source() which flags reverse hits
@@ -809,8 +813,7 @@ class TestProteomicsAdapter:
 
         # Create data
         data = pd.DataFrame(
-            np.array([[100.0, 200.0], [150.0, 150.0]]),
-            columns=["Protein1", "Protein2"]
+            np.array([[100.0, 200.0], [150.0, 150.0]]), columns=["Protein1", "Protein2"]
         )
         adata = adapter.from_source(data)
 
@@ -831,8 +834,7 @@ class TestProteomicsAdapter:
         # Create data with protein names that include organism info
         protein_names = ["P12345_HUMAN", "Q67890_MOUSE", "CON_TRYP_HUMAN"]
         data = pd.DataFrame(
-            np.random.rand(3, len(protein_names)) * 1000,
-            columns=protein_names
+            np.random.rand(3, len(protein_names)) * 1000, columns=protein_names
         )
 
         # Use public API: from_source() or preprocess_data()

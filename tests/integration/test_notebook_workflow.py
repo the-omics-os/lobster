@@ -232,11 +232,7 @@ class TestNotebookWorkflow:
         dm = data_manager_with_data
 
         # Add a failed activity
-        failed_activity = {
-            "type": "failed_op",
-            "agent": "test",
-            "error": "Test error"
-        }
+        failed_activity = {"type": "failed_op", "agent": "test", "error": "Test error"}
         dm.provenance.activities.append(failed_activity)
 
         with patch("pathlib.Path.home") as mock_home:
@@ -286,9 +282,7 @@ class TestNotebookWorkflow:
         assert "random_seed" in params_cell.source
 
         # Check that code cells use scanpy (standard library)
-        code_content = "\n".join(
-            c.source for c in nb.cells if c.cell_type == "code"
-        )
+        code_content = "\n".join(c.source for c in nb.cells if c.cell_type == "code")
         assert "import scanpy" in code_content or "sc." in code_content
 
     def test_error_handling_no_provenance(self, workspace_dir):

@@ -133,11 +133,14 @@ def create_expert_handoff_tools(available_agents: List[str]) -> Dict[str, BaseTo
         Dictionary of handoff tools keyed by tool name (empty dict when disabled)
     """
     import logging
+
     logger = logging.getLogger(__name__)
 
     # Direct sub-agent handoffs are currently disabled
     # Return empty dict to maintain interface compatibility
-    logger.debug("create_expert_handoff_tools called but handoffs are disabled for supervisor-mediated flow")
+    logger.debug(
+        "create_expert_handoff_tools called but handoffs are disabled for supervisor-mediated flow"
+    )
     return {}
 
     # COMMENTED OUT: Original implementation for when direct handoffs are re-enabled
@@ -205,11 +208,14 @@ def get_handoff_tools_for_agent(
         List of handoff tools that this agent can use (empty list when disabled)
     """
     import logging
+
     logger = logging.getLogger(__name__)
 
     # Direct sub-agent handoffs are currently disabled
     # Return empty list to maintain interface compatibility
-    logger.debug(f"get_handoff_tools_for_agent called for {agent_name} but handoffs are disabled")
+    logger.debug(
+        f"get_handoff_tools_for_agent called for {agent_name} but handoffs are disabled"
+    )
     return []
 
     # COMMENTED OUT: Original implementation for when direct handoffs are re-enabled

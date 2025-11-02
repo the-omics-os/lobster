@@ -43,7 +43,6 @@ from tests.mock_data.factories import (  # Note: SpatialDataFactory not yet impl
 # Note: Supervisor uses different pattern - imported via graph module if needed
 
 
-
 # ===============================================================================
 # Workflow Test Configuration and Utilities
 # ===============================================================================

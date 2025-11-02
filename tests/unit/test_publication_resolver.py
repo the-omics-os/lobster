@@ -5,13 +5,14 @@ These tests use realistic scenarios with proper mocking of external API calls.
 Tests are designed to run successfully with pytest.
 """
 
-import pytest
 import json
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 from lobster.tools.providers.publication_resolver import (
-    PublicationResolver,
     PublicationResolutionResult,
+    PublicationResolver,
 )
 
 
@@ -58,7 +59,7 @@ class TestPublicationResolverPMC:
 
     def test_resolve_via_pmc_success(self):
         """Test successful PMC resolution with realistic API response."""
-        with patch.object(self.resolver.session, 'get') as mock_get:
+        with patch.object(self.resolver.session, "get") as mock_get:
             # Simulate realistic PMC API response
             mock_response = Mock()
             mock_response.status_code = 200
@@ -71,9 +72,9 @@ class TestPublicationResolverPMC:
                             {
                                 "dbto": "pmc",
                                 "linkname": "pubmed_pmc_refs",
-                                "links": ["7891011"]
+                                "links": ["7891011"],
                             }
-                        ]
+                        ],
                     }
                 ]
             }
@@ -89,14 +90,12 @@ class TestPublicationResolverPMC:
 
     def test_resolve_via_pmc_not_in_pmc(self):
         """Test PMC resolution when paper not in PMC."""
-        with patch.object(self.resolver.session, 'get') as mock_get:
+        with patch.object(self.resolver.session, "get") as mock_get:
             # Simulate PMC API response with no links
             mock_response = Mock()
             mock_response.status_code = 200
             mock_response.raise_for_status = Mock()
-            mock_response.json.return_value = {
-                "linksets": []
-            }
+            mock_response.json.return_value = {"linksets": []}
             mock_get.return_value = mock_response
 
             result = self.resolver._resolve_via_pmc("12345678")
@@ -107,7 +106,7 @@ class TestPublicationResolverPMC:
 
     def test_resolve_via_pmc_network_error(self):
         """Test PMC resolution with network error."""
-        with patch.object(self.resolver.session, 'get') as mock_get:
+        with patch.object(self.resolver.session, "get") as mock_get:
             mock_get.side_effect = Exception("Network timeout")
 
             result = self.resolver._resolve_via_pmc("12345678")
@@ -126,7 +125,9 @@ class TestPublicationResolverPreprints:
 
     def test_resolve_via_preprint_biorxiv(self):
         """Test bioRxiv preprint resolution."""
-        result = self.resolver._resolve_via_preprint_servers("10.1101/2024.01.15.123456")
+        result = self.resolver._resolve_via_preprint_servers(
+            "10.1101/2024.01.15.123456"
+        )
 
         assert result.is_accessible() is True
         assert result.source == "biorxiv"
@@ -136,7 +137,9 @@ class TestPublicationResolverPreprints:
 
     def test_resolve_via_preprint_medrxiv(self):
         """Test medRxiv preprint resolution."""
-        result = self.resolver._resolve_via_preprint_servers("medrxiv.org/10.1101/2024.02.01.456789")
+        result = self.resolver._resolve_via_preprint_servers(
+            "medrxiv.org/10.1101/2024.02.01.456789"
+        )
 
         assert result.is_accessible() is True
         assert result.source == "medrxiv"
@@ -144,7 +147,9 @@ class TestPublicationResolverPreprints:
 
     def test_resolve_via_preprint_not_preprint(self):
         """Test preprint resolution for non-preprint DOI."""
-        result = self.resolver._resolve_via_preprint_servers("10.1038/s41586-021-12345-6")
+        result = self.resolver._resolve_via_preprint_servers(
+            "10.1038/s41586-021-12345-6"
+        )
 
         assert result.is_accessible() is False
         assert result.source == "preprint"
@@ -181,7 +186,10 @@ class TestPublicationResolverSuggestions:
 
         assert result.source == "paywalled"
         assert result.access_type == "paywalled"
-        assert "Unpaywall" in result.suggestions or "unpaywall" in result.suggestions.lower()
+        assert (
+            "Unpaywall" in result.suggestions
+            or "unpaywall" in result.suggestions.lower()
+        )
         assert "10.1038/s41586-021-12345-6" in result.suggestions
 
     def test_generate_suggestions_with_both(self):
@@ -221,8 +229,12 @@ class TestPublicationResolverFullWorkflow:
 
     def test_resolve_doi_tries_preprint_after_pmc(self):
         """Test waterfall: PMC fails → tries preprint."""
-        with patch.object(self.resolver, "_resolve_via_pmc") as mock_pmc, \
-             patch.object(self.resolver, "_resolve_via_preprint_servers") as mock_preprint:
+        with (
+            patch.object(self.resolver, "_resolve_via_pmc") as mock_pmc,
+            patch.object(
+                self.resolver, "_resolve_via_preprint_servers"
+            ) as mock_preprint,
+        ):
 
             # PMC fails
             mock_pmc.return_value = PublicationResolutionResult(
@@ -246,9 +258,13 @@ class TestPublicationResolverFullWorkflow:
 
     def test_resolve_falls_back_to_suggestions(self):
         """Test full waterfall ending in suggestions."""
-        with patch.object(self.resolver, "_resolve_via_pmc") as mock_pmc, \
-             patch.object(self.resolver, "_resolve_via_preprint_servers") as mock_preprint, \
-             patch.object(self.resolver, "_resolve_via_publisher") as mock_publisher:
+        with (
+            patch.object(self.resolver, "_resolve_via_pmc") as mock_pmc,
+            patch.object(
+                self.resolver, "_resolve_via_preprint_servers"
+            ) as mock_preprint,
+            patch.object(self.resolver, "_resolve_via_publisher") as mock_publisher,
+        ):
 
             # All strategies fail
             mock_pmc.return_value = PublicationResolutionResult(
@@ -258,7 +274,9 @@ class TestPublicationResolverFullWorkflow:
                 identifier="10.1038/test", source="preprint", access_type="not_preprint"
             )
             mock_publisher.return_value = PublicationResolutionResult(
-                identifier="10.1038/test", source="publisher", access_type="not_open_access"
+                identifier="10.1038/test",
+                source="publisher",
+                access_type="not_open_access",
             )
 
             result = self.resolver.resolve("PMID:123")
@@ -284,7 +302,7 @@ class TestPublicationResolverBatch:
                 identifier="PMID:100",
                 pdf_url="http://test.pdf",
                 source="pmc",
-                access_type="open_access"
+                access_type="open_access",
             )
 
             results = self.resolver.batch_resolve(identifiers, max_batch=5)
@@ -375,10 +393,7 @@ class TestPublicationResolutionResult:
     def test_is_accessible_false_error(self):
         """Test is_accessible returns False for errors."""
         error = PublicationResolutionResult(
-            identifier="PMID:789",
-            pdf_url=None,
-            source="error",
-            access_type="error"
+            identifier="PMID:789", pdf_url=None, source="error", access_type="error"
         )
         assert error.is_accessible() is False
 

@@ -64,8 +64,14 @@ def create_test_adata():
     """Create test AnnData object."""
     n_obs, n_vars = 100, 50
     X = np.random.rand(n_obs, n_vars)
-    obs = pd.DataFrame({"cell_type": ["TypeA"] * 50 + ["TypeB"] * 50}, index=[f"cell_{i}" for i in range(n_obs)])
-    var = pd.DataFrame({"gene_name": [f"gene_{i}" for i in range(n_vars)]}, index=[f"gene_{i}" for i in range(n_vars)])
+    obs = pd.DataFrame(
+        {"cell_type": ["TypeA"] * 50 + ["TypeB"] * 50},
+        index=[f"cell_{i}" for i in range(n_obs)],
+    )
+    var = pd.DataFrame(
+        {"gene_name": [f"gene_{i}" for i in range(n_vars)]},
+        index=[f"gene_{i}" for i in range(n_vars)],
+    )
     return anndata.AnnData(X=X, obs=obs, var=var)
 
 
@@ -86,7 +92,9 @@ class TestNotebookExporter:
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch("pathlib.Path.home") as mock_home:
                 mock_home.return_value = Path(tmpdir)
-                path = exporter.export(name="test_notebook", description="Test workflow")
+                path = exporter.export(
+                    name="test_notebook", description="Test workflow"
+                )
 
                 # Verify file created (inside context while tmpdir exists)
                 assert path.exists()
@@ -143,11 +151,7 @@ class TestNotebookExporter:
     def test_filter_activities_successful(self, provenance_tracker, data_manager):
         """Test filtering successful activities."""
         # Add a failed activity by adding error marker
-        failed_activity = {
-            "type": "failed_op",
-            "agent": "test",
-            "error": "Test error"
-        }
+        failed_activity = {"type": "failed_op", "agent": "test", "error": "Test error"}
         provenance_tracker.activities.append(failed_activity)
 
         exporter = NotebookExporter(provenance_tracker, data_manager)
@@ -160,11 +164,7 @@ class TestNotebookExporter:
     def test_filter_activities_all(self, provenance_tracker, data_manager):
         """Test including all activities."""
         # Add a failed activity
-        failed_activity = {
-            "type": "failed_op",
-            "agent": "test",
-            "error": "Test error"
-        }
+        failed_activity = {"type": "failed_op", "agent": "test", "error": "Test error"}
         provenance_tracker.activities.append(failed_activity)
 
         exporter = NotebookExporter(provenance_tracker, data_manager)
@@ -235,9 +235,9 @@ class TestNotebookExporter:
                     papermill_injectable=False,
                     default_value=["mt", "ribo"],
                     required=True,
-                    description="QC variables"
+                    description="QC variables",
                 )
-            }
+            },
         )
 
         # Add activity with IR
@@ -282,9 +282,9 @@ class TestNotebookExporter:
                     papermill_injectable=True,
                     default_value=200,
                     required=False,
-                    description="Minimum genes per cell"
+                    description="Minimum genes per cell",
                 )
-            }
+            },
         )
 
         # Create activity with IR
@@ -331,7 +331,7 @@ class TestNotebookExporter:
             code_template="sc.pp.filter_cells(adata, min_genes=200)",
             imports=["import scanpy as sc"],
             parameters={},
-            parameter_schema={}
+            parameter_schema={},
         )
 
         ir2 = AnalysisStep(
@@ -342,7 +342,7 @@ class TestNotebookExporter:
             code_template="sc.pp.normalize_total(adata)",
             imports=["import scanpy as sc", "import numpy as np"],
             parameters={},
-            parameter_schema={}
+            parameter_schema={},
         )
 
         tracker = ProvenanceTracker()
@@ -385,16 +385,16 @@ class TestNotebookExporter:
                     papermill_injectable=True,
                     default_value=200,
                     required=False,
-                    description="Minimum genes"
+                    description="Minimum genes",
                 ),
                 "target_sum": ParameterSpec(
                     param_type="float",
                     papermill_injectable=True,
                     default_value=10000,
                     required=False,
-                    description="Target sum"
-                )
-            }
+                    description="Target sum",
+                ),
+            },
         )
 
         tracker = ProvenanceTracker()

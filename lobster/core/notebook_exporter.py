@@ -479,9 +479,7 @@ print(f"Saved processed data to: {output_path}")
         except Exception as e:
             logger.error(f"Failed to deserialize IR: {e}")
             return new_code_cell(
-                f"# ERROR: Failed to deserialize IR\n"
-                f"# {str(e)}\n"
-                f"pass"
+                f"# ERROR: Failed to deserialize IR\n" f"# {str(e)}\n" f"pass"
             )
 
         # Render code from template
@@ -494,7 +492,9 @@ print(f"Saved processed data to: {output_path}")
                     ir.validate_rendered_code()
                     logger.debug(f"Validated syntax for {ir.operation}")
                 except SyntaxError as e:
-                    logger.error(f"Syntax error in generated code for {ir.operation}: {e}")
+                    logger.error(
+                        f"Syntax error in generated code for {ir.operation}: {e}"
+                    )
                     code = (
                         f"# SYNTAX ERROR in generated code:\n"
                         f"# {str(e)}\n"
@@ -609,9 +609,9 @@ AnalysisStep objects. IR-enabled steps are fully reproducible.
                 pass
 
         # Add Python version
-        versions[
-            "python"
-        ] = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        versions["python"] = (
+            f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        )
 
         return versions
 

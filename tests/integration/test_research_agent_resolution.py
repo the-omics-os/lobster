@@ -5,13 +5,16 @@ These tests simulate real user sessions with proper mocking of external dependen
 Tests are designed to run successfully with pytest and verify end-to-end workflows.
 """
 
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 
 from lobster.agents.research_agent_assistant import ResearchAgentAssistant
-from lobster.tools.providers.publication_resolver import PublicationResolutionResult
-from lobster.tools.publication_intelligence_service import PublicationIntelligenceService
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.tools.providers.publication_resolver import PublicationResolutionResult
+from lobster.tools.publication_intelligence_service import (
+    PublicationIntelligenceService,
+)
 
 
 @pytest.fixture
@@ -32,7 +35,9 @@ class TestResearchAgentAssistantResolution:
 
     def test_resolve_publication_accessible(self):
         """Test successful resolution of accessible publication."""
-        with patch("lobster.agents.research_agent_assistant.PublicationResolver") as mock_resolver_class:
+        with patch(
+            "lobster.agents.research_agent_assistant.PublicationResolver"
+        ) as mock_resolver_class:
             mock_resolver = Mock()
             mock_resolver.resolve.return_value = PublicationResolutionResult(
                 identifier="PMID:12345678",
@@ -52,7 +57,9 @@ class TestResearchAgentAssistantResolution:
 
     def test_resolve_publication_paywalled(self):
         """Test resolution of paywalled publication."""
-        with patch("lobster.agents.research_agent_assistant.PublicationResolver") as mock_resolver_class:
+        with patch(
+            "lobster.agents.research_agent_assistant.PublicationResolver"
+        ) as mock_resolver_class:
             mock_resolver = Mock()
             mock_resolver.resolve.return_value = PublicationResolutionResult(
                 identifier="PMID:87654321",
@@ -73,7 +80,9 @@ class TestResearchAgentAssistantResolution:
 
     def test_resolve_publication_error_handling(self):
         """Test error handling during resolution."""
-        with patch("lobster.agents.research_agent_assistant.PublicationResolver") as mock_resolver_class:
+        with patch(
+            "lobster.agents.research_agent_assistant.PublicationResolver"
+        ) as mock_resolver_class:
             mock_resolver = Mock()
             mock_resolver.resolve.side_effect = Exception("Network timeout")
             mock_resolver_class.return_value = mock_resolver
@@ -86,7 +95,9 @@ class TestResearchAgentAssistantResolution:
 
     def test_batch_resolve_mixed_results(self):
         """Test batch resolution with mixed accessible/paywalled results."""
-        with patch("lobster.agents.research_agent_assistant.PublicationResolver") as mock_resolver_class:
+        with patch(
+            "lobster.agents.research_agent_assistant.PublicationResolver"
+        ) as mock_resolver_class:
             mock_resolver = Mock()
             mock_resolver.batch_resolve.return_value = [
                 PublicationResolutionResult(
@@ -112,7 +123,9 @@ class TestResearchAgentAssistantResolution:
             mock_resolver_class.return_value = mock_resolver
 
             identifiers = ["PMID:111", "PMID:222", "PMID:333"]
-            results = self.assistant.batch_resolve_publications(identifiers, max_batch=5)
+            results = self.assistant.batch_resolve_publications(
+                identifiers, max_batch=5
+            )
 
             assert len(results) == 3
             assert results[0].is_accessible() is True
@@ -205,7 +218,9 @@ class TestPublicationIntelligenceServiceIntegration:
                 )
                 mock_llm_factory.return_value = mock_llm
 
-                result = service.extract_methods_from_paper("https://test.com/paper.pdf")
+                result = service.extract_methods_from_paper(
+                    "https://test.com/paper.pdf"
+                )
 
                 assert "software_used" in result
                 assert result["software_used"] == ["Scanpy"]
@@ -215,7 +230,9 @@ class TestPublicationIntelligenceServiceIntegration:
         """Test extract_methods_from_paper with PMID requiring resolution."""
         service = PublicationIntelligenceService(data_manager=mock_data_manager)
 
-        with patch("lobster.agents.research_agent_assistant.ResearchAgentAssistant") as mock_assistant_class:
+        with patch(
+            "lobster.agents.research_agent_assistant.ResearchAgentAssistant"
+        ) as mock_assistant_class:
             # Setup assistant mock
             mock_assistant = Mock()
             mock_resolution = PublicationResolutionResult(
@@ -241,13 +258,17 @@ class TestPublicationIntelligenceServiceIntegration:
 
                     assert "software_used" in result
                     assert "Seurat" in result["software_used"]
-                    mock_assistant.resolve_publication_to_pdf.assert_called_once_with("PMID:12345678")
+                    mock_assistant.resolve_publication_to_pdf.assert_called_once_with(
+                        "PMID:12345678"
+                    )
 
     def test_extract_methods_paywalled_raises_error(self, mock_data_manager):
         """Test extract_methods_from_paper raises informative error for paywalled papers."""
         service = PublicationIntelligenceService(data_manager=mock_data_manager)
 
-        with patch("lobster.agents.research_agent_assistant.ResearchAgentAssistant") as mock_assistant_class:
+        with patch(
+            "lobster.agents.research_agent_assistant.ResearchAgentAssistant"
+        ) as mock_assistant_class:
             mock_assistant = Mock()
             mock_resolution = PublicationResolutionResult(
                 identifier="PMID:87654321",
@@ -269,7 +290,9 @@ class TestPublicationIntelligenceServiceIntegration:
         """Test resolve_and_extract_methods combined workflow success."""
         service = PublicationIntelligenceService(data_manager=mock_data_manager)
 
-        with patch("lobster.agents.research_agent_assistant.ResearchAgentAssistant") as mock_assistant_class:
+        with patch(
+            "lobster.agents.research_agent_assistant.ResearchAgentAssistant"
+        ) as mock_assistant_class:
             mock_assistant = Mock()
             mock_resolution = PublicationResolutionResult(
                 identifier="PMID:12345678",
@@ -298,7 +321,9 @@ class TestPublicationIntelligenceServiceIntegration:
         """Test resolve_and_extract_methods with paywalled paper."""
         service = PublicationIntelligenceService(data_manager=mock_data_manager)
 
-        with patch("lobster.agents.research_agent_assistant.ResearchAgentAssistant") as mock_assistant_class:
+        with patch(
+            "lobster.agents.research_agent_assistant.ResearchAgentAssistant"
+        ) as mock_assistant_class:
             mock_assistant = Mock()
             mock_resolution = PublicationResolutionResult(
                 identifier="PMID:87654321",
@@ -330,7 +355,9 @@ class TestEndToEndWorkflows:
         pmids = ["PMID:12345678", "PMID:23456789", "PMID:34567890"]
 
         # Step 2: Batch resolve to check accessibility
-        with patch("lobster.agents.research_agent_assistant.PublicationResolver") as mock_resolver_class:
+        with patch(
+            "lobster.agents.research_agent_assistant.PublicationResolver"
+        ) as mock_resolver_class:
             mock_resolver = Mock()
             mock_resolver.batch_resolve.return_value = [
                 PublicationResolutionResult(
@@ -372,7 +399,9 @@ class TestEndToEndWorkflows:
         """Simulate: Check accessibility → Decide → Extract or suggest alternatives."""
         assistant = ResearchAgentAssistant()
 
-        with patch("lobster.agents.research_agent_assistant.PublicationResolver") as mock_resolver_class:
+        with patch(
+            "lobster.agents.research_agent_assistant.PublicationResolver"
+        ) as mock_resolver_class:
             mock_resolver = Mock()
 
             # Test scenario: accessible paper
@@ -401,7 +430,9 @@ class TestEndToEndWorkflows:
         """Simulate: Batch processing with some failures → Handle gracefully."""
         assistant = ResearchAgentAssistant()
 
-        with patch("lobster.agents.research_agent_assistant.PublicationResolver") as mock_resolver_class:
+        with patch(
+            "lobster.agents.research_agent_assistant.PublicationResolver"
+        ) as mock_resolver_class:
             mock_resolver = Mock()
             mock_resolver.batch_resolve.return_value = [
                 PublicationResolutionResult(

@@ -349,6 +349,326 @@ sc.pp.calculate_qc_metrics(adata, qc_vars=['mt', 'ribo'], inplace=True)
 
 For detailed documentation, see: `docs/notebook-pipeline-export.md`
 
+## Provenance System Requirements
+
+**CRITICAL**: All new services that perform logged analysis operations MUST integrate with the W3C-PROV provenance system and emit Intermediate Representation (IR) for notebook export. This is not optional - it's a core architectural requirement.
+
+### Service 3-Tuple Return Pattern
+
+Every service method that performs a logged operation must return a 3-tuple:
+
+```python
+def service_method(
+    self,
+    adata: anndata.AnnData,
+    **parameters
+) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
+    """
+    Returns:
+        Tuple containing:
+        1. processed_adata: Modified AnnData object with analysis results
+        2. statistics_dict: Summary metrics and statistics
+        3. ir: AnalysisStep IR for notebook export and provenance tracking
+    """
+```
+
+**Why This Pattern?**
+- **processed_adata**: Contains the scientifically processed data
+- **statistics_dict**: Provides human-readable summary for agent responses
+- **ir (AnalysisStep)**: Enables notebook export, Papermill parameterization, and provenance tracking
+
+### AnalysisStep IR Structure
+
+The IR must be an `AnalysisStep` object with the following required fields:
+
+```python
+from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+
+ir = AnalysisStep(
+    operation="scanpy.pp.calculate_qc_metrics",  # Library function being called
+    tool_name="assess_quality",                   # Your service method name
+    description="Calculate quality control metrics and filter cells",
+    library="scanpy",                             # Primary library used
+    code_template=code_template,                  # Jinja2 template (see below)
+    imports=["import scanpy as sc", "import numpy as np"],
+    parameters={                                   # Actual parameter values used
+        "min_genes": 500,
+        "max_mt_pct": 20.0,
+    },
+    parameter_schema=parameter_schema,            # ParameterSpec dict (see below)
+    input_entities=["adata"],                     # Input variable names
+    output_entities=["adata"],                    # Output variable names
+    execution_context={                           # Additional metadata
+        "method": "scanpy",
+        "qc_vars": ["mt", "ribo"]
+    },
+    validates_on_export=True,                     # Should validate before export
+    requires_validation=False,                    # Can run without validation
+)
+```
+
+### ParameterSpec Schema
+
+Each parameter in your service must have a `ParameterSpec` defining:
+
+```python
+parameter_schema = {
+    "min_genes": ParameterSpec(
+        param_type="int",                    # Python type: int, float, str, list, dict
+        papermill_injectable=True,           # Can be overridden via Papermill
+        default_value=500,                   # Default value for notebooks
+        required=False,                      # Is this parameter mandatory?
+        validation_rule="min_genes > 0",     # Optional validation expression
+        description="Minimum genes per cell for QC pass",
+    ),
+    "max_mt_pct": ParameterSpec(
+        param_type="float",
+        papermill_injectable=True,
+        default_value=20.0,
+        required=False,
+        validation_rule="max_mt_pct > 0 and max_mt_pct <= 100",
+        description="Maximum mitochondrial percentage threshold",
+    ),
+}
+```
+
+**Key Points:**
+- `papermill_injectable=True`: Parameter can be modified when executing notebooks
+- `papermill_injectable=False`: Parameter is fixed (e.g., internal configuration)
+- `validation_rule`: Optional Python expression for parameter validation
+
+### Jinja2 Code Templates
+
+The `code_template` uses Jinja2 syntax for parameter injection:
+
+```python
+code_template = """# Calculate QC metrics
+sc.pp.calculate_qc_metrics(
+    adata,
+    qc_vars=['mt', 'ribo'],
+    percent_top=None,
+    log1p=False,
+    inplace=True
+)
+
+# Add QC pass/fail flags
+adata.obs['qc_pass'] = (
+    (adata.obs['n_genes_by_counts'] >= {{ min_genes }}) &
+    (adata.obs['pct_counts_mt'] <= {{ max_mt_pct }}) &
+    (adata.obs['pct_counts_ribo'] <= {{ max_ribo_pct }})
+)
+
+# Display QC summary
+print(f"Cells before QC: {adata.n_obs}")
+print(f"Cells passing QC: {adata.obs['qc_pass'].sum()}")
+"""
+```
+
+**Template Requirements:**
+- Use `{{ parameter_name }}` for injectable parameters
+- Must be valid Python code when parameters are substituted
+- Use standard library functions (scanpy, pyDESeq2) - NO Lobster dependencies
+- Include informative print statements for notebook users
+
+### Complete Service Implementation Example
+
+```python
+from typing import Any, Dict, Tuple
+import anndata
+from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+
+class ExampleService:
+    """Example service demonstrating provenance integration."""
+
+    def process_data(
+        self,
+        adata: anndata.AnnData,
+        threshold: float = 0.5,
+        method: str = "standard",
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
+        """
+        Process data with provenance tracking.
+
+        Args:
+            adata: Input AnnData object
+            threshold: Processing threshold
+            method: Processing method
+
+        Returns:
+            Tuple of (processed_adata, statistics, ir)
+        """
+        # 1. Perform analysis
+        adata_processed = adata.copy()
+        # ... actual processing logic ...
+
+        # 2. Generate statistics
+        stats = {
+            "n_obs": adata_processed.n_obs,
+            "n_vars": adata_processed.n_vars,
+            "threshold_used": threshold,
+            "method": method,
+        }
+
+        # 3. Create IR for notebook export
+        ir = self._create_ir(threshold=threshold, method=method)
+
+        return adata_processed, stats, ir
+
+    def _create_ir(
+        self,
+        threshold: float,
+        method: str,
+    ) -> AnalysisStep:
+        """Create Intermediate Representation."""
+
+        # Define parameter schema
+        parameter_schema = {
+            "threshold": ParameterSpec(
+                param_type="float",
+                papermill_injectable=True,
+                default_value=0.5,
+                required=False,
+                validation_rule="threshold > 0 and threshold < 1",
+                description="Processing threshold value",
+            ),
+            "method": ParameterSpec(
+                param_type="str",
+                papermill_injectable=True,
+                default_value="standard",
+                required=False,
+                validation_rule="method in ['standard', 'advanced']",
+                description="Processing method selection",
+            ),
+        }
+
+        # Define code template
+        code_template = """# Process data using {{ method }} method
+import scanpy as sc
+
+# Apply processing with threshold={{ threshold }}
+adata.obs['processed'] = adata.X.sum(axis=1) > {{ threshold }}
+
+print(f"Processed {adata.n_obs} observations")
+print(f"Method: {{ method }}")
+print(f"Threshold: {{ threshold }}")
+"""
+
+        # Create AnalysisStep
+        ir = AnalysisStep(
+            operation="custom.processing.process_data",
+            tool_name="process_data",
+            description=f"Process data using {method} method with threshold {threshold}",
+            library="scanpy",
+            code_template=code_template,
+            imports=["import scanpy as sc", "import numpy as np"],
+            parameters={
+                "threshold": threshold,
+                "method": method,
+            },
+            parameter_schema=parameter_schema,
+            input_entities=["adata"],
+            output_entities=["adata"],
+            execution_context={
+                "processing_method": method,
+            },
+            validates_on_export=True,
+            requires_validation=False,
+        )
+
+        return ir
+```
+
+### Integration with Agent Tools
+
+Agent tools must pass the IR to provenance logging:
+
+```python
+@tool
+def analyze_data(modality_name: str, threshold: float = 0.5) -> str:
+    """Agent tool demonstrating provenance integration."""
+    try:
+        # 1. Get data
+        adata = data_manager.get_modality(modality_name)
+
+        # 2. Call service (receives 3-tuple with IR)
+        result_adata, stats, ir = service.process_data(adata, threshold=threshold)
+
+        # 3. Store results
+        new_modality = f"{modality_name}_processed"
+        data_manager.modalities[new_modality] = result_adata
+
+        # 4. Log with IR for provenance tracking
+        data_manager.log_tool_usage(
+            tool_name="analyze_data",
+            parameters={"threshold": threshold},
+            description=f"Processed {modality_name}",
+            ir=ir,  # CRITICAL: Pass IR to provenance system
+        )
+
+        return f"Analysis complete: {stats}"
+
+    except Exception as e:
+        return f"Analysis failed: {str(e)}"
+```
+
+### System Integration Flow
+
+```
+Service Layer (lobster/tools/)
+├── process_data() returns (adata, stats, ir)
+│
+▼
+Agent Layer (lobster/agents/)
+├── Tool receives 3-tuple
+├── Stores processed data
+├── Calls data_manager.log_tool_usage(ir=ir)
+│
+▼
+ProvenanceTracker (lobster/core/provenance.py)
+├── Stores activity with embedded IR
+├── Maintains W3C-PROV compliant history
+│
+▼
+NotebookExporter (lobster/core/notebook_exporter.py)
+├── Extracts IRs from activities
+├── Generates Jupyter notebook from code_templates
+├── Creates Papermill parameters cell
+│
+▼
+NotebookExecutor (lobster/core/notebook_executor.py)
+├── Validates input data against schemas
+├── Executes notebook with Papermill
+└── Returns results with provenance metadata
+```
+
+### Mandatory Checklist for New Services
+
+When creating any new service that performs logged operations:
+
+- [ ] Service method returns `Tuple[AnnData, Dict[str, Any], AnalysisStep]`
+- [ ] Implemented `_create_ir()` helper method
+- [ ] All parameters have `ParameterSpec` definitions
+- [ ] `code_template` uses Jinja2 `{{ parameter }}` syntax
+- [ ] Template uses standard libraries (scanpy, pyDESeq2, etc.)
+- [ ] Template includes informative print statements
+- [ ] `imports` list contains all required imports
+- [ ] `parameter_schema` marks Papermill-injectable parameters
+- [ ] Agent tool passes `ir=ir` to `log_tool_usage()`
+- [ ] Integration tested with notebook export workflow
+
+### Why This Matters
+
+**Without IR**: Sessions are not reproducible. Notebooks cannot be generated. Parameters cannot be modified via Papermill.
+
+**With IR**:
+- Sessions automatically export to executable Jupyter notebooks
+- Parameters can be modified for batch execution
+- Provenance tracking is W3C-PROV compliant
+- Notebooks are Git-friendly and publication-ready
+- Analysis workflows are fully reproducible
+
+**This is a professional bioinformatics platform.** Every analysis must be reproducible and auditable.
+
 ## Development Guidelines
 
 ### Code Style and Quality
@@ -478,11 +798,12 @@ pytest tests/integration/   # Integration tests
 
 ### Architectural Patterns to Maintain
 
-1. **Service Pattern**: Stateless, returns `(processed_adata, statistics_dict)`
-2. **Tool Pattern**: Validates modality → calls service → stores result → logs provenance
+1. **Service Pattern**: Stateless, returns `(processed_adata, statistics_dict, ir)` - See [Provenance System Requirements](#provenance-system-requirements)
+2. **Tool Pattern**: Validates modality → calls service → stores result → logs provenance with IR
 3. **Error Hierarchy**: Use specific exceptions (ModalityNotFoundError, ServiceError, etc.)
 4. **Registry Pattern**: Single source of truth for agent configuration
 5. **Adapter Pattern**: Unified interfaces for different data types/clients
+6. **Provenance Pattern**: All logged operations emit AnalysisStep IR for notebook export
 
 ### Code Deduplication Principles
 - Use `ConcatenationService` for all sample merging (no duplication)

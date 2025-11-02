@@ -537,16 +537,82 @@ def find_datasets_from_publication(
 
 Find datasets associated with a publication.
 
-### PublicationIntelligenceService ✨ (Phase 1 Enhanced)
+### PublicationIntelligenceService ✨ (v2.3+ Enhanced with Docling)
 
-Service for extracting computational methods from publications with **automatic PMID/DOI → PDF resolution**.
+Service for extracting computational methods from publications with **structure-aware Docling PDF parsing**, automatic PMID/DOI → PDF resolution, and intelligent Methods section detection.
 
 ```python
 class PublicationIntelligenceService:
-    """Service for method extraction with automatic identifier resolution."""
+    """Service for method extraction with Docling integration and automatic identifier resolution."""
 ```
 
+**New in v2.3.0:**
+- ✅ Structure-aware PDF parsing with Docling (replaces naive PyPDF2 truncation)
+- ✅ Intelligent Methods section detection by keywords (>90% hit rate)
+- ✅ Table extraction from Methods sections (parameter tables)
+- ✅ Formula detection and LaTeX formatting
+- ✅ Smart image filtering (removes base64 bloat, 40-60% size reduction)
+- ✅ Document caching (2-5s first parse → <100ms cached)
+- ✅ Comprehensive retry logic with automatic PyPDF2 fallback
+- ✅ Memory management with explicit garbage collection
+
 #### Methods
+
+##### extract_methods_section 🆕 (v2.3+)
+
+```python
+def extract_methods_section(
+    self,
+    source: str,
+    keywords: Optional[List[str]] = None,
+    max_paragraphs: int = 50,
+    max_retries: int = 2
+) -> Dict[str, Any]
+```
+
+**Flagship method** for structure-aware Methods section extraction using Docling.
+
+**Parameters:**
+- `source` (str): PDF URL or local file path
+- `keywords` (Optional[List[str]]): Section keywords to search (default: method-related)
+- `max_paragraphs` (int): Maximum paragraphs to extract (default: 50)
+- `max_retries` (int): Maximum retry attempts on failure (default: 2)
+
+**Returns:** Dict with:
+- `methods_text` (str): Full Methods section text
+- `methods_markdown` (str): Markdown with tables (images filtered)
+- `sections` (List[Dict]): Hierarchical document structure
+- `tables` (List[DataFrame]): Extracted tables as pandas DataFrames
+- `formulas` (List[str]): Mathematical formulas in LaTeX
+- `software_mentioned` (List[str]): Detected bioinformatics tools (24 tools recognized)
+- `provenance` (Dict): Metadata tracking (parser, version, timestamp, fallback status)
+
+**Example:**
+```python
+service = PublicationIntelligenceService()
+
+result = service.extract_methods_section(
+    "https://arxiv.org/pdf/2408.09869"
+)
+
+print(f"Methods: {len(result['methods_text'])} chars")
+print(f"Tables: {len(result['tables'])}")
+print(f"Formulas: {len(result['formulas'])}")
+print(f"Software: {result['software_mentioned']}")
+print(f"Parser: {result['provenance']['parser']}")  # 'docling' or 'pypdf2'
+```
+
+**Performance:**
+| Metric | First Parse | Cached Parse | Improvement |
+|--------|------------|--------------|-------------|
+| Time | 2-5 seconds | <100ms | 30-50x faster |
+| Memory | ~500MB | ~50MB | 10x lower |
+
+**Error Handling:**
+- Automatic retry on MemoryError (with `gc.collect()`)
+- Detects incompatible PDFs (page-dimensions error)
+- Graceful fallback to PyPDF2 after max retries
+- Non-fatal cache failures
 
 ##### extract_methods_from_paper
 
@@ -555,23 +621,113 @@ def extract_methods_from_paper(
     self,
     url_or_pmid: str,
     llm=None,
-    max_text_length: int = 10000
+    max_text_length: int = 10000  # DEPRECATED in v2.3+
 ) -> Dict[str, Any]
 ```
 
-Extract computational methods from a paper. **NOW accepts PMIDs, DOIs, and direct URLs** with automatic resolution.
+Extract computational methods from a paper with LLM analysis. **NOW uses Docling for structure-aware extraction** (v2.3+) and accepts PMIDs, DOIs, and direct URLs with automatic resolution.
 
 **Parameters:**
 - `url_or_pmid` (str): PMID, DOI, or direct PDF URL
-- `llm`: LLM instance for extraction (optional)
-- `max_text_length` (int): Maximum text length to process
+- `llm`: LLM instance for extraction (optional, auto-created if None)
+- `max_text_length` (int): **DEPRECATED** - Docling now extracts full Methods section intelligently
 
-**Returns:** Dict with `software_used`, `parameters`, `quality_control`, `analysis_workflow`
+**Returns:** Dict with:
+- `software_used` (List[str]): Detected software tools
+- `parameters` (Dict): Parameter values and cutoffs
+- `statistical_methods` (List[str]): Statistical approaches
+- `data_sources` (List[str]): Data sources and repositories
+- `sample_sizes` (Dict): Sample size information
+- `normalization_methods` (List[str]): Normalization approaches
+- `quality_control` (List[str]): QC steps
+- **v2.3+ enhancements:**
+  - `tables` (List[DataFrame]): Parameter tables from Methods
+  - `formulas` (List[str]): Mathematical formulas
+  - `software_detected` (List[str]): Auto-detected tools (keyword-based)
+  - `extraction_metadata` (Dict): Provenance tracking
 
-**Resolution strategy (Phase 1):**
+**Example:**
+```python
+# Automatic PMID resolution + Docling extraction + LLM analysis
+methods = service.extract_methods_from_paper("PMID:38448586")
+
+print("Software:", methods['software_used'])
+print("Parameters:", methods['parameters'])
+
+# v2.3+ enhancements
+print("Tables:", len(methods['tables']))
+print("Formulas:", len(methods['formulas']))
+print("Parser used:", methods['extraction_metadata']['parser'])
+```
+
+**Resolution strategy:**
 1. PMC → bioRxiv/medRxiv → Publisher → Suggestions
 2. 70-80% automatic resolution success rate
 3. Graceful fallback with 5 alternative access strategies for paywalled papers
+
+##### _filter_images_from_markdown 🆕 (v2.3+)
+
+```python
+def _filter_images_from_markdown(self, markdown: str) -> str
+```
+
+Remove base64 image encodings from Markdown to reduce LLM context bloat.
+
+**Performance:** 40-60% Markdown size reduction for image-heavy papers.
+
+##### _get_cached_document 🆕 (v2.3+)
+
+```python
+def _get_cached_document(self, source: str) -> Optional[DoclingDocument]
+```
+
+Retrieve cached parsed document if available.
+
+**Cache Location:** `.lobster_workspace/literature_cache/parsed_docs/{md5_hash}.json`
+
+**Performance:** <100ms cache hit vs 2-5s fresh parse (30-50x faster)
+
+##### _cache_document 🆕 (v2.3+)
+
+```python
+def _cache_document(self, source: str, doc: DoclingDocument) -> None
+```
+
+Cache parsed document as JSON for future retrieval.
+
+**Storage:** JSON serialization via Pydantic `model_dump()` / `model_validate()`
+
+#### Performance Characteristics (v2.3+)
+
+| Operation | Time | Memory | Notes |
+|-----------|------|--------|-------|
+| **First parse (Docling)** | 2-5s | ~500MB | Structure analysis + tables |
+| **Cache hit** | <100ms | ~50MB | JSON load + validation |
+| **PyPDF2 fallback** | <1s | ~100MB | Naive text extraction |
+| **Methods hit rate** | >90% | - | Docling vs ~30% PyPDF2 |
+| **Table extraction** | 80%+ | - | Parameter tables detected |
+| **Cache storage** | 500KB-2MB | - | Per paper JSON file |
+
+#### Caching Behavior (v2.3+)
+
+**Cache Strategy:**
+- Cache Key: MD5 hash of source URL
+- Storage Format: JSON via Pydantic serialization
+- Location: `.lobster_workspace/literature_cache/parsed_docs/`
+- Invalidation: Manual (delete cached file)
+- Performance: 30-50x faster on cache hit
+
+**Best Practices:**
+- Cache is persistent across sessions
+- Safe for batch processing (explicit `gc.collect()` after each paper)
+- Non-fatal cache failures (extraction continues on cache error)
+- Monitor cache directory size (~1-2MB per paper)
+
+#### See Also
+
+- **Deep Dive:** [37-publication-intelligence-deep-dive.md](37-publication-intelligence-deep-dive.md) - Comprehensive technical guide
+- **Troubleshooting:** [28-troubleshooting.md](28-troubleshooting.md) - Common issues
+- **Research Agent:** [15-agents-api.md](15-agents-api.md) - Integration with literature mining agent
 
 ### PublicationResolver ✨ (Phase 1 New)
 

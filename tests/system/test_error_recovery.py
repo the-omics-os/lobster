@@ -42,7 +42,6 @@ from tests.mock_data.factories import BulkRNASeqDataFactory, SingleCellDataFacto
 # Note: Supervisor uses different pattern - imported via graph module if needed
 
 
-
 # ===============================================================================
 # Error Recovery Test Configuration and Utilities
 # ===============================================================================

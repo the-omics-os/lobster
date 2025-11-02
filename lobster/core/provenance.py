@@ -10,12 +10,11 @@ import hashlib
 import logging
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
-
-import anndata
 
 # Import for IR support (TYPE_CHECKING to avoid circular import)
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+
+import anndata
 
 if TYPE_CHECKING:
     from lobster.core.analysis_ir import AnalysisStep

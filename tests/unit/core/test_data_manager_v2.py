@@ -1843,7 +1843,9 @@ class TestExportDocumentation:
         assert "DataManagerV2 Technical Summary" in summary
         assert "Loaded Modalities" in summary
         assert "Processing Log" in summary
-        assert "Provenance-Tracked Activities" in summary  # Updated to match new implementation
+        assert (
+            "Provenance-Tracked Activities" in summary
+        )  # Updated to match new implementation
 
     def test_get_technical_summary_empty(self, temp_workspace):
         """Test technical summary with no data."""

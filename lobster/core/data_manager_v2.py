@@ -8,7 +8,6 @@ flexible multi-omics data analysis with complete provenance tracking.
 
 import json
 import logging
-import nbformat
 import os
 import tempfile
 import threading
@@ -19,6 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import anndata
+import nbformat
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -26,6 +26,7 @@ import plotly.io as pio
 
 from lobster.core.adapters.base import BaseAdapter
 from lobster.core.adapters.transcriptomics_adapter import TranscriptomicsAdapter
+from lobster.core.analysis_ir import create_data_loading_ir, create_data_saving_ir
 
 # Import available backends and adapters
 from lobster.core.backends.h5ad_backend import H5ADBackend
@@ -33,7 +34,6 @@ from lobster.core.interfaces.adapter import IModalityAdapter
 from lobster.core.interfaces.backend import IDataBackend
 from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.provenance import ProvenanceTracker
-from lobster.core.analysis_ir import create_data_loading_ir, create_data_saving_ir
 
 # Import for IR support (TYPE_CHECKING to avoid circular import)
 if TYPE_CHECKING:
@@ -198,6 +198,7 @@ class DataManagerV2:
         """Lazy initialize notebook exporter."""
         if self._notebook_exporter is None and self._enable_notebooks:
             from lobster.core.notebook_exporter import NotebookExporter
+
             self._notebook_exporter = NotebookExporter(self.provenance, self)
         return self._notebook_exporter
 
@@ -206,9 +207,9 @@ class DataManagerV2:
         """Lazy initialize notebook executor."""
         if self._notebook_executor is None:
             from lobster.core.notebook_executor import NotebookExecutor
+
             self._notebook_executor = NotebookExecutor(self)
         return self._notebook_executor
-
 
     def _setup_workspace(self) -> None:
         """Set up workspace directories."""
@@ -258,7 +259,9 @@ class DataManagerV2:
                 ProteomicsAdapter(data_type="affinity", strict_validation=False),
             )
 
-    def register_backend(self, name: str, backend: IDataBackend, overwrite: bool = False) -> None:
+    def register_backend(
+        self, name: str, backend: IDataBackend, overwrite: bool = False
+    ) -> None:
         """
         Register a storage backend.
 
@@ -274,12 +277,16 @@ class DataManagerV2:
             if overwrite:
                 logger.warning(f"Overwriting existing backend: {name}")
             else:
-                raise ValueError(f"Backend '{name}' already registered. Use overwrite=True to replace.")
+                raise ValueError(
+                    f"Backend '{name}' already registered. Use overwrite=True to replace."
+                )
 
         self.backends[name] = backend
         logger.debug(f"Registered backend: {name} ({backend.__class__.__name__})")
 
-    def register_adapter(self, name: str, adapter: IModalityAdapter, overwrite: bool = False) -> None:
+    def register_adapter(
+        self, name: str, adapter: IModalityAdapter, overwrite: bool = False
+    ) -> None:
         """
         Register a modality adapter.
 
@@ -295,7 +302,9 @@ class DataManagerV2:
             if overwrite:
                 logger.warning(f"Overwriting existing adapter: {name}")
             else:
-                raise ValueError(f"Adapter '{name}' already registered. Use overwrite=True to replace.")
+                raise ValueError(
+                    f"Adapter '{name}' already registered. Use overwrite=True to replace."
+                )
 
         self.adapters[name] = adapter
         logger.debug(f"Registered adapter: {name} ({adapter.__class__.__name__})")
@@ -364,7 +373,11 @@ class DataManagerV2:
             )
 
             # Create IR for data loading operation
-            source_path = str(source) if not isinstance(source, anndata.AnnData) else "AnnData object"
+            source_path = (
+                str(source)
+                if not isinstance(source, anndata.AnnData)
+                else "AnnData object"
+            )
             loading_ir = create_data_loading_ir(
                 input_param_name="input_data",
                 description=f"Load {name} data from {source_path}",
@@ -1068,15 +1081,19 @@ class DataManagerV2:
                 log_data = {
                     "processing_log": self.processing_log,
                     "provenance_summary": {
-                        "n_activities": len(self.provenance.activities) if self.provenance else 0,
+                        "n_activities": (
+                            len(self.provenance.activities) if self.provenance else 0
+                        ),
                         "activities": [
                             {
                                 "type": act.get("type"),
                                 "timestamp": act.get("timestamp"),
-                                "parameters": act.get("parameters", {})
+                                "parameters": act.get("parameters", {}),
                             }
-                            for act in (self.provenance.activities if self.provenance else [])
-                        ]
+                            for act in (
+                                self.provenance.activities if self.provenance else []
+                            )
+                        ],
                     },
                     "timestamp": pd.Timestamp.now().isoformat(),
                 }
@@ -2681,7 +2698,10 @@ class DataManagerV2:
                     summary += "**Parameters:**\n\n"
                     for param_name, param_value in activity["parameters"].items():
                         # Format parameter value based on its type
-                        if isinstance(param_value, (list, tuple)) and len(param_value) > 5:
+                        if (
+                            isinstance(param_value, (list, tuple))
+                            and len(param_value) > 5
+                        ):
                             param_str = f"[{', '.join(str(x) for x in param_value[:5])}...] (length: {len(param_value)})"
                         else:
                             param_str = str(param_value)
@@ -3300,7 +3320,7 @@ https://github.com/OmicsOS/lobster
                 with open(nb_file) as f:
                     nb = nbformat.read(f, as_version=4)
 
-                metadata = nb.metadata.get('lobster', {})
+                metadata = nb.metadata.get("lobster", {})
 
                 notebooks.append(
                     {
@@ -3310,7 +3330,7 @@ https://github.com/OmicsOS/lobster
                         "created_by": metadata.get("created_by", "unknown"),
                         "created_at": metadata.get("created_at", ""),
                         "lobster_version": metadata.get("lobster_version", ""),
-                        "n_steps": len([c for c in nb.cells if c.cell_type == 'code']),
+                        "n_steps": len([c for c in nb.cells if c.cell_type == "code"]),
                         "size_kb": nb_file.stat().st_size / 1024,
                     }
                 )

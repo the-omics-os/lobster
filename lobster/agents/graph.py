@@ -135,6 +135,52 @@ def create_bioinformatics_graph(
             logger.error(f"Error listing available data: {e}")
             return f"Error listing available data: {str(e)}"
 
+    @tool
+    def list_session_publications() -> str:
+        """
+        List all publications analyzed in the current session.
+
+        This tool shows publications that have been extracted during the current
+        conversation, including their identifiers, extraction timestamps, and
+        cache status. Use this to coordinate follow-up analysis tasks or reference
+        previously analyzed papers.
+
+        Returns:
+            str: Formatted list of session publications with metadata
+        """
+        try:
+            from lobster.tools.publication_intelligence_service import (
+                PublicationIntelligenceService,
+            )
+
+            service = PublicationIntelligenceService(data_manager=data_manager)
+            publications = service.list_session_publications(data_manager)
+
+            if not publications:
+                return (
+                    "No publications have been analyzed in this session yet. "
+                    "Use the research agent to extract methods from papers."
+                )
+
+            response = f"Session Publications ({len(publications)}):\n\n"
+
+            for i, pub in enumerate(publications, 1):
+                response += f"{i}. **{pub['identifier']}**\n"
+                response += f"   - Extracted: {pub['timestamp']}\n"
+                response += f"   - Tool: {pub['tool_name']}\n"
+                response += f"   - Cache: {pub['cache_status']}\n"
+                response += f"   - Methods length: {pub['methods_length']:,} chars\n"
+                response += f"   - Parser: {pub['source']}\n"
+                response += "\n"
+
+            response += "\nTo read detailed methods from a publication, handoff to research_agent or data_expert with the identifier.\n"
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error listing session publications: {e}")
+            return f"Error listing session publications: {str(e)}"
+
     # Get list of active agents that were successfully created
     active_agent_names = [agent.name for agent in agents]
 
@@ -162,7 +208,7 @@ def create_bioinformatics_graph(
         # output_mode="full_history",  # This ensures the actual messages are returned
         output_mode="last_message",  # This ensures the actual messages are returned
         tools=handoff_tools
-        + [list_available_modalities]
+        + [list_available_modalities, list_session_publications]
         + [forwarding_tool],  # Supervisor-only tools (handoff tools are auto-created)
     )
 

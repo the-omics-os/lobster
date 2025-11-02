@@ -17,6 +17,7 @@ import nbformat
 
 try:
     import papermill
+
     PAPERMILL_AVAILABLE = True
 except ImportError:
     papermill = None
@@ -122,7 +123,7 @@ class NotebookExecutor:
             result.add_error(f"Cannot read notebook: {e}")
             return result
 
-        metadata = nb.metadata.get('lobster', {})
+        metadata = nb.metadata.get("lobster", {})
 
         # Load input data
         try:
@@ -132,21 +133,23 @@ class NotebookExecutor:
             return result
 
         # Check shape compatibility
-        expected_min_cells = metadata.get('min_cells', 100)
+        expected_min_cells = metadata.get("min_cells", 100)
         if adata.n_obs < expected_min_cells:
             result.add_warning(
                 f"Input has {adata.n_obs} cells, notebook expects ≥{expected_min_cells}"
             )
 
         # Check required columns (if specified in metadata)
-        required_obs = metadata.get('required_obs_columns', [])
+        required_obs = metadata.get("required_obs_columns", [])
         missing = set(required_obs) - set(adata.obs.columns)
         if missing:
             result.add_error(f"Missing required columns: {missing}")
 
         # Data type check (sparse vs dense)
-        if hasattr(adata.X, 'toarray'):
-            result.add_warning("Input data is sparse - notebook may expect dense arrays")
+        if hasattr(adata.X, "toarray"):
+            result.add_warning(
+                "Input data is sparse - notebook may expect dense arrays"
+            )
 
         logger.debug(f"Validation result: {result}")
         return result
@@ -174,7 +177,7 @@ class NotebookExecutor:
         with open(notebook_path) as f:
             nb = nbformat.read(f, as_version=4)
 
-        code_cells = [c for c in nb.cells if c.cell_type == 'code']
+        code_cells = [c for c in nb.cells if c.cell_type == "code"]
 
         # Estimate duration (rough: 2 minutes per cell)
         estimated_duration = len(code_cells) * 2
@@ -224,7 +227,7 @@ class NotebookExecutor:
 
         # Prepare parameters
         params = parameters or {}
-        params['input_data'] = str(input_data)
+        params["input_data"] = str(input_data)
 
         # Output path
         if output_path is None:
@@ -247,7 +250,7 @@ class NotebookExecutor:
                 input_path=str(notebook_path),
                 output_path=str(output_path),
                 parameters=params,
-                kernel_name='python3',
+                kernel_name="python3",
             )
 
             execution_time = time.time() - start_time
@@ -267,7 +270,7 @@ class NotebookExecutor:
             logger.error(f"Notebook execution failed ({error_type}): {e}")
 
             # Try to get cell information if available
-            failed_cell = getattr(e, 'exec_count', "unknown")
+            failed_cell = getattr(e, "exec_count", "unknown")
 
             return {
                 "status": "failed",
@@ -301,23 +304,25 @@ class NotebookExecutor:
             outputs = []
 
             for cell in nb.cells:
-                if cell.cell_type == 'code':
+                if cell.cell_type == "code":
                     executed_cells += 1
 
                     # Check for execution time
-                    if 'execution' in cell.metadata:
-                        exec_time = cell.metadata['execution'].get('iopub.execute_input')
+                    if "execution" in cell.metadata:
+                        exec_time = cell.metadata["execution"].get(
+                            "iopub.execute_input"
+                        )
                         if exec_time:
                             total_time += 1  # Placeholder, need proper timing
 
                     # Check for errors
-                    for output in cell.get('outputs', []):
-                        if output.get('output_type') == 'error':
+                    for output in cell.get("outputs", []):
+                        if output.get("output_type") == "error":
                             has_errors = True
 
                         # Collect outputs (limit size)
-                        if output.get('output_type') == 'stream':
-                            outputs.append(output.get('text', ''))
+                        if output.get("output_type") == "stream":
+                            outputs.append(output.get("text", ""))
 
             return {
                 "cells_executed": executed_cells,
@@ -350,15 +355,15 @@ class NotebookExecutor:
 
             # Find parameters cell (tagged with 'parameters')
             for cell in nb.cells:
-                if cell.cell_type == 'code' and 'tags' in cell.metadata:
-                    if 'parameters' in cell.metadata['tags']:
+                if cell.cell_type == "code" and "tags" in cell.metadata:
+                    if "parameters" in cell.metadata["tags"]:
                         # Parse parameters from cell source
                         parameters = {}
-                        for line in cell.source.split('\n'):
+                        for line in cell.source.split("\n"):
                             line = line.strip()
-                            if line and not line.startswith('#') and '=' in line:
+                            if line and not line.startswith("#") and "=" in line:
                                 try:
-                                    parts = line.split('=', 1)
+                                    parts = line.split("=", 1)
                                     param_name = parts[0].strip()
                                     param_value = parts[1].strip()
                                     parameters[param_name] = param_value
@@ -381,7 +386,5 @@ class NotebookExecutor:
             True if Papermill can be imported, False otherwise
         """
         if not PAPERMILL_AVAILABLE:
-            logger.error(
-                "Papermill not available. Install with: pip install papermill"
-            )
+            logger.error("Papermill not available. Install with: pip install papermill")
         return PAPERMILL_AVAILABLE

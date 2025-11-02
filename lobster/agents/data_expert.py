@@ -19,6 +19,9 @@ from lobster.agents.state import DataExpertState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.tools.publication_intelligence_service import (
+    PublicationIntelligenceService,
+)
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -273,11 +276,11 @@ def data_expert(
 
             if modality_name in existing_modalities:
                 adata = data_manager.get_modality(modality_name)
-                return f"""Found existing modality '{modality_name}'!
+                return f"""Found existing modality '{modality_name}'.
 
-📊 Matrix: {adata.n_obs} obs × {adata.n_vars} vars
-💾 No download needed - using cached modality
-⚡ Ready for immediate analysis!
+Matrix: {adata.n_obs} obs × {adata.n_vars} vars
+No download needed - using cached modality
+Ready for immediate analysis
 
 Use this modality for quality control, filtering, or downstream analysis."""
 
@@ -458,13 +461,13 @@ Use this modality for quality control, filtering, or downstream analysis."""
             # Get quality metrics
             metrics = data_manager.get_quality_metrics(modality_name)
 
-            return f"""Successfully uploaded and processed file {file_path.name}!
+            return f"""Successfully uploaded and processed file {file_path.name}.
 
-📊 Modality: '{modality_name}' ({adata.n_obs} obs × {adata.n_vars} vars)
-🔬 Data type: {adapter}
-🎯 Adapter: {adapter}
-💾 Saved to: {save_path}
-📈 Quality metrics: {len([k for k, v in metrics.items() if isinstance(v, (int, float))])} metrics calculated
+Modality: '{modality_name}' ({adata.n_obs} obs × {adata.n_vars} vars)
+Data type: {adapter}
+Adapter: {adapter}
+Saved to: {save_path}
+Quality metrics: {len([k for k, v in metrics.items() if isinstance(v, (int, float))])} metrics calculated
 
 The dataset is now available as modality '{modality_name}' for analysis."""
 
@@ -517,12 +520,12 @@ The dataset is now available as modality '{modality_name}' for analysis."""
             # Get quality metrics
             metrics = data_manager.get_quality_metrics(modality_name)
 
-            return f"""Successfully loaded modality '{modality_name}'!
+            return f"""Successfully loaded modality '{modality_name}'.
 
-📊 Shape: {adata.n_obs} obs × {adata.n_vars} vars
-🔬 Adapter: {adapter}
-📁 Source: {file_path.name}
-📈 Quality metrics: {len([k for k, v in metrics.items() if isinstance(v, (int, float))])} metrics calculated
+Shape: {adata.n_obs} obs × {adata.n_vars} vars
+Adapter: {adapter}
+Source: {file_path.name}
+Quality metrics: {len([k for k, v in metrics.items() if isinstance(v, (int, float))])} metrics calculated
 
 The modality is now available for analysis and can be used by other agents."""
 
@@ -626,12 +629,12 @@ The modality is now available for analysis and can be used by other agents."""
                 mudata_path, modalities=modality_names
             )
 
-            return f"""Successfully created MuData from {len(modality_names)} modalities!
+            return f"""Successfully created MuData from {len(modality_names)} modalities.
 
-🔗 Combined modalities: {', '.join(modality_names)}
-📊 Global shape: {mdata.n_obs} obs across {len(mdata.mod)} modalities
-💾 Saved to: {mudata_path}
-🎯 Ready for integrated multi-omics analysis!
+Combined modalities: {', '.join(modality_names)}
+Global shape: {mdata.n_obs} obs across {len(mdata.mod)} modalities
+Saved to: {mudata_path}
+Ready for integrated multi-omics analysis
 
 The MuData object contains all selected modalities and is ready for cross-modal analysis."""
 
@@ -732,11 +735,13 @@ The MuData object contains all selected modalities and is ready for cross-modal 
                 return f"Modality '{output_modality_name}' already exists. Use remove_modality first or choose a different name."
 
             # Use ConcatenationService for the actual concatenation
-            concatenated_adata, statistics, ir = concat_service.concatenate_from_modalities(
-                modality_names=sample_modalities,
-                output_name=output_modality_name if save_to_file else None,
-                use_intersecting_genes_only=use_intersecting_genes_only,
-                batch_key="batch",
+            concatenated_adata, statistics, ir = (
+                concat_service.concatenate_from_modalities(
+                    modality_names=sample_modalities,
+                    output_name=output_modality_name if save_to_file else None,
+                    use_intersecting_genes_only=use_intersecting_genes_only,
+                    batch_key="batch",
+                )
             )
 
             # Add concatenation metadata for provenance tracking
@@ -769,22 +774,22 @@ The MuData object contains all selected modalities and is ready for cross-modal 
             # Format results for user display
             if save_to_file:
                 save_path = f"{output_modality_name}.h5ad"
-                return f"""Successfully concatenated {statistics['n_samples']} samples using ConcatenationService!
+                return f"""Successfully concatenated {statistics['n_samples']} samples using ConcatenationService.
 
-📊 Output modality: '{output_modality_name}'
-📈 Shape: {statistics['final_shape'][0]} obs × {statistics['final_shape'][1]} vars
-🔗 Join type: {statistics['join_type']}
-⚡ Strategy: {statistics['strategy_used']}
-⏱️ Processing time: {statistics.get('processing_time_seconds', 0):.2f}s
-💾 Saved and stored as modality for analysis
+Output modality: '{output_modality_name}'
+Shape: {statistics['final_shape'][0]} obs × {statistics['final_shape'][1]} vars
+Join type: {statistics['join_type']}
+Strategy: {statistics['strategy_used']}
+Processing time: {statistics.get('processing_time_seconds', 0):.2f}s
+Saved and stored as modality for analysis
 
 The concatenated dataset is now available as modality '{output_modality_name}' for analysis."""
             else:
                 return f"""Concatenation preview (not saved):
 
-📊 Shape: {statistics['final_shape'][0]} obs × {statistics['final_shape'][1]} vars
-🔗 Join type: {statistics['join_type']}
-⚡ Strategy: {statistics['strategy_used']}
+Shape: {statistics['final_shape'][0]} obs × {statistics['final_shape'][1]} vars
+Join type: {statistics['join_type']}
+Strategy: {statistics['strategy_used']}
 
 To save, run again with save_to_file=True"""
 
@@ -831,26 +836,26 @@ To save, run again with save_to_file=True"""
 
             if result["restored"]:
                 # Format success response
-                response = f"""Successfully restored {len(result['restored'])} dataset(s) from workspace!
+                response = f"""Successfully restored {len(result['restored'])} dataset(s) from workspace.
 
-📊 **Loaded Datasets:**
+**Loaded Datasets:**
 """
                 for dataset_name in result["restored"]:
                     try:
                         adata = data_manager.get_modality(dataset_name)
-                        response += f"  • **{dataset_name}**: {adata.n_obs} obs × {adata.n_vars} vars\n"
+                        response += f"  - **{dataset_name}**: {adata.n_obs} obs × {adata.n_vars} vars\n"
                     except Exception:
                         response += (
-                            f"  • **{dataset_name}**: (loaded, details unavailable)\n"
+                            f"  - **{dataset_name}**: (loaded, details unavailable)\n"
                         )
 
-                response += f"\n💾 **Total Size**: {result['total_size_mb']:.1f} MB\n"
-                response += f"⚡ **Pattern Used**: {pattern}\n"
+                response += f"\n**Total Size**: {result['total_size_mb']:.1f} MB\n"
+                response += f"**Pattern Used**: {pattern}\n"
 
                 if result.get("skipped"):
-                    response += f"\n⚠️ **Skipped**: {len(result['skipped'])} datasets (size limits)\n"
+                    response += f"\n**Skipped**: {len(result['skipped'])} datasets (size limits)\n"
 
-                response += f"\n✅ All restored datasets are now available as modalities for analysis."
+                response += f"\nAll restored datasets are now available as modalities for analysis."
 
                 # Log the operation
                 data_manager.log_tool_usage(
@@ -865,15 +870,113 @@ To save, run again with save_to_file=True"""
 
 {available_info}
 
-💡 **Try these patterns:**
-  • "recent" - Load most recently used datasets
-  • "all" - Load all available datasets
-  • "<dataset_name>" - Load specific dataset
-  • "geo_*" - Load all GEO datasets"""
+**Try these patterns:**
+  - "recent" - Load most recently used datasets
+  - "all" - Load all available datasets
+  - "<dataset_name>" - Load specific dataset
+  - "geo_*" - Load all GEO datasets"""
 
         except Exception as e:
             logger.error(f"Error restoring workspace datasets: {e}")
             return f"Error restoring datasets: {str(e)}"
+
+    @tool
+    def read_cached_publication(identifier: str) -> str:
+        """
+        Read detailed methods from a previously analyzed publication.
+
+        This tool retrieves the full methods extraction from publications that were
+        analyzed earlier in the current session. Use this when the supervisor
+        references a specific paper from the session publication list.
+
+        The tool provides access to:
+        - Full methods section text
+        - Extracted tables (parameter tables from Methods)
+        - Mathematical formulas
+        - Software tools mentioned
+        - Extraction metadata (parser used, timestamp)
+
+        Args:
+            identifier: Publication identifier (PMID, DOI, or URL) exactly as shown
+                       in the supervisor's session publication list
+
+        Returns:
+            Complete methods extraction with all available metadata
+
+        Examples:
+            - read_cached_publication("PMID:12345678")
+            - read_cached_publication("10.1038/s41586-021-12345-6")
+            - read_cached_publication("https://biorxiv.org/content/10.1101/2024.01.001")
+
+        When to use this tool:
+            - Supervisor says "read the methods from PMID:12345678"
+            - User asks follow-up questions about previously analyzed papers
+            - Need to reference extraction details from earlier in the conversation
+            - Performing comparative analysis across multiple session papers
+        """
+        try:
+            # Initialize intelligence service
+            intelligence_service = PublicationIntelligenceService(
+                data_manager=data_manager
+            )
+
+            # Get cached publication
+            cached_pub = intelligence_service.get_cached_publication(identifier)
+
+            if not cached_pub:
+                return f"## Publication Not Found\n\nNo cached extraction found for: {identifier}\n\nThis publication has not been analyzed in the current session. Use list_session_publications (via supervisor) to see available publications, or use extract_paper_methods to analyze a new paper."
+
+            # Format the cached publication for display
+            response = f"## Cached Publication: {cached_pub['identifier']}\n\n"
+            response += f"**Cache Source**: {cached_pub.get('cache_source', 'unknown')}\n"
+
+            # Add methods section
+            methods_text = cached_pub.get('methods_markdown') or cached_pub.get('methods_text', '')
+            if methods_text:
+                response += "\n### Methods Section\n\n"
+                response += methods_text[:5000]  # Limit to 5000 chars for readability
+                if len(methods_text) > 5000:
+                    response += f"\n\n... [Methods section truncated, showing first 5000 of {len(methods_text)} characters]"
+
+            # Add tables if present
+            tables = cached_pub.get('tables', [])
+            if tables and isinstance(tables, list) and len(tables) > 0:
+                response += f"\n\n### Extracted Tables ({len(tables)})\n\n"
+                for i, table in enumerate(tables[:3], 1):  # Show first 3 tables
+                    response += f"**Table {i}**: [Table data available]\n"
+                if len(tables) > 3:
+                    response += f"\n... [Showing 3 of {len(tables)} tables]\n"
+
+            # Add formulas if present
+            formulas = cached_pub.get('formulas', [])
+            if formulas and isinstance(formulas, list) and len(formulas) > 0:
+                response += f"\n\n### Extracted Formulas ({len(formulas)})\n\n"
+                for i, formula in enumerate(formulas[:5], 1):  # Show first 5 formulas
+                    response += f"**Formula {i}**: `{formula}`\n"
+                if len(formulas) > 5:
+                    response += f"\n... [Showing 5 of {len(formulas)} formulas]\n"
+
+            # Add software mentions
+            software = cached_pub.get('software_mentioned', [])
+            if software and isinstance(software, list) and len(software) > 0:
+                response += f"\n\n### Software Tools Detected\n\n"
+                response += ", ".join(f"`{sw}`" for sw in software)
+
+            # Add provenance metadata
+            provenance = cached_pub.get('provenance', {})
+            if provenance:
+                response += "\n\n### Extraction Metadata\n\n"
+                response += f"- **Parser**: {provenance.get('parser', 'unknown')}\n"
+                response += f"- **Fallback Used**: {provenance.get('fallback_used', False)}\n"
+                if provenance.get('timestamp'):
+                    response += f"- **Timestamp**: {provenance.get('timestamp')}\n"
+
+            logger.info(f"Retrieved cached publication: {identifier}")
+            return response
+
+        except Exception as e:
+            logger.error(f"Error reading cached publication: {e}")
+            return f"Error reading cached publication {identifier}: {str(e)}"
 
     base_tools = [
         # CORE
@@ -890,6 +993,7 @@ To save, run again with save_to_file=True"""
         load_modality_from_file,
         remove_modality,
         get_adapter_info,
+        read_cached_publication,
     ]
     # create_mudata_from_modalities, prompt: - create_mudata_from_modalities: Combine modalities into MuData for integrated analysis
 
@@ -934,8 +1038,8 @@ It returns the head of a file (for example annoation, txt, csv, xlsx etc) to und
 This tool is used after understanding the metadata logic of a GEO entry. This tool downloads data from GEO and load as modality.
 Before using this tool always fetch metadata first and get a good understand what the relevant files are.
 
-**NEW: Intelligent Concatenation Strategy (v2.3+)**
-When downloading datasets with multiple samples (e.g., SAMPLES_FIRST strategy), the system now automatically decides how to merge samples:
+**Intelligent Concatenation Strategy**
+When downloading datasets with multiple samples (e.g., SAMPLES_FIRST strategy), the system automatically decides how to merge samples:
   - `concatenation_strategy='auto'` (DEFAULT & RECOMMENDED): Intelligently analyzes gene coverage using DUAL CRITERIA
     * CV criterion: If coefficient of variation > 20% → UNION
     * Range criterion: If max/min gene ratio > 1.5x → UNION (e.g., 5400/2700 = 2.0x triggers union)
@@ -977,6 +1081,12 @@ Use this after downloading samples individually when you need a single combined 
 - load_modality_from_file: Load specific file as named modality with chosen adapter
 - remove_modality: Remove modality from memory
 - get_adapter_info: Show available adapters and their capabilities
+- **read_cached_publication**: Read detailed methods from previously analyzed publications
+  - Use when supervisor references a specific paper from session publication list
+  - Retrieves full methods extraction from publications analyzed earlier in session
+  - Returns methods text, tables, formulas, software tools, and extraction metadata
+  - Example: read_cached_publication("PMID:12345678")
+  - Use for follow-up questions about papers or comparative analysis across session papers
 </Available helper Tools>
 
 <Modality System>
@@ -1065,7 +1175,7 @@ download_geo_dataset("<GEO ID>", modality_type="<Adapters>", manual_strategy_ove
 
 Other strategies include:
 RAW_FIRST               # Prioritize raw UMI/count matrices
-SAMPLES_FIRST           # Download individual samples (NOW WITH SMART CONCATENATION)
+SAMPLES_FIRST           # Download individual samples with intelligent concatenation
 H5_FIRST                # Prioritize H5/H5AD files
 ARCHIVE_FIRST           # Extract from archives first
 FALLBACK                # Use fallback mechanisms

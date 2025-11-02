@@ -12,7 +12,9 @@ from unittest.mock import Mock, patch
 import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.publication_intelligence_service import PublicationIntelligenceService
+from lobster.tools.publication_intelligence_service import (
+    PublicationIntelligenceService,
+)
 
 
 @pytest.fixture
@@ -33,7 +35,7 @@ def intelligence_service(data_manager):
 class TestResearchAgentPDFWorkflow:
     """Integration tests for research agent PDF capabilities."""
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_pdf_extraction_workflow(self, mock_get, intelligence_service):
         """Test complete PDF extraction workflow."""
         # Mock PDF content
@@ -58,7 +60,7 @@ trailer << /Size 2 /Root 1 0 R >>
         assert isinstance(result, str)
         assert mock_get.called
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_url_content_extraction_workflow(self, mock_get, intelligence_service):
         """Test URL content extraction workflow."""
         html_content = """
@@ -88,8 +90,10 @@ trailer << /Size 2 /Root 1 0 R >>
         assert "Scanpy" in result
         assert "min_genes=200" in result
 
-    @patch('requests.get')
-    def test_supplementary_download_workflow(self, mock_get, intelligence_service, tmp_path):
+    @patch("requests.get")
+    def test_supplementary_download_workflow(
+        self, mock_get, intelligence_service, tmp_path
+    ):
         """Test supplementary material download workflow."""
         # Mock DOI resolution
         mock_doi_response = Mock()
@@ -113,7 +117,11 @@ trailer << /Size 2 /Root 1 0 R >>
         mock_file_response.status_code = 200
         mock_file_response.content = b"Excel content"
 
-        mock_get.side_effect = [mock_doi_response, mock_page_response, mock_file_response]
+        mock_get.side_effect = [
+            mock_doi_response,
+            mock_page_response,
+            mock_file_response,
+        ]
 
         output_dir = str(tmp_path / "supplements")
         result = intelligence_service.fetch_supplementary_info_from_doi(
@@ -124,7 +132,9 @@ trailer << /Size 2 /Root 1 0 R >>
         assert "Successfully downloaded" in result or "Downloaded file" in result
         assert mock_get.call_count == 3
 
-    @patch('lobster.tools.publication_intelligence_service.PublicationIntelligenceService.extract_pdf_content')
+    @patch(
+        "lobster.tools.publication_intelligence_service.PublicationIntelligenceService.extract_pdf_content"
+    )
     def test_method_extraction_workflow(self, mock_extract, intelligence_service):
         """Test method extraction workflow with LLM."""
         # Mock PDF extraction
@@ -138,21 +148,22 @@ trailer << /Size 2 /Root 1 0 R >>
         # Mock LLM
         mock_llm = Mock()
         mock_response = Mock()
-        mock_response.content = json.dumps({
-            "software_used": ["Scanpy"],
-            "parameters": {
-                "min_genes": "200",
-                "max_percent_mito": "5%"
-            },
-            "statistical_methods": ["Wilcoxon rank-sum test", "FDR correction"],
-            "normalization_methods": ["log1p"],
-            "quality_control": ["min_genes filter", "mitochondrial percentage filter"]
-        })
+        mock_response.content = json.dumps(
+            {
+                "software_used": ["Scanpy"],
+                "parameters": {"min_genes": "200", "max_percent_mito": "5%"},
+                "statistical_methods": ["Wilcoxon rank-sum test", "FDR correction"],
+                "normalization_methods": ["log1p"],
+                "quality_control": [
+                    "min_genes filter",
+                    "mitochondrial percentage filter",
+                ],
+            }
+        )
         mock_llm.invoke.return_value = mock_response
 
         result = intelligence_service.extract_methods_from_paper(
-            "https://example.com/paper.pdf",
-            llm=mock_llm
+            "https://example.com/paper.pdf", llm=mock_llm
         )
 
         # Verify extracted methods
@@ -162,7 +173,7 @@ trailer << /Size 2 /Root 1 0 R >>
         assert "parameters" in result
         assert result["parameters"]["min_genes"] == "200"
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_caching_workflow(self, mock_get, intelligence_service):
         """Test PDF caching workflow."""
         mock_pdf = b"%PDF-1.4\nTest content\n%%EOF"
@@ -188,7 +199,7 @@ trailer << /Size 2 /Root 1 0 R >>
         assert result1 == result2
         assert second_call_count == first_call_count  # No additional API call
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_error_handling_workflow(self, mock_get, intelligence_service):
         """Test error handling in PDF extraction workflow."""
         # Test connection error
@@ -196,11 +207,10 @@ trailer << /Size 2 /Root 1 0 R >>
 
         with pytest.raises(ValueError, match="Error downloading PDF"):
             intelligence_service.extract_pdf_content(
-                "https://invalid.com/paper.pdf",
-                use_cache=False
+                "https://invalid.com/paper.pdf", use_cache=False
             )
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_provenance_logging_workflow(self, mock_get, intelligence_service):
         """Test that tool usage is logged for provenance."""
         mock_pdf = b"%PDF-1.4\nContent\n%%EOF"
@@ -274,10 +284,11 @@ class TestResearchAgentToolIntegration:
 
     def test_tools_are_registered(self):
         """Test that PDF extraction tools are properly registered."""
+        import tempfile
+        from pathlib import Path
+
         from lobster.agents.research_agent import research_agent
         from lobster.core.data_manager_v2 import DataManagerV2
-        from pathlib import Path
-        import tempfile
 
         # Create temporary workspace
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -291,7 +302,9 @@ class TestResearchAgentToolIntegration:
             # But we can verify the agent was created successfully
             assert agent is not None
 
-    @patch('lobster.tools.publication_intelligence_service.PublicationIntelligenceService.extract_pdf_content')
+    @patch(
+        "lobster.tools.publication_intelligence_service.PublicationIntelligenceService.extract_pdf_content"
+    )
     def test_extract_paper_methods_tool_mock(self, mock_extract, data_manager):
         """Test extract_paper_methods tool with mocked PDF extraction."""
         from lobster.agents.research_agent import research_agent
@@ -306,7 +319,9 @@ class TestResearchAgentToolIntegration:
         # Full agent workflow testing would require LangGraph execution
         assert agent_graph is not None
 
-    @patch('lobster.tools.publication_intelligence_service.PublicationIntelligenceService.fetch_supplementary_info_from_doi')
+    @patch(
+        "lobster.tools.publication_intelligence_service.PublicationIntelligenceService.fetch_supplementary_info_from_doi"
+    )
     def test_download_supplementary_tool_mock(self, mock_fetch, data_manager):
         """Test download_supplementary_materials tool with mocked fetching."""
         from lobster.agents.research_agent import research_agent
@@ -333,7 +348,7 @@ class TestPublicationIntelligenceServiceIntegration:
         assert service.data_manager == data_manager
         assert service.cache_dir.exists()
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_provenance_tracking_integration(self, mock_get, data_manager):
         """Test that service properly logs to DataManager."""
         service = PublicationIntelligenceService(data_manager=data_manager)

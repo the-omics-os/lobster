@@ -39,9 +39,7 @@ class ServiceCoverage:
 
     def __post_init__(self):
         """Calculate coverage percentage after initialization."""
-        self.total_methods = len(self.methods_with_ir) + len(
-            self.methods_without_ir
-        )
+        self.total_methods = len(self.methods_with_ir) + len(self.methods_without_ir)
         if self.total_methods > 0:
             self.coverage_percentage = (
                 len(self.methods_with_ir) / self.total_methods
@@ -133,7 +131,9 @@ class IRCoverageAnalyzer:
         else:
             self.services_dir = Path(services_dir)
 
-        logger.debug(f"Initialized IRCoverageAnalyzer with services_dir: {self.services_dir}")
+        logger.debug(
+            f"Initialized IRCoverageAnalyzer with services_dir: {self.services_dir}"
+        )
 
     def analyze_service_file(self, service_path: Path) -> ServiceCoverage:
         """
@@ -262,7 +262,11 @@ class IRCoverageAnalyzer:
                         third_elem = node.value.elts[2]
                         if isinstance(third_elem, ast.Name):
                             var_name = third_elem.id.lower()
-                            if "ir" in var_name or "step" in var_name or "analysis" in var_name:
+                            if (
+                                "ir" in var_name
+                                or "step" in var_name
+                                or "analysis" in var_name
+                            ):
                                 return True
 
         return False
@@ -354,13 +358,17 @@ class IRCoverageAnalyzer:
             status_icon = "✓" if coverage.has_ir_import else "✗"
             print(f"{status_icon} {service_name}")
             print(f"   Coverage: {coverage.coverage_percentage:.2f}%")
-            print(f"   Methods: {len(coverage.methods_with_ir)}/{coverage.total_methods} with IR")
+            print(
+                f"   Methods: {len(coverage.methods_with_ir)}/{coverage.total_methods} with IR"
+            )
 
             if verbose:
                 if coverage.methods_with_ir:
                     print(f"   With IR: {', '.join(sorted(coverage.methods_with_ir))}")
                 if coverage.methods_without_ir:
-                    print(f"   Without IR: {', '.join(sorted(coverage.methods_without_ir))}")
+                    print(
+                        f"   Without IR: {', '.join(sorted(coverage.methods_without_ir))}"
+                    )
 
             print()
 
@@ -391,7 +399,9 @@ def main():
     import json
     import sys
 
-    parser = argparse.ArgumentParser(description="Analyze IR coverage in Lobster services")
+    parser = argparse.ArgumentParser(
+        description="Analyze IR coverage in Lobster services"
+    )
     parser.add_argument(
         "--services-dir",
         type=Path,
@@ -447,10 +457,14 @@ def main():
     # Exit with error code if coverage is below target
     target_coverage = 60.0
     if report.overall_coverage < target_coverage:
-        print(f"\n⚠️  Coverage ({report.overall_coverage:.2f}%) is below target ({target_coverage}%)")
+        print(
+            f"\n⚠️  Coverage ({report.overall_coverage:.2f}%) is below target ({target_coverage}%)"
+        )
         sys.exit(1)
     else:
-        print(f"\n✓ Coverage target met ({report.overall_coverage:.2f}% >= {target_coverage}%)")
+        print(
+            f"\n✓ Coverage target met ({report.overall_coverage:.2f}% >= {target_coverage}%)"
+        )
         sys.exit(0)
 
 

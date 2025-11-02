@@ -57,7 +57,9 @@ def test_notebook():
     nb.cells.append(params_cell)
 
     # Add analysis cells
-    nb.cells.append(new_code_cell("import scanpy as sc\nadata = sc.read_h5ad(input_data)"))
+    nb.cells.append(
+        new_code_cell("import scanpy as sc\nadata = sc.read_h5ad(input_data)")
+    )
     nb.cells.append(new_code_cell("sc.pp.calculate_qc_metrics(adata)"))
     nb.cells.append(new_code_cell("print('Analysis complete')"))
 
@@ -308,7 +310,9 @@ class TestNotebookExecutor:
             mock_papermill.execute_notebook.return_value = None
 
             custom_params = {"random_seed": 123, "custom_param": "value"}
-            result = executor.execute(notebook_path, input_path, parameters=custom_params)
+            result = executor.execute(
+                notebook_path, input_path, parameters=custom_params
+            )
 
             assert result["status"] == "success"
 
@@ -458,9 +462,7 @@ class TestNotebookExecutor:
             available = executor.validate_papermill_availability()
             assert not available
 
-    def test_execute_output_path(
-        self, data_manager, test_notebook, test_adata
-    ):
+    def test_execute_output_path(self, data_manager, test_notebook, test_adata):
         """Test custom output path."""
         executor = NotebookExecutor(data_manager)
 

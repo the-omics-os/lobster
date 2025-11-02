@@ -447,6 +447,7 @@ class NCBIQueryBuilder:
 
         # Import logger here to avoid circular imports
         from lobster.utils.logger import get_logger
+
         logger = get_logger(__name__)
 
         original_query = query

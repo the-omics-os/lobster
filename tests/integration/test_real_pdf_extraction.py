@@ -11,7 +11,9 @@ from pathlib import Path
 import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.publication_intelligence_service import PublicationIntelligenceService
+from lobster.tools.publication_intelligence_service import (
+    PublicationIntelligenceService,
+)
 
 
 @pytest.fixture
@@ -49,16 +51,26 @@ class TestRealPDFExtraction:
 
         # Verify extraction
         assert isinstance(result, str), "Result should be a string"
-        assert len(result) > 500, f"Expected substantial text, got {len(result)} characters"
+        assert (
+            len(result) > 500
+        ), f"Expected substantial text, got {len(result)} characters"
 
         print(f"✅ Successfully extracted {len(result)} characters")
         print(f"📝 First 200 characters: {result[:200]}...")
 
         # Verify it contains paper-like content
         # Nature papers typically contain these elements
-        assert any(keyword in result.lower() for keyword in [
-            "abstract", "introduction", "method", "result", "data", "figure"
-        ]), "PDF should contain typical paper sections"
+        assert any(
+            keyword in result.lower()
+            for keyword in [
+                "abstract",
+                "introduction",
+                "method",
+                "result",
+                "data",
+                "figure",
+            ]
+        ), "PDF should contain typical paper sections"
 
         print(f"✅ PDF contains expected paper structure")
 
@@ -113,7 +125,9 @@ class TestRealPDFExtraction:
             if "software_used" in methods:
                 print(f"🛠️  Software used: {methods.get('software_used', [])}")
             if "statistical_methods" in methods:
-                print(f"📈 Statistical methods: {methods.get('statistical_methods', [])}")
+                print(
+                    f"📈 Statistical methods: {methods.get('statistical_methods', [])}"
+                )
             if "data_sources" in methods:
                 print(f"💾 Data sources: {methods.get('data_sources', [])}")
 
@@ -141,10 +155,14 @@ class TestRealPDFExtraction:
 
         try:
             # This should find the PDF link automatically
-            result = intelligence_service.extract_pdf_content(article_url, use_cache=True)
+            result = intelligence_service.extract_pdf_content(
+                article_url, use_cache=True
+            )
 
             assert isinstance(result, str), "Result should be a string"
-            assert len(result) > 500, f"Expected substantial text, got {len(result)} characters"
+            assert (
+                len(result) > 500
+            ), f"Expected substantial text, got {len(result)} characters"
 
             print(f"✅ Successfully auto-detected and extracted PDF")
             print(f"📝 Extracted {len(result)} characters")
@@ -155,7 +173,9 @@ class TestRealPDFExtraction:
             print(f"💡 Direct PDF URL should be used instead")
             pytest.skip("Auto-detection not available for this URL structure")
 
-    def test_provenance_tracking_with_real_paper(self, intelligence_service, data_manager):
+    def test_provenance_tracking_with_real_paper(
+        self, intelligence_service, data_manager
+    ):
         """
         Test that provenance tracking works with real paper extraction.
         """
@@ -171,15 +191,16 @@ class TestRealPDFExtraction:
 
         # Find the extract_pdf_content log entry
         pdf_extractions = [
-            log for log in tool_history
-            if log.get("tool") == "extract_pdf_content"
+            log for log in tool_history if log.get("tool") == "extract_pdf_content"
         ]
 
         assert len(pdf_extractions) > 0, "PDF extraction should be logged"
 
         last_extraction = pdf_extractions[-1]
         assert "url" in last_extraction["parameters"], "URL should be logged"
-        assert url in last_extraction["parameters"]["url"], "Correct URL should be logged"
+        assert (
+            url in last_extraction["parameters"]["url"]
+        ), "Correct URL should be logged"
 
         print(f"✅ Provenance tracking working")
         print(f"📋 Logged {len(pdf_extractions)} PDF extraction(s)")
@@ -192,7 +213,9 @@ class TestRealPDFExtractionEdgeCases:
     def test_cache_directory_creation(self, intelligence_service):
         """Test that cache directory is created properly."""
         assert intelligence_service.cache_dir.exists(), "Cache directory should exist"
-        assert intelligence_service.cache_dir.is_dir(), "Cache path should be a directory"
+        assert (
+            intelligence_service.cache_dir.is_dir()
+        ), "Cache path should be a directory"
 
         print(f"\n✅ Cache directory: {intelligence_service.cache_dir}")
 
@@ -255,8 +278,16 @@ class TestRealPDFExtractionEdgeCases:
         # Look for common bioinformatics keywords
         keywords_found = []
         bioinf_keywords = [
-            "rna-seq", "single-cell", "sequencing", "expression", "genome",
-            "alignment", "differential", "clustering", "annotation", "pathway"
+            "rna-seq",
+            "single-cell",
+            "sequencing",
+            "expression",
+            "genome",
+            "alignment",
+            "differential",
+            "clustering",
+            "annotation",
+            "pathway",
         ]
 
         for keyword in bioinf_keywords:

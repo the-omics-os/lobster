@@ -219,7 +219,6 @@ class TestBasicAgentWorkflows:
             assert "recommended_datasets" in result
 
 
-
 # ===============================================================================
 # Complex Multi-Agent Workflows
 # ===============================================================================
@@ -338,7 +337,10 @@ class TestComplexMultiAgentWorkflows:
         # Step 1: Research agent finds relevant papers and extracts parameters (Phase 1)
         research_state = mock_workflow_state.copy()
         research_state["messages"] = [
-            {"content": "Find best methods for T cell analysis and extract parameters", "sender": "human"}
+            {
+                "content": "Find best methods for T cell analysis and extract parameters",
+                "sender": "human",
+            }
         ]
         research_state["current_agent"] = "research_agent"
 
@@ -419,7 +421,10 @@ class TestComplexMultiAgentWorkflows:
         tasks = [
             {"agent": "research_agent", "task": "Find T cell papers"},
             {"agent": "research_agent", "task": "Find B cell papers"},
-            {"agent": "research_agent", "task": "Extract clustering parameters from PMID:12345678"},
+            {
+                "agent": "research_agent",
+                "task": "Extract clustering parameters from PMID:12345678",
+            },
         ]
 
         def execute_agent_task(task):

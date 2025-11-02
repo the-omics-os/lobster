@@ -323,9 +323,10 @@ class PublicationResolver:
             if not is_open_access:
                 link = message.get("link", [])
                 for link_item in link:
-                    if (
-                        link_item.get("content-type") == "application/pdf"
-                        and "unixref.org" not in link_item.get("URL", "")
+                    if link_item.get(
+                        "content-type"
+                    ) == "application/pdf" and "unixref.org" not in link_item.get(
+                        "URL", ""
                     ):
                         # Found a direct PDF link
                         pdf_url = link_item.get("URL")

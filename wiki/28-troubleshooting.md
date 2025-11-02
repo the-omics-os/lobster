@@ -12,14 +12,20 @@ This comprehensive troubleshooting guide provides solutions to common issues enc
    - **Network Errors**
    - **Quota Exceeded Errors**
 2. [Data Loading Problems](#data-loading-problems)
-3. [Analysis Failures](#analysis-failures)
-4. [Performance Issues](#performance-issues)
-5. [Visualization Problems](#visualization-problems)
-6. [Cloud Integration Issues](#cloud-integration-issues)
-7. [Agent & Tool Errors](#agent--tool-errors)
-8. [Memory & Resource Problems](#memory--resource-problems)
-9. [Output & Export Issues](#output--export-issues)
-10. [Advanced Troubleshooting](#advanced-troubleshooting)
+3. [Publication Intelligence & Docling Issues](#publication-intelligence--docling-issues) 🆕
+   - Docling Not Installed
+   - MemoryError During PDF Parsing
+   - Methods Section Not Found
+   - Page Dimensions RuntimeError
+   - Cache Issues
+4. [Analysis Failures](#analysis-failures)
+5. [Performance Issues](#performance-issues)
+6. [Visualization Problems](#visualization-problems)
+7. [Cloud Integration Issues](#cloud-integration-issues)
+8. [Agent & Tool Errors](#agent--tool-errors)
+9. [Memory & Resource Problems](#memory--resource-problems)
+10. [Output & Export Issues](#output--export-issues)
+11. [Advanced Troubleshooting](#advanced-troubleshooting)
 
 ---
 
@@ -497,6 +503,341 @@ iconv -f iso-8859-1 -t utf-8 your_data.csv > your_data_utf8.csv
 export LOBSTER_CLOUD_KEY="your-api-key"
 🦞 You: "Process this large dataset using cloud resources"
 ```
+
+---
+
+## Publication Intelligence & Docling Issues
+
+### Issue: Docling Not Installed
+
+**Symptoms:**
+- `ImportError: No module named 'docling'`
+- "Docling parser unavailable, falling back to PyPDF2"
+- Warning messages about missing Docling dependencies
+
+**Causes:**
+- Docling package not installed
+- Version mismatch with required dependencies
+- Optional dependencies missing (OCR, table extraction)
+
+**Solutions:**
+
+#### Install Docling Package
+```bash
+# Install Docling with all dependencies
+pip install docling
+
+# Verify installation
+python -c "from docling.document_converter import DocumentConverter; print('✓ Docling installed')"
+```
+
+#### Install Optional Features
+```bash
+# For enhanced table extraction
+pip install "docling[table]"
+
+# For OCR support (PDFs with scanned images)
+pip install "docling[ocr]"
+
+# Full installation with all features
+pip install "docling[all]"
+```
+
+#### Verify Docling Functionality
+```bash
+🦞 You: "Test Docling installation by extracting methods from a sample paper"
+🦞 You: "Extract methods from PMID:38448586 using Docling"
+```
+
+**Fallback Behavior:**
+- System automatically falls back to PyPDF2 if Docling unavailable
+- Extraction still works but with lower Methods section detection rate (~30% vs >90%)
+- Tables and formulas won't be extracted with PyPDF2
+
+### Issue: MemoryError During PDF Parsing
+
+**Symptoms:**
+```
+MemoryError: Unable to allocate memory for document parsing
+RuntimeError: PDF parsing failed after 2 retries
+```
+
+**Causes:**
+- Large PDF documents (>100 pages)
+- Complex layouts with many images
+- Insufficient system memory (<4GB available)
+- Multiple concurrent parsing operations
+
+**Solutions:**
+
+#### Immediate Actions
+```bash
+# Clear memory before parsing
+🦞 You: "Clear workspace cache to free memory"
+python -c "import gc; gc.collect()"
+
+# Parse one document at a time
+🦞 You: "Extract methods from PMID:12345678"  # Sequential processing
+# Wait for completion before starting next extraction
+```
+
+#### Optimize Memory Usage
+```bash
+# Docling automatically retries with garbage collection
+# The retry logic handles MemoryError automatically
+# Just wait for the automatic retry to complete
+
+# For very large PDFs, use PyPDF2 fallback explicitly
+🦞 You: "Extract methods using PyPDF2 fallback for memory efficiency"
+```
+
+#### Monitor Memory
+```bash
+# Check available memory
+free -h  # Linux
+vm_stat  # macOS
+
+# Monitor during extraction
+🦞 You: "/dashboard"  # Check memory usage in real-time
+```
+
+#### Batch Processing Best Practices
+```bash
+# Process papers sequentially (not in parallel)
+🦞 You: "Extract methods from these papers one at a time: PMID:123, PMID:456, PMID:789"
+
+# Clear cache between large documents
+rm -rf ~/.lobster_workspace/literature_cache/parsed_docs/
+```
+
+**Prevention:**
+- Parse papers sequentially rather than in parallel
+- Docling's retry logic includes explicit `gc.collect()` between attempts
+- Cache prevents re-parsing (30-50x faster on subsequent access)
+- Consider increasing system RAM for large-scale analysis
+
+### Issue: Methods Section Not Found
+
+**Symptoms:**
+```
+⚠️  Methods section not found in document
+Extracted 0 paragraphs from Methods section
+```
+
+**Causes:**
+- Non-standard section naming (e.g., "Materials and Methods", "Experimental Procedures")
+- Methods split across multiple sections
+- PDF parsing failed to detect document structure
+- Incompatible PDF format (page-dimensions error)
+
+**Solutions:**
+
+#### Verify Document Structure
+```bash
+🦞 You: "Show me the document structure and available sections"
+🦞 You: "List all section headings found in the paper"
+```
+
+#### Try Alternative Keywords
+```bash
+# Docling searches for these keywords by default:
+# "method", "material", "experimental", "procedure", "analysis"
+#
+# If paper uses non-standard terms, Docling may miss the section
+
+# Check if paper is accessible
+🦞 You: "Check if PMID:12345678 is accessible"
+
+# Try extraction with PyPDF2 fallback
+# (captures more text but less structured)
+```
+
+#### Manual Verification
+```bash
+# View full PDF text to check section names
+🦞 You: "Extract full text from the paper to identify section structure"
+
+# Check if paper has Methods at all
+# Some papers (reviews, perspectives) may not have Methods sections
+```
+
+#### Check for Incompatible PDFs
+```bash
+# If you see "page-dimensions" RuntimeError:
+# This indicates an incompatible PDF format
+# System will automatically fall back to PyPDF2
+
+# Verify fallback behavior
+🦞 You: "Extract methods from PMID:12345678"
+# Check provenance metadata: {"parser": "pypdf2", "fallback": true}
+```
+
+**Quality Metrics:**
+- Docling achieves >90% Methods section detection on scientific papers
+- PyPDF2 fallback achieves ~30% detection (first 10K chars naive truncation)
+- Some papers legitimately don't have Methods sections (reviews, opinions)
+
+### Issue: Page Dimensions RuntimeError
+
+**Symptoms:**
+```
+RuntimeError: PDF contains page-dimensions errors
+Falling back to PyPDF2 after detecting incompatible PDF format
+```
+
+**Causes:**
+- PDF with malformed page dimension metadata
+- Scanned PDFs with inconsistent page sizes
+- PDFs created with non-standard tools
+- Corrupted PDF files
+
+**Solutions:**
+
+#### Automatic Fallback (No Action Needed)
+```bash
+# Docling automatically detects this error and falls back to PyPDF2
+# Extraction continues with reduced functionality:
+# - Methods section still extracted (lower hit rate)
+# - Tables won't be extracted
+# - Formulas won't be detected
+# - Provenance will show: {"parser": "pypdf2", "fallback": true}
+```
+
+#### Verify Fallback Success
+```bash
+🦞 You: "Extract methods from PMID:12345678"
+# Check response for "Extraction completed using PyPDF2 fallback"
+
+# Verify provenance metadata
+🦞 You: "Show extraction provenance for the last paper"
+# Should show: {"parser": "pypdf2", "fallback": true, "fallback_reason": "page-dimensions"}
+```
+
+#### PDF Repair (Advanced)
+```bash
+# Attempt to repair PDF with external tools
+# Only if PyPDF2 fallback also fails
+
+# Option 1: Ghostscript repair
+gs -o repaired.pdf -sDEVICE=pdfwrite -dPDFSETTINGS=/prepress original.pdf
+
+# Option 2: qpdf repair
+qpdf --linearize original.pdf repaired.pdf
+
+# Then try extraction again
+🦞 You: "Extract methods from repaired.pdf"
+```
+
+**Expected Behavior:**
+- System tries Docling first (max_retries=2 with memory management)
+- If RuntimeError with "page-dimensions", immediately falls back to PyPDF2
+- PyPDF2 extraction succeeds for most papers (~95% success rate)
+- Fallback is logged in provenance for transparency
+
+### Issue: Cache Issues
+
+**Symptoms:**
+- Unexpected cache hits for different papers
+- Stale cache returning outdated extractions
+- Cache consuming excessive disk space
+- "Cache read failed" warnings
+
+**Causes:**
+- MD5 hash collisions (extremely rare)
+- Manual cache modifications
+- Corrupted cache files
+- Cache directory permissions
+
+**Solutions:**
+
+#### Clear Cache
+```bash
+# Remove all cached documents
+rm -rf ~/.lobster_workspace/literature_cache/parsed_docs/
+
+# Clear specific paper cache
+# Cache files named by MD5 hash of source URL
+# Example: parsed_docs/abc123def456.json
+```
+
+#### Verify Cache Location
+```bash
+# Check cache directory exists and is writable
+ls -la ~/.lobster_workspace/literature_cache/parsed_docs/
+
+# Check cache file sizes
+du -sh ~/.lobster_workspace/literature_cache/
+# Typical: 500KB-2MB per paper
+```
+
+#### Monitor Cache Performance
+```bash
+# Cache hit: <100ms
+# Cache miss (first parse): 2-5 seconds
+
+# You'll see timing in responses:
+# "Extraction completed in 0.08s (cached)" - Cache hit
+# "Extraction completed in 3.2s" - Fresh parse
+```
+
+#### Cache Management Best Practices
+```bash
+# Cache is persistent across sessions (good for reproducibility)
+# Automatic cache invalidation not implemented
+# Manual cleanup recommended if:
+# - Papers are updated/corrected by publishers
+# - Testing different extraction parameters
+# - Cache directory exceeds 1GB
+
+# Selective cache cleanup
+cd ~/.lobster_workspace/literature_cache/parsed_docs/
+# Delete specific paper cache by finding its MD5 hash
+```
+
+**Cache Behavior:**
+- Cache key: MD5 hash of source URL
+- Storage format: JSON (Pydantic serialization)
+- Non-fatal failures: Extraction continues if cache read/write fails
+- Performance: 30-50x faster on cache hit
+
+### Performance Optimization
+
+#### Batch Processing
+```bash
+# Process 2-5 papers at a time (not more)
+🦞 You: "Extract methods from PMID:123, PMID:456, PMID:789"
+
+# System processes sequentially to avoid memory issues
+# Wait for batch completion before starting next batch
+```
+
+#### Memory Management
+```bash
+# Docling's built-in retry logic:
+# 1. First attempt: Parse with Docling
+# 2. MemoryError → gc.collect() → Retry
+# 3. Second MemoryError → Fall back to PyPDF2
+# 4. RuntimeError (page-dimensions) → Immediate PyPDF2 fallback
+
+# You don't need to manage retries manually
+```
+
+#### Troubleshooting Checklist
+
+When extraction fails, check:
+1. ✅ Docling installed: `pip list | grep docling`
+2. ✅ Available memory: `free -h` (need >2GB free)
+3. ✅ Paper accessibility: `🦞 "Check if PMID:12345 is accessible"`
+4. ✅ Cache corruption: Clear cache and retry
+5. ✅ Provenance metadata: Check for fallback indicators
+
+### See Also
+
+For detailed technical information about Docling integration:
+- **[Publication Intelligence Deep Dive](37-publication-intelligence-deep-dive.md)** - Comprehensive technical guide
+- **[Research Agent API](15-agents-api.md)** - Research Agent documentation
+- **[Services API](16-services-api.md)** - PublicationIntelligenceService reference
+- **[Literature Integration Workflow](06-data-analysis-workflows.md#literature-integration-workflow)** - Usage examples
 
 ---
 

@@ -764,9 +764,7 @@ IMPORTANT:
         """
         accessible = [r for r in results if r.is_accessible()]
         paywalled = [
-            r
-            for r in results
-            if not r.is_accessible() and r.access_type == "paywalled"
+            r for r in results if not r.is_accessible() and r.access_type == "paywalled"
         ]
         errors = [r for r in results if r.access_type == "error"]
 
@@ -802,7 +800,9 @@ IMPORTANT:
 
         # Add detailed suggestions for paywalled papers
         if paywalled:
-            report += "\n\n---\n\n## Alternative Access Strategies for Paywalled Papers\n"
+            report += (
+                "\n\n---\n\n## Alternative Access Strategies for Paywalled Papers\n"
+            )
             for r in paywalled:
                 report += f"\n### {r.identifier}\n"
                 report += f"{r.suggestions}\n"

@@ -100,6 +100,8 @@ dependencies = [
     "papermill>=2.4.0",
     "nbconvert>=7.0.0",
     "jupytext>=1.15.0",
+    "docling>=2.60.0",
+    "docling-core>=2.50.0",
 ]
 
 [project.optional-dependencies]

@@ -26,8 +26,8 @@ try:
 except ImportError:
     ad = None
 
-from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -548,7 +548,9 @@ class ConcatenationService:
 
         # Jinja2 template with parameters
         sample_ids_str = (
-            str(sample_ids) if sample_ids else "[f'sample_{i}' for i in range(n_samples)]"
+            str(sample_ids)
+            if sample_ids
+            else "[f'sample_{i}' for i in range(n_samples)]"
         )
         code_template = f"""# Concatenate samples
 # Join type: {{{{ join_type }}}} ({'inner join = common genes only' if join_type == 'inner' else 'outer join = all genes, fill missing with 0'})

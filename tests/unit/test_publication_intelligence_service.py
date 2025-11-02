@@ -9,10 +9,12 @@ from io import BytesIO
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
-import pytest
 import PyPDF2
+import pytest
 
-from lobster.tools.publication_intelligence_service import PublicationIntelligenceService
+from lobster.tools.publication_intelligence_service import (
+    PublicationIntelligenceService,
+)
 
 
 class TestPublicationIntelligenceService:
@@ -31,8 +33,8 @@ class TestPublicationIntelligenceService:
     def mock_pdf_content(self):
         """Create a mock PDF with extractable text."""
         # Create a simple PDF in memory
-        from reportlab.pdfgen import canvas
         from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
 
         try:
             buffer = BytesIO()
@@ -66,7 +68,7 @@ startxref
 %%EOF"""
             return minimal_pdf
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_extract_direct_pdf_url(self, mock_get, service, mock_pdf_content):
         """Test extracting from direct PDF URL."""
         # Mock PDF response
@@ -78,7 +80,9 @@ startxref
         mock_get.return_value = mock_response
 
         # Test extraction (no cache)
-        result = service.extract_pdf_content("https://example.com/paper.pdf", use_cache=False)
+        result = service.extract_pdf_content(
+            "https://example.com/paper.pdf", use_cache=False
+        )
 
         # Verify
         assert isinstance(result, str)
@@ -86,13 +90,15 @@ startxref
         mock_get.assert_called_once()
         assert "paper.pdf" in mock_get.call_args[0][0]
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_extract_webpage_with_pdf_link(self, mock_get, service, mock_pdf_content):
         """Test extracting from webpage that contains PDF link."""
         # First call: webpage with PDF link
         mock_webpage = Mock()
         mock_webpage.status_code = 200
-        mock_webpage.text = '<html><a href="/download/paper.pdf">Download PDF</a></html>'
+        mock_webpage.text = (
+            '<html><a href="/download/paper.pdf">Download PDF</a></html>'
+        )
         mock_webpage.raise_for_status = Mock()
 
         # Second call: actual PDF
@@ -105,14 +111,16 @@ startxref
         mock_get.side_effect = [mock_webpage, mock_pdf]
 
         # Test extraction
-        result = service.extract_pdf_content("https://example.com/paper", use_cache=False)
+        result = service.extract_pdf_content(
+            "https://example.com/paper", use_cache=False
+        )
 
         # Verify
         assert isinstance(result, str)
         assert len(result) > 0
         assert mock_get.call_count == 2
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_extract_pdf_with_caching(self, mock_get, service, mock_pdf_content):
         """Test PDF caching functionality."""
         # Mock PDF response
@@ -134,15 +142,17 @@ startxref
         assert mock_get.call_count == 1  # Should not call again
         assert result1 == result2  # Results should be identical
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_extract_invalid_url(self, mock_get, service):
         """Test error handling for invalid URLs."""
         mock_get.side_effect = Exception("Connection failed")
 
         with pytest.raises(ValueError, match="Error downloading PDF"):
-            service.extract_pdf_content("https://invalid-url.com/paper.pdf", use_cache=False)
+            service.extract_pdf_content(
+                "https://invalid-url.com/paper.pdf", use_cache=False
+            )
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_extract_non_pdf_content(self, mock_get, service):
         """Test error handling for non-PDF content."""
         mock_response = Mock()
@@ -155,7 +165,7 @@ startxref
         with pytest.raises(ValueError, match="did not return a valid PDF"):
             service.extract_pdf_content("https://example.com/notpdf", use_cache=False)
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_extract_url_content_html(self, mock_get, service):
         """Test extracting content from HTML webpage."""
         html_content = """
@@ -188,7 +198,7 @@ startxref
         assert "Navigation" not in result
         assert "Footer" not in result
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_extract_url_content_plain_text(self, mock_get, service):
         """Test extracting plain text content."""
         plain_text = "This is plain text content from a URL."
@@ -204,7 +214,7 @@ startxref
 
         assert result == plain_text
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_extract_url_content_error(self, mock_get, service):
         """Test error handling for URL content extraction."""
         mock_get.side_effect = Exception("Connection failed")
@@ -212,7 +222,7 @@ startxref
         with pytest.raises(ValueError, match="Error extracting URL content"):
             service.extract_url_content("https://invalid-url.com")
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_fetch_supplementary_info_success(self, mock_get, service, tmp_path):
         """Test successful supplementary material download."""
         # Mock DOI resolution
@@ -252,7 +262,7 @@ startxref
         assert "Successfully downloaded" in result
         assert "2 file(s)" in result
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_fetch_supplementary_info_no_materials(self, mock_get, service):
         """Test DOI download when no supplementary materials found."""
         # Mock DOI resolution
@@ -272,7 +282,7 @@ startxref
 
         assert "No supplementary materials found" in result
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_fetch_supplementary_info_doi_resolution_failed(self, mock_get, service):
         """Test DOI download when DOI resolution fails."""
         mock_response = Mock()
@@ -283,8 +293,10 @@ startxref
 
         assert "Failed to resolve DOI" in result
 
-    @patch('requests.get')
-    @patch('lobster.tools.publication_intelligence_service.PublicationIntelligenceService.extract_pdf_content')
+    @patch("requests.get")
+    @patch(
+        "lobster.tools.publication_intelligence_service.PublicationIntelligenceService.extract_pdf_content"
+    )
     def test_extract_methods_from_paper_with_llm(self, mock_extract, mock_get, service):
         """Test method extraction with LLM."""
         # Mock PDF extraction
@@ -307,8 +319,7 @@ startxref
         mock_llm.invoke.return_value = mock_response
 
         result = service.extract_methods_from_paper(
-            "https://example.com/paper.pdf",
-            llm=mock_llm
+            "https://example.com/paper.pdf", llm=mock_llm
         )
 
         # Verify
@@ -317,7 +328,9 @@ startxref
         assert "Scanpy" in result["software_used"]
         assert mock_extract.called
 
-    @patch('lobster.tools.publication_intelligence_service.PublicationIntelligenceService.extract_pdf_content')
+    @patch(
+        "lobster.tools.publication_intelligence_service.PublicationIntelligenceService.extract_pdf_content"
+    )
     def test_extract_methods_from_paper_pmid_error(self, mock_extract, service):
         """Test that PMID input raises appropriate error."""
         with pytest.raises(ValueError, match="Please provide a direct PDF URL"):
@@ -348,7 +361,7 @@ class TestPDFExtractionEdgeCases:
         service.cache_dir.mkdir(parents=True, exist_ok=True)
         return service
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_pdf_with_no_text(self, mock_get, service):
         """Test PDF that contains no extractable text (image-based)."""
         # Create minimal PDF with no text
@@ -369,9 +382,11 @@ trailer << /Size 4 /Root 1 0 R >>
         mock_get.return_value = mock_response
 
         with pytest.raises(ValueError, match="did not contain any extractable text"):
-            service.extract_pdf_content("https://example.com/image-pdf.pdf", use_cache=False)
+            service.extract_pdf_content(
+                "https://example.com/image-pdf.pdf", use_cache=False
+            )
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_pdf_url_with_magic_bytes_check(self, mock_get, service):
         """Test PDF validation using magic bytes when content-type is wrong."""
         mock_response = Mock()
@@ -399,7 +414,7 @@ class TestURLExtractionEdgeCases:
         """Create service instance."""
         return PublicationIntelligenceService()
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_url_with_no_main_content(self, mock_get, service):
         """Test webpage with no main/article/body tags."""
         html_content = "<html><div>Some content</div></html>"
@@ -414,7 +429,7 @@ class TestURLExtractionEdgeCases:
         with pytest.raises(ValueError, match="No content found"):
             service.extract_url_content("https://example.com/page")
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_url_with_json_content(self, mock_get, service):
         """Test URL returning JSON content."""
         json_content = '{"title": "Test", "content": "JSON data"}'

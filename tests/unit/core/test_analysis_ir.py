@@ -6,6 +6,7 @@ and utility functions for the Service-Emitted IR architecture.
 """
 
 import pytest
+
 from lobster.core.analysis_ir import (
     AnalysisStep,
     ParameterSpec,
@@ -82,7 +83,9 @@ class TestParameterSpec:
         spec = ParameterSpec(
             param_type="Path",
             papermill_injectable=True,
-            default_value=Path("/tmp/test.h5ad"),  # Path objects are not JSON-serializable
+            default_value=Path(
+                "/tmp/test.h5ad"
+            ),  # Path objects are not JSON-serializable
             required=True,
             description="Test path parameter",
         )
@@ -192,9 +195,7 @@ class TestAnalysisStep:
         assert ir_restored.parameters == sample_ir.parameters
 
         # ParameterSpec should be reconstructed
-        assert isinstance(
-            ir_restored.parameter_schema["target_sum"], ParameterSpec
-        )
+        assert isinstance(ir_restored.parameter_schema["target_sum"], ParameterSpec)
         assert (
             ir_restored.parameter_schema["target_sum"].param_type
             == sample_ir.parameter_schema["target_sum"].param_type
@@ -538,9 +539,7 @@ class TestUtilityFunctions:
 
     def test_create_minimal_ir_defaults(self):
         """Test minimal IR with default library."""
-        ir = create_minimal_ir(
-            operation="test_op", tool_name="test_tool", code="pass"
-        )
+        ir = create_minimal_ir(operation="test_op", tool_name="test_tool", code="pass")
 
         assert ir.library == "unknown"
         assert ir.validates_on_export is False

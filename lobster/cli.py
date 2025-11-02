@@ -2811,17 +2811,25 @@ when they are started by agents or analysis workflows.
         try:
             # Check if data manager supports notebook export
             if not hasattr(client, "data_manager"):
-                console.print("[red]Notebook export not available for cloud client[/red]")
+                console.print(
+                    "[red]Notebook export not available for cloud client[/red]"
+                )
                 return "Notebook export only available for local client"
 
             if not hasattr(client.data_manager, "export_notebook"):
-                console.print("[red]Notebook export not available - update Lobster[/red]")
+                console.print(
+                    "[red]Notebook export not available - update Lobster[/red]"
+                )
                 return "Notebook export not available"
 
             # Interactive prompts
-            console.print("[bold white]📓 Export Session as Jupyter Notebook[/bold white]\n")
+            console.print(
+                "[bold white]📓 Export Session as Jupyter Notebook[/bold white]\n"
+            )
 
-            name = Prompt.ask("Notebook name (no extension)", default="analysis_workflow")
+            name = Prompt.ask(
+                "Notebook name (no extension)", default="analysis_workflow"
+            )
             if not name:
                 console.print("[red]Name required[/red]")
                 return "Export cancelled - no name provided"
@@ -2835,8 +2843,12 @@ when they are started by agents or analysis workflows.
             console.print(f"\n[green]✓ Notebook exported:[/green] {path}")
             console.print("\n[bold white]Next steps:[/bold white]")
             console.print(f"  1. [yellow]Review:[/yellow]  jupyter notebook {path}")
-            console.print(f"  2. [yellow]Commit:[/yellow]  git add {path} && git commit -m 'Add {name}'")
-            console.print(f"  3. [yellow]Run:[/yellow]     /pipeline run {path.name} <modality>")
+            console.print(
+                f"  2. [yellow]Commit:[/yellow]  git add {path} && git commit -m 'Add {name}'"
+            )
+            console.print(
+                f"  3. [yellow]Run:[/yellow]     /pipeline run {path.name} <modality>"
+            )
 
             return f"Exported notebook: {path}"
 
@@ -2852,13 +2864,17 @@ when they are started by agents or analysis workflows.
         """List available notebooks."""
         try:
             if not hasattr(client, "data_manager"):
-                console.print("[red]Notebook listing not available for cloud client[/red]")
+                console.print(
+                    "[red]Notebook listing not available for cloud client[/red]"
+                )
                 return "Notebook listing only available for local client"
 
             notebooks = client.data_manager.list_notebooks()
 
             if not notebooks:
-                console.print("[yellow]No notebooks found in .lobster/notebooks/[/yellow]")
+                console.print(
+                    "[yellow]No notebooks found in .lobster/notebooks/[/yellow]"
+                )
                 console.print("Export one with: [green]/pipeline export[/green]")
                 return "No notebooks found"
 
@@ -2876,13 +2892,15 @@ when they are started by agents or analysis workflows.
             table.add_column("Size", justify="right")
 
             for nb in notebooks:
-                created_date = nb['created_at'].split('T')[0] if nb['created_at'] else "unknown"
+                created_date = (
+                    nb["created_at"].split("T")[0] if nb["created_at"] else "unknown"
+                )
                 table.add_row(
-                    nb['name'],
-                    str(nb['n_steps']),
-                    nb['created_by'],
+                    nb["name"],
+                    str(nb["n_steps"]),
+                    nb["created_by"],
                     created_date,
-                    f"{nb['size_kb']:.1f} KB"
+                    f"{nb['size_kb']:.1f} KB",
                 )
 
             console.print(table)
@@ -2897,7 +2915,9 @@ when they are started by agents or analysis workflows.
         """Run saved notebook with new data."""
         try:
             if not hasattr(client, "data_manager"):
-                console.print("[red]Notebook execution not available for cloud client[/red]")
+                console.print(
+                    "[red]Notebook execution not available for cloud client[/red]"
+                )
                 return "Notebook execution only available for local client"
 
             parts = cmd.split()
@@ -2914,12 +2934,14 @@ when they are started by agents or analysis workflows.
 
                 console.print("[bold]Available notebooks:[/bold]")
                 for i, nb in enumerate(notebooks, 1):
-                    console.print(f"  {i}. [cyan]{nb['name']}[/cyan] ({nb['n_steps']} steps)")
+                    console.print(
+                        f"  {i}. [cyan]{nb['name']}[/cyan] ({nb['n_steps']} steps)"
+                    )
 
                 selection = Prompt.ask("Select notebook number", default="1")
                 try:
                     idx = int(selection) - 1
-                    notebook_name = notebooks[idx]['filename']
+                    notebook_name = notebooks[idx]["filename"]
                 except (ValueError, IndexError):
                     console.print("[red]Invalid selection[/red]")
                     return "Invalid notebook selection"
@@ -2936,7 +2958,9 @@ when they are started by agents or analysis workflows.
                 console.print("[bold]Available modalities:[/bold]")
                 for i, mod in enumerate(modalities, 1):
                     adata = client.data_manager.modalities[mod]
-                    console.print(f"  {i}. [cyan]{mod}[/cyan] ({adata.n_obs} obs × {adata.n_vars} vars)")
+                    console.print(
+                        f"  {i}. [cyan]{mod}[/cyan] ({adata.n_obs} obs × {adata.n_vars} vars)"
+                    )
 
                 selection = Prompt.ask("Select modality number", default="1")
                 try:
@@ -2949,27 +2973,35 @@ when they are started by agents or analysis workflows.
             # Dry run first
             console.print("\n[yellow]Running validation...[/yellow]")
             dry_result = client.data_manager.run_notebook(
-                notebook_name,
-                input_modality,
-                dry_run=True
+                notebook_name, input_modality, dry_run=True
             )
 
             # Show validation
-            validation = dry_result.get('validation')
-            if validation and hasattr(validation, 'has_errors') and validation.has_errors:
+            validation = dry_result.get("validation")
+            if (
+                validation
+                and hasattr(validation, "has_errors")
+                and validation.has_errors
+            ):
                 console.print("[red]✗ Validation failed:[/red]")
                 for error in validation.errors:
                     console.print(f"  • {error}")
                 return "Validation failed"
 
-            if validation and hasattr(validation, 'has_warnings') and validation.has_warnings:
+            if (
+                validation
+                and hasattr(validation, "has_warnings")
+                and validation.has_warnings
+            ):
                 console.print("[yellow]⚠ Warnings:[/yellow]")
                 for warning in validation.warnings:
                     console.print(f"  • {warning}")
 
             console.print(f"\n[green]✓ Validation passed[/green]")
             console.print(f"  Steps to execute: {dry_result['steps_to_execute']}")
-            console.print(f"  Estimated time: {dry_result['estimated_duration_minutes']} min")
+            console.print(
+                f"  Estimated time: {dry_result['estimated_duration_minutes']} min"
+            )
 
             # Confirm execution
             if not Confirm.ask("\nExecute notebook?"):
@@ -2980,20 +3012,21 @@ when they are started by agents or analysis workflows.
             console.print("\n[yellow]Executing notebook...[/yellow]")
             with create_progress(client_arg=client) as progress:
                 task = progress.add_task("Running analysis...", total=None)
-                result = client.data_manager.run_notebook(
-                    notebook_name,
-                    input_modality
-                )
+                result = client.data_manager.run_notebook(notebook_name, input_modality)
 
-            if result['status'] == 'success':
+            if result["status"] == "success":
                 console.print(f"\n[green]✓ Execution complete![/green]")
                 console.print(f"  Output: {result['output_notebook']}")
                 console.print(f"  Duration: {result['execution_time']:.1f}s")
-                return f"Notebook executed successfully in {result['execution_time']:.1f}s"
+                return (
+                    f"Notebook executed successfully in {result['execution_time']:.1f}s"
+                )
             else:
                 console.print(f"\n[red]✗ Execution failed[/red]")
                 console.print(f"  Error: {result.get('error', 'Unknown')}")
-                console.print(f"  Partial output: {result.get('output_notebook', 'N/A')}")
+                console.print(
+                    f"  Partial output: {result.get('output_notebook', 'N/A')}"
+                )
                 return f"Execution failed: {result.get('error', 'Unknown')}"
 
         except FileNotFoundError as e:
@@ -3030,19 +3063,22 @@ when they are started by agents or analysis workflows.
 
             # Load full notebook
             import nbformat
-            nb_path = Path(nb['path'])
+
+            nb_path = Path(nb["path"])
             with open(nb_path) as f:
                 notebook = nbformat.read(f, as_version=4)
 
-            metadata = notebook.metadata.get('lobster', {})
+            metadata = notebook.metadata.get("lobster", {})
 
             # Display info
             console.print(f"\n[bold cyan]{nb['name']}[/bold cyan]")
             console.print(f"Created by: {metadata.get('created_by', 'unknown')}")
             console.print(f"Date: {metadata.get('created_at', 'unknown')}")
-            console.print(f"Lobster version: {metadata.get('lobster_version', 'unknown')}")
+            console.print(
+                f"Lobster version: {metadata.get('lobster_version', 'unknown')}"
+            )
             console.print(f"\nDependencies:")
-            for pkg, ver in metadata.get('dependencies', {}).items():
+            for pkg, ver in metadata.get("dependencies", {}).items():
                 console.print(f"  {pkg}: {ver}")
 
             console.print(f"\nSteps: {nb['n_steps']}")

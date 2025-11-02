@@ -125,7 +125,11 @@ class GEOService:
     """
 
     def __init__(
-        self, data_manager: DataManagerV2, cache_dir: Optional[str] = None, console=None, email: Optional[str] = None
+        self,
+        data_manager: DataManagerV2,
+        cache_dir: Optional[str] = None,
+        console=None,
+        email: Optional[str] = None,
     ):
         """
         Initialize the GEO service with modular architecture.
@@ -2880,7 +2884,10 @@ The actual expression data download will be much faster now that metadata is pre
 
             if not gene_counts:
                 logger.warning("No valid gene counts found, defaulting to inner join")
-                return True, {"decision": "inner", "reasoning": "No valid samples found"}
+                return True, {
+                    "decision": "inner",
+                    "reasoning": "No valid samples found",
+                }
 
             # Calculate statistics
             min_genes = int(np.min(gene_counts))
@@ -2892,10 +2899,14 @@ The actual expression data download will be much faster now that metadata is pre
             # Decision logic: Use outer join if high variability
             # Check both CV and absolute range ratio for robustness
             VARIANCE_THRESHOLD = 0.20  # Lowered from 0.30 to be more conservative
-            RANGE_RATIO_THRESHOLD = 1.5  # Max/min ratio - if > 1.5x difference, use outer join
+            RANGE_RATIO_THRESHOLD = (
+                1.5  # Max/min ratio - if > 1.5x difference, use outer join
+            )
 
-            range_ratio = max_genes / min_genes if min_genes > 0 else float('inf')
-            use_inner_join = cv <= VARIANCE_THRESHOLD and range_ratio <= RANGE_RATIO_THRESHOLD
+            range_ratio = max_genes / min_genes if min_genes > 0 else float("inf")
+            use_inner_join = (
+                cv <= VARIANCE_THRESHOLD and range_ratio <= RANGE_RATIO_THRESHOLD
+            )
 
             # Build decision metadata
             metadata = {
@@ -2923,25 +2934,37 @@ The actual expression data download will be much faster now that metadata is pre
             logger.info("=" * 70)
             logger.info("🔍 CONCATENATION STRATEGY DECISION")
             logger.info("=" * 70)
-            logger.info(f"📊 Analyzing {len(sample_modalities)} samples for gene coverage...")
-            logger.info(f"   Gene count range: {min_genes:,} - {max_genes:,} ({range_ratio:.2f}x difference)")
+            logger.info(
+                f"📊 Analyzing {len(sample_modalities)} samples for gene coverage..."
+            )
+            logger.info(
+                f"   Gene count range: {min_genes:,} - {max_genes:,} ({range_ratio:.2f}x difference)"
+            )
             logger.info(f"   Mean: {mean_genes:,.0f} ± {std_genes:,.0f}")
             logger.info(f"   Coefficient of Variation: {cv:.1%}")
             logger.info("")
             logger.info(f"📐 Decision Criteria:")
-            logger.info(f"   CV threshold: {VARIANCE_THRESHOLD:.1%}, Range ratio threshold: {RANGE_RATIO_THRESHOLD:.2f}x")
+            logger.info(
+                f"   CV threshold: {VARIANCE_THRESHOLD:.1%}, Range ratio threshold: {RANGE_RATIO_THRESHOLD:.2f}x"
+            )
             logger.info("")
 
             if use_inner_join:
                 logger.info("✓ Selected: INNER JOIN (intersection of genes)")
                 logger.info(f"  📌 Reason: {metadata['reasoning']}")
-                logger.info(f"  📍 Effect: Only genes present in ALL samples will be retained")
-                logger.info(f"  ⚠️  Warning: Genes unique to some samples will be excluded")
+                logger.info(
+                    f"  📍 Effect: Only genes present in ALL samples will be retained"
+                )
+                logger.info(
+                    f"  ⚠️  Warning: Genes unique to some samples will be excluded"
+                )
             else:
                 logger.info("⚠️  VARIABILITY DETECTED")
                 logger.info("✓ Selected: OUTER JOIN (union of all genes)")
                 logger.info(f"  📌 Reason: {metadata['reasoning']}")
-                logger.info(f"  📍 Effect: ALL genes included, missing values filled with zeros")
+                logger.info(
+                    f"  📍 Effect: ALL genes included, missing values filled with zeros"
+                )
                 logger.info(f"  ℹ️  Note: This preserves maximum biological information")
 
             logger.info("=" * 70)
@@ -3012,7 +3035,9 @@ The actual expression data download will be much faster now that metadata is pre
             else:
                 # Manual specification
                 join_type = "inner" if use_intersecting_genes_only else "outer"
-                logger.info(f"Using explicitly specified join strategy: {join_type.upper()} join")
+                logger.info(
+                    f"Using explicitly specified join strategy: {join_type.upper()} join"
+                )
                 analysis_metadata = {
                     "decision": join_type,
                     "reasoning": f"Explicitly specified by user: use_intersecting_genes_only={use_intersecting_genes_only}",
@@ -3032,7 +3057,10 @@ The actual expression data download will be much faster now that metadata is pre
                 **analysis_metadata,
                 **statistics,
                 "samples_concatenated": len(stored_samples),
-                "resulting_shape": (concatenated_adata.n_obs, concatenated_adata.n_vars),
+                "resulting_shape": (
+                    concatenated_adata.n_obs,
+                    concatenated_adata.n_vars,
+                ),
                 "auto_detected": auto_detected,
                 "timestamp": datetime.now().isoformat(),
             }
@@ -3042,7 +3070,9 @@ The actual expression data download will be much faster now that metadata is pre
                 parameters={
                     "geo_id": geo_id,
                     "n_samples": len(stored_samples),
-                    "join_strategy": "inner" if use_intersecting_genes_only else "outer",
+                    "join_strategy": (
+                        "inner" if use_intersecting_genes_only else "outer"
+                    ),
                     "auto_detected": auto_detected,
                 },
                 result=provenance_info,
@@ -3053,7 +3083,9 @@ The actual expression data download will be much faster now that metadata is pre
             if modality_name not in self.data_manager.metadata_store:
                 self.data_manager.metadata_store[modality_name] = {}
 
-            self.data_manager.metadata_store[modality_name]["concatenation_decision"] = {
+            self.data_manager.metadata_store[modality_name][
+                "concatenation_decision"
+            ] = {
                 "join_strategy": "inner" if use_intersecting_genes_only else "outer",
                 "auto_detected": auto_detected,
                 "analysis": analysis_metadata,
