@@ -19,9 +19,6 @@ from lobster.agents.state import DataExpertState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.publication_intelligence_service import (
-    PublicationIntelligenceService,
-)
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -915,13 +912,8 @@ To save, run again with save_to_file=True"""
             - Performing comparative analysis across multiple session papers
         """
         try:
-            # Initialize intelligence service
-            intelligence_service = PublicationIntelligenceService(
-                data_manager=data_manager
-            )
-
-            # Get cached publication
-            cached_pub = intelligence_service.get_cached_publication(identifier)
+            # Get cached publication directly from DataManager (Phase 3 migration)
+            cached_pub = data_manager.get_cached_publication(identifier)
 
             if not cached_pub:
                 return f"## Publication Not Found\n\nNo cached extraction found for: {identifier}\n\nThis publication has not been analyzed in the current session. Use list_session_publications (via supervisor) to see available publications, or use extract_paper_methods to analyze a new paper."

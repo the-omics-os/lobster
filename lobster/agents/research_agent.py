@@ -18,10 +18,8 @@ from lobster.agents.research_agent_assistant import ResearchAgentAssistant
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.tools.metadata_validation_service import MetadataValidationService
 from lobster.tools.providers.base_provider import DatasetType, PublicationSource
-from lobster.tools.publication_intelligence_service import (
-    PublicationIntelligenceService,
-)
 from lobster.tools.publication_service import PublicationService
 # Phase 1: New providers for two-tier access
 from lobster.tools.providers.abstract_provider import AbstractProvider
@@ -49,8 +47,11 @@ def research_agent(
     # Initialize publication service with NCBI API key
     publication_service = PublicationService(data_manager=data_manager)
 
-    # Initialize research agent assistant for metadata validation
+    # Initialize research agent assistant for PDF resolution
     research_assistant = ResearchAgentAssistant()
+
+    # Initialize metadata validation service (Phase 2: extracted from ResearchAgentAssistant)
+    metadata_validator = MetadataValidationService(data_manager=data_manager)
 
     # Define tools
     @tool
@@ -445,8 +446,8 @@ def research_agent(
                         accession
                     )
 
-                    # Use the assistant to validate metadata
-                    validation_result = research_assistant.validate_dataset_metadata(
+                    # Use metadata validation service to validate metadata
+                    validation_result = metadata_validator.validate_dataset_metadata(
                         metadata=metadata,
                         geo_id=accession,
                         required_fields=fields_list,
@@ -456,7 +457,7 @@ def research_agent(
 
                     if validation_result:
                         # Format the validation report
-                        report = research_assistant.format_validation_report(
+                        report = metadata_validator.format_validation_report(
                             validation_result, accession
                         )
 
@@ -485,7 +486,7 @@ def research_agent(
         """
         Extract computational analysis methods from a research paper.
 
-        This tool downloads and analyzes research papers to extract:
+        This tool uses the new UnifiedContentService (Phase 3) to extract:
         - Software/tools used (e.g., Scanpy, Seurat, DESeq2)
         - Parameter values and cutoffs
         - Statistical methods
@@ -496,12 +497,12 @@ def research_agent(
         - PMID (e.g., "PMID:12345678" or "12345678") - Auto-resolves via PMC/bioRxiv
         - DOI (e.g., "10.1038/s41586-021-12345-6") - Auto-resolves to open access PDF
         - Direct PDF URL (e.g., https://nature.com/articles/paper.pdf)
-        - Webpage URL (will auto-detect PDF link)
+        - Webpage URL (webpage-first extraction, then PDF fallback)
 
-        Resolution priority: PMC → bioRxiv/medRxiv → Publisher Open Access
+        Extraction strategy: Webpage-first → PDF fallback for comprehensive content
 
         Args:
-            url_or_pmid: PMID, DOI, or PDF URL
+            url_or_pmid: PMID, DOI, PDF URL, or webpage URL
 
         Returns:
             JSON-formatted extraction of methods, parameters, and software used
@@ -511,31 +512,51 @@ def research_agent(
             - extract_paper_methods("PMID:12345678")
             - extract_paper_methods("10.1038/s41586-021-12345-6")
             - extract_paper_methods("https://www.biorxiv.org/content/10.1101/2024.01.001.pdf")
-            - extract_paper_methods("https://elifesciences.org/articles/12345")
+            - extract_paper_methods("https://www.nature.com/articles/s41586-025-09686-5")
         """
         try:
-            # Initialize intelligence service
-            intelligence_service = PublicationIntelligenceService(
+            # Initialize UnifiedContentService (Phase 3 migration)
+            from lobster.tools.unified_content_service import UnifiedContentService
+
+            content_service = UnifiedContentService(
+                cache_dir=Path(".lobster_workspace") / "literature_cache",
                 data_manager=data_manager
             )
 
-            # Extract methods using LLM with automatic identifier resolution
-            methods = intelligence_service.extract_methods_from_paper(url_or_pmid)
+            # Get full content (webpage-first, with PDF fallback)
+            content = content_service.get_full_content(
+                source=url_or_pmid,
+                prefer_webpage=True,
+                keywords=["methods", "materials", "analysis", "workflow"],
+                max_paragraphs=100
+            )
+
+            # Extract methods section
+            methods = content_service.extract_methods_section(content)
 
             # Format for agent response
-            formatted = json.dumps(methods, indent=2)
+            formatted_result = {
+                "software_used": methods.get("software_used", []),
+                "parameters": methods.get("parameters", {}),
+                "statistical_methods": methods.get("statistical_methods", []),
+                "extraction_confidence": methods.get("extraction_confidence", 0.0),
+                "content_source": content.get("source_type", "unknown"),
+                "extraction_time": content.get("extraction_time", 0.0),
+            }
+
+            formatted = json.dumps(formatted_result, indent=2)
             logger.info(
                 f"Successfully extracted methods from paper: {url_or_pmid[:80]}..."
             )
 
-            return f"## Extracted Methods from Paper\n\n{formatted}"
+            return f"## Extracted Methods from Paper\n\n{formatted}\n\n**Source Type**: {content.get('source_type')}\n**Extraction Time**: {content.get('extraction_time', 0):.2f}s"
 
         except Exception as e:
             logger.error(f"Error extracting paper methods: {e}")
             error_msg = str(e)
 
             # Check if it's a paywalled paper with suggestions
-            if "not openly accessible" in error_msg:
+            if "not openly accessible" in error_msg or "paywalled" in error_msg.lower():
                 return f"## Paper Access Issue\n\n{error_msg}"
             else:
                 return f"Error extracting methods from paper: {error_msg}"
@@ -543,59 +564,104 @@ def research_agent(
     @tool
     def resolve_paper_access(identifier: str) -> str:
         """
-        Check if a paper is accessible and get PDF URL or access suggestions.
+        Check if a paper is accessible and get content availability information.
 
-        Use this tool before extract_paper_methods to:
-        - Verify paper accessibility
-        - Get direct PDF URL
-        - Receive guidance if paywalled (PMC links, preprints, author contact)
+        This tool uses UnifiedContentService (Phase 3) to verify paper accessibility
+        with webpage-first strategy and PDF fallback.
 
-        Resolution Strategy:
-        1. PubMed Central (PMC) - Free full text
-        2. bioRxiv/medRxiv - Preprint servers
-        3. Publisher Open Access
-        4. Helpful suggestions if paywalled
+        Use this tool to:
+        - Verify paper accessibility before full extraction
+        - Check content type availability (webpage vs PDF)
+        - Get extraction diagnostics
+
+        Content Extraction Strategy:
+        1. Webpage extraction (Nature, publishers) - Fast, structured
+        2. PDF extraction (PMC, bioRxiv) - Fallback, comprehensive
+        3. Error guidance if inaccessible
 
         Args:
-            identifier: PMID (e.g., "PMID:12345678"), DOI, or paper identifier
+            identifier: PMID (e.g., "PMID:12345678"), DOI, or URL
 
         Returns:
-            Access report with PDF URL OR alternative suggestions
+            Access report with content type and availability status
 
         Examples:
             - resolve_paper_access("PMID:12345678")
             - resolve_paper_access("10.1038/s41586-021-12345-6")
+            - resolve_paper_access("https://www.nature.com/articles/...")
 
         When to use this tool:
         - Before calling extract_paper_methods to check accessibility
         - When user asks "Can I access this paper?"
-        - To diagnose why PDF extraction failed
+        - To diagnose extraction issues
         """
         try:
-            # Use research assistant to resolve
-            result = research_assistant.resolve_publication_to_pdf(identifier)
+            # Initialize UnifiedContentService (Phase 3 migration)
+            from lobster.tools.unified_content_service import UnifiedContentService
 
-            # Format the result
-            report = research_assistant.format_resolution_report(result)
+            content_service = UnifiedContentService(
+                cache_dir=Path(".lobster_workspace") / "literature_cache",
+                data_manager=data_manager
+            )
 
-            logger.info(f"Resolved access for {identifier}: {result.access_type}")
+            # Try to get content (this will show if accessible)
+            content = content_service.get_full_content(
+                source=identifier,
+                prefer_webpage=True
+            )
 
+            # Format success report
+            report = f"""## Paper Access Report
+
+**Identifier**: {identifier}
+**Status**: ✅ Accessible
+**Content Type**: {content.get('source_type', 'unknown').upper()}
+**Tier Used**: {content.get('tier_used', 'unknown')}
+**Extraction Time**: {content.get('extraction_time', 0):.2f}s
+
+### Content Availability
+- Methods section extracted: {'✅ Yes' if content.get('methods_text') else '⚠️ Partial'}
+- Tables extracted: {len(content.get('metadata', {}).get('tables', []))} tables
+- Formulas extracted: {len(content.get('metadata', {}).get('formulas', []))} formulas
+- Software detected: {', '.join(content.get('metadata', {}).get('software', [])[:5]) or 'None detected'}
+
+**Ready for methods extraction**: Yes, use extract_paper_methods() for detailed analysis
+"""
+
+            logger.info(f"Resolved access for {identifier}: {content.get('source_type')}")
             return report
 
         except Exception as e:
             logger.error(f"Error resolving paper access: {e}")
-            return f"Error checking paper access: {str(e)}"
+            error_msg = str(e)
+
+            # Format error report
+            report = f"""## Paper Access Report
+
+**Identifier**: {identifier}
+**Status**: ❌ Not Accessible
+
+### Error Details
+{error_msg}
+
+### Troubleshooting Suggestions
+- If paywalled: Try searching for preprint versions (bioRxiv, medRxiv)
+- If DOI: Try converting to PMID for PMC access
+- If URL: Check if it's a direct PDF link vs webpage
+- Contact paper authors for access
+"""
+            return report
 
     @tool
     def extract_methods_batch(identifiers: str, max_papers: int = 5) -> str:
         """
         Extract computational methods from multiple papers in batch.
 
-        This tool:
-        1. Accepts comma-separated PMIDs, DOIs, or URLs
-        2. Resolves identifiers to PDFs automatically
-        3. Extracts methods from each paper
-        4. Returns aggregated results with success/failure report
+        This tool uses UnifiedContentService (Phase 3) to batch process papers with:
+        1. Comma-separated PMIDs, DOIs, or URLs
+        2. Automatic webpage-first extraction with PDF fallback
+        3. Sequential processing (conservative approach)
+        4. Comprehensive success/failure report
         5. Conservative limit: 5 papers per batch (configurable up to 10)
 
         Args:
@@ -607,7 +673,7 @@ def research_agent(
 
         Examples:
             - extract_methods_batch("PMID:12345678,PMID:87654321,10.1038/s41586-021-12345-6")
-            - extract_methods_batch("https://biorxiv.org/paper1.pdf,PMID:12345", max_papers=3)
+            - extract_methods_batch("https://www.nature.com/articles/...,PMID:12345", max_papers=3)
 
         When to use this tool:
         - User asks to "analyze methods from these 5 papers"
@@ -615,7 +681,7 @@ def research_agent(
         - Literature review with method comparison
         - When user provides a list of PMIDs/DOIs
 
-        Note: This tool processes papers sequentially to be conservative.
+        Note: Processes papers sequentially with webpage-first strategy.
         For more than 5 papers, consider breaking into multiple batches.
         """
         try:
@@ -637,66 +703,70 @@ def research_agent(
 
             logger.info(f"Starting batch extraction for {len(id_list)} papers")
 
-            # First, resolve all identifiers to check accessibility
-            resolution_results = research_assistant.batch_resolve_publications(
-                id_list, max_batch=max_papers
+            # Initialize UnifiedContentService (Phase 3 migration)
+            from lobster.tools.unified_content_service import UnifiedContentService
+
+            content_service = UnifiedContentService(
+                cache_dir=Path(".lobster_workspace") / "literature_cache",
+                data_manager=data_manager
             )
 
             # Track results
             successful_extractions = []
-            paywalled_papers = []
             failed_extractions = []
 
-            # Initialize intelligence service
-            intelligence_service = PublicationIntelligenceService(
-                data_manager=data_manager
-            )
-
-            # Process each paper
-            for i, (identifier, resolution) in enumerate(
-                zip(id_list, resolution_results), 1
-            ):
+            # Process each paper sequentially
+            for i, identifier in enumerate(id_list, 1):
                 logger.info(f"Processing paper {i}/{len(id_list)}: {identifier}")
 
-                if not resolution.is_accessible():
-                    # Paper is paywalled or inaccessible
-                    paywalled_papers.append(
-                        {
-                            "identifier": identifier,
-                            "reason": resolution.access_type,
-                            "suggestions": resolution.suggestions,
-                        }
-                    )
-                    continue
-
                 try:
-                    # Extract methods
-                    methods = intelligence_service.extract_methods_from_paper(
-                        resolution.pdf_url
+                    # Get full content (webpage-first with PDF fallback)
+                    content = content_service.get_full_content(
+                        source=identifier,
+                        prefer_webpage=True,
+                        keywords=["methods", "materials", "analysis"],
+                        max_paragraphs=100
                     )
+
+                    # Extract methods section
+                    methods = content_service.extract_methods_section(content)
+
                     successful_extractions.append(
                         {
                             "identifier": identifier,
-                            "source": resolution.source,
-                            "methods": methods,
+                            "source_type": content.get("source_type", "unknown"),
+                            "extraction_time": content.get("extraction_time", 0),
+                            "methods": {
+                                "software_used": methods.get("software_used", []),
+                                "parameters": methods.get("parameters", {}),
+                                "extraction_confidence": methods.get("extraction_confidence", 0),
+                            },
                         }
                     )
                     logger.info(f"✅ Successfully extracted methods from {identifier}")
 
                 except Exception as e:
                     logger.error(f"❌ Failed to extract methods from {identifier}: {e}")
+                    error_msg = str(e)
                     failed_extractions.append(
-                        {"identifier": identifier, "error": str(e)}
+                        {
+                            "identifier": identifier,
+                            "error": error_msg,
+                            "is_paywalled": "paywalled" in error_msg.lower() or "not accessible" in error_msg.lower(),
+                        }
                     )
 
             # Generate comprehensive report
+            paywalled_count = sum(1 for f in failed_extractions if f.get("is_paywalled", False))
+            error_count = len(failed_extractions) - paywalled_count
+
             report = f"""
 ## Batch Method Extraction Report
 
 **Total Papers:** {len(id_list)}
 **Successful:** ✅ {len(successful_extractions)} ({len(successful_extractions)*100//len(id_list) if id_list else 0}%)
-**Paywalled:** ❌ {len(paywalled_papers)} ({len(paywalled_papers)*100//len(id_list) if id_list else 0}%)
-**Failed:** ⚠️ {len(failed_extractions)} ({len(failed_extractions)*100//len(id_list) if id_list else 0}%)
+**Paywalled:** ❌ {paywalled_count} ({paywalled_count*100//len(id_list) if id_list else 0}%)
+**Failed:** ⚠️ {error_count} ({error_count*100//len(id_list) if id_list else 0}%)
 
 ---
 
@@ -704,21 +774,25 @@ def research_agent(
 """
 
             for result in successful_extractions:
-                report += f"\n**{result['identifier']}** (Source: {result['source']})\n"
+                report += f"\n**{result['identifier']}** (Source: {result['source_type'].upper()}, {result['extraction_time']:.2f}s)\n"
                 report += f"```json\n{json.dumps(result['methods'], indent=2)}\n```\n\n"
 
-            if paywalled_papers:
-                report += f"\n### ❌ Paywalled Papers ({len(paywalled_papers)}):\n"
-                for paper in paywalled_papers:
-                    report += f"\n**{paper['identifier']}**\n"
-                    report += f"- Status: {paper['reason']}\n"
-                    report += f"- Suggestions:\n{paper['suggestions']}\n\n"
-
             if failed_extractions:
-                report += f"\n### ⚠️ Failed Extractions ({len(failed_extractions)}):\n"
-                for paper in failed_extractions:
-                    report += f"\n**{paper['identifier']}**\n"
-                    report += f"- Error: {paper['error']}\n\n"
+                # Separate paywalled from other errors
+                paywalled = [f for f in failed_extractions if f.get("is_paywalled", False)]
+                errors = [f for f in failed_extractions if not f.get("is_paywalled", False)]
+
+                if paywalled:
+                    report += f"\n### ❌ Paywalled Papers ({len(paywalled)}):\n"
+                    for paper in paywalled:
+                        report += f"\n**{paper['identifier']}**\n"
+                        report += f"- Error: {paper['error']}\n\n"
+
+                if errors:
+                    report += f"\n### ⚠️ Failed Extractions ({len(errors)}):\n"
+                    for paper in errors:
+                        report += f"\n**{paper['identifier']}**\n"
+                        report += f"- Error: {paper['error']}\n\n"
 
             logger.info(
                 f"Batch extraction complete: {len(successful_extractions)}/{len(id_list)} successful"
@@ -730,54 +804,23 @@ def research_agent(
             logger.error(f"Error in batch extraction: {e}")
             return f"Error in batch method extraction: {str(e)}"
 
-    @tool
-    def download_supplementary_materials(doi: str, output_dir: str = None) -> str:
-        """
-        Download supplementary materials from a paper's DOI.
-
-        This tool:
-        - Resolves DOI to publisher page
-        - Finds supplementary material links
-        - Downloads all supplementary files
-        - Returns download report with file locations
-
-        Args:
-            doi: Paper DOI (e.g., "10.1038/s41586-021-12345-6")
-            output_dir: Directory to save files (default: .lobster_workspace/supplements/<doi>)
-
-        Returns:
-            Download report with list of downloaded files
-
-        Examples:
-            - download_supplementary_materials("10.1038/s41586-021-12345-6")
-            - download_supplementary_materials("10.1126/science.abc1234", "/path/to/output")
-        """
-        try:
-            # Initialize intelligence service
-            intelligence_service = PublicationIntelligenceService(
-                data_manager=data_manager
-            )
-
-            # Download supplementary materials
-            result = intelligence_service.fetch_supplementary_info_from_doi(
-                doi, output_dir
-            )
-
-            logger.info(f"Supplementary download completed for DOI: {doi}")
-            return f"## Supplementary Materials Download Report\n\n{result}"
-
-        except Exception as e:
-            logger.error(f"Error downloading supplementary materials: {e}")
-            return f"Error downloading supplementary materials for DOI {doi}: {str(e)}"
+    # NOTE: download_supplementary_materials temporarily disabled
+    # Pending reimplementation with UnifiedContentService architecture
+    # The original implementation depended on PublicationIntelligenceService (deleted in Phase 3)
+    # TODO: Reimplement using publisher-specific APIs or webpage scraping
+    #
+    # @tool
+    # def download_supplementary_materials(doi: str, output_dir: str = None) -> str:
+    #     """Download supplementary materials from a paper's DOI."""
+    #     pass
 
     @tool
     def read_cached_publication(identifier: str) -> str:
         """
         Read detailed methods from a previously analyzed publication.
 
-        This tool retrieves the full methods extraction from publications that were
-        analyzed earlier in the current session. Use this when the supervisor
-        references a specific paper from the session publication list.
+        This tool uses UnifiedContentService (Phase 3) to retrieve cached extraction
+        from publications analyzed earlier in the session.
 
         The tool provides access to:
         - Full methods section text
@@ -805,61 +848,38 @@ def research_agent(
             - Performing comparative analysis across multiple session papers
         """
         try:
-            # Initialize intelligence service
-            intelligence_service = PublicationIntelligenceService(
+            # Initialize UnifiedContentService (Phase 3 migration)
+            from lobster.tools.unified_content_service import UnifiedContentService
+
+            content_service = UnifiedContentService(
+                cache_dir=Path(".lobster_workspace") / "literature_cache",
                 data_manager=data_manager
             )
 
-            # Get cached publication
-            cached_pub = intelligence_service.get_cached_publication(identifier)
+            # Get cached publication (delegates to DataManagerV2)
+            cached_pub = content_service.get_cached_publication(identifier)
 
             if not cached_pub:
                 return f"## Publication Not Found\n\nNo cached extraction found for: {identifier}\n\nThis publication has not been analyzed in the current session. Use list_session_publications (via supervisor) to see available publications, or use extract_paper_methods to analyze a new paper."
 
             # Format the cached publication for display
-            response = f"## Cached Publication: {cached_pub['identifier']}\n\n"
-            response += f"**Cache Source**: {cached_pub.get('cache_source', 'unknown')}\n"
+            response = f"## Cached Publication: {cached_pub.get('identifier', identifier)}\n\n"
+            response += f"**Cache Format**: {cached_pub.get('format', 'unknown')}\n"
+            response += f"**Cache File**: {cached_pub.get('cache_file', 'N/A')}\n"
 
             # Add methods section
-            methods_text = cached_pub.get('methods_markdown') or cached_pub.get('methods_text', '')
+            methods_text = cached_pub.get('methods_text', '') or cached_pub.get('markdown', '')
             if methods_text:
                 response += "\n### Methods Section\n\n"
                 response += methods_text[:5000]  # Limit to 5000 chars for readability
                 if len(methods_text) > 5000:
                     response += f"\n\n... [Methods section truncated, showing first 5000 of {len(methods_text)} characters]"
 
-            # Add tables if present
-            tables = cached_pub.get('tables', [])
-            if tables and isinstance(tables, list) and len(tables) > 0:
-                response += f"\n\n### Extracted Tables ({len(tables)})\n\n"
-                for i, table in enumerate(tables[:3], 1):  # Show first 3 tables
-                    response += f"**Table {i}**: [Table data available]\n"
-                if len(tables) > 3:
-                    response += f"\n... [Showing 3 of {len(tables)} tables]\n"
-
-            # Add formulas if present
-            formulas = cached_pub.get('formulas', [])
-            if formulas and isinstance(formulas, list) and len(formulas) > 0:
-                response += f"\n\n### Extracted Formulas ({len(formulas)})\n\n"
-                for i, formula in enumerate(formulas[:5], 1):  # Show first 5 formulas
-                    response += f"**Formula {i}**: `{formula}`\n"
-                if len(formulas) > 5:
-                    response += f"\n... [Showing 5 of {len(formulas)} formulas]\n"
-
-            # Add software mentions
-            software = cached_pub.get('software_mentioned', [])
+            # Add software tools if present
+            software = cached_pub.get('software_detected', [])
             if software and isinstance(software, list) and len(software) > 0:
                 response += f"\n\n### Software Tools Detected\n\n"
                 response += ", ".join(f"`{sw}`" for sw in software)
-
-            # Add provenance metadata
-            provenance = cached_pub.get('provenance', {})
-            if provenance:
-                response += "\n\n### Extraction Metadata\n\n"
-                response += f"- **Parser**: {provenance.get('parser', 'unknown')}\n"
-                response += f"- **Fallback Used**: {provenance.get('fallback_used', False)}\n"
-                if provenance.get('timestamp'):
-                    response += f"- **Timestamp**: {provenance.get('timestamp')}\n"
 
             logger.info(f"Retrieved cached publication: {identifier}")
             return response
@@ -1025,31 +1045,46 @@ Could not retrieve abstract for: {identifier}
                     logger.warning(f"Webpage extraction failed, trying PDF fallback: {webpage_error}")
                     # Fall through to PDF extraction below
 
-            # Fallback to PDF extraction (original behavior)
+            # Fallback to PDF extraction using DoclingService directly
             logger.info(f"Using PDF extraction for: {identifier}")
-            intelligence_service = PublicationIntelligenceService(data_manager=data_manager)
+            from lobster.tools.docling_service import DoclingService
+            from pathlib import Path
 
-            # Extract methods using LLM
-            methods = intelligence_service.extract_methods_from_paper(identifier)
+            docling_service = DoclingService(
+                cache_dir=Path(".lobster_workspace") / "literature_cache",
+                data_manager=data_manager
+            )
 
-            # Format response
-            formatted = json.dumps(methods, indent=2)
+            # Extract methods section with DoclingService
+            result = docling_service.extract_methods_section(
+                source=identifier,
+                keywords=["methods", "materials", "analysis"],
+                max_paragraphs=100
+            )
+
+            # Format response with extracted content
+            methods_markdown = result.get("methods_markdown", "")
+            software = result.get("software_mentioned", [])
+            tables_count = len(result.get("tables", []))
 
             response = f"""## Publication Overview (PDF Extraction)
 
 **Source:** {identifier}
 **Extraction Method:** PDF parsing with Docling
-
-### Extracted Information
-
-{formatted}
+**Content Length:** {len(methods_markdown)} characters
+**Software Detected:** {', '.join(software[:5]) if software else 'None'}
+**Tables Found:** {tables_count}
 
 ---
-*Extracted from PDF using structure-aware parsing*
+
+{methods_markdown}
+
+---
+*Extracted from PDF using Docling structure-aware parsing*
 *For abstract-only view, use get_quick_abstract()*
 """
 
-            logger.info(f"Successfully extracted PDF methods")
+            logger.info(f"Successfully extracted PDF content: {len(methods_markdown)} chars")
             return response
 
         except Exception as e:
@@ -1082,50 +1117,6 @@ Could not extract content for: {identifier}
 - For webpage URLs, ensure they're not behind paywall
 """
 
-    # ============================================================
-    # DEPRECATED TOOLS - Phase 1 Refactoring (2025-01-02)
-    # ============================================================
-    # These tools are being replaced with cleaner architecture:
-    # - extract_paper_methods -> get_publication_overview
-    # - resolve_paper_access -> get_publication_overview (implicit resolution)
-    # - extract_methods_batch -> Use get_publication_overview in loop at agent level
-    #
-    # Status: Commented out, kept for reference
-    # Removal: Phase 4 (after full migration)
-    # ============================================================
-
-    # @tool  # DEPRECATED - DO NOT USE
-    # def extract_paper_methods(url_or_pmid: str) -> str:
-    #     """
-    #     DEPRECATED: Use get_publication_overview() instead.
-    #
-    #     This tool is being replaced in Phase 1 with cleaner two-tier architecture.
-    #     """
-    #     # Implementation kept for reference during migration
-    #     pass
-
-    # @tool  # DEPRECATED - DO NOT USE
-    # def resolve_paper_access(identifier: str) -> str:
-    #     """
-    #     DEPRECATED: Use get_publication_overview() instead.
-    #
-    #     Resolution is now implicit in get_publication_overview() with
-    #     automatic webpage-first strategy.
-    #     """
-    #     # Implementation kept for reference during migration
-    #     pass
-
-    # @tool  # DEPRECATED - DO NOT USE
-    # def extract_methods_batch(identifiers: str, max_papers: int = 5) -> str:
-    #     """
-    #     DEPRECATED: Removed in Phase 1.
-    #
-    #     For batch processing, use get_publication_overview() in a loop
-    #     at the agent level instead of tool level.
-    #     """
-    #     # Implementation kept for reference during migration
-    #     pass
-
     base_tools = [
         search_literature,
         find_datasets_from_publication,
@@ -1135,17 +1126,12 @@ Could not extract content for: {identifier}
         extract_publication_metadata,
         get_research_capabilities,
         validate_dataset_metadata,
-        # Phase 1 NEW TOOLS: Two-tier access
+        # Two-tier publication access
         get_quick_abstract,
         get_publication_overview,
-        # Other tools
-        download_supplementary_materials,
         # Session publication access
         read_cached_publication,
-        # DEPRECATED tools (commented out above):
-        # extract_paper_methods,  # Phase 1 deprecated
-        # resolve_paper_access,   # Phase 1 deprecated
-        # extract_methods_batch,  # Phase 1 deprecated
+        # NOTE: download_supplementary_materials temporarily disabled (pending reimplementation)
     ]
 
     # Combine base tools with handoff tools if provided

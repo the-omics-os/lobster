@@ -145,6 +145,11 @@ The CLI (`lobster/cli.py`) features a modern terminal interface with comprehensi
 - **Data & Publication Services:**
   - `geo_service.py` - GEO dataset downloading and metadata extraction
   - `publication_service.py` - PubMed literature mining, GEO dataset search
+  - `unified_content_service.py` - Two-tier publication content access (abstract → full content)
+  - `docling_service.py` - Shared PDF/webpage extraction foundation with structure-aware parsing
+  - `metadata_validation_service.py` - Dataset metadata validation (GEO, publication metadata)
+  - `providers/abstract_provider.py` - Fast NCBI abstract retrieval (Tier 1: 200-500ms)
+  - `providers/webpage_provider.py` - Webpage-first extraction strategy (Tier 2: Nature, Science, Cell Press)
   - `visualization_service.py` - Plotly-based interactive visualizations
 
 #### **`lobster/config/`** - Configuration management

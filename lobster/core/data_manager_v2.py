@@ -219,9 +219,14 @@ class DataManagerV2:
         self.data_dir = self.workspace_path / "data"
         self.exports_dir = self.workspace_path / "exports"
         self.cache_dir = self.workspace_path / "cache"
+        self.literature_cache_dir = self.workspace_path / "literature_cache"
 
-        for directory in [self.data_dir, self.exports_dir, self.cache_dir]:
+        for directory in [self.data_dir, self.exports_dir, self.cache_dir, self.literature_cache_dir]:
             directory.mkdir(exist_ok=True)
+
+        # Create literature cache subdirectories
+        (self.literature_cache_dir / "publications").mkdir(exist_ok=True)
+        (self.literature_cache_dir / "parsed_docs").mkdir(exist_ok=True)
 
     def _register_default_backends(self) -> None:
         """Register default storage backends."""
@@ -3338,3 +3343,316 @@ https://github.com/OmicsOS/lobster
                 logger.warning(f"Could not read notebook {nb_file}: {e}")
 
         return notebooks
+
+    # ==================== PUBLICATION CACHING (Phase 2) ====================
+
+    def cache_publication_content(
+        self,
+        identifier: str,
+        content: Dict[str, Any],
+        format: str = "markdown",
+    ) -> Path:
+        """
+        Cache publication content for future retrieval.
+
+        This method delegates to DoclingService for actual caching while providing
+        a unified interface through DataManager. All publication caching should go
+        through this method to ensure proper provenance tracking.
+
+        Args:
+            identifier: Publication identifier (PMID, DOI, or URL)
+            content: Extraction result dictionary containing:
+                - 'markdown': str - Extracted content as markdown
+                - 'source': str - Source URL
+                - 'parser': str - Parser used (docling/pypdf2)
+                - 'methods_text': Optional[str] - Methods section text
+                - 'software_detected': Optional[List[str]] - Detected software
+            format: Cache format ('markdown' for human-readable, 'json' for structured)
+
+        Returns:
+            Path to cached file
+
+        Example:
+            >>> content = {
+            ...     'markdown': '# Methods\\nWe used Seurat...',
+            ...     'source': 'https://pmc.../PMC123.pdf',
+            ...     'parser': 'docling',
+            ...     'methods_text': 'Analysis with Seurat',
+            ...     'software_detected': ['seurat']
+            ... }
+            >>> path = dm.cache_publication_content('PMID:12345678', content)
+            >>> print(f"Cached to: {path}")
+
+        Note:
+            This is part of Phase 2 refactoring to consolidate all caching
+            through DataManager (architectural requirement).
+        """
+        from lobster.tools.docling_service import DoclingService
+        import hashlib
+
+        publications_dir = self.literature_cache_dir / "publications"
+        publications_dir.mkdir(parents=True, exist_ok=True)
+
+        # Sanitize identifier for filename
+        safe_identifier = identifier.replace(":", "_").replace("/", "_").replace("\\", "_")
+
+        if format == "markdown":
+            # Store as human-readable markdown
+            cache_file = publications_dir / f"{safe_identifier}.md"
+
+            # Format markdown document
+            markdown_content = f"""# Publication: {identifier}
+
+**Extraction Date**: {content.get('timestamp', 'N/A')}
+**Parser**: {content.get('parser', 'unknown')}
+
+---
+
+## Methods Section
+
+{content.get('methods_text', 'No methods section extracted')}
+
+---
+
+## Software Tools Detected
+
+{chr(10).join(f'`{tool}`' for tool in content.get('software_detected', []))}
+
+---
+
+## Extraction Metadata
+
+- **Source**: {content.get('source', 'N/A')}
+- **Parser**: {content.get('parser', 'N/A')}
+- **Fallback Used**: {content.get('fallback_used', False)}
+- **Timestamp**: {content.get('timestamp', 'N/A')}
+"""
+
+            cache_file.write_text(markdown_content, encoding="utf-8")
+            logger.info(f"Cached publication as markdown: {cache_file.name}")
+
+        elif format == "json":
+            # Use MD5-based key for JSON (DoclingService format)
+            source = content.get('source', identifier)
+            cache_key = hashlib.md5(source.encode()).hexdigest()
+            cache_file = publications_dir / f"{cache_key}.json"
+
+            import json
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump(content, f, indent=2)
+
+            logger.info(f"Cached publication as JSON: {cache_file.name}")
+
+        else:
+            raise ValueError(f"Unsupported cache format: {format}")
+
+        # Log to provenance
+        if self.provenance:
+            self.log_tool_usage(
+                tool_name="cache_publication_content",
+                parameters={"identifier": identifier, "format": format},
+                description=f"Cached publication content for {identifier}",
+            )
+
+        return cache_file
+
+    def get_cached_publication(self, identifier: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve cached publication by identifier.
+
+        This method checks for cached publication content in the literature cache
+        directory. It supports both markdown and JSON formats.
+
+        Args:
+            identifier: Publication identifier (PMID, DOI, or URL)
+
+        Returns:
+            Dictionary with extraction results or None if not found
+
+        Example:
+            >>> content = dm.get_cached_publication('PMID:12345678')
+            >>> if content:
+            ...     print(f"Found cached content: {content['methods_text'][:100]}...")
+            ... else:
+            ...     print("No cache found, need to fetch")
+
+        Note:
+            This is part of Phase 2 refactoring. Delegates to existing
+            cache infrastructure while providing unified DataManager interface.
+        """
+        import hashlib
+        import json
+        from datetime import datetime
+
+        publications_dir = self.literature_cache_dir / "publications"
+
+        # Sanitize identifier for filename
+        safe_identifier = identifier.replace(":", "_").replace("/", "_").replace("\\", "_")
+
+        # Try markdown format first
+        markdown_file = publications_dir / f"{safe_identifier}.md"
+        if markdown_file.exists():
+            logger.info(f"Cache hit (markdown): {markdown_file.name}")
+            markdown_content = markdown_file.read_text(encoding="utf-8")
+
+            # Parse markdown to extract structured data
+            result = {
+                "identifier": identifier,
+                "format": "markdown",
+                "markdown": markdown_content,
+                "cache_file": str(markdown_file),
+                "cache_hit": True,
+            }
+
+            # Extract methods section if present
+            if "## Methods Section" in markdown_content:
+                methods_start = markdown_content.find("## Methods Section") + len("## Methods Section")
+                methods_end = markdown_content.find("---", methods_start)
+                if methods_end > methods_start:
+                    result["methods_text"] = markdown_content[methods_start:methods_end].strip()
+
+            # Extract software tools if present
+            if "## Software Tools Detected" in markdown_content:
+                software_start = markdown_content.find("## Software Tools Detected") + len("## Software Tools Detected")
+                software_end = markdown_content.find("---", software_start)
+                if software_end > software_start:
+                    software_section = markdown_content[software_start:software_end].strip()
+                    # Extract tools from markdown code blocks
+                    import re
+                    tools = re.findall(r'`([^`]+)`', software_section)
+                    result["software_detected"] = tools
+
+            return result
+
+        # Try JSON format (MD5-based key)
+        cache_key = hashlib.md5(identifier.encode()).hexdigest()
+        json_file = publications_dir / f"{cache_key}.json"
+        if json_file.exists():
+            logger.info(f"Cache hit (JSON): {json_file.name}")
+            with open(json_file, "r", encoding="utf-8") as f:
+                result = json.load(f)
+            result["cache_hit"] = True
+            result["cache_file"] = str(json_file)
+            return result
+
+        # No cache found
+        logger.debug(f"Cache miss for identifier: {identifier}")
+        return None
+
+    def list_session_publications(self) -> List[Dict[str, Any]]:
+        """
+        List publications extracted in the current session.
+
+        This method uses provenance tracking to identify publications that were
+        extracted during the current session, then checks cache status for each.
+
+        Returns:
+            List of publication summaries:
+            [{
+                "identifier": str,
+                "tool_name": str,
+                "timestamp": str,
+                "cache_status": "markdown" | "json" | "both" | "none",
+                "methods_length": int,
+                "source": str
+            }]
+
+        Examples:
+            >>> publications = dm.list_session_publications()
+            >>> for pub in publications:
+            ...     print(f"{pub['identifier']}: {pub['cache_status']}")
+
+        Note:
+            This is part of Phase 3 migration. Session features will be
+            fully refactored in Phase 4.
+        """
+        publications = []
+
+        # Find all publication extraction operations in tool usage history
+        extraction_tools = [
+            "extract_pdf_content",
+            "extract_methods_from_paper",
+            "extract_methods_section",
+            "extract_paper_methods",  # Phase 3 tool
+        ]
+
+        for entry in self.tool_usage_history:
+            tool_name = entry.get("tool_name", "")
+            if tool_name in extraction_tools:
+                params = entry.get("parameters", {})
+                description = entry.get("description", "")
+
+                # Try to extract identifier from parameters
+                identifier = (
+                    params.get("url_or_pmid")
+                    or params.get("source")
+                    or params.get("url")
+                    or "unknown"
+                )
+
+                # Truncate long URLs for display
+                if len(identifier) > 80:
+                    identifier = identifier[:77] + "..."
+
+                # Check cache status
+                cache_status = self._check_publication_cache_status(identifier)
+
+                # Estimate methods length from description
+                methods_length = 0
+                if "characters" in description:
+                    try:
+                        methods_length = int(description.split()[0].replace(",", ""))
+                    except (ValueError, IndexError):
+                        pass
+
+                publications.append({
+                    "identifier": identifier,
+                    "tool_name": tool_name,
+                    "timestamp": entry.get("timestamp", "unknown"),
+                    "cache_status": cache_status,
+                    "methods_length": methods_length,
+                    "source": params.get("parser", "unknown"),
+                })
+
+        logger.info(f"Found {len(publications)} publications in current session")
+        return publications
+
+    def _check_publication_cache_status(self, identifier: str) -> str:
+        """
+        Check cache status for a publication identifier.
+
+        Args:
+            identifier: Publication identifier
+
+        Returns:
+            Cache status: "markdown", "json", "both", or "none"
+        """
+        import hashlib
+
+        has_markdown = False
+        has_json = False
+
+        # Check markdown cache
+        safe_identifier = identifier.replace(":", "_").replace("/", "_").replace("\\", "_")
+        publications_dir = self.literature_cache_dir / "publications"
+        md_file = publications_dir / f"{safe_identifier}.md"
+
+        if md_file.exists():
+            has_markdown = True
+
+        # Check JSON cache (MD5-based key)
+        cache_key = hashlib.md5(identifier.encode()).hexdigest()
+        json_file = publications_dir / f"{cache_key}.json"
+
+        if json_file.exists():
+            has_json = True
+
+        # Return combined status
+        if has_markdown and has_json:
+            return "both"
+        elif has_markdown:
+            return "markdown"
+        elif has_json:
+            return "json"
+        else:
+            return "none"

@@ -149,12 +149,8 @@ def create_bioinformatics_graph(
             str: Formatted list of session publications with metadata
         """
         try:
-            from lobster.tools.publication_intelligence_service import (
-                PublicationIntelligenceService,
-            )
-
-            service = PublicationIntelligenceService(data_manager=data_manager)
-            publications = service.list_session_publications(data_manager)
+            # Delegate to DataManagerV2 (session features implemented in v2.2+)
+            publications = data_manager.list_session_publications()
 
             if not publications:
                 return (
