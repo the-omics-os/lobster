@@ -1,5 +1,26 @@
+# ============================================================
+# DEPRECATED SERVICE - Phase 1 Refactoring (2025-01-02)
+# ============================================================
+# This service is being replaced with cleaner architecture:
+# - DoclingService: Handles Docling extraction logic
+# - AbstractProvider: Fast abstract retrieval
+# - WebpageProvider: Webpage-first extraction
+# - UnifiedContentService: Coordination (Phase 3)
+#
+# Status: Keeping for reference during migration
+# Removal: Planned for Phase 4 (after full migration)
+# ============================================================
+
 """
 Publication Intelligence Service for PDF extraction and method analysis.
+
+**DEPRECATED**: This service will be removed in Phase 4.
+
+Migration guide:
+- For structure-aware PDF extraction: Use DoclingService
+- For abstract retrieval: Use AbstractProvider (Phase 1)
+- For webpage extraction: Use WebpageProvider (Phase 1)
+- For unified content access: Use UnifiedContentService (Phase 3)
 
 Portions of this code adapted from Biomni (https://github.com/snap-stanford/Biomni)
 Copyright (c) 2025 Stanford SNAP Lab
@@ -104,9 +125,22 @@ class PublicationIntelligenceService:
         """
         Initialize with optional DataManager for provenance tracking.
 
+        **DEPRECATED**: This service will be removed in Phase 4.
+        Use DoclingService, AbstractProvider, and WebpageProvider instead.
+
         Args:
             data_manager: DataManagerV2 instance for logging tool usage
         """
+        import warnings
+
+        warnings.warn(
+            "PublicationIntelligenceService is deprecated and will be removed in Phase 4. "
+            "Use DoclingService for PDF extraction, AbstractProvider for abstracts, "
+            "and WebpageProvider for webpages.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         self.data_manager = data_manager
         self.cache_dir = Path(".lobster_workspace") / "literature_cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
