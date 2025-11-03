@@ -1,0 +1,185 @@
+# Test Dataset Configuration
+# 3-level nesting: omics_type → analysis_type → platform → [datasets]
+
+single_cell:
+  clustering:
+    10x_chromium:
+      - id: GSE132044
+        description: "Melanoma, ~15,000 cells"
+        geo_id: GSE132044
+        files: ["GSE132044_RAW.tar"]
+        format: 10x_mtx
+        size_gb: 2.5
+        organism: homo_sapiens
+        platform: GPL24676
+        expected_cells: 15000
+        expected_genes: 30000
+        transpose_required: true
+        test_tags: [format_preservation, transpose_correctness, clustering]
+
+    matrix_market:
+      - id: GSE144735
+        description: "COVID-19 PBMC, ~44,000 cells"
+        geo_id: GSE144735
+        files: ["GSE144735_matrix.mtx.gz"]
+        format: matrix_market
+        size_gb: 1.8
+        organism: homo_sapiens
+        platform: GPL24676
+        expected_cells: 44000
+        expected_genes: 25000
+        transpose_required: true
+        test_tags: [format_preservation, transpose_correctness, large_dataset]
+
+  quality_control:
+    small_datasets:
+      - id: GSE117089
+        description: "Kidney, ~3,000 cells (fast tests)"
+        geo_id: GSE117089
+        files: ["GSE117089_counts_matrix.csv.gz"]
+        format: csv
+        size_gb: 0.3
+        organism: mus_musculus
+        platform: GPL19057
+        expected_cells: 3000
+        expected_genes: 15000
+        transpose_required: depends
+        test_tags: [fast_test, qc, data_type_detection]
+
+  performance:
+    large_datasets:
+      - id: GSE154763
+        description: "Tumor microenvironment, ~120,000 cells"
+        geo_id: GSE154763
+        files: ["GSE154763_processed.h5ad"]
+        format: h5ad
+        size_gb: 3.2
+        organism: homo_sapiens
+        platform: GPL20301
+        expected_cells: 120000
+        expected_genes: 30000
+        transpose_required: false
+        test_tags: [performance, memory_efficiency, h5ad_loading]
+
+bulk_rnaseq:
+  differential_expression:
+    standard_counts:
+      - id: GSE147507
+        description: "COVID-19 vs control, 24 samples"
+        geo_id: GSE147507
+        files: ["GSE147507_RawReadCounts.tsv.gz"]
+        format: tsv
+        size_gb: 0.5
+        organism: homo_sapiens
+        platform: GPL20301
+        expected_samples: 24
+        expected_genes: 60000
+        experimental_design: "2 groups (COVID-19 vs healthy)"
+        transpose_required: true
+        test_tags: [bulk_rnaseq, transpose_correctness, pyDESeq2, simple_design]
+
+      - id: GSE130036
+        description: "Standard count matrix, 8 samples"
+        geo_id: GSE130036
+        files: ["GSE130036_counts.txt.gz"]
+        format: txt
+        size_gb: 0.4
+        organism: homo_sapiens
+        platform: GPL20301
+        expected_samples: 8
+        expected_genes: 60000
+        experimental_design: "2 conditions × 4 replicates"
+        transpose_required: true
+        test_tags: [bulk_rnaseq, baseline, clean_data]
+
+    complex_design:
+      - id: GSE137710
+        description: "Time series + treatment, 48 samples"
+        geo_id: GSE137710
+        files: ["GSE137710_counts.txt.gz"]
+        format: txt
+        size_gb: 0.8
+        organism: mus_musculus
+        platform: GPL21103
+        expected_samples: 48
+        expected_genes: 58000
+        experimental_design: "3 time points × 2 treatments × 8 replicates"
+        transpose_required: true
+        test_tags: [bulk_rnaseq, formula_based_de, batch_effects, complex_design]
+
+  quantification:
+    kallisto:
+      - id: GSE114762
+        description: "Kallisto abundance files, 12 samples"
+        geo_id: GSE114762
+        files: ["GSE114762_RAW.tar"]
+        format: kallisto_tsv
+        size_gb: 0.6
+        organism: homo_sapiens
+        platform: GPL16791
+        expected_samples: 12
+        expected_transcripts: 58000
+        transpose_required: special
+        test_tags: [kallisto, quantification_files, per_sample_merging]
+
+edge_cases:
+  platform_rejection:
+    microarray:
+      - id: GSE42057
+        description: "Microarray GPL570 (should reject)"
+        geo_id: GSE42057
+        metadata_only: true
+        format: microarray
+        organism: homo_sapiens
+        platform: GPL570
+        expected_error: UnsupportedPlatformError
+        test_tags: [platform_detection, error_handling, rejection_test]
+
+      - id: GSE100618
+        description: "Mixed platforms (should reject)"
+        geo_id: GSE100618
+        metadata_only: true
+        format: mixed
+        platforms: [GPL16791, GPL570]
+        expected_error: UnsupportedPlatformError
+        test_tags: [platform_detection, mixed_platform, rejection_test]
+
+  format_specific:
+    soft:
+      - id: GSE48968
+        description: "SOFT format (older GEO standard)"
+        url: "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE48nnn/GSE48968/soft/GSE48968_family.soft.gz"
+        format: soft
+        size_gb: 0.2
+        organism: homo_sapiens
+        platform: GPL6244
+        expected_samples: 6
+        expected_genes: 47000
+        transpose_required: true
+        test_tags: [soft_format, legacy_format, transpose_correctness]
+
+  ambiguous:
+    generated:
+      - id: ambiguous_100x100
+        description: "Square matrix, no metadata"
+        generated: true
+        shape: [100, 100]
+        format: csv
+        expected_error: DataTypeAmbiguityError
+        test_tags: [ambiguity_detection, error_handling]
+
+      - id: ambiguous_50x80
+        description: "Rectangular but unclear"
+        generated: true
+        shape: [50, 80]
+        format: csv
+        expected_error: DataTypeAmbiguityError
+        test_tags: [ambiguity_detection, error_handling]
+
+      - id: ambiguous_with_headers
+        description: "Generic headers (Row0, Col0)"
+        generated: true
+        shape: [75, 75]
+        format: csv
+        expected_error: DataTypeAmbiguityError
+        test_tags: [ambiguity_detection, error_handling]

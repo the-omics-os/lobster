@@ -170,6 +170,149 @@ class GEOService:
 
     # ████████████████████████████████████████████████████████████████████████████████
     # ██                                                                            ██
+    # ██                      RETRY LOGIC WITH EXPONENTIAL BACKOFF                 ██
+    # ██                                                                            ██
+    # ████████████████████████████████████████████████████████████████████████████████
+
+    def _retry_with_backoff(
+        self,
+        operation: Callable[[], Any],
+        operation_name: str,
+        max_retries: int = 5,
+        base_delay: float = 1.0,
+        is_ftp: bool = False,
+    ) -> Optional[Any]:
+        """
+        Retry operation with exponential backoff, jitter, and progress reporting.
+
+        Implements production-grade retry logic for transient failures:
+        - Exponential backoff: 1s, 2s, 4s, 8s, 16s
+        - Jitter: 0.5-1.5x random multiplier (prevents thundering herd)
+        - Progress reporting: Updates console during retry delays
+        - FTP optimization: Reduced retry count for fast-failing FTP
+        - Conservative return: Returns None rather than raising on final failure
+
+        Args:
+            operation: Function to retry (must be idempotent)
+            operation_name: Human-readable name for logging
+            max_retries: Maximum number of attempts (default: 5, FTP: 2)
+            base_delay: Base delay in seconds (default: 1.0)
+            is_ftp: Whether this is an FTP operation (affects retry count)
+
+        Returns:
+            Result of operation or None if all retries fail
+
+        Example:
+            result = self._retry_with_backoff(
+                operation=lambda: requests.get(url),
+                operation_name=f"Download {geo_id}",
+                max_retries=5,
+                is_ftp=False
+            )
+            if result is None:
+                raise DownloadError(f"Failed after {max_retries} attempts")
+        """
+        import random
+        import requests
+
+        # FTP connections often fail permanently, not transiently
+        if is_ftp:
+            max_retries = min(max_retries, 2)
+
+        retry_count = 0
+        total_delay = 0.0
+
+        while retry_count < max_retries:
+            try:
+                result = operation()
+
+                if retry_count > 0:
+                    logger.info(
+                        f"{operation_name} succeeded after {retry_count} retries "
+                        f"(total delay: {total_delay:.1f}s)"
+                    )
+
+                return result
+
+            except requests.exceptions.HTTPError as e:
+                # Special handling for rate limiting
+                if e.response and e.response.status_code == 429:
+                    delay = base_delay * 10  # Much longer backoff for rate limits
+                    retry_count += 1
+                    logger.warning(
+                        f"{operation_name} rate limited (429). "
+                        f"Waiting {delay:.0f}s before retry {retry_count}/{max_retries}..."
+                    )
+                    total_delay += delay
+
+                    # Progress reporting (if console available)
+                    if hasattr(self, 'console') and self.console:
+                        self.console.print(
+                            f"[yellow]⚠ {operation_name} rate limited (attempt {retry_count}/{max_retries})[/yellow]"
+                        )
+                        self.console.print(f"[yellow]  Retrying in {delay:.1f}s...[/yellow]")
+
+                    time.sleep(delay)
+                    continue
+                else:
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        logger.error(
+                            f"{operation_name} failed after {max_retries} attempts: {e}"
+                        )
+                        return None
+
+                    delay = base_delay * (2 ** (retry_count - 1)) * (0.5 + random.random())
+                    total_delay += delay
+
+                    # Progress reporting (if console available)
+                    if hasattr(self, 'console') and self.console:
+                        self.console.print(
+                            f"[yellow]⚠ {operation_name} failed (attempt {retry_count}/{max_retries})[/yellow]"
+                        )
+                        self.console.print(f"[yellow]  Error: {str(e)[:100]}[/yellow]")
+                        self.console.print(f"[yellow]  Retrying in {delay:.1f}s...[/yellow]")
+                    else:
+                        logger.warning(
+                            f"{operation_name} failed (attempt {retry_count}/{max_retries}). "
+                            f"Retrying in {delay:.1f}s... Error: {e}"
+                        )
+
+                    time.sleep(delay)
+
+            except Exception as e:
+                retry_count += 1
+
+                if retry_count >= max_retries:
+                    logger.error(
+                        f"{operation_name} failed after {max_retries} attempts: {e}"
+                    )
+                    return None
+
+                # Exponential backoff with jitter
+                # Jitter range: 0.5-1.5x multiplier (standard practice)
+                delay = base_delay * (2 ** (retry_count - 1)) * (0.5 + random.random())
+                total_delay += delay
+
+                # Progress reporting (if console available)
+                if hasattr(self, 'console') and self.console:
+                    self.console.print(
+                        f"[yellow]⚠ {operation_name} failed (attempt {retry_count}/{max_retries})[/yellow]"
+                    )
+                    self.console.print(f"[yellow]  Error: {str(e)[:100]}[/yellow]")
+                    self.console.print(f"[yellow]  Retrying in {delay:.1f}s...[/yellow]")
+                else:
+                    logger.warning(
+                        f"{operation_name} failed (attempt {retry_count}/{max_retries}). "
+                        f"Retrying in {delay:.1f}s... Error: {e}"
+                    )
+
+                time.sleep(delay)
+
+        return None
+
+    # ████████████████████████████████████████████████████████████████████████████████
+    # ██                                                                            ██
     # ██                  MAIN ENTRY POINTS (USED BY DATA_EXPERT)                  ██
     # ██                                                                            ██
     # ████████████████████████████████████████████████████████████████████████████████
@@ -209,7 +352,7 @@ class GEOService:
 
     def _fetch_gse_metadata(self, gse_id: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
-        Fetch GSE metadata using GEOparse.
+        Fetch GSE metadata using GEOparse with retry logic.
 
         Args:
             gse_id: GSE accession ID
@@ -219,7 +362,18 @@ class GEOService:
         """
         try:
             logger.debug(f"Downloading SOFT metadata for {gse_id} using GEOparse...")
-            gse = GEOparse.get_GEO(geo=gse_id, destdir=str(self.cache_dir))
+
+            # Wrap GEOparse call with retry logic for transient network failures
+            gse = self._retry_with_backoff(
+                operation=lambda: GEOparse.get_GEO(geo=gse_id, destdir=str(self.cache_dir)),
+                operation_name=f"Fetch metadata for {gse_id}",
+                max_retries=5,
+                is_ftp=False
+            )
+
+            if gse is None:
+                return f"Failed to fetch metadata for {gse_id} after multiple retry attempts."
+
             metadata = self._extract_metadata(gse)
             logger.debug(f"Successfully extracted metadata using GEOparse for {gse_id}")
 
@@ -859,12 +1013,23 @@ The dataset is now available as modality '{modality_name}' for other agents to u
     def _try_supplementary_first(
         self, geo_id: str, metadata: Dict[str, Any]
     ) -> GEOResult:
-        """Try supplementary files as primary approach when no direct matrices available."""
+        """Try supplementary files as primary approach when no direct matrices available (with retry)."""
         try:
             logger.debug(f"Attempting supplementary files first for {geo_id}")
 
-            # Get GEO object for supplementary file processing
-            gse = GEOparse.get_GEO(geo=geo_id, destdir=str(self.cache_dir))
+            # Get GEO object for supplementary file processing with retry logic
+            gse = self._retry_with_backoff(
+                operation=lambda: GEOparse.get_GEO(geo=geo_id, destdir=str(self.cache_dir)),
+                operation_name=f"Download {geo_id} for supplementary files",
+                max_retries=5,
+                is_ftp=True  # Supplementary files often use FTP
+            )
+
+            if gse is None:
+                return GEOResult(
+                    success=False,
+                    error_message=f"Failed to download {geo_id} for supplementary files after multiple retry attempts"
+                )
 
             # Use existing supplementary file processing
             data = self._process_supplementary_files(gse, geo_id)
@@ -1034,10 +1199,23 @@ The dataset is now available as modality '{modality_name}' for other agents to u
         metadata: Dict[str, Any],
         use_intersecting_genes_only: bool = None,
     ) -> GEOResult:
-        """Pipeline step: Try standard GEOparse download with proper single-cell/bulk handling."""
+        """Pipeline step: Try standard GEOparse download with proper single-cell/bulk handling (with retry)."""
         try:
             logger.debug(f"Trying GEOparse download for {geo_id}")
-            gse = GEOparse.get_GEO(geo=geo_id, destdir=str(self.cache_dir))
+
+            # Wrap GEOparse download with retry logic
+            gse = self._retry_with_backoff(
+                operation=lambda: GEOparse.get_GEO(geo=geo_id, destdir=str(self.cache_dir)),
+                operation_name=f"Download {geo_id} data",
+                max_retries=5,
+                is_ftp=False
+            )
+
+            if gse is None:
+                return GEOResult(
+                    success=False,
+                    error_message=f"Failed to download {geo_id} after multiple retry attempts"
+                )
 
             # Determine data type from metadata
             data_type = self._determine_data_type_from_metadata(metadata)

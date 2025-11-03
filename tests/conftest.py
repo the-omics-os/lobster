@@ -182,6 +182,42 @@ def mock_agent_environment(isolated_environment, mocker: MockerFixture):
     }
 
 
+@pytest.fixture(scope="session")
+def dataset_manager():
+    """
+    Provide DatasetManager instance for all tests.
+
+    This fixture gives tests access to all configured datasets via
+    hierarchical paths and tag-based queries.
+
+    Usage:
+        def test_example(dataset_manager):
+            # Path-based access
+            path = dataset_manager.get('single_cell/clustering/10x_chromium/GSE132044')
+
+            # Metadata retrieval
+            metadata = dataset_manager.get_metadata('single_cell/clustering/10x_chromium/GSE132044')
+
+            # Tag-based queries
+            transpose_tests = dataset_manager.list_by_tag('transpose_correctness')
+
+            # Type-based queries
+            bulk_datasets = dataset_manager.list_by_type('bulk_rnaseq')
+    """
+    from tests.fixtures.datasets.dataset_manager import get_dataset_manager
+    return get_dataset_manager()
+
+
+@pytest.fixture
+def datasets_dir(dataset_manager):
+    """
+    Root directory containing all test datasets.
+
+    Provided for backward compatibility with tests that need direct path access.
+    """
+    return dataset_manager.datasets_dir
+
+
 # ==============================================================================
 # Mock Data Generation Fixtures
 # ==============================================================================
