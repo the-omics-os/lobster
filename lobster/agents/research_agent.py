@@ -23,6 +23,9 @@ from lobster.tools.publication_intelligence_service import (
     PublicationIntelligenceService,
 )
 from lobster.tools.publication_service import PublicationService
+# Phase 1: New providers for two-tier access
+from lobster.tools.providers.abstract_provider import AbstractProvider
+from lobster.tools.providers.webpage_provider import WebpageProvider
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -865,6 +868,264 @@ def research_agent(
             logger.error(f"Error reading cached publication: {e}")
             return f"Error reading cached publication {identifier}: {str(e)}"
 
+    # ============================================================
+    # Phase 1 NEW TOOLS: Two-Tier Access & Webpage-First Strategy
+    # ============================================================
+
+    @tool
+    def get_quick_abstract(identifier: str) -> str:
+        """
+        Retrieve publication abstract quickly without downloading full PDF.
+
+        This is the FAST PATH for two-tier access strategy:
+        - Tier 1 (this tool): Quick abstract via NCBI (200-500ms)
+        - Tier 2 (get_publication_overview): Full content extraction (2-8 seconds)
+
+        Use this tool when:
+        - User asks for "abstract" or "summary" of a paper
+        - You want to check relevance before full extraction
+        - Speed is important (screening multiple papers)
+        - User just needs high-level understanding
+
+        Supported Identifiers:
+        - PMID: "PMID:12345678" or "12345678"
+        - DOI: "10.1038/s41586-021-12345-6"
+
+        Args:
+            identifier: PMID or DOI of the publication
+
+        Returns:
+            Formatted abstract with title, authors, journal, and full abstract text
+
+        Examples:
+            - get_quick_abstract("PMID:35042229")
+            - get_quick_abstract("10.1038/s41586-021-03852-1")
+
+        Performance: 200-500ms typical response time
+        """
+        try:
+            logger.info(f"Getting quick abstract for: {identifier}")
+
+            # Initialize AbstractProvider
+            abstract_provider = AbstractProvider(data_manager=data_manager)
+
+            # Get abstract metadata
+            metadata = abstract_provider.get_abstract(identifier)
+
+            # Format response
+            response = f"""## {metadata.title}
+
+**Authors:** {', '.join(metadata.authors[:5])}{'...' if len(metadata.authors) > 5 else ''}
+**Journal:** {metadata.journal or 'N/A'}
+**Published:** {metadata.published or 'N/A'}
+**PMID:** {metadata.pmid or 'N/A'}
+**DOI:** {metadata.doi or 'N/A'}
+
+### Abstract
+
+{metadata.abstract}
+
+---
+*Retrieved via fast abstract API (no PDF download)*
+*For full content with Methods section, use get_publication_overview()*
+"""
+
+            logger.info(f"Successfully retrieved abstract: {len(metadata.abstract)} chars")
+            return response
+
+        except Exception as e:
+            logger.error(f"Error getting quick abstract: {e}")
+            return f"""## Error Retrieving Abstract
+
+Could not retrieve abstract for: {identifier}
+
+**Error:** {str(e)}
+
+**Suggestions:**
+- Verify the identifier is correct (PMID or DOI)
+- Check if publication exists in PubMed
+- Try using DOI if PMID failed, or vice versa
+- For non-PubMed papers, use get_publication_overview() instead
+"""
+
+    @tool
+    def get_publication_overview(identifier: str, prefer_webpage: bool = True) -> str:
+        """
+        Extract full publication content with webpage-first strategy.
+
+        This is the DEEP PATH for two-tier access strategy:
+        - First attempts: Webpage extraction (Nature, Science, etc.) - 2-5 seconds
+        - Fallback: PDF parsing with Docling - 3-8 seconds
+
+        Use this tool when:
+        - User needs full content, not just abstract
+        - Extracting Methods section for replication
+        - User asks for "parameters", "software used", "methods"
+        - After checking relevance with get_quick_abstract()
+
+        Webpage-First Strategy (NEW in Phase 1):
+        - Tries publisher webpage before PDF (e.g., Nature articles)
+        - Faster and more reliable for many publishers
+        - Automatically falls back to PDF if webpage extraction fails
+
+        Supported Identifiers:
+        - PMID: "PMID:12345678" (auto-resolves to accessible source)
+        - DOI: "10.1038/s41586-021-12345-6" (auto-resolves)
+        - Direct URL: "https://www.nature.com/articles/s41586-025-09686-5"
+        - PDF URL: "https://biorxiv.org/content/10.1101/2024.01.001.pdf"
+
+        Args:
+            identifier: PMID, DOI, or URL
+            prefer_webpage: Try webpage before PDF (default: True)
+
+        Returns:
+            Full content markdown with sections, tables, and metadata
+
+        Examples:
+            - get_publication_overview("PMID:35042229")
+            - get_publication_overview("https://www.nature.com/articles/s41586-025-09686-5")
+            - get_publication_overview("10.1038/...", prefer_webpage=False)  # Force PDF
+
+        Performance: 2-8 seconds depending on source and length
+        """
+        try:
+            logger.info(f"Getting publication overview for: {identifier}")
+
+            # Check if identifier is a direct webpage URL
+            is_webpage_url = identifier.startswith("http") and not identifier.lower().endswith(".pdf")
+
+            if is_webpage_url and prefer_webpage:
+                # Try webpage extraction first
+                try:
+                    logger.info(f"Attempting webpage extraction for: {identifier[:80]}...")
+                    webpage_provider = WebpageProvider(data_manager=data_manager)
+
+                    # Extract full content
+                    markdown_content = webpage_provider.extract(identifier, max_paragraphs=100)
+
+                    response = f"""## Publication Overview (Webpage Extraction)
+
+**Source:** {identifier[:100]}...
+**Extraction Method:** Webpage (faster, structure-aware)
+**Content Length:** {len(markdown_content)} characters
+
+---
+
+{markdown_content}
+
+---
+*Extracted from publisher webpage using structure-aware parsing*
+*For abstract-only view, use get_quick_abstract()*
+"""
+
+                    logger.info(f"Successfully extracted webpage: {len(markdown_content)} chars")
+                    return response
+
+                except Exception as webpage_error:
+                    logger.warning(f"Webpage extraction failed, trying PDF fallback: {webpage_error}")
+                    # Fall through to PDF extraction below
+
+            # Fallback to PDF extraction (original behavior)
+            logger.info(f"Using PDF extraction for: {identifier}")
+            intelligence_service = PublicationIntelligenceService(data_manager=data_manager)
+
+            # Extract methods using LLM
+            methods = intelligence_service.extract_methods_from_paper(identifier)
+
+            # Format response
+            formatted = json.dumps(methods, indent=2)
+
+            response = f"""## Publication Overview (PDF Extraction)
+
+**Source:** {identifier}
+**Extraction Method:** PDF parsing with Docling
+
+### Extracted Information
+
+{formatted}
+
+---
+*Extracted from PDF using structure-aware parsing*
+*For abstract-only view, use get_quick_abstract()*
+"""
+
+            logger.info(f"Successfully extracted PDF methods")
+            return response
+
+        except Exception as e:
+            logger.error(f"Error getting publication overview: {e}")
+            error_msg = str(e)
+
+            # Check if it's a paywalled paper
+            if "not openly accessible" in error_msg or "paywalled" in error_msg.lower():
+                return f"""## Publication Access Issue
+
+{error_msg}
+
+**Suggestions:**
+1. Try get_quick_abstract("{identifier}") to get the abstract without full text
+2. Check if a preprint version exists on bioRxiv/medRxiv
+3. Search for author's institutional repository
+4. Contact corresponding author for access
+"""
+            else:
+                return f"""## Error Extracting Publication
+
+Could not extract content for: {identifier}
+
+**Error:** {error_msg}
+
+**Troubleshooting:**
+- Verify identifier is correct (PMID, DOI, or URL)
+- Try get_quick_abstract() for basic information
+- Check if paper is freely accessible
+- For webpage URLs, ensure they're not behind paywall
+"""
+
+    # ============================================================
+    # DEPRECATED TOOLS - Phase 1 Refactoring (2025-01-02)
+    # ============================================================
+    # These tools are being replaced with cleaner architecture:
+    # - extract_paper_methods -> get_publication_overview
+    # - resolve_paper_access -> get_publication_overview (implicit resolution)
+    # - extract_methods_batch -> Use get_publication_overview in loop at agent level
+    #
+    # Status: Commented out, kept for reference
+    # Removal: Phase 4 (after full migration)
+    # ============================================================
+
+    # @tool  # DEPRECATED - DO NOT USE
+    # def extract_paper_methods(url_or_pmid: str) -> str:
+    #     """
+    #     DEPRECATED: Use get_publication_overview() instead.
+    #
+    #     This tool is being replaced in Phase 1 with cleaner two-tier architecture.
+    #     """
+    #     # Implementation kept for reference during migration
+    #     pass
+
+    # @tool  # DEPRECATED - DO NOT USE
+    # def resolve_paper_access(identifier: str) -> str:
+    #     """
+    #     DEPRECATED: Use get_publication_overview() instead.
+    #
+    #     Resolution is now implicit in get_publication_overview() with
+    #     automatic webpage-first strategy.
+    #     """
+    #     # Implementation kept for reference during migration
+    #     pass
+
+    # @tool  # DEPRECATED - DO NOT USE
+    # def extract_methods_batch(identifiers: str, max_papers: int = 5) -> str:
+    #     """
+    #     DEPRECATED: Removed in Phase 1.
+    #
+    #     For batch processing, use get_publication_overview() in a loop
+    #     at the agent level instead of tool level.
+    #     """
+    #     # Implementation kept for reference during migration
+    #     pass
+
     base_tools = [
         search_literature,
         find_datasets_from_publication,
@@ -874,13 +1135,17 @@ def research_agent(
         extract_publication_metadata,
         get_research_capabilities,
         validate_dataset_metadata,
-        # Phase 1: Enhanced PDF resolution tools
-        extract_paper_methods,
-        resolve_paper_access,
-        extract_methods_batch,
+        # Phase 1 NEW TOOLS: Two-tier access
+        get_quick_abstract,
+        get_publication_overview,
+        # Other tools
         download_supplementary_materials,
         # Session publication access
         read_cached_publication,
+        # DEPRECATED tools (commented out above):
+        # extract_paper_methods,  # Phase 1 deprecated
+        # resolve_paper_access,   # Phase 1 deprecated
+        # extract_methods_batch,  # Phase 1 deprecated
     ]
 
     # Combine base tools with handoff tools if provided
