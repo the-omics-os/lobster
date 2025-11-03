@@ -12,8 +12,9 @@ import pytest
 from lobster.agents.research_agent_assistant import ResearchAgentAssistant
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.providers.publication_resolver import PublicationResolutionResult
-from lobster.tools.publication_intelligence_service import (
-    PublicationIntelligenceService,
+from lobster.tools.unified_content_service import (
+    UnifiedContentService,
+    ContentExtractionError,
 )
 
 
@@ -23,7 +24,21 @@ def mock_data_manager():
     mock_dm = Mock(spec=DataManagerV2)
     mock_dm.log_tool_usage = Mock()
     mock_dm.metadata_store = {}
+    mock_dm.literature_cache_dir = Mock()
+    mock_dm.get_cached_publication = Mock(return_value=None)
+    mock_dm.cache_publication_content = Mock()
     return mock_dm
+
+
+@pytest.fixture
+def content_service(mock_data_manager, tmp_path):
+    """Create UnifiedContentService instance for testing."""
+    cache_dir = tmp_path / "literature_cache"
+    cache_dir.mkdir()
+    return UnifiedContentService(
+        cache_dir=cache_dir,
+        data_manager=mock_data_manager
+    )
 
 
 class TestResearchAgentAssistantResolution:
@@ -201,147 +216,66 @@ class TestResearchAgentAssistantResolution:
         assert "PMID:333" in report
 
 
-class TestPublicationIntelligenceServiceIntegration:
-    """Test PublicationIntelligenceService with resolution integration."""
+class TestUnifiedContentServiceIntegration:
+    """Test UnifiedContentService with resolution integration."""
 
-    def test_extract_methods_with_direct_url(self, mock_data_manager):
-        """Test extract_methods_from_paper with direct URL (no resolution needed)."""
-        service = PublicationIntelligenceService(data_manager=mock_data_manager)
+    def test_extract_content_with_direct_url(self, content_service):
+        """Test get_full_content with direct PDF URL (no resolution needed)."""
 
-        with patch.object(service, "extract_pdf_content") as mock_extract:
-            mock_extract.return_value = "Methods: We used Scanpy for analysis..."
+        with patch("lobster.tools.docling_service.DoclingService.extract_methods_section") as mock_docling:
+            mock_docling.return_value = {
+                "methods_markdown": "# Methods\n\nWe used Scanpy for analysis...",
+                "methods_text": "We used Scanpy for analysis...",
+                "tables": [],
+                "formulas": [],
+                "software_mentioned": ["Scanpy"],
+                "sections": ["Methods"],
+            }
 
-            with patch("lobster.config.llm_factory.create_llm") as mock_llm_factory:
-                mock_llm = Mock()
-                mock_llm.invoke.return_value = Mock(
-                    content='{"software_used": ["Scanpy"], "parameters": {"min_genes": "200"}}'
-                )
-                mock_llm_factory.return_value = mock_llm
+            result = content_service.get_full_content("https://test.com/paper.pdf")
 
-                result = service.extract_methods_from_paper(
-                    "https://test.com/paper.pdf"
-                )
+            assert isinstance(result, dict)
+            assert "content" in result
+            assert "Methods" in result["content"]
+            assert result["source_type"] == "pdf"
+            mock_docling.assert_called_once()
 
-                assert "software_used" in result
-                assert result["software_used"] == ["Scanpy"]
-                mock_extract.assert_called_once()
+    def test_extract_content_with_pmid_resolution(self, content_service):
+        """Test PMID resolution workflow (now handled by ResearchAgentAssistant layer)."""
+        pytest.skip(
+            "PMID resolution is now handled by ResearchAgentAssistant layer, "
+            "not by UnifiedContentService. UnifiedContentService expects URLs. "
+            "PMID resolution workflows are tested in TestResearchAgentAssistantResolution."
+        )
 
-    def test_extract_methods_with_pmid_resolution(self, mock_data_manager):
-        """Test extract_methods_from_paper with PMID requiring resolution."""
-        service = PublicationIntelligenceService(data_manager=mock_data_manager)
+    def test_extract_content_inaccessible_raises_error(self, content_service):
+        """Test get_full_content raises ContentExtractionError for inaccessible papers."""
 
-        with patch(
-            "lobster.agents.research_agent_assistant.ResearchAgentAssistant"
-        ) as mock_assistant_class:
-            # Setup assistant mock
-            mock_assistant = Mock()
-            mock_resolution = PublicationResolutionResult(
-                identifier="PMID:12345678",
-                pdf_url="https://pmc.ncbi.nlm.nih.gov/articles/PMC123/pdf/",
-                source="pmc",
-                access_type="open_access",
-            )
-            mock_assistant.resolve_publication_to_pdf.return_value = mock_resolution
-            mock_assistant_class.return_value = mock_assistant
+        with patch("lobster.tools.docling_service.DoclingService.extract_methods_section") as mock_docling:
+            mock_docling.side_effect = Exception("Failed to download PDF")
 
-            with patch.object(service, "extract_pdf_content") as mock_extract:
-                mock_extract.return_value = "Methods: Analysis with Seurat..."
+            with pytest.raises(ContentExtractionError) as exc_info:
+                content_service.get_full_content("https://paywalled.com/paper.pdf")
 
-                with patch("lobster.config.llm_factory.create_llm") as mock_llm_factory:
-                    mock_llm = Mock()
-                    mock_llm.invoke.return_value = Mock(
-                        content='{"software_used": ["Seurat"], "parameters": {"resolution": "0.5"}}'
-                    )
-                    mock_llm_factory.return_value = mock_llm
+            assert "Failed to extract PDF content" in str(exc_info.value)
 
-                    result = service.extract_methods_from_paper("PMID:12345678")
+    def test_resolve_and_extract_methods_success(self, content_service):
+        """Test combined resolve and extract workflow (now split across layers)."""
+        pytest.skip(
+            "Combined resolve_and_extract_methods is deprecated. "
+            "Resolution is now handled by ResearchAgentAssistant layer, "
+            "and extraction by UnifiedContentService. "
+            "End-to-end workflows are tested in TestEndToEndWorkflows."
+        )
 
-                    assert "software_used" in result
-                    assert "Seurat" in result["software_used"]
-                    mock_assistant.resolve_publication_to_pdf.assert_called_once_with(
-                        "PMID:12345678"
-                    )
-
-    def test_extract_methods_paywalled_raises_error(self, mock_data_manager):
-        """Test extract_methods_from_paper raises informative error for paywalled papers."""
-        service = PublicationIntelligenceService(data_manager=mock_data_manager)
-
-        with patch(
-            "lobster.agents.research_agent_assistant.ResearchAgentAssistant"
-        ) as mock_assistant_class:
-            mock_assistant = Mock()
-            mock_resolution = PublicationResolutionResult(
-                identifier="PMID:87654321",
-                pdf_url=None,
-                source="paywalled",
-                access_type="paywalled",
-                suggestions="Try PMC or bioRxiv for alternatives",
-            )
-            mock_assistant.resolve_publication_to_pdf.return_value = mock_resolution
-            mock_assistant_class.return_value = mock_assistant
-
-            with pytest.raises(ValueError) as exc_info:
-                service.extract_methods_from_paper("PMID:87654321")
-
-            assert "not openly accessible" in str(exc_info.value)
-            assert "Try PMC or bioRxiv" in str(exc_info.value)
-
-    def test_resolve_and_extract_methods_success(self, mock_data_manager):
-        """Test resolve_and_extract_methods combined workflow success."""
-        service = PublicationIntelligenceService(data_manager=mock_data_manager)
-
-        with patch(
-            "lobster.agents.research_agent_assistant.ResearchAgentAssistant"
-        ) as mock_assistant_class:
-            mock_assistant = Mock()
-            mock_resolution = PublicationResolutionResult(
-                identifier="PMID:12345678",
-                pdf_url="https://test.com/paper.pdf",
-                source="pmc",
-                access_type="open_access",
-            )
-            mock_assistant.resolve_publication_to_pdf.return_value = mock_resolution
-            mock_assistant_class.return_value = mock_assistant
-
-            with patch.object(service, "extract_methods_from_paper") as mock_extract:
-                mock_extract.return_value = {
-                    "software_used": ["Scanpy", "pandas"],
-                    "parameters": {"min_genes": "200"},
-                }
-
-                result = service.resolve_and_extract_methods("PMID:12345678")
-
-                assert result["status"] == "success"
-                assert "methods" in result
-                assert result["methods"]["software_used"] == ["Scanpy", "pandas"]
-                assert result["source"] == "pmc"
-                assert result["metadata"]["identifier"] == "PMID:12345678"
-
-    def test_resolve_and_extract_methods_paywalled(self, mock_data_manager):
-        """Test resolve_and_extract_methods with paywalled paper."""
-        service = PublicationIntelligenceService(data_manager=mock_data_manager)
-
-        with patch(
-            "lobster.agents.research_agent_assistant.ResearchAgentAssistant"
-        ) as mock_assistant_class:
-            mock_assistant = Mock()
-            mock_resolution = PublicationResolutionResult(
-                identifier="PMID:87654321",
-                pdf_url=None,
-                source="paywalled",
-                access_type="paywalled",
-                suggestions="Alternative access suggestions here",
-                metadata={"pmid": "87654321"},
-            )
-            mock_assistant.resolve_publication_to_pdf.return_value = mock_resolution
-            mock_assistant_class.return_value = mock_assistant
-
-            result = service.resolve_and_extract_methods("PMID:87654321")
-
-            assert result["status"] == "paywalled"
-            assert "suggestions" in result
-            assert result["suggestions"] == "Alternative access suggestions here"
-            assert result["source"] == "paywalled"
+    def test_resolve_and_extract_methods_paywalled(self, content_service):
+        """Test combined workflow with paywalled paper (now split across layers)."""
+        pytest.skip(
+            "Combined resolve_and_extract_methods is deprecated. "
+            "Resolution is now handled by ResearchAgentAssistant layer, "
+            "and extraction by UnifiedContentService. "
+            "End-to-end workflows are tested in TestEndToEndWorkflows."
+        )
 
 
 class TestEndToEndWorkflows:
