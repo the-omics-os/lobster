@@ -147,6 +147,30 @@ class H5ADBackend(BaseBackend):
         adata.obs.columns = [sanitize_key(col) for col in adata.obs.columns]
         adata.var.columns = [sanitize_key(col) for col in adata.var.columns]
 
+        # Sanitize DataFrame VALUES in obs and var to handle None/NaN
+        # This prevents serialization errors when writing to H5AD
+        for df in [adata.obs, adata.var]:
+            columns_to_drop = []
+            for col in df.columns:
+                # Check if column is entirely None/NaN
+                if df[col].isna().all():
+                    columns_to_drop.append(col)
+                    logger.debug(f"Dropping column '{col}' - all values are None/NaN")
+                # Handle object dtype columns with None values
+                elif df[col].dtype == object and df[col].isna().any():
+                    # Convert None to empty string and ensure string type
+                    df[col] = df[col].fillna("").astype(str)
+                    logger.debug(
+                        f"Sanitized column '{col}' - converted None to empty strings"
+                    )
+
+            # Drop columns that are entirely None/NaN
+            if columns_to_drop:
+                df.drop(columns=columns_to_drop, inplace=True)
+                logger.info(
+                    f"Dropped {len(columns_to_drop)} empty columns: {columns_to_drop}"
+                )
+
         return adata
 
     def save(self, adata: anndata.AnnData, path: Union[str, Path], **kwargs) -> None:

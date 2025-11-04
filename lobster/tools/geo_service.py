@@ -30,7 +30,12 @@ try:
 except ImportError:
     GEOparse = None
 
+from lobster.agents.data_expert_assistant import DataExpertAssistant
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.exceptions import (
+    FeatureNotImplementedError,
+    UnsupportedPlatformError,
+)
 
 # Import helper modules for fallback functionality
 from lobster.tools.geo_downloader import GEODownloadManager
@@ -106,6 +111,102 @@ class GEOFallbackError(Exception):
     """Custom exception for fallback mechanism failures."""
 
     pass
+
+
+class PlatformCompatibility(Enum):
+    """Platform support status for early validation."""
+
+    SUPPORTED = "supported"  # RNA-seq, fully supported
+    UNSUPPORTED = "unsupported"  # Microarrays, clear rejection
+    EXPERIMENTAL = "experimental"  # Partial support, warning only
+    UNKNOWN = "unknown"  # Not in registry, conservative approach
+
+
+# Comprehensive Platform Registry for Early Validation
+# This registry enables rejecting unsupported platforms BEFORE downloading files
+PLATFORM_REGISTRY: Dict[str, PlatformCompatibility] = {
+    # === SUPPORTED RNA-SEQ PLATFORMS ===
+    # Illumina RNA-seq platforms
+    "GPL16791": PlatformCompatibility.SUPPORTED,  # Illumina HiSeq 2500
+    "GPL18573": PlatformCompatibility.SUPPORTED,  # Illumina NextSeq 500
+    "GPL20301": PlatformCompatibility.SUPPORTED,  # Illumina HiSeq 4000
+    "GPL21290": PlatformCompatibility.SUPPORTED,  # Illumina HiSeq 3000
+    "GPL24676": PlatformCompatibility.SUPPORTED,  # Illumina NovaSeq 6000
+    "GPL13112": PlatformCompatibility.SUPPORTED,  # Illumina HiSeq 2000 (mouse)
+    "GPL11154": PlatformCompatibility.SUPPORTED,  # Illumina HiSeq 2000 (humanb)
+    "GPL10999": PlatformCompatibility.SUPPORTED,  # Illumina Genome Analyzer IIx
+    "GPL9115": PlatformCompatibility.SUPPORTED,  # Illumina Genome Analyzer II
+    "GPL9052": PlatformCompatibility.SUPPORTED,  # Illumina Genome Analyzer
+    # Single-cell platforms
+    "GPL24247": PlatformCompatibility.SUPPORTED,  # 10X Chromium (NovaSeq)
+    "GPL26966": PlatformCompatibility.SUPPORTED,  # 10X Chromium (HiSeq X)
+    "GPL21103": PlatformCompatibility.SUPPORTED,  # Illumina HiSeq 2500 (single-cell)
+    "GPL19057": PlatformCompatibility.SUPPORTED,  # Illumina NextSeq 500 (single-cell)
+    # === UNSUPPORTED MICROARRAY PLATFORMS ===
+    # Affymetrix arrays
+    "GPL570": PlatformCompatibility.UNSUPPORTED,  # Affymetrix U133 Plus 2.0
+    "GPL96": PlatformCompatibility.UNSUPPORTED,  # Affymetrix U133A
+    "GPL97": PlatformCompatibility.UNSUPPORTED,  # Affymetrix U133B
+    "GPL571": PlatformCompatibility.UNSUPPORTED,  # Affymetrix U133 A 2.0
+    "GPL1352": PlatformCompatibility.UNSUPPORTED,  # Affymetrix U133 A2
+    "GPL6244": PlatformCompatibility.UNSUPPORTED,  # Affymetrix Gene 1.0 ST
+    "GPL6246": PlatformCompatibility.UNSUPPORTED,  # Affymetrix Mouse Gene 1.0 ST
+    "GPL6247": PlatformCompatibility.UNSUPPORTED,  # Affymetrix Rat Gene 1.0 ST
+    "GPL91": PlatformCompatibility.UNSUPPORTED,  # Affymetrix Mu11KsubA
+    "GPL92": PlatformCompatibility.UNSUPPORTED,  # Affymetrix Mu11KsubB
+    "GPL339": PlatformCompatibility.UNSUPPORTED,  # Affymetrix MOE430A
+    "GPL340": PlatformCompatibility.UNSUPPORTED,  # Affymetrix MOE430B
+    "GPL8321": PlatformCompatibility.UNSUPPORTED,  # Affymetrix Mouse Genome 430A 2.0
+    "GPL1261": PlatformCompatibility.UNSUPPORTED,  # Affymetrix Mouse Genome 430 2.0
+    # Illumina BeadArray (microarray, NOT RNA-seq)
+    "GPL10558": PlatformCompatibility.UNSUPPORTED,  # Illumina HumanHT-12 V4.0
+    "GPL6947": PlatformCompatibility.UNSUPPORTED,  # Illumina HumanHT-12 V3.0
+    "GPL6883": PlatformCompatibility.UNSUPPORTED,  # Illumina HumanRef-8 V3.0
+    "GPL6887": PlatformCompatibility.UNSUPPORTED,  # Illumina MouseRef-8 V2.0
+    "GPL6885": PlatformCompatibility.UNSUPPORTED,  # Illumina MouseRef-8 V1.1
+    "GPL6102": PlatformCompatibility.UNSUPPORTED,  # Illumina human-6 V2.0
+    "GPL6104": PlatformCompatibility.UNSUPPORTED,  # Illumina mouse Ref-8 V2.0
+    # Agilent microarrays
+    "GPL6480": PlatformCompatibility.UNSUPPORTED,  # Agilent-014850
+    "GPL13497": PlatformCompatibility.UNSUPPORTED,  # Agilent-026652
+    "GPL17077": PlatformCompatibility.UNSUPPORTED,  # Agilent-039494
+    "GPL4133": PlatformCompatibility.UNSUPPORTED,  # Agilent-014850 Whole Human Genome
+    "GPL1708": PlatformCompatibility.UNSUPPORTED,  # Agilent-012391 Whole Human Genome
+    "GPL7202": PlatformCompatibility.UNSUPPORTED,  # Agilent-014868 Whole Mouse Genome
+    # Other microarray platforms
+    "GPL91": PlatformCompatibility.UNSUPPORTED,  # Affymetrix Murine Genome U74Av2
+    "GPL341": PlatformCompatibility.UNSUPPORTED,  # Affymetrix RG_U34A
+    "GPL85": PlatformCompatibility.UNSUPPORTED,  # Affymetrix RG_U34B
+    "GPL1355": PlatformCompatibility.UNSUPPORTED,  # Affymetrix Rat Genome 230 2.0
+}
+
+# Keyword patterns for unknown platform detection
+UNSUPPORTED_KEYWORDS = [
+    "affymetrix",
+    "agilent",
+    "beadarray",
+    "beadchip",
+    "genechip",
+    "microarray",
+    "array",
+    "snp chip",
+    "exon array",
+    "gene chip",
+]
+
+SUPPORTED_KEYWORDS = [
+    "rna-seq",
+    "rnaseq",
+    "rna seq",
+    "illumina hiseq",
+    "illumina nextseq",
+    "illumina novaseq",
+    "10x",
+    "chromium",
+    "single cell",
+    "single-cell",
+    "sequencing",
+]
 
 
 # ████████████████████████████████████████████████████████████████████████████████
@@ -346,6 +447,12 @@ class GEOService:
             # Handle GSE identifiers (existing logic)
             return self._fetch_gse_metadata(clean_geo_id)
 
+        except UnsupportedPlatformError:
+            # Re-raise platform errors - they should be handled by caller
+            raise
+        except FeatureNotImplementedError:
+            # Re-raise modality errors - they should be handled by caller
+            raise
         except Exception as e:
             logger.exception(f"Error fetching metadata for {geo_id}: {e}")
             return f"Error fetching metadata for {geo_id}: {str(e)}"
@@ -383,8 +490,33 @@ class GEOService:
             # Validate metadata against transcriptomics schema
             validation_result = self._validate_geo_metadata(metadata)
 
+            # Check platform compatibility BEFORE downloading files (Phase 2: Early Validation)
+            try:
+                is_compatible, compat_message = self._check_platform_compatibility(
+                    gse_id, metadata
+                )
+                logger.info(f"Platform validation for {gse_id}: {compat_message}")
+            except UnsupportedPlatformError as e:
+                # Store metadata and error for supervisor access, then re-raise
+                self.data_manager.metadata_store[gse_id] = {
+                    "metadata": metadata,
+                    "validation_result": validation_result,
+                    "platform_error": str(e),
+                    "platform_details": e.details,
+                }
+                logger.error(
+                    f"Platform validation failed for {gse_id}: {e.details['detected_platforms']}"
+                )
+                raise
+
             return metadata, validation_result
 
+        except UnsupportedPlatformError:
+            # Re-raise platform errors without catching them
+            raise
+        except FeatureNotImplementedError:
+            # Re-raise modality errors without catching them
+            raise
         except Exception as geoparse_error:
             logger.error(f"GEOparse metadata fetch failed: {geoparse_error}")
             return f"Failed to fetch metadata for {gse_id}. GEOparse ({geoparse_error}) failed."
@@ -468,6 +600,9 @@ class GEOService:
 
             return enhanced_metadata, validation_result
 
+        except UnsupportedPlatformError:
+            # Re-raise platform errors - they should be handled by caller
+            raise
         except urllib.error.URLError as e:
             logger.error(f"Network error fetching GDS metadata: {e}")
             return f"Network error fetching GDS metadata for {gds_id}: {str(e)}"
@@ -571,6 +706,33 @@ class GEOService:
                 metadata_result = self.fetch_metadata_only(clean_geo_id)
                 if "Error" in metadata_result:
                     return f"Failed to fetch metadata: {metadata_result}"
+
+            # Safety check: Verify platform compatibility (Phase 2: Early Validation)
+            stored_metadata = self.data_manager.metadata_store.get(clean_geo_id)
+            if stored_metadata:
+                # Check if platform error was previously detected
+                if "platform_error" in stored_metadata:
+                    logger.error(
+                        f"Cannot download {clean_geo_id} - platform validation failed previously"
+                    )
+                    raise UnsupportedPlatformError(
+                        message=stored_metadata["platform_error"],
+                        details=stored_metadata["platform_details"],
+                    )
+
+                # Validate platform compatibility if not done yet
+                metadata_dict = stored_metadata.get("metadata", {})
+                if metadata_dict:
+                    try:
+                        is_compatible, compat_message = self._check_platform_compatibility(
+                            clean_geo_id, metadata_dict
+                        )
+                        logger.info(
+                            f"Platform re-validation for {clean_geo_id}: {compat_message}"
+                        )
+                    except UnsupportedPlatformError:
+                        # Already logged and stored by _check_platform_compatibility
+                        raise
 
             # Check if modality already exists in DataManagerV2
             modality_name = f"geo_{clean_geo_id.lower()}_{adapter}"
@@ -1335,6 +1497,238 @@ The dataset is now available as modality '{modality_name}' for other agents to u
     # ██                   METADATA AND VALIDATION UTILITIES                       ██
     # ██                                                                            ██
     # ████████████████████████████████████████████████████████████████████████████████
+
+    def _check_platform_compatibility(
+        self, geo_id: str, metadata: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        """
+        Check if dataset platform is supported before downloading files.
+
+        Performs multi-level platform detection:
+        1. Series-level platforms (most common)
+        2. Sample-level platforms (for mixed-platform datasets)
+        3. Keyword matching for unknown platforms
+
+        Args:
+            geo_id: GEO series identifier
+            metadata: Parsed SOFT file metadata from _extract_metadata()
+
+        Returns:
+            Tuple of (is_compatible, message):
+                - is_compatible: True if platform is supported or unknown
+                - message: Human-readable explanation
+
+        Raises:
+            UnsupportedPlatformError: If platform is explicitly unsupported (microarray)
+        """
+        # Extract platform information at series level
+        series_platforms = metadata.get("platforms", {})
+
+        # Extract platform information at sample level
+        # metadata["samples"] is a dict: {gsm_id: {metadata...}}
+        sample_platforms = {}
+        samples_dict = metadata.get("samples", {})
+        if isinstance(samples_dict, dict):
+            for gsm_id, sample_meta in samples_dict.items():
+                platform_id = sample_meta.get("platform_id")
+                if platform_id:
+                    sample_platforms.setdefault(platform_id, []).append(gsm_id)
+
+        # Combine both levels
+        all_platforms = {}
+        for platform_id, platform_data in series_platforms.items():
+            all_platforms[platform_id] = {
+                "title": platform_data.get("title", ""),
+                "level": "series",
+                "samples": sample_platforms.get(platform_id, []),
+            }
+
+        # Add sample-only platforms
+        for platform_id, samples in sample_platforms.items():
+            if platform_id not in all_platforms:
+                all_platforms[platform_id] = {
+                    "title": f"Platform {platform_id}",
+                    "level": "sample",
+                    "samples": samples,
+                }
+
+        if not all_platforms:
+            logger.warning(f"No platform information found for {geo_id}")
+            return True, "No platform information available - proceeding with caution"
+
+        # Classify platforms
+        unsupported_platforms = []
+        supported_platforms = []
+        experimental_platforms = []
+        unknown_platforms = []
+
+        for platform_id, platform_info in all_platforms.items():
+            platform_title = platform_info.get("title", "").lower()
+
+            # Check registry
+            if platform_id in PLATFORM_REGISTRY:
+                status = PLATFORM_REGISTRY[platform_id]
+
+                if status == PlatformCompatibility.UNSUPPORTED:
+                    unsupported_platforms.append((platform_id, platform_info))
+                elif status == PlatformCompatibility.SUPPORTED:
+                    supported_platforms.append((platform_id, platform_info))
+                elif status == PlatformCompatibility.EXPERIMENTAL:
+                    experimental_platforms.append((platform_id, platform_info))
+            else:
+                # Unknown platform - use keyword matching
+                if any(kw in platform_title for kw in UNSUPPORTED_KEYWORDS):
+                    unsupported_platforms.append((platform_id, platform_info))
+                elif any(kw in platform_title for kw in SUPPORTED_KEYWORDS):
+                    supported_platforms.append((platform_id, platform_info))
+                else:
+                    unknown_platforms.append((platform_id, platform_info))
+
+        # Decision logic: Reject if ANY samples use unsupported platforms
+        # (unless they also have supported platform data)
+        if unsupported_platforms:
+            # Check if this is a mixed dataset
+            if supported_platforms:
+                logger.warning(
+                    f"{geo_id} has BOTH supported and unsupported platforms. "
+                    f"Will attempt to load supported samples only."
+                )
+                return (
+                    True,
+                    f"Mixed platform dataset - will filter to supported samples",
+                )
+
+            # Pure unsupported dataset - reject
+            platform_list = "\n".join(
+                [
+                    f"  - {pid}: {info['title']} (level: {info['level']}, samples: {len(info.get('samples', []))})"
+                    for pid, info in unsupported_platforms
+                ]
+            )
+
+            raise UnsupportedPlatformError(
+                message=f"Dataset {geo_id} uses unsupported platform(s)",
+                details={
+                    "geo_id": geo_id,
+                    "unsupported_platforms": [
+                        (pid, info["title"]) for pid, info in unsupported_platforms
+                    ],
+                    "platform_type": "microarray",
+                    "explanation": (
+                        "This dataset appears to use microarray platform(s), which are not "
+                        "currently supported by Lobster. Lobster is designed for RNA-seq data "
+                        "(bulk or single-cell) and proteomics data."
+                    ),
+                    "detected_platforms": platform_list,
+                    "suggestions": [
+                        "Search for RNA-seq version of this experiment",
+                        "Use RNA-seq platforms: Illumina HiSeq, NextSeq, NovaSeq",
+                        "Use single-cell platforms: 10X Chromium, Smart-seq",
+                        f"Check if {geo_id} has supplementary RNA-seq files",
+                    ],
+                },
+            )
+
+        # Handle experimental platforms
+        if experimental_platforms:
+            platform_list = ", ".join([pid for pid, _ in experimental_platforms])
+            logger.warning(
+                f"{geo_id} uses experimental platform(s): {platform_list}. "
+                f"Analysis may require manual validation."
+            )
+            return True, f"Experimental platform detected - proceed with validation"
+
+        # Handle unknown platforms conservatively
+        if unknown_platforms and not supported_platforms:
+            platform_list = ", ".join([pid for pid, _ in unknown_platforms])
+            logger.warning(
+                f"{geo_id} has unknown platform(s): {platform_list}. "
+                f"Will attempt loading but recommend validation."
+            )
+            return True, f"Unknown platform - will attempt loading"
+
+        # All platforms supported (GPL registry check passed)
+        platform_list = ", ".join([pid for pid, _ in supported_platforms])
+        logger.info(
+            f"GPL registry check passed for {geo_id}: {platform_list}"
+        )
+
+        # === TIER 2: LLM MODALITY DETECTION (Phase 2.1) ===
+        logger.info(f"Running LLM modality detection for {geo_id}...")
+
+        # Initialize DataExpertAssistant (lazy initialization pattern)
+        if not hasattr(self, "_data_expert_assistant"):
+            self._data_expert_assistant = DataExpertAssistant()
+
+        # Call LLM to detect modality
+        modality_result = self._data_expert_assistant.detect_modality(
+            metadata, geo_id
+        )
+
+        if modality_result is None:
+            # LLM analysis failed - fall back to permissive mode with warning
+            logger.warning(
+                f"LLM modality detection failed for {geo_id}. "
+                f"Proceeding with permissive mode (may cause issues with multi-omics data)."
+            )
+            return True, "LLM modality detection unavailable - proceeding with caution"
+
+        # Log detection results
+        logger.info(
+            f"Modality detected: {modality_result.modality} "
+            f"(confidence: {modality_result.confidence:.2f}, "
+            f"supported: {modality_result.is_supported})"
+        )
+
+        # Store modality in metadata for downstream use
+        if hasattr(self, "data_manager") and hasattr(
+            self.data_manager, "metadata_store"
+        ):
+            # Initialize metadata_store entry with full GEO metadata if not present
+            if geo_id not in self.data_manager.metadata_store:
+                # Store the full metadata dict from GEOparse
+                self.data_manager.metadata_store[geo_id] = metadata.copy()
+
+            # Add/update modality detection results
+            self.data_manager.metadata_store[geo_id]["modality_detection"] = {
+                "modality": modality_result.modality,
+                "confidence": modality_result.confidence,
+                "detected_signals": modality_result.detected_signals,
+                "timestamp": pd.Timestamp.now().isoformat(),
+            }
+
+        # Decision: Reject unsupported modalities
+        if not modality_result.is_supported:
+            # Format detected signals for error message
+            signals_display = "\n".join(
+                [
+                    f"  - {signal}"
+                    for signal in modality_result.detected_signals[:5]
+                ]
+            )
+            if len(modality_result.detected_signals) > 5:
+                signals_display += f"\n  ... and {len(modality_result.detected_signals) - 5} more signals"
+
+            raise FeatureNotImplementedError(
+                message=f"Dataset {geo_id} uses unsupported sequencing modality: {modality_result.modality}",
+                details={
+                    "geo_id": geo_id,
+                    "modality": modality_result.modality,
+                    "confidence": modality_result.confidence,
+                    "detected_signals": modality_result.detected_signals,
+                    "explanation": modality_result.compatibility_reason,
+                    "current_workaround": (
+                        f"Lobster v2.3 currently supports bulk RNA-seq, 10X single-cell, and Smart-seq2. "
+                        f"Support for {modality_result.modality} is planned for future releases."
+                    ),
+                    "suggestions": modality_result.suggestions,
+                    "estimated_implementation": "Planned for Lobster v2.6-v2.8 depending on modality",
+                    "detected_signals_formatted": signals_display,
+                },
+            )
+
+        # Supported modality - return success with modality info
+        return True, f"Modality compatible: {modality_result.modality} (confidence: {modality_result.confidence:.0%})"
 
     def _extract_metadata(self, gse) -> Dict[str, Any]:
         """

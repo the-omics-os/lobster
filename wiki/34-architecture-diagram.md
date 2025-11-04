@@ -225,11 +225,17 @@ graph TB
     %% Agents Layer
     subgraph "AI Agents - Dynamically Loaded"
         DE[Data Expert<br/>🔄 Data Loading & Management]
-        RA[Research Agent<br/>🔍 Literature Discovery & Dataset ID]
-        ME[Method Expert<br/>⚙️ Computational Parameter Extraction]
-        TE[Transcriptomics Expert<br/>🧬 RNA-seq Analysis]
-        MSPE[MS Proteomics Expert<br/>🔬 Mass Spectrometry Analysis<br/>DDA/DIA Workflows & Missing Values]
-        APPE[Affinity Proteomics Expert<br/>🎯 Targeted Panel Analysis<br/>Olink & Antibody Arrays]
+        RA[Research Agent<br/>🔍 Literature Discovery & Dataset ID<br/>📄 Method Extraction from Publications]
+        SCE[Single-Cell Expert<br/>🧬 scRNA-seq Analysis & Clustering]
+        BRE[Bulk RNA-seq Expert<br/>📊 Differential Expression Analysis]
+        MLE[ML Expert<br/>🤖 Machine Learning & scVI]
+        VIZ[Visualization Expert<br/>📈 Publication-Quality Plots]
+    end
+
+    %% Proteomics Agents (Under Development - Currently Disabled)
+    subgraph "Proteomics Agents - Under Development"
+        MSPE[MS Proteomics Expert<br/>🔬 Mass Spectrometry Analysis]:::disabled
+        APPE[Affinity Proteomics Expert<br/>🎯 Targeted Panel Analysis]:::disabled
     end
 
     %% NEW: Analysis Services Layer (Stateless)
@@ -258,8 +264,13 @@ graph TB
         end
     end
 
-    %% NEW: Publication Services Layer
+    %% NEW: Publication Services Layer (Two-Tier Architecture)
     subgraph "Publication & Literature Services"
+        UNIFIED_SVC[UnifiedContentService<br/>🎯 Two-Tier Coordinator]:::coordinator
+        ABSTRACT_PROV[AbstractProvider<br/>⚡ Tier 1: Fast Abstracts]:::tier1
+        WEBPAGE_PROV[WebpageProvider<br/>🌐 Tier 2: Webpage-First]:::tier2
+        DOCLING_SVC[DoclingService<br/>📄 Shared PDF/Webpage Foundation]:::foundation
+        METADATA_VAL[MetadataValidationService<br/>✅ Dataset Validation]:::service
         PUBSVC[PublicationService<br/>🎯 Multi-Provider Orchestrator]
         PUBMED[PubMedProvider<br/>📚 Literature Search]
         GEOPROV[GEOProvider<br/>🧬 Direct GEO DataSets Search]
@@ -326,14 +337,26 @@ graph TB
     DE --> GEO_SVC
     RA --> PUBSVC
     RA --> GEOPROV
-    ME --> PUBSVC
-    TE --> PREP
-    TE --> QUAL
-    TE --> CLUST
-    TE --> SCELL
-    TE --> PBULK
-    TE --> FORMULA
-    TE --> BULK
+
+    %% Two-tier publication access flow
+    RA --> UNIFIED_SVC
+    UNIFIED_SVC --> ABSTRACT_PROV
+    UNIFIED_SVC --> WEBPAGE_PROV
+    UNIFIED_SVC --> DOCLING_SVC
+    WEBPAGE_PROV --> DOCLING_SVC
+    ABSTRACT_PROV -.-> PUBMED
+
+    %% Single-Cell Expert connections
+    SCE --> PREP
+    SCE --> QUAL
+    SCE --> CLUST
+    SCE --> SCELL
+    SCE --> PBULK
+
+    %% Bulk RNA-seq Expert connections
+    BRE --> PREP
+    BRE --> FORMULA
+    BRE --> BULK
 
     %% Proteomics Agent to Service connections
     MSPE --> PPREP
@@ -396,9 +419,14 @@ graph TB
     classDef schema fill:#f1f8e9,stroke:#388e3c,stroke-width:2px
     classDef interface fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,stroke-dasharray: 5 5
     classDef source fill:#f5f5f5,stroke:#616161,stroke-width:1px
+    classDef tier1 fill:#90EE90,stroke:#228B22,stroke-width:3px,color:#000
+    classDef tier2 fill:#87CEEB,stroke:#4682B4,stroke-width:3px,color:#000
+    classDef coordinator fill:#FFB6C1,stroke:#C71585,stroke-width:3px,color:#000
+    classDef foundation fill:#DDA0DD,stroke:#8B008B,stroke-width:3px,color:#000
+    classDef disabled fill:#E0E0E0,stroke:#757575,stroke-width:2px,stroke-dasharray:5 5,color:#424242
 
-    class DE,RA,ME,TE,MSPE,APPE agent
-    class PREP,QUAL,CLUST,SCELL,BULK,PBULK,FORMULA,PBADAP,PUBSVC,PUBMED,GEOPROV,GEOQB service
+    class DE,RA,SCE,BRE,MLE,VIZ agent
+    class PREP,QUAL,CLUST,SCELL,BULK,PBULK,FORMULA,PBADAP,PUBSVC,PUBMED,GEOPROV,GEOQB,METADATA_VAL service
     class DM2,MODALITIES,PROV,ERROR orchestrator
     class TRA,PRA,TRSC,TRBL,PRMS,PRAF adapter
     class H5BE,MUBE backend
@@ -480,9 +508,10 @@ sequenceDiagram
 graph LR
     subgraph "Agents → DataManagerV2"
         DE[Data Expert] --> |load_modality<br/>save_modality| DM2[DataManagerV2]
-        TE[Transcriptomics Expert] --> |get_modality<br/>process_data| DM2
+        RA[Research Agent] --> |literature_context<br/>method_extraction| DM2
+        SCE[Single-Cell Expert] --> |get_modality<br/>cluster_analyze| DM2
+        BRE[Bulk RNA-seq Expert] --> |get_modality<br/>differential_expression| DM2
         PE[Proteomics Expert] --> |get_modality<br/>analyze_patterns| DM2
-        ME[Method Expert] --> |parameter_guidance| DM2
     end
 
     subgraph "DataManagerV2 → Adapters"
@@ -618,35 +647,30 @@ AGENT_REGISTRY: Dict[str, AgentConfig] = {
     'research_agent': AgentConfig(
         name='research_agent',
         display_name='Research Agent',
-        description='Handles literature discovery and dataset identification tasks',
+        description='Handles literature discovery, dataset identification, and method extraction from publications. Replaces deprecated method_expert_agent.',
         factory_function='lobster.agents.research_agent.research_agent',
         handoff_tool_name='handoff_to_research_agent',
-        handoff_tool_description='Assign literature search and dataset discovery tasks to the research agent'
+        handoff_tool_description='Assign literature search, dataset discovery, PDF extraction, and method extraction tasks to the research agent'
     ),
-    'method_expert_agent': AgentConfig(
-        name='method_expert_agent',
-        display_name='Method Expert',
-        description='Handles computational method extraction and parameter analysis from publications',
-        factory_function='lobster.agents.method_expert.method_expert',
-        handoff_tool_name='handoff_to_method_expert',
-        handoff_tool_description='Assign computational parameter extraction tasks to the method expert'
+    'machine_learning_expert_agent': AgentConfig(
+        name='machine_learning_expert_agent',
+        display_name='ML Expert',
+        description='Handles Machine Learning related tasks like transforming the data in the desired format for downstream tasks',
+        factory_function='lobster.agents.machine_learning_expert.machine_learning_expert',
+        handoff_tool_name='handoff_to_machine_learning_expert',
+        handoff_tool_description='Assign all machine learning related tasks (scVI, classification etc) to the machine learning expert agent'
     ),
-    'ms_proteomics_expert_agent': AgentConfig(
-        name='ms_proteomics_expert_agent',
-        display_name='MS Proteomics Expert',
-        description='Handles mass spectrometry proteomics data analysis including DDA/DIA workflows with database search artifact removal',
-        factory_function='lobster.agents.ms_proteomics_expert.ms_proteomics_expert',
-        handoff_tool_name='handoff_to_ms_proteomics_expert',
-        handoff_tool_description='Assign mass spectrometry proteomics analysis tasks to the MS proteomics expert'
+    'visualization_expert_agent': AgentConfig(
+        name='visualization_expert_agent',
+        display_name='Visualization Expert',
+        description='Creates publication-quality visualizations through supervisor-mediated workflows',
+        factory_function='lobster.agents.visualization_expert.visualization_expert',
+        handoff_tool_name='handoff_to_visualization_expert',
+        handoff_tool_description='Delegate visualization tasks to the visualization expert agent'
     ),
-    'affinity_proteomics_expert_agent': AgentConfig(
-        name='affinity_proteomics_expert_agent',
-        display_name='Affinity Proteomics Expert',
-        description='Handles affinity proteomics data analysis including Olink and targeted protein panels with antibody validation',
-        factory_function='lobster.agents.affinity_proteomics_expert.affinity_proteomics_expert',
-        handoff_tool_name='handoff_to_affinity_proteomics_expert',
-        handoff_tool_description='Assign affinity proteomics and targeted panel analysis tasks to the affinity proteomics expert'
-    ),
+    # Proteomics agents currently disabled (under development)
+    # 'ms_proteomics_expert_agent': AgentConfig(...),
+    # 'affinity_proteomics_expert_agent': AgentConfig(...),
 }
 ```
 
@@ -1193,14 +1217,14 @@ This architecture provides a solid foundation for professional bioinformatics an
 
 ## 🧬 Agent-Guided Formula Construction Integration
 
-### Enhanced SingleCell Expert Agent Tools
+### Enhanced Bulk RNA-seq Expert Agent Tools
 
-The `singlecell_expert` agent includes 5 new tools for conversational formula construction:
+The `bulk_rnaseq_expert` agent includes 5 new tools for conversational formula construction:
 
 ```mermaid
 graph LR
     subgraph "Agent Layer"
-        TE[Transcriptomics Expert<br/>🤖 Enhanced with Formula Tools]
+        BRE[Bulk RNA-seq Expert<br/>🤖 Enhanced with Formula Tools]
     end
 
     subgraph "New Agent Tools (5)"
@@ -1217,11 +1241,11 @@ graph LR
         BULK[BulkRNASeqService<br/>📈 pyDESeq2 Integration]
     end
 
-    TE --> T1
-    TE --> T2
-    TE --> T3
-    TE --> T4
-    TE --> T5
+    BRE --> T1
+    BRE --> T2
+    BRE --> T3
+    BRE --> T4
+    BRE --> T5
 
     T1 --> FORMULA
     T2 --> FORMULA

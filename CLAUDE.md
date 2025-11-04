@@ -111,7 +111,6 @@ The CLI (`lobster/cli.py`) features a modern terminal interface with comprehensi
 - `affinity_proteomics_expert.py` - Affinity proteomics (Olink panels, antibody validation)
 - `data_expert.py` - Data loading, quality assessment, sample concatenation
 - `research_agent.py` - Literature mining and dataset discovery
-- `method_expert.py` - Computational parameter extraction from publications
 - `supervisor.py` - Agent coordination and workflow management
 
 #### **`lobster/core/`** - Data management and client infrastructure
@@ -755,7 +754,6 @@ AGENT_REGISTRY = {
 ### Required Environment Variables
 ```bash
 # API Keys (required)
-OPENAI_API_KEY=your-openai-api-key
 AWS_BEDROCK_ACCESS_KEY=your-aws-access-key
 AWS_BEDROCK_SECRET_ACCESS_KEY=your-aws-secret-key
 

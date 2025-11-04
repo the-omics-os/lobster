@@ -148,7 +148,11 @@ class DoclingService:
 
     def _create_docling_converter(self):
         """
-        Create optimized Docling converter for scientific PDFs.
+        Create optimized Docling converter for scientific PDFs and HTML content.
+
+        Supported formats:
+        - PDF: Scientific papers with Methods sections
+        - HTML: Publisher webpages (Nature, Science, etc.)
 
         Configuration:
         - Table structure extraction: ENABLED (Methods parameters)
@@ -172,7 +176,7 @@ class DoclingService:
         pdf_options.do_ocr = False  # Start lightweight
 
         return DocumentConverter(
-            allowed_formats=[InputFormat.PDF],
+            allowed_formats=[InputFormat.PDF, InputFormat.HTML],
             format_options={
                 InputFormat.PDF: PdfFormatOption(pipeline_options=pdf_options)
             },
