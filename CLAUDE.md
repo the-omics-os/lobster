@@ -8,7 +8,7 @@ Lobster AI is a professional **multi-agent bioinformatics analysis platform** th
 
 ### Core Capabilities
 - **Single-Cell RNA-seq**: Quality control, clustering, cell type annotation, trajectory analysis, pseudobulk aggregation
-- **Bulk RNA-seq**: Differential expression with pyDESeq2, R-style formula-based statistics, complex experimental designs
+- **Bulk RNA-seq**: Kallisto/Salmon quantification loading, differential expression with pyDESeq2, R-style formula-based statistics, complex experimental designs
 - **Mass Spectrometry Proteomics**: DDA/DIA workflows, missing value handling (30-70% typical), peptide-to-protein mapping, intensity normalization
 - **Affinity Proteomics**: Olink panels, antibody arrays, targeted protein panels, CV analysis, low missing values (<30%)
 - **Multi-Omics Integration**: (Future feature) Cross-platform analysis using MuData framework
@@ -16,7 +16,8 @@ Lobster AI is a professional **multi-agent bioinformatics analysis platform** th
 - **Jupyter Notebook Export**: Transform interactive sessions into reproducible, executable notebooks with Papermill integration
 
 ### Supported Data Formats
-- **Input**: CSV, Excel, H5AD, 10X MTX, MaxQuant output, Spectronaut results, Olink NPX values
+- **Input**: CSV, Excel, H5AD, 10X MTX, Kallisto/Salmon quantification files, MaxQuant output, Spectronaut results, Olink NPX values
+- **Quantification**: Kallisto (abundance.tsv), Salmon (quant.sf) with automatic per-sample merging
 - **Databases**: GEO (GSE datasets), PubMed, UniProt, Reactome, KEGG, STRING, BioGRID
 - **Storage**: H5AD (single modality), MuData (multi-modal), S3-ready backends
 
@@ -129,7 +130,7 @@ The CLI (`lobster/cli.py`) features a modern terminal interface with comprehensi
   - `quality_service.py` - Multi-metric QC assessment
   - `clustering_service.py` - Leiden clustering, UMAP, cell annotation
   - `enhanced_singlecell_service.py` - Doublet detection, marker genes
-  - `bulk_rnaseq_service.py` - pyDESeq2 differential expression
+  - `bulk_rnaseq_service.py` - pyDESeq2 differential expression, Kallisto/Salmon quantification loading
   - `pseudobulk_service.py` - Single-cell to pseudobulk aggregation
   - `differential_formula_service.py` - R-style formula parsing, design matrices
   - `concatenation_service.py` - Memory-efficient sample merging (eliminates 450+ lines of duplication)
@@ -237,6 +238,7 @@ geo_gse12345                          # Raw downloaded data
    - Pseudobulk aggregation for DE analysis
 
 2. **Bulk RNA-seq with pyDESeq2:**
+   - Kallisto/Salmon quantification file loading with automatic per-sample merging
    - Count matrix normalization
    - R-style formula construction (~condition + batch)
    - Design matrix generation
@@ -882,3 +884,11 @@ DataManagerV2 (lobster/core/data_manager_v2.py)
 - CLI Commands: Test with both `AgentClient` and mock `CloudLobsterClient`
 - Data Flow: Verify modality naming convention maintained throughout pipeline
 - Notebook Export: `pytest tests/unit/core/test_notebook_exporter.py tests/unit/core/test_notebook_executor.py tests/integration/test_notebook_workflow.py`
+
+## IMPORTANT: Sound Notification
+
+After finishing responding to my request or running a command, run this command to notify me by sound:
+
+```bash
+afplay /System/Library/Sounds/Funk.aiff
+```

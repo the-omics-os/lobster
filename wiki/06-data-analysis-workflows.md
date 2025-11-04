@@ -197,6 +197,39 @@ and find marker genes for each cluster"
 
 ### Step 1: Data Preparation
 
+#### Option A: Load Kallisto/Salmon Quantification Files (Recommended)
+
+**⚠️ NEW in v2.3+**: Use CLI `/read` command directly for quantification files.
+
+```bash
+# Load Kallisto quantification files
+/read /path/to/kallisto_output
+
+# Or load Salmon quantification files
+/read /path/to/salmon_output
+```
+
+**Expected Directory Structure**:
+```
+quantification_output/
+├── sample1/
+│   └── abundance.tsv  (Kallisto) or quant.sf (Salmon)
+├── sample2/
+│   └── abundance.tsv  (Kallisto) or quant.sf (Salmon)
+└── sample3/
+    └── abundance.tsv  (Kallisto) or quant.sf (Salmon)
+```
+
+**Features**:
+- **Direct CLI Loading**: Use `/read` command - no agent interaction needed
+- **Automatic Tool Detection**: CLI detects Kallisto vs Salmon from file patterns
+- **Per-Sample Merging**: Merges quantification from all sample subdirectories
+- **Correct Orientation**: Transposes to samples × genes (bulk RNA-seq standard)
+- **Sample Names**: Extracted from subdirectory names
+- **Quality Validation**: Verifies file integrity and consistency
+
+#### Option B: Load Count Matrix (Traditional)
+
 ```bash
 # Load count matrix
 /read counts_matrix.csv

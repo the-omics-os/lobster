@@ -88,6 +88,62 @@ AnnData object with:
 
 ### Bulk RNA-seq Formats
 
+#### Quantification File Formats (Kallisto/Salmon)
+
+**Kallisto abundance.tsv Format**
+```
+target_id	length	eff_length	est_counts	tpm
+ENST00000456328	1657	1497	0	0
+ENST00000450305	632	472	10.5	3.2
+ENST00000488147	1351	1191	125.8	15.4
+```
+
+**Directory Structure**:
+```
+quantification_directory/
+├── sample1/
+│   └── abundance.tsv
+├── sample2/
+│   └── abundance.tsv
+└── sample3/
+    └── abundance.tsv
+```
+
+**Loading Kallisto Data**:
+
+**⚠️ NEW in v2.3+**: Use CLI `/read` command directly for quantification files.
+
+```bash
+/read /path/to/kallisto_output
+```
+
+**Salmon quant.sf Format**
+```
+Name	Length	EffectiveLength	TPM	NumReads
+ENST00000456328	1657	1497.000	0.000	0.000
+ENST00000450305	632	472.000	3.215	10.500
+ENST00000488147	1351	1191.000	15.432	125.800
+```
+
+**Loading Salmon Data**:
+
+**⚠️ NEW in v2.3+**: Use CLI `/read` command directly for quantification files.
+
+```bash
+/read /path/to/salmon_output
+```
+
+**Key Features**:
+- **Automatic Tool Detection**: System detects Kallisto vs Salmon from file patterns
+- **Per-Sample Merging**: Automatically merges quantification from multiple samples
+- **Correct Orientation**: Transposes to samples × genes (bulk RNA-seq standard)
+- **Metadata Preservation**: Extracts sample names from directory structure
+- **Quality Validation**: Verifies quantification file integrity and consistency
+
+**Supported File Names**:
+- **Kallisto**: `abundance.tsv`, `abundance.h5`, `abundance.txt`
+- **Salmon**: `quant.sf`, `quant.genes.sf`
+
 #### Count Matrices
 
 **CSV/TSV Count Matrix**

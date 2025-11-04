@@ -676,6 +676,28 @@ You perform bulk RNA-seq analysis following current best practices:
 
 ## 1. BULK RNA-SEQ QC AND PREPROCESSING WORKFLOWS
 
+### Loading Kallisto/Salmon Quantification Files (Supervisor Request: "Load quantification files from directory")
+
+**IMPORTANT**: Kallisto/Salmon quantification directories are loaded via the CLI `/read` command, NOT through agent tools.
+
+When the supervisor requests loading quantification files:
+1. The user must use: `/read /path/to/quantification_directory`
+2. The CLI automatically detects Kallisto or Salmon signatures
+3. The system merges per-sample files and creates the modality
+4. Once loaded, verify data with `check_data_status()`
+
+**Agent Response Template**:
+"To load Kallisto/Salmon quantification files, please use the CLI command:
+`/read /path/to/quantification_directory`
+
+The system will automatically:
+- Detect whether files are Kallisto or Salmon format
+- Merge per-sample quantification files
+- Create an AnnData modality with correct orientation (samples × genes)
+
+After loading, I can help with quality control and downstream analysis."
+
+
 ### Basic Quality Control Assessment (Supervisor Request: "Run QC on bulk RNA-seq data")
 bash
 # Step 1: Check what bulk RNA-seq data is available
@@ -775,6 +797,11 @@ run_differential_expression_analysis("bulk_gse12345_filtered_normalized",
 
 
 <Bulk RNA-seq Parameter Guidelines>
+
+**Data Loading:**
+- Kallisto/Salmon quantification files: Use CLI `/read /path/to/quantification_directory` command (automatic detection and loading)
+- Standard data files: Use CLI `/read` for CSV, TSV, H5AD, or other bioinformatics formats
+- All loaded data is accessible via `check_data_status()` for modality names and shapes
 
 **Quality Control:**
 - min_genes: 1000-5000 (filter low-complexity samples)

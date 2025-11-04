@@ -22,6 +22,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import anndata
 import numpy as np
 import pandas as pd
 
@@ -46,6 +47,11 @@ from lobster.tools.pipeline_strategy import (
     PipelineType,
     create_pipeline_context,
 )
+
+# Import bulk RNA-seq and adapter support for quantification files
+from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
+from lobster.core.adapters.transcriptomics_adapter import TranscriptomicsAdapter
+
 from lobster.utils.logger import get_logger
 from lobster.utils.ssl_utils import create_ssl_context, handle_ssl_error
 
@@ -1242,20 +1248,29 @@ The dataset is now available as modality '{modality_name}' for other agents to u
             for archive_url in archive_files:
                 if archive_url.lower().endswith(".tar"):
                     matrix = self._process_tar_file(archive_url, geo_id)
-                    if matrix is not None and not matrix.empty:
-                        return GEOResult(
-                            data=matrix,
-                            metadata=metadata,
-                            source=GEODataSource.TAR_ARCHIVE,
-                            processing_info={
-                                "method": "archive_extraction_first",
-                                "file": archive_url.split("/")[-1],
-                                "data_type": self._determine_data_type_from_metadata(
-                                    metadata
-                                ),
-                            },
-                            success=True,
-                        )
+
+                    # Handle both DataFrame and AnnData return types
+                    if matrix is not None:
+                        is_valid = False
+                        if isinstance(matrix, pd.DataFrame):
+                            is_valid = not matrix.empty
+                        elif isinstance(matrix, anndata.AnnData):
+                            is_valid = matrix.n_obs > 0 and matrix.n_vars > 0
+
+                        if is_valid:
+                            return GEOResult(
+                                data=matrix,
+                                metadata=metadata,
+                                source=GEODataSource.TAR_ARCHIVE,
+                                processing_info={
+                                    "method": "archive_extraction_first",
+                                    "file": archive_url.split("/")[-1],
+                                    "data_type": self._determine_data_type_from_metadata(
+                                        metadata
+                                    ),
+                                },
+                                success=True,
+                            )
 
             return GEOResult(
                 success=False,
@@ -2182,9 +2197,166 @@ The actual expression data download will be much faster now that metadata is pre
     # ██                                                                            ██
     # ████████████████████████████████████████████████████████████████████████████████
 
+    def _detect_kallisto_salmon_files(
+        self,
+        supplementary_files: List[str],
+    ) -> Tuple[bool, str, List[str], int]:
+        """
+        Detect if dataset contains Kallisto/Salmon per-sample quantification files.
+
+        Args:
+            supplementary_files: List of supplementary file URLs/paths
+
+        Returns:
+            Tuple of (has_quant_files, tool_type, matched_filenames, estimated_samples):
+            - has_quant_files: True if quantification files detected
+            - tool_type: "kallisto", "salmon", or "mixed"
+            - matched_filenames: List of matching file names
+            - estimated_samples: Estimated number of samples
+        """
+        kallisto_patterns = [
+            "abundance.tsv",
+            "abundance.h5",
+            "abundance.txt",
+        ]
+
+        salmon_patterns = [
+            "quant.sf",
+            "quant.genes.sf",
+        ]
+
+        kallisto_files = []
+        salmon_files = []
+        abundance_files = []  # Track unique files for sample count
+
+        for file_path in supplementary_files:
+            # Extract just the filename from URL
+            filename = os.path.basename(file_path).lower()
+
+            # Check Kallisto patterns
+            if any(pattern in filename for pattern in kallisto_patterns):
+                kallisto_files.append(file_path)
+                if "abundance.tsv" in filename or "abundance.h5" in filename:
+                    abundance_files.append(filename)
+
+            # Check Salmon patterns
+            if any(pattern in filename for pattern in salmon_patterns):
+                salmon_files.append(file_path)
+                if "quant.sf" in filename:
+                    abundance_files.append(filename)
+
+        # Determine tool type
+        has_quant = len(kallisto_files) > 0 or len(salmon_files) > 0
+
+        if not has_quant:
+            return False, "", [], 0
+
+        if len(kallisto_files) > 0 and len(salmon_files) > 0:
+            tool_type = "mixed"
+            matched = kallisto_files + salmon_files
+        elif len(kallisto_files) > 0:
+            tool_type = "kallisto"
+            matched = kallisto_files
+        else:
+            tool_type = "salmon"
+            matched = salmon_files
+
+        # Estimate sample count (one abundance file per sample)
+        estimated_samples = len(abundance_files)
+
+        return has_quant, tool_type, matched, estimated_samples
+
+    def _load_quantification_files(
+        self,
+        quantification_dir: Path,
+        tool_type: str,
+        gse_id: str,
+        data_type: str = "bulk",
+    ) -> Optional[anndata.AnnData]:
+        """
+        Load Kallisto/Salmon quantification files into AnnData.
+
+        This method follows the same pattern as other GEO loading methods:
+        1. Merges per-sample quantification files using BulkRNASeqService
+        2. Creates AnnData using TranscriptomicsAdapter
+        3. Returns AnnData (NOT DataFrame) so download_dataset() can handle storage with correct naming
+
+        Args:
+            quantification_dir: Directory containing per-sample subdirectories
+            tool_type: "kallisto" or "salmon"
+            gse_id: GEO series ID
+            data_type: Data type for TranscriptomicsAdapter ("bulk" or "single_cell", default: "bulk")
+
+        Returns:
+            AnnData: Processed AnnData object or None if loading fails
+        """
+        try:
+            logger.info(f"Loading {tool_type} quantification files from {quantification_dir}")
+
+            # Step 1: Use bulk_rnaseq_service to merge quantification files
+            bulk_service = BulkRNASeqService()
+
+            try:
+                df, metadata = bulk_service.load_from_quantification_files(
+                    quantification_dir=quantification_dir,
+                    tool=tool_type,
+                )
+                logger.info(
+                    f"Successfully merged {metadata['n_samples']} {tool_type} samples "
+                    f"× {metadata['n_genes']} genes"
+                )
+            except Exception as e:
+                logger.error(f"Failed to merge {tool_type} files: {e}")
+                raise
+
+            # Step 2: Use TranscriptomicsAdapter to create AnnData
+            # Note: Constructor needs "bulk" but from_quantification_dataframe() needs "bulk_rnaseq"
+            adapter = TranscriptomicsAdapter(data_type=data_type)
+
+            try:
+                adata = adapter.from_quantification_dataframe(
+                    df=df,
+                    data_type="bulk_rnaseq",  # Quantification-specific data_type
+                    metadata=metadata,
+                )
+                logger.info(
+                    f"Created AnnData from quantification: "
+                    f"{adata.n_obs} samples × {adata.n_vars} genes"
+                )
+            except Exception as e:
+                logger.error(f"Failed to create AnnData from quantification: {e}")
+                raise
+
+            # Step 3: Add GEO metadata to AnnData.uns for provenance
+            adata.uns["geo_metadata"] = {
+                "geo_id": gse_id,
+                "data_source": "quantification_files",
+                "quantification_tool": tool_type,
+                "n_files_merged": metadata["n_samples"],
+            }
+
+            logger.info(
+                f"Successfully loaded {gse_id} from {tool_type} files: "
+                f"{adata.n_obs} samples × {adata.n_vars} genes"
+            )
+
+            # Step 4: Return AnnData directly (not DataFrame)
+            # Let download_dataset() handle storage with correct naming convention
+            return adata
+
+        except Exception as e:
+            logger.error(f"Error loading quantification files: {e}")
+            logger.exception("Full traceback for quantification loading error:")
+            return None
+
     def _process_supplementary_files(self, gse, gse_id: str) -> Optional[pd.DataFrame]:
         """
         Process supplementary files (TAR archives, etc.) to extract expression data.
+
+        This method now supports:
+        - Kallisto/Salmon quantification files (new in Phase 3)
+        - TAR archives
+        - Direct expression files
 
         Args:
             gse: GEOparse GSE object
@@ -2203,6 +2375,47 @@ The actual expression data download will be much faster now that metadata is pre
                 suppl_files = [suppl_files]
 
             logger.debug(f"Found {len(suppl_files)} supplementary files for {gse_id}")
+
+            # STEP 1: Check for Kallisto/Salmon quantification files FIRST
+            has_quant, tool_type, quant_filenames, estimated_samples = \
+                self._detect_kallisto_salmon_files(suppl_files)
+
+            if has_quant:
+                logger.info(
+                    f"{gse_id}: Detected {tool_type} quantification files "
+                    f"({estimated_samples} estimated samples)"
+                )
+
+                # STEP 2: Check for pre-merged matrix files as alternative
+                matrix_files = [
+                    f for f in suppl_files
+                    if any(ext in f.lower() for ext in [
+                        "_matrix.txt", "_counts.txt", "_expression.txt",
+                        ".h5ad", "_tpm.txt", "_fpkm.txt"
+                    ])
+                ]
+
+                if matrix_files:
+                    logger.info(
+                        f"{gse_id}: Found {len(matrix_files)} pre-merged matrix files "
+                        f"alongside quantification. Using matrix files (faster loading)."
+                    )
+                    # Process matrix files normally - fall through to existing logic below
+                else:
+                    # STEP 3: Route to quantification file handler
+                    logger.info(
+                        f"{gse_id}: No pre-merged matrix found. "
+                        f"Loading {tool_type} quantification files..."
+                    )
+
+                    # This will be handled by the new _load_quantification_files method
+                    # For now, we need to return a signal that quantification files were found
+                    # The actual loading will happen in the download_dataset method
+                    logger.info(
+                        f"{gse_id}: Quantification file loading requires TAR extraction. "
+                        f"Proceeding with TAR file processing."
+                    )
+                    # Fall through to TAR processing
 
             # Look for TAR files first (most common for expression data)
             tar_files = [f for f in suppl_files if f.lower().endswith(".tar")]
@@ -2234,16 +2447,20 @@ The actual expression data download will be much faster now that metadata is pre
             logger.error(f"Error processing supplementary files: {e}")
             return None
 
-    def _process_tar_file(self, tar_url: str, gse_id: str) -> Optional[pd.DataFrame]:
+    def _process_tar_file(self, tar_url: str, gse_id: str) -> Optional[Union[pd.DataFrame, anndata.AnnData]]:
         """
         Download and process a TAR file containing expression data.
+
+        This method can return either DataFrame or AnnData depending on the data source:
+        - Quantification files (Kallisto/Salmon): Returns AnnData directly
+        - Other expression files: Returns DataFrame for adapter processing
 
         Args:
             tar_url: URL to TAR file
             gse_id: GEO series ID
 
         Returns:
-            DataFrame: Combined expression matrix or None
+            Union[DataFrame, AnnData]: Expression data or None if processing fails
         """
         try:
             # Download TAR file
@@ -2280,7 +2497,54 @@ The actual expression data download will be much faster now that metadata is pre
 
                 logger.debug(f"Extracted {len(safe_members)} files from TAR")
 
-            # Process nested archives and find expression data
+            # STEP 1: Check for Kallisto/Salmon quantification files in extracted directory
+            try:
+                logger.debug(f"Checking for quantification files in {extract_dir}")
+
+                # Use BulkRNASeqService to detect quantification tool
+                bulk_service = BulkRNASeqService()
+                tool_type = bulk_service._detect_quantification_tool(extract_dir)
+
+                logger.info(
+                    f"{gse_id}: Detected {tool_type} quantification files in TAR archive"
+                )
+
+                # Load quantification files using the new loader
+                # Returns AnnData (not DataFrame) for consistent handling
+                adata_result = self._load_quantification_files(
+                    quantification_dir=extract_dir,
+                    tool_type=tool_type,
+                    gse_id=gse_id,
+                    data_type="bulk",
+                )
+
+                if adata_result is not None:
+                    logger.info(
+                        f"{gse_id}: Successfully loaded quantification files: "
+                        f"{adata_result.n_obs} samples × {adata_result.n_vars} genes"
+                    )
+                    # Return the AnnData directly (GEOResult will handle it)
+                    return adata_result
+                else:
+                    logger.warning(
+                        f"{gse_id}: Quantification file loading returned None, "
+                        f"falling back to standard processing"
+                    )
+
+            except ValueError as e:
+                # No quantification files detected - this is expected for most datasets
+                logger.debug(
+                    f"{gse_id}: No quantification files detected in TAR: {e}. "
+                    f"Continuing with standard TAR processing."
+                )
+            except Exception as e:
+                # Unexpected error during quantification loading
+                logger.warning(
+                    f"{gse_id}: Error during quantification file detection/loading: {e}. "
+                    f"Falling back to standard TAR processing."
+                )
+
+            # STEP 2: Process nested archives and find expression data (existing logic)
             nested_extract_dir = self.cache_dir / f"{gse_id}_nested_extracted"
             nested_extract_dir.mkdir(exist_ok=True)
 

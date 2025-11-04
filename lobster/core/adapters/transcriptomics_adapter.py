@@ -152,6 +152,86 @@ class TranscriptomicsAdapter(BaseAdapter):
             self.logger.error(f"Failed to load transcriptomics data from {source}: {e}")
             raise
 
+    def from_quantification_dataframe(
+        self,
+        df: pd.DataFrame,
+        data_type: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        transpose: Optional[bool] = None,
+    ) -> anndata.AnnData:
+        """
+        Create AnnData from quantification tool output (Kallisto/Salmon).
+
+        Quantification files have specific structure:
+        - Rows: Genes/transcripts
+        - Columns: Samples
+        - Values: TPM, counts, or estimated counts
+
+        Args:
+            df: Expression matrix from merge_kallisto_results or merge_salmon_results
+            data_type: "bulk_rnaseq" (required - quantification is always bulk)
+            metadata: Metadata dict from quantification loader
+            transpose: Optional explicit transpose (default: use data_type logic)
+
+        Returns:
+            AnnData object with correct orientation (samples × genes)
+
+        Example:
+            >>> df, meta = bulk_service.merge_kallisto_results(Path("GSE130036_RAW/"))
+            >>> adata = adapter.from_quantification_dataframe(df, "bulk_rnaseq", meta)
+            >>> print(adata.shape)  # (4 samples, 60000 genes)
+
+        Raises:
+            ValueError: If data_type is not bulk_rnaseq
+        """
+        if data_type != "bulk_rnaseq":
+            raise ValueError(
+                "Quantification files are always bulk RNA-seq. "
+                f"Got data_type='{data_type}', expected 'bulk_rnaseq'"
+            )
+
+        # Quantification files are ALWAYS genes (rows) × samples (columns)
+        # We need samples (rows) × genes (columns) for AnnData
+        n_rows, n_cols = df.shape
+
+        logger.info(
+            f"Quantification matrix loaded: {n_rows} genes × {n_cols} samples "
+            f"(will transpose to samples × genes)"
+        )
+
+        # ALWAYS transpose quantification files (format requirement, not heuristic)
+        df_transposed = df.T
+
+        # Create AnnData
+        adata = anndata.AnnData(
+            X=df_transposed.values,
+            obs=pd.DataFrame(index=df_transposed.index),
+            var=pd.DataFrame(index=df_transposed.columns),
+        )
+
+        # Add quantification metadata to uns
+        if metadata:
+            adata.uns["quantification_metadata"] = metadata
+
+        # Store transpose decision
+        adata.uns["transpose_info"] = {
+            "transpose_applied": True,
+            "transpose_reason": f"{metadata.get('quantification_tool', 'Quantification')} format specification (genes × samples)",
+            "original_shape": (n_rows, n_cols),
+            "final_shape": adata.shape,
+            "data_type": data_type,
+            "format_specific": True,  # Not heuristic
+        }
+
+        # Validate orientation
+        self._validate_bulk_orientation(adata)
+
+        logger.info(
+            f"Created AnnData from quantification: {adata.n_obs} samples × {adata.n_vars} genes"
+        )
+
+        return adata
+
     def _load_from_file(self, path: Union[str, Path], **kwargs) -> anndata.AnnData:
         """Load data from file with format detection."""
         path = Path(path)
@@ -580,3 +660,112 @@ class TranscriptomicsAdapter(BaseAdapter):
 
         # If unclear, return the current setting
         return self.data_type
+
+    def _validate_bulk_orientation(self, adata: anndata.AnnData) -> None:
+        """
+        Validate that bulk RNA-seq data has correct orientation.
+
+        Args:
+            adata: AnnData object to validate
+
+        Logs warnings if orientation appears incorrect.
+        """
+        if adata.n_obs > 1000:
+            logger.warning(
+                f"Bulk RNA-seq has {adata.n_obs} observations (samples). "
+                f"Expected <500 samples. Check orientation."
+            )
+
+        if adata.n_vars < 1000:
+            logger.warning(
+                f"Bulk RNA-seq has only {adata.n_vars} genes. "
+                f"Expected >10,000. Check for over-filtering or orientation issues."
+            )
+
+        if adata.n_obs > adata.n_vars:
+            logger.error(
+                f"CRITICAL: Bulk RNA-seq has more observations ({adata.n_obs}) "
+                f"than variables ({adata.n_vars}). This is likely incorrect orientation."
+            )
+
+    def _should_transpose_matrix(
+        self,
+        df: pd.DataFrame,
+        data_type: Optional[str],
+        format_type: str,
+    ) -> tuple:
+        """
+        Determine if matrix needs transpose based on data type and format.
+
+        Transpose Decision Priority:
+        1. Format-specific rules (10X, MTX, SOFT, quantification)
+        2. Data type inference (bulk vs single-cell with shape validation)
+        3. Conservative fallback (only if clearly wrong)
+
+        Args:
+            df: Input DataFrame
+            data_type: "bulk_rnaseq", "singlecell_rnaseq", or None
+            format_type: "10x", "mtx", "soft", "quantification", "csv", etc.
+
+        Returns:
+            Tuple of (should_transpose, reason)
+        """
+        n_rows, n_cols = df.shape
+
+        # Priority 1: Format-specific rules (ALWAYS apply)
+        if format_type in ["10x", "mtx", "matrix_market"]:
+            return True, f"{format_type} format specification: genes × cells"
+
+        if format_type == "soft":
+            return True, "GEO SOFT format specification: genes × samples"
+
+        if format_type == "quantification":
+            return True, "Quantification format specification: genes × samples"
+
+        # Priority 2: Data type-based rules (intelligent inference)
+        if data_type == "bulk_rnaseq":
+            # Bulk RNA-seq: samples (10-200) × genes (20k-60k)
+            # If many columns and few rows, likely genes × samples → transpose
+            if n_cols > 5000 and n_rows < 500:
+                return True, (
+                    f"Bulk RNA-seq with shape {n_rows}×{n_cols} appears to be "
+                    f"genes ({n_cols}) × samples ({n_rows})"
+                )
+            elif n_rows < 500 and n_cols < 5000:
+                # Ambiguous: small matrix
+                logger.warning(
+                    f"Ambiguous bulk RNA-seq shape: {n_rows}×{n_cols}. "
+                    f"Expected >5000 genes. Defaulting to no transpose."
+                )
+                return False, f"Ambiguous bulk shape {n_rows}×{n_cols}, assuming samples × genes"
+            else:
+                return False, f"Bulk RNA-seq shape {n_rows}×{n_cols} appears correct (samples × genes)"
+
+        elif data_type == "singlecell_rnaseq":
+            # Single-cell: cells (100-100k) × genes (5k-30k)
+            if n_cols > 3000 and n_rows < 5000:
+                return True, (
+                    f"Single-cell with shape {n_rows}×{n_cols} appears to be "
+                    f"genes ({n_cols}) × cells ({n_rows})"
+                )
+            elif n_rows > 10000 and n_cols < 50000:
+                return False, f"Single-cell shape {n_rows}×{n_cols} appears correct (cells × genes)"
+            else:
+                # Ambiguous: use conservative heuristic
+                should_transpose = n_cols > n_rows
+                return should_transpose, (
+                    f"Single-cell shape {n_rows}×{n_cols} ambiguous, "
+                    f"using shape heuristic: {'transpose' if should_transpose else 'no transpose'}"
+                )
+
+        # Priority 3: Conservative fallback (data type unknown)
+        if n_cols > 10000 and n_rows < 1000:
+            return True, (
+                f"Shape {n_rows}×{n_cols} strongly suggests genes ({n_cols}) as columns. "
+                f"Consider specifying data_type for more accurate detection."
+            )
+        else:
+            return False, (
+                f"Shape {n_rows}×{n_cols} ambiguous and data_type not specified. "
+                f"Defaulting to no transpose. Use data_type parameter for better accuracy."
+            )

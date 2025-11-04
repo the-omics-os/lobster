@@ -2008,6 +2008,57 @@ def _execute_command(cmd: str, client: AgentClient) -> Optional[str]:
                       or None if command should not be logged to history.
     """
 
+    # -------------------------------------------------------------------------
+    # Helper function for quantification directory detection
+    # -------------------------------------------------------------------------
+    def _is_quantification_directory(path: Path) -> Optional[str]:
+        """
+        Detect if directory contains Kallisto or Salmon quantification files.
+
+        Args:
+            path: Path object to check
+
+        Returns:
+            Tool type ('kallisto' or 'salmon') if quantification directory, None otherwise
+
+        Detection criteria:
+        - Kallisto: Looks for abundance.tsv, abundance.h5, or abundance.txt files
+        - Salmon: Looks for quant.sf or quant.genes.sf files
+        - Requires at least 2 sample subdirectories to avoid false positives
+        """
+        if not path.is_dir():
+            return None
+
+        kallisto_count = 0
+        salmon_count = 0
+
+        try:
+            for subdir in path.iterdir():
+                if not subdir.is_dir():
+                    continue
+
+                # Check for Kallisto signatures
+                if (subdir / "abundance.tsv").exists() or \
+                   (subdir / "abundance.h5").exists() or \
+                   (subdir / "abundance.txt").exists():
+                    kallisto_count += 1
+
+                # Check for Salmon signatures
+                if (subdir / "quant.sf").exists() or \
+                   (subdir / "quant.genes.sf").exists():
+                    salmon_count += 1
+        except (PermissionError, OSError):
+            return None
+
+        # Require at least 2 samples to identify as quantification directory
+        # This avoids false positives from directories with only 1 sample
+        if kallisto_count >= 2:
+            return "kallisto"
+        elif salmon_count >= 2:
+            return "salmon"
+
+        return None
+
     if cmd == "/help":
         help_text = f"""[bold white]Available Commands:[/bold white]
 
@@ -2356,6 +2407,53 @@ when they are started by agents or analysis workflows.
 
     elif cmd.startswith("/read "):
         filename = cmd[6:].strip()
+
+        # Convert to Path object for directory checking
+        file_path = Path(filename) if Path(filename).is_absolute() else current_directory / filename
+
+        # Check if this is a quantification directory BEFORE checking glob patterns
+        tool_type = _is_quantification_directory(file_path)
+        if tool_type:
+            # This is a Kallisto or Salmon quantification directory
+            console.print(f"[cyan]🧬 Detected {tool_type.title()} quantification directory[/cyan]")
+            console.print(f"[dim]Loading quantification files from: {file_path}[/dim]\n")
+
+            try:
+                with create_progress(client_arg=client) as progress:
+                    task = progress.add_task(
+                        f"[cyan]Loading {tool_type.title()} quantification files...",
+                        total=None
+                    )
+
+                    # Route to client method for quantification loading
+                    load_result = client.load_quantification_directory(
+                        directory_path=str(file_path),
+                        tool_type=tool_type
+                    )
+
+                    progress.remove_task(task)
+
+                # Display results
+                if load_result["success"]:
+                    console.print(f"[green]✅ {load_result['message']}[/green]\n")
+                    console.print(f"[cyan]📊 Data Summary:[/cyan]")
+                    console.print(f"  • Modality: [bold]{load_result['modality_name']}[/bold]")
+                    console.print(f"  • Tool: {load_result['tool_type'].title()}")
+                    console.print(f"  • Shape: {load_result['n_samples']} samples × {load_result['n_genes']:,} genes")
+                    console.print(f"  • Source: {load_result['file_path']}\n")
+                else:
+                    console.print(
+                        f"[bold red on white] ⚠️  Error [/bold red on white] "
+                        f"[red]{load_result['error']}[/red]"
+                    )
+
+            except Exception as e:
+                console.print(
+                    f"[bold red on white] ⚠️  Error [/bold red on white] "
+                    f"[red]Failed to load quantification directory: {str(e)}[/red]"
+                )
+
+            return None  # Skip the rest of the /read logic (quantification handled)
 
         # Check if filename contains glob patterns
         import glob as glob_module

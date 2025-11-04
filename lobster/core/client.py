@@ -743,6 +743,135 @@ class AgentClient(BaseClient):
                 "file_type": file_info["description"],
             }
 
+    def load_quantification_directory(
+        self, directory_path: str, tool_type: str
+    ) -> Dict[str, Any]:
+        """
+        Load Kallisto or Salmon quantification files from a directory.
+
+        This method merges per-sample quantification files, creates a proper AnnData
+        object with correct orientation (samples × genes), and stores it in the
+        DataManagerV2 system.
+
+        Args:
+            directory_path: Path to directory containing per-sample subdirectories
+                          with quantification files (abundance.tsv for Kallisto,
+                          quant.sf for Salmon)
+            tool_type: Quantification tool type ('kallisto' or 'salmon')
+
+        Returns:
+            Dictionary with loading results:
+                - success: bool
+                - modality_name: str (if successful)
+                - file_path: str
+                - data_shape: tuple (if successful)
+                - message: str
+                - error: str (if failed)
+        """
+        try:
+            # Convert to Path object
+            dir_path = Path(directory_path)
+
+            # Validate directory exists
+            if not dir_path.exists():
+                return {
+                    "success": False,
+                    "error": f"Directory not found: {directory_path}",
+                }
+
+            if not dir_path.is_dir():
+                return {
+                    "success": False,
+                    "error": f"Path is not a directory: {directory_path}",
+                }
+
+            # Generate modality name from directory name
+            modality_name = dir_path.name
+            if modality_name in self.data_manager.list_modalities():
+                # Generate unique name
+                counter = 1
+                original_name = modality_name
+                while modality_name in self.data_manager.list_modalities():
+                    modality_name = f"{original_name}_{counter}"
+                    counter += 1
+
+            # Step 1: Merge quantification files using BulkRNASeqService
+            from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
+
+            bulk_service = BulkRNASeqService()
+
+            logger.info(
+                f"Merging {tool_type} quantification files from: {directory_path}"
+            )
+
+            df, metadata = bulk_service.load_from_quantification_files(
+                quantification_dir=dir_path,
+                tool=tool_type,
+            )
+
+            logger.info(
+                f"Successfully merged {metadata['n_samples']} samples × {metadata['n_genes']} genes"
+            )
+
+            # Step 2: Create AnnData using TranscriptomicsAdapter
+            from lobster.core.adapters.transcriptomics_adapter import (
+                TranscriptomicsAdapter,
+            )
+
+            adapter = TranscriptomicsAdapter(data_type="bulk")
+            adata = adapter.from_quantification_dataframe(
+                df=df,
+                data_type="bulk_rnaseq",
+                metadata=metadata,
+            )
+
+            logger.info(
+                f"Created AnnData: {adata.n_obs} samples × {adata.n_vars} genes"
+            )
+
+            # Step 3: Store in DataManagerV2
+            self.data_manager.modalities[modality_name] = adata
+
+            # Add quantification metadata to AnnData.uns
+            adata.uns["quantification_metadata"] = {
+                "tool": tool_type,
+                "n_samples": metadata["n_samples"],
+                "n_genes": metadata["n_genes"],
+                "source_directory": str(directory_path),
+                "data_type": "bulk_rnaseq",
+            }
+
+            # Step 4: Log operation for provenance
+            self.data_manager.log_tool_usage(
+                tool_name="load_quantification_directory",
+                parameters={
+                    "directory_path": str(directory_path),
+                    "tool_type": tool_type,
+                },
+                description=f"Loaded {tool_type} quantification files from {directory_path}",
+            )
+
+            # Return formatted result
+            return {
+                "success": True,
+                "modality_name": modality_name,
+                "file_path": str(directory_path),
+                "tool_type": tool_type,
+                "data_shape": (adata.n_obs, adata.n_vars),
+                "n_samples": metadata["n_samples"],
+                "n_genes": metadata["n_genes"],
+                "message": f"{tool_type.title()} quantification files loaded successfully as modality '{modality_name}'",
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to load quantification directory: {e}")
+            return {
+                "success": False,
+                "error": f"Failed to load {tool_type} quantification files: {str(e)}",
+                "directory_path": str(directory_path),
+                "tool_type": tool_type,
+            }
+
     # Workspace operations
     def list_workspace_files(self, pattern: str = "*") -> List[Dict[str, Any]]:
         """List files in the workspace."""

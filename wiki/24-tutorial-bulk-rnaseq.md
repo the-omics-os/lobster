@@ -47,7 +47,84 @@ Ready for bulk RNA-seq differential expression analysis!
 
 ## Step 2: Data Loading and Inspection
 
-Load your bulk RNA-seq count matrix and sample metadata:
+### Option A: Loading Kallisto/Salmon Quantification Files (Recommended)
+
+**⚠️ NEW in v2.3+**: Quantification files are now loaded directly via CLI `/read` command (no longer requires agent interaction).
+
+Load per-sample quantification files using the CLI:
+
+```bash
+/read /path/to/kallisto_output
+```
+
+**Or for Salmon**:
+```bash
+/read /path/to/salmon_output
+```
+
+**Expected Directory Structure**:
+```
+quantification_output/
+├── sample1/
+│   └── abundance.tsv  (or quant.sf for Salmon)
+├── sample2/
+│   └── abundance.tsv
+└── sample3/
+    └── abundance.tsv
+```
+
+**Expected Output:**
+```
+📁 Detected quantification directory with Kallisto files
+🔍 Auto-detected: Kallisto format
+📊 Merging 24 sample files...
+
+✅ Successfully loaded quantification data!
+
+📊 Quantification Tool: Kallisto
+📁 Source Directory: /path/to/kallisto_output
+📈 Data Shape: 24 samples × 19,847 genes
+💾 Modality Created: kallisto_output
+
+Sample IDs:
+control_rep1, control_rep2, treatment_rep1, treatment_rep2...
+
+✅ Ready for analysis!
+Use "show me the data status" to view loaded datasets.
+```
+
+After loading, use natural language to interact with the agent:
+
+```bash
+🦞 You: "Show me the data status and run quality control"
+```
+
+**Expected Agent Response:**
+```
+🦞 Lobster: I'll check the quantification data and run QC...
+
+📊 Bulk RNA-seq modality 'kallisto_output' ready for analysis:
+- Shape: 24 samples × 19,847 genes
+- Sample metadata: sample_id, source...
+- Quality metrics available
+
+Next Steps:
+1. Quality assessment
+2. Filtering and normalization
+3. Differential expression analysis
+```
+
+**Key Features**:
+- **Direct CLI Loading**: Use `/read` command - no need to ask the agent
+- **Automatic Tool Detection**: CLI detects Kallisto vs Salmon automatically
+- **Per-Sample Merging**: Merges abundance.tsv files from each sample subdirectory
+- **Correct Orientation**: Automatically transposes to samples × genes format
+- **Sample Names**: Extracted from subdirectory names
+- **Quality Validation**: Verifies file integrity and consistency
+
+### Option B: Loading Count Matrices (Traditional)
+
+Load pre-computed count matrix and sample metadata:
 
 ```bash
 🦞 You: "Load the bulk RNA-seq count matrix from counts.csv and sample metadata from metadata.csv. The data has treatment vs control samples with batch effects."
