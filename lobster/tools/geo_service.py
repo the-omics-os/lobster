@@ -3393,8 +3393,121 @@ The actual expression data download will be much faster now that metadata is pre
             logger.error(f"Error processing H5 file for {gsm_id}: {e}")
             return None
 
+    def _determine_transpose_biologically(
+        self,
+        matrix: pd.DataFrame,
+        gsm_id: str,
+        geo_id: Optional[str] = None,
+        data_type_hint: Optional[str] = None,
+    ) -> Tuple[bool, str]:
+        """
+        Determine transpose using biological knowledge instead of naive shape comparison.
+
+        Biological Rules:
+        1. Genes: Always 10,000-60,000 in human/mouse datasets
+        2. Samples: Bulk RNA-seq typically 2-200
+        3. Cells: Single-cell typically 100-200,000
+
+        Args:
+            matrix: Input DataFrame
+            gsm_id: Sample ID for logging
+            geo_id: GEO ID for data type context
+            data_type_hint: Optional explicit data type override
+
+        Returns:
+            Tuple of (should_transpose, reason)
+        """
+        n_rows, n_cols = matrix.shape
+
+        logger.debug(f"Transpose decision for {gsm_id}: shape={n_rows}×{n_cols}")
+
+        # Rule 1: If one dimension clearly genes (>50K), transpose so genes become columns
+        if n_rows > 50000 and n_cols < 50000:
+            reason = f"Large row count ({n_rows}) indicates genes as rows, transposing to samples/cells×genes"
+            logger.info(f"Transpose decision for {gsm_id}: {reason}")
+            return True, reason
+
+        if n_cols > 50000 and n_rows < 50000:
+            reason = f"Large column count ({n_cols}) indicates genes as columns, keeping as samples/cells×genes"
+            logger.info(f"Transpose decision for {gsm_id}: {reason}")
+            return False, reason
+
+        # Rule 2: Both dimensions large (>10K) → likely cells × genes (single-cell)
+        if n_rows > 10000 and n_cols > 10000:
+            reason = f"Both dimensions large ({n_rows}×{n_cols}) → likely cells×genes format (single-cell)"
+            logger.info(f"Transpose decision for {gsm_id}: {reason}")
+            return False, reason
+
+        # Rule 2b: Many observations (>10K) with few variables → likely gene panel (cells×genes)
+        # This catches targeted sequencing panels before Rule 3 misidentifies them
+        if n_rows > 10000 and n_cols >= 100 and n_cols < 10000:
+            reason = f"Many observations, moderate variables ({n_rows}×{n_cols}) → likely cells×genes (gene panel or filtered data)"
+            logger.info(f"Transpose decision for {gsm_id}: {reason}")
+            return False, reason
+
+        # Rule 3: One dimension very small (<1K), other large (>10K) → likely samples × genes or bulk RNA-seq
+        if n_rows < 1000 and n_cols > 10000:
+            reason = f"Few rows, many columns ({n_rows}×{n_cols}) → likely samples×genes format (bulk RNA-seq)"
+            logger.info(f"Transpose decision for {gsm_id}: {reason}")
+            return False, reason
+
+        # Note: We removed the automatic transpose for n_cols < 1000 and n_rows > 10000
+        # because it conflicts with gene panels (many cells, few genes).
+        # This case will fall through to data type detection or conservative fallback.
+
+        # Rule 4: Use data type detection for edge cases
+        data_type = data_type_hint
+        if not data_type and geo_id:
+            try:
+                # Get cached metadata if available
+                stored_metadata = self.data_manager.metadata_store.get(geo_id, {})
+                if "metadata" in stored_metadata:
+                    data_type = self._determine_data_type_from_metadata(
+                        stored_metadata["metadata"]
+                    )
+                    logger.debug(f"Detected data type from metadata: {data_type}")
+            except Exception as e:
+                logger.warning(
+                    f"Could not get data type for biological transpose guidance: {e}"
+                )
+
+        if data_type:
+            if data_type == "bulk_rna_seq":
+                # Bulk: prefer samples×genes (fewer samples)
+                if n_rows < n_cols:
+                    reason = f"Bulk RNA-seq: {n_rows} samples × {n_cols} genes (likely correct orientation)"
+                    logger.info(f"Transpose decision for {gsm_id}: {reason}")
+                    return False, reason
+                else:
+                    reason = f"Bulk RNA-seq: {n_rows}×{n_cols} likely genes×samples, transposing to samples×genes"
+                    logger.info(f"Transpose decision for {gsm_id}: {reason}")
+                    return True, reason
+
+            elif data_type == "single_cell_rna_seq":
+                # Single-cell: prefer cells×genes (more cells than genes in small datasets)
+                if n_rows >= n_cols:
+                    reason = f"Single-cell: {n_rows} cells × {n_cols} genes (likely correct orientation)"
+                    logger.info(f"Transpose decision for {gsm_id}: {reason}")
+                    return False, reason
+                else:
+                    reason = f"Single-cell: {n_rows}×{n_cols} likely genes×cells, transposing to cells×genes"
+                    logger.info(f"Transpose decision for {gsm_id}: {reason}")
+                    return True, reason
+
+        # Rule 5: Conservative fallback - only transpose if very confident
+        # This replaces the old naive heuristic with a much more conservative approach
+        # Use higher threshold (>100x) to avoid misidentifying large bulk studies as needing transpose
+        if n_cols > n_rows * 100:  # >100x more columns than rows (extreme imbalance)
+            reason = f"Extreme imbalance ({n_rows}×{n_cols}, {n_cols/n_rows:.1f}x) suggests genes as rows, transposing"
+            logger.info(f"Transpose decision for {gsm_id}: {reason}")
+            return True, reason
+        else:
+            reason = f"Ambiguous shape ({n_rows}×{n_cols}), defaulting to no transpose (safer - assume samples/cells × genes)"
+            logger.info(f"Transpose decision for {gsm_id}: {reason}")
+            return False, reason
+
     def _download_single_expression_file(
-        self, url: str, gsm_id: str
+        self, url: str, gsm_id: str, geo_id: Optional[str] = None
     ) -> Optional[pd.DataFrame]:
         """
         Download and parse a single expression file with enhanced support.
@@ -3424,14 +3537,19 @@ The actual expression data download will be much faster now that metadata is pre
             # Parse using geo_parser for better format support
             matrix = self.geo_parser.parse_supplementary_file(local_path)
             if matrix is not None and not matrix.empty:
-                # Add sample prefix to row names if they look like cells
-                if (
-                    matrix.shape[0] > matrix.shape[1]
-                ):  # More rows than columns suggests cells x genes
-                    matrix.index = [f"{gsm_id}_{idx}" for idx in matrix.index]
-                else:  # More columns than rows suggests genes x cells, transpose
+                # Use biology-aware transpose logic instead of naive shape comparison
+                should_transpose, reason = self._determine_transpose_biologically(
+                    matrix=matrix, gsm_id=gsm_id, geo_id=geo_id
+                )
+
+                logger.info(f"Transpose decision for {gsm_id}: {reason}")
+
+                if should_transpose:
                     matrix = matrix.T
-                    matrix.index = [f"{gsm_id}_{idx}" for idx in matrix.index]
+                    logger.debug(f"Matrix transposed: {matrix.shape}")
+
+                # Add sample prefix to row names
+                matrix.index = [f"{gsm_id}_{idx}" for idx in matrix.index]
 
                 logger.info(
                     f"Successfully parsed expression file for {gsm_id}: {matrix.shape}"
@@ -3499,7 +3617,7 @@ The actual expression data download will be much faster now that metadata is pre
         self, gsm_id: str, matrix: pd.DataFrame
     ) -> Tuple[bool, str]:
         """
-        Validate a single matrix with optimized checks.
+        Validate a single matrix with biology-aware thresholds.
 
         Args:
             gsm_id: Sample ID for logging
@@ -3509,15 +3627,68 @@ The actual expression data download will be much faster now that metadata is pre
             Tuple[bool, str]: (is_valid, info_message)
         """
         try:
-            # Check matrix dimensions first (fastest check)
-            if matrix.shape[0] < 10 or matrix.shape[1] < 10:
-                return False, f"Matrix too small ({matrix.shape})"
+            n_obs, n_vars = matrix.shape
 
-            # Use optimized validation
-            if not self._is_valid_expression_matrix(matrix):
-                return False, "Invalid matrix format"
+            # Rule 1: Must have some observations and variables
+            if n_obs == 0 or n_vars == 0:
+                return False, f"Empty matrix ({n_obs}×{n_vars})"
 
-            return True, f"Valid matrix {matrix.shape}"
+            # Rule 2: Biology-aware validation
+            # For bulk RNA-seq: few samples (2-500), many genes (10K-60K)
+            # For single-cell: many cells (100-200K), many genes (5K-30K)
+
+            if n_vars >= 10000:  # Likely genes dimension is correct
+                if n_obs >= 2:  # At least 2 observations (samples or cells)
+                    # Use optimized validation for matrix format
+                    if not self._is_valid_expression_matrix(matrix):
+                        return False, "Invalid matrix format (non-numeric or all-zero data)"
+
+                    return True, f"Valid matrix: {n_obs} obs × {n_vars} genes"
+                else:
+                    return (
+                        False,
+                        f"Only {n_obs} observation(s) - insufficient for analysis (need at least 2)",
+                    )
+
+            elif n_obs >= 10000:  # Many observations, check if genes dimension reasonable
+                if n_vars >= 100:  # Reasonable number of variables
+                    # Use optimized validation for matrix format
+                    if not self._is_valid_expression_matrix(matrix):
+                        return False, "Invalid matrix format (non-numeric or all-zero data)"
+
+                    return True, f"Valid matrix: {n_obs} obs × {n_vars} vars"
+                elif n_vars >= 4 and n_obs > 50000:
+                    # Special case: Very high obs count (>50K) with few vars suggests genes×samples
+                    # This will be caught and transposed by biology-aware transpose logic
+                    # Accept with warning for GSE130036-type cases
+                    if not self._is_valid_expression_matrix(matrix):
+                        return False, "Invalid matrix format (non-numeric or all-zero data)"
+
+                    return (
+                        True,
+                        f"Valid but unusual matrix: {n_obs} obs × {n_vars} vars (likely needs transpose - genes as obs)",
+                    )
+                else:
+                    return (
+                        False,
+                        f"Only {n_vars} variables - likely transpose error or corrupted data (need at least 100 vars for >10K obs)",
+                    )
+
+            else:  # Both dimensions small - use conservative thresholds
+                if n_obs >= 10 and n_vars >= 10:
+                    # Use optimized validation for matrix format
+                    if not self._is_valid_expression_matrix(matrix):
+                        return False, "Invalid matrix format (non-numeric or all-zero data)"
+
+                    return (
+                        True,
+                        f"Small matrix: {n_obs} obs × {n_vars} vars (may be test/subset data)",
+                    )
+                else:
+                    return (
+                        False,
+                        f"Matrix too small for analysis ({n_obs}×{n_vars}) - need at least 10×10",
+                    )
 
         except Exception as e:
             return False, f"Validation error: {str(e)}"
@@ -4010,7 +4181,7 @@ The actual expression data download will be much faster now that metadata is pre
             return f"Error storing sample {gsm_id}: {str(e)}"
 
     def _download_supplementary_file(  # FIXME
-        self, url: str, gsm_id: str
+        self, url: str, gsm_id: str, geo_id: Optional[str] = None
     ) -> Optional[pd.DataFrame]:
         """
         Professional download and parse of supplementary files with FTP support.
@@ -4018,6 +4189,7 @@ The actual expression data download will be much faster now that metadata is pre
         Args:
             url: URL to supplementary file (supports HTTP/HTTPS/FTP)
             gsm_id: GEO sample ID
+            geo_id: Optional GEO dataset ID for transpose logic context
 
         Returns:
             DataFrame: Parsed matrix or None
@@ -4043,14 +4215,19 @@ The actual expression data download will be much faster now that metadata is pre
             matrix = self.geo_parser.parse_supplementary_file(local_file)
 
             if matrix is not None and not matrix.empty:
-                # Add sample prefix to row names for proper identification
-                if (
-                    matrix.shape[0] > matrix.shape[1]
-                ):  # More rows than columns suggests cells x genes
-                    matrix.index = [f"{gsm_id}_{idx}" for idx in matrix.index]
-                else:  # More columns than rows suggests genes x cells, transpose
+                # Use biology-aware transpose logic instead of naive shape comparison
+                should_transpose, reason = self._determine_transpose_biologically(
+                    matrix=matrix, gsm_id=gsm_id, geo_id=geo_id
+                )
+
+                logger.info(f"Transpose decision for {gsm_id}: {reason}")
+
+                if should_transpose:
                     matrix = matrix.T
-                    matrix.index = [f"{gsm_id}_{idx}" for idx in matrix.index]
+                    logger.debug(f"Matrix transposed: {matrix.shape}")
+
+                # Add sample prefix to row names for proper identification
+                matrix.index = [f"{gsm_id}_{idx}" for idx in matrix.index]
 
                 logger.info(
                     f"Successfully parsed supplementary file for {gsm_id}: {matrix.shape}"

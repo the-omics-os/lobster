@@ -899,6 +899,288 @@ class TestGEOErrorHandling:
 
 
 # ===============================================================================
+# Biology-Aware Transpose Logic Tests
+# ===============================================================================
+
+
+@pytest.mark.unit
+class TestBiologyAwareTranspose:
+    """Test biology-aware transpose logic for expression matrices.
+
+    These tests verify that the transpose logic uses biological knowledge
+    (gene counts, sample counts) rather than naive shape comparisons to
+    determine correct matrix orientation.
+    """
+
+    def test_bulk_rnaseq_high_gene_count_transpose(self, geo_service):
+        """Test bulk RNA-seq with genes as rows (should transpose)."""
+        # GSE130036 case: 187,697 genes × 4 samples
+        # Should transpose to 4 samples × 187,697 genes
+        bulk_matrix = pd.DataFrame(
+            np.random.poisson(10, (187697, 4)),
+            columns=["sample1", "sample2", "sample3", "sample4"]
+        )
+
+        should_transpose, reason = geo_service._determine_transpose_biologically(
+            matrix=bulk_matrix,
+            gsm_id="GSM_test_bulk",
+            geo_id="GSE130036"
+        )
+
+        assert should_transpose == True, "Genes as rows (187,697) should trigger transpose"
+        assert "Large row count" in reason or "187697" in reason
+
+    def test_bulk_rnaseq_correct_orientation(self, geo_service):
+        """Test bulk RNA-seq already in correct orientation (samples × genes)."""
+        # 24 samples × 58,000 genes - correct orientation
+        bulk_matrix = pd.DataFrame(
+            np.random.poisson(20, (24, 58000))
+        )
+
+        should_transpose, reason = geo_service._determine_transpose_biologically(
+            matrix=bulk_matrix,
+            gsm_id="GSM_test_bulk_correct",
+            geo_id="GSE_test"
+        )
+
+        assert should_transpose == False, "Samples×genes orientation should NOT transpose"
+        # Check for various possible reason strings (Rule 1 or Rule 3)
+        assert any(phrase in reason.lower() for phrase in ["large column count", "few rows, many columns", "samples×genes", "keeping"])
+
+    def test_large_singlecell_both_dimensions_large(self, geo_service):
+        """Test large single-cell dataset (both dimensions >10K)."""
+        # 15,000 cells × 25,000 genes - typical large single-cell
+        sc_matrix = pd.DataFrame(
+            np.random.poisson(5, (15000, 25000))
+        )
+
+        should_transpose, reason = geo_service._determine_transpose_biologically(
+            matrix=sc_matrix,
+            gsm_id="GSM_test_sc_large",
+            geo_id="GSE_sc"
+        )
+
+        assert should_transpose == False, "Large single-cell (cells×genes) should NOT transpose"
+        assert "Both dimensions large" in reason or "cells×genes" in reason.lower()
+
+    def test_small_singlecell_genes_as_columns(self, geo_service):
+        """Test small single-cell with correct orientation."""
+        # 500 cells × 25,000 genes
+        sc_matrix = pd.DataFrame(
+            np.random.poisson(5, (500, 25000))
+        )
+
+        should_transpose, reason = geo_service._determine_transpose_biologically(
+            matrix=sc_matrix,
+            gsm_id="GSM_test_sc_small",
+            geo_id="GSE_sc_small"
+        )
+
+        assert should_transpose == False, "Small single-cell with correct orientation should NOT transpose"
+
+    def test_gene_panel_small_gene_count(self, geo_service):
+        """Test targeted gene panel (few genes, many cells)."""
+        # 15,000 cells × 200 genes (targeted panel)
+        panel_matrix = pd.DataFrame(
+            np.random.poisson(50, (15000, 200))
+        )
+
+        should_transpose, reason = geo_service._determine_transpose_biologically(
+            matrix=panel_matrix,
+            gsm_id="GSM_test_panel",
+            geo_id="GSE_panel"
+        )
+
+        # Should keep as cells×genes (many obs, few vars is valid)
+        assert should_transpose == False
+
+    def test_square_matrix_ambiguous(self, geo_service):
+        """Test square-ish matrix (ambiguous case)."""
+        # 8,000 × 12,000 - both >10K, assume cells×genes
+        square_matrix = pd.DataFrame(
+            np.random.poisson(5, (8000, 12000))
+        )
+
+        should_transpose, reason = geo_service._determine_transpose_biologically(
+            matrix=square_matrix,
+            gsm_id="GSM_test_square",
+            geo_id="GSE_square"
+        )
+
+        # Should default to no transpose (safer)
+        assert should_transpose == False, "Ambiguous square matrix should default to no transpose"
+
+    def test_very_large_bulk_study(self, geo_service):
+        """Test very large bulk study (edge case)."""
+        # 1,000 samples × 25,000 genes
+        large_bulk_matrix = pd.DataFrame(
+            np.random.poisson(15, (1000, 25000))
+        )
+
+        should_transpose, reason = geo_service._determine_transpose_biologically(
+            matrix=large_bulk_matrix,
+            gsm_id="GSM_test_large_bulk",
+            geo_id="GSE_large_bulk"
+        )
+
+        # Should keep as samples×genes
+        assert should_transpose == False
+
+    def test_corrupted_small_matrix(self, geo_service):
+        """Test very small matrix (likely corrupted or filtered)."""
+        # 50 × 30 - too small for meaningful analysis
+        tiny_matrix = pd.DataFrame(
+            np.random.poisson(5, (50, 30))
+        )
+
+        should_transpose, reason = geo_service._determine_transpose_biologically(
+            matrix=tiny_matrix,
+            gsm_id="GSM_test_tiny",
+            geo_id="GSE_tiny"
+        )
+
+        # Should default to no transpose (conservative)
+        assert should_transpose == False
+        assert "Ambiguous" in reason or "default" in reason.lower()
+
+
+@pytest.mark.unit
+class TestBiologyAwareValidation:
+    """Test biology-aware validation thresholds for expression matrices."""
+
+    def test_validate_bulk_rnaseq_high_gene_count(self, geo_service):
+        """Test validation accepts bulk RNA-seq with high gene counts."""
+        # GSE130036 case: 187,697 × 4 should be VALID (will be transposed to 4×187,697 later)
+        # This tests that validation doesn't reject matrices that look wrong but will be fixed by transpose
+        bulk_matrix = pd.DataFrame(
+            np.random.poisson(10, (187697, 4))
+        )
+
+        is_valid, message = geo_service._validate_single_matrix(
+            gsm_id="GSM_test_bulk",
+            matrix=bulk_matrix
+        )
+
+        assert is_valid == True, f"Bulk RNA-seq matrix should be valid: {message}"
+        # Should accept but warn about unusual shape
+        assert "valid" in message.lower() and ("obs" in message.lower() or "vars" in message.lower())
+
+    def test_validate_bulk_rnaseq_many_genes(self, geo_service):
+        """Test validation with typical bulk RNA-seq dimensions."""
+        # 24 samples × 58,000 genes
+        bulk_matrix = pd.DataFrame(
+            np.random.poisson(20, (24, 58000))
+        )
+
+        is_valid, message = geo_service._validate_single_matrix(
+            gsm_id="GSM_test_bulk_typical",
+            matrix=bulk_matrix
+        )
+
+        assert is_valid == True, f"Typical bulk RNA-seq should be valid: {message}"
+
+    def test_validate_single_cell_large(self, geo_service):
+        """Test validation with large single-cell dataset."""
+        # 15,000 cells × 25,000 genes
+        sc_matrix = pd.DataFrame(
+            np.random.poisson(5, (15000, 25000))
+        )
+
+        is_valid, message = geo_service._validate_single_matrix(
+            gsm_id="GSM_test_sc_large",
+            matrix=sc_matrix
+        )
+
+        assert is_valid == True, f"Large single-cell should be valid: {message}"
+
+    def test_validate_gene_panel(self, geo_service):
+        """Test validation with gene panel (few genes)."""
+        # 1,000 cells × 200 genes
+        panel_matrix = pd.DataFrame(
+            np.random.poisson(50, (1000, 200))
+        )
+
+        is_valid, message = geo_service._validate_single_matrix(
+            gsm_id="GSM_test_panel",
+            matrix=panel_matrix
+        )
+
+        assert is_valid == True, f"Gene panel should be valid: {message}"
+
+    def test_reject_too_few_observations(self, geo_service):
+        """Test rejection of matrix with only 1 observation."""
+        # 1 sample × 25,000 genes - insufficient for analysis
+        single_obs_matrix = pd.DataFrame(
+            np.random.poisson(20, (1, 25000))
+        )
+
+        is_valid, message = geo_service._validate_single_matrix(
+            gsm_id="GSM_test_single",
+            matrix=single_obs_matrix
+        )
+
+        assert is_valid == False, "Single observation should be rejected"
+        assert "observation" in message.lower() or "insufficient" in message.lower()
+
+    def test_reject_too_few_variables(self, geo_service):
+        """Test rejection of matrix with very few variables."""
+        # 15,000 cells × 4 genes - likely transpose error
+        few_vars_matrix = pd.DataFrame(
+            np.random.poisson(5, (15000, 4))
+        )
+
+        is_valid, message = geo_service._validate_single_matrix(
+            gsm_id="GSM_test_few_vars",
+            matrix=few_vars_matrix
+        )
+
+        assert is_valid == False, "Matrix with only 4 variables should be rejected"
+        assert "variable" in message.lower() or "transpose" in message.lower()
+
+    def test_reject_empty_matrix(self, geo_service):
+        """Test rejection of empty matrix."""
+        empty_matrix = pd.DataFrame()
+
+        is_valid, message = geo_service._validate_single_matrix(
+            gsm_id="GSM_test_empty",
+            matrix=empty_matrix
+        )
+
+        assert is_valid == False, "Empty matrix should be rejected"
+        assert "empty" in message.lower() or "0" in message
+
+    def test_reject_very_small_matrix(self, geo_service):
+        """Test rejection of very small matrix."""
+        # 8 × 8 - too small for meaningful analysis
+        tiny_matrix = pd.DataFrame(
+            np.random.poisson(10, (8, 8))
+        )
+
+        is_valid, message = geo_service._validate_single_matrix(
+            gsm_id="GSM_test_tiny",
+            matrix=tiny_matrix
+        )
+
+        assert is_valid == False, "Very small matrix should be rejected"
+        assert "small" in message.lower() or "insufficient" in message.lower()
+
+    def test_validate_small_but_acceptable_matrix(self, geo_service):
+        """Test validation of small but acceptable matrix."""
+        # 12 × 15 - small but meets minimum thresholds
+        small_matrix = pd.DataFrame(
+            np.random.poisson(10, (12, 15))
+        )
+
+        is_valid, message = geo_service._validate_single_matrix(
+            gsm_id="GSM_test_small_ok",
+            matrix=small_matrix
+        )
+
+        # Should be valid with warning
+        assert is_valid == True, f"Small but acceptable matrix should be valid: {message}"
+
+
+# ===============================================================================
 # Performance and Benchmarking Tests
 # ===============================================================================
 
