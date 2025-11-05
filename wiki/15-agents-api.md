@@ -584,18 +584,25 @@ Extract computational analysis methods from a research paper using **structure-a
 3. Publisher Direct - Open access detection
 4. Generate alternative access suggestions if paywalled
 
-**Input formats**: PMID (e.g., "PMID:12345678"), DOI (e.g., "10.1038/s41586-021-12345-6"), or direct PDF URL.
+**Input formats (v2.3+ Enhanced)**: All identifier types auto-detected and resolved:
+- **Bare DOI:** `"10.1101/2024.08.29.610467"` (NEW - auto-detected)
+- **DOI with prefix:** `"DOI:10.1038/s41586-021-12345-6"`
+- **PMID:** `"PMID:39370688"` or `"39370688"` (both formats supported)
+- **Direct URL:** `"https://www.nature.com/articles/..."` (passed through)
+- **PMC URL:** `"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC..."` (format auto-detected)
 
 **Returns**: Structured JSON with:
 - Software packages, parameters, quality control steps, and analysis workflows
 - **v2.3+ enhancements**: Parameter tables (pandas DataFrames), mathematical formulas (LaTeX), auto-detected tools, extraction metadata
 
-**Extraction Quality (v2.3+)**:
+**Extraction Quality (v2.3+ Enhanced)**:
 - Methods section detection: >90% hit rate (vs ~30% with PyPDF2)
 - Complete section extraction (no arbitrary truncation)
 - Table and formula preservation
 - Smart image filtering (40-60% context size reduction)
 - Document caching (2-5s first parse → <100ms cached)
+- **Robust DOI resolution:** No more FileNotFoundError crashes for valid DOIs
+- **Format auto-detection:** PMC HTML content correctly identified (not misclassified as PDF)
 
 **See also**: [37-publication-intelligence-deep-dive.md](37-publication-intelligence-deep-dive.md) for comprehensive Docling integration details.
 

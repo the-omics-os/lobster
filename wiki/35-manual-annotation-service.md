@@ -4,6 +4,59 @@
 
 The Manual Cell Type Annotation Service provides expert-guided cell type annotation capabilities for single-cell RNA-seq data with a color-synchronized Rich terminal interface that matches UMAP plot colors. This addresses Step 7 of the customer workflow: "I assign each cluster to a named cell type or to 'Debris', sometimes collapsing multiple clusters into the same cell type".
 
+## ⚠️ Important: Marker Gene Template Status
+
+**CRITICAL: Built-in marker gene templates are preliminary and not scientifically validated.**
+
+### Current Limitations
+
+The annotation templates provided by this service use **hardcoded marker lists** without:
+- **Evidence scoring**: No AUC, logFC, or specificity metrics
+- **Reference validation**: Not validated against Azimuth, CellTypist, or Human Cell Atlas
+- **Tissue optimization**: Not optimized for specific tissue contexts
+- **Species separation**: Some mouse genes may be present in human templates
+- **State handling**: Activation/injury markers mixed with baseline identity markers
+
+### Specific Known Issues
+
+- **SASP/Senescence detection**: Removed in v0.1.0 (not reliable with RNA-seq alone)
+- **Tumor cell detection**: Uses proliferation markers only - not tumor-specific (use CNV inference instead)
+- **Cross-tissue transfer**: Markers optimized for one tissue may not work in others
+
+### Recommended Approach for Production Analysis
+
+**Always prefer custom validated markers:**
+
+1. **Provide custom markers** specific to your tissue/context from:
+   - Published references for your specific tissue
+   - [Azimuth](https://azimuth.hubmapconsortium.org/) pretrained models
+   - [CellTypist](https://www.celltypist.org/) curated references
+   - [scANVI](https://docs.scvi-tools.org/) transfer learning
+   - Literature-derived markers with evidence scores
+
+2. **Validate annotations manually** with known markers for your tissue
+
+3. **Use reference-based tools** when possible rather than marker-based annotation
+
+### When Using Built-in Templates
+
+If you must use the built-in templates:
+- Acknowledge these limitations in your analysis
+- Manually validate results with known tissue markers
+- Cross-reference with literature and atlases
+- Document which template version was used (v0.1.0 preliminary)
+
+### Planned Improvements
+
+- Integration with Azimuth/CellTypist pretrained models
+- Reference atlas-derived markers with evidence scores
+- UCell/AUCell signature scoring
+- CNV-based tumor/normal classification
+- Cell Ontology (CL ID) annotations
+- Species-specific marker sets
+
+**See [README.md](../README.md#️-cell-type-annotation---development-status) for full details.**
+
 ## Key Features
 
 ### 🎨 Color-Synchronized Rich Interface

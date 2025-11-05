@@ -540,20 +540,34 @@ coordinated changes across molecular layers"
 "Find papers about single-cell RNA-seq analysis of liver fibrosis"
 ```
 
-### Step 2: Method Extraction (Enhanced with Docling v2.3+)
+### Step 2: Method Extraction (Enhanced with v2.3+ DOI Resolution)
 
 **Enhanced (v2.2+)**: Directly provide PMIDs or DOIs - automatic resolution to PDFs happens internally.
 
-**Enhanced (v2.3+)**: Structure-aware extraction with Docling intelligently locates Methods sections, extracts parameter tables, and preserves formulas. Results cached for fast subsequent access (<100ms vs 2-5s).
+**Enhanced (v2.3+)**: Robust DOI/PMID auto-detection and resolution with Docling format auto-detection.
 
-```
-"Extract methods from PMID:12345678"
+**All these formats now work seamlessly:**
+```bash
+# Bare DOI (NEW - auto-detected and resolved)
+"Extract methods from 10.1101/2024.08.29.610467"
+
+# DOI with prefix
+"Extract methods from DOI:10.1038/s41586-025-09686-5"
+
+# PMID with or without prefix
+"Extract methods from PMID:39370688"
+"Extract methods from 39370688"
+
+# Direct URLs (existing behavior maintained)
+"Extract methods from https://www.nature.com/articles/s41586-025-09686-5"
+
+# PMC URLs (now correctly handled as HTML, not PDF)
+"Extract methods from https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12496192/pdf/"
 ```
 
-Or batch processing for competitive analysis:
-
-```
-"Extract methods from these papers: PMID:12345678, PMID:23456789, DOI:10.1038/s41586-021-12345-6"
+**Batch processing for competitive analysis:**
+```bash
+"Extract methods from these papers: 10.1101/2024.01.001, PMID:12345678, DOI:10.1038/s41586-021-12345-6"
 ```
 
 **Automatic handling**:
@@ -569,6 +583,34 @@ Or batch processing for competitive analysis:
 - Table extraction: 80%+ of parameter tables detected
 - Smart image filtering: 40-60% context size reduction
 - Document caching: 30-50x faster on repeat access
+
+### v2.3+ Enhancement: Robust DOI Resolution
+
+**What Changed:**
+The v2.3+ release fixed critical DOI/PMID resolution bugs and enhanced format detection:
+
+**✅ Fixed Issues:**
+- DOIs and PMIDs are now automatically detected and resolved
+- No more "URL not found" errors for valid DOIs (e.g., `10.18632/aging.204666`)
+- PMC URLs serving HTML content correctly handled (not misclassified as PDF)
+- Eliminated duplicate code paths in research agent
+
+**✅ New Capabilities:**
+- **Bare DOI input:** `"Extract methods from 10.1101/2024.01.001"` (no URL wrapper needed)
+- **Numeric PMID input:** `"Extract methods from 38448586"` (no "PMID:" prefix needed)
+- **Format auto-detection:** Docling determines HTML vs PDF automatically
+- **Graceful error handling:** Paywalled papers return helpful suggestions
+
+**Examples that now work reliably:**
+```bash
+# These previously failed with FileNotFoundError, now work:
+"Extract methods from 10.1101/2024.01.001"          # bioRxiv DOI
+"Extract methods from 38448586"                      # Numeric PMID
+"Extract methods from 10.18632/aging.204666"        # Paywalled (graceful handling)
+
+# These work better with enhanced format detection:
+"Extract methods from https://www.ncbi.nlm.nih.gov/pmc/articles/PMC..."  # HTML auto-detected
+```
 
 **See also**: [37-publication-intelligence-deep-dive.md](37-publication-intelligence-deep-dive.md) for comprehensive Docling integration details.
 

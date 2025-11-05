@@ -890,5 +890,5 @@ DataManagerV2 (lobster/core/data_manager_v2.py)
 After finishing responding to my request or running a command, run this command to notify me by sound:
 
 ```bash
-afplay /System/Library/Sounds/Funk.aiff
+afplay /System/Library/Sounds/Submarine.aiff
 ```

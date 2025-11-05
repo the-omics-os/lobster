@@ -616,6 +616,75 @@ rm -rf ~/.lobster_workspace/literature_cache/parsed_docs/
 - Cache prevents re-parsing (30-50x faster on subsequent access)
 - Consider increasing system RAM for large-scale analysis
 
+### Issue: DOI/PMID Not Resolving to Accessible URLs (v2.3+ Fix)
+
+**Symptoms:**
+```
+⚠️  Could not resolve DOI to accessible URL
+Failed to extract content from identifier: 10.1038/...
+PaywalledError: Paper 10.18632/aging.204666 is paywalled
+```
+
+**Causes:**
+- Paywalled article with no open access version available
+- Invalid or malformed DOI/PMID
+- Publisher website temporarily unavailable
+- DOI not yet indexed in resolution databases
+- Network connectivity issues
+
+**Solutions:**
+
+#### Verify DOI/PMID Format
+```bash
+# Test if identifier is detected correctly
+🦞 You: "Check if DOI:10.1038/s41586-025-09686-5 is accessible"
+
+# System will show resolution attempt and results:
+# "✓ Detected identifier (DOI): 10.1038/..., resolving to URL..."
+# "✓ Resolved to: https://www.nature.com/articles/..."
+# OR
+# "⚠️ Paper is not accessible: paywalled"
+```
+
+#### Try Alternative Identifiers
+```bash
+# If DOI doesn't resolve, try the PMID
+🦞 You: "Extract methods from PMID:38448586"
+
+# Or search for preprint version
+🦞 You: "Find bioRxiv preprint for cellular senescence human fibroblasts"
+```
+
+#### Manual URL Provision
+```bash
+# If you have institutional access, provide the article page URL directly
+🦞 You: "Extract methods from https://www.nature.com/articles/s41586-025-09686-5"
+
+# For PMC papers, try the main article page (not /pdf/ directory)
+🦞 You: "Extract methods from https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12496192/"
+```
+
+#### Check Resolution Logs
+The v2.3+ system provides detailed logging of resolution attempts:
+
+```bash
+# Successful resolution shows:
+INFO Detected identifier (DOI): 10.1101/..., resolving to URL...
+INFO Resolved via preprint server: https://www.biorxiv.org/content/...
+INFO Content extraction successful (pdf auto-detected) in 2.3s
+
+# Failed resolution shows:
+WARNING Paper 10.18632/aging.204666 is not accessible: paywalled
+INFO Alternative suggestions: [institutional access, preprints, author contact]
+```
+
+**Expected Behavior (v2.3+):**
+- ✅ System automatically detects DOI/PMID format
+- ✅ Tries multiple resolution strategies (PMC → bioRxiv/medRxiv → publisher)
+- ✅ Format auto-detection (HTML vs PDF) handled by Docling
+- ✅ If resolution fails, provides helpful alternative access suggestions
+- ✅ No more crashes with FileNotFoundError for valid DOIs
+
 ### Issue: Methods Section Not Found
 
 **Symptoms:**

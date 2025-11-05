@@ -235,7 +235,14 @@ class DoclingService:
             >>> print(result['methods_text'][:200])
         """
         if keywords is None:
-            keywords = ["method", "material", "procedure", "experimental"]
+            keywords = [
+                "method",
+                "material",
+                "procedure",
+                "experimental",
+                "materials and methods",  # PMC often uses full phrase
+                "methods and materials",  # Alternative ordering
+            ]
 
         logger.info(f"Extracting Methods section from: {source[:80]}...")
 

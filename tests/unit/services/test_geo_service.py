@@ -1043,6 +1043,50 @@ class TestBiologyAwareTranspose:
         assert should_transpose == False
         assert "Ambiguous" in reason or "default" in reason.lower()
 
+    def test_transpose_uses_metadata_helper_method(self, geo_service):
+        """Test that transpose logic uses _get_geo_metadata helper method.
+
+        This ensures consistency with the fixed metadata storage system
+        introduced to resolve the GSE282425 KeyError: 'metadata' bug.
+
+        The key test is that metadata access doesn't crash with KeyError,
+        not the specific transpose decision.
+        """
+        # Mock the _get_geo_metadata method to return proper nested structure
+        mock_metadata_entry = {
+            "metadata": {
+                "title": "Test Dataset",
+                "samples": ["GSM1", "GSM2"],
+            },
+            "stored_by": "test",
+            "fetch_timestamp": "2025-01-01T00:00:00",
+        }
+        geo_service.data_manager._get_geo_metadata = Mock(return_value=mock_metadata_entry)
+
+        # Create test matrix - use shape that clearly needs transpose
+        # 187,697 genes × 4 samples (like GSE130036 case)
+        test_matrix = pd.DataFrame(
+            np.random.poisson(10, (187697, 4)),
+            columns=[f"sample_{i}" for i in range(4)]
+        )
+
+        # Call transpose - should not crash due to metadata access
+        should_transpose, reason = geo_service._determine_transpose_biologically(
+            matrix=test_matrix,
+            gsm_id="GSM123",
+            geo_id="GSE123",
+            data_type_hint=None,
+        )
+
+        # CRITICAL: Verify it executed without KeyError from metadata access
+        # This is the regression check - before the fix, this would crash with:
+        # KeyError: 'metadata' when trying to access stored_metadata_info["metadata"]
+        assert isinstance(should_transpose, bool)
+        assert isinstance(reason, str)
+
+        # Verify correct transpose decision for genes-as-rows case
+        assert should_transpose == True, "187K rows × 4 cols should transpose to 4×187K"
+
 
 @pytest.mark.unit
 class TestBiologyAwareValidation:

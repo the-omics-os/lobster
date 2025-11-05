@@ -729,13 +729,61 @@ Cache parsed document as JSON for future retrieval.
 - **Troubleshooting:** [28-troubleshooting.md](28-troubleshooting.md) - Common issues
 - **Research Agent:** [15-agents-api.md](15-agents-api.md) - Integration with literature mining agent
 
-### PublicationResolver ✨ (Phase 1 New)
+### PublicationResolver ✨ (v2.3+ Enhanced)
 
-Utility class for automatic PMID/DOI → PDF URL resolution using tiered waterfall strategy.
+Utility class for automatic PMID/DOI → PDF URL resolution using tiered waterfall strategy. **v2.3+ enhancement:** Integrated with UnifiedContentService for seamless DOI/PMID auto-detection.
 
 ```python
 class PublicationResolver:
     """Resolver for converting identifiers to accessible PDF URLs."""
+
+    def resolve(self, identifier: str) -> PublicationResolutionResult:
+        """
+        Resolve DOI/PMID to accessible URL using tiered waterfall strategy.
+
+        Auto-detects identifier type and applies appropriate resolution method.
+        """
+```
+
+#### Auto-Detection Logic (v2.3+ Enhancement)
+
+The resolver automatically detects identifier types without requiring format specification:
+
+| Input Format | Detection Pattern | Example | Resolution Strategy |
+|--------------|-------------------|---------|-------------------|
+| **Bare DOI** | Starts with `10.` | `10.1101/2024.01.001` | bioRxiv/medRxiv → Publisher |
+| **DOI with prefix** | `^DOI:10\.` | `DOI:10.1038/s41586-025-09686-5` | Publisher → PMC → Preprints |
+| **PMID with prefix** | `^PMID:\d{7,8}$` | `PMID:39370688` | PMC → Publisher |
+| **Numeric PMID** | `^\d{7,8}$` | `39370688` | PMC → Publisher |
+| **Direct URL** | `^https?://` | `https://nature.com/articles/...` | Pass through (no resolution needed) |
+
+#### Resolution Strategies
+
+**1. PMC Open Access (Highest Priority)**
+```python
+# For PMID input
+identifier = "PMID:39370688"
+# → Checks PMC API for open access version
+# → Returns: "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12496192/pdf/"
+# → Quality: Very high (government repository, reliable)
+```
+
+**2. Preprint Servers (bioRxiv, medRxiv)**
+```python
+# For DOI starting with 10.1101
+identifier = "10.1101/2024.08.29.610467"
+# → Resolves to bioRxiv/medRxiv PDF
+# → Returns: "https://www.biorxiv.org/content/10.1101/2024.08.29.610467.full.pdf"
+# → Quality: High (preprints, usually accessible)
+```
+
+**3. Publisher Direct (Fallback)**
+```python
+# For non-preprint DOIs
+identifier = "10.1038/s41586-025-09686-5"
+# → Uses CrossRef API to find publisher URL
+# → Returns: "https://www.nature.com/articles/s41586-025-09686-5"
+# → Quality: Medium (may be paywalled)
 ```
 
 #### Methods
@@ -746,17 +794,46 @@ class PublicationResolver:
 def resolve(self, identifier: str) -> PublicationResolutionResult
 ```
 
-Resolve identifier to PDF URL using tiered waterfall strategy.
+**Auto-detects identifier type** and resolves to accessible URL using tiered waterfall strategy.
 
 **Parameters:**
-- `identifier` (str): PMID, DOI, or URL
+- `identifier` (str): **Multiple formats supported:**
+  - **Bare DOI:** `"10.1101/2024.08.29.610467"`
+  - **DOI with prefix:** `"DOI:10.1038/s41586-025-09686-5"`
+  - **PMID:** `"PMID:39370688"` or `"39370688"`
+  - **Direct URL:** `"https://www.nature.com/articles/..."` (passthrough)
 
 **Returns:** `PublicationResolutionResult` with:
-- `pdf_url` (str): Accessible PDF URL (if available)
-- `source` (str): Resolution source (pmc, biorxiv, medrxiv, publisher, paywalled)
-- `access_type` (str): Access type (open_access, preprint, paywalled, error)
-- `suggestions` (str): Alternative access strategies (if paywalled)
-- `alternative_urls` (List[str]): Alternative access URLs
+- `pdf_url` (str): Accessible PDF URL (if found)
+- `source` (str): Resolution source (`'pmc'`, `'biorxiv'`, `'medrxiv'`, `'publisher'`, `'paywalled'`)
+- `access_type` (str): Access level (`'open_access'`, `'preprint'`, `'paywalled'`, `'error'`)
+- `suggestions` (str): Alternative access strategies for paywalled content
+- `alternative_urls` (List[str]): Alternative access URLs when available
+
+**Example Usage:**
+```python
+from lobster.tools.providers.publication_resolver import PublicationResolver
+
+resolver = PublicationResolver()
+
+# Resolve bioRxiv DOI
+result = resolver.resolve("10.1101/2024.08.29.610467")
+print(f"PDF URL: {result.pdf_url}")  # https://www.biorxiv.org/content/...
+print(f"Source: {result.source}")    # 'biorxiv'
+print(f"Access: {result.access_type}")  # 'preprint'
+
+# Resolve PMID to PMC
+result = resolver.resolve("PMID:39370688")
+print(f"PDF URL: {result.pdf_url}")  # https://www.ncbi.nlm.nih.gov/pmc/...
+print(f"Source: {result.source}")    # 'pmc'
+print(f"Access: {result.access_type}")  # 'open_access'
+
+# Handle paywalled DOI gracefully
+result = resolver.resolve("10.18632/aging.204666")
+print(f"Accessible: {result.is_accessible()}")  # False
+print(f"Access type: {result.access_type}")     # 'paywalled'
+print(f"Suggestions: {result.suggestions}")     # Alternative access methods
+```
 
 ##### batch_resolve
 
@@ -768,7 +845,29 @@ def batch_resolve(
 ) -> List[PublicationResolutionResult]
 ```
 
-Batch resolve multiple identifiers. Conservative limit (5-10 papers) to avoid API rate limits.
+Batch resolve multiple identifiers with automatic rate limiting.
+
+**Parameters:**
+- `identifiers` (List[str]): List of DOIs, PMIDs, or URLs
+- `max_batch` (int): Conservative limit to avoid API rate limits (default: 10)
+
+**Example:**
+```python
+identifiers = [
+    "10.1101/2024.08.29.610467",  # bioRxiv DOI
+    "PMID:39370688",              # PMID
+    "10.18632/aging.204666",      # Potentially paywalled DOI
+]
+
+results = resolver.batch_resolve(identifiers)
+
+for i, result in enumerate(results):
+    print(f"Paper {i+1}: {result.source} ({result.access_type})")
+    if result.is_accessible():
+        print(f"  → {result.pdf_url}")
+    else:
+        print(f"  → {result.suggestions}")
+```
 
 ### ConcatenationService
 

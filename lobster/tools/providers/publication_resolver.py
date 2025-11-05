@@ -217,9 +217,10 @@ class PublicationResolver:
                     access_type="not_in_pmc",
                 )
 
-            # Step 2: Construct PMC PDF URL
-            # PMC open access PDFs follow pattern: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{id}/pdf/
-            pdf_url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}/pdf/"
+            # Step 2: Construct PMC HTML article URL
+            # PMC HTML articles have better structure extraction than PDF directory
+            # Docling auto-detects format and handles both HTML and PDF intelligently
+            pdf_url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}/"
 
             logger.info(f"Found PMC article: PMC{pmc_id}")
 
@@ -229,7 +230,7 @@ class PublicationResolver:
                 source="pmc",
                 access_type="open_access",
                 alternative_urls=[
-                    f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}/"
+                    f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}/pdf/"  # PDF directory as fallback
                 ],
                 metadata={"pmc_id": f"PMC{pmc_id}"},
             )

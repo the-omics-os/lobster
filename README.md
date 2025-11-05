@@ -94,6 +94,38 @@ Anthropic's API has conservative rate limits for new accounts. If you encounter 
 
 For AWS Bedrock setup, see the [Configuration Guide](wiki/03-configuration.md).
 
+### ⚠️ Cell Type Annotation - Development Status
+
+**IMPORTANT: Built-in marker gene lists are preliminary and not scientifically validated.**
+
+The current cell type annotation templates use **hardcoded marker lists** without:
+- Evidence scoring (AUC, logFC, specificity metrics)
+- Validation against reference atlases (Azimuth, CellTypist, Human Cell Atlas)
+- Tissue/context-specific optimization
+- Species separation (some mouse genes may be present)
+- State handling (activation/injury markers mixed with baseline identity)
+
+**Current limitations:**
+- **SASP/Senescence detection**: Not reliable with RNA-seq data alone (removed in v0.1.0)
+- **Tumor cell detection**: Should use CNV inference (inferCNV/CopyKAT), not proliferation markers
+- **Cross-tissue transfer**: Markers optimized for one tissue may not work in others
+
+**Recommended approach for production analysis:**
+1. **Provide custom validated markers** specific to your tissue/context
+2. Use reference-based tools: [Azimuth](https://azimuth.hubmapconsortium.org/), [CellTypist](https://www.celltypist.org/), [scANVI](https://docs.scvi-tools.org/)
+3. Validate annotations manually with known markers
+
+**Planned improvements:**
+- Integration with Azimuth/CellTypist pretrained models
+- Reference atlas-derived markers with evidence scores
+- UCell/AUCell signature scoring
+- CNV-based tumor/normal classification
+- Cell Ontology (CL ID) annotations
+
+When using Lobster for annotation, agents will **prompt you for custom markers**. Only use built-in templates if you explicitly acknowledge these limitations.
+
+See [Manual Annotation Guide](wiki/35-manual-annotation-service.md) for details on providing custom markers.
+
 ## 💡 Example Usage
 
 ### Interactive Chat Mode

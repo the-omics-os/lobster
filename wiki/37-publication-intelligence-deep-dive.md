@@ -61,13 +61,15 @@ The **UnifiedContentService** provides intelligent two-tier publication content 
 │  │         ↓                                          │    │
 │  │ 1. Check DataManager cache                         │    │
 │  │         ↓                                          │    │
-│  │ 2. Resolve to accessible URL (PublicationResolver) │    │
+│  │ 2a. Detect identifier (DOI/PMID vs direct URL)    │    │
 │  │         ↓                                          │    │
-│  │ 3a. Webpage-first (if not .pdf URL):              │    │
+│  │ 2b. Auto-resolve DOI/PMID → URL (PublicationResolver) │    │
+│  │         ↓                                          │    │
+│  │ 3a. Webpage-first (publisher sites):              │    │
 │  │      WebpageProvider → DoclingService              │    │
 │  │         ↓                                          │    │
-│  │ 3b. Fallback to PDF (if webpage fails):           │    │
-│  │      DoclingService → PyPDF2                       │    │
+│  │ 3b. Auto-format detection (all URLs):             │    │
+│  │      DoclingService (HTML/PDF auto-detect)        │    │
 │  │         ↓                                          │    │
 │  │ 4. Cache result in DataManager                     │    │
 │  │         ↓                                          │    │
@@ -256,6 +258,44 @@ assert len(content.markdown) > 5000
 # No PDF download needed! Direct extraction from webpage.
 ```
 
+### User Scenario 3: DOI/PMID Auto-Resolution (v2.3+ Enhancement)
+
+```python
+# NEW in v2.3+: Direct DOI input - automatically resolved
+content = service.get_full_content("10.1101/2024.08.29.610467")
+# Internally: DOI → PublicationResolver → bioRxiv PDF URL → Extraction
+
+# PMID input - automatically resolved
+content = service.get_full_content("PMID:39370688")
+# Internally: PMID → PublicationResolver → PMC URL → HTML extraction
+
+# Complex PMC URLs that serve HTML - now handled correctly
+content = service.get_full_content("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12496192/pdf/")
+# Internally: Docling auto-detects HTML format (not PDF!)
+```
+
+**Key v2.3+ Improvements:**
+- ✅ **DOI Auto-Detection:** Bare DOIs (e.g., `"10.1038/..."`) automatically detected
+- ✅ **PMID Auto-Detection:** Both `"PMID:12345"` and `"12345"` formats supported
+- ✅ **Format Auto-Detection:** Docling handles HTML/PDF detection (no rigid URL classification)
+- ✅ **Robust Fallback:** PMC URLs serving HTML correctly processed
+- ✅ **Graceful Errors:** Paywalled papers return helpful suggestions instead of crashing
+
+**Before v2.3 (Broken):**
+```python
+# This would fail with FileNotFoundError
+content = service.get_full_content("10.18632/aging.204666")  # ❌ Crashed
+```
+
+**After v2.3 (Fixed):**
+```python
+# Same input now works - auto-resolves and handles gracefully
+try:
+    content = service.get_full_content("10.18632/aging.204666")  # ✅ Works
+except PaywalledError as e:
+    print(f"Paper is paywalled: {e.suggestions}")  # ✅ Helpful guidance
+```
+
 **Benefits:**
 - Faster than PDF extraction (2-5s vs 3-8s)
 - Better content quality (structured HTML vs extracted PDF)
@@ -360,18 +400,26 @@ def get_full_content(
 ```
 
 **Parameters:**
-- `identifier` (str): PMID, DOI, or URL
+- `identifier` (str): **Auto-detects and resolves multiple formats:**
+  - **Bare DOI:** `"10.1101/2024.08.29.610467"` → Auto-resolved to bioRxiv
+  - **DOI with prefix:** `"DOI:10.1038/s41586-025-09686-5"` → Auto-resolved
+  - **PMID:** `"PMID:39370688"` or `"39370688"` → Auto-resolved to PMC
+  - **Direct URL:** `"https://www.nature.com/articles/..."` → Used directly
+  - **PMC URL:** `"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC..."` → Format auto-detected
 - `prefer_webpage` (bool): Try webpage before PDF (default: True)
 
-**Resolution Strategy:**
+**Resolution Strategy (v2.3+ Enhanced):**
 1. Check DataManager cache
-2. Resolve to accessible URL (PublicationResolver)
-3. If `prefer_webpage` and not `.pdf` URL:
-   - Try WebpageProvider (Docling webpage parsing)
-   - Fallback to PDF if webpage extraction fails
-4. Else: PDF extraction (Docling → PyPDF2 fallback)
-5. Cache result in DataManager
-6. Return ContentResult
+2. **Auto-detect identifier type** (DOI, PMID, or direct URL)
+3. **If DOI/PMID:** Use PublicationResolver to resolve to accessible URL
+   - Handles paywalled papers gracefully (returns suggestions, no crash)
+4. **If prefer_webpage:** Try WebpageProvider for publisher sites
+   - Nature, Science, Cell Press direct extraction
+5. **Format auto-detection:** Docling determines HTML vs PDF content
+   - No rigid URL classification (handles PMC HTML correctly)
+6. **Graceful fallback:** HTML → PDF → PyPDF2 if needed
+7. Cache result in DataManager
+8. Return ContentResult
 
 **Returns:**
 ```python
@@ -390,30 +438,43 @@ ContentResult(
 )
 ```
 
-**Example:**
+**Examples (v2.3+ Auto-Resolution):**
+
 ```python
 service = UnifiedContentService(data_manager)
 
-# Webpage-first extraction (Nature article)
+# Example 1: Direct DOI input (NEW - automatically resolved)
+content = service.get_full_content("10.1101/2024.08.29.610467")
+# System logs: "Detected identifier (DOI), resolving to URL..."
+# System logs: "Resolved to: https://www.biorxiv.org/content/10.1101/2024.08.29.610467.full.pdf"
+print(f"Content type: {content.content_type}")  # 'pdf' (auto-detected)
+print(f"Source: {content.source}")  # 'biorxiv'
+
+# Example 2: PMID input (NEW - automatically resolved)
+content = service.get_full_content("PMID:39370688")
+# System logs: "Resolved to: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC.../pdf/"
+# System logs: "detected formats: [<InputFormat.HTML: 'html'>]" (auto-detected!)
+print(f"Content type: {content.content_type}")  # 'html' (auto-detected)
+print(f"Source: {content.source}")  # 'pmc'
+
+# Example 3: Direct URL (existing behavior maintained)
 content = service.get_full_content(
     "https://www.nature.com/articles/s41586-025-09686-5",
     prefer_webpage=True
 )
-
 print(f"Content type: {content.content_type}")  # 'webpage'
 print(f"Source: {content.source}")  # 'publisher'
+
+# Example 4: Paywalled DOI (NEW - graceful handling)
+try:
+    content = service.get_full_content("10.18632/aging.204666")
+except PaywalledError as e:
+    print(f"Paper is paywalled: {e.suggestions}")
+    # Suggests: try institutional access, check for preprints, etc.
+
+# Access extracted content
 print(f"Full text: {len(content.markdown)} characters")
 print(f"Tables: {len(content.tables)}")
-print(f"Timestamp: {content.extraction_timestamp}")
-
-# Access Docling enrichments
-for table in content.tables:
-    print(f"Table: {table['title']}")
-    print(table['dataframe'].head())
-
-for formula in content.formulas:
-    print(f"Formula: {formula}")
-
 print(f"Software mentioned: {content.software_mentioned}")
 ```
 
@@ -635,22 +696,56 @@ def get_publication_overview(
     return formatted_content
 ```
 
-**Example workflow:**
+**Example workflows:**
+
+**A. DOI Auto-Resolution (v2.3+ Enhancement):**
+```
+User: "Extract methods from 10.1101/2024.08.29.610467"
+
+Agent: [DOI detected → PublicationResolver → bioRxiv URL → extraction]
+"✅ Resolved DOI to bioRxiv PDF (automatic detection)
+
+**Source:** bioRxiv preprint
+**Content type:** PDF (auto-detected)
+**Tables found:** 2
+**Software detected:** Scanpy, Seurat, CellRanger
+
+**Methods:**
+- Software: Scanpy v1.9.1, Seurat v5.0.1
+- Parameters: min_genes=200, max_mt_pct=15%
+- Normalization: SCTransform with default parameters
+- Clustering: Leiden algorithm, resolution=0.5"
+```
+
+**B. PMID Auto-Resolution (v2.3+ Enhancement):**
+```
+User: "Extract methods from PMID:39370688"
+
+Agent: [PMID detected → PublicationResolver → PMC URL → HTML extraction]
+"✅ Resolved PMID to PMC article (automatic detection)
+
+**Source:** PMC Open Access
+**Content type:** HTML (auto-detected)
+**Extraction time:** 1.5 seconds
+**Software detected:** R, DESeq2, EdgeR
+
+**Methods:**
+- Platform: RNA-seq analysis using R 4.3
+- Differential expression: DESeq2 with default parameters
+- Multiple testing correction: Benjamini-Hochberg (FDR < 0.05)
+- Pathway analysis: GSEA with MSigDB Hallmark gene sets"
+```
+
+**C. Direct URL (Legacy Behavior Maintained):**
 ```
 User: "Extract methods from https://www.nature.com/articles/s41586-025-09686-5"
 
-Agent: [Uses get_publication_overview with webpage-first]
+Agent: [Direct URL → webpage-first extraction]
 "Extracted content from Nature webpage (no PDF needed).
 
 **Content type:** webpage
 **Tables found:** 3
-**Software detected:** Scanpy, Seurat, CellRanger
-
-**Methods:**
-- Software: Scanpy v1.9.1
-- Parameters: min_genes=200, max_mt_pct=5%
-- Normalization: log1p after total-count normalization
-- Clustering: Leiden algorithm, resolution=0.8"
+**Software detected:** Scanpy, Seurat, CellRanger"
 ```
 
 ---

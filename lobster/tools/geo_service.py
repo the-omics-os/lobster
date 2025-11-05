@@ -875,8 +875,13 @@ The dataset is now available as modality '{modality_name}' for other agents to u
                         source=GEODataSource.GEOPARSE,
                     )
 
-            # Step 2: Get metadata and strategy config
-            stored_metadata_info = self.data_manager.metadata_store[clean_geo_id]
+            # Step 2: Get metadata and strategy config using validated retrieval
+            stored_metadata_info = self.data_manager._get_geo_metadata(clean_geo_id)
+            if not stored_metadata_info:
+                raise ValueError(
+                    f"Metadata for {clean_geo_id} not found or malformed in metadata_store. "
+                    f"This indicates a storage/retrieval bug."
+                )
             cached_metadata = stored_metadata_info["metadata"]
             strategy_config = stored_metadata_info.get("strategy_config", {})
 
@@ -1699,18 +1704,29 @@ The dataset is now available as modality '{modality_name}' for other agents to u
         if hasattr(self, "data_manager") and hasattr(
             self.data_manager, "metadata_store"
         ):
-            # Initialize metadata_store entry with full GEO metadata if not present
-            if geo_id not in self.data_manager.metadata_store:
-                # Store the full metadata dict from GEOparse
-                self.data_manager.metadata_store[geo_id] = metadata.copy()
-
-            # Add/update modality detection results
-            self.data_manager.metadata_store[geo_id]["modality_detection"] = {
+            # Store modality detection results with enforced nested structure
+            modality_detection_info = {
                 "modality": modality_result.modality,
                 "confidence": modality_result.confidence,
                 "detected_signals": modality_result.detected_signals,
                 "timestamp": pd.Timestamp.now().isoformat(),
             }
+
+            # Use helper method to store with consistent structure
+            if geo_id not in self.data_manager.metadata_store:
+                # Store new entry with metadata and modality detection
+                self.data_manager._store_geo_metadata(
+                    geo_id=geo_id,
+                    metadata=metadata,
+                    stored_by="_check_platform_compatibility",
+                    modality_detection=modality_detection_info,
+                )
+            else:
+                # Update existing entry's modality detection
+                existing_entry = self.data_manager._get_geo_metadata(geo_id)
+                if existing_entry:
+                    existing_entry["modality_detection"] = modality_detection_info
+                    self.data_manager.metadata_store[geo_id] = existing_entry
 
         # Decision: Reject unsupported modalities
         if not modality_result.is_supported:
@@ -3459,9 +3475,9 @@ The actual expression data download will be much faster now that metadata is pre
         data_type = data_type_hint
         if not data_type and geo_id:
             try:
-                # Get cached metadata if available
-                stored_metadata = self.data_manager.metadata_store.get(geo_id, {})
-                if "metadata" in stored_metadata:
+                # Get cached metadata if available using validated retrieval
+                stored_metadata = self.data_manager._get_geo_metadata(geo_id)
+                if stored_metadata:
                     data_type = self._determine_data_type_from_metadata(
                         stored_metadata["metadata"]
                     )
@@ -4087,12 +4103,7 @@ The actual expression data download will be much faster now that metadata is pre
 
             # METADATA STORAGE: Store concatenation decision for supervisor access
             modality_name = f"geo_{geo_id.lower()}"
-            if modality_name not in self.data_manager.metadata_store:
-                self.data_manager.metadata_store[modality_name] = {}
-
-            self.data_manager.metadata_store[modality_name][
-                "concatenation_decision"
-            ] = {
+            concatenation_info = {
                 "join_strategy": "inner" if use_intersecting_genes_only else "outer",
                 "auto_detected": auto_detected,
                 "analysis": analysis_metadata,
@@ -4105,6 +4116,20 @@ The actual expression data download will be much faster now that metadata is pre
                 "provenance_tracked": True,
                 "timestamp": datetime.now().isoformat(),
             }
+
+            # Update existing entry or create new one with concatenation decision
+            existing_entry = self.data_manager._get_geo_metadata(modality_name)
+            if existing_entry:
+                existing_entry["concatenation_decision"] = concatenation_info
+                self.data_manager.metadata_store[modality_name] = existing_entry
+            else:
+                # No existing entry - store concatenation decision in proper structure
+                # Note: This shouldn't happen if metadata was stored earlier, but handle it defensively
+                self.data_manager.metadata_store[modality_name] = {
+                    "concatenation_decision": concatenation_info,
+                    "stored_by": "_handle_multi_sample_concatenation",
+                    "fetch_timestamp": datetime.now().isoformat(),
+                }
 
             logger.info(
                 f"✓ Concatenation decision stored in metadata_store for supervisor access"

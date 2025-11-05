@@ -3484,13 +3484,40 @@ find_marker_genes_for_clusters("geo_gse12345_clustered", groupby="leiden", metho
 
 ### Cell Type Annotation (Supervisor Request: "Annotate cell types")
 
-# Step 1: Check for marker gene data
+**CRITICAL: Cell Type Annotation Protocol**
+
+IMPORTANT: Built-in marker gene lists are PRELIMINARY and NOT scientifically validated.
+They lack evidence scoring (AUC, logFC, specificity), reference atlas validation,
+and tissue/context-specific optimization.
+
+**MANDATORY STEPS before annotation:**
+
+# Step 0: ALWAYS ask supervisor to request custom markers from user
+Tell the supervisor:
+"Before proceeding with cell type annotation, I need to inform you that the built-in
+marker sets are preliminary and not scientifically validated. They do not have:
+- Evidence scoring (AUC, logFC, specificity metrics)
+- Validation against reference atlases (Azimuth, CellTypist, Human Cell Atlas)
+- Tissue/context-specific optimization
+
+For production-quality annotation, I recommend asking the user to provide:
+1. Custom validated markers specific to their tissue/context
+2. Reference-based annotations from tools like Azimuth, CellTypist, or scANVI
+3. Literature-derived markers with evidence scores
+
+Should I proceed with built-in preliminary markers, or would you like to request
+custom markers from the user?"
+
+# Step 1: ONLY after user explicitly confirms, check for marker gene data
 check_data_status("geo_gse12345_markers")
 
-# Step 2: Annotate cell types using marker gene patterns
-annotate_cell_types("geo_gse12345_markers", reference_markers=None)
+# Step 2: Annotate cell types (use custom markers if provided by user)
+annotate_cell_types("geo_gse12345_markers", reference_markers=None)  # or custom_markers_dict
 
-# Step 3: Report cell type annotations to supervisor
+# Step 3: Report cell type annotations to supervisor with disclaimer
+"Cell type annotation completed using [built-in/custom] markers.
+If using built-in markers, results should be validated manually with known markers
+for this tissue type."
 
 
 ## 3. VISUALIZATION WORKFLOWS

@@ -15,7 +15,7 @@ import time
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypedDict, Union
 
 import anndata
 import nbformat
@@ -66,6 +66,31 @@ except ImportError:
     mudata = None
 
 logger = logging.getLogger(__name__)
+
+
+class MetadataEntry(TypedDict, total=False):
+    """
+    TypedDict for GEO metadata store entries.
+
+    Enforces consistent structure across all metadata storage locations
+    to prevent KeyError bugs when retrieving metadata.
+
+    Structure:
+        metadata (Dict[str, Any]): The actual GEO metadata from GEOparse
+        validation (Dict[str, Any]): Validation information (optional)
+        fetch_timestamp (str): ISO format timestamp when metadata was fetched
+        strategy_config (Dict[str, Any]): Download strategy configuration (optional)
+        stored_by (str): Component that stored the metadata
+        modality_detection (Dict[str, Any]): Modality detection results (optional)
+        concatenation_decision (Dict[str, Any]): Concatenation strategy (optional)
+    """
+    metadata: Dict[str, Any]
+    validation: Dict[str, Any]
+    fetch_timestamp: str
+    strategy_config: Dict[str, Any]
+    stored_by: str
+    modality_detection: Dict[str, Any]
+    concatenation_decision: Dict[str, Any]
 
 
 class SuppressKaleidoLogging:
@@ -1891,6 +1916,112 @@ class DataManagerV2:
             "stored_by": "DataManagerV2",
         }
         logger.info(f"Stored metadata for dataset: {dataset_id}")
+
+    def _store_geo_metadata(
+        self,
+        geo_id: str,
+        metadata: Dict[str, Any],
+        stored_by: str,
+        **kwargs
+    ) -> MetadataEntry:
+        """
+        Store GEO metadata with enforced consistent structure.
+
+        This helper method ensures all GEO metadata is stored with the same
+        nested structure, preventing KeyError bugs when retrieving metadata.
+
+        Args:
+            geo_id: GEO dataset identifier (e.g., 'GSE12345')
+            metadata: Raw GEO metadata dictionary from GEOparse
+            stored_by: Component storing the metadata (for tracking)
+            **kwargs: Optional additional fields:
+                - validation (Dict): Validation information
+                - strategy_config (Dict): Download strategy configuration
+                - modality_detection (Dict): Modality detection results
+                - concatenation_decision (Dict): Concatenation strategy
+
+        Returns:
+            MetadataEntry: The stored metadata entry
+
+        Example:
+            >>> entry = data_manager._store_geo_metadata(
+            ...     geo_id="GSE12345",
+            ...     metadata=geoparse_metadata,
+            ...     stored_by="_check_platform_compatibility",
+            ...     modality_detection={"modality": "single_cell", "confidence": 0.95}
+            ... )
+        """
+        # Create entry with required fields
+        entry: MetadataEntry = {
+            "metadata": metadata.copy(),
+            "fetch_timestamp": kwargs.get("fetch_timestamp", datetime.now().isoformat()),
+            "stored_by": stored_by,
+        }
+
+        # Add optional fields if provided
+        if "validation" in kwargs:
+            entry["validation"] = kwargs["validation"]
+
+        if "strategy_config" in kwargs:
+            entry["strategy_config"] = kwargs["strategy_config"]
+
+        if "modality_detection" in kwargs:
+            entry["modality_detection"] = kwargs["modality_detection"]
+
+        if "concatenation_decision" in kwargs:
+            entry["concatenation_decision"] = kwargs["concatenation_decision"]
+
+        # Store with nested structure
+        self.metadata_store[geo_id] = entry
+
+        logger.debug(
+            f"Stored GEO metadata for {geo_id} with nested structure "
+            f"(stored_by: {stored_by}, keys: {list(entry.keys())})"
+        )
+
+        return entry
+
+    def _get_geo_metadata(self, geo_id: str) -> Optional[MetadataEntry]:
+        """
+        Safely retrieve GEO metadata with structure validation.
+
+        This helper method retrieves GEO metadata from the store and validates
+        that it has the expected nested structure.
+
+        Args:
+            geo_id: GEO dataset identifier
+
+        Returns:
+            Optional[MetadataEntry]: Metadata entry if found and valid, None otherwise
+
+        Example:
+            >>> entry = data_manager._get_geo_metadata("GSE12345")
+            >>> if entry:
+            ...     raw_metadata = entry["metadata"]
+            ...     strategy = entry.get("strategy_config", {})
+        """
+        if geo_id not in self.metadata_store:
+            logger.debug(f"No metadata found for {geo_id}")
+            return None
+
+        stored_entry = self.metadata_store[geo_id]
+
+        # Validate structure
+        if not isinstance(stored_entry, dict):
+            logger.warning(
+                f"Metadata for {geo_id} is not a dictionary: {type(stored_entry)}"
+            )
+            return None
+
+        if "metadata" not in stored_entry:
+            logger.warning(
+                f"Metadata for {geo_id} missing 'metadata' key. "
+                f"Found keys: {list(stored_entry.keys())}. "
+                f"This indicates a structure mismatch bug."
+            )
+            return None
+
+        return stored_entry
 
     def get_stored_metadata(self, dataset_id: str) -> Optional[Dict[str, Any]]:
         """

@@ -106,13 +106,14 @@ def data_expert(
             # ------------------------------------------------
             # Check if metadata already in store
             # ------------------------------------------------
-            if clean_geo_id in data_manager.metadata_store:
-                if data_manager.metadata_store[clean_geo_id]["strategy_config"]:
+            stored_entry = data_manager._get_geo_metadata(clean_geo_id)
+            if stored_entry:
+                if stored_entry.get("strategy_config"):
                     logger.debug(
                         f"Metadata already stored for: {geo_id}. returning summary"
                     )
                     summary = geo_service._format_metadata_summary(
-                        clean_geo_id, data_manager.metadata_store[clean_geo_id]
+                        clean_geo_id, stored_entry
                     )
                     return summary
                 logger.info(
@@ -194,10 +195,13 @@ def data_expert(
         console = getattr(data_manager, "console", None)
         geo_service = GEOService(data_manager, console=console)
 
+        # Get stored metadata using validated retrieval
+        stored_entry = data_manager._get_geo_metadata(geo_id)
+        if not stored_entry:
+            return f"Error: Metadata for {geo_id} not found"
+
         target_url = ""
-        for urls in data_manager.metadata_store[geo_id]["metadata"][
-            "supplementary_file"
-        ]:
+        for urls in stored_entry["metadata"].get("supplementary_file", []):
             if isinstance(urls, str):
                 if filename in urls:
                     target_url = urls
@@ -281,7 +285,8 @@ Ready for immediate analysis
 
 Use this modality for quality control, filtering, or downstream analysis."""
 
-            if clean_geo_id not in data_manager.metadata_store:
+            # Validate metadata exists using validated retrieval
+            if not data_manager._get_geo_metadata(clean_geo_id):
                 return f"Error: You forgot to fetch metdata. First go fetch the metadata for {clean_geo_id}"
 
             # Use enhanced GEOService with modular architecture and fallbacks
