@@ -345,8 +345,8 @@ class ErrorHandlerRegistry:
         handler matches the error pattern.
         """
         # Truncate very long error messages
-        display_error = error_str[:200]
-        if len(error_str) > 200:
+        display_error = error_str[:500]
+        if len(error_str) > 500:
             display_error += "..."
 
         return ErrorGuidance(

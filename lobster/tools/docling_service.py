@@ -127,6 +127,13 @@ class DoclingService:
                 PdfFormatOption,
             )
 
+            # Suppress formatting clash warnings from docling's html_backend
+            # These are non-fatal warnings about overlapping text styles (subscript vs bold)
+            # that occur when parsing complex HTML from publisher websites
+            import logging
+            html_backend_logger = logging.getLogger("docling_core.transforms.chunker.html_backend")
+            html_backend_logger.setLevel(logging.ERROR)
+
             # Store imports for later use
             self._docling_imports = {
                 "DocumentConverter": DocumentConverter,
