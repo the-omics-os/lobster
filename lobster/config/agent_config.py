@@ -103,13 +103,13 @@ class LobsterAgentConfigurator:
     # Pre-defined model configurations - 3 models
     MODEL_PRESETS = {
         # Development Model - Claude 3.7 Sonnet
-        "claude-3-7-sonnet": ModelConfig(
+        "claude-4-5-haiku": ModelConfig(
             provider=ModelProvider.BEDROCK_ANTHROPIC,
-            model_id="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+            model_id="us.anthropic.claude-haiku-4-5-20251001-v1:0",
             tier=ModelTier.ULTRA,
             temperature=1.0,
             region="us-east-1",
-            description="Claude 3.7 Sonnet for development and worker agents",
+            description="Claude 4.5 haiku for development and worker agents",
             supports_thinking=True,
         ),
         # Production Model - Claude 4 Sonnet
@@ -122,14 +122,24 @@ class LobsterAgentConfigurator:
             description="Claude 4 Sonnet for production",
             supports_thinking=True,
         ),
-        # Godmode Model - Claude 4.5 Sonnet
+        # ultra Model - Claude 4.5 Sonnet
         "claude-4-5-sonnet": ModelConfig(
             provider=ModelProvider.BEDROCK_ANTHROPIC,
             model_id="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
             tier=ModelTier.ULTRA,
             temperature=1.0,
             region="us-east-1",
-            description="Claude 4.5 Sonnet for godmode",
+            description="Claude 4.5 Sonnet for uktra mode",
+            supports_thinking=True,
+        ),
+        # Godmode Model - Claude 4.5 Sonnet
+        "claude-4-1-opus": ModelConfig(
+            provider=ModelProvider.BEDROCK_ANTHROPIC,
+            model_id="us.anthropic.claude-opus-4-1-20250805-v1:0",
+            tier=ModelTier.ULTRA,
+            temperature=1.0,
+            region="us-east-1",
+            description="Claude 4.1 opus for godmode",
             supports_thinking=True,
         ),
     }
@@ -162,26 +172,26 @@ class LobsterAgentConfigurator:
     TESTING_PROFILES = {
         "development": {
             # Supervisor and expert agents use Claude 4 Sonnet
-            "supervisor": "claude-4-sonnet",
+            "supervisor": "claude-4-5-haiku",
             # Assistant uses Claude 3.7 Sonnet
-            "assistant": "claude-3-7-sonnet",
+            "assistant": "claude-4-5-haiku",
             # All expert agents use Claude 4 Sonnet
-            "singlecell_expert_agent": "claude-4-sonnet",
-            "bulk_rnaseq_expert_agent": "claude-4-sonnet",
+            "singlecell_expert_agent": "claude-4-5-haiku",
+            "bulk_rnaseq_expert_agent": "claude-4-5-haiku",
             # "method_expert_agent": "claude-4-sonnet",  # DEPRECATED v2.2+
-            "data_expert_agent": "claude-4-sonnet",
-            "machine_learning_expert_agent": "claude-4-sonnet",
-            "research_agent": "claude-4-sonnet",
-            "ms_proteomics_expert_agent": "claude-4-sonnet",
-            "affinity_proteomics_expert_agent": "claude-4-sonnet",
-            "visualization_expert_agent": "claude-4-sonnet",
+            "data_expert_agent": "claude-4-5-haiku",
+            "machine_learning_expert_agent": "claude-4-5-haiku",
+            "research_agent": "claude-4-5-haiku",
+            "ms_proteomics_expert_agent": "claude-4-5-haiku",
+            "affinity_proteomics_expert_agent": "claude-4-5-haiku",
+            "visualization_expert_agent": "claude-4-5-haiku",
             "thinking": {},  # No thinking in development mode for faster testing
         },
         "production": {
             # Supervisor uses Claude 4.5 Sonnet
-            "supervisor": "claude-4-5-sonnet",
+            "supervisor": "claude-4-1-opus",
             # Assistant uses Claude 3.7 Sonnet
-            "assistant": "claude-3-7-sonnet",
+            "assistant": "claude-4-sonnet",
             # All expert agents use Claude 4 Sonnet
             "singlecell_expert_agent": "claude-4-sonnet",
             "bulk_rnaseq_expert_agent": "claude-4-sonnet",
@@ -194,9 +204,24 @@ class LobsterAgentConfigurator:
             "visualization_expert_agent": "claude-4-sonnet",
             "thinking": {},  # No thinking configured for production
         },
+        "ultra": {
+            # All agents including supervisor and assistant use Claude 4.5 Sonnet
+            "supervisor": "claude-4-1-opus",
+            "assistant": "claude-4-5-sonnet",
+            "singlecell_expert_agent": "claude-4-5-sonnet",
+            "bulk_rnaseq_expert_agent": "claude-4-5-sonnet",
+            # "method_expert_agent": "claude-4-5-sonnet",  # DEPRECATED v2.2+
+            "data_expert_agent": "claude-4-5-sonnet",
+            "machine_learning_expert_agent": "claude-4-5-sonnet",
+            "research_agent": "claude-4-5-sonnet",
+            "ms_proteomics_expert_agent": "claude-4-5-sonnet",
+            "affinity_proteomics_expert_agent": "claude-4-5-sonnet",
+            "visualization_expert_agent": "claude-4-5-sonnet",
+            "thinking": {},  # No thinking configured for godmode
+        },
         "godmode": {
             # All agents including supervisor and assistant use Claude 4.5 Sonnet
-            "supervisor": "claude-4-5-sonnet",
+            "supervisor": "claude-4-1-opus",
             "assistant": "claude-4-5-sonnet",
             "singlecell_expert_agent": "claude-4-5-sonnet",
             "bulk_rnaseq_expert_agent": "claude-4-5-sonnet",

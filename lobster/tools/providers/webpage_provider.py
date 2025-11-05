@@ -182,7 +182,7 @@ class WebpageProvider:
             ... )
         """
         try:
-            logger.info(f"Extracting webpage content from: {url[:80]}...")
+            logger.info(f"Extracting webpage content from: {url}")
 
             # Check if Docling is available
             if not self.docling_service.is_available():

@@ -32,19 +32,24 @@ class LLMFactory:
     # 3 models for development, production, and godmode
     MODEL_MAPPINGS = {
         # Development Model - Claude 3.7 Sonnet
-        "claude-3-7-sonnet": {
-            LLMProvider.BEDROCK_ANTHROPIC: "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-            LLMProvider.ANTHROPIC_DIRECT: "claude-3-5-sonnet-20241022",  # Fallback for direct API
+        "claude-4-5-haiku": {
+            LLMProvider.BEDROCK_ANTHROPIC: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            LLMProvider.ANTHROPIC_DIRECT: "claude-haiku-4-5-20251001",  # Fallback for direct API
         },
         # Production Model - Claude 4 Sonnet
         "claude-4-sonnet": {
             LLMProvider.BEDROCK_ANTHROPIC: "us.anthropic.claude-sonnet-4-20250514-v1:0",
-            LLMProvider.ANTHROPIC_DIRECT: "claude-3-5-sonnet-20241022",  # Fallback for direct API
+            LLMProvider.ANTHROPIC_DIRECT: "anthropic.claude-sonnet-4-20250514-v1:0",  # Fallback for direct API
         },
-        # Godmode Model - Claude 4.5 Sonnet
+        # ultra Model - Claude 4.5 Sonnet
         "claude-4-5-sonnet": {
             LLMProvider.BEDROCK_ANTHROPIC: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-            LLMProvider.ANTHROPIC_DIRECT: "claude-3-5-sonnet-20241022",  # Fallback for direct API
+            LLMProvider.ANTHROPIC_DIRECT: "claude-sonnet-4-5-20250929",  # Fallback for direct API
+        },
+        # Godmode Model - Claude 4.5 Sonnet
+        "claude-4-1'opus": {
+            LLMProvider.BEDROCK_ANTHROPIC: "us.anthropic.claude-opus-4-1-20250805-v1:0",
+            LLMProvider.ANTHROPIC_DIRECT: "claude-opus-4-1-20250805",  # Fallback for direct API
         },
     }
 
