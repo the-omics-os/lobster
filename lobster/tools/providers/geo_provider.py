@@ -1,8 +1,9 @@
 """
-GEO provider implementation for direct GEO DataSets search.
+GEO provider implementation for direct GEO database search.
 
-This provider implements direct search capabilities for NCBI's GEO DataSets database
-using E-utilities, supporting all query patterns from the official API examples. hi
+This provider implements direct search capabilities for NCBI's GEO database
+using E-utilities, supporting all query patterns from the official API examples.
+Searches across GSE (Series), GSM (Samples), GPL (Platforms), and GDS (Datasets).
 """
 
 import json
@@ -212,7 +213,7 @@ class GEOProvider(BasePublicationProvider):
         **kwargs,
     ) -> str:
         """
-        Search GEO DataSets (not publications - this searches datasets directly).
+        Search GEO database (includes GSE series, GSM samples, GPL platforms, and GDS datasets).
 
         Args:
             query: Search query string
@@ -223,7 +224,7 @@ class GEOProvider(BasePublicationProvider):
         Returns:
             str: Formatted search results
         """
-        logger.info(f"GEO DataSets search: {query[:50]}...")
+        logger.info(f"GEO database search: {query[:50]}...")
 
         try:
             # Convert filters to GEOSearchFilters if provided
@@ -261,7 +262,7 @@ class GEOProvider(BasePublicationProvider):
                     ),
                     "filters": filters,
                 },
-                description="Direct GEO DataSets search",
+                description="Direct GEO database search",
             )
 
             return formatted_results
@@ -395,7 +396,7 @@ class GEOProvider(BasePublicationProvider):
         self, query: str, filters: Optional[GEOSearchFilters] = None
     ) -> GEOSearchResult:
         """
-        Execute eSearch against GEO DataSets database.
+        Execute eSearch against GEO database (includes GSE series, GSM samples, GPL platforms, and GDS datasets).
 
         Args:
             query: Search query string
@@ -441,7 +442,7 @@ class GEOProvider(BasePublicationProvider):
 
         # Build eSearch URL
         url_params = {
-            "db": "gds",  # GEO DataSets database
+            "db": "geo",  # GEO database (includes GSE, GSM, GPL, GDS)
             "term": complete_query,
             "retmode": "json",
             "retmax": str(max_results),
@@ -504,7 +505,7 @@ class GEOProvider(BasePublicationProvider):
 
         # Build eSummary URL
         url_params = {
-            "db": "gds",
+            "db": "geo",
             "retmode": "json",
             "tool": "lobster",
             "email": self.config.email,
@@ -561,7 +562,7 @@ class GEOProvider(BasePublicationProvider):
 
         # Build eLink URL
         url_params = {
-            "dbfrom": "gds",
+            "dbfrom": "geo",
             "db": "pubmed",
             "id": ",".join(geo_ids),
             "retmode": "json",
@@ -682,7 +683,7 @@ class GEOProvider(BasePublicationProvider):
         self, search_result: GEOSearchResult, original_query: str
     ) -> str:
         """Format GEO search results for display."""
-        response = "## 🧬 GEO DataSets Search Results\n\n"
+        response = "## 🧬 GEO Database Search Results\n\n"
         response += f"**Query**: `{search_result.query or original_query}`\n"
         response += f"**Total Results**: {search_result.count:,}\n"
         response += f"**Showing**: {len(search_result.ids)} datasets\n\n"
@@ -700,7 +701,7 @@ class GEOProvider(BasePublicationProvider):
             for i, summary in enumerate(search_result.summaries, 1):
                 response += f"### Dataset {i}/{len(search_result.summaries)}\n"
 
-                accession = summary.get("Accession", f"GDS{summary.get('uid', '')}")
+                accession = summary.get("accession", f"GDS{summary.get('uid', '')}")
                 response += f"**Accession**: [{accession}](https://www.ncbi.nlm.nih.gov/sites/GDSbrowser?acc={accession})\n"
                 response += f"**Title**: {summary.get('title', 'N/A')}\n"
 
