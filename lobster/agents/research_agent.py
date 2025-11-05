@@ -24,6 +24,7 @@ from lobster.tools.publication_service import PublicationService
 # Phase 1: New providers for two-tier access
 from lobster.tools.providers.abstract_provider import AbstractProvider
 from lobster.tools.providers.webpage_provider import WebpageProvider
+from lobster.tools.unified_content_service import UnifiedContentService
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -1043,48 +1044,46 @@ Could not retrieve abstract for: {identifier}
 
                 except Exception as webpage_error:
                     logger.warning(f"Webpage extraction failed, trying PDF fallback: {webpage_error}")
-                    # Fall through to PDF extraction below
+                    # Fall through to UnifiedContentService extraction below
 
-            # Fallback to PDF extraction using DoclingService directly
-            logger.info(f"Using PDF extraction for: {identifier}")
-            from lobster.tools.docling_service import DoclingService
-            from pathlib import Path
+            # Fallback: Use UnifiedContentService for full extraction (now handles DOI resolution)
+            logger.info(f"Using UnifiedContentService for comprehensive extraction: {identifier}")
+            content_service = UnifiedContentService(data_manager=data_manager)
 
-            docling_service = DoclingService(
-                cache_dir=Path(".lobster_workspace") / "literature_cache",
-                data_manager=data_manager
-            )
-
-            # Extract methods section with DoclingService
-            result = docling_service.extract_methods_section(
+            # get_full_content() now handles DOI resolution automatically
+            content_result = content_service.get_full_content(
                 source=identifier,
+                prefer_webpage=False,  # Already tried webpage above if applicable
                 keywords=["methods", "materials", "analysis"],
                 max_paragraphs=100
             )
 
             # Format response with extracted content
-            methods_markdown = result.get("methods_markdown", "")
-            software = result.get("software_mentioned", [])
-            tables_count = len(result.get("tables", []))
+            content = content_result.get("content", "")
+            methods_text = content_result.get("methods_text", "")
+            tier_used = content_result.get("tier_used", "unknown")
+            source_type = content_result.get("source_type", "unknown")
+            metadata = content_result.get("metadata", {})
 
-            response = f"""## Publication Overview (PDF Extraction)
+            response = f"""## Publication Overview ({tier_used.replace('_', ' ').title()})
 
 **Source:** {identifier}
-**Extraction Method:** PDF parsing with Docling
-**Content Length:** {len(methods_markdown)} characters
-**Software Detected:** {', '.join(software[:5]) if software else 'None'}
-**Tables Found:** {tables_count}
+**Extraction Method:** {source_type.title()} extraction via {tier_used}
+**Content Length:** {len(content)} characters
+**Software Detected:** {', '.join(metadata.get('software', [])[:5]) if metadata.get('software') else 'None'}
+**Tables Found:** {metadata.get('tables', 0)}
+**Formulas Found:** {metadata.get('formulas', 0)}
 
 ---
 
-{methods_markdown}
+{content or methods_text}
 
 ---
-*Extracted from PDF using Docling structure-aware parsing*
+*Extracted using {source_type} parsing with automatic DOI/PMID resolution*
 *For abstract-only view, use get_quick_abstract()*
 """
 
-            logger.info(f"Successfully extracted PDF content: {len(methods_markdown)} chars")
+            logger.info(f"Successfully extracted content via UnifiedContentService: {len(content)} chars")
             return response
 
         except Exception as e:

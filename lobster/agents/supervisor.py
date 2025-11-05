@@ -431,8 +431,8 @@ def _build_examples_section() -> str:
 
     **GEO Search Workflow:**
     - User: "Find recent single-cell datasets for pancreatic cancer"
-    - You delegate to research_agent to search GEO with filters
-    - Present results and ask user which datasets to download
+    - You delegate to research_agent to search
+    - Present results and ask user which datasets to download. Ensure to present at least 3 results in the same format to not remove too much information from the agent output
     - Upon confirmation, delegate to data_expert to download selected GEO IDs
 
     **Dataset Download from Publication:**

@@ -267,6 +267,22 @@ class UnifiedContentService:
                 cached["tier_used"] = "full_cached"
                 return cached
 
+        # Resolve PMID/DOI identifiers to accessible URLs
+        if self._is_identifier(source):
+            logger.info(f"Detected identifier (PMID/DOI): {source}, resolving to URL...")
+
+            from lobster.tools.providers.publication_resolver import PublicationResolver
+            resolver = PublicationResolver()
+            resolution_result = resolver.resolve(source)
+
+            if resolution_result.is_accessible():
+                logger.info(f"Resolved {source} to: {resolution_result.pdf_url} (via {resolution_result.source})")
+                source = resolution_result.pdf_url  # Replace identifier with resolved URL
+            else:
+                # Handle paywalled papers gracefully
+                logger.warning(f"Paper {source} is not accessible: {resolution_result.access_type}")
+                raise PaywalledError(source, resolution_result.suggestions)
+
         # Tier 2: Full content extraction with fallback strategy
         logger.info(f"Tier 2: Extracting full content from {source}")
 
@@ -314,59 +330,56 @@ class UnifiedContentService:
                     f"Webpage extraction failed: {e}, falling back to PDF..."
                 )
 
-        # Strategy 2: Direct PDF extraction via DoclingService
-        if self._is_pdf_url(source):
-            try:
-                logger.info(f"Attempting PDF extraction from {source}")
-                result = self.docling_service.extract_methods_section(
-                    source=source,
-                    keywords=keywords,
-                    max_paragraphs=max_paragraphs,
-                    max_retries=max_retries,
+        # Strategy 2: DoclingService with automatic format detection
+        try:
+            logger.info(f"Attempting content extraction from {source} (auto-detect format)")
+            result = self.docling_service.extract_methods_section(
+                source=source,
+                keywords=keywords,
+                max_paragraphs=max_paragraphs,
+                max_retries=max_retries,
+            )
+
+            # Determine actual format from Docling's detection
+            detected_format = result.get("provenance", {}).get("parser", "docling")
+            actual_format = "html" if "html" in str(result.get("provenance", {})) else "pdf"
+
+            # Format result with auto-detected type
+            content_result = {
+                "content": result.get("methods_markdown", ""),
+                "tier_used": f"full_{actual_format}",
+                "source_type": actual_format,
+                "extraction_time": time.time() - start_time,
+                "metadata": {
+                    "tables": len(result.get("tables", [])),
+                    "formulas": len(result.get("formulas", [])),
+                    "software": result.get("software_mentioned", []),
+                    "sections": result.get("sections", []),
+                },
+                "methods_text": result.get("methods_text", ""),
+                "methods_markdown": result.get("methods_markdown", ""),
+                "parser": detected_format,
+                "fallback_used": result.get("fallback_used", False),
+            }
+
+            # Cache in DataManager
+            if self.data_manager:
+                self.data_manager.cache_publication_content(
+                    identifier=source,
+                    content=content_result,
+                    format="json",
                 )
 
-                # Format result
-                content_result = {
-                    "content": result.get("methods_markdown", ""),
-                    "tier_used": "full_pdf",
-                    "source_type": "pdf",
-                    "extraction_time": time.time() - start_time,
-                    "metadata": {
-                        "tables": len(result.get("tables", [])),
-                        "formulas": len(result.get("formulas", [])),
-                        "software": result.get("software_mentioned", []),
-                        "sections": result.get("sections", []),
-                    },
-                    "methods_text": result.get("methods_text", ""),
-                    "methods_markdown": result.get("methods_markdown", ""),
-                    "parser": result.get("parser", "docling"),
-                    "fallback_used": result.get("fallback_used", False),
-                }
+            logger.info(
+                f"Content extraction successful ({actual_format} auto-detected) in {content_result['extraction_time']:.2f}s"
+            )
+            return content_result
 
-                # Cache in DataManager
-                if self.data_manager:
-                    self.data_manager.cache_publication_content(
-                        identifier=source,
-                        content=content_result,
-                        format="json",
-                    )
-
-                logger.info(
-                    f"PDF extraction successful in {content_result['extraction_time']:.2f}s"
-                )
-                return content_result
-
-            except Exception as e:
-                logger.error(f"PDF extraction failed: {e}")
-                raise ContentExtractionError(
-                    f"Failed to extract PDF content from {source}: {str(e)}"
-                )
-
-        # No valid extraction strategy found
-        raise ContentExtractionError(
-            f"Cannot extract content from source: {source}. "
-            f"Source must be a valid URL (webpage or PDF)."
-        )
+        except Exception as e:
+            logger.error(f"Content extraction failed: {e}")
+            raise ContentExtractionError(
+                f"Failed to extract content from {source}: {str(e)}"
+            )
 
     def extract_methods_section(
         self,
@@ -476,16 +489,3 @@ class UnifiedContentService:
             source.startswith("10.")  # DOI prefix
         )
 
-    def _is_pdf_url(self, url: str) -> bool:
-        """
-        Check if URL points to a PDF document.
-
-        Detection strategies:
-            - URL ends with .pdf
-            - URL contains "/pdf/" in path
-        """
-        url_lower = url.lower()
-        return (
-            url_lower.endswith(".pdf") or
-            "/pdf/" in url_lower
-        )
