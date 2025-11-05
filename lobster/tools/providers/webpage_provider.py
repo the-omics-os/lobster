@@ -323,9 +323,7 @@ class WebpageProvider:
 
         except Exception as e:
             logger.exception(f"Error extracting webpage with metadata: {e}")
-            raise WebpageExtractionError(
-                f"Webpage extraction failed: {str(e)}"
-            )
+            raise WebpageExtractionError(f"Webpage extraction failed: {str(e)}")
 
     def is_available(self) -> bool:
         """

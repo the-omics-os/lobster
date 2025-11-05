@@ -29,8 +29,7 @@ def data_manager(tmp_path):
 def content_service(data_manager):
     """Create UnifiedContentService instance."""
     return UnifiedContentService(
-        cache_dir=data_manager.literature_cache_dir,
-        data_manager=data_manager
+        cache_dir=data_manager.literature_cache_dir, data_manager=data_manager
     )
 
 
@@ -185,9 +184,7 @@ class TestRealPDFExtraction:
             print(f"💡 Direct PDF URL should be used instead")
             pytest.skip("Auto-detection not available for this URL structure")
 
-    def test_provenance_tracking_with_real_paper(
-        self, content_service, data_manager
-    ):
+    def test_provenance_tracking_with_real_paper(self, content_service, data_manager):
         """
         Test that provenance tracking works with real paper extraction.
         """
@@ -209,7 +206,9 @@ class TestRealPDFExtraction:
         else:
             print(f"⚠️  Provenance tracking disabled in test setup")
 
-        assert data_manager.provenance is not None, "Provenance tracking should be enabled"
+        assert (
+            data_manager.provenance is not None
+        ), "Provenance tracking should be enabled"
 
 
 @pytest.mark.integration

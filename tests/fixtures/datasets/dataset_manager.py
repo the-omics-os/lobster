@@ -5,7 +5,8 @@ Provides convenient methods to access datasets from YAML config in tests.
 """
 
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
+
 import yaml
 
 
@@ -33,7 +34,7 @@ class DatasetManager:
         Raises:
             ValueError: If path format is invalid or dataset not found
         """
-        parts = path.split('/')
+        parts = path.split("/")
         if len(parts) != 4:
             raise ValueError(
                 f"Path must have 4 parts: omics_type/analysis_type/platform/dataset_id\n"
@@ -73,7 +74,7 @@ class DatasetManager:
                 ...
             }
         """
-        parts = path.split('/')
+        parts = path.split("/")
         if len(parts) != 4:
             raise ValueError(f"Invalid path format: {path}")
 
@@ -108,20 +109,18 @@ class DatasetManager:
             for analysis_type, analysis_data in omics_data.items():
                 for platform, datasets in analysis_data.items():
                     for dataset in datasets:
-                        tags = dataset.get('test_tags', [])
+                        tags = dataset.get("test_tags", [])
                         if tag in tags:
                             # Add hierarchical path for easy get() access
                             dataset_with_path = dataset.copy()
-                            dataset_with_path['_path'] = (
+                            dataset_with_path["_path"] = (
                                 f"{omics_type}/{analysis_type}/{platform}/{dataset['id']}"
                             )
                             results.append(dataset_with_path)
         return results
 
     def list_by_type(
-        self,
-        omics_type: str,
-        analysis_type: Optional[str] = None
+        self, omics_type: str, analysis_type: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         List all datasets for omics/analysis type.
@@ -150,7 +149,7 @@ class DatasetManager:
             for platform, datasets in analysis_data.items():
                 for dataset in datasets:
                     dataset_with_path = dataset.copy()
-                    dataset_with_path['_path'] = (
+                    dataset_with_path["_path"] = (
                         f"{omics_type}/{analysis_key}/{platform}/{dataset['id']}"
                     )
                     results.append(dataset_with_path)
@@ -158,11 +157,7 @@ class DatasetManager:
         return results
 
     def _find_dataset(
-        self,
-        omics_type: str,
-        analysis_type: str,
-        platform: str,
-        dataset_id: str
+        self, omics_type: str, analysis_type: str, platform: str, dataset_id: str
     ) -> Optional[Dict[str, Any]]:
         """Internal: Find dataset in config by hierarchical keys."""
         try:
@@ -171,7 +166,7 @@ class DatasetManager:
             datasets = analysis_data[platform]
 
             for dataset in datasets:
-                if dataset['id'] == dataset_id:
+                if dataset["id"] == dataset_id:
                     return dataset
         except KeyError:
             return None

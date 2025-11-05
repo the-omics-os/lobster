@@ -49,8 +49,12 @@ class CellTypeTemplate:
     confidence_threshold: float = 0.5
     description: str = ""
     alternative_names: List[str] = None
-    validation_status: str = "preliminary"  # Options: "preliminary", "validated", "reference_based"
-    evidence_source: Optional[str] = None  # Source of markers (e.g., "Azimuth_v0.4.6", "CellTypist_v2.0", "PanglaoDB", "Manual")
+    validation_status: str = (
+        "preliminary"  # Options: "preliminary", "validated", "reference_based"
+    )
+    evidence_source: Optional[str] = (
+        None  # Source of markers (e.g., "Azimuth_v0.4.6", "CellTypist_v2.0", "PanglaoDB", "Manual")
+    )
     species: str = "human"  # Options: "human", "mouse", "multi"
 
     def __post_init__(self):
@@ -139,6 +143,21 @@ class AnnotationTemplateService:
                 description="Gamma delta T cells",
                 alternative_names=["γδ T cells", "Gamma delta T cells"],
             ),
+            "T cells exhausted": CellTypeTemplate(
+                name="T cells exhausted",
+                markers=["CD3D", "PDCD1", "CTLA4", "LAG3", "TIGIT", "HAVCR2", "CD57"],
+                category="T cells",
+                confidence_threshold=0.7,
+                description="Exhausted/senescent T cells (immunosenescence marker)",
+                alternative_names=[
+                    "Senescent T cells",
+                    "Immunosenescent T cells",
+                    "PD1+ T cells",
+                ],
+                validation_status="validated",
+                evidence_source="Multiple aging studies - robust RNA markers",
+                species="human",
+            ),
             "NK cells": CellTypeTemplate(
                 name="NK cells",
                 markers=["GNLY", "NKG7", "KLRD1", "NCR1", "PRF1", "GZMB"],
@@ -149,6 +168,21 @@ class AnnotationTemplateService:
                     "Natural killer cells",
                     "Large granular lymphocytes",
                 ],
+            ),
+            "NK cells aged": CellTypeTemplate(
+                name="NK cells aged",
+                markers=["GNLY", "NKG7", "CD57", "KLRG1", "FCGR3A", "PRF1"],
+                category="NK cells",
+                confidence_threshold=0.7,
+                description="Aged/mature NK cells with reduced proliferative capacity",
+                alternative_names=[
+                    "CD57+ NK cells",
+                    "Mature NK cells",
+                    "Senescent NK cells",
+                ],
+                validation_status="validated",
+                evidence_source="Immunosenescence studies",
+                species="human",
             ),
             "B cells naive": CellTypeTemplate(
                 name="B cells naive",
@@ -181,6 +215,21 @@ class AnnotationTemplateService:
                 confidence_threshold=0.6,
                 description="Classical CD14+ monocytes",
                 alternative_names=["Classical monocytes", "CD14+ monocytes"],
+            ),
+            "Monocytes inflammatory": CellTypeTemplate(
+                name="Monocytes inflammatory",
+                markers=["CD14", "IL1B", "IL6", "TNF", "NLRP3", "CXCL8", "CCL2"],
+                category="Myeloid",
+                confidence_threshold=0.7,
+                description="Inflammatory monocytes with high cytokine expression (inflammaging)",
+                alternative_names=[
+                    "Inflammaging monocytes",
+                    "Cytokine-high monocytes",
+                    "Activated monocytes",
+                ],
+                validation_status="preliminary",
+                evidence_source="Nature Aging 2021 (PMID: 33564145)",
+                species="human",
             ),
             "Monocytes CD16+": CellTypeTemplate(
                 name="Monocytes CD16+",
@@ -229,7 +278,6 @@ class AnnotationTemplateService:
             # NOTE: "Debris" template removed - QC metrics (high_mt, low_genes, low_counts)
             # are not gene markers and belong in QC pipeline, not annotation templates.
             # Use quality_service.py for QC filtering instead.
-
         }
 
     def _create_brain_template(self) -> Dict[str, CellTypeTemplate]:
@@ -316,7 +364,16 @@ class AnnotationTemplateService:
             ),
             "Alveolar epithelial type II": CellTypeTemplate(
                 name="Alveolar epithelial type II",
-                markers=["SFTPA1", "SFTPA2", "SFTPB", "SFTPC", "SFTPD", "ABCA3", "SLC34A2", "LPCAT1"],
+                markers=[
+                    "SFTPA1",
+                    "SFTPA2",
+                    "SFTPB",
+                    "SFTPC",
+                    "SFTPD",
+                    "ABCA3",
+                    "SLC34A2",
+                    "LPCAT1",
+                ],
                 category="Epithelial",
                 confidence_threshold=0.6,
                 description="Alveolar epithelial type II cells",

@@ -15,15 +15,15 @@ Tests cover:
 """
 
 from pathlib import Path
+from typing import Any, Dict
 from unittest.mock import MagicMock, Mock, patch
-from typing import Dict, Any
 
 import pytest
 
 from lobster.tools.unified_content_service import (
-    UnifiedContentService,
     ContentExtractionError,
     PaywalledError,
+    UnifiedContentService,
 )
 
 
@@ -99,7 +99,9 @@ class TestQuickAbstract:
     """Test get_quick_abstract() method (Tier 1 access)."""
 
     @patch("lobster.tools.unified_content_service.AbstractProvider")
-    def test_get_quick_abstract_success(self, mock_provider_class, unified_service, sample_abstract_metadata):
+    def test_get_quick_abstract_success(
+        self, mock_provider_class, unified_service, sample_abstract_metadata
+    ):
         """Test successful quick abstract retrieval."""
         # Mock AbstractProvider
         mock_provider = Mock()
@@ -128,7 +130,9 @@ class TestQuickAbstract:
         assert len(result["keywords"]) == 3
 
     @patch("lobster.tools.unified_content_service.AbstractProvider")
-    def test_get_quick_abstract_with_doi(self, mock_provider_class, unified_service, sample_abstract_metadata):
+    def test_get_quick_abstract_with_doi(
+        self, mock_provider_class, unified_service, sample_abstract_metadata
+    ):
         """Test quick abstract retrieval with DOI identifier."""
         mock_provider = Mock()
         mock_provider.get_abstract.return_value = sample_abstract_metadata
@@ -146,7 +150,9 @@ class TestQuickAbstract:
         assert mock_provider.get_abstract.called
 
     @patch("lobster.tools.unified_content_service.AbstractProvider")
-    def test_get_quick_abstract_error_handling(self, mock_provider_class, unified_service):
+    def test_get_quick_abstract_error_handling(
+        self, mock_provider_class, unified_service
+    ):
         """Test error handling in quick abstract retrieval."""
         mock_provider = Mock()
         mock_provider.get_abstract.side_effect = Exception("API error")
@@ -190,15 +196,21 @@ class TestFullContent:
         assert result["tier_used"] == "full_cached"
         assert result["methods_markdown"] == sample_full_content["methods_markdown"]
         assert "extraction_time" in result
-        unified_service.data_manager.get_cached_publication.assert_called_once_with("PMID:12345678")
+        unified_service.data_manager.get_cached_publication.assert_called_once_with(
+            "PMID:12345678"
+        )
 
     @patch("lobster.tools.unified_content_service.WebpageProvider")
-    def test_get_full_content_webpage_first(self, mock_webpage_provider_class, unified_service, sample_full_content):
+    def test_get_full_content_webpage_first(
+        self, mock_webpage_provider_class, unified_service, sample_full_content
+    ):
         """Test full content extraction with webpage-first strategy."""
         # Mock webpage provider
         mock_webpage_provider = Mock()
         mock_webpage_provider.can_handle.return_value = True
-        mock_webpage_provider.extract_with_full_metadata.return_value = sample_full_content
+        mock_webpage_provider.extract_with_full_metadata.return_value = (
+            sample_full_content
+        )
         mock_webpage_provider_class.return_value = mock_webpage_provider
 
         service = UnifiedContentService(
@@ -218,7 +230,9 @@ class TestFullContent:
         assert mock_webpage_provider.extract_with_full_metadata.called
 
     @patch("lobster.tools.unified_content_service.DoclingService")
-    def test_get_full_content_pdf_extraction(self, mock_docling_class, unified_service, sample_full_content):
+    def test_get_full_content_pdf_extraction(
+        self, mock_docling_class, unified_service, sample_full_content
+    ):
         """Test full content extraction with PDF fallback."""
         # Mock docling service
         mock_docling = Mock()
@@ -243,13 +257,19 @@ class TestFullContent:
     @patch("lobster.tools.unified_content_service.WebpageProvider")
     @patch("lobster.tools.unified_content_service.DoclingService")
     def test_get_full_content_fallback_to_pdf(
-        self, mock_docling_class, mock_webpage_provider_class, unified_service, sample_full_content
+        self,
+        mock_docling_class,
+        mock_webpage_provider_class,
+        unified_service,
+        sample_full_content,
     ):
         """Test fallback from webpage to PDF extraction."""
         # Mock webpage provider (fails)
         mock_webpage_provider = Mock()
         mock_webpage_provider.can_handle.return_value = True
-        mock_webpage_provider.extract_with_full_metadata.side_effect = Exception("Webpage extraction failed")
+        mock_webpage_provider.extract_with_full_metadata.side_effect = Exception(
+            "Webpage extraction failed"
+        )
         mock_webpage_provider_class.return_value = mock_webpage_provider
 
         # Mock docling service (succeeds)
@@ -281,10 +301,14 @@ class TestFullContent:
         assert "Cannot extract content from source" in str(exc_info.value)
 
     @patch("lobster.tools.unified_content_service.DoclingService")
-    def test_get_full_content_pdf_extraction_failure(self, mock_docling_class, unified_service):
+    def test_get_full_content_pdf_extraction_failure(
+        self, mock_docling_class, unified_service
+    ):
         """Test error handling when PDF extraction fails."""
         mock_docling = Mock()
-        mock_docling.extract_methods_section.side_effect = Exception("PDF extraction failed")
+        mock_docling.extract_methods_section.side_effect = Exception(
+            "PDF extraction failed"
+        )
         mock_docling_class.return_value = mock_docling
 
         service = UnifiedContentService(
@@ -330,7 +354,9 @@ class TestMethodsExtraction:
         assert result["software_used"] == sample_full_content["software_mentioned"]
         assert result["content_source"] == "unknown"
 
-    def test_extract_methods_section_with_content_result(self, unified_service, sample_full_content):
+    def test_extract_methods_section_with_content_result(
+        self, unified_service, sample_full_content
+    ):
         """Test methods extraction from full content result."""
         content_result = {
             "content": sample_full_content["methods_markdown"],
@@ -383,7 +409,9 @@ class TestCacheIntegration:
         result = unified_service.get_cached_publication("PMID:12345678")
 
         assert result == cached_data
-        unified_service.data_manager.get_cached_publication.assert_called_once_with("PMID:12345678")
+        unified_service.data_manager.get_cached_publication.assert_called_once_with(
+            "PMID:12345678"
+        )
 
     def test_get_cached_publication_not_found(self, unified_service):
         """Test cached publication not found."""
@@ -411,7 +439,9 @@ class TestCacheIntegration:
         """Test that extracted content is cached in DataManager."""
         mock_webpage_provider = Mock()
         mock_webpage_provider.can_handle.return_value = True
-        mock_webpage_provider.extract_with_full_metadata.return_value = sample_full_content
+        mock_webpage_provider.extract_with_full_metadata.return_value = (
+            sample_full_content
+        )
         mock_webpage_provider_class.return_value = mock_webpage_provider
 
         service = UnifiedContentService(

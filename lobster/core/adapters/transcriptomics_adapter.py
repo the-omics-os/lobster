@@ -737,9 +737,15 @@ class TranscriptomicsAdapter(BaseAdapter):
                     f"Ambiguous bulk RNA-seq shape: {n_rows}×{n_cols}. "
                     f"Expected >5000 genes. Defaulting to no transpose."
                 )
-                return False, f"Ambiguous bulk shape {n_rows}×{n_cols}, assuming samples × genes"
+                return (
+                    False,
+                    f"Ambiguous bulk shape {n_rows}×{n_cols}, assuming samples × genes",
+                )
             else:
-                return False, f"Bulk RNA-seq shape {n_rows}×{n_cols} appears correct (samples × genes)"
+                return (
+                    False,
+                    f"Bulk RNA-seq shape {n_rows}×{n_cols} appears correct (samples × genes)",
+                )
 
         elif data_type == "singlecell_rnaseq":
             # Single-cell: cells (100-100k) × genes (5k-30k)
@@ -749,7 +755,10 @@ class TranscriptomicsAdapter(BaseAdapter):
                     f"genes ({n_cols}) × cells ({n_rows})"
                 )
             elif n_rows > 10000 and n_cols < 50000:
-                return False, f"Single-cell shape {n_rows}×{n_cols} appears correct (cells × genes)"
+                return (
+                    False,
+                    f"Single-cell shape {n_rows}×{n_cols} appears correct (cells × genes)",
+                )
             else:
                 # Ambiguous: use conservative heuristic
                 should_transpose = n_cols > n_rows

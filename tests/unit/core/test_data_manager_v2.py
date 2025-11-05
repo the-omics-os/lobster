@@ -2399,7 +2399,10 @@ class TestGEOMetadataStorage:
 
         # Verify modality detection is preserved
         assert "modality_detection" in stored_metadata_info
-        assert stored_metadata_info["modality_detection"]["modality"] == "single_cell_rna_seq"
+        assert (
+            stored_metadata_info["modality_detection"]["modality"]
+            == "single_cell_rna_seq"
+        )
 
     def test_concurrent_metadata_updates_thread_safety(self, temp_workspace):
         """Test that concurrent metadata updates maintain consistency."""

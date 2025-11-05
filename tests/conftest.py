@@ -205,6 +205,7 @@ def dataset_manager():
             bulk_datasets = dataset_manager.list_by_type('bulk_rnaseq')
     """
     from tests.fixtures.datasets.dataset_manager import get_dataset_manager
+
     return get_dataset_manager()
 
 

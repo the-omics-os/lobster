@@ -32,11 +32,15 @@ except ImportError:
     GEOparse = None
 
 from lobster.agents.data_expert_assistant import DataExpertAssistant
+from lobster.core.adapters.transcriptomics_adapter import TranscriptomicsAdapter
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.exceptions import (
     FeatureNotImplementedError,
     UnsupportedPlatformError,
 )
+
+# Import bulk RNA-seq and adapter support for quantification files
+from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
 
 # Import helper modules for fallback functionality
 from lobster.tools.geo_downloader import GEODownloadManager
@@ -47,11 +51,6 @@ from lobster.tools.pipeline_strategy import (
     PipelineType,
     create_pipeline_context,
 )
-
-# Import bulk RNA-seq and adapter support for quantification files
-from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
-from lobster.core.adapters.transcriptomics_adapter import TranscriptomicsAdapter
-
 from lobster.utils.logger import get_logger
 from lobster.utils.ssl_utils import create_ssl_context, handle_ssl_error
 
@@ -320,6 +319,7 @@ class GEOService:
                 raise DownloadError(f"Failed after {max_retries} attempts")
         """
         import random
+
         import requests
 
         # FTP connections often fail permanently, not transiently
@@ -353,11 +353,13 @@ class GEOService:
                     total_delay += delay
 
                     # Progress reporting (if console available)
-                    if hasattr(self, 'console') and self.console:
+                    if hasattr(self, "console") and self.console:
                         self.console.print(
                             f"[yellow]⚠ {operation_name} rate limited (attempt {retry_count}/{max_retries})[/yellow]"
                         )
-                        self.console.print(f"[yellow]  Retrying in {delay:.1f}s...[/yellow]")
+                        self.console.print(
+                            f"[yellow]  Retrying in {delay:.1f}s...[/yellow]"
+                        )
 
                     time.sleep(delay)
                     continue
@@ -369,16 +371,20 @@ class GEOService:
                         )
                         return None
 
-                    delay = base_delay * (2 ** (retry_count - 1)) * (0.5 + random.random())
+                    delay = (
+                        base_delay * (2 ** (retry_count - 1)) * (0.5 + random.random())
+                    )
                     total_delay += delay
 
                     # Progress reporting (if console available)
-                    if hasattr(self, 'console') and self.console:
+                    if hasattr(self, "console") and self.console:
                         self.console.print(
                             f"[yellow]⚠ {operation_name} failed (attempt {retry_count}/{max_retries})[/yellow]"
                         )
                         self.console.print(f"[yellow]  Error: {str(e)[:100]}[/yellow]")
-                        self.console.print(f"[yellow]  Retrying in {delay:.1f}s...[/yellow]")
+                        self.console.print(
+                            f"[yellow]  Retrying in {delay:.1f}s...[/yellow]"
+                        )
                     else:
                         logger.warning(
                             f"{operation_name} failed (attempt {retry_count}/{max_retries}). "
@@ -402,12 +408,14 @@ class GEOService:
                 total_delay += delay
 
                 # Progress reporting (if console available)
-                if hasattr(self, 'console') and self.console:
+                if hasattr(self, "console") and self.console:
                     self.console.print(
                         f"[yellow]⚠ {operation_name} failed (attempt {retry_count}/{max_retries})[/yellow]"
                     )
                     self.console.print(f"[yellow]  Error: {str(e)[:100]}[/yellow]")
-                    self.console.print(f"[yellow]  Retrying in {delay:.1f}s...[/yellow]")
+                    self.console.print(
+                        f"[yellow]  Retrying in {delay:.1f}s...[/yellow]"
+                    )
                 else:
                     logger.warning(
                         f"{operation_name} failed (attempt {retry_count}/{max_retries}). "
@@ -478,10 +486,12 @@ class GEOService:
 
             # Wrap GEOparse call with retry logic for transient network failures
             gse = self._retry_with_backoff(
-                operation=lambda: GEOparse.get_GEO(geo=gse_id, destdir=str(self.cache_dir)),
+                operation=lambda: GEOparse.get_GEO(
+                    geo=gse_id, destdir=str(self.cache_dir)
+                ),
                 operation_name=f"Fetch metadata for {gse_id}",
                 max_retries=5,
-                is_ftp=False
+                is_ftp=False,
             )
 
             if gse is None:
@@ -730,8 +740,10 @@ class GEOService:
                 metadata_dict = stored_metadata.get("metadata", {})
                 if metadata_dict:
                     try:
-                        is_compatible, compat_message = self._check_platform_compatibility(
-                            clean_geo_id, metadata_dict
+                        is_compatible, compat_message = (
+                            self._check_platform_compatibility(
+                                clean_geo_id, metadata_dict
+                            )
                         )
                         logger.info(
                             f"Platform re-validation for {clean_geo_id}: {compat_message}"
@@ -1192,16 +1204,18 @@ The dataset is now available as modality '{modality_name}' for other agents to u
 
             # Get GEO object for supplementary file processing with retry logic
             gse = self._retry_with_backoff(
-                operation=lambda: GEOparse.get_GEO(geo=geo_id, destdir=str(self.cache_dir)),
+                operation=lambda: GEOparse.get_GEO(
+                    geo=geo_id, destdir=str(self.cache_dir)
+                ),
                 operation_name=f"Download {geo_id} for supplementary files",
                 max_retries=5,
-                is_ftp=True  # Supplementary files often use FTP
+                is_ftp=True,  # Supplementary files often use FTP
             )
 
             if gse is None:
                 return GEOResult(
                     success=False,
-                    error_message=f"Failed to download {geo_id} for supplementary files after multiple retry attempts"
+                    error_message=f"Failed to download {geo_id} for supplementary files after multiple retry attempts",
                 )
 
             # Use existing supplementary file processing
@@ -1387,16 +1401,18 @@ The dataset is now available as modality '{modality_name}' for other agents to u
 
             # Wrap GEOparse download with retry logic
             gse = self._retry_with_backoff(
-                operation=lambda: GEOparse.get_GEO(geo=geo_id, destdir=str(self.cache_dir)),
+                operation=lambda: GEOparse.get_GEO(
+                    geo=geo_id, destdir=str(self.cache_dir)
+                ),
                 operation_name=f"Download {geo_id} data",
                 max_retries=5,
-                is_ftp=False
+                is_ftp=False,
             )
 
             if gse is None:
                 return GEOResult(
                     success=False,
-                    error_message=f"Failed to download {geo_id} after multiple retry attempts"
+                    error_message=f"Failed to download {geo_id} after multiple retry attempts",
                 )
 
             # Determine data type from metadata
@@ -1415,23 +1431,23 @@ The dataset is now available as modality '{modality_name}' for other agents to u
                 validated_matrices = self._validate_matrices(sample_matrices)
 
                 if validated_matrices:
-                    if is_single_cell and len(validated_matrices) > 1:
-                        # For single-cell with multiple samples: store individually first
+                    # UNIFIED PATH: Use ConcatenationService for both single-cell and bulk
+                    # This provides robust duplicate handling via anndata.concat(merge="unique")
+                    if len(validated_matrices) > 1:
+                        # Multiple samples: store individually first, then concatenate
                         stored_samples = self._store_samples_as_anndata(
                             validated_matrices, geo_id, metadata
                         )
 
                         if stored_samples:
-                            # Immediately concatenate for a complete dataset
-                            concatinated_dataset_annDataObject = (
-                                self._concatenate_stored_samples(
-                                    geo_id, stored_samples, concat_strategy
-                                )
+                            # Concatenate using ConcatenationService (handles duplicates)
+                            concatenated_dataset = self._concatenate_stored_samples(
+                                geo_id, stored_samples, concat_strategy
                             )
 
-                            if concatinated_dataset_annDataObject is not None:
+                            if concatenated_dataset is not None:
                                 return GEOResult(
-                                    data=concatinated_dataset_annDataObject,
+                                    data=concatenated_dataset,
                                     metadata=metadata,
                                     source=GEODataSource.GEOPARSE,
                                     processing_info={
@@ -1444,48 +1460,32 @@ The dataset is now available as modality '{modality_name}' for other agents to u
                                             gsm_id: gsm_id
                                             for gsm_id in validated_matrices.keys()
                                         },
-                                        "note": "Single-cell samples concatenated with batch tracking",
+                                        "note": f"Samples concatenated with unified ConcatenationService ({data_type})",
                                     },
                                     success=True,
                                 )
                     else:
-                        # For bulk RNA-seq or single sample: concatenate directly
-                        combined_matrix = self._concatenate_matrices(
-                            validated_matrices, geo_id, concat_strategy
+                        # Single sample: store and return directly as AnnData
+                        stored_samples = self._store_samples_as_anndata(
+                            validated_matrices, geo_id, metadata
                         )
 
-                        if combined_matrix is not None:
-                            # Add batch information to the matrix
-                            if "batch" not in combined_matrix.columns:
-                                batch_info = []
-                                for gsm_id in validated_matrices.keys():
-                                    n_cells = len(
-                                        [
-                                            idx
-                                            for idx in combined_matrix.index
-                                            if idx.startswith(gsm_id)
-                                        ]
-                                    )
-                                    batch_info.extend([gsm_id] * n_cells)
-                                combined_matrix["batch"] = batch_info
+                        if stored_samples:
+                            # Get the single stored sample
+                            modality_name = stored_samples[0]
+                            single_sample = self.data_manager.get_modality(
+                                modality_name
+                            )
 
                             return GEOResult(
-                                data=combined_matrix,
+                                data=single_sample,
                                 metadata=metadata,
                                 source=GEODataSource.SAMPLE_MATRICES,
                                 processing_info={
-                                    "method": "geoparse_samples_direct",
-                                    "n_samples": len(validated_matrices),
-                                    "use_intersecting_genes_only": use_intersecting_genes_only,
-                                    "data_type": (
-                                        "bulk"
-                                        if not is_single_cell
-                                        else "single_cell_single_sample"
-                                    ),
-                                    "batch_info": {
-                                        gsm_id: gsm_id
-                                        for gsm_id in validated_matrices.keys()
-                                    },
+                                    "method": "geoparse_single_sample",
+                                    "n_samples": 1,
+                                    "data_type": data_type,
+                                    "stored_sample_id": modality_name,
                                 },
                                 success=True,
                             )
@@ -1669,9 +1669,7 @@ The dataset is now available as modality '{modality_name}' for other agents to u
 
         # All platforms supported (GPL registry check passed)
         platform_list = ", ".join([pid for pid, _ in supported_platforms])
-        logger.info(
-            f"GPL registry check passed for {geo_id}: {platform_list}"
-        )
+        logger.info(f"GPL registry check passed for {geo_id}: {platform_list}")
 
         # === TIER 2: LLM MODALITY DETECTION (Phase 2.1) ===
         logger.info(f"Running LLM modality detection for {geo_id}...")
@@ -1681,9 +1679,7 @@ The dataset is now available as modality '{modality_name}' for other agents to u
             self._data_expert_assistant = DataExpertAssistant()
 
         # Call LLM to detect modality
-        modality_result = self._data_expert_assistant.detect_modality(
-            metadata, geo_id
-        )
+        modality_result = self._data_expert_assistant.detect_modality(metadata, geo_id)
 
         if modality_result is None:
             # LLM analysis failed - fall back to permissive mode with warning
@@ -1732,10 +1728,7 @@ The dataset is now available as modality '{modality_name}' for other agents to u
         if not modality_result.is_supported:
             # Format detected signals for error message
             signals_display = "\n".join(
-                [
-                    f"  - {signal}"
-                    for signal in modality_result.detected_signals[:5]
-                ]
+                [f"  - {signal}" for signal in modality_result.detected_signals[:5]]
             )
             if len(modality_result.detected_signals) > 5:
                 signals_display += f"\n  ... and {len(modality_result.detected_signals) - 5} more signals"
@@ -1759,7 +1752,10 @@ The dataset is now available as modality '{modality_name}' for other agents to u
             )
 
         # Supported modality - return success with modality info
-        return True, f"Modality compatible: {modality_result.modality} (confidence: {modality_result.confidence:.0%})"
+        return (
+            True,
+            f"Modality compatible: {modality_result.modality} (confidence: {modality_result.confidence:.0%})",
+        )
 
     def _extract_metadata(self, gse) -> Dict[str, Any]:
         """
@@ -2307,7 +2303,9 @@ The actual expression data download will be much faster now that metadata is pre
             AnnData: Processed AnnData object or None if loading fails
         """
         try:
-            logger.info(f"Loading {tool_type} quantification files from {quantification_dir}")
+            logger.info(
+                f"Loading {tool_type} quantification files from {quantification_dir}"
+            )
 
             # Step 1: Use bulk_rnaseq_service to merge quantification files
             bulk_service = BulkRNASeqService()
@@ -2393,8 +2391,9 @@ The actual expression data download will be much faster now that metadata is pre
             logger.debug(f"Found {len(suppl_files)} supplementary files for {gse_id}")
 
             # STEP 1: Check for Kallisto/Salmon quantification files FIRST
-            has_quant, tool_type, quant_filenames, estimated_samples = \
+            has_quant, tool_type, quant_filenames, estimated_samples = (
                 self._detect_kallisto_salmon_files(suppl_files)
+            )
 
             if has_quant:
                 logger.info(
@@ -2404,11 +2403,19 @@ The actual expression data download will be much faster now that metadata is pre
 
                 # STEP 2: Check for pre-merged matrix files as alternative
                 matrix_files = [
-                    f for f in suppl_files
-                    if any(ext in f.lower() for ext in [
-                        "_matrix.txt", "_counts.txt", "_expression.txt",
-                        ".h5ad", "_tpm.txt", "_fpkm.txt"
-                    ])
+                    f
+                    for f in suppl_files
+                    if any(
+                        ext in f.lower()
+                        for ext in [
+                            "_matrix.txt",
+                            "_counts.txt",
+                            "_expression.txt",
+                            ".h5ad",
+                            "_tpm.txt",
+                            "_fpkm.txt",
+                        ]
+                    )
                 ]
 
                 if matrix_files:
@@ -2463,7 +2470,9 @@ The actual expression data download will be much faster now that metadata is pre
             logger.error(f"Error processing supplementary files: {e}")
             return None
 
-    def _process_tar_file(self, tar_url: str, gse_id: str) -> Optional[Union[pd.DataFrame, anndata.AnnData]]:
+    def _process_tar_file(
+        self, tar_url: str, gse_id: str
+    ) -> Optional[Union[pd.DataFrame, anndata.AnnData]]:
         """
         Download and process a TAR file containing expression data.
 
@@ -2685,63 +2694,6 @@ The actual expression data download will be much faster now that metadata is pre
 
     # Parsing functions have been moved to geo_parser.py for better separation of concerns
     # and reusability across different modalities
-
-    def _concatenate_matrices(
-        self,
-        validated_matrices: Dict[str, pd.DataFrame],
-        geo_id: str,
-        use_intersecting_genes_only: bool = True,
-    ) -> Optional[pd.DataFrame]:
-        """
-        Concatenate multiple sample matrices into a single DataFrame.
-
-        Args:
-            validated_matrices: Dictionary of sample matrices
-            geo_id: GEO series ID
-            use_intersecting_genes_only: Whether to use only common genes
-
-        Returns:
-            Combined DataFrame or None
-        """
-        try:
-            if not validated_matrices:
-                logger.warning("No matrices to concatenate")
-                return None
-
-            logger.info(
-                f"Concatenating {len(validated_matrices)} matrices for {geo_id}"
-            )
-
-            matrices_list = list(validated_matrices.values())
-
-            if use_intersecting_genes_only:
-                # Find common genes across all matrices
-                common_genes = set(matrices_list[0].columns)
-                for matrix in matrices_list[1:]:
-                    common_genes = common_genes.intersection(set(matrix.columns))
-
-                if not common_genes:
-                    logger.error("No common genes found across matrices")
-                    return None
-
-                # Filter matrices to common genes
-                filtered_matrices = [
-                    matrix[list(common_genes)] for matrix in matrices_list
-                ]
-                combined_matrix = pd.concat(filtered_matrices, axis=0, sort=False)
-                logger.debug(f"Concatenated with {len(common_genes)} common genes")
-
-            else:
-                # Use all genes, filling missing with zeros
-                combined_matrix = pd.concat(matrices_list, axis=0, sort=False).fillna(0)
-                logger.debug(f"Concatenated with all genes, filled missing with zeros")
-
-            logger.info(f"Final combined matrix shape: {combined_matrix.shape}")
-            return combined_matrix
-
-        except Exception as e:
-            logger.error(f"Error concatenating matrices: {e}")
-            return None
 
     # ████████████████████████████████████████████████████████████████████████████████
     # ██                                                                            ██
@@ -3287,14 +3239,27 @@ The actual expression data download will be much faster now that metadata is pre
             matrix_file = local_files["matrix"]
             logger.info(f"Parsing matrix file: {matrix_file}")
 
-            # Read the sparse matrix
-            if matrix_file.name.endswith(".gz"):
-                import gzip
+            # Read the sparse matrix with enhanced error handling
+            try:
+                if matrix_file.name.endswith(".gz"):
+                    import gzip
 
-                with gzip.open(matrix_file, "rt") as f:
-                    matrix = sio.mmread(f)
-            else:
-                matrix = sio.mmread(matrix_file)
+                    with gzip.open(matrix_file, "rt") as f:
+                        matrix = sio.mmread(f)
+                else:
+                    matrix = sio.mmread(matrix_file)
+
+            except (gzip.BadGzipFile, EOFError) as e:
+                logger.error(f"Gzip corruption detected for {gsm_id}: {e}")
+                logger.error(f"Removing corrupted cache: {matrix_file}")
+                if matrix_file.exists():
+                    matrix_file.unlink()
+                return None
+
+            except OSError as e:
+                logger.error(f"File I/O error processing {gsm_id}: {e}")
+                logger.error(f"Matrix file path: {matrix_file}")
+                return None
 
             # Convert to dense format and transpose (10X format is genes x cells, we want cells x genes)
             if hasattr(matrix, "todense"):
@@ -3362,6 +3327,22 @@ The actual expression data download will be much faster now that metadata is pre
 
             # Create the final DataFrame
             df = pd.DataFrame(matrix_dense, index=cell_ids, columns=gene_names)
+
+            # Deduplicate gene columns if necessary
+            if df.columns.duplicated().any():
+                duplicates = df.columns[df.columns.duplicated()].unique()
+                logger.warning(
+                    f"{gsm_id}: Found {len(duplicates)} duplicate gene IDs. "
+                    f"Aggregating by sum. Examples: {list(duplicates[:5])}"
+                )
+                original_shape = df.shape
+                # Aggregate duplicates by summing (biologically sound for counts)
+                df = df.T.groupby(level=0).sum().T
+                logger.info(
+                    f"{gsm_id}: Aggregated duplicate genes. "
+                    f"Shape: {original_shape} → {df.shape}"
+                )
+
             logger.info(f"Successfully created 10X DataFrame for {gsm_id}: {df.shape}")
             return df
 
@@ -3649,6 +3630,24 @@ The actual expression data download will be much faster now that metadata is pre
             if n_obs == 0 or n_vars == 0:
                 return False, f"Empty matrix ({n_obs}×{n_vars})"
 
+            # Rule 1.5: Check for duplicate indices (added for bug fix)
+            # Duplicate gene IDs (columns) - WARNING only, since we auto-deduplicate
+            if matrix.columns.duplicated().any():
+                n_dup = matrix.columns.duplicated().sum()
+                logger.warning(
+                    f"{gsm_id}: Found {n_dup} duplicate gene IDs. "
+                    f"These will be aggregated during loading."
+                )
+                # Don't fail validation - deduplication happens at loading stage
+
+            # Duplicate cell/sample IDs (rows) - ERROR, indicates invalid data
+            if matrix.index.duplicated().any():
+                n_dup = matrix.index.duplicated().sum()
+                return (
+                    False,
+                    f"Duplicate cell/sample IDs ({n_dup} duplicates) - invalid data",
+                )
+
             # Rule 2: Biology-aware validation
             # For bulk RNA-seq: few samples (2-500), many genes (10K-60K)
             # For single-cell: many cells (100-200K), many genes (5K-30K)
@@ -3657,7 +3656,10 @@ The actual expression data download will be much faster now that metadata is pre
                 if n_obs >= 2:  # At least 2 observations (samples or cells)
                     # Use optimized validation for matrix format
                     if not self._is_valid_expression_matrix(matrix):
-                        return False, "Invalid matrix format (non-numeric or all-zero data)"
+                        return (
+                            False,
+                            "Invalid matrix format (non-numeric or all-zero data)",
+                        )
 
                     return True, f"Valid matrix: {n_obs} obs × {n_vars} genes"
                 else:
@@ -3666,11 +3668,16 @@ The actual expression data download will be much faster now that metadata is pre
                         f"Only {n_obs} observation(s) - insufficient for analysis (need at least 2)",
                     )
 
-            elif n_obs >= 10000:  # Many observations, check if genes dimension reasonable
+            elif (
+                n_obs >= 10000
+            ):  # Many observations, check if genes dimension reasonable
                 if n_vars >= 100:  # Reasonable number of variables
                     # Use optimized validation for matrix format
                     if not self._is_valid_expression_matrix(matrix):
-                        return False, "Invalid matrix format (non-numeric or all-zero data)"
+                        return (
+                            False,
+                            "Invalid matrix format (non-numeric or all-zero data)",
+                        )
 
                     return True, f"Valid matrix: {n_obs} obs × {n_vars} vars"
                 elif n_vars >= 4 and n_obs > 50000:
@@ -3678,7 +3685,10 @@ The actual expression data download will be much faster now that metadata is pre
                     # This will be caught and transposed by biology-aware transpose logic
                     # Accept with warning for GSE130036-type cases
                     if not self._is_valid_expression_matrix(matrix):
-                        return False, "Invalid matrix format (non-numeric or all-zero data)"
+                        return (
+                            False,
+                            "Invalid matrix format (non-numeric or all-zero data)",
+                        )
 
                     return (
                         True,
@@ -3694,7 +3704,10 @@ The actual expression data download will be much faster now that metadata is pre
                 if n_obs >= 10 and n_vars >= 10:
                     # Use optimized validation for matrix format
                     if not self._is_valid_expression_matrix(matrix):
-                        return False, "Invalid matrix format (non-numeric or all-zero data)"
+                        return (
+                            False,
+                            "Invalid matrix format (non-numeric or all-zero data)",
+                        )
 
                     return (
                         True,

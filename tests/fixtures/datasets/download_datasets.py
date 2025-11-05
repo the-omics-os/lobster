@@ -12,17 +12,18 @@ Usage:
 """
 
 import argparse
+import gzip
 import logging
-from pathlib import Path
-from typing import Dict, List, Any, Optional
 import subprocess
 import tarfile
-import gzip
-import yaml
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 import numpy as np
 import pandas as pd
+import yaml
 
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -41,11 +42,7 @@ class DatasetDownloader:
         return f"https://ftp.ncbi.nlm.nih.gov/geo/series/{series}/{geo_id}/suppl/"
 
     def get_dataset_path(
-        self,
-        omics_type: str,
-        analysis_type: str,
-        platform: str,
-        dataset_id: str
+        self, omics_type: str, analysis_type: str, platform: str, dataset_id: str
     ) -> Path:
         """Get output path for dataset following 3-level structure."""
         return self.datasets_dir / omics_type / analysis_type / platform / dataset_id
@@ -55,12 +52,14 @@ class DatasetDownloader:
         dataset: Dict[str, Any],
         omics_type: str,
         analysis_type: str,
-        platform: str
+        platform: str,
     ) -> None:
         """Download single dataset based on config."""
-        dataset_id = dataset['id']
-        description = dataset.get('description', '')
-        output_dir = self.get_dataset_path(omics_type, analysis_type, platform, dataset_id)
+        dataset_id = dataset["id"]
+        description = dataset.get("description", "")
+        output_dir = self.get_dataset_path(
+            omics_type, analysis_type, platform, dataset_id
+        )
 
         logger.info(f"\n{'='*60}")
         logger.info(f"Dataset: {dataset_id}")
@@ -69,10 +68,10 @@ class DatasetDownloader:
         logger.info(f"{'='*60}")
 
         # Handle metadata-only datasets (for rejection tests)
-        if dataset.get('metadata_only'):
+        if dataset.get("metadata_only"):
             logger.info("Metadata-only dataset (for rejection testing)")
             output_dir.mkdir(parents=True, exist_ok=True)
-            with open(output_dir / "README.txt", 'w') as f:
+            with open(output_dir / "README.txt", "w") as f:
                 f.write(f"Dataset: {dataset_id}\n")
                 f.write(f"Description: {description}\n")
                 f.write(f"Platform: {dataset.get('platform', 'N/A')}\n")
@@ -81,16 +80,16 @@ class DatasetDownloader:
             return
 
         # Handle generated datasets (ambiguous test cases)
-        if dataset.get('generated'):
+        if dataset.get("generated"):
             self._generate_ambiguous_dataset(dataset, output_dir.parent)
             return
 
         # Download real datasets
-        if 'url' in dataset:
-            url = dataset['url']  # Explicit URL (hybrid approach)
+        if "url" in dataset:
+            url = dataset["url"]  # Explicit URL (hybrid approach)
             logger.info(f"Using explicit URL: {url}")
-        elif 'geo_id' in dataset:
-            url = self.construct_geo_url(dataset['geo_id'])  # Auto-construct
+        elif "geo_id" in dataset:
+            url = self.construct_geo_url(dataset["geo_id"])  # Auto-construct
             logger.info(f"Constructed URL from GEO ID: {url}")
         else:
             raise ValueError(f"Dataset {dataset_id} needs 'url' or 'geo_id'")
@@ -123,24 +122,24 @@ class DatasetDownloader:
     def _extract_tar(self, tar_path: Path, output_dir: Path) -> None:
         """Extract tar/tar.gz files."""
         logger.info(f"Extracting {tar_path.name}...")
-        with tarfile.open(tar_path, 'r:*') as tar:
+        with tarfile.open(tar_path, "r:*") as tar:
             tar.extractall(path=output_dir)
 
     def _generate_ambiguous_dataset(self, dataset: Dict, output_dir: Path) -> None:
         """Generate ambiguous test datasets."""
         output_dir.mkdir(parents=True, exist_ok=True)
-        dataset_id = dataset['id']
-        shape = dataset.get('shape', [100, 100])
+        dataset_id = dataset["id"]
+        shape = dataset.get("shape", [100, 100])
 
         logger.info(f"Generating {dataset_id} with shape {shape}")
 
-        if 'with_headers' in dataset_id or dataset_id == 'ambiguous_with_headers':
+        if "with_headers" in dataset_id or dataset_id == "ambiguous_with_headers":
             # With generic headers
             data = np.random.poisson(lam=40, size=tuple(shape))
             df = pd.DataFrame(
                 data,
                 columns=[f"Col{i}" for i in range(shape[1])],
-                index=[f"Row{i}" for i in range(shape[0])]
+                index=[f"Row{i}" for i in range(shape[0])],
             )
             filepath = output_dir / f"{dataset_id}.csv"
             df.to_csv(filepath)
@@ -154,9 +153,7 @@ class DatasetDownloader:
         logger.info(f"✓ Generated {filepath.name}\n")
 
     def download_all(
-        self,
-        omics_type: Optional[str] = None,
-        analysis_type: Optional[str] = None
+        self, omics_type: Optional[str] = None, analysis_type: Optional[str] = None
     ) -> None:
         """Download all datasets or filter by type."""
         for omic_key, omic_data in self.config.items():
@@ -179,10 +176,7 @@ class DatasetDownloader:
                     for dataset in datasets:
                         try:
                             self.download_dataset(
-                                dataset,
-                                omic_key,
-                                analysis_key,
-                                platform_key
+                                dataset, omic_key, analysis_key, platform_key
                             )
                         except Exception as e:
                             logger.error(f"Failed to download {dataset['id']}: {e}")
@@ -194,12 +188,9 @@ class DatasetDownloader:
             for analysis_key, analysis_data in omic_data.items():
                 for platform_key, datasets in analysis_data.items():
                     for dataset in datasets:
-                        if dataset['id'] == dataset_id:
+                        if dataset["id"] == dataset_id:
                             self.download_dataset(
-                                dataset,
-                                omic_key,
-                                analysis_key,
-                                platform_key
+                                dataset, omic_key, analysis_key, platform_key
                             )
                             return True
         return False
@@ -209,27 +200,20 @@ def main():
     parser = argparse.ArgumentParser(
         description="Configuration-driven dataset downloader"
     )
+    parser.add_argument("--all", action="store_true", help="Download all datasets")
     parser.add_argument(
-        '--all',
-        action='store_true',
-        help='Download all datasets'
+        "--omics-type",
+        help="Download specific omics type (single_cell, bulk_rnaseq, edge_cases)",
     )
     parser.add_argument(
-        '--omics-type',
-        help='Download specific omics type (single_cell, bulk_rnaseq, edge_cases)'
+        "--analysis-type",
+        help="Download specific analysis type (requires --omics-type)",
     )
     parser.add_argument(
-        '--analysis-type',
-        help='Download specific analysis type (requires --omics-type)'
+        "--dataset", help="Download specific dataset by ID (e.g., GSE132044)"
     )
     parser.add_argument(
-        '--dataset',
-        help='Download specific dataset by ID (e.g., GSE132044)'
-    )
-    parser.add_argument(
-        '--config',
-        default='datasets.yml',
-        help='Path to datasets.yml config file'
+        "--config", default="datasets.yml", help="Path to datasets.yml config file"
     )
 
     args = parser.parse_args()
@@ -251,8 +235,7 @@ def main():
         if args.analysis_type:
             logger.info(f"  Analysis type filter: {args.analysis_type}")
         downloader.download_all(
-            omics_type=args.omics_type,
-            analysis_type=args.analysis_type
+            omics_type=args.omics_type, analysis_type=args.analysis_type
         )
         logger.info("\n✅ Download complete!")
 

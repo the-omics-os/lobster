@@ -24,7 +24,6 @@ from lobster.agents.bulk_rnaseq_expert import bulk_rnaseq_expert
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
 
-
 # ===============================================================================
 # Fixtures
 # ===============================================================================
@@ -79,24 +78,30 @@ def realistic_kallisto_dataset(tmp_path):
         # Add differential expression for treatment samples
         if metadata["condition"] == "treatment":
             # 5% of genes upregulated
-            upregulated = np.random.choice(n_genes, size=int(0.05 * n_genes), replace=False)
+            upregulated = np.random.choice(
+                n_genes, size=int(0.05 * n_genes), replace=False
+            )
             base_expression[upregulated] *= np.random.uniform(2, 5, len(upregulated))
 
             # 5% of genes downregulated
             downregulated = np.random.choice(
                 [i for i in range(n_genes) if i not in upregulated],
                 size=int(0.05 * n_genes),
-                replace=False
+                replace=False,
             )
-            base_expression[downregulated] *= np.random.uniform(0.2, 0.5, len(downregulated))
+            base_expression[downregulated] *= np.random.uniform(
+                0.2, 0.5, len(downregulated)
+            )
 
-        abundance_data = pd.DataFrame({
-            "target_id": gene_ids,
-            "length": np.random.randint(500, 5000, n_genes),
-            "eff_length": np.random.randint(400, 4900, n_genes),
-            "est_counts": base_expression,
-            "tpm": base_expression / base_expression.sum() * 1e6,
-        })
+        abundance_data = pd.DataFrame(
+            {
+                "target_id": gene_ids,
+                "length": np.random.randint(500, 5000, n_genes),
+                "eff_length": np.random.randint(400, 4900, n_genes),
+                "est_counts": base_expression,
+                "tpm": base_expression / base_expression.sum() * 1e6,
+            }
+        )
 
         abundance_file = sample_dir / "abundance.tsv"
         abundance_data.to_csv(abundance_file, sep="\t", index=False)
@@ -125,8 +130,7 @@ class TestQuantificationLoadingWorkflow:
 
         # Step 2: Load and merge files
         df, metadata = service.load_from_quantification_files(
-            quantification_dir=kallisto_dir,
-            tool="auto"
+            quantification_dir=kallisto_dir, tool="auto"
         )
 
         # Step 3: Verify loaded data structure
@@ -144,9 +148,7 @@ class TestQuantificationLoadingWorkflow:
         assert not df.isnull().any().any(), "Should have no missing values"
         assert (df >= 0).all().all(), "Should have no negative values"
 
-    def test_load_to_anndata_workflow(
-        self, realistic_kallisto_dataset, data_manager
-    ):
+    def test_load_to_anndata_workflow(self, realistic_kallisto_dataset, data_manager):
         """Test complete workflow from quantification files to AnnData."""
         from lobster.core.adapters.transcriptomics_adapter import TranscriptomicsAdapter
 
@@ -156,8 +158,7 @@ class TestQuantificationLoadingWorkflow:
 
         # Step 1: Load quantification files
         df, metadata = service.load_from_quantification_files(
-            quantification_dir=kallisto_dir,
-            tool="auto"
+            quantification_dir=kallisto_dir, tool="auto"
         )
 
         # Step 2: Convert to AnnData
@@ -188,9 +189,7 @@ class TestQuantificationLoadingWorkflow:
         assert retrieved.shape == adata.shape
         assert "test_experiment" in data_manager.list_modalities()
 
-    def test_complete_analysis_workflow(
-        self, realistic_kallisto_dataset, data_manager
-    ):
+    def test_complete_analysis_workflow(self, realistic_kallisto_dataset, data_manager):
         """Test complete workflow: load → store → verify ready for analysis."""
         from lobster.core.adapters.transcriptomics_adapter import TranscriptomicsAdapter
 
@@ -199,8 +198,7 @@ class TestQuantificationLoadingWorkflow:
         # Step 1: Load quantification files
         service = BulkRNASeqService()
         df, metadata = service.load_from_quantification_files(
-            quantification_dir=kallisto_dir,
-            tool="auto"
+            quantification_dir=kallisto_dir, tool="auto"
         )
 
         # Step 2: Create AnnData
@@ -244,7 +242,7 @@ class TestQuantificationLoadingWorkflow:
         data_manager.log_tool_usage(
             tool_name="complete_analysis_workflow",
             parameters={"n_samples": 4, "n_genes": n_genes},
-            description="Completed end-to-end quantification loading workflow"
+            description="Completed end-to-end quantification loading workflow",
         )
 
 
@@ -275,8 +273,7 @@ class TestAgentIntegrationWorkflow:
         # Load data into DataManagerV2 (simulating agent tool execution)
         service = BulkRNASeqService()
         df, metadata = service.load_from_quantification_files(
-            quantification_dir=kallisto_dir,
-            tool="auto"
+            quantification_dir=kallisto_dir, tool="auto"
         )
 
         adapter = TranscriptomicsAdapter(data_type="bulk")
@@ -347,9 +344,7 @@ class TestErrorHandlingWorkflow:
 class TestProvenanceTracking:
     """Test provenance tracking for quantification workflows."""
 
-    def test_tool_usage_logging(
-        self, realistic_kallisto_dataset, data_manager
-    ):
+    def test_tool_usage_logging(self, realistic_kallisto_dataset, data_manager):
         """Test that quantification loading is properly logged."""
         from lobster.core.adapters.transcriptomics_adapter import TranscriptomicsAdapter
 
@@ -358,8 +353,7 @@ class TestProvenanceTracking:
         # Simulate tool usage logging
         service = BulkRNASeqService()
         df, metadata = service.load_from_quantification_files(
-            quantification_dir=kallisto_dir,
-            tool="auto"
+            quantification_dir=kallisto_dir, tool="auto"
         )
 
         adapter = TranscriptomicsAdapter(data_type="bulk")
@@ -379,7 +373,7 @@ class TestProvenanceTracking:
                 "quantification_dir": str(kallisto_dir),
                 "tool": "kallisto",
             },
-            description=f"Loaded Kallisto quantification from {kallisto_dir}"
+            description=f"Loaded Kallisto quantification from {kallisto_dir}",
         )
 
         # Verify provenance was recorded

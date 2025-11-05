@@ -7,12 +7,12 @@ for the Lobster AI system following a structured approach to error handling.
 
 # Import new exceptions from exceptions module
 from lobster.core.exceptions import (
+    DataOrientationError,
+    DataTypeAmbiguityError,
+    FeatureNotImplementedError,
     LobsterCoreError,
     UnsupportedFormatError,
     UnsupportedPlatformError,
-    FeatureNotImplementedError,
-    DataTypeAmbiguityError,
-    DataOrientationError,
 )
 
 

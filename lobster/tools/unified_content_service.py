@@ -24,20 +24,22 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.tools.docling_service import DoclingService
 from lobster.tools.providers.abstract_provider import AbstractProvider
 from lobster.tools.providers.webpage_provider import WebpageProvider
-from lobster.tools.docling_service import DoclingService
 
 logger = logging.getLogger(__name__)
 
 
 class ContentExtractionError(Exception):
     """Base exception for content extraction failures."""
+
     pass
 
 
 class PaywalledError(ContentExtractionError):
     """Publication is behind paywall and not openly accessible."""
+
     def __init__(self, identifier: str, suggestions: str = ""):
         self.identifier = identifier
         self.suggestions = suggestions
@@ -107,12 +109,10 @@ class UnifiedContentService:
 
         # Tier 2: Full content extraction providers
         self.webpage_provider = WebpageProvider(
-            cache_dir=cache_dir,
-            data_manager=data_manager
+            cache_dir=cache_dir, data_manager=data_manager
         )
         self.docling_service = DoclingService(
-            cache_dir=cache_dir,
-            data_manager=data_manager
+            cache_dir=cache_dir, data_manager=data_manager
         )
 
         logger.info("Initialized UnifiedContentService with two-tier access strategy")
@@ -181,9 +181,7 @@ class UnifiedContentService:
                 "extraction_time": time.time() - start_time,
             }
 
-            logger.info(
-                f"Quick abstract retrieved in {result['extraction_time']:.2f}s"
-            )
+            logger.info(f"Quick abstract retrieved in {result['extraction_time']:.2f}s")
             return result
 
         except Exception as e:
@@ -269,18 +267,27 @@ class UnifiedContentService:
 
         # Resolve PMID/DOI identifiers to accessible URLs
         if self._is_identifier(source):
-            logger.info(f"Detected identifier (PMID/DOI): {source}, resolving to URL...")
+            logger.info(
+                f"Detected identifier (PMID/DOI): {source}, resolving to URL..."
+            )
 
             from lobster.tools.providers.publication_resolver import PublicationResolver
+
             resolver = PublicationResolver()
             resolution_result = resolver.resolve(source)
 
             if resolution_result.is_accessible():
-                logger.info(f"Resolved {source} to: {resolution_result.pdf_url} (via {resolution_result.source})")
-                source = resolution_result.pdf_url  # Replace identifier with resolved URL
+                logger.info(
+                    f"Resolved {source} to: {resolution_result.pdf_url} (via {resolution_result.source})"
+                )
+                source = (
+                    resolution_result.pdf_url
+                )  # Replace identifier with resolved URL
             else:
                 # Handle paywalled papers gracefully
-                logger.warning(f"Paper {source} is not accessible: {resolution_result.access_type}")
+                logger.warning(
+                    f"Paper {source} is not accessible: {resolution_result.access_type}"
+                )
                 raise PaywalledError(source, resolution_result.suggestions)
 
         # Tier 2: Full content extraction with fallback strategy
@@ -332,7 +339,9 @@ class UnifiedContentService:
 
         # Strategy 2: DoclingService with automatic format detection
         try:
-            logger.info(f"Attempting content extraction from {source} (auto-detect format)")
+            logger.info(
+                f"Attempting content extraction from {source} (auto-detect format)"
+            )
             result = self.docling_service.extract_methods_section(
                 source=source,
                 keywords=keywords,
@@ -342,7 +351,9 @@ class UnifiedContentService:
 
             # Determine actual format from Docling's detection
             detected_format = result.get("provenance", {}).get("parser", "docling")
-            actual_format = "html" if "html" in str(result.get("provenance", {})) else "pdf"
+            actual_format = (
+                "html" if "html" in str(result.get("provenance", {})) else "pdf"
+            )
 
             # Format result with auto-detected type
             content_result = {
@@ -484,8 +495,7 @@ class UnifiedContentService:
         """Check if source is a PMID or DOI identifier."""
         source_upper = source.upper()
         return (
-            source_upper.startswith("PMID:") or
-            source.isdigit() or
-            source.startswith("10.")  # DOI prefix
+            source_upper.startswith("PMID:")
+            or source.isdigit()
+            or source.startswith("10.")  # DOI prefix
         )
-

@@ -13,8 +13,8 @@ from pathlib import Path
 lobster_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(lobster_root))
 
-from lobster.tools.geo_service import GEOService
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.tools.geo_service import GEOService
 
 
 def inspect_dataset(geo_id: str, expected_modality: str):
@@ -64,11 +64,20 @@ def inspect_dataset(geo_id: str, expected_modality: str):
                 # Highlight multiome/ATAC/CITE-seq related patterns
                 file_lower = file_name.lower()
                 flag = ""
-                if any(pattern in file_lower for pattern in ["atac", "fragment", "multiome"]):
+                if any(
+                    pattern in file_lower
+                    for pattern in ["atac", "fragment", "multiome"]
+                ):
                     flag = " ⚠️  [ATAC/MULTIOME PATTERN]"
-                elif any(pattern in file_lower for pattern in ["cite", "adt", "antibody", "protein"]):
+                elif any(
+                    pattern in file_lower
+                    for pattern in ["cite", "adt", "antibody", "protein"]
+                ):
                     flag = " ⚠️  [CITE-SEQ PATTERN]"
-                elif any(pattern in file_lower for pattern in ["gex", "rna", "matrix", "barcode", "features"]):
+                elif any(
+                    pattern in file_lower
+                    for pattern in ["gex", "rna", "matrix", "barcode", "features"]
+                ):
                     flag = " ✓ [RNA PATTERN]"
 
                 print(f"  {i}. {file_name}{flag}")
@@ -89,7 +98,9 @@ def inspect_dataset(geo_id: str, expected_modality: str):
                 print(f"\n🤖 LLM Modality Detection Result:")
                 print(f"  - Detected Modality: {modality_info['modality']}")
                 print(f"  - Confidence: {modality_info['confidence']:.2%}")
-                print(f"  - Detected Signals: {modality_info.get('detected_signals', [])}")
+                print(
+                    f"  - Detected Signals: {modality_info.get('detected_signals', [])}"
+                )
             else:
                 print("\n⚠️  No modality detection result in metadata")
 
@@ -99,26 +110,27 @@ def inspect_dataset(geo_id: str, expected_modality: str):
     except Exception as e:
         print(f"❌ ERROR: {type(e).__name__}: {str(e)}")
         import traceback
+
         traceback.print_exc()
 
 
 def main():
     """Inspect test datasets."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("GEO Metadata Inspection for Phase 2.1 Modality Detection")
-    print("="*80)
+    print("=" * 80)
 
     # Test cases from functional test
     test_cases = [
         ("GSE156793", "multiome_gex_atac"),  # Multiome (should be rejected)
-        ("GSE123814", "cite_seq"),           # CITE-seq (should be rejected)
-        ("GSE147507", "bulk_rna"),           # Bulk RNA-seq (should be accepted)
-        ("GSE132044", "scrna_10x"),          # Single-cell (should be accepted)
+        ("GSE123814", "cite_seq"),  # CITE-seq (should be rejected)
+        ("GSE147507", "bulk_rna"),  # Bulk RNA-seq (should be accepted)
+        ("GSE132044", "scrna_10x"),  # Single-cell (should be accepted)
     ]
 
     for geo_id, expected_modality in test_cases:
         inspect_dataset(geo_id, expected_modality)
-        print("\n" + "-"*80 + "\n")
+        print("\n" + "-" * 80 + "\n")
 
 
 if __name__ == "__main__":

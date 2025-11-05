@@ -19,11 +19,12 @@ from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.metadata_validation_service import MetadataValidationService
-from lobster.tools.providers.base_provider import DatasetType, PublicationSource
-from lobster.tools.publication_service import PublicationService
+
 # Phase 1: New providers for two-tier access
 from lobster.tools.providers.abstract_provider import AbstractProvider
+from lobster.tools.providers.base_provider import DatasetType, PublicationSource
 from lobster.tools.providers.webpage_provider import WebpageProvider
+from lobster.tools.publication_service import PublicationService
 from lobster.tools.unified_content_service import UnifiedContentService
 from lobster.utils.logger import get_logger
 
@@ -521,7 +522,7 @@ def research_agent(
 
             content_service = UnifiedContentService(
                 cache_dir=Path(".lobster_workspace") / "literature_cache",
-                data_manager=data_manager
+                data_manager=data_manager,
             )
 
             # Get full content (webpage-first, with PDF fallback)
@@ -529,7 +530,7 @@ def research_agent(
                 source=url_or_pmid,
                 prefer_webpage=True,
                 keywords=["methods", "materials", "analysis", "workflow"],
-                max_paragraphs=100
+                max_paragraphs=100,
             )
 
             # Extract methods section
@@ -602,13 +603,12 @@ def research_agent(
 
             content_service = UnifiedContentService(
                 cache_dir=Path(".lobster_workspace") / "literature_cache",
-                data_manager=data_manager
+                data_manager=data_manager,
             )
 
             # Try to get content (this will show if accessible)
             content = content_service.get_full_content(
-                source=identifier,
-                prefer_webpage=True
+                source=identifier, prefer_webpage=True
             )
 
             # Format success report
@@ -629,7 +629,9 @@ def research_agent(
 **Ready for methods extraction**: Yes, use extract_paper_methods() for detailed analysis
 """
 
-            logger.info(f"Resolved access for {identifier}: {content.get('source_type')}")
+            logger.info(
+                f"Resolved access for {identifier}: {content.get('source_type')}"
+            )
             return report
 
         except Exception as e:
@@ -709,7 +711,7 @@ def research_agent(
 
             content_service = UnifiedContentService(
                 cache_dir=Path(".lobster_workspace") / "literature_cache",
-                data_manager=data_manager
+                data_manager=data_manager,
             )
 
             # Track results
@@ -726,7 +728,7 @@ def research_agent(
                         source=identifier,
                         prefer_webpage=True,
                         keywords=["methods", "materials", "analysis"],
-                        max_paragraphs=100
+                        max_paragraphs=100,
                     )
 
                     # Extract methods section
@@ -740,7 +742,9 @@ def research_agent(
                             "methods": {
                                 "software_used": methods.get("software_used", []),
                                 "parameters": methods.get("parameters", {}),
-                                "extraction_confidence": methods.get("extraction_confidence", 0),
+                                "extraction_confidence": methods.get(
+                                    "extraction_confidence", 0
+                                ),
                             },
                         }
                     )
@@ -753,12 +757,15 @@ def research_agent(
                         {
                             "identifier": identifier,
                             "error": error_msg,
-                            "is_paywalled": "paywalled" in error_msg.lower() or "not accessible" in error_msg.lower(),
+                            "is_paywalled": "paywalled" in error_msg.lower()
+                            or "not accessible" in error_msg.lower(),
                         }
                     )
 
             # Generate comprehensive report
-            paywalled_count = sum(1 for f in failed_extractions if f.get("is_paywalled", False))
+            paywalled_count = sum(
+                1 for f in failed_extractions if f.get("is_paywalled", False)
+            )
             error_count = len(failed_extractions) - paywalled_count
 
             report = f"""
@@ -780,8 +787,12 @@ def research_agent(
 
             if failed_extractions:
                 # Separate paywalled from other errors
-                paywalled = [f for f in failed_extractions if f.get("is_paywalled", False)]
-                errors = [f for f in failed_extractions if not f.get("is_paywalled", False)]
+                paywalled = [
+                    f for f in failed_extractions if f.get("is_paywalled", False)
+                ]
+                errors = [
+                    f for f in failed_extractions if not f.get("is_paywalled", False)
+                ]
 
                 if paywalled:
                     report += f"\n### ❌ Paywalled Papers ({len(paywalled)}):\n"
@@ -854,7 +865,7 @@ def research_agent(
 
             content_service = UnifiedContentService(
                 cache_dir=Path(".lobster_workspace") / "literature_cache",
-                data_manager=data_manager
+                data_manager=data_manager,
             )
 
             # Get cached publication (delegates to DataManagerV2)
@@ -864,12 +875,16 @@ def research_agent(
                 return f"## Publication Not Found\n\nNo cached extraction found for: {identifier}\n\nThis publication has not been analyzed in the current session. Use list_session_publications (via supervisor) to see available publications, or use extract_paper_methods to analyze a new paper."
 
             # Format the cached publication for display
-            response = f"## Cached Publication: {cached_pub.get('identifier', identifier)}\n\n"
+            response = (
+                f"## Cached Publication: {cached_pub.get('identifier', identifier)}\n\n"
+            )
             response += f"**Cache Format**: {cached_pub.get('format', 'unknown')}\n"
             response += f"**Cache File**: {cached_pub.get('cache_file', 'N/A')}\n"
 
             # Add methods section
-            methods_text = cached_pub.get('methods_text', '') or cached_pub.get('markdown', '')
+            methods_text = cached_pub.get("methods_text", "") or cached_pub.get(
+                "markdown", ""
+            )
             if methods_text:
                 response += "\n### Methods Section\n\n"
                 response += methods_text[:5000]  # Limit to 5000 chars for readability
@@ -877,7 +892,7 @@ def research_agent(
                     response += f"\n\n... [Methods section truncated, showing first 5000 of {len(methods_text)} characters]"
 
             # Add software tools if present
-            software = cached_pub.get('software_detected', [])
+            software = cached_pub.get("software_detected", [])
             if software and isinstance(software, list) and len(software) > 0:
                 response += f"\n\n### Software Tools Detected\n\n"
                 response += ", ".join(f"`{sw}`" for sw in software)
@@ -951,7 +966,9 @@ def research_agent(
 *For full content with Methods section, use get_publication_overview()*
 """
 
-            logger.info(f"Successfully retrieved abstract: {len(metadata.abstract)} chars")
+            logger.info(
+                f"Successfully retrieved abstract: {len(metadata.abstract)} chars"
+            )
             return response
 
         except Exception as e:
@@ -1013,16 +1030,22 @@ Could not retrieve abstract for: {identifier}
             logger.info(f"Getting publication overview for: {identifier}")
 
             # Check if identifier is a direct webpage URL
-            is_webpage_url = identifier.startswith("http") and not identifier.lower().endswith(".pdf")
+            is_webpage_url = identifier.startswith(
+                "http"
+            ) and not identifier.lower().endswith(".pdf")
 
             if is_webpage_url and prefer_webpage:
                 # Try webpage extraction first
                 try:
-                    logger.info(f"Attempting webpage extraction for: {identifier[:80]}...")
+                    logger.info(
+                        f"Attempting webpage extraction for: {identifier[:80]}..."
+                    )
                     webpage_provider = WebpageProvider(data_manager=data_manager)
 
                     # Extract full content
-                    markdown_content = webpage_provider.extract(identifier, max_paragraphs=100)
+                    markdown_content = webpage_provider.extract(
+                        identifier, max_paragraphs=100
+                    )
 
                     response = f"""## Publication Overview (Webpage Extraction)
 
@@ -1039,15 +1062,21 @@ Could not retrieve abstract for: {identifier}
 *For abstract-only view, use get_quick_abstract()*
 """
 
-                    logger.info(f"Successfully extracted webpage: {len(markdown_content)} chars")
+                    logger.info(
+                        f"Successfully extracted webpage: {len(markdown_content)} chars"
+                    )
                     return response
 
                 except Exception as webpage_error:
-                    logger.warning(f"Webpage extraction failed, trying PDF fallback: {webpage_error}")
+                    logger.warning(
+                        f"Webpage extraction failed, trying PDF fallback: {webpage_error}"
+                    )
                     # Fall through to UnifiedContentService extraction below
 
             # Fallback: Use UnifiedContentService for full extraction (now handles DOI resolution)
-            logger.info(f"Using UnifiedContentService for comprehensive extraction: {identifier}")
+            logger.info(
+                f"Using UnifiedContentService for comprehensive extraction: {identifier}"
+            )
             content_service = UnifiedContentService(data_manager=data_manager)
 
             # get_full_content() now handles DOI resolution automatically
@@ -1055,7 +1084,7 @@ Could not retrieve abstract for: {identifier}
                 source=identifier,
                 prefer_webpage=False,  # Already tried webpage above if applicable
                 keywords=["methods", "materials", "analysis"],
-                max_paragraphs=100
+                max_paragraphs=100,
             )
 
             # Format response with extracted content
@@ -1083,7 +1112,9 @@ Could not retrieve abstract for: {identifier}
 *For abstract-only view, use get_quick_abstract()*
 """
 
-            logger.info(f"Successfully extracted content via UnifiedContentService: {len(content)} chars")
+            logger.info(
+                f"Successfully extracted content via UnifiedContentService: {len(content)} chars"
+            )
             return response
 
         except Exception as e:

@@ -84,6 +84,7 @@ class MetadataEntry(TypedDict, total=False):
         modality_detection (Dict[str, Any]): Modality detection results (optional)
         concatenation_decision (Dict[str, Any]): Concatenation strategy (optional)
     """
+
     metadata: Dict[str, Any]
     validation: Dict[str, Any]
     fetch_timestamp: str
@@ -246,7 +247,12 @@ class DataManagerV2:
         self.cache_dir = self.workspace_path / "cache"
         self.literature_cache_dir = self.workspace_path / "literature_cache"
 
-        for directory in [self.data_dir, self.exports_dir, self.cache_dir, self.literature_cache_dir]:
+        for directory in [
+            self.data_dir,
+            self.exports_dir,
+            self.cache_dir,
+            self.literature_cache_dir,
+        ]:
             directory.mkdir(exist_ok=True)
 
         # Create literature cache subdirectories
@@ -1918,11 +1924,7 @@ class DataManagerV2:
         logger.info(f"Stored metadata for dataset: {dataset_id}")
 
     def _store_geo_metadata(
-        self,
-        geo_id: str,
-        metadata: Dict[str, Any],
-        stored_by: str,
-        **kwargs
+        self, geo_id: str, metadata: Dict[str, Any], stored_by: str, **kwargs
     ) -> MetadataEntry:
         """
         Store GEO metadata with enforced consistent structure.
@@ -1954,7 +1956,9 @@ class DataManagerV2:
         # Create entry with required fields
         entry: MetadataEntry = {
             "metadata": metadata.copy(),
-            "fetch_timestamp": kwargs.get("fetch_timestamp", datetime.now().isoformat()),
+            "fetch_timestamp": kwargs.get(
+                "fetch_timestamp", datetime.now().isoformat()
+            ),
             "stored_by": stored_by,
         }
 
@@ -3518,14 +3522,17 @@ https://github.com/OmicsOS/lobster
             This is part of Phase 2 refactoring to consolidate all caching
             through DataManager (architectural requirement).
         """
-        from lobster.tools.docling_service import DoclingService
         import hashlib
+
+        from lobster.tools.docling_service import DoclingService
 
         publications_dir = self.literature_cache_dir / "publications"
         publications_dir.mkdir(parents=True, exist_ok=True)
 
         # Sanitize identifier for filename
-        safe_identifier = identifier.replace(":", "_").replace("/", "_").replace("\\", "_")
+        safe_identifier = (
+            identifier.replace(":", "_").replace("/", "_").replace("\\", "_")
+        )
 
         if format == "markdown":
             # Store as human-readable markdown
@@ -3564,11 +3571,12 @@ https://github.com/OmicsOS/lobster
 
         elif format == "json":
             # Use MD5-based key for JSON (DoclingService format)
-            source = content.get('source', identifier)
+            source = content.get("source", identifier)
             cache_key = hashlib.md5(source.encode()).hexdigest()
             cache_file = publications_dir / f"{cache_key}.json"
 
             import json
+
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(content, f, indent=2)
 
@@ -3618,7 +3626,9 @@ https://github.com/OmicsOS/lobster
         publications_dir = self.literature_cache_dir / "publications"
 
         # Sanitize identifier for filename
-        safe_identifier = identifier.replace(":", "_").replace("/", "_").replace("\\", "_")
+        safe_identifier = (
+            identifier.replace(":", "_").replace("/", "_").replace("\\", "_")
+        )
 
         # Try markdown format first
         markdown_file = publications_dir / f"{safe_identifier}.md"
@@ -3637,20 +3647,29 @@ https://github.com/OmicsOS/lobster
 
             # Extract methods section if present
             if "## Methods Section" in markdown_content:
-                methods_start = markdown_content.find("## Methods Section") + len("## Methods Section")
+                methods_start = markdown_content.find("## Methods Section") + len(
+                    "## Methods Section"
+                )
                 methods_end = markdown_content.find("---", methods_start)
                 if methods_end > methods_start:
-                    result["methods_text"] = markdown_content[methods_start:methods_end].strip()
+                    result["methods_text"] = markdown_content[
+                        methods_start:methods_end
+                    ].strip()
 
             # Extract software tools if present
             if "## Software Tools Detected" in markdown_content:
-                software_start = markdown_content.find("## Software Tools Detected") + len("## Software Tools Detected")
+                software_start = markdown_content.find(
+                    "## Software Tools Detected"
+                ) + len("## Software Tools Detected")
                 software_end = markdown_content.find("---", software_start)
                 if software_end > software_start:
-                    software_section = markdown_content[software_start:software_end].strip()
+                    software_section = markdown_content[
+                        software_start:software_end
+                    ].strip()
                     # Extract tools from markdown code blocks
                     import re
-                    tools = re.findall(r'`([^`]+)`', software_section)
+
+                    tools = re.findall(r"`([^`]+)`", software_section)
                     result["software_detected"] = tools
 
             return result
@@ -3736,14 +3755,16 @@ https://github.com/OmicsOS/lobster
                     except (ValueError, IndexError):
                         pass
 
-                publications.append({
-                    "identifier": identifier,
-                    "tool_name": tool_name,
-                    "timestamp": entry.get("timestamp", "unknown"),
-                    "cache_status": cache_status,
-                    "methods_length": methods_length,
-                    "source": params.get("parser", "unknown"),
-                })
+                publications.append(
+                    {
+                        "identifier": identifier,
+                        "tool_name": tool_name,
+                        "timestamp": entry.get("timestamp", "unknown"),
+                        "cache_status": cache_status,
+                        "methods_length": methods_length,
+                        "source": params.get("parser", "unknown"),
+                    }
+                )
 
         logger.info(f"Found {len(publications)} publications in current session")
         return publications
@@ -3764,7 +3785,9 @@ https://github.com/OmicsOS/lobster
         has_json = False
 
         # Check markdown cache
-        safe_identifier = identifier.replace(":", "_").replace("/", "_").replace("\\", "_")
+        safe_identifier = (
+            identifier.replace(":", "_").replace("/", "_").replace("\\", "_")
+        )
         publications_dir = self.literature_cache_dir / "publications"
         md_file = publications_dir / f"{safe_identifier}.md"
 

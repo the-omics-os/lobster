@@ -925,10 +925,14 @@ To save, run again with save_to_file=True"""
 
             # Format the cached publication for display
             response = f"## Cached Publication: {cached_pub['identifier']}\n\n"
-            response += f"**Cache Source**: {cached_pub.get('cache_source', 'unknown')}\n"
+            response += (
+                f"**Cache Source**: {cached_pub.get('cache_source', 'unknown')}\n"
+            )
 
             # Add methods section
-            methods_text = cached_pub.get('methods_markdown') or cached_pub.get('methods_text', '')
+            methods_text = cached_pub.get("methods_markdown") or cached_pub.get(
+                "methods_text", ""
+            )
             if methods_text:
                 response += "\n### Methods Section\n\n"
                 response += methods_text[:5000]  # Limit to 5000 chars for readability
@@ -936,7 +940,7 @@ To save, run again with save_to_file=True"""
                     response += f"\n\n... [Methods section truncated, showing first 5000 of {len(methods_text)} characters]"
 
             # Add tables if present
-            tables = cached_pub.get('tables', [])
+            tables = cached_pub.get("tables", [])
             if tables and isinstance(tables, list) and len(tables) > 0:
                 response += f"\n\n### Extracted Tables ({len(tables)})\n\n"
                 for i, table in enumerate(tables[:3], 1):  # Show first 3 tables
@@ -945,7 +949,7 @@ To save, run again with save_to_file=True"""
                     response += f"\n... [Showing 3 of {len(tables)} tables]\n"
 
             # Add formulas if present
-            formulas = cached_pub.get('formulas', [])
+            formulas = cached_pub.get("formulas", [])
             if formulas and isinstance(formulas, list) and len(formulas) > 0:
                 response += f"\n\n### Extracted Formulas ({len(formulas)})\n\n"
                 for i, formula in enumerate(formulas[:5], 1):  # Show first 5 formulas
@@ -954,18 +958,20 @@ To save, run again with save_to_file=True"""
                     response += f"\n... [Showing 5 of {len(formulas)} formulas]\n"
 
             # Add software mentions
-            software = cached_pub.get('software_mentioned', [])
+            software = cached_pub.get("software_mentioned", [])
             if software and isinstance(software, list) and len(software) > 0:
                 response += f"\n\n### Software Tools Detected\n\n"
                 response += ", ".join(f"`{sw}`" for sw in software)
 
             # Add provenance metadata
-            provenance = cached_pub.get('provenance', {})
+            provenance = cached_pub.get("provenance", {})
             if provenance:
                 response += "\n\n### Extraction Metadata\n\n"
                 response += f"- **Parser**: {provenance.get('parser', 'unknown')}\n"
-                response += f"- **Fallback Used**: {provenance.get('fallback_used', False)}\n"
-                if provenance.get('timestamp'):
+                response += (
+                    f"- **Fallback Used**: {provenance.get('fallback_used', False)}\n"
+                )
+                if provenance.get("timestamp"):
                     response += f"- **Timestamp**: {provenance.get('timestamp')}\n"
 
             logger.info(f"Retrieved cached publication: {identifier}")

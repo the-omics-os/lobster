@@ -14,7 +14,7 @@ Test coverage target: 95%+ with realistic quantification workflow scenarios.
 
 import tempfile
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 from unittest.mock import Mock, patch
 
 import anndata as ad
@@ -26,7 +26,6 @@ from lobster.core.adapters.transcriptomics_adapter import TranscriptomicsAdapter
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
 from lobster.tools.geo_service import GEOService
-
 
 # ===============================================================================
 # Mock Quantification Data Fixtures
@@ -63,13 +62,15 @@ def mock_kallisto_dataset(tmp_path):
         sample_dir.mkdir()
 
         # Create abundance.tsv file with realistic Kallisto columns
-        abundance_data = pd.DataFrame({
-            "target_id": gene_ids,
-            "length": np.random.randint(500, 5000, n_genes),
-            "eff_length": np.random.randint(400, 4900, n_genes),
-            "est_counts": np.random.exponential(10, n_genes),
-            "tpm": np.random.exponential(5, n_genes),
-        })
+        abundance_data = pd.DataFrame(
+            {
+                "target_id": gene_ids,
+                "length": np.random.randint(500, 5000, n_genes),
+                "eff_length": np.random.randint(400, 4900, n_genes),
+                "est_counts": np.random.exponential(10, n_genes),
+                "tpm": np.random.exponential(5, n_genes),
+            }
+        )
 
         abundance_file = sample_dir / "abundance.tsv"
         abundance_data.to_csv(abundance_file, sep="\t", index=False)
@@ -91,8 +92,12 @@ def mock_salmon_dataset(tmp_path):
     transcript_ids = [f"ENST{i:011d}" for i in range(n_transcripts)]
 
     sample_names = [
-        "sample_A1", "sample_A2", "sample_A3",
-        "sample_B1", "sample_B2", "sample_B3"
+        "sample_A1",
+        "sample_A2",
+        "sample_A3",
+        "sample_B1",
+        "sample_B2",
+        "sample_B3",
     ]
 
     for sample in sample_names:
@@ -100,13 +105,15 @@ def mock_salmon_dataset(tmp_path):
         sample_dir.mkdir()
 
         # Create quant.sf file with realistic Salmon columns
-        quant_data = pd.DataFrame({
-            "Name": transcript_ids,
-            "Length": np.random.randint(500, 5000, n_transcripts),
-            "EffectiveLength": np.random.randint(400, 4900, n_transcripts),
-            "TPM": np.random.exponential(5, n_transcripts),
-            "NumReads": np.random.exponential(10, n_transcripts),
-        })
+        quant_data = pd.DataFrame(
+            {
+                "Name": transcript_ids,
+                "Length": np.random.randint(500, 5000, n_transcripts),
+                "EffectiveLength": np.random.randint(400, 4900, n_transcripts),
+                "TPM": np.random.exponential(5, n_transcripts),
+                "NumReads": np.random.exponential(10, n_transcripts),
+            }
+        )
 
         quant_file = sample_dir / "quant.sf"
         quant_data.to_csv(quant_file, sep="\t", index=False)
@@ -130,13 +137,15 @@ def mock_mixed_dataset(tmp_path):
         sample_dir = mixed_dir / f"kallisto_sample{i+1}"
         sample_dir.mkdir()
 
-        abundance_data = pd.DataFrame({
-            "target_id": gene_ids,
-            "length": np.random.randint(500, 5000, n_genes),
-            "eff_length": np.random.randint(400, 4900, n_genes),
-            "est_counts": np.random.exponential(10, n_genes),
-            "tpm": np.random.exponential(5, n_genes),
-        })
+        abundance_data = pd.DataFrame(
+            {
+                "target_id": gene_ids,
+                "length": np.random.randint(500, 5000, n_genes),
+                "eff_length": np.random.randint(400, 4900, n_genes),
+                "est_counts": np.random.exponential(10, n_genes),
+                "tpm": np.random.exponential(5, n_genes),
+            }
+        )
 
         (sample_dir / "abundance.tsv").parent.mkdir(exist_ok=True)
         abundance_data.to_csv(sample_dir / "abundance.tsv", sep="\t", index=False)
@@ -146,13 +155,15 @@ def mock_mixed_dataset(tmp_path):
         sample_dir = mixed_dir / f"salmon_sample{i+1}"
         sample_dir.mkdir()
 
-        quant_data = pd.DataFrame({
-            "Name": gene_ids,
-            "Length": np.random.randint(500, 5000, n_genes),
-            "EffectiveLength": np.random.randint(400, 4900, n_genes),
-            "TPM": np.random.exponential(5, n_genes),
-            "NumReads": np.random.exponential(10, n_genes),
-        })
+        quant_data = pd.DataFrame(
+            {
+                "Name": gene_ids,
+                "Length": np.random.randint(500, 5000, n_genes),
+                "EffectiveLength": np.random.randint(400, 4900, n_genes),
+                "TPM": np.random.exponential(5, n_genes),
+                "NumReads": np.random.exponential(10, n_genes),
+            }
+        )
 
         (sample_dir / "quant.sf").parent.mkdir(exist_ok=True)
         quant_data.to_csv(sample_dir / "quant.sf", sep="\t", index=False)
@@ -185,10 +196,12 @@ class TestKallistoLoading:
         df, metadata = service.merge_kallisto_results(kallisto_dir=kallisto_dir)
 
         # Validate shape (genes × samples for quantification files)
-        assert df.shape[1] == len(expected_samples), \
-            f"Expected {len(expected_samples)} samples, got {df.shape[1]}"
-        assert df.shape[0] == expected_genes, \
-            f"Expected {expected_genes} genes, got {df.shape[0]}"
+        assert df.shape[1] == len(
+            expected_samples
+        ), f"Expected {len(expected_samples)} samples, got {df.shape[1]}"
+        assert (
+            df.shape[0] == expected_genes
+        ), f"Expected {expected_genes} genes, got {df.shape[0]}"
 
         # Validate metadata
         assert metadata["quantification_tool"] == "Kallisto"
@@ -214,12 +227,15 @@ class TestKallistoLoading:
         )
 
         # CRITICAL: Validate orientation (samples × genes for bulk RNA-seq)
-        assert adata.n_obs == len(expected_samples), \
-            f"Expected {len(expected_samples)} observations (samples), got {adata.n_obs}"
-        assert adata.n_vars == expected_genes, \
-            f"Expected {expected_genes} variables (genes), got {adata.n_vars}"
-        assert adata.n_obs < adata.n_vars, \
-            "Samples should be < genes (correct bulk orientation)"
+        assert adata.n_obs == len(
+            expected_samples
+        ), f"Expected {len(expected_samples)} observations (samples), got {adata.n_obs}"
+        assert (
+            adata.n_vars == expected_genes
+        ), f"Expected {expected_genes} variables (genes), got {adata.n_vars}"
+        assert (
+            adata.n_obs < adata.n_vars
+        ), "Samples should be < genes (correct bulk orientation)"
 
         # Validate transpose metadata
         assert "transpose_info" in adata.uns
@@ -292,8 +308,7 @@ class TestUnifiedLoader:
         service = BulkRNASeqService()
 
         df, metadata = service.load_from_quantification_files(
-            quantification_dir=kallisto_dir,
-            tool="auto"
+            quantification_dir=kallisto_dir, tool="auto"
         )
 
         assert metadata["quantification_tool"] == "Kallisto"
@@ -304,8 +319,7 @@ class TestUnifiedLoader:
         service = BulkRNASeqService()
 
         df, metadata = service.load_from_quantification_files(
-            quantification_dir=salmon_dir,
-            tool="auto"
+            quantification_dir=salmon_dir, tool="auto"
         )
 
         assert metadata["quantification_tool"] == "Salmon"
@@ -316,8 +330,7 @@ class TestUnifiedLoader:
         service = BulkRNASeqService()
 
         df, metadata = service.load_from_quantification_files(
-            quantification_dir=kallisto_dir,
-            tool="kallisto"
+            quantification_dir=kallisto_dir, tool="kallisto"
         )
 
         assert metadata["quantification_tool"] == "Kallisto"
@@ -362,8 +375,7 @@ class TestGSE130036Regression:
 
         # Simulate full workflow
         df, metadata = service.load_from_quantification_files(
-            quantification_dir=kallisto_dir,
-            tool="kallisto"
+            quantification_dir=kallisto_dir, tool="kallisto"
         )
 
         adata = adapter.from_quantification_dataframe(
@@ -373,14 +385,15 @@ class TestGSE130036Regression:
         )
 
         # CRITICAL ASSERTIONS
-        assert adata.n_obs == 4, \
-            f"GSE130036 should have 4 samples, got {adata.n_obs}"
+        assert adata.n_obs == 4, f"GSE130036 should have 4 samples, got {adata.n_obs}"
 
-        assert adata.n_vars == expected_genes, \
-            f"GSE130036 should have {expected_genes} genes, got {adata.n_vars}"
+        assert (
+            adata.n_vars == expected_genes
+        ), f"GSE130036 should have {expected_genes} genes, got {adata.n_vars}"
 
-        assert adata.n_obs < adata.n_vars, \
-            f"Samples ({adata.n_obs}) should be < genes ({adata.n_vars})"
+        assert (
+            adata.n_obs < adata.n_vars
+        ), f"Samples ({adata.n_obs}) should be < genes ({adata.n_vars})"
 
         # Validate transpose was applied correctly
         assert adata.uns["transpose_info"]["transpose_applied"] == True
@@ -453,8 +466,7 @@ class TestGEOServiceIntegration:
 
         # Load quantification files
         df, metadata = bulk_service.load_from_quantification_files(
-            quantification_dir=kallisto_dir,
-            tool="auto"
+            quantification_dir=kallisto_dir, tool="auto"
         )
 
         assert df is not None

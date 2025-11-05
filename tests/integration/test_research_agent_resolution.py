@@ -13,8 +13,8 @@ from lobster.agents.research_agent_assistant import ResearchAgentAssistant
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.providers.publication_resolver import PublicationResolutionResult
 from lobster.tools.unified_content_service import (
-    UnifiedContentService,
     ContentExtractionError,
+    UnifiedContentService,
 )
 
 
@@ -35,10 +35,7 @@ def content_service(mock_data_manager, tmp_path):
     """Create UnifiedContentService instance for testing."""
     cache_dir = tmp_path / "literature_cache"
     cache_dir.mkdir()
-    return UnifiedContentService(
-        cache_dir=cache_dir,
-        data_manager=mock_data_manager
-    )
+    return UnifiedContentService(cache_dir=cache_dir, data_manager=mock_data_manager)
 
 
 class TestResearchAgentAssistantResolution:
@@ -222,7 +219,9 @@ class TestUnifiedContentServiceIntegration:
     def test_extract_content_with_direct_url(self, content_service):
         """Test get_full_content with direct PDF URL (no resolution needed)."""
 
-        with patch("lobster.tools.docling_service.DoclingService.extract_methods_section") as mock_docling:
+        with patch(
+            "lobster.tools.docling_service.DoclingService.extract_methods_section"
+        ) as mock_docling:
             mock_docling.return_value = {
                 "methods_markdown": "# Methods\n\nWe used Scanpy for analysis...",
                 "methods_text": "We used Scanpy for analysis...",
@@ -251,7 +250,9 @@ class TestUnifiedContentServiceIntegration:
     def test_extract_content_inaccessible_raises_error(self, content_service):
         """Test get_full_content raises ContentExtractionError for inaccessible papers."""
 
-        with patch("lobster.tools.docling_service.DoclingService.extract_methods_section") as mock_docling:
+        with patch(
+            "lobster.tools.docling_service.DoclingService.extract_methods_section"
+        ) as mock_docling:
             mock_docling.side_effect = Exception("Failed to download PDF")
 
             with pytest.raises(ContentExtractionError) as exc_info:

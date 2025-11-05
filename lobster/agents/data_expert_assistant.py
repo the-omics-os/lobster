@@ -122,15 +122,17 @@ class DataExpertAssistant:
                     sanitized[key] = "NA"
             elif isinstance(value, str):
                 # Check if string looks like a list representation
-                if value.strip().startswith('[') and value.strip().endswith(']'):
+                if value.strip().startswith("[") and value.strip().endswith("]"):
                     try:
                         # Parse string-encoded list using ast.literal_eval for safety
                         sanitized[key] = ast.literal_eval(value.strip())
                     except Exception as e:
                         # Broader exception catching for any parsing failure
-                        logger.warning(f"Failed to parse list string for key '{key}': {e}")
+                        logger.warning(
+                            f"Failed to parse list string for key '{key}': {e}"
+                        )
                         # Fallback if parsing fails
-                        if key in ['detected_signals', 'suggestions']:
+                        if key in ["detected_signals", "suggestions"]:
                             sanitized[key] = []
                         else:
                             sanitized[key] = value.strip()
@@ -210,17 +212,24 @@ class DataExpertAssistant:
             Modality string if keyword pattern detected, None otherwise
         """
         # Combine all text fields for searching
-        text = " ".join([
-            str(metadata.get("title", "")),
-            str(metadata.get("summary", "")),
-            str(metadata.get("overall_design", ""))
-        ]).lower()
+        text = " ".join(
+            [
+                str(metadata.get("title", "")),
+                str(metadata.get("summary", "")),
+                str(metadata.get("overall_design", "")),
+            ]
+        ).lower()
 
         # Check for multiome keywords
         has_chromatin = "chromatin accessibility" in text or "atac" in text
-        has_rna = any(kw in text for kw in ["gene expression", "rna-seq", "rna seq", "transcriptome"])
+        has_rna = any(
+            kw in text
+            for kw in ["gene expression", "rna-seq", "rna seq", "transcriptome"]
+        )
         if has_chromatin and has_rna:
-            logger.info(f"[PRE-FILTER] Detected multiome keywords: chromatin_accessibility + RNA")
+            logger.info(
+                f"[PRE-FILTER] Detected multiome keywords: chromatin_accessibility + RNA"
+            )
             return "multiome_gex_atac"
 
         # Check for CITE-seq keywords
@@ -280,7 +289,9 @@ class DataExpertAssistant:
             # This catches edge cases where multi-omics data is in dbGaP (not visible in GEO)
             pre_filtered_modality = self._pre_filter_multiomics_keywords(metadata)
             if pre_filtered_modality:
-                logger.info(f"Pre-filter detected {pre_filtered_modality} for {geo_id}, skipping LLM")
+                logger.info(
+                    f"Pre-filter detected {pre_filtered_modality} for {geo_id}, skipping LLM"
+                )
                 return ModalityDetectionResult(
                     modality=pre_filtered_modality,
                     confidence=0.95,  # High confidence from keyword matching
@@ -291,13 +302,13 @@ class DataExpertAssistant:
                     ),
                     detected_signals=[
                         f"Keyword pattern detected in metadata (pre-filter)",
-                        f"Title/Summary/Design mentions multi-omics modality: {pre_filtered_modality}"
+                        f"Title/Summary/Design mentions multi-omics modality: {pre_filtered_modality}",
                     ],
                     suggestions=[
                         f"Wait for Lobster v2.6+ with {pre_filtered_modality} support",
                         "Check if controlled-access data (dbGaP) contains additional modalities",
-                        "Manually download only the RNA component if available in GEO"
-                    ]
+                        "Manually download only the RNA component if available in GEO",
+                    ],
                 )
             # Extract key metadata fields
             title = metadata.get("title", "N/A")
@@ -313,12 +324,18 @@ class DataExpertAssistant:
             # Add sample-level supplementary files (important for multiome/CITE-seq detection)
             sample_file_count = 0
             sample_file_examples = []
-            for gsm_id, sample_meta in list(samples.items())[:10]:  # Check first 10 samples
+            for gsm_id, sample_meta in list(samples.items())[
+                :10
+            ]:  # Check first 10 samples
                 sample_files = sample_meta.get("supplementary_file", [])
                 if isinstance(sample_files, list) and sample_files:
                     sample_file_count += len(sample_files)
-                    if len(sample_file_examples) < 5:  # Show up to 5 example sample files
-                        sample_file_examples.extend(sample_files[:2])  # 2 files per sample
+                    if (
+                        len(sample_file_examples) < 5
+                    ):  # Show up to 5 example sample files
+                        sample_file_examples.extend(
+                            sample_files[:2]
+                        )  # 2 files per sample
 
             # Format file display for LLM
             file_display_parts = []
@@ -328,17 +345,29 @@ class DataExpertAssistant:
                 series_sample = file_list[:15]
                 series_display = "\n".join([f"  - {f}" for f in series_sample])
                 if len(file_list) > 15:
-                    series_display += f"\n  ... and {len(file_list) - 15} more series-level files"
-                file_display_parts.append(f"Series-level files ({len(file_list)} total):\n{series_display}")
+                    series_display += (
+                        f"\n  ... and {len(file_list) - 15} more series-level files"
+                    )
+                file_display_parts.append(
+                    f"Series-level files ({len(file_list)} total):\n{series_display}"
+                )
 
             # Sample-level files (examples)
             if sample_file_examples:
-                sample_display = "\n".join([f"  - {f}" for f in sample_file_examples[:10]])
+                sample_display = "\n".join(
+                    [f"  - {f}" for f in sample_file_examples[:10]]
+                )
                 if sample_file_count > len(sample_file_examples):
                     sample_display += f"\n  ... and {sample_file_count - len(sample_file_examples)} more sample-level files across {len(samples)} samples"
-                file_display_parts.append(f"Sample-level files ({sample_file_count} total across {len(samples)} samples, showing examples):\n{sample_display}")
+                file_display_parts.append(
+                    f"Sample-level files ({sample_file_count} total across {len(samples)} samples, showing examples):\n{sample_display}"
+                )
 
-            file_display = "\n\n".join(file_display_parts) if file_display_parts else "No supplementary files listed"
+            file_display = (
+                "\n\n".join(file_display_parts)
+                if file_display_parts
+                else "No supplementary files listed"
+            )
 
             # Format platform information
             platform_display = ""
@@ -463,7 +492,9 @@ STEP 2: File Pattern Analysis (ONLY if Step 1 found no multi-omics keywords)
 Return only a valid JSON object that matches the ModalityDetectionResult schema."""
 
             # Log the metadata context for debugging
-            logger.info(f"[MODALITY DEBUG] Metadata context for {geo_id}:\n{metadata_context[:1000]}...")
+            logger.info(
+                f"[MODALITY DEBUG] Metadata context for {geo_id}:\n{metadata_context[:1000]}..."
+            )
 
             # Create the prompt
             prompt = f"""Analyze this GEO dataset and classify its sequencing modality:
@@ -498,10 +529,16 @@ Return only a valid JSON object conforming to the ModalityDetectionResult schema
                 modality_dict = json.loads(response_text)
 
             # Sanitize null values before creating ModalityDetectionResult
-            logger.info(f"[MODALITY DEBUG] Raw LLM response for {geo_id}: {response_text[:500]}")
-            logger.info(f"[MODALITY DEBUG] Before sanitization - detected_signals type: {type(modality_dict.get('detected_signals'))}, value: {str(modality_dict.get('detected_signals'))[:200]}")
+            logger.info(
+                f"[MODALITY DEBUG] Raw LLM response for {geo_id}: {response_text[:500]}"
+            )
+            logger.info(
+                f"[MODALITY DEBUG] Before sanitization - detected_signals type: {type(modality_dict.get('detected_signals'))}, value: {str(modality_dict.get('detected_signals'))[:200]}"
+            )
             sanitized_dict = self._sanitize_null_values(modality_dict)
-            logger.info(f"[MODALITY DEBUG] After sanitization - detected_signals type: {type(sanitized_dict.get('detected_signals'))}, value: {str(sanitized_dict.get('detected_signals'))[:200]}")
+            logger.info(
+                f"[MODALITY DEBUG] After sanitization - detected_signals type: {type(sanitized_dict.get('detected_signals'))}, value: {str(sanitized_dict.get('detected_signals'))[:200]}"
+            )
 
             # Ensure lists are properly initialized (handle remaining string cases)
             if (

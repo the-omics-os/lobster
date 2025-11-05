@@ -807,7 +807,8 @@ Next suggested step: Import quantification data with tximport for differential e
         # Auto-detect sample names if not provided
         if sample_names is None:
             sample_names = [
-                d.name for d in salmon_dir.iterdir()
+                d.name
+                for d in salmon_dir.iterdir()
                 if d.is_dir() and (d / "quant.sf").exists()
             ]
             logger.info(f"Auto-detected {len(sample_names)} Salmon samples")
@@ -919,9 +920,11 @@ Next suggested step: Import quantification data with tximport for differential e
                     continue
 
                 # Check for any Kallisto output format
-                if (d / "abundance.tsv").exists() or \
-                   (d / "abundance.h5").exists() or \
-                   (d / "abundance.txt").exists():
+                if (
+                    (d / "abundance.tsv").exists()
+                    or (d / "abundance.h5").exists()
+                    or (d / "abundance.txt").exists()
+                ):
                     sample_names.append(d.name)
 
             logger.info(f"Auto-detected {len(sample_names)} Kallisto samples")
@@ -947,9 +950,7 @@ Next suggested step: Import quantification data with tximport for differential e
             if use_h5 and (sample_dir / "abundance.h5").exists():
                 try:
                     df = self._read_kallisto_h5(
-                        sample_dir / "abundance.h5",
-                        value_column,
-                        gene_id_column
+                        sample_dir / "abundance.h5", value_column, gene_id_column
                     )
                     format_used = "h5"
                 except Exception as e:
@@ -958,9 +959,7 @@ Next suggested step: Import quantification data with tximport for differential e
             if df is None and (sample_dir / "abundance.tsv").exists():
                 try:
                     df = self._read_kallisto_tsv(
-                        sample_dir / "abundance.tsv",
-                        value_column,
-                        gene_id_column
+                        sample_dir / "abundance.tsv", value_column, gene_id_column
                     )
                     format_used = "tsv"
                 except Exception as e:
@@ -969,9 +968,7 @@ Next suggested step: Import quantification data with tximport for differential e
             if df is None and (sample_dir / "abundance.txt").exists():
                 try:
                     df = self._read_kallisto_tsv(
-                        sample_dir / "abundance.txt",
-                        value_column,
-                        gene_id_column
+                        sample_dir / "abundance.txt", value_column, gene_id_column
                     )
                     format_used = "txt"
                 except Exception as e:
@@ -1090,16 +1087,10 @@ Next suggested step: Import quantification data with tximport for differential e
         # Route to appropriate loader
         if tool == "kallisto":
             return self.merge_kallisto_results(
-                quantification_dir,
-                sample_names,
-                **kwargs
+                quantification_dir, sample_names, **kwargs
             )
         elif tool == "salmon":
-            return self.merge_salmon_results(
-                quantification_dir,
-                sample_names,
-                **kwargs
-            )
+            return self.merge_salmon_results(quantification_dir, sample_names, **kwargs)
         else:
             raise ValueError(f"Unsupported quantification tool: {tool}")
 
@@ -1113,14 +1104,15 @@ Next suggested step: Import quantification data with tximport for differential e
                 continue
 
             # Check for Kallisto signatures
-            if (subdir / "abundance.tsv").exists() or \
-               (subdir / "abundance.h5").exists() or \
-               (subdir / "abundance.txt").exists():
+            if (
+                (subdir / "abundance.tsv").exists()
+                or (subdir / "abundance.h5").exists()
+                or (subdir / "abundance.txt").exists()
+            ):
                 kallisto_count += 1
 
             # Check for Salmon signatures
-            if (subdir / "quant.sf").exists() or \
-               (subdir / "quant.genes.sf").exists():
+            if (subdir / "quant.sf").exists() or (subdir / "quant.genes.sf").exists():
                 salmon_count += 1
 
         if kallisto_count > salmon_count:

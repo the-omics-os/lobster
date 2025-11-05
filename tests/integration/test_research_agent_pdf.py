@@ -13,8 +13,8 @@ import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.unified_content_service import (
-    UnifiedContentService,
     ContentExtractionError,
+    UnifiedContentService,
 )
 
 
@@ -30,8 +30,7 @@ def data_manager(tmp_path):
 def content_service(data_manager):
     """Create UnifiedContentService instance."""
     return UnifiedContentService(
-        cache_dir=data_manager.literature_cache_dir,
-        data_manager=data_manager
+        cache_dir=data_manager.literature_cache_dir, data_manager=data_manager
     )
 
 
@@ -76,9 +75,13 @@ trailer << /Size 2 /Root 1 0 R >>
         assert "content" in result
         assert isinstance(result["content"], str)
 
-    @patch("lobster.tools.providers.webpage_provider.WebpageProvider.extract_with_full_metadata")
+    @patch(
+        "lobster.tools.providers.webpage_provider.WebpageProvider.extract_with_full_metadata"
+    )
     @patch("lobster.tools.providers.webpage_provider.WebpageProvider.can_handle")
-    def test_url_content_extraction_workflow(self, mock_can_handle, mock_extract, content_service):
+    def test_url_content_extraction_workflow(
+        self, mock_can_handle, mock_extract, content_service
+    ):
         """Test URL content extraction workflow."""
         # Mock webpage provider
         mock_can_handle.return_value = True
@@ -175,7 +178,9 @@ Statistical analysis used Wilcoxon rank-sum test with FDR correction.""",
         mock_docling.side_effect = Exception("Extraction failed")
 
         # Expect ContentExtractionError for failed PDF extraction
-        with pytest.raises(ContentExtractionError, match="Failed to extract PDF content"):
+        with pytest.raises(
+            ContentExtractionError, match="Failed to extract PDF content"
+        ):
             content_service.get_full_content("https://invalid.com/paper.pdf")
 
     def test_provenance_logging_workflow(self, content_service, data_manager):
@@ -262,7 +267,9 @@ class TestResearchAgentToolIntegration:
             # But we can verify the agent was created successfully
             assert agent is not None
 
-    @patch("lobster.tools.unified_content_service.UnifiedContentService.get_full_content")
+    @patch(
+        "lobster.tools.unified_content_service.UnifiedContentService.get_full_content"
+    )
     def test_extract_paper_methods_tool_mock(self, mock_extract, data_manager):
         """Test extract_paper_methods tool with mocked content extraction."""
         from lobster.agents.research_agent import research_agent
@@ -302,8 +309,7 @@ class TestUnifiedContentServiceIntegration:
     def test_service_with_data_manager_integration(self, data_manager):
         """Test service integration with DataManagerV2."""
         service = UnifiedContentService(
-            cache_dir=data_manager.literature_cache_dir,
-            data_manager=data_manager
+            cache_dir=data_manager.literature_cache_dir, data_manager=data_manager
         )
 
         # Verify service is properly initialized
@@ -313,8 +319,7 @@ class TestUnifiedContentServiceIntegration:
     def test_provenance_tracking_integration(self, data_manager):
         """Test that provenance tracking infrastructure is available."""
         service = UnifiedContentService(
-            cache_dir=data_manager.literature_cache_dir,
-            data_manager=data_manager
+            cache_dir=data_manager.literature_cache_dir, data_manager=data_manager
         )
 
         # Verify provenance tracking is available
@@ -322,4 +327,6 @@ class TestUnifiedContentServiceIntegration:
         # Provenance logging happens at the agent level
         assert data_manager.provenance is not None
         assert isinstance(data_manager.provenance.activities, list)
-        print(f"✅ Provenance tracking infrastructure available for UnifiedContentService")
+        print(
+            f"✅ Provenance tracking infrastructure available for UnifiedContentService"
+        )

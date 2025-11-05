@@ -598,6 +598,16 @@ class GEODownloadManager:
                             progress.update(task_id, completed=downloaded)
 
             logger.info(f"Downloaded to: {local_path}")
+
+            # Validate gzip files before considering download successful
+            if local_path.name.endswith(".gz"):
+                if not self._validate_gzip_integrity(local_path):
+                    logger.error(
+                        f"Gzip validation failed, removing corrupted file: {local_path}"
+                    )
+                    local_path.unlink()
+                    return False
+
             return True
 
         except requests.exceptions.RequestException as e:
@@ -663,6 +673,16 @@ class GEODownloadManager:
                         ftp.retrbinary(f"RETR {filepath}", callback, blocksize=32768)
 
                 logger.info(f"Downloaded FTP file to: {local_path}")
+
+                # Validate gzip files before considering download successful
+                if local_path.name.endswith(".gz"):
+                    if not self._validate_gzip_integrity(local_path):
+                        logger.error(
+                            f"Gzip validation failed, removing corrupted file: {local_path}"
+                        )
+                        local_path.unlink()
+                        return False
+
                 return True
 
             finally:
@@ -670,6 +690,38 @@ class GEODownloadManager:
 
         except (ftplib.all_errors, OSError) as e:
             logger.warning(f"Failed to download FTP {url}: {e}")
+            return False
+
+    def _validate_gzip_integrity(self, file_path: Path) -> bool:
+        """
+        Validate gzip file can be fully decompressed.
+
+        This prevents corrupted gzip files from poisoning the cache by
+        attempting to decompress the entire file in chunks.
+
+        Args:
+            file_path: Path to gzip file to validate
+
+        Returns:
+            bool: True if file can be fully decompressed, False otherwise
+        """
+        try:
+            import gzip
+
+            # Read entire file in chunks to verify complete decompression
+            # Using 32KB chunks for memory efficiency
+            with gzip.open(file_path, "rb") as f:
+                while chunk := f.read(32768):
+                    pass
+
+            logger.debug(f"Gzip validation passed: {file_path.name}")
+            return True
+
+        except (OSError, gzip.BadGzipFile, EOFError) as e:
+            logger.warning(f"Gzip validation failed for {file_path.name}: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error validating {file_path.name}: {e}")
             return False
 
     # FIXME remove soonish

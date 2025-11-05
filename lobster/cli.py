@@ -2038,14 +2038,17 @@ def _execute_command(cmd: str, client: AgentClient) -> Optional[str]:
                     continue
 
                 # Check for Kallisto signatures
-                if (subdir / "abundance.tsv").exists() or \
-                   (subdir / "abundance.h5").exists() or \
-                   (subdir / "abundance.txt").exists():
+                if (
+                    (subdir / "abundance.tsv").exists()
+                    or (subdir / "abundance.h5").exists()
+                    or (subdir / "abundance.txt").exists()
+                ):
                     kallisto_count += 1
 
                 # Check for Salmon signatures
-                if (subdir / "quant.sf").exists() or \
-                   (subdir / "quant.genes.sf").exists():
+                if (subdir / "quant.sf").exists() or (
+                    subdir / "quant.genes.sf"
+                ).exists():
                     salmon_count += 1
         except (PermissionError, OSError):
             return None
@@ -2409,26 +2412,33 @@ when they are started by agents or analysis workflows.
         filename = cmd[6:].strip()
 
         # Convert to Path object for directory checking
-        file_path = Path(filename) if Path(filename).is_absolute() else current_directory / filename
+        file_path = (
+            Path(filename)
+            if Path(filename).is_absolute()
+            else current_directory / filename
+        )
 
         # Check if this is a quantification directory BEFORE checking glob patterns
         tool_type = _is_quantification_directory(file_path)
         if tool_type:
             # This is a Kallisto or Salmon quantification directory
-            console.print(f"[cyan]🧬 Detected {tool_type.title()} quantification directory[/cyan]")
-            console.print(f"[dim]Loading quantification files from: {file_path}[/dim]\n")
+            console.print(
+                f"[cyan]🧬 Detected {tool_type.title()} quantification directory[/cyan]"
+            )
+            console.print(
+                f"[dim]Loading quantification files from: {file_path}[/dim]\n"
+            )
 
             try:
                 with create_progress(client_arg=client) as progress:
                     task = progress.add_task(
                         f"[cyan]Loading {tool_type.title()} quantification files...",
-                        total=None
+                        total=None,
                     )
 
                     # Route to client method for quantification loading
                     load_result = client.load_quantification_directory(
-                        directory_path=str(file_path),
-                        tool_type=tool_type
+                        directory_path=str(file_path), tool_type=tool_type
                     )
 
                     progress.remove_task(task)
@@ -2437,9 +2447,13 @@ when they are started by agents or analysis workflows.
                 if load_result["success"]:
                     console.print(f"[green]✅ {load_result['message']}[/green]\n")
                     console.print(f"[cyan]📊 Data Summary:[/cyan]")
-                    console.print(f"  • Modality: [bold]{load_result['modality_name']}[/bold]")
+                    console.print(
+                        f"  • Modality: [bold]{load_result['modality_name']}[/bold]"
+                    )
                     console.print(f"  • Tool: {load_result['tool_type'].title()}")
-                    console.print(f"  • Shape: {load_result['n_samples']} samples × {load_result['n_genes']:,} genes")
+                    console.print(
+                        f"  • Shape: {load_result['n_samples']} samples × {load_result['n_genes']:,} genes"
+                    )
                     console.print(f"  • Source: {load_result['file_path']}\n")
                 else:
                     console.print(

@@ -83,9 +83,7 @@ class AbstractProvider:
             config = PubMedProviderConfig()
 
         # Initialize PubMedProvider (reuse existing NCBI integration)
-        self.pubmed_provider = PubMedProvider(
-            data_manager=data_manager, config=config
-        )
+        self.pubmed_provider = PubMedProvider(data_manager=data_manager, config=config)
 
         logger.info("Initialized AbstractProvider with NCBI E-utilities")
 

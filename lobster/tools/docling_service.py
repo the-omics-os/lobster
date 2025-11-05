@@ -328,7 +328,9 @@ class DoclingService:
                     continue
                 else:
                     logger.error("Max retries reached after MemoryError")
-                    raise PDFExtractionError(f"MemoryError after {max_retries} attempts: {e}")
+                    raise PDFExtractionError(
+                        f"MemoryError after {max_retries} attempts: {e}"
+                    )
 
             except RuntimeError as e:
                 error_msg = str(e)
@@ -344,7 +346,9 @@ class DoclingService:
                     )
                     if attempt < max_retries - 1:
                         continue
-                    raise PDFExtractionError(f"RuntimeError after {max_retries} attempts: {e}")
+                    raise PDFExtractionError(
+                        f"RuntimeError after {max_retries} attempts: {e}"
+                    )
 
             except DoclingError as e:
                 logger.error(
@@ -364,7 +368,9 @@ class DoclingService:
                     logger.info("Retrying after unexpected error...")
                     continue
                 else:
-                    raise PDFExtractionError(f"Extraction failed after {max_retries} attempts: {e}")
+                    raise PDFExtractionError(
+                        f"Extraction failed after {max_retries} attempts: {e}"
+                    )
 
         # Should not reach here, but safety fallback
         raise PDFExtractionError(f"Extraction failed after {max_retries} attempts")

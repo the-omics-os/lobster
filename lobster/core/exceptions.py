@@ -37,6 +37,7 @@ class UnsupportedFormatError(LobsterCoreError):
             for suggestion in e.details.get('suggestions', []):
                 print(f"  - {suggestion}")
     """
+
     pass
 
 
@@ -66,6 +67,7 @@ class UnsupportedPlatformError(LobsterCoreError):
             for suggestion in e.details['suggestions']:
                 print(f"  → {suggestion}")
     """
+
     pass
 
 
@@ -95,6 +97,7 @@ class FeatureNotImplementedError(LobsterCoreError):
             print(f"Workaround: {e.details['current_workaround']}")
             print(f"Timeline: {e.details.get('estimated_implementation')}")
     """
+
     pass
 
 
@@ -130,6 +133,7 @@ class DataTypeAmbiguityError(LobsterCoreError):
             for suggestion in e.details['suggestions']:
                 print(f"  - {suggestion}")
     """
+
     pass
 
 
@@ -157,4 +161,5 @@ class DataOrientationError(LobsterCoreError):
             print(f"Actual shape: {e.details['actual_shape']}")
             print(f"Expected: {e.details['expected_constraints']}")
     """
+
     pass

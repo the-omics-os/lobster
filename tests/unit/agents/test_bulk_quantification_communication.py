@@ -19,7 +19,6 @@ import pytest
 from lobster.agents.bulk_rnaseq_expert import bulk_rnaseq_expert
 from lobster.core.data_manager_v2 import DataManagerV2
 
-
 # ===============================================================================
 # Mock Fixtures
 # ===============================================================================
@@ -47,13 +46,15 @@ def mock_kallisto_dataset(tmp_path):
         sample_dir = kallisto_dir / sample
         sample_dir.mkdir()
 
-        abundance_data = pd.DataFrame({
-            "target_id": gene_ids,
-            "length": np.random.randint(500, 5000, n_genes),
-            "eff_length": np.random.randint(400, 4900, n_genes),
-            "est_counts": np.random.exponential(10, n_genes),
-            "tpm": np.random.exponential(5, n_genes),
-        })
+        abundance_data = pd.DataFrame(
+            {
+                "target_id": gene_ids,
+                "length": np.random.randint(500, 5000, n_genes),
+                "eff_length": np.random.randint(400, 4900, n_genes),
+                "est_counts": np.random.exponential(10, n_genes),
+                "tpm": np.random.exponential(5, n_genes),
+            }
+        )
 
         abundance_file = sample_dir / "abundance.tsv"
         abundance_data.to_csv(abundance_file, sep="\t", index=False)
@@ -69,7 +70,9 @@ def mock_kallisto_dataset(tmp_path):
 class TestQuantificationLoadingCommunication:
     """Test agent communication quality for quantification file loading."""
 
-    def test_successful_loading_message_format(self, mock_data_manager, mock_kallisto_dataset):
+    def test_successful_loading_message_format(
+        self, mock_data_manager, mock_kallisto_dataset
+    ):
         """Test that successful loading produces professional, informative message."""
         kallisto_dir, samples, genes = mock_kallisto_dataset
 
@@ -80,10 +83,10 @@ class TestQuantificationLoadingCommunication:
         )
 
         # Extract the load_quantification_files tool
-        tools = [node for node in agent_graph.nodes if hasattr(node, '__name__')]
+        tools = [node for node in agent_graph.nodes if hasattr(node, "__name__")]
         load_tool = None
         for tool in tools:
-            if hasattr(tool, 'name') and 'load_quantification_files' in tool.name:
+            if hasattr(tool, "name") and "load_quantification_files" in tool.name:
                 load_tool = tool
                 break
 
@@ -91,11 +94,14 @@ class TestQuantificationLoadingCommunication:
         if load_tool is None:
             # The tools are bound to the agent, let's access them directly
             from lobster.agents import bulk_rnaseq_expert as module
+
             # Get the tool function directly
             pass  # We'll test via direct function call
 
         # Test via direct tool function call
-        from lobster.agents.bulk_rnaseq_expert import bulk_rnaseq_expert as agent_factory
+        from lobster.agents.bulk_rnaseq_expert import (
+            bulk_rnaseq_expert as agent_factory,
+        )
 
         # Create agent to get access to the tool
         agent = agent_factory(mock_data_manager)
@@ -104,16 +110,15 @@ class TestQuantificationLoadingCommunication:
         # Instead, let's test the response format by checking what gets stored
 
         # Call the tool indirectly by loading data
-        from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
         from lobster.core.adapters.transcriptomics_adapter import TranscriptomicsAdapter
+        from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
 
         service = BulkRNASeqService()
         adapter = TranscriptomicsAdapter(data_type="bulk")
 
         # Load quantification files
         df, metadata = service.load_from_quantification_files(
-            quantification_dir=kallisto_dir,
-            tool="auto"
+            quantification_dir=kallisto_dir, tool="auto"
         )
 
         # Create AnnData
@@ -133,7 +138,10 @@ class TestQuantificationLoadingCommunication:
 
         # Check professional metadata is present
         assert "quantification_metadata" in stored_adata.uns
-        assert stored_adata.uns["quantification_metadata"]["quantification_tool"] == "Kallisto"
+        assert (
+            stored_adata.uns["quantification_metadata"]["quantification_tool"]
+            == "Kallisto"
+        )
         assert stored_adata.uns["quantification_metadata"]["n_samples"] == len(samples)
         assert stored_adata.uns["quantification_metadata"]["n_genes"] == genes
 
@@ -159,20 +167,21 @@ class TestQuantificationLoadingCommunication:
             with pytest.raises(ValueError, match="No Kallisto or Salmon"):
                 service._detect_quantification_tool(empty_dir)
 
-    def test_metadata_completeness_for_reporting(self, mock_data_manager, mock_kallisto_dataset):
+    def test_metadata_completeness_for_reporting(
+        self, mock_data_manager, mock_kallisto_dataset
+    ):
         """Test that all necessary metadata is present for professional reporting."""
         kallisto_dir, samples, genes = mock_kallisto_dataset
 
-        from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
         from lobster.core.adapters.transcriptomics_adapter import TranscriptomicsAdapter
+        from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
 
         service = BulkRNASeqService()
         adapter = TranscriptomicsAdapter(data_type="bulk")
 
         # Load and convert
         df, metadata = service.load_from_quantification_files(
-            quantification_dir=kallisto_dir,
-            tool="auto"
+            quantification_dir=kallisto_dir, tool="auto"
         )
 
         adata = adapter.from_quantification_dataframe(
@@ -191,15 +200,20 @@ class TestQuantificationLoadingCommunication:
         ]
 
         for field in required_metadata_fields:
-            assert field in adata.uns["quantification_metadata"], \
-                f"Missing required metadata field: {field}"
+            assert (
+                field in adata.uns["quantification_metadata"]
+            ), f"Missing required metadata field: {field}"
 
         # Verify sample information is accurate
         assert adata.uns["quantification_metadata"]["n_samples"] == len(samples)
-        assert len(adata.uns["quantification_metadata"]["successful_samples"]) == len(samples)
+        assert len(adata.uns["quantification_metadata"]["successful_samples"]) == len(
+            samples
+        )
         assert len(adata.uns["quantification_metadata"]["failed_samples"]) == 0
 
-    def test_response_includes_next_steps(self, mock_data_manager, mock_kallisto_dataset):
+    def test_response_includes_next_steps(
+        self, mock_data_manager, mock_kallisto_dataset
+    ):
         """Test that response structure supports next step guidance."""
         kallisto_dir, samples, genes = mock_kallisto_dataset
 
@@ -207,8 +221,7 @@ class TestQuantificationLoadingCommunication:
 
         service = BulkRNASeqService()
         df, metadata = service.load_from_quantification_files(
-            quantification_dir=kallisto_dir,
-            tool="auto"
+            quantification_dir=kallisto_dir, tool="auto"
         )
 
         # Verify metadata contains information needed for next step recommendations
@@ -235,15 +248,13 @@ class TestQuantificationLoadingCommunication:
 
         # Load with explicit tool specification
         df1, metadata1 = service.load_from_quantification_files(
-            quantification_dir=kallisto_dir,
-            tool="kallisto"
+            quantification_dir=kallisto_dir, tool="kallisto"
         )
         assert metadata1["quantification_tool"] == "Kallisto"
 
         # Load with auto-detection
         df2, metadata2 = service.load_from_quantification_files(
-            quantification_dir=kallisto_dir,
-            tool="auto"
+            quantification_dir=kallisto_dir, tool="auto"
         )
         assert metadata2["quantification_tool"] == "Kallisto"
 
@@ -269,8 +280,7 @@ class TestMessageContent:
 
         service = BulkRNASeqService()
         _, metadata = service.load_from_quantification_files(
-            quantification_dir=kallisto_dir,
-            tool="auto"
+            quantification_dir=kallisto_dir, tool="auto"
         )
 
         assert metadata["n_samples"] == len(expected_samples)
@@ -288,8 +298,7 @@ class TestMessageContent:
 
         service = BulkRNASeqService()
         df, metadata = service.load_from_quantification_files(
-            quantification_dir=kallisto_dir,
-            tool="auto"
+            quantification_dir=kallisto_dir, tool="auto"
         )
 
         assert metadata["n_genes"] == expected_genes
@@ -299,15 +308,14 @@ class TestMessageContent:
         """Test that orientation information is provided for user understanding."""
         kallisto_dir, _, _ = mock_kallisto_dataset
 
-        from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
         from lobster.core.adapters.transcriptomics_adapter import TranscriptomicsAdapter
+        from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
 
         service = BulkRNASeqService()
         adapter = TranscriptomicsAdapter(data_type="bulk")
 
         df, metadata = service.load_from_quantification_files(
-            quantification_dir=kallisto_dir,
-            tool="auto"
+            quantification_dir=kallisto_dir, tool="auto"
         )
 
         adata = adapter.from_quantification_dataframe(
