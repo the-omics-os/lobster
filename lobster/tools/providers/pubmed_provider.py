@@ -1005,10 +1005,10 @@ class PubMedProvider(BasePublicationProvider):
         """Find datasets linked to a PubMed article using E-link, including GSE series accessions."""
         linked = {"GEO": [], "SRA": [], "BioProject": [], "BioSample": []}
 
-        # Database configs: include GEO (for GSE series), GDS (legacy), SRA, etc.
+        # Database configs: GEO (GSE/GSM), SRA, BioProject, BioSample
+        # Note: GDS (legacy GEO DataSets) removed - deprecated by NCBI, causes malformed accessions
         db_configs = [
             {"db": "geo", "key": "GEO", "prefix": ""},  # Will fetch GSE/GSM
-            {"db": "gds", "key": "GEO", "prefix": "GDS"},  # Legacy GEO DataSets
             {"db": "sra", "key": "SRA", "prefix": "SRA"},
             {"db": "bioproject", "key": "BioProject", "prefix": "PRJNA"},
             {"db": "biosample", "key": "BioSample", "prefix": "SAMN"},
