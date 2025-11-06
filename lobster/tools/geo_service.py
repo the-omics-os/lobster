@@ -817,31 +817,74 @@ class GEOService:
             save_path = f"{modality_name}_raw.h5ad"
             saved_file = self.data_manager.save_modality(modality_name, save_path)
 
-            # Log successful download and save
+            # Check if this was a multi-modal dataset and log exclusions
+            multimodal_info = None
+            if clean_geo_id in self.data_manager.metadata_store:
+                stored_entry = self.data_manager._get_geo_metadata(clean_geo_id)
+                if stored_entry:
+                    multimodal_info = stored_entry.get("multimodal_info")
+
+            # Log successful download and save (with multi-modal info if applicable)
+            log_params = {
+                "geo_id": clean_geo_id,
+                "download_source": geo_result.source.value,
+                "processing_method": geo_result.processing_info.get("method", "unknown"),
+            }
+
+            log_description = f"Downloaded GEO dataset {clean_geo_id} using strategic approach ({geo_result.source.value}), saved to {saved_file}"
+
+            if multimodal_info and multimodal_info.get("is_multimodal"):
+                # Add multi-modal info to parameters
+                log_params["is_multimodal"] = True
+                log_params["loaded_modalities"] = multimodal_info.get("supported_types", [])
+                log_params["excluded_modalities"] = multimodal_info.get("unsupported_types", [])
+
+                # Calculate excluded sample count
+                sample_types = multimodal_info.get("sample_types", {})
+                excluded_count = sum(
+                    len(samples) for modality, samples in sample_types.items() if modality != "rna"
+                )
+
+                # Enhance description with exclusion info
+                log_description += f" | Multi-modal dataset: loaded {len(sample_types.get('rna', []))} RNA samples, excluded {excluded_count} unsupported samples"
+
             self.data_manager.log_tool_usage(
                 tool_name="download_geo_dataset_strategic",
-                parameters={
-                    "geo_id": clean_geo_id,
-                    "download_source": geo_result.source.value,
-                    "processing_method": geo_result.processing_info.get(
-                        "method", "unknown"
-                    ),
-                },
-                description=f"Downloaded GEO dataset {clean_geo_id} using strategic approach ({geo_result.source.value}), saved to {saved_file}",
+                parameters=log_params,
+                description=log_description,
             )
 
             # Auto-save current state
             self.data_manager.auto_save_state()
 
-            return f"""Successfully downloaded and loaded GEO dataset {clean_geo_id}!
+            # Generate success message (enhanced for multi-modal)
+            success_msg = f"""Successfully downloaded and loaded GEO dataset {clean_geo_id}!
 
 📊 Modality: '{modality_name}' ({adata.n_obs} obs × {adata.n_vars} vars)
 🔬 Adapter: {adapter_name} (predicted: {enhanced_metadata.get('data_type', None)})
 💾 Saved to: {save_path}
 🎯 Source: {geo_result.source.value} ({geo_result.processing_info.get('method', 'unknown')})
-⚡ Ready for quality control and downstream analysis!
+⚡ Ready for quality control and downstream analysis!"""
 
-The dataset is now available as modality '{modality_name}' for other agents to use."""
+            if multimodal_info and multimodal_info.get("is_multimodal"):
+                sample_types = multimodal_info.get("sample_types", {})
+                excluded_summary = ", ".join([
+                    f"{modality.upper()}: {len(samples)}"
+                    for modality, samples in sample_types.items()
+                    if modality != "rna"
+                ])
+                success_msg += f"""
+
+🧬 Multi-Modal Dataset Detected:
+   ✓ Loaded: RNA ({len(sample_types.get('rna', []))} samples)
+   ⏭️  Skipped: {excluded_summary} (support coming in v2.6+)
+
+   Note: Only RNA samples were downloaded. Unsupported modalities were excluded to save bandwidth.
+   When protein/VDJ support is added, you can re-download to get all modalities."""
+
+            success_msg += f"\n\nThe dataset is now available as modality '{modality_name}' for other agents to use."
+
+            return success_msg
 
         except Exception as e:
             logger.exception(f"Error downloading dataset: {e}")
@@ -1724,38 +1767,210 @@ The dataset is now available as modality '{modality_name}' for other agents to u
                     existing_entry["modality_detection"] = modality_detection_info
                     self.data_manager.metadata_store[geo_id] = existing_entry
 
-        # Decision: Reject unsupported modalities
+        # Decision: Handle multi-modal datasets intelligently
         if not modality_result.is_supported:
-            # Format detected signals for error message
-            signals_display = "\n".join(
-                [f"  - {signal}" for signal in modality_result.detected_signals[:5]]
-            )
-            if len(modality_result.detected_signals) > 5:
-                signals_display += f"\n  ... and {len(modality_result.detected_signals) - 5} more signals"
+            # Check if this is a multi-modal dataset by examining sample types
+            logger.info(f"Detected unsupported modality '{modality_result.modality}', checking for multi-modal composition...")
+            sample_types = self._detect_sample_types(metadata)
 
-            raise FeatureNotImplementedError(
-                message=f"Dataset {geo_id} uses unsupported sequencing modality: {modality_result.modality}",
-                details={
-                    "geo_id": geo_id,
-                    "modality": modality_result.modality,
-                    "confidence": modality_result.confidence,
-                    "detected_signals": modality_result.detected_signals,
-                    "explanation": modality_result.compatibility_reason,
-                    "current_workaround": (
-                        f"Lobster v2.3 currently supports bulk RNA-seq, 10X single-cell, and Smart-seq2. "
-                        f"Support for {modality_result.modality} is planned for future releases."
-                    ),
-                    "suggestions": modality_result.suggestions,
-                    "estimated_implementation": "Planned for Lobster v2.6-v2.8 depending on modality",
-                    "detected_signals_formatted": signals_display,
-                },
+            # Check if we have any supported modalities
+            has_rna = "rna" in sample_types and len(sample_types["rna"]) > 0
+            has_unsupported = any(
+                modality in sample_types and len(sample_types[modality]) > 0
+                for modality in ["protein", "vdj", "atac"]
             )
+
+            if has_rna and has_unsupported:
+                # Multi-modal dataset with RNA + unsupported modalities
+                logger.info(
+                    f"Multi-modal dataset detected: RNA ({len(sample_types.get('rna', []))}) samples + "
+                    f"unsupported modalities. Will load RNA samples only."
+                )
+
+                # Store multi-modal info in metadata for downstream use
+                multimodal_info = {
+                    "is_multimodal": True,
+                    "sample_types": sample_types,
+                    "supported_types": ["rna"],
+                    "unsupported_types": [t for t in sample_types.keys() if t != "rna"],
+                    "detection_timestamp": pd.Timestamp.now().isoformat(),
+                }
+
+                # Update metadata store with multi-modal info
+                if geo_id in self.data_manager.metadata_store:
+                    existing_entry = self.data_manager._get_geo_metadata(geo_id)
+                    if existing_entry:
+                        existing_entry["multimodal_info"] = multimodal_info
+                        self.data_manager.metadata_store[geo_id] = existing_entry
+
+                # Log what will be skipped
+                unsupported_summary = ", ".join([
+                    f"{modality}: {len(samples)} samples"
+                    for modality, samples in sample_types.items()
+                    if modality != "rna"
+                ])
+                logger.warning(
+                    f"Skipping unsupported modalities in {geo_id}: {unsupported_summary}. "
+                    f"Support planned for future releases (v2.6+)."
+                )
+
+                return (
+                    True,
+                    f"Multi-modal dataset - loading RNA samples only ({len(sample_types['rna'])} samples)"
+                )
+
+            elif has_rna and not has_unsupported:
+                # RNA-only dataset that was misclassified by pre-filter
+                logger.info(f"Dataset is RNA-only despite modality detection. Proceeding with load.")
+                return (
+                    True,
+                    f"RNA-only dataset (pre-filter was overly conservative)"
+                )
+
+            else:
+                # No RNA samples found - truly unsupported
+                signals_display = "\n".join(
+                    [f"  - {signal}" for signal in modality_result.detected_signals[:5]]
+                )
+                if len(modality_result.detected_signals) > 5:
+                    signals_display += f"\n  ... and {len(modality_result.detected_signals) - 5} more signals"
+
+                raise FeatureNotImplementedError(
+                    message=f"Dataset {geo_id} uses unsupported sequencing modality: {modality_result.modality}",
+                    details={
+                        "geo_id": geo_id,
+                        "modality": modality_result.modality,
+                        "confidence": modality_result.confidence,
+                        "detected_signals": modality_result.detected_signals,
+                        "explanation": modality_result.compatibility_reason,
+                        "current_workaround": (
+                            f"Lobster v2.3 currently supports bulk RNA-seq, 10X single-cell, and Smart-seq2. "
+                            f"Support for {modality_result.modality} is planned for future releases."
+                        ),
+                        "suggestions": modality_result.suggestions,
+                        "estimated_implementation": "Planned for Lobster v2.6-v2.8 depending on modality",
+                        "detected_signals_formatted": signals_display,
+                        "sample_types_detected": sample_types if sample_types else "No samples classified",
+                    },
+                )
 
         # Supported modality - return success with modality info
         return (
             True,
             f"Modality compatible: {modality_result.modality} (confidence: {modality_result.confidence:.0%})",
         )
+
+    def _detect_sample_types(self, metadata: Dict[str, Any]) -> Dict[str, List[str]]:
+        """
+        Detect data types for each sample in a GEO dataset.
+
+        This method examines sample-level metadata to classify samples by modality
+        (RNA, protein, VDJ, ATAC, etc.). It uses GEO's standardized fields when
+        available (library_strategy) and falls back to characteristics_ch1 patterns.
+
+        Args:
+            metadata: GEO metadata dict with 'samples' key containing per-sample metadata
+
+        Returns:
+            Dict mapping modality names to lists of sample IDs:
+                {"rna": ["GSM1", "GSM2"], "protein": ["GSM3"], "vdj": ["GSM4"]}
+
+        Note:
+            This uses simple heuristics on reliable GEO fields, not complex pattern matching.
+            The library_strategy field is standardized by NCBI and highly reliable.
+        """
+        sample_types: Dict[str, List[str]] = {}
+        samples_dict = metadata.get("samples", {})
+
+        if not samples_dict:
+            logger.warning("No samples found in metadata for sample type detection")
+            return sample_types
+
+        logger.info(f"Detecting sample types for {len(samples_dict)} samples...")
+
+        for gsm_id, sample_meta in samples_dict.items():
+            detected_type = None
+
+            # Strategy 1: Use library_strategy field (most reliable - NCBI controlled vocabulary)
+            lib_strategy = sample_meta.get("library_strategy", "")
+            if lib_strategy:
+                lib_strategy_lower = lib_strategy.lower()
+                if "rna-seq" in lib_strategy_lower or "rna seq" in lib_strategy_lower:
+                    detected_type = "rna"
+                elif "atac" in lib_strategy_lower:
+                    detected_type = "atac"
+                # Add other strategies as needed
+
+            # Strategy 2: Check characteristics_ch1 field (flexible but less standardized)
+            if not detected_type:
+                chars = sample_meta.get("characteristics_ch1", [])
+                if isinstance(chars, list):
+                    chars_text = " ".join([str(c).lower() for c in chars])
+                else:
+                    chars_text = str(chars).lower()
+
+                # RNA detection
+                if any(pattern in chars_text for pattern in [
+                    "assay: rna", "assay:rna",
+                    "library type: gene expression", "library_type: gene expression",
+                    "data type: rna-seq", "datatype: rna-seq",
+                    "library type: gex", "library_type: gex"
+                ]):
+                    detected_type = "rna"
+
+                # Protein detection (CITE-seq, antibody capture)
+                elif any(pattern in chars_text for pattern in [
+                    "assay: protein", "assay:protein",
+                    "library type: antibody capture", "library_type: antibody capture",
+                    "antibody-derived tag", "adt",
+                    "cite-seq protein", "citeseq protein"
+                ]):
+                    detected_type = "protein"
+
+                # VDJ detection (TCR/BCR sequencing)
+                elif any(pattern in chars_text for pattern in [
+                    "assay: vdj", "assay:vdj",
+                    "library type: vdj", "library_type: vdj",
+                    "tcr-seq", "tcr seq",
+                    "bcr-seq", "bcr seq",
+                    "immune repertoire"
+                ]):
+                    detected_type = "vdj"
+
+                # ATAC detection
+                elif any(pattern in chars_text for pattern in [
+                    "assay: atac", "assay:atac",
+                    "library type: atac", "library_type: atac",
+                    "chromatin accessibility"
+                ]):
+                    detected_type = "atac"
+
+            # Strategy 3: Check sample title for common patterns
+            if not detected_type:
+                title = sample_meta.get("title", "").lower()
+                if any(pattern in title for pattern in ["_rna", "_gex", "_gene_expression"]):
+                    detected_type = "rna"
+                elif any(pattern in title for pattern in ["_protein", "_adt", "_antibody"]):
+                    detected_type = "protein"
+                elif any(pattern in title for pattern in ["_vdj", "_tcr", "_bcr"]):
+                    detected_type = "vdj"
+                elif "_atac" in title:
+                    detected_type = "atac"
+
+            # Store result
+            if detected_type:
+                sample_types.setdefault(detected_type, []).append(gsm_id)
+                logger.debug(f"Sample {gsm_id}: detected as '{detected_type}'")
+            else:
+                # Unknown - default to RNA for backward compatibility
+                sample_types.setdefault("rna", []).append(gsm_id)
+                logger.debug(f"Sample {gsm_id}: type unclear, defaulting to 'rna'")
+
+        # Log summary
+        summary = ", ".join([f"{modality}: {len(samples)}" for modality, samples in sample_types.items()])
+        logger.info(f"Sample type detection complete: {summary}")
+
+        return sample_types
 
     def _extract_metadata(self, gse) -> Dict[str, Any]:
         """
@@ -2705,17 +2920,36 @@ The actual expression data download will be much faster now that metadata is pre
         """
         Get sample information for downloading individual matrices.
 
+        For multi-modal datasets, filters samples to only include supported modalities (RNA).
+
         Args:
             gse: GEOparse GSE object
 
         Returns:
-            dict: Sample information dictionary
+            dict: Sample information dictionary (filtered for multi-modal datasets)
         """
         sample_info = {}
 
         try:
+            # Check if this is a multi-modal dataset
+            geo_id = gse.metadata.get("geo_accession", [""])[0] if hasattr(gse, "metadata") else ""
+            multimodal_info = None
+            if geo_id and geo_id in self.data_manager.metadata_store:
+                stored_entry = self.data_manager._get_geo_metadata(geo_id)
+                if stored_entry:
+                    multimodal_info = stored_entry.get("multimodal_info")
+
+            # Collect sample info
             if hasattr(gse, "gsms"):
                 for gsm_id, gsm in gse.gsms.items():
+                    # Check if we should include this sample (multi-modal filtering)
+                    if multimodal_info and multimodal_info.get("is_multimodal"):
+                        # Get RNA sample IDs from multi-modal info
+                        rna_sample_ids = multimodal_info.get("sample_types", {}).get("rna", [])
+                        if gsm_id not in rna_sample_ids:
+                            logger.debug(f"Skipping non-RNA sample {gsm_id} (multi-modal dataset)")
+                            continue
+
                     sample_info[gsm_id] = {
                         "title": (
                             getattr(gsm, "metadata", {}).get("title", [""])[0]
@@ -2731,7 +2965,14 @@ The actual expression data download will be much faster now that metadata is pre
                         "download_url": f"https://ftp.ncbi.nlm.nih.gov/geo/samples/{gsm_id[:6]}nnn/{gsm_id}/suppl/",
                     }
 
-            logger.debug(f"Collected information for {len(sample_info)} samples")
+            if multimodal_info and multimodal_info.get("is_multimodal"):
+                logger.info(
+                    f"Multi-modal filtering: collected {len(sample_info)} RNA samples "
+                    f"(excluded {len(gse.gsms) - len(sample_info)} unsupported samples)"
+                )
+            else:
+                logger.debug(f"Collected information for {len(sample_info)} samples")
+
             return sample_info
 
         except Exception as e:

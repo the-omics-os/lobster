@@ -147,6 +147,41 @@ Welcome to Lobster AI - Your bioinformatics analysis assistant
 Analysis complete! Results saved to workspace.
 ```
 
+### Single Query Mode
+
+For non-interactive analysis, you can run single queries directly:
+
+```bash
+# Basic syntax
+lobster query "your analysis request"
+
+# Examples
+lobster query "download GSE109564 and perform quality control"
+lobster query "load my_data.h5ad and create UMAP plot"
+lobster query "differential expression between control and treatment"
+
+# With workspace context
+lobster query --workspace ~/my_analysis "cluster the loaded dataset"
+
+# Show reasoning process
+lobster query --reasoning "quality control on data.csv"
+
+# Save output to file
+lobster query "analyze GSE12345" --output results.txt
+
+# Verbose logging
+lobster query --verbose "load and normalize data"
+```
+
+**When to use:**
+
+| Use `lobster query` | Use `lobster chat` |
+|---------------------|-------------------|
+| Scripting/automation | Exploratory analysis |
+| Single-task analysis | Multi-step workflows |
+| CI/CD pipelines | Interactive debugging |
+| Batch processing | Iterative refinement |
+
 ### Available Commands
 
 | Command | Description |

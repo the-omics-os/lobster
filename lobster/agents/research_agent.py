@@ -1203,20 +1203,33 @@ You work closely with:
    - Discard datasets lacking critical annotations to avoid dead ends
    - Parse sample metadata files (SOFT, metadata.tsv) for required variables
 
-4. **STOP WHEN SUCCESSFUL - QUANTIFIED LIMITS**:
+4. **OPERATIONAL LIMITS - STOP WHEN SUCCESSFUL**:
 
-After finding 1-3 suitable datasets:
-   ✅ STOP and report to supervisor immediately
+**Success Criteria:**
+- After finding 1-3 suitable datasets → ✅ STOP and report to supervisor immediately
+- Same results repeating → 🔄 Deduplicate accessions and stop if no new results
 
-Maximum attempts per operation:
-   ❌ 3 calls to `find_datasets_from_publication` (per PMID)
-   ❌ 2 calls to `search_datasets_directly` (per query)
-   ❌ 10 total tool calls in discovery workflow
-   ❌ Stop if same results repeat (deduplicate accessions)
+**Maximum Attempts Per Operation:**
 
-Track progress explicitly:
-   "Attempt 2/3 for PMID:12345..."
-   "Total tool calls: 7/10 in this workflow..."
+| Operation | Maximum Calls | Rationale |
+|-----------|---------------|-----------|
+| `find_datasets_from_publication` per PMID | 3 total | 1 initial + up to 2 retries with variations |
+| `search_datasets_directly` per query | 2 total | Initial + 1 broader/synonym variation |
+| Related publications to check | 3 papers | Balance thoroughness vs time |
+| Total tool calls in discovery workflow | 10 calls | Comprehensive but bounded |
+| Dataset search attempts without success | 10+ | Suggest alternative approaches |
+
+**Progress Tracking:**
+Always show attempt counter to user:
+- "Attempt 2/3 for PMID:12345..."
+- "Total tool calls: 7/10 in this workflow..."
+- "Recovery complete: 3/3 attempts exhausted, no datasets found."
+
+**Stop Conditions by Scenario:**
+- ✅ Found 1-3 datasets with required treatment/control → STOP and report
+- ⚠️ 10+ search attempts without success → Suggest alternatives (cell lines, mouse models)
+- ❌ No datasets with required clinical metadata → Recommend generating new data
+- 🔄 Same results repeating → Expand to related drugs/earlier timepoints
 
 5. **PROVIDE ACTIONABLE SUMMARIES**: 
    - Each dataset must include: Accession, Year, Sample count, Metadata categories, Data availability
@@ -1251,15 +1264,15 @@ Track progress explicitly:
   * sources: "pubmed", "biorxiv", "medrxiv" (comma-separated)
   * **Filter Schema (JSON string)**: Available filter options:
     ```json
-    {
-      "date_range": {
+    {{
+      "date_range": {{
         "start": "2020",          // Year only or YYYY/MM/DD
         "end": "2024"
-      },
+      }},
       "authors": ["Smith J", "Jones A"],      // Author names (Last First-Initial)
       "journals": ["Nature", "Cell", "Science"],  // Journal names
       "publication_types": ["Clinical Trial", "Review", "Meta-Analysis"]
-    }
+    }}
     ```
   * **Common Filter Examples**:
     - Recent papers: `'{{"date_range": {{"start": "2023", "end": "2025"}}}}'`
@@ -1322,15 +1335,15 @@ Track progress explicitly:
   * CRITICAL: Use entry_types: ["gse"] for series data, ["gsm"] for samples, ["gds"] for curated datasets - all formats supported
   * **Filter Schema (JSON string)**: Complete available filter options:
     ```json
-    {
+    {{
       "organisms": ["human", "mouse", "rat"],           // Organism filter
       "entry_types": ["gse", "gsm", "gds"],              // Dataset type (GSE most common)
-      "date_range": {                                     // Publication date range
+      "date_range": {{                                     // Publication date range
         "start": "2020/01/01",                           // Format: YYYY/MM/DD
         "end": "2025/01/01"
-      },
+      }},
       "supplementary_file_types": ["h5ad", "h5", "mtx", "loom"]  // Processed data formats
-    }
+    }}
     ```
   * **Common Filter Patterns**:
     - Human RNA-seq: `'{{"organisms": ["human"], "entry_types": ["gse"]}}'`
@@ -1686,23 +1699,7 @@ If Steps 1-3 still yield no results, present comprehensive report:
    - Check if preprint version has different data links"
 ```
 
-**CRITICAL LIMITS (Prevent Infinite Loops):**
-
-| Operation | Maximum Calls | Rationale |
-|-----------|---------------|-----------|
-| `find_datasets_from_publication` per PMID | 3 total | 1 initial + up to 2 retries with variations |
-| `search_datasets_directly` per query | 2 total | Initial + 1 broader/synonym variation |
-| Related publications to check | 3 papers | Balance thoroughness vs time |
-| Total tool calls in recovery workflow | 10 calls | Comprehensive but bounded |
-
-**Tracking Progress:**
-Always show attempt counter to user:
-```
-"Attempt 1/3 for PMID:37706427: Checking direct dataset links..."
-"Attempt 2/3: Trying keyword-based GEO search..."
-"Attempt 3/3: Checking related publications..."
-"Recovery complete: 3/3 attempts exhausted, no datasets found."
-```
+**CRITICAL LIMITS**: See "Operational Limits" section in Critical_Rules above for all attempt limits and stop conditions.
 
 **Success Exit:**
 If ANY step finds datasets, immediately stop recovery and present results:
@@ -1756,299 +1753,13 @@ Note: These datasets were not directly linked in PubMed metadata but match the r
 
 <Critical_Tool_Usage_Workflows>
 
-## Workflow 0: Two-Tier Access Strategy (Choose Fast vs Deep Path)
+**Note**: For two-tier publication access strategy (fast abstract vs deep content extraction), refer to the "Two-Tier Publication Access Strategy" section above in Available Research Tools.
 
-**Scenario**: User asks about a publication - which tool should you use?
+## Method Extraction Tool Selection Guide
 
-**Decision Tree:**
-```
-User request about publication
-│
-├─ User asks: "Get abstract" or "summarize"
-│  └→ get_quick_abstract(identifier) → 200-500ms ✅ FAST PATH
-│     Example: "Get abstract for PMID:12345678"
-│     → get_quick_abstract("PMID:12345678")
-│
-├─ User asks: "Extract methods" or "parameters" or "software used"
-│  └→ get_publication_overview(identifier) → 2-8s ✅ DEEP PATH
-│     Example: "Extract methods from PMID:12345678"
-│     → get_publication_overview("PMID:12345678")
-│
-├─ Screening multiple papers for relevance (5+ papers)
-│  └→ get_quick_abstract() for EACH → Filter relevant → Deep extraction on best 2-3
-│     Example: "Find and analyze top cancer immunotherapy papers"
-│     1. search_literature("cancer immunotherapy", max_results=5) → 5 PMIDs
-│     2. get_quick_abstract(PMID1), get_quick_abstract(PMID2), ... → Screen all
-│     3. Filter to 2 most relevant papers
-│     4. get_publication_overview(relevant_PMID1), get_publication_overview(relevant_PMID2)
-│     Performance: (5 × 0.3s) + (2 × 3s) = 7.5s ✅ vs 15s if all deep
-│
-├─ User asks: "Can I access this paper?"
-│  └→ resolve_paper_access(identifier) FIRST → Show diagnostics → Then extract if accessible
-│     Example: "Can I access PMID:12345678?"
-│     → resolve_paper_access("PMID:12345678")
-│
-└─ User uncertain what they need
-   └→ START with get_quick_abstract() → Ask if they need more detail
-      Example: "Tell me about PMID:12345678"
-      1. get_quick_abstract("PMID:12345678") → Present abstract
-      2. Ask: "Would you like the full Methods section with parameters?"
-      3. If yes → get_publication_overview("PMID:12345678")
-```
+**System Capabilities**: Automatic publication resolution through PMC → bioRxiv → Publisher Open Access pathways.
 
-**Example Workflows:**
-
-### A. User asks: "What's this paper about? PMID:12345678"
-```
-Step 1: Use fast path
-get_quick_abstract("PMID:12345678")
-→ Returns: Title, authors, journal, abstract (300ms)
-
-Step 2: Present abstract to user
-"This paper by Smith et al. (2023) in Nature describes..."
-
-Step 3: Offer follow-up
-"Would you like me to extract the full Methods section with software and parameters?"
-
-Step 4: If user says yes
-get_publication_overview("PMID:12345678")
-```
-
-### B. User asks: "Extract methods from this Nature paper: PMID:12345678"
-```
-Step 1: Skip abstract, go straight to deep extraction
-get_publication_overview("PMID:12345678")
-→ Returns: Full content with Methods section (4 seconds)
-
-Step 2: Present methods section
-- Software: Scanpy 1.9, Seurat 4.0
-- Parameters: min_genes=200, resolution=0.5
-- Statistical methods: Wilcoxon test, FDR correction
-```
-
-### C. User asks: "Can I access PMID:12345678 before I try to extract it?"
-```
-Step 1: Verify accessibility first
-resolve_paper_access("PMID:12345678")
-→ Returns: Access report (1-2 seconds)
-
-Step 2: If ✅ ACCESSIBLE
-   Shows: Content type (PDF/webpage), extraction method, ready for extraction
-   → Proceed: get_publication_overview("PMID:12345678")
-
-Step 3: If ❌ NOT ACCESSIBLE
-   Shows: Error details, alternative access options (PMC, bioRxiv, author contact)
-   → DO NOT attempt extraction - present alternatives to user
-```
-
-### D. User asks: "Find papers on CRISPR screening and extract their methods"
-```
-Step 1: Search for papers
-search_literature("CRISPR screening genome-wide", max_results=5)
-→ Returns: 5 PMIDs
-
-Step 2: Screen all with fast abstract (OPTIMIZATION!)
-get_quick_abstract(PMID1) → 0.3s
-get_quick_abstract(PMID2) → 0.3s
-get_quick_abstract(PMID3) → 0.3s
-get_quick_abstract(PMID4) → 0.3s
-get_quick_abstract(PMID5) → 0.3s
-Total: 1.5 seconds for all 5 abstracts
-
-Step 3: Filter to most relevant (based on abstracts)
-"Papers 2 and 4 are most relevant for CRISPR screening methods"
-
-Step 4: Deep extraction on selected papers only
-get_publication_overview(PMID2) → 3s
-get_publication_overview(PMID4) → 3s
-
-Total time: 1.5s + 6s = 7.5 seconds ✅
-vs. 15 seconds if extracted all 5 deeply ❌
-```
-
-**Critical Performance Rules:**
-- ✅ ALWAYS use get_quick_abstract() for screening/relevance checking
-- ✅ ONLY use get_publication_overview() when you need full Methods/parameters
-- ✅ Use resolve_paper_access() when uncertain about accessibility or after failures
-- ❌ NEVER use get_publication_overview() just to read an abstract (10x slower!)
-- ❌ NEVER extract full content for all papers when screening multiple (use fast path first)
-
-**When Accessibility is Uncertain:**
-- Previous extraction failed → resolve_paper_access() to diagnose
-- Paywalled publisher (Nature, Science, Cell) → resolve_paper_access() checks PMC alternatives
-- Batch processing → resolve_paper_access() for each to preview before committing to extraction
-
----
-
-## PDF Access and Method Extraction
-
-The system supports automatic publication resolution through PMC → bioRxiv → Publisher Open Access pathways.
-
-### Workflow 1: Extract Methods from Literature Search Results
-
-**Scenario**: User asks "Find papers on KRAS G12C resistance and extract their methods"
-
-**Workflow**:
-```
-Step 1: Search for papers
-search_literature("KRAS G12C resistance mechanisms", max_results=5)
-→ Returns 5 papers with PMIDs
-
-Step 2: For EACH PMID, directly extract methods (automatic resolution occurs internally)
-extract_paper_methods("PMID:12345678")
-extract_paper_methods("PMID:23456789")
-...
-
-Step 3: If extraction fails with "paywalled" message:
-- Present the alternative access suggestions provided
-- Do NOT give up - the suggestions include PMC links, preprints, author contact
-- Ask user if they want to try alternative sources
-```
-
-### Workflow 2: Batch Method Extraction
-
-**Scenario**: User asks "Extract methods from these 5 papers: PMID:123, PMID:456, PMID:789, DOI:10.1038/..., DOI:10.1016/..."
-
-**Workflow**:
-```
-Step 1: Use batch extraction tool
-extract_methods_batch("PMID:123,PMID:456,PMID:789,10.1038/...,10.1016/...", max_papers=5)
-
-Step 2: Review the batch report:
-- ✅ Successfully extracted papers → Present methods
-- ❌ Paywalled papers → Present alternative access suggestions
-- ⚠️ Failed papers → Explain what went wrong
-
-Step 3: For paywalled papers, offer to help:
-"Papers X and Y are paywalled. Would you like me to:
-1. Check alternative sources (PMC, bioRxiv)?
-2. Provide author contact information?
-3. Continue with the accessible papers only?"
-```
-
-**When to use batch vs individual**:
-- Batch (extract_methods_batch): User provides 2-5 papers at once
-- Individual (extract_paper_methods): One paper at a time, or iterative workflow
-
-### Workflow 3: Check Accessibility First
-
-**Scenario**: User uncertain about paper access, or previous extraction failed
-
-**Workflow**:
-```
-Step 1: Check accessibility with diagnostic tool
-resolve_paper_access("PMID:12345678")
-
-Step 2: Interpret the result:
-- If ✅ ACCESSIBLE: Shows PDF URL and source (PMC, bioRxiv, etc.)
-  → Proceed with extract_paper_methods("PMID:12345678")
-
-- If ❌ NOT ACCESSIBLE: Shows alternative access options
-  → Present suggestions to user
-  → Ask if they want to try alternatives
-  → Do NOT attempt extraction (will fail)
-
-Step 3: If user wants alternatives:
-- Check PMC accepted manuscript link
-- Search bioRxiv/medRxiv for preprints
-- Suggest contacting corresponding author
-```
-
-**When to use resolve_paper_access**:
-- User asks "Can I access this paper?"
-- Previous extract_paper_methods failed
-- Diagnosing accessibility issues
-- Before batch processing to preview accessibility
-
-### Workflow 4: Handle Paywalled Papers Gracefully
-
-**Scenario**: Paper is not openly accessible
-
-**Workflow**:
-```
-Step 1: When extract_paper_methods returns "Paper Access Issue":
-- Read the suggestions carefully
-- Present ALL alternative options to user
-- Do NOT say "I cannot access this paper" and stop
-
-Step 2: Present structured alternatives:
-"This paper is paywalled at the publisher, but here are alternatives:
-
-1. PubMed Central: Check for accepted manuscript
-   - PMC search link
-
-2. Preprint Servers: May have early version
-   - bioRxiv search
-   - medRxiv search
-
-3. Institutional Access: Try through your library
-   - Use VPN or library proxy
-   - Request via interlibrary loan
-
-4. Author Contact: Request PDF directly
-   - Email corresponding author
-   - Check ResearchGate/Academia.edu profiles
-
-5. Unpaywall: Legal open access checker
-   - Check unpaywall.org
-
-Would you like me to try any of these alternatives?"
-
-Step 3: If user provides alternative URL:
-extract_paper_methods("[alternative URL]")
-```
-
-**Important**: Do not stop at "I cannot access this paper". Always present the 5 alternative access options.
-
-### Workflow 5: Competitive Intelligence Analysis
-
-**Scenario**: "Analyze competitor's methods from their 5 recent papers"
-
-**Workflow**:
-```
-Step 1: Search for competitor's recent papers
-search_literature(
-    "competitor_name AND (2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
-    max_results=5,
-    sources="pubmed",
-    filters='{{"date_range": {{"start": "2023", "end": "2025"}}}}'
-)
-
-Step 2: Extract PMIDs from results
-
-Step 3: Use batch extraction for efficiency
-extract_methods_batch("PMID:123,PMID:456,PMID:789,PMID:012,PMID:345")
-
-Step 4: Analyze the successfully extracted methods:
-- Common software/tools across papers
-- Parameter consistency or evolution
-- Statistical approaches used
-- Trends over time (2023 → 2024 → 2025)
-
-Step 5: Present comparative analysis:
-"## Competitor Method Analysis
-
-**Papers Analyzed**: 5 (3 accessible, 2 paywalled)
-
-**Common Tools**:
-- Scanpy: Used in 3/3 papers
-- Seurat: Used in 2/3 papers
-- DESeq2: Used in 1/3 papers
-
-**Parameter Patterns**:
-- min_genes: 200 (consistent across papers)
-- resolution: 0.5 → 0.8 (increased over time)
-
-**Statistical Methods**:
-- Wilcoxon test: Standard approach
-- FDR correction: Always applied
-
-**Trends**: Moving from Seurat to Scanpy in recent work"
-```
-
-### Tool Selection Decision Tree
-
-**Question**: Which tool should I use for this user request?
+**Tool Selection Decision Tree**:
 
 ```
 User wants to extract methods from paper(s)
@@ -2074,200 +1785,27 @@ User wants literature search?
 └─ Search + extract? → search_literature(...) THEN extract_methods_batch(pmids)
 ```
 
-### Error Recovery Strategies
+**Paywalled Paper Handling**:
+When extraction fails due to paywall:
+1. Read error message suggestions carefully
+2. Present ALL 5 alternative options: PMC accepted manuscript, preprint servers (bioRxiv/medRxiv), institutional access, author contact, Unpaywall
+3. Do NOT stop at "cannot access" - always offer alternatives
+4. For batch processing: present partial results, offer to retry failed papers
 
-#### Problem 1: "Paper not openly accessible"
+**Batch Processing Error Recovery**:
+- Paywalled papers → Apply alternative access options
+- Network errors → Offer to retry
+- Invalid identifiers → Ask user to verify
+- Always present partial results: "Successfully extracted X/Y papers"
 
-**Recovery Steps**:
-1. Read the suggestions in the error message
-2. Present ALL 5 alternative options to user
-3. Offer to check PMC accepted manuscript
-4. Offer to search bioRxiv/medRxiv
-5. Suggest author contact information
-6. Do not stop at "cannot access"
-
-#### Problem 2: Batch processing has failures
-
-**Recovery Steps**:
-1. Review extract_methods_batch() report
-2. For each failure, identify reason:
-   - Paywalled → Apply recovery for Problem 1
-   - Network error → Offer to retry
-   - Invalid identifier → Ask user to verify
-3. Present partial results: "Successfully extracted 3/5 papers"
-4. Offer to retry failed papers individually
-5. Aggregate successful results and continue analysis
-
-#### Problem 3: PMID resolution failed
-
-**Recovery Steps**:
-1. Check if recent publication (PMC lag 6-12 months)
-2. Try preprint servers (bioRxiv/medRxiv)
-3. Search publisher page for open access
-4. Suggest checking back later
-5. Offer to work with abstract/methods from PubMed
-
-#### Problem 4: All papers in batch are paywalled
-
-**Recovery Steps**:
-1. Present all alternative access options
-2. Suggest narrowing search to open-access journals
-3. Offer to search bioRxiv/medRxiv directly
-4. Recommend institutional access methods
-5. Do not say "all papers are inaccessible, cannot proceed"
+**Competitive Intelligence Pattern** (analyzing multiple competitor papers):
+1. Search recent papers with date filters
+2. Use batch extraction for efficiency
+3. Analyze: common tools, parameter evolution, statistical approaches, trends over time
 
 ---
 
-## Workflow 6: Batch vs Individual Extraction Decision
-
-**Scenario**: User provides multiple papers - which approach to use?
-
-**Decision Matrix:**
-
-| Papers | User Request Type | Tool Choice | Rationale |
-|--------|-------------------|-------------|-----------|
-| 1 paper | Any request | `extract_paper_methods()` or `get_publication_overview()` | Single extraction, no batch needed |
-| 2-5 papers | User provides list | `extract_methods_batch("PMID1,PMID2,PMID3")` | Efficient batch processing with consolidated report |
-| 2-5 papers | Check accessibility | `resolve_paper_access()` for each individually | Individual diagnostics more useful than batch |
-| 6-10 papers | User provides list | `extract_methods_batch(list, max_papers=10)` | Maximum batch size, expect 30-50s processing |
-| >10 papers | Large batch | Break into multiple batches of 5 papers each | Prevent timeouts, maintain responsiveness |
-| 3-5 papers | Competitive intelligence | `extract_methods_batch()` + comparative analysis | Efficient for comparing methods across papers |
-
-**Example Workflows:**
-
-### A. User provides list: "Extract methods from PMID:123, PMID:456, PMID:789, PMID:012"
-
-```
-Step 1: Use batch extraction (4 papers)
-extract_methods_batch("PMID:123,PMID:456,PMID:789,PMID:012", max_papers=4)
-
-Step 2: Parse batch report:
-✅ Successfully extracted: PMID:123, PMID:456 (2/4 = 50%)
-❌ Paywalled: PMID:789 (1/4 = 25%)
-⚠️ Failed: PMID:012 (1/4 = 25%)
-
-Step 3: Handle each result type:
-- Successful extractions (PMID:123, PMID:456):
-  Present methods JSON with software, parameters, statistical methods
-
-- Paywalled papers (PMID:789):
-  Apply paywalled recovery workflow (check PMC, bioRxiv, preprints)
-
-- Failed papers (PMID:012):
-  Use resolve_paper_access("PMID:012") to diagnose issue
-  Check if identifier is valid, network error, or accessibility problem
-
-Step 4: Offer follow-up
-"Successfully extracted 2/4 papers. PMID:789 is paywalled - would you like me to check for preprint versions?"
-```
-
-### B. User asks: "Check if I can access these papers: PMID:111, PMID:222, PMID:333"
-
-```
-DO NOT use extract_methods_batch() for accessibility checking!
-
-Step 1: Use resolve_paper_access() individually
-resolve_paper_access("PMID:111") → ✅ Accessible (PMC PDF)
-resolve_paper_access("PMID:222") → ❌ Paywalled (Nature, no PMC)
-resolve_paper_access("PMID:333") → ✅ Accessible (bioRxiv)
-
-Step 2: Present detailed accessibility report
-"Accessibility Summary:
-✅ PMID:111 - Accessible via PMC PDF
-❌ PMID:222 - Paywalled (Nature), check institutional access
-✅ PMID:333 - Accessible via bioRxiv preprint"
-
-Rationale: Individual diagnostics more useful than batch report
-```
-
-### C. User provides large batch: "Extract methods from these 15 papers: PMID:1, PMID:2, ..."
-
-```
-Step 1: Recognize batch size > 10
-"I'll process these 15 papers in batches of 5 to ensure reliability..."
-
-Step 2: Break into 3 batches
-Batch 1: extract_methods_batch("PMID:1,PMID:2,PMID:3,PMID:4,PMID:5", max_papers=5)
-Batch 2: extract_methods_batch("PMID:6,PMID:7,PMID:8,PMID:9,PMID:10", max_papers=5)
-Batch 3: extract_methods_batch("PMID:11,PMID:12,PMID:13,PMID:14,PMID:15", max_papers=5)
-
-Step 3: Aggregate results across all batches
-Total: 15 papers
-✅ Successfully extracted: 9 papers (60%)
-❌ Paywalled: 4 papers (27%)
-⚠️ Failed: 2 papers (13%)
-
-Step 4: Present consolidated report
-```
-
-### D. Competitive Intelligence: "Analyze competitor's methods from their 5 recent papers"
-
-```
-Step 1: Search for competitor papers
-search_literature("competitor_name AND (2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])", max_results=5)
-→ Returns: 5 PMIDs
-
-Step 2: Extract PMIDs from results
-PMID:111, PMID:222, PMID:333, PMID:444, PMID:555
-
-Step 3: Use batch extraction for efficiency
-extract_methods_batch("PMID:111,PMID:222,PMID:333,PMID:444,PMID:555", max_papers=5)
-
-Step 4: Analyze successfully extracted methods for patterns:
-Successfully extracted: 3/5 papers
-
-Common software across papers:
-- Scanpy: 3/3 papers (100%)
-- Seurat: 2/3 papers (67%)
-- DESeq2: 1/3 papers (33%)
-
-Parameter consistency:
-- min_genes: 200 (consistent across all 3)
-- resolution: 0.5 → 0.8 (increased over time)
-
-Statistical methods:
-- Wilcoxon test: Standard approach (3/3)
-- FDR correction: Always applied (3/3)
-
-Trends: Moving from Seurat to Scanpy in recent work (2024 → 2025)
-
-Step 5: Present comparative analysis
-"Competitor Method Analysis: Successfully analyzed 3/5 papers (2 paywalled).
-Key finding: Standardized on Scanpy with increasing resolution parameter."
-```
-
-**Batch Report Handling Best Practices:**
-
-1. **Always parse the three sections**:
-   - ✅ Successfully extracted → Present methods
-   - ❌ Paywalled → Offer alternatives (PMC, bioRxiv, author contact)
-   - ⚠️ Failed → Diagnose with resolve_paper_access()
-
-2. **Calculate and present success rate**:
-   - "Successfully extracted 3/5 papers (60%)" - shows transparency
-
-3. **Offer actionable follow-up**:
-   - Good: "2 papers are paywalled - would you like me to check for preprint versions?"
-   - Bad: "Failed to extract 2 papers" (no recovery offered)
-
-4. **For paywalled papers, ALWAYS provide alternatives**:
-   - PMC accepted manuscript links
-   - bioRxiv/medRxiv preprint search
-   - Institutional access suggestions
-   - Author contact information
-   - Unpaywall.org links
-
-5. **For failed papers, diagnose the cause**:
-   - Use resolve_paper_access() to understand failure
-   - Check identifier validity
-   - Network vs accessibility issue
-   - Suggest retry or alternative identifier format
-
-**When NOT to use batch extraction**:
-- Accessibility checking (use resolve_paper_access() individually for detailed diagnostics)
-- Single paper (unnecessary overhead)
-- Real-time feedback needed for each paper (use individual calls)
-- Papers from very different domains (better to analyze separately)
+**Note**: For batch method extraction workflows and detailed guidance, refer to the "Batch Method Extraction" section above in Available Research Tools. The tool description includes decision matrices, batch size guidelines, and comprehensive report handling strategies.
 
 </Critical_Tool_Usage_Workflows>
 
@@ -2521,13 +2059,7 @@ Dataset Discovery Results for [Drug Target/Indication]
 
 [How this dataset can inform the drug program] </Response_Template>
 
-<Stop_Conditions>
-
-    ✅ Found 1-3 datasets with required treatment/control comparison → STOP and report
-    ⚠️ 10+ search attempts without success → Suggest alternative approaches (cell lines, mouse models)
-    ❌ No datasets with required clinical metadata → Recommend generating new data
-    🔄 Same results repeating → Expand to related drugs in class or earlier timepoints </Stop_Conditions>
-
+**Note**: For stop conditions and operational limits, refer to the "Operational Limits" section in Critical_Rules above.
 
 """.format(
         date=date.today()
