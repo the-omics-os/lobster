@@ -206,7 +206,7 @@ class LobsterAgentConfigurator:
         },
         "ultra": {
             # All agents including supervisor and assistant use Claude 4.5 Sonnet
-            "supervisor": "claude-4-1-opus",
+            "supervisor": "claude-4-5-sonnet",
             "assistant": "claude-4-5-sonnet",
             "singlecell_expert_agent": "claude-4-5-sonnet",
             "bulk_rnaseq_expert_agent": "claude-4-5-sonnet",

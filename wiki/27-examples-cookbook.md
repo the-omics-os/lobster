@@ -65,6 +65,86 @@ This comprehensive cookbook provides practical code snippets, analysis recipes, 
 🦞 You: "Search GEO for single-cell datasets related to cancer immunotherapy"
 ```
 
+#### Pre-Download Metadata Validation (v2.2+)
+
+**Recommended Practice**: Validate dataset metadata before downloading to save time and ensure datasets contain required fields.
+
+##### Basic Validation - Check Required Fields
+```bash
+# Validate that a dataset has required metadata fields
+🦞 You: "Validate GSE200997 for required fields: cell_type, tissue"
+
+# Expected output:
+## Metadata Validation Report for GSE200997
+**Recommendation:** ✅ **PROCEED**
+**Confidence Score:** 1.00/1.00
+**Total Samples:** 23
+
+### Field Analysis:
+- **cell_type**: ✅ 100.0% coverage (values: 'Colon,Right,Cecum', 'Colon,Left,Sigmoid', ...)
+- **tissue**: ✅ 100.0% coverage (values: 'Colorectal cancer')
+
+### 💡 Recommendation Rationale:
+All required fields are present with sufficient coverage. Dataset is suitable for analysis.
+```
+
+##### Validation with Specific Values - Drug Discovery
+```bash
+# Check if dataset has treatment response field with specific values
+🦞 You: "Check if GSE179994 has treatment_response field with responder and non-responder values"
+
+# This validates both field presence AND value content
+# Useful for drug discovery and biomarker studies
+```
+
+##### Comparing Multiple Datasets
+```bash
+# Real-world scenario: Find best dataset for smoking study
+🦞 You: "Search GEO for lung cancer single-cell datasets"
+# Returns: GSE131907, GSE139555, GSE148071
+
+# Validate each dataset for required metadata
+🦞 You: "Validate GSE131907 for required fields: smoking_status, cancer_stage, treatment_history"
+# Result: ⚠️ MANUAL_CHECK - Only 60% samples have smoking_status
+
+🦞 You: "Validate GSE139555 for required fields: smoking_status, cancer_stage, treatment_history"
+# Result: ✅ PROCEED - 100% coverage for all fields
+
+🦞 You: "Validate GSE148071 for required fields: smoking_status, cancer_stage, treatment_history"
+# Result: ❌ SKIP - Missing smoking_status field entirely
+
+# Decision: Download GSE139555 based on metadata validation
+🦞 You: "Download GSE139555 and prepare for analysis"
+```
+
+##### Time-Series Study Example
+```bash
+# Validate dataset has required time point information
+🦞 You: "Validate GSE145281 for required fields: time_point, treatment, replicate"
+
+# Check specific time point values are present
+🦞 You: "Check if GSE145281 has time_point field with values: 0h, 6h, 12h, 24h"
+```
+
+##### Understanding Validation Results
+
+**Recommendation Types:**
+- **✅ PROCEED** (Confidence ≥0.8): All required fields present with ≥80% coverage
+- **⚠️ MANUAL_CHECK** (Confidence 0.5-0.8): Partial coverage between 50-80%
+- **❌ SKIP** (Confidence <0.5): Missing critical fields or <50% coverage
+
+**Benefits:**
+- ⏱️ **Save time**: 2-5 seconds validation vs 5-30 minutes full download
+- 💾 **Save storage**: Avoid downloading datasets missing critical metadata
+- 🎯 **Better selection**: Compare metadata across multiple candidates
+- 📊 **Field coverage**: See actual sample-level completeness
+
+**Common Use Cases:**
+- Drug discovery: Validate treatment response fields
+- Biomarker studies: Check clinical outcome metadata
+- Multi-dataset analysis: Filter by metadata completeness
+- Time series: Verify timepoint field exists
+
 #### Local Files
 ```bash
 # Load various file formats

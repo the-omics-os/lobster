@@ -270,8 +270,27 @@ class MetadataValidationService:
             title = metadata.get("title", "N/A")
             summary = metadata.get("summary", "N/A")
             overall_design = metadata.get("overall_design", "N/A")
-            characteristics = metadata.get("characteristics_ch1", [])
-            sample_count = metadata.get("n_samples", 0)
+
+            # Extract characteristics from individual samples (not top-level)
+            # GEO metadata stores characteristics at sample level, not series level
+            characteristics = []
+            samples = metadata.get("samples", {})
+
+            for sample_id, sample in samples.items():
+                # Handle both dict and object samples (GEOparse can return either)
+                chars = None
+                if isinstance(sample, dict):
+                    chars = sample.get("characteristics_ch1", [])
+                elif hasattr(sample, "characteristics_ch1"):
+                    chars = sample.characteristics_ch1
+
+                if chars:
+                    characteristics.append(
+                        {"sample_id": sample_id, "characteristics": chars}
+                    )
+
+            # Use actual sample count from samples dict
+            sample_count = len(samples)
 
             # Get the schema from MetadataValidationConfig
             validation_schema = MetadataValidationConfig.model_json_schema()

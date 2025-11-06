@@ -642,16 +642,70 @@ For competitive analysis, check accessibility before extraction:
 "Find GEO datasets related to liver single-cell RNA-seq"
 ```
 
-### Step 2: Data Download
+**Research Agent** will search GEO database and return relevant datasets with accession numbers.
+
+### Step 2: Pre-Download Metadata Validation (Recommended)
+
+**Before downloading large datasets**, validate that they contain the required metadata fields:
 
 ```
-"Download GSE12345 and prepare it for analysis"
+"Validate GSE200997 for required fields: cell_type, tissue"
 ```
 
-### Step 3: Comparative Analysis
+**Or with specific value requirements**:
+```
+"Check if GSE179994 has treatment_response field with responder and non-responder values"
+```
+
+**What This Does**:
+- Fetches only metadata (no expression data download)
+- Analyzes sample characteristics from all samples
+- Checks field presence and coverage (% of samples)
+- Provides recommendation: proceed/skip/manual_check
+- Returns confidence score (0-1)
+
+**Example Validation Report**:
+```
+## Metadata Validation Report for GSE200997
+
+**Recommendation:** ✅ **PROCEED**
+**Confidence Score:** 1.00/1.00
+**Total Samples:** 23
+
+### Field Analysis:
+- **cell_type**: ✅ 100.0% coverage (values: 'Colon,Right,Cecum', 'Colon,Left,Sigmoid', ...)
+- **tissue**: ✅ 100.0% coverage (values: 'Colorectal cancer')
+
+### 💡 Recommendation Rationale:
+All required fields are present with sufficient coverage. Dataset is suitable for analysis.
+```
+
+**Why Validate First?**:
+- ⏱️ **Save time**: 2-5 seconds vs 5-30 minutes full download
+- 💾 **Save storage**: Avoid downloading datasets missing critical metadata
+- 🎯 **Better selection**: Compare metadata across multiple candidates
+- 📊 **Field coverage**: See actual sample-level completeness
+
+**Common Use Cases**:
+- Drug discovery: Validate treatment response fields
+- Biomarker studies: Check clinical outcome metadata
+- Multi-dataset analysis: Filter by metadata completeness
+- Time series: Verify timepoint field exists
+
+### Step 3: Data Download
+
+Once validation confirms the dataset is suitable:
 
 ```
-"Compare my results to the downloaded GEO dataset GSE12345"
+"Download GSE200997 and prepare it for analysis"
+```
+
+**Data Expert** will download expression data and create analysis-ready dataset.
+
+### Step 4: Comparative Analysis
+
+```
+"Compare my results to the downloaded GEO dataset GSE200997"
 ```
 
 ## Session Continuation and Workspace Management

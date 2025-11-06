@@ -281,6 +281,7 @@ class PubMedProvider(BasePublicationProvider):
             str: Formatted list of discovered datasets
         """
         logger.info(f"Finding datasets from publication: {identifier}")
+        logger.debug(f"[DEFENSIVE] dataset_types parameter: type={type(dataset_types)}, value={dataset_types}")
 
         try:
             include_related = kwargs.get("include_related", True)
@@ -307,11 +308,14 @@ class PubMedProvider(BasePublicationProvider):
 
             # Extract datasets using comprehensive approach
             datasets = self._extract_dataset_accessions(article.get("Summary", ""))
+            logger.debug(f"[DEFENSIVE] After _extract_dataset_accessions: type={type(datasets)}, keys={list(datasets.keys()) if isinstance(datasets, dict) else 'NOT_DICT'}, datasets={datasets}")
 
             # Use NCBI E-link to find linked datasets
             if pmid and include_related:
                 linked_datasets = self._find_linked_datasets(pmid)
+                logger.debug(f"[DEFENSIVE] After _find_linked_datasets: type={type(linked_datasets)}, keys={list(linked_datasets.keys()) if isinstance(linked_datasets, dict) else 'NOT_DICT'}, linked_datasets={linked_datasets}")
                 datasets.update(linked_datasets)
+                logger.debug(f"[DEFENSIVE] After merge: type={type(datasets)}, keys={list(datasets.keys()) if isinstance(datasets, dict) else 'NOT_DICT'}, datasets={datasets}")
 
             # Check for supplementary materials if enabled
             if self.config.include_supplementary:
@@ -320,6 +324,7 @@ class PubMedProvider(BasePublicationProvider):
 
             # Filter by requested dataset types if specified
             if dataset_types:
+                logger.debug(f"[DEFENSIVE] Filtering datasets. Input dataset_types: {dataset_types}")
                 filtered_datasets = {}
                 type_map = {
                     DatasetType.GEO: "GEO",
@@ -328,11 +333,14 @@ class PubMedProvider(BasePublicationProvider):
                     DatasetType.ENA: "ENA",
                 }
                 for dtype in dataset_types:
+                    logger.debug(f"[DEFENSIVE] Processing dtype: type={type(dtype)}, value={dtype}, in_type_map={dtype in type_map}")
                     if dtype in type_map and type_map[dtype] in datasets:
                         filtered_datasets[type_map[dtype]] = datasets[type_map[dtype]]
                 datasets = filtered_datasets
+                logger.debug(f"[DEFENSIVE] After filtering: type={type(datasets)}, keys={list(datasets.keys()) if isinstance(datasets, dict) else 'NOT_DICT'}, datasets={datasets}")
 
             # Format comprehensive response
+            logger.debug(f"[DEFENSIVE] Before _format_comprehensive_dataset_report: type={type(datasets)}, structure={datasets}")
             response = self._format_comprehensive_dataset_report(
                 article, datasets, identifier if is_doi else None, pmid
             )
@@ -354,6 +362,7 @@ class PubMedProvider(BasePublicationProvider):
 
         except Exception as e:
             logger.error(f"Error finding datasets: {e}")
+            logger.exception(f"[DEFENSIVE] Full traceback for slice bug investigation:")
             return f"Error finding datasets from publication: {str(e)}"
 
     def extract_publication_metadata(
@@ -1091,10 +1100,12 @@ class PubMedProvider(BasePublicationProvider):
         pmid: Optional[str],
     ) -> str:
         """Format a comprehensive dataset discovery report with GSE prioritized."""
+        logger.debug(f"[DEFENSIVE] _format_comprehensive_dataset_report called with: datasets type={type(datasets)}, datasets={datasets}")
         response = "## Dataset Discovery Report\n\n"
 
         # Publication info (compact)
-        response += f"**Publication**: {article.get('Title', 'N/A')[:100]}...\n"
+        title = str(article.get('Title', 'N/A'))  # Ensure string before slicing
+        response += f"**Publication**: {title[:100]}...\n"
         response += f"**PMID**: {pmid or 'N/A'} | **DOI**: {doi or 'N/A'}\n"
         response += f"**Journal**: {article.get('Journal', 'N/A')} ({article.get('Published', 'N/A')})\n\n"
 
@@ -1110,9 +1121,11 @@ class PubMedProvider(BasePublicationProvider):
 
             # --- GEO prioritization: GSE > GSM > GDS ---
             if datasets.get("GEO"):
+                logger.debug(f"[DEFENSIVE] Processing GEO datasets: type={type(datasets['GEO'])}, value={datasets['GEO']}")
                 gse = [x for x in datasets["GEO"] if x.startswith("GSE")]
                 gsm = [x for x in datasets["GEO"] if x.startswith("GSM")]
                 gds = [x for x in datasets["GEO"] if x.startswith("GDS")]
+                logger.debug(f"[DEFENSIVE] After GEO categorization: gse={gse}, gsm={gsm}, gds={gds}")
 
                 if gse:
                     for acc in gse:
@@ -1169,10 +1182,12 @@ class PubMedProvider(BasePublicationProvider):
         response += "**Next steps**: "
         steps = []
         if datasets.get("GEO"):
+            logger.debug(f"[DEFENSIVE] Building next steps. datasets['GEO']: type={type(datasets['GEO'])}, len={len(datasets['GEO']) if isinstance(datasets['GEO'], list) else 'NOT_LIST'}, value={datasets['GEO']}")
             # Prefer GSE if present, otherwise first available accession
             preferred_geo = next(
                 (x for x in datasets["GEO"] if x.startswith("GSE")), datasets["GEO"][0]
             )
+            logger.debug(f"[DEFENSIVE] Selected preferred_geo: {preferred_geo}")
             steps.append(f"`download_geo_dataset('{preferred_geo}')`")
         steps.append("`extract_computational_methods()`")
         response += " → ".join(steps) + "\n"

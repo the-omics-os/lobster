@@ -571,6 +571,66 @@ def search_geo_datasets(
 
 Search GEO database for relevant datasets.
 
+#### validate_dataset_metadata ✨ (Phase 2 New)
+
+```python
+@tool
+def validate_dataset_metadata(
+    accession: str,
+    required_fields: str,
+    required_values: str = None,
+    threshold: float = 0.8
+) -> str
+```
+
+**Quick metadata validation** without downloading the full dataset. Uses LLM-based analysis to check if a GEO dataset contains required metadata fields before committing to download.
+
+**Parameters**:
+- `accession` (str): Dataset ID (e.g., "GSE200997", "GSE179994")
+- `required_fields` (str): Comma-separated required fields (e.g., "smoking_status,treatment_response,cancer_stage")
+- `required_values` (str, optional): JSON dict of required values (e.g., `'{"treatment_response": ["responder", "non-responder"]}'`)
+- `threshold` (float): Minimum fraction of samples with required fields (default: 0.8 = 80%)
+
+**Returns**: Validation report with recommendation:
+- ✅ **proceed**: All required fields present with ≥80% coverage
+- ❌ **skip**: Missing critical fields or <50% coverage
+- ⚠️ **manual_check**: Partial coverage between 50-80%
+
+**Field Normalization**: Automatically handles common field variations:
+- `"smoking status"` → `smoking_status`
+- `"smoker"` → `smoking_status`
+- `"response"` → `treatment_response`
+- `"stage"` → `cancer_stage`
+
+**Sample-Level Extraction**: Analyzes characteristics from all individual samples (not just series-level metadata) to provide accurate coverage statistics.
+
+**Example Usage**:
+
+```python
+# Validate colorectal cancer dataset for required fields
+validation_report = validate_dataset_metadata(
+    accession="GSE200997",
+    required_fields="cell_type,tissue",
+    threshold=0.8
+)
+
+# Validation report shows:
+# ✅ PROCEED
+# - cell_type: 100.0% coverage (23/23 samples)
+# - tissue: 100.0% coverage (23/23 samples)
+# Confidence: 1.0
+```
+
+**Use Cases**:
+- Pre-download screening: Check metadata before downloading large datasets
+- Drug discovery: Validate treatment response fields exist
+- Biomarker studies: Ensure clinical outcome data is present
+- Multi-dataset workflows: Filter datasets by metadata completeness
+
+**Performance**: 2-5 seconds (metadata fetch + LLM analysis, no expression data download)
+
+**See also**: [MetadataValidationService](16-services-api.md#metadatavalidationservice) for implementation details.
+
 #### extract_paper_methods ✨ (v2.3+ Enhanced with Docling)
 
 ```python
