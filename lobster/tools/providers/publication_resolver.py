@@ -82,23 +82,28 @@ class PublicationResolver:
     4. Paywalled - Return helpful suggestions
     """
 
-    def __init__(self, timeout: int = 30):
+    def __init__(self, timeout: int = 30, cache_ttl: int = 300):
         """
-        Initialize resolver.
+        Initialize resolver with instance-level caching.
 
         Args:
             timeout: Request timeout in seconds (default: 30)
+            cache_ttl: Cache time-to-live in seconds (default: 300 = 5 minutes)
         """
         self.timeout = timeout
+        self.cache_ttl = cache_ttl
+        self._cache = {}  # Instance-level cache: {identifier: (result, timestamp)}
         self.session = requests.Session()
         self.session.headers.update(
             {"User-Agent": "Lobster AI Research Tool/1.0 (mailto:support@omics-os.com)"}
         )
-        logger.info("Initialized PublicationResolver")
+        logger.info("Initialized PublicationResolver with caching")
 
     def resolve(self, identifier: str) -> PublicationResolutionResult:
         """
         Resolve identifier to PDF URL using tiered waterfall strategy.
+
+        Uses instance-level caching to avoid redundant API calls.
 
         Args:
             identifier: PMID, DOI, or publication identifier
@@ -118,6 +123,22 @@ class PublicationResolver:
 
         # Normalize identifier
         identifier = identifier.strip()
+
+        # Check cache first
+        import time
+
+        if identifier in self._cache:
+            cached_result, cached_time = self._cache[identifier]
+            age = time.time() - cached_time
+            if age < self.cache_ttl:
+                logger.debug(
+                    f"Cache hit for {identifier} (age: {age:.1f}s, TTL: {self.cache_ttl}s)"
+                )
+                return cached_result
+            else:
+                logger.debug(f"Cache expired for {identifier} (age: {age:.1f}s)")
+                del self._cache[identifier]
+
         pmid, doi = self._parse_identifier(identifier)
 
         # Strategy 1: Try PubMed Central (PMC) first
@@ -125,13 +146,30 @@ class PublicationResolver:
             result = self._resolve_via_pmc(pmid)
             if result.is_accessible():
                 logger.info(f"Resolved via PMC: {result.pdf_url}")
+                self._cache[identifier] = (result, time.time())
                 return result
+
+        # Strategy 1.5: Try NCBI LinkOut for publisher URLs
+        if pmid:
+            result = self._resolve_via_linkout(pmid)
+            if result.is_accessible():
+                logger.info(f"Resolved via LinkOut: {result.pdf_url}")
+                self._cache[identifier] = (result, time.time())
+                return result
+
+        # Strategy 1.75: If we have PMID but no DOI, fetch DOI from PubMed
+        # This unlocks preprint and publisher resolution strategies
+        if pmid and not doi:
+            doi = self._get_doi_from_pmid(pmid)
+            if doi:
+                logger.info(f"Fetched DOI from PubMed: {doi}")
 
         # Strategy 2: Try bioRxiv/medRxiv preprints
         if doi:
             result = self._resolve_via_preprint_servers(doi)
             if result.is_accessible():
                 logger.info(f"Resolved via preprint server: {result.pdf_url}")
+                self._cache[identifier] = (result, time.time())
                 return result
 
         # Strategy 3: Try publisher direct (limited support)
@@ -139,11 +177,14 @@ class PublicationResolver:
             result = self._resolve_via_publisher(doi)
             if result.is_accessible():
                 logger.info(f"Resolved via publisher: {result.pdf_url}")
+                self._cache[identifier] = (result, time.time())
                 return result
 
         # Strategy 4: Generate helpful suggestions for paywalled papers
         logger.info(f"Paper appears paywalled: {identifier}")
-        return self._generate_access_suggestions(identifier, pmid, doi)
+        result = self._generate_access_suggestions(identifier, pmid, doi)
+        self._cache[identifier] = (result, time.time())
+        return result
 
     def _parse_identifier(self, identifier: str) -> tuple[Optional[str], Optional[str]]:
         """
@@ -172,6 +213,63 @@ class PublicationResolver:
 
         return pmid, doi
 
+    def _get_doi_from_pmid(self, pmid: str) -> Optional[str]:
+        """
+        Fetch DOI from PubMed metadata using NCBI EFetch API.
+
+        This method enables the waterfall strategy to continue even when
+        only a PMID is provided, unlocking preprint and publisher resolution.
+
+        Args:
+            pmid: PubMed ID
+
+        Returns:
+            DOI string if found, None otherwise
+
+        Example:
+            >>> resolver = PublicationResolver()
+            >>> doi = resolver._get_doi_from_pmid("37963457")
+            >>> print(doi)  # "10.1016/j.immuni.2023.10.001"
+        """
+        import xml.etree.ElementTree as ET
+
+        logger.info(f"Fetching DOI from PubMed for PMID: {pmid}")
+
+        try:
+            # Use NCBI EFetch to get PubMed record in JSON format
+            efetch_url = (
+                f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+                f"?db=pubmed&id={pmid}&retmode=xml&rettype=abstract"
+            )
+
+            response = self.session.get(efetch_url, timeout=self.timeout)
+            response.raise_for_status()
+
+            # Parse XML response for DOI
+
+            root = ET.fromstring(response.content)
+
+            # Look for DOI in ArticleId elements
+            # Path: PubmedArticle/PubmedData/ArticleIdList/ArticleId[@IdType="doi"]
+            for article_id in root.findall(".//ArticleId[@IdType='doi']"):
+                doi = article_id.text
+                if doi:
+                    logger.info(f"Found DOI for PMID {pmid}: {doi}")
+                    return doi.strip()
+
+            logger.debug(f"No DOI found in PubMed record for PMID {pmid}")
+            return None
+
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Error fetching DOI for PMID {pmid}: {e}")
+            return None
+        except ET.ParseError as e:
+            logger.warning(f"Error parsing PubMed XML for PMID {pmid}: {e}")
+            return None
+        except Exception as e:
+            logger.warning(f"Unexpected error fetching DOI for PMID {pmid}: {e}")
+            return None
+
     def _resolve_via_pmc(self, pmid: str) -> PublicationResolutionResult:
         """
         Resolve PMID to PDF via PubMed Central.
@@ -190,23 +288,48 @@ class PublicationResolver:
             # Step 1: Use elink to find PMC ID
             elink_url = (
                 f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi"
-                f"?dbfrom=pubmed&db=pmc&id={pmid}&linkname=pubmed_pmc_refs&retmode=json"
+                f"?dbfrom=pubmed&db=pmc&id={pmid}&linkname=pubmed_pmc&retmode=json"
             )
 
             response = self.session.get(elink_url, timeout=self.timeout)
             response.raise_for_status()
-            data = response.json()
+
+            # Validate JSON response structure
+            try:
+                data = response.json()
+            except ValueError as e:
+                logger.error(f"Invalid JSON response from PMC API for PMID {pmid}: {e}")
+                return PublicationResolutionResult(
+                    identifier=f"PMID:{pmid}", source="pmc", access_type="error"
+                )
+
+            # Validate response is a dictionary with expected structure
+            if not isinstance(data, dict):
+                logger.error(f"PMC API returned non-dict response for PMID {pmid}: {type(data)}")
+                return PublicationResolutionResult(
+                    identifier=f"PMID:{pmid}", source="pmc", access_type="error"
+                )
 
             # Extract PMC ID if available
             pmc_id = None
             try:
                 linksets = data.get("linksets", [])
-                if linksets and len(linksets) > 0:
+                if not isinstance(linksets, list):
+                    logger.warning(f"PMC API linksets is not a list for PMID {pmid}: {type(linksets)}")
+                elif linksets and len(linksets) > 0:
                     linksetdbs = linksets[0].get("linksetdbs", [])
-                    if linksetdbs and len(linksetdbs) > 0:
+                    if not isinstance(linksetdbs, list):
+                        logger.warning(f"PMC API linksetdbs is not a list for PMID {pmid}: {type(linksetdbs)}")
+                    elif linksetdbs and len(linksetdbs) > 0:
                         links = linksetdbs[0].get("links", [])
-                        if links and len(links) > 0:
+                        if not isinstance(links, list):
+                            logger.warning(f"PMC API links is not a list for PMID {pmid}: {type(links)}")
+                        elif links and len(links) > 0:
                             pmc_id = links[0]
+                            # Validate PMC ID is numeric
+                            if not isinstance(pmc_id, (int, str)) or (isinstance(pmc_id, str) and not pmc_id.isdigit()):
+                                logger.warning(f"PMC API returned invalid PMC ID for PMID {pmid}: {pmc_id}")
+                                pmc_id = None
             except (KeyError, IndexError, TypeError) as e:
                 logger.debug(f"No PMC link found for PMID {pmid}: {e}")
 
@@ -244,6 +367,79 @@ class PublicationResolver:
             logger.error(f"Unexpected error in PMC resolution: {e}")
             return PublicationResolutionResult(
                 identifier=f"PMID:{pmid}", source="pmc", access_type="error"
+            )
+
+    def _resolve_via_linkout(self, pmid: str) -> PublicationResolutionResult:
+        """
+        Resolve PMID to publisher URL using NCBI LinkOut service.
+
+        LinkOut provides direct publisher URLs with better success rate than
+        CrossRef for biomedical papers. This is especially useful for papers
+        with institutional access or open access at publisher sites.
+
+        Args:
+            pmid: PubMed ID
+
+        Returns:
+            PublicationResolutionResult with publisher URL or not_available
+
+        Note:
+            This method returns publisher URLs which may be paywalled.
+            The waterfall strategy will continue to other methods if needed.
+        """
+        logger.info(f"Checking NCBI LinkOut for PMID: {pmid}")
+
+        try:
+            # Use ELink with prlinks (provider links) to get publisher URLs
+            linkout_url = (
+                f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi"
+                f"?dbfrom=pubmed&id={pmid}&cmd=prlinks&retmode=json"
+            )
+
+            response = self.session.get(linkout_url, timeout=self.timeout)
+            response.raise_for_status()
+            data = response.json()
+
+            # Extract provider URL if available
+            # LinkOut prlinks returns: {linksets: [{idurllist: [{objurls: [{url: ...}]}]}]}
+            try:
+                linksets = data.get("linksets", [])
+                if linksets and len(linksets) > 0:
+                    idurllist = linksets[0].get("idurllist", [])
+                    if idurllist and len(idurllist) > 0:
+                        objurls = idurllist[0].get("objurls", [])
+                        if objurls and len(objurls) > 0:
+                            url_data = objurls[0].get("url", {})
+                            provider_url = url_data.get("value")
+
+                            if provider_url:
+                                logger.info(f"Found LinkOut URL for PMID {pmid}: {provider_url}")
+                                return PublicationResolutionResult(
+                                    identifier=f"PMID:{pmid}",
+                                    pdf_url=provider_url,
+                                    source="linkout",
+                                    access_type="publisher",
+                                    metadata={"linkout_provider": url_data.get("provider", {}).get("name", "Unknown")},
+                                )
+            except (KeyError, IndexError, TypeError) as e:
+                logger.debug(f"No LinkOut URL found for PMID {pmid}: {e}")
+
+            # No LinkOut URL found
+            return PublicationResolutionResult(
+                identifier=f"PMID:{pmid}",
+                source="linkout",
+                access_type="not_available",
+            )
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error querying LinkOut for PMID {pmid}: {e}")
+            return PublicationResolutionResult(
+                identifier=f"PMID:{pmid}", source="linkout", access_type="error"
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error in LinkOut resolution: {e}")
+            return PublicationResolutionResult(
+                identifier=f"PMID:{pmid}", source="linkout", access_type="error"
             )
 
     def _resolve_via_preprint_servers(self, doi: str) -> PublicationResolutionResult:
@@ -309,21 +505,50 @@ class PublicationResolver:
             crossref_url = f"https://api.crossref.org/works/{doi}"
             response = self.session.get(crossref_url, timeout=self.timeout)
             response.raise_for_status()
-            data = response.json()
+
+            # Validate JSON response structure
+            try:
+                data = response.json()
+            except ValueError as e:
+                logger.error(f"Invalid JSON response from CrossRef API for DOI {doi}: {e}")
+                return PublicationResolutionResult(
+                    identifier=doi, source="publisher", access_type="error"
+                )
+
+            # Validate response is a dictionary with expected structure
+            if not isinstance(data, dict):
+                logger.error(f"CrossRef API returned non-dict response for DOI {doi}: {type(data)}")
+                return PublicationResolutionResult(
+                    identifier=doi, source="publisher", access_type="error"
+                )
 
             message = data.get("message", {})
+            if not isinstance(message, dict):
+                logger.warning(f"CrossRef API message is not a dict for DOI {doi}: {type(message)}")
+                message = {}
+
             is_open_access = False
 
             # Check for open access indicators
             license_info = message.get("license", [])
+            if not isinstance(license_info, list):
+                logger.warning(f"CrossRef API license info is not a list for DOI {doi}: {type(license_info)}")
+                license_info = []
+
             for license_item in license_info:
-                if "open-access" in str(license_item).lower():
+                if isinstance(license_item, dict) and "open-access" in str(license_item).lower():
                     is_open_access = True
                     break
 
             if not is_open_access:
                 link = message.get("link", [])
+                if not isinstance(link, list):
+                    logger.warning(f"CrossRef API link is not a list for DOI {doi}: {type(link)}")
+                    link = []
+
                 for link_item in link:
+                    if not isinstance(link_item, dict):
+                        continue
                     if link_item.get(
                         "content-type"
                     ) == "application/pdf" and "unixref.org" not in link_item.get(
@@ -331,13 +556,14 @@ class PublicationResolver:
                     ):
                         # Found a direct PDF link
                         pdf_url = link_item.get("URL")
-                        return PublicationResolutionResult(
-                            identifier=doi,
-                            pdf_url=pdf_url,
-                            source="publisher",
-                            access_type="open_access",
-                            metadata={"publisher": message.get("publisher")},
-                        )
+                        if pdf_url:  # Validate URL exists
+                            return PublicationResolutionResult(
+                                identifier=doi,
+                                pdf_url=pdf_url,
+                                source="publisher",
+                                access_type="open_access",
+                                metadata={"publisher": message.get("publisher")},
+                            )
 
             # No direct PDF found
             return PublicationResolutionResult(

@@ -71,7 +71,7 @@ class TestPublicationResolverPMC:
                         "linksetdbs": [
                             {
                                 "dbto": "pmc",
-                                "linkname": "pubmed_pmc_refs",
+                                "linkname": "pubmed_pmc",
                                 "links": ["7891011"],
                             }
                         ],
@@ -114,6 +114,32 @@ class TestPublicationResolverPMC:
             assert result.is_accessible() is False
             assert result.source == "pmc"
             assert result.access_type == "error"
+
+    def test_resolve_via_pmc_uses_correct_linkname(self):
+        """Test that PMC resolution uses correct linkname parameter.
+
+        Regression test for bug where pubmed_pmc_refs (returns citing articles)
+        was used instead of pubmed_pmc (returns PMC version of article).
+
+        The bug caused PMID:37963457 to incorrectly resolve to PMC12580505
+        (an article that cites it, not the article itself).
+        """
+        with patch.object(self.resolver.session, "get") as mock_get:
+            mock_response = Mock()
+            mock_response.status_code = 200
+            mock_response.raise_for_status = Mock()
+            mock_response.json.return_value = {"linksets": []}
+            mock_get.return_value = mock_response
+
+            self.resolver._resolve_via_pmc("37963457")
+
+            # Verify the correct elink URL was called
+            called_url = mock_get.call_args[0][0]
+            assert "linkname=pubmed_pmc" in called_url, (
+                "Should use pubmed_pmc (PMC version of article), "
+                "not pubmed_pmc_refs (articles that cite it)"
+            )
+            assert "linkname=pubmed_pmc_refs" not in called_url
 
 
 class TestPublicationResolverPreprints:
@@ -260,6 +286,7 @@ class TestPublicationResolverFullWorkflow:
         """Test full waterfall ending in suggestions."""
         with (
             patch.object(self.resolver, "_resolve_via_pmc") as mock_pmc,
+            patch.object(self.resolver, "_resolve_via_linkout") as mock_linkout,
             patch.object(
                 self.resolver, "_resolve_via_preprint_servers"
             ) as mock_preprint,
@@ -269,6 +296,9 @@ class TestPublicationResolverFullWorkflow:
             # All strategies fail
             mock_pmc.return_value = PublicationResolutionResult(
                 identifier="PMID:123", source="pmc", access_type="not_in_pmc"
+            )
+            mock_linkout.return_value = PublicationResolutionResult(
+                identifier="PMID:123", source="linkout", access_type="not_available"
             )
             mock_preprint.return_value = PublicationResolutionResult(
                 identifier="10.1038/test", source="preprint", access_type="not_preprint"
