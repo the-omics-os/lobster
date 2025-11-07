@@ -8,6 +8,7 @@ data from the Gene Expression Omnibus (GEO) database using a layered approach:
 3. Integration: Full DataManagerV2 compatibility with comprehensive error handling
 """
 
+import ftplib
 import json
 import os
 import re
@@ -393,6 +394,52 @@ class GEOService:
 
                     time.sleep(delay)
 
+            except OSError as e:
+                # GEOparse wraps ftplib.error_perm (550) as OSError with specific message
+                error_str = str(e)
+                if "Download failed" in error_str and ("No such file" in error_str or "not public yet" in error_str):
+                    logger.warning(
+                        f"{operation_name} OSError indicates missing file: {error_str[:100]}. "
+                        "Skipping retries, triggering fallback mechanism."
+                    )
+                    return "SOFT_FILE_MISSING"  # Sentinel value to signal fallback
+                # Other OSErrors may be transient, fall through to generic handler
+                logger.warning(f"{operation_name} OSError (may retry): {error_str[:100]}")
+                retry_count += 1
+                if retry_count >= max_retries:
+                    logger.error(f"{operation_name} failed after {max_retries} attempts: {e}")
+                    return None
+                # Continue with exponential backoff
+                delay = base_delay * (2 ** (retry_count - 1)) * (0.5 + random.random())
+                total_delay += delay
+                logger.warning(
+                    f"{operation_name} retrying after OSError (attempt {retry_count}/{max_retries}) in {delay:.1f}s"
+                )
+                time.sleep(delay)
+
+            except ftplib.error_perm as e:
+                # Permanent FTP errors (550 = File not found) should not be retried
+                error_str = str(e)
+                if error_str.startswith("550"):
+                    logger.warning(
+                        f"{operation_name} permanent FTP error: File not found (550). "
+                        "Skipping retries, triggering fallback mechanism."
+                    )
+                    return "SOFT_FILE_MISSING"  # Sentinel value to signal fallback
+                # Other FTP error codes may be transient, fall through to generic handler
+                logger.warning(f"{operation_name} FTP error: {error_str}")
+                retry_count += 1
+                if retry_count >= max_retries:
+                    logger.error(f"{operation_name} failed after {max_retries} attempts: {e}")
+                    return None
+                # Continue with exponential backoff
+                delay = base_delay * (2 ** (retry_count - 1)) * (0.5 + random.random())
+                total_delay += delay
+                logger.warning(
+                    f"{operation_name} retrying after FTP error (attempt {retry_count}/{max_retries}) in {delay:.1f}s"
+                )
+                time.sleep(delay)
+
             except Exception as e:
                 retry_count += 1
 
@@ -493,6 +540,21 @@ class GEOService:
                 max_retries=5,
                 is_ftp=False,
             )
+
+            # Check if SOFT file was missing (sentinel value from retry logic)
+            if gse == "SOFT_FILE_MISSING":
+                logger.info(
+                    f"SOFT file unavailable for {gse_id}, attempting Entrez fallback..."
+                )
+                try:
+                    return self._fetch_gse_metadata_via_entrez(gse_id)
+                except Exception as e:
+                    logger.error(f"Entrez fallback also failed for {gse_id}: {e}")
+                    return (
+                        f"Failed to fetch metadata for {gse_id}: "
+                        f"SOFT file missing and Entrez fallback failed ({str(e)}). "
+                        f"Please check GEO database status or try again later."
+                    )
 
             if gse is None:
                 return f"Failed to fetch metadata for {gse_id} after multiple retry attempts."
@@ -697,6 +759,279 @@ class GEOService:
             logger.error(f"Error combining GDS and GSE metadata: {e}")
             # Return GSE metadata if combination fails
             return gse_metadata
+
+    def _fetch_gse_metadata_via_entrez(
+        self, gse_id: str
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """
+        Fetch GSE metadata using NCBI Entrez E-utilities (fallback for missing SOFT files).
+
+        This method provides basic metadata (title, summary, organism, platform, sample count)
+        when SOFT files are unavailable on the FTP server. Sample-level characteristics
+        are NOT available via this fallback method.
+
+        Uses the same Entrez esummary API as GDS fetching, but directly for GSE accessions.
+
+        Args:
+            gse_id: GSE accession ID (e.g., GSE233321)
+
+        Returns:
+            Tuple[Dict, Dict]: metadata and validation_result
+
+        Raises:
+            urllib.error.URLError: Network connection errors
+            json.JSONDecodeError: Invalid JSON response
+            Exception: Other unexpected errors
+
+        Note:
+            Entrez metadata is less complete than SOFT files. Missing:
+            - Detailed sample-level characteristics (e.g., treatment groups)
+            - Protocol details
+            - Some contact information
+        """
+        try:
+            logger.info(
+                f"Fetching GSE metadata via Entrez fallback for {gse_id} "
+                "(SOFT file unavailable)"
+            )
+
+            # Extract GSE number from ID
+            gse_number = gse_id.replace("GSE", "")
+
+            # Build NCBI E-utilities URL (same pattern as GDS fetching)
+            base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
+            params = {"db": "gds", "id": gse_number, "retmode": "json"}
+
+            # Construct URL with parameters
+            url_params = urllib.parse.urlencode(params)
+            url = f"{base_url}?{url_params}"
+
+            logger.debug(f"Fetching GSE metadata from Entrez: {url}")
+
+            # Create SSL context for secure connection
+            ssl_context = create_ssl_context()
+
+            # Make the request with SSL support (timeout: 30s)
+            try:
+                response = urllib.request.urlopen(url, context=ssl_context, timeout=30)
+                response_data = response.read().decode("utf-8")
+            except Exception as e:
+                error_str = str(e)
+                if "CERTIFICATE_VERIFY_FAILED" in error_str or "SSL" in error_str:
+                    handle_ssl_error(e, url, logger)
+                    raise Exception(
+                        f"SSL certificate verification failed when fetching GSE metadata via Entrez. "
+                        f"See error message above for solutions."
+                    )
+                raise
+
+            # Parse JSON response
+            entrez_data = json.loads(response_data)
+
+            # Extract the GSE record
+            if "result" not in entrez_data or gse_number not in entrez_data["result"]:
+                logger.error(f"No Entrez record found for {gse_id}")
+                raise ValueError(f"No Entrez record found for {gse_id}")
+
+            gse_record = entrez_data["result"][gse_number]
+            logger.debug(f"Successfully retrieved Entrez metadata for {gse_id}")
+
+            # Convert Entrez format to Lobster metadata format
+            metadata = self._convert_entrez_to_lobster_metadata(gse_record, gse_id)
+
+            # Validate metadata against transcriptomics schema
+            validation_result = self._validate_geo_metadata(metadata)
+
+            # Add fallback markers and warnings
+            metadata["_entrez_fallback"] = True
+            metadata["_metadata_source"] = "NCBI Entrez E-utilities (esummary)"
+            metadata["_metadata_completeness"] = "partial"
+            metadata["_warning"] = (
+                "Metadata fetched via Entrez fallback due to missing SOFT file. "
+                "Sample-level characteristics and protocol details not available. "
+                "Basic information (title, summary, organism, platform, sample count) provided."
+            )
+
+            # Check platform compatibility BEFORE downloading files (Phase 2: Early Validation)
+            try:
+                is_compatible, compat_message = self._check_platform_compatibility(
+                    gse_id, metadata
+                )
+                logger.info(f"Platform validation for {gse_id} (Entrez): {compat_message}")
+            except UnsupportedPlatformError as e:
+                # Store metadata and error for supervisor access, then re-raise
+                self.data_manager.metadata_store[gse_id] = {
+                    "metadata": metadata,
+                    "validation_result": validation_result,
+                    "platform_error": str(e),
+                    "platform_details": e.details,
+                }
+                logger.error(
+                    f"Platform validation failed for {gse_id}: {e.details['detected_platforms']}"
+                )
+                raise
+
+            logger.info(
+                f"Successfully fetched {gse_id} metadata via Entrez fallback "
+                f"(~70% complete, missing sample characteristics)"
+            )
+
+            return metadata, validation_result
+
+        except UnsupportedPlatformError:
+            # Re-raise platform errors without catching them
+            raise
+        except urllib.error.URLError as e:
+            logger.error(f"Network error in Entrez fallback for {gse_id}: {e}")
+            raise Exception(f"Network error fetching Entrez metadata for {gse_id}: {str(e)}")
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing Entrez JSON response for {gse_id}: {e}")
+            raise Exception(f"Error parsing Entrez metadata response for {gse_id}: {str(e)}")
+        except Exception as e:
+            logger.error(f"Error in Entrez fallback for {gse_id}: {e}")
+            raise
+
+    def _convert_entrez_to_lobster_metadata(
+        self, entrez_record: Dict[str, Any], gse_id: str
+    ) -> Dict[str, Any]:
+        """
+        Convert Entrez esummary record to Lobster metadata format.
+
+        Maps Entrez JSON fields to GEOparse-compatible structure for downstream processing.
+        Entrez provides basic dataset information but lacks detailed sample characteristics.
+
+        Args:
+            entrez_record: Entrez esummary record (JSON parsed)
+            gse_id: GSE accession ID
+
+        Returns:
+            Dict: Metadata in Lobster format (compatible with _extract_metadata structure)
+
+        Note:
+            Entrez field mapping:
+            - title: Dataset title
+            - summary: Dataset description
+            - taxon: Organism name
+            - gpl: Platform ID(s)
+            - n_samples: Sample count
+            - pubmedids: Associated publications
+            - pdat: Publication/submission date
+        """
+        try:
+            # Extract platform IDs (can be list or single value)
+            platform_ids = entrez_record.get("gpl", [])
+            if isinstance(platform_ids, str):
+                platform_ids = [platform_ids]
+            elif not isinstance(platform_ids, list):
+                platform_ids = []
+
+            # Extract PubMed IDs
+            pubmed_ids = entrez_record.get("pubmedids", [])
+            if isinstance(pubmed_ids, str):
+                pubmed_ids = [pubmed_ids]
+            elif not isinstance(pubmed_ids, list):
+                pubmed_ids = []
+
+            # Build metadata dict compatible with GEOparse structure
+            metadata = {
+                # Core identifiers
+                "geo_accession": gse_id,
+                "accession": gse_id,
+
+                # Basic information
+                "title": entrez_record.get("title", ""),
+                "summary": entrez_record.get("summary", ""),
+                "type": entrez_record.get("gdstype", "Expression profiling by high throughput sequencing"),
+
+                # Organism information
+                "taxon": entrez_record.get("taxon", ""),
+                "organism": entrez_record.get("taxon", ""),
+
+                # Platform information (as list for consistency with GEOparse)
+                "platform_id": platform_ids,
+
+                # Sample information
+                "n_samples": entrez_record.get("n_samples", 0),
+                "sample_count": entrez_record.get("n_samples", 0),
+
+                # Publication information
+                "pubmed_id": pubmed_ids if pubmed_ids else "",
+
+                # Dates
+                "submission_date": entrez_record.get("pdat", ""),
+                "last_update_date": entrez_record.get("pdat", ""),
+
+                # Platform details (limited from Entrez)
+                "platforms": self._extract_platform_info_from_entrez(entrez_record, platform_ids),
+
+                # Sample metadata (empty - not available via Entrez)
+                "samples": {},
+                "sample_id": [],
+
+                # Supplementary files (not available via Entrez)
+                "supplementary_file": [],
+
+                # Status
+                "status": "Public",  # Assume public if in GEO
+
+                # FTP link (if available)
+                "ftp_link": entrez_record.get("ftplink", ""),
+            }
+
+            logger.debug(f"Converted Entrez record to Lobster metadata for {gse_id}")
+            return metadata
+
+        except Exception as e:
+            logger.error(f"Error converting Entrez metadata to Lobster format: {e}")
+            # Return minimal metadata to avoid complete failure
+            return {
+                "geo_accession": gse_id,
+                "title": entrez_record.get("title", "Unknown"),
+                "summary": entrez_record.get("summary", ""),
+                "organism": entrez_record.get("taxon", "Unknown"),
+                "platform_id": [],
+                "n_samples": 0,
+                "_conversion_error": str(e),
+            }
+
+    def _extract_platform_info_from_entrez(
+        self, entrez_record: Dict[str, Any], platform_ids: List[str]
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Extract platform information from Entrez record.
+
+        Entrez provides limited platform information compared to SOFT files.
+        This method creates a minimal platform dict compatible with downstream processing.
+
+        Args:
+            entrez_record: Entrez esummary record
+            platform_ids: List of platform GPL IDs
+
+        Returns:
+            Dict: Platform information in GEOparse-compatible format
+        """
+        platforms = {}
+
+        try:
+            # Entrez doesn't provide detailed platform metadata in esummary
+            # Create minimal platform entries for compatibility
+            platform_organism = entrez_record.get("taxon", "")
+            platform_tech = entrez_record.get("ptechtype", "")
+
+            for gpl_id in platform_ids:
+                platforms[gpl_id] = {
+                    "title": f"Platform {gpl_id}",
+                    "organism": platform_organism,
+                    "technology": platform_tech if platform_tech else "high throughput sequencing",
+                    "_note": "Platform details from Entrez are limited. Full details available on GEO website.",
+                }
+
+            logger.debug(f"Extracted platform info for {len(platform_ids)} platform(s) from Entrez")
+
+        except Exception as e:
+            logger.warning(f"Error extracting platform info from Entrez: {e}")
+
+        return platforms
 
     def download_dataset(self, geo_id: str, adapter: str = None, **kwargs) -> str:
         """

@@ -1,0 +1,25 @@
+I've retrieved comprehensive metadata for GSE164378. This is an important multimodal single-cell RNA-seq dataset from a landmark study published in Cell (2021, PubMed ID: 34062119).
+
+## Key Highlights:
+
+**Study Type:** CITE-seq analysis of human PBMCs measuring both RNA and 228 surface proteins simultaneously
+- **Organism:** Human peripheral blood immune cells
+- **Technology:** Illumina NovaSeq 6000
+- **Samples:** 9 multimodal single-cell samples
+- **Scale:** Hundreds of thousands of cells profiled
+
+**Scientific Significance:** This dataset introduced the Weighted-Nearest Neighbor (WNN) analysis framework for integrating multimodal single-cell data and created a comprehensive reference atlas of the human circulating immune system.
+
+**Data Availability:**
+- Cell metadata and antibody information files are available
+- Individual sample files can be downloaded
+- Note: Raw sequencing data is in dbGaP due to patient privacy
+
+---
+
+**Would you like me to:**
+1. **Download this dataset** for analysis (9 samples with multimodal RNA + protein data)?
+2. **Search for the associated publication** to extract computational methods and parameters?
+3. **Explore specific samples** or annotations first?
+
+Please let me know how you'd like to proceed with this dataset!
