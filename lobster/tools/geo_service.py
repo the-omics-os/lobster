@@ -2352,10 +2352,18 @@ class GEOService:
             if detected_type:
                 sample_types.setdefault(detected_type, []).append(gsm_id)
                 logger.debug(f"Sample {gsm_id}: detected as '{detected_type}'")
+
+                # Store classification in GSM metadata for downstream validation
+                if gsm_id in self.gse.gsms:
+                    self.gse.gsms[gsm_id].metadata["lobster_sample_type"] = detected_type
             else:
                 # Unknown - default to RNA for backward compatibility
                 sample_types.setdefault("rna", []).append(gsm_id)
                 logger.debug(f"Sample {gsm_id}: type unclear, defaulting to 'rna'")
+
+                # Store default classification in GSM metadata
+                if gsm_id in self.gse.gsms:
+                    self.gse.gsms[gsm_id].metadata["lobster_sample_type"] = "rna"
 
         # Log summary
         summary = ", ".join(
@@ -4236,7 +4244,12 @@ The actual expression data download will be much faster now that metadata is pre
         # Use multithreading for validation - this is the main performance improvement
         with ThreadPoolExecutor(max_workers=min(8, len(valid_matrices))) as executor:
             future_to_sample = {
-                executor.submit(self._validate_single_matrix, gsm_id, matrix): gsm_id
+                executor.submit(
+                    self._validate_single_matrix,
+                    gsm_id,
+                    matrix,
+                    self.gse.gsms[gsm_id].metadata.get("lobster_sample_type", "rna"),
+                ): gsm_id
                 for gsm_id, matrix in valid_matrices.items()
             }
 
@@ -4256,14 +4269,16 @@ The actual expression data download will be much faster now that metadata is pre
         return validated
 
     def _validate_single_matrix(
-        self, gsm_id: str, matrix: pd.DataFrame
+        self, gsm_id: str, matrix: pd.DataFrame, sample_type: str = "rna"
     ) -> Tuple[bool, str]:
         """
-        Validate a single matrix with biology-aware thresholds.
+        Validate a single matrix with biology-aware thresholds and type-aware duplicate checking.
 
         Args:
             gsm_id: Sample ID for logging
             matrix: DataFrame to validate
+            sample_type: Data type ("rna", "protein", "vdj", "atac").
+                        VDJ data (TCR/BCR) allows duplicate row indices (multi-chain per cell).
 
         Returns:
             Tuple[bool, str]: (is_valid, info_message)
@@ -4285,13 +4300,26 @@ The actual expression data download will be much faster now that metadata is pre
                 )
                 # Don't fail validation - deduplication happens at loading stage
 
-            # Duplicate cell/sample IDs (rows) - ERROR, indicates invalid data
+            # Duplicate cell/sample IDs (rows) - Type-aware validation
             if matrix.index.duplicated().any():
                 n_dup = matrix.index.duplicated().sum()
-                return (
-                    False,
-                    f"Duplicate cell/sample IDs ({n_dup} duplicates) - invalid data",
-                )
+                duplicate_rate = n_dup / len(matrix)
+
+                # VDJ data (TCR/BCR sequencing): Duplicates are EXPECTED
+                # One row per receptor chain = multiple rows per cell
+                if sample_type == "vdj":
+                    logger.info(
+                        f"{gsm_id}: VDJ data has {n_dup} repeated cell barcodes "
+                        f"({duplicate_rate:.1%} of total) - expected for multi-chain data"
+                    )
+                    # Continue validation - duplicates are scientifically correct
+                else:
+                    # Gene expression/protein data: Duplicates indicate corruption
+                    return (
+                        False,
+                        f"Duplicate cell/sample IDs ({n_dup} duplicates, {duplicate_rate:.1%}) "
+                        f"- invalid for {sample_type} data",
+                    )
 
             # Rule 2: Biology-aware validation
             # For bulk RNA-seq: few samples (2-500), many genes (10K-60K)

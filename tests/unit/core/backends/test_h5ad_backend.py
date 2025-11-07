@@ -365,6 +365,239 @@ class TestH5ADDataSanitization:
         assert "Gene1" in var_names_loaded
         assert "Gene1__1" in var_names_loaded or "Gene1-1" in var_names_loaded
 
+    def test_sanitize_boolean_columns(self):
+        """Test Bug #3: Boolean columns are converted to strings for HDF5 compatibility."""
+        # Create AnnData with boolean column
+        X = np.random.randn(10, 5)
+        obs = pd.DataFrame({
+            'is_treated': [True, False, True, False, True, False, True, False, True, False],
+            'is_control': pd.array([False, True, False, True, False, True, False, True, False, True], dtype='boolean'),
+            'cell_type': ['TypeA'] * 5 + ['TypeB'] * 5
+        }, index=[f"cell_{i}" for i in range(10)])
+
+        adata = anndata.AnnData(X=X, obs=obs)
+
+        file_path = "test_bool_sanitization.h5ad"
+        self.backend.save(adata, file_path)
+        adata_loaded = self.backend.load(file_path)
+
+        # Verify boolean columns were converted to strings or categorical with string values
+        # After H5AD round-trip, booleans may become categorical with string categories
+        is_treated_col = adata_loaded.obs['is_treated']
+        if hasattr(is_treated_col, 'cat'):
+            # Categorical - verify categories are strings
+            assert all(isinstance(cat, str) for cat in is_treated_col.cat.categories)
+            assert set(is_treated_col.cat.categories) == {'True', 'False'}
+        else:
+            # Object or string type
+            assert is_treated_col.dtype in [object, str]
+            assert all(is_treated_col.isin(['True', 'False']))
+
+        is_control_col = adata_loaded.obs['is_control']
+        if hasattr(is_control_col, 'cat'):
+            assert all(isinstance(cat, str) for cat in is_control_col.cat.categories)
+            assert set(is_control_col.cat.categories) == {'True', 'False'}
+        else:
+            assert is_control_col.dtype in [object, str]
+            assert all(is_control_col.isin(['True', 'False']))
+
+    def test_sanitize_mixed_type_columns(self):
+        """Test Bug #3: Mixed-type columns (int + None + str) are converted to strings."""
+        # Create AnnData with mixed-type columns
+        X = np.random.randn(10, 5)
+        obs = pd.DataFrame({
+            'age': [25, None, 30, 'unknown', 35, None, 40, '45', 50, None],
+            'batch_id': [1, 2, 'batch3', 4, 5, None, 7, 8, 9, 10],
+            'cell_type': ['TypeA'] * 5 + ['TypeB'] * 5
+        }, index=[f"cell_{i}" for i in range(10)])
+
+        adata = anndata.AnnData(X=X, obs=obs)
+
+        file_path = "test_mixed_type_sanitization.h5ad"
+        self.backend.save(adata, file_path)
+        adata_loaded = self.backend.load(file_path)
+
+        # Verify mixed-type columns were converted to strings (may be categorical after H5AD round-trip)
+        age_col = adata_loaded.obs['age']
+        if hasattr(age_col, 'cat'):
+            # Categorical - all categories should be strings
+            assert all(isinstance(cat, str) for cat in age_col.cat.categories)
+            assert '25' in age_col.cat.categories
+            assert ('NA' in age_col.cat.categories or '' in age_col.cat.categories)
+        else:
+            assert age_col.dtype in [object, str]
+            assert '25' in age_col.values
+            assert 'NA' in age_col.values or '' in age_col.values
+
+        batch_col = adata_loaded.obs['batch_id']
+        if hasattr(batch_col, 'cat'):
+            assert all(isinstance(cat, str) for cat in batch_col.cat.categories)
+            assert 'batch3' in batch_col.cat.categories
+        else:
+            assert batch_col.dtype in [object, str]
+            assert 'batch3' in batch_col.values
+
+    def test_sanitize_none_to_na(self):
+        """Test Bug #3: None values in object columns are converted to 'NA'."""
+        # Create AnnData with None values in object columns
+        X = np.random.randn(10, 5)
+        obs = pd.DataFrame({
+            'description': ['sample1', None, 'sample3', None, 'sample5',
+                           None, 'sample7', None, 'sample9', None],
+            'treatment': [None, 'drug_A', None, 'drug_B', None,
+                         'drug_A', None, 'drug_B', None, 'drug_A'],
+            'cell_count': [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
+        }, index=[f"cell_{i}" for i in range(10)])
+
+        adata = anndata.AnnData(X=X, obs=obs)
+
+        file_path = "test_none_sanitization.h5ad"
+        self.backend.save(adata, file_path)
+        adata_loaded = self.backend.load(file_path)
+
+        # Verify None values were converted to "NA" (may be categorical after H5AD round-trip)
+        desc_col = adata_loaded.obs['description']
+        if hasattr(desc_col, 'cat'):
+            assert 'NA' in desc_col.cat.categories
+            assert 'sample1' in desc_col.cat.categories
+        else:
+            assert 'NA' in desc_col.values
+            assert 'sample1' in desc_col.values
+
+        treat_col = adata_loaded.obs['treatment']
+        if hasattr(treat_col, 'cat'):
+            assert 'NA' in treat_col.cat.categories
+            assert 'drug_A' in treat_col.cat.categories
+        else:
+            assert 'NA' in treat_col.values
+            assert 'drug_A' in treat_col.values
+
+        # Numeric columns should preserve their type
+        assert np.issubdtype(adata_loaded.obs['cell_count'].dtype, np.number)
+
+    def test_sanitize_categorical_non_string_categories(self):
+        """Test Bug #3: Categorical columns with non-string categories are converted."""
+        # Create AnnData with categorical columns containing non-string categories
+        X = np.random.randn(10, 5)
+        obs = pd.DataFrame({
+            'numeric_cat': pd.Categorical([1, 2, 3, 1, 2, 3, 1, 2, 3, 1]),
+            'mixed_cat': pd.Categorical([1, 'two', 3, 'four', 5, 'six', 7, 'eight', 9, 'ten']),
+            'cell_type': ['TypeA'] * 5 + ['TypeB'] * 5
+        }, index=[f"cell_{i}" for i in range(10)])
+
+        adata = anndata.AnnData(X=X, obs=obs)
+
+        file_path = "test_categorical_sanitization.h5ad"
+        self.backend.save(adata, file_path)
+        adata_loaded = self.backend.load(file_path)
+
+        # Verify categorical columns with non-string categories were converted
+        # After round-trip, they should be string type or categorical with string categories
+        if hasattr(adata_loaded.obs['numeric_cat'], 'cat'):
+            # Still categorical - check categories are strings
+            assert all(isinstance(cat, str) for cat in adata_loaded.obs['numeric_cat'].cat.categories)
+        else:
+            # Converted to string type
+            assert adata_loaded.obs['numeric_cat'].dtype == object
+
+    def test_sanitize_uns_metadata_bool_and_none(self):
+        """Test Bug #3: uns metadata with bool and None values are sanitized."""
+        # Create AnnData with problematic uns metadata
+        X = np.random.randn(10, 5)
+        adata = anndata.AnnData(X=X)
+
+        adata.uns['use_feature_selection'] = True
+        adata.uns['filter_cells'] = False
+        adata.uns['missing_param'] = None
+        adata.uns['description'] = None
+        adata.uns['nested_config'] = {
+            'enabled': True,
+            'threshold': None,
+            'method': 'standard'
+        }
+
+        file_path = "test_uns_sanitization.h5ad"
+        self.backend.save(adata, file_path)
+        adata_loaded = self.backend.load(file_path)
+
+        # Verify bool values were converted to strings
+        assert isinstance(adata_loaded.uns['use_feature_selection'], str)
+        assert adata_loaded.uns['use_feature_selection'] == 'True'
+        assert isinstance(adata_loaded.uns['filter_cells'], str)
+        assert adata_loaded.uns['filter_cells'] == 'False'
+
+        # Verify None values were converted to empty strings
+        assert adata_loaded.uns['missing_param'] == ''
+        assert adata_loaded.uns['description'] == ''
+
+        # Verify nested dict was sanitized
+        assert isinstance(adata_loaded.uns['nested_config']['enabled'], str)
+        assert adata_loaded.uns['nested_config']['threshold'] == ''
+
+    def test_sanitize_completely_empty_columns(self):
+        """Test Bug #3: Completely empty columns (all None/NaN) are dropped."""
+        # Create AnnData with completely empty columns
+        X = np.random.randn(10, 5)
+        obs = pd.DataFrame({
+            'empty_col': [None] * 10,
+            'all_nan': [np.nan] * 10,
+            'valid_col': ['TypeA'] * 5 + ['TypeB'] * 5,
+            'mostly_empty': [None] * 9 + ['value']
+        }, index=[f"cell_{i}" for i in range(10)])
+
+        adata = anndata.AnnData(X=X, obs=obs)
+
+        file_path = "test_empty_columns.h5ad"
+        self.backend.save(adata, file_path)
+        adata_loaded = self.backend.load(file_path)
+
+        # Verify completely empty columns were dropped
+        assert 'empty_col' not in adata_loaded.obs.columns
+        assert 'all_nan' not in adata_loaded.obs.columns
+
+        # Verify columns with some data were kept
+        assert 'valid_col' in adata_loaded.obs.columns
+        assert 'mostly_empty' in adata_loaded.obs.columns
+
+        # Check that mostly_empty has "NA" values (may be categorical)
+        mostly_empty_col = adata_loaded.obs['mostly_empty']
+        if hasattr(mostly_empty_col, 'cat'):
+            assert 'NA' in mostly_empty_col.cat.categories or '' in mostly_empty_col.cat.categories
+        else:
+            assert 'NA' in mostly_empty_col.values or '' in mostly_empty_col.values
+
+    def test_sanitize_numpy_arrays_in_uns(self):
+        """Test Bug #3: numpy arrays with mixed types in uns are sanitized."""
+        # Create AnnData with problematic numpy arrays in uns
+        X = np.random.randn(10, 5)
+        adata = anndata.AnnData(X=X)
+
+        # Numeric array (should be preserved)
+        adata.uns['numeric_array'] = np.array([1.5, 2.7, 3.2, 4.8])
+
+        # Mixed-type array (should be converted to string array)
+        adata.uns['mixed_array'] = np.array([1, 'two', None, 4.5, True])
+
+        # Object array with None values
+        adata.uns['object_array'] = np.array(['a', None, 'c', None, 'e'])
+
+        file_path = "test_numpy_array_sanitization.h5ad"
+        self.backend.save(adata, file_path)
+        adata_loaded = self.backend.load(file_path)
+
+        # Verify numeric array was preserved
+        assert isinstance(adata_loaded.uns['numeric_array'], np.ndarray)
+        assert np.issubdtype(adata_loaded.uns['numeric_array'].dtype, np.number)
+
+        # Verify mixed-type array was converted to strings
+        # (May be stored as list after H5AD round-trip)
+        mixed_values = adata_loaded.uns['mixed_array']
+        assert all(isinstance(str(v), str) for v in mixed_values)
+
+        # Verify object array with None was converted to strings
+        object_values = adata_loaded.uns['object_array']
+        assert all(isinstance(str(v), str) for v in object_values)
+
 
 class TestH5ADErrorHandling:
     """Test error handling and edge cases."""

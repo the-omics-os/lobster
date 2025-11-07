@@ -1194,6 +1194,171 @@ class TestBiologyAwareValidation:
             is_valid == True
         ), f"Small but acceptable matrix should be valid: {message}"
 
+    # ========================================================================
+    # Bug #2: Type-Aware Validation Tests (VDJ data with duplicate barcodes)
+    # ========================================================================
+
+    def test_vdj_data_with_duplicates_accepted(self, geo_service):
+        """
+        Test Bug #2: VDJ data (TCR/BCR) with duplicate cell barcodes is ACCEPTED.
+
+        VDJ sequencing produces one row per receptor chain, so duplicate cell
+        barcodes are scientifically expected (e.g., TRA + TRB chains for same cell).
+        """
+        # Create VDJ-like data: 6,593 rows × 30 columns (TCR features)
+        # Simulate 3,152 duplicate barcodes (48% duplication rate, typical for TCR data)
+        n_unique_cells = 3441
+        n_total_rows = 6593
+
+        # Create cell barcodes with duplicates
+        unique_barcodes = [f"CELL_{i:05d}" for i in range(n_unique_cells)]
+        # Duplicate some barcodes to simulate multi-chain data
+        duplicated_barcodes = np.random.choice(unique_barcodes, n_total_rows - n_unique_cells, replace=True)
+        all_barcodes = unique_barcodes + list(duplicated_barcodes)
+        np.random.shuffle(all_barcodes)
+
+        # Create VDJ matrix with TCR-like features
+        vdj_matrix = pd.DataFrame(
+            np.random.randint(0, 100, (n_total_rows, 30)),
+            index=all_barcodes,
+            columns=[
+                "chain", "v_gene", "d_gene", "j_gene", "c_gene",
+                "cdr1_nt", "cdr2_nt", "cdr3_nt", "cdr1_aa", "cdr2_aa",
+                "cdr3_aa", "reads", "umis", "frequency", "productive",
+                "full_length", "clonotype_id", "clone_size", "normalized_count",
+                "junction", "junction_aa", "v_identity", "j_identity",
+                "alignment_score", "consensus_quality", "is_cell",
+                "confidence", "annotation", "metadata1", "metadata2"
+            ]
+        )
+
+        # Validate with sample_type="vdj"
+        is_valid, message = geo_service._validate_single_matrix(
+            gsm_id="GSM_test_vdj", matrix=vdj_matrix, sample_type="vdj"
+        )
+
+        assert is_valid is True, f"VDJ data with duplicates should be ACCEPTED: {message}"
+        # The function logs VDJ-specific info, but returns message about matrix dimensions
+        # Just verify it was accepted (is_valid=True)
+
+    def test_rna_data_with_duplicates_rejected(self, geo_service):
+        """
+        Test Bug #2: RNA data with duplicate cell barcodes is REJECTED.
+
+        For gene expression data, duplicate cell IDs indicate data corruption
+        or processing errors and should be rejected.
+        """
+        # Create RNA-seq-like data: 8,632 cells × 36,591 genes
+        # But introduce 1,000 duplicate cell barcodes (data corruption)
+        n_unique_cells = 7632
+        n_duplicates = 1000
+        n_total_cells = n_unique_cells + n_duplicates
+
+        unique_barcodes = [f"CELL_{i:05d}" for i in range(n_unique_cells)]
+        # Duplicate some barcodes to simulate corruption
+        duplicated_barcodes = [unique_barcodes[i % len(unique_barcodes)] for i in range(n_duplicates)]
+        all_barcodes = unique_barcodes + duplicated_barcodes
+        np.random.shuffle(all_barcodes)
+
+        # Create gene expression matrix
+        rna_matrix = pd.DataFrame(
+            np.random.poisson(5, (n_total_cells, 100)),  # Simplified: 100 genes instead of 36K
+            index=all_barcodes
+        )
+
+        # Validate with sample_type="rna"
+        is_valid, message = geo_service._validate_single_matrix(
+            gsm_id="GSM_test_rna_dup", matrix=rna_matrix, sample_type="rna"
+        )
+
+        assert is_valid is False, "RNA data with duplicates should be REJECTED"
+        assert "duplicate" in message.lower()
+        assert "rna" in message.lower() or "invalid" in message.lower()
+
+    def test_protein_data_with_duplicates_rejected(self, geo_service):
+        """
+        Test Bug #2: Protein data with duplicate cell barcodes is REJECTED.
+
+        Affinity proteomics (Olink, antibody arrays) should not have duplicate
+        cell identifiers - if present, indicates data corruption.
+        """
+        # Create protein data: 5,000 cells × 96 proteins (Olink panel size)
+        n_unique_cells = 4000
+        n_duplicates = 1000
+        n_total_cells = n_unique_cells + n_duplicates
+
+        unique_barcodes = [f"SAMPLE_{i:04d}" for i in range(n_unique_cells)]
+        duplicated_barcodes = [unique_barcodes[i % len(unique_barcodes)] for i in range(n_duplicates)]
+        all_barcodes = unique_barcodes + duplicated_barcodes
+        np.random.shuffle(all_barcodes)
+
+        # Create protein matrix
+        protein_matrix = pd.DataFrame(
+            np.random.uniform(0, 10, (n_total_cells, 96)),  # NPX values
+            index=all_barcodes
+        )
+
+        # Validate with sample_type="protein"
+        is_valid, message = geo_service._validate_single_matrix(
+            gsm_id="GSM_test_protein_dup", matrix=protein_matrix, sample_type="protein"
+        )
+
+        assert is_valid is False, "Protein data with duplicates should be REJECTED"
+        assert "duplicate" in message.lower()
+        assert "protein" in message.lower() or "invalid" in message.lower()
+
+    def test_vdj_data_without_duplicates_accepted(self, geo_service):
+        """
+        Test Bug #2: VDJ data without duplicates is also ACCEPTED.
+
+        Edge case: VDJ data where all cells have only one receptor chain
+        (e.g., filtered for single-chain cells). Should still pass validation.
+        """
+        # Create VDJ data with NO duplicates (all unique barcodes)
+        n_cells = 5000
+        unique_barcodes = [f"CELL_{i:05d}" for i in range(n_cells)]
+
+        # Create VDJ matrix
+        vdj_matrix = pd.DataFrame(
+            np.random.randint(0, 100, (n_cells, 30)),
+            index=unique_barcodes
+        )
+
+        # Validate with sample_type="vdj"
+        is_valid, message = geo_service._validate_single_matrix(
+            gsm_id="GSM_test_vdj_no_dup", matrix=vdj_matrix, sample_type="vdj"
+        )
+
+        assert is_valid is True, f"VDJ data without duplicates should be ACCEPTED: {message}"
+
+    def test_default_sample_type_rna_rejects_duplicates(self, geo_service):
+        """
+        Test Bug #2: Default sample_type="rna" behavior (backward compatibility).
+
+        When sample_type is not specified, should default to "rna" and reject duplicates.
+        """
+        # Create matrix with duplicates
+        n_unique_cells = 1000
+        n_duplicates = 500
+        n_total_cells = n_unique_cells + n_duplicates
+
+        unique_barcodes = [f"CELL_{i:05d}" for i in range(n_unique_cells)]
+        duplicated_barcodes = [unique_barcodes[i % len(unique_barcodes)] for i in range(n_duplicates)]
+        all_barcodes = unique_barcodes + duplicated_barcodes
+
+        matrix = pd.DataFrame(
+            np.random.poisson(5, (n_total_cells, 100)),
+            index=all_barcodes
+        )
+
+        # Validate WITHOUT specifying sample_type (should default to "rna")
+        is_valid, message = geo_service._validate_single_matrix(
+            gsm_id="GSM_test_default", matrix=matrix
+        )
+
+        assert is_valid is False, "Default (rna) should reject duplicates"
+        assert "duplicate" in message.lower()
+
 
 # ===============================================================================
 # Performance and Benchmarking Tests
