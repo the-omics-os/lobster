@@ -119,6 +119,11 @@ class DoclingService:
         Consumers should check is_available() before using.
         """
         try:
+            # Suppress formatting clash warnings from docling's html_backend
+            # These are non-fatal warnings about overlapping text styles (subscript vs bold)
+            # that occur when parsing complex HTML from publisher websites
+            import logging
+
             from docling.datamodel.base_models import InputFormat
             from docling.datamodel.pipeline_options import PdfPipelineOptions
             from docling.document_converter import (
@@ -127,11 +132,9 @@ class DoclingService:
                 PdfFormatOption,
             )
 
-            # Suppress formatting clash warnings from docling's html_backend
-            # These are non-fatal warnings about overlapping text styles (subscript vs bold)
-            # that occur when parsing complex HTML from publisher websites
-            import logging
-            html_backend_logger = logging.getLogger("docling_core.transforms.chunker.html_backend")
+            html_backend_logger = logging.getLogger(
+                "docling_core.transforms.chunker.html_backend"
+            )
             html_backend_logger.setLevel(logging.ERROR)
 
             # Store imports for later use

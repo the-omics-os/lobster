@@ -199,6 +199,72 @@ class DataExpertAssistant:
             self._llm = ChatBedrockConverse(**llm_params)
         return self._llm
 
+    def _format_supplementary_files_for_llm(
+        self,
+        metadata: Dict[str, Any],
+        max_series_files: int = 15,
+        max_sample_examples: int = 5,
+    ) -> str:
+        """
+        Format supplementary files for LLM consumption.
+
+        Used by both detect_modality and extract_strategy_config to ensure
+        consistent file formatting.
+
+        Args:
+            metadata: GEO dataset metadata dictionary
+            max_series_files: Maximum series-level files to show
+            max_sample_examples: Maximum sample files to show as examples
+
+        Returns:
+            Formatted string for LLM prompt
+        """
+        series_files = metadata.get("supplementary_file", [])
+        samples = metadata.get("samples", {})
+
+        # Collect all supplementary files (series-level + sample-level)
+        file_list = series_files if isinstance(series_files, list) else []
+
+        # Add sample-level supplementary files
+        sample_file_count = 0
+        sample_file_examples = []
+        for gsm_id, sample_meta in list(samples.items())[:10]:  # Check first 10 samples
+            sample_files = sample_meta.get("supplementary_file", [])
+            if isinstance(sample_files, list) and sample_files:
+                sample_file_count += len(sample_files)
+                if len(sample_file_examples) < max_sample_examples:
+                    sample_file_examples.extend(sample_files[:2])  # 2 files per sample
+
+        # Format file display for LLM
+        file_display_parts = []
+
+        # Series-level files
+        if file_list:
+            series_sample = file_list[:max_series_files]
+            series_display = "\n".join([f"  - {f}" for f in series_sample])
+            if len(file_list) > max_series_files:
+                series_display += f"\n  ... and {len(file_list) - max_series_files} more series-level files"
+            file_display_parts.append(
+                f"Series-level files ({len(file_list)} total):\n{series_display}"
+            )
+
+        # Sample-level files (examples)
+        if sample_file_examples:
+            sample_display = "\n".join([f"  - {f}" for f in sample_file_examples[:10]])
+            if sample_file_count > len(sample_file_examples):
+                sample_display += f"\n  ... and {sample_file_count - len(sample_file_examples)} more sample-level files across {len(samples)} samples"
+            file_display_parts.append(
+                f"Sample-level files ({sample_file_count} total across {len(samples)} samples, showing examples):\n{sample_display}"
+            )
+
+        file_display = (
+            "\n\n".join(file_display_parts)
+            if file_display_parts
+            else "No supplementary files listed"
+        )
+
+        return file_display
+
     def _pre_filter_multiomics_keywords(
         self, metadata: Dict[str, Any]
     ) -> Optional[str]:
@@ -314,60 +380,11 @@ class DataExpertAssistant:
             title = metadata.get("title", "N/A")
             summary = metadata.get("summary", "N/A")
             overall_design = metadata.get("overall_design", "N/A")
-            series_files = metadata.get("supplementary_file", [])
             platforms = metadata.get("platforms", {})
             samples = metadata.get("samples", {})
 
-            # Collect all supplementary files (series-level + sample-level)
-            file_list = series_files if isinstance(series_files, list) else []
-
-            # Add sample-level supplementary files (important for multiome/CITE-seq detection)
-            sample_file_count = 0
-            sample_file_examples = []
-            for gsm_id, sample_meta in list(samples.items())[
-                :10
-            ]:  # Check first 10 samples
-                sample_files = sample_meta.get("supplementary_file", [])
-                if isinstance(sample_files, list) and sample_files:
-                    sample_file_count += len(sample_files)
-                    if (
-                        len(sample_file_examples) < 5
-                    ):  # Show up to 5 example sample files
-                        sample_file_examples.extend(
-                            sample_files[:2]
-                        )  # 2 files per sample
-
-            # Format file display for LLM
-            file_display_parts = []
-
-            # Series-level files
-            if file_list:
-                series_sample = file_list[:15]
-                series_display = "\n".join([f"  - {f}" for f in series_sample])
-                if len(file_list) > 15:
-                    series_display += (
-                        f"\n  ... and {len(file_list) - 15} more series-level files"
-                    )
-                file_display_parts.append(
-                    f"Series-level files ({len(file_list)} total):\n{series_display}"
-                )
-
-            # Sample-level files (examples)
-            if sample_file_examples:
-                sample_display = "\n".join(
-                    [f"  - {f}" for f in sample_file_examples[:10]]
-                )
-                if sample_file_count > len(sample_file_examples):
-                    sample_display += f"\n  ... and {sample_file_count - len(sample_file_examples)} more sample-level files across {len(samples)} samples"
-                file_display_parts.append(
-                    f"Sample-level files ({sample_file_count} total across {len(samples)} samples, showing examples):\n{sample_display}"
-                )
-
-            file_display = (
-                "\n\n".join(file_display_parts)
-                if file_display_parts
-                else "No supplementary files listed"
-            )
+            # Use shared utility for file formatting
+            file_display = self._format_supplementary_files_for_llm(metadata)
 
             # Format platform information
             platform_display = ""
@@ -590,7 +607,9 @@ Return only a valid JSON object conforming to the ModalityDetectionResult schema
             title = metadata.get("title", "N/A")
             summary = metadata.get("summary", "N/A")
             overall_design = metadata.get("overall_design", "N/A")
-            supplementary_files = metadata.get("supplementary_file", [])
+
+            # Use shared utility for file formatting
+            file_display = self._format_supplementary_files_for_llm(metadata)
 
             # Prepare the context for LLM
             metadata_context = f"""
@@ -601,7 +620,7 @@ Summary: {summary}
 Overall Design: {overall_design}
 
 Supplementary Files:
-{supplementary_files if supplementary_files else 'No supplementary files listed'}
+{file_display}
 """
 
             # Get the schema from StrategyConfig class
@@ -620,6 +639,19 @@ Important notes:
 4. Check the summary and overall design text for mentions of raw data availability
 5. If a field cannot be determined from the metadata, use an empty string "" for string fields and false for boolean fields
 6. DO NOT use null, None, or any null-like values - use empty strings for unknown string fields
+
+7. **CRITICAL - RAW.tar File Handling:**
+   - Files named like "GSE*_RAW.tar" are bundled archives containing per-sample data files
+   - These typically contain matrix files, barcodes, features for 10X/scRNA-seq datasets
+   - When you see a RAW.tar file:
+     * Set raw_data_available: true
+     * The actual data files are INSIDE the tarball and not directly listed in metadata
+     * For 10X datasets, expect files like: matrix.mtx, barcodes.tsv, features.tsv
+     * Extract the GSE ID from the filename (e.g., GSE248556_RAW.tar → GSE248556)
+   - If ONLY a RAW.tar exists with no other specific filenames:
+     * Use the GSE ID as the base for matrix names (e.g., "GSE248556" for raw_UMI_like_matrix_name)
+     * Leave filetype as empty string since files are bundled
+     * Still mark raw_data_available: true
 
 Return only a valid JSON object that matches the StrategyConfig schema."""
 

@@ -6,8 +6,9 @@ by automatically detecting sample types and filtering to RNA samples.
 """
 
 import pytest
-from lobster.tools.geo_service import GEOService
+
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.tools.geo_service import GEOService
 
 
 @pytest.fixture
@@ -72,12 +73,18 @@ def test_detect_sample_types_rna_only(geo_service):
         "title": "Single-cell RNA-seq",
         "samples": {
             "GSM1": {
-                "characteristics_ch1": ["cell type: CD4 T cell", "library type: gene expression"],
+                "characteristics_ch1": [
+                    "cell type: CD4 T cell",
+                    "library type: gene expression",
+                ],
                 "title": "Sample1",
                 "library_strategy": "RNA-Seq",
             },
             "GSM2": {
-                "characteristics_ch1": ["cell type: CD8 T cell", "library type: gene expression"],
+                "characteristics_ch1": [
+                    "cell type: CD8 T cell",
+                    "library type: gene expression",
+                ],
                 "title": "Sample2",
                 "library_strategy": "RNA-Seq",
             },

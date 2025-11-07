@@ -5,10 +5,12 @@ Tests comprehensive edge cases for the _detect_sample_types method
 and verifies platform compatibility handling for multi-modal datasets.
 """
 
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, MagicMock, patch
-from lobster.tools.geo_service import GEOService
+
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.tools.geo_service import GEOService
 
 
 @pytest.fixture
@@ -46,7 +48,10 @@ class TestSampleTypeDetection:
         metadata = {
             "samples": {
                 "GSM1": {
-                    "characteristics_ch1": ["Assay: RNA", "Library Type: Gene Expression"],
+                    "characteristics_ch1": [
+                        "Assay: RNA",
+                        "Library Type: Gene Expression",
+                    ],
                     "title": "Sample1",
                     "library_strategy": "",
                 },
@@ -167,12 +172,36 @@ class TestSampleTypeDetection:
         """Test all VDJ/TCR/BCR detection patterns."""
         metadata = {
             "samples": {
-                "GSM1": {"characteristics_ch1": ["assay: VDJ"], "title": "", "library_strategy": ""},
-                "GSM2": {"characteristics_ch1": ["tcr-seq"], "title": "", "library_strategy": ""},
-                "GSM3": {"characteristics_ch1": ["bcr seq"], "title": "", "library_strategy": ""},
-                "GSM4": {"characteristics_ch1": ["immune repertoire"], "title": "", "library_strategy": ""},
-                "GSM5": {"characteristics_ch1": [], "title": "Sample_TCR", "library_strategy": ""},
-                "GSM6": {"characteristics_ch1": [], "title": "Sample_BCR", "library_strategy": ""},
+                "GSM1": {
+                    "characteristics_ch1": ["assay: VDJ"],
+                    "title": "",
+                    "library_strategy": "",
+                },
+                "GSM2": {
+                    "characteristics_ch1": ["tcr-seq"],
+                    "title": "",
+                    "library_strategy": "",
+                },
+                "GSM3": {
+                    "characteristics_ch1": ["bcr seq"],
+                    "title": "",
+                    "library_strategy": "",
+                },
+                "GSM4": {
+                    "characteristics_ch1": ["immune repertoire"],
+                    "title": "",
+                    "library_strategy": "",
+                },
+                "GSM5": {
+                    "characteristics_ch1": [],
+                    "title": "Sample_TCR",
+                    "library_strategy": "",
+                },
+                "GSM6": {
+                    "characteristics_ch1": [],
+                    "title": "Sample_BCR",
+                    "library_strategy": "",
+                },
             }
         }
 
@@ -185,12 +214,36 @@ class TestSampleTypeDetection:
         """Test CITE-seq protein detection variants."""
         metadata = {
             "samples": {
-                "GSM1": {"characteristics_ch1": ["assay: protein"], "title": "", "library_strategy": ""},
-                "GSM2": {"characteristics_ch1": ["library type: antibody capture"], "title": "", "library_strategy": ""},
-                "GSM3": {"characteristics_ch1": ["antibody-derived tag"], "title": "", "library_strategy": ""},
-                "GSM4": {"characteristics_ch1": ["adt"], "title": "", "library_strategy": ""},
-                "GSM5": {"characteristics_ch1": ["cite-seq protein"], "title": "", "library_strategy": ""},
-                "GSM6": {"characteristics_ch1": [], "title": "Sample_ADT", "library_strategy": ""},
+                "GSM1": {
+                    "characteristics_ch1": ["assay: protein"],
+                    "title": "",
+                    "library_strategy": "",
+                },
+                "GSM2": {
+                    "characteristics_ch1": ["library type: antibody capture"],
+                    "title": "",
+                    "library_strategy": "",
+                },
+                "GSM3": {
+                    "characteristics_ch1": ["antibody-derived tag"],
+                    "title": "",
+                    "library_strategy": "",
+                },
+                "GSM4": {
+                    "characteristics_ch1": ["adt"],
+                    "title": "",
+                    "library_strategy": "",
+                },
+                "GSM5": {
+                    "characteristics_ch1": ["cite-seq protein"],
+                    "title": "",
+                    "library_strategy": "",
+                },
+                "GSM6": {
+                    "characteristics_ch1": [],
+                    "title": "Sample_ADT",
+                    "library_strategy": "",
+                },
             }
         }
 
@@ -235,10 +288,26 @@ class TestSampleTypeDetection:
         """Test gene expression (GEX) specific patterns."""
         metadata = {
             "samples": {
-                "GSM1": {"characteristics_ch1": ["library type: gex"], "title": "", "library_strategy": ""},
-                "GSM2": {"characteristics_ch1": ["library type: gene expression"], "title": "", "library_strategy": ""},
-                "GSM3": {"characteristics_ch1": [], "title": "Sample_GEX", "library_strategy": ""},
-                "GSM4": {"characteristics_ch1": [], "title": "Sample_gene_expression", "library_strategy": ""},
+                "GSM1": {
+                    "characteristics_ch1": ["library type: gex"],
+                    "title": "",
+                    "library_strategy": "",
+                },
+                "GSM2": {
+                    "characteristics_ch1": ["library type: gene expression"],
+                    "title": "",
+                    "library_strategy": "",
+                },
+                "GSM3": {
+                    "characteristics_ch1": [],
+                    "title": "Sample_GEX",
+                    "library_strategy": "",
+                },
+                "GSM4": {
+                    "characteristics_ch1": [],
+                    "title": "Sample_gene_expression",
+                    "library_strategy": "",
+                },
             }
         }
 
@@ -258,13 +327,25 @@ class TestPlatformCompatibilityMultiModal:
             "summary": "Single-cell RNA and protein profiling",
             "platform_id": ["GPL24676"],  # 10X Chromium (series level - list)
             "samples": {
-                "GSM1": {"characteristics_ch1": ["assay: RNA"], "title": "S1_RNA", "library_strategy": "RNA-Seq", "platform_id": "GPL24676"},
-                "GSM2": {"characteristics_ch1": ["assay: protein"], "title": "S1_protein", "library_strategy": "", "platform_id": "GPL24676"},
+                "GSM1": {
+                    "characteristics_ch1": ["assay: RNA"],
+                    "title": "S1_RNA",
+                    "library_strategy": "RNA-Seq",
+                    "platform_id": "GPL24676",
+                },
+                "GSM2": {
+                    "characteristics_ch1": ["assay: protein"],
+                    "title": "S1_protein",
+                    "library_strategy": "",
+                    "platform_id": "GPL24676",
+                },
             },
         }
 
         # Mock the data expert assistant (use create=True for lazy initialization)
-        with patch.object(geo_service, "_data_expert_assistant", create=True) as mock_assistant:
+        with patch.object(
+            geo_service, "_data_expert_assistant", create=True
+        ) as mock_assistant:
             mock_result = Mock()
             mock_result.modality = "cite_seq"
             mock_result.is_supported = False
@@ -275,7 +356,9 @@ class TestPlatformCompatibilityMultiModal:
             mock_assistant.detect_modality.return_value = mock_result
 
             # Should NOT raise exception
-            is_compatible, message = geo_service._check_platform_compatibility("GSE12345", metadata)
+            is_compatible, message = geo_service._check_platform_compatibility(
+                "GSE12345", metadata
+            )
 
             assert is_compatible is True
             assert "Multi-modal dataset" in message or "loading RNA" in message.lower()
@@ -288,12 +371,24 @@ class TestPlatformCompatibilityMultiModal:
             "title": "CITE-seq study",
             "platform_id": ["GPL24676"],  # 10X Chromium (series level - list)
             "samples": {
-                "GSM1": {"characteristics_ch1": ["assay: protein"], "title": "S1_protein", "library_strategy": "", "platform_id": "GPL24676"},
-                "GSM2": {"characteristics_ch1": ["assay: VDJ"], "title": "S1_VDJ", "library_strategy": "", "platform_id": "GPL24676"},
+                "GSM1": {
+                    "characteristics_ch1": ["assay: protein"],
+                    "title": "S1_protein",
+                    "library_strategy": "",
+                    "platform_id": "GPL24676",
+                },
+                "GSM2": {
+                    "characteristics_ch1": ["assay: VDJ"],
+                    "title": "S1_VDJ",
+                    "library_strategy": "",
+                    "platform_id": "GPL24676",
+                },
             },
         }
 
-        with patch.object(geo_service, "_data_expert_assistant", create=True) as mock_assistant:
+        with patch.object(
+            geo_service, "_data_expert_assistant", create=True
+        ) as mock_assistant:
             mock_result = Mock()
             mock_result.modality = "cite_seq"
             mock_result.is_supported = False
@@ -314,8 +409,18 @@ class TestPlatformCompatibilityMultiModal:
             "title": "Multi-omics study",
             "platform_id": ["GPL24676"],  # 10X Chromium (series level - list)
             "samples": {
-                "GSM1": {"characteristics_ch1": ["assay: RNA"], "title": "", "library_strategy": "RNA-Seq", "platform_id": "GPL24676"},
-                "GSM2": {"characteristics_ch1": ["assay: protein"], "title": "", "library_strategy": "", "platform_id": "GPL24676"},
+                "GSM1": {
+                    "characteristics_ch1": ["assay: RNA"],
+                    "title": "",
+                    "library_strategy": "RNA-Seq",
+                    "platform_id": "GPL24676",
+                },
+                "GSM2": {
+                    "characteristics_ch1": ["assay: protein"],
+                    "title": "",
+                    "library_strategy": "",
+                    "platform_id": "GPL24676",
+                },
             },
         }
 
@@ -323,12 +428,12 @@ class TestPlatformCompatibilityMultiModal:
 
         # Store metadata first
         geo_service.data_manager._store_geo_metadata(
-            geo_id=geo_id,
-            metadata=metadata,
-            stored_by="test"
+            geo_id=geo_id, metadata=metadata, stored_by="test"
         )
 
-        with patch.object(geo_service, "_data_expert_assistant", create=True) as mock_assistant:
+        with patch.object(
+            geo_service, "_data_expert_assistant", create=True
+        ) as mock_assistant:
             mock_result = Mock()
             mock_result.modality = "cite_seq"
             mock_result.is_supported = False
@@ -382,9 +487,7 @@ class TestSampleFilteringIntegration:
         }
 
         geo_service.data_manager._store_geo_metadata(
-            geo_id=geo_id,
-            metadata={"test": "data"},
-            stored_by="test"
+            geo_id=geo_id, metadata={"test": "data"}, stored_by="test"
         )
 
         stored_entry = geo_service.data_manager._get_geo_metadata(geo_id)

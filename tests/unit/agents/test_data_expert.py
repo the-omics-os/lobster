@@ -368,5 +368,232 @@ class TestWorkspaceRestoration:
         assert agent is not None
 
 
+# ===============================================================================
+# DataExpertAssistant Tests (File Formatting and Strategy Extraction)
+# ===============================================================================
+
+
+@pytest.mark.unit
+class TestDataExpertAssistantFileFormatting:
+    """Test DataExpertAssistant file formatting and strategy extraction."""
+
+    @pytest.fixture
+    def assistant(self):
+        """Create DataExpertAssistant instance."""
+        return DataExpertAssistant()
+
+    def test_format_supplementary_files_with_raw_tar_only(self, assistant):
+        """Test file formatting with only GSE*_RAW.tar (common 10X pattern)."""
+        metadata = {
+            "supplementary_file": [
+                "ftp://ftp.ncbi.nlm.nih.gov/geo/series/GSE248nnn/GSE248556/suppl/GSE248556_RAW.tar"
+            ],
+            "samples": {},
+        }
+
+        result = assistant._format_supplementary_files_for_llm(metadata)
+
+        # Should format with bullet points
+        assert "Series-level files (1 total):" in result
+        assert "  - ftp://ftp.ncbi.nlm.nih.gov" in result
+        assert "GSE248556_RAW.tar" in result
+        # Should NOT show Python list representation
+        assert "['" not in result
+        assert "']" not in result
+
+    def test_format_supplementary_files_with_sample_level_files(self, assistant):
+        """Test file formatting with sample-level files."""
+        metadata = {
+            "supplementary_file": [],  # No series-level files
+            "samples": {
+                "GSM123": {
+                    "supplementary_file": [
+                        "GSM123_sample1_atac_peaks.bed",
+                        "GSM123_sample1_atac_fragments.tsv.gz",
+                    ]
+                },
+                "GSM124": {
+                    "supplementary_file": [
+                        "GSM124_sample2_atac_peaks.bed",
+                        "GSM124_sample2_atac_fragments.tsv.gz",
+                    ]
+                },
+                "GSM125": {
+                    "supplementary_file": [
+                        "GSM125_sample3_atac_peaks.bed",
+                        "GSM125_sample3_atac_fragments.tsv.gz",
+                    ]
+                },
+            },
+        }
+
+        result = assistant._format_supplementary_files_for_llm(metadata)
+
+        # Should include sample-level files
+        assert "Sample-level files" in result
+        assert "GSM123_sample1" in result or "GSM124_sample2" in result
+        assert "across 3 samples" in result
+
+    def test_format_supplementary_files_with_mixed_files(self, assistant):
+        """Test file formatting with both series-level and sample-level files."""
+        metadata = {
+            "supplementary_file": [
+                "GSE12345_summary_matrix.txt.gz",
+                "GSE12345_cell_annotations.csv",
+            ],
+            "samples": {
+                "GSM001": {"supplementary_file": ["GSM001_raw.mtx"]},
+                "GSM002": {"supplementary_file": ["GSM002_raw.mtx"]},
+            },
+        }
+
+        result = assistant._format_supplementary_files_for_llm(metadata)
+
+        # Should show both sections
+        assert "Series-level files (2 total):" in result
+        assert "Sample-level files" in result
+        assert "GSE12345_summary_matrix.txt.gz" in result
+        assert "GSM001_raw.mtx" in result or "GSM002_raw.mtx" in result
+
+    def test_format_supplementary_files_with_no_files(self, assistant):
+        """Test file formatting with no files available."""
+        metadata = {"supplementary_file": [], "samples": {}}
+
+        result = assistant._format_supplementary_files_for_llm(metadata)
+
+        assert result == "No supplementary files listed"
+
+    def test_format_supplementary_files_with_many_series_files(self, assistant):
+        """Test file formatting with >15 series-level files (truncation)."""
+        # Create 20 dummy files
+        many_files = [f"GSE12345_file_{i}.txt" for i in range(20)]
+
+        metadata = {"supplementary_file": many_files, "samples": {}}
+
+        result = assistant._format_supplementary_files_for_llm(metadata)
+
+        # Should show first 15 + truncation message
+        assert "Series-level files (20 total):" in result
+        assert "... and 5 more series-level files" in result
+        assert "GSE12345_file_0.txt" in result
+        assert "GSE12345_file_14.txt" in result
+        # Should NOT show file 15+ (truncated)
+        assert "GSE12345_file_15.txt" not in result
+
+    @patch.object(DataExpertAssistant, "llm")
+    def test_extract_strategy_config_with_raw_tar(self, mock_llm, assistant):
+        """Test strategy extraction with RAW.tar file."""
+        # Mock LLM response simulating successful RAW.tar recognition
+        mock_response = Mock()
+        mock_response.content = [
+            Mock(
+                text='{"summary_file_name": "", "summary_file_type": "", '
+                '"processed_matrix_name": "", "processed_matrix_filetype": "", '
+                '"raw_UMI_like_matrix_name": "GSE248556", "raw_UMI_like_matrix_filetype": "", '
+                '"cell_annotation_name": "", "cell_annotation_filetype": "", '
+                '"raw_data_available": true}'
+            )
+        ]
+        mock_llm.invoke.return_value = mock_response
+
+        metadata = {
+            "title": "Single-cell transcriptome study",
+            "summary": "10X scRNA-seq analysis",
+            "overall_design": "Droplet-based scRNA-seq (10X Genomics)",
+            "supplementary_file": [
+                "ftp://ftp.ncbi.nlm.nih.gov/geo/series/GSE248nnn/GSE248556/suppl/GSE248556_RAW.tar"
+            ],
+            "samples": {},
+        }
+
+        result = assistant.extract_strategy_config(metadata, "GSE248556")
+
+        # Should successfully extract strategy
+        assert result is not None
+        assert result.raw_data_available is True
+        # With RAW.tar guidance, should at least identify the GSE ID
+        assert (
+            result.raw_UMI_like_matrix_name == "GSE248556"
+            or result.raw_UMI_like_matrix_name == ""
+        )
+
+        # Verify LLM was called with properly formatted files
+        call_args = mock_llm.invoke.call_args
+        assert call_args is not None
+        user_prompt = call_args[0][0][1]["content"]  # Extract user prompt
+
+        # Should have formatted file display (not Python list)
+        assert "Series-level files" in user_prompt
+        assert "GSE248556_RAW.tar" in user_prompt
+        assert "['" not in user_prompt  # No Python list representation
+
+    @patch.object(DataExpertAssistant, "llm")
+    def test_extract_strategy_config_with_sample_level_files(self, mock_llm, assistant):
+        """Test strategy extraction with only sample-level files."""
+        # Mock LLM response
+        mock_response = Mock()
+        mock_response.content = [
+            Mock(
+                text='{"summary_file_name": "", "summary_file_type": "", '
+                '"processed_matrix_name": "", "processed_matrix_filetype": "", '
+                '"raw_UMI_like_matrix_name": "sample_raw", "raw_UMI_like_matrix_filetype": "mtx", '
+                '"cell_annotation_name": "barcodes", "cell_annotation_filetype": "tsv", '
+                '"raw_data_available": true}'
+            )
+        ]
+        mock_llm.invoke.return_value = mock_response
+
+        metadata = {
+            "title": "Multiome study",
+            "summary": "Joint GEX + ATAC profiling",
+            "overall_design": "10X Multiome",
+            "supplementary_file": [],  # No series-level files
+            "samples": {
+                "GSM001": {
+                    "supplementary_file": [
+                        "GSM001_gex_matrix.mtx",
+                        "GSM001_atac_fragments.tsv.gz",
+                    ]
+                },
+                "GSM002": {
+                    "supplementary_file": [
+                        "GSM002_gex_matrix.mtx",
+                        "GSM002_atac_fragments.tsv.gz",
+                    ]
+                },
+            },
+        }
+
+        result = assistant.extract_strategy_config(metadata, "GSE12345")
+
+        # Should successfully extract strategy
+        assert result is not None
+
+        # Verify LLM received sample-level files
+        call_args = mock_llm.invoke.call_args
+        user_prompt = call_args[0][0][1]["content"]
+
+        # Should show sample-level files
+        assert "Sample-level files" in user_prompt
+        assert "GSM001" in user_prompt or "GSM002" in user_prompt
+
+    def test_extract_strategy_config_system_prompt_has_raw_tar_guidance(
+        self, assistant
+    ):
+        """Verify system prompt includes RAW.tar handling guidance."""
+        # We can't easily test LLM invocation without mocking, but we can verify
+        # the code structure includes RAW.tar guidance in the source
+
+        # Check that the source code contains RAW.tar guidance
+        import inspect
+
+        source = inspect.getsource(assistant.extract_strategy_config)
+
+        # Verify RAW.tar guidance is present in system prompt
+        assert "RAW.tar" in source or "RAW.tar File Handling" in source
+        assert "bundled archives" in source or "bundled" in source
+        assert "raw_data_available" in source
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])

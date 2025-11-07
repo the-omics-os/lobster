@@ -102,6 +102,7 @@ dependencies = [
     "jupytext>=1.15.0",
     "docling>=2.60.0",
     "docling-core>=2.50.0",
+    "redis>=6.4.0",
 ]
 
 [project.optional-dependencies]

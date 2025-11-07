@@ -397,17 +397,23 @@ class GEOService:
             except OSError as e:
                 # GEOparse wraps ftplib.error_perm (550) as OSError with specific message
                 error_str = str(e)
-                if "Download failed" in error_str and ("No such file" in error_str or "not public yet" in error_str):
+                if "Download failed" in error_str and (
+                    "No such file" in error_str or "not public yet" in error_str
+                ):
                     logger.warning(
                         f"{operation_name} OSError indicates missing file: {error_str[:100]}. "
                         "Skipping retries, triggering fallback mechanism."
                     )
                     return "SOFT_FILE_MISSING"  # Sentinel value to signal fallback
                 # Other OSErrors may be transient, fall through to generic handler
-                logger.warning(f"{operation_name} OSError (may retry): {error_str[:100]}")
+                logger.warning(
+                    f"{operation_name} OSError (may retry): {error_str[:100]}"
+                )
                 retry_count += 1
                 if retry_count >= max_retries:
-                    logger.error(f"{operation_name} failed after {max_retries} attempts: {e}")
+                    logger.error(
+                        f"{operation_name} failed after {max_retries} attempts: {e}"
+                    )
                     return None
                 # Continue with exponential backoff
                 delay = base_delay * (2 ** (retry_count - 1)) * (0.5 + random.random())
@@ -430,7 +436,9 @@ class GEOService:
                 logger.warning(f"{operation_name} FTP error: {error_str}")
                 retry_count += 1
                 if retry_count >= max_retries:
-                    logger.error(f"{operation_name} failed after {max_retries} attempts: {e}")
+                    logger.error(
+                        f"{operation_name} failed after {max_retries} attempts: {e}"
+                    )
                     return None
                 # Continue with exponential backoff
                 delay = base_delay * (2 ** (retry_count - 1)) * (0.5 + random.random())
@@ -857,7 +865,9 @@ class GEOService:
                 is_compatible, compat_message = self._check_platform_compatibility(
                     gse_id, metadata
                 )
-                logger.info(f"Platform validation for {gse_id} (Entrez): {compat_message}")
+                logger.info(
+                    f"Platform validation for {gse_id} (Entrez): {compat_message}"
+                )
             except UnsupportedPlatformError as e:
                 # Store metadata and error for supervisor access, then re-raise
                 self.data_manager.metadata_store[gse_id] = {
@@ -883,10 +893,14 @@ class GEOService:
             raise
         except urllib.error.URLError as e:
             logger.error(f"Network error in Entrez fallback for {gse_id}: {e}")
-            raise Exception(f"Network error fetching Entrez metadata for {gse_id}: {str(e)}")
+            raise Exception(
+                f"Network error fetching Entrez metadata for {gse_id}: {str(e)}"
+            )
         except json.JSONDecodeError as e:
             logger.error(f"Error parsing Entrez JSON response for {gse_id}: {e}")
-            raise Exception(f"Error parsing Entrez metadata response for {gse_id}: {str(e)}")
+            raise Exception(
+                f"Error parsing Entrez metadata response for {gse_id}: {str(e)}"
+            )
         except Exception as e:
             logger.error(f"Error in Entrez fallback for {gse_id}: {e}")
             raise
@@ -937,43 +951,36 @@ class GEOService:
                 # Core identifiers
                 "geo_accession": gse_id,
                 "accession": gse_id,
-
                 # Basic information
                 "title": entrez_record.get("title", ""),
                 "summary": entrez_record.get("summary", ""),
-                "type": entrez_record.get("gdstype", "Expression profiling by high throughput sequencing"),
-
+                "type": entrez_record.get(
+                    "gdstype", "Expression profiling by high throughput sequencing"
+                ),
                 # Organism information
                 "taxon": entrez_record.get("taxon", ""),
                 "organism": entrez_record.get("taxon", ""),
-
                 # Platform information (as list for consistency with GEOparse)
                 "platform_id": platform_ids,
-
                 # Sample information
                 "n_samples": entrez_record.get("n_samples", 0),
                 "sample_count": entrez_record.get("n_samples", 0),
-
                 # Publication information
                 "pubmed_id": pubmed_ids if pubmed_ids else "",
-
                 # Dates
                 "submission_date": entrez_record.get("pdat", ""),
                 "last_update_date": entrez_record.get("pdat", ""),
-
                 # Platform details (limited from Entrez)
-                "platforms": self._extract_platform_info_from_entrez(entrez_record, platform_ids),
-
+                "platforms": self._extract_platform_info_from_entrez(
+                    entrez_record, platform_ids
+                ),
                 # Sample metadata (empty - not available via Entrez)
                 "samples": {},
                 "sample_id": [],
-
                 # Supplementary files (not available via Entrez)
                 "supplementary_file": [],
-
                 # Status
                 "status": "Public",  # Assume public if in GEO
-
                 # FTP link (if available)
                 "ftp_link": entrez_record.get("ftplink", ""),
             }
@@ -1022,11 +1029,15 @@ class GEOService:
                 platforms[gpl_id] = {
                     "title": f"Platform {gpl_id}",
                     "organism": platform_organism,
-                    "technology": platform_tech if platform_tech else "high throughput sequencing",
+                    "technology": (
+                        platform_tech if platform_tech else "high throughput sequencing"
+                    ),
                     "_note": "Platform details from Entrez are limited. Full details available on GEO website.",
                 }
 
-            logger.debug(f"Extracted platform info for {len(platform_ids)} platform(s) from Entrez")
+            logger.debug(
+                f"Extracted platform info for {len(platform_ids)} platform(s) from Entrez"
+            )
 
         except Exception as e:
             logger.warning(f"Error extracting platform info from Entrez: {e}")
@@ -1163,7 +1174,9 @@ class GEOService:
             log_params = {
                 "geo_id": clean_geo_id,
                 "download_source": geo_result.source.value,
-                "processing_method": geo_result.processing_info.get("method", "unknown"),
+                "processing_method": geo_result.processing_info.get(
+                    "method", "unknown"
+                ),
             }
 
             log_description = f"Downloaded GEO dataset {clean_geo_id} using strategic approach ({geo_result.source.value}), saved to {saved_file}"
@@ -1171,13 +1184,19 @@ class GEOService:
             if multimodal_info and multimodal_info.get("is_multimodal"):
                 # Add multi-modal info to parameters
                 log_params["is_multimodal"] = True
-                log_params["loaded_modalities"] = multimodal_info.get("supported_types", [])
-                log_params["excluded_modalities"] = multimodal_info.get("unsupported_types", [])
+                log_params["loaded_modalities"] = multimodal_info.get(
+                    "supported_types", []
+                )
+                log_params["excluded_modalities"] = multimodal_info.get(
+                    "unsupported_types", []
+                )
 
                 # Calculate excluded sample count
                 sample_types = multimodal_info.get("sample_types", {})
                 excluded_count = sum(
-                    len(samples) for modality, samples in sample_types.items() if modality != "rna"
+                    len(samples)
+                    for modality, samples in sample_types.items()
+                    if modality != "rna"
                 )
 
                 # Enhance description with exclusion info
@@ -1203,11 +1222,13 @@ class GEOService:
 
             if multimodal_info and multimodal_info.get("is_multimodal"):
                 sample_types = multimodal_info.get("sample_types", {})
-                excluded_summary = ", ".join([
-                    f"{modality.upper()}: {len(samples)}"
-                    for modality, samples in sample_types.items()
-                    if modality != "rna"
-                ])
+                excluded_summary = ", ".join(
+                    [
+                        f"{modality.upper()}: {len(samples)}"
+                        for modality, samples in sample_types.items()
+                        if modality != "rna"
+                    ]
+                )
                 success_msg += f"""
 
 🧬 Multi-Modal Dataset Detected:
@@ -2105,7 +2126,9 @@ class GEOService:
         # Decision: Handle multi-modal datasets intelligently
         if not modality_result.is_supported:
             # Check if this is a multi-modal dataset by examining sample types
-            logger.info(f"Detected unsupported modality '{modality_result.modality}', checking for multi-modal composition...")
+            logger.info(
+                f"Detected unsupported modality '{modality_result.modality}', checking for multi-modal composition..."
+            )
             sample_types = self._detect_sample_types(metadata)
 
             # Check if we have any supported modalities
@@ -2139,11 +2162,13 @@ class GEOService:
                         self.data_manager.metadata_store[geo_id] = existing_entry
 
                 # Log what will be skipped
-                unsupported_summary = ", ".join([
-                    f"{modality}: {len(samples)} samples"
-                    for modality, samples in sample_types.items()
-                    if modality != "rna"
-                ])
+                unsupported_summary = ", ".join(
+                    [
+                        f"{modality}: {len(samples)} samples"
+                        for modality, samples in sample_types.items()
+                        if modality != "rna"
+                    ]
+                )
                 logger.warning(
                     f"Skipping unsupported modalities in {geo_id}: {unsupported_summary}. "
                     f"Support planned for future releases (v2.6+)."
@@ -2151,16 +2176,15 @@ class GEOService:
 
                 return (
                     True,
-                    f"Multi-modal dataset - loading RNA samples only ({len(sample_types['rna'])} samples)"
+                    f"Multi-modal dataset - loading RNA samples only ({len(sample_types['rna'])} samples)",
                 )
 
             elif has_rna and not has_unsupported:
                 # RNA-only dataset that was misclassified by pre-filter
-                logger.info(f"Dataset is RNA-only despite modality detection. Proceeding with load.")
-                return (
-                    True,
-                    f"RNA-only dataset (pre-filter was overly conservative)"
+                logger.info(
+                    f"Dataset is RNA-only despite modality detection. Proceeding with load."
                 )
+                return (True, f"RNA-only dataset (pre-filter was overly conservative)")
 
             else:
                 # No RNA samples found - truly unsupported
@@ -2185,7 +2209,9 @@ class GEOService:
                         "suggestions": modality_result.suggestions,
                         "estimated_implementation": "Planned for Lobster v2.6-v2.8 depending on modality",
                         "detected_signals_formatted": signals_display,
-                        "sample_types_detected": sample_types if sample_types else "No samples classified",
+                        "sample_types_detected": (
+                            sample_types if sample_types else "No samples classified"
+                        ),
                     },
                 )
 
@@ -2245,47 +2271,77 @@ class GEOService:
                     chars_text = str(chars).lower()
 
                 # RNA detection
-                if any(pattern in chars_text for pattern in [
-                    "assay: rna", "assay:rna",
-                    "library type: gene expression", "library_type: gene expression",
-                    "data type: rna-seq", "datatype: rna-seq",
-                    "library type: gex", "library_type: gex"
-                ]):
+                if any(
+                    pattern in chars_text
+                    for pattern in [
+                        "assay: rna",
+                        "assay:rna",
+                        "library type: gene expression",
+                        "library_type: gene expression",
+                        "data type: rna-seq",
+                        "datatype: rna-seq",
+                        "library type: gex",
+                        "library_type: gex",
+                    ]
+                ):
                     detected_type = "rna"
 
                 # Protein detection (CITE-seq, antibody capture)
-                elif any(pattern in chars_text for pattern in [
-                    "assay: protein", "assay:protein",
-                    "library type: antibody capture", "library_type: antibody capture",
-                    "antibody-derived tag", "adt",
-                    "cite-seq protein", "citeseq protein"
-                ]):
+                elif any(
+                    pattern in chars_text
+                    for pattern in [
+                        "assay: protein",
+                        "assay:protein",
+                        "library type: antibody capture",
+                        "library_type: antibody capture",
+                        "antibody-derived tag",
+                        "adt",
+                        "cite-seq protein",
+                        "citeseq protein",
+                    ]
+                ):
                     detected_type = "protein"
 
                 # VDJ detection (TCR/BCR sequencing)
-                elif any(pattern in chars_text for pattern in [
-                    "assay: vdj", "assay:vdj",
-                    "library type: vdj", "library_type: vdj",
-                    "tcr-seq", "tcr seq",
-                    "bcr-seq", "bcr seq",
-                    "immune repertoire"
-                ]):
+                elif any(
+                    pattern in chars_text
+                    for pattern in [
+                        "assay: vdj",
+                        "assay:vdj",
+                        "library type: vdj",
+                        "library_type: vdj",
+                        "tcr-seq",
+                        "tcr seq",
+                        "bcr-seq",
+                        "bcr seq",
+                        "immune repertoire",
+                    ]
+                ):
                     detected_type = "vdj"
 
                 # ATAC detection
-                elif any(pattern in chars_text for pattern in [
-                    "assay: atac", "assay:atac",
-                    "library type: atac", "library_type: atac",
-                    "chromatin accessibility"
-                ]):
+                elif any(
+                    pattern in chars_text
+                    for pattern in [
+                        "assay: atac",
+                        "assay:atac",
+                        "library type: atac",
+                        "library_type: atac",
+                        "chromatin accessibility",
+                    ]
+                ):
                     detected_type = "atac"
 
             # Strategy 3: Check sample title for common patterns
             if not detected_type:
                 title = sample_meta.get("title", "").lower()
-                if any(pattern in title for pattern in ["_rna", "_gex", "_gene_expression"]):
+                if any(
+                    pattern in title for pattern in ["_rna", "_gex", "_gene_expression"]
+                ):
                     detected_type = "rna"
-                elif any(pattern in title for pattern in ["_protein", "_adt", "_antibody"]):
+                elif any(
+                    pattern in title for pattern in ["_protein", "_adt", "_antibody"]
+                ):
                     detected_type = "protein"
                 elif any(pattern in title for pattern in ["_vdj", "_tcr", "_bcr"]):
                     detected_type = "vdj"
@@ -2302,7 +2358,12 @@ class GEOService:
                 logger.debug(f"Sample {gsm_id}: type unclear, defaulting to 'rna'")
 
         # Log summary
-        summary = ", ".join([f"{modality}: {len(samples)}" for modality, samples in sample_types.items()])
+        summary = ", ".join(
+            [
+                f"{modality}: {len(samples)}"
+                for modality, samples in sample_types.items()
+            ]
+        )
         logger.info(f"Sample type detection complete: {summary}")
 
         return sample_types
@@ -3267,7 +3328,11 @@ The actual expression data download will be much faster now that metadata is pre
 
         try:
             # Check if this is a multi-modal dataset
-            geo_id = gse.metadata.get("geo_accession", [""])[0] if hasattr(gse, "metadata") else ""
+            geo_id = (
+                gse.metadata.get("geo_accession", [""])[0]
+                if hasattr(gse, "metadata")
+                else ""
+            )
             multimodal_info = None
             if geo_id and geo_id in self.data_manager.metadata_store:
                 stored_entry = self.data_manager._get_geo_metadata(geo_id)
@@ -3280,9 +3345,13 @@ The actual expression data download will be much faster now that metadata is pre
                     # Check if we should include this sample (multi-modal filtering)
                     if multimodal_info and multimodal_info.get("is_multimodal"):
                         # Get RNA sample IDs from multi-modal info
-                        rna_sample_ids = multimodal_info.get("sample_types", {}).get("rna", [])
+                        rna_sample_ids = multimodal_info.get("sample_types", {}).get(
+                            "rna", []
+                        )
                         if gsm_id not in rna_sample_ids:
-                            logger.debug(f"Skipping non-RNA sample {gsm_id} (multi-modal dataset)")
+                            logger.debug(
+                                f"Skipping non-RNA sample {gsm_id} (multi-modal dataset)"
+                            )
                             continue
 
                     sample_info[gsm_id] = {

@@ -168,13 +168,7 @@ class TestPhase1RegressionSuite:
             mock_response.raise_for_status = Mock()
             mock_response.json.return_value = {
                 "linksets": [
-                    {
-                        "linksetdbs": [
-                            {
-                                "links": ["INVALID_ID"]  # Non-numeric PMC ID
-                            }
-                        ]
-                    }
+                    {"linksetdbs": [{"links": ["INVALID_ID"]}]}  # Non-numeric PMC ID
                 ]
             }
             mock_get.return_value = mock_response
@@ -201,13 +195,7 @@ class TestPhase1RegressionSuite:
             mock_response.raise_for_status = Mock()
             mock_response.json.return_value = {
                 "linksets": [
-                    {
-                        "linksetdbs": [
-                            {
-                                "links": ["7891011"]  # Valid numeric PMC ID
-                            }
-                        ]
-                    }
+                    {"linksetdbs": [{"links": ["7891011"]}]}  # Valid numeric PMC ID
                 ]
             }
             mock_get.return_value = mock_response
@@ -225,7 +213,9 @@ class TestPhase1RegressionSuite:
 
         Critical regression: Phase 1 should not break preprint resolution.
         """
-        result = self.resolver._resolve_via_preprint_servers("10.1101/2024.01.15.123456")
+        result = self.resolver._resolve_via_preprint_servers(
+            "10.1101/2024.01.15.123456"
+        )
 
         assert result.is_accessible() is True
         assert result.source == "biorxiv"
@@ -493,9 +483,9 @@ class TestPhase1RegressionSuite:
                 "REGRESSION: Should use pubmed_pmc (PMC version of article), "
                 "not pubmed_pmc_refs (articles that cite it)"
             )
-            assert "linkname=pubmed_pmc_refs" not in called_url, (
-                "REGRESSION: pubmed_pmc_refs linkname detected - original bug returned!"
-            )
+            assert (
+                "linkname=pubmed_pmc_refs" not in called_url
+            ), "REGRESSION: pubmed_pmc_refs linkname detected - original bug returned!"
 
     # ============================================================
     # Test 7: Network Error Handling

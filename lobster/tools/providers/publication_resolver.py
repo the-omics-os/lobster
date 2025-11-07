@@ -305,7 +305,9 @@ class PublicationResolver:
 
             # Validate response is a dictionary with expected structure
             if not isinstance(data, dict):
-                logger.error(f"PMC API returned non-dict response for PMID {pmid}: {type(data)}")
+                logger.error(
+                    f"PMC API returned non-dict response for PMID {pmid}: {type(data)}"
+                )
                 return PublicationResolutionResult(
                     identifier=f"PMID:{pmid}", source="pmc", access_type="error"
                 )
@@ -315,20 +317,30 @@ class PublicationResolver:
             try:
                 linksets = data.get("linksets", [])
                 if not isinstance(linksets, list):
-                    logger.warning(f"PMC API linksets is not a list for PMID {pmid}: {type(linksets)}")
+                    logger.warning(
+                        f"PMC API linksets is not a list for PMID {pmid}: {type(linksets)}"
+                    )
                 elif linksets and len(linksets) > 0:
                     linksetdbs = linksets[0].get("linksetdbs", [])
                     if not isinstance(linksetdbs, list):
-                        logger.warning(f"PMC API linksetdbs is not a list for PMID {pmid}: {type(linksetdbs)}")
+                        logger.warning(
+                            f"PMC API linksetdbs is not a list for PMID {pmid}: {type(linksetdbs)}"
+                        )
                     elif linksetdbs and len(linksetdbs) > 0:
                         links = linksetdbs[0].get("links", [])
                         if not isinstance(links, list):
-                            logger.warning(f"PMC API links is not a list for PMID {pmid}: {type(links)}")
+                            logger.warning(
+                                f"PMC API links is not a list for PMID {pmid}: {type(links)}"
+                            )
                         elif links and len(links) > 0:
                             pmc_id = links[0]
                             # Validate PMC ID is numeric
-                            if not isinstance(pmc_id, (int, str)) or (isinstance(pmc_id, str) and not pmc_id.isdigit()):
-                                logger.warning(f"PMC API returned invalid PMC ID for PMID {pmid}: {pmc_id}")
+                            if not isinstance(pmc_id, (int, str)) or (
+                                isinstance(pmc_id, str) and not pmc_id.isdigit()
+                            ):
+                                logger.warning(
+                                    f"PMC API returned invalid PMC ID for PMID {pmid}: {pmc_id}"
+                                )
                                 pmc_id = None
             except (KeyError, IndexError, TypeError) as e:
                 logger.debug(f"No PMC link found for PMID {pmid}: {e}")
@@ -413,13 +425,19 @@ class PublicationResolver:
                             provider_url = url_data.get("value")
 
                             if provider_url:
-                                logger.info(f"Found LinkOut URL for PMID {pmid}: {provider_url}")
+                                logger.info(
+                                    f"Found LinkOut URL for PMID {pmid}: {provider_url}"
+                                )
                                 return PublicationResolutionResult(
                                     identifier=f"PMID:{pmid}",
                                     pdf_url=provider_url,
                                     source="linkout",
                                     access_type="publisher",
-                                    metadata={"linkout_provider": url_data.get("provider", {}).get("name", "Unknown")},
+                                    metadata={
+                                        "linkout_provider": url_data.get(
+                                            "provider", {}
+                                        ).get("name", "Unknown")
+                                    },
                                 )
             except (KeyError, IndexError, TypeError) as e:
                 logger.debug(f"No LinkOut URL found for PMID {pmid}: {e}")
@@ -510,21 +528,27 @@ class PublicationResolver:
             try:
                 data = response.json()
             except ValueError as e:
-                logger.error(f"Invalid JSON response from CrossRef API for DOI {doi}: {e}")
+                logger.error(
+                    f"Invalid JSON response from CrossRef API for DOI {doi}: {e}"
+                )
                 return PublicationResolutionResult(
                     identifier=doi, source="publisher", access_type="error"
                 )
 
             # Validate response is a dictionary with expected structure
             if not isinstance(data, dict):
-                logger.error(f"CrossRef API returned non-dict response for DOI {doi}: {type(data)}")
+                logger.error(
+                    f"CrossRef API returned non-dict response for DOI {doi}: {type(data)}"
+                )
                 return PublicationResolutionResult(
                     identifier=doi, source="publisher", access_type="error"
                 )
 
             message = data.get("message", {})
             if not isinstance(message, dict):
-                logger.warning(f"CrossRef API message is not a dict for DOI {doi}: {type(message)}")
+                logger.warning(
+                    f"CrossRef API message is not a dict for DOI {doi}: {type(message)}"
+                )
                 message = {}
 
             is_open_access = False
@@ -532,18 +556,25 @@ class PublicationResolver:
             # Check for open access indicators
             license_info = message.get("license", [])
             if not isinstance(license_info, list):
-                logger.warning(f"CrossRef API license info is not a list for DOI {doi}: {type(license_info)}")
+                logger.warning(
+                    f"CrossRef API license info is not a list for DOI {doi}: {type(license_info)}"
+                )
                 license_info = []
 
             for license_item in license_info:
-                if isinstance(license_item, dict) and "open-access" in str(license_item).lower():
+                if (
+                    isinstance(license_item, dict)
+                    and "open-access" in str(license_item).lower()
+                ):
                     is_open_access = True
                     break
 
             if not is_open_access:
                 link = message.get("link", [])
                 if not isinstance(link, list):
-                    logger.warning(f"CrossRef API link is not a list for DOI {doi}: {type(link)}")
+                    logger.warning(
+                        f"CrossRef API link is not a list for DOI {doi}: {type(link)}"
+                    )
                     link = []
 
                 for link_item in link:
