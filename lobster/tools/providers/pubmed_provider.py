@@ -36,6 +36,7 @@ from lobster.tools.providers.ncbi_query_builder import (
 from lobster.tools.providers.ncbi_query_builder import (
     build_pubmed_query,
 )
+from lobster.tools.rate_limiter import NCBIRateLimiter
 from lobster.utils.logger import get_logger
 from lobster.utils.ssl_utils import create_ssl_context, handle_ssl_error
 
@@ -149,6 +150,9 @@ class PubMedProvider(BasePublicationProvider):
         self._consecutive_failures = 0
         self._circuit_breaker_until = 0.0
         self._api_key_notified = False
+
+        # Redis-based distributed rate limiter (with graceful degradation)
+        self._rate_limiter = NCBIRateLimiter()
 
     @property
     def source(self) -> PublicationSource:
@@ -580,7 +584,15 @@ class PubMedProvider(BasePublicationProvider):
         raise Exception(error_msg)
 
     def _apply_request_throttling(self) -> None:
-        """Apply rate limiting between requests."""
+        """Apply rate limiting between requests using Redis + in-memory fallback."""
+        # Layer 1: Redis-based distributed rate limiting
+        # This ensures rate limits work across multiple processes/users
+        if not self._rate_limiter.wait_for_slot("ncbi_esearch", max_wait=10.0):
+            logger.warning(
+                "Redis rate limiter timeout - falling back to in-memory throttling"
+            )
+
+        # Layer 2: In-memory rate limiting (backward compatibility + fallback)
         current_time = time.time()
         time_since_last = current_time - self._last_request_time
 

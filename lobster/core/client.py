@@ -959,6 +959,60 @@ class AgentClient(BaseClient):
             )
         return history
 
+    def _check_redis_health(self) -> Dict[str, Any]:
+        """
+        Check Redis connection health for rate limiting.
+
+        Returns:
+            Dictionary with Redis status, metrics, and availability info
+        """
+        try:
+            from lobster.tools.rate_limiter import get_redis_client
+
+            client = get_redis_client()
+
+            if client is None:
+                return {
+                    "status": "unavailable",
+                    "message": "Redis connection failed - rate limiting disabled",
+                    "critical": True,
+                }
+
+            try:
+                # Get Redis server info
+                info = client.info("stats")
+                memory_info = client.info("memory")
+
+                return {
+                    "status": "healthy",
+                    "connected": True,
+                    "total_commands": info.get("total_commands_processed", 0),
+                    "connected_clients": info.get("connected_clients", 0),
+                    "uptime_seconds": info.get("uptime_in_seconds", 0),
+                    "used_memory_human": memory_info.get("used_memory_human", "unknown"),
+                    "critical": False,
+                }
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "message": f"Redis health check failed: {str(e)}",
+                    "connected": False,
+                    "critical": True,
+                }
+
+        except ImportError:
+            return {
+                "status": "not_configured",
+                "message": "Redis rate limiter not imported",
+                "critical": False,
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Unexpected error checking Redis: {str(e)}",
+                "critical": True,
+            }
+
     def get_status(self) -> Dict[str, Any]:
         """Get current client status."""
         return {
@@ -973,6 +1027,7 @@ class AgentClient(BaseClient):
             "workspace": str(self.workspace_path),
             "reasoning_enabled": self.enable_reasoning,
             "callbacks_count": len(self.callbacks),
+            "redis_health": self._check_redis_health(),
         }
 
     def reset(self):
