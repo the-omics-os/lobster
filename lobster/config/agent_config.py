@@ -189,7 +189,7 @@ class LobsterAgentConfigurator:
         },
         "production": {
             # Supervisor uses Claude 4.5 Sonnet
-            "supervisor": "claude-4-1-opus",
+            "supervisor": "claude-4-5-sonnet",
             # Assistant uses Claude 3.7 Sonnet
             "assistant": "claude-4-sonnet",
             # All expert agents use Claude 4 Sonnet

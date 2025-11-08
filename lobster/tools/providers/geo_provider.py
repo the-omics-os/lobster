@@ -442,7 +442,7 @@ class GEOProvider(BasePublicationProvider):
 
         # Build eSearch URL
         url_params = {
-            "db": "geo",  # GEO database (includes GSE, GSM, GPL, GDS)
+            "db": "gds",  # GEO DataSets database (includes GSE, GSM, GPL, GDS)
             "term": complete_query,
             "retmode": "json",
             "retmax": str(max_results),
@@ -465,6 +465,12 @@ class GEOProvider(BasePublicationProvider):
         try:
             json_data = json.loads(response_data)
             esearch_result = json_data.get("esearchresult", {})
+
+            # Check for API errors (e.g., invalid database name)
+            if "ERROR" in esearch_result:
+                error_msg = esearch_result["ERROR"]
+                logger.error(f"NCBI API error: {error_msg}")
+                raise ValueError(f"NCBI API error: {error_msg}")
 
             count = int(esearch_result.get("count", "0"))
             ids = esearch_result.get("idlist", [])
@@ -505,7 +511,7 @@ class GEOProvider(BasePublicationProvider):
 
         # Build eSummary URL
         url_params = {
-            "db": "geo",
+            "db": "gds",
             "retmode": "json",
             "tool": "lobster",
             "email": self.config.email,
@@ -562,7 +568,7 @@ class GEOProvider(BasePublicationProvider):
 
         # Build eLink URL
         url_params = {
-            "dbfrom": "geo",
+            "dbfrom": "gds",
             "db": "pubmed",
             "id": ",".join(geo_ids),
             "retmode": "json",
@@ -851,7 +857,7 @@ class GEOProvider(BasePublicationProvider):
         try:
             # First, get the GEO UID for this accession using esearch
             search_url = (
-                f"{self.base_url_esearch}?db=geo&term={gsm_accession}&retmode=json"
+                f"{self.base_url_esearch}?db=gds&term={gsm_accession}&retmode=json"
             )
             if self.config.api_key:
                 search_url += f"&api_key={self.config.api_key}"
@@ -867,7 +873,7 @@ class GEOProvider(BasePublicationProvider):
 
             # Use E-link to find related GSE series
             link_url = (
-                f"{self.base_url_elink}?dbfrom=geo&db=geo&id={geo_uid}&retmode=json"
+                f"{self.base_url_elink}?dbfrom=gds&db=gds&id={geo_uid}&retmode=json"
             )
             if self.config.api_key:
                 link_url += f"&api_key={self.config.api_key}"
@@ -881,14 +887,14 @@ class GEOProvider(BasePublicationProvider):
                 for linkset in link_data["linksets"]:
                     if "linksetdbs" in linkset:
                         for db in linkset["linksetdbs"]:
-                            if db.get("dbto") == "geo":
+                            if db.get("dbto") == "gds":
                                 linked_ids.extend(db.get("links", []))
 
             # Get summaries for linked IDs to find GSE series
             if linked_ids:
                 ids_str = ",".join(linked_ids[:10])  # Limit to first 10
                 summary_url = (
-                    f"{self.base_url_esummary}?db=geo&id={ids_str}&retmode=json"
+                    f"{self.base_url_esummary}?db=gds&id={ids_str}&retmode=json"
                 )
                 if self.config.api_key:
                     summary_url += f"&api_key={self.config.api_key}"
@@ -1037,7 +1043,7 @@ class GEOProvider(BasePublicationProvider):
         """
         try:
             # First, get the UID for this accession
-            search_url = f"{self.base_url_esearch}?db=geo&term={accession}&retmode=json"
+            search_url = f"{self.base_url_esearch}?db=gds&term={accession}&retmode=json"
             if self.config.api_key:
                 search_url += f"&api_key={self.config.api_key}"
 
@@ -1050,7 +1056,7 @@ class GEOProvider(BasePublicationProvider):
             geo_uid = search_data["esearchresult"]["idlist"][0]
 
             # Get summary using esummary
-            summary_url = f"{self.base_url_esummary}?db=geo&id={geo_uid}&retmode=json"
+            summary_url = f"{self.base_url_esummary}?db=gds&id={geo_uid}&retmode=json"
             if self.config.api_key:
                 summary_url += f"&api_key={self.config.api_key}"
 

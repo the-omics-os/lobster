@@ -89,7 +89,7 @@ class ProteomicsPreprocessingService:
 
             # Check for missing values
             X = adata_imputed.X.copy()
-            if not hasattr(X, "isnan") or not np.isnan(X).any():
+            if not np.isnan(X).any():
                 logger.info("No missing values detected, skipping imputation")
                 return adata_imputed, {
                     "method": method,

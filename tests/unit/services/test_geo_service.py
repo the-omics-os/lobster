@@ -1213,7 +1213,9 @@ class TestBiologyAwareValidation:
         # Create cell barcodes with duplicates
         unique_barcodes = [f"CELL_{i:05d}" for i in range(n_unique_cells)]
         # Duplicate some barcodes to simulate multi-chain data
-        duplicated_barcodes = np.random.choice(unique_barcodes, n_total_rows - n_unique_cells, replace=True)
+        duplicated_barcodes = np.random.choice(
+            unique_barcodes, n_total_rows - n_unique_cells, replace=True
+        )
         all_barcodes = unique_barcodes + list(duplicated_barcodes)
         np.random.shuffle(all_barcodes)
 
@@ -1222,14 +1224,37 @@ class TestBiologyAwareValidation:
             np.random.randint(0, 100, (n_total_rows, 30)),
             index=all_barcodes,
             columns=[
-                "chain", "v_gene", "d_gene", "j_gene", "c_gene",
-                "cdr1_nt", "cdr2_nt", "cdr3_nt", "cdr1_aa", "cdr2_aa",
-                "cdr3_aa", "reads", "umis", "frequency", "productive",
-                "full_length", "clonotype_id", "clone_size", "normalized_count",
-                "junction", "junction_aa", "v_identity", "j_identity",
-                "alignment_score", "consensus_quality", "is_cell",
-                "confidence", "annotation", "metadata1", "metadata2"
-            ]
+                "chain",
+                "v_gene",
+                "d_gene",
+                "j_gene",
+                "c_gene",
+                "cdr1_nt",
+                "cdr2_nt",
+                "cdr3_nt",
+                "cdr1_aa",
+                "cdr2_aa",
+                "cdr3_aa",
+                "reads",
+                "umis",
+                "frequency",
+                "productive",
+                "full_length",
+                "clonotype_id",
+                "clone_size",
+                "normalized_count",
+                "junction",
+                "junction_aa",
+                "v_identity",
+                "j_identity",
+                "alignment_score",
+                "consensus_quality",
+                "is_cell",
+                "confidence",
+                "annotation",
+                "metadata1",
+                "metadata2",
+            ],
         )
 
         # Validate with sample_type="vdj"
@@ -1237,7 +1262,9 @@ class TestBiologyAwareValidation:
             gsm_id="GSM_test_vdj", matrix=vdj_matrix, sample_type="vdj"
         )
 
-        assert is_valid is True, f"VDJ data with duplicates should be ACCEPTED: {message}"
+        assert (
+            is_valid is True
+        ), f"VDJ data with duplicates should be ACCEPTED: {message}"
         # The function logs VDJ-specific info, but returns message about matrix dimensions
         # Just verify it was accepted (is_valid=True)
 
@@ -1256,14 +1283,18 @@ class TestBiologyAwareValidation:
 
         unique_barcodes = [f"CELL_{i:05d}" for i in range(n_unique_cells)]
         # Duplicate some barcodes to simulate corruption
-        duplicated_barcodes = [unique_barcodes[i % len(unique_barcodes)] for i in range(n_duplicates)]
+        duplicated_barcodes = [
+            unique_barcodes[i % len(unique_barcodes)] for i in range(n_duplicates)
+        ]
         all_barcodes = unique_barcodes + duplicated_barcodes
         np.random.shuffle(all_barcodes)
 
         # Create gene expression matrix
         rna_matrix = pd.DataFrame(
-            np.random.poisson(5, (n_total_cells, 100)),  # Simplified: 100 genes instead of 36K
-            index=all_barcodes
+            np.random.poisson(
+                5, (n_total_cells, 100)
+            ),  # Simplified: 100 genes instead of 36K
+            index=all_barcodes,
         )
 
         # Validate with sample_type="rna"
@@ -1288,14 +1319,16 @@ class TestBiologyAwareValidation:
         n_total_cells = n_unique_cells + n_duplicates
 
         unique_barcodes = [f"SAMPLE_{i:04d}" for i in range(n_unique_cells)]
-        duplicated_barcodes = [unique_barcodes[i % len(unique_barcodes)] for i in range(n_duplicates)]
+        duplicated_barcodes = [
+            unique_barcodes[i % len(unique_barcodes)] for i in range(n_duplicates)
+        ]
         all_barcodes = unique_barcodes + duplicated_barcodes
         np.random.shuffle(all_barcodes)
 
         # Create protein matrix
         protein_matrix = pd.DataFrame(
             np.random.uniform(0, 10, (n_total_cells, 96)),  # NPX values
-            index=all_barcodes
+            index=all_barcodes,
         )
 
         # Validate with sample_type="protein"
@@ -1320,8 +1353,7 @@ class TestBiologyAwareValidation:
 
         # Create VDJ matrix
         vdj_matrix = pd.DataFrame(
-            np.random.randint(0, 100, (n_cells, 30)),
-            index=unique_barcodes
+            np.random.randint(0, 100, (n_cells, 30)), index=unique_barcodes
         )
 
         # Validate with sample_type="vdj"
@@ -1329,7 +1361,9 @@ class TestBiologyAwareValidation:
             gsm_id="GSM_test_vdj_no_dup", matrix=vdj_matrix, sample_type="vdj"
         )
 
-        assert is_valid is True, f"VDJ data without duplicates should be ACCEPTED: {message}"
+        assert (
+            is_valid is True
+        ), f"VDJ data without duplicates should be ACCEPTED: {message}"
 
     def test_default_sample_type_rna_rejects_duplicates(self, geo_service):
         """
@@ -1343,12 +1377,13 @@ class TestBiologyAwareValidation:
         n_total_cells = n_unique_cells + n_duplicates
 
         unique_barcodes = [f"CELL_{i:05d}" for i in range(n_unique_cells)]
-        duplicated_barcodes = [unique_barcodes[i % len(unique_barcodes)] for i in range(n_duplicates)]
+        duplicated_barcodes = [
+            unique_barcodes[i % len(unique_barcodes)] for i in range(n_duplicates)
+        ]
         all_barcodes = unique_barcodes + duplicated_barcodes
 
         matrix = pd.DataFrame(
-            np.random.poisson(5, (n_total_cells, 100)),
-            index=all_barcodes
+            np.random.poisson(5, (n_total_cells, 100)), index=all_barcodes
         )
 
         # Validate WITHOUT specifying sample_type (should default to "rna")

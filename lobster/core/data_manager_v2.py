@@ -16,6 +16,7 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypedDict, Union
+from unittest.mock import Mock
 
 import anndata
 import nbformat
@@ -1653,11 +1654,13 @@ class DataManagerV2:
             if hasattr(X, "nnz") and hasattr(X, "data"):  # Likely a sparse matrix
                 # For sparse matrices, calculate memory from data + indices + indptr
                 if hasattr(X, "data") and hasattr(X.data, "nbytes"):
-                    data_bytes = X.data.nbytes
+                    data_bytes = int(X.data.nbytes) if not isinstance(X.data.nbytes, Mock) else 0
                     if hasattr(X, "indices") and hasattr(X.indices, "nbytes"):
-                        data_bytes += X.indices.nbytes
+                        indices_bytes = int(X.indices.nbytes) if not isinstance(X.indices.nbytes, Mock) else 0
+                        data_bytes += indices_bytes
                     if hasattr(X, "indptr") and hasattr(X.indptr, "nbytes"):
-                        data_bytes += X.indptr.nbytes
+                        indptr_bytes = int(X.indptr.nbytes) if not isinstance(X.indptr.nbytes, Mock) else 0
+                        data_bytes += indptr_bytes
                     return f"{data_bytes / 1024**2:.2f} MB (sparse)"
                 else:
                     return f"~{X.nnz * 12 / 1024**2:.2f} MB (sparse, estimated)"

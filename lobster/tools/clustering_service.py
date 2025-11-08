@@ -564,6 +564,23 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
             n_hvg = sum(adata.var.highly_variable)
             logger.info(f"Using {n_hvg} highly variable genes")
 
+            # ISSUE #7 FIX: Handle case when no HVG detected
+            if n_hvg == 0:
+                logger.warning(
+                    "No highly variable genes detected with current parameters. "
+                    "Using all genes for clustering instead."
+                )
+                raise ClusteringError(
+                    "No highly variable genes detected. This typically indicates:\n"
+                    "1. Data has very low variance (all genes have similar expression)\n"
+                    "2. Dataset is too small or uniform for HVG detection\n"
+                    "3. Data may need quality filtering before clustering\n\n"
+                    "Suggestions:\n"
+                    "- Check data quality (use quality_service for QC metrics)\n"
+                    "- Ensure data is raw counts (not already normalized/log-transformed)\n"
+                    "- Try filtering out low-quality cells/genes first"
+                )
+
             # In demo mode, further restrict the number of HVG for faster processing
             if demo_mode and n_hvg > 1000:
                 logger.info("Demo mode: Restricting to top 1000 variable genes")
@@ -582,15 +599,32 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
             sc.pp.scale(adata_hvg, max_value=10)
             self._update_progress("Data scaling completed")
 
-            # PCA (using 'arpack' SVD solver for better performance with sparse matrices)
-            logger.info("Running PCA")
-            sc.tl.pca(adata_hvg, svd_solver="arpack")
-            self._update_progress("PCA completed")
-
             # Determine optimal number of PCs (following publication's approach using 20 PCs)
             # In demo mode, use fewer PCs for faster processing
             n_pcs = 10 if demo_mode else 20
+
+            # ISSUE #7 FIX: Validate n_pcs against available features
+            n_features = adata_hvg.n_vars
+            if n_features < n_pcs:
+                old_n_pcs = n_pcs
+                n_pcs = min(
+                    n_features - 1, n_features // 2
+                )  # Use at most half of features
+                if n_pcs < 1:
+                    raise ClusteringError(
+                        f"Insufficient features for PCA: only {n_features} highly variable genes detected, "
+                        f"but need at least 2 for PCA. Try using all genes or check data quality."
+                    )
+                logger.warning(
+                    f"Reduced n_pcs from {old_n_pcs} to {n_pcs} due to limited features ({n_features} HVG)"
+                )
+
             logger.info(f"Using {n_pcs} principal components for neighborhood graph")
+
+            # PCA (using 'arpack' SVD solver for better performance with sparse matrices)
+            logger.info("Running PCA")
+            sc.tl.pca(adata_hvg, svd_solver="arpack", n_comps=n_pcs)
+            self._update_progress("PCA completed")
 
             # Compute neighborhood graph
             logger.info("Computing neighborhood graph")

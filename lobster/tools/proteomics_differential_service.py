@@ -534,29 +534,101 @@ class ProteomicsDifferentialService:
             return None
 
     def _moderated_t_test(
-        self, group1: np.ndarray, group2: np.ndarray
+        self,
+        group1: np.ndarray,
+        group2: np.ndarray,
+        prior_variance: Optional[float] = None,
+        prior_df: Optional[float] = None,
     ) -> Tuple[float, float]:
-        """Simplified moderated t-test (limma-like approach)."""
-        # This is a simplified version - full limma uses empirical Bayes moderation
+        """
+        Moderated t-test with empirical Bayes shrinkage (limma-like approach).
+
+        Args:
+            group1: Values for group 1
+            group2: Values for group 2
+            prior_variance: Prior variance estimate (if None, uses simple pooled variance)
+            prior_df: Prior degrees of freedom (if None, uses sample-based df)
+
+        Returns:
+            Tuple of (t-statistic, p-value)
+        """
         n1, n2 = len(group1), len(group2)
+
+        # Basic statistics
         mean1, mean2 = np.mean(group1), np.mean(group2)
         var1, var2 = np.var(group1, ddof=1), np.var(group2, ddof=1)
 
-        # Pooled variance with simple moderation
-        pooled_var = ((n1 - 1) * var1 + (n2 - 1) * var2) / (n1 + n2 - 2)
+        # Pooled variance
+        df_pooled = n1 + n2 - 2
+        pooled_var = ((n1 - 1) * var1 + (n2 - 1) * var2) / df_pooled
 
-        # Add small regularization term (simplified empirical Bayes)
-        moderated_var = 0.9 * pooled_var + 0.1 * (var1 + var2) / 2
+        # Apply empirical Bayes moderation if prior is provided
+        if prior_variance is not None and prior_df is not None:
+            # Moderated variance (weighted average of pooled and prior variance)
+            moderated_var = (df_pooled * pooled_var + prior_df * prior_variance) / (
+                df_pooled + prior_df
+            )
+            # Moderated degrees of freedom
+            df_moderated = df_pooled + prior_df
+        else:
+            # Simple regularization if no prior
+            # Add small constant to stabilize variance estimates
+            moderated_var = pooled_var + 0.01 * np.median([var1, var2, pooled_var])
+            df_moderated = df_pooled
 
-        # Calculate t-statistic
+        # Calculate t-statistic with moderated variance
         se = np.sqrt(moderated_var * (1 / n1 + 1 / n2))
+
+        # Avoid division by zero
+        if se < 1e-10:
+            return 0.0, 1.0
+
         t_stat = (mean1 - mean2) / se
 
-        # Degrees of freedom (simplified)
-        df = n1 + n2 - 2
-        p_value = 2 * (1 - stats.t.cdf(abs(t_stat), df))
+        # Calculate p-value
+        p_value = 2 * (1 - stats.t.cdf(abs(t_stat), df_moderated))
 
         return t_stat, p_value
+
+    def _estimate_prior_variance(
+        self, all_variances: np.ndarray, all_dfs: np.ndarray
+    ) -> Tuple[float, float]:
+        """
+        Estimate prior variance and degrees of freedom using empirical Bayes.
+
+        Args:
+            all_variances: Array of protein-wise variance estimates
+            all_dfs: Array of protein-wise degrees of freedom
+
+        Returns:
+            Tuple of (prior_variance, prior_df)
+        """
+        # Remove invalid variances
+        valid_mask = np.isfinite(all_variances) & (all_variances > 0) & (all_dfs > 0)
+        valid_vars = all_variances[valid_mask]
+        valid_dfs = all_dfs[valid_mask]
+
+        if len(valid_vars) < 10:
+            # Not enough proteins for reliable prior estimation
+            return np.median(valid_vars) if len(valid_vars) > 0 else 1.0, 4.0
+
+        # Estimate prior variance as median of protein variances (robust estimator)
+        prior_var = np.median(valid_vars)
+
+        # Estimate prior degrees of freedom using method of moments
+        # This is a simplified approach; full limma uses more sophisticated fitting
+        var_of_vars = np.var(valid_vars)
+        mean_var = np.mean(valid_vars)
+
+        # Method of moments estimator for df
+        if var_of_vars > 0 and mean_var > 0:
+            prior_df = 2 * mean_var**2 / var_of_vars
+            # Clip to reasonable range
+            prior_df = max(1.0, min(prior_df, 50.0))
+        else:
+            prior_df = 4.0  # Default conservative value
+
+        return float(prior_var), float(prior_df)
 
     def _calculate_effect_metrics(
         self, group1: np.ndarray, group2: np.ndarray
@@ -642,7 +714,11 @@ class ProteomicsDifferentialService:
         """Add significance flags to var annotations."""
         significant_proteins = set(r["protein"] for r in significant_results)
 
+        # Add both naming conventions for compatibility
         adata.var["is_de_significant"] = [
+            protein in significant_proteins for protein in adata.var_names
+        ]
+        adata.var["significant_proteins"] = [
             protein in significant_proteins for protein in adata.var_names
         ]
 
@@ -725,17 +801,57 @@ class ProteomicsDifferentialService:
         total_tests = len(all_results)
         total_significant = len(significant_results)
 
+        # Get top up/downregulated proteins
+        sorted_by_fc = sorted(
+            all_results, key=lambda x: x.get("log2_fold_change", 0), reverse=True
+        )
+        top_upregulated = sorted_by_fc[:10]  # Top 10 upregulated
+        top_downregulated = sorted(
+            all_results, key=lambda x: x.get("log2_fold_change", 0)
+        )[
+            :10
+        ]  # Top 10 downregulated
+
+        # Effect size distribution
+        effect_sizes = [
+            abs(r.get("log2_fold_change", 0))
+            for r in all_results
+            if "log2_fold_change" in r
+        ]
+        effect_size_dist = {
+            "mean": float(np.mean(effect_sizes)) if effect_sizes else 0.0,
+            "median": float(np.median(effect_sizes)) if effect_sizes else 0.0,
+            "std": float(np.std(effect_sizes)) if effect_sizes else 0.0,
+            "min": float(np.min(effect_sizes)) if effect_sizes else 0.0,
+            "max": float(np.max(effect_sizes)) if effect_sizes else 0.0,
+        }
+
+        # Prepare volcano plot data
+        volcano_data = {
+            "log2_fold_changes": [r.get("log2_fold_change", 0) for r in all_results],
+            "neg_log10_pvalues": [
+                -np.log10(max(r.get("p_adjusted", 1.0), 1e-300)) for r in all_results
+            ],
+            "protein_names": [r.get("protein", "Unknown") for r in all_results],
+            "is_significant": [r.get("is_significant", False) for r in all_results],
+        }
+
         return {
             "n_comparisons": len(comparison_pairs),
             "comparison_pairs": [f"{p[0]}_vs_{p[1]}" for p in comparison_pairs],
             "total_tests_performed": total_tests,
             "total_significant_proteins": total_significant,
+            "n_significant_proteins": total_significant,  # Alias for compatibility
             "overall_significance_rate": (
                 (total_significant / total_tests) if total_tests > 0 else 0.0
             ),
             "tests_per_comparison": comparison_counts,
             "significant_per_comparison": significant_counts,
             "proteins_tested": total_proteins,
+            "top_upregulated": top_upregulated,
+            "top_downregulated": top_downregulated,
+            "effect_size_distribution": effect_size_dist,
+            "volcano_plot_data": volcano_data,
         }
 
     # Helper methods for time course analysis

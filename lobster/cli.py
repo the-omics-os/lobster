@@ -2848,16 +2848,342 @@ when they are started by agents or analysis workflows.
                     f"[cyan]💡 This is an image file. Use your system's image viewer to open it.[/cyan]"
                 )
             elif file_category == "archive":
+                # Smart archive handling - inspect first for nested archives
                 console.print(
-                    f"[cyan]💡 This is an archive file. Extract it first to access the contents.[/cyan]"
+                    f"[bold cyan on black] 📦 Archive Detected [/bold cyan on black]"
                 )
+                console.print(f"[white]Archive type: [yellow]{file_description}[/yellow][/white]")
+                console.print(f"[white]Size: [yellow]{file_info['size_bytes'] / 1024 / 1024:.2f} MB[/yellow][/white]")
+                console.print(f"\n[cyan]🔍 Inspecting archive structure...[/cyan]")
+
+                # Inspect archive to detect nested structures
+                with console.status("[cyan]Analyzing archive contents...[/cyan]"):
+                    inspection = client.inspect_archive(filename)
+
+                if not inspection["success"]:
+                    console.print(f"\n[red]✗ Archive inspection failed[/red]")
+                    console.print(f"[red]{inspection['error']}[/red]")
+                    return f"Failed to inspect archive '{filename}': {inspection['error']}"
+
+                # Handle nested archives with inspection workflow
+                if inspection["type"] == "nested_archive":
+                    nested_info = inspection["nested_info"]
+
+                    # Display inspection report
+                    from rich.table import Table
+
+                    console.print(f"\n[bold green]✓ Detected Nested Archive Structure[/bold green]")
+                    console.print(f"[white]Total nested archives: [yellow]{nested_info.total_count}[/yellow][/white]")
+                    console.print(f"[white]Estimated memory: [yellow]{nested_info.estimated_memory / (1024**3):.1f} GB[/yellow][/white]")
+
+                    # Show condition groups
+                    if nested_info.groups:
+                        console.print(f"\n[bold white]📂 Condition Groups:[/bold white]")
+                        groups_table = Table(box=box.ROUNDED, border_style="cyan")
+                        groups_table.add_column("Condition", style="bold orange1")
+                        groups_table.add_column("Samples", style="white")
+                        groups_table.add_column("GSM Range", style="grey70")
+
+                        for condition, samples in nested_info.groups.items():
+                            gsm_ids = [s["gsm_id"] for s in samples]
+                            groups_table.add_row(
+                                condition,
+                                str(len(samples)),
+                                f"{min(gsm_ids)}-{max(gsm_ids)}" if gsm_ids else "N/A"
+                            )
+
+                        console.print(groups_table)
+
+                    # Memory warning
+                    if nested_info.estimated_memory > 5 * 1024**3:
+                        console.print(f"\n[yellow]⚠️  Loading all samples requires ~{nested_info.estimated_memory / (1024**3):.1f} GB memory[/yellow]")
+
+                    # Recommended actions
+                    console.print(f"\n[bold white]🎯 Next Steps:[/bold white]")
+                    console.print(f"[orange1]  • /archive list[/orange1]           - Show detailed sample list")
+                    console.print(f"[orange1]  • /archive load <pattern>[/orange1] - Load specific samples")
+                    console.print(f"[dim]    Examples:[/dim]")
+                    console.print(f"[dim]      /archive load GSM4710689[/dim]")
+                    console.print(f"[dim]      /archive load TISSUE[/dim]")
+                    console.print(f"[dim]      /archive load PDAC_* --limit 3[/dim]")
+
+                    # Store cache ID for subsequent commands
+                    client._last_archive_cache = inspection["cache_id"]
+                    client._last_archive_info = nested_info
+
+                    return f"Inspected nested archive: {nested_info.total_count} samples found. Use /archive commands to load selectively."
+
+                # Handle regular archives with auto-load
+                else:
+                    console.print(f"[cyan]🔄 Extracting and loading archive...[/cyan]")
+
+                    with console.status("[cyan]Extracting archive...[/cyan]"):
+                        extract_result = client.extract_and_load_archive(filename)
+
+                    if extract_result["success"]:
+                        console.print(f"\n[green]✓ Successfully loaded archive contents[/green]")
+                        console.print(f"[white]Modality: [bold cyan]{extract_result['modality_name']}[/bold cyan][/white]")
+                        console.print(f"[white]Shape: [yellow]{extract_result['data_shape']}[/yellow][/white]")
+
+                        if "n_samples" in extract_result:
+                            console.print(f"[white]Samples: [yellow]{extract_result['n_samples']}[/yellow][/white]")
+
+                        console.print(f"\n[dim]{extract_result.get('message', '')}[/dim]")
+
+                        return f"Successfully loaded archive '{filename}' as modality '{extract_result['modality_name']}' with shape {extract_result['data_shape']}"
+
+                    else:
+                        console.print(f"\n[red]✗ Archive extraction failed[/red]")
+                        console.print(f"[red]{extract_result['error']}[/red]")
+
+                        if "suggestion" in extract_result:
+                            console.print(f"\n[yellow]💡 Suggestion: {extract_result['suggestion']}[/yellow]")
+
+                        if "manifest" in extract_result:
+                            manifest = extract_result["manifest"]
+                            console.print(f"\n[dim]Archive contents:[/dim]")
+                            console.print(f"[dim]  Files: {manifest['file_count']}[/dim]")
+                            console.print(f"[dim]  Extensions: {dict(manifest['extensions'])}[/dim]")
+
+                        return f"Failed to extract archive '{filename}': {extract_result['error']}"
+
             else:
                 console.print(
                     f"[cyan]💡 Consider converting to a supported format or use external tools to view this file.[/cyan]"
                 )
 
-            # Return summary for conversation history
-            return f"Identified file '{filename}' as {file_description} ({file_category}) - not supported for loading or display"
+            # Return summary for conversation history (for non-archive unsupported files)
+            if file_category != "archive":
+                return f"Identified file '{filename}' as {file_description} ({file_category}) - not supported for loading or display"
+
+    elif cmd.startswith("/archive"):
+        # Handle nested archive commands
+        parts = cmd.split(maxsplit=2)
+        subcommand = parts[1] if len(parts) > 1 else "help"
+
+        # Check if we have a cached archive from /read
+        if not hasattr(client, "_last_archive_cache"):
+            console.print("[red]❌ No archive inspection cached[/red]")
+            console.print("[yellow]💡 Run /read <archive.tar> first to inspect an archive[/yellow]")
+            return None
+
+        if subcommand == "list":
+            # Show detailed list of all nested samples
+            nested_info = client._last_archive_info
+            from rich.table import Table
+
+            console.print(f"\n[bold white]📋 Archive Contents:[/bold white]")
+            console.print(f"[dim]Cache ID: {client._last_archive_cache}[/dim]\n")
+
+            samples_table = Table(box=box.ROUNDED, border_style="cyan", title="All Samples")
+            samples_table.add_column("GSM ID", style="bold orange1")
+            samples_table.add_column("Condition", style="white")
+            samples_table.add_column("Number", style="grey70")
+            samples_table.add_column("Filename", style="dim")
+
+            for condition, samples in nested_info.groups.items():
+                for sample in samples:
+                    samples_table.add_row(
+                        sample["gsm_id"],
+                        condition,
+                        sample["number"],
+                        sample["filename"]
+                    )
+
+            console.print(samples_table)
+            return f"Listed {nested_info.total_count} samples from cached archive"
+
+        elif subcommand == "groups":
+            # Show condition groups summary
+            nested_info = client._last_archive_info
+            from rich.table import Table
+
+            console.print(f"\n[bold white]📂 Condition Groups:[/bold white]\n")
+
+            groups_table = Table(box=box.ROUNDED, border_style="cyan")
+            groups_table.add_column("Condition", style="bold orange1")
+            groups_table.add_column("Sample Count", style="white")
+            groups_table.add_column("GSM IDs", style="grey70")
+
+            for condition, samples in nested_info.groups.items():
+                gsm_ids = [s["gsm_id"] for s in samples]
+                groups_table.add_row(
+                    condition,
+                    str(len(samples)),
+                    f"{min(gsm_ids)}-{max(gsm_ids)}" if gsm_ids else "N/A"
+                )
+
+            console.print(groups_table)
+            return f"Displayed {len(nested_info.groups)} condition groups"
+
+        elif subcommand == "load":
+            # Load samples by pattern
+            if len(parts) < 3:
+                console.print("[yellow]Usage: /archive load <pattern|GSM_ID|condition>[/yellow]")
+                console.print("[dim]Examples:[/dim]")
+                console.print("[dim]  /archive load GSM4710689[/dim]")
+                console.print("[dim]  /archive load TISSUE[/dim]")
+                console.print("[dim]  /archive load PDAC_* --limit 3[/dim]")
+                return None
+
+            pattern_arg = parts[2]
+
+            # Parse limit flag
+            limit = None
+            if "--limit" in pattern_arg:
+                pattern, limit_str = pattern_arg.split("--limit")
+                pattern = pattern.strip()
+                try:
+                    limit = int(limit_str.strip())
+                except ValueError:
+                    console.print("[red]❌ Invalid limit value[/red]")
+                    return None
+            else:
+                pattern = pattern_arg
+
+            console.print(f"[cyan]🔄 Loading samples matching '[bold]{pattern}[/bold]'...[/cyan]")
+
+            with console.status(f"[cyan]Loading samples...[/cyan]"):
+                result = client.load_from_cache(
+                    client._last_archive_cache,
+                    pattern,
+                    limit
+                )
+
+            if result["success"]:
+                console.print(f"\n[green]✓ {result['message']}[/green]")
+
+                # Display merged dataset if auto-concatenation occurred
+                if "merged_modality" in result:
+                    merged_name = result["merged_modality"]
+
+                    # Get merged dataset details
+                    try:
+                        merged_adata = client.data_manager.get_modality(merged_name)
+
+                        # Create prominent merged dataset panel
+                        from rich.panel import Panel
+
+                        merged_info = f"""[bold white]Merged Dataset:[/bold white] [orange1]{merged_name}[/orange1]
+
+[white]Shape:[/white] [cyan]{merged_adata.n_obs:,} cells × {merged_adata.n_vars:,} genes[/cyan]
+[white]Batches:[/white] [cyan]{result['loaded_count']} samples merged[/cyan]
+[white]Batch key:[/white] [cyan]sample_id[/cyan]
+
+[bold white]🎯 Ready for Analysis![/bold white]
+[grey70]  • Say: "Show me a UMAP of this dataset"[/grey70]
+[grey70]  • Say: "Perform quality control"[/grey70]
+[grey70]  • Or use: /data to inspect the dataset[/grey70]"""
+
+                        panel = Panel(
+                            merged_info,
+                            title="✨ Auto-Merged Dataset",
+                            border_style="green",
+                            padding=(1, 2),
+                        )
+                        console.print(panel)
+
+                    except Exception as e:
+                        console.print(f"\n[yellow]⚠️  Could not display merged dataset details: {e}[/yellow]")
+
+                    # Show individual modalities in collapsed format
+                    console.print(f"\n[dim]Individual modalities (merged into '{merged_name}'):[/dim]")
+                    for i, modality in enumerate(result["modalities"][:5], 1):
+                        console.print(f"  [dim]{i}. {modality}[/dim]")
+                    if len(result["modalities"]) > 5:
+                        console.print(f"  [dim]... and {len(result['modalities'])-5} more[/dim]")
+
+                else:
+                    # Single sample or no auto-concatenation
+                    console.print(f"\n[bold white]Loaded Modalities:[/bold white]")
+                    for modality in result["modalities"]:
+                        console.print(f"  • [cyan]{modality}[/cyan]")
+
+                    # Suggest next steps
+                    console.print(f"\n[bold white]🎯 Next Steps:[/bold white]")
+                    console.print(f"[grey70]  • Use /data to inspect the dataset[/grey70]")
+                    console.print(f"[grey70]  • Say: 'Analyze this dataset' for natural language analysis[/grey70]")
+
+                if result["failed"]:
+                    console.print(f"\n[yellow]⚠️  Failed to load {len(result['failed'])} samples:[/yellow]")
+                    for failed in result["failed"][:5]:
+                        console.print(f"  • [dim]{failed}[/dim]")
+                    if len(result["failed"]) > 5:
+                        console.print(f"  • [dim]... and {len(result['failed'])-5} more[/dim]")
+
+                # Return summary
+                if "merged_modality" in result:
+                    return f"Merged {result['loaded_count']} samples into '{result['merged_modality']}'"
+                else:
+                    return f"Loaded {result['loaded_count']} samples: {', '.join(result['modalities'][:3])}{'...' if len(result['modalities']) > 3 else ''}"
+
+            else:
+                console.print(f"\n[red]❌ {result['error']}[/red]")
+                if "suggestion" in result:
+                    console.print(f"[yellow]💡 {result['suggestion']}[/yellow]")
+                return f"Failed to load samples: {result['error']}"
+
+        elif subcommand == "status":
+            # Show cache status
+            from lobster.core.extraction_cache import ExtractionCacheManager
+
+            cache_manager = ExtractionCacheManager(client.workspace_path)
+            all_caches = cache_manager.list_all_caches()
+
+            console.print(f"\n[bold white]📊 Extraction Cache Status:[/bold white]\n")
+            console.print(f"[white]Total cached extractions: [yellow]{len(all_caches)}[/yellow][/white]")
+
+            if all_caches:
+                from rich.table import Table
+
+                cache_table = Table(box=box.ROUNDED, border_style="cyan")
+                cache_table.add_column("Cache ID", style="bold orange1")
+                cache_table.add_column("Archive", style="white")
+                cache_table.add_column("Samples", style="yellow")
+                cache_table.add_column("Extracted At", style="dim")
+
+                for cache in all_caches:
+                    from datetime import datetime
+                    extracted_at = datetime.fromisoformat(cache["extracted_at"])
+                    cache_table.add_row(
+                        cache["cache_id"],
+                        Path(cache["archive_path"]).name,
+                        str(cache["nested_info"]["total_count"]),
+                        extracted_at.strftime("%Y-%m-%d %H:%M")
+                    )
+
+                console.print(cache_table)
+
+            return f"Cache status: {len(all_caches)} active extractions"
+
+        elif subcommand == "cleanup":
+            # Clean up old caches
+            from lobster.core.extraction_cache import ExtractionCacheManager
+
+            cache_manager = ExtractionCacheManager(client.workspace_path)
+
+            console.print("[cyan]🧹 Cleaning up old cached extractions...[/cyan]")
+            removed_count = cache_manager.cleanup_old_caches(max_age_days=7)
+
+            console.print(f"[green]✓ Removed {removed_count} old cache(s)[/green]")
+            return f"Cleaned up {removed_count} old cached extractions"
+
+        else:
+            # Show help
+            console.print(f"\n[bold white]📦 /archive Commands:[/bold white]\n")
+            console.print("[orange1]/archive list[/orange1]             - List all samples in inspected archive")
+            console.print("[orange1]/archive groups[/orange1]           - Show condition groups")
+            console.print("[orange1]/archive load <pattern>[/orange1]   - Load samples by pattern")
+            console.print("[orange1]/archive status[/orange1]           - Show extraction cache status")
+            console.print("[orange1]/archive cleanup[/orange1]          - Clear old cached extractions\n")
+
+            console.print("[bold white]Loading Patterns:[/bold white]")
+            console.print("[grey70]• GSM ID:[/grey70]        GSM4710689")
+            console.print("[grey70]• Condition:[/grey70]     TISSUE, PDAC_TISSUE")
+            console.print("[grey70]• Glob:[/grey70]          PDAC_*, *_TISSUE_*")
+            console.print("[grey70]• With limit:[/grey70]    TISSUE --limit 3")
+
+            return None
 
     elif cmd == "/export":
         # Create progress bar

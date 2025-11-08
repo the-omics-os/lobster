@@ -19,6 +19,18 @@ from lobster.agents.graph import create_bioinformatics_graph
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.interfaces.base_client import BaseClient
 
+# Import shared archive handling utilities
+from lobster.core.archive_utils import (
+    ArchiveExtractor,
+    ArchiveInspector,
+    ContentDetector,
+    ArchiveContentType,
+    NestedArchiveInfo,
+)
+
+# Import extraction cache manager
+from lobster.core.extraction_cache import ExtractionCacheManager
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -872,6 +884,498 @@ class AgentClient(BaseClient):
                 "tool_type": tool_type,
             }
 
+    def extract_and_load_archive(self, filename: str) -> Dict[str, Any]:
+        """
+        Extract and load local TAR/ZIP archive intelligently.
+
+        Uses shared archive_utils for:
+        - Secure extraction (path traversal protection)
+        - Content type detection
+        - Format-specific loading strategies
+
+        Args:
+            filename: Path to archive file (TAR, TAR.GZ, ZIP)
+
+        Returns:
+            Dictionary with loading results and metadata
+        """
+        # 1. Locate archive
+        file_info = self.locate_file(filename)
+        if not file_info["found"]:
+            return {"success": False, "error": file_info["error"]}
+
+        archive_path = file_info["path"]
+
+        # 2. Inspect manifest (fast, no extraction)
+        inspector = ArchiveInspector()
+        manifest = inspector.inspect_manifest(archive_path)
+        content_type = inspector.detect_content_type_from_manifest(manifest)
+
+        logger.info(
+            f"Archive inspection: {manifest['file_count']} files, "
+            f"detected as {content_type.value}"
+        )
+
+        # 3. Extract safely with security checks
+        extractor = ArchiveExtractor()
+        try:
+            extract_dir = extractor.extract_to_temp(
+                archive_path=archive_path, prefix=f"lobster_local_{archive_path.stem}_"
+            )
+
+            # 4. Route based on detected content type
+            if content_type == ArchiveContentType.KALLISTO_QUANT:
+                result = self.load_quantification_directory(str(extract_dir), "kallisto")
+
+            elif content_type == ArchiveContentType.SALMON_QUANT:
+                result = self.load_quantification_directory(str(extract_dir), "salmon")
+
+            elif content_type == ArchiveContentType.GEO_RAW:
+                result = self._load_geo_raw_directory(extract_dir, archive_path.stem)
+
+            elif content_type == ArchiveContentType.TEN_X_MTX:
+                result = self._load_10x_from_directory(extract_dir, archive_path.stem)
+
+            elif content_type == ArchiveContentType.GENERIC_EXPRESSION:
+                result = self._load_generic_expression_from_directory(
+                    extract_dir, archive_path.stem
+                )
+
+            else:
+                result = {
+                    "success": False,
+                    "error": f"Unknown archive content type: {content_type.value}",
+                    "manifest": manifest,
+                    "suggestion": "Extract manually and load files individually",
+                }
+
+            return result
+
+        finally:
+            # Cleanup temporary extraction directory
+            extractor.cleanup()
+
+    def _load_geo_raw_directory(
+        self, directory: Path, modality_base: str
+    ) -> Dict[str, Any]:
+        """Load GEO RAW files (GSM*.txt.gz) from extracted directory."""
+        from lobster.tools.concatenation_service import ConcatenationService
+
+        # Find GEO sample files
+        geo_files = []
+        for file_path in directory.rglob("GSM*"):
+            if file_path.is_file() and any(
+                ext in file_path.name for ext in [".txt", ".txt.gz", ".cel", ".CEL"]
+            ):
+                geo_files.append(file_path)
+
+        if not geo_files:
+            return {
+                "success": False,
+                "error": "No GEO sample files (GSM*.txt*) found in archive",
+            }
+
+        logger.info(f"Found {len(geo_files)} GEO sample files")
+
+        try:
+            # Use ConcatenationService for merging
+            concat_service = ConcatenationService()
+            merged_adata, stats = concat_service.concatenate_samples(
+                file_paths=[str(f) for f in geo_files],
+                axis="obs",  # Samples as observations
+            )
+
+            modality_name = f"{modality_base}_merged"
+            self.data_manager.modalities[modality_name] = merged_adata
+
+            self.data_manager.log_tool_usage(
+                tool_name="load_geo_raw_archive",
+                parameters={"n_samples": len(geo_files)},
+                description=f"Loaded {len(geo_files)} GEO samples from {modality_base}",
+            )
+
+            return {
+                "success": True,
+                "modality_name": modality_name,
+                "n_samples": len(geo_files),
+                "data_shape": (merged_adata.n_obs, merged_adata.n_vars),
+                "message": f"Successfully loaded {len(geo_files)} GEO RAW samples",
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Failed to merge GEO RAW files: {str(e)}",
+            }
+
+    def _load_10x_from_directory(
+        self, directory: Path, modality_base: str
+    ) -> Dict[str, Any]:
+        """Load 10X Genomics MEX format from extracted directory."""
+        try:
+            import scanpy as sc
+
+            # Find 10X directory (may be nested)
+            mtx_dirs = list(directory.rglob("matrix.mtx*"))
+            if not mtx_dirs:
+                return {"success": False, "error": "No matrix.mtx file found"}
+
+            # Use first valid 10X directory
+            mtx_dir = mtx_dirs[0].parent
+            logger.info(f"Loading 10X data from {mtx_dir}")
+
+            # Load with scanpy
+            adata = sc.read_10x_mtx(mtx_dir)
+
+            # Validate AnnData before storing
+            if adata.n_obs == 0 or adata.n_vars == 0:
+                return {
+                    "success": False,
+                    "error": f"Invalid data shape: {adata.n_obs} obs × {adata.n_vars} vars (empty dataset)",
+                }
+
+            modality_name = f"{modality_base}_10x"
+            self.data_manager.modalities[modality_name] = adata
+
+            self.data_manager.log_tool_usage(
+                tool_name="load_10x_archive",
+                parameters={"source_dir": str(mtx_dir)},
+                description=f"Loaded 10X Genomics data from {modality_base}",
+            )
+
+            return {
+                "success": True,
+                "modality_name": modality_name,
+                "data_shape": (adata.n_obs, adata.n_vars),
+                "message": "Successfully loaded 10X Genomics data",
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Failed to load 10X data: {str(e)}",
+            }
+
+    def _load_generic_expression_from_directory(
+        self, directory: Path, modality_base: str
+    ) -> Dict[str, Any]:
+        """Load generic expression matrix from extracted directory."""
+        # Find largest file (likely the main expression matrix)
+        expression_files = []
+        for file_path in directory.rglob("*"):
+            if file_path.is_file() and any(
+                ext in file_path.suffix for ext in [".csv", ".tsv", ".txt", ".h5ad"]
+            ):
+                if file_path.stat().st_size > 100000:  # > 100KB
+                    expression_files.append(file_path)
+
+        if not expression_files:
+            return {"success": False, "error": "No expression files found"}
+
+        # Sort by size, try largest first
+        expression_files.sort(key=lambda x: x.stat().st_size, reverse=True)
+
+        for file_path in expression_files[:3]:  # Try top 3
+            try:
+                logger.info(f"Attempting to load {file_path.name}")
+
+                # Try loading as standard data file
+                load_result = self.load_data_file(str(file_path))
+                if load_result["success"]:
+                    return load_result
+
+            except Exception as e:
+                logger.warning(f"Failed to load {file_path.name}: {e}")
+                continue
+
+        return {
+            "success": False,
+            "error": "Could not parse any expression files from archive",
+        }
+
+    def inspect_archive(self, filename: str) -> Dict[str, Any]:
+        """
+        Inspect archive without loading - enables selective loading workflow.
+
+        This method detects nested archives (e.g., 10X samples in GEO RAW.tar)
+        and caches the extraction for selective loading by pattern/condition.
+
+        Args:
+            filename: Archive file to inspect
+
+        Returns:
+            Dictionary with inspection results:
+            - success: bool
+            - type: "nested_archive" or "regular_archive"
+            - nested_info: NestedArchiveInfo (if nested)
+            - cache_id: str (if nested, for subsequent loading)
+            - content_type: ArchiveContentType (if regular)
+            - manifest: Dict (if regular)
+            - error: str (if failed)
+        """
+        try:
+            # 1. Locate archive file
+            file_info = self.locate_file(filename)
+            if not file_info["found"]:
+                return {"success": False, "error": file_info["error"]}
+
+            archive_path = file_info["path"]
+
+            # 2. Fast manifest inspection (no extraction yet)
+            inspector = ArchiveInspector()
+            manifest = inspector.inspect_manifest(archive_path)
+
+            # 3. Check for nested archives
+            nested_info = inspector.detect_nested_archives(
+                manifest, str(archive_path)
+            )
+
+            if nested_info:
+                # This is a nested archive - extract and cache for selective loading
+                logger.info(
+                    f"Detected nested archive with {nested_info.total_count} samples"
+                )
+
+                extractor = ArchiveExtractor()
+                extract_dir = extractor.extract_to_temp(
+                    archive_path, prefix=f"lobster_nested_{archive_path.stem}_"
+                )
+
+                # Cache extraction for selective loading
+                cache_manager = ExtractionCacheManager(self.workspace_path)
+                cache_id = cache_manager.cache_extraction(
+                    archive_path, extract_dir, nested_info
+                )
+
+                # Cleanup temporary extractor (cache manager took ownership)
+                extractor.temp_dirs.clear()
+
+                return {
+                    "success": True,
+                    "type": "nested_archive",
+                    "nested_info": nested_info,
+                    "cache_id": cache_id,
+                    "message": f"Inspected nested archive: {nested_info.total_count} samples",
+                }
+
+            else:
+                # Regular archive - can auto-load as before
+                content_type = inspector.detect_content_type_from_manifest(manifest)
+                return {
+                    "success": True,
+                    "type": "regular_archive",
+                    "content_type": content_type.value,
+                    "manifest": manifest,
+                    "message": f"Detected {content_type.value} archive",
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to inspect archive: {e}")
+            return {
+                "success": False,
+                "error": f"Archive inspection failed: {str(e)}",
+            }
+
+    @staticmethod
+    def _clean_archive_name(file_path: Path) -> str:
+        """
+        Remove compound archive extensions from filename.
+
+        Handles: .tar.gz, .tar.bz2, .tgz, .tar
+
+        Args:
+            file_path: Path to archive file
+
+        Returns:
+            Clean filename without archive extensions
+
+        Example:
+            GSM4710689_PDAC_TISSUE_1.tar.gz -> GSM4710689_PDAC_TISSUE_1
+        """
+        filename = file_path.name
+
+        # Strip compound extensions in order of specificity
+        for ext in ['.tar.gz', '.tar.bz2', '.tgz', '.tar']:
+            if filename.endswith(ext):
+                return filename[:-len(ext)]
+
+        # Fallback to stem for other extensions
+        return file_path.stem
+
+    def load_from_cache(
+        self,
+        cache_id: str,
+        pattern: str,
+        limit: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Load specific samples from cached extraction by pattern.
+
+        Args:
+            cache_id: Cached extraction identifier
+            pattern: GSM ID, condition name, or glob pattern
+            limit: Maximum samples to load (None = no limit)
+
+        Returns:
+            Dictionary with loading results:
+            - success: bool
+            - loaded_count: int
+            - modalities: List[str] (loaded modality names)
+            - failed: List[str] (failed files)
+            - message: str
+            - error: str (if failed)
+        """
+        try:
+            # 1. Get matching files from cache
+            cache_manager = ExtractionCacheManager(self.workspace_path)
+            matching_files = cache_manager.load_from_cache(cache_id, pattern, limit)
+
+            if not matching_files:
+                return {
+                    "success": False,
+                    "error": f"No files matched pattern '{pattern}'",
+                    "suggestion": "Try /archive list to see available samples",
+                }
+
+            logger.info(f"Loading {len(matching_files)} samples matching '{pattern}'")
+
+            # 2. Load each matching nested archive
+            results = []
+            failed = []
+
+            for nested_archive in matching_files:
+                try:
+                    # Clean archive name (removes .tar.gz, .tar.bz2, etc.)
+                    clean_name = self._clean_archive_name(nested_archive)
+
+                    # Extract nested archive
+                    extractor = ArchiveExtractor()
+                    nested_extract = extractor.extract_to_temp(
+                        nested_archive, prefix=f"lobster_sample_{clean_name}_"
+                    )
+
+                    # Detect content type and load appropriately
+                    content_detector = ContentDetector()
+                    content_type = content_detector.detect_content_type(nested_extract)
+
+                    result = None
+                    if content_type == ArchiveContentType.TEN_X_MTX:
+                        result = self._load_10x_from_directory(
+                            nested_extract, clean_name
+                        )
+                    elif content_type == ArchiveContentType.KALLISTO_QUANT:
+                        result = self.load_quantification_directory(
+                            str(nested_extract), "kallisto"
+                        )
+                    elif content_type == ArchiveContentType.SALMON_QUANT:
+                        result = self.load_quantification_directory(
+                            str(nested_extract), "salmon"
+                        )
+                    elif content_type == ArchiveContentType.GENERIC_EXPRESSION:
+                        result = self._load_generic_expression_from_directory(
+                            nested_extract, clean_name
+                        )
+                    else:
+                        logger.warning(
+                            f"Unknown content type in {nested_archive.name}: {content_type}"
+                        )
+                        failed.append(nested_archive.name)
+
+                    if result and result.get("success"):
+                        results.append(result)
+                    else:
+                        failed.append(nested_archive.name)
+
+                    # Cleanup temp extraction
+                    extractor.cleanup()
+
+                except Exception as e:
+                    logger.error(f"Failed to load {nested_archive.name}: {e}")
+                    failed.append(nested_archive.name)
+
+            # 3. Return summary
+            loaded_modalities = [r["modality_name"] for r in results]
+
+            # 4. Auto-concatenate if multiple samples loaded
+            merged_modality = None
+            if len(results) > 1:
+                try:
+                    from lobster.tools.concatenation_service import ConcatenationService
+
+                    concat_service = ConcatenationService(self.data_manager)
+
+                    # Generate merged modality name from pattern
+                    # Extract base pattern (e.g., "TISSUE" from "PDAC_TISSUE" or "TISSUE")
+                    pattern_parts = pattern.split('_')
+                    # Use last part if multiple underscores (e.g., "TISSUE" from "PDAC_TISSUE")
+                    pattern_base = pattern_parts[-1] if len(pattern_parts) > 1 else pattern
+                    merged_modality = f"{cache_id}_{pattern_base}_merged"
+
+                    logger.info(
+                        f"Auto-concatenating {len(results)} samples into '{merged_modality}'"
+                    )
+
+                    # Concatenate using existing service
+                    merged_adata, stats, ir = concat_service.concatenate_from_modalities(
+                        modality_names=loaded_modalities,
+                        output_name=merged_modality,
+                        batch_key="sample_id",
+                        use_intersecting_genes_only=True,
+                    )
+
+                    # Store merged result
+                    self.data_manager.modalities[merged_modality] = merged_adata
+
+                    # Log provenance for notebook export
+                    self.data_manager.log_tool_usage(
+                        tool_name="auto_concatenate_nested_archives",
+                        parameters={
+                            "pattern": pattern,
+                            "n_samples": len(results),
+                            "cache_id": cache_id,
+                        },
+                        description=f"Auto-concatenated {len(results)} samples matching '{pattern}'",
+                        ir=ir,
+                    )
+
+                    logger.info(
+                        f"✓ Merged {len(results)} samples: {merged_adata.n_obs} obs × {merged_adata.n_vars} vars"
+                    )
+
+                except Exception as e:
+                    logger.warning(
+                        f"Auto-concatenation failed: {e}, returning individual samples"
+                    )
+                    # Continue with individual samples if concatenation fails
+                    merged_modality = None
+
+            # Return summary with merged modality if available
+            result_dict = {
+                "success": len(results) > 0,
+                "loaded_count": len(results),
+                "modalities": loaded_modalities,
+                "failed": failed,
+            }
+
+            if merged_modality:
+                result_dict["merged_modality"] = merged_modality
+                result_dict["message"] = (
+                    f"Loaded and merged {len(results)} samples into '{merged_modality}'"
+                )
+            else:
+                result_dict["message"] = (
+                    f"Loaded {len(results)} of {len(matching_files)} samples matching '{pattern}'"
+                )
+
+            return result_dict
+
+        except Exception as e:
+            logger.error(f"Failed to load from cache: {e}")
+            return {
+                "success": False,
+                "error": f"Failed to load samples: {str(e)}",
+            }
+
     # Workspace operations
     def list_workspace_files(self, pattern: str = "*") -> List[Dict[str, Any]]:
         """List files in the workspace."""
@@ -989,7 +1493,9 @@ class AgentClient(BaseClient):
                     "total_commands": info.get("total_commands_processed", 0),
                     "connected_clients": info.get("connected_clients", 0),
                     "uptime_seconds": info.get("uptime_in_seconds", 0),
-                    "used_memory_human": memory_info.get("used_memory_human", "unknown"),
+                    "used_memory_human": memory_info.get(
+                        "used_memory_human", "unknown"
+                    ),
                     "critical": False,
                 }
             except Exception as e:

@@ -203,9 +203,8 @@ def create_bioinformatics_graph(
         # Change from "full_history" to "messages" or "last_message"
         # output_mode="full_history",  # This ensures the actual messages are returned
         output_mode="last_message",  # This ensures the actual messages are returned
-        tools=handoff_tools
-        + [list_available_modalities, list_session_publications]
-        + [forwarding_tool],  # Supervisor-only tools (handoff tools are auto-created)
+        tools=handoff_tools + [list_available_modalities, list_session_publications],
+        # + [forwarding_tool],  # Supervisor-only tools (handoff tools are auto-created)
     )
 
     # Compile the graph with the provided checkpointer

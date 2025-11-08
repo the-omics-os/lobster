@@ -379,186 +379,37 @@ print(f"Normalization complete (target_sum={{ target_sum }}, log1p transformed)"
             logger.exception(f"Error in filtering and normalization: {e}")
             raise PreprocessingError(f"Filtering and normalization failed: {str(e)}")
 
-    def integrate_and_batch_correct(
-        self,
-        batch_key: str = "sample",
-        integration_method: str = "harmony",
-        n_pca_components: int = 50,
-        n_integration_features: int = 2000,
-        theta: float = 2.0,  # Harmony diversity clustering penalty
-        lambda_param: float = 1.0,  # Harmony ridge regression penalty
-        save_integrated: bool = True,
-    ) -> str:
+    def integrate_and_batch_correct(self, *args, **kwargs):
         """
-        Integrate datasets and correct for batch effects using advanced methods.
+        DEPRECATED: This method is non-functional and has been removed.
 
-        Args:
-            batch_key: Column name in obs containing batch information
-            integration_method: Method to use ('harmony', 'scanorama_like', 'simple_scaling')
-            n_pca_components: Number of PCA components for integration
-            n_integration_features: Number of highly variable genes for integration
-            theta: Harmony diversity clustering penalty parameter
-            lambda_param: Harmony ridge regression penalty parameter
-            save_integrated: Whether to save integrated data to workspace
+        Batch correction was designed for the old stateful service pattern and
+        references self.data_manager which no longer exists in stateless services.
 
-        Returns:
-            str: Results summary of integration and batch correction
+        For batch correction, use scanpy's built-in methods directly on your
+        AnnData object:
+        - scanpy.pp.combat() for ComBat batch correction
+        - scanpy.external.pp.harmony_integrate() for Harmony integration
+        - scanpy.external.pp.scanorama_integrate() for Scanorama integration
+
+        Alternatively, request this feature to be reimplemented following the
+        new stateless service pattern (returning Tuple[AnnData, Dict, AnalysisStep]).
+
+        Raises:
+            NotImplementedError: This method is no longer supported
+
+        Example:
+            >>> import scanpy as sc
+            >>> # ComBat batch correction
+            >>> sc.pp.combat(adata, key='batch')
+            >>> # Harmony integration
+            >>> sc.external.pp.harmony_integrate(adata, key='batch')
         """
-        try:
-            if not self.data_manager.has_data():
-                return "No data loaded. Please load single-cell data first."
-
-            logger.info(
-                f"Starting batch correction and integration with method: {integration_method}"
-            )
-
-            adata = self.data_manager.adata
-            if adata is None:
-                return "No AnnData object available. Please ensure data is properly loaded."
-
-            original_shape = adata.shape
-            logger.info(
-                f"Input data shape: {original_shape[0]} cells × {original_shape[1]} genes"
-            )
-
-            # Check if batch information is available
-            if batch_key not in adata.obs.columns:
-                # Create dummy batch information for demonstration
-                logger.warning(
-                    f"Batch key '{batch_key}' not found. Creating dummy batch labels."
-                )
-                n_batches = min(
-                    4, max(2, adata.n_obs // 1000)
-                )  # 2-4 batches based on data size
-                adata.obs[batch_key] = pd.Categorical(
-                    np.random.choice(
-                        [f"Batch_{i+1}" for i in range(n_batches)], size=adata.n_obs
-                    )
-                )
-
-            # Store batch information
-            batch_counts = adata.obs[batch_key].value_counts().to_dict()
-            n_batches = len(batch_counts)
-
-            logger.info(f"Found {n_batches} batches: {batch_counts}")
-
-            # Find highly variable genes for integration
-            integration_stats = self._find_integration_features(
-                adata, n_integration_features
-            )
-
-            # Perform PCA on integration features
-            pca_stats = self._compute_integration_pca(adata, n_pca_components)
-
-            # Apply batch correction method
-            if integration_method == "harmony":
-                correction_stats = self._apply_harmony_like_correction(
-                    adata, batch_key, theta, lambda_param
-                )
-            elif integration_method == "scanorama_like":
-                correction_stats = self._apply_scanorama_like_correction(
-                    adata, batch_key
-                )
-            elif integration_method == "simple_scaling":
-                correction_stats = self._apply_simple_batch_scaling(adata, batch_key)
-            else:
-                return f"Unknown integration method: {integration_method}"
-
-            # Compute UMAP on integrated data
-            self._compute_integrated_umap(adata)
-
-            # Create integration diagnostic plots
-            integration_plot = self._create_integration_plots(
-                adata, batch_key, integration_stats
-            )
-
-            dataset_info = {
-                "data_shape": adata.shape,
-                "source_dataset": self.data_manager.current_metadata.get(
-                    "source", "Current Dataset"
-                ),
-                "n_cells": adata.n_obs,
-                "n_genes": adata.n_vars,
-                "n_batches": n_batches,
-                "integration_method": integration_method,
-            }
-
-            analysis_params = {
-                "batch_key": batch_key,
-                "integration_method": integration_method,
-                "n_pca_components": n_pca_components,
-                "n_integration_features": n_integration_features,
-                "theta": theta,
-                "lambda_param": lambda_param,
-                "analysis_type": "batch_correction_integration",
-                "batch_counts": batch_counts,
-                **integration_stats,
-                **pca_stats,
-                **correction_stats,
-            }
-
-            self.data_manager.add_plot(
-                integration_plot,
-                title="Batch Correction and Integration Results",
-                source="preprocessing_service",
-                dataset_info=dataset_info,
-                analysis_params=analysis_params,
-            )
-
-            # Update metadata
-            self.data_manager.current_metadata.update(
-                {
-                    "batch_corrected": True,
-                    "integration_method": integration_method,
-                    "batch_key": batch_key,
-                    "n_batches": n_batches,
-                    "batch_counts": batch_counts,
-                    "integration_features_used": n_integration_features,
-                    "pca_components_used": n_pca_components,
-                }
-            )
-
-            # Log processing step
-            processing_step = f"Batch correction and integration ({integration_method})"
-            self.processing_history.append(processing_step)
-            self.data_manager.processing_log.append(
-                f"{processing_step}: {n_batches} batches integrated using {n_integration_features} features"
-            )
-
-            # Save integrated data if requested
-            if save_integrated:
-                saved_path = self.data_manager.save_processed_data(
-                    processing_step="batch_corrected", processing_params=analysis_params
-                )
-                if saved_path:
-                    logger.info(f"Batch corrected data saved to: {saved_path}")
-
-            return f"""Batch Correction and Integration Complete!
-
-**Integration Parameters:**
-- **Method:** {integration_method}
-- **Batch Key:** {batch_key}
-- **Number of Batches:** {n_batches}
-- **Integration Features:** {n_integration_features:,} highly variable genes
-- **PCA Components:** {n_pca_components}
-
-**Batch Distribution:**
-{self._format_batch_counts(batch_counts)}
-
-**Integration Results:**
-- **Cells Processed:** {adata.n_obs:,}
-- **Integration Features Used:** {integration_stats.get('n_hvg_selected', 0):,}
-- **PCA Variance Explained:** {pca_stats.get('variance_explained_pct', 0):.1f}%
-- **Batch Correction Strength:** {correction_stats.get('correction_strength', 'N/A')}
-
-Integration diagnostic plots show before/after UMAP visualization and batch mixing metrics.
-Data is now ready for clustering and downstream analysis.
-
-**Next Suggested Step:** Clustering and cell type annotation."""
-
-        except Exception as e:
-            logger.exception(f"Error in batch correction and integration: {e}")
-            return f"Error in batch correction and integration: {str(e)}"
+        raise NotImplementedError(
+            "integrate_and_batch_correct() has been removed due to referencing "
+            "non-existent self.data_manager. Use scanpy.pp.combat() or "
+            "scanpy.external.pp.harmony_integrate() directly on your AnnData object."
+        )
 
     # Helper methods for ambient RNA correction
     def _simple_decontamination(

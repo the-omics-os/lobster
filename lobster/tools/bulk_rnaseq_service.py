@@ -533,29 +533,155 @@ Next suggested step: Import quantification data with tximport for differential e
         organism: Optional[str] = None,
     ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
         """
-        Run pathway enrichment analysis on a gene list.
+        Run pathway enrichment analysis on a gene list using GSEApy.
 
-        NOTE: This is a placeholder implementation. For production use, integrate with
-        libraries like GSEApy, gprofiler-python, or enrichr-python for real enrichment analysis.
+        Supports multiple enrichment databases:
+        - GO: Gene Ontology (Biological Process, Molecular Function, Cellular Component)
+        - KEGG: KEGG pathway database
+        - Reactome: Reactome pathway database
+        - WikiPathways: WikiPathways database
 
         Args:
-            gene_list: List of genes for enrichment analysis
-            analysis_type: Type of analysis ("GO" or "KEGG")
-            background_genes: Background gene set (None for default)
+            gene_list: List of genes for enrichment analysis (gene symbols)
+            analysis_type: Type of analysis ("GO", "KEGG", "Reactome", "WikiPathways")
+            background_genes: Background gene set (None for default - all detected genes)
+            organism: Organism name (default: "human", supports "mouse", "rat", etc.)
 
         Returns:
             Tuple[pd.DataFrame, Dict[str, Any]]: Enrichment results and stats
+                - DataFrame contains: Term, Overlap, P-value, Adjusted P-value, Genes
+                - Dict contains summary statistics
 
         Raises:
             BulkRNASeqError: If enrichment analysis fails
         """
-        logger.warning(
-            "Pathway enrichment analysis not yet implemented. This is a placeholder."
-        )
-        raise BulkRNASeqError(
-            "Pathway enrichment analysis not yet implemented. "
-            "Please integrate with GSEApy, gprofiler-python, or enrichr-python for real functionality."
-        )
+        try:
+            # Validate inputs
+            if not gene_list or len(gene_list) == 0:
+                raise BulkRNASeqError(
+                    "Empty gene list provided for enrichment analysis"
+                )
+
+            # Set default organism
+            if organism is None:
+                organism = "human"
+
+            logger.info(
+                f"Running {analysis_type} pathway enrichment on {len(gene_list)} genes for {organism}"
+            )
+
+            # Try to import GSEApy
+            try:
+                import gseapy as gp
+            except ImportError:
+                logger.error("GSEApy not installed")
+                raise BulkRNASeqError(
+                    "GSEApy not installed. Install with: pip install gseapy"
+                )
+
+            # Map analysis type to Enrichr gene set libraries
+            library_map = {
+                "GO": [
+                    "GO_Biological_Process_2023",
+                    "GO_Molecular_Function_2023",
+                    "GO_Cellular_Component_2023",
+                ],
+                "KEGG": ["KEGG_2021_Human"],
+                "Reactome": ["Reactome_2022"],
+                "WikiPathways": ["WikiPathway_2023_Human"],
+            }
+
+            # Get organism-specific libraries
+            if organism.lower() == "mouse":
+                library_map["KEGG"] = ["KEGG_2021_Mouse"]
+            elif organism.lower() == "rat":
+                library_map["KEGG"] = ["KEGG_2021_Rat"]
+
+            if analysis_type not in library_map:
+                raise BulkRNASeqError(
+                    f"Unknown analysis type '{analysis_type}'. "
+                    f"Supported types: {list(library_map.keys())}"
+                )
+
+            gene_sets = library_map[analysis_type]
+            logger.info(f"Using gene set libraries: {gene_sets}")
+
+            # Run enrichment analysis
+            all_results = []
+            for gene_set in gene_sets:
+                try:
+                    logger.info(f"Running enrichment for {gene_set}")
+                    enr_result = gp.enrichr(
+                        gene_list=gene_list,
+                        gene_sets=[gene_set],
+                        organism=organism.capitalize(),
+                        background=background_genes,
+                        cutoff=0.05,  # Adjusted p-value cutoff
+                    )
+
+                    if enr_result.results is not None and not enr_result.results.empty:
+                        results_df = enr_result.results.copy()
+                        results_df["gene_set_library"] = gene_set
+                        all_results.append(results_df)
+                        logger.info(
+                            f"Found {len(results_df)} enriched terms in {gene_set}"
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to run enrichment for {gene_set}: {e}")
+                    continue
+
+            if not all_results:
+                logger.warning(
+                    f"No significant enrichment found for {analysis_type} analysis"
+                )
+                # Return empty results
+                enrichment_df = pd.DataFrame(
+                    columns=[
+                        "Term",
+                        "Overlap",
+                        "P-value",
+                        "Adjusted P-value",
+                        "Genes",
+                        "gene_set_library",
+                    ]
+                )
+            else:
+                # Combine results from all gene sets
+                enrichment_df = pd.concat(all_results, ignore_index=True)
+
+                # Sort by adjusted p-value
+                enrichment_df = enrichment_df.sort_values("Adjusted P-value")
+
+            # Generate analysis statistics
+            significant_terms = enrichment_df[enrichment_df["Adjusted P-value"] < 0.05]
+
+            enrichment_stats = {
+                "analysis_type": "pathway_enrichment",
+                "enrichment_database": analysis_type,
+                "n_genes_input": len(gene_list),
+                "n_terms_total": len(enrichment_df),
+                "n_significant_terms": len(significant_terms),
+                "organism": organism,
+                "gene_set_libraries": gene_sets,
+                "top_terms": (
+                    significant_terms["Term"].head(10).tolist()
+                    if len(significant_terms) > 0
+                    else []
+                ),
+            }
+
+            logger.info(
+                f"Pathway enrichment completed: {len(significant_terms)} significant terms found"
+            )
+
+            return enrichment_df, enrichment_stats
+
+        except Exception as e:
+            if isinstance(e, BulkRNASeqError):
+                raise
+            else:
+                logger.exception(f"Error in pathway enrichment analysis: {e}")
+                raise BulkRNASeqError(f"Pathway enrichment analysis failed: {e}")
 
     def _run_deseq2_like_analysis(
         self,

@@ -487,7 +487,7 @@ class GEOService:
     # ██                                                                            ██
     # ████████████████████████████████████████████████████████████████████████████████
 
-    def fetch_metadata_only(self, geo_id: str) -> str:
+    def fetch_metadata_only(self, geo_id: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
         Fetch and validate GEO metadata with fallback mechanisms (Scenario 1).
 
@@ -511,7 +511,8 @@ class GEOService:
                 logger.info(f"Detected GDS identifier: {clean_geo_id}")
                 return self._fetch_gds_metadata_and_convert(clean_geo_id)
             elif not clean_geo_id.startswith("GSE"):
-                return f"Invalid GEO ID format: {geo_id}. Must be a GSE or GDS accession (e.g., GSE194247 or GDS5826)."
+                logger.error(f"Invalid GEO ID format: {geo_id}. Must be a GSE or GDS accession (e.g., GSE194247 or GDS5826).")
+                return (None, None)
 
             # Handle GSE identifiers (existing logic)
             return self._fetch_gse_metadata(clean_geo_id)
@@ -524,7 +525,7 @@ class GEOService:
             raise
         except Exception as e:
             logger.exception(f"Error fetching metadata for {geo_id}: {e}")
-            return f"Error fetching metadata for {geo_id}: {str(e)}"
+            return (None, None)
 
     def _fetch_gse_metadata(self, gse_id: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
@@ -558,20 +559,23 @@ class GEOService:
                     return self._fetch_gse_metadata_via_entrez(gse_id)
                 except Exception as e:
                     logger.error(f"Entrez fallback also failed for {gse_id}: {e}")
-                    return (
+                    logger.error(
                         f"Failed to fetch metadata for {gse_id}: "
                         f"SOFT file missing and Entrez fallback failed ({str(e)}). "
                         f"Please check GEO database status or try again later."
                     )
+                    return (None, None)
 
             if gse is None:
-                return f"Failed to fetch metadata for {gse_id} after multiple retry attempts."
+                logger.error(f"Failed to fetch metadata for {gse_id} after multiple retry attempts.")
+                return (None, None)
 
             metadata = self._extract_metadata(gse)
             logger.debug(f"Successfully extracted metadata using GEOparse for {gse_id}")
 
             if not metadata:
-                return f"No metadata could be extracted for {gse_id}"
+                logger.error(f"No metadata could be extracted for {gse_id}")
+                return (None, None)
 
             # Validate metadata against transcriptomics schema
             validation_result = self._validate_geo_metadata(metadata)
@@ -605,7 +609,8 @@ class GEOService:
             raise
         except Exception as geoparse_error:
             logger.error(f"GEOparse metadata fetch failed: {geoparse_error}")
-            return f"Failed to fetch metadata for {gse_id}. GEOparse ({geoparse_error}) failed."
+            logger.error(f"Failed to fetch metadata for {gse_id}. GEOparse ({geoparse_error}) failed.")
+            return (None, None)
 
     def _fetch_gds_metadata_and_convert(
         self, gds_id: str
@@ -657,7 +662,8 @@ class GEOService:
 
             # Extract the GDS record
             if "result" not in gds_data or gds_number not in gds_data["result"]:
-                return f"No GDS record found for {gds_id}"
+                logger.error(f"No GDS record found for {gds_id}")
+                return (None, None)
 
             gds_record = gds_data["result"][gds_number]
             logger.debug(f"Successfully retrieved GDS metadata for {gds_id}")
@@ -665,7 +671,8 @@ class GEOService:
             # Extract GSE ID from GDS record
             gse_id = gds_record.get("gse", "")
             if not gse_id:
-                return f"No associated GSE found for GDS {gds_id}"
+                logger.error(f"No associated GSE found for GDS {gds_id}")
+                return (None, None)
 
             # Ensure GSE has proper format
             if not gse_id.startswith("GSE"):
@@ -674,10 +681,14 @@ class GEOService:
             logger.info(f"Found associated GSE: {gse_id} for GDS {gds_id}")
 
             # Fetch the GSE metadata using existing method
-            gse_metadata, validation_result = self._fetch_gse_metadata(gse_id)
+            result = self._fetch_gse_metadata(gse_id)
 
-            if isinstance(gse_metadata, str):  # Error occurred
-                return gse_metadata
+            # Check if metadata fetch failed (returns (None, None) on error)
+            if result[0] is None:
+                logger.error(f"Failed to fetch GSE metadata for {gse_id} (from GDS {gds_id})")
+                return (None, None)
+
+            gse_metadata, validation_result = result
 
             # Enhance metadata with GDS information
             enhanced_metadata = self._combine_gds_gse_metadata(
@@ -691,13 +702,16 @@ class GEOService:
             raise
         except urllib.error.URLError as e:
             logger.error(f"Network error fetching GDS metadata: {e}")
-            return f"Network error fetching GDS metadata for {gds_id}: {str(e)}"
+            logger.error(f"Network error fetching GDS metadata for {gds_id}: {str(e)}")
+            return (None, None)
         except json.JSONDecodeError as e:
             logger.error(f"Error parsing GDS JSON response: {e}")
-            return f"Error parsing GDS metadata response for {gds_id}: {str(e)}"
+            logger.error(f"Error parsing GDS metadata response for {gds_id}: {str(e)}")
+            return (None, None)
         except Exception as e:
             logger.error(f"Error fetching GDS metadata for {gds_id}: {e}")
-            return f"Error fetching GDS metadata for {gds_id}: {str(e)}"
+            logger.error(f"Error fetching GDS metadata for {gds_id}: {str(e)}")
+            return (None, None)
 
     def _combine_gds_gse_metadata(
         self,
@@ -1065,9 +1079,9 @@ class GEOService:
             # Check if metadata already exists (should be fetched first)
             if clean_geo_id not in self.data_manager.metadata_store:
                 logger.debug(f"Metadata not found, fetching first for {clean_geo_id}")
-                metadata_result = self.fetch_metadata_only(clean_geo_id)
-                if "Error" in metadata_result:
-                    return f"Failed to fetch metadata: {metadata_result}"
+                metadata, validation_result = self.fetch_metadata_only(clean_geo_id)
+                if metadata is None:
+                    return f"Failed to fetch metadata for {clean_geo_id}"
 
             # Safety check: Verify platform compatibility (Phase 2: Early Validation)
             stored_metadata = self.data_manager.metadata_store.get(clean_geo_id)
@@ -1278,11 +1292,11 @@ class GEOService:
         try:
             # Step 1: Ensure metadata exists
             if clean_geo_id not in self.data_manager.metadata_store:
-                metadata_summary = self.fetch_metadata_only(clean_geo_id)
-                if "Error" in str(metadata_summary):
+                metadata, validation_result = self.fetch_metadata_only(clean_geo_id)
+                if metadata is None:
                     return GEOResult(
                         success=False,
-                        error_message=f"Failed to fetch metadata: {metadata_summary}",
+                        error_message=f"Failed to fetch metadata for {clean_geo_id}",
                         source=GEODataSource.GEOPARSE,
                     )
 
@@ -2352,18 +2366,10 @@ class GEOService:
             if detected_type:
                 sample_types.setdefault(detected_type, []).append(gsm_id)
                 logger.debug(f"Sample {gsm_id}: detected as '{detected_type}'")
-
-                # Store classification in GSM metadata for downstream validation
-                if gsm_id in self.gse.gsms:
-                    self.gse.gsms[gsm_id].metadata["lobster_sample_type"] = detected_type
             else:
                 # Unknown - default to RNA for backward compatibility
                 sample_types.setdefault("rna", []).append(gsm_id)
                 logger.debug(f"Sample {gsm_id}: type unclear, defaulting to 'rna'")
-
-                # Store default classification in GSM metadata
-                if gsm_id in self.gse.gsms:
-                    self.gse.gsms[gsm_id].metadata["lobster_sample_type"] = "rna"
 
         # Log summary
         summary = ", ".join(
@@ -4248,7 +4254,7 @@ The actual expression data download will be much faster now that metadata is pre
                     self._validate_single_matrix,
                     gsm_id,
                     matrix,
-                    self.gse.gsms[gsm_id].metadata.get("lobster_sample_type", "rna"),
+                    # sample_type defaults to "rna" in _validate_single_matrix
                 ): gsm_id
                 for gsm_id, matrix in valid_matrices.items()
             }

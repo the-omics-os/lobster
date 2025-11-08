@@ -683,7 +683,9 @@ class GEODownloadManager:
 
                     # Set binary mode and download with specified chunk size
                     ftp.voidcmd("TYPE I")  # Set binary mode
-                    ftp.retrbinary(f"RETR {remote_path}", callback, blocksize=chunk_size)
+                    ftp.retrbinary(
+                        f"RETR {remote_path}", callback, blocksize=chunk_size
+                    )
 
             return True
 
@@ -744,7 +746,12 @@ class GEODownloadManager:
 
                     # Perform chunked download (8KB chunks for stability)
                     success = self._chunked_ftp_download(
-                        ftp, filepath, local_path, file_size, description, chunk_size=8192
+                        ftp,
+                        filepath,
+                        local_path,
+                        file_size,
+                        description,
+                        chunk_size=8192,
                     )
 
                     if not success:

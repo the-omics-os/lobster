@@ -180,7 +180,7 @@ class H5ADBackend(BaseBackend):
                     continue
 
                 # Step 2: Handle boolean columns (convert to string)
-                if df[col].dtype == bool or df[col].dtype == 'boolean':
+                if df[col].dtype == bool or df[col].dtype == "boolean":
                     df[col] = df[col].astype(str)
                     logger.debug(f"Sanitized column '{col}' - converted bool to string")
                     continue
@@ -199,15 +199,19 @@ class H5ADBackend(BaseBackend):
                         )
 
                 # Step 4: Handle mixed-type columns (object dtype)
-                if df[col].dtype == 'object':
+                if df[col].dtype == "object":
                     # Check if column has multiple types
                     non_null_values = df[col].dropna()
                     if len(non_null_values) > 0:
-                        unique_types = non_null_values.apply(lambda x: type(x).__name__).unique()
+                        unique_types = non_null_values.apply(
+                            lambda x: type(x).__name__
+                        ).unique()
 
                         if len(unique_types) > 1:
                             # Mixed types detected - convert all to string
-                            df[col] = df[col].apply(lambda x: str(x) if x is not None else "NA")
+                            df[col] = df[col].apply(
+                                lambda x: str(x) if x is not None else "NA"
+                            )
                             logger.debug(
                                 f"Sanitized column '{col}' - mixed types {unique_types} converted to string"
                             )
@@ -227,11 +231,11 @@ class H5ADBackend(BaseBackend):
                                 )
 
                 # Step 5: Handle categorical columns with non-string categories
-                if hasattr(df[col], 'cat'):
+                if hasattr(df[col], "cat"):
                     # Check if categories contain non-strings
                     categories = df[col].cat.categories
                     if not all(isinstance(cat, str) for cat in categories):
-                        df[col] = df[col].astype(str).astype('category')
+                        df[col] = df[col].astype(str).astype("category")
                         logger.debug(
                             f"Sanitized column '{col}' - converted categorical to string categories"
                         )

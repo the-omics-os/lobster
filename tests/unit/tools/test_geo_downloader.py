@@ -198,7 +198,7 @@ class TestChunkedFTPDownload:
         def mock_retrbinary(cmd, callback, blocksize=8192):
             """Simulate FTP retrbinary with chunked callback."""
             for i in range(0, len(test_data), blocksize):
-                chunk = test_data[i:i + blocksize]
+                chunk = test_data[i : i + blocksize]
                 callback(chunk)
 
         mock_ftp.retrbinary.side_effect = mock_retrbinary
@@ -254,7 +254,7 @@ class TestChunkedFTPDownload:
 
         def mock_retrbinary(cmd, callback, blocksize=8192):
             for i in range(0, len(test_data), blocksize):
-                chunk = test_data[i:i + blocksize]
+                chunk = test_data[i : i + blocksize]
                 chunks_received.append(len(chunk))
                 callback(chunk)
 

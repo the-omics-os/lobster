@@ -652,12 +652,44 @@ class TestPathwayEnrichment:
     """Test pathway enrichment analysis."""
 
     def test_run_pathway_enrichment(self, bulk_service, mock_pydeseq2_results):
-        """Test pathway enrichment analysis (not yet implemented)."""
+        """Test pathway enrichment analysis with GSEApy."""
+        from unittest.mock import MagicMock
+
         gene_list = mock_pydeseq2_results["gene_id"].head(50).tolist()
 
-        # Pathway enrichment is not yet implemented, should raise BulkRNASeqError
-        with pytest.raises(BulkRNASeqError, match="not yet implemented"):
-            bulk_service.run_pathway_enrichment(gene_list=gene_list, organism="human")
+        # Test empty gene list
+        with pytest.raises(BulkRNASeqError, match="Empty gene list"):
+            bulk_service.run_pathway_enrichment(gene_list=[], organism="human")
+
+        # Test with GSEApy installed (mock the enrichr function and imports)
+        mock_enrichr_result = MagicMock()
+        mock_enrichr_result.results = pd.DataFrame(
+            {
+                "Term": ["Pathway1", "Pathway2"],
+                "Overlap": ["10/100", "5/50"],
+                "P-value": [0.001, 0.01],
+                "Adjusted P-value": [0.01, 0.05],
+                "Genes": ["GENE1;GENE2", "GENE3;GENE4"],
+            }
+        )
+
+        # Mock the gseapy module and enrichr function
+        mock_gseapy = MagicMock()
+        mock_gseapy.enrichr = MagicMock(return_value=mock_enrichr_result)
+
+        with patch.dict("sys.modules", {"gseapy": mock_gseapy}):
+            enrichment_df, stats = bulk_service.run_pathway_enrichment(
+                gene_list=gene_list, analysis_type="GO", organism="human"
+            )
+
+            assert isinstance(enrichment_df, pd.DataFrame)
+            assert isinstance(stats, dict)
+            assert "n_significant_terms" in stats
+            assert "enrichment_database" in stats
+            assert stats["enrichment_database"] == "GO"
+            assert stats["n_genes_input"] == 50
+            # Verify gseapy.enrichr was called
+            mock_gseapy.enrichr.assert_called()
 
 
 # ===============================================================================
