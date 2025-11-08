@@ -299,10 +299,12 @@ class SchemaValidator(IValidator):
             result.add_error("No variables in dataset")
 
         # Check sparsity
-        if hasattr(adata.X, "nnz") and hasattr(adata.X, "size"):
-            sparsity = 1.0 - (adata.X.nnz / adata.X.size)
-            if sparsity > 0.95:
-                result.add_warning(f"Very sparse data: {sparsity:.1%} zeros")
+        if hasattr(adata.X, "nnz"):
+            total_elements = adata.X.shape[0] * adata.X.shape[1]
+            if total_elements > 0:
+                sparsity = 1.0 - (adata.X.nnz / total_elements)
+                if sparsity > 0.95:
+                    result.add_warning(f"Very sparse data: {sparsity:.1%} zeros")
 
         return result
 
