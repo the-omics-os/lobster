@@ -211,6 +211,48 @@ Load and analyze files from workspace or current directory.
 - Batch loading with progress tracking
 - Format conversion on-the-fly
 
+#### `/archive <file>`
+Load data from compressed archives containing bioinformatics data.
+
+```
+/archive GSE155698_RAW.tar         # Load 10X Genomics samples
+/archive kallisto_results.tar.gz   # Load Kallisto quantification
+/archive salmon_quant.zip          # Load Salmon quantification
+```
+
+**Supported Archive Formats**:
+- TAR (`.tar`, `.tar.gz`, `.tar.bz2`)
+- ZIP (`.zip`)
+
+**Supported Data Formats**:
+- **10X Genomics**: Both V2 (`genes.tsv`) and V3 (`features.tsv`) chemistry
+  - Handles compressed and uncompressed files
+  - Automatic sample detection and concatenation
+- **Kallisto Quantification**: Multiple samples with `abundance.tsv` or `abundance.h5`
+- **Salmon Quantification**: Multiple samples with `quant.sf`
+- **GEO RAW Files**: GSM-prefixed expression files
+
+**Features**:
+- Smart content detection without full extraction
+- Automatic format identification
+- Memory-efficient processing
+- Handles nested archive structures
+- Sample concatenation for multi-sample archives
+- Compressed file support (`.gz`, `.bz2`)
+
+**Example Workflow**:
+```
+/archive /path/to/GSE155698_RAW.tar
+# Automatically detects:
+# - 17 10X Genomics samples (V2 and V3 mixed)
+# - Loads and concatenates all samples
+# - Result: 94,371 cells × 32,738 genes
+```
+
+**When to Use `/archive` vs `/read`**:
+- Use `/archive` for: Compressed archives with multiple samples or nested structures
+- Use `/read` for: Individual data files (H5AD, CSV, Excel)
+
 #### `/open <file>`
 Open file or folder in system default application.
 

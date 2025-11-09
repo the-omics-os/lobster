@@ -223,8 +223,10 @@ class ContentDetector:
     KALLISTO_PATTERNS = ["abundance.tsv", "abundance.h5", "abundance.txt"]
     SALMON_PATTERNS = ["quant.sf", "quant.genes.sf"]
 
-    # 10X Genomics signatures
-    TEN_X_REQUIRED_FILES = {"matrix.mtx", "features.tsv", "barcodes.tsv"}
+    # 10X Genomics signatures (support both V2 and V3)
+    # Note: Using stems (no extensions) since detection uses Path(f).stem
+    TEN_X_V3_FILES = {"matrix", "features", "barcodes"}  # V3 chemistry
+    TEN_X_V2_FILES = {"matrix", "genes", "barcodes"}      # V2 chemistry
 
     # GEO RAW pattern: GSM<digits>_*.txt or GSM<digits>_*.txt.gz
     GEO_RAW_PATTERN = re.compile(r"^GSM\d+_.*\.(txt|txt\.gz|cel|CEL)$")
@@ -314,9 +316,16 @@ class ContentDetector:
             if salmon_count >= 2:
                 return ArchiveContentType.SALMON_QUANT
 
-        # Check for 10X Genomics format
-        basenames = {Path(f).stem for f in all_files}
-        if cls.TEN_X_REQUIRED_FILES.issubset(basenames):
+        # Check for 10X Genomics format (V2 or V3)
+        # Handle both compressed (.gz) and uncompressed files
+        basenames = {Path(f).stem.replace('.mtx', '').replace('.tsv', '') for f in all_files}
+        basenames_with_ext = {Path(f).stem for f in all_files}
+
+        # Check if we have required files (stem without compression)
+        has_v3 = cls.TEN_X_V3_FILES.issubset(basenames) or cls.TEN_X_V3_FILES.issubset(basenames_with_ext)
+        has_v2 = cls.TEN_X_V2_FILES.issubset(basenames) or cls.TEN_X_V2_FILES.issubset(basenames_with_ext)
+
+        if has_v3 or has_v2:
             return ArchiveContentType.TEN_X_MTX
 
         # Check for GEO RAW pattern
@@ -434,9 +443,16 @@ class ArchiveInspector:
             if salmon_count >= 2:
                 return ArchiveContentType.SALMON_QUANT
 
-        # Check for 10X format
-        basenames = {Path(f).stem for f in filenames}
-        if ContentDetector.TEN_X_REQUIRED_FILES.issubset(basenames):
+        # Check for 10X format (V2 or V3)
+        # Handle both compressed (.gz) and uncompressed files
+        basenames = {Path(f).stem.replace('.mtx', '').replace('.tsv', '') for f in filenames}
+        basenames_with_ext = {Path(f).stem for f in filenames}
+
+        # Check if we have required files
+        has_v3 = ContentDetector.TEN_X_V3_FILES.issubset(basenames) or ContentDetector.TEN_X_V3_FILES.issubset(basenames_with_ext)
+        has_v2 = ContentDetector.TEN_X_V2_FILES.issubset(basenames) or ContentDetector.TEN_X_V2_FILES.issubset(basenames_with_ext)
+
+        if has_v3 or has_v2:
             return ArchiveContentType.TEN_X_MTX
 
         # Check for GEO RAW

@@ -132,10 +132,16 @@ class DoclingService:
                 PdfFormatOption,
             )
 
-            html_backend_logger = logging.getLogger(
-                "docling_core.transforms.chunker.html_backend"
-            )
-            html_backend_logger.setLevel(logging.ERROR)
+            # Suppress formatting warnings from multiple possible logger paths
+            # for compatibility across docling-core versions
+            logger_paths = [
+                "docling_core.transforms.chunker.html_backend",  # Legacy path
+                "docling_core.transforms.serializer.html",       # v2.50+ path
+                "docling_core.transforms.chunker",               # Parent logger
+                "docling_core.transforms",                        # Broad coverage
+            ]
+            for logger_path in logger_paths:
+                logging.getLogger(logger_path).setLevel(logging.ERROR)
 
             # Store imports for later use
             self._docling_imports = {

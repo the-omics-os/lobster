@@ -353,8 +353,158 @@ P12345,IL6,Interleukin-6,23.7
 **Loading Downloaded Files**:
 ```bash
 /read GSE12345_series_matrix.txt.gz
-/read GSE12345_RAW.tar  # Extract and process
+/archive GSE12345_RAW.tar  # Extract and process archived samples
 ```
+
+### Archive Formats
+
+#### Supported Archive Types
+
+**TAR Archives**
+- **File Extensions**: `.tar`, `.tar.gz`, `.tar.bz2`
+- **Compression**: Supports gzip and bzip2 compression
+- **Usage**: Common for GEO RAW files and multi-sample datasets
+
+**ZIP Archives**
+- **File Extensions**: `.zip`
+- **Compression**: Standard ZIP compression
+- **Usage**: Alternative archive format for data distribution
+
+#### Archive Content Detection
+
+Lobster AI automatically detects and processes multiple bioinformatics formats within archives:
+
+**10X Genomics Archives**
+- **V3 Chemistry**: `matrix.mtx`, `features.tsv`, `barcodes.tsv`
+- **V2 Chemistry**: `matrix.mtx`, `genes.tsv`, `barcodes.tsv`
+- **Compression**: Handles both `.gz` compressed and uncompressed files
+- **Structure**: Automatically detects nested sample directories
+
+**Example Structure**:
+```
+GSE155698_RAW.tar
+├── GSM4701116_PDAC_PBMC_01/
+│   ├── matrix.mtx.gz
+│   ├── features.tsv.gz        # V3 chemistry
+│   └── barcodes.tsv.gz
+├── GSM4701131_PDAC_PBMC_16/
+│   ├── matrix.mtx.gz
+│   ├── genes.tsv.gz           # V2 chemistry
+│   └── barcodes.tsv.gz
+└── ... (additional samples)
+```
+
+**Kallisto/Salmon Quantification Archives**
+- **Kallisto Files**: `abundance.tsv`, `abundance.h5`, `abundance.txt`
+- **Salmon Files**: `quant.sf`, `quant.genes.sf`
+- **Requirements**: Multiple sample subdirectories (≥2 samples)
+- **Auto-Merge**: Automatically combines all samples into unified dataset
+
+**Example Structure**:
+```
+kallisto_results.tar.gz
+├── sample_1/
+│   └── abundance.tsv
+├── sample_2/
+│   └── abundance.tsv
+└── sample_3/
+    └── abundance.tsv
+```
+
+**GEO RAW Expression Files**
+- **Pattern**: `GSM<digits>_*.txt`, `GSM<digits>_*.txt.gz`
+- **Format**: Expression matrices or quantification files
+- **Metadata**: Automatically extracts sample information from filenames
+
+#### Loading Archives
+
+**Basic Usage**:
+```bash
+/archive /path/to/archive.tar
+/archive /path/to/archive.tar.gz
+/archive /path/to/archive.zip
+```
+
+**Features**:
+- **Smart Content Detection**: Identifies data format without full extraction
+- **Memory Efficiency**: Streaming extraction for large archives
+- **Multi-Sample Processing**: Automatic sample concatenation
+- **Format Mixing**: Handles archives with V2 and V3 chemistry mixed
+- **Progress Tracking**: Real-time status updates during processing
+
+**Example Workflow**:
+```bash
+# Load GEO archive with multiple 10X samples
+/archive GSE155698_RAW.tar
+
+# System automatically:
+# 1. Inspects archive contents (no extraction yet)
+# 2. Detects 17 10X Genomics samples (V2 and V3 mixed)
+# 3. Extracts each sample efficiently
+# 4. Loads and concatenates all samples
+# 5. Result: 94,371 cells × 32,738 genes
+
+# Load Kallisto quantification archive
+/archive kallisto_batch_results.tar.gz
+
+# System automatically:
+# 1. Detects multiple abundance.tsv files
+# 2. Identifies Kallisto format
+# 3. Merges samples with proper orientation
+# 4. Result: samples × genes count matrix
+```
+
+#### Archive Processing Pipeline
+
+**Step 1: Manifest Inspection**
+- Fast archive contents scan
+- File pattern matching
+- Format identification
+
+**Step 2: Content Type Detection**
+- 10X Genomics (V2/V3 detection)
+- Kallisto/Salmon quantification
+- GEO RAW expression files
+- Generic expression matrices
+
+**Step 3: Extraction Strategy**
+- Memory-efficient streaming
+- Selective extraction (only needed files)
+- Nested archive handling
+
+**Step 4: Data Loading**
+- Format-specific loaders
+- Sample concatenation
+- Metadata preservation
+- Quality validation
+
+#### Archive vs Individual Files
+
+**Use `/archive` for**:
+- TAR/ZIP compressed archives
+- Multi-sample datasets (10X, Kallisto, Salmon)
+- GEO RAW downloads
+- Nested directory structures
+
+**Use `/read` for**:
+- Individual H5AD files
+- Single CSV/Excel files
+- Uncompressed directories
+- Pre-extracted data
+
+#### Archive Format Validation
+
+**Quality Checks**:
+- File completeness (all required files present)
+- Format consistency (matching structures across samples)
+- Compression integrity
+- Data type validation
+
+**Error Handling**:
+- Missing required files (e.g., missing `barcodes.tsv`)
+- Corrupted archives
+- Unsupported nested structures
+- Mixed incompatible formats
 
 ## Output Formats
 

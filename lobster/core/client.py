@@ -1011,11 +1011,32 @@ class AgentClient(BaseClient):
     def _load_10x_from_directory(
         self, directory: Path, modality_base: str
     ) -> Dict[str, Any]:
-        """Load 10X Genomics MEX format from extracted directory."""
+        """
+        Load 10X Genomics MEX format from extracted directory.
+
+        Uses two-tier loading strategy:
+        1. Tier 1 (Primary): Scanpy's read_10x_mtx() - fast, standard approach
+        2. Tier 2 (Fallback): Manual parsing with scipy/gzip - robust for nested/compressed archives
+
+        Handles nested structures like:
+            PDAC_TISSUE_1/
+            └── filtered_feature_bc_matrix/
+                ├── matrix.mtx.gz
+                ├── features.tsv.gz
+                └── barcodes.tsv.gz
+
+        Args:
+            directory: Extracted archive directory containing 10X data
+            modality_base: Base name for modality (e.g., "GSM4710689_PDAC_TISSUE_1")
+
+        Returns:
+            Dictionary with success status, modality name, and data shape
+        """
         try:
             import scanpy as sc
+            import anndata
 
-            # Find 10X directory (may be nested)
+            # Find 10X matrix file (may be nested)
             mtx_dirs = list(directory.rglob("matrix.mtx*"))
             if not mtx_dirs:
                 return {"success": False, "error": "No matrix.mtx file found"}
@@ -1024,37 +1045,258 @@ class AgentClient(BaseClient):
             mtx_dir = mtx_dirs[0].parent
             logger.info(f"Loading 10X data from {mtx_dir}")
 
-            # Load with scanpy
-            adata = sc.read_10x_mtx(mtx_dir)
+            # === TIER 1: Try scanpy first (fast, standard) ===
+            loading_method = "scanpy"
+            try:
+                logger.info("Tier 1: Attempting scanpy loading...")
+                adata = sc.read_10x_mtx(
+                    mtx_dir,
+                    var_names='gene_symbols',  # Use gene symbols as primary
+                    make_unique=True  # Handle duplicate gene names
+                )
 
-            # Validate AnnData before storing
+                # Validate scanpy result
+                if adata.n_obs > 0 and adata.n_vars > 0:
+                    logger.info(
+                        f"✓ Scanpy loaded successfully: {adata.n_obs:,} cells × {adata.n_vars:,} genes"
+                    )
+                else:
+                    raise ValueError(
+                        f"Scanpy returned invalid shape: {adata.n_obs} obs × {adata.n_vars} vars"
+                    )
+
+            except Exception as scanpy_error:
+                logger.warning(
+                    f"Scanpy loading failed: {scanpy_error}"
+                )
+                logger.info("Tier 2: Falling back to manual parsing...")
+
+                # === TIER 2: Manual parsing fallback (robust) ===
+                loading_method = "manual_parsing"
+                df = self._manual_parse_10x(directory, modality_base)
+
+                if df is None or df.shape[0] == 0 or df.shape[1] == 0:
+                    return {
+                        "success": False,
+                        "error": "Both scanpy and manual parsing failed to load 10X data",
+                        "scanpy_error": str(scanpy_error),
+                    }
+
+                # Convert DataFrame to AnnData
+                adata = anndata.AnnData(df)
+                logger.info(
+                    f"✓ Manual parsing loaded successfully: {adata.n_obs:,} cells × {adata.n_vars:,} genes"
+                )
+
+            # === Final validation ===
             if adata.n_obs == 0 or adata.n_vars == 0:
                 return {
                     "success": False,
-                    "error": f"Invalid data shape: {adata.n_obs} obs × {adata.n_vars} vars (empty dataset)",
+                    "error": f"Invalid data shape after loading: {adata.n_obs} obs × {adata.n_vars} vars (empty dataset)",
                 }
 
+            # Store modality
             modality_name = f"{modality_base}_10x"
             self.data_manager.modalities[modality_name] = adata
 
+            # Log provenance
             self.data_manager.log_tool_usage(
                 tool_name="load_10x_archive",
-                parameters={"source_dir": str(mtx_dir)},
-                description=f"Loaded 10X Genomics data from {modality_base}",
+                parameters={
+                    "source_dir": str(mtx_dir),
+                    "loading_method": loading_method,
+                },
+                description=f"Loaded 10X Genomics data from {modality_base} using {loading_method}",
             )
 
             return {
                 "success": True,
                 "modality_name": modality_name,
                 "data_shape": (adata.n_obs, adata.n_vars),
-                "message": "Successfully loaded 10X Genomics data",
+                "loading_method": loading_method,
+                "message": f"Successfully loaded 10X Genomics data ({loading_method})",
             }
 
         except Exception as e:
+            logger.error(f"Failed to load 10X data: {e}", exc_info=True)
             return {
                 "success": False,
                 "error": f"Failed to load 10X data: {str(e)}",
             }
+
+    def _manual_parse_10x(
+        self, directory: Path, sample_id: str
+    ) -> Optional["pd.DataFrame"]:
+        """
+        Manually parse 10X Genomics MEX format with robust handling of nested structures.
+
+        This method provides a fallback when scanpy's read_10x_mtx() fails. It handles:
+        - Nested directory structures (e.g., SAMPLE/filtered_feature_bc_matrix/)
+        - Compressed .gz files (matrix.mtx.gz, features.tsv.gz, barcodes.tsv.gz)
+        - Missing or incomplete metadata files
+        - Gene ID vs gene symbol handling
+
+        Based on the working implementation from geo_parser.parse_10x_data().
+
+        Args:
+            directory: Root directory containing 10X data (may have nested structure)
+            sample_id: Sample identifier for cell ID prefixing
+
+        Returns:
+            pandas DataFrame with cells as rows and genes as columns, or None if parsing fails
+        """
+        import gzip
+        import pandas as pd
+        import numpy as np
+
+        try:
+            logger.info(f"Manual parsing 10X data from {directory}")
+
+            # === STEP 1: Recursively discover 10X files ===
+            matrix_file = None
+            barcodes_file = None
+            features_file = None
+
+            logger.debug("Searching for 10X files...")
+            for file_path in directory.rglob("*"):
+                if file_path.is_file():
+                    name_lower = file_path.name.lower()
+
+                    if "matrix.mtx" in name_lower:
+                        matrix_file = file_path
+                        logger.debug(f"Found matrix file: {file_path}")
+                    elif "barcode" in name_lower or "barcodes" in name_lower:
+                        barcodes_file = file_path
+                        logger.debug(f"Found barcodes file: {file_path}")
+                    elif "feature" in name_lower or "genes" in name_lower:
+                        features_file = file_path
+                        logger.debug(f"Found features file: {file_path}")
+
+            # Validate required files found
+            if not matrix_file:
+                logger.error("Matrix file (matrix.mtx*) not found")
+                return None
+
+            logger.info(f"Files discovered: matrix={matrix_file.name}, "
+                       f"barcodes={barcodes_file.name if barcodes_file else 'None'}, "
+                       f"features={features_file.name if features_file else 'None'}")
+
+            # === STEP 2: Load sparse matrix ===
+            logger.info("Loading sparse matrix...")
+            import scipy.io as sio
+
+            try:
+                if matrix_file.name.endswith(".gz"):
+                    with gzip.open(matrix_file, "rt") as f:
+                        matrix = sio.mmread(f)
+                else:
+                    matrix = sio.mmread(matrix_file)
+
+                # Convert to dense array
+                if hasattr(matrix, "todense"):
+                    matrix_dense = np.array(matrix.todense())
+                else:
+                    matrix_dense = np.array(matrix)
+
+                # Transpose: 10X format is genes × cells, we want cells × genes
+                matrix_dense = matrix_dense.T
+
+                logger.info(f"Matrix loaded: {matrix_dense.shape[0]:,} cells × {matrix_dense.shape[1]:,} genes (before validation)")
+
+            except Exception as e:
+                logger.error(f"Failed to load matrix file: {e}")
+                return None
+
+            # === STEP 3: Load cell barcodes ===
+            cell_ids = []
+            if barcodes_file and barcodes_file.exists():
+                logger.info("Loading cell barcodes...")
+                try:
+                    if barcodes_file.name.endswith(".gz"):
+                        with gzip.open(barcodes_file, "rt") as f:
+                            cell_ids = [line.strip() for line in f if line.strip()]
+                    else:
+                        with open(barcodes_file, "r") as f:
+                            cell_ids = [line.strip() for line in f if line.strip()]
+
+                    # Add sample prefix to cell IDs for multi-sample tracking
+                    cell_ids = [f"{sample_id}_{cell_id}" for cell_id in cell_ids]
+
+                    logger.info(f"Loaded {len(cell_ids):,} cell barcodes")
+
+                except Exception as e:
+                    logger.warning(f"Failed to load barcodes: {e}, will generate generic IDs")
+
+            # Validate or generate cell IDs
+            if len(cell_ids) != matrix_dense.shape[0]:
+                logger.warning(
+                    f"Cell ID count mismatch: {len(cell_ids)} barcodes vs {matrix_dense.shape[0]} matrix rows. "
+                    "Generating generic cell IDs."
+                )
+                cell_ids = [f"{sample_id}_cell_{i}" for i in range(matrix_dense.shape[0])]
+
+            # === STEP 4: Load gene features ===
+            gene_ids = []
+            gene_names = []
+
+            if features_file and features_file.exists():
+                logger.info("Loading gene features...")
+                try:
+                    if features_file.name.endswith(".gz"):
+                        with gzip.open(features_file, "rt") as f:
+                            lines = f.readlines()
+                    else:
+                        with open(features_file, "r") as f:
+                            lines = f.readlines()
+
+                    # Parse TSV format: each line is "gene_id\tgene_name\tfeature_type"
+                    for line in lines:
+                        parts = line.strip().split("\t")
+                        if len(parts) >= 2:
+                            gene_ids.append(parts[0])
+                            gene_names.append(parts[1])  # Use gene symbol (column 2)
+                        elif len(parts) == 1:
+                            # Only gene ID available
+                            gene_ids.append(parts[0])
+                            gene_names.append(parts[0])
+
+                    logger.info(f"Loaded {len(gene_names):,} gene features")
+
+                except Exception as e:
+                    logger.warning(f"Failed to load features: {e}, will generate generic gene IDs")
+
+            # Validate or generate gene names
+            if len(gene_names) != matrix_dense.shape[1]:
+                logger.warning(
+                    f"Gene name count mismatch: {len(gene_names)} features vs {matrix_dense.shape[1]} matrix columns. "
+                    "Generating generic gene IDs."
+                )
+                gene_names = [f"Gene_{i}" for i in range(matrix_dense.shape[1])]
+
+            # === STEP 5: Create DataFrame ===
+            logger.info(f"Creating DataFrame: {len(cell_ids):,} cells × {len(gene_names):,} genes")
+
+            df = pd.DataFrame(
+                matrix_dense,
+                index=pd.Index(cell_ids, name='cell_id'),
+                columns=pd.Index(gene_names, name='gene_name')
+            )
+
+            # Make gene names unique if duplicates exist
+            if df.columns.duplicated().any():
+                logger.warning("Duplicate gene names detected, making unique...")
+                df.columns = pd.Index([
+                    f"{name}_{i}" if df.columns.tolist().count(name) > 1 else name
+                    for i, name in enumerate(df.columns)
+                ], name='gene_name')
+
+            logger.info(f"✓ Manual parsing complete: {df.shape[0]:,} cells × {df.shape[1]:,} genes")
+
+            return df
+
+        except Exception as e:
+            logger.error(f"Manual 10X parsing failed: {e}", exc_info=True)
+            return None
 
     def _load_generic_expression_from_directory(
         self, directory: Path, modality_base: str
@@ -1366,6 +1608,13 @@ class AgentClient(BaseClient):
                 result_dict["message"] = (
                     f"Loaded {len(results)} of {len(matching_files)} samples matching '{pattern}'"
                 )
+
+            # Auto-save loaded modalities to workspace (consistent with GEO dataset behavior)
+            try:
+                self.data_manager.auto_save_state()
+                logger.info(f"Auto-saved {len(results)} loaded modalities to workspace")
+            except Exception as e:
+                logger.warning(f"Failed to auto-save modalities: {e}")
 
             return result_dict
 

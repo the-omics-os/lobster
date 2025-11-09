@@ -189,6 +189,7 @@ lobster query --verbose "load and normalize data"
 | `/help` | Show all available commands |
 | `/files` | List workspace files |
 | `/read <file>` | Load a dataset |
+| `/archive <file>` | Load data from archives (tar/zip with 10X, Kallisto/Salmon) |
 | `/data` | Show current dataset info |
 | `/plots` | List generated visualizations |
 | `/workspace` | Show workspace information |

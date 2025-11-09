@@ -400,9 +400,13 @@ class BaseAdapter(IModalityAdapter):
                     "zero_obs": int((obs_sums == 0).sum()),
                     "zero_vars": int((var_sums == 0).sum()),
                     "density": (
-                        float(1.0 - (adata.X == 0).sum() / adata.X.size)
-                        if hasattr(adata.X, "size")
-                        else 0.0
+                        float(adata.X.nnz / (adata.X.shape[0] * adata.X.shape[1]))
+                        if hasattr(adata.X, "nnz")  # Sparse matrix - O(1) operation
+                        else (
+                            float(1.0 - (adata.X == 0).sum() / adata.X.size)
+                            if hasattr(adata.X, "size")
+                            else 0.0
+                        )
                     ),
                 }
             )

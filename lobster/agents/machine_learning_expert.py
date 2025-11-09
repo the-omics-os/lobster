@@ -284,9 +284,18 @@ def machine_learning_expert(
             # Handle zeros
             if handle_zeros == "remove":
                 # Remove features with too many zeros
-                zero_prop = np.mean(adata_ml.X == 0, axis=0)
-                if hasattr(zero_prop, "A1"):
-                    zero_prop = zero_prop.A1
+                if hasattr(adata_ml.X, "nnz"):
+                    # Sparse matrix - efficient calculation using CSC format
+                    from scipy.sparse import issparse
+                    X_csc = adata_ml.X.tocsc() if issparse(adata_ml.X) else adata_ml.X
+                    # Count non-zeros per column efficiently
+                    non_zeros_per_col = np.diff(X_csc.indptr)
+                    zero_prop = 1.0 - (non_zeros_per_col / adata_ml.shape[0])
+                else:
+                    # Dense matrix - direct calculation
+                    zero_prop = np.mean(adata_ml.X == 0, axis=0)
+                    if hasattr(zero_prop, "A1"):
+                        zero_prop = zero_prop.A1
                 keep_features = zero_prop < 0.9  # Keep features with <90% zeros
                 adata_ml = adata_ml[:, keep_features]
 
@@ -360,6 +369,14 @@ def machine_learning_expert(
                 description=f"Prepared ML features: {adata_ml.shape}",
             )
 
+            # Calculate sparsity efficiently (sparse-aware)
+            if hasattr(adata_ml.X, "nnz"):
+                # Sparse matrix - O(1) calculation
+                sparsity = 1.0 - (adata_ml.X.nnz / (adata_ml.shape[0] * adata_ml.shape[1]))
+            else:
+                # Dense matrix - direct calculation
+                sparsity = np.mean(adata_ml.X == 0)
+
             response = f"""Successfully prepared features for machine learning from '{modality_name}'!
 
 📊 **Feature Preparation Results:**
@@ -370,7 +387,7 @@ def machine_learning_expert(
 - Zero handling: {handle_zeros}
 
 🔬 **Feature Statistics:**
-- Sparsity: {np.mean(adata_ml.X == 0):.1%} zeros
+- Sparsity: {sparsity:.1%} zeros
 - Value range: [{np.min(adata_ml.X):.2f}, {np.max(adata_ml.X):.2f}]
 
 💾 **New modality created**: '{ml_modality_name}'"""

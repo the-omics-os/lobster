@@ -546,8 +546,8 @@ def create_data_saving_ir(
 
     # Jinja2 template with parameter placeholders
     code_template = f"""# Save processed data
-output_path = f"{{{{{{ {output_prefix_param} }}}}}}_{filename_suffix}.h5ad"
-adata.write_h5ad(output_path, compression={{{{ compression or 'gzip' }}}})
+output_path = f"{{{output_prefix_param}}}_{filename_suffix}.h5ad"
+adata.write_h5ad(output_path, compression={{% if compression %}}{{{{ compression | tojson }}}}{{% else %}}None{{% endif %}})
 print(f"Saved processed data to: {{output_path}}")
 """
 

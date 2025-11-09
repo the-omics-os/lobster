@@ -2870,8 +2870,6 @@ when they are started by agents or analysis workflows.
                     nested_info = inspection["nested_info"]
 
                     # Display inspection report
-                    from rich.table import Table
-
                     console.print(f"\n[bold green]✓ Detected Nested Archive Structure[/bold green]")
                     console.print(f"[white]Total nested archives: [yellow]{nested_info.total_count}[/yellow][/white]")
                     console.print(f"[white]Estimated memory: [yellow]{nested_info.estimated_memory / (1024**3):.1f} GB[/yellow][/white]")
@@ -2970,7 +2968,6 @@ when they are started by agents or analysis workflows.
         if subcommand == "list":
             # Show detailed list of all nested samples
             nested_info = client._last_archive_info
-            from rich.table import Table
 
             console.print(f"\n[bold white]📋 Archive Contents:[/bold white]")
             console.print(f"[dim]Cache ID: {client._last_archive_cache}[/dim]\n")
@@ -2996,7 +2993,6 @@ when they are started by agents or analysis workflows.
         elif subcommand == "groups":
             # Show condition groups summary
             nested_info = client._last_archive_info
-            from rich.table import Table
 
             console.print(f"\n[bold white]📂 Condition Groups:[/bold white]\n")
 
@@ -3134,8 +3130,6 @@ when they are started by agents or analysis workflows.
             console.print(f"[white]Total cached extractions: [yellow]{len(all_caches)}[/yellow][/white]")
 
             if all_caches:
-                from rich.table import Table
-
                 cache_table = Table(box=box.ROUNDED, border_style="cyan")
                 cache_table.add_column("Cache ID", style="bold orange1")
                 cache_table.add_column("Archive", style="white")

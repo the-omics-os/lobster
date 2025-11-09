@@ -27,6 +27,7 @@ from pytest_mock import MockerFixture
 logging.getLogger("scanpy").setLevel(logging.ERROR)
 logging.getLogger("anndata").setLevel(logging.ERROR)
 logging.getLogger("matplotlib").setLevel(logging.ERROR)
+logging.getLogger("docling_core.transforms").setLevel(logging.ERROR)
 
 # Initialize faker for generating test data
 fake = Faker()

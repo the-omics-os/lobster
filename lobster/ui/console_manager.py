@@ -206,6 +206,9 @@ class LobsterConsoleManager:
         logging.getLogger("httpcore").setLevel(logging.WARNING)
         logging.getLogger("urllib3").setLevel(logging.WARNING)
 
+        # Suppress docling formatting clash warnings (non-fatal cosmetic issues)
+        logging.getLogger("docling_core.transforms").setLevel(logging.ERROR)
+
     def _setup_traceback(self):
         """Setup Rich traceback integration."""
         install_rich_traceback(

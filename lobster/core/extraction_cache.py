@@ -5,11 +5,33 @@ Preserves extracted archives in workspace for repeated access without
 re-extraction overhead. Useful for large nested TAR structures where
 users want to inspect first and load selectively.
 
+Professional Iterative Extraction Workflow:
+    This module implements a systematic, iterative approach to handling
+    complex nested archive structures (e.g., GSE155698_RAW.tar containing
+    multiple *.tar.gz files, each with 10X Genomics data):
+
+    1. **Inspection Phase**: Archive structure detected without full extraction
+    2. **Selective Extraction**: User-specified patterns (e.g., "TISSUE", "PBMC")
+       trigger extraction only for matching samples
+    3. **Robust Loading**: Two-tier loading strategy (scanpy → manual parsing)
+       ensures data integrity even with deeply nested structures
+    4. **Auto-Concatenation**: Multiple samples automatically merged for analysis
+    5. **Provenance Tracking**: Complete audit trail of extraction and loading steps
+
 Example workflow:
     1. User runs /read GSE155698_RAW.tar
-    2. Archive extracted to cache with unique ID
+    2. Archive inspected, nested structure detected, extracted to cache with unique ID
     3. User can then load specific samples: /archive load TISSUE
-    4. Cache automatically cleaned up after 7 days
+    4. Selected samples loaded with robust fallback handling
+    5. Multiple samples automatically concatenated if applicable
+    6. Cache automatically cleaned up after 7 days
+
+Technical Details:
+    - Handles nested .tar.gz files within parent TAR archives
+    - Supports compressed 10X Genomics MEX format (.mtx.gz, .tsv.gz)
+    - Validates directory structures at each extraction level
+    - Memory-efficient: only extracts requested samples
+    - Thread-safe for concurrent cache operations
 """
 
 import json

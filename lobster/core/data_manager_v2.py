@@ -1393,7 +1393,7 @@ class DataManagerV2:
                 try:
                     plot = plot_entry["figure"]
                     plot_id = plot_entry["id"]
-                    plot_title = plot_entry["title"]
+                    plot_title = plot_entry.get("original_title", plot_entry["title"])
 
                     # Create sanitized filename
                     safe_title = "".join(
@@ -2969,7 +2969,7 @@ class DataManagerV2:
                     try:
                         plot = plot_entry["figure"]
                         plot_id = plot_entry["id"]
-                        plot_title = plot_entry["title"]
+                        plot_title = plot_entry.get("original_title", plot_entry["title"])
 
                         # Create sanitized filename
                         safe_title = "".join(
@@ -3144,8 +3144,18 @@ https://github.com/OmicsOS/lobster
                 import h5py
 
                 with h5py.File(h5ad_file, "r") as f:
-                    # Extract basic metadata
-                    shape = f["X"].shape if "X" in f else (0, 0)
+                    # Extract basic metadata - handle both dense and sparse matrices per AnnData spec
+                    if "X" in f:
+                        if isinstance(f["X"], h5py.Dataset):
+                            # Dense matrix - has shape attribute
+                            shape = f["X"].shape
+                        elif isinstance(f["X"], h5py.Group):
+                            # Sparse matrix (CSR/CSC) - shape is in attributes per AnnData spec
+                            shape = tuple(f["X"].attrs["shape"]) if "shape" in f["X"].attrs else (0, 0)
+                        else:
+                            shape = (0, 0)
+                    else:
+                        shape = (0, 0)
 
                     self.available_datasets[h5ad_file.stem] = {
                         "path": str(h5ad_file),
