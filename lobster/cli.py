@@ -3845,14 +3845,29 @@ when they are started by agents or analysis workflows.
 
                 return "No datasets found in workspace"
 
-            table = Table(title="Available Datasets", box=box.ROUNDED)
-            table.add_column("Status", style="green")
-            table.add_column("Name", style="bold")
-            table.add_column("Size", style="cyan")
-            table.add_column("Shape", style="white")
-            table.add_column("Modified", style="dim")
+            # Helper function for intelligent truncation (middle ellipsis)
+            def truncate_middle(text: str, max_length: int = 60) -> str:
+                """Truncate text in the middle with ellipsis, preserving start and end."""
+                if len(text) <= max_length:
+                    return text
 
-            for name, info in sorted(available.items()):
+                # Calculate how much to keep on each side
+                # Reserve 3 characters for "..."
+                available_chars = max_length - 3
+                start_length = (available_chars + 1) // 2  # Slightly prefer start
+                end_length = available_chars // 2
+
+                return f"{text[:start_length]}...{text[-end_length:]}"
+
+            table = Table(title="Available Datasets", box=box.ROUNDED)
+            table.add_column("#", style="dim", width=4)
+            table.add_column("Status", style="green", width=6)
+            table.add_column("Name", style="bold", no_wrap=False)
+            table.add_column("Size", style="cyan", width=10)
+            table.add_column("Shape", style="white", width=15)
+            table.add_column("Modified", style="dim", width=12)
+
+            for idx, (name, info) in enumerate(sorted(available.items()), start=1):
                 status = "✓" if name in loaded else "○"
                 size = f"{info['size_mb']:.1f} MB"
                 shape = (
@@ -3861,32 +3876,184 @@ when they are started by agents or analysis workflows.
                     else "N/A"
                 )
                 modified = info["modified"].split("T")[0]
-                table.add_row(status, name, size, shape, modified)
+
+                # Use intelligent truncation for long names
+                display_name = truncate_middle(name, max_length=60)
+
+                table.add_row(str(idx), status, display_name, size, shape, modified)
 
             console.print(table)
+            console.print(
+                f"\n[dim]Use '/workspace info <#>' to see full details[/dim]"
+            )
             return f"Listed {len(available)} available datasets"
 
-        elif subcommand == "load":
-            # Load specific datasets
+        elif subcommand == "info":
+            # Show detailed information for specific dataset(s)
             if len(parts) < 3:
-                console.print("[red]Usage: /workspace load <pattern>[/red]")
-                return None
-            else:
-                pattern = parts[2]
-
-                # Show what will be loaded
+                console.print("[red]Usage: /workspace info <#|pattern>[/red]")
                 console.print(
-                    f"[yellow]Loading workspace datasets (pattern: {pattern})...[/yellow]"
+                    "[dim]Examples: /workspace info 1, /workspace info gse12345, /workspace info *clustered*[/dim]"
+                )
+                return None
+
+            selector = parts[2]
+
+            # Re-scan workspace to ensure we have latest files
+            if hasattr(client.data_manager, "_scan_workspace"):
+                client.data_manager._scan_workspace()
+
+            available = client.data_manager.available_datasets
+            loaded = set(client.data_manager.modalities.keys())
+
+            if not available:
+                console.print("[yellow]No datasets found in workspace[/yellow]")
+                return None
+
+            # Determine if selector is an index or pattern
+            matched_datasets = []
+
+            if selector.isdigit():
+                # Index-based selection
+                idx = int(selector)
+                sorted_names = sorted(available.keys())
+                if 1 <= idx <= len(sorted_names):
+                    matched_datasets = [(sorted_names[idx - 1], available[sorted_names[idx - 1]])]
+                else:
+                    console.print(
+                        f"[red]Index {idx} out of range (1-{len(sorted_names)})[/red]"
+                    )
+                    return None
+            else:
+                # Pattern-based selection
+                import fnmatch
+
+                for name, info in sorted(available.items()):
+                    if fnmatch.fnmatch(name.lower(), selector.lower()):
+                        matched_datasets.append((name, info))
+
+                if not matched_datasets:
+                    console.print(f"[yellow]No datasets match pattern: {selector}[/yellow]")
+                    return None
+
+            # Display detailed information for matched datasets
+            for name, info in matched_datasets:
+                status = "✓ Loaded" if name in loaded else "○ Not Loaded"
+
+                # Create detailed info table
+                detail_table = Table(
+                    title=f"Dataset: {name}",
+                    box=box.ROUNDED,
+                    border_style="cyan",
+                    show_header=False,
+                )
+                detail_table.add_column("Property", style="bold cyan")
+                detail_table.add_column("Value", style="white")
+
+                detail_table.add_row("Name", name)
+                detail_table.add_row("Status", status)
+                detail_table.add_row("Path", info["path"])
+                detail_table.add_row("Size", f"{info['size_mb']:.2f} MB")
+                detail_table.add_row(
+                    "Shape",
+                    f"{info['shape'][0]:,} observations × {info['shape'][1]:,} variables"
+                    if info["shape"]
+                    else "N/A",
+                )
+                detail_table.add_row("Type", info["type"])
+                detail_table.add_row("Modified", info["modified"])
+
+                # Try to detect lineage from name (basic version)
+                if "_" in name:
+                    parts_list = name.split("_")
+                    possible_stages = [
+                        p
+                        for p in parts_list
+                        if any(
+                            keyword in p.lower()
+                            for keyword in [
+                                "quality",
+                                "filter",
+                                "normal",
+                                "doublet",
+                                "cluster",
+                                "marker",
+                                "annot",
+                                "pseudobulk",
+                            ]
+                        )
+                    ]
+                    if possible_stages:
+                        detail_table.add_row(
+                            "Processing Stages", " → ".join(possible_stages)
+                        )
+
+                console.print(detail_table)
+                console.print()  # Add spacing between datasets
+
+            return f"Displayed details for {len(matched_datasets)} dataset(s)"
+
+        elif subcommand == "load":
+            # Load specific datasets by index or pattern
+            if len(parts) < 3:
+                console.print("[red]Usage: /workspace load <#|pattern>[/red]")
+                console.print(
+                    "[dim]Examples: /workspace load 1, /workspace load recent, /workspace load *clustered*[/dim]"
+                )
+                return None
+
+            selector = parts[2]
+
+            # Re-scan workspace to ensure we have latest files
+            if hasattr(client.data_manager, "_scan_workspace"):
+                client.data_manager._scan_workspace()
+
+            available = client.data_manager.available_datasets
+
+            if not available:
+                console.print("[yellow]No datasets found in workspace[/yellow]")
+                return None
+
+            # Determine if selector is an index or pattern
+            if selector.isdigit():
+                # Index-based loading (single dataset)
+                idx = int(selector)
+                sorted_names = sorted(available.keys())
+                if 1 <= idx <= len(sorted_names):
+                    dataset_name = sorted_names[idx - 1]
+
+                    console.print(f"[yellow]Loading dataset: {dataset_name}...[/yellow]")
+
+                    # Load single dataset directly
+                    success = client.data_manager.load_dataset(dataset_name)
+
+                    if success:
+                        console.print(
+                            f"[green]✓ Loaded dataset: {dataset_name} ({available[dataset_name]['size_mb']:.1f} MB)[/green]"
+                        )
+                        return f"Loaded dataset from workspace"
+                    else:
+                        console.print(f"[red]Failed to load dataset: {dataset_name}[/red]")
+                        return None
+                else:
+                    console.print(
+                        f"[red]Index {idx} out of range (1-{len(sorted_names)})[/red]"
+                    )
+                    return None
+            else:
+                # Pattern-based loading (potentially multiple datasets)
+                console.print(
+                    f"[yellow]Loading workspace datasets (pattern: {selector})...[/yellow]"
                 )
 
                 # Create progress bar
                 with create_progress(client_arg=client) as progress:
                     task = progress.add_task(
-                        f"Loading datasets matching '{pattern}'...", total=None
+                        f"Loading datasets matching '{selector}'...", total=None
                     )
 
                     # Perform workspace loading
-                    result = client.data_manager.restore_session(pattern)
+                    result = client.data_manager.restore_session(selector)
 
                 # Display results
                 if result["restored"]:

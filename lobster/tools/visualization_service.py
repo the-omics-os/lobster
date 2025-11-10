@@ -765,8 +765,8 @@ class SingleCellVisualizationService:
 
                 # Get top genes from each group
                 genes = []
-                for group in adata.obs[groupby].unique():
-                    group_genes = adata.uns["rank_genes_groups"]["names"][str(group)][
+                for group in adata.obs[groupby].astype(str).unique():
+                    group_genes = adata.uns["rank_genes_groups"]["names"][group][
                         :n_top_genes
                     ]
                     genes.extend(group_genes)

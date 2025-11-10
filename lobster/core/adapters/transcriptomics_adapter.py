@@ -612,10 +612,10 @@ class TranscriptomicsAdapter(BaseAdapter):
 
         # Gene-level metrics
         if "mt" in adata.var.columns:
-            metrics["mt_genes"] = int(adata.var["mt"].sum())
+            metrics["mt_genes"] = int((adata.var["mt"] == True).sum())
 
         if "ribo" in adata.var.columns:
-            metrics["ribo_genes"] = int(adata.var["ribo"].sum())
+            metrics["ribo_genes"] = int((adata.var["ribo"] == True).sum())
 
         if "n_cells_by_counts" in adata.var.columns:
             metrics["mean_cells_per_gene"] = float(

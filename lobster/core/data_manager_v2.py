@@ -1232,9 +1232,14 @@ class DataManagerV2:
             enhanced_title = title or "Untitled"
             if current_dataset_info and "modality_name" in current_dataset_info:
                 modality_name = current_dataset_info["modality_name"]
-                enhanced_title = (
-                    f"{enhanced_title} ({modality_name} - {human_timestamp})"
-                )
+                # Only append modality name if it's not already in the title (prevents duplication)
+                if modality_name not in enhanced_title:
+                    enhanced_title = (
+                        f"{enhanced_title} ({modality_name} - {human_timestamp})"
+                    )
+                else:
+                    # Modality name already present, just add timestamp
+                    enhanced_title = f"{enhanced_title} ({human_timestamp})"
             elif current_dataset_info and "data_shape" in current_dataset_info:
                 shape_info = f"{current_dataset_info['data_shape'][0]}x{current_dataset_info['data_shape'][1]}"
                 enhanced_title = (
@@ -1394,6 +1399,16 @@ class DataManagerV2:
                     plot = plot_entry["figure"]
                     plot_id = plot_entry["id"]
                     plot_title = plot_entry.get("original_title", plot_entry["title"])
+
+                    # Truncate title to prevent filesystem 255-byte filename limit
+                    # Reserve space for: plot_id (10) + underscore (1) + extension (5) = 16 chars
+                    # Use 80 chars for title to be safe (total ~96 chars with plot_id + extension)
+                    if len(plot_title) > 80:
+                        # Truncate with middle ellipsis to preserve start and end
+                        available_chars = 80 - 3  # Reserve for "..."
+                        start_length = (available_chars + 1) // 2
+                        end_length = available_chars // 2
+                        plot_title = f"{plot_title[:start_length]}...{plot_title[-end_length:]}"
 
                     # Create sanitized filename
                     safe_title = "".join(
