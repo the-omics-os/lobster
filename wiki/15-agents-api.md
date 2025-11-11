@@ -533,6 +533,119 @@ def research_agent(
 
 ### Tools
 
+#### get_quick_abstract ✨ (v2.3+ Two-Tier Access - Tier 1)
+
+```python
+@tool
+def get_quick_abstract(identifier: str) -> str
+```
+
+**Fast abstract retrieval** via NCBI E-utilities (no PDF download required). This is the **FAST PATH** for two-tier access strategy.
+
+**Parameters**:
+- `identifier` (str): PMID, DOI, or PMCID (e.g., "PMID:12345678", "10.1038/s41586-021-12345-6", "PMC8765432")
+
+**Returns**:
+- Title, authors, abstract, keywords, journal, publication date
+- **Performance**: 200-500ms (cache miss), <50ms (cache hit)
+
+**Use Cases**:
+- User asks for "abstract" or "summary" of a paper
+- Check relevance before full extraction
+- Screen multiple papers quickly (batch screening workflow)
+- Progressive disclosure: abstract first, full content only if relevant
+
+**Example**:
+```python
+# Quick relevance check
+abstract = get_quick_abstract("PMID:38448586")
+# Output: "Title: Single-cell...\nAbstract: We analyzed...\nKeywords: scRNA-seq, liver"
+```
+
+**When to use**:
+- Use `get_quick_abstract()` when user asks for summary/abstract only
+- Use `get_publication_overview()` when full content is needed (Methods section, parameters)
+
+**See also**: [37-publication-intelligence-deep-dive.md](37-publication-intelligence-deep-dive.md) for two-tier access architecture.
+
+#### get_publication_overview ✨ (v2.3+ Two-Tier Access - Tier 2)
+
+```python
+@tool
+def get_publication_overview(
+    identifier: str,
+    prefer_webpage: bool = True
+) -> str
+```
+
+**Extract full publication content** with webpage-first strategy (v2.3+). This is the **DEEP PATH** for two-tier access strategy.
+
+**Parameters**:
+- `identifier` (str): PMID, DOI, URL, or PMCID
+- `prefer_webpage` (bool): Try webpage extraction before PDF parsing (default: True)
+
+**Extraction Strategy** (in order):
+1. **Webpage extraction** (Nature, Science publishers) - 2-5 seconds
+2. **PDF parsing with Docling** (structure-aware) - 3-8 seconds
+3. **PyPDF2 fallback** if Docling fails - 1-2 seconds
+
+**Returns**:
+- Full text markdown with preserved structure
+- Tables as pandas DataFrames
+- Mathematical formulas in LaTeX format
+- Auto-detected software and tools
+- Extraction metadata (source, quality, warnings)
+
+**Performance**: 2-8 seconds (first access), <100ms (cached)
+
+**Use Cases**:
+- User needs full content, not just abstract
+- Extracting Methods section for replication
+- User asks for "parameters", "software used", "methods", "detailed workflow"
+- Competitive analysis requiring complete methodological details
+
+**Example**:
+```python
+# Extract full Methods section
+full_content = get_publication_overview("PMID:38448586")
+# Output: "# Title\n## Methods\nWe used scRNA-seq...\n### Quality Control\nParameters: min_genes=200..."
+```
+
+**When to use**:
+- Use when user asks for detailed methods, parameters, or full text
+- Use after `get_quick_abstract()` confirms paper is relevant (progressive disclosure)
+- Avoid for simple abstract requests (use `get_quick_abstract()` instead)
+
+**See also**: [37-publication-intelligence-deep-dive.md](37-publication-intelligence-deep-dive.md) for Docling integration and extraction strategies.
+
+#### get_research_capabilities ✨ (v2.3+ Diagnostic)
+
+```python
+@tool
+def get_research_capabilities() -> str
+```
+
+**Get information about available research capabilities and providers**. Diagnostic tool for understanding system capabilities.
+
+**Returns**:
+- Supported identifiers: PMID, DOI, URL, PMCID
+- Available providers: PubMed, bioRxiv, medRxiv, PMC, LinkOut
+- Resolution strategies: Waterfall (PMC → bioRxiv → Publisher)
+- Extraction methods: Webpage, Docling PDF, PyPDF2 fallback
+- Cache information: 300s TTL, persistent across session
+- Performance benchmarks: Abstract (200-500ms), Full content (2-8s)
+
+**Use Cases**:
+- User asks "What can you search?"
+- Debugging: Understanding resolution failures
+- Planning workflows: Knowing what identifiers are supported
+
+**Example**:
+```python
+capabilities = get_research_capabilities()
+# Output: "Research Agent Capabilities:\n- Identifiers: PMID, DOI, URL, PMCID\n- Resolution: PMC (free), bioRxiv (preprints), Publisher (open access)\n..."
+```
+
 #### search_literature
 
 ```python

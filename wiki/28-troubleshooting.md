@@ -403,12 +403,175 @@ Error code: 402 - insufficient_quota
 
 ## Data Loading Problems
 
-### Issue: Cannot Load Dataset from GEO
+### Issue: FTP Download Failures or Corruption (v2.3+)
+
+**Symptoms:**
+```
+⚠️  FTP download failed after 3 retries
+Corrupted gzip file detected
+Large files (>50MB) timeout or fail
+```
+
+**Automatic Recovery (v2.3+):**
+Lobster AI now includes robust error handling:
+- System automatically retries with exponential backoff (2s, 4s, 8s delays)
+- Chunked downloads (8KB blocks) prevent corruption for large files
+- MD5 validation and gzip integrity checks detect corruption before caching
+- **No user action required** - System handles retry logic automatically
+
+**Manual Intervention (If Automatic Retry Fails):**
+```bash
+# Clear cache and force fresh download
+rm -rf ~/.lobster_workspace/geo_cache/GSE12345*
+🦞 You: "Download GSE12345 with fresh cache"
+
+# Check internet connectivity
+ping ftp.ncbi.nlm.nih.gov
+
+# Verify GEO accession exists
+🦞 You: "Search for GSE12345 in GEO database"
+```
+
+**Technical Details (v2.3+):**
+- FTP retry logic with exponential backoff
+- Chunked FTP downloads for files >70MB
+- Gzip validation with 32KB chunked reading
+- Automatic cache poisoning prevention
+
+---
+
+### Issue: VDJ Data "Duplicate Barcode" Errors (v2.3+)
+
+**Symptoms:**
+```
+⚠️  Duplicate cell barcodes detected: 48%
+Dataset GSE248556 rejected due to data quality issues
+Validation failed: non-unique cell barcodes
+```
+
+**Cause (FIXED in v2.3+):**
+VDJ/TCR/BCR sequencing data legitimately has duplicate cell barcodes because each cell can express multiple receptor chains (heavy + light chain, alpha + beta chain). The system now automatically detects VDJ data types and accepts duplicates.
+
+**Expected Behavior (v2.3+):**
+- **VDJ/TCR/BCR data**: Duplicate barcodes **accepted** (biologically valid)
+- **RNA/Protein data**: Duplicate barcodes **rejected** (indicates corruption)
+- System uses sample metadata keywords: "VDJ", "TCR", "BCR", "immunology", "receptor"
+
+**Auto-Detection:**
+```bash
+# System automatically detects VDJ datasets
+🦞 You: "Download GSE248556"
+# Output: "Detected VDJ/TCR sequencing data, accepting duplicate barcodes (48%)"
+```
+
+**Manual Override (If Misclassified):**
+```bash
+🦞 You: "Load GSE248556 treating samples as VDJ data"
+🦞 You: "Override duplicate barcode validation for immunology dataset"
+```
+
+---
+
+### Issue: H5AD Export Failures with GEO Metadata (v2.3+)
+
+**Symptoms:**
+```
+TypeError: Cannot serialize mixed types to H5AD
+ValueError: Boolean values not supported in AnnData metadata
+KeyError: Metadata column contains None values
+```
+
+**Automatic Resolution (v2.3+):**
+Lobster AI now sanitizes GEO metadata before H5AD export:
+- `bool → string` ("True", "False")
+- `None → ""` (empty string)
+- Mixed types → string representation
+- Empty columns dropped automatically
+- **No user action required** - Metadata cleaned transparently
+
+**When It Happens:**
+GEO datasets often have poor metadata quality with:
+- Boolean flags as actual bool type (not H5AD-compatible)
+- Missing values as None (not serializable)
+- Mixed integer/string columns
+
+**Manual Verification:**
+```bash
+# Check metadata before export
+🦞 You: "Show metadata summary for current dataset"
+
+# Force H5AD export with sanitization
+🦞 You: "Export to H5AD with metadata sanitization"
+```
+
+---
+
+### Issue: Bulk RNA-seq "Inverted Dimensions" Warning (v2.3+)
+
+**Symptoms:**
+```
+⚠️  Matrix dimensions may be inverted: 187,697 features × 4 observations
+Expected: samples × genes for bulk RNA-seq
+Applying automatic transpose...
+```
+
+**Automatic Resolution (v2.3+):**
+Lobster AI applies biology-aware transpose logic:
+- **Checks**: Gene count ranges (10K-60K for human/mouse)
+- **Checks**: Sample count ranges (2-200 typical for bulk RNA-seq)
+- **Checks**: >100x imbalance (conservative fallback for edge cases)
+- Matrix automatically transposed to correct orientation
+- **No user action required** - Biology-aware validation handles this
+
+**Why It Happens:**
+Some bulk RNA-seq datasets (e.g., GSE130036) have few samples:
+- 4 samples × 187,697 genes → Looks inverted to naive algorithms
+- System uses biological knowledge to correctly orient the matrix
+
+**Manual Override (Rare):**
+```bash
+# If auto-transpose is incorrect (very rare)
+🦞 You: "Load GSE12345 without auto-transpose"
+🦞 You: "Keep original matrix orientation for GSE12345"
+```
+
+---
+
+### Issue: Malformed GEO Accessions (v2.3+)
+
+**Symptoms:**
+```
+❌ Invalid accession format: GDS200157007
+Expected format: GSE/GSM/GPL/GDS + digits
+Accession has 9 digits, expected 4-7
+```
+
+**Resolution (FIXED in v2.3+):**
+- Case sensitivity bug fixed (lowercase "accession" field)
+- Database migrated from "gds" (deprecated, ~5K datasets) to "geo" (active, 200K+ datasets)
+- Correct accessions now retrieved: `GSE157007` (not `GDS200157007`)
+- Dataset coverage increased 40x with active database
+
+**Manual Verification:**
+```bash
+# Verify accession format
+🦞 You: "Search for GSE157007 in GEO database and verify accession format"
+
+# System now returns correct format automatically
+# GSE prefix: Series (multiple samples)
+# GSM prefix: Sample (single sample)
+# GPL prefix: Platform (array/sequencing tech)
+# GDS prefix: Curated dataset (deprecated but still supported)
+```
+
+---
+
+### Issue: Cannot Load Dataset from GEO (General)
 
 **Symptoms:**
 - "Dataset not found" errors
 - Download timeouts
-- Corrupted downloads
+- Network errors
 
 **Solutions:**
 
@@ -433,11 +596,13 @@ ping ncbi.nlm.nih.gov
 #### Clear Cache and Retry
 ```bash
 # Clear GEO cache
-rm -rf .geo_cache/
+rm -rf ~/.lobster_workspace/geo_cache/
 
 # Retry download
 🦞 You: "Download GSE12345 with fresh cache"
 ```
+
+**Note**: Most GEO issues are now handled automatically in v2.3+ with robust error handling, retry logic, and intelligent validation.
 
 ### Issue: File Format Not Recognized
 
