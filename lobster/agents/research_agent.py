@@ -24,8 +24,7 @@ from lobster.tools.metadata_validation_service import MetadataValidationService
 from lobster.tools.providers.abstract_provider import AbstractProvider
 from lobster.tools.providers.base_provider import DatasetType, PublicationSource
 from lobster.tools.providers.webpage_provider import WebpageProvider
-from lobster.tools.publication_service import PublicationService
-from lobster.tools.unified_content_service import UnifiedContentService
+from lobster.tools.content_access_service import ContentAccessService
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -46,8 +45,8 @@ def research_agent(
     if callback_handler and hasattr(llm, "with_config"):
         llm = llm.with_config(callbacks=[callback_handler])
 
-    # Initialize publication service with NCBI API key
-    publication_service = PublicationService(data_manager=data_manager)
+    # Initialize content access service (Phase 2 complete)
+    content_access_service = ContentAccessService(data_manager=data_manager)
 
     # Initialize research agent assistant for PDF resolution
     research_assistant = ResearchAgentAssistant()
@@ -92,7 +91,7 @@ def research_agent(
                 except json.JSONDecodeError:
                     logger.warning(f"Invalid filters JSON: {filters}")
 
-            results = publication_service.search_literature(
+            results = content_access_service.search_literature(
                 query=query,
                 max_results=max_results,
                 sources=source_list if source_list else None,
@@ -122,7 +121,7 @@ def research_agent(
         """
         try:
             # First get metadata from the source publication
-            metadata = publication_service.extract_publication_metadata(identifier)
+            metadata = content_access_service.extract_metadata(identifier)
 
             if isinstance(metadata, str):
                 return f"Could not extract metadata for {identifier}: {metadata}"
@@ -152,7 +151,7 @@ def research_agent(
             if not search_query.strip():
                 search_query = "related studies"
 
-            results = publication_service.search_literature(
+            results = content_access_service.search_literature(
                 query=search_query, max_results=max_results
             )
 
@@ -202,7 +201,7 @@ def research_agent(
                     if dtype in type_mapping:
                         type_list.append(type_mapping[dtype])
 
-            results = publication_service.find_datasets_from_publication(
+            results = content_access_service.find_linked_datasets(
                 identifier=identifier,
                 dataset_types=type_list if type_list else None,
                 include_related=include_related,
@@ -251,7 +250,7 @@ def research_agent(
                 except json.JSONDecodeError:
                     logger.warning(f"Invalid filters JSON: {filters}")
 
-            results = publication_service.search_literature(
+            results = content_access_service.search_literature(
                 query=search_query, max_results=max_results, filters=filter_dict
             )
 
@@ -307,9 +306,9 @@ def research_agent(
                 except json.JSONDecodeError:
                     logger.warning(f"Invalid filters JSON: {filters}")
 
-            results = publication_service.search_datasets_directly(
+            results = content_access_service.discover_datasets(
                 query=query,
-                data_type=dataset_type,
+                dataset_type=dataset_type,
                 max_results=max_results,
                 filters=filter_dict,
             )
@@ -343,7 +342,7 @@ def research_agent(
                 }
                 source_obj = source_mapping.get(source.lower())
 
-            metadata = publication_service.extract_publication_metadata(
+            metadata = content_access_service.extract_metadata(
                 identifier=identifier, source=source_obj
             )
 
@@ -386,7 +385,7 @@ def research_agent(
             str: Formatted capabilities report
         """
         try:
-            return publication_service.get_provider_capabilities()
+            return content_access_service.query_capabilities()
         except Exception as e:
             logger.error(f"Error getting capabilities: {e}")
             return f"Error getting research capabilities: {str(e)}"
@@ -518,12 +517,9 @@ def research_agent(
         """
         try:
             # Initialize UnifiedContentService (Phase 3 migration)
-            from lobster.tools.unified_content_service import UnifiedContentService
+            from lobster.tools.content_access_service import ContentAccessService
 
-            content_service = UnifiedContentService(
-                cache_dir=Path(".lobster_workspace") / "literature_cache",
-                data_manager=data_manager,
-            )
+            content_service = ContentAccessService(data_manager=data_manager)
 
             # Get full content (webpage-first, with PDF fallback)
             content = content_service.get_full_content(
@@ -599,12 +595,9 @@ def research_agent(
         """
         try:
             # Initialize UnifiedContentService (Phase 3 migration)
-            from lobster.tools.unified_content_service import UnifiedContentService
+            from lobster.tools.content_access_service import ContentAccessService
 
-            content_service = UnifiedContentService(
-                cache_dir=Path(".lobster_workspace") / "literature_cache",
-                data_manager=data_manager,
-            )
+            content_service = ContentAccessService(data_manager=data_manager)
 
             # Try to get content (this will show if accessible)
             content = content_service.get_full_content(
@@ -707,12 +700,9 @@ def research_agent(
             logger.info(f"Starting batch extraction for {len(id_list)} papers")
 
             # Initialize UnifiedContentService (Phase 3 migration)
-            from lobster.tools.unified_content_service import UnifiedContentService
+            from lobster.tools.content_access_service import ContentAccessService
 
-            content_service = UnifiedContentService(
-                cache_dir=Path(".lobster_workspace") / "literature_cache",
-                data_manager=data_manager,
-            )
+            content_service = ContentAccessService(data_manager=data_manager)
 
             # Track results
             successful_extractions = []
@@ -861,12 +851,9 @@ def research_agent(
         """
         try:
             # Initialize UnifiedContentService (Phase 3 migration)
-            from lobster.tools.unified_content_service import UnifiedContentService
+            from lobster.tools.content_access_service import ContentAccessService
 
-            content_service = UnifiedContentService(
-                cache_dir=Path(".lobster_workspace") / "literature_cache",
-                data_manager=data_manager,
-            )
+            content_service = ContentAccessService(data_manager=data_manager)
 
             # Get cached publication (delegates to DataManagerV2)
             cached_pub = content_service.get_cached_publication(identifier)
@@ -1081,9 +1068,9 @@ Could not retrieve abstract for: {identifier}
 
             # Fallback: Use UnifiedContentService for full extraction (now handles DOI resolution)
             logger.info(
-                f"Using UnifiedContentService for comprehensive extraction: {identifier}"
+                f"Using ContentAccessService for comprehensive extraction: {identifier}"
             )
-            content_service = UnifiedContentService(data_manager=data_manager)
+            content_service = ContentAccessService(data_manager=data_manager)
 
             # get_full_content() now handles DOI resolution automatically
             content_result = content_service.get_full_content(
@@ -1154,34 +1141,33 @@ Could not extract content for: {identifier}
 """
 
     base_tools = [
-
-        #--------------------------------
-        #Literature discovery tools
+        # --------------------------------
+        # Literature discovery tools
         search_literature,
         discover_related_studies,
         extract_publication_metadata,
         find_marker_genes,
-        #--------------------------------
-        #Dataset discovery tools
+        # --------------------------------
+        # Dataset discovery tools
         find_datasets_from_publication,
         search_datasets_directly,
-        #--------------------------------
-        #Session management
+        # --------------------------------
+        # Session management
         read_cached_publication,
-        #--------------------------------
+        # --------------------------------
         # Metadata tools
         get_research_capabilities,
         validate_dataset_metadata,
-        #------------- TIER 1 ------------
-        #Fast abstract access
+        # ------------- TIER 1 ------------
+        # Fast abstract access
         get_quick_abstract,
-        #------------- TIER 2 & 3 ------------
+        # ------------- TIER 2 & 3 ------------
         # Full content
         resolve_paper_access,
         get_publication_overview,
         extract_paper_methods,
-        extract_methods_batch
-        #--------------------------------
+        extract_methods_batch,
+        # --------------------------------
         # Two-tier publication access
         # Session publication access
         # NOTE: download_supplementary_materials temporarily disabled (pending reimplementation)
