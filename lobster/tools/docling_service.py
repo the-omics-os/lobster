@@ -535,7 +535,7 @@ class DoclingService:
         Strategy:
         - Start at section header
         - Extract until next section header OR max_paragraphs reached
-        - Include paragraphs only (exclude tables/figures from text)
+        - Include text/paragraphs (HTML uses TEXT label, PDF uses PARAGRAPH)
         - Preserve paragraph boundaries
 
         Args:
@@ -557,8 +557,8 @@ class DoclingService:
             if item.label == DocItemLabel.SECTION_HEADER:
                 break
 
-            # Extract paragraph text
-            if item.label == DocItemLabel.PARAGRAPH:
+            # Extract text content (HTML uses TEXT, PDF uses PARAGRAPH)
+            if item.label in [DocItemLabel.PARAGRAPH, DocItemLabel.TEXT]:
                 if hasattr(item, "text") and item.text.strip():
                     content.append(item.text)
                     paragraph_count += 1
@@ -569,7 +569,7 @@ class DoclingService:
 
         result = "\n\n".join(content)
         logger.info(
-            f"Extracted {len(result)} characters from {paragraph_count} paragraphs"
+            f"Extracted {len(result)} characters from {paragraph_count} text items"
         )
         return result
 
@@ -708,6 +708,8 @@ class DoclingService:
         """
         Extract full document when Methods section not found.
 
+        Extracts text content from all text items (HTML uses TEXT label, PDF uses PARAGRAPH).
+
         Args:
             doc: DoclingDocument instance
             max_paragraphs: Maximum paragraphs to extract
@@ -720,7 +722,8 @@ class DoclingService:
         paragraph_count = 0
 
         for item in doc.texts:
-            if item.label == DocItemLabel.PARAGRAPH:
+            # Extract text content (HTML uses TEXT, PDF uses PARAGRAPH)
+            if item.label in [DocItemLabel.PARAGRAPH, DocItemLabel.TEXT]:
                 if hasattr(item, "text") and item.text.strip():
                     content.append(item.text)
                     paragraph_count += 1
@@ -729,6 +732,9 @@ class DoclingService:
                         break
 
         full_text = "\n\n".join(content)
+        logger.info(
+            f"Extracted full document: {len(full_text)} chars from {paragraph_count} text items"
+        )
 
         return {
             "methods_text": full_text,
