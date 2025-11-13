@@ -14,17 +14,16 @@ from typing import List
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 
-from lobster.agents.research_agent_assistant import ResearchAgentAssistant
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.tools.content_access_service import ContentAccessService
 from lobster.tools.metadata_validation_service import MetadataValidationService
 
 # Phase 1: New providers for two-tier access
 from lobster.tools.providers.abstract_provider import AbstractProvider
 from lobster.tools.providers.base_provider import DatasetType, PublicationSource
 from lobster.tools.providers.webpage_provider import WebpageProvider
-from lobster.tools.content_access_service import ContentAccessService
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -48,27 +47,57 @@ def research_agent(
     # Initialize content access service (Phase 2 complete)
     content_access_service = ContentAccessService(data_manager=data_manager)
 
-    # Initialize research agent assistant for PDF resolution
-    research_assistant = ResearchAgentAssistant()
-
     # Initialize metadata validation service (Phase 2: extracted from ResearchAgentAssistant)
     metadata_validator = MetadataValidationService(data_manager=data_manager)
 
     # Define tools
     @tool
     def search_literature(
-        query: str, max_results: int = 5, sources: str = "pubmed", filters: str = None
+        query: str = "",
+        max_results: int = 5,
+        sources: str = "pubmed",
+        filters: str = None,
+        related_to: str = None,
     ) -> str:
         """
-        Search for scientific literature across multiple sources.
+        Search for scientific literature across multiple sources or find related papers.
 
         Args:
-            query: Search query string
+            query: Search query string (optional if using related_to)
             max_results: Number of results to retrieve (default: 5, range: 1-20)
             sources: Publication sources to search (default: "pubmed", options: "pubmed,biorxiv,medrxiv")
             filters: Optional search filters as JSON string (e.g., '{"date_range": {"start": "2020", "end": "2024"}}')
+            related_to: Find papers related to this identifier (PMID or DOI). When provided, discovers
+                        papers citing or cited by the given publication. Merges functionality from
+                        the removed discover_related_studies tool.
+
+        Returns:
+            Formatted list of publications with titles, authors, abstracts, and identifiers
+
+        Examples:
+            # Standard keyword search
+            search_literature("BRCA1 breast cancer", max_results=10)
+
+            # Find related papers (merged discover_related_studies functionality)
+            search_literature(related_to="PMID:12345678", max_results=10)
+
+            # Search with date filters
+            search_literature("lung cancer", filters='{"date_range": {"start": "2020", "end": "2024"}}')
         """
         try:
+            # Related paper discovery mode (merged from discover_related_studies)
+            if related_to:
+                logger.info(f"Finding papers related to: {related_to}")
+                results = content_access_service.find_related_publications(
+                    identifier=related_to, max_results=max_results
+                )
+                logger.info(f"Related paper discovery completed for: {related_to}")
+                return results
+
+            # Standard literature search mode
+            if not query:
+                return "Error: Either 'query' or 'related_to' must be provided for literature search"
+
             # Parse sources
             source_list = []
             if sources:
@@ -108,81 +137,59 @@ def research_agent(
             return f"Error searching literature: {str(e)}"
 
     @tool
-    def discover_related_studies(
-        identifier: str, research_topic: str = None, max_results: int = 5
+    def find_related_entries(
+        identifier: str,
+        dataset_types: str = None,
+        include_related: bool = True,
+        entry_type: str = None,
     ) -> str:
         """
-        Discover studies related to a given publication or research topic.
+        Find connected publications, datasets, samples, and metadata for a given identifier.
+
+        This tool discovers related research content across databases, supporting multi-omics
+        integration workflows. Use this to find datasets from publications, or to explore
+        the full ecosystem of related research artifacts. Can filter results by entry type.
 
         Args:
-            identifier: Publication identifier (DOI or PMID) to find related studies
-            research_topic: Optional research topic to focus the search
-            max_results: Number of results to retrieve (default: 5)
-        """
-        try:
-            # First get metadata from the source publication
-            metadata = content_access_service.extract_metadata(identifier)
-
-            if isinstance(metadata, str):
-                return f"Could not extract metadata for {identifier}: {metadata}"
-
-            # Build search query based on metadata and research topic
-            search_terms = []
-
-            # Extract key terms from title
-            if metadata.title:
-                # Simple keyword extraction (could be enhanced with NLP)
-                title_words = re.findall(r"\b[a-zA-Z]{4,}\b", metadata.title.lower())
-                # Filter common words and take meaningful terms
-                meaningful_terms = [
-                    w
-                    for w in title_words
-                    if w not in ["study", "analysis", "using", "with", "from", "data"]
-                ]
-                search_terms.extend(meaningful_terms[:3])
-
-            # Add research topic if provided
-            if research_topic:
-                search_terms.append(research_topic)
-
-            # Build search query
-            search_query = " ".join(search_terms[:5])  # Limit to avoid too broad search
-
-            if not search_query.strip():
-                search_query = "related studies"
-
-            results = content_access_service.search_literature(
-                query=search_query, max_results=max_results
-            )
-
-            # Add context header
-            context_header = f"## Related Studies for {identifier}\n"
-            context_header += f"**Source publication**: {metadata.title[:100]}...\n"
-            context_header += f"**Search strategy**: {search_query}\n"
-            if research_topic:
-                context_header += f"**Research focus**: {research_topic}\n"
-            context_header += "\n"
-
-            logger.info(f"Related studies search completed for {identifier}")
-            return context_header + results
-
-        except Exception as e:
-            logger.error(f"Error discovering related studies: {e}")
-            return f"Error discovering related studies: {str(e)}"
-
-    @tool
-    def find_datasets_from_publication(
-        identifier: str, dataset_types: str = None, include_related: bool = True
-    ) -> str:
-        """
-        Find datasets associated with a scientific publication.
-
-        Args:
-            identifier: Publication identifier (DOI or PMID)
-            dataset_types: Types of datasets to search for, comma-separated (e.g., "geo,sra,arrayexpress")
+            identifier: Publication identifier (DOI or PMID) or dataset identifier (GSE, SRA)
+            dataset_types: Filter by dataset types, comma-separated (e.g., "geo,sra,arrayexpress")
             include_related: Whether to include related/linked datasets (default: True)
+            entry_type: Filter by entry type, comma-separated (options: "publication", "dataset",
+                       "sample", "metadata"). If None, returns all types. Use this to focus discovery
+                       on specific content types.
+
+        Returns:
+            Formatted report of connected datasets, publications, and metadata
+
+        Examples:
+            # Find datasets from publication
+            find_related_entries("PMID:12345678", dataset_types="geo")
+
+            # Find only datasets (no publications or samples)
+            find_related_entries("PMID:12345678", entry_type="dataset")
+
+            # Find publications and samples related to a dataset
+            find_related_entries("GSE12345", entry_type="publication,sample")
+
+            # Find all related content (datasets + publications + samples)
+            find_related_entries("GSE12345")
         """
         try:
+            # Parse entry types for filtering
+            entry_types_list = None
+            if entry_type:
+                valid_types = {"publication", "dataset", "sample", "metadata"}
+                entry_types_list = [
+                    t.strip().lower()
+                    for t in entry_type.split(",")
+                    if t.strip().lower() in valid_types
+                ]
+                if not entry_types_list:
+                    logger.warning(
+                        f"Invalid entry_type values: {entry_type}. Valid: publication, dataset, sample, metadata"
+                    )
+                    entry_types_list = None
+
             # Parse dataset types
             type_list = []
             if dataset_types:
@@ -205,6 +212,7 @@ def research_agent(
                 identifier=identifier,
                 dataset_types=type_list if type_list else None,
                 include_related=include_related,
+                entry_types=entry_types_list,  # Pass entry type filter to service
             )
 
             logger.info(f"Dataset discovery completed for: {identifier}")
@@ -270,17 +278,31 @@ def research_agent(
             return f"Error finding marker genes: {str(e)}"
 
     @tool
-    def search_datasets_directly(
+    def fast_dataset_search(
         query: str, data_type: str = "geo", max_results: int = 5, filters: str = None
     ) -> str:
         """
-        Search for datasets directly across omics databases.
+        Search omics databases directly for datasets matching your query (GEO, SRA, PRIDE, etc.).
+
+        Fast, keyword-based search across multiple repositories. Use this when you know
+        what you're looking for (e.g., disease + technology) and want quick results.
+        For publication-linked datasets, use find_related_entries() instead.
 
         Args:
-            query: Search query for datasets
-            data_type: Type of omics data (default: "geo", options: "geo,sra,bioproject,biosample,dbgap")
+            query: Search query for datasets (keywords, disease names, technology)
+            data_type: Database to search (default: "geo", options: "geo,sra,bioproject,biosample,dbgap")
             max_results: Maximum results to return (default: 5)
             filters: Optional filters as JSON string (e.g., '{{"organism": "human", "year": "2023"}}')
+
+        Returns:
+            Formatted list of matching datasets with accessions and metadata
+
+        Examples:
+            # Search GEO for lung cancer datasets
+            fast_dataset_search("lung cancer single-cell", data_type="geo")
+
+            # Search SRA with organism filter
+            fast_dataset_search("CRISPR screen", data_type="sra", filters='{{"organism": "human"}}')
         """
         try:
             # Map string to DatasetType
@@ -323,58 +345,153 @@ def research_agent(
             return f"Error searching datasets directly: {str(e)}"
 
     @tool
-    def extract_publication_metadata(identifier: str, source: str = "auto") -> str:
+    def get_dataset_metadata(
+        identifier: str, source: str = "auto", database: str = None
+    ) -> str:
         """
-        Extract comprehensive metadata from a publication.
+        Get comprehensive metadata for datasets or publications.
+
+        Retrieves structured metadata including title, authors, publication info, sample counts,
+        platform details, and experimental design. Supports both publications (PMID/DOI) and
+        datasets (GSE/SRA/PRIDE accessions). Automatically detects identifier type or can be
+        explicitly specified via the database parameter.
 
         Args:
-            identifier: Publication identifier (DOI or PMID)
-            source: Publication source (default: "auto", options: "auto,pubmed,biorxiv,medrxiv")
+            identifier: Publication identifier (DOI or PMID) or dataset accession (GSE, SRA, PRIDE)
+            source: Source hint for publications (default: "auto", options: "auto,pubmed,biorxiv,medrxiv")
+            database: Database hint for explicit routing (options: "geo", "sra", "pride", "pubmed").
+                     If None, auto-detects from identifier format. Use this to force interpretation
+                     when identifier format is ambiguous.
+
+        Returns:
+            Formatted metadata report with bibliographic and experimental details
+
+        Examples:
+            # Get publication metadata (auto-detect)
+            get_dataset_metadata("PMID:12345678")
+
+            # Get dataset metadata (auto-detects GEO)
+            get_dataset_metadata("GSE12345")
+
+            # Force GEO interpretation
+            get_dataset_metadata("12345", database="geo")
+
+            # Specify publication source for faster lookup
+            get_dataset_metadata("10.1038/s41586-021-12345-6", source="pubmed")
+
+            # Get SRA dataset metadata
+            get_dataset_metadata("SRR12345678", database="sra")
         """
         try:
-            # Map source string to PublicationSource
-            source_obj = None
-            if source != "auto":
-                source_mapping = {
-                    "pubmed": PublicationSource.PUBMED,
-                    "biorxiv": PublicationSource.BIORXIV,
-                    "medrxiv": PublicationSource.MEDRXIV,
-                }
-                source_obj = source_mapping.get(source.lower())
+            # Auto-detect database type from identifier if not specified
+            if database is None:
+                identifier_upper = identifier.upper()
+                if identifier_upper.startswith("GSE") or identifier_upper.startswith(
+                    "GDS"
+                ):
+                    database = "geo"
+                elif identifier_upper.startswith("SRR") or identifier_upper.startswith(
+                    "SRP"
+                ):
+                    database = "sra"
+                elif identifier_upper.startswith("PRD") or identifier_upper.startswith(
+                    "PXD"
+                ):
+                    database = "pride"
+                elif identifier_upper.startswith("PMID:") or identifier.startswith(
+                    "10."
+                ):
+                    database = "pubmed"
+                else:
+                    # Default to publication metadata extraction
+                    database = "pubmed"
+                    logger.info(
+                        f"Auto-detected database type as publication for: {identifier}"
+                    )
 
-            metadata = content_access_service.extract_metadata(
-                identifier=identifier, source=source_obj
-            )
+            # Route to appropriate metadata extraction based on database
+            if database.lower() in ["geo", "sra", "pride"]:
+                # Dataset metadata extraction
+                logger.info(
+                    f"Extracting {database.upper()} dataset metadata for: {identifier}"
+                )
 
-            if isinstance(metadata, str):
-                return metadata  # Error message
+                # Use GEOService for GEO datasets (most common case)
+                if database.lower() == "geo":
+                    from lobster.tools.geo_service import GEOService
 
-            # Format metadata for display
-            formatted = f"## Publication Metadata for {identifier}\n\n"
-            formatted += f"**Title**: {metadata.title}\n"
-            formatted += f"**UID**: {metadata.uid}\n"
-            if metadata.journal:
-                formatted += f"**Journal**: {metadata.journal}\n"
-            if metadata.published:
-                formatted += f"**Published**: {metadata.published}\n"
-            if metadata.doi:
-                formatted += f"**DOI**: {metadata.doi}\n"
-            if metadata.pmid:
-                formatted += f"**PMID**: {metadata.pmid}\n"
-            if metadata.authors:
-                formatted += f"**Authors**: {', '.join(metadata.authors[:5])}{'...' if len(metadata.authors) > 5 else ''}\n"
-            if metadata.keywords:
-                formatted += f"**Keywords**: {', '.join(metadata.keywords)}\n"
+                    console = getattr(data_manager, "console", None)
+                    geo_service = GEOService(data_manager, console=console)
 
-            if metadata.abstract:
-                formatted += f"\n**Abstract**:\n{metadata.abstract[:1000]}{'...' if len(metadata.abstract) > 1000 else ''}\n"
+                    # Fetch metadata only (no data download)
+                    try:
+                        metadata_info, _ = geo_service.fetch_metadata_only(identifier)
+                        formatted = f"## Dataset Metadata for {identifier}\n\n"
+                        formatted += f"**Database**: GEO\n"
+                        formatted += f"**Accession**: {identifier}\n"
 
-            logger.info(f"Metadata extraction completed for: {identifier}")
-            return formatted
+                        # Add available metadata fields
+                        if isinstance(metadata_info, dict):
+                            for key, value in metadata_info.items():
+                                if value:
+                                    formatted += f"**{key.replace('_', ' ').title()}**: {value}\n"
+
+                        logger.info(
+                            f"GEO metadata extraction completed for: {identifier}"
+                        )
+                        return formatted
+                    except Exception as e:
+                        logger.error(f"Error fetching GEO metadata: {e}")
+                        return f"Error fetching GEO metadata for {identifier}: {str(e)}"
+                else:
+                    # SRA and PRIDE support (placeholder for future implementation)
+                    return f"Metadata extraction for {database.upper()} datasets is not yet implemented. Currently supported: GEO, publications (PMID/DOI)."
+
+            else:
+                # Publication metadata extraction (existing behavior)
+                # Map source string to PublicationSource
+                source_obj = None
+                if source != "auto":
+                    source_mapping = {
+                        "pubmed": PublicationSource.PUBMED,
+                        "biorxiv": PublicationSource.BIORXIV,
+                        "medrxiv": PublicationSource.MEDRXIV,
+                    }
+                    source_obj = source_mapping.get(source.lower())
+
+                metadata = content_access_service.extract_metadata(
+                    identifier=identifier, source=source_obj
+                )
+
+                if isinstance(metadata, str):
+                    return metadata  # Error message
+
+                # Format metadata for display
+                formatted = f"## Publication Metadata for {identifier}\n\n"
+                formatted += f"**Title**: {metadata.title}\n"
+                formatted += f"**UID**: {metadata.uid}\n"
+                if metadata.journal:
+                    formatted += f"**Journal**: {metadata.journal}\n"
+                if metadata.published:
+                    formatted += f"**Published**: {metadata.published}\n"
+                if metadata.doi:
+                    formatted += f"**DOI**: {metadata.doi}\n"
+                if metadata.pmid:
+                    formatted += f"**PMID**: {metadata.pmid}\n"
+                if metadata.authors:
+                    formatted += f"**Authors**: {', '.join(metadata.authors[:5])}{'...' if len(metadata.authors) > 5 else ''}\n"
+                if metadata.keywords:
+                    formatted += f"**Keywords**: {', '.join(metadata.keywords)}\n"
+
+                if metadata.abstract:
+                    formatted += f"\n**Abstract**:\n{metadata.abstract[:1000]}{'...' if len(metadata.abstract) > 1000 else ''}\n"
+
+                logger.info(f"Metadata extraction completed for: {identifier}")
+                return formatted
 
         except Exception as e:
             logger.error(f"Error extracting metadata: {e}")
-            return f"Error extracting publication metadata: {str(e)}"
+            return f"Error extracting metadata for {identifier}: {str(e)}"
 
     @tool
     def get_research_capabilities() -> str:
@@ -483,37 +600,54 @@ def research_agent(
             return f"Error validating dataset metadata: {str(e)}"
 
     @tool
-    def extract_paper_methods(url_or_pmid: str) -> str:
+    def extract_methods(url_or_pmid: str, focus: str = None) -> str:
         """
-        Extract computational analysis methods from a research paper.
+        Extract computational methods from publication(s) - supports single or batch processing.
 
-        This tool uses the new UnifiedContentService (Phase 3) to extract:
+        Automatically extracts:
         - Software/tools used (e.g., Scanpy, Seurat, DESeq2)
-        - Parameter values and cutoffs
-        - Statistical methods
+        - Parameter values and cutoffs (e.g., min_genes=200, p<0.05)
+        - Statistical methods (e.g., Wilcoxon test, FDR correction)
         - Data sources and sample sizes
-        - Normalization and QC methods
+        - Normalization and QC workflows
 
-        Accepts multiple identifier types:
+        The service handles batch processing transparently (2-10 papers typical). Use this for
+        competitive intelligence, protocol standardization, or replicating published analyses.
+
+        Supported Identifiers:
         - PMID (e.g., "PMID:12345678" or "12345678") - Auto-resolves via PMC/bioRxiv
         - DOI (e.g., "10.1038/s41586-021-12345-6") - Auto-resolves to open access PDF
         - Direct PDF URL (e.g., https://nature.com/articles/paper.pdf)
         - Webpage URL (webpage-first extraction, then PDF fallback)
+        - Comma-separated for batch (e.g., "PMID:123,PMID:456" - processes sequentially)
 
-        Extraction strategy: Webpage-first → PDF fallback for comprehensive content
+        Extraction Strategy: PMC XML → Webpage → PDF (automatic cascade)
 
         Args:
-            url_or_pmid: PMID, DOI, PDF URL, or webpage URL
+            url_or_pmid: Single identifier OR comma-separated identifiers for batch processing
+            focus: Optional focus area (options: "software", "parameters", "statistics").
+                   When specified, returns only the focused aspect from extraction results.
+                   Useful for targeted analysis (e.g., "What software did competitors use?")
 
         Returns:
             JSON-formatted extraction of methods, parameters, and software used
             OR helpful suggestions if paper is paywalled
 
         Examples:
-            - extract_paper_methods("PMID:12345678")
-            - extract_paper_methods("10.1038/s41586-021-12345-6")
-            - extract_paper_methods("https://www.biorxiv.org/content/10.1101/2024.01.001.pdf")
-            - extract_paper_methods("https://www.nature.com/articles/s41586-025-09686-5")
+            # Single paper extraction
+            extract_methods("PMID:12345678")
+
+            # Focus on software tools only
+            extract_methods("PMID:12345678", focus="software")
+
+            # Focus on parameter values
+            extract_methods("10.1038/s41586-021-12345-6", focus="parameters")
+
+            # Batch processing (2-10 papers typical)
+            extract_methods("PMID:123,PMID:456,PMID:789")
+
+            # Batch with software focus for competitive analysis
+            extract_methods("PMID:123,PMID:456", focus="software")
         """
         try:
             # Initialize UnifiedContentService (Phase 3 migration)
@@ -521,33 +655,142 @@ def research_agent(
 
             content_service = ContentAccessService(data_manager=data_manager)
 
-            # Get full content (webpage-first, with PDF fallback)
-            content = content_service.get_full_content(
-                source=url_or_pmid,
-                prefer_webpage=True,
-                keywords=["methods", "materials", "analysis", "workflow"],
-                max_paragraphs=100,
-            )
+            # Check if batch processing (comma-separated identifiers)
+            identifiers = [id.strip() for id in url_or_pmid.split(",")]
 
-            # Extract methods section
-            methods = content_service.extract_methods_section(content)
+            if len(identifiers) > 1:
+                # Batch processing mode
+                logger.info(f"Batch processing {len(identifiers)} publications")
+                batch_results = []
 
-            # Format for agent response
-            formatted_result = {
-                "software_used": methods.get("software_used", []),
-                "parameters": methods.get("parameters", {}),
-                "statistical_methods": methods.get("statistical_methods", []),
-                "extraction_confidence": methods.get("extraction_confidence", 0.0),
-                "content_source": content.get("source_type", "unknown"),
-                "extraction_time": content.get("extraction_time", 0.0),
-            }
+                for idx, identifier in enumerate(identifiers, 1):
+                    try:
+                        logger.info(
+                            f"Processing {idx}/{len(identifiers)}: {identifier}"
+                        )
 
-            formatted = json.dumps(formatted_result, indent=2)
-            logger.info(
-                f"Successfully extracted methods from paper: {url_or_pmid[:80]}..."
-            )
+                        # Get full content
+                        content = content_service.get_full_content(
+                            source=identifier,
+                            prefer_webpage=True,
+                            keywords=["methods", "materials", "analysis", "workflow"],
+                            max_paragraphs=100,
+                        )
 
-            return f"## Extracted Methods from Paper\n\n{formatted}\n\n**Source Type**: {content.get('source_type')}\n**Extraction Time**: {content.get('extraction_time', 0):.2f}s"
+                        # Extract methods
+                        methods = content_service.extract_methods_section(content)
+
+                        batch_results.append(
+                            {
+                                "identifier": identifier,
+                                "status": "success",
+                                "software_used": methods.get("software_used", []),
+                                "parameters": methods.get("parameters", {}),
+                                "statistical_methods": methods.get(
+                                    "statistical_methods", []
+                                ),
+                                "extraction_confidence": methods.get(
+                                    "extraction_confidence", 0.0
+                                ),
+                                "source_type": content.get("source_type", "unknown"),
+                            }
+                        )
+
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to extract methods from {identifier}: {e}"
+                        )
+                        batch_results.append(
+                            {
+                                "identifier": identifier,
+                                "status": "failed",
+                                "error": str(e),
+                            }
+                        )
+
+                # Format batch results
+                response = f"## Batch Method Extraction Results ({len(identifiers)} papers)\n\n"
+
+                # Apply focus filter if specified
+                if focus and focus.lower() in ["software", "parameters", "statistics"]:
+                    response += f"**Focus**: {focus.title()}\n\n"
+
+                for result in batch_results:
+                    response += f"### {result['identifier']}\n"
+                    if result["status"] == "success":
+                        if focus == "software":
+                            response += f"**Software**: {', '.join(result['software_used']) if result['software_used'] else 'None detected'}\n\n"
+                        elif focus == "parameters":
+                            response += f"**Parameters**: {json.dumps(result['parameters'], indent=2)}\n\n"
+                        elif focus == "statistics":
+                            response += f"**Statistical Methods**: {', '.join(result['statistical_methods']) if result['statistical_methods'] else 'None detected'}\n\n"
+                        else:
+                            # Full extraction
+                            response += f"**Software**: {', '.join(result['software_used']) if result['software_used'] else 'None'}\n"
+                            response += f"**Parameters**: {len(result['parameters'])} parameters detected\n"
+                            response += f"**Statistical Methods**: {', '.join(result['statistical_methods']) if result['statistical_methods'] else 'None'}\n"
+                            response += f"**Confidence**: {result['extraction_confidence']:.2f}\n\n"
+                    else:
+                        response += f"**Status**: Failed - {result['error']}\n\n"
+
+                logger.info(
+                    f"Batch processing complete: {len(batch_results)} papers processed"
+                )
+                return response
+
+            else:
+                # Single paper processing mode
+                identifier = identifiers[0]
+
+                # Get full content (webpage-first, with PDF fallback)
+                content = content_service.get_full_content(
+                    source=identifier,
+                    prefer_webpage=True,
+                    keywords=["methods", "materials", "analysis", "workflow"],
+                    max_paragraphs=100,
+                )
+
+                # Extract methods section
+                methods = content_service.extract_methods_section(content)
+
+                # Apply focus filter if specified
+                if focus and focus.lower() in ["software", "parameters", "statistics"]:
+                    if focus.lower() == "software":
+                        formatted_result = {
+                            "software_used": methods.get("software_used", []),
+                            "focus": "software",
+                        }
+                    elif focus.lower() == "parameters":
+                        formatted_result = {
+                            "parameters": methods.get("parameters", {}),
+                            "focus": "parameters",
+                        }
+                    elif focus.lower() == "statistics":
+                        formatted_result = {
+                            "statistical_methods": methods.get(
+                                "statistical_methods", []
+                            ),
+                            "focus": "statistics",
+                        }
+                else:
+                    # Full extraction (no focus)
+                    formatted_result = {
+                        "software_used": methods.get("software_used", []),
+                        "parameters": methods.get("parameters", {}),
+                        "statistical_methods": methods.get("statistical_methods", []),
+                        "extraction_confidence": methods.get(
+                            "extraction_confidence", 0.0
+                        ),
+                        "content_source": content.get("source_type", "unknown"),
+                        "extraction_time": content.get("extraction_time", 0.0),
+                    }
+
+                formatted = json.dumps(formatted_result, indent=2)
+                logger.info(
+                    f"Successfully extracted methods from paper: {identifier[:80]}..."
+                )
+
+                return f"## Extracted Methods from Paper\n\n{formatted}\n\n**Source Type**: {content.get('source_type')}\n**Extraction Time**: {content.get('extraction_time', 0):.2f}s"
 
         except Exception as e:
             logger.error(f"Error extracting paper methods: {e}")
@@ -559,356 +802,28 @@ def research_agent(
             else:
                 return f"Error extracting methods from paper: {error_msg}"
 
-    @tool
-    def resolve_paper_access(identifier: str) -> str:
-        """
-        Check if a paper is accessible and get content availability information.
-
-        This tool uses UnifiedContentService (Phase 3) to verify paper accessibility
-        with webpage-first strategy and PDF fallback.
-
-        Use this tool to:
-        - Verify paper accessibility before full extraction
-        - Check content type availability (webpage vs PDF)
-        - Get extraction diagnostics
-
-        Content Extraction Strategy:
-        1. Webpage extraction (Nature, publishers) - Fast, structured
-        2. PDF extraction (PMC, bioRxiv) - Fallback, comprehensive
-        3. Error guidance if inaccessible
-
-        Args:
-            identifier: PMID (e.g., "PMID:12345678"), DOI, or URL
-
-        Returns:
-            Access report with content type and availability status
-
-        Examples:
-            - resolve_paper_access("PMID:12345678")
-            - resolve_paper_access("10.1038/s41586-021-12345-6")
-            - resolve_paper_access("https://www.nature.com/articles/...")
-
-        When to use this tool:
-        - Before calling extract_paper_methods to check accessibility
-        - When user asks "Can I access this paper?"
-        - To diagnose extraction issues
-        """
-        try:
-            # Initialize UnifiedContentService (Phase 3 migration)
-            from lobster.tools.content_access_service import ContentAccessService
-
-            content_service = ContentAccessService(data_manager=data_manager)
-
-            # Try to get content (this will show if accessible)
-            content = content_service.get_full_content(
-                source=identifier, prefer_webpage=True
-            )
-
-            # Format success report
-            report = f"""## Paper Access Report
-
-**Identifier**: {identifier}
-**Status**: ✅ Accessible
-**Content Type**: {content.get('source_type', 'unknown').upper()}
-**Tier Used**: {content.get('tier_used', 'unknown')}
-**Extraction Time**: {content.get('extraction_time', 0):.2f}s
-
-### Content Availability
-- Methods section extracted: {'✅ Yes' if content.get('methods_text') else '⚠️ Partial'}
-- Tables extracted: {len(content.get('metadata', {}).get('tables', []))} tables
-- Formulas extracted: {len(content.get('metadata', {}).get('formulas', []))} formulas
-- Software detected: {', '.join(content.get('metadata', {}).get('software', [])[:5]) or 'None detected'}
-
-**Ready for methods extraction**: Yes, use extract_paper_methods() for detailed analysis
-"""
-
-            logger.info(
-                f"Resolved access for {identifier}: {content.get('source_type')}"
-            )
-            return report
-
-        except Exception as e:
-            logger.error(f"Error resolving paper access: {e}")
-            error_msg = str(e)
-
-            # Format error report
-            report = f"""## Paper Access Report
-
-**Identifier**: {identifier}
-**Status**: ❌ Not Accessible
-
-### Error Details
-{error_msg}
-
-### Troubleshooting Suggestions
-- If paywalled: Try searching for preprint versions (bioRxiv, medRxiv)
-- If DOI: Try converting to PMID for PMC access
-- If URL: Check if it's a direct PDF link vs webpage
-- Contact paper authors for access
-"""
-            return report
-
-    @tool
-    def extract_methods_batch(identifiers: str, max_papers: int = 5) -> str:
-        """
-        Extract computational methods from multiple papers in batch.
-
-        This tool uses UnifiedContentService (Phase 3) to batch process papers with:
-        1. Comma-separated PMIDs, DOIs, or URLs
-        2. Automatic webpage-first extraction with PDF fallback
-        3. Sequential processing (conservative approach)
-        4. Comprehensive success/failure report
-        5. Conservative limit: 5 papers per batch (configurable up to 10)
-
-        Args:
-            identifiers: Comma-separated list (e.g., "PMID:12345,10.1038/s41586-021-12345-6")
-            max_papers: Maximum papers to process (default: 5, max: 10)
-
-        Returns:
-            Batch extraction report with individual results and summary
-
-        Examples:
-            - extract_methods_batch("PMID:12345678,PMID:87654321,10.1038/s41586-021-12345-6")
-            - extract_methods_batch("https://www.nature.com/articles/...,PMID:12345", max_papers=3)
-
-        When to use this tool:
-        - User asks to "analyze methods from these 5 papers"
-        - Competitive intelligence workflows
-        - Literature review with method comparison
-        - When user provides a list of PMIDs/DOIs
-
-        Note: Processes papers sequentially with webpage-first strategy.
-        For more than 5 papers, consider breaking into multiple batches.
-        """
-        try:
-            # Parse identifiers
-            id_list = [id_.strip() for id_ in identifiers.split(",") if id_.strip()]
-
-            # Validate and limit batch size
-            if not id_list:
-                return "Error: No identifiers provided. Please provide comma-separated PMIDs, DOIs, or URLs."
-
-            if len(id_list) > 10:
-                return f"Error: Batch size {len(id_list)} exceeds maximum of 10. Please reduce the number of papers or break into multiple batches."
-
-            if len(id_list) > max_papers:
-                logger.warning(
-                    f"Limiting batch from {len(id_list)} to {max_papers} papers"
-                )
-                id_list = id_list[:max_papers]
-
-            logger.info(f"Starting batch extraction for {len(id_list)} papers")
-
-            # Initialize UnifiedContentService (Phase 3 migration)
-            from lobster.tools.content_access_service import ContentAccessService
-
-            content_service = ContentAccessService(data_manager=data_manager)
-
-            # Track results
-            successful_extractions = []
-            failed_extractions = []
-
-            # Process each paper sequentially
-            for i, identifier in enumerate(id_list, 1):
-                logger.info(f"Processing paper {i}/{len(id_list)}: {identifier}")
-
-                try:
-                    # Get full content (webpage-first with PDF fallback)
-                    content = content_service.get_full_content(
-                        source=identifier,
-                        prefer_webpage=True,
-                        keywords=["methods", "materials", "analysis"],
-                        max_paragraphs=100,
-                    )
-
-                    # Extract methods section
-                    methods = content_service.extract_methods_section(content)
-
-                    successful_extractions.append(
-                        {
-                            "identifier": identifier,
-                            "source_type": content.get("source_type", "unknown"),
-                            "extraction_time": content.get("extraction_time", 0),
-                            "methods": {
-                                "software_used": methods.get("software_used", []),
-                                "parameters": methods.get("parameters", {}),
-                                "extraction_confidence": methods.get(
-                                    "extraction_confidence", 0
-                                ),
-                            },
-                        }
-                    )
-                    logger.info(f"✅ Successfully extracted methods from {identifier}")
-
-                except Exception as e:
-                    logger.error(f"❌ Failed to extract methods from {identifier}: {e}")
-                    error_msg = str(e)
-                    failed_extractions.append(
-                        {
-                            "identifier": identifier,
-                            "error": error_msg,
-                            "is_paywalled": "paywalled" in error_msg.lower()
-                            or "not accessible" in error_msg.lower(),
-                        }
-                    )
-
-            # Generate comprehensive report
-            paywalled_count = sum(
-                1 for f in failed_extractions if f.get("is_paywalled", False)
-            )
-            error_count = len(failed_extractions) - paywalled_count
-
-            report = f"""
-## Batch Method Extraction Report
-
-**Total Papers:** {len(id_list)}
-**Successful:** ✅ {len(successful_extractions)} ({len(successful_extractions)*100//len(id_list) if id_list else 0}%)
-**Paywalled:** ❌ {paywalled_count} ({paywalled_count*100//len(id_list) if id_list else 0}%)
-**Failed:** ⚠️ {error_count} ({error_count*100//len(id_list) if id_list else 0}%)
-
----
-
-### ✅ Successfully Extracted ({len(successful_extractions)}):
-"""
-
-            for result in successful_extractions:
-                report += f"\n**{result['identifier']}** (Source: {result['source_type'].upper()}, {result['extraction_time']:.2f}s)\n"
-                report += f"```json\n{json.dumps(result['methods'], indent=2)}\n```\n\n"
-
-            if failed_extractions:
-                # Separate paywalled from other errors
-                paywalled = [
-                    f for f in failed_extractions if f.get("is_paywalled", False)
-                ]
-                errors = [
-                    f for f in failed_extractions if not f.get("is_paywalled", False)
-                ]
-
-                if paywalled:
-                    report += f"\n### ❌ Paywalled Papers ({len(paywalled)}):\n"
-                    for paper in paywalled:
-                        report += f"\n**{paper['identifier']}**\n"
-                        report += f"- Error: {paper['error']}\n\n"
-
-                if errors:
-                    report += f"\n### ⚠️ Failed Extractions ({len(errors)}):\n"
-                    for paper in errors:
-                        report += f"\n**{paper['identifier']}**\n"
-                        report += f"- Error: {paper['error']}\n\n"
-
-            logger.info(
-                f"Batch extraction complete: {len(successful_extractions)}/{len(id_list)} successful"
-            )
-
-            return report
-
-        except Exception as e:
-            logger.error(f"Error in batch extraction: {e}")
-            return f"Error in batch method extraction: {str(e)}"
-
-    # NOTE: download_supplementary_materials temporarily disabled
-    # Pending reimplementation with UnifiedContentService architecture
-    # The original implementation depended on PublicationIntelligenceService (deleted in Phase 3)
-    # TODO: Reimplement using publisher-specific APIs or webpage scraping
-    #
-    # @tool
-    # def download_supplementary_materials(doi: str, output_dir: str = None) -> str:
-    #     """Download supplementary materials from a paper's DOI."""
-    #     pass
-
-    @tool
-    def read_cached_publication(identifier: str) -> str:
-        """
-        Read detailed methods from a previously analyzed publication.
-
-        This tool uses UnifiedContentService (Phase 3) to retrieve cached extraction
-        from publications analyzed earlier in the session.
-
-        The tool provides access to:
-        - Full methods section text
-        - Extracted tables (parameter tables from Methods)
-        - Mathematical formulas
-        - Software tools mentioned
-        - Extraction metadata (parser used, timestamp)
-
-        Args:
-            identifier: Publication identifier (PMID, DOI, or URL) exactly as shown
-                       in the supervisor's session publication list
-
-        Returns:
-            Complete methods extraction with all available metadata
-
-        Examples:
-            - read_cached_publication("PMID:12345678")
-            - read_cached_publication("10.1038/s41586-021-12345-6")
-            - read_cached_publication("https://biorxiv.org/content/10.1101/2024.01.001")
-
-        When to use this tool:
-            - Supervisor says "read the methods from PMID:12345678"
-            - User asks follow-up questions about previously analyzed papers
-            - Need to reference extraction details from earlier in the conversation
-            - Performing comparative analysis across multiple session papers
-        """
-        try:
-            # Initialize UnifiedContentService (Phase 3 migration)
-            from lobster.tools.content_access_service import ContentAccessService
-
-            content_service = ContentAccessService(data_manager=data_manager)
-
-            # Get cached publication (delegates to DataManagerV2)
-            cached_pub = content_service.get_cached_publication(identifier)
-
-            if not cached_pub:
-                return f"## Publication Not Found\n\nNo cached extraction found for: {identifier}\n\nThis publication has not been analyzed in the current session. Use list_session_publications (via supervisor) to see available publications, or use extract_paper_methods to analyze a new paper."
-
-            # Format the cached publication for display
-            response = (
-                f"## Cached Publication: {cached_pub.get('identifier', identifier)}\n\n"
-            )
-            response += f"**Cache Format**: {cached_pub.get('format', 'unknown')}\n"
-            response += f"**Cache File**: {cached_pub.get('cache_file', 'N/A')}\n"
-
-            # Add methods section
-            methods_text = cached_pub.get("methods_text", "") or cached_pub.get(
-                "markdown", ""
-            )
-            if methods_text:
-                response += "\n### Methods Section\n\n"
-                response += methods_text[:5000]  # Limit to 5000 chars for readability
-                if len(methods_text) > 5000:
-                    response += f"\n\n... [Methods section truncated, showing first 5000 of {len(methods_text)} characters]"
-
-            # Add software tools if present
-            software = cached_pub.get("software_detected", [])
-            if software and isinstance(software, list) and len(software) > 0:
-                response += f"\n\n### Software Tools Detected\n\n"
-                response += ", ".join(f"`{sw}`" for sw in software)
-
-            logger.info(f"Retrieved cached publication: {identifier}")
-            return response
-
-        except Exception as e:
-            logger.error(f"Error reading cached publication: {e}")
-            return f"Error reading cached publication {identifier}: {str(e)}"
-
     # ============================================================
     # Phase 1 NEW TOOLS: Two-Tier Access & Webpage-First Strategy
     # ============================================================
 
     @tool
-    def get_quick_abstract(identifier: str) -> str:
+    def fast_abstract_search(identifier: str) -> str:
         """
-        Retrieve publication abstract quickly without downloading full PDF.
+        Fast abstract retrieval for publication discovery (200-500ms).
 
-        This is the FAST PATH for two-tier access strategy:
-        - Tier 1 (this tool): Quick abstract via NCBI (200-500ms)
-        - Tier 2 (get_publication_overview): Full content extraction (2-8 seconds)
+        This is the FAST PATH for two-tier content access strategy. Use this to quickly
+        screen publications for relevance before committing to full content extraction.
+        Perfect for batch screening, relevance checking, or when you just need the summary.
 
-        Use this tool when:
-        - User asks for "abstract" or "summary" of a paper
-        - You want to check relevance before full extraction
-        - Speed is important (screening multiple papers)
-        - User just needs high-level understanding
+        Two-Tier Strategy:
+        - Tier 1 (this tool): Quick abstract via NCBI (200-500ms) ✅ FAST
+        - Tier 2 (read_full_publication): Full content with methods (2-8 seconds)
+
+        Use Cases:
+        - Screen multiple papers for relevance (5 papers = 2.5 seconds)
+        - Get high-level understanding without full download
+        - Check abstract before deciding on method extraction
+        - User asks for "abstract" or "summary" only
 
         Supported Identifiers:
         - PMID: "PMID:12345678" or "12345678"
@@ -921,10 +836,13 @@ def research_agent(
             Formatted abstract with title, authors, journal, and full abstract text
 
         Examples:
-            - get_quick_abstract("PMID:35042229")
-            - get_quick_abstract("10.1038/s41586-021-03852-1")
+            # Fast screening workflow
+            fast_abstract_search("PMID:35042229")
 
-        Performance: 200-500ms typical response time
+            # DOI lookup
+            fast_abstract_search("10.1038/s41586-021-03852-1")
+
+        Performance: 200-500ms typical (10x faster than full extraction)
         """
         try:
             logger.info(f"Getting quick abstract for: {identifier}")
@@ -950,7 +868,7 @@ def research_agent(
 
 ---
 *Retrieved via fast abstract API (no PDF download)*
-*For full content with Methods section, use get_publication_overview()*
+*For full content with Methods section, use read_full_publication()*
 """
 
             logger.info(
@@ -970,34 +888,42 @@ Could not retrieve abstract for: {identifier}
 - Verify the identifier is correct (PMID or DOI)
 - Check if publication exists in PubMed
 - Try using DOI if PMID failed, or vice versa
-- For non-PubMed papers, use get_publication_overview() instead
+- For non-PubMed papers, use read_full_publication() instead
 """
 
     @tool
-    def get_publication_overview(identifier: str, prefer_webpage: bool = True) -> str:
+    def read_full_publication(identifier: str, prefer_webpage: bool = True) -> str:
         """
-        Extract full publication content with intelligent priority strategy.
+        Read full publication content with automatic caching - the DEEP PATH.
 
-        This is the DEEP PATH for two-tier access strategy:
-        - PRIORITY: PMC Full Text XML (500ms, 95% accuracy, structured) ⭐ NEW
-        - Second: Webpage extraction (Nature, Science, etc.) - 2-5 seconds
-        - Fallback: PDF parsing with Docling - 3-8 seconds
+        Extracts complete publication content with intelligent three-tier cascade strategy.
+        Content is automatically cached for future workspace access. Use after screening
+        with fast_abstract_search() or when you need the full Methods section.
 
-        Use this tool when:
-        - User needs full content, not just abstract
-        - Extracting Methods section for replication
-        - User asks for "parameters", "software used", "methods"
-        - After checking relevance with get_quick_abstract()
+        Three-Tier Cascade Strategy:
+        - PRIORITY: PMC Full Text XML (500ms, 95% accuracy, structured) ⭐ FASTEST
+        - Fallback 1: Webpage extraction (Nature, Science, Cell Press) - 2-5 seconds
+        - Fallback 2: PDF parsing with Docling - 3-8 seconds
 
-        PMC-First Strategy (NEW in Phase 4):
-        - For PMID/DOI: Tries PMC XML API first (10x faster, semantic tags)
+        Use Cases:
+        - Extract complete Methods section for protocol replication
+        - User asks for "parameters", "software used", "full text"
+        - After relevance check with fast_abstract_search()
+        - Need tables, figures, supplementary references
+
+        Automatic Workspace Caching:
+        - Content cached as `publication_PMID12345` or `publication_DOI...`
+        - Retrieve later with get_content_from_workspace()
+        - Enables handoff to specialists with full context
+
+        PMC-First Strategy (Phase 4):
         - Covers 30-40% of biomedical papers (NIH-funded + open access)
-        - 95% accuracy for method extraction vs 70% from abstracts
-        - 100% table parsing success vs 80% heuristics
-        - Automatically falls back to webpage → PDF if PMC unavailable
+        - 95% method extraction accuracy vs 70% from abstracts alone
+        - 100% table parsing success vs 80% heuristic approaches
+        - Automatic fallback to webpage → PDF if PMC unavailable
 
         Supported Identifiers:
-        - PMID: "PMID:12345678" (auto-tries PMC, then resolves to source)
+        - PMID: "PMID:12345678" (auto-tries PMC, then resolves)
         - DOI: "10.1038/s41586-021-12345-6" (auto-tries PMC, then resolves)
         - Direct URL: "https://www.nature.com/articles/s41586-025-09686-5"
         - PDF URL: "https://biorxiv.org/content/10.1101/2024.01.001.pdf"
@@ -1007,15 +933,20 @@ Could not retrieve abstract for: {identifier}
             prefer_webpage: Try webpage before PDF (default: True)
 
         Returns:
-            Full content markdown with sections, tables, and metadata
+            Full content markdown with sections, tables, metadata, and cache location
 
         Examples:
-            - get_publication_overview("PMID:35042229")  # Auto-tries PMC first!
-            - get_publication_overview("https://www.nature.com/articles/s41586-025-09686-5")
-            - get_publication_overview("10.1038/...", prefer_webpage=False)  # Force PDF
+            # Read with PMC-first auto-cascade
+            read_full_publication("PMID:35042229")
+
+            # Read publisher webpage
+            read_full_publication("https://www.nature.com/articles/s41586-025-09686-5")
+
+            # Force PDF extraction
+            read_full_publication("10.1038/s41586-021-12345-6", prefer_webpage=False)
 
         Performance:
-        - PMC XML: 500ms (fastest, for 30-40% of papers)
+        - PMC XML: 500ms (fastest path, 30-40% of papers)
         - Webpage: 2-5 seconds
         - PDF: 3-8 seconds
         """
@@ -1052,7 +983,7 @@ Could not retrieve abstract for: {identifier}
 
 ---
 *Extracted from publisher webpage using structure-aware parsing*
-*For abstract-only view, use get_quick_abstract()*
+*For abstract-only view, use fast_abstract_search()*
 """
 
                     logger.info(
@@ -1102,7 +1033,7 @@ Could not retrieve abstract for: {identifier}
 
 ---
 *Extracted using {source_type} parsing with automatic DOI/PMID resolution*
-*For abstract-only view, use get_quick_abstract()*
+*For abstract-only view, use fast_abstract_search()*
 """
 
             logger.info(
@@ -1121,7 +1052,7 @@ Could not retrieve abstract for: {identifier}
 {error_msg}
 
 **Suggestions:**
-1. Try get_quick_abstract("{identifier}") to get the abstract without full text
+1. Try fast_abstract_search("{identifier}") to get the abstract without full text
 2. Check if a preprint version exists on bioRxiv/medRxiv
 3. Search for author's institutional repository
 4. Contact corresponding author for access
@@ -1135,41 +1066,457 @@ Could not extract content for: {identifier}
 
 **Troubleshooting:**
 - Verify identifier is correct (PMID, DOI, or URL)
-- Try get_quick_abstract() for basic information
+- Try fast_abstract_search() for basic information
 - Check if paper is freely accessible
 - For webpage URLs, ensure they're not behind paywall
 """
 
+    # ============================================================
+    # Phase 4 NEW TOOLS: Workspace Management (2 tools)
+    # ============================================================
+
+    @tool
+    def write_to_workspace(
+        identifier: str, workspace: str, content_type: str = None
+    ) -> str:
+        """
+        Cache research content to workspace for later retrieval and specialist handoff.
+
+        Stores publications, datasets, and metadata in organized workspace directories
+        for persistent access. Use this before handing off to specialists to ensure
+        they have context. Validates naming conventions and content standardization.
+
+        Workspace Categories:
+        - "literature": Publications, abstracts, methods sections
+        - "data": Dataset metadata, sample information
+        - "metadata": Standardized metadata schemas
+
+        Content Types:
+        - "publication": Research papers (PMID/DOI)
+        - "dataset": Dataset accessions (GSE, SRA)
+        - "metadata": Sample metadata, experimental design
+
+        Naming Conventions:
+        - Publications: `publication_PMID12345` or `publication_DOI...`
+        - Datasets: `dataset_GSE12345`
+        - Metadata: `metadata_GSE12345_samples`
+
+        Args:
+            identifier: Content identifier to cache (must exist in current session)
+            workspace: Target workspace category ("literature", "data", "metadata")
+            content_type: Type of content ("publication", "dataset", "metadata")
+
+        Returns:
+            Confirmation message with storage location and next steps
+
+        Examples:
+            # Cache publication after reading
+            write_to_workspace("publication_PMID12345", workspace="literature", content_type="publication")
+
+            # Cache dataset metadata for validation
+            write_to_workspace("dataset_GSE12345", workspace="data", content_type="dataset")
+
+            # Cache sample metadata before handoff
+            write_to_workspace("metadata_GSE12345_samples", workspace="metadata", content_type="metadata")
+        """
+        try:
+            from datetime import datetime
+
+            from lobster.tools.workspace_content_service import (
+                ContentType,
+                MetadataContent,
+                WorkspaceContentService,
+            )
+
+            # Initialize workspace service
+            workspace_service = WorkspaceContentService(data_manager=data_manager)
+
+            # Map workspace categories to ContentType enum
+            workspace_to_content_type = {
+                "literature": ContentType.PUBLICATION,
+                "data": ContentType.DATASET,
+                "metadata": ContentType.METADATA,
+            }
+
+            # Validate workspace category
+            if workspace not in workspace_to_content_type:
+                valid_workspaces = list(workspace_to_content_type.keys())
+                return f"Error: Invalid workspace '{workspace}'. Valid options: {', '.join(valid_workspaces)}"
+
+            # Validate content type if provided
+            if content_type:
+                valid_types = {"publication", "dataset", "metadata"}
+                if content_type not in valid_types:
+                    return f"Error: Invalid content_type '{content_type}'. Valid options: {', '.join(valid_types)}"
+
+            # Validate naming convention
+            if content_type == "publication":
+                if not (
+                    identifier.startswith("publication_PMID")
+                    or identifier.startswith("publication_DOI")
+                ):
+                    logger.warning(
+                        f"Identifier '{identifier}' doesn't follow naming convention for publications. "
+                        f"Expected: publication_PMID12345 or publication_DOI..."
+                    )
+
+            elif content_type == "dataset":
+                if not identifier.startswith("dataset_"):
+                    logger.warning(
+                        f"Identifier '{identifier}' doesn't follow naming convention for datasets. "
+                        f"Expected: dataset_GSE12345"
+                    )
+
+            elif content_type == "metadata":
+                if not identifier.startswith("metadata_"):
+                    logger.warning(
+                        f"Identifier '{identifier}' doesn't follow naming convention for metadata. "
+                        f"Expected: metadata_GSE12345_samples"
+                    )
+
+            # Check if identifier exists in session
+            exists = False
+            content_data = None
+            source_location = None
+
+            # Check metadata_store (for publications, datasets)
+            if identifier in data_manager.metadata_store:
+                exists = True
+                content_data = data_manager.metadata_store[identifier]
+                source_location = "metadata_store"
+                logger.info(f"Found '{identifier}' in metadata_store")
+
+            # Check modalities (for datasets loaded as AnnData)
+            elif identifier in data_manager.list_modalities():
+                exists = True
+                # For modalities, we'll store metadata only (not full AnnData)
+                adata = data_manager.get_modality(identifier)
+                content_data = {
+                    "n_obs": adata.n_obs,
+                    "n_vars": adata.n_vars,
+                    "obs_columns": list(adata.obs.columns),
+                    "var_columns": list(adata.var.columns),
+                }
+                source_location = "modalities"
+                logger.info(f"Found '{identifier}' in modalities")
+
+            if not exists:
+                return f"Error: Identifier '{identifier}' not found in current session. Cannot cache non-existent content."
+
+            # Create Pydantic model for validation and storage
+            # Use MetadataContent as flexible wrapper for all content types
+            content_model = MetadataContent(
+                identifier=identifier,
+                content_type=content_type or "unknown",
+                description=f"Cached from {source_location}",
+                data=content_data,
+                related_datasets=[],
+                source=f"DataManager.{source_location}",
+                cached_at=datetime.now().isoformat(),
+            )
+
+            # Write content using service (with Pydantic validation)
+            cache_file_path = workspace_service.write_content(
+                content=content_model,
+                content_type=workspace_to_content_type[workspace],
+            )
+
+            # Return confirmation with location
+            response = f"""## Content Cached Successfully
+
+**Identifier**: {identifier}
+**Workspace**: {workspace}
+**Content Type**: {content_type or 'not specified'}
+**Location**: {cache_file_path}
+**Cached At**: {datetime.now().date()}
+
+**Next Steps**:
+- Use `get_content_from_workspace()` to retrieve cached content
+- Hand off to specialists with workspace context
+- Content persists across sessions for reproducibility
+"""
+            return response
+
+        except Exception as e:
+            logger.error(f"Error caching to workspace: {e}")
+            return f"Error caching content to workspace: {str(e)}"
+
+    @tool
+    def get_content_from_workspace(
+        identifier: str = None, workspace: str = None, level: str = "summary"
+    ) -> str:
+        """
+        Retrieve cached research content from workspace with flexible detail levels.
+
+        Reads previously cached publications, datasets, and metadata from workspace
+        directories. Supports listing all content, filtering by workspace, and
+        extracting specific details (summary, methods, samples, platform, full metadata).
+
+        Detail Levels:
+        - "summary": Key-value pairs, high-level overview (default)
+        - "methods": Methods section (for publications)
+        - "samples": Sample IDs list (for datasets)
+        - "platform": Platform information (for datasets)
+        - "metadata": Full metadata (for any content)
+        - "github": GitHub repositories (for publications)
+
+        Args:
+            identifier: Content identifier to retrieve (None = list all)
+            workspace: Filter by workspace category (None = all workspaces)
+            level: Detail level to extract (default: "summary")
+
+        Returns:
+            Formatted content based on detail level or list of cached items
+
+        Examples:
+            # List all cached content
+            get_content_from_workspace()
+
+            # List content in specific workspace
+            get_content_from_workspace(workspace="literature")
+
+            # Read publication methods section
+            get_content_from_workspace(
+                identifier="publication_PMID12345",
+                workspace="literature",
+                level="methods"
+            )
+
+            # Get dataset sample IDs
+            get_content_from_workspace(
+                identifier="dataset_GSE12345",
+                workspace="data",
+                level="samples"
+            )
+
+            # Get full metadata
+            get_content_from_workspace(
+                identifier="metadata_GSE12345_samples",
+                workspace="metadata",
+                level="metadata"
+            )
+        """
+        try:
+            import json
+
+            from lobster.tools.workspace_content_service import (
+                ContentType,
+                RetrievalLevel,
+                WorkspaceContentService,
+            )
+
+            # Initialize workspace service
+            workspace_service = WorkspaceContentService(data_manager=data_manager)
+
+            # Map workspace strings to ContentType enum
+            workspace_to_content_type = {
+                "literature": ContentType.PUBLICATION,
+                "data": ContentType.DATASET,
+                "metadata": ContentType.METADATA,
+            }
+
+            # Map level strings to RetrievalLevel enum
+            level_to_retrieval = {
+                "summary": RetrievalLevel.SUMMARY,
+                "methods": RetrievalLevel.METHODS,
+                "samples": RetrievalLevel.SAMPLES,
+                "platform": RetrievalLevel.PLATFORM,
+                "metadata": RetrievalLevel.FULL,
+                "github": None,  # Special case, handle separately
+            }
+
+            # Validate detail level using enum keys
+            if level not in level_to_retrieval:
+                valid = list(level_to_retrieval.keys())
+                return f"Error: Invalid detail level '{level}'. Valid options: {', '.join(valid)}"
+
+            # Validate workspace if provided
+            if workspace and workspace not in workspace_to_content_type:
+                valid_ws = list(workspace_to_content_type.keys())
+                return f"Error: Invalid workspace '{workspace}'. Valid options: {', '.join(valid_ws)}"
+
+            # List mode: Use service instead of manual scanning
+            if identifier is None:
+                logger.info("Listing all cached workspace content")
+
+                # Determine content type filter
+                content_type_filter = None
+                if workspace:
+                    content_type_filter = workspace_to_content_type[workspace]
+
+                # Use service to list content (replaces manual glob + JSON reading)
+                all_cached = workspace_service.list_content(
+                    content_type=content_type_filter
+                )
+
+                if not all_cached:
+                    filter_msg = f" in workspace '{workspace}'" if workspace else ""
+                    return f"No cached content found{filter_msg}. Use write_to_workspace() to cache content first."
+
+                # Format list response (same output format)
+                response = f"## Cached Workspace Content ({len(all_cached)} items)\n\n"
+                for item in all_cached:
+                    response += f"- **{item['identifier']}**\n"
+                    response += f"  - Workspace: {item.get('_content_type', 'unknown')}\n"
+                    response += f"  - Type: {item.get('content_type', 'unknown')}\n"
+                    response += f"  - Cached: {item.get('cached_at', 'unknown')}\n\n"
+                return response
+
+            # Retrieve mode: Handle "github" level specially (not in RetrievalLevel enum)
+            if level == "github":
+                # Try each content type if workspace not specified
+                if workspace:
+                    content_types_to_try = [workspace_to_content_type[workspace]]
+                else:
+                    content_types_to_try = list(ContentType)
+
+                cached_content = None
+                for content_type in content_types_to_try:
+                    try:
+                        # GitHub requires full content retrieval
+                        cached_content = workspace_service.read_content(
+                            identifier=identifier,
+                            content_type=content_type,
+                            level=RetrievalLevel.FULL,
+                        )
+                        break
+                    except FileNotFoundError:
+                        continue
+
+                if not cached_content:
+                    workspace_filter = f" in workspace '{workspace}'" if workspace else ""
+                    return f"Error: Identifier '{identifier}' not found{workspace_filter}. Available content:\n{get_content_from_workspace(workspace=workspace)}"
+
+                # Extract GitHub repos from data
+                data = cached_content.get("data", {})
+                if "github_repos" in data:
+                    repos = data["github_repos"]
+                    response = f"## GitHub Repositories for {identifier}\n\n"
+                    response += f"**Found**: {len(repos)} repositories\n\n"
+                    for repo in repos:
+                        response += f"- {repo}\n"
+                    return response
+                else:
+                    return f"No GitHub repositories found for '{identifier}'. This detail level is typically for publications with code."
+
+            # Standard level retrieval using service with automatic filtering
+            retrieval_level = level_to_retrieval[level]
+
+            # Try each content type if workspace not specified
+            if workspace:
+                content_types_to_try = [workspace_to_content_type[workspace]]
+            else:
+                content_types_to_try = list(ContentType)
+
+            cached_content = None
+            found_content_type = None
+
+            for content_type in content_types_to_try:
+                try:
+                    # Use service with level-based filtering (replaces manual if/elif)
+                    cached_content = workspace_service.read_content(
+                        identifier=identifier,
+                        content_type=content_type,
+                        level=retrieval_level,  # Service handles filtering automatically
+                    )
+                    found_content_type = content_type
+                    break
+                except FileNotFoundError:
+                    continue
+
+            if not cached_content:
+                workspace_filter = f" in workspace '{workspace}'" if workspace else ""
+                return f"Error: Identifier '{identifier}' not found{workspace_filter}. Available content:\n{get_content_from_workspace(workspace=workspace)}"
+
+            # Format response based on level (service already filtered content)
+            if level == "summary":
+                data = cached_content.get("data", {})
+                response = f"""## Summary: {identifier}
+
+**Workspace**: {found_content_type.value if found_content_type else 'unknown'}
+**Content Type**: {cached_content.get('content_type', 'unknown')}
+**Cached At**: {cached_content.get('cached_at', 'unknown')}
+
+**Data Overview**:
+"""
+                # Format data as key-value pairs
+                if isinstance(data, dict):
+                    for key, value in data.items():
+                        if isinstance(value, (list, dict)):
+                            value_str = f"{type(value).__name__} with {len(value)} items"
+                        else:
+                            value_str = str(value)[:100]
+                            if len(str(value)) > 100:
+                                value_str += "..."
+                        response += f"- **{key}**: {value_str}\n"
+                return response
+
+            elif level == "methods":
+                # Service already filtered to methods fields
+                if "methods" in cached_content:
+                    return f"## Methods Section\n\n{cached_content['methods']}"
+                else:
+                    return f"No methods section found for '{identifier}'. This detail level is typically for publications."
+
+            elif level == "samples":
+                # Service already filtered to samples fields
+                if "samples" in cached_content:
+                    sample_list = cached_content["samples"]
+                    response = f"## Sample IDs for {identifier}\n\n"
+                    response += f"**Total Samples**: {len(sample_list)}\n\n"
+                    response += "\n".join(f"- {sample}" for sample in sample_list[:50])
+                    if len(sample_list) > 50:
+                        response += f"\n\n... and {len(sample_list) - 50} more samples"
+                    return response
+                elif "obs_columns" in cached_content:
+                    # For modalities, show obs_columns
+                    return f"## Sample Information for {identifier}\n\n**N Observations**: {cached_content.get('n_obs')}\n**Obs Columns**: {', '.join(cached_content['obs_columns'])}"
+                else:
+                    return f"No sample information found for '{identifier}'. This detail level is typically for datasets."
+
+            elif level == "platform":
+                # Service already filtered to platform fields
+                if "platform" in cached_content:
+                    return f"## Platform Information\n\n{json.dumps(cached_content['platform'], indent=2)}"
+                elif "var_columns" in cached_content:
+                    # For modalities, show var_columns
+                    return f"## Platform/Feature Information for {identifier}\n\n**N Variables**: {cached_content.get('n_vars')}\n**Var Columns**: {', '.join(cached_content['var_columns'])}"
+                else:
+                    return f"No platform information found for '{identifier}'. This detail level is typically for datasets."
+
+            elif level == "metadata":
+                # Service returned full content when level=FULL
+                data = cached_content.get("data", cached_content)
+                return f"## Full Metadata for {identifier}\n\n```json\n{json.dumps(data, indent=2, default=str)}\n```"
+
+        except Exception as e:
+            logger.error(f"Error retrieving from workspace: {e}")
+            return f"Error retrieving content from workspace: {str(e)}"
+
     base_tools = [
         # --------------------------------
-        # Literature discovery tools
+        # Literature discovery tools (4 tools)
         search_literature,
-        discover_related_studies,
-        extract_publication_metadata,
         find_marker_genes,
+        fast_dataset_search,
+        find_related_entries,
         # --------------------------------
-        # Dataset discovery tools
-        find_datasets_from_publication,
-        search_datasets_directly,
+        # Content analysis tools (4 tools)
+        get_dataset_metadata,
+        fast_abstract_search,
+        read_full_publication,
+        extract_methods,
         # --------------------------------
-        # Session management
-        read_cached_publication,
+        # Workspace management tools (2 tools)
+        write_to_workspace,
+        get_content_from_workspace,
         # --------------------------------
-        # Metadata tools
+        # System tools (2 tools)
         get_research_capabilities,
         validate_dataset_metadata,
-        # ------------- TIER 1 ------------
-        # Fast abstract access
-        get_quick_abstract,
-        # ------------- TIER 2 & 3 ------------
-        # Full content
-        resolve_paper_access,
-        get_publication_overview,
-        extract_paper_methods,
-        extract_methods_batch,
         # --------------------------------
-        # Two-tier publication access
-        # Session publication access
+        # Total: 12 tools (4 discovery + 4 content + 2 workspace + 2 system)
+        # Phase 4 complete: Removed 4 tools, renamed 6, enhanced 4, added 2 workspace
         # NOTE: download_supplementary_materials temporarily disabled (pending reimplementation)
     ]
 
@@ -1177,14 +1524,23 @@ Could not extract content for: {identifier}
     tools = base_tools + (handoff_tools or [])
 
     system_prompt = """
-You are a research specialist focused on scientific literature discovery and dataset identification in bioinformatics and computational biology, supporting pharmaceutical early research and drug discovery.
+You are a research specialist focused on scientific literature discovery, dataset identification, and workspace management in bioinformatics and computational biology, supporting pharmaceutical early research and drug discovery.
 
 <Role>
-Your expertise lies in comprehensive literature search, dataset discovery, research context provision, and computational method extraction for drug target validation and biomarker discovery.
+Your expertise lies in comprehensive literature search, dataset discovery, research context provision, computational method extraction, and workspace caching for specialist handoffs. You are the entry point for research workflows, responsible for discovery, analysis, and organized handoff to downstream specialists.
+
 You are precise in formulating queries that maximize relevance and minimize noise.
+
 You work closely with:
 - **Data Experts**: who download and preprocess datasets
+- **Metadata Assistant**: who validates, standardizes, and harmonizes cross-dataset metadata
 - **Drug Discovery Scientists**: who need datasets for target validation and patient stratification
+
+**Your Key Responsibilities**:
+1. **Discovery**: Find relevant publications and datasets
+2. **Content Analysis**: Extract methods, parameters, and full-text content
+3. **Workspace Management**: Cache findings with standardized naming for persistent access
+4. **Specialist Handoff**: Prepare context and hand off to appropriate agents
 </Role>
 
 <Critical_Rules>
@@ -1222,8 +1578,8 @@ You work closely with:
 
 | Operation | Maximum Calls | Rationale |
 |-----------|---------------|-----------|
-| `find_datasets_from_publication` per PMID | 3 total | 1 initial + up to 2 retries with variations |
-| `search_datasets_directly` per query | 2 total | Initial + 1 broader/synonym variation |
+| `find_related_entries` per PMID | 3 total | 1 initial + up to 2 retries with variations |
+| `fast_dataset_search` per query | 2 total | Initial + 1 broader/synonym variation |
 | Related publications to check | 3 papers | Balance thoroughness vs time |
 | Total tool calls in discovery workflow | 10 calls | Comprehensive but bounded |
 | Dataset search attempts without success | 10+ | Suggest alternative approaches |
@@ -1267,10 +1623,187 @@ Always show attempt counter to user:
    - Field tags where applicable: human[orgn], GSE[ETYP]
 </Query_Optimization_Strategy>
 
-<Available Research Tools>
-### Literature Discovery
-- `search_literature`: Multi-source literature search with advanced filtering
+<Your_12_Research_Tools>
+
+You have **12 specialized tools** organized into 4 categories:
+
+## 🔍 Discovery Tools (4 tools)
+
+1. **`search_literature`** - Multi-source literature search with advanced filtering
+   - Sources: pubmed, biorxiv, medrxiv
+   - Supports `related_to` parameter for related paper discovery (merged from removed `discover_related_studies`)
+   - Filter schema: date_range, authors, journals, publication_types
+
+2. **`find_marker_genes`** - Literature-based marker gene identification
+   - Query format: "cell_type=T_cell disease=cancer"
+   - Cross-references multiple studies for consensus markers
+
+3. **`fast_dataset_search`** - Search omics databases directly (GEO, SRA, PRIDE, etc.)
+   - Fast keyword-based search across repositories
+   - Filter schema: organisms, entry_types, date_range, supplementary_file_types
+   - Use when you know what you're looking for (disease + technology)
+
+4. **`find_related_entries`** - Find connected publications, datasets, samples, metadata
+   - Discovers related research content across databases
+   - Supports `entry_type` filtering: "publication", "dataset", "sample", "metadata"
+   - Use for publication→dataset or dataset→publication discovery
+
+## 📄 Content Analysis Tools (4 tools)
+
+5. **`get_dataset_metadata`** - Get comprehensive metadata for datasets or publications
+   - Supports both publications (PMID/DOI) and datasets (GSE/SRA/PRIDE)
+   - Auto-detects type from identifier format
+   - Optional `database` parameter for explicit routing
+
+6. **`fast_abstract_search`** - Fast abstract retrieval (200-500ms)
+   - FAST PATH for two-tier access strategy
+   - Quick screening before full extraction
+   - Use for relevance checking
+
+7. **`read_full_publication`** - Read full publication content with automatic caching
+   - DEEP PATH with three-tier cascade: PMC XML (500ms) → Webpage (2-5s) → PDF (3-8s)
+   - Auto-caches as `publication_PMID12345` or `publication_DOI...`
+   - Use after screening with fast_abstract_search
+
+8. **`extract_methods`** - Extract computational methods from publication(s)
+   - Supports single paper or batch processing (comma-separated identifiers)
+   - Optional `focus` parameter: "software" | "parameters" | "statistics"
+   - Extracts: software used, parameter values, statistical methods, normalization
+
+## 💾 Workspace Management Tools (2 tools)
+
+9. **`write_to_workspace`** - Cache research content for persistent access
+   - Workspace categories: "literature" | "data" | "metadata"
+   - Validates naming conventions: `publication_PMID12345`, `dataset_GSE12345`, `metadata_GSE12345_samples`
+   - Use before handing off to specialists to ensure they have context
+
+10. **`get_content_from_workspace`** - Retrieve cached research content
+    - Detail levels: "summary" | "methods" | "samples" | "platform" | "metadata" | "github"
+    - Supports list mode (no identifier) to see all cached content
+    - Workspace filtering by category
+
+## ⚙️ System Tools (2 tools)
+
+11. **`get_research_capabilities`** - Query available research capabilities
+    - Shows available tools, data sources, and features
+    - Use when uncertain about system capabilities
+
+12. **`validate_dataset_metadata`** - Quick metadata validation without downloading
+    - Checks required fields, conditions, controls, duplicates, platform consistency
+    - Returns recommendation: "proceed" | "skip" | "manual_check"
+    - Use before committing to dataset downloads
+
+</Your_12_Research_Tools>
+
+<Workspace_Caching_Workflow>
+
+## Discover → Analyze → Cache → Hand Off
+
+You MUST use workspace caching before handing off to specialists. This ensures downstream agents have full context without re-fetching content.
+
+**Standard Workflow Pattern:**
+
+1. **Discover** relevant content
+   - Use `search_literature` for publications
+   - Use `fast_dataset_search` for datasets
+   - Use `find_related_entries` for cross-database discovery
+
+2. **Analyze** content
+   - Use `fast_abstract_search` for quick screening
+   - Use `read_full_publication` for detailed analysis
+   - Use `extract_methods` for parameter extraction
+   - Use `get_dataset_metadata` for dataset details
+
+3. **Cache** findings using `write_to_workspace`
+   - Publications → `workspace="literature"`, `content_type="publication"`
+   - Datasets → `workspace="data"`, `content_type="dataset"`
+   - Metadata → `workspace="metadata"`, `content_type="metadata"`
+   - Validate naming: `publication_PMID12345`, `dataset_GSE12345`, `metadata_GSE12345_samples`
+
+4. **Hand off** to appropriate specialist
+   - → metadata_assistant: Sample mapping, metadata standardization, validation
+   - → data_expert: Dataset downloading and preprocessing
+   - → supervisor: Complex multi-step workflows
+
+**Example Cache-Before-Handoff**:
+```
+User: "Find datasets for PMID:12345678 and check if they have treatment response metadata"
+
+1. search_literature("PMID:12345678") → Get publication details
+2. read_full_publication("PMID:12345678") → Extract full content
+3. write_to_workspace("publication_PMID12345678", workspace="literature", content_type="publication")
+4. find_related_entries("PMID:12345678", entry_type="dataset") → Find GSE12345, GSE67890
+5. get_dataset_metadata("GSE12345") → Check metadata
+6. write_to_workspace("dataset_GSE12345", workspace="metadata", content_type="dataset")
+7. Hand off to metadata_assistant: "Validate GSE12345 for treatment_response field. Context cached in workspace."
+```
+
+</Workspace_Caching_Workflow>
+
+<Handoff_Triggers>
+
+## When to Hand Off to metadata_assistant
+
+You should hand off to metadata_assistant for the following tasks. **DO NOT attempt these yourself**:
+
+| Task Type | Trigger Keywords | Example User Request |
+|-----------|------------------|----------------------|
+| **Sample ID Mapping** | "map samples", "match samples", "align samples", "cross-reference samples" | "Map samples between GSE12345 and GSE67890" |
+| **Metadata Standardization** | "standardize metadata", "validate schema", "convert to standard format" | "Standardize GSE12345 to transcriptomics schema" |
+| **Dataset Validation** | "validate dataset", "check metadata completeness", "verify required fields" | "Check if GSE12345 has treatment_response metadata" |
+| **Sample Metadata Reading** | "read sample metadata", "show sample fields", "extract sample info" | "Show sample metadata for GSE12345 in detailed format" |
+
+**Handoff Pattern**:
+```
+1. Cache relevant content to workspace (use write_to_workspace)
+2. Hand off with clear task description
+3. Include workspace location in handoff message
+4. Specify required output format
+```
+
+**Example Handoff**:
+```
+User: "I need to map samples between GSE12345 and GSE67890"
+
+research_agent actions:
+1. get_dataset_metadata("GSE12345") → Verify dataset exists
+2. write_to_workspace("dataset_GSE12345", workspace="metadata")
+3. get_dataset_metadata("GSE67890") → Verify dataset exists
+4. write_to_workspace("dataset_GSE67890", workspace="metadata")
+5. handoff_to_metadata_assistant(
+     instructions="Map samples between GSE12345 and GSE67890 using exact and fuzzy matching strategies.
+                   Both datasets cached in metadata workspace.
+                   Return mapping report with confidence scores."
+   )
+```
+
+## When to Hand Off to data_expert
+
+Hand off for dataset downloading and loading:
+- "download GSE12345"
+- "load dataset X"
+- "fetch data from GEO"
+
+## When to Hand Off to supervisor
+
+Hand off for complex multi-agent workflows:
+- Requires coordination of 3+ agents
+- User request spans multiple domains (literature + data + analysis)
+- Ambiguous requirements needing clarification
+
+</Handoff_Triggers>
+
+<Available Research Tools - Detailed Reference>
+
+**NOTE**: This section provides detailed implementation guidance. For high-level tool overview, see <Your_12_Research_Tools> section above.
+
+### Literature Discovery (Detailed)
+
+- **`search_literature`**: Multi-source literature search with advanced filtering
   * sources: "pubmed", "biorxiv", "medrxiv" (comma-separated)
+  * **NEW**: `related_to` parameter for related paper discovery (merged from removed `discover_related_studies`)
+    - Example: `search_literature(related_to="PMID:12345678", max_results=10)`
+    - Finds papers citing or cited by the given publication
   * **Filter Schema (JSON string)**: Available filter options:
     ```json
     {{
@@ -1289,16 +1822,18 @@ Always show attempt counter to user:
     - Review articles: `'{{"publication_types": ["Review"], "date_range": {{"start": "2022"}}}}'`
   * max_results: 3-6 for comprehensive surveys, 10-15 for exhaustive searches
 
-- `discover_related_studies`: Find studies related to a publication or topic
-  * Automatically extracts key terms from source publications
-  * Focuses on methodological or thematic relationships
-
-- `extract_publication_metadata`: Comprehensive metadata extraction
+- **`get_dataset_metadata`**: Comprehensive metadata extraction for datasets or publications
+  * **NEW**: Supports both publications (PMID/DOI) AND datasets (GSE/SRA/PRIDE)
+  * Auto-detects type from identifier format
+  * Optional `database` parameter for explicit routing ("geo" | "sra" | "pride" | "pubmed")
   * Full bibliographic information, abstracts, author lists
   * Standardized format across different sources
 
-### Publication Intelligence
-- `extract_paper_methods`: Extract computational methods from research papers
+### Publication Intelligence (Detailed)
+
+- **`extract_methods`**: Extract computational methods from publication(s)
+  * **NEW**: Supports single paper or batch processing (comma-separated identifiers)
+  * **NEW**: Optional `focus` parameter: "software" | "parameters" | "statistics"
   * Accepts PMIDs, DOIs, or direct PDF URLs (automatic resolution via PMC, bioRxiv, publisher)
   * Uses LLM to analyze full paper text and extract:
     - Software/tools used (e.g., Scanpy, Seurat, DESeq2)
@@ -1308,39 +1843,40 @@ Always show attempt counter to user:
     - Sample sizes and normalization methods
   * Returns structured JSON with extracted information
   * Enables competitive intelligence: "What methods did Competitor X use?"
-  * Example: extract_paper_methods("https://www.nature.com/articles/paper.pdf")
+  * Examples:
+    - Single: `extract_methods("PMID:12345678")`
+    - Batch: `extract_methods("PMID:123,PMID:456,10.1038/...")`
+    - Focused: `extract_methods("PMID:12345678", focus="software")`
 
 - `download_supplementary_materials`: **[CURRENTLY DISABLED]**
   * **Status**: Tool temporarily disabled pending reimplementation with UnifiedContentService architecture
   * **Expected**: Q2 2025 reimplementation with publisher-specific APIs
   * **Reason**: Original implementation depended on deleted PublicationIntelligenceService (Phase 3 migration)
-  * **Workaround**: Use `get_publication_overview()` to access full paper content including references to supplementary materials
+  * **Workaround**: Use `read_full_publication()` to access full paper content including references to supplementary materials
   * **DO NOT attempt to call this tool** - it will fail with "tool not found" error
   * For supplementary material access, manually check publisher websites or contact authors
 
-- `read_cached_publication`: Read detailed methods from previously analyzed publications
-  * Use when supervisor references a specific paper from session publication list
-  * Retrieves full methods extraction from publications analyzed earlier in session
-  * Returns:
-    - Full methods section text (up to 5000 chars preview)
-    - Extracted tables (parameter tables from Methods)
-    - Mathematical formulas
-    - Software tools mentioned
-    - Extraction metadata (parser used, timestamp)
-  * Example: read_cached_publication("PMID:12345678")
-  * Use cases:
-    - Supervisor says "read the methods from PMID:12345678"
-    - User asks follow-up questions about previously analyzed papers
-    - Performing comparative analysis across multiple session papers
-  * Note: Only works for publications extracted in current session
+- **Cached Publication Access**: **[REPLACED]**
+  * **OLD**: `read_cached_publication` (removed in Phase 4)
+  * **NEW**: Use `get_content_from_workspace` with `level="methods"`
+  * Example: `get_content_from_workspace(identifier="publication_PMID12345", workspace="literature", level="methods")`
+  * Returns full methods section, tables, formulas, software tools from cached publications
 
-### Dataset Discovery
-- `find_datasets_from_publication`: Discover datasets from publications
+### Dataset Discovery (Detailed)
+
+- **`find_related_entries`**: Find connected publications, datasets, samples, metadata
+  * **NEW**: Supports `entry_type` parameter for filtering results
+  * entry_type options: "publication", "dataset", "sample", "metadata" (comma-separated or None for all)
   * dataset_types: "geo,sra,arrayexpress,ena,bioproject,biosample,dbgap"
   * include_related: finds linked datasets through NCBI connections
   * Comprehensive dataset reports with download links
+  * **Examples**:
+    - Find datasets from publication: `find_related_entries("PMID:12345678", dataset_types="geo")`
+    - Find only datasets (no publications or samples): `find_related_entries("PMID:12345678", entry_type="dataset")`
+    - Find publications and samples related to dataset: `find_related_entries("GSE12345", entry_type="publication,sample")`
+    - Find all related content: `find_related_entries("GSE12345")`
 
-- `search_datasets_directly`: Direct omics database search with advanced filtering
+- **`fast_dataset_search`**: Direct omics database search with advanced filtering
   * CRITICAL: Use entry_types: ["gse"] for series data, ["gsm"] for samples, ["gds"] for curated datasets - all formats supported
   * **Filter Schema (JSON string)**: Complete available filter options:
     ```json
@@ -1381,12 +1917,12 @@ Always show attempt counter to user:
   * Returns recommendation: "proceed" | "skip" | "manual_check"
   * Example: validate_dataset_metadata("GSE179994", "treatment_response,timepoint", '{{"treatment_response": ["responder", "non-responder"]}}')
 
-### Two-Tier Publication Access Strategy (Phase 1: NEW TOOLS)
+### Two-Tier Publication Access Strategy (Detailed)
 
 The system uses a **two-tier access strategy** for publication content with automatic intelligent routing:
 
 **Tier 1: Quick Abstract (Fast Path - 200-500ms)**
-- `get_quick_abstract`: Retrieve abstract via NCBI without PDF download
+- **`fast_abstract_search`**: Retrieve abstract via NCBI without PDF download
   * Accepts: PMID (with or without "PMID:" prefix) or DOI
   * Returns: Title, authors, journal, publication date, full abstract text
   * Performance: 200-500ms typical response time
@@ -1395,11 +1931,11 @@ The system uses a **two-tier access strategy** for publication content with auto
     - Screening multiple papers for relevance
     - Speed is critical (checking dozens of papers)
     - Just need high-level understanding
-  * Example: get_quick_abstract("PMID:35042229") or get_quick_abstract("35042229")
+  * Example: fast_abstract_search("PMID:35042229") or fast_abstract_search("35042229")
   * **Best Practice**: Always try fast path first when appropriate
 
 **Tier 2: Full Content (Deep Path - 0.5-8 seconds)**
-- `get_publication_overview`: Extract full content with PMC-first priority strategy
+- **`read_full_publication`**: Extract full content with PMC-first priority strategy
   * PMC XML extraction (500ms): PRIORITY for PMID/DOI - structured, semantic tags, 95% accuracy
   * Webpage extraction (2-5s): Nature, Science, Cell Press, and other publishers with structure-aware parsing
   * PDF fallback (3-8s): bioRxiv, medRxiv using advanced Docling extraction
@@ -1416,8 +1952,8 @@ The system uses a **two-tier access strategy** for publication content with auto
     - User needs full content (not just abstract)
     - Extracting Methods section for replication
     - User asks for "parameters", "software used", "protocols"
-    - After checking relevance with get_quick_abstract()
-  * Example: get_publication_overview("https://www.nature.com/articles/s41586-025-09686-5")
+    - After checking relevance with fast_abstract_search()
+  * Example: read_full_publication("https://www.nature.com/articles/s41586-025-09686-5")
   * **Automatic Resolution**: DOI/PMID auto-try PMC XML first (10x faster), then resolve to best accessible source
 
 **Decision Tree: Which Tier to Use?**
@@ -1425,22 +1961,19 @@ The system uses a **two-tier access strategy** for publication content with auto
 User request about publication
 │
 ├─ Keywords: "abstract", "summary", "overview"
-│  └→ get_quick_abstract(identifier) → 200-500ms ✅ Fast
+│  └→ fast_abstract_search(identifier) → 200-500ms ✅ Fast
 │
 ├─ Keywords: "methods", "parameters", "software", "protocol", "full text"
-│  └→ get_publication_overview(identifier) → PMC-first strategy:
+│  └→ read_full_publication(identifier) → PMC-first strategy:
 │     ├─ PMC XML (PMID/DOI): 500ms ✅ Fastest (30-40% of papers)
 │     ├─ Webpage fallback: 2-5s ✅ Good for publishers
 │     └─ PDF fallback: 3-8s ✅ Last resort
 │
-├─ Question: "Can I access this paper?" or previous extraction failed
-│  └→ resolve_paper_access(identifier) → Diagnostic ✅ Check first
-│
 ├─ Workflow: "Find papers AND extract methods"
 │  1. search_literature(query) → Get PMIDs
-│  2. get_quick_abstract(each) → Screen relevance (0.3s each) ✅ Fast screening
+│  2. fast_abstract_search(each) → Screen relevance (0.3s each) ✅ Fast screening
 │  3. Filter to most relevant papers (2-3 papers)
-│  4. get_publication_overview(relevant) → Extract methods (0.5-3s each w/ PMC)
+│  4. read_full_publication(relevant) → Extract methods (0.5-3s each w/ PMC)
 │
 │  Performance Example: 5 papers
 │  • Old (all PDF): 5 × 3s = 15 seconds
@@ -1448,110 +1981,15 @@ User request about publication
 │  • Optimized: (5 × 0.3s) + (2 × 3s no PMC) = 7.5s ✅ 2x faster
 │
 └─ Uncertain about accessibility or facing errors
-   └→ resolve_paper_access(identifier) FIRST → Then proceed
+   └→ read_full_publication() automatically handles fallback cascade
 ```
 
 **Critical Performance Optimization**:
-- ✅ Use get_quick_abstract() for screening (10x faster)
-- ✅ Only use get_publication_overview() for papers you'll analyze
+- ✅ Use fast_abstract_search() for screening (10x faster)
+- ✅ Only use read_full_publication() for papers you'll analyze
 - ✅ PMC XML API auto-tried first for PMID/DOI (10x faster than PDF)
-- ✅ Check resolve_paper_access() when uncertain about access
-- ❌ Never use get_publication_overview() just to read an abstract
-
-### Publication Access Verification
-
-- `resolve_paper_access`: Check paper accessibility and content availability before extraction
-  * Supported identifier formats:
-    - PMID: "PMID:12345678" or "12345678" (prefix optional)
-    - DOI: "10.1038/s41586-..." (no prefix needed)
-    - Direct URL: Any webpage or PDF URL
-  * Verifies paper is accessible via webpage or PDF
-  * Shows content type (webpage/PDF), extraction method, tier used
-  * Displays available content: Methods section, tables, formulas, software detected
-  * Returns comprehensive diagnostics with troubleshooting suggestions if inaccessible
-  * Performance: Fast check (1-2 seconds)
-  * Use when:
-    - User asks "Can I access this paper?" or "Is this paper available?"
-    - Previous get_publication_overview() failed
-    - Diagnosing accessibility issues
-    - Want to preview extraction quality before committing to full extraction
-    - Batch processing - check access before extracting all papers
-  * Example: resolve_paper_access("PMID:12345678")
-  * **Workflow Integration**: Call this before get_publication_overview() to verify accessibility
-  * **Returns**: Access report showing:
-    - ✅ Accessible: Shows content type, extraction method, ready for extraction
-    - ❌ Not Accessible: Shows error details, alternative access options (PMC, bioRxiv, author contact)
-
-**When to use resolve_paper_access**:
-1. Before batch processing to preview which papers are accessible
-2. When user asks about paper availability
-3. After get_publication_overview() fails (diagnostic mode)
-4. For paywalled publishers (Nature, Science, Cell) - check PMC alternatives
-
-### Batch Method Extraction
-
-- `extract_methods_batch`: Extract computational methods from multiple papers (2-10 papers) in one operation
-  * Supported identifier formats (comma-separated):
-    - PMID: "PMID:12345678" or "12345678" (prefix optional)
-    - DOI: "10.1038/s41586-..." (no prefix needed)
-    - URL: Direct webpage or PDF URLs
-  * Parameters:
-    - identifiers: "PMID:123,PMID:456,10.1038/..." (comma-separated, no spaces around commas)
-    - max_papers: Maximum papers to process (default: 5, max: 10)
-  * Sequential processing with comprehensive success/failure report
-  * Automatic webpage-first extraction with PDF fallback for each paper
-  * Returns: Comprehensive batch report with:
-    - ✅ Successfully extracted: Full methods JSON for each paper
-    - ❌ Paywalled: List of inaccessible papers with alternative suggestions
-    - ⚠️ Failed: Papers that errored with diagnostic information
-    - Summary statistics: Success rate, paywalled count, error count
-  * Performance: ~3-5 seconds per paper (parallelization future enhancement)
-  * Use when:
-    - User provides list of 2-10 papers (e.g., "Extract methods from PMID:123, PMID:456, PMID:789")
-    - Competitive intelligence: "Analyze competitor's methods from their 5 recent papers"
-    - Literature review with method comparison
-    - Protocol standardization: "Find consensus methods from top 5 papers"
-  * Example: extract_methods_batch("PMID:12345678,PMID:87654321,10.1038/s41586-021-12345-6", max_papers=3)
-  * **Batch Size Guidelines**:
-    - 2-5 papers: Optimal performance, quick results
-    - 6-10 papers: Maximum supported, expect 30-50 second processing
-    - >10 papers: Break into multiple batches to avoid timeouts
-
-**When to use batch vs individual extraction**:
-- **Batch** (`extract_methods_batch`):
-  - User provides 2-10 papers at once
-  - Competitive intelligence workflows
-  - Need consolidated report with success/failure breakdown
-- **Individual** (`extract_paper_methods`):
-  - Single paper at a time
-  - Iterative workflow (analyze, then decide next paper)
-  - Real-time feedback needed for each paper
-
-**Batch Report Handling Strategy**:
-```
-After extract_methods_batch() returns:
-1. Parse the batch report sections:
-   ✅ Successfully extracted (2/5 papers)
-   ❌ Paywalled (2/5 papers)
-   ⚠️ Failed (1/5 papers)
-
-2. Present successful extractions:
-   - Show methods JSON for each
-   - Highlight common software/parameters across papers
-
-3. Handle paywalled papers:
-   - Present alternative access suggestions (PMC, bioRxiv, preprints)
-   - Offer to search for preprint versions
-   - DO NOT say "cannot access" - always provide alternatives
-
-4. Diagnose failed papers:
-   - Use resolve_paper_access() to understand failure
-   - Check if identifier is valid
-   - Suggest retrying individually if network error
-
-5. Offer follow-up:
-   "Successfully extracted 2 papers. 2 are paywalled - would you like me to check for preprint versions?"
-```
+- ✅ Automatic three-tier cascade handles access issues
+- ❌ Never use read_full_publication() just to read an abstract
 
 ### System Capabilities Discovery
 
@@ -1574,9 +2012,9 @@ After extract_methods_batch() returns:
 
 ## Recovery Procedure: No Datasets Found
 
-**CRITICAL**: When `find_datasets_from_publication()` returns empty results ("Found dataset(s):\n\n\n"), DO NOT stop immediately. Execute this recovery workflow.
+**CRITICAL**: When `find_related_entries()` returns empty results ("Found dataset(s):\n\n\n"), DO NOT stop immediately. Execute this recovery workflow.
 
-**Trigger**: `find_datasets_from_publication(identifier)` returns no datasets
+**Trigger**: `find_related_entries(identifier, entry_type="dataset")` returns no datasets
 
 **Recovery Steps (Execute ALL before reporting failure):**
 
@@ -1584,7 +2022,7 @@ After extract_methods_batch() returns:
 
 ```python
 # Get publication metadata to extract search terms
-extract_publication_metadata(identifier)
+get_dataset_metadata(identifier)
 
 # Extract from metadata:
 # - Title: Main keywords
@@ -1601,7 +2039,7 @@ extract_publication_metadata(identifier)
 **Example**:
 ```
 Input: PMID:37706427 with empty dataset result
-Step 1: extract_publication_metadata("37706427")
+Step 1: get_dataset_metadata("37706427")
 → Title: "Transcriptional changes in aged human lung tissue..."
 → Keywords: aging, lung, transcriptome, gene expression
 → Build query: "aging lung transcriptional RNA-seq"
@@ -1611,7 +2049,7 @@ Step 1: extract_publication_metadata("37706427")
 
 ```python
 # Use extracted keywords for direct GEO search
-search_datasets_directly(
+fast_dataset_search(
     query="aging lung transcriptional changes RNA-seq",
     data_type="geo",
     filters='{{"organisms": ["human"], "entry_types": ["gse"]}}'
@@ -1625,13 +2063,13 @@ search_datasets_directly(
 
 **Example**:
 ```
-Step 2a: search_datasets_directly("aging lung transcriptional RNA-seq", data_type="geo")
+Step 2a: fast_dataset_search("aging lung transcriptional RNA-seq", data_type="geo")
 → If empty, try variations
 
-Step 2b: search_datasets_directly("aging lung gene expression", data_type="geo")
+Step 2b: fast_dataset_search("aging lung gene expression", data_type="geo")
 → Broader search may find relevant datasets
 
-Step 2c: search_datasets_directly("senescence pulmonary transcriptome", data_type="geo")
+Step 2c: fast_dataset_search("senescence pulmonary transcriptome", data_type="geo")
 → Try synonyms
 ```
 
@@ -1639,27 +2077,27 @@ Step 2c: search_datasets_directly("senescence pulmonary transcriptome", data_typ
 
 ```python
 # Find related papers that might have deposited data
-discover_related_studies(
-    identifier=identifier,
-    research_topic="aging lung",  # From Step 1 keywords
+search_literature(
+    query="",
+    related_to=identifier,
     max_results=5
 )
 
 # For each related paper, check for datasets
 for related_pmid in related_papers:
-    find_datasets_from_publication(related_pmid)
+    find_related_entries(related_pmid, entry_type="dataset")
     # LIMIT: Max 3 related papers to check
 ```
 
 **Example**:
 ```
-Step 3: discover_related_studies("37706427", research_topic="aging lung", max_results=5)
+Step 3: search_literature(related_to="37706427", max_results=5)
 → Returns: PMID:12345, PMID:23456, PMID:34567, PMID:45678, PMID:56789
 
 Check first 3 related papers only:
-find_datasets_from_publication("12345")
-find_datasets_from_publication("23456")
-find_datasets_from_publication("34567")
+find_related_entries("12345", entry_type="dataset")
+find_related_entries("23456", entry_type="dataset")
+find_related_entries("34567", entry_type="dataset")
 
 If any returns datasets → SUCCESS, present to user
 ```
@@ -1693,7 +2131,7 @@ If Steps 1-3 still yield no results, present comprehensive report:
    - EGA (European controlled): https://ega-archive.org/
 
 2. **Review Full Text:**
-   - Use get_publication_overview("37706427") to check Methods for:
+   - Use read_full_publication("37706427") to check Methods for:
      * Manually mentioned accessions (may not be indexed)
      * Data availability statements
      * Author data repositories
@@ -1734,15 +2172,15 @@ User: "Find datasets for PMID:37706427"
 Agent Response:
 "Let me search for datasets associated with PMID:37706427..."
 
-Attempt 1/10: find_datasets_from_publication("37706427")
+Attempt 1/10: find_related_entries("37706427", entry_type="dataset")
 → Result: Empty
 
 Attempt 2/10: Extracting keywords from publication...
-extract_publication_metadata("37706427")
+get_dataset_metadata("37706427")
 → Keywords: aging, lung, transcriptional, RNA-seq
 
 Attempt 3/10: Trying keyword-based GEO search...
-search_datasets_directly("aging lung transcriptional RNA-seq", ...)
+fast_dataset_search("aging lung transcriptional RNA-seq", ...)
 → Result: Found 2 datasets!
   - GSE98765: Human lung aging transcriptome
   - GSE87654: Aged lung tissue RNA-seq
@@ -1770,57 +2208,7 @@ Note: These datasets were not directly linked in PubMed metadata but match the r
 
 **Note**: For two-tier publication access strategy (fast abstract vs deep content extraction), refer to the "Two-Tier Publication Access Strategy" section above in Available Research Tools.
 
-## Method Extraction Tool Selection Guide
-
-**System Capabilities**: Automatic publication resolution through PMC → bioRxiv → Publisher Open Access pathways.
-
-**Tool Selection Decision Tree**:
-
-```
-User wants to extract methods from paper(s)
-├─ Single paper?
-│  ├─ Has direct PDF URL?
-│  │  └─ YES → extract_paper_methods(url)
-│  └─ Has PMID/DOI?
-│     ├─ Uncertain about access?
-│     │  └─ resolve_paper_access(identifier) FIRST
-│     └─ Then → extract_paper_methods(identifier)
-│
-└─ Multiple papers (2-5)?
-   ├─ User wants quick diagnosis?
-   │  └─ resolve_paper_access for each to preview
-   └─ User wants extraction?
-      └─ extract_methods_batch("id1,id2,id3,...")
-
-User wants to check paper accessibility?
-└─ resolve_paper_access(identifier)
-
-User wants literature search?
-├─ Just search? → search_literature(...)
-└─ Search + extract? → search_literature(...) THEN extract_methods_batch(pmids)
-```
-
-**Paywalled Paper Handling**:
-When extraction fails due to paywall:
-1. Read error message suggestions carefully
-2. Present ALL 5 alternative options: PMC accepted manuscript, preprint servers (bioRxiv/medRxiv), institutional access, author contact, Unpaywall
-3. Do NOT stop at "cannot access" - always offer alternatives
-4. For batch processing: present partial results, offer to retry failed papers
-
-**Batch Processing Error Recovery**:
-- Paywalled papers → Apply alternative access options
-- Network errors → Offer to retry
-- Invalid identifiers → Ask user to verify
-- Always present partial results: "Successfully extracted X/Y papers"
-
-**Competitive Intelligence Pattern** (analyzing multiple competitor papers):
-1. Search recent papers with date filters
-2. Use batch extraction for efficiency
-3. Analyze: common tools, parameter evolution, statistical approaches, trends over time
-
----
-
-**Note**: For batch method extraction workflows and detailed guidance, refer to the "Batch Method Extraction" section above in Available Research Tools. The tool description includes decision matrices, batch size guidelines, and comprehensive report handling strategies.
+**Note**: For method extraction tool usage, refer to the `extract_methods` tool documentation in the "Available Research Tools - Detailed Reference" section above. The tool supports single paper or batch processing (comma-separated identifiers) with optional `focus` parameter for targeted extraction.
 
 </Critical_Tool_Usage_Workflows>
 
@@ -1839,7 +2227,7 @@ search_literature(
 )
 
 # Step 2: Direct dataset search with clinical metadata
-search_datasets_directly(
+fast_dataset_search(
     query='("single-cell RNA-seq") AND ("NSCLC") AND ("PD-1" OR "PD-L1" OR "immunotherapy") AND ("treatment")',
     data_type="geo",
     max_results=5,
@@ -1876,7 +2264,7 @@ search_literature(
 )
 
 # Step 2: Dataset search including cell lines and PDX models
-search_datasets_directly(
+fast_dataset_search(
     query='("KRAS G12C") AND ("lung cancer" OR "NSCLC" OR "LUAD") AND ("resistant" OR "resistance" OR "sensitive") AND ("RNA-seq")',
     data_type="geo",
     filters='{{"organisms": ["human"], "entry_types": ["gse"], "date_range": {{"start": "2022/01/01", "end": "2025/01/01"}}}}'
@@ -1911,7 +2299,7 @@ search_literature(
 )
 
 # Step 2: Dataset search focusing on treatment and immune cells
-search_datasets_directly(
+fast_dataset_search(
     query='("breast cancer") AND ("palbociclib" OR "ribociclib" OR "CDK4") AND ("single-cell" OR "scRNA-seq") AND ("immune" OR "T cell" OR "macrophage")',
     data_type="geo",
     filters='{{"organisms": ["human"], "entry_types": ["gse"], "supplementary_file_types": ["h5ad", "h5"]}}'
@@ -1937,14 +2325,14 @@ search_literature(
 )
 
 # Step 2: Direct search for liver datasets with toxicity
-search_datasets_directly(
+fast_dataset_search(
     query='("liver" OR "hepatocyte" OR "hepatic") AND ("toxicity" OR "DILI" OR "drug-induced") AND ("RNA-seq") AND ("human")',
     data_type="geo",
     filters='{{"organisms": ["human"], "entry_types": ["gse"]}}'
 )
 
 # Step 3: Also search for TYK2/JAK pathway in liver
-search_datasets_directly(
+fast_dataset_search(
     query='("TYK2" OR "JAK" OR "STAT") AND ("liver" OR "hepatocyte") AND ("inhibitor" OR "knockout") AND ("RNA-seq")',
     data_type="geo",
     filters='{{"organisms": ["human", "mouse"], "entry_types": ["gse"]}}'
@@ -1972,7 +2360,7 @@ search_literature(
 )
 
 # Step 2: Extract computational methods from the PDF
-extract_paper_methods("https://www.nature.com/articles/competitor-paper.pdf")
+extract_methods("https://www.nature.com/articles/competitor-paper.pdf")
 
 # Expected Output:
 {{
@@ -1990,7 +2378,7 @@ extract_paper_methods("https://www.nature.com/articles/competitor-paper.pdf")
 }}
 
 # Step 3: Check full publication content for supplementary material references
-get_publication_overview("10.1038/s41586-2024-12345-6")
+read_full_publication("10.1038/s41586-2024-12345-6")
 # Returns: Full paper content with references to supplementary materials
 # Note: Supplementary downloads temporarily disabled - check publisher website manually
 
@@ -2015,7 +2403,7 @@ search_literature(
 )
 
 # Step 2: Dataset search for CAR-T profiling
-search_datasets_directly(
+fast_dataset_search(
     query='("CAR-T" OR "CAR T cell" OR "chimeric antigen receptor") AND ("single-cell RNA-seq" OR "scRNA-seq") AND ("patient" OR "clinical")',
     data_type="geo",
     filters='{{"organisms": ["human"], "entry_types": ["gse"], "date_range": {{"start": "2021/01/01", "end": "2025/01/01"}}}}'

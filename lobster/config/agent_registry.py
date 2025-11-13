@@ -57,6 +57,14 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
         handoff_tool_name="handoff_to_research_agent",
         handoff_tool_description="Assign literature search, dataset discovery, PDF extraction with auto-resolution (PMC/bioRxiv/preprints), batch method extraction, method analysis, parameter extraction, and supplementary downloads to the research agent",
     ),
+    "metadata_assistant": AgentRegistryConfig(
+        name="metadata_assistant",
+        display_name="Metadata Assistant",
+        description="Handles cross-dataset metadata operations including sample ID mapping (exact/fuzzy/pattern/metadata strategies), metadata standardization using Pydantic schemas (transcriptomics/proteomics), dataset completeness validation (samples, conditions, controls, duplicates, platform), and sample metadata reading in multiple formats. Specialized in metadata harmonization for multi-omics integration.",
+        factory_function="lobster.agents.metadata_assistant.metadata_assistant",
+        handoff_tool_name="handoff_to_metadata_assistant",
+        handoff_tool_description="Assign metadata operations (cross-dataset sample mapping, metadata standardization to Pydantic schemas, dataset validation before download, metadata reading/formatting) to the metadata assistant",
+    ),
     # 'ms_proteomics_expert_agent': AgentRegistryConfig(
     #     name='ms_proteomics_expert_agent',
     #     display_name='MS Proteomics Expert',
