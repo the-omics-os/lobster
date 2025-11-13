@@ -156,7 +156,7 @@ lobster query "analyze GSE12345" --output results.txt  # Save output
 |--------|-----------|---------|
 | **`lobster/agents/`** | singlecell_expert, bulk_rnaseq_expert, ms_proteomics_expert, affinity_proteomics_expert, data_expert, research_agent, supervisor | Specialized AI agents for analysis domains + coordination |
 | **`lobster/core/`** | client, api_client, data_manager_v2, provenance, notebook_exporter/executor, schemas/ | Client infrastructure, multi-omics orchestration, W3C-PROV tracking, Jupyter export (v2.3+) |
-| **`lobster/tools/`** | **Transcriptomics:** preprocessing, quality, clustering, enhanced_singlecell, bulk_rnaseq, pseudobulk, differential_formula, concatenation<br>**Proteomics:** preprocessing, quality, analysis, differential, visualization<br>**Data:** geo, publication, unified_content, docling, metadata_validation, providers/, visualization | Stateless analysis services: QC, normalization, DE, clustering, literature mining, GEO datasets |
+| **`lobster/tools/`** | **Transcriptomics:** preprocessing, quality, clustering, enhanced_singlecell, bulk_rnaseq, pseudobulk, differential_formula, concatenation<br>**Proteomics:** preprocessing, quality, analysis, differential, visualization<br>**Data:** geo, content_access (with providers/), docling, metadata_validation, visualization | Stateless analysis services: QC, normalization, DE, clustering, literature mining via provider architecture (PubMed, PMC, GEO, webpage), dataset retrieval |
 | **`lobster/config/`** | agent_config, **agent_registry** (centralized single source of truth), settings | Configuration management, agent registry with auto handoff generation |
 
 ### Key Design Principles

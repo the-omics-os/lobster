@@ -4,12 +4,13 @@ Integration test for nested archive 10X loading with robust fallback.
 Tests the fix for the 0 genes bug where PDAC_PBMC samples loaded with 0 vars.
 """
 
+import gzip
 import tempfile
 from pathlib import Path
-import pytest
-import gzip
+
 import numpy as np
 import pandas as pd
+import pytest
 from scipy.io import mmwrite
 from scipy.sparse import csr_matrix
 
@@ -75,7 +76,9 @@ class TestNestedArchive10XLoading:
             "expected_shape": (n_cells, n_genes),
         }
 
-    def test_manual_parse_10x_nested_structure(self, temp_workspace, mock_10x_data_nested):
+    def test_manual_parse_10x_nested_structure(
+        self, temp_workspace, mock_10x_data_nested
+    ):
         """Test that manual parsing handles nested 10X structure correctly."""
         # Setup
         data_manager = DataManagerV2(workspace_path=temp_workspace)
@@ -89,18 +92,30 @@ class TestNestedArchive10XLoading:
 
         # Assert
         assert df is not None, "Manual parsing should return a DataFrame"
-        assert df.shape[0] == expected_cells, f"Expected {expected_cells} cells, got {df.shape[0]}"
-        assert df.shape[1] == expected_genes, f"Expected {expected_genes} genes, got {df.shape[1]}"
+        assert (
+            df.shape[0] == expected_cells
+        ), f"Expected {expected_cells} cells, got {df.shape[0]}"
+        assert (
+            df.shape[1] == expected_genes
+        ), f"Expected {expected_genes} genes, got {df.shape[1]}"
 
         # Verify cell IDs have sample prefix
-        assert df.index[0].startswith("PDAC_PBMC_1_"), "Cell IDs should have sample prefix"
+        assert df.index[0].startswith(
+            "PDAC_PBMC_1_"
+        ), "Cell IDs should have sample prefix"
 
         # Verify gene names extracted
-        assert "GENE_0" in df.columns, "Gene names should be extracted from features file"
+        assert (
+            "GENE_0" in df.columns
+        ), "Gene names should be extracted from features file"
 
-        print(f"✓ Manual parsing successful: {df.shape[0]:,} cells × {df.shape[1]:,} genes")
+        print(
+            f"✓ Manual parsing successful: {df.shape[0]:,} cells × {df.shape[1]:,} genes"
+        )
 
-    def test_load_10x_from_directory_with_fallback(self, temp_workspace, mock_10x_data_nested):
+    def test_load_10x_from_directory_with_fallback(
+        self, temp_workspace, mock_10x_data_nested
+    ):
         """Test that _load_10x_from_directory uses fallback when scanpy fails."""
         # Setup
         data_manager = DataManagerV2(workspace_path=temp_workspace)
@@ -113,19 +128,29 @@ class TestNestedArchive10XLoading:
         result = client._load_10x_from_directory(sample_dir, "PDAC_PBMC_1")
 
         # Assert
-        assert result["success"] is True, f"Loading should succeed: {result.get('error', '')}"
-        assert result["data_shape"][0] == expected_cells, f"Expected {expected_cells} cells"
-        assert result["data_shape"][1] == expected_genes, f"Expected {expected_genes} genes"
+        assert (
+            result["success"] is True
+        ), f"Loading should succeed: {result.get('error', '')}"
+        assert (
+            result["data_shape"][0] == expected_cells
+        ), f"Expected {expected_cells} cells"
+        assert (
+            result["data_shape"][1] == expected_genes
+        ), f"Expected {expected_genes} genes"
         assert result["data_shape"][1] > 0, "CRITICAL: Should NOT have 0 genes!"
 
         # Verify loading method reported
         assert "loading_method" in result, "Should report which loading method was used"
         print(f"✓ Loading method used: {result['loading_method']}")
-        print(f"✓ Data shape: {result['data_shape'][0]:,} cells × {result['data_shape'][1]:,} genes")
+        print(
+            f"✓ Data shape: {result['data_shape'][0]:,} cells × {result['data_shape'][1]:,} genes"
+        )
 
         # Verify modality stored in DataManager
         modality_name = result["modality_name"]
-        assert modality_name in data_manager.list_modalities(), "Modality should be stored"
+        assert (
+            modality_name in data_manager.list_modalities()
+        ), "Modality should be stored"
 
         adata = data_manager.get_modality(modality_name)
         assert adata.n_obs == expected_cells, "AnnData should have correct cell count"
@@ -168,26 +193,32 @@ class TestNestedArchive10XLoading:
             with gzip.open(features_file, "wt") as f:
                 f.write("\n".join(genes))
 
-            samples.append({
-                "dir": sample_dir,
-                "name": f"PDAC_PBMC_{i}",
-                "cells": n_cells,
-                "genes": n_genes,
-            })
+            samples.append(
+                {
+                    "dir": sample_dir,
+                    "name": f"PDAC_PBMC_{i}",
+                    "cells": n_cells,
+                    "genes": n_genes,
+                }
+            )
 
         # Act - load all samples
         loaded_modalities = []
         for sample in samples:
             result = client._load_10x_from_directory(sample["dir"], sample["name"])
             assert result["success"] is True, f"Sample {sample['name']} should load"
-            assert result["data_shape"][1] > 0, f"Sample {sample['name']} should have genes!"
+            assert (
+                result["data_shape"][1] > 0
+            ), f"Sample {sample['name']} should have genes!"
             loaded_modalities.append(result["modality_name"])
 
         # Verify all samples loaded correctly
         assert len(loaded_modalities) == 3, "Should load 3 samples"
 
         total_cells = sum(s["cells"] for s in samples)
-        print(f"✓ Loaded {len(loaded_modalities)} samples with total {total_cells} cells")
+        print(
+            f"✓ Loaded {len(loaded_modalities)} samples with total {total_cells} cells"
+        )
 
         # Verify each sample has genes
         for modality_name in loaded_modalities:
@@ -209,7 +240,9 @@ class TestNestedArchive10XLoading:
 
         # Assert
         assert result["success"] is False, "Should fail when matrix file missing"
-        assert "matrix.mtx" in result["error"].lower(), "Error should mention missing matrix"
+        assert (
+            "matrix.mtx" in result["error"].lower()
+        ), "Error should mention missing matrix"
 
     def test_error_handling_corrupted_matrix(self, temp_workspace):
         """Test error handling when matrix file is corrupted."""

@@ -14,18 +14,18 @@ Security:
 - Automatic temporary directory cleanup
 """
 
-import os
-import tarfile
-import zipfile
-import tempfile
-import shutil
 import logging
-from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
-from enum import Enum
+import os
+import re
+import shutil
+import tarfile
+import tempfile
+import zipfile
 from collections import Counter
 from dataclasses import dataclass, field
-import re
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,7 @@ class NestedArchiveInfo:
         parent_archive: Path to parent archive file
         total_count: Total number of nested archives
     """
+
     nested_archives: List[str] = field(default_factory=list)
     groups: Dict[str, List[Dict[str, str]]] = field(default_factory=dict)
     estimated_memory: int = 0
@@ -103,9 +104,7 @@ class ArchiveExtractor:
         member_path = Path(member.name)
         try:
             target_path = (target_dir / member_path).resolve()
-            common_path = Path(
-                os.path.commonpath([target_dir.resolve(), target_path])
-            )
+            common_path = Path(os.path.commonpath([target_dir.resolve(), target_path]))
             is_safe = common_path == target_dir.resolve()
 
             if not is_safe:
@@ -145,13 +144,17 @@ class ArchiveExtractor:
                 with tarfile.open(archive_path, "r:*") as tar:
                     # Filter safe members
                     safe_members = [
-                        m for m in tar.getmembers() if self._is_safe_member(m, target_dir)
+                        m
+                        for m in tar.getmembers()
+                        if self._is_safe_member(m, target_dir)
                     ]
 
                     if not safe_members:
                         raise RuntimeError("No safe members found in TAR archive")
 
-                    logger.debug(f"Extracting {len(safe_members)} safe members from TAR")
+                    logger.debug(
+                        f"Extracting {len(safe_members)} safe members from TAR"
+                    )
                     tar.extractall(path=target_dir, members=safe_members)
 
             # Handle ZIP format
@@ -174,7 +177,9 @@ class ArchiveExtractor:
                 shutil.rmtree(target_dir, ignore_errors=True)
             raise RuntimeError(f"Failed to extract {archive_path.name}: {e}")
 
-    def extract_to_temp(self, archive_path: Path, prefix: str = "lobster_archive_") -> Path:
+    def extract_to_temp(
+        self, archive_path: Path, prefix: str = "lobster_archive_"
+    ) -> Path:
         """
         Extract archive to temporary directory with automatic cleanup tracking.
 
@@ -226,7 +231,7 @@ class ContentDetector:
     # 10X Genomics signatures (support both V2 and V3)
     # Note: Using stems (no extensions) since detection uses Path(f).stem
     TEN_X_V3_FILES = {"matrix", "features", "barcodes"}  # V3 chemistry
-    TEN_X_V2_FILES = {"matrix", "genes", "barcodes"}      # V2 chemistry
+    TEN_X_V2_FILES = {"matrix", "genes", "barcodes"}  # V2 chemistry
 
     # GEO RAW pattern: GSM<digits>_*.txt or GSM<digits>_*.txt.gz
     GEO_RAW_PATTERN = re.compile(r"^GSM\d+_.*\.(txt|txt\.gz|cel|CEL)$")
@@ -298,7 +303,9 @@ class ContentDetector:
             Detected ArchiveContentType
         """
         all_files = [
-            str(f.relative_to(extract_dir)) for f in extract_dir.rglob("*") if f.is_file()
+            str(f.relative_to(extract_dir))
+            for f in extract_dir.rglob("*")
+            if f.is_file()
         ]
 
         # Check for Kallisto/Salmon quantification (requires subdirectories)
@@ -318,12 +325,18 @@ class ContentDetector:
 
         # Check for 10X Genomics format (V2 or V3)
         # Handle both compressed (.gz) and uncompressed files
-        basenames = {Path(f).stem.replace('.mtx', '').replace('.tsv', '') for f in all_files}
+        basenames = {
+            Path(f).stem.replace(".mtx", "").replace(".tsv", "") for f in all_files
+        }
         basenames_with_ext = {Path(f).stem for f in all_files}
 
         # Check if we have required files (stem without compression)
-        has_v3 = cls.TEN_X_V3_FILES.issubset(basenames) or cls.TEN_X_V3_FILES.issubset(basenames_with_ext)
-        has_v2 = cls.TEN_X_V2_FILES.issubset(basenames) or cls.TEN_X_V2_FILES.issubset(basenames_with_ext)
+        has_v3 = cls.TEN_X_V3_FILES.issubset(basenames) or cls.TEN_X_V3_FILES.issubset(
+            basenames_with_ext
+        )
+        has_v2 = cls.TEN_X_V2_FILES.issubset(basenames) or cls.TEN_X_V2_FILES.issubset(
+            basenames_with_ext
+        )
 
         if has_v3 or has_v2:
             return ArchiveContentType.TEN_X_MTX
@@ -343,9 +356,7 @@ class ContentDetector:
 
         # Filter by file size heuristic (>100KB likely expression data)
         large_files = [
-            f
-            for f in expression_files
-            if (extract_dir / f).stat().st_size > 100000
+            f for f in expression_files if (extract_dir / f).stat().st_size > 100000
         ]
         if large_files:
             return ArchiveContentType.GENERIC_EXPRESSION
@@ -445,12 +456,18 @@ class ArchiveInspector:
 
         # Check for 10X format (V2 or V3)
         # Handle both compressed (.gz) and uncompressed files
-        basenames = {Path(f).stem.replace('.mtx', '').replace('.tsv', '') for f in filenames}
+        basenames = {
+            Path(f).stem.replace(".mtx", "").replace(".tsv", "") for f in filenames
+        }
         basenames_with_ext = {Path(f).stem for f in filenames}
 
         # Check if we have required files
-        has_v3 = ContentDetector.TEN_X_V3_FILES.issubset(basenames) or ContentDetector.TEN_X_V3_FILES.issubset(basenames_with_ext)
-        has_v2 = ContentDetector.TEN_X_V2_FILES.issubset(basenames) or ContentDetector.TEN_X_V2_FILES.issubset(basenames_with_ext)
+        has_v3 = ContentDetector.TEN_X_V3_FILES.issubset(
+            basenames
+        ) or ContentDetector.TEN_X_V3_FILES.issubset(basenames_with_ext)
+        has_v2 = ContentDetector.TEN_X_V2_FILES.issubset(
+            basenames
+        ) or ContentDetector.TEN_X_V2_FILES.issubset(basenames_with_ext)
 
         if has_v3 or has_v2:
             return ArchiveContentType.TEN_X_MTX

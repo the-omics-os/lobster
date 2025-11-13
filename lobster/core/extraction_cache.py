@@ -193,7 +193,9 @@ class ExtractionCacheManager:
 
         # Apply limit if specified
         if limit and len(matching_files) > limit:
-            logger.info(f"Limiting results to {limit} files (matched {len(matching_files)})")
+            logger.info(
+                f"Limiting results to {limit} files (matched {len(matching_files)})"
+            )
             matching_files = matching_files[:limit]
 
         logger.info(f"Pattern '{pattern}' matched {len(matching_files)} files")

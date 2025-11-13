@@ -1408,7 +1408,9 @@ class DataManagerV2:
                         available_chars = 80 - 3  # Reserve for "..."
                         start_length = (available_chars + 1) // 2
                         end_length = available_chars // 2
-                        plot_title = f"{plot_title[:start_length]}...{plot_title[-end_length:]}"
+                        plot_title = (
+                            f"{plot_title[:start_length]}...{plot_title[-end_length:]}"
+                        )
 
                     # Create sanitized filename
                     safe_title = "".join(
@@ -1669,12 +1671,22 @@ class DataManagerV2:
             if hasattr(X, "nnz") and hasattr(X, "data"):  # Likely a sparse matrix
                 # For sparse matrices, calculate memory from data + indices + indptr
                 if hasattr(X, "data") and hasattr(X.data, "nbytes"):
-                    data_bytes = int(X.data.nbytes) if not isinstance(X.data.nbytes, Mock) else 0
+                    data_bytes = (
+                        int(X.data.nbytes) if not isinstance(X.data.nbytes, Mock) else 0
+                    )
                     if hasattr(X, "indices") and hasattr(X.indices, "nbytes"):
-                        indices_bytes = int(X.indices.nbytes) if not isinstance(X.indices.nbytes, Mock) else 0
+                        indices_bytes = (
+                            int(X.indices.nbytes)
+                            if not isinstance(X.indices.nbytes, Mock)
+                            else 0
+                        )
                         data_bytes += indices_bytes
                     if hasattr(X, "indptr") and hasattr(X.indptr, "nbytes"):
-                        indptr_bytes = int(X.indptr.nbytes) if not isinstance(X.indptr.nbytes, Mock) else 0
+                        indptr_bytes = (
+                            int(X.indptr.nbytes)
+                            if not isinstance(X.indptr.nbytes, Mock)
+                            else 0
+                        )
                         data_bytes += indptr_bytes
                     return f"{data_bytes / 1024**2:.2f} MB (sparse)"
                 else:
@@ -2984,7 +2996,9 @@ class DataManagerV2:
                     try:
                         plot = plot_entry["figure"]
                         plot_id = plot_entry["id"]
-                        plot_title = plot_entry.get("original_title", plot_entry["title"])
+                        plot_title = plot_entry.get(
+                            "original_title", plot_entry["title"]
+                        )
 
                         # Create sanitized filename
                         safe_title = "".join(
@@ -3166,7 +3180,11 @@ https://github.com/OmicsOS/lobster
                             shape = f["X"].shape
                         elif isinstance(f["X"], h5py.Group):
                             # Sparse matrix (CSR/CSC) - shape is in attributes per AnnData spec
-                            shape = tuple(f["X"].attrs["shape"]) if "shape" in f["X"].attrs else (0, 0)
+                            shape = (
+                                tuple(f["X"].attrs["shape"])
+                                if "shape" in f["X"].attrs
+                                else (0, 0)
+                            )
                         else:
                             shape = (0, 0)
                     else:

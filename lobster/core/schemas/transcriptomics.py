@@ -8,6 +8,8 @@ validation rules.
 
 from typing import Any, Dict, List, Optional
 
+from pydantic import BaseModel, Field, field_validator
+
 from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.schemas.validation import FlexibleValidator
 
@@ -715,3 +717,160 @@ def _validate_sample_metrics(adata) -> "ValidationResult":
             result.add_warning(f"{high_dup} samples with >30% duplication rate")
 
     return result
+
+
+# =============================================================================
+# Pydantic Metadata Schemas for Sample-Level Metadata Standardization
+# =============================================================================
+# These schemas are used by the metadata_assistant agent for cross-dataset
+# metadata harmonization, standardization, and validation.
+# Phase 3 addition for metadata operations.
+# =============================================================================
+
+
+class TranscriptomicsMetadataSchema(BaseModel):
+    """
+    Pydantic schema for transcriptomics sample-level metadata standardization.
+
+    This schema defines the expected structure for sample metadata across both
+    single-cell and bulk RNA-seq experiments. It enforces controlled vocabularies
+    and data types for consistent metadata representation across datasets.
+
+    Used by metadata_assistant agent for:
+    - Cross-dataset sample ID mapping
+    - Metadata standardization and harmonization
+    - Dataset completeness validation
+    - Multi-omics integration preparation
+
+    Attributes:
+        sample_id: Unique sample identifier (required)
+        subject_id: Subject/patient identifier for biological replicates
+        timepoint: Timepoint or developmental stage
+        condition: Experimental condition (e.g., "Control", "Treatment")
+        cell_type: Cell type or tissue type (single-cell or bulk)
+        tissue: Tissue origin
+        organism: Organism name (e.g., "Homo sapiens", "Mus musculus")
+        platform: Sequencing platform (e.g., "Illumina NovaSeq", "10x Genomics")
+        sequencing_type: Type of RNA-seq ("bulk" or "single-cell")
+        batch: Batch identifier for technical replicates
+        additional_metadata: Flexible dict for custom fields
+    """
+
+    # Required fields
+    sample_id: str = Field(..., description="Unique sample identifier", min_length=1)
+
+    # Optional core fields
+    subject_id: Optional[str] = Field(None, description="Subject/patient identifier")
+    timepoint: Optional[str] = Field(
+        None, description="Timepoint or developmental stage"
+    )
+    condition: str = Field(
+        ..., description="Experimental condition (e.g., Control, Treatment)"
+    )
+    cell_type: Optional[str] = Field(None, description="Cell type or tissue type")
+    tissue: Optional[str] = Field(None, description="Tissue origin")
+    organism: str = Field(
+        ..., description="Organism name (e.g., Homo sapiens, Mus musculus)"
+    )
+    platform: str = Field(..., description="Sequencing platform")
+    sequencing_type: str = Field(
+        ..., description="Type of RNA-seq (bulk or single-cell)"
+    )
+    batch: Optional[str] = Field(None, description="Batch identifier")
+
+    # Flexible additional metadata
+    additional_metadata: Optional[Dict[str, Any]] = Field(
+        default_factory=dict, description="Additional custom metadata fields"
+    )
+
+    class Config:
+        """Pydantic configuration."""
+
+        json_schema_extra = {
+            "example": {
+                "sample_id": "Sample_A_Rep1",
+                "subject_id": "Subject_001",
+                "timepoint": "Day0",
+                "condition": "Control",
+                "cell_type": "PBMC",
+                "tissue": "Blood",
+                "organism": "Homo sapiens",
+                "platform": "Illumina NovaSeq 6000",
+                "sequencing_type": "single-cell",
+                "batch": "Batch1",
+                "additional_metadata": {"replicate": "Rep1", "sequencing_depth": 50000},
+            }
+        }
+
+    @field_validator("sequencing_type")
+    @classmethod
+    def validate_sequencing_type(cls, v: str) -> str:
+        """Validate sequencing type is either bulk or single-cell."""
+        allowed = {"bulk", "single-cell", "single_cell", "sc", "bulk_rna_seq"}
+        v_lower = v.lower().replace("-", "_")
+        if v_lower not in allowed:
+            raise ValueError(f"sequencing_type must be one of {allowed}, got '{v}'")
+        # Normalize to standard values
+        if v_lower in {"single_cell", "sc"}:
+            return "single-cell"
+        if v_lower == "bulk_rna_seq":
+            return "bulk"
+        return v_lower
+
+    @field_validator("organism")
+    @classmethod
+    def validate_organism(cls, v: str) -> str:
+        """Validate organism name format (capitalize first letter of each word)."""
+        if v:
+            return " ".join(word.capitalize() for word in v.split())
+        return v
+
+    @field_validator("condition")
+    @classmethod
+    def validate_condition(cls, v: str) -> str:
+        """Ensure condition is not empty."""
+        if not v or not v.strip():
+            raise ValueError("condition cannot be empty")
+        return v.strip()
+
+    @field_validator("sample_id")
+    @classmethod
+    def validate_sample_id(cls, v: str) -> str:
+        """Ensure sample_id is not empty and has no leading/trailing whitespace."""
+        if not v or not v.strip():
+            raise ValueError("sample_id cannot be empty")
+        return v.strip()
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert to dictionary representation.
+
+        Returns:
+            Dict[str, Any]: Dictionary with all fields including additional_metadata
+        """
+        base_dict = self.model_dump(exclude={"additional_metadata"}, exclude_none=True)
+        if self.additional_metadata:
+            base_dict.update(self.additional_metadata)
+        return base_dict
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "TranscriptomicsMetadataSchema":
+        """
+        Create schema from dictionary, automatically handling unknown fields.
+
+        Args:
+            data: Dictionary with metadata fields
+
+        Returns:
+            TranscriptomicsMetadataSchema: Validated schema instance
+        """
+        # Extract known fields
+        known_fields = set(cls.model_fields.keys()) - {"additional_metadata"}
+        schema_data = {k: v for k, v in data.items() if k in known_fields}
+
+        # Put remaining fields in additional_metadata
+        additional = {k: v for k, v in data.items() if k not in known_fields}
+        if additional:
+            schema_data["additional_metadata"] = additional
+
+        return cls(**schema_data)

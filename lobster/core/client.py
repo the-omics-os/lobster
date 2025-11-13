@@ -16,20 +16,20 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 
 from lobster.agents.graph import create_bioinformatics_graph
-from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.core.interfaces.base_client import BaseClient
 
 # Import shared archive handling utilities
 from lobster.core.archive_utils import (
+    ArchiveContentType,
     ArchiveExtractor,
     ArchiveInspector,
     ContentDetector,
-    ArchiveContentType,
     NestedArchiveInfo,
 )
+from lobster.core.data_manager_v2 import DataManagerV2
 
 # Import extraction cache manager
 from lobster.core.extraction_cache import ExtractionCacheManager
+from lobster.core.interfaces.base_client import BaseClient
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -925,7 +925,9 @@ class AgentClient(BaseClient):
 
             # 4. Route based on detected content type
             if content_type == ArchiveContentType.KALLISTO_QUANT:
-                result = self.load_quantification_directory(str(extract_dir), "kallisto")
+                result = self.load_quantification_directory(
+                    str(extract_dir), "kallisto"
+                )
 
             elif content_type == ArchiveContentType.SALMON_QUANT:
                 result = self.load_quantification_directory(str(extract_dir), "salmon")
@@ -1033,8 +1035,8 @@ class AgentClient(BaseClient):
             Dictionary with success status, modality name, and data shape
         """
         try:
-            import scanpy as sc
             import anndata
+            import scanpy as sc
 
             # Find 10X matrix file (may be nested)
             mtx_dirs = list(directory.rglob("matrix.mtx*"))
@@ -1051,8 +1053,8 @@ class AgentClient(BaseClient):
                 logger.info("Tier 1: Attempting scanpy loading...")
                 adata = sc.read_10x_mtx(
                     mtx_dir,
-                    var_names='gene_symbols',  # Use gene symbols as primary
-                    make_unique=True  # Handle duplicate gene names
+                    var_names="gene_symbols",  # Use gene symbols as primary
+                    make_unique=True,  # Handle duplicate gene names
                 )
 
                 # Validate scanpy result
@@ -1066,9 +1068,7 @@ class AgentClient(BaseClient):
                     )
 
             except Exception as scanpy_error:
-                logger.warning(
-                    f"Scanpy loading failed: {scanpy_error}"
-                )
+                logger.warning(f"Scanpy loading failed: {scanpy_error}")
                 logger.info("Tier 2: Falling back to manual parsing...")
 
                 # === TIER 2: Manual parsing fallback (robust) ===
@@ -1146,8 +1146,9 @@ class AgentClient(BaseClient):
             pandas DataFrame with cells as rows and genes as columns, or None if parsing fails
         """
         import gzip
-        import pandas as pd
+
         import numpy as np
+        import pandas as pd
 
         try:
             logger.info(f"Manual parsing 10X data from {directory}")
@@ -1177,9 +1178,11 @@ class AgentClient(BaseClient):
                 logger.error("Matrix file (matrix.mtx*) not found")
                 return None
 
-            logger.info(f"Files discovered: matrix={matrix_file.name}, "
-                       f"barcodes={barcodes_file.name if barcodes_file else 'None'}, "
-                       f"features={features_file.name if features_file else 'None'}")
+            logger.info(
+                f"Files discovered: matrix={matrix_file.name}, "
+                f"barcodes={barcodes_file.name if barcodes_file else 'None'}, "
+                f"features={features_file.name if features_file else 'None'}"
+            )
 
             # === STEP 2: Load sparse matrix ===
             logger.info("Loading sparse matrix...")
@@ -1201,7 +1204,9 @@ class AgentClient(BaseClient):
                 # Transpose: 10X format is genes × cells, we want cells × genes
                 matrix_dense = matrix_dense.T
 
-                logger.info(f"Matrix loaded: {matrix_dense.shape[0]:,} cells × {matrix_dense.shape[1]:,} genes (before validation)")
+                logger.info(
+                    f"Matrix loaded: {matrix_dense.shape[0]:,} cells × {matrix_dense.shape[1]:,} genes (before validation)"
+                )
 
             except Exception as e:
                 logger.error(f"Failed to load matrix file: {e}")
@@ -1225,7 +1230,9 @@ class AgentClient(BaseClient):
                     logger.info(f"Loaded {len(cell_ids):,} cell barcodes")
 
                 except Exception as e:
-                    logger.warning(f"Failed to load barcodes: {e}, will generate generic IDs")
+                    logger.warning(
+                        f"Failed to load barcodes: {e}, will generate generic IDs"
+                    )
 
             # Validate or generate cell IDs
             if len(cell_ids) != matrix_dense.shape[0]:
@@ -1233,7 +1240,9 @@ class AgentClient(BaseClient):
                     f"Cell ID count mismatch: {len(cell_ids)} barcodes vs {matrix_dense.shape[0]} matrix rows. "
                     "Generating generic cell IDs."
                 )
-                cell_ids = [f"{sample_id}_cell_{i}" for i in range(matrix_dense.shape[0])]
+                cell_ids = [
+                    f"{sample_id}_cell_{i}" for i in range(matrix_dense.shape[0])
+                ]
 
             # === STEP 4: Load gene features ===
             gene_ids = []
@@ -1263,7 +1272,9 @@ class AgentClient(BaseClient):
                     logger.info(f"Loaded {len(gene_names):,} gene features")
 
                 except Exception as e:
-                    logger.warning(f"Failed to load features: {e}, will generate generic gene IDs")
+                    logger.warning(
+                        f"Failed to load features: {e}, will generate generic gene IDs"
+                    )
 
             # Validate or generate gene names
             if len(gene_names) != matrix_dense.shape[1]:
@@ -1274,23 +1285,30 @@ class AgentClient(BaseClient):
                 gene_names = [f"Gene_{i}" for i in range(matrix_dense.shape[1])]
 
             # === STEP 5: Create DataFrame ===
-            logger.info(f"Creating DataFrame: {len(cell_ids):,} cells × {len(gene_names):,} genes")
+            logger.info(
+                f"Creating DataFrame: {len(cell_ids):,} cells × {len(gene_names):,} genes"
+            )
 
             df = pd.DataFrame(
                 matrix_dense,
-                index=pd.Index(cell_ids, name='cell_id'),
-                columns=pd.Index(gene_names, name='gene_name')
+                index=pd.Index(cell_ids, name="cell_id"),
+                columns=pd.Index(gene_names, name="gene_name"),
             )
 
             # Make gene names unique if duplicates exist
             if df.columns.duplicated().any():
                 logger.warning("Duplicate gene names detected, making unique...")
-                df.columns = pd.Index([
-                    f"{name}_{i}" if df.columns.tolist().count(name) > 1 else name
-                    for i, name in enumerate(df.columns)
-                ], name='gene_name')
+                df.columns = pd.Index(
+                    [
+                        f"{name}_{i}" if df.columns.tolist().count(name) > 1 else name
+                        for i, name in enumerate(df.columns)
+                    ],
+                    name="gene_name",
+                )
 
-            logger.info(f"✓ Manual parsing complete: {df.shape[0]:,} cells × {df.shape[1]:,} genes")
+            logger.info(
+                f"✓ Manual parsing complete: {df.shape[0]:,} cells × {df.shape[1]:,} genes"
+            )
 
             return df
 
@@ -1368,9 +1386,7 @@ class AgentClient(BaseClient):
             manifest = inspector.inspect_manifest(archive_path)
 
             # 3. Check for nested archives
-            nested_info = inspector.detect_nested_archives(
-                manifest, str(archive_path)
-            )
+            nested_info = inspector.detect_nested_archives(manifest, str(archive_path))
 
             if nested_info:
                 # This is a nested archive - extract and cache for selective loading
@@ -1437,9 +1453,9 @@ class AgentClient(BaseClient):
         filename = file_path.name
 
         # Strip compound extensions in order of specificity
-        for ext in ['.tar.gz', '.tar.bz2', '.tgz', '.tar']:
+        for ext in [".tar.gz", ".tar.bz2", ".tgz", ".tar"]:
             if filename.endswith(ext):
-                return filename[:-len(ext)]
+                return filename[: -len(ext)]
 
         # Fallback to stem for other extensions
         return file_path.stem
@@ -1548,9 +1564,11 @@ class AgentClient(BaseClient):
 
                     # Generate merged modality name from pattern
                     # Extract base pattern (e.g., "TISSUE" from "PDAC_TISSUE" or "TISSUE")
-                    pattern_parts = pattern.split('_')
+                    pattern_parts = pattern.split("_")
                     # Use last part if multiple underscores (e.g., "TISSUE" from "PDAC_TISSUE")
-                    pattern_base = pattern_parts[-1] if len(pattern_parts) > 1 else pattern
+                    pattern_base = (
+                        pattern_parts[-1] if len(pattern_parts) > 1 else pattern
+                    )
                     merged_modality = f"{cache_id}_{pattern_base}_merged"
 
                     logger.info(
@@ -1558,11 +1576,13 @@ class AgentClient(BaseClient):
                     )
 
                     # Concatenate using existing service
-                    merged_adata, stats, ir = concat_service.concatenate_from_modalities(
-                        modality_names=loaded_modalities,
-                        output_name=merged_modality,
-                        batch_key="sample_id",
-                        use_intersecting_genes_only=True,
+                    merged_adata, stats, ir = (
+                        concat_service.concatenate_from_modalities(
+                            modality_names=loaded_modalities,
+                            output_name=merged_modality,
+                            batch_key="sample_id",
+                            use_intersecting_genes_only=True,
+                        )
                     )
 
                     # Store merged result

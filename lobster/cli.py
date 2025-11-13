@@ -2852,8 +2852,12 @@ when they are started by agents or analysis workflows.
                 console.print(
                     f"[bold cyan on black] 📦 Archive Detected [/bold cyan on black]"
                 )
-                console.print(f"[white]Archive type: [yellow]{file_description}[/yellow][/white]")
-                console.print(f"[white]Size: [yellow]{file_info['size_bytes'] / 1024 / 1024:.2f} MB[/yellow][/white]")
+                console.print(
+                    f"[white]Archive type: [yellow]{file_description}[/yellow][/white]"
+                )
+                console.print(
+                    f"[white]Size: [yellow]{file_info['size_bytes'] / 1024 / 1024:.2f} MB[/yellow][/white]"
+                )
                 console.print(f"\n[cyan]🔍 Inspecting archive structure...[/cyan]")
 
                 # Inspect archive to detect nested structures
@@ -2863,20 +2867,30 @@ when they are started by agents or analysis workflows.
                 if not inspection["success"]:
                     console.print(f"\n[red]✗ Archive inspection failed[/red]")
                     console.print(f"[red]{inspection['error']}[/red]")
-                    return f"Failed to inspect archive '{filename}': {inspection['error']}"
+                    return (
+                        f"Failed to inspect archive '{filename}': {inspection['error']}"
+                    )
 
                 # Handle nested archives with inspection workflow
                 if inspection["type"] == "nested_archive":
                     nested_info = inspection["nested_info"]
 
                     # Display inspection report
-                    console.print(f"\n[bold green]✓ Detected Nested Archive Structure[/bold green]")
-                    console.print(f"[white]Total nested archives: [yellow]{nested_info.total_count}[/yellow][/white]")
-                    console.print(f"[white]Estimated memory: [yellow]{nested_info.estimated_memory / (1024**3):.1f} GB[/yellow][/white]")
+                    console.print(
+                        f"\n[bold green]✓ Detected Nested Archive Structure[/bold green]"
+                    )
+                    console.print(
+                        f"[white]Total nested archives: [yellow]{nested_info.total_count}[/yellow][/white]"
+                    )
+                    console.print(
+                        f"[white]Estimated memory: [yellow]{nested_info.estimated_memory / (1024**3):.1f} GB[/yellow][/white]"
+                    )
 
                     # Show condition groups
                     if nested_info.groups:
-                        console.print(f"\n[bold white]📂 Condition Groups:[/bold white]")
+                        console.print(
+                            f"\n[bold white]📂 Condition Groups:[/bold white]"
+                        )
                         groups_table = Table(box=box.ROUNDED, border_style="cyan")
                         groups_table.add_column("Condition", style="bold orange1")
                         groups_table.add_column("Samples", style="white")
@@ -2887,19 +2901,25 @@ when they are started by agents or analysis workflows.
                             groups_table.add_row(
                                 condition,
                                 str(len(samples)),
-                                f"{min(gsm_ids)}-{max(gsm_ids)}" if gsm_ids else "N/A"
+                                f"{min(gsm_ids)}-{max(gsm_ids)}" if gsm_ids else "N/A",
                             )
 
                         console.print(groups_table)
 
                     # Memory warning
                     if nested_info.estimated_memory > 5 * 1024**3:
-                        console.print(f"\n[yellow]⚠️  Loading all samples requires ~{nested_info.estimated_memory / (1024**3):.1f} GB memory[/yellow]")
+                        console.print(
+                            f"\n[yellow]⚠️  Loading all samples requires ~{nested_info.estimated_memory / (1024**3):.1f} GB memory[/yellow]"
+                        )
 
                     # Recommended actions
                     console.print(f"\n[bold white]🎯 Next Steps:[/bold white]")
-                    console.print(f"[orange1]  • /archive list[/orange1]           - Show detailed sample list")
-                    console.print(f"[orange1]  • /archive load <pattern>[/orange1] - Load specific samples")
+                    console.print(
+                        f"[orange1]  • /archive list[/orange1]           - Show detailed sample list"
+                    )
+                    console.print(
+                        f"[orange1]  • /archive load <pattern>[/orange1] - Load specific samples"
+                    )
                     console.print(f"[dim]    Examples:[/dim]")
                     console.print(f"[dim]      /archive load GSM4710689[/dim]")
                     console.print(f"[dim]      /archive load TISSUE[/dim]")
@@ -2919,14 +2939,24 @@ when they are started by agents or analysis workflows.
                         extract_result = client.extract_and_load_archive(filename)
 
                     if extract_result["success"]:
-                        console.print(f"\n[green]✓ Successfully loaded archive contents[/green]")
-                        console.print(f"[white]Modality: [bold cyan]{extract_result['modality_name']}[/bold cyan][/white]")
-                        console.print(f"[white]Shape: [yellow]{extract_result['data_shape']}[/yellow][/white]")
+                        console.print(
+                            f"\n[green]✓ Successfully loaded archive contents[/green]"
+                        )
+                        console.print(
+                            f"[white]Modality: [bold cyan]{extract_result['modality_name']}[/bold cyan][/white]"
+                        )
+                        console.print(
+                            f"[white]Shape: [yellow]{extract_result['data_shape']}[/yellow][/white]"
+                        )
 
                         if "n_samples" in extract_result:
-                            console.print(f"[white]Samples: [yellow]{extract_result['n_samples']}[/yellow][/white]")
+                            console.print(
+                                f"[white]Samples: [yellow]{extract_result['n_samples']}[/yellow][/white]"
+                            )
 
-                        console.print(f"\n[dim]{extract_result.get('message', '')}[/dim]")
+                        console.print(
+                            f"\n[dim]{extract_result.get('message', '')}[/dim]"
+                        )
 
                         return f"Successfully loaded archive '{filename}' as modality '{extract_result['modality_name']}' with shape {extract_result['data_shape']}"
 
@@ -2935,13 +2965,19 @@ when they are started by agents or analysis workflows.
                         console.print(f"[red]{extract_result['error']}[/red]")
 
                         if "suggestion" in extract_result:
-                            console.print(f"\n[yellow]💡 Suggestion: {extract_result['suggestion']}[/yellow]")
+                            console.print(
+                                f"\n[yellow]💡 Suggestion: {extract_result['suggestion']}[/yellow]"
+                            )
 
                         if "manifest" in extract_result:
                             manifest = extract_result["manifest"]
                             console.print(f"\n[dim]Archive contents:[/dim]")
-                            console.print(f"[dim]  Files: {manifest['file_count']}[/dim]")
-                            console.print(f"[dim]  Extensions: {dict(manifest['extensions'])}[/dim]")
+                            console.print(
+                                f"[dim]  Files: {manifest['file_count']}[/dim]"
+                            )
+                            console.print(
+                                f"[dim]  Extensions: {dict(manifest['extensions'])}[/dim]"
+                            )
 
                         return f"Failed to extract archive '{filename}': {extract_result['error']}"
 
@@ -2962,7 +2998,9 @@ when they are started by agents or analysis workflows.
         # Check if we have a cached archive from /read
         if not hasattr(client, "_last_archive_cache"):
             console.print("[red]❌ No archive inspection cached[/red]")
-            console.print("[yellow]💡 Run /read <archive.tar> first to inspect an archive[/yellow]")
+            console.print(
+                "[yellow]💡 Run /read <archive.tar> first to inspect an archive[/yellow]"
+            )
             return None
 
         if subcommand == "list":
@@ -2972,7 +3010,9 @@ when they are started by agents or analysis workflows.
             console.print(f"\n[bold white]📋 Archive Contents:[/bold white]")
             console.print(f"[dim]Cache ID: {client._last_archive_cache}[/dim]\n")
 
-            samples_table = Table(box=box.ROUNDED, border_style="cyan", title="All Samples")
+            samples_table = Table(
+                box=box.ROUNDED, border_style="cyan", title="All Samples"
+            )
             samples_table.add_column("GSM ID", style="bold orange1")
             samples_table.add_column("Condition", style="white")
             samples_table.add_column("Number", style="grey70")
@@ -2984,7 +3024,7 @@ when they are started by agents or analysis workflows.
                         sample["gsm_id"],
                         condition,
                         sample["number"],
-                        sample["filename"]
+                        sample["filename"],
                     )
 
             console.print(samples_table)
@@ -3006,7 +3046,7 @@ when they are started by agents or analysis workflows.
                 groups_table.add_row(
                     condition,
                     str(len(samples)),
-                    f"{min(gsm_ids)}-{max(gsm_ids)}" if gsm_ids else "N/A"
+                    f"{min(gsm_ids)}-{max(gsm_ids)}" if gsm_ids else "N/A",
                 )
 
             console.print(groups_table)
@@ -3015,7 +3055,9 @@ when they are started by agents or analysis workflows.
         elif subcommand == "load":
             # Load samples by pattern
             if len(parts) < 3:
-                console.print("[yellow]Usage: /archive load <pattern|GSM_ID|condition>[/yellow]")
+                console.print(
+                    "[yellow]Usage: /archive load <pattern|GSM_ID|condition>[/yellow]"
+                )
                 console.print("[dim]Examples:[/dim]")
                 console.print("[dim]  /archive load GSM4710689[/dim]")
                 console.print("[dim]  /archive load TISSUE[/dim]")
@@ -3037,13 +3079,13 @@ when they are started by agents or analysis workflows.
             else:
                 pattern = pattern_arg
 
-            console.print(f"[cyan]🔄 Loading samples matching '[bold]{pattern}[/bold]'...[/cyan]")
+            console.print(
+                f"[cyan]🔄 Loading samples matching '[bold]{pattern}[/bold]'...[/cyan]"
+            )
 
             with console.status(f"[cyan]Loading samples...[/cyan]"):
                 result = client.load_from_cache(
-                    client._last_archive_cache,
-                    pattern,
-                    limit
+                    client._last_archive_cache, pattern, limit
                 )
 
             if result["success"]:
@@ -3080,14 +3122,20 @@ when they are started by agents or analysis workflows.
                         console.print(panel)
 
                     except Exception as e:
-                        console.print(f"\n[yellow]⚠️  Could not display merged dataset details: {e}[/yellow]")
+                        console.print(
+                            f"\n[yellow]⚠️  Could not display merged dataset details: {e}[/yellow]"
+                        )
 
                     # Show individual modalities in collapsed format
-                    console.print(f"\n[dim]Individual modalities (merged into '{merged_name}'):[/dim]")
+                    console.print(
+                        f"\n[dim]Individual modalities (merged into '{merged_name}'):[/dim]"
+                    )
                     for i, modality in enumerate(result["modalities"][:5], 1):
                         console.print(f"  [dim]{i}. {modality}[/dim]")
                     if len(result["modalities"]) > 5:
-                        console.print(f"  [dim]... and {len(result['modalities'])-5} more[/dim]")
+                        console.print(
+                            f"  [dim]... and {len(result['modalities'])-5} more[/dim]"
+                        )
 
                 else:
                     # Single sample or no auto-concatenation
@@ -3097,15 +3145,23 @@ when they are started by agents or analysis workflows.
 
                     # Suggest next steps
                     console.print(f"\n[bold white]🎯 Next Steps:[/bold white]")
-                    console.print(f"[grey70]  • Use /data to inspect the dataset[/grey70]")
-                    console.print(f"[grey70]  • Say: 'Analyze this dataset' for natural language analysis[/grey70]")
+                    console.print(
+                        f"[grey70]  • Use /data to inspect the dataset[/grey70]"
+                    )
+                    console.print(
+                        f"[grey70]  • Say: 'Analyze this dataset' for natural language analysis[/grey70]"
+                    )
 
                 if result["failed"]:
-                    console.print(f"\n[yellow]⚠️  Failed to load {len(result['failed'])} samples:[/yellow]")
+                    console.print(
+                        f"\n[yellow]⚠️  Failed to load {len(result['failed'])} samples:[/yellow]"
+                    )
                     for failed in result["failed"][:5]:
                         console.print(f"  • [dim]{failed}[/dim]")
                     if len(result["failed"]) > 5:
-                        console.print(f"  • [dim]... and {len(result['failed'])-5} more[/dim]")
+                        console.print(
+                            f"  • [dim]... and {len(result['failed'])-5} more[/dim]"
+                        )
 
                 # Return summary
                 if "merged_modality" in result:
@@ -3127,7 +3183,9 @@ when they are started by agents or analysis workflows.
             all_caches = cache_manager.list_all_caches()
 
             console.print(f"\n[bold white]📊 Extraction Cache Status:[/bold white]\n")
-            console.print(f"[white]Total cached extractions: [yellow]{len(all_caches)}[/yellow][/white]")
+            console.print(
+                f"[white]Total cached extractions: [yellow]{len(all_caches)}[/yellow][/white]"
+            )
 
             if all_caches:
                 cache_table = Table(box=box.ROUNDED, border_style="cyan")
@@ -3138,12 +3196,13 @@ when they are started by agents or analysis workflows.
 
                 for cache in all_caches:
                     from datetime import datetime
+
                     extracted_at = datetime.fromisoformat(cache["extracted_at"])
                     cache_table.add_row(
                         cache["cache_id"],
                         Path(cache["archive_path"]).name,
                         str(cache["nested_info"]["total_count"]),
-                        extracted_at.strftime("%Y-%m-%d %H:%M")
+                        extracted_at.strftime("%Y-%m-%d %H:%M"),
                     )
 
                 console.print(cache_table)
@@ -3165,11 +3224,21 @@ when they are started by agents or analysis workflows.
         else:
             # Show help
             console.print(f"\n[bold white]📦 /archive Commands:[/bold white]\n")
-            console.print("[orange1]/archive list[/orange1]             - List all samples in inspected archive")
-            console.print("[orange1]/archive groups[/orange1]           - Show condition groups")
-            console.print("[orange1]/archive load <pattern>[/orange1]   - Load samples by pattern")
-            console.print("[orange1]/archive status[/orange1]           - Show extraction cache status")
-            console.print("[orange1]/archive cleanup[/orange1]          - Clear old cached extractions\n")
+            console.print(
+                "[orange1]/archive list[/orange1]             - List all samples in inspected archive"
+            )
+            console.print(
+                "[orange1]/archive groups[/orange1]           - Show condition groups"
+            )
+            console.print(
+                "[orange1]/archive load <pattern>[/orange1]   - Load samples by pattern"
+            )
+            console.print(
+                "[orange1]/archive status[/orange1]           - Show extraction cache status"
+            )
+            console.print(
+                "[orange1]/archive cleanup[/orange1]          - Clear old cached extractions\n"
+            )
 
             console.print("[bold white]Loading Patterns:[/bold white]")
             console.print("[grey70]• GSM ID:[/grey70]        GSM4710689")
@@ -3883,9 +3952,7 @@ when they are started by agents or analysis workflows.
                 table.add_row(str(idx), status, display_name, size, shape, modified)
 
             console.print(table)
-            console.print(
-                f"\n[dim]Use '/workspace info <#>' to see full details[/dim]"
-            )
+            console.print(f"\n[dim]Use '/workspace info <#>' to see full details[/dim]")
             return f"Listed {len(available)} available datasets"
 
         elif subcommand == "info":
@@ -3918,7 +3985,9 @@ when they are started by agents or analysis workflows.
                 idx = int(selector)
                 sorted_names = sorted(available.keys())
                 if 1 <= idx <= len(sorted_names):
-                    matched_datasets = [(sorted_names[idx - 1], available[sorted_names[idx - 1]])]
+                    matched_datasets = [
+                        (sorted_names[idx - 1], available[sorted_names[idx - 1]])
+                    ]
                 else:
                     console.print(
                         f"[red]Index {idx} out of range (1-{len(sorted_names)})[/red]"
@@ -3933,7 +4002,9 @@ when they are started by agents or analysis workflows.
                         matched_datasets.append((name, info))
 
                 if not matched_datasets:
-                    console.print(f"[yellow]No datasets match pattern: {selector}[/yellow]")
+                    console.print(
+                        f"[yellow]No datasets match pattern: {selector}[/yellow]"
+                    )
                     return None
 
             # Display detailed information for matched datasets
@@ -3956,9 +4027,11 @@ when they are started by agents or analysis workflows.
                 detail_table.add_row("Size", f"{info['size_mb']:.2f} MB")
                 detail_table.add_row(
                     "Shape",
-                    f"{info['shape'][0]:,} observations × {info['shape'][1]:,} variables"
-                    if info["shape"]
-                    else "N/A",
+                    (
+                        f"{info['shape'][0]:,} observations × {info['shape'][1]:,} variables"
+                        if info["shape"]
+                        else "N/A"
+                    ),
                 )
                 detail_table.add_row("Type", info["type"])
                 detail_table.add_row("Modified", info["modified"])
@@ -4022,7 +4095,9 @@ when they are started by agents or analysis workflows.
                 if 1 <= idx <= len(sorted_names):
                     dataset_name = sorted_names[idx - 1]
 
-                    console.print(f"[yellow]Loading dataset: {dataset_name}...[/yellow]")
+                    console.print(
+                        f"[yellow]Loading dataset: {dataset_name}...[/yellow]"
+                    )
 
                     # Load single dataset directly
                     success = client.data_manager.load_dataset(dataset_name)
@@ -4033,7 +4108,9 @@ when they are started by agents or analysis workflows.
                         )
                         return f"Loaded dataset from workspace"
                     else:
-                        console.print(f"[red]Failed to load dataset: {dataset_name}[/red]")
+                        console.print(
+                            f"[red]Failed to load dataset: {dataset_name}[/red]"
+                        )
                         return None
                 else:
                     console.print(

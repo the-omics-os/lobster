@@ -8,6 +8,8 @@ validation rules and peptide-to-protein mapping support.
 
 from typing import Any, Dict, List, Optional
 
+from pydantic import BaseModel, Field, field_validator
+
 from .validation import FlexibleValidator
 
 
@@ -539,3 +541,205 @@ def _validate_affinity_metrics(adata) -> "ValidationResult":
             )
 
     return result
+
+
+# =============================================================================
+# Pydantic Metadata Schemas for Sample-Level Metadata Standardization
+# =============================================================================
+# These schemas are used by the metadata_assistant agent for cross-dataset
+# metadata harmonization, standardization, and validation.
+# Phase 3 addition for metadata operations.
+# =============================================================================
+
+
+class ProteomicsMetadataSchema(BaseModel):
+    """
+    Pydantic schema for proteomics sample-level metadata standardization.
+
+    This schema defines the expected structure for sample metadata across both
+    mass spectrometry and affinity-based proteomics experiments. It enforces
+    controlled vocabularies and data types for consistent metadata representation.
+
+    Used by metadata_assistant agent for:
+    - Cross-dataset sample ID mapping
+    - Metadata standardization and harmonization
+    - Dataset completeness validation
+    - Multi-omics integration preparation
+
+    Attributes:
+        sample_id: Unique sample identifier (required)
+        subject_id: Subject/patient identifier for biological replicates
+        timepoint: Timepoint or developmental stage
+        condition: Experimental condition (e.g., "Control", "Treatment")
+        tissue: Tissue origin
+        organism: Organism name (e.g., "Homo sapiens", "Mus musculus")
+        platform: Proteomics platform (e.g., "DDA", "DIA", "Olink", "SOMAscan")
+        quantification: Quantification method (e.g., "intensity", "iBAQ", "TMT", "NPX")
+        batch: Batch identifier for technical replicates
+        additional_metadata: Flexible dict for custom fields
+    """
+
+    # Required fields
+    sample_id: str = Field(..., description="Unique sample identifier", min_length=1)
+
+    # Optional core fields
+    subject_id: Optional[str] = Field(None, description="Subject/patient identifier")
+    timepoint: Optional[str] = Field(
+        None, description="Timepoint or developmental stage"
+    )
+    condition: str = Field(
+        ..., description="Experimental condition (e.g., Control, Treatment)"
+    )
+    tissue: Optional[str] = Field(None, description="Tissue origin")
+    organism: str = Field(
+        ..., description="Organism name (e.g., Homo sapiens, Mus musculus)"
+    )
+    platform: str = Field(
+        ..., description="Proteomics platform (DDA, DIA, Olink, SOMAscan, etc.)"
+    )
+    quantification: str = Field(
+        ..., description="Quantification method (intensity, iBAQ, TMT, NPX, etc.)"
+    )
+    batch: Optional[str] = Field(None, description="Batch identifier")
+
+    # Flexible additional metadata
+    additional_metadata: Optional[Dict[str, Any]] = Field(
+        default_factory=dict, description="Additional custom metadata fields"
+    )
+
+    class Config:
+        """Pydantic configuration."""
+
+        json_schema_extra = {
+            "example": {
+                "sample_id": "Sample_A_Rep1",
+                "subject_id": "Subject_001",
+                "timepoint": "Day0",
+                "condition": "Control",
+                "tissue": "Liver",
+                "organism": "Homo sapiens",
+                "platform": "DDA",
+                "quantification": "iBAQ",
+                "batch": "Batch1",
+                "additional_metadata": {
+                    "instrument": "Orbitrap Fusion",
+                    "replicate": "Rep1",
+                },
+            }
+        }
+
+    @field_validator("platform")
+    @classmethod
+    def validate_platform(cls, v: str) -> str:
+        """Validate platform is a known proteomics platform."""
+        allowed = {
+            # Mass spectrometry
+            "dda",
+            "dia",
+            "swath",
+            "srm",
+            "mrm",
+            "prm",
+            "tmt",
+            "itraq",
+            "silac",
+            # Affinity-based
+            "olink",
+            "somascan",
+            "luminex",
+            "antibody_array",
+            "rppa",
+            # General
+            "mass_spectrometry",
+            "affinity",
+            "label_free",
+        }
+        v_lower = v.lower().replace("-", "_").replace(" ", "_")
+        if v_lower not in allowed:
+            # Allow unknown platforms with warning in logs
+            return v
+        # Normalize to uppercase for consistency
+        return v.upper()
+
+    @field_validator("quantification")
+    @classmethod
+    def validate_quantification(cls, v: str) -> str:
+        """Validate quantification method is a known method."""
+        allowed = {
+            # Mass spec quantification
+            "intensity",
+            "ibaq",
+            "tmt",
+            "itraq",
+            "silac",
+            "lfq",
+            "spectral_count",
+            # Affinity quantification
+            "npx",
+            "rfu",
+            "signal_intensity",
+            "fluorescence",
+        }
+        v_lower = v.lower().replace("-", "_").replace(" ", "_")
+        if v_lower not in allowed:
+            # Allow unknown quantification methods
+            return v
+        return v_lower
+
+    @field_validator("organism")
+    @classmethod
+    def validate_organism(cls, v: str) -> str:
+        """Validate organism name format (capitalize first letter of each word)."""
+        if v:
+            return " ".join(word.capitalize() for word in v.split())
+        return v
+
+    @field_validator("condition")
+    @classmethod
+    def validate_condition(cls, v: str) -> str:
+        """Ensure condition is not empty."""
+        if not v or not v.strip():
+            raise ValueError("condition cannot be empty")
+        return v.strip()
+
+    @field_validator("sample_id")
+    @classmethod
+    def validate_sample_id(cls, v: str) -> str:
+        """Ensure sample_id is not empty and has no leading/trailing whitespace."""
+        if not v or not v.strip():
+            raise ValueError("sample_id cannot be empty")
+        return v.strip()
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert to dictionary representation.
+
+        Returns:
+            Dict[str, Any]: Dictionary with all fields including additional_metadata
+        """
+        base_dict = self.model_dump(exclude={"additional_metadata"}, exclude_none=True)
+        if self.additional_metadata:
+            base_dict.update(self.additional_metadata)
+        return base_dict
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ProteomicsMetadataSchema":
+        """
+        Create schema from dictionary, automatically handling unknown fields.
+
+        Args:
+            data: Dictionary with metadata fields
+
+        Returns:
+            ProteomicsMetadataSchema: Validated schema instance
+        """
+        # Extract known fields
+        known_fields = set(cls.model_fields.keys()) - {"additional_metadata"}
+        schema_data = {k: v for k, v in data.items() if k in known_fields}
+
+        # Put remaining fields in additional_metadata
+        additional = {k: v for k, v in data.items() if k not in known_fields}
+        if additional:
+            schema_data["additional_metadata"] = additional
+
+        return cls(**schema_data)

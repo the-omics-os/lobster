@@ -287,6 +287,7 @@ def machine_learning_expert(
                 if hasattr(adata_ml.X, "nnz"):
                     # Sparse matrix - efficient calculation using CSC format
                     from scipy.sparse import issparse
+
                     X_csc = adata_ml.X.tocsc() if issparse(adata_ml.X) else adata_ml.X
                     # Count non-zeros per column efficiently
                     non_zeros_per_col = np.diff(X_csc.indptr)
@@ -372,7 +373,9 @@ def machine_learning_expert(
             # Calculate sparsity efficiently (sparse-aware)
             if hasattr(adata_ml.X, "nnz"):
                 # Sparse matrix - O(1) calculation
-                sparsity = 1.0 - (adata_ml.X.nnz / (adata_ml.shape[0] * adata_ml.shape[1]))
+                sparsity = 1.0 - (
+                    adata_ml.X.nnz / (adata_ml.shape[0] * adata_ml.shape[1])
+                )
             else:
                 # Dense matrix - direct calculation
                 sparsity = np.mean(adata_ml.X == 0)

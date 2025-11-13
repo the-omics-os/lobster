@@ -400,7 +400,9 @@ class TestMassSpecQuality:
         assert "high_cv_protein" in adata_qc.var.columns
 
         # MS data should have higher CVs than affinity
-        assert stats["median_cv_across_proteins"] > 0.15  # Typical MS CV (fractional: 0.15 = 15%)
+        assert (
+            stats["median_cv_across_proteins"] > 0.15
+        )  # Typical MS CV (fractional: 0.15 = 15%)
 
     def test_contaminant_detection(self, synthetic_mass_spec_data):
         """Test contaminant detection."""
@@ -572,7 +574,9 @@ class TestAffinityQuality:
         )
 
         # Affinity data should have lower CVs than MS
-        assert stats["median_cv_across_proteins"] < 0.50  # Synthetic affinity CV ~34% (fractional: 0.34)
+        assert (
+            stats["median_cv_across_proteins"] < 0.50
+        )  # Synthetic affinity CV ~34% (fractional: 0.34)
         assert stats["n_high_cv_proteins"] < adata.n_vars  # Count high CV proteins
 
     def test_technical_replicate_assessment(self, synthetic_affinity_data):
@@ -590,7 +594,9 @@ class TestAffinityQuality:
 
         # Check replicate correlation
         assert stats["median_replicate_correlation"] > 0.8  # Should be high
-        assert stats["median_replicate_cv"] < 0.25  # Should be low (fractional: 0.25 = 25%)
+        assert (
+            stats["median_replicate_cv"] < 0.25
+        )  # Should be low (fractional: 0.25 = 25%)
 
 
 class TestAffinityDifferential:

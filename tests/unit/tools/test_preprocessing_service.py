@@ -648,8 +648,7 @@ class TestBatchCorrection:
         """Test that calling with args/kwargs still raises NotImplementedError."""
         with pytest.raises(NotImplementedError):
             preprocessing_service.integrate_and_batch_correct(
-                batch_key="sample",
-                integration_method="harmony"
+                batch_key="sample", integration_method="harmony"
             )
 
 
