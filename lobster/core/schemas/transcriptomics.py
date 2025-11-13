@@ -14,6 +14,27 @@ from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.schemas.validation import FlexibleValidator
 
 
+# =============================================================================
+# ONTOLOGY FIELDS REMOVED - HANDLED BY EMBEDDING SERVICE
+# =============================================================================
+# The following fields have been removed from this schema and are now handled
+# by the embedding-based ontology matching service:
+#
+# - organism      → NCBI Taxonomy ID (e.g., 9606 for Homo sapiens)
+# - tissue        → UBERON term (e.g., UBERON:0000955 for brain)
+# - cell_type     → Cell Ontology term (e.g., CL:0000084 for T cell)
+#
+# Users provide these as free-text strings during data upload.
+# The metadata_assistant agent calls the embedding service to map
+# strings to canonical ontology terms.
+#
+# Results are stored in adata.uns["ontology_mappings"], NOT in obs/var.
+#
+# See: docs/embedding-ontology-service.md
+# Integration point: metadata_assistant.standardize_ontology_terms() tool
+# =============================================================================
+
+
 class TranscriptomicsSchema:
     """
     Schema definitions for transcriptomics data modalities.
@@ -51,7 +72,6 @@ class TranscriptomicsSchema:
                     "sample_id",  # Sample origin
                     "batch",  # Batch identifier
                     "condition",  # Experimental condition
-                    "cell_type",  # Annotated cell type
                     "n_genes",  # Number of genes detected
                     "n_genes_by_counts",  # Number of genes with counts > 0
                     "total_counts",  # Total UMI counts
@@ -66,13 +86,18 @@ class TranscriptomicsSchema:
                     "G1_score",  # G1 phase score
                     "S_score",  # S phase score
                     "G2M_score",  # G2/M phase score
+                    # Sequencing quality metrics
+                    "total_reads",  # Total sequencing reads
+                    "percent_aligned",  # Alignment rate (%)
+                    "percent_duplicates",  # PCR duplicate rate (%)
+                    "median_insert_size",  # Fragment size (bp)
+                    "fastqc_url",  # Link to FastQC report
                 ],
                 "types": {
                     "cell_id": "string",
                     "sample_id": "string",
                     "batch": "string",
                     "condition": "string",
-                    "cell_type": "categorical",
                     "n_genes": "numeric",
                     "n_genes_by_counts": "numeric",
                     "total_counts": "numeric",
@@ -84,6 +109,11 @@ class TranscriptomicsSchema:
                     "leiden": "categorical",
                     "louvain": "categorical",
                     "phase": "categorical",
+                    "total_reads": "numeric",
+                    "percent_aligned": "numeric",
+                    "percent_duplicates": "numeric",
+                    "median_insert_size": "numeric",
+                    "fastqc_url": "string",
                 },
             },
             # var: Variables (genes/features) metadata - DataFrame with genes as rows
@@ -293,6 +323,16 @@ class TranscriptomicsSchema:
                     "processing_info",  # Data processing pipeline info
                     "quality_metrics",  # Dataset-wide quality metrics
                     "data_source",  # Source of the data (GEO, SRA, etc.)
+                    # Cross-database accessions
+                    "bioproject_accession",  # NCBI BioProject (PRJNA123456)
+                    "biosample_accession",  # NCBI BioSample (SAMN12345678)
+                    "sra_study_accession",  # SRA Study (SRP123456)
+                    "sra_experiment_accession",  # SRA Experiment (SRX123456)
+                    "sra_run_accession",  # SRA Run (SRR123456)
+                    "publication_doi",  # Publication DOI (10.1038/nature12345)
+                    "arrayexpress_accession",  # ArrayExpress (E-MTAB-12345, optional)
+                    # Ontology mappings (embedding service results)
+                    "ontology_mappings",  # Organism/tissue/cell_type ontology IDs
                 ],
             },
         }
@@ -326,8 +366,6 @@ class TranscriptomicsSchema:
                     "treatment",  # Treatment information
                     "batch",  # Sequencing batch
                     "replicate",  # Biological replicate
-                    "tissue",  # Tissue type
-                    "organism",  # Organism
                     "n_genes",  # Number of genes detected
                     "total_counts",  # Total read counts
                     "library_size",  # Library size
@@ -341,8 +379,6 @@ class TranscriptomicsSchema:
                     "treatment": "categorical",
                     "batch": "string",
                     "replicate": "string",
-                    "tissue": "categorical",
-                    "organism": "string",
                     "n_genes": "numeric",
                     "total_counts": "numeric",
                     "library_size": "numeric",
@@ -510,6 +546,16 @@ class TranscriptomicsSchema:
                     "contact_phone",  # Contact phone number
                     "contact_zip/postal_code",  # Contact ZIP/postal code
                     "web_link",  # Web link or URL related to the dataset
+                    # Cross-database accessions
+                    "bioproject_accession",  # NCBI BioProject (PRJNA123456)
+                    "biosample_accession",  # NCBI BioSample (SAMN12345678)
+                    "sra_study_accession",  # SRA Study (SRP123456)
+                    "sra_experiment_accession",  # SRA Experiment (SRX123456)
+                    "sra_run_accession",  # SRA Run (SRR123456)
+                    "publication_doi",  # Publication DOI (10.1038/nature12345)
+                    "arrayexpress_accession",  # ArrayExpress (E-MTAB-12345, optional)
+                    # Ontology mappings (embedding service results)
+                    "ontology_mappings",  # Organism/tissue/cell_type ontology IDs
                 ],
             },
         }
@@ -742,14 +788,15 @@ class TranscriptomicsMetadataSchema(BaseModel):
     - Dataset completeness validation
     - Multi-omics integration preparation
 
+    NOTE: organism, tissue, and cell_type fields have been removed.
+    These are now handled by the embedding-based ontology matching service.
+    See module header for details.
+
     Attributes:
         sample_id: Unique sample identifier (required)
         subject_id: Subject/patient identifier for biological replicates
         timepoint: Timepoint or developmental stage
         condition: Experimental condition (e.g., "Control", "Treatment")
-        cell_type: Cell type or tissue type (single-cell or bulk)
-        tissue: Tissue origin
-        organism: Organism name (e.g., "Homo sapiens", "Mus musculus")
         platform: Sequencing platform (e.g., "Illumina NovaSeq", "10x Genomics")
         sequencing_type: Type of RNA-seq ("bulk" or "single-cell")
         batch: Batch identifier for technical replicates
@@ -767,11 +814,10 @@ class TranscriptomicsMetadataSchema(BaseModel):
     condition: str = Field(
         ..., description="Experimental condition (e.g., Control, Treatment)"
     )
-    cell_type: Optional[str] = Field(None, description="Cell type or tissue type")
-    tissue: Optional[str] = Field(None, description="Tissue origin")
-    organism: str = Field(
-        ..., description="Organism name (e.g., Homo sapiens, Mus musculus)"
-    )
+
+    # NOTE: organism, tissue, cell_type fields removed - handled by embedding service
+    # See module header for details on ontology integration
+
     platform: str = Field(..., description="Sequencing platform")
     sequencing_type: str = Field(
         ..., description="Type of RNA-seq (bulk or single-cell)"
@@ -792,9 +838,7 @@ class TranscriptomicsMetadataSchema(BaseModel):
                 "subject_id": "Subject_001",
                 "timepoint": "Day0",
                 "condition": "Control",
-                "cell_type": "PBMC",
-                "tissue": "Blood",
-                "organism": "Homo sapiens",
+                # organism, tissue, cell_type removed - handled by embedding service
                 "platform": "Illumina NovaSeq 6000",
                 "sequencing_type": "single-cell",
                 "batch": "Batch1",
@@ -816,14 +860,6 @@ class TranscriptomicsMetadataSchema(BaseModel):
         if v_lower == "bulk_rna_seq":
             return "bulk"
         return v_lower
-
-    @field_validator("organism")
-    @classmethod
-    def validate_organism(cls, v: str) -> str:
-        """Validate organism name format (capitalize first letter of each word)."""
-        if v:
-            return " ".join(word.capitalize() for word in v.split())
-        return v
 
     @field_validator("condition")
     @classmethod

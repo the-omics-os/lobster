@@ -13,6 +13,26 @@ from pydantic import BaseModel, Field, field_validator
 from .validation import FlexibleValidator
 
 
+# =============================================================================
+# ONTOLOGY FIELDS REMOVED - HANDLED BY EMBEDDING SERVICE
+# =============================================================================
+# The following fields have been removed from this schema and are now handled
+# by the embedding-based ontology matching service:
+#
+# - organism      → NCBI Taxonomy ID (e.g., 9606 for Homo sapiens)
+# - tissue        → UBERON term (e.g., UBERON:0000955 for brain)
+#
+# Users provide these as free-text strings during data upload.
+# The metadata_assistant agent calls the embedding service to map
+# strings to canonical ontology terms.
+#
+# Results are stored in adata.uns["ontology_mappings"], NOT in obs/var.
+#
+# See: docs/embedding-ontology-service.md
+# Integration point: metadata_assistant.standardize_ontology_terms() tool
+# =============================================================================
+
+
 class ProteomicsSchema:
     """
     Schema definitions for proteomics data modalities.
@@ -43,14 +63,18 @@ class ProteomicsSchema:
                     "replicate",  # Biological replicate
                     "instrument",  # MS instrument used
                     "acquisition_method",  # DDA, DIA, SRM, etc.
-                    "tissue",  # Tissue type
-                    "organism",  # Organism
+                    # NOTE: organism and tissue removed - handled by embedding service
                     "n_proteins",  # Number of proteins detected
                     "total_intensity",  # Total protein intensity
                     "missing_values",  # Number of missing values
                     "pct_missing",  # Percentage of missing values
                     "median_intensity",  # Median protein intensity
                     "median_cv",  # Median coefficient of variation
+                    # Mass spectrometry quality metrics
+                    "total_spectra",  # Total number of MS/MS spectra
+                    "identified_spectra_pct",  # Percentage of spectra identified
+                    "median_precursor_intensity",  # Median precursor ion intensity
+                    "mass_accuracy_ppm",  # Mass accuracy in ppm
                 ],
                 "types": {
                     "sample_id": "string",
@@ -60,14 +84,16 @@ class ProteomicsSchema:
                     "replicate": "string",
                     "instrument": "categorical",
                     "acquisition_method": "categorical",
-                    "tissue": "categorical",
-                    "organism": "string",
                     "n_proteins": "numeric",
                     "total_intensity": "numeric",
                     "missing_values": "numeric",
                     "pct_missing": "numeric",
                     "median_intensity": "numeric",
                     "median_cv": "numeric",
+                    "total_spectra": "numeric",
+                    "identified_spectra_pct": "numeric",
+                    "median_precursor_intensity": "numeric",
+                    "mass_accuracy_ppm": "numeric",
                 },
             },
             "var": {
@@ -78,7 +104,6 @@ class ProteomicsSchema:
                     "gene_symbol",  # Gene symbol
                     "gene_name",  # Full gene name
                     "protein_name",  # Full protein name
-                    "organism",  # Species
                     "sequence_length",  # Protein sequence length
                     "molecular_weight",  # Molecular weight (Da)
                     "n_peptides",  # Number of peptides identified
@@ -102,7 +127,6 @@ class ProteomicsSchema:
                     "gene_symbol": "string",
                     "gene_name": "string",
                     "protein_name": "string",
-                    "organism": "string",
                     "sequence_length": "numeric",
                     "molecular_weight": "numeric",
                     "n_peptides": "numeric",
@@ -153,6 +177,14 @@ class ProteomicsSchema:
                     "differential_expression",  # DE analysis results
                     "pathway_analysis",  # Pathway enrichment results
                     "provenance",  # Provenance tracking
+                    # Cross-database accessions
+                    "pride_accession",  # ProteomExchange/PRIDE (PXD123456)
+                    "massive_accession",  # MassIVE (MSV000012345)
+                    "bioproject_accession",  # NCBI BioProject (PRJNA123456)
+                    "biosample_accession",  # NCBI BioSample (SAMN12345678)
+                    "publication_doi",  # Publication DOI (10.1038/nature12345)
+                    # Ontology mappings (embedding service results)
+                    "ontology_mappings",  # Organism/tissue ontology IDs
                 ],
             },
         }
@@ -177,8 +209,7 @@ class ProteomicsSchema:
                     "batch",  # Array batch
                     "replicate",  # Biological replicate
                     "array_type",  # Type of protein array
-                    "tissue",  # Tissue type
-                    "organism",  # Organism
+                    # NOTE: organism and tissue removed - handled by embedding service
                     "n_proteins",  # Number of proteins detected
                     "total_signal",  # Total signal intensity
                     "median_signal",  # Median signal intensity
@@ -191,8 +222,6 @@ class ProteomicsSchema:
                     "batch": "string",
                     "replicate": "string",
                     "array_type": "categorical",
-                    "tissue": "categorical",
-                    "organism": "string",
                     "n_proteins": "numeric",
                     "total_signal": "numeric",
                     "median_signal": "numeric",
@@ -208,7 +237,6 @@ class ProteomicsSchema:
                     "protein_name",  # Full protein name
                     "antibody_id",  # Antibody identifier
                     "antibody_clone",  # Antibody clone information
-                    "organism",  # Species
                     "mean_signal",  # Mean signal across samples
                     "median_signal",  # Median signal across samples
                     "cv",  # Coefficient of variation
@@ -221,7 +249,6 @@ class ProteomicsSchema:
                     "protein_name": "string",
                     "antibody_id": "string",
                     "antibody_clone": "string",
-                    "organism": "string",
                     "mean_signal": "numeric",
                     "median_signal": "numeric",
                     "cv": "numeric",
@@ -254,6 +281,14 @@ class ProteomicsSchema:
                     "differential_expression",  # DE analysis results
                     "pathway_analysis",  # Pathway enrichment results
                     "provenance",  # Provenance tracking
+                    # Cross-database accessions
+                    "pride_accession",  # ProteomExchange/PRIDE (PXD123456)
+                    "massive_accession",  # MassIVE (MSV000012345)
+                    "bioproject_accession",  # NCBI BioProject (PRJNA123456)
+                    "biosample_accession",  # NCBI BioSample (SAMN12345678)
+                    "publication_doi",  # Publication DOI (10.1038/nature12345)
+                    # Ontology mappings (embedding service results)
+                    "ontology_mappings",  # Organism/tissue ontology IDs
                 ],
             },
         }
@@ -566,13 +601,14 @@ class ProteomicsMetadataSchema(BaseModel):
     - Dataset completeness validation
     - Multi-omics integration preparation
 
+    NOTE: organism and tissue fields have been removed. These are now handled
+    by the embedding-based ontology matching service. See module header for details.
+
     Attributes:
         sample_id: Unique sample identifier (required)
         subject_id: Subject/patient identifier for biological replicates
         timepoint: Timepoint or developmental stage
         condition: Experimental condition (e.g., "Control", "Treatment")
-        tissue: Tissue origin
-        organism: Organism name (e.g., "Homo sapiens", "Mus musculus")
         platform: Proteomics platform (e.g., "DDA", "DIA", "Olink", "SOMAscan")
         quantification: Quantification method (e.g., "intensity", "iBAQ", "TMT", "NPX")
         batch: Batch identifier for technical replicates
@@ -590,10 +626,10 @@ class ProteomicsMetadataSchema(BaseModel):
     condition: str = Field(
         ..., description="Experimental condition (e.g., Control, Treatment)"
     )
-    tissue: Optional[str] = Field(None, description="Tissue origin")
-    organism: str = Field(
-        ..., description="Organism name (e.g., Homo sapiens, Mus musculus)"
-    )
+
+    # NOTE: organism and tissue fields removed - handled by embedding service
+    # See module header for details
+
     platform: str = Field(
         ..., description="Proteomics platform (DDA, DIA, Olink, SOMAscan, etc.)"
     )
@@ -616,8 +652,7 @@ class ProteomicsMetadataSchema(BaseModel):
                 "subject_id": "Subject_001",
                 "timepoint": "Day0",
                 "condition": "Control",
-                "tissue": "Liver",
-                "organism": "Homo sapiens",
+                # organism and tissue removed - handled by embedding service
                 "platform": "DDA",
                 "quantification": "iBAQ",
                 "batch": "Batch1",
@@ -685,14 +720,6 @@ class ProteomicsMetadataSchema(BaseModel):
             # Allow unknown quantification methods
             return v
         return v_lower
-
-    @field_validator("organism")
-    @classmethod
-    def validate_organism(cls, v: str) -> str:
-        """Validate organism name format (capitalize first letter of each word)."""
-        if v:
-            return " ".join(word.capitalize() for word in v.split())
-        return v
 
     @field_validator("condition")
     @classmethod
