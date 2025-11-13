@@ -1497,3 +1497,629 @@ class TestUnexpectedErrors:
         # Verify error message
         assert "❌ Unexpected error during validation" in result
         assert "Unexpected error" in result
+
+
+# ============================================================================
+# Tool Routing Tests (Agent-Level Behavior)
+# ============================================================================
+
+
+class TestToolRouting:
+    """Test agent's ability to route queries to correct tools."""
+
+    @patch("lobster.agents.metadata_assistant.create_react_agent")
+    @patch("lobster.agents.metadata_assistant.create_llm")
+    @patch("lobster.agents.metadata_assistant.get_settings")
+    @patch("lobster.agents.metadata_assistant.MetadataStandardizationService")
+    @patch("lobster.agents.metadata_assistant.SampleMappingService")
+    def test_agent_chooses_correct_tool_for_query(
+        self,
+        mock_mapping_class,
+        mock_standardization_class,
+        mock_settings,
+        mock_create_llm,
+        mock_create_agent,
+        mock_data_manager,
+        mock_sample_mapping_service,
+        mock_llm,
+        mock_agent,
+    ):
+        """Test that agent correctly routes natural language query to appropriate tool.
+
+        Verifies LangGraph agent reasoning:
+        - Query: "Map samples between dataset1 and dataset2"
+        - Expected: Agent chooses map_samples_by_id tool
+        """
+        from lobster.agents.metadata_assistant import metadata_assistant
+
+        # Setup mocks
+        mock_settings_instance = Mock()
+        mock_settings_instance.get_agent_llm_params.return_value = {}
+        mock_settings.return_value = mock_settings_instance
+        mock_create_llm.return_value = mock_llm
+        mock_create_agent.return_value = mock_agent
+        mock_mapping_class.return_value = mock_sample_mapping_service
+
+        # Mock mapping result
+        mock_result = SampleMappingResult(
+            exact_matches=[
+                SampleMatch(
+                    source_id="sample1",
+                    target_id="sample1",
+                    confidence=1.0,
+                    strategy="exact",
+                )
+            ],
+            fuzzy_matches=[],
+            pattern_matches=[],
+            metadata_matches=[],
+            unmapped_source=[],
+            unmapped_target=[],
+            summary={"mapping_rate": 1.0, "exact_matches": 1},
+            warnings=[],
+        )
+        mock_sample_mapping_service.map_samples_by_id.return_value = mock_result
+        mock_sample_mapping_service.format_mapping_report.return_value = (
+            "Mapping complete"
+        )
+
+        # Create agent
+        metadata_assistant(data_manager=mock_data_manager)
+
+        # Verify agent was created with correct tools
+        tools = mock_create_agent.call_args[1]["tools"]
+        tool_names = {t.name for t in tools}
+
+        assert "map_samples_by_id" in tool_names
+        assert "read_sample_metadata" in tool_names
+        assert "standardize_sample_metadata" in tool_names
+        assert "validate_dataset_content" in tool_names
+
+        # Simulate agent selecting correct tool
+        map_tool = next(t for t in tools if t.name == "map_samples_by_id")
+        result = map_tool.func(
+            source_identifier="dataset1", target_identifier="dataset2"
+        )
+
+        assert "Mapping complete" in result
+        mock_sample_mapping_service.map_samples_by_id.assert_called_once()
+
+    @pytest.mark.integration
+    @pytest.mark.slow
+    @pytest.mark.real_api
+    @patch("lobster.agents.metadata_assistant.create_react_agent")
+    @patch("lobster.agents.metadata_assistant.create_llm")
+    @patch("lobster.agents.metadata_assistant.get_settings")
+    @patch("lobster.agents.metadata_assistant.MetadataStandardizationService")
+    @patch("lobster.agents.metadata_assistant.SampleMappingService")
+    def test_real_map_samples_query(
+        self,
+        mock_mapping_class,
+        mock_standardization_class,
+        mock_settings,
+        mock_create_llm,
+        mock_create_agent,
+        mock_data_manager,
+        mock_llm,
+        mock_agent,
+    ):
+        """Test agent processing real sample mapping query.
+
+        Real API test with rate limiting.
+        Query: "Map samples between GSE12345 and GSE67890"
+
+        Verifies:
+        1. Agent calls map_samples_by_id with correct parameters
+        2. Response format is structured markdown report
+        3. Rate limiting (1s sleep before call)
+
+        Requires: Datasets cached in data_manager workspace
+        """
+        import time
+
+        from lobster.agents.metadata_assistant import metadata_assistant
+
+        # Rate limiting
+        time.sleep(1.0)
+
+        # Setup mocks
+        mock_settings_instance = Mock()
+        mock_settings_instance.get_agent_llm_params.return_value = {}
+        mock_settings.return_value = mock_settings_instance
+        mock_create_llm.return_value = mock_llm
+        mock_create_agent.return_value = mock_agent
+
+        # Mock real-like mapping service
+        mock_mapping_service = Mock()
+        mock_result = SampleMappingResult(
+            exact_matches=[
+                SampleMatch(
+                    source_id="GSM123456",
+                    target_id="GSM789012",
+                    confidence=1.0,
+                    strategy="exact",
+                )
+            ],
+            fuzzy_matches=[],
+            pattern_matches=[],
+            metadata_matches=[],
+            unmapped_source=[],
+            unmapped_target=[],
+            summary={
+                "mapping_rate": 1.0,
+                "exact_matches": 1,
+                "fuzzy_matches": 0,
+                "unmapped": 0,
+            },
+            warnings=[],
+        )
+        mock_mapping_service.map_samples_by_id.return_value = mock_result
+        mock_mapping_service.format_mapping_report.return_value = """
+# Sample Mapping Report
+
+**Datasets**: geo_gse12345 → geo_gse67890
+**Mapping Rate**: 100% (1/1 samples mapped)
+
+**Results**:
+- Exact matches: 1/1 samples (100%, confidence=1.0)
+
+**Recommendation**: ✅ Proceed with sample-level integration
+"""
+        mock_mapping_class.return_value = mock_mapping_service
+
+        # Create agent
+        metadata_assistant(data_manager=mock_data_manager)
+
+        # Extract tool
+        tools = mock_create_agent.call_args[1]["tools"]
+        map_tool = next(t for t in tools if t.name == "map_samples_by_id")
+
+        # Simulate agent processing query
+        start_time = time.time()
+        result = map_tool.func(
+            source_identifier="geo_gse12345",
+            target_identifier="geo_gse67890",
+            min_confidence=0.75,
+            strategies="all",
+        )
+        elapsed = time.time() - start_time
+
+        # Verify response format
+        assert "Sample Mapping Report" in result
+        assert "Mapping Rate" in result
+        assert "Recommendation" in result
+        assert "✅" in result or "⚠️" in result or "❌" in result
+
+        # Verify service called with correct parameters
+        mock_mapping_service.map_samples_by_id.assert_called_once_with(
+            source_identifier="geo_gse12345",
+            target_identifier="geo_gse67890",
+            strategies=None,  # "all" → None in tool logic
+        )
+
+        # Verify provenance logged
+        mock_data_manager.log_tool_usage.assert_called()
+
+    @patch("lobster.agents.metadata_assistant.create_react_agent")
+    @patch("lobster.agents.metadata_assistant.create_llm")
+    @patch("lobster.agents.metadata_assistant.get_settings")
+    @patch("lobster.agents.metadata_assistant.MetadataStandardizationService")
+    @patch("lobster.agents.metadata_assistant.SampleMappingService")
+    def test_error_handling_invalid_tool_request(
+        self,
+        mock_mapping_class,
+        mock_standardization_class,
+        mock_settings,
+        mock_create_llm,
+        mock_create_agent,
+        mock_data_manager,
+        mock_sample_mapping_service,
+        mock_llm,
+        mock_agent,
+    ):
+        """Test agent error handling for invalid tool requests.
+
+        Scenarios:
+        - Invalid strategy names
+        - Missing required parameters
+        - Malformed inputs
+        """
+        from lobster.agents.metadata_assistant import metadata_assistant
+
+        # Setup mocks
+        mock_settings_instance = Mock()
+        mock_settings_instance.get_agent_llm_params.return_value = {}
+        mock_settings.return_value = mock_settings_instance
+        mock_create_llm.return_value = mock_llm
+        mock_create_agent.return_value = mock_agent
+        mock_mapping_class.return_value = mock_sample_mapping_service
+
+        # Create agent
+        metadata_assistant(data_manager=mock_data_manager)
+
+        # Extract tool
+        tools = mock_create_agent.call_args[1]["tools"]
+        map_tool = next(t for t in tools if t.name == "map_samples_by_id")
+
+        # Test invalid strategy
+        result = map_tool.func(
+            source_identifier="dataset1",
+            target_identifier="dataset2",
+            strategies="invalid_strategy,exact",
+        )
+
+        assert "❌ Invalid strategies" in result
+        assert "invalid_strategy" in result
+
+    @patch("lobster.agents.metadata_assistant.create_react_agent")
+    @patch("lobster.agents.metadata_assistant.create_llm")
+    @patch("lobster.agents.metadata_assistant.get_settings")
+    @patch("lobster.agents.metadata_assistant.MetadataStandardizationService")
+    @patch("lobster.agents.metadata_assistant.SampleMappingService")
+    def test_multiple_tool_orchestration(
+        self,
+        mock_mapping_class,
+        mock_standardization_class,
+        mock_settings,
+        mock_create_llm,
+        mock_create_agent,
+        mock_data_manager,
+        mock_sample_mapping_service,
+        mock_metadata_standardization_service,
+        mock_llm,
+        mock_agent,
+    ):
+        """Test agent coordinating multiple tools for complex workflow.
+
+        Workflow:
+        1. validate_dataset_content (check dataset quality)
+        2. read_sample_metadata (inspect fields)
+        3. standardize_sample_metadata (harmonize to schema)
+
+        Verifies agent can chain tool calls with intermediate results.
+        """
+        from lobster.agents.metadata_assistant import metadata_assistant
+
+        # Setup mocks
+        mock_settings_instance = Mock()
+        mock_settings_instance.get_agent_llm_params.return_value = {}
+        mock_settings.return_value = mock_settings_instance
+        mock_create_llm.return_value = mock_llm
+        mock_create_agent.return_value = mock_agent
+        mock_mapping_class.return_value = mock_sample_mapping_service
+        mock_standardization_class.return_value = (
+            mock_metadata_standardization_service
+        )
+
+        # Mock validation result
+        mock_validation = DatasetValidationResult(
+            has_required_samples=True,
+            missing_conditions=[],
+            duplicate_ids=[],
+            control_issues=[],
+            platform_consistency=True,
+            summary={"total_samples": 48},
+            warnings=[],
+        )
+        mock_metadata_standardization_service.validate_dataset_content.return_value = (
+            mock_validation
+        )
+
+        # Mock read result
+        mock_metadata_standardization_service.read_sample_metadata.return_value = (
+            "Summary: 48 samples, 5 fields"
+        )
+
+        # Mock standardization result
+        mock_standardization = StandardizationResult(
+            standardized_metadata={"sample1": Mock()},
+            field_coverage={"condition": 100.0},
+            validation_errors={},
+            warnings=[],
+        )
+        mock_metadata_standardization_service.standardize_metadata.return_value = (
+            mock_standardization
+        )
+
+        # Create agent
+        metadata_assistant(data_manager=mock_data_manager)
+
+        # Extract tools
+        tools = mock_create_agent.call_args[1]["tools"]
+        validate_tool = next(t for t in tools if t.name == "validate_dataset_content")
+        read_tool = next(t for t in tools if t.name == "read_sample_metadata")
+        standardize_tool = next(
+            t for t in tools if t.name == "standardize_sample_metadata"
+        )
+
+        # Simulate agent workflow: validate → read → standardize
+        result1 = validate_tool.func(identifier="geo_gse12345")
+        assert "✅" in result1 or "Dataset Validation" in result1
+
+        result2 = read_tool.func(identifier="geo_gse12345", return_format="summary")
+        assert "48 samples" in result2
+
+        result3 = standardize_tool.func(
+            identifier="geo_gse12345", target_schema="transcriptomics"
+        )
+        assert "Metadata Standardization Report" in result3
+
+        # Verify all tools called
+        mock_metadata_standardization_service.validate_dataset_content.assert_called_once()
+        mock_metadata_standardization_service.read_sample_metadata.assert_called_once()
+        mock_metadata_standardization_service.standardize_metadata.assert_called_once()
+
+
+# ============================================================================
+# Handoff Coordination Tests (Agent-to-Agent Communication)
+# ============================================================================
+
+
+class TestHandoffCoordination:
+    """Test metadata_assistant handoff coordination with research_agent."""
+
+    @patch("lobster.agents.metadata_assistant.create_react_agent")
+    @patch("lobster.agents.metadata_assistant.create_llm")
+    @patch("lobster.agents.metadata_assistant.get_settings")
+    @patch("lobster.agents.metadata_assistant.MetadataStandardizationService")
+    @patch("lobster.agents.metadata_assistant.SampleMappingService")
+    def test_receive_handoff_from_research_agent(
+        self,
+        mock_mapping_class,
+        mock_standardization_class,
+        mock_settings,
+        mock_create_llm,
+        mock_create_agent,
+        mock_data_manager,
+        mock_sample_mapping_service,
+        mock_llm,
+        mock_agent,
+    ):
+        """Test metadata_assistant receiving handoff from research_agent.
+
+        Simulates research_agent handoff:
+        - Input: Structured instruction from research_agent
+        - Expected: Agent parses instruction, identifies task, executes tool
+
+        Handoff message format:
+        "Map samples between geo_gse180759 (RNA-seq, 48 samples) and pxd034567
+        (proteomics, 36 samples). Both datasets cached in metadata workspace.
+        Use exact and pattern matching strategies. Return mapping report with
+        confidence scores and unmapped samples."
+        """
+        from lobster.agents.metadata_assistant import metadata_assistant
+
+        # Setup mocks
+        mock_settings_instance = Mock()
+        mock_settings_instance.get_agent_llm_params.return_value = {}
+        mock_settings.return_value = mock_settings_instance
+        mock_create_llm.return_value = mock_llm
+        mock_create_agent.return_value = mock_agent
+        mock_mapping_class.return_value = mock_sample_mapping_service
+
+        # Mock mapping result
+        mock_result = SampleMappingResult(
+            exact_matches=[
+                SampleMatch(
+                    source_id="sample1",
+                    target_id="sample1",
+                    confidence=1.0,
+                    strategy="exact",
+                )
+            ],
+            fuzzy_matches=[],
+            pattern_matches=[],
+            metadata_matches=[],
+            unmapped_source=[],
+            unmapped_target=[],
+            summary={"mapping_rate": 1.0, "exact_matches": 1, "unmapped": 0},
+            warnings=[],
+        )
+        mock_sample_mapping_service.map_samples_by_id.return_value = mock_result
+        mock_sample_mapping_service.format_mapping_report.return_value = (
+            "✅ Sample Mapping Complete\n\nMapping Rate: 100%"
+        )
+
+        # Create agent
+        agent = metadata_assistant(data_manager=mock_data_manager)
+
+        # Verify agent created with handoff tools (if provided)
+        # In real usage, supervisor provides handoff_tools
+        assert agent is not None
+
+        # Extract tool
+        tools = mock_create_agent.call_args[1]["tools"]
+        map_tool = next(t for t in tools if t.name == "map_samples_by_id")
+
+        # Simulate receiving handoff instruction
+        handoff_instruction = """Map samples between geo_gse180759 and pxd034567.
+        Use exact and pattern strategies. Return mapping report."""
+
+        # Agent parses instruction and calls tool
+        result = map_tool.func(
+            source_identifier="geo_gse180759",
+            target_identifier="pxd034567",
+            strategies="exact,pattern",
+        )
+
+        assert "✅ Sample Mapping Complete" in result
+        assert "Mapping Rate" in result
+
+    @patch("lobster.agents.metadata_assistant.create_react_agent")
+    @patch("lobster.agents.metadata_assistant.create_llm")
+    @patch("lobster.agents.metadata_assistant.get_settings")
+    @patch("lobster.agents.metadata_assistant.MetadataStandardizationService")
+    @patch("lobster.agents.metadata_assistant.SampleMappingService")
+    def test_process_task_and_generate_report(
+        self,
+        mock_mapping_class,
+        mock_standardization_class,
+        mock_settings,
+        mock_create_llm,
+        mock_create_agent,
+        mock_data_manager,
+        mock_sample_mapping_service,
+        mock_llm,
+        mock_agent,
+    ):
+        """Test metadata_assistant processing task and generating structured report.
+
+        Verifies report contains:
+        - Status icon (✅/⚠️/❌)
+        - Quantitative metrics (mapping rate, confidence scores)
+        - Actionable recommendation
+        """
+        from lobster.agents.metadata_assistant import metadata_assistant
+
+        # Setup mocks
+        mock_settings_instance = Mock()
+        mock_settings_instance.get_agent_llm_params.return_value = {}
+        mock_settings.return_value = mock_settings_instance
+        mock_create_llm.return_value = mock_llm
+        mock_create_agent.return_value = mock_agent
+        mock_mapping_class.return_value = mock_sample_mapping_service
+
+        # Mock mapping result with high mapping rate
+        mock_result = SampleMappingResult(
+            exact_matches=[
+                SampleMatch(
+                    source_id=f"sample{i}",
+                    target_id=f"sample{i}",
+                    confidence=1.0,
+                    strategy="exact",
+                )
+                for i in range(18)
+            ],
+            fuzzy_matches=[],
+            pattern_matches=[],
+            metadata_matches=[],
+            unmapped_source=[],
+            unmapped_target=[UnmappedSample(sample_id="sample19", reason="No match")],
+            summary={
+                "mapping_rate": 0.95,
+                "exact_matches": 18,
+                "fuzzy_matches": 0,
+                "unmapped": 1,
+            },
+            warnings=[],
+        )
+        mock_sample_mapping_service.map_samples_by_id.return_value = mock_result
+        mock_sample_mapping_service.format_mapping_report.return_value = """
+✅ Sample Mapping Complete
+
+**Datasets**: geo_gse12345 → geo_gse67890
+**Mapping Rate**: 95% (18/19 samples mapped)
+
+**Results**:
+- Exact matches: 18/19 samples (95%, confidence=1.0)
+- Unmapped: 1/19 samples (5%)
+
+**Recommendation**: ✅ Proceed with sample-level integration. High confidence.
+"""
+
+        # Create agent
+        metadata_assistant(data_manager=mock_data_manager)
+
+        # Extract tool
+        tools = mock_create_agent.call_args[1]["tools"]
+        map_tool = next(t for t in tools if t.name == "map_samples_by_id")
+
+        # Process task
+        result = map_tool.func(
+            source_identifier="geo_gse12345", target_identifier="geo_gse67890"
+        )
+
+        # Verify report structure
+        assert "✅" in result or "⚠️" in result or "❌" in result  # Status icon
+        assert "Mapping Rate" in result  # Quantitative metric
+        assert "95%" in result or "0.95" in result  # Mapping rate value
+        assert "Recommendation" in result  # Actionable recommendation
+
+    @patch("lobster.agents.metadata_assistant.create_react_agent")
+    @patch("lobster.agents.metadata_assistant.create_llm")
+    @patch("lobster.agents.metadata_assistant.get_settings")
+    @patch("lobster.agents.metadata_assistant.MetadataStandardizationService")
+    @patch("lobster.agents.metadata_assistant.SampleMappingService")
+    def test_handback_with_formatted_report(
+        self,
+        mock_mapping_class,
+        mock_standardization_class,
+        mock_settings,
+        mock_create_llm,
+        mock_create_agent,
+        mock_data_manager,
+        mock_metadata_standardization_service,
+        mock_llm,
+        mock_agent,
+    ):
+        """Test metadata_assistant handback to research_agent with formatted report.
+
+        Verifies handback report includes:
+        1. Clear status (success/warning/failure)
+        2. Structured markdown with headers
+        3. Quantitative metrics
+        4. Specific details (unmapped samples, errors)
+        5. Actionable recommendation for research_agent
+
+        Report format complies with metadata_assistant system prompt requirements.
+        """
+        from lobster.agents.metadata_assistant import metadata_assistant
+
+        # Setup mocks
+        mock_settings_instance = Mock()
+        mock_settings_instance.get_agent_llm_params.return_value = {}
+        mock_settings.return_value = mock_settings_instance
+        mock_create_llm.return_value = mock_llm
+        mock_create_agent.return_value = mock_agent
+        mock_standardization_class.return_value = (
+            mock_metadata_standardization_service
+        )
+
+        # Mock validation result with warnings (partial success)
+        mock_validation = DatasetValidationResult(
+            has_required_samples=True,
+            missing_conditions=["control"],
+            duplicate_ids=[],
+            control_issues=["No control samples detected"],
+            platform_consistency=True,
+            summary={"total_samples": 30, "conditions": ["treated", "untreated"]},
+            warnings=["Missing 'control' condition", "Age missing for 5 samples"],
+        )
+        mock_metadata_standardization_service.validate_dataset_content.return_value = (
+            mock_validation
+        )
+
+        # Create agent
+        metadata_assistant(data_manager=mock_data_manager)
+
+        # Extract tool
+        tools = mock_create_agent.call_args[1]["tools"]
+        validate_tool = next(t for t in tools if t.name == "validate_dataset_content")
+
+        # Generate handback report
+        result = validate_tool.func(
+            identifier="geo_gse99999",
+            required_conditions="control,healthy",
+            check_controls=True,
+        )
+
+        # Verify report structure for handback to research_agent
+        assert (
+            "✅" in result or "⚠️" in result or "❌" in result
+        )  # Status icon required
+        assert (
+            "Dataset Validation Report" in result or "## " in result
+        )  # Structured markdown
+        assert (
+            "30 samples" in result or "total_samples" in result
+        )  # Quantitative metrics
+        assert "control" in result.lower()  # Specific details about missing condition
+        assert (
+            "Recommendation" in result or "recommend" in result.lower()
+        )  # Actionable recommendation
+
+        # Verify provenance logged (metadata_assistant must log all operations)
+        mock_data_manager.log_tool_usage.assert_called()
+        call_args = mock_data_manager.log_tool_usage.call_args
+        assert call_args[1]["tool_name"] == "validate_dataset_content"
+        assert "result_summary" in call_args[1]

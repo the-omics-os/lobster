@@ -1022,5 +1022,349 @@ class TestWorkflowStateManagement:
         assert merged_results["branch_comparison"]["best_silhouette"] == 0.72
 
 
+# ===============================================================================
+# Metadata Assistant Coordination Tests (Phase 3)
+# ===============================================================================
+
+
+@pytest.mark.integration
+class TestMetadataAssistantCoordination:
+    """Test metadata_assistant coordination workflows (Phase 3).
+
+    Tests handoff patterns between research_agent, supervisor, and metadata_assistant
+    for cross-dataset metadata operations including sample mapping, standardization,
+    and dataset validation.
+    """
+
+    @patch("lobster.agents.research_agent.research_agent")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant")
+    def test_research_to_metadata_assistant_handoff(
+        self, mock_metadata_assistant, mock_research, mock_workflow_state
+    ):
+        """Test research_agent identifying metadata operation and handing off to metadata_assistant.
+
+        Workflow:
+        1. User requests sample mapping between datasets
+        2. research_agent identifies metadata operation
+        3. research_agent calls handoff_to_metadata_assistant with structured instruction
+        4. metadata_assistant processes sample mapping
+        5. metadata_assistant returns structured report
+        """
+        # Arrange: User request for cross-dataset sample mapping
+        initial_state = mock_workflow_state.copy()
+        initial_state["messages"] = [
+            {
+                "content": "Map samples between geo_gse180759 (RNA-seq) and pxd034567 (proteomics)",
+                "sender": "human",
+            }
+        ]
+        initial_state["current_agent"] = "research_agent"
+
+        # Mock research_agent identifying metadata operation
+        mock_research.return_value = {
+            "messages": initial_state["messages"]
+            + [
+                {
+                    "content": "This requires cross-dataset sample ID mapping. Handing off to metadata_assistant.",
+                    "sender": "research_agent",
+                }
+            ],
+            "current_agent": "metadata_assistant",
+            "handoff_instruction": """Map samples between geo_gse180759 (RNA-seq, 48 samples) and pxd034567
+(proteomics, 36 samples). Both datasets cached in metadata workspace.
+Use exact and pattern matching strategies. Return mapping report with:
+(1) mapping rate, (2) confidence scores, (3) unmapped samples, (4) integration recommendation.""",
+            "context": {
+                "operation_type": "sample_mapping",
+                "source_dataset": "geo_gse180759",
+                "target_dataset": "pxd034567",
+            },
+        }
+
+        # Mock metadata_assistant processing sample mapping
+        mock_metadata_assistant.return_value = {
+            "messages": [
+                {
+                    "content": """✅ Sample Mapping Complete
+
+**Datasets**: geo_gse180759 → pxd034567
+**Mapping Rate**: 100% (36/36 samples mapped)
+
+**Results**:
+- Exact matches: 36/36 samples (100%, confidence=1.0)
+- Pattern matches: 0/36 samples
+- Unmapped: 0/36 samples
+
+**Recommendation**: ✅ Proceed with sample-level integration. Perfect mapping achieved.""",
+                    "sender": "metadata_assistant",
+                }
+            ],
+            "current_agent": "research_agent",  # Hand back to research_agent
+            "mapping_summary": {
+                "mapping_rate": 1.0,
+                "exact_matches": 36,
+                "unmapped": 0,
+                "confidence": 1.0,
+            },
+        }
+
+        # Act: Execute handoff workflow
+        research_result = mock_research(initial_state)
+        metadata_state = {
+            "messages": research_result["messages"],
+            "current_agent": "metadata_assistant",
+            "context": research_result["context"],
+        }
+        metadata_result = mock_metadata_assistant(metadata_state)
+
+        # Assert: Verify handoff and structured report
+        assert research_result["current_agent"] == "metadata_assistant"
+        assert "handoff_instruction" in research_result
+        assert "Map samples between" in research_result["handoff_instruction"]
+        assert research_result["context"]["operation_type"] == "sample_mapping"
+
+        assert metadata_result["current_agent"] == "research_agent"  # Handed back
+        assert metadata_result["mapping_summary"]["mapping_rate"] == 1.0
+        assert "✅ Sample Mapping Complete" in metadata_result["messages"][0]["content"]
+        assert "Recommendation" in metadata_result["messages"][0]["content"]
+
+    @patch("lobster.agents.metadata_assistant.metadata_assistant")
+    def test_metadata_assistant_sample_mapping_workflow(
+        self, mock_metadata_assistant, mock_workflow_state
+    ):
+        """Test metadata_assistant processing sample mapping task with detailed results.
+
+        Verifies:
+        - Sample mapping between RNA-seq and proteomics datasets
+        - Structured report with quantitative metrics
+        - Actionable integration recommendation
+        """
+        # Arrange: Metadata operation state
+        mapping_state = mock_workflow_state.copy()
+        mapping_state["messages"] = [
+            {
+                "content": "Map samples between geo_gse12345 and geo_gse67890",
+                "sender": "research_agent",
+            }
+        ]
+        mapping_state["current_agent"] = "metadata_assistant"
+        mapping_state["context"] = {
+            "source_dataset": "geo_gse12345",
+            "target_dataset": "geo_gse67890",
+            "strategies": ["exact", "pattern"],
+        }
+
+        # Mock metadata_assistant sample mapping result
+        mock_metadata_assistant.return_value = {
+            "messages": mapping_state["messages"]
+            + [
+                {
+                    "content": """# Sample Mapping Report
+
+**Datasets**: geo_gse12345 → geo_gse67890
+**Mapping Rate**: 95% (18/19 samples mapped)
+
+**Results**:
+- Exact matches: 18/19 samples (95%, confidence=1.0)
+- Pattern matches: 0/19 samples
+- Unmapped: 1/19 samples (5%)
+
+**Unmapped Samples**:
+- sample19: No matching pattern found
+
+**Recommendation**: ✅ Proceed with sample-level integration. High confidence.""",
+                    "sender": "metadata_assistant",
+                }
+            ],
+            "mapping_summary": {
+                "total_source_samples": 19,
+                "total_target_samples": 19,
+                "exact_matches": 18,
+                "pattern_matches": 0,
+                "unmapped": 1,
+                "mapping_rate": 0.95,
+            },
+            "unmapped_samples": ["sample19"],
+            "current_agent": "supervisor_agent",
+        }
+
+        # Act: Process sample mapping
+        result = mock_metadata_assistant(mapping_state)
+
+        # Assert: Verify structured report
+        assert result["mapping_summary"]["mapping_rate"] == 0.95
+        assert result["mapping_summary"]["exact_matches"] == 18
+        assert result["mapping_summary"]["unmapped"] == 1
+        assert "sample19" in result["unmapped_samples"]
+        assert "✅" in result["messages"][-1]["content"]
+        assert "Recommendation" in result["messages"][-1]["content"]
+
+    @patch("lobster.agents.metadata_assistant.metadata_assistant")
+    def test_metadata_assistant_standardization_workflow(
+        self, mock_metadata_assistant, mock_workflow_state
+    ):
+        """Test metadata_assistant standardizing metadata to schema.
+
+        Verifies:
+        - Metadata standardization to transcriptomics schema
+        - Field coverage reporting
+        - Validation error summary
+        """
+        # Arrange: Standardization operation state
+        standardization_state = mock_workflow_state.copy()
+        standardization_state["messages"] = [
+            {
+                "content": "Standardize metadata for geo_gse12345 to transcriptomics schema",
+                "sender": "supervisor_agent",
+            }
+        ]
+        standardization_state["current_agent"] = "metadata_assistant"
+        standardization_state["context"] = {
+            "dataset": "geo_gse12345",
+            "target_schema": "transcriptomics",
+        }
+
+        # Mock metadata_assistant standardization result
+        mock_metadata_assistant.return_value = {
+            "messages": standardization_state["messages"]
+            + [
+                {
+                    "content": """# Metadata Standardization Report
+
+**Dataset**: geo_gse12345 → TranscriptomicsMetadataSchema
+**Valid Samples**: 46/48 (96%)
+**Validation Errors**: 2 samples
+
+## Field Coverage
+- sample_id: 100%
+- condition: 100%
+- tissue: 100%
+- organism: 98%
+- platform: 100%
+
+## Validation Errors
+- Sample_47: Missing 'organism' field
+- Sample_48: Missing 'organism' field
+
+**Recommendation**: Standardization successful. 96% valid.""",
+                    "sender": "metadata_assistant",
+                }
+            ],
+            "standardization_summary": {
+                "valid_samples": 46,
+                "total_samples": 48,
+                "validation_errors": 2,
+                "field_coverage": {
+                    "sample_id": 100.0,
+                    "condition": 100.0,
+                    "tissue": 100.0,
+                    "organism": 98.0,
+                    "platform": 100.0,
+                },
+            },
+            "current_agent": "supervisor_agent",
+        }
+
+        # Act: Process standardization
+        result = mock_metadata_assistant(standardization_state)
+
+        # Assert: Verify standardization report
+        assert result["standardization_summary"]["valid_samples"] == 46
+        assert result["standardization_summary"]["validation_errors"] == 2
+        assert result["standardization_summary"]["field_coverage"]["organism"] == 98.0
+        assert "96%" in result["messages"][-1]["content"]
+        assert "Metadata Standardization Report" in result["messages"][-1]["content"]
+
+    @patch("lobster.agents.supervisor.supervisor_agent")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant")
+    def test_supervisor_coordinates_metadata_operation(
+        self, mock_metadata_assistant, mock_supervisor, mock_workflow_state
+    ):
+        """Test supervisor coordinating metadata validation workflow.
+
+        Verifies:
+        - Supervisor delegates metadata validation to metadata_assistant
+        - metadata_assistant validates dataset content
+        - Supervisor receives structured validation report
+        """
+        # Arrange: User request for dataset validation
+        initial_state = mock_workflow_state.copy()
+        initial_state["messages"] = [
+            {
+                "content": "Validate dataset geo_gse99999 for quality and completeness",
+                "sender": "human",
+            }
+        ]
+        initial_state["current_agent"] = "supervisor_agent"
+
+        # Mock supervisor delegating to metadata_assistant
+        mock_supervisor.return_value = {
+            "messages": initial_state["messages"]
+            + [
+                {
+                    "content": "Delegating dataset validation to metadata_assistant",
+                    "sender": "supervisor_agent",
+                }
+            ],
+            "current_agent": "metadata_assistant",
+            "delegation_context": {
+                "operation": "validate_dataset_content",
+                "dataset": "geo_gse99999",
+            },
+        }
+
+        # Mock metadata_assistant validation result
+        mock_metadata_assistant.return_value = {
+            "messages": [
+                {
+                    "content": """# Dataset Validation Report
+
+**Dataset**: geo_gse99999
+**Sample Count**: ✅ 30 samples
+**Platform Consistency**: ✅ Consistent (Illumina NovaSeq)
+**Duplicate IDs**: ✅ No duplicates found
+**Control Samples**: ⚠️ No control samples detected
+
+## Missing Required Conditions
+- ❌ 'control' condition not found
+
+## Warnings
+- Expected 'control' condition not present
+- Recommend adding control samples
+
+⚠️ **Dataset has issues** - Missing control samples""",
+                    "sender": "metadata_assistant",
+                }
+            ],
+            "validation_summary": {
+                "has_required_samples": True,
+                "missing_conditions": ["control"],
+                "duplicate_ids": [],
+                "platform_consistency": True,
+                "warnings": ["Missing control samples"],
+            },
+            "current_agent": "supervisor_agent",
+        }
+
+        # Act: Execute supervisor coordination
+        supervisor_result = mock_supervisor(initial_state)
+        metadata_state = {
+            "messages": supervisor_result["messages"],
+            "current_agent": "metadata_assistant",
+            "context": supervisor_result["delegation_context"],
+        }
+        validation_result = mock_metadata_assistant(metadata_state)
+
+        # Assert: Verify coordination and validation report
+        assert supervisor_result["current_agent"] == "metadata_assistant"
+        assert supervisor_result["delegation_context"]["operation"] == "validate_dataset_content"
+
+        assert validation_result["current_agent"] == "supervisor_agent"  # Handed back
+        assert validation_result["validation_summary"]["platform_consistency"] is True
+        assert "control" in validation_result["validation_summary"]["missing_conditions"]
+        assert "⚠️" in validation_result["messages"][0]["content"]
+        assert "Dataset has issues" in validation_result["messages"][0]["content"]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])

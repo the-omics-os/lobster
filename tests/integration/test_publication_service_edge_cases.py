@@ -20,7 +20,7 @@ import requests
 
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.providers.base_provider import DatasetType, PublicationSource
-from lobster.tools.publication_service import PublicationService
+from lobster.tools.content_access_service import ContentAccessService
 
 # ===============================================================================
 # Fixtures
@@ -37,11 +37,9 @@ def mock_data_manager():
 
 
 @pytest.fixture
-def publication_service(mock_data_manager):
-    """Create PublicationService instance."""
-    return PublicationService(
-        data_manager=mock_data_manager, ncbi_api_key="test_api_key"
-    )
+def content_access_service(mock_data_manager):
+    """Create ContentAccessService instance."""
+    return ContentAccessService(data_manager=mock_data_manager)
 
 
 # ===============================================================================
@@ -54,7 +52,7 @@ class TestPubMedSearchNoResults:
     """Test PubMed search scenarios that return zero results."""
 
     @patch("lobster.tools.providers.pubmed_provider.Entrez")
-    def test_search_nonexistent_query(self, mock_entrez, publication_service):
+    def test_search_nonexistent_query(self, mock_entrez, content_access_service):
         """Test search with query that returns no results."""
         # Mock empty search response
         mock_search_handle = StringIO(
@@ -72,7 +70,7 @@ class TestPubMedSearchNoResults:
         mock_entrez.esearch.return_value = mock_search_handle
 
         # Search for nonsense term
-        result = publication_service.search_literature(
+        result = content_access_service.search_literature(
             query="nonexistent_term_xyz_12345", max_results=10
         )
 
@@ -85,7 +83,7 @@ class TestPubMedSearchNoResults:
         )
 
     @patch("lobster.tools.providers.pubmed_provider.Entrez")
-    def test_search_overly_specific_query(self, mock_entrez, publication_service):
+    def test_search_overly_specific_query(self, mock_entrez, content_access_service):
         """Test search with overly specific criteria (no matches)."""
         mock_search_handle = StringIO(
             json.dumps(
@@ -100,7 +98,7 @@ class TestPubMedSearchNoResults:
         mock_entrez.esearch.return_value = mock_search_handle
 
         # Overly specific query
-        result = publication_service.search_literature(
+        result = content_access_service.search_literature(
             query="BRCA1 mutation in left-handed vegetarian astronauts", max_results=5
         )
 
@@ -108,7 +106,7 @@ class TestPubMedSearchNoResults:
         assert "0" in result or "no results" in result.lower()
 
     @patch("lobster.tools.providers.pubmed_provider.Entrez")
-    def test_search_with_invalid_date_range(self, mock_entrez, publication_service):
+    def test_search_with_invalid_date_range(self, mock_entrez, content_access_service):
         """Test search with date range that has no publications."""
         mock_search_handle = StringIO(
             json.dumps(
@@ -123,7 +121,7 @@ class TestPubMedSearchNoResults:
         mock_entrez.esearch.return_value = mock_search_handle
 
         # Search for future date range (no results)
-        result = publication_service.search_literature(
+        result = content_access_service.search_literature(
             query="cancer research", filters={"date_range": "2050/01/01:2050/12/31"}
         )
 
@@ -131,7 +129,7 @@ class TestPubMedSearchNoResults:
         assert "0" in result or "no" in result.lower()
 
     @patch("lobster.tools.providers.pubmed_provider.Entrez")
-    def test_search_misspelled_terms(self, mock_entrez, publication_service):
+    def test_search_misspelled_terms(self, mock_entrez, content_access_service):
         """Test search with heavily misspelled terms (no results)."""
         mock_search_handle = StringIO(
             json.dumps(
@@ -145,7 +143,7 @@ class TestPubMedSearchNoResults:
         )
         mock_entrez.esearch.return_value = mock_search_handle
 
-        result = publication_service.search_literature(
+        result = content_access_service.search_literature(
             query="braest cancr gnomic squencing", max_results=10  # Misspelled
         )
 
@@ -162,7 +160,7 @@ class TestPublicationContentExtractionFailures:
     """Test failures in extracting publication full text/content."""
 
     @patch("requests.Session.get")
-    def test_404_publication_not_found(self, mock_get, publication_service):
+    def test_404_publication_not_found(self, mock_get, content_access_service):
         """Test extraction failure when publication URL returns 404."""
         mock_response = Mock()
         mock_response.status_code = 404
@@ -170,7 +168,7 @@ class TestPublicationContentExtractionFailures:
         mock_get.return_value = mock_response
 
         # Attempt to extract metadata
-        result = publication_service.extract_publication_metadata(
+        result = content_access_service.extract_metadata(
             identifier="PMID:99999999", source=PublicationSource.PUBMED
         )
 
@@ -179,14 +177,14 @@ class TestPublicationContentExtractionFailures:
         assert "error" in result.lower() or "not found" in result.lower()
 
     @patch("requests.Session.get")
-    def test_paywalled_publication(self, mock_get, publication_service):
+    def test_paywalled_publication(self, mock_get, content_access_service):
         """Test extraction failure for paywalled publication."""
         mock_response = Mock()
         mock_response.status_code = 403
         mock_response.raise_for_status.side_effect = requests.HTTPError("403 Forbidden")
         mock_get.return_value = mock_response
 
-        result = publication_service.extract_publication_metadata(
+        result = content_access_service.extract_metadata(
             identifier="10.1038/s41586-021-12345-6", source=PublicationSource.PUBMED
         )
 
@@ -199,7 +197,7 @@ class TestPublicationContentExtractionFailures:
         )
 
     @patch("lobster.tools.providers.pubmed_provider.Entrez")
-    def test_malformed_xml_response(self, mock_entrez, publication_service):
+    def test_malformed_xml_response(self, mock_entrez, content_access_service):
         """Test handling of malformed XML in metadata response."""
         # Return invalid XML
         mock_fetch_handle = StringIO("<DocumentSummary><incomplete_tag>")
@@ -207,16 +205,16 @@ class TestPublicationContentExtractionFailures:
 
         # Should handle parsing error gracefully
         with pytest.raises(Exception):
-            publication_service.extract_publication_metadata(
+            content_access_service.extract_metadata(
                 identifier="PMID:12345678", source=PublicationSource.PUBMED
             )
 
     @patch("requests.Session.get")
-    def test_network_timeout_during_extraction(self, mock_get, publication_service):
+    def test_network_timeout_during_extraction(self, mock_get, content_access_service):
         """Test extraction failure due to network timeout."""
         mock_get.side_effect = requests.Timeout("Connection timed out")
 
-        result = publication_service.extract_publication_metadata(
+        result = content_access_service.extract_metadata(
             identifier="PMID:12345678", source=PublicationSource.PUBMED
         )
 
@@ -224,7 +222,7 @@ class TestPublicationContentExtractionFailures:
         assert "error" in result.lower() or "timeout" in result.lower()
 
     @patch("lobster.tools.providers.pubmed_provider.Entrez")
-    def test_empty_abstract_content(self, mock_entrez, publication_service):
+    def test_empty_abstract_content(self, mock_entrez, content_access_service):
         """Test handling of publications with empty abstract."""
         mock_fetch_handle = StringIO(
             """<DocumentSummary uid="12345678">
@@ -235,7 +233,7 @@ class TestPublicationContentExtractionFailures:
         )
         mock_entrez.efetch.return_value = mock_fetch_handle
 
-        result = publication_service.extract_publication_metadata(
+        result = content_access_service.extract_metadata(
             identifier="PMID:12345678", source=PublicationSource.PUBMED
         )
 
@@ -252,13 +250,13 @@ class TestPublicationContentExtractionFailures:
 class TestInvalidPublicationIdentifiers:
     """Test handling of invalid publication identifiers."""
 
-    def test_fake_pmid(self, publication_service):
+    def test_fake_pmid(self, content_access_service):
         """Test handling of non-existent PMID."""
         fake_pmid = "PMID:99999999999"
 
         # Should validate identifier format
         is_valid = (
-            publication_service.registry.get_default_provider().validate_identifier(
+            content_access_service.registry.get_default_provider().validate_identifier(
                 fake_pmid
             )
         )
@@ -266,7 +264,7 @@ class TestInvalidPublicationIdentifiers:
         # May be valid format but won't exist
         assert isinstance(is_valid, bool)
 
-    def test_malformed_doi(self, publication_service):
+    def test_malformed_doi(self, content_access_service):
         """Test handling of malformed DOI."""
         malformed_dois = [
             "10.1038",  # Incomplete
@@ -276,34 +274,34 @@ class TestInvalidPublicationIdentifiers:
         ]
 
         for doi in malformed_dois:
-            provider = publication_service.registry.get_default_provider()
+            provider = content_access_service.registry.get_default_provider()
             # Should reject or handle gracefully
             is_valid = provider.validate_identifier(doi)
 
             # Either invalid or None
             assert is_valid is False or is_valid is None or isinstance(is_valid, bool)
 
-    def test_pmid_with_letters(self, publication_service):
+    def test_pmid_with_letters(self, content_access_service):
         """Test PMID containing letters (invalid)."""
         invalid_pmid = "PMID:123ABC456"
 
-        provider = publication_service.registry.get_default_provider()
+        provider = content_access_service.registry.get_default_provider()
         is_valid = provider.validate_identifier(invalid_pmid)
 
         assert is_valid is False or is_valid is None
 
-    def test_empty_identifier(self, publication_service):
+    def test_empty_identifier(self, content_access_service):
         """Test empty identifier string."""
         empty_identifiers = ["", "   ", "PMID:", "doi:"]
 
         for identifier in empty_identifiers:
-            result = publication_service.extract_publication_metadata(identifier)
+            result = content_access_service.extract_metadata(identifier)
 
             # Should handle gracefully with error message
             assert isinstance(result, str)
             assert "error" in result.lower() or "invalid" in result.lower()
 
-    def test_url_as_identifier(self, publication_service):
+    def test_url_as_identifier(self, content_access_service):
         """Test full URL passed as identifier (should extract DOI/PMID)."""
         urls = [
             "https://pubmed.ncbi.nlm.nih.gov/12345678/",
@@ -313,7 +311,7 @@ class TestInvalidPublicationIdentifiers:
 
         for url in urls:
             # Should extract identifier from URL
-            provider = publication_service.registry.get_default_provider()
+            provider = content_access_service.registry.get_default_provider()
             is_valid = provider.validate_identifier(url)
 
             # Should handle URL extraction
@@ -330,7 +328,7 @@ class TestDatabaseSearchEdgeCases:
     """Test edge cases in database searches."""
 
     @patch("lobster.tools.providers.pubmed_provider.Entrez")
-    def test_search_with_special_characters(self, mock_entrez, publication_service):
+    def test_search_with_special_characters(self, mock_entrez, content_access_service):
         """Test search with special characters (quotes, operators)."""
         mock_search_handle = StringIO(
             json.dumps(
@@ -353,7 +351,7 @@ class TestDatabaseSearchEdgeCases:
         ]
 
         for query in special_queries:
-            result = publication_service.search_literature(query=query, max_results=5)
+            result = content_access_service.search_literature(query=query, max_results=5)
 
             # Should handle special characters
             assert isinstance(result, str)
@@ -365,7 +363,7 @@ class TestDatabaseSearchEdgeCases:
             )
 
     @patch("lobster.tools.providers.pubmed_provider.Entrez")
-    def test_search_with_sql_injection_attempt(self, mock_entrez, publication_service):
+    def test_search_with_sql_injection_attempt(self, mock_entrez, content_access_service):
         """Test that SQL injection attempts are safely handled."""
         mock_search_handle = StringIO(
             json.dumps(
@@ -387,7 +385,7 @@ class TestDatabaseSearchEdgeCases:
         ]
 
         for query in injection_queries:
-            result = publication_service.search_literature(query=query, max_results=5)
+            result = content_access_service.search_literature(query=query, max_results=5)
 
             # Should handle safely (treat as normal text)
             assert isinstance(result, str)
@@ -395,7 +393,7 @@ class TestDatabaseSearchEdgeCases:
             assert "DROP" not in result or "SELECT" not in result
 
     @patch("lobster.tools.providers.pubmed_provider.Entrez")
-    def test_search_with_unicode_characters(self, mock_entrez, publication_service):
+    def test_search_with_unicode_characters(self, mock_entrez, content_access_service):
         """Test search with Unicode characters."""
         mock_search_handle = StringIO(
             json.dumps(
@@ -418,13 +416,13 @@ class TestDatabaseSearchEdgeCases:
         ]
 
         for query in unicode_queries:
-            result = publication_service.search_literature(query=query, max_results=5)
+            result = content_access_service.search_literature(query=query, max_results=5)
 
             # Should handle Unicode
             assert isinstance(result, str)
 
     @patch("lobster.tools.providers.pubmed_provider.Entrez")
-    def test_search_with_very_long_query(self, mock_entrez, publication_service):
+    def test_search_with_very_long_query(self, mock_entrez, content_access_service):
         """Test search with extremely long query string."""
         mock_search_handle = StringIO(
             json.dumps(
@@ -441,7 +439,7 @@ class TestDatabaseSearchEdgeCases:
         # Generate very long query (>1000 characters)
         long_query = " AND ".join([f"gene{i}" for i in range(200)])
 
-        result = publication_service.search_literature(query=long_query, max_results=5)
+        result = content_access_service.search_literature(query=long_query, max_results=5)
 
         # Should handle long query (may truncate or reject)
         assert isinstance(result, str)
@@ -457,7 +455,7 @@ class TestGEODatasetLookupFailures:
     """Test GEO dataset lookup failures in publication context."""
 
     @patch("lobster.tools.providers.geo_provider.Entrez")
-    def test_geo_accession_not_found(self, mock_entrez, publication_service):
+    def test_geo_accession_not_found(self, mock_entrez, content_access_service):
         """Test lookup of non-existent GEO accession."""
         mock_search_handle = StringIO(
             json.dumps(
@@ -472,8 +470,8 @@ class TestGEODatasetLookupFailures:
         mock_entrez.esearch.return_value = mock_search_handle
 
         # Search for non-existent accession
-        result = publication_service.search_datasets_directly(
-            query="GSE999999999", data_type=DatasetType.GEO, max_results=5
+        result = content_access_service.discover_datasets(
+            query="GSE999999999", dataset_type=DatasetType.GEO, max_results=5
         )
 
         # Should handle not found
@@ -481,7 +479,7 @@ class TestGEODatasetLookupFailures:
         assert "not found" in result.lower() or "0" in result or "no" in result.lower()
 
     @patch("lobster.tools.providers.geo_provider.Entrez")
-    def test_geo_dataset_from_invalid_pmid(self, mock_entrez, publication_service):
+    def test_geo_dataset_from_invalid_pmid(self, mock_entrez, content_access_service):
         """Test finding GEO datasets from invalid PMID."""
         mock_search_handle = StringIO(
             json.dumps(
@@ -495,7 +493,7 @@ class TestGEODatasetLookupFailures:
         )
         mock_entrez.esearch.return_value = mock_search_handle
 
-        result = publication_service.find_datasets_from_publication(
+        result = content_access_service.find_linked_datasets(
             identifier="PMID:99999999", dataset_types=[DatasetType.GEO]
         )
 
@@ -508,13 +506,13 @@ class TestGEODatasetLookupFailures:
         )
 
     @patch("lobster.tools.providers.geo_provider.Entrez")
-    def test_geo_metadata_extraction_failure(self, mock_entrez, publication_service):
+    def test_geo_metadata_extraction_failure(self, mock_entrez, content_access_service):
         """Test failure in extracting GEO metadata."""
         # Return malformed response
         mock_fetch_handle = StringIO("<invalid_xml>")
         mock_entrez.efetch.return_value = mock_fetch_handle
 
-        result = publication_service.extract_publication_metadata(
+        result = content_access_service.extract_metadata(
             identifier="GSE123456", source=PublicationSource.GEO
         )
 
@@ -523,7 +521,7 @@ class TestGEODatasetLookupFailures:
         assert "error" in result.lower() or "failed" in result.lower()
 
     @patch("lobster.tools.providers.geo_provider.Entrez")
-    def test_geo_search_with_no_samples(self, mock_entrez, publication_service):
+    def test_geo_search_with_no_samples(self, mock_entrez, content_access_service):
         """Test GEO dataset with zero samples."""
         mock_search_handle = StringIO(
             json.dumps(
@@ -547,22 +545,22 @@ class TestGEODatasetLookupFailures:
         )
         mock_entrez.efetch.return_value = mock_fetch_handle
 
-        result = publication_service.search_datasets_directly(
-            query="empty dataset", data_type=DatasetType.GEO, max_results=5
+        result = content_access_service.discover_datasets(
+            query="empty dataset", dataset_type=DatasetType.GEO, max_results=5
         )
 
         # Should handle or warn about 0 samples
         assert isinstance(result, str)
 
     @patch("lobster.tools.providers.geo_provider.Entrez")
-    def test_geo_network_error_during_search(self, mock_entrez, publication_service):
+    def test_geo_network_error_during_search(self, mock_entrez, content_access_service):
         """Test network error during GEO search."""
         mock_entrez.esearch.side_effect = Exception("Network connection failed")
 
         # Should handle network error gracefully
         with pytest.raises(Exception):
-            publication_service.search_datasets_directly(
-                query="test query", data_type=DatasetType.GEO, max_results=5
+            content_access_service.discover_datasets(
+                query="test query", dataset_type=DatasetType.GEO, max_results=5
             )
 
 
@@ -577,7 +575,7 @@ class TestPublicationWorkflowEdgeCases:
 
     @patch("lobster.tools.providers.pubmed_provider.Entrez")
     def test_search_then_extract_nonexistent_paper(
-        self, mock_entrez, publication_service
+        self, mock_entrez, content_access_service
     ):
         """Test workflow: search returns result, but extraction fails."""
         # Search succeeds
@@ -593,7 +591,7 @@ class TestPublicationWorkflowEdgeCases:
         )
         mock_entrez.esearch.return_value = mock_search_handle
 
-        search_result = publication_service.search_literature(
+        search_result = content_access_service.search_literature(
             query="test query", max_results=1
         )
         assert isinstance(search_result, str)
@@ -602,14 +600,14 @@ class TestPublicationWorkflowEdgeCases:
         mock_entrez.efetch.side_effect = Exception("Record not found")
 
         with pytest.raises(Exception):
-            publication_service.extract_publication_metadata(
+            content_access_service.extract_metadata(
                 identifier="PMID:12345678", source=PublicationSource.PUBMED
             )
 
     @patch("lobster.tools.providers.pubmed_provider.Entrez")
     @patch("lobster.tools.providers.geo_provider.Entrez")
     def test_paper_with_no_geo_datasets(
-        self, mock_geo_entrez, mock_pubmed_entrez, publication_service
+        self, mock_geo_entrez, mock_pubmed_entrez, content_access_service
     ):
         """Test finding datasets from paper with no associated GEO data."""
         # Paper exists
@@ -634,7 +632,7 @@ class TestPublicationWorkflowEdgeCases:
         )
         mock_geo_entrez.esearch.return_value = mock_search_handle
 
-        result = publication_service.find_datasets_from_publication(
+        result = content_access_service.find_linked_datasets(
             identifier="PMID:12345678", dataset_types=[DatasetType.GEO]
         )
 
@@ -647,13 +645,13 @@ class TestPublicationWorkflowEdgeCases:
         )
 
     @patch("lobster.tools.providers.pubmed_provider.Entrez")
-    def test_rate_limit_during_batch_search(self, mock_entrez, publication_service):
+    def test_rate_limit_during_batch_search(self, mock_entrez, content_access_service):
         """Test rate limiting during batch publication search."""
         # Simulate rate limit error
         mock_entrez.esearch.side_effect = Exception("API rate limit exceeded")
 
         with pytest.raises(Exception, match="rate limit"):
-            publication_service.search_literature(
+            content_access_service.search_literature(
                 query="test query", max_results=100  # Large request
             )
 
@@ -668,7 +666,7 @@ class TestPublicationServiceStress:
     """Stress tests for publication service."""
 
     @patch("lobster.tools.providers.pubmed_provider.Entrez")
-    def test_many_concurrent_searches(self, mock_entrez, publication_service):
+    def test_many_concurrent_searches(self, mock_entrez, content_access_service):
         """Test many concurrent literature searches."""
         mock_search_handle = StringIO(
             json.dumps(
@@ -686,7 +684,7 @@ class TestPublicationServiceStress:
         from concurrent.futures import ThreadPoolExecutor
 
         def search_worker(query):
-            return publication_service.search_literature(query=query, max_results=5)
+            return content_access_service.search_literature(query=query, max_results=5)
 
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = [executor.submit(search_worker, f"query_{i}") for i in range(10)]

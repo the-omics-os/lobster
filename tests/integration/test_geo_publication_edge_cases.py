@@ -32,7 +32,6 @@ import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.geo_service import GEOService
-from lobster.tools.publication_service import PublicationService
 
 # ===============================================================================
 # Fixtures
@@ -61,12 +60,6 @@ def mock_data_manager(temp_cache_dir):
 def geo_service(mock_data_manager, temp_cache_dir):
     """Create GEOService instance."""
     return GEOService(data_manager=mock_data_manager, cache_dir=str(temp_cache_dir))
-
-
-@pytest.fixture
-def publication_service(mock_data_manager):
-    """Create PublicationService instance."""
-    return PublicationService(data_manager=mock_data_manager)
 
 
 @pytest.fixture

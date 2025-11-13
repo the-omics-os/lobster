@@ -245,6 +245,31 @@ class TestSupervisorHandoffCoordination:
         assert handoff_tool.name == "transfer_to_research_agent"
         assert "research agent" in handoff_tool.description.lower()
 
+    def test_handoff_to_metadata_assistant(self, mock_data_manager, mock_llm):
+        """Test handoff to metadata_assistant for metadata operations.
+
+        Tests supervisor's ability to hand off to metadata_assistant for:
+        - Sample ID mapping between datasets
+        - Metadata standardization to schemas
+        - Dataset content validation
+
+        Phase 3 addition: metadata_assistant handles cross-dataset metadata operations.
+        """
+        from lobster.agents.langgraph_supervisor.handoff import create_handoff_tool
+
+        # Create a handoff tool for metadata_assistant
+        handoff_tool = create_handoff_tool(
+            agent_name="metadata_assistant",
+            description="Transfer to metadata assistant for cross-dataset metadata operations",
+        )
+
+        # Test that handoff tool is created properly
+        assert handoff_tool.name == "transfer_to_metadata_assistant"
+        assert "metadata assistant" in handoff_tool.description.lower()
+
+        # Verify handoff tool includes expected operations
+        assert "metadata" in handoff_tool.description.lower()
+
     def test_invalid_handoff_handling(self, mock_llm):
         """Test handling of invalid handoff requests."""
         # Test that supervisor can be created without issues
