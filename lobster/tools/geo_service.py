@@ -511,7 +511,9 @@ class GEOService:
                 logger.info(f"Detected GDS identifier: {clean_geo_id}")
                 return self._fetch_gds_metadata_and_convert(clean_geo_id)
             elif not clean_geo_id.startswith("GSE"):
-                logger.error(f"Invalid GEO ID format: {geo_id}. Must be a GSE or GDS accession (e.g., GSE194247 or GDS5826).")
+                logger.error(
+                    f"Invalid GEO ID format: {geo_id}. Must be a GSE or GDS accession (e.g., GSE194247 or GDS5826)."
+                )
                 return (None, None)
 
             # Handle GSE identifiers (existing logic)
@@ -567,7 +569,9 @@ class GEOService:
                     return (None, None)
 
             if gse is None:
-                logger.error(f"Failed to fetch metadata for {gse_id} after multiple retry attempts.")
+                logger.error(
+                    f"Failed to fetch metadata for {gse_id} after multiple retry attempts."
+                )
                 return (None, None)
 
             metadata = self._extract_metadata(gse)
@@ -609,7 +613,9 @@ class GEOService:
             raise
         except Exception as geoparse_error:
             logger.error(f"GEOparse metadata fetch failed: {geoparse_error}")
-            logger.error(f"Failed to fetch metadata for {gse_id}. GEOparse ({geoparse_error}) failed.")
+            logger.error(
+                f"Failed to fetch metadata for {gse_id}. GEOparse ({geoparse_error}) failed."
+            )
             return (None, None)
 
     def _fetch_gds_metadata_and_convert(
@@ -685,7 +691,9 @@ class GEOService:
 
             # Check if metadata fetch failed (returns (None, None) on error)
             if result[0] is None:
-                logger.error(f"Failed to fetch GSE metadata for {gse_id} (from GDS {gds_id})")
+                logger.error(
+                    f"Failed to fetch GSE metadata for {gse_id} (from GDS {gds_id})"
+                )
                 return (None, None)
 
             gse_metadata, validation_result = result

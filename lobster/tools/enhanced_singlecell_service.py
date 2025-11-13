@@ -352,14 +352,14 @@ class EnhancedSingleCellService:
             # Scanpy distinguishes between "parameter not provided" vs "parameter=None"
             # When groups=None is explicitly passed, scanpy's legacy_api_wrap fails
             scanpy_kwargs = {
-                'groupby': groupby,
-                'method': method,
-                'n_genes': n_genes,
-                'use_raw': True,
+                "groupby": groupby,
+                "method": method,
+                "n_genes": n_genes,
+                "use_raw": True,
             }
 
             if groups is not None:
-                scanpy_kwargs['groups'] = groups
+                scanpy_kwargs["groups"] = groups
 
             sc.tl.rank_genes_groups(adata_markers, **scanpy_kwargs)
 
