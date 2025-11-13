@@ -136,9 +136,9 @@ class DoclingService:
             # for compatibility across docling-core versions
             logger_paths = [
                 "docling_core.transforms.chunker.html_backend",  # Legacy path
-                "docling_core.transforms.serializer.html",       # v2.50+ path
-                "docling_core.transforms.chunker",               # Parent logger
-                "docling_core.transforms",                        # Broad coverage
+                "docling_core.transforms.serializer.html",  # v2.50+ path
+                "docling_core.transforms.chunker",  # Parent logger
+                "docling_core.transforms",  # Broad coverage
             ]
             for logger_path in logger_paths:
                 logging.getLogger(logger_path).setLevel(logging.ERROR)

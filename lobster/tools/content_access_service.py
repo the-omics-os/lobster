@@ -1180,9 +1180,7 @@ class ContentAccessService:
                         )
                     else:
                         status = "❌"
-                        lines.append(
-                            f"    {status} {capability:30s} → Not available"
-                        )
+                        lines.append(f"    {status} {capability:30s} → Not available")
                 lines.append("")
 
             # Section 2: Registered Providers
@@ -1208,7 +1206,9 @@ class ContentAccessService:
                 for dtype in dataset_types:
                     provider = self.registry.get_provider_for_dataset_type(dtype)
                     if provider:
-                        lines.append(f"  ✅ {dtype.value:20s} → {type(provider).__name__}")
+                        lines.append(
+                            f"  ✅ {dtype.value:20s} → {type(provider).__name__}"
+                        )
             else:
                 lines.append("  ❌ No dataset types registered")
             lines.append("")
@@ -1227,7 +1227,9 @@ class ContentAccessService:
             lines.append("")
             lines.append("  Tier 3 (Slow): 2-8s")
             lines.append("    - get_full_content (Webpage): WebpageProvider")
-            lines.append("    - get_full_content (PDF): WebpageProvider + DoclingService")
+            lines.append(
+                "    - get_full_content (PDF): WebpageProvider + DoclingService"
+            )
             lines.append("")
 
             # Section 5: Cascade Logic
@@ -1250,7 +1252,9 @@ class ContentAccessService:
                 parameters={
                     "provider_count": len(all_providers),
                     "capability_count": len(capability_dict),
-                    "dataset_types": [dt.value for dt in dataset_types] if dataset_types else [],
+                    "dataset_types": (
+                        [dt.value for dt in dataset_types] if dataset_types else []
+                    ),
                 },
                 description="Capability query via ContentAccessService",
             )

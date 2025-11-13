@@ -169,6 +169,63 @@ class GEOProvider(BasePublicationProvider):
         """Return list of dataset types supported by GEO."""
         return [DatasetType.GEO]
 
+    @property
+    def priority(self) -> int:
+        """
+        Return provider priority for capability-based routing.
+
+        GEO has high priority (10) as the authoritative source for GEO datasets.
+        Provides comprehensive dataset discovery, metadata extraction, and
+        validation for genomics data.
+
+        Returns:
+            int: Priority 10 (high priority)
+        """
+        return 10
+
+    def get_supported_capabilities(self) -> Dict[str, bool]:
+        """
+        Return capabilities supported by GEO provider.
+
+        GEO excels at dataset discovery, metadata extraction and validation,
+        and multi-omics integration through GEO SuperSeries. It's the
+        authoritative source for GEO datasets but doesn't provide literature
+        search or full-text access.
+
+        Supported capabilities:
+        - DISCOVER_DATASETS: Search GEO database (db=gds parameter)
+        - FIND_LINKED_DATASETS: Reverse lookup (dataset → publication)
+        - EXTRACT_METADATA: Parse SOFT files for dataset metadata
+        - VALIDATE_METADATA: Check sample counts, platform info, design
+        - QUERY_CAPABILITIES: Dynamic capability discovery
+        - INTEGRATE_MULTI_OMICS: Map samples across GEO SuperSeries
+
+        Not supported:
+        - SEARCH_LITERATURE: No publication search (use PubMedProvider)
+        - GET_ABSTRACT: No abstract retrieval
+        - GET_FULL_CONTENT: No full-text access
+        - EXTRACT_METHODS: No methods extraction
+        - EXTRACT_PDF: No PDF processing
+
+        Returns:
+            Dict[str, bool]: Capability support mapping
+        """
+        from lobster.tools.providers.base_provider import ProviderCapability
+
+        return {
+            ProviderCapability.SEARCH_LITERATURE: False,
+            ProviderCapability.DISCOVER_DATASETS: True,
+            ProviderCapability.FIND_LINKED_DATASETS: True,
+            ProviderCapability.EXTRACT_METADATA: True,
+            ProviderCapability.VALIDATE_METADATA: True,
+            ProviderCapability.QUERY_CAPABILITIES: True,
+            ProviderCapability.GET_ABSTRACT: False,
+            ProviderCapability.GET_FULL_CONTENT: False,
+            ProviderCapability.EXTRACT_METHODS: False,
+            ProviderCapability.EXTRACT_PDF: False,
+            ProviderCapability.INTEGRATE_MULTI_OMICS: True,
+        }
+
     def validate_identifier(self, identifier: str) -> bool:
         """
         Validate GEO identifiers.

@@ -97,6 +97,87 @@ class WebpageProvider:
             f"(available: {self.docling_service.is_available()})"
         )
 
+    @property
+    def source(self) -> str:
+        """Return webpage as the content source."""
+        return "webpage"
+
+    @property
+    def supported_dataset_types(self) -> list:
+        """
+        Return list of dataset types supported by WebpageProvider.
+
+        WebpageProvider doesn't host or discover datasets - it extracts
+        content from publisher webpages.
+
+        Returns:
+            list: Empty list (no dataset support)
+        """
+        return []
+
+    @property
+    def priority(self) -> int:
+        """
+        Return provider priority for capability-based routing.
+
+        WebpageProvider has medium priority (50) as a fallback after PMC
+        but before PDF extraction:
+        - Faster than PDF (2-5s vs. 3-8s)
+        - Handles publisher HTML layouts
+        - Falls back when PMC unavailable (60-70% of papers)
+
+        Priority cascade: PMC (10) → Webpage (50) → PDF (100)
+
+        Returns:
+            int: Priority 50 (medium priority)
+        """
+        return 50
+
+    def get_supported_capabilities(self) -> Dict[str, bool]:
+        """
+        Return capabilities supported by WebpageProvider.
+
+        WebpageProvider extracts full-text content from publisher webpages
+        using Docling's HTML parsing. It can also handle PDF extraction
+        via delegation to DoclingService (composition pattern).
+
+        Supported capabilities:
+        - QUERY_CAPABILITIES: Dynamic capability discovery
+        - GET_FULL_CONTENT: HTML webpage extraction (2-5s)
+        - EXTRACT_METHODS: Heuristic methods extraction from HTML
+        - EXTRACT_PDF: Delegates to DoclingService for PDF processing
+
+        Not supported:
+        - SEARCH_LITERATURE: No search (use PubMedProvider)
+        - DISCOVER_DATASETS: No dataset discovery (use GEOProvider)
+        - FIND_LINKED_DATASETS: No dataset linking
+        - EXTRACT_METADATA: No metadata extraction
+        - VALIDATE_METADATA: No metadata validation
+        - GET_ABSTRACT: No abstract retrieval (use PMCProvider)
+        - INTEGRATE_MULTI_OMICS: No multi-omics integration
+
+        Note: EXTRACT_PDF uses composition pattern - WebpageProvider
+        delegates to DoclingService internally (lines 91-93).
+
+        Returns:
+            Dict[str, bool]: Capability support mapping
+        """
+        from lobster.tools.providers.base_provider import ProviderCapability
+
+        return {
+            ProviderCapability.SEARCH_LITERATURE: False,
+            ProviderCapability.DISCOVER_DATASETS: False,
+            ProviderCapability.FIND_LINKED_DATASETS: False,
+            ProviderCapability.EXTRACT_METADATA: False,
+            ProviderCapability.VALIDATE_METADATA: False,
+            ProviderCapability.QUERY_CAPABILITIES: True,
+            ProviderCapability.GET_ABSTRACT: False,
+            ProviderCapability.GET_FULL_CONTENT: True,
+            ProviderCapability.EXTRACT_METHODS: True,
+            ProviderCapability.EXTRACT_PDF: True,  # Via DoclingService delegation
+            ProviderCapability.INTEGRATE_MULTI_OMICS: False,
+        }
+
     def can_handle(self, url: str) -> bool:
         """
         Check if this provider can handle the URL.

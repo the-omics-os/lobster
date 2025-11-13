@@ -1,6 +1,10 @@
 """
 Integration tests for Research Agent PDF resolution workflows.
 
+⚠️ ARCHIVED: These tests reference the archived ResearchAgentAssistant.
+PDF resolution functionality will be migrated to research_agent in Phase 4.
+See lobster/agents/archive/ARCHIVE_NOTICE.md for migration details.
+
 These tests simulate real user sessions with proper mocking of external dependencies.
 Tests are designed to run successfully with pytest and verify end-to-end workflows.
 """
@@ -9,7 +13,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from lobster.agents.research_agent_assistant import ResearchAgentAssistant
+from lobster.agents.archive.research_agent_assistant import ResearchAgentAssistant
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.providers.publication_resolver import PublicationResolutionResult
 from lobster.tools.unified_content_service import (

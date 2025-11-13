@@ -164,6 +164,62 @@ class PubMedProvider(BasePublicationProvider):
         """Return list of dataset types supported by NCBI."""
         return [DatasetType.BIOPROJECT, DatasetType.BIOSAMPLE, DatasetType.DBGAP]
 
+    @property
+    def priority(self) -> int:
+        """
+        Return provider priority for capability-based routing.
+
+        PubMed has high priority (10) due to fast NCBI API access and
+        authoritative metadata. Ideal for literature search and finding
+        linked datasets via ELink.
+
+        Returns:
+            int: Priority 10 (high priority)
+        """
+        return 10
+
+    def get_supported_capabilities(self) -> Dict[str, bool]:
+        """
+        Return capabilities supported by PubMed provider.
+
+        PubMed excels at literature search, metadata extraction, and linking
+        publications to datasets via NCBI ELink API. It provides fast abstract
+        retrieval but does not offer full-text access (PMC handles that).
+
+        Supported capabilities:
+        - SEARCH_LITERATURE: ESearch API for PubMed/bioRxiv/medRxiv
+        - FIND_LINKED_DATASETS: ELink API to connect PMID → GEO/SRA/BioProject
+        - EXTRACT_METADATA: ESummary API for structured publication metadata
+        - QUERY_CAPABILITIES: Dynamic capability discovery
+        - GET_ABSTRACT: EFetch API for fast abstract retrieval (<500ms)
+
+        Not supported:
+        - DISCOVER_DATASETS: Links to datasets but doesn't search GEO directly
+        - GET_FULL_CONTENT: No full-text access (use PMCProvider)
+        - EXTRACT_METHODS: No methods extraction (use PMCProvider)
+        - EXTRACT_PDF: No PDF processing
+        - VALIDATE_METADATA: No dataset validation
+        - INTEGRATE_MULTI_OMICS: No multi-omics integration
+
+        Returns:
+            Dict[str, bool]: Capability support mapping
+        """
+        from lobster.tools.providers.base_provider import ProviderCapability
+
+        return {
+            ProviderCapability.SEARCH_LITERATURE: True,
+            ProviderCapability.DISCOVER_DATASETS: False,
+            ProviderCapability.FIND_LINKED_DATASETS: True,
+            ProviderCapability.EXTRACT_METADATA: True,
+            ProviderCapability.VALIDATE_METADATA: False,
+            ProviderCapability.QUERY_CAPABILITIES: True,
+            ProviderCapability.GET_ABSTRACT: True,
+            ProviderCapability.GET_FULL_CONTENT: False,
+            ProviderCapability.EXTRACT_METHODS: False,
+            ProviderCapability.EXTRACT_PDF: False,
+            ProviderCapability.INTEGRATE_MULTI_OMICS: False,
+        }
+
     def validate_identifier(self, identifier: str) -> bool:
         """
         Validate PubMed/DOI identifiers.
@@ -714,7 +770,8 @@ class PubMedProvider(BasePublicationProvider):
                 # Add PMC-specific extractions
                 if pmc_full_text.software_tools:
                     methods["tools"] = [
-                        {"text": tool, "value": None} for tool in pmc_full_text.software_tools
+                        {"text": tool, "value": None}
+                        for tool in pmc_full_text.software_tools
                     ]
 
                 if pmc_full_text.github_repos:
@@ -1370,8 +1427,8 @@ class PubMedProvider(BasePublicationProvider):
         """
         try:
             from lobster.tools.providers.pmc_provider import (
-                PMCProvider,
                 PMCNotAvailableError,
+                PMCProvider,
             )
 
             # Initialize PMC provider (reuses same config)

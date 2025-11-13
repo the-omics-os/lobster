@@ -24,7 +24,6 @@ from lobster.tools.providers.pmc_provider import PMCNotAvailableError, PMCProvid
 from lobster.tools.providers.pubmed_provider import PubMedProvider
 from lobster.tools.unified_content_service import UnifiedContentService
 
-
 # ==============================================================================
 # Test Configuration
 # ==============================================================================
@@ -243,9 +242,10 @@ class TestUnifiedContentServiceIntegration:
             unified_content_service.get_full_content(source=NON_PMC_PMID)
 
         # Verify it attempted fallback (error from URL resolution, not PMC)
-        assert "pmc" not in str(exc_info.value).lower() or "not available" in str(
-            exc_info.value
-        ).lower()
+        assert (
+            "pmc" not in str(exc_info.value).lower()
+            or "not available" in str(exc_info.value).lower()
+        )
 
     @patch("lobster.tools.providers.pmc_provider.PMCProvider._make_ncbi_request")
     def test_result_caching(
@@ -586,7 +586,8 @@ class TestErrorRecoveryAndFallback:
 
 
 @pytest.mark.skipif(
-    not LIVE_API_TESTING, reason="Live API testing disabled (set LOBSTER_INTEGRATION_TEST_LIVE=true to enable)"
+    not LIVE_API_TESTING,
+    reason="Live API testing disabled (set LOBSTER_INTEGRATION_TEST_LIVE=true to enable)",
 )
 class TestLiveAPIIntegration:
     """Integration tests with real NCBI API (optional, slow)."""

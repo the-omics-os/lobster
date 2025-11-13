@@ -264,7 +264,7 @@ class TestPMCXMLFetching:
 
         assert xml_text is not None
         assert "PMC8765432" in xml_text
-        assert "<sec sec-type=\"methods\">" in xml_text
+        assert '<sec sec-type="methods">' in xml_text
         mock_request.assert_called_once()
 
     @patch("lobster.tools.providers.pmc_provider.PMCProvider._make_ncbi_request")
@@ -781,7 +781,9 @@ class TestPLOSParagraphFallback:
   </article>
 </pmc-articleset>"""
 
-    def test_extract_methods_from_paragraphs_success(self, pmc_provider, plos_style_xml):
+    def test_extract_methods_from_paragraphs_success(
+        self, pmc_provider, plos_style_xml
+    ):
         """Test successful methods extraction from PLOS body paragraphs."""
         result = pmc_provider.parse_pmc_xml(plos_style_xml)
 
@@ -879,7 +881,9 @@ class TestPLOSParagraphFallback:
         assert result.results_section == ""
         assert result.discussion_section == ""
 
-    def test_paragraph_fallback_does_not_affect_standard_xml(self, pmc_provider, sample_pmc_xml):
+    def test_paragraph_fallback_does_not_affect_standard_xml(
+        self, pmc_provider, sample_pmc_xml
+    ):
         """Test paragraph fallback doesn't interfere with standard JATS XML."""
         result = pmc_provider.parse_pmc_xml(sample_pmc_xml)
 

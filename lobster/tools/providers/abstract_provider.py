@@ -87,6 +87,84 @@ class AbstractProvider:
 
         logger.info("Initialized AbstractProvider with NCBI E-utilities")
 
+    @property
+    def source(self) -> str:
+        """Return abstract provider as the source."""
+        return "abstract"
+
+    @property
+    def supported_dataset_types(self) -> list:
+        """
+        Return list of dataset types supported by AbstractProvider.
+
+        AbstractProvider is a single-purpose fast-path provider for abstract
+        retrieval only. It doesn't handle datasets.
+
+        Returns:
+            list: Empty list (no dataset support)
+        """
+        return []
+
+    @property
+    def priority(self) -> int:
+        """
+        Return provider priority for capability-based routing.
+
+        AbstractProvider has high priority (10) as a specialized fast-path
+        provider for abstract retrieval:
+        - 200-500ms cache miss (NCBI API)
+        - <50ms cache hit
+        - Single-purpose specialist
+
+        Same priority tier as PubMed due to specialization and performance.
+
+        Returns:
+            int: Priority 10 (high priority)
+        """
+        return 10
+
+    def get_supported_capabilities(self) -> dict:
+        """
+        Return capabilities supported by AbstractProvider.
+
+        AbstractProvider is a single-purpose provider specialized for
+        fast abstract retrieval without PDF download. It's part of the
+        two-tier access strategy (Tier 1: quick abstract, Tier 2: full content).
+
+        Supported capabilities:
+        - QUERY_CAPABILITIES: Dynamic capability discovery
+        - GET_ABSTRACT: Core capability - fast abstract retrieval (200-500ms)
+
+        Not supported (all other capabilities):
+        - SEARCH_LITERATURE: No search (use PubMedProvider)
+        - DISCOVER_DATASETS: No dataset discovery (use GEOProvider)
+        - FIND_LINKED_DATASETS: No dataset linking
+        - EXTRACT_METADATA: No metadata extraction
+        - VALIDATE_METADATA: No metadata validation
+        - GET_FULL_CONTENT: No full-text (use PMCProvider/WebpageProvider)
+        - EXTRACT_METHODS: No methods extraction
+        - EXTRACT_PDF: No PDF processing
+        - INTEGRATE_MULTI_OMICS: No multi-omics integration
+
+        Returns:
+            dict: Capability support mapping
+        """
+        from lobster.tools.providers.base_provider import ProviderCapability
+
+        return {
+            ProviderCapability.SEARCH_LITERATURE: False,
+            ProviderCapability.DISCOVER_DATASETS: False,
+            ProviderCapability.FIND_LINKED_DATASETS: False,
+            ProviderCapability.EXTRACT_METADATA: False,
+            ProviderCapability.VALIDATE_METADATA: False,
+            ProviderCapability.QUERY_CAPABILITIES: True,
+            ProviderCapability.GET_ABSTRACT: True,  # CORE capability
+            ProviderCapability.GET_FULL_CONTENT: False,
+            ProviderCapability.EXTRACT_METHODS: False,
+            ProviderCapability.EXTRACT_PDF: False,
+            ProviderCapability.INTEGRATE_MULTI_OMICS: False,
+        }
+
     def get_abstract(self, identifier: str) -> PublicationMetadata:
         """
         Retrieve publication abstract without downloading full PDF.
