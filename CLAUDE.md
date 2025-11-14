@@ -154,7 +154,7 @@ lobster query "analyze GSE12345" --output results.txt  # Save output
 
 | Module | Key Files | Purpose |
 |--------|-----------|---------|
-| **`lobster/agents/`** | singlecell_expert, bulk_rnaseq_expert, ms_proteomics_expert, affinity_proteomics_expert, data_expert, research_agent, supervisor | Specialized AI agents for analysis domains + coordination |
+| **`lobster/agents/`** | singlecell_expert, bulk_rnaseq_expert, ms_proteomics_expert, affinity_proteomics_expert, data_expert, research_agent, metadata_assistant, supervisor | Specialized AI agents for analysis domains + coordination |
 | **`lobster/core/`** | client, api_client, data_manager_v2, provenance, notebook_exporter/executor, schemas/ | Client infrastructure, multi-omics orchestration, W3C-PROV tracking, Jupyter export (v2.3+) |
 | **`lobster/tools/`** | **Transcriptomics:** preprocessing, quality, clustering, enhanced_singlecell, bulk_rnaseq, pseudobulk, differential_formula, concatenation<br>**Proteomics:** preprocessing, quality, analysis, differential, visualization<br>**Data:** geo, content_access (with providers/), docling, metadata_validation, visualization | Stateless analysis services: QC, normalization, DE, clustering, literature mining via provider architecture (PubMed, PMC, GEO, webpage), dataset retrieval |
 | **`lobster/config/`** | agent_config, **agent_registry** (centralized single source of truth), settings | Configuration management, agent registry with auto handoff generation |
@@ -168,6 +168,14 @@ lobster query "analyze GSE12345" --output results.txt  # Save output
 5. **Publication-Quality Output** - Interactive Plotly visualizations with scientific rigor
 6. **Professional & Extensible** - Modular architecture designed for easy addition of future features
 7. **Data Quality Compliance** - Publication-grade standards with 60% compliant, 26% partial implementation
+
+### Research Agent Architecture (Post-Refactoring)
+**Phase 1-6 Refactoring completed:** Provider infrastructure → Service consolidation → Agent specialization
+- **ContentAccessService**: Unified service replacing PublicationService/UnifiedContentService (Phase 2)
+- **Provider Architecture**: 5 providers (PubMed, PMC, GEO, Webpage, Abstract) with capability routing (Phase 1)
+- **research_agent**: 10 tools for discovery/content analysis + workspace caching (Phase 4)
+- **metadata_assistant**: 4 tools for sample mapping, metadata standardization, dataset validation (Phase 3)
+- **Handoff Patterns**: Documented workflows for multi-omics, meta-analysis, control addition (Phase 5)
 
 ### Client Architecture & Cloud/Local Switching
 
@@ -206,8 +214,15 @@ When modifying the codebase, be aware of cloud dependencies:
 
 **DataManagerV2** handles multi-modal data orchestration:
 - Named biological datasets (`Dict[str, AnnData]`), metadata store (GEO/source), W3C-PROV provenance tracking
-- Backend/adapter registry, schema validation (transcriptomics/proteomics)
+- Backend/adapter registry, schema validation (transcriptomics, proteomics, metabolomics, metagenomics)
 - **Workspace restoration** (v2.2+): Session persistence, lazy loading, pattern-based restoration
+
+**Metadata Schemas** (Phase 3+): Pydantic schemas for cross-dataset metadata standardization
+- **TranscriptomicsMetadataSchema**: Sample metadata for single-cell and bulk RNA-seq
+- **ProteomicsMetadataSchema**: Sample metadata for mass spec and affinity proteomics
+- **MetabolomicsMetadataSchema**: Sample metadata for LC-MS, GC-MS, NMR metabolomics
+- **MetagenomicsMetadataSchema**: Sample metadata for 16S, ITS, shotgun metagenomics
+- Used by `metadata_assistant` agent for sample ID mapping, metadata harmonization, dataset validation
 
 **Professional Naming Convention:** `geo_gse12345` → `_quality_assessed` → `_filtered_normalized` → `_doublets_detected` → `_clustered` → `_markers` → `_annotated` → `_pseudobulk`
 
@@ -382,6 +397,8 @@ AGENT_REGISTRY = {
 
 ## Testing Framework
 
+### Basic Test Commands
+
 ```bash
 # Run all tests with coverage
 make test
@@ -392,12 +409,280 @@ make test-fast
 # Run specific categories
 pytest tests/unit/          # Unit tests
 pytest tests/integration/   # Integration tests
+
+# Run real API integration tests (requires API keys)
+pytest tests/integration/ -m real_api
+pytest tests/integration/ -m "real_api and slow"  # Long-running tests
 ```
 
 **Coverage Requirements:**
 - Minimum 80% coverage (targeting 95%+)
 - Test with real bioinformatics data when possible
 - Include edge cases and error conditions
+
+### Integration Testing with Real APIs (Phase 7)
+
+**Test Suite:** 127 tests across 5 integration test files (3988 lines)
+**Status:** ✅ Complete (Phase 7 validation)
+**Documentation:** See `kevin_notes/publisher/research_agent_refactor_phase_7_summary.md`
+
+| Test File | Tests | Coverage | Purpose |
+|-----------|-------|----------|---------|
+| `test_research_agent_real_api.py` | 46 | 10 tools | research_agent with PubMed, PMC, GEO |
+| `test_content_cascade_real_api.py` | 21 | 3-tier cascade | PMC→Webpage→PDF fallback system |
+| `test_metadata_assistant_real_workflows.py` | 27 | 4 tools | Sample mapping, metadata standardization |
+| `test_multi_agent_handoffs_real.py` | 20 | 4 scenarios | Supervisor-mediated handoffs |
+| `test_performance_and_errors_real.py` | 13 | Benchmarking | Performance, rate limiting, error recovery |
+
+**Markers:**
+- `@pytest.mark.real_api` - Requires internet + API keys (NCBI_API_KEY, AWS_BEDROCK_*)
+- `@pytest.mark.slow` - Tests >30s (performance benchmarks, multi-agent workflows)
+- `@pytest.mark.integration` - Multi-component tests
+
+**API Keys Required:**
+```bash
+export AWS_BEDROCK_ACCESS_KEY="your-key"
+export AWS_BEDROCK_SECRET_ACCESS_KEY="your-secret"
+export NCBI_API_KEY="your-ncbi-key"  # Recommended (10/sec vs 3/sec rate limit)
+```
+
+### Performance Benchmarks (Phase 7 Targets)
+
+| Operation | Target | Test Coverage | Notes |
+|-----------|--------|---------------|-------|
+| **Abstract retrieval** | <500ms mean | 100 PMIDs with P95/P99 | 95%+ success rate required |
+| **PMC full text** | <2s mean | 20 papers with tier tracking | 75%+ success rate (some paywalled) |
+| **GEO metadata** | <3s mean | 20 datasets with validation | 75%+ success rate (some deleted) |
+| **Three-tier cascade** | <10s total | PMC→Webpage→PDF | Allows 15s with network overhead |
+
+**Performance test pattern:**
+```python
+from statistics import mean, stdev
+
+latencies = []
+for identifier in test_identifiers:
+    start_time = time.time()
+    result = service.fetch(identifier)
+    latencies.append((time.time() - start_time) * 1000)  # ms
+
+# Statistical analysis
+mean_latency = mean(latencies)
+sorted_latencies = sorted(latencies)
+p95_latency = sorted_latencies[int(len(latencies) * 0.95)]
+p99_latency = sorted_latencies[int(len(latencies) * 0.99)]
+
+assert mean_latency < 500, f"Mean latency {mean_latency:.2f}ms exceeds 500ms target"
+```
+
+### Rate Limiting Compliance
+
+**NCBI Rate Limits:**
+- Without API key: 3 requests/second (0.34s delay)
+- With API key: 10 requests/second (0.11s delay)
+
+**Pattern:**
+```python
+for i, pmid in enumerate(pmids):
+    start_time = time.time()
+    result = pubmed_provider.fetch_abstract(pmid)
+    elapsed = time.time() - start_time
+
+    # Respectful rate limiting
+    if not os.getenv("NCBI_API_KEY"):
+        time.sleep(0.34)  # 3 requests per second
+    else:
+        time.sleep(0.11)  # 10 requests per second
+
+    if (i + 1) % 20 == 0:
+        logger.info(f"Progress: {i+1}/{len(pmids)} completed")
+```
+
+### Test Patterns and Best Practices
+
+#### Module-Scoped Fixtures for Efficiency
+
+```python
+@pytest.fixture(scope="module")
+def content_service(data_manager):
+    """Create ContentAccessService instance once per module."""
+    return ContentAccessService(data_manager=data_manager)
+
+@pytest.fixture(scope="module")
+def benchmark_identifiers():
+    """Known stable identifiers for performance benchmarking."""
+    return {
+        "pmids_100": ["35042229", "33057194", ...],  # 100 PMIDs
+        "geo_datasets_20": ["GSE180759", "GSE156793", ...]  # 20 datasets
+    }
+```
+
+**Benefits:** Single initialization, shared across all tests in class, significant time savings
+
+#### Batch Processing with Error Tolerance
+
+```python
+successful_retrievals = 0
+failed_retrievals = []
+
+for identifier in identifiers:
+    try:
+        result = service.fetch(identifier)
+        if result:
+            successful_retrievals += 1
+    except Exception as e:
+        failed_retrievals.append((identifier, str(e)))
+
+# Assert acceptable success rate
+assert successful_retrievals >= 95, f"Too many failures: {len(failed_retrievals)}/{len(identifiers)}"
+```
+
+**Success rate targets:**
+- Abstract retrieval: ≥95% (100 PMIDs)
+- PMC retrieval: ≥75% (some papers paywalled)
+- GEO metadata: ≥75% (some datasets deleted/restricted)
+
+#### Graceful Degradation Testing
+
+```python
+# Mix valid and invalid identifiers
+mixed_identifiers = [
+    "VALID_ID_1",     # Valid
+    "INVALID_ID",     # Invalid
+    "VALID_ID_2",     # Valid
+]
+
+successful = 0
+failed = 0
+
+for identifier in mixed_identifiers:
+    try:
+        result = service.fetch(identifier)
+        successful += 1 if result else 0
+    except Exception:
+        failed += 1
+
+# Verify partial success
+assert successful >= 2, "Valid IDs should succeed"
+assert failed >= 1, "Invalid IDs should fail"
+```
+
+#### Three-Tier Cascade Testing
+
+```python
+def test_cascade_pmc_to_webpage_fallback(content_service):
+    """Test cascade falls back from PMC to webpage when PMC unavailable."""
+    # Use identifier without PMC (forces webpage fallback)
+    identifier = "10.1038/s41586-021-03852-1"  # Nature DOI
+
+    result = content_service.get_full_content(
+        source=identifier,
+        prefer_webpage=True,
+        max_paragraphs=100
+    )
+
+    assert result is not None
+    assert "content" in result
+    assert len(result["content"]) > 0
+
+    tier_used = result.get("tier_used", "")
+    logger.info(f"Cascade test - Tier used: {tier_used}")
+```
+
+#### Multi-Agent Coordination Testing
+
+**Pattern using AgentClient (full graph):**
+```python
+from lobster.core.client import AgentClient
+
+@pytest.fixture(scope="module")
+def agent_client(data_manager, test_workspace):
+    """Create AgentClient for multi-agent coordination testing."""
+    return AgentClient(
+        data_manager=data_manager,
+        enable_reasoning=False,
+        workspace_path=test_workspace,
+    )
+
+def test_four_agent_workflow_complete(agent_client):
+    """Test complete 4-agent workflow orchestration."""
+    # Step 1: Literature search (research_agent)
+    result1 = agent_client.query("Search PubMed for 'breast cancer RNA-seq'")
+
+    # Step 2: Find dataset (research_agent)
+    result2 = agent_client.query("Find datasets from PMID:35042229")
+
+    # Step 3: Standardize metadata (→ metadata_assistant handoff)
+    result3 = agent_client.query("Standardize GSE180759 to transcriptomics schema")
+
+    # Step 4: Cache to workspace (→ data_expert handoff)
+    result4 = agent_client.query("Cache GSE180759 to workspace")
+
+    # Verify all steps completed
+    assert all([len(r.get("response", "")) > 0 for r in [result1, result2, result3, result4]])
+```
+
+**Key findings:**
+- All handoffs are supervisor-mediated (no direct agent-to-agent communication)
+- Context preserved across handoffs via LangGraph state management
+- Workspace state shared correctly via DataManagerV2
+
+### Integration Test Organization (Phase 7 Structure)
+
+**File structure:**
+```
+tests/integration/
+├── test_research_agent_real_api.py          # 10 research_agent tools
+│   ├── TestLiteratureSearch                  # search_literature (4 tests)
+│   ├── TestRelatedEntries                    # find_related_entries (4 tests)
+│   ├── TestDatasetSearch                     # fast_dataset_search (4 tests)
+│   ├── TestDatasetMetadata                   # get_dataset_metadata (4 tests)
+│   ├── TestMetadataValidation                # validate_dataset_metadata (4 tests)
+│   ├── TestMethodsExtraction                 # extract_methods (4 tests)
+│   ├── TestAbstractSearch                    # fast_abstract_search (4 tests)
+│   ├── TestFullPublication                   # read_full_publication (5 tests) ★
+│   ├── TestWorkspaceWrite                    # write_to_workspace (4 tests)
+│   └── TestWorkspaceRead                     # get_content_from_workspace (7 tests)
+│
+├── test_content_cascade_real_api.py         # 3-tier cascade system
+│   ├── TestPMCFastPath                       # Tier 1: <500ms target (4 tests)
+│   ├── TestWebpageFallback                   # Tier 2: 2-5s target (4 tests)
+│   ├── TestPDFFallback                       # Tier 3: 3-8s target (4 tests)
+│   ├── TestFullCascadeIntegration            # End-to-end (7 tests) ★
+│   └── TestCascadeSystemIntegration          # System reliability (2 tests)
+│
+├── test_metadata_assistant_real_workflows.py # 4 metadata tools
+│   ├── TestMapSamplesByID                    # 4 strategies (7 tests)
+│   ├── TestReadSampleMetadata                # 3 formats (6 tests)
+│   ├── TestStandardizeSampleMetadata         # Pydantic schemas (6 tests)
+│   ├── TestValidateDatasetContent            # 5 checks (6 tests)
+│   └── TestMetadataAssistantWorkflows        # Multi-omics (2 tests)
+│
+├── test_multi_agent_handoffs_real.py        # Supervisor coordination
+│   ├── TestResearchToMetadataHandoff         # research→metadata (4 tests)
+│   ├── TestResearchToDataExpertHandoff       # research→data (4 tests)
+│   ├── TestMetadataToResearchHandback        # metadata→research (4 tests)
+│   ├── TestSupervisorCoordination            # 4-agent workflow (6 tests) ★
+│   └── TestMultiAgentIntegrationWorkflows    # End-to-end pipelines (2 tests)
+│
+└── test_performance_and_errors_real.py      # Benchmarking & error recovery
+    ├── TestAbstractRetrievalPerformance      # 100 PMIDs, P95/P99 (1 test)
+    ├── TestPMCRetrievalPerformance           # 20 papers, tier tracking (1 test)
+    ├── TestGEOMetadataPerformance            # 20 datasets, validation (1 test)
+    ├── TestRateLimitingBehavior              # Backoff, compliance (3 tests)
+    ├── TestInvalidIdentifierHandling         # Error messages (3 tests)
+    ├── TestGracefulDegradation               # Partial failures (3 tests)
+    └── TestPerformanceAndErrorSummary        # E2E workflow (1 test)
+```
+
+**★ Critical tests** - Most important integration paths identified in Phase 7
+
+### Test Maintenance Guidelines
+
+1. **Update benchmark identifiers periodically**: Verify PMIDs/GEO IDs are still active
+2. **Review success rate thresholds**: Adjust 95%/75% if API reliability changes
+3. **Monitor test duration**: Flag tests exceeding 2x expected duration (API issues)
+4. **Track flaky tests**: Use pytest-flaky plugin for transient failures
+5. **Document known failures**: Maintain list of expected failures (paywalled papers)
 
 ## Critical Rules & Architectural Patterns
 
@@ -456,7 +741,7 @@ pytest tests/integration/   # Integration tests
 ```
 CLI → LobsterClientAdapter → {AgentClient (local LangGraph), CloudLobsterClient (HTTP API)}
       ↓
-Agent Registry → Agents (singlecell, bulk, proteomics, data, research, supervisor)
+Agent Registry → Agents (singlecell, bulk, proteomics, data, research, metadata_assistant, supervisor)
       ↓
 DataManagerV2 (modalities, provenance, schemas, backends, workspace v2.2+, notebooks v2.3+)
       ↓

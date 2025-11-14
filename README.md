@@ -12,6 +12,7 @@
 - [🚀 Quick Start](#-quick-start)
 - [💡 Example Usage](#-example-usage)
 - [🧬 Features](#-features)
+- [🔬 Literature Mining & Metadata](#-literature-mining--metadata)
 - [🔧 Configuration](#-configuration)
 - [📚 Documentation](#-documentation)
 - [🤝 Community & Support](#-community--support)
@@ -19,7 +20,7 @@
 
 ## ✨ What is Lobster AI?
 
-Lobster AI is a bioinformatics platform that combines specialized AI agents with open-source tools to analyze complex multi-omics data (starting with transcriptomics). Simply describe your analysis needs in natural language - no coding required.
+Lobster AI is a bioinformatics platform that combines specialized AI agents with open-source tools to analyze complex multi-omics data, discover relevant literature, and manage metadata across datasets. Simply describe your analysis needs in natural language - no coding required.
 
 **Perfect for:**
 - Bioinformatics researchers analyzing RNA-seq data
@@ -232,8 +233,10 @@ lobster query --verbose "load and normalize data"
 
 #### **Data Management**
 - Support for CSV, Excel, H5AD, 10X formats
-- GEO dataset downloading
-- Literature mining via PubMed
+- Multi-source dataset discovery (GEO, SRA, PRIDE, ENA)
+- Literature mining and full-text retrieval
+- Cross-dataset metadata harmonization
+- Sample ID mapping and validation
 - Automatic visualization generation
 
 ### Coming Soon
@@ -251,6 +254,57 @@ lobster query --verbose "load and normalize data"
 #### **Lobster Cloud** *(In Development)*
 - Scalable cloud computing
 - No local hardware requirements
+
+## 🔬 Literature Mining & Metadata
+
+### Literature Discovery
+
+Lobster AI can automatically search scientific literature and extract key information to inform your analyses:
+
+- **Search across databases** - Find relevant papers from PubMed, bioRxiv, and other scientific repositories
+- **Full-text retrieval** - Automatically access complete articles when available
+- **Methods extraction** - Extract experimental protocols, software parameters, and statistical approaches
+- **Citation networks** - Discover related papers and build comprehensive literature reviews
+- **Batch processing** - Analyze multiple publications simultaneously
+
+### Dataset Discovery & Validation
+
+Before downloading or analyzing data, Lobster helps you find and evaluate datasets:
+
+- **Multi-source search** - Search across GEO, SRA, PRIDE, and ENA databases
+- **Automatic metadata extraction** - Get platform details, sample counts, and experimental conditions
+- **Publication linking** - Connect datasets to their associated research papers
+- **Pre-download validation** - Check dataset quality, control samples, and platform consistency
+- **Compatibility assessment** - Evaluate whether datasets meet your analysis requirements
+
+### Cross-Dataset Metadata Operations
+
+Harmonize and validate metadata across multiple studies:
+
+- **Sample ID mapping** - Match samples between different omics datasets (e.g., RNA-seq to proteomics)
+- **Metadata standardization** - Convert diverse metadata formats to common schemas
+- **Quality control** - Validate experimental designs and detect potential issues
+- **Meta-analysis preparation** - Harmonize metadata across multiple studies for combined analysis
+- **Multi-omics integration** - Ensure sample compatibility across different data types
+
+### Natural Language Examples
+
+```bash
+# Literature discovery
+🦞 You: "Find recent papers about CRISPR screens in cancer and extract their methods"
+
+# Dataset search and validation
+🦞 You: "Search GEO for single-cell datasets of pancreatic beta cells with at least 50 samples"
+
+# Cross-dataset operations
+🦞 You: "Map sample IDs between my RNA-seq and proteomics datasets"
+
+# Meta-analysis preparation
+🦞 You: "Check if these three breast cancer datasets are compatible for meta-analysis"
+
+# Automated metadata extraction
+🦞 You: "What analysis parameters did the authors use in PMID:35042229?"
+```
 
 ## 🔧 Configuration
 
