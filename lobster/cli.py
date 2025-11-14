@@ -831,6 +831,15 @@ def init_client(
     # Use local client (existing code)
     console.print("[bold red]💻 Using Lobster Local[/bold red]")
 
+    # Configure logging level based on debug flag
+    from lobster.ui import setup_logging
+    import logging
+
+    if debug:
+        setup_logging(logging.DEBUG)
+    else:
+        setup_logging(logging.WARNING)  # Suppress INFO logs
+
     # Set workspace
     if workspace is None:
         workspace = Path.cwd() / ".lobster_workspace"
@@ -1809,6 +1818,15 @@ def chat(
             suppress=[],
             max_frames=30,
         )
+
+    # Configure logging level based on debug flag
+    from lobster.ui import setup_logging
+    import logging
+
+    if debug:
+        setup_logging(logging.DEBUG)
+    else:
+        setup_logging(logging.WARNING)  # Suppress INFO logs
 
     display_welcome()
 
@@ -4859,13 +4877,16 @@ def query(
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Show detailed tool usage and agent activity"
     ),
+    debug: bool = typer.Option(
+        False, "--debug", "-d", help="Enable debug mode with detailed logging"
+    ),
     output: Optional[Path] = typer.Option(None, "--output", "-o"),
 ):
     """
     Send a single query to the agent system.
     """
     # Initialize client
-    client = init_client(workspace, reasoning, verbose)
+    client = init_client(workspace, reasoning, verbose, debug)
 
     # Process query
     if should_show_progress(client):

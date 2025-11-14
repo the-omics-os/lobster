@@ -445,9 +445,14 @@ def get_console_manager() -> LobsterConsoleManager:
 
 
 def setup_logging(level: int = logging.INFO):
-    """Setup logging with Rich handlers."""
+    """Setup logging with Rich handlers and update all handler levels."""
     console_manager = get_console_manager()
-    logging.getLogger().setLevel(level)
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+
+    # Update all existing handlers to respect the new level
+    for handler in root_logger.handlers:
+        handler.setLevel(level)
 
 
 def print_lobster(*args, **kwargs):
