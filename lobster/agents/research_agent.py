@@ -28,6 +28,53 @@ from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# ============================================================
+# GEO Metadata Verbosity Control
+# ============================================================
+# Field categorization for controlling metadata output verbosity.
+# Used by get_dataset_metadata tool to prevent context overflow.
+
+ESSENTIAL_FIELDS = {
+    "database",
+    "geo_accession",
+    "title",
+    "status",
+    "pubmed_id",
+    "summary",
+}
+
+STANDARD_FIELDS = {
+    "overall_design",
+    "type",
+    "submission_date",
+    "last_update_date",
+    "web_link",
+    "contributor",
+    "contact_name",
+    "contact_email",
+    "contact_institute",
+    "contact_country",
+    "platform_id",
+    "organism",
+    "n_samples",
+    "sample_count",
+}
+
+VERBOSE_FIELDS = {
+    "sample_id",
+    "contact_phone",
+    "contact_department",
+    "contact_address",
+    "contact_city",
+    "contact_zip/postal_code",
+    "supplementary_file",
+    "platform_taxid",
+    "sample_taxid",
+    "relation",
+    "samples",
+    "platforms",
+}
+
 
 def research_agent(
     data_manager: DataManagerV2,
@@ -120,11 +167,24 @@ def research_agent(
                 except json.JSONDecodeError:
                     logger.warning(f"Invalid filters JSON: {filters}")
 
-            results = content_access_service.search_literature(
+            results, stats, ir = content_access_service.search_literature(
                 query=query,
                 max_results=max_results,
                 sources=source_list if source_list else None,
                 filters=filter_dict,
+            )
+
+            # Log to provenance with IR
+            data_manager.log_tool_usage(
+                tool_name="search_literature",
+                parameters={
+                    "query": query,
+                    "max_results": max_results,
+                    "sources": sources,
+                    "filters": filters,
+                },
+                description=f"Literature search: {query[:50]}",
+                ir=ir,  # Pass IR for provenance tracking
             )
 
             logger.info(
@@ -273,11 +333,24 @@ def research_agent(
                 except json.JSONDecodeError:
                     logger.warning(f"Invalid filters JSON: {filters}")
 
-            results = content_access_service.discover_datasets(
+            results, stats, ir = content_access_service.discover_datasets(
                 query=query,
                 dataset_type=dataset_type,
                 max_results=max_results,
                 filters=filter_dict,
+            )
+
+            # Log to provenance with IR
+            data_manager.log_tool_usage(
+                tool_name="fast_dataset_search",
+                parameters={
+                    "query": query,
+                    "data_type": data_type,
+                    "max_results": max_results,
+                    "filters": filters,
+                },
+                description=f"Dataset search: {query[:50]}",
+                ir=ir,  # Pass IR for provenance tracking
             )
 
             logger.info(
@@ -291,7 +364,7 @@ def research_agent(
 
     @tool
     def get_dataset_metadata(
-        identifier: str, source: str = "auto", database: str = None
+        identifier: str, source: str = "auto", database: str = None, level: str = "standard"
     ) -> str:
         """
         Get comprehensive metadata for datasets or publications.
@@ -307,25 +380,33 @@ def research_agent(
             database: Database hint for explicit routing (options: "geo", "sra", "pride", "pubmed").
                      If None, auto-detects from identifier format. Use this to force interpretation
                      when identifier format is ambiguous.
+            level: Metadata verbosity level (default: "standard", options: "brief", "standard", "full").
+                   Controls output length to prevent context overflow:
+                   - "brief": Essential fields only (accession, title, status, pubmed_id, summary)
+                   - "standard": Brief + standard fields with sample/platform previews (recommended)
+                   - "full": All fields including complete nested structures (verbose)
 
         Returns:
             Formatted metadata report with bibliographic and experimental details
 
         Examples:
-            # Get publication metadata (auto-detect)
+            # Get publication metadata (auto-detect, standard verbosity)
             get_dataset_metadata("PMID:12345678")
 
-            # Get dataset metadata (auto-detects GEO)
-            get_dataset_metadata("GSE12345")
+            # Get dataset metadata with brief output (essential fields only)
+            get_dataset_metadata("GSE12345", level="brief")
 
-            # Force GEO interpretation
-            get_dataset_metadata("12345", database="geo")
+            # Get full metadata with all nested structures
+            get_dataset_metadata("GSE12345", level="full")
+
+            # Force GEO interpretation with standard verbosity
+            get_dataset_metadata("12345", database="geo", level="standard")
 
             # Specify publication source for faster lookup
             get_dataset_metadata("10.1038/s41586-021-12345-6", source="pubmed")
 
-            # Get SRA dataset metadata
-            get_dataset_metadata("SRR12345678", database="sra")
+            # Get SRA dataset metadata with brief output
+            get_dataset_metadata("SRR12345678", database="sra", level="brief")
         """
         try:
             # Auto-detect database type from identifier if not specified
@@ -375,10 +456,39 @@ def research_agent(
                         formatted += f"**Database**: GEO\n"
                         formatted += f"**Accession**: {identifier}\n"
 
-                        # Add available metadata fields
+                        # Add available metadata fields with verbosity control
                         if isinstance(metadata_info, dict):
+                            # Determine which fields to show based on level
+                            if level == "brief":
+                                allowed_fields = ESSENTIAL_FIELDS
+                            elif level == "standard":
+                                allowed_fields = ESSENTIAL_FIELDS | STANDARD_FIELDS
+                            else:  # "full"
+                                allowed_fields = None  # Show everything
+
                             for key, value in metadata_info.items():
-                                if value:
+                                if not value:
+                                    continue
+
+                                # Skip field if not in allowed set (unless full mode)
+                                if allowed_fields and key not in allowed_fields:
+                                    continue
+
+                                # Special formatting for nested structures in standard mode
+                                if level == "standard" and key == "samples" and isinstance(value, dict):
+                                    formatted += f"**Sample Count**: {len(value)}\n"
+                                    formatted += "**Sample Preview** (first 3):\n"
+                                    for i, (gsm_id, sample_data) in enumerate(list(value.items())[:3]):
+                                        sample_title = sample_data.get('title', 'No title') if isinstance(sample_data, dict) else str(sample_data)
+                                        formatted += f"  - {gsm_id}: {sample_title}\n"
+                                elif level == "standard" and key == "platforms" and isinstance(value, dict):
+                                    formatted += f"**Platform Count**: {len(value)}\n"
+                                    formatted += "**Platforms**:\n"
+                                    for gpl_id, platform_data in value.items():
+                                        platform_title = platform_data.get('title', 'No title') if isinstance(platform_data, dict) else str(platform_data)
+                                        formatted += f"  - {gpl_id}: {platform_title}\n"
+                                else:
+                                    # Standard field display
                                     formatted += f"**{key.replace('_', ' ').title()}**: {value}\n"
 
                         logger.info(
