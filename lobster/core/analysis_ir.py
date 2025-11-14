@@ -121,6 +121,7 @@ class AnalysisStep:
         execution_context: Random seeds, versions, timestamps, etc.
         validates_on_export: Whether to run AST syntax validation on export
         requires_validation: Whether full execution validation is recommended
+        exportable: Whether to include in notebook export (default True)
 
     Example:
         >>> ir = AnalysisStep(
@@ -170,6 +171,9 @@ class AnalysisStep:
     # Validation flags
     validates_on_export: bool = True
     requires_validation: bool = False
+
+    # Export control
+    exportable: bool = True  # Whether to include in notebook export
 
     def to_dict(self) -> Dict[str, Any]:
         """

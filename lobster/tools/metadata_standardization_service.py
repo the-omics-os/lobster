@@ -10,12 +10,16 @@ Phase 3 implementation for research agent refactoring.
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Union
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 from pydantic import BaseModel, Field, ValidationError
 
+from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.schemas.metabolomics import MetabolomicsMetadataSchema
+from lobster.core.schemas.metagenomics import MetagenomicsMetadataSchema
 from lobster.core.schemas.proteomics import ProteomicsMetadataSchema
 from lobster.core.schemas.transcriptomics import TranscriptomicsMetadataSchema
 from lobster.tools.metadata_validation_service import MetadataValidationService
@@ -39,7 +43,12 @@ class StandardizationResult(BaseModel):
     """
 
     standardized_metadata: List[
-        Union[TranscriptomicsMetadataSchema, ProteomicsMetadataSchema]
+        Union[
+            TranscriptomicsMetadataSchema,
+            ProteomicsMetadataSchema,
+            MetabolomicsMetadataSchema,
+            MetagenomicsMetadataSchema,
+        ]
     ] = Field(default_factory=list, description="Standardized metadata schemas")
     validation_errors: Dict[str, str] = Field(
         default_factory=dict, description="Sample ID -> validation error message"
@@ -118,9 +127,78 @@ class MetadataStandardizationService:
             "proteomics": ProteomicsMetadataSchema,
             "mass_spectrometry": ProteomicsMetadataSchema,
             "affinity": ProteomicsMetadataSchema,
+            "metabolomics": MetabolomicsMetadataSchema,
+            "metagenomics": MetagenomicsMetadataSchema,
+            "microbiome": MetagenomicsMetadataSchema,
         }
 
         logger.info("MetadataStandardizationService initialized")
+
+    def _create_metadata_ir(
+        self,
+        operation: str,
+        tool_name: str,
+        description: str,
+        parameters: Dict[str, Any],
+        stats: Optional[Dict[str, Any]] = None,
+    ) -> AnalysisStep:
+        """
+        Create lightweight IR for metadata operations.
+
+        These IR objects are marked as non-exportable since metadata operations
+        (standardization, validation) don't need to appear in notebooks.
+        They are tracked for provenance but excluded from notebook export.
+
+        Args:
+            operation: Operation name (e.g., "standardize_metadata")
+            tool_name: Tool name for provenance
+            description: Human-readable description
+            parameters: Parameters used in operation
+            stats: Optional statistics dictionary
+
+        Returns:
+            AnalysisStep with exportable=False
+        """
+        # Build parameter schema for provenance tracking
+        parameter_schema = {}
+        for param_name, param_value in parameters.items():
+            param_type = type(param_value).__name__
+            if param_type == "NoneType":
+                param_type = "Optional[Any]"
+            elif isinstance(param_value, list):
+                param_type = "List"
+            elif isinstance(param_value, dict):
+                param_type = "Dict"
+
+            parameter_schema[param_name] = ParameterSpec(
+                param_type=param_type,
+                papermill_injectable=False,  # Metadata params not injectable
+                default_value=None,
+                required=False,
+                description=f"Parameter for {operation}",
+            )
+
+        # Create lightweight IR
+        return AnalysisStep(
+            operation=f"metadata.{operation}",
+            tool_name=tool_name,
+            description=description,
+            library="lobster",
+            code_template="# Metadata operation - not included in notebook export",
+            imports=[],
+            parameters=parameters,
+            parameter_schema=parameter_schema,
+            input_entities=["metadata"],
+            output_entities=["standardized_metadata"],
+            execution_context={
+                "timestamp": datetime.now().isoformat(),
+                "service": "MetadataStandardizationService",
+                "statistics": stats or {},
+            },
+            validates_on_export=False,
+            requires_validation=False,
+            exportable=False,  # Key flag - exclude from notebook export
+        )
 
     # =========================================================================
     # Core Methods
@@ -131,7 +209,7 @@ class MetadataStandardizationService:
         identifier: str,
         target_schema: str,
         controlled_vocabularies: Optional[Dict[str, List[str]]] = None,
-    ) -> StandardizationResult:
+    ) -> Tuple[StandardizationResult, Dict[str, Any], AnalysisStep]:
         """Convert raw metadata to Pydantic schema with validation.
 
         Args:
@@ -140,7 +218,10 @@ class MetadataStandardizationService:
             controlled_vocabularies: Optional controlled vocabularies to enforce
 
         Returns:
-            StandardizationResult with standardized metadata and validation errors
+            Tuple[StandardizationResult, Dict[str, Any], AnalysisStep]:
+                - StandardizationResult with standardized metadata and validation errors
+                - Statistics dictionary
+                - Lightweight IR for provenance (exportable=False)
 
         Raises:
             ValueError: If dataset not found or schema type unknown
@@ -235,12 +316,37 @@ class MetadataStandardizationService:
             f"{len(validation_errors)} errors"
         )
 
-        return StandardizationResult(
+        # Collect statistics
+        stats = {
+            "identifier": identifier,
+            "target_schema": target_schema,
+            "total_samples": len(standardized) + len(validation_errors),
+            "successful_samples": len(standardized),
+            "failed_samples": len(validation_errors),
+            "field_coverage": field_coverage,
+        }
+
+        # Create IR for provenance
+        ir = self._create_metadata_ir(
+            operation="standardize_metadata",
+            tool_name="standardize_metadata",
+            description=f"Standardize metadata for {identifier}",
+            parameters={
+                "identifier": identifier,
+                "target_schema": target_schema,
+                "controlled_vocabularies": controlled_vocabularies,
+            },
+            stats=stats,
+        )
+
+        result = StandardizationResult(
             standardized_metadata=standardized,
             validation_errors=validation_errors,
             field_coverage=field_coverage,
             warnings=warnings,
         )
+
+        return result, stats, ir
 
     def read_sample_metadata(
         self,
@@ -333,7 +439,7 @@ class MetadataStandardizationService:
         required_conditions: Optional[List[str]] = None,
         check_controls: bool = True,
         check_duplicates: bool = True,
-    ) -> DatasetValidationResult:
+    ) -> Tuple[DatasetValidationResult, Dict[str, Any], AnalysisStep]:
         """Validate dataset completeness and metadata quality.
 
         Args:
@@ -426,7 +532,34 @@ class MetadataStandardizationService:
             f"{len(duplicate_ids)} duplicates"
         )
 
-        return DatasetValidationResult(
+        # Collect statistics
+        stats = {
+            "identifier": identifier,
+            "expected_samples": expected_samples,
+            "actual_samples": adata.n_obs,
+            "has_required_samples": has_required_samples,
+            "missing_conditions_count": len(missing_conditions),
+            "control_issues_count": len(control_issues),
+            "duplicate_ids_count": len(duplicate_ids),
+            "platform_consistency": platform_consistency,
+        }
+
+        # Create IR for provenance
+        ir = self._create_metadata_ir(
+            operation="validate_dataset_content",
+            tool_name="validate_dataset_content",
+            description=f"Validate dataset content for {identifier}",
+            parameters={
+                "identifier": identifier,
+                "expected_samples": expected_samples,
+                "required_conditions": required_conditions,
+                "check_controls": check_controls,
+                "check_duplicates": check_duplicates,
+            },
+            stats=stats,
+        )
+
+        result = DatasetValidationResult(
             has_required_samples=has_required_samples,
             missing_conditions=missing_conditions,
             control_issues=control_issues,
@@ -435,3 +568,5 @@ class MetadataStandardizationService:
             summary=summary,
             warnings=warnings,
         )
+
+        return result, stats, ir

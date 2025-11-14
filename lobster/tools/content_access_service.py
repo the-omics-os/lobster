@@ -19,8 +19,10 @@ via DataManager, and W3C-PROV provenance tracking.
 """
 
 import time
-from typing import Any, Dict, List, Optional, Union
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple, Union
 
+from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.providers.abstract_provider import AbstractProvider
 from lobster.tools.providers.geo_provider import GEOProvider
@@ -114,7 +116,7 @@ class ContentAccessService:
         # Log capability matrix for debugging
         self._log_capability_matrix()
 
-        logger.info(
+        logger.debug(
             f"ContentAccessService initialized with "
             f"{len(self.registry.get_all_providers())} providers "
             f"(10 methods, 3-tier cascade, session caching)"
@@ -134,7 +136,7 @@ class ContentAccessService:
         Each provider is instantiated with the DataManagerV2 instance
         for provenance tracking.
         """
-        logger.info("Initializing providers...")
+        logger.debug("Initializing providers...")
 
         # 1. AbstractProvider - Fast abstract retrieval
         try:
@@ -171,7 +173,7 @@ class ContentAccessService:
         except Exception as e:
             logger.error(f"Failed to initialize WebpageProvider: {e}")
 
-        logger.info(
+        logger.debug(
             f"Provider initialization complete: "
             f"{len(self.registry.get_all_providers())} providers registered"
         )
@@ -188,11 +190,11 @@ class ContentAccessService:
         ensure all capabilities are properly declared.
         """
         matrix = self.registry.get_capability_matrix()
-        logger.info("Provider Capability Matrix:\n" + matrix)
+        logger.debug("Provider Capability Matrix:\n" + matrix)
 
         # Log summary statistics
         all_providers = self.registry.get_all_providers()
-        logger.info(f"Total providers registered: {len(all_providers)}")
+        logger.debug(f"Total providers registered: {len(all_providers)}")
 
         # Log priority distribution
         priority_counts = {}
@@ -200,13 +202,79 @@ class ContentAccessService:
             priority = provider.priority
             priority_counts[priority] = priority_counts.get(priority, 0) + 1
 
-        logger.info(f"Priority distribution: {priority_counts}")
+        logger.debug(f"Priority distribution: {priority_counts}")
 
         # Log dataset type coverage
         dataset_types = self.registry.get_supported_dataset_types()
-        logger.info(
+        logger.debug(
             f"Supported dataset types: "
             f"{[dt.value for dt in dataset_types] if dataset_types else 'none'}"
+        )
+
+    def _create_research_ir(
+        self,
+        operation: str,
+        tool_name: str,
+        description: str,
+        parameters: Dict[str, Any],
+        stats: Optional[Dict[str, Any]] = None,
+    ) -> AnalysisStep:
+        """
+        Create lightweight IR for research operations.
+
+        These IR objects are marked as non-exportable since research operations
+        (literature search, dataset discovery) don't need to appear in notebooks.
+        They are tracked for provenance but excluded from notebook export.
+
+        Args:
+            operation: Operation name (e.g., "search_literature")
+            tool_name: Tool name for provenance
+            description: Human-readable description
+            parameters: Parameters used in operation
+            stats: Optional statistics dictionary
+
+        Returns:
+            AnalysisStep with exportable=False
+        """
+        # Build parameter schema for provenance tracking
+        parameter_schema = {}
+        for param_name, param_value in parameters.items():
+            param_type = type(param_value).__name__
+            if param_type == "NoneType":
+                param_type = "Optional[Any]"
+            elif isinstance(param_value, list):
+                param_type = "List"
+            elif isinstance(param_value, dict):
+                param_type = "Dict"
+
+            parameter_schema[param_name] = ParameterSpec(
+                param_type=param_type,
+                papermill_injectable=False,  # Research params not injectable
+                default_value=None,
+                required=False,
+                description=f"Parameter for {operation}",
+            )
+
+        # Create lightweight IR
+        return AnalysisStep(
+            operation=f"research.{operation}",
+            tool_name=tool_name,
+            description=description,
+            library="lobster",
+            code_template="# Research operation - not included in notebook export",
+            imports=[],
+            parameters=parameters,
+            parameter_schema=parameter_schema,
+            input_entities=["query"],
+            output_entities=["results"],
+            execution_context={
+                "timestamp": datetime.now().isoformat(),
+                "service": "ContentAccessService",
+                "statistics": stats or {},
+            },
+            validates_on_export=False,
+            requires_validation=False,
+            exportable=False,  # Key flag - exclude from notebook export
         )
 
     # ========================================================================
@@ -220,7 +288,7 @@ class ContentAccessService:
         sources: Optional[list[str]] = None,
         filters: Optional[dict[str, any]] = None,
         **kwargs,
-    ) -> str:
+    ) -> Tuple[str, Dict[str, Any], AnalysisStep]:
         """
         Search for literature using capability-based routing.
 
@@ -236,16 +304,32 @@ class ContentAccessService:
             **kwargs: Additional parameters passed to providers
 
         Returns:
-            str: Formatted search results with publications
+            Tuple[str, Dict[str, Any], AnalysisStep]:
+                - Formatted search results with publications
+                - Statistics dictionary
+                - Lightweight IR for provenance (exportable=False)
 
         Examples:
             >>> service = ContentAccessService(data_manager)
-            >>> results = service.search_literature("BRCA1 breast cancer")
-            >>> results = service.search_literature("p53", sources=["pubmed"])
+            >>> results, stats, ir = service.search_literature("BRCA1 breast cancer")
+            >>> results, stats, ir = service.search_literature("p53", sources=["pubmed"])
         """
         from lobster.tools.providers.base_provider import ProviderCapability
 
         logger.info(f"Literature search: {query[:50]}...")
+
+        # Initialize statistics
+        stats = {
+            "query": query[:100],
+            "max_results": max_results,
+            "sources": sources,
+            "filters": filters,
+            "provider_used": None,
+            "results_count": 0,
+            "execution_time_ms": 0,
+        }
+
+        start_time = time.time()
 
         try:
             # Get providers for SEARCH_LITERATURE capability
@@ -254,7 +338,16 @@ class ContentAccessService:
             )
 
             if not providers:
-                return "No available providers for literature search."
+                error_msg = "No available providers for literature search."
+                stats["error"] = error_msg
+                ir = self._create_research_ir(
+                    operation="search_literature",
+                    tool_name="search_literature",
+                    description=f"Literature search: {query[:50]}",
+                    parameters={"query": query, "max_results": max_results},
+                    stats=stats,
+                )
+                return error_msg, stats, ir
 
             # Filter by sources if specified
             if sources:
@@ -267,34 +360,74 @@ class ContentAccessService:
                 ]
 
                 if not providers:
-                    return f"No providers found for sources: {sources}"
+                    error_msg = f"No providers found for sources: {sources}"
+                    stats["error"] = error_msg
+                    ir = self._create_research_ir(
+                        operation="search_literature",
+                        tool_name="search_literature",
+                        description=f"Literature search: {query[:50]}",
+                        parameters={"query": query, "max_results": max_results, "sources": sources},
+                        stats=stats,
+                    )
+                    return error_msg, stats, ir
 
             # Use first provider (highest priority)
             provider = providers[0]
-            logger.info(f"Using provider: {type(provider).__name__}")
+            provider_name = type(provider).__name__
+            logger.info(f"Using provider: {provider_name}")
+            stats["provider_used"] = provider_name
 
             # Call provider's search method
             results = provider.search_publications(
                 query=query, max_results=max_results, filters=filters, **kwargs
             )
 
-            # Log to provenance
+            # Count results (approximate based on string content)
+            stats["results_count"] = results.count("PMID:") if isinstance(results, str) else 0
+            stats["execution_time_ms"] = int((time.time() - start_time) * 1000)
+
+            # Create IR for provenance
+            ir = self._create_research_ir(
+                operation="search_literature",
+                tool_name="search_literature",
+                description=f"Literature search: {query[:50]}",
+                parameters={
+                    "query": query,
+                    "max_results": max_results,
+                    "sources": sources,
+                    "filters": filters,
+                },
+                stats=stats,
+            )
+
+            # Log to provenance (will be updated by agent to include IR)
             self.data_manager.log_tool_usage(
                 tool_name="search_literature",
                 parameters={
                     "query": query[:100],
                     "max_results": max_results,
-                    "provider": type(provider).__name__,
+                    "provider": provider_name,
                     "filters": filters,
                 },
                 description="Literature search via ContentAccessService",
             )
 
-            return results
+            return results, stats, ir
 
         except Exception as e:
             logger.error(f"Literature search error: {e}", exc_info=True)
-            return f"Literature search error: {str(e)}"
+            error_msg = f"Literature search error: {str(e)}"
+            stats["error"] = str(e)
+            stats["execution_time_ms"] = int((time.time() - start_time) * 1000)
+
+            ir = self._create_research_ir(
+                operation="search_literature",
+                tool_name="search_literature",
+                description=f"Literature search failed: {query[:50]}",
+                parameters={"query": query, "max_results": max_results},
+                stats=stats,
+            )
+            return error_msg, stats, ir
 
     def discover_datasets(
         self,
@@ -302,7 +435,7 @@ class ContentAccessService:
         dataset_type: "DatasetType",
         max_results: int = 5,
         filters: Optional[dict[str, str]] = None,
-    ) -> str:
+    ) -> Tuple[str, Dict[str, Any], AnalysisStep]:
         """
         Search for datasets with automatic accession detection.
 
@@ -317,14 +450,17 @@ class ContentAccessService:
             filters: Optional search filters (provider-specific)
 
         Returns:
-            str: Formatted dataset search results
+            Tuple[str, Dict[str, Any], AnalysisStep]:
+                - Formatted dataset search results
+                - Statistics dictionary
+                - Lightweight IR for provenance (exportable=False)
 
         Examples:
             >>> service = ContentAccessService(data_manager)
             >>> # Direct accession
-            >>> results = service.discover_datasets("GSM6204600", DatasetType.GEO)
+            >>> results, stats, ir = service.discover_datasets("GSM6204600", DatasetType.GEO)
             >>> # Text search
-            >>> results = service.discover_datasets("single-cell RNA-seq", DatasetType.GEO)
+            >>> results, stats, ir = service.discover_datasets("single-cell RNA-seq", DatasetType.GEO)
         """
         from lobster.tools.providers.base_provider import (
             DatasetType,
@@ -337,6 +473,19 @@ class ContentAccessService:
 
         logger.info(f"Dataset search: {query[:50]}... for {dataset_type.value}")
 
+        # Initialize statistics
+        stats = {
+            "query": query[:100],
+            "dataset_type": dataset_type.value if hasattr(dataset_type, "value") else str(dataset_type),
+            "max_results": max_results,
+            "filters": filters,
+            "accession_detected": False,
+            "results_count": 0,
+            "execution_time_ms": 0,
+        }
+
+        start_time = time.time()
+
         try:
             # Check if query is a direct accession
             detected_type, normalized_accession = extract_accession_info(query)
@@ -346,16 +495,49 @@ class ContentAccessService:
                 logger.info(
                     f"Detected direct accession: {normalized_accession} (type: {detected_type.value})"
                 )
-                return self._handle_direct_accession(
+                stats["accession_detected"] = True
+                stats["normalized_accession"] = normalized_accession
+                results = self._handle_direct_accession(
                     normalized_accession, detected_type, max_results, filters
                 )
+            else:
+                # Fall back to text-based search
+                results = self._handle_text_search(query, dataset_type, max_results, filters)
 
-            # Fall back to text-based search
-            return self._handle_text_search(query, dataset_type, max_results, filters)
+            # Count results (approximate)
+            stats["results_count"] = results.count("GSE") if isinstance(results, str) else 0
+            stats["execution_time_ms"] = int((time.time() - start_time) * 1000)
+
+            # Create IR for provenance
+            ir = self._create_research_ir(
+                operation="discover_datasets",
+                tool_name="discover_datasets",
+                description=f"Dataset discovery: {query[:50]}",
+                parameters={
+                    "query": query,
+                    "dataset_type": str(dataset_type),
+                    "max_results": max_results,
+                    "filters": filters,
+                },
+                stats=stats,
+            )
+
+            return results, stats, ir
 
         except Exception as e:
             logger.error(f"Dataset search error: {e}", exc_info=True)
-            return f"Dataset search error: {str(e)}"
+            error_msg = f"Dataset search error: {str(e)}"
+            stats["error"] = str(e)
+            stats["execution_time_ms"] = int((time.time() - start_time) * 1000)
+
+            ir = self._create_research_ir(
+                operation="discover_datasets",
+                tool_name="discover_datasets",
+                description=f"Dataset discovery failed: {query[:50]}",
+                parameters={"query": query, "dataset_type": str(dataset_type)},
+                stats=stats,
+            )
+            return error_msg, stats, ir
 
     def _handle_direct_accession(
         self,

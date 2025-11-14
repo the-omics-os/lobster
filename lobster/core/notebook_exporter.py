@@ -201,8 +201,14 @@ class NotebookExporter:
             if ir_dict is not None and isinstance(ir_dict, dict):
                 try:
                     ir = AnalysisStep.from_dict(ir_dict)
-                    irs.append(ir)
-                    logger.debug(f"Extracted IR for operation: {ir.operation}")
+                    # Check if this IR should be included in notebook export
+                    if ir.exportable:
+                        irs.append(ir)
+                        logger.debug(f"Extracted IR for operation: {ir.operation}")
+                    else:
+                        logger.debug(
+                            f"Skipping non-exportable IR for operation: {ir.operation}"
+                        )
                 except Exception as e:
                     logger.warning(
                         f"Failed to deserialize IR for activity "
