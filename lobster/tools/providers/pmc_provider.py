@@ -152,7 +152,7 @@ class PMCProvider:
                 "Could not import xmltodict. Install with: pip install xmltodict"
             )
 
-        logger.info("Initialized PMC Provider with PMC E-utilities")
+        logger.debug("Initialized PMC Provider with PMC E-utilities")
 
     @property
     def source(self) -> str:

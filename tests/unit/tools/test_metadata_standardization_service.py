@@ -258,7 +258,7 @@ class TestStandardizeMetadata:
 
         with pytest.raises(ValueError, match="Unknown schema type"):
             metadata_standardization_service.standardize_metadata(
-                identifier="dataset", target_schema="metabolomics"  # Not supported
+                identifier="dataset", target_schema="spatial_transcriptomics"  # Not supported
             )
 
     def test_standardize_empty_metadata(

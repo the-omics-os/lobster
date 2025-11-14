@@ -72,7 +72,7 @@ class ProviderRegistry:
         # dataset_type_value -> [provider, ...]
         self._dataset_type_map: Dict[str, List[Any]] = {}
 
-        logger.info("Initialized ProviderRegistry")
+        logger.debug("Initialized ProviderRegistry")
 
     def register_provider(self, provider: Any) -> None:
         """
@@ -118,7 +118,7 @@ class ProviderRegistry:
 
         # Add to registry
         self._providers.append(provider)
-        logger.info(
+        logger.debug(
             f"Registered provider: {provider_name} " f"(priority {provider.priority})"
         )
 

@@ -135,7 +135,7 @@ class SampleMappingService:
         self.data_manager = data_manager
         self.min_confidence = min_confidence
 
-        logger.info(
+        logger.debug(
             f"SampleMappingService initialized with min_confidence={min_confidence}"
         )
         if not RAPIDFUZZ_AVAILABLE:

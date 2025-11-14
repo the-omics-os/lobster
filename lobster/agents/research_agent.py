@@ -1549,7 +1549,6 @@ Could not extract content for: {identifier}
         # --------------------------------
         # Total: 10 tools (3 discovery + 4 content + 2 workspace + 1 system)
         # Phase 4 complete: Removed 6 tools, renamed 6, enhanced 4, added 2 workspace
-        # NOTE: download_supplementary_materials temporarily disabled (pending reimplementation)
     ]
 
     # Combine base tools with handoff tools if provided
@@ -2182,11 +2181,10 @@ handoff_to_supervisor(
 **Your Role in Multi-Agent Workflows:**
 
 - **Phase 1 (You - Discovery & Validation):** Find datasets, validate compatibility, coordinate metadata mapping/standardization with metadata_assistant, report plan to supervisor
-- **Phase 2-3 (data_expert - Execution):** You OBSERVE while data_expert downloads, performs QC, normalizes, integrates datasets
-- **Phase 4 (You + data_expert - Interpretation):** After data_expert completes integration, you provide biological context (pathway analysis, literature links, known markers)
+- **Phase 2-3 (data_expert - Execution):** You WAIT for supervisor to come back to you while data_expert downloads, performs QC, normalizes, integrates datasets
+- **Phase 4 (You + data_expert - Interpretation):** After data_expert completes integration, the supervisor might ask you to provide biological context (pathway analysis, literature links, known markers)
 
 **Best Practices:**
-- ✅ Always validate sample IDs before handoff to data_expert (via metadata_assistant)
 - ✅ Proteomics 30-70% missing values is normal (DDA/DIA workflows)
 - ✅ RNA-protein correlation r=0.3-0.5 is typical (not r=0.9)
 - ✅ Cache all metadata and mapping reports in workspace before handoff

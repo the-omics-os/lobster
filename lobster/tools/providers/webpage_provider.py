@@ -92,7 +92,7 @@ class WebpageProvider:
             cache_dir=cache_dir, data_manager=data_manager
         )
 
-        logger.info(
+        logger.debug(
             f"Initialized WebpageProvider with Docling "
             f"(available: {self.docling_service.is_available()})"
         )

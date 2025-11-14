@@ -109,7 +109,7 @@ class DoclingService:
         self._docling_imports = None
         self._initialize_docling()
 
-        logger.info(f"Initialized DoclingService with cache: {self.cache_dir}")
+        logger.debug(f"Initialized DoclingService with cache: {self.cache_dir}")
 
     def _initialize_docling(self):
         """
@@ -153,7 +153,7 @@ class DoclingService:
             }
 
             self.converter = self._create_docling_converter()
-            logger.info("Initialized Docling converter for structure-aware PDF parsing")
+            logger.debug("Initialized Docling converter for structure-aware PDF parsing")
         except ImportError:
             logger.warning(
                 "Docling not installed, structure-aware extraction unavailable. "

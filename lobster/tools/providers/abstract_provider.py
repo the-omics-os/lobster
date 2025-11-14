@@ -85,7 +85,7 @@ class AbstractProvider:
         # Initialize PubMedProvider (reuse existing NCBI integration)
         self.pubmed_provider = PubMedProvider(data_manager=data_manager, config=config)
 
-        logger.info("Initialized AbstractProvider with NCBI E-utilities")
+        logger.debug("Initialized AbstractProvider with NCBI E-utilities")
 
     @property
     def source(self) -> str:
