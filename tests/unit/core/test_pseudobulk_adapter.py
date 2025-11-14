@@ -16,7 +16,7 @@ import pytest
 from lobster.core import AdapterError, ValidationError
 from lobster.core.adapters.pseudobulk_adapter import PseudobulkAdapter
 from lobster.core.interfaces.validator import ValidationResult
-from lobster.core.schemas.pseudobulk import PseudobulkSchema
+from lobster.core.schemas.transcriptomics import TranscriptomicsSchema
 
 
 @pytest.fixture
@@ -512,7 +512,7 @@ class TestPseudobulkAdapterSchema:
         schema = pseudobulk_adapter.get_schema()
 
         assert isinstance(schema, dict)
-        assert schema == PseudobulkSchema.get_pseudobulk_schema()
+        assert schema == TranscriptomicsSchema.get_pseudobulk_schema()
 
     def test_get_supported_formats(self, pseudobulk_adapter):
         """Test supported formats list."""

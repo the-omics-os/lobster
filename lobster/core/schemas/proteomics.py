@@ -343,6 +343,12 @@ class ProteomicsSchema:
         validator.add_custom_rule("check_missing_values", _validate_missing_values)
         validator.add_custom_rule("check_intensity_data", _validate_intensity_data)
 
+        # Add cross-database accession validation (all schema types)
+        validator.add_custom_rule(
+            "check_cross_database_accessions",
+            lambda adata: _validate_cross_database_accessions(adata, modality="proteomics")
+        )
+
         if schema_type == "mass_spectrometry":
             validator.add_custom_rule("check_ms_metrics", _validate_ms_metrics)
         elif schema_type == "affinity":
@@ -574,6 +580,58 @@ def _validate_affinity_metrics(adata) -> "ValidationResult":
             result.add_warning(
                 f"{missing_antibody} proteins without antibody information"
             )
+
+    return result
+
+
+def _validate_cross_database_accessions(adata, modality: str = "proteomics") -> "ValidationResult":
+    """
+    Validate cross-database accession format and structure.
+
+    Checks database accession fields in adata.uns against expected formats
+    using the database_mappings registry.
+
+    Args:
+        adata: AnnData object to validate
+        modality: Data modality (transcriptomics, proteomics, metabolomics, metagenomics)
+
+    Returns:
+        ValidationResult: Validation results with accession format errors/warnings
+    """
+    from lobster.core.interfaces.validator import ValidationResult
+    from lobster.core.schemas.database_mappings import (
+        get_accessions_for_modality,
+        validate_accession,
+        get_accession_url,
+    )
+
+    result = ValidationResult()
+
+    # Get expected accessions for this modality
+    expected_accessions = get_accessions_for_modality(modality)
+
+    # Check each accession field in uns
+    for field_name, accession_spec in expected_accessions.items():
+        if field_name in adata.uns:
+            value = adata.uns[field_name]
+
+            # Skip empty/None values
+            if value is None or (isinstance(value, str) and not value.strip()):
+                continue
+
+            # Validate accession format
+            if not validate_accession(field_name, value):
+                result.add_warning(
+                    f"Invalid {accession_spec.database_name} accession format: '{value}' "
+                    f"(expected pattern: {accession_spec.example})"
+                )
+            else:
+                # Successful validation - add info with URL
+                url = get_accession_url(field_name, value)
+                if url:
+                    result.add_info(
+                        f"Valid {accession_spec.database_name} accession: {value} ({url})"
+                    )
 
     return result
 

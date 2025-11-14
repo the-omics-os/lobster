@@ -154,7 +154,21 @@ class H5ADBackend(BaseBackend):
                     return np.array([str(x) if x is not None else "" for x in obj])
                 except (ValueError, TypeError):
                     return np.array([str(x) if x is not None else "" for x in obj])
-            return obj
+
+            # Handle Path objects (common in GEO metadata)
+            if isinstance(obj, Path):
+                return str(obj)
+
+            # Catch-all for unknown objects (last resort)
+            # If object is not JSON-serializable, h5py will fail → stringify
+            try:
+                import json
+                json.dumps(obj)  # Test if object is JSON-serializable
+                return obj  # If successful, h5py might handle it
+            except (TypeError, ValueError):
+                # Object not JSON-serializable → convert to string
+                logger.debug(f"Converting non-serializable object of type {type(obj).__name__} to string for H5AD compatibility")
+                return str(obj)
 
         # Sanitize uns (unstructured metadata)
         adata.uns = {sanitize_key(k): convert(v) for k, v in adata.uns.items()}

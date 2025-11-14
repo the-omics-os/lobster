@@ -655,6 +655,85 @@ class TestH5ADDataSanitization:
         object_values = adata_loaded.uns["object_array"]
         assert all(isinstance(str(v), str) for v in object_values)
 
+    def test_sanitize_path_objects_in_uns(self):
+        """Test that Path objects in uns are converted to strings (GEO metadata fix)."""
+        from pathlib import Path as PathType
+
+        # Create AnnData with Path objects in uns (common in GEO metadata)
+        X = np.random.randn(10, 5)
+        adata = anndata.AnnData(X=X)
+
+        # Add Path objects that would cause serialization errors
+        adata.uns["data_file_path"] = PathType("/path/to/data.h5ad")
+        adata.uns["workspace_path"] = PathType("/Users/user/workspace")
+        adata.uns["nested_metadata"] = {
+            "file_path": PathType("/path/to/file.txt"),
+            "directory": PathType("/path/to/dir"),
+            "other_data": "string_value",
+        }
+
+        # This should not raise serialization errors
+        file_path = "test_path_sanitization.h5ad"
+        self.backend.save(adata, file_path)
+        adata_loaded = self.backend.load(file_path)
+
+        # Verify Path objects were converted to strings
+        assert isinstance(adata_loaded.uns["data_file_path"], str)
+        assert adata_loaded.uns["data_file_path"] == "/path/to/data.h5ad"
+
+        assert isinstance(adata_loaded.uns["workspace_path"], str)
+        assert adata_loaded.uns["workspace_path"] == "/Users/user/workspace"
+
+        # Verify nested Path objects were also converted
+        assert isinstance(adata_loaded.uns["nested_metadata"]["file_path"], str)
+        assert (
+            adata_loaded.uns["nested_metadata"]["file_path"] == "/path/to/file.txt"
+        )
+        assert isinstance(adata_loaded.uns["nested_metadata"]["directory"], str)
+        assert adata_loaded.uns["nested_metadata"]["directory"] == "/path/to/dir"
+
+        # Verify string values remain unchanged
+        assert adata_loaded.uns["nested_metadata"]["other_data"] == "string_value"
+
+    def test_sanitize_unknown_objects_in_uns(self):
+        """Test catch-all handler for unknown non-serializable objects."""
+
+        # Create a custom non-serializable class
+        class CustomObject:
+            def __init__(self, value):
+                self.value = value
+
+            def __str__(self):
+                return f"CustomObject({self.value})"
+
+        # Create AnnData with custom object
+        X = np.random.randn(10, 5)
+        adata = anndata.AnnData(X=X)
+
+        # Add custom object that's not JSON-serializable
+        adata.uns["custom_obj"] = CustomObject(42)
+        adata.uns["nested_custom"] = {
+            "obj": CustomObject("test"),
+            "normal": "string",
+        }
+
+        # This should not raise serialization errors
+        file_path = "test_custom_obj_sanitization.h5ad"
+        self.backend.save(adata, file_path)
+        adata_loaded = self.backend.load(file_path)
+
+        # Verify custom objects were converted to strings
+        assert isinstance(adata_loaded.uns["custom_obj"], str)
+        assert "CustomObject" in adata_loaded.uns["custom_obj"]
+        assert "42" in adata_loaded.uns["custom_obj"]
+
+        # Verify nested custom objects
+        assert isinstance(adata_loaded.uns["nested_custom"]["obj"], str)
+        assert "CustomObject" in adata_loaded.uns["nested_custom"]["obj"]
+
+        # Verify normal strings remain unchanged
+        assert adata_loaded.uns["nested_custom"]["normal"] == "string"
+
 
 class TestH5ADErrorHandling:
     """Test error handling and edge cases."""

@@ -11,8 +11,8 @@ import pandas as pd
 import pytest
 
 from lobster.core.interfaces.validator import ValidationResult
-from lobster.core.schemas.pseudobulk import (
-    PseudobulkSchema,
+from lobster.core.schemas.transcriptomics import (
+    TranscriptomicsSchema,
     _validate_aggregation_consistency,
     _validate_aggregation_params,
     _validate_cell_counts,
@@ -107,7 +107,7 @@ class TestPseudobulkSchema:
 
     def test_get_pseudobulk_schema(self):
         """Test schema structure and content."""
-        schema = PseudobulkSchema.get_pseudobulk_schema()
+        schema = TranscriptomicsSchema.get_pseudobulk_schema()
 
         assert isinstance(schema, dict)
         assert schema["modality"] == "pseudobulk_rna_seq"
@@ -128,15 +128,15 @@ class TestPseudobulkSchema:
 
     def test_create_validator_default(self):
         """Test validator creation with default settings."""
-        validator = PseudobulkSchema.create_validator()
+        validator = TranscriptomicsSchema.create_validator(schema_type="pseudobulk")
 
         assert isinstance(validator, FlexibleValidator)
-        assert validator.name == "PseudobulkValidator"
-        assert len(validator.custom_rules) == 4  # 4 custom validation rules
+        assert validator.name == "TranscriptomicsValidator_pseudobulk"
+        assert len(validator.custom_rules) == 6  # 6 custom validation rules (2 common + 4 pseudobulk-specific)
 
     def test_create_validator_strict(self):
         """Test validator creation with strict mode."""
-        validator = PseudobulkSchema.create_validator(strict=True)
+        validator = TranscriptomicsSchema.create_validator(schema_type="pseudobulk", strict=True)
 
         assert isinstance(validator, FlexibleValidator)
         # Strict mode should still have same structure
@@ -144,7 +144,7 @@ class TestPseudobulkSchema:
     def test_create_validator_ignore_warnings(self):
         """Test validator creation with ignored warnings."""
         ignore_warnings = ["missing values", "unexpected columns"]
-        validator = PseudobulkSchema.create_validator(ignore_warnings=ignore_warnings)
+        validator = TranscriptomicsSchema.create_validator(schema_type="pseudobulk", ignore_warnings=ignore_warnings)
 
         expected_ignored = {
             "missing values",
@@ -157,7 +157,7 @@ class TestPseudobulkSchema:
 
     def test_get_recommended_qc_thresholds(self):
         """Test QC thresholds structure and values."""
-        thresholds = PseudobulkSchema.get_recommended_qc_thresholds()
+        thresholds = TranscriptomicsSchema.get_recommended_qc_thresholds(schema_type="pseudobulk")
 
         assert isinstance(thresholds, dict)
         assert "min_cells_per_pseudobulk" in thresholds
@@ -178,7 +178,7 @@ class TestPseudobulkValidation:
         result = _validate_pseudobulk_structure(valid_pseudobulk_data)
 
         assert isinstance(result, ValidationResult)
-        assert not result.has_errors()
+        assert not result.has_errors
         # May have warnings but should not have errors
 
     def test_validate_pseudobulk_structure_missing_columns(self):
@@ -194,7 +194,7 @@ class TestPseudobulkValidation:
 
         result = _validate_pseudobulk_structure(adata)
 
-        assert result.has_errors()
+        assert result.has_errors
         error_msg = " ".join(result.errors)
         assert "cell_type" in error_msg
         assert "n_cells_aggregated" in error_msg
@@ -229,7 +229,7 @@ class TestPseudobulkValidation:
 
         result = _validate_pseudobulk_structure(adata)
 
-        assert result.has_errors()
+        assert result.has_errors
         assert "duplicate" in " ".join(result.errors).lower()
 
     def test_validate_aggregation_consistency_valid(self, valid_pseudobulk_data):
@@ -255,7 +255,7 @@ class TestPseudobulkValidation:
 
         result = _validate_aggregation_consistency(adata)
 
-        assert result.has_errors()
+        assert result.has_errors
         error_msg = " ".join(result.errors).lower()
         assert "zero or negative" in error_msg
 
@@ -332,7 +332,7 @@ class TestPseudobulkValidation:
 
         result = _validate_aggregation_params(adata)
 
-        assert result.has_warnings()
+        assert result.has_warnings
         warning_msg = " ".join(result.warnings).lower()
         assert "unexpected aggregation method" in warning_msg
 
@@ -343,22 +343,22 @@ class TestPseudobulkValidator:
 
     def test_validator_with_valid_data(self, valid_pseudobulk_data):
         """Test validator with completely valid pseudobulk data."""
-        validator = PseudobulkSchema.create_validator(strict=False)
+        validator = TranscriptomicsSchema.create_validator(schema_type="pseudobulk", strict=False)
 
         result = validator.validate(valid_pseudobulk_data)
 
         assert isinstance(result, ValidationResult)
-        assert not result.has_errors()
+        assert not result.has_errors
         # May have some warnings but should be structurally sound
 
     def test_validator_with_invalid_data(self, invalid_pseudobulk_data):
         """Test validator with invalid pseudobulk data."""
-        validator = PseudobulkSchema.create_validator(strict=True)
+        validator = TranscriptomicsSchema.create_validator(schema_type="pseudobulk", strict=True)
 
         result = validator.validate(invalid_pseudobulk_data)
 
         assert isinstance(result, ValidationResult)
-        assert result.has_errors()
+        assert result.has_errors
 
         # Should detect missing required columns
         error_msg = " ".join(result.errors).lower()
@@ -366,7 +366,7 @@ class TestPseudobulkValidator:
 
     def test_validator_custom_rules_execution(self, valid_pseudobulk_data):
         """Test that all custom validation rules are executed."""
-        validator = PseudobulkSchema.create_validator()
+        validator = TranscriptomicsSchema.create_validator(schema_type="pseudobulk")
 
         # Ensure we have the expected custom rules
         expected_rules = [
@@ -399,8 +399,8 @@ class TestPseudobulkValidator:
             var=pd.DataFrame(index=[f"Gene_{i}" for i in range(50)]),
         )
 
-        validator = PseudobulkSchema.create_validator(
-            ignore_warnings=["Unexpected obs columns"]
+        validator = TranscriptomicsSchema.create_validator(
+            schema_type="pseudobulk", ignore_warnings=["Unexpected obs columns"]
         )
 
         result = validator.validate(adata)
@@ -411,7 +411,7 @@ class TestPseudobulkValidator:
 
     def test_qc_thresholds_structure(self):
         """Test QC thresholds return expected structure."""
-        thresholds = PseudobulkSchema.get_recommended_qc_thresholds()
+        thresholds = TranscriptomicsSchema.get_recommended_qc_thresholds(schema_type="pseudobulk")
 
         required_thresholds = [
             "min_cells_per_pseudobulk",
