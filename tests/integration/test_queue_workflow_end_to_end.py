@@ -207,9 +207,7 @@ class TestCompleteQueueWorkflow:
         logger.info("Step 5: Verifying modality creation")
 
         modalities = dm.list_modalities()
-        assert (
-            len(modalities) > 0
-        ), "No modalities created after successful download"
+        assert len(modalities) > 0, "No modalities created after successful download"
         assert any(
             dataset_id.lower() in mod.lower() for mod in modalities
         ), f"Expected modality with {dataset_id} not found in {modalities}"
@@ -272,9 +270,9 @@ class TestCompleteQueueWorkflow:
         )
 
         # Get entry IDs for our datasets
-        our_entries = [
-            e for e in queue_entries if e.dataset_id in datasets
-        ][: len(datasets)]
+        our_entries = [e for e in queue_entries if e.dataset_id in datasets][
+            : len(datasets)
+        ]
 
         for entry in our_entries:
             logger.info(f"Downloading {entry.dataset_id} from queue...")
@@ -438,11 +436,7 @@ class TestErrorRecoveryWorkflow:
 
             # ===== STEP 3: Try to download again =====
             download_tool = next(
-                (
-                    t
-                    for t in data_exp.tools
-                    if t.name == "execute_download_from_queue"
-                ),
+                (t for t in data_exp.tools if t.name == "execute_download_from_queue"),
                 None,
             )
             result = download_tool.invoke({"entry_id": entry.entry_id})
@@ -502,9 +496,7 @@ class TestWorkspacePersistence:
         entries2 = dm2.download_queue.list_entries()
 
         # Find our test entry
-        our_entry = next(
-            (e for e in entries2 if e.dataset_id == dataset_id), None
-        )
+        our_entry = next((e for e in entries2 if e.dataset_id == dataset_id), None)
 
         assert (
             our_entry is not None
@@ -547,11 +539,7 @@ class TestProvenanceTracking:
 
         if entry:
             download_tool = next(
-                (
-                    t
-                    for t in data_exp.tools
-                    if t.name == "execute_download_from_queue"
-                ),
+                (t for t in data_exp.tools if t.name == "execute_download_from_queue"),
                 None,
             )
             result = download_tool.invoke({"entry_id": entry.entry_id})
@@ -619,11 +607,7 @@ class TestPerformanceBenchmarks:
 
         if entry:
             download_tool = next(
-                (
-                    t
-                    for t in data_exp.tools
-                    if t.name == "execute_download_from_queue"
-                ),
+                (t for t in data_exp.tools if t.name == "execute_download_from_queue"),
                 None,
             )
 

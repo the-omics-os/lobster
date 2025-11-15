@@ -34,7 +34,6 @@ from lobster.tools.workspace_content_service import (
     WorkspaceContentService,
 )
 
-
 # ============================================================================
 # Fixtures
 # ============================================================================
@@ -177,9 +176,7 @@ class TestDownloadQueueWorkspace:
         data_manager.download_queue.add_entry(entry2)
 
         # Filter by PENDING
-        pending = workspace_service.list_download_queue_entries(
-            status_filter="PENDING"
-        )
+        pending = workspace_service.list_download_queue_entries(status_filter="PENDING")
         assert len(pending) == 1
         assert pending[0]["entry_id"] == "e1"
 
@@ -322,7 +319,10 @@ class TestDownloadQueueEntryDetails:
             database="geo",
             matrix_url="https://example.com/matrix.h5",
             h5_url="https://example.com/data.h5",
-            raw_urls=["https://example.com/raw1.fastq", "https://example.com/raw2.fastq"],
+            raw_urls=[
+                "https://example.com/raw1.fastq",
+                "https://example.com/raw2.fastq",
+            ],
         )
         data_manager.download_queue.add_entry(entry)
 
@@ -358,7 +358,10 @@ class TestMultipleEntriesAndFiltering:
         """Test listing multiple entries with various statuses."""
         entries_to_add = [
             DownloadQueueEntry(
-                entry_id="e1", dataset_id="GSE1", database="geo", status=DownloadStatus.PENDING
+                entry_id="e1",
+                dataset_id="GSE1",
+                database="geo",
+                status=DownloadStatus.PENDING,
             ),
             DownloadQueueEntry(
                 entry_id="e2",
@@ -367,10 +370,16 @@ class TestMultipleEntriesAndFiltering:
                 status=DownloadStatus.IN_PROGRESS,
             ),
             DownloadQueueEntry(
-                entry_id="e3", dataset_id="GSE3", database="geo", status=DownloadStatus.COMPLETED
+                entry_id="e3",
+                dataset_id="GSE3",
+                database="geo",
+                status=DownloadStatus.COMPLETED,
             ),
             DownloadQueueEntry(
-                entry_id="e4", dataset_id="GSE4", database="geo", status=DownloadStatus.FAILED
+                entry_id="e4",
+                dataset_id="GSE4",
+                database="geo",
+                status=DownloadStatus.FAILED,
             ),
         ]
 
@@ -390,7 +399,9 @@ class TestMultipleEntriesAndFiltering:
         )
         assert len(in_progress) == 1
 
-        completed = workspace_service.list_download_queue_entries(status_filter="COMPLETED")
+        completed = workspace_service.list_download_queue_entries(
+            status_filter="COMPLETED"
+        )
         assert len(completed) == 1
 
         failed = workspace_service.list_download_queue_entries(status_filter="FAILED")

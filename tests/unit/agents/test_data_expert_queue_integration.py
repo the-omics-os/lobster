@@ -438,9 +438,7 @@ class TestURLExtraction:
 class TestModalityNaming:
     """Test modality naming patterns."""
 
-    def test_modality_naming_pattern(
-        self, data_manager_with_queue, sample_queue_entry
-    ):
+    def test_modality_naming_pattern(self, data_manager_with_queue, sample_queue_entry):
         """Test that modality naming follows pattern: geo_{dataset_id}_{adapter}."""
         # This test verifies the expected naming convention
         # Actual modality creation happens in GEOService

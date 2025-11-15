@@ -141,7 +141,9 @@ def check_pysradb():
 class TestRealSRASearch:
     """Test real SRA searches with actual API calls."""
 
-    def test_search_by_study_accession(self, real_sra_provider, known_accessions, check_pysradb):
+    def test_search_by_study_accession(
+        self, real_sra_provider, known_accessions, check_pysradb
+    ):
         """Test search with real SRA study accession (SRP)."""
         result = real_sra_provider.search_publications(known_accessions["study"])
 
@@ -158,7 +160,9 @@ class TestRealSRASearch:
 
         logger.info(f"✓ Study search test passed for {known_accessions['study']}")
 
-    def test_search_by_experiment_accession(self, real_sra_provider, known_accessions, check_pysradb):
+    def test_search_by_experiment_accession(
+        self, real_sra_provider, known_accessions, check_pysradb
+    ):
         """Test search with real SRA experiment accession (SRX)."""
         result = real_sra_provider.search_publications(known_accessions["experiment"])
 
@@ -166,9 +170,13 @@ class TestRealSRASearch:
         assert "SRA Database Search Results" in result
         assert known_accessions["experiment"] in result
 
-        logger.info(f"✓ Experiment search test passed for {known_accessions['experiment']}")
+        logger.info(
+            f"✓ Experiment search test passed for {known_accessions['experiment']}"
+        )
 
-    def test_search_by_run_accession(self, real_sra_provider, known_accessions, check_pysradb):
+    def test_search_by_run_accession(
+        self, real_sra_provider, known_accessions, check_pysradb
+    ):
         """Test search with real SRA run accession (SRR)."""
         result = real_sra_provider.search_publications(known_accessions["run"])
 
@@ -178,15 +186,18 @@ class TestRealSRASearch:
 
         logger.info(f"✓ Run search test passed for {known_accessions['run']}")
 
-    def test_search_with_keyword_performs_real_search(self, real_sra_provider, check_pysradb):
+    def test_search_with_keyword_performs_real_search(
+        self, real_sra_provider, check_pysradb
+    ):
         """Test that keyword search performs actual SRA search using pysradb SraSearch."""
         result = real_sra_provider.search_publications(
-            "RNA sequencing human cancer",
-            max_results=5
+            "RNA sequencing human cancer", max_results=5
         )
 
         # Should return formatted search results, not guidance message
-        assert "SRA Database Search Results" in result or "No SRA Results Found" in result
+        assert (
+            "SRA Database Search Results" in result or "No SRA Results Found" in result
+        )
         assert "RNA sequencing human cancer" in result
         # Should NOT contain old guidance message
         assert "Keyword Search Limitation" not in result
@@ -204,9 +215,13 @@ class TestRealSRASearch:
 class TestRealMetadataExtraction:
     """Test real metadata extraction from SRA."""
 
-    def test_extract_metadata_study(self, real_sra_provider, known_accessions, check_pysradb):
+    def test_extract_metadata_study(
+        self, real_sra_provider, known_accessions, check_pysradb
+    ):
         """Test metadata extraction for real SRA study."""
-        metadata = real_sra_provider.extract_publication_metadata(known_accessions["study"])
+        metadata = real_sra_provider.extract_publication_metadata(
+            known_accessions["study"]
+        )
 
         # Verify metadata structure
         assert isinstance(metadata, PublicationMetadata)
@@ -224,9 +239,13 @@ class TestRealMetadataExtraction:
 
         logger.info(f"✓ Study metadata extraction passed: {metadata.title[:50]}...")
 
-    def test_extract_metadata_run(self, real_sra_provider, known_accessions, check_pysradb):
+    def test_extract_metadata_run(
+        self, real_sra_provider, known_accessions, check_pysradb
+    ):
         """Test metadata extraction for real SRA run."""
-        metadata = real_sra_provider.extract_publication_metadata(known_accessions["run"])
+        metadata = real_sra_provider.extract_publication_metadata(
+            known_accessions["run"]
+        )
 
         # Verify metadata structure
         assert isinstance(metadata, PublicationMetadata)
@@ -276,7 +295,9 @@ class TestRealPublicationLinking:
             assert "ncbi.nlm.nih.gov/sra/" in result
             assert "Total Datasets:" in result
 
-        logger.info(f"✓ PMID-to-SRA linking test passed for PMID:{known_accessions['pmid']}")
+        logger.info(
+            f"✓ PMID-to-SRA linking test passed for PMID:{known_accessions['pmid']}"
+        )
 
     def test_pmid_no_results(self, real_sra_provider, check_pysradb):
         """Test PMID with no linked SRA datasets."""
@@ -350,7 +371,9 @@ class TestRealMicrobiomeSearch:
         )
 
         # Should have results with microbiome guidance
-        assert known_accessions["microbiome_study"] in result or "Keyword Search" in result
+        assert (
+            known_accessions["microbiome_study"] in result or "Keyword Search" in result
+        )
         assert "Microbiome Analysis Tips" in result
 
         logger.info(
@@ -385,7 +408,9 @@ class TestRealMicrobiomeSearch:
 class TestRealFilterSupport:
     """Test real filter application on SRA searches."""
 
-    def test_organism_filter_human(self, real_sra_provider, known_accessions, check_pysradb):
+    def test_organism_filter_human(
+        self, real_sra_provider, known_accessions, check_pysradb
+    ):
         """Test organism filter on real human data."""
         filters = {"organism": "Homo sapiens"}
         result = real_sra_provider.search_publications(
@@ -399,7 +424,9 @@ class TestRealFilterSupport:
 
         logger.info("✓ Organism filter (human) test passed")
 
-    def test_strategy_filter_rnaseq(self, real_sra_provider, known_accessions, check_pysradb):
+    def test_strategy_filter_rnaseq(
+        self, real_sra_provider, known_accessions, check_pysradb
+    ):
         """Test library strategy filter on real RNA-seq data."""
         filters = {"strategy": "RNA-Seq"}
         result = real_sra_provider.search_publications(
@@ -411,7 +438,9 @@ class TestRealFilterSupport:
 
         logger.info("✓ Strategy filter (RNA-Seq) test passed")
 
-    def test_platform_filter_illumina(self, real_sra_provider, known_accessions, check_pysradb):
+    def test_platform_filter_illumina(
+        self, real_sra_provider, known_accessions, check_pysradb
+    ):
         """Test platform filter on real Illumina data."""
         filters = {"platform": "ILLUMINA"}
         result = real_sra_provider.search_publications(
@@ -435,7 +464,9 @@ class TestRealFilterSupport:
         )
 
         # Should show all filters applied
-        assert "Filters:" in result or all(f in result for f in ["Homo sapiens", "RNA-Seq"])
+        assert "Filters:" in result or all(
+            f in result for f in ["Homo sapiens", "RNA-Seq"]
+        )
         assert "Total Results:" in result
 
         logger.info("✓ Multiple filters test passed")
@@ -458,7 +489,9 @@ class TestRealPerformance:
         """Test that metadata retrieval is reasonably fast."""
         start_time = time.time()
 
-        metadata = real_sra_provider.extract_publication_metadata(known_accessions["study"])
+        metadata = real_sra_provider.extract_publication_metadata(
+            known_accessions["study"]
+        )
 
         elapsed = time.time() - start_time
 
@@ -470,7 +503,9 @@ class TestRealPerformance:
             f"✓ Metadata retrieval performance test passed: {elapsed:.2f}s (target: <5s)"
         )
 
-    def test_search_performance(self, real_sra_provider, known_accessions, check_pysradb):
+    def test_search_performance(
+        self, real_sra_provider, known_accessions, check_pysradb
+    ):
         """Test that accession search is reasonably fast."""
         start_time = time.time()
 
@@ -484,7 +519,9 @@ class TestRealPerformance:
 
         logger.info(f"✓ Search performance test passed: {elapsed:.2f}s (target: <5s)")
 
-    def test_batch_metadata_retrieval(self, real_sra_provider, known_accessions, check_pysradb):
+    def test_batch_metadata_retrieval(
+        self, real_sra_provider, known_accessions, check_pysradb
+    ):
         """Test batch metadata retrieval performance."""
         accessions = [
             known_accessions["study"],
@@ -533,7 +570,9 @@ class TestRealErrorRecovery:
         result = real_sra_provider.search_publications("INVALID123")
 
         # Should return search results or no results message (not guidance)
-        assert "SRA Database Search Results" in result or "No SRA Results Found" in result
+        assert (
+            "SRA Database Search Results" in result or "No SRA Results Found" in result
+        )
         # Should NOT contain old guidance message
         assert "Keyword Search Limitation" not in result
 
@@ -553,7 +592,9 @@ class TestRealErrorRecovery:
         result = real_sra_provider.search_publications("")
 
         # Should return no results message or search results (not guidance)
-        assert "No SRA Results Found" in result or "SRA Database Search Results" in result
+        assert (
+            "No SRA Results Found" in result or "SRA Database Search Results" in result
+        )
         # Should NOT contain old guidance message
         assert "Keyword Search Limitation" not in result
 
@@ -655,7 +696,9 @@ class TestRealContentAccessServiceIntegration:
 class TestRealEndToEndWorkflows:
     """Test complete end-to-end workflows with real data."""
 
-    def test_pmid_to_metadata_workflow(self, real_sra_provider, known_accessions, check_pysradb):
+    def test_pmid_to_metadata_workflow(
+        self, real_sra_provider, known_accessions, check_pysradb
+    ):
         """Test complete workflow: PMID → SRA accessions → metadata."""
         # Step 1: Find datasets from publication
         time.sleep(0.5)  # Rate limiting
@@ -683,7 +726,9 @@ class TestRealEndToEndWorkflows:
 
                 logger.info(f"✓ PMID-to-metadata workflow passed: {srp}")
         else:
-            logger.info("✓ PMID-to-metadata workflow passed (no datasets found - valid)")
+            logger.info(
+                "✓ PMID-to-metadata workflow passed (no datasets found - valid)"
+            )
 
     def test_accession_search_to_metadata_workflow(
         self, real_sra_provider, known_accessions, check_pysradb
@@ -697,7 +742,9 @@ class TestRealEndToEndWorkflows:
 
         # Step 2: Extract detailed metadata
         time.sleep(0.3)
-        metadata = real_sra_provider.extract_publication_metadata(known_accessions["study"])
+        metadata = real_sra_provider.extract_publication_metadata(
+            known_accessions["study"]
+        )
 
         assert isinstance(metadata, PublicationMetadata)
         assert metadata.uid == known_accessions["study"]
@@ -768,7 +815,9 @@ class TestSRAProviderSummary:
 
         # Test 4: Basic search functionality
         result = real_sra_provider.search_publications("SRP033351")
-        assert "SRA Database Search Results" in result or "No SRA Results Found" in result
+        assert (
+            "SRA Database Search Results" in result or "No SRA Results Found" in result
+        )
 
         logger.info("✓ SRAProvider comprehensive summary test passed")
         logger.info("=" * 70)

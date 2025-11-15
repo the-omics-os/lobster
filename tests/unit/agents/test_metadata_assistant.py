@@ -260,18 +260,24 @@ class TestMapSamplesByID:
         )
 
         # Configure data_manager mocks for new get_samples() implementation
-        mock_data_manager.list_modalities.return_value = ["geo_gse12345", "geo_gse67890"]
+        mock_data_manager.list_modalities.return_value = [
+            "geo_gse12345",
+            "geo_gse67890",
+        ]
         mock_adata_source = Mock()
-        mock_adata_source.obs = pd.DataFrame({
-            "sample_id": ["S1", "S2", "S3"],
-            "condition": ["Control", "Treatment", "Control"]
-        })
+        mock_adata_source.obs = pd.DataFrame(
+            {
+                "sample_id": ["S1", "S2", "S3"],
+                "condition": ["Control", "Treatment", "Control"],
+            }
+        )
         mock_adata_target = Mock()
-        mock_adata_target.obs = pd.DataFrame({
-            "sample_id": ["S1", "S2"],
-            "condition": ["Control", "Treatment"]
-        })
-        mock_data_manager.get_modality.side_effect = lambda x: mock_adata_source if x == "geo_gse12345" else mock_adata_target
+        mock_adata_target.obs = pd.DataFrame(
+            {"sample_id": ["S1", "S2"], "condition": ["Control", "Treatment"]}
+        )
+        mock_data_manager.get_modality.side_effect = lambda x: (
+            mock_adata_source if x == "geo_gse12345" else mock_adata_target
+        )
         mock_data_manager.metadata_store = {}
 
         # Create agent
@@ -368,7 +374,9 @@ class TestMapSamplesByID:
         mock_adata_source.obs = pd.DataFrame({"sample_id": ["S1", "S2"]})
         mock_adata_target = Mock()
         mock_adata_target.obs = pd.DataFrame({"sample_id": ["S3", "S4"]})
-        mock_data_manager.get_modality.side_effect = lambda x: mock_adata_source if x == "dataset1" else mock_adata_target
+        mock_data_manager.get_modality.side_effect = lambda x: (
+            mock_adata_source if x == "dataset1" else mock_adata_target
+        )
         mock_data_manager.metadata_store = {}
 
         # Create agent
@@ -504,7 +512,7 @@ class TestMapSamplesByID:
             source="nonexistent",
             target="dataset2",
             source_type="modality",
-            target_type="modality"
+            target_type="modality",
         )
 
         # Verify error message
@@ -546,10 +554,9 @@ class TestReadSampleMetadata:
         # Configure data_manager mocks for read_sample_metadata tool
         mock_data_manager.list_modalities.return_value = ["geo_gse12345"]
         mock_adata = Mock()
-        mock_adata.obs = pd.DataFrame({
-            "sample_id": ["S1", "S2"],
-            "condition": ["Control", "Treatment"]
-        })
+        mock_adata.obs = pd.DataFrame(
+            {"sample_id": ["S1", "S2"], "condition": ["Control", "Treatment"]}
+        )
         mock_data_manager.get_modality.return_value = mock_adata
         mock_data_manager.metadata_store = {}
 
@@ -561,7 +568,9 @@ class TestReadSampleMetadata:
         read_tool = next(t for t in tools if t.name == "read_sample_metadata")
 
         # Call the tool
-        result = read_tool.func(source="geo_gse12345", source_type="modality", return_format="summary")
+        result = read_tool.func(
+            source="geo_gse12345", source_type="modality", return_format="summary"
+        )
 
         # Verify provenance logging
         mock_data_manager.log_tool_usage.assert_called_once()
@@ -572,7 +581,9 @@ class TestReadSampleMetadata:
 
         # Verify summary format output (tool formats directly from DataFrame)
         assert "geo_gse12345" in result  # Dataset name appears in output
-        assert "Total Samples: 2" in result or "Total Samples**: 2" in result  # 2 samples in mock DataFrame
+        assert (
+            "Total Samples: 2" in result or "Total Samples**: 2" in result
+        )  # 2 samples in mock DataFrame
         assert "Field Coverage" in result
         assert "sample_id" in result
         assert "condition" in result
@@ -608,10 +619,9 @@ class TestReadSampleMetadata:
         # Configure data_manager mocks for read_sample_metadata tool
         mock_data_manager.list_modalities.return_value = ["geo_gse12345"]
         mock_adata = Mock()
-        mock_adata.obs = pd.DataFrame({
-            "sample_id": ["S1", "S2"],
-            "condition": ["Control", "Treatment"]
-        })
+        mock_adata.obs = pd.DataFrame(
+            {"sample_id": ["S1", "S2"], "condition": ["Control", "Treatment"]}
+        )
         mock_data_manager.get_modality.return_value = mock_adata
         mock_data_manager.metadata_store = {}
 
@@ -623,7 +633,9 @@ class TestReadSampleMetadata:
         read_tool = next(t for t in tools if t.name == "read_sample_metadata")
 
         # Call the tool
-        result = read_tool.func(source="geo_gse12345", source_type="modality", return_format="detailed")
+        result = read_tool.func(
+            source="geo_gse12345", source_type="modality", return_format="detailed"
+        )
 
         # Verify result is JSON string (tool converts DataFrame to JSON)
         parsed = json.loads(result)
@@ -664,10 +676,9 @@ class TestReadSampleMetadata:
         # Configure data_manager mocks for read_sample_metadata tool
         mock_data_manager.list_modalities.return_value = ["geo_gse12345"]
         mock_adata = Mock()
-        mock_adata.obs = pd.DataFrame({
-            "sample_id": ["S1", "S2"],
-            "condition": ["Control", "Treatment"]
-        })
+        mock_adata.obs = pd.DataFrame(
+            {"sample_id": ["S1", "S2"], "condition": ["Control", "Treatment"]}
+        )
         mock_data_manager.get_modality.return_value = mock_adata
         mock_data_manager.metadata_store = {}
 
@@ -679,7 +690,9 @@ class TestReadSampleMetadata:
         read_tool = next(t for t in tools if t.name == "read_sample_metadata")
 
         # Call the tool
-        result = read_tool.func(source="geo_gse12345", source_type="modality", return_format="schema")
+        result = read_tool.func(
+            source="geo_gse12345", source_type="modality", return_format="schema"
+        )
 
         # Verify DataFrame was converted to markdown (tool converts directly)
         assert "sample_id" in result
@@ -720,11 +733,13 @@ class TestReadSampleMetadata:
         # Configure data_manager mocks for read_sample_metadata tool
         mock_data_manager.list_modalities.return_value = ["geo_gse12345"]
         mock_adata = Mock()
-        mock_adata.obs = pd.DataFrame({
-            "sample_id": ["S1", "S2"],
-            "condition": ["Control", "Treatment"],
-            "organism": ["Homo sapiens", "Homo sapiens"]
-        })
+        mock_adata.obs = pd.DataFrame(
+            {
+                "sample_id": ["S1", "S2"],
+                "condition": ["Control", "Treatment"],
+                "organism": ["Homo sapiens", "Homo sapiens"],
+            }
+        )
         mock_data_manager.get_modality.return_value = mock_adata
         mock_data_manager.metadata_store = {}
 
@@ -736,7 +751,9 @@ class TestReadSampleMetadata:
         read_tool = next(t for t in tools if t.name == "read_sample_metadata")
 
         # Call with field filtering
-        result = read_tool.func(source="geo_gse12345", source_type="modality", fields="condition,organism")
+        result = read_tool.func(
+            source="geo_gse12345", source_type="modality", fields="condition,organism"
+        )
 
         # Verify fields were filtered correctly (tool filters DataFrame before formatting)
         assert "condition" in result
@@ -773,7 +790,9 @@ class TestReadSampleMetadata:
         mock_standardization_class.return_value = mock_metadata_standardization_service
 
         # Configure data_manager to NOT include the requested modality
-        mock_data_manager.list_modalities.return_value = []  # Empty list - modality doesn't exist
+        mock_data_manager.list_modalities.return_value = (
+            []
+        )  # Empty list - modality doesn't exist
         mock_data_manager.metadata_store = {}
 
         # Create agent
@@ -844,7 +863,9 @@ class TestStandardizeSampleMetadata:
         )
 
         mock_metadata_standardization_service.standardize_metadata.return_value = (
-            mock_result, {}, None  # Return tuple: (result, stats, ir)
+            mock_result,
+            {},
+            None,  # Return tuple: (result, stats, ir)
         )
 
         # Create agent
@@ -858,7 +879,9 @@ class TestStandardizeSampleMetadata:
 
         # Call the tool
         result = standardize_tool.func(
-            source="geo_gse12345", source_type="modality", target_schema="transcriptomics"
+            source="geo_gse12345",
+            source_type="modality",
+            target_schema="transcriptomics",
         )
 
         # Verify service was called correctly
@@ -920,7 +943,9 @@ class TestStandardizeSampleMetadata:
         )
 
         mock_metadata_standardization_service.standardize_metadata.return_value = (
-            mock_result, {}, None  # Return tuple: (result, stats, ir)
+            mock_result,
+            {},
+            None,  # Return tuple: (result, stats, ir)
         )
 
         # Create agent
@@ -1047,7 +1072,9 @@ class TestStandardizeSampleMetadata:
 
         # Call the tool
         result = standardize_tool.func(
-            source="geo_gse12345", source_type="modality", target_schema="invalid_schema"
+            source="geo_gse12345",
+            source_type="modality",
+            target_schema="invalid_schema",
         )
 
         # Verify error message
@@ -1103,7 +1130,9 @@ class TestValidateDatasetContent:
         )
 
         mock_metadata_standardization_service.validate_dataset_content.return_value = (
-            mock_result, {}, None  # Return tuple: (result, stats, ir)
+            mock_result,
+            {},
+            None,  # Return tuple: (result, stats, ir)
         )
 
         # Configure data_manager mocks for validation
@@ -1117,7 +1146,9 @@ class TestValidateDatasetContent:
         validate_tool = next(t for t in tools if t.name == "validate_dataset_content")
 
         # Call the tool
-        result = validate_tool.func(source="geo_gse12345", source_type="modality", expected_samples=10)
+        result = validate_tool.func(
+            source="geo_gse12345", source_type="modality", expected_samples=10
+        )
 
         # Verify service was called correctly
         mock_metadata_standardization_service.validate_dataset_content.assert_called_once_with(
@@ -1187,7 +1218,9 @@ class TestValidateDatasetContent:
         )
 
         mock_metadata_standardization_service.validate_dataset_content.return_value = (
-            mock_result, {}, None  # Return tuple: (result, stats, ir)
+            mock_result,
+            {},
+            None,  # Return tuple: (result, stats, ir)
         )
 
         # Configure data_manager mocks for validation
@@ -1201,7 +1234,9 @@ class TestValidateDatasetContent:
         validate_tool = next(t for t in tools if t.name == "validate_dataset_content")
 
         # Call the tool
-        result = validate_tool.func(source="geo_gse12345", source_type="modality", expected_samples=10)
+        result = validate_tool.func(
+            source="geo_gse12345", source_type="modality", expected_samples=10
+        )
 
         # Verify report formatting shows issues
         assert "# Dataset Validation Report" in result
@@ -1253,7 +1288,9 @@ class TestValidateDatasetContent:
         )
 
         mock_metadata_standardization_service.validate_dataset_content.return_value = (
-            mock_result, {}, None  # Return tuple: (result, stats, ir)
+            mock_result,
+            {},
+            None,  # Return tuple: (result, stats, ir)
         )
 
         # Configure data_manager mocks for validation
@@ -1268,7 +1305,9 @@ class TestValidateDatasetContent:
 
         # Call with required conditions
         result = validate_tool.func(
-            source="geo_gse12345", source_type="modality", required_conditions="Control,Treatment"
+            source="geo_gse12345",
+            source_type="modality",
+            required_conditions="Control,Treatment",
         )
 
         # Verify required conditions were parsed correctly
@@ -1429,7 +1468,7 @@ class TestUnexpectedErrors:
             source="dataset1",
             target="dataset2",
             source_type="modality",
-            target_type="modality"
+            target_type="modality",
         )
 
         # Verify error message
@@ -1527,9 +1566,7 @@ class TestUnexpectedErrors:
 
         # Call the tool
         result = standardize_tool.func(
-            source="dataset",
-            source_type="modality",
-            target_schema="transcriptomics"
+            source="dataset", source_type="modality", target_schema="transcriptomics"
         )
 
         # Verify error message
@@ -1637,7 +1674,12 @@ class TestToolRouting:
             ],
             fuzzy_matches=[],
             unmapped=[],
-            summary={"mapping_rate": 1.0, "exact_matches": 1, "fuzzy_matches": 0, "unmapped": 0},
+            summary={
+                "mapping_rate": 1.0,
+                "exact_matches": 1,
+                "fuzzy_matches": 0,
+                "unmapped": 0,
+            },
             warnings=[],
         )
         mock_sample_mapping_service.map_samples_by_id.return_value = mock_result
@@ -1670,7 +1712,7 @@ class TestToolRouting:
             source="dataset1",
             target="dataset2",
             source_type="modality",
-            target_type="modality"
+            target_type="modality",
         )
 
         assert "Mapping complete" in result
@@ -1757,7 +1799,10 @@ class TestToolRouting:
         mock_mapping_class.return_value = mock_mapping_service
 
         # Configure data_manager mocks for tool validation
-        mock_data_manager.list_modalities.return_value = ["geo_gse12345", "geo_gse67890"]
+        mock_data_manager.list_modalities.return_value = [
+            "geo_gse12345",
+            "geo_gse67890",
+        ]
         mock_adata = Mock()
         mock_adata.obs = pd.DataFrame({"sample_id": ["S1", "S2"]})
         mock_data_manager.get_modality.return_value = mock_adata
@@ -1900,7 +1945,9 @@ class TestToolRouting:
             warnings=[],
         )
         mock_metadata_standardization_service.validate_dataset_content.return_value = (
-            mock_validation, {}, None  # Return tuple: (result, stats, ir)
+            mock_validation,
+            {},
+            None,  # Return tuple: (result, stats, ir)
         )
 
         # Mock read result
@@ -1923,7 +1970,9 @@ class TestToolRouting:
             warnings=[],
         )
         mock_metadata_standardization_service.standardize_metadata.return_value = (
-            mock_standardization, {}, None  # Return tuple: (result, stats, ir)
+            mock_standardization,
+            {},
+            None,  # Return tuple: (result, stats, ir)
         )
 
         # Configure data_manager mocks for tool validation
@@ -1948,11 +1997,15 @@ class TestToolRouting:
         result1 = validate_tool.func(source="geo_gse12345", source_type="modality")
         assert "✅" in result1 or "Dataset Validation" in result1
 
-        result2 = read_tool.func(source="geo_gse12345", source_type="modality", return_format="summary")
+        result2 = read_tool.func(
+            source="geo_gse12345", source_type="modality", return_format="summary"
+        )
         assert "Total Samples" in result2 and "2" in result2
 
         result3 = standardize_tool.func(
-            source="geo_gse12345", source_type="modality", target_schema="transcriptomics"
+            source="geo_gse12345",
+            source_type="modality",
+            target_schema="transcriptomics",
         )
         assert "Metadata Standardization Report" in result3
 
@@ -2021,7 +2074,12 @@ class TestHandoffCoordination:
             ],
             fuzzy_matches=[],
             unmapped=[],
-            summary={"mapping_rate": 1.0, "exact_matches": 1, "fuzzy_matches": 0, "unmapped": 0},
+            summary={
+                "mapping_rate": 1.0,
+                "exact_matches": 1,
+                "fuzzy_matches": 0,
+                "unmapped": 0,
+            },
             warnings=[],
         )
         mock_sample_mapping_service.map_samples_by_id.return_value = mock_result
@@ -2109,7 +2167,11 @@ class TestHandoffCoordination:
                 for i in range(18)
             ],
             fuzzy_matches=[],
-            unmapped=[UnmappedSample(sample_id="sample19", dataset="geo_gse67890", reason="No match")],
+            unmapped=[
+                UnmappedSample(
+                    sample_id="sample19", dataset="geo_gse67890", reason="No match"
+                )
+            ],
             summary={
                 "mapping_rate": 0.95,
                 "exact_matches": 18,
@@ -2133,7 +2195,10 @@ class TestHandoffCoordination:
 """
 
         # Configure data_manager mocks for tool validation
-        mock_data_manager.list_modalities.return_value = ["geo_gse12345", "geo_gse67890"]
+        mock_data_manager.list_modalities.return_value = [
+            "geo_gse12345",
+            "geo_gse67890",
+        ]
         mock_adata = Mock()
         mock_adata.obs = pd.DataFrame({"sample_id": ["S1", "S2"]})
         mock_data_manager.get_modality.return_value = mock_adata
@@ -2151,7 +2216,7 @@ class TestHandoffCoordination:
             source="geo_gse12345",
             target="geo_gse67890",
             source_type="modality",
-            target_type="modality"
+            target_type="modality",
         )
 
         # Verify report structure
@@ -2209,7 +2274,9 @@ class TestHandoffCoordination:
             warnings=["Missing 'control' condition", "Age missing for 5 samples"],
         )
         mock_metadata_standardization_service.validate_dataset_content.return_value = (
-            mock_validation, {}, None  # Return tuple: (result, stats, ir)
+            mock_validation,
+            {},
+            None,  # Return tuple: (result, stats, ir)
         )
 
         # Configure data_manager mocks for tool validation
