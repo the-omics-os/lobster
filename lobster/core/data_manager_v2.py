@@ -35,6 +35,7 @@ from lobster.core.interfaces.adapter import IModalityAdapter
 from lobster.core.interfaces.backend import IDataBackend
 from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.provenance import ProvenanceTracker
+from lobster.core.utils.h5ad_utils import validate_for_h5ad
 
 # Import for IR support (TYPE_CHECKING to avoid circular import)
 if TYPE_CHECKING:
@@ -479,6 +480,22 @@ class DataManagerV2:
         # Resolve path
         if not Path(path).is_absolute():
             path = self.data_dir / path
+
+        # Validate data for H5AD serialization (optional pre-save check)
+        if backend_name in ["h5ad", "H5ADBackend"] and hasattr(adata, "uns"):
+            validation_issues = validate_for_h5ad(adata.uns, path="adata.uns")
+            if validation_issues:
+                logger.warning(
+                    f"Pre-save validation found {len(validation_issues)} potential "
+                    f"serialization issues in modality '{name}'. These will be "
+                    f"sanitized automatically during save:\n" +
+                    "\n".join(f"  - {issue}" for issue in validation_issues[:5])
+                )
+                if len(validation_issues) > 5:
+                    logger.debug(
+                        f"  ... and {len(validation_issues) - 5} more issues. "
+                        f"Set logging to DEBUG for full list."
+                    )
 
         # Save data
         backend_instance.save(adata, path, **kwargs)

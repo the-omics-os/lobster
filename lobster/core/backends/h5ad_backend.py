@@ -18,6 +18,8 @@ import pandas as pd
 import scanpy as sc
 
 from lobster.core.backends.base import BaseBackend
+from lobster.core.utils.h5ad_utils import sanitize_key as util_sanitize_key
+from lobster.core.utils.h5ad_utils import sanitize_value as util_sanitize_value
 
 logger = logging.getLogger(__name__)
 
@@ -119,71 +121,24 @@ class H5ADBackend(BaseBackend):
         - Handles mixed-type columns (converts to strings)
         - Converts None/NaN to "NA" for HDF5 compatibility
         - Recursively applies to .uns, .obsm, .varm, .layers
+
+        Note: Uses centralized sanitization utilities from lobster.core.utils.h5ad_utils
         """
 
-        def sanitize_key(key):
-            if isinstance(key, str) and "/" in key:
-                return key.replace("/", slash_replacement)
-            return key
-
-        def convert(obj):
-            """Convert problematic types for HDF5 serialization."""
-            if isinstance(obj, collections.OrderedDict):
-                return {sanitize_key(k): convert(v) for k, v in obj.items()}
-            if isinstance(obj, tuple):
-                return [convert(v) for v in obj]
-            if isinstance(obj, (np.generic,)):
-                return obj.item()
-            if isinstance(obj, bool):
-                # Convert bool to string for HDF5
-                return str(obj)
-            if obj is None:
-                # Convert None to empty string
-                return ""
-            if isinstance(obj, dict):
-                return {sanitize_key(k): convert(v) for k, v in obj.items()}
-            if isinstance(obj, list):
-                return [convert(v) for v in obj]
-            if isinstance(obj, np.ndarray):
-                # Try to preserve numeric arrays, convert mixed types to string
-                try:
-                    # Check if array is numeric
-                    if np.issubdtype(obj.dtype, np.number):
-                        return obj
-                    # Non-numeric or object array - convert to string
-                    return np.array([str(x) if x is not None else "" for x in obj])
-                except (ValueError, TypeError):
-                    return np.array([str(x) if x is not None else "" for x in obj])
-
-            # Handle Path objects (common in GEO metadata)
-            if isinstance(obj, Path):
-                return str(obj)
-
-            # Catch-all for unknown objects (last resort)
-            # If object is not JSON-serializable, h5py will fail → stringify
-            try:
-                import json
-
-                json.dumps(obj)  # Test if object is JSON-serializable
-                return obj  # If successful, h5py might handle it
-            except (TypeError, ValueError):
-                # Object not JSON-serializable → convert to string
-                logger.debug(
-                    f"Converting non-serializable object of type {type(obj).__name__} to string for H5AD compatibility"
-                )
-                return str(obj)
-
-        # Sanitize uns (unstructured metadata)
-        adata.uns = {sanitize_key(k): convert(v) for k, v in adata.uns.items()}
+        # Sanitize uns (unstructured metadata) using centralized utility
+        adata.uns = {
+            util_sanitize_key(k, slash_replacement): util_sanitize_value(v, slash_replacement)
+            for k, v in adata.uns.items()
+        }
 
         # Sanitize obsm, varm, layers (keys must be safe)
-        adata.obsm = {sanitize_key(k): v for k, v in adata.obsm.items()}
-        adata.varm = {sanitize_key(k): v for k, v in adata.varm.items()}
-        adata.layers = {sanitize_key(k): v for k, v in adata.layers.items()}
+        adata.obsm = {util_sanitize_key(k, slash_replacement): v for k, v in adata.obsm.items()}
+        adata.varm = {util_sanitize_key(k, slash_replacement): v for k, v in adata.varm.items()}
+        adata.layers = {util_sanitize_key(k, slash_replacement): v for k, v in adata.layers.items()}
 
         # Sanitize DataFrame column names in obs and var
-        adata.obs.columns = [sanitize_key(col) for col in adata.obs.columns]
-        adata.var.columns = [sanitize_key(col) for col in adata.var.columns]
+        adata.obs.columns = [util_sanitize_key(col, slash_replacement) for col in adata.obs.columns]
+        adata.var.columns = [util_sanitize_key(col, slash_replacement) for col in adata.var.columns]
 
         # Sanitize DataFrame VALUES in obs and var (COMPREHENSIVE)
         # This prevents serialization errors when writing to H5AD

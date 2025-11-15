@@ -18,6 +18,7 @@ import scanpy as sc
 from lobster.core.adapters.base import BaseAdapter
 from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.schemas.transcriptomics import TranscriptomicsSchema
+from lobster.core.utils.h5ad_utils import sanitize_value
 
 logger = logging.getLogger(__name__)
 
@@ -124,10 +125,10 @@ class TranscriptomicsAdapter(BaseAdapter):
             else:
                 raise TypeError(f"Unsupported source type: {type(source)}")
 
-            # Store metadata fields in uns
+            # Store metadata fields in uns (sanitized for H5AD compatibility)
             if metadata_fields:
                 for key, value in metadata_fields.items():
-                    adata.uns[key] = value
+                    adata.uns[key] = sanitize_value(value)
 
             # Apply transcriptomics-specific preprocessing
             adata = self.preprocess_data(adata, **kwargs)
@@ -209,19 +210,19 @@ class TranscriptomicsAdapter(BaseAdapter):
             var=pd.DataFrame(index=df_transposed.columns),
         )
 
-        # Add quantification metadata to uns
+        # Add quantification metadata to uns (sanitized for H5AD compatibility)
         if metadata:
-            adata.uns["quantification_metadata"] = metadata
+            adata.uns["quantification_metadata"] = sanitize_value(metadata)
 
-        # Store transpose decision
-        adata.uns["transpose_info"] = {
+        # Store transpose decision (sanitized for H5AD compatibility)
+        adata.uns["transpose_info"] = sanitize_value({
             "transpose_applied": True,
             "transpose_reason": f"{metadata.get('quantification_tool', 'Quantification')} format specification (genes × samples)",
-            "original_shape": (n_rows, n_cols),
-            "final_shape": adata.shape,
+            "original_shape": (n_rows, n_cols),  # tuple → will be converted to list
+            "final_shape": adata.shape,  # tuple → will be converted to list
             "data_type": data_type,
             "format_specific": True,  # Not heuristic
-        }
+        })
 
         # Validate orientation
         self._validate_bulk_orientation(adata)
