@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field, field_validator
 from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.schemas.validation import FlexibleValidator
 
-
 # =============================================================================
 # ONTOLOGY FIELDS REMOVED - HANDLED BY EMBEDDING SERVICE
 # =============================================================================
@@ -919,7 +918,9 @@ class TranscriptomicsSchema:
         # Add cross-database accession validation (all schema types)
         validator.add_custom_rule(
             "check_cross_database_accessions",
-            lambda adata: _validate_cross_database_accessions(adata, modality="transcriptomics")
+            lambda adata: _validate_cross_database_accessions(
+                adata, modality="transcriptomics"
+            ),
         )
 
         if schema_type == "single_cell":
@@ -1253,7 +1254,9 @@ def _validate_aggregation_params(adata) -> "ValidationResult":
     return result
 
 
-def _validate_cross_database_accessions(adata, modality: str = "transcriptomics") -> "ValidationResult":
+def _validate_cross_database_accessions(
+    adata, modality: str = "transcriptomics"
+) -> "ValidationResult":
     """
     Validate cross-database accession format and structure.
 
@@ -1269,9 +1272,9 @@ def _validate_cross_database_accessions(adata, modality: str = "transcriptomics"
     """
     from lobster.core.interfaces.validator import ValidationResult
     from lobster.core.schemas.database_mappings import (
+        get_accession_url,
         get_accessions_for_modality,
         validate_accession,
-        get_accession_url,
     )
 
     result = ValidationResult()

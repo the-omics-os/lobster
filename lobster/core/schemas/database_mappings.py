@@ -13,9 +13,9 @@ Used by:
 Phase: Week 3 Days 1-2 of multi-omics schema refactoring (4-week project)
 """
 
+import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional
-import re
 
 
 @dataclass
@@ -34,6 +34,7 @@ class DatabaseAccession:
         modalities: Which data modalities use this field
         required: Whether this field is required (vs optional)
     """
+
     field_name: str
     database_name: str
     database_url_template: str
@@ -341,15 +342,14 @@ def list_required_accessions(modality: str) -> List[str]:
     """
     accessions = get_accessions_for_modality(modality)
     return [
-        field_name
-        for field_name, accession in accessions.items()
-        if accession.required
+        field_name for field_name, accession in accessions.items() if accession.required
     ]
 
 
 # =============================================================================
 # Database-Specific Validation Patterns
 # =============================================================================
+
 
 def validate_ncbi_accession(value: str, prefix: str) -> bool:
     """
@@ -403,6 +403,7 @@ def validate_geo_accession(value: str) -> bool:
 # Export Summary
 # =============================================================================
 
+
 def get_database_summary() -> Dict[str, int]:
     """
     Get summary statistics of database accession coverage.
@@ -417,8 +418,7 @@ def get_database_summary() -> Dict[str, int]:
     """
     modalities = ["transcriptomics", "proteomics", "metabolomics", "metagenomics"]
     return {
-        modality: len(get_accessions_for_modality(modality))
-        for modality in modalities
+        modality: len(get_accessions_for_modality(modality)) for modality in modalities
     }
 
 

@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field, field_validator
 from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.schemas.validation import FlexibleValidator
 
-
 # =============================================================================
 # ONTOLOGY FIELDS REMOVED - HANDLED BY EMBEDDING SERVICE
 # =============================================================================
@@ -575,7 +574,9 @@ class MetagenomicsSchema:
         # Add cross-database accession validation (all schema types)
         validator.add_custom_rule(
             "check_cross_database_accessions",
-            lambda adata: _validate_cross_database_accessions(adata, modality="metagenomics")
+            lambda adata: _validate_cross_database_accessions(
+                adata, modality="metagenomics"
+            ),
         )
 
         if schema_type == "16s_amplicon":
@@ -583,7 +584,9 @@ class MetagenomicsSchema:
             validator.add_custom_rule("check_phylogenetic_tree", _validate_tree)
             validator.add_custom_rule("check_sequence_quality", _validate_sequences)
         elif schema_type == "shotgun":
-            validator.add_custom_rule("check_functional_annotations", _validate_annotations)
+            validator.add_custom_rule(
+                "check_functional_annotations", _validate_annotations
+            )
             validator.add_custom_rule("check_gene_abundance", _validate_gene_abundance)
 
         return validator
@@ -657,9 +660,11 @@ def _validate_taxonomy(adata) -> "ValidationResult":
     # Check for "Unassigned" or "Unknown" entries
     for level in present_levels:
         if adata.var[level].dtype == "object":
-            unassigned = adata.var[level].str.contains(
-                "unassigned|unknown", case=False, na=False
-            ).sum()
+            unassigned = (
+                adata.var[level]
+                .str.contains("unassigned|unknown", case=False, na=False)
+                .sum()
+            )
             if unassigned > 0:
                 unassigned_pct = (unassigned / len(adata.var)) * 100
                 if unassigned_pct > 30:
@@ -708,7 +713,9 @@ def _validate_tree(adata) -> "ValidationResult":
 
     # Check for basic Newick structure
     if "(" not in tree_str or ")" not in tree_str:
-        result.add_warning("Phylogenetic tree does not contain parentheses (Newick format).")
+        result.add_warning(
+            "Phylogenetic tree does not contain parentheses (Newick format)."
+        )
 
     # Check if tree contains feature IDs from var.index
     # (Simple check - full validation would require parsing the tree)
@@ -839,7 +846,9 @@ def _validate_gene_abundance(adata) -> "ValidationResult":
     return result
 
 
-def _validate_cross_database_accessions(adata, modality: str = "metagenomics") -> "ValidationResult":
+def _validate_cross_database_accessions(
+    adata, modality: str = "metagenomics"
+) -> "ValidationResult":
     """
     Validate cross-database accession format and structure.
 
@@ -855,9 +864,9 @@ def _validate_cross_database_accessions(adata, modality: str = "metagenomics") -
     """
     from lobster.core.interfaces.validator import ValidationResult
     from lobster.core.schemas.database_mappings import (
+        get_accession_url,
         get_accessions_for_modality,
         validate_accession,
-        get_accession_url,
     )
 
     result = ValidationResult()

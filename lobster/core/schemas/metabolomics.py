@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field, field_validator
 from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.schemas.validation import FlexibleValidator
 
-
 # =============================================================================
 # ONTOLOGY FIELDS REMOVED - HANDLED BY EMBEDDING SERVICE
 # =============================================================================
@@ -370,14 +369,18 @@ class MetabolomicsSchema:
         )
 
         # Add metabolomics-specific validation rules
-        validator.add_custom_rule("check_metabolite_identifiers", _validate_metabolite_ids)
+        validator.add_custom_rule(
+            "check_metabolite_identifiers", _validate_metabolite_ids
+        )
         validator.add_custom_rule("check_intensity_data", _validate_intensity_data)
         validator.add_custom_rule("check_missing_values", _validate_missing_values)
 
         # Add cross-database accession validation
         validator.add_custom_rule(
             "check_cross_database_accessions",
-            lambda adata: _validate_cross_database_accessions(adata, modality="metabolomics")
+            lambda adata: _validate_cross_database_accessions(
+                adata, modality="metabolomics"
+            ),
         )
 
         return validator
@@ -512,7 +515,9 @@ def _validate_missing_values(adata) -> "ValidationResult":
     return result
 
 
-def _validate_cross_database_accessions(adata, modality: str = "metabolomics") -> "ValidationResult":
+def _validate_cross_database_accessions(
+    adata, modality: str = "metabolomics"
+) -> "ValidationResult":
     """
     Validate cross-database accession format and structure.
 
@@ -528,9 +533,9 @@ def _validate_cross_database_accessions(adata, modality: str = "metabolomics") -
     """
     from lobster.core.interfaces.validator import ValidationResult
     from lobster.core.schemas.database_mappings import (
+        get_accession_url,
         get_accessions_for_modality,
         validate_accession,
-        get_accession_url,
     )
 
     result = ValidationResult()
@@ -709,9 +714,7 @@ class MetabolomicsMetadataSchema(BaseModel):
         allowed = {"positive", "negative", "both", "pos", "neg", "dual"}
         v_lower = v.lower()
         if v_lower not in allowed:
-            raise ValueError(
-                f"ionization_mode must be one of {allowed}, got '{v}'"
-            )
+            raise ValueError(f"ionization_mode must be one of {allowed}, got '{v}'")
         # Normalize to standard values
         if v_lower in {"pos"}:
             return "positive"
