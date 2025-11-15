@@ -2429,6 +2429,7 @@ dependencies = [
     { name = "pydeseq2" },
     { name = "pypdf2" },
     { name = "pyreadr" },
+    { name = "pysradb" },
     { name = "python-dotenv" },
     { name = "python-multipart" },
     { name = "redis" },
@@ -2593,6 +2594,7 @@ requires-dist = [
     { name = "pylint", marker = "extra == 'dev'", specifier = ">=2.17.0" },
     { name = "pypdf2", specifier = ">=3.0.0" },
     { name = "pyreadr", specifier = ">=0.4.0" },
+    { name = "pysradb", specifier = ">=2.5.1" },
     { name = "pytest", marker = "extra == 'all'", specifier = ">=7.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'all'", specifier = ">=0.20.0" },
@@ -4642,6 +4644,22 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/4c/2e/3bcba8688d58f8dc954cef6831c19d52b6017b035d783685d67cd99fa351/pyro_ppl-1.9.1.tar.gz", hash = "sha256:5e1596de276c038a3f77d2580a90d0a97126e0104900444a088eee620bb0d65e", size = 570861, upload-time = "2024-06-02T00:37:39.688Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ed/37/def183a2a2c8619d92649d62fe0622c4c6c62f60e4151e8fbaa409e7d5ab/pyro_ppl-1.9.1-py3-none-any.whl", hash = "sha256:91fb2c8740d9d3bd548180ac5ecfa04552ed8c471a1ab66870180663b8f09852", size = 755956, upload-time = "2024-06-02T00:37:37.486Z" },
+]
+
+[[package]]
+name = "pysradb"
+version = "2.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "lxml" },
+    { name = "pandas" },
+    { name = "requests" },
+    { name = "tqdm" },
+    { name = "xmltodict" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/74/d4/b7ff41d870f44ec288bbd4e52bbc43d52610c4f436a2e624d123b4924acf/pysradb-2.5.1.tar.gz", hash = "sha256:030d3f70c263d0dae28048c2ed158b0dbf49023bb7d26f1fa9939c13227644de", size = 175574, upload-time = "2025-10-20T10:15:04.611Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/81/b8/a631ba05927d98513446644c247f8d66f461115ae6d8c2d7e2884f809b76/pysradb-2.5.1-py3-none-any.whl", hash = "sha256:b37892427bd890a70d97e7bf908cf69f8d9356e892e51e27f6ec8b61e8bf64fc", size = 181484, upload-time = "2025-10-20T10:14:59.772Z" },
 ]
 
 [[package]]

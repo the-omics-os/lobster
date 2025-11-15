@@ -299,8 +299,7 @@ for entry in failed_entries:
     # Option 1: Retry (reset to PENDING)
     data_manager.download_queue.update_status(
         entry_id=entry.entry_id,
-        status=DownloadStatus.PENDING,
-        error_log=[]  # Clear errors
+        status=DownloadStatus.PENDING
     )
 
     # Option 2: Remove from queue (abandon)

@@ -69,6 +69,7 @@ class Settings:
         )
         self.ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
         self.NCBI_API_KEY = os.environ.get("NCBI_API_KEY", "")
+        self.NCBI_EMAIL = os.environ.get("NCBI_EMAIL", "kevin.yar@omics-os.com")
 
         # AWS region (fallback for backward compatibility)
         self.REGION = os.environ.get("AWS_REGION", "us-east-1")

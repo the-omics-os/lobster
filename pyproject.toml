@@ -103,6 +103,7 @@ dependencies = [
     "docling>=2.60.0",
     "docling-core>=2.50.0",
     "redis>=6.4.0",
+    "pysradb>=2.5.1",
 ]
 
 [project.optional-dependencies]
