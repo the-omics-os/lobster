@@ -1070,7 +1070,7 @@ When extraction fails, check:
 For detailed technical information about Docling integration:
 - **[Publication Intelligence Deep Dive](37-publication-intelligence-deep-dive.md)** - Comprehensive technical guide
 - **[Research Agent API](15-agents-api.md)** - Research Agent documentation
-- **[Services API](16-services-api.md)** - PublicationIntelligenceService reference
+- **[Services API](16-services-api.md)** - ContentAccessService reference
 - **[Literature Integration Workflow](06-data-analysis-workflows.md#literature-integration-workflow)** - Usage examples
 
 ---

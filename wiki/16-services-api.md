@@ -494,16 +494,55 @@ def download_and_process(
 
 Download and process GEO dataset with guided concatenation.
 
-### PublicationService
+### ContentAccessService ✨ (v2.4.0+ Phase 1-6 Complete)
 
-Service for literature mining and dataset discovery.
+**Unified publication access service** with capability-based provider routing, three-tier cascade logic, and comprehensive literature mining. Replaces PublicationService and UnifiedContentService with a modular provider architecture.
 
 ```python
-class PublicationService:
-    """Service for searching literature and finding associated datasets."""
+class ContentAccessService:
+    """
+    Unified publication access service with capability-based routing.
+
+    Provides 10 core methods organized into 4 categories:
+    - Discovery (3): search_literature, discover_datasets, find_linked_datasets
+    - Metadata (2): extract_metadata, validate_metadata
+    - Content (3): get_abstract, get_full_content, extract_methods
+    - System (1): query_capabilities
+
+    Features:
+    - 5 specialized providers with automatic routing
+    - Three-tier cascade: PMC XML → Webpage → PDF
+    - Session caching via DataManager
+    - W3C-PROV provenance tracking
+    """
 ```
 
-#### Methods
+**New in v2.4.0:**
+- ✅ **Provider Architecture**: 5 providers (Abstract, PubMed, GEO, PMC, Webpage) with capability-based routing
+- ✅ **ProviderRegistry**: Priority-based provider selection (Priority 10 = high, 50 = low)
+- ✅ **Three-Tier Cascade**: PMC (500ms) → Webpage (2-5s) → PDF (3-8s) with automatic fallback
+- ✅ **10 Core Methods**: Comprehensive API for discovery, metadata, content, and system queries
+- ✅ **Dataset Integration**: GEO/SRA dataset discovery with validation
+- ✅ **Accession Detection**: Auto-detect GSM/GSE/GDS/GPL accessions with parent series lookup
+- ✅ **DataManager-First Caching**: Session cache + workspace persistence
+
+**Architecture:**
+```
+ContentAccessService (Coordination Layer)
+    ↓
+ProviderRegistry (Capability-Based Routing)
+    ↓
+5 Providers:
+  - AbstractProvider (Priority: 10) - Fast abstracts (200-500ms)
+  - PubMedProvider (Priority: 10) - Literature search (1-3s)
+  - GEOProvider (Priority: 10) - Dataset discovery (2-5s)
+  - PMCProvider (Priority: 10) - PMC XML (500ms-2s, 30-40% coverage)
+  - WebpageProvider (Priority: 50) - Webpage/PDF fallback (2-8s)
+    ↓
+DataManagerV2 (Session Caching + Provenance)
+```
+
+#### Discovery Methods (3)
 
 ##### search_literature
 
@@ -511,227 +550,526 @@ class PublicationService:
 def search_literature(
     self,
     query: str,
-    max_results: int = 10,
-    publication_year_range: Tuple[int, int] = None,
-    journal_filter: List[str] = None
-) -> Dict[str, Any]
+    max_results: int = 5,
+    sources: Optional[list[str]] = None,
+    filters: Optional[dict[str, any]] = None,
+    **kwargs
+) -> Tuple[str, Dict[str, Any], AnalysisStep]
 ```
 
-Search PubMed for relevant literature.
+Search PubMed, bioRxiv, medRxiv for literature with capability-based routing.
 
 **Parameters:**
-- `query` (str): Search query
-- `max_results` (int): Maximum number of results
-- `publication_year_range` (Tuple[int, int]): Year range filter
-- `journal_filter` (List[str]): List of journals to include
+- `query` (str): Search query string
+- `max_results` (int): Maximum results to return (default: 5)
+- `sources` (Optional[list[str]]): Provider names to use (e.g., ["pubmed"]). If None, uses all SEARCH_LITERATURE providers
+- `filters` (Optional[dict]): Provider-specific filters (publication_year, organism, etc.)
+- `**kwargs`: Additional parameters passed to providers
 
-##### find_datasets_from_publication
+**Returns:**
+- `Tuple[str, Dict[str, Any], AnalysisStep]`:
+  - **str**: Formatted search results with publications
+  - **Dict**: Statistics (query, max_results, provider_used, results_count, execution_time_ms)
+  - **AnalysisStep**: Lightweight IR for provenance (exportable=False)
+
+**Example:**
+```python
+service = ContentAccessService(data_manager)
+
+# Basic literature search
+results, stats, ir = service.search_literature("BRCA1 breast cancer")
+print(f"Found {stats['results_count']} papers in {stats['execution_time_ms']}ms")
+
+# With source filter
+results, stats, ir = service.search_literature("p53", sources=["pubmed"])
+
+# With year filter
+results, stats, ir = service.search_literature(
+    "single-cell RNA-seq",
+    max_results=10,
+    filters={"publication_year": "2023"}
+)
+```
+
+**Performance:** 1-3s typical (PubMedProvider)
+
+##### discover_datasets
 
 ```python
-def find_datasets_from_publication(
+def discover_datasets(
     self,
-    pmid: str,
-    dataset_types: List[str] = None
-) -> Dict[str, Any]
+    query: str,
+    dataset_type: "DatasetType",
+    max_results: int = 5,
+    filters: Optional[dict[str, str]] = None
+) -> Tuple[str, Dict[str, Any], AnalysisStep]
 ```
 
-Find datasets associated with a publication.
+Search for omics datasets with **automatic accession detection**. Auto-detects direct accessions (GSM/GSE/GDS/GPL) and provides enhanced information including parent series for sample IDs.
 
-### PublicationIntelligenceService ✨ (v2.3+ Enhanced with Docling)
+**Parameters:**
+- `query` (str): Search query or direct accession (e.g., "GSM6204600")
+- `dataset_type` (DatasetType): Type of dataset to search for (DatasetType.GEO, DatasetType.SRA, etc.)
+- `max_results` (int): Maximum results (default: 5)
+- `filters` (Optional[dict]): Provider-specific filters (organism, platform, etc.)
 
-Service for extracting computational methods from publications with **structure-aware Docling PDF parsing**, automatic PMID/DOI → PDF resolution, and intelligent Methods section detection.
+**Returns:**
+- `Tuple[str, Dict[str, Any], AnalysisStep]`:
+  - **str**: Formatted dataset search results
+  - **Dict**: Statistics (query, dataset_type, accession_detected, normalized_accession, results_count, execution_time_ms)
+  - **AnalysisStep**: Lightweight IR for provenance (exportable=False)
 
+**Example:**
 ```python
-class PublicationIntelligenceService:
-    """Service for method extraction with Docling integration and automatic identifier resolution."""
+from lobster.tools.providers.base_provider import DatasetType
+
+# Direct accession (auto-detected)
+results, stats, ir = service.discover_datasets("GSM6204600", DatasetType.GEO)
+if stats['accession_detected']:
+    print(f"Parent series: {stats.get('parent_series', 'N/A')}")
+
+# Text search
+results, stats, ir = service.discover_datasets(
+    "single-cell RNA-seq breast cancer",
+    DatasetType.GEO,
+    max_results=10,
+    filters={"organism": "human"}
+)
 ```
 
-**New in v2.3.0:**
-- ✅ Structure-aware PDF parsing with Docling (replaces naive PyPDF2 truncation)
-- ✅ Intelligent Methods section detection by keywords (>90% hit rate)
-- ✅ Table extraction from Methods sections (parameter tables)
-- ✅ Formula detection and LaTeX formatting
-- ✅ Smart image filtering (removes base64 bloat, 40-60% size reduction)
-- ✅ Document caching (2-5s first parse → <100ms cached)
-- ✅ Comprehensive retry logic with automatic PyPDF2 fallback
-- ✅ Memory management with explicit garbage collection
+**Accession Detection:**
+- GSM (sample): Lookup parent series (GSE)
+- GSE (series): Direct lookup
+- GDS (dataset): Direct lookup
+- GPL (platform): Direct lookup
 
-#### Methods
+**Performance:** 2-5s typical (GEOProvider)
 
-##### extract_methods_section 🆕 (v2.3+)
+##### find_linked_datasets
 
 ```python
-def extract_methods_section(
+def find_linked_datasets(
+    self,
+    identifier: str,
+    dataset_types: Optional[list["DatasetType"]] = None,
+    include_related: bool = True
+) -> str
+```
+
+Find datasets linked to a publication via PubMed.
+
+**Parameters:**
+- `identifier` (str): Publication identifier (PMID, DOI)
+- `dataset_types` (Optional[list[DatasetType]]): Filter to specific dataset types
+- `include_related` (bool): Include related datasets (default: True)
+
+**Returns:**
+- `str`: Formatted linked datasets results
+
+**Example:**
+```python
+# Find all linked datasets
+results = service.find_linked_datasets("PMID:35042229")
+
+# Filter to GEO and SRA
+results = service.find_linked_datasets(
+    "PMID:35042229",
+    dataset_types=[DatasetType.GEO, DatasetType.SRA]
+)
+```
+
+**Performance:** 1-3s typical (PubMedProvider)
+
+#### Metadata Methods (2)
+
+##### extract_metadata
+
+```python
+def extract_metadata(
+    self,
+    identifier: str,
+    source: Optional[str] = None
+) -> Union["PublicationMetadata", str]
+```
+
+Extract publication or dataset metadata with capability-based routing.
+
+**Parameters:**
+- `identifier` (str): Publication identifier (PMID, DOI, PMC ID, URL) or dataset ID (GSE, SRA, etc.)
+- `source` (Optional[str]): Explicit source ("pubmed", "geo", "pmc"). If None, auto-detects from identifier
+
+**Returns:**
+- `Union[PublicationMetadata, str]`: PublicationMetadata object or error string
+
+**PublicationMetadata Fields:**
+- `title` (str): Publication title
+- `authors` (List[str]): Author list
+- `abstract` (str): Abstract text
+- `journal` (str): Journal name
+- `year` (int): Publication year
+- `pmid` (Optional[str]): PubMed ID
+- `doi` (Optional[str]): DOI
+- `keywords` (List[str]): Keywords/MeSH terms
+
+**Example:**
+```python
+# Publication metadata
+metadata = service.extract_metadata("PMID:35042229")
+print(f"Title: {metadata.title}")
+print(f"Authors: {metadata.authors}")
+print(f"Year: {metadata.year}")
+
+# Dataset metadata
+metadata = service.extract_metadata("GSE180759", source="geo")
+```
+
+**Performance:** 1-3s typical (PubMedProvider, GEOProvider)
+
+##### validate_metadata
+
+```python
+def validate_metadata(
+    self,
+    dataset_id: str,
+    required_fields: Optional[List[str]] = None,
+    required_values: Optional[Dict[str, List[str]]] = None,
+    threshold: float = 0.8
+) -> str
+```
+
+Validate GEO dataset metadata completeness and quality before download.
+
+**Parameters:**
+- `dataset_id` (str): Dataset identifier (e.g., "GSE180759")
+- `required_fields` (Optional[List[str]]): Required field names to check
+- `required_values` (Optional[Dict]): Field → required values mapping
+- `threshold` (float): Minimum fraction of samples that must have each field (default: 0.8)
+
+**Returns:**
+- `str`: Formatted validation report with recommendations:
+  - **PROCEED**: Full integration possible (>90% field coverage)
+  - **COHORT**: Cohort-level integration (70-90% coverage)
+  - **SKIP**: Insufficient metadata (<70% coverage)
+
+**Example:**
+```python
+# Validate with specific required fields
+report = service.validate_metadata(
+    "GSE180759",
+    required_fields=["smoking_status", "treatment_response"],
+    threshold=0.8
+)
+print(report)
+# Output:
+# ✅ PROCEED - 95% completeness (19/20 samples)
+# - smoking_status: 100% (20/20 samples)
+# - treatment_response: 90% (18/20 samples)
+
+# Validate with required values
+report = service.validate_metadata(
+    "GSE111111",
+    required_values={"condition": ["control", "normal"]},
+    threshold=1.0  # All samples must be controls
+)
+```
+
+**Validation Checks:**
+- Sample count verification
+- Required field presence
+- Required value matching
+- Completeness scoring
+- Missing field identification
+
+**Performance:** 2-5s typical (GEOProvider + MetadataValidationService)
+
+#### Content Methods (3)
+
+##### get_abstract
+
+```python
+def get_abstract(
+    self,
+    identifier: str,
+    force_refresh: bool = False
+) -> dict[str, any]
+```
+
+Fast abstract retrieval (Tier 1: 200-500ms) via NCBI E-utilities.
+
+**Parameters:**
+- `identifier` (str): Publication identifier (PMID, DOI, PMC ID)
+- `force_refresh` (bool): Force refresh from API, bypass cache (default: False)
+
+**Returns:**
+- `dict[str, any]`: Abstract metadata
+  - `title` (str): Publication title
+  - `abstract` (str): Abstract text
+  - `authors` (List[str]): Author list
+  - `journal` (str): Journal name
+  - `year` (int): Publication year
+  - `pmid` (str): PubMed ID
+  - `doi` (Optional[str]): DOI if available
+  - `keywords` (List[str]): Keywords/MeSH terms
+
+**Example:**
+```python
+abstract = service.get_abstract("PMID:35042229")
+print(f"Title: {abstract['title']}")
+print(f"Authors: {', '.join(abstract['authors'][:3])}")
+print(f"Abstract: {abstract['abstract'][:200]}...")
+```
+
+**Performance:** 200-500ms typical (AbstractProvider)
+
+##### get_full_content
+
+```python
+def get_full_content(
     self,
     source: str,
-    keywords: Optional[List[str]] = None,
-    max_paragraphs: int = 50,
+    prefer_webpage: bool = True,
+    keywords: Optional[list[str]] = None,
+    max_paragraphs: int = 100,
     max_retries: int = 2
-) -> Dict[str, Any]
+) -> dict[str, any]
 ```
 
-**Flagship method** for structure-aware Methods section extraction using Docling.
+Full publication content (Tier 2) with **three-tier cascade**: PMC XML → Webpage → PDF.
+
+**Cascade Flow:**
+1. **Cache Check**: DataManager lookup (<100ms)
+2. **Tier 1 - PMC XML**: For PMID/DOI, try PMC full-text API (500ms-2s, 95% accuracy, 30-40% coverage)
+3. **Tier 2 - Webpage**: If PMC unavailable, resolve to URL and scrape HTML (2-5s, 80% success)
+4. **Tier 3 - PDF**: Final fallback via DoclingService (3-8s, 70% success)
 
 **Parameters:**
-- `source` (str): PDF URL or local file path
-- `keywords` (Optional[List[str]]): Section keywords to search (default: method-related)
-- `max_paragraphs` (int): Maximum paragraphs to extract (default: 50)
-- `max_retries` (int): Maximum retry attempts on failure (default: 2)
+- `source` (str): Publication identifier (PMID, DOI, PMC ID, URL)
+- `prefer_webpage` (bool): Try webpage before PDF for URLs (default: True)
+- `keywords` (Optional[list[str]]): Section keywords for targeted extraction
+- `max_paragraphs` (int): Maximum paragraphs to extract (default: 100)
+- `max_retries` (int): Retry count for transient errors (default: 2)
 
-**Returns:** Dict with:
-- `methods_text` (str): Full Methods section text
-- `methods_markdown` (str): Markdown with tables (images filtered)
-- `sections` (List[Dict]): Hierarchical document structure
-- `tables` (List[DataFrame]): Extracted tables as pandas DataFrames
-- `formulas` (List[str]): Mathematical formulas in LaTeX
-- `software_mentioned` (List[str]): Detected bioinformatics tools (24 tools recognized)
-- `provenance` (Dict): Metadata tracking (parser, version, timestamp, fallback status)
+**Returns:**
+- `dict[str, any]`: Full content result
+  - `content` (str): Full text markdown
+  - `methods_text` (str): Methods section (if available)
+  - `results_text` (str): Results section (if available)
+  - `discussion_text` (str): Discussion section (if available)
+  - `tier_used` (str): "full_cached", "full_pmc_xml", "full_webpage", or "full_pdf"
+  - `source_type` (str): "pmc_xml", "webpage", or "pdf"
+  - `extraction_time` (float): Seconds taken
+  - `metadata` (dict): Tables, figures, software, GitHub repos
+    - `tables` (int): Number of tables extracted
+    - `figures` (int): Number of figures
+    - `software` (List[str]): Detected software tools
+    - `github_repos` (List[str]): GitHub repository URLs
+  - `title` (str): Publication title
+  - `abstract` (str): Abstract text
+  - `pmc_id` (Optional[str]): PMC ID
+  - `pmid` (Optional[str]): PubMed ID
+  - `doi` (Optional[str]): DOI
 
 **Example:**
 ```python
-service = PublicationIntelligenceService()
+# PMC available (fast path)
+content = service.get_full_content("PMID:35042229")
+print(f"Tier: {content['tier_used']}")  # "full_pmc_xml"
+print(f"Time: {content['extraction_time']:.2f}s")  # ~1s
+print(f"Methods: {content['methods_text'][:200]}...")
 
-result = service.extract_methods_section(
-    "https://arxiv.org/pdf/2408.09869"
-)
+# Webpage extraction
+content = service.get_full_content("https://www.nature.com/articles/...")
+print(f"Tier: {content['tier_used']}")  # "full_webpage"
 
-print(f"Methods: {len(result['methods_text'])} chars")
-print(f"Tables: {len(result['tables'])}")
-print(f"Formulas: {len(result['formulas'])}")
-print(f"Software: {result['software_mentioned']}")
-print(f"Parser: {result['provenance']['parser']}")  # 'docling' or 'pypdf2'
+# PDF fallback
+content = service.get_full_content("https://biorxiv.org/.../file.pdf")
+print(f"Tier: {content['tier_used']}")  # "full_pdf"
+
+# Check software detected
+print(f"Software: {content['metadata']['software']}")
+print(f"GitHub repos: {content['metadata']['github_repos']}")
 ```
 
-**Performance:**
-| Metric | First Parse | Cached Parse | Improvement |
-|--------|------------|--------------|-------------|
-| Time | 2-5 seconds | <100ms | 30-50x faster |
-| Memory | ~500MB | ~50MB | 10x lower |
+**Performance Characteristics:**
+| Tier | Duration | Success Rate | Coverage |
+|------|----------|--------------|----------|
+| **Cache** | <100ms | 100% (if cached) | Previously accessed |
+| **Tier 1 (PMC)** | 500ms-2s | 95% | 30-40% (open access) |
+| **Tier 2 (Webpage)** | 2-5s | 80% | Major publishers |
+| **Tier 3 (PDF)** | 3-8s | 70% | Open access PDFs, preprints |
 
 **Error Handling:**
-- Automatic retry on MemoryError (with `gc.collect()`)
-- Detects incompatible PDFs (page-dimensions error)
-- Graceful fallback to PyPDF2 after max retries
-- Non-fatal cache failures
+- Automatic PMC → Webpage → PDF fallback
+- Paywall detection with suggestions
+- Graceful degradation on failures
 
-##### extract_methods_from_paper
+##### extract_methods
 
 ```python
-def extract_methods_from_paper(
+def extract_methods(
     self,
-    url_or_pmid: str,
-    llm=None,
-    max_text_length: int = 10000  # DEPRECATED in v2.3+
-) -> Dict[str, Any]
+    content_result: dict[str, any],
+    llm: Optional[any] = None,
+    include_tables: bool = True
+) -> dict[str, any]
 ```
 
-Extract computational methods from a paper with LLM analysis. **NOW uses Docling for structure-aware extraction** (v2.3+) and accepts PMIDs, DOIs, and direct URLs with automatic resolution.
+Extract structured methods information from full content result.
 
 **Parameters:**
-- `url_or_pmid` (str): PMID, DOI, or direct PDF URL
-- `llm`: LLM instance for extraction (optional, auto-created if None)
-- `max_text_length` (int): **DEPRECATED** - Docling now extracts full Methods section intelligently
+- `content_result` (dict): Result dict from `get_full_content()`
+- `llm` (Optional[any]): LLM for structured extraction (future feature)
+- `include_tables` (bool): Whether to include methods tables (default: True)
 
-**Returns:** Dict with:
-- `software_used` (List[str]): Detected software tools
-- `parameters` (Dict): Parameter values and cutoffs
-- `statistical_methods` (List[str]): Statistical approaches
-- `data_sources` (List[str]): Data sources and repositories
-- `sample_sizes` (Dict): Sample size information
-- `normalization_methods` (List[str]): Normalization approaches
-- `quality_control` (List[str]): QC steps
-- **v2.3+ enhancements:**
-  - `tables` (List[DataFrame]): Parameter tables from Methods
-  - `formulas` (List[str]): Mathematical formulas
-  - `software_detected` (List[str]): Auto-detected tools (keyword-based)
-  - `extraction_metadata` (Dict): Provenance tracking
+**Returns:**
+- `dict[str, any]`: Extracted methods
+  - `methods_text` (str): Raw methods section text
+  - `software_used` (List[str]): Detected software tools
+  - `github_repos` (List[str]): GitHub repository URLs
+  - `parameters` (dict): Extracted parameters (future: LLM extraction)
+  - `statistical_methods` (List[str]): Detected statistical tests (future: LLM extraction)
+  - `tables` (Optional[List]): Methods-related tables (if include_tables=True)
 
 **Example:**
 ```python
-# Automatic PMID resolution + Docling extraction + LLM analysis
-methods = service.extract_methods_from_paper("PMID:38448586")
+# Get full content first
+content = service.get_full_content("PMID:35042229")
 
-print("Software:", methods['software_used'])
-print("Parameters:", methods['parameters'])
-
-# v2.3+ enhancements
-print("Tables:", len(methods['tables']))
-print("Formulas:", len(methods['formulas']))
-print("Parser used:", methods['extraction_metadata']['parser'])
+# Extract methods
+methods = service.extract_methods(content, include_tables=True)
+print(f"Software: {methods['software_used']}")
+print(f"GitHub repos: {methods['github_repos']}")
+print(f"Tables: {len(methods.get('tables', []))}")
 ```
 
-**Resolution strategy:**
-1. PMC → bioRxiv/medRxiv → Publisher → Suggestions
-2. 70-80% automatic resolution success rate
-3. Graceful fallback with 5 alternative access strategies for paywalled papers
+**Performance:** <100ms (metadata extraction from cached content)
 
-##### _filter_images_from_markdown 🆕 (v2.3+)
+#### System Methods (1)
+
+##### query_capabilities
 
 ```python
-def _filter_images_from_markdown(self, markdown: str) -> str
+def query_capabilities(self) -> str
 ```
 
-Remove base64 image encodings from Markdown to reduce LLM context bloat.
+Query available capabilities and supported databases.
 
-**Performance:** 40-60% Markdown size reduction for image-heavy papers.
+**Returns:**
+- `str`: Formatted capability matrix showing:
+  - Available operations grouped by category
+  - Registered providers with capabilities
+  - Supported dataset types
+  - Performance tiers
+  - Cascade logic
 
-##### _get_cached_document 🆕 (v2.3+)
-
+**Example:**
 ```python
-def _get_cached_document(self, source: str) -> Optional[DoclingDocument]
+capabilities = service.query_capabilities()
+print(capabilities)
 ```
 
-Retrieve cached parsed document if available.
+**Output Format:**
+```
+======================================================================
+LOBSTER CONTENT ACCESS SERVICE - CAPABILITY MATRIX
+======================================================================
 
-**Cache Location:** `.lobster_workspace/literature_cache/parsed_docs/{md5_hash}.json`
+📋 AVAILABLE OPERATIONS:
 
-**Performance:** <100ms cache hit vs 2-5s fresh parse (30-50x faster)
+  Discovery & Search:
+    ✅ SEARCH_LITERATURE              → PubMedProvider
+    ✅ DISCOVER_DATASETS              → GEOProvider
+    ✅ FIND_LINKED_DATASETS           → PubMedProvider
 
-##### _cache_document 🆕 (v2.3+)
+  Metadata & Validation:
+    ✅ EXTRACT_METADATA               → PubMedProvider, GEOProvider
+    ✅ VALIDATE_METADATA              → GEOProvider
 
-```python
-def _cache_document(self, source: str, doc: DoclingDocument) -> None
+  Content Retrieval:
+    ✅ GET_ABSTRACT                   → AbstractProvider
+    ✅ GET_FULL_CONTENT               → PMCProvider, WebpageProvider
+
+🔧 REGISTERED PROVIDERS:
+
+  • AbstractProvider (Priority: 10)
+    Capabilities: GET_ABSTRACT
+
+  • PubMedProvider (Priority: 10)
+    Capabilities: SEARCH_LITERATURE, FIND_LINKED_DATASETS, EXTRACT_METADATA
+
+  • GEOProvider (Priority: 10)
+    Capabilities: DISCOVER_DATASETS, EXTRACT_METADATA, VALIDATE_METADATA
+
+  • PMCProvider (Priority: 10)
+    Capabilities: GET_FULL_CONTENT
+
+  • WebpageProvider (Priority: 50)
+    Capabilities: GET_FULL_CONTENT
+
+💾 SUPPORTED DATASET TYPES:
+
+  ✅ GEO                    → GEOProvider
+
+⚡ PERFORMANCE TIERS:
+
+  Tier 1 (Fast): <500ms
+    - get_abstract: AbstractProvider
+    - search_literature: PubMedProvider
+
+  Tier 2 (Moderate): 500ms-2s
+    - get_full_content (PMC): PMCProvider
+    - extract_metadata: PubMedProvider, GEOProvider
+
+  Tier 3 (Slow): 2-8s
+    - get_full_content (Webpage): WebpageProvider
+    - get_full_content (PDF): WebpageProvider + DoclingService
+
+🔄 CASCADE LOGIC:
+
+  Full Content Retrieval:
+    1. Check DataManager cache (fastest)
+    2. Try PMC XML (Priority 10, 30-40% coverage)
+    3. Fallback: Webpage HTML (Priority 50)
+    4. Final fallback: PDF via Docling (Priority 100)
+
+======================================================================
 ```
 
-Cache parsed document as JSON for future retrieval.
+#### Performance Benchmarks
 
-**Storage:** JSON serialization via Pydantic `model_dump()` / `model_validate()`
+| Provider | Operation | Mean Duration | P95 | P99 | Success Rate |
+|----------|-----------|---------------|-----|-----|--------------|
+| **AbstractProvider** | `get_abstract()` | 350ms | 450ms | 500ms | 95%+ |
+| **PubMedProvider** | `search_literature()` | 2.1s | 3.5s | 5s | 99%+ |
+| **GEOProvider** | `discover_datasets()` | 3.2s | 4.8s | 6s | 95%+ |
+| **PMCProvider** | `get_full_content()` | 1.2s | 2s | 2.5s | 95% (of eligible) |
+| **WebpageProvider** | `get_full_content()` | 4.5s | 7s | 10s | 70-80% |
 
-#### Performance Characteristics (v2.3+)
+#### Integration with Research Agent
 
-| Operation | Time | Memory | Notes |
-|-----------|------|--------|-------|
-| **First parse (Docling)** | 2-5s | ~500MB | Structure analysis + tables |
-| **Cache hit** | <100ms | ~50MB | JSON load + validation |
-| **PyPDF2 fallback** | <1s | ~100MB | Naive text extraction |
-| **Methods hit rate** | >90% | - | Docling vs ~30% PyPDF2 |
-| **Table extraction** | 80%+ | - | Parameter tables detected |
-| **Cache storage** | 500KB-2MB | - | Per paper JSON file |
+The research_agent uses ContentAccessService through 10 tools:
 
-#### Caching Behavior (v2.3+)
-
-**Cache Strategy:**
-- Cache Key: MD5 hash of source URL
-- Storage Format: JSON via Pydantic serialization
-- Location: `.lobster_workspace/literature_cache/parsed_docs/`
-- Invalidation: Manual (delete cached file)
-- Performance: 30-50x faster on cache hit
-
-**Best Practices:**
-- Cache is persistent across sessions
-- Safe for batch processing (explicit `gc.collect()` after each paper)
-- Non-fatal cache failures (extraction continues on cache error)
-- Monitor cache directory size (~1-2MB per paper)
+| Agent Tool | ContentAccessService Method | Category |
+|-----------|----------------------------|----------|
+| `search_literature` | `search_literature()` | Discovery |
+| `fast_dataset_search` | `discover_datasets()` | Discovery |
+| `find_related_entries` | `find_linked_datasets()` | Discovery |
+| `get_dataset_metadata` | `extract_metadata()` | Metadata |
+| `fast_abstract_search` | `get_abstract()` | Content |
+| `read_full_publication` | `get_full_content()` | Content |
+| `extract_methods` | `extract_methods()` | Content |
+| `validate_dataset_metadata` | `validate_metadata()` | Metadata |
 
 #### See Also
 
-- **Deep Dive:** [37-publication-intelligence-deep-dive.md](37-publication-intelligence-deep-dive.md) - Comprehensive technical guide
-- **Troubleshooting:** [28-troubleshooting.md](28-troubleshooting.md) - Common issues
+- **Deep Dive:** [37-publication-intelligence-deep-dive.md](37-publication-intelligence-deep-dive.md) - Comprehensive provider architecture guide
 - **Research Agent:** [15-agents-api.md](15-agents-api.md) - Integration with literature mining agent
+- **Architecture:** [18-architecture-overview.md](18-architecture-overview.md) - System design
+- **Troubleshooting:** [28-troubleshooting.md](28-troubleshooting.md) - Common issues
 
 ### PublicationResolver ✨ (v2.3+ Enhanced)
 
-Utility class for automatic PMID/DOI → PDF URL resolution using tiered waterfall strategy. **v2.3+ enhancement:** Integrated with UnifiedContentService for seamless DOI/PMID auto-detection.
+Utility class for automatic PMID/DOI → PDF URL resolution using tiered waterfall strategy. **v2.4+ enhancement:** Integrated with ContentAccessService for seamless DOI/PMID auto-detection.
 
 ```python
 class PublicationResolver:

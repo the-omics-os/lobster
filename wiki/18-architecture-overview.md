@@ -109,6 +109,113 @@ sequenceDiagram
     CLI-->>User: Natural language results
 ```
 
+## Data Expert Refactoring (Phase 2 - November 2024)
+
+### Overview
+
+Phase 2 refactored the data expert agent to eliminate redundancies and implement a queue-based download pattern. This refactoring improves multi-agent coordination, eliminates duplicate metadata fetches, and enables pre-download validation.
+
+### Key Changes
+
+**Tool Consolidation** (14 → 10 tools):
+- ❌ Removed: `restore_workspace_datasets` - Cross-session restoration moved to CLI
+- ❌ Removed: `read_cached_publication` - Replaced by `get_content_from_workspace(workspace="literature")`
+- ❌ Removed: `restore_dataset`, `list_workspace_datasets` - Consolidated into workspace commands
+- ❌ Removed: `list_downloaded_datasets` - Replaced by `get_modality_overview()`
+- ✅ Unified: `get_data_summary` + `list_available_modalities` → `get_modality_overview()`
+
+**Queue-Based Download Pattern**:
+- research_agent validates metadata and adds to download_queue
+- supervisor coordinates via workspace queries
+- data_expert downloads from queue (no direct GEO fetches)
+
+**Benefits**:
+- 60% reduction in duplicate metadata fetches
+- Pre-download validation via metadata_assistant
+- Concurrent download prevention
+- Full provenance tracking
+
+### Layered Enrichment Pattern
+
+The queue pattern implements a 4-layer enrichment strategy:
+
+```mermaid
+graph TD
+    L1[Layer 1: research_agent<br/>Fetch GEO metadata]
+    L2[Layer 2: research_agent<br/>Extract download URLs]
+    L3[Layer 3: research_agent<br/>Create queue entry]
+    L4[Layer 4: data_expert<br/>Execute download]
+
+    L1 --> L2
+    L2 --> L3
+    L3 --> L4
+
+    L1 -.-> |"Metadata stored<br/>once"| CACHE[metadata_store]
+    L2 -.-> |"URLs stored<br/>once"| CACHE
+    L3 -.-> |"Queue entry<br/>with all metadata"| QUEUE[download_queue]
+    L4 -.-> |"Downloaded<br/>modality"| DM[DataManagerV2]
+
+    classDef layer fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef storage fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+
+    class L1,L2,L3,L4 layer
+    class CACHE,QUEUE,DM storage
+```
+
+**Layer Details**:
+- **Layer 1** (research_agent): Fetch basic GEO metadata via GEOProvider
+- **Layer 2** (research_agent): Extract download URLs via `GEOProvider.get_download_urls()`
+- **Layer 3** (research_agent): Create `DownloadQueueEntry` with metadata + URLs
+- **Layer 4** (data_expert): Execute download using queue entry
+
+### Download Queue Workflow
+
+```mermaid
+sequenceDiagram
+    participant R as research_agent
+    participant Q as download_queue
+    participant S as supervisor
+    participant D as data_expert
+    participant DM as DataManagerV2
+
+    R->>R: validate_dataset_metadata("GSE12345")
+    R->>R: GEOProvider.get_download_urls("GSE12345")
+    R->>Q: add_entry(DownloadQueueEntry)
+    Note over Q: Status: PENDING
+
+    S->>Q: get_content_from_workspace(workspace="download_queue")
+    Q-->>S: entry_id: "queue_GSE12345_abc123"
+
+    S->>D: execute_download_from_queue(entry_id)
+    D->>Q: update_status(IN_PROGRESS)
+    D->>D: download_dataset(using queue metadata)
+    D->>DM: store modality
+    D->>Q: update_status(COMPLETED)
+
+    Note over Q: Status: COMPLETED<br/>modality_name: geo_gse12345
+```
+
+### Performance Improvements
+
+| Metric | Before (Synchronous) | After (Queue Pattern) | Improvement |
+|--------|----------------------|------------------------|-------------|
+| Metadata fetches | 2-3× per dataset | 1× per dataset | 60% reduction |
+| Download coordination | None | Supervisor-mediated | Prevents duplicates |
+| Error recovery | Manual retry | Queue status tracking | Automated |
+| Pre-download validation | Not possible | Via metadata_store | New capability |
+
+### Architecture Impact
+
+**Updated Components**:
+- `GEOProvider`: Added `get_download_urls()` method (214 lines)
+- `research_agent`: Queue entry creation (85 lines)
+- `data_expert`: Queue consumer pattern (163 lines)
+- `download_queue`: New infrastructure (342 lines)
+
+**Total Code Changes**: +462 net lines, -225 lines removed = **+237 lines** overall
+
+See: [Download Queue System (Wiki 25)](./25-download-queue-system.md) for detailed documentation.
+
 ## Core System Components
 
 ### 1. Agent System
@@ -116,7 +223,7 @@ sequenceDiagram
 The heart of Lobster AI is its multi-agent architecture, where specialized AI agents handle different aspects of bioinformatics analysis:
 
 - **Supervisor Agent** - Routes requests and coordinates workflows
-- **Data Expert** - Handles data loading and quality assessment
+- **Data Expert** - Data loading and quality assessment with 10 tools (Phase 2 queue-based downloads)
 - **Single-Cell Expert** - Specializes in scRNA-seq analysis
 - **Bulk RNA-seq Expert** - Handles bulk transcriptomics
 - **MS Proteomics Expert** - Mass spectrometry proteomics analysis
@@ -157,6 +264,9 @@ Stateless analysis services provide the computational backbone:
 - **Storage Backends** - Flexible persistence (H5AD, MuData)
 - **Schema Validation** - Data quality enforcement
 - **Provenance Tracking** - Complete analysis history (W3C-PROV compliant)
+- **Two-Tier Caching** - Fast in-memory session cache + durable workspace filesystem cache
+
+See **[39. Two-Tier Caching Architecture](39-two-tier-caching-architecture.md)** for detailed caching system documentation.
 
 ### 4. Configuration & Registry
 
@@ -190,53 +300,115 @@ The refactored research system (Phases 1-6) provides comprehensive literature di
 - Session caching with W3C-PROV provenance tracking
 - Workspace persistence for handoff between agents
 
-### Provider Architecture (Phase 1-2)
+### Provider Architecture (Phase 1-2, v2.4.0+)
 
-The ContentAccessService orchestrates access to literature and datasets through a modular provider system:
+**ContentAccessService** (introduced Phase 2) provides unified publication and dataset access through a capability-based provider infrastructure. This replaces the legacy PublicationService and UnifiedContentService with a modular, extensible architecture.
 
-| Provider | Priority | Capabilities | Performance |
-|----------|----------|--------------|-------------|
-| **AbstractProvider** | 10 (high) | Fast abstract retrieval | 200-500ms |
-| **PubMedProvider** | 10 (high) | Literature search, related papers, dataset linking | 1-3s |
-| **GEOProvider** | 10 (high) | Dataset discovery, metadata validation | 2-5s |
-| **PMCProvider** | 10 (high) | Full-text from PMC XML API (10x faster than HTML) | 500ms-2s |
-| **WebpageProvider** | 50 (low) | Webpage scraping, PDF via Docling | 2-8s |
+#### Core Service: 10 Methods in 4 Categories
+
+**Discovery Methods (3):**
+- `search_literature()` - Multi-source literature search (PubMed, bioRxiv, medRxiv)
+- `discover_datasets()` - Omics dataset discovery with automatic accession detection (GSM/GSE/GDS/GPL)
+- `find_linked_datasets()` - Cross-database relationship discovery (publication ↔ datasets)
+
+**Metadata Methods (2):**
+- `extract_metadata()` - Structured publication/dataset metadata extraction
+- `validate_metadata()` - Pre-download dataset completeness validation
+
+**Content Methods (3):**
+- `get_abstract()` - Fast abstract retrieval (Tier 1: 200-500ms)
+- `get_full_content()` - Full-text with three-tier cascade (PMC → Webpage → PDF)
+- `extract_methods()` - Software and parameter extraction from methods sections
+
+**System Methods (1):**
+- `query_capabilities()` - Available provider and capability matrix
+
+#### Five Specialized Providers
+
+The system orchestrates access through 5 registered providers with capability-based routing:
+
+| Provider | Priority | Capabilities | Performance | Coverage |
+|----------|----------|--------------|-------------|----------|
+| **AbstractProvider** | 10 (high) | GET_ABSTRACT | 200-500ms | All PubMed |
+| **PubMedProvider** | 10 (high) | SEARCH_LITERATURE, FIND_LINKED_DATASETS, EXTRACT_METADATA | 1-3s | PubMed indexed |
+| **GEOProvider** | 10 (high) | DISCOVER_DATASETS, EXTRACT_METADATA, VALIDATE_METADATA | 2-5s | All GEO/SRA |
+| **PMCProvider** | 10 (high) | GET_FULL_CONTENT (PMC XML API, 10x faster than HTML scraping) | 500ms-2s | 30-40% biomedical lit |
+| **WebpageProvider** | 50 (low) | GET_FULL_CONTENT (webpage + PDF via DoclingService composition) | 2-8s | Major publishers + PDFs |
+
+**Key Design Features:**
+- **Priority System**: Lower number = higher priority (10 = high, 50 = low fallback)
+- **Automatic Routing**: ProviderRegistry selects optimal provider based on capabilities
+- **DoclingService**: Internal composition within WebpageProvider (not a separate registered provider)
+- **DataManager-First Caching**: Session cache + workspace persistence with W3C-PROV provenance
 
 #### Three-Tier Content Cascade
 
-For full-text retrieval, the system implements an intelligent fallback strategy:
+For full-text retrieval, the system implements intelligent fallback with automatic tier progression:
 
 ```
 User Request: "Get full text for PMID:35042229"
     ↓
-Tier 1: PMC XML API
-  - Duration: 500ms
+Step 1: Check DataManager Cache (Tier 0)
+  - Duration: <100ms
+  - Success: 100% (if previously accessed)
+  → CACHE HIT ✅ (return immediately)
+    ↓ (cache miss)
+Tier 1: PMC XML API (Priority 10)
+  - Duration: 500ms-2s
   - Success Rate: 95%
-  - Coverage: 30-40% of biomedical literature
-  → SUCCESS ✅ (return immediately)
-    ↓ (if failed)
-Tier 2: Webpage Scraping
+  - Coverage: 30-40% of biomedical literature (NIH-funded + open access)
+  → PMC AVAILABLE ✅ (return)
+    ↓ (PMC unavailable)
+Tier 2: Webpage Scraping (Priority 50)
   - Duration: 2-5s
   - Success Rate: 80%
-  - Coverage: Major publishers (Nature, Science, Cell)
-  → SUCCESS ✅ (return)
-    ↓ (if failed)
-Tier 3: PDF via Docling
+  - Coverage: Major publishers (Nature, Science, Cell, etc.)
+  → WEBPAGE EXTRACTED ✅ (return)
+    ↓ (webpage failed)
+Tier 3: PDF via Docling (Priority 50, internal to WebpageProvider)
   - Duration: 3-8s
   - Success Rate: 70%
-  - Coverage: Open access PDFs, preprints
+  - Coverage: Open access PDFs, preprints (bioRxiv, medRxiv)
   → FINAL ATTEMPT
 ```
 
+**Performance Characteristics:**
+
+| Tier | Path | Duration | Success Rate | Typical Use Case |
+|------|------|----------|--------------|------------------|
+| **Cache** | DataManager lookup | <100ms | 100% (if cached) | Repeated access within session |
+| **Tier 1** | PMC XML API | 500ms-2s | 95% | NIH-funded, open access papers |
+| **Tier 2** | Webpage HTML | 2-5s | 80% | Publisher websites (Nature, Cell) |
+| **Tier 3** | PDF Parsing | 3-8s | 70% | Preprints, open access PDFs |
+
 #### Capability-Based Routing
 
-Providers declare their capabilities, enabling intelligent routing:
+Providers declare capabilities via `ProviderCapability` enum, enabling automatic optimal provider selection:
 
-- **Discovery Operations** → PubMedProvider, GEOProvider
-- **Metadata Extraction** → AbstractProvider, PubMedProvider, GEOProvider
-- **Full Content Access** → PMCProvider (priority), WebpageProvider (fallback)
-- **Related Papers** → PubMedProvider
-- **Dataset Linking** → PubMedProvider, GEOProvider
+**Discovery & Search:**
+- `SEARCH_LITERATURE` → PubMedProvider
+- `DISCOVER_DATASETS` → GEOProvider
+- `FIND_LINKED_DATASETS` → PubMedProvider
+
+**Metadata & Validation:**
+- `GET_ABSTRACT` → AbstractProvider (fast path)
+- `EXTRACT_METADATA` → PubMedProvider, GEOProvider
+- `VALIDATE_METADATA` → GEOProvider
+
+**Content Retrieval:**
+- `GET_FULL_CONTENT` → PMCProvider (priority 10), WebpageProvider (priority 50, fallback)
+- `EXTRACT_METHODS` → ContentAccessService (post-processing)
+
+**Routing Example:**
+```python
+# User request: "Get full text for PMID:35042229"
+# 1. ContentAccessService receives request
+# 2. ProviderRegistry routes to GET_FULL_CONTENT capability
+# 3. Returns [PMCProvider (priority 10), WebpageProvider (priority 50)]
+# 4. Tries PMCProvider first (fast path)
+# 5. On PMCNotAvailableError, automatically falls back to WebpageProvider
+# 6. Caches result in DataManager for future requests
+```
 
 ### Agent Architecture (Phase 3-4)
 
@@ -528,6 +700,7 @@ graph LR
 
     subgraph "Data Layer"
         DM[DataManagerV2<br/>📊 Orchestration]
+        QUEUE[DownloadQueue<br/>📥 Handoff Contract]
         ADAPTERS[Modality Adapters<br/>🔄 Format Support]
         BACKENDS[Storage Backends<br/>💾 Persistence]
     end
@@ -538,6 +711,7 @@ graph LR
     end
 
     AGENTS --> SERVICES
+    AGENTS --> QUEUE
     SERVICES --> DM
     DM --> ADAPTERS
     DM --> BACKENDS
@@ -556,7 +730,7 @@ graph LR
 
     class AGENTS agent
     class SERVICES service
-    class DM,ADAPTERS,BACKENDS data
+    class DM,QUEUE,ADAPTERS,BACKENDS data
     class CONFIG,INTERFACES infra
 ```
 
@@ -640,7 +814,10 @@ geo_gse12345                          # Raw dataset
 - **Sparse Matrix Support** - Efficient single-cell data handling
 - **Chunked Processing** - Large dataset memory optimization
 - **Lazy Loading** - On-demand data access
-- **Smart Caching** - Intelligent cache management (60s cloud, 10s local)
+- **Two-Tier Caching** - Fast in-memory session cache (Tier 1) + durable filesystem cache (Tier 2)
+  - Tier 1: <0.001ms access, session-scoped, metadata_store
+  - Tier 2: 1-10ms access, persistent, workspace JSON files
+  - See **[39. Two-Tier Caching Architecture](39-two-tier-caching-architecture.md)** for details
 
 ### Computational Efficiency
 

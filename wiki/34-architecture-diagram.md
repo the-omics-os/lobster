@@ -264,17 +264,17 @@ graph TB
         end
     end
 
-    %% NEW: Publication Services Layer (Two-Tier Architecture)
+    %% Publication Services Layer (v2.4.0+ Three-Tier Architecture)
     subgraph "Publication & Literature Services"
-        UNIFIED_SVC[UnifiedContentService<br/>🎯 Two-Tier Coordinator]:::coordinator
-        ABSTRACT_PROV[AbstractProvider<br/>⚡ Tier 1: Fast Abstracts]:::tier1
-        WEBPAGE_PROV[WebpageProvider<br/>🌐 Tier 2: Webpage-First]:::tier2
-        DOCLING_SVC[DoclingService<br/>📄 Shared PDF/Webpage Foundation]:::foundation
+        CONTENT_SVC[ContentAccessService<br/>🎯 Capability-Based Coordinator]:::coordinator
+        PROVIDER_REG[ProviderRegistry<br/>🔀 Priority Routing]:::service
+        ABSTRACT_PROV[AbstractProvider<br/>⚡ Priority 10: Fast Abstracts]:::tier1
+        PMC_PROV[PMCProvider<br/>📄 Priority 10: PMC XML API]:::tier1
+        PUBMED[PubMedProvider<br/>📚 Priority 10: Literature Search]:::tier1
+        GEOPROV[GEOProvider<br/>🧬 Priority 10: Dataset Discovery]:::tier1
+        WEBPAGE_PROV[WebpageProvider<br/>🌐 Priority 50: Webpage Fallback]:::tier2
+        DOCLING_SVC[DoclingService<br/>📄 Internal to WebpageProvider]:::foundation
         METADATA_VAL[MetadataValidationService<br/>✅ Dataset Validation]:::service
-        PUBSVC[PublicationService<br/>🎯 Multi-Provider Orchestrator]
-        PUBMED[PubMedProvider<br/>📚 Literature Search]
-        GEOPROV[GEOProvider<br/>🧬 Direct GEO DataSets Search]
-        GEOQB[GEOQueryBuilder<br/>🔍 Advanced Query Construction]
     end
 
     %% DataManagerV2 Orchestration
@@ -333,16 +333,18 @@ graph TB
     H5AD --> DE
     MTX --> DE
 
-    %% NEW: Agent to Service connections
+    %% Agent to Service connections
     DE --> GEO_SVC
-    RA --> PUBSVC
     RA --> GEOPROV
 
-    %% Two-tier publication access flow
-    RA --> UNIFIED_SVC
-    UNIFIED_SVC --> ABSTRACT_PROV
-    UNIFIED_SVC --> WEBPAGE_PROV
-    UNIFIED_SVC --> DOCLING_SVC
+    %% Three-tier publication access flow (v2.4.0+ with capability-based routing)
+    RA --> CONTENT_SVC
+    CONTENT_SVC --> PROVIDER_REG
+    PROVIDER_REG --> ABSTRACT_PROV
+    PROVIDER_REG --> PMC_PROV
+    PROVIDER_REG --> PUBMED
+    PROVIDER_REG --> GEOPROV
+    PROVIDER_REG --> WEBPAGE_PROV
     WEBPAGE_PROV --> DOCLING_SVC
     ABSTRACT_PROV -.-> PUBMED
 

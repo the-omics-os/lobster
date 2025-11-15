@@ -832,8 +832,9 @@ def init_client(
     console.print("[bold red]💻 Using Lobster Local[/bold red]")
 
     # Configure logging level based on debug flag
-    from lobster.ui import setup_logging
     import logging
+
+    from lobster.ui import setup_logging
 
     if debug:
         setup_logging(logging.DEBUG)
@@ -1820,8 +1821,9 @@ def chat(
         )
 
     # Configure logging level based on debug flag
-    from lobster.ui import setup_logging
     import logging
+
+    from lobster.ui import setup_logging
 
     if debug:
         setup_logging(logging.DEBUG)

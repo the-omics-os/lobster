@@ -1,548 +1,718 @@
-# Publication Content Access & Two-Tier Architecture
+# Publication Content Access & Provider Architecture
 
-**Version:** 2.3.0+
+**Version:** 2.4.0+ (Phase 1-6 Refactoring Complete)
 **Status:** Production-ready
-**Implementation:** Phase 1-3 Complete (January 2025)
+**Implementation:** ContentAccessService with Provider Infrastructure (January 2025)
 
 ## Overview
 
-The **UnifiedContentService** provides intelligent two-tier publication content access with webpage-first extraction strategy. This architecture replaced the monolithic PublicationIntelligenceService, delivering faster abstract access, better content quality, and cleaner code organization.
+The **ContentAccessService** provides intelligent publication and dataset access through a capability-based provider architecture. This system replaced the legacy PublicationService and UnifiedContentService, delivering modular provider infrastructure, three-tier content cascade, and comprehensive literature mining capabilities.
 
 ### What Changed?
 
-**Before (PublicationIntelligenceService - Deprecated):**
-- ❌ Single-tier access (always tried full PDF extraction)
-- ❌ No quick abstract option (forced 2-5 second wait)
-- ❌ PDF-first strategy (missed directly accessible webpage content)
-- ❌ 4-layer deep call chain (Agent → Service → Assistant → Resolver)
-- ❌ Split caching (violated DataManager-first principle)
+**Before (UnifiedContentService - Phase 3, Archived):**
+- ❌ Direct provider delegation without capability routing
+- ❌ Manual provider selection logic in service code
+- ❌ Limited to 3 providers (Abstract, PMC, Webpage)
+- ❌ No dataset discovery capabilities
+- ❌ No validation or metadata extraction tools
 
-**After (UnifiedContentService - v2.3.0+):**
-- ✅ **Two-tier access:** Quick abstract (200-500ms) vs full content (2-8s)
-- ✅ **Webpage-first strategy:** Extract Nature/Science/Cell Press directly
-- ✅ **Clean architecture:** Direct provider delegation, no unnecessary layers
-- ✅ **DataManager-first caching:** All caching through DataManagerV2
-- ✅ **Docling integration:** Structure-aware PDF/webpage parsing
-- ✅ **Automatic fallback:** Webpage → PDF → PyPDF2 graceful degradation
+**After (ContentAccessService - Phase 2+, Current):**
+- ✅ **Provider Registry:** Capability-based routing with priority system
+- ✅ **5 Specialized Providers:** Abstract, PubMed, GEO, PMC, Webpage (with Docling)
+- ✅ **10 Core Methods:** Discovery (3), Metadata (2), Content (3), System (1), Validation (1)
+- ✅ **Three-Tier Cascade:** PMC XML → Webpage → PDF with automatic fallback
+- ✅ **Dataset Integration:** GEO/SRA/PRIDE dataset discovery and validation
+- ✅ **Session Caching:** DataManager-first with W3C-PROV provenance
 
 ### Performance Impact
 
-| Metric | Before (Single-Tier) | After (Two-Tier) | Improvement |
-|--------|---------------------|------------------|-------------|
-| **Quick Abstract** | N/A (not available) | 200-500ms | New capability |
-| **Webpage Extraction** | N/A (PDF-only) | 2-5 seconds | New capability |
-| **PDF Extraction** | 3-8 seconds | 3-8 seconds | Same (optimized internally) |
-| **Cache Hit Time** | 100ms | <50ms | 2x faster |
-| **User Experience** | Always wait for full content | Progressive disclosure | Much better |
+| Metric | UnifiedContentService | ContentAccessService | Improvement |
+|--------|---------------------|---------------------|-------------|
+| **Abstract Retrieval** | 200-500ms (AbstractProvider) | 200-500ms (AbstractProvider) | Same (optimized path) |
+| **PMC Full-Text** | 500ms-2s (PMCProvider) | 500ms-2s (PMCProvider priority) | Same (10x faster than HTML) |
+| **Dataset Discovery** | N/A (not available) | 2-5s (GEOProvider) | New capability |
+| **Literature Search** | N/A (not available) | 1-3s (PubMedProvider) | New capability |
+| **Provider Selection** | Manual logic | Automatic routing | Better maintainability |
+| **Extensibility** | Hard-coded providers | Registry-based | Easy to add providers |
 
 ---
 
 ## Architecture
 
-### Two-Tier Access Pattern
+### Capability-Based Provider System
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    UnifiedContentService                    │
+│                    ContentAccessService                     │
+│                   (Coordination Layer)                      │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  Tier 1: Quick Abstract (Fast Path - 200-500ms)            │
-│  ┌────────────────────────────────────────────────────┐    │
-│  │ get_quick_abstract(identifier)                     │    │
-│  │         ↓                                          │    │
-│  │ AbstractProvider (NCBI E-utilities)                │    │
-│  │         ↓                                          │    │
-│  │ PublicationMetadata (title, authors, abstract)    │    │
-│  └────────────────────────────────────────────────────┘    │
+│  10 Core Methods:                                           │
+│  ┌───────────────────────────────────────────────────┐     │
+│  │ Discovery (3):                                    │     │
+│  │  - search_literature                              │     │
+│  │  - discover_datasets                              │     │
+│  │  - find_linked_datasets                           │     │
+│  │                                                    │     │
+│  │ Metadata (2):                                     │     │
+│  │  - extract_metadata                               │     │
+│  │  - validate_metadata                              │     │
+│  │                                                    │     │
+│  │ Content (3):                                      │     │
+│  │  - get_abstract                                   │     │
+│  │  - get_full_content                               │     │
+│  │  - extract_methods                                │     │
+│  │                                                    │     │
+│  │ System (1):                                       │     │
+│  │  - query_capabilities                             │     │
+│  └───────────────────────────────────────────────────┘     │
+│                         ↓                                   │
+│                  ProviderRegistry                           │
+│              (Capability-Based Routing)                     │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│                    Provider Layer                           │
+├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  Tier 2: Full Content (Deep Path - 2-8 seconds)            │
-│  ┌────────────────────────────────────────────────────┐    │
-│  │ get_full_content(identifier, prefer_webpage=True)  │    │
-│  │         ↓                                          │    │
-│  │ 1. Check DataManager cache                         │    │
-│  │         ↓                                          │    │
-│  │ 2a. Detect identifier (DOI/PMID vs direct URL)    │    │
-│  │         ↓                                          │    │
-│  │ 2b. Auto-resolve DOI/PMID → URL (PublicationResolver) │    │
-│  │         ↓                                          │    │
-│  │ 3a. Webpage-first (publisher sites):              │    │
-│  │      WebpageProvider → DoclingService              │    │
-│  │         ↓                                          │    │
-│  │ 3b. Auto-format detection (all URLs):             │    │
-│  │      DoclingService (HTML/PDF auto-detect)        │    │
-│  │         ↓                                          │    │
-│  │ 4. Cache result in DataManager                     │    │
-│  │         ↓                                          │    │
-│  │ 5. Return ContentResult (markdown, tables, etc.)   │    │
-│  └────────────────────────────────────────────────────┘    │
+│  Provider 1: AbstractProvider (Priority: 10)               │
+│  └─ Capability: GET_ABSTRACT                               │
+│     Performance: 200-500ms                                  │
+│                                                             │
+│  Provider 2: PubMedProvider (Priority: 10)                 │
+│  └─ Capabilities: SEARCH_LITERATURE, FIND_LINKED_DATASETS, │
+│                   EXTRACT_METADATA                          │
+│     Performance: 1-3s                                       │
+│                                                             │
+│  Provider 3: GEOProvider (Priority: 10)                    │
+│  └─ Capabilities: DISCOVER_DATASETS, EXTRACT_METADATA,     │
+│                   VALIDATE_METADATA                         │
+│     Performance: 2-5s                                       │
+│                                                             │
+│  Provider 4: PMCProvider (Priority: 10)                    │
+│  └─ Capability: GET_FULL_CONTENT (PMC XML API)            │
+│     Performance: 500ms-2s (PRIORITY PATH)                  │
+│                                                             │
+│  Provider 5: WebpageProvider (Priority: 50)                │
+│  └─ Capabilities: GET_FULL_CONTENT (Webpage + PDF)        │
+│     Performance: 2-8s (FALLBACK)                           │
+│     Uses: DoclingService (internal composition)            │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│                   DataManagerV2                             │
+│              (Session Caching + Provenance)                 │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ### System Design
 
 ```
-User → Research Agent
+User → research_agent (10 tools)
            ↓
-    UnifiedContentService
+    ContentAccessService (10 methods)
            ↓
-    ┌──────┴──────────┐
-    ↓                 ↓
-AbstractProvider   DoclingService (shared foundation)
-    ↓                 ↓
-NCBI E-utilities   ┌──┴───────────┐
-                   ↓              ↓
-           WebpageProvider   PDFProvider
-                   ↓              ↓
-           Webpage parsing   PDF parsing
-                   ↓              ↓
-                   DataManagerV2 (cache)
-                          ↓
-                   W3C-PROV provenance
+    ProviderRegistry (capability routing)
+           ↓
+    ┌──────┴───────────────────┐
+    ↓         ↓         ↓       ↓         ↓
+Abstract  PubMed    GEO     PMC    Webpage
+Provider  Provider  Provider Provider Provider
+    ↓         ↓         ↓       ↓         ↓
+ NCBI     PubMed   GEO API  PMC XML  Docling
+E-utils    API              API      Service
+                                        ↓
+                                  (Webpage + PDF)
 ```
 
 ### Key Components
 
-#### 1. **UnifiedContentService** (Coordination Layer)
+#### 1. **ContentAccessService** (Coordination Layer)
 
-**Location:** `lobster/tools/unified_content_service.py`
-
-**Responsibilities:**
-- Two-tier access coordination
-- Provider delegation (Abstract, Webpage, Docling)
-- DataManager-first caching
-- Error handling and fallback strategy
-
-**Public API:**
-```python
-class UnifiedContentService:
-    def __init__(self, data_manager: DataManagerV2):
-        self.data_manager = data_manager
-        self.resolver = PublicationResolver()
-        self.abstract_provider = AbstractProvider()
-        self.webpage_provider = WebpageProvider()
-        self.docling_service = DoclingService(data_manager)
-
-    def get_quick_abstract(
-        self,
-        identifier: str,
-        force_refresh: bool = False
-    ) -> PublicationMetadata:
-        """Tier 1: Fast NCBI abstract (no PDF download)."""
-
-    def get_full_content(
-        self,
-        identifier: str,
-        prefer_webpage: bool = True
-    ) -> ContentResult:
-        """Tier 2: Deep extraction (webpage → PDF fallback)."""
-
-    def extract_methods_section(
-        self,
-        content_result: ContentResult,
-        llm: Optional[Any] = None
-    ) -> MethodsExtraction:
-        """Extract computational methods from retrieved content."""
-```
-
-#### 2. **AbstractProvider** (Tier 1: Fast Path)
-
-**Location:** `lobster/tools/providers/abstract_provider.py`
+**Location:** `lobster/tools/content_access_service.py`
 
 **Responsibilities:**
-- Quick NCBI E-utilities abstract retrieval
-- No PDF download (metadata only)
-- Fast response (200-500ms)
+- Method routing to appropriate providers via ProviderRegistry
+- Capability-based provider selection
+- DataManager-first caching coordination
+- Error handling and fallback orchestration
+- W3C-PROV provenance tracking
+- Lightweight IR (Intermediate Representation) for non-exportable research operations
 
-**Performance:**
-- Cache hit: <50ms
-- Cache miss: 200-500ms (NCBI API call)
-- Use case: Quick paper overview before deciding on full extraction
+**Public API (10 Methods):**
 
-#### 3. **WebpageProvider** (Tier 2: Webpage-first)
-
-**Location:** `lobster/tools/providers/webpage_provider.py`
-
-**Responsibilities:**
-- Direct webpage extraction (Nature, Science, Cell Press, PLOS)
-- Delegates to DoclingService for parsing
-- Automatic fallback to PDF if webpage extraction fails
-
-**Supported Publishers:**
-- Nature family (nature.com)
-- Science family (science.org)
-- Cell Press (cell.com)
-- PLOS (plos.org)
-- BioRxiv/MedRxiv (open preprint servers)
-
-**Performance:**
-- Webpage extraction: 2-5 seconds
-- Fallback to PDF: +2-3 seconds
-- Cache hit: <100ms
-
-#### 4. **DoclingService** (Shared Foundation)
-
-**Location:** `lobster/tools/docling_service.py`
-
-**Responsibilities:**
-- Structure-aware PDF/webpage parsing using Docling (MIT License, IBM Research)
-- Table extraction as pandas DataFrames
-- Formula detection and LaTeX formatting
-- Smart image filtering (removes base64 bloat)
-- Comprehensive retry logic with PyPDF2 fallback
-
-**Docling Benefits:**
-- ✅ Intelligent Methods section detection by keywords
-- ✅ Complete section extraction (no arbitrary truncation)
-- ✅ Table structure preservation
-- ✅ Formula detection and LaTeX formatting
-- ✅ Smart image filtering (40-60% Markdown reduction)
-- ✅ Comprehensive error handling
-- ✅ Automatic PyPDF2 fallback for incompatible PDFs
-
-**Performance:**
-| Metric | Value |
-|--------|-------|
-| **First parse** | 2-5 seconds (structure analysis) |
-| **Cache hit** | <100ms (30x faster) |
-| **Memory usage** | ~500MB peak |
-| **Methods hit rate** | >90% (vs 30% with naive PyPDF2) |
-| **Table extraction** | 80%+ of tables captured |
-
----
-
-## Two-Tier Access Workflow
-
-### User Scenario 1: Quick Abstract First
-
+**Discovery (3 methods):**
 ```python
-from lobster.tools.unified_content_service import UnifiedContentService
+def search_literature(
+    self,
+    query: str,
+    max_results: int = 5,
+    sources: Optional[list[str]] = None,
+    filters: Optional[dict[str, any]] = None
+) -> Tuple[str, Dict[str, Any], AnalysisStep]:
+    """Search PubMed, bioRxiv, medRxiv for literature."""
 
-service = UnifiedContentService(data_manager)
+def discover_datasets(
+    self,
+    query: str,
+    dataset_type: "DatasetType",
+    max_results: int = 5,
+    filters: Optional[dict[str, str]] = None
+) -> Tuple[str, Dict[str, Any], AnalysisStep]:
+    """Search GEO, SRA, PRIDE for omics datasets."""
 
-# Tier 1: Fast abstract (200-500ms)
-abstract = service.get_quick_abstract("PMID:38448586")
-
-print(f"Title: {abstract.title}")
-print(f"Authors: {', '.join(abstract.authors[:3])}")
-print(f"Abstract: {abstract.abstract[:200]}...")
-
-# User decides: "This looks relevant, get full content"
-
-# Tier 2: Deep extraction (2-8 seconds)
-content = service.get_full_content("PMID:38448586")
-
-print(f"Content type: {content.content_type}")  # 'webpage' or 'pdf'
-print(f"Source: {content.source}")  # 'pmc', 'biorxiv', etc.
-print(f"Full text: {len(content.markdown)} characters")
-print(f"Tables: {len(content.tables)}")
+def find_linked_datasets(
+    self,
+    identifier: str,
+    dataset_types: Optional[list["DatasetType"]] = None,
+    include_related: bool = True
+) -> str:
+    """Find datasets linked to a publication."""
 ```
 
-**Benefits:**
-- User gets quick overview (200-500ms)
-- Can decide whether to invest 2-8 seconds for full content
-- Progressive disclosure improves UX
-
-### User Scenario 2: Direct Webpage Extraction
-
+**Metadata (2 methods):**
 ```python
-# Nature article with directly accessible content
-url = "https://www.nature.com/articles/s41586-025-09686-5"
+def extract_metadata(
+    self,
+    identifier: str,
+    source: Optional[str] = None
+) -> Union["PublicationMetadata", str]:
+    """Extract publication/dataset metadata."""
 
-# Automatic webpage-first extraction
-content = service.get_full_content(url, prefer_webpage=True)
-
-assert content.content_type == 'webpage'
-assert content.source == 'publisher'
-assert len(content.markdown) > 5000
-
-# No PDF download needed! Direct extraction from webpage.
+def validate_metadata(
+    self,
+    dataset_id: str,
+    required_fields: Optional[List[str]] = None,
+    required_values: Optional[Dict[str, List[str]]] = None,
+    threshold: float = 0.8
+) -> str:
+    """Validate dataset metadata completeness."""
 ```
 
-### User Scenario 3: DOI/PMID Auto-Resolution (v2.3+ Enhancement)
-
+**Content (3 methods):**
 ```python
-# NEW in v2.3+: Direct DOI input - automatically resolved
-content = service.get_full_content("10.1101/2024.08.29.610467")
-# Internally: DOI → PublicationResolver → bioRxiv PDF URL → Extraction
-
-# PMID input - automatically resolved
-content = service.get_full_content("PMID:39370688")
-# Internally: PMID → PublicationResolver → PMC URL → HTML extraction
-
-# Complex PMC URLs that serve HTML - now handled correctly
-content = service.get_full_content("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12496192/pdf/")
-# Internally: Docling auto-detects HTML format (not PDF!)
-```
-
-**Key v2.3+ Improvements:**
-- ✅ **DOI Auto-Detection:** Bare DOIs (e.g., `"10.1038/..."`) automatically detected
-- ✅ **PMID Auto-Detection:** Both `"PMID:12345"` and `"12345"` formats supported
-- ✅ **Format Auto-Detection:** Docling handles HTML/PDF detection (no rigid URL classification)
-- ✅ **Robust Fallback:** PMC URLs serving HTML correctly processed
-- ✅ **Graceful Errors:** Paywalled papers return helpful suggestions instead of crashing
-
-**Before v2.3 (Broken):**
-```python
-# This would fail with FileNotFoundError
-content = service.get_full_content("10.18632/aging.204666")  # ❌ Crashed
-```
-
-**After v2.3 (Fixed):**
-```python
-# Same input now works - auto-resolves and handles gracefully
-try:
-    content = service.get_full_content("10.18632/aging.204666")  # ✅ Works
-except PaywalledError as e:
-    print(f"Paper is paywalled: {e.suggestions}")  # ✅ Helpful guidance
-```
-
-**Benefits:**
-- Faster than PDF extraction (2-5s vs 3-8s)
-- Better content quality (structured HTML vs extracted PDF)
-- Respects publisher access (uses public webpage)
-
-### User Scenario 3: PDF Fallback
-
-```python
-# bioRxiv preprint (PDF only)
-url = "https://biorxiv.org/content/10.1101/2024.01.001.full.pdf"
-
-content = service.get_full_content(url, prefer_webpage=True)
-
-# Automatically detected PDF URL, skipped webpage extraction
-assert content.content_type == 'pdf'
-assert content.source == 'biorxiv'
-
-# Still gets full Docling benefits:
-print(f"Tables: {len(content.tables)}")
-print(f"Formulas: {len(content.formulas)}")
-print(f"Software detected: {content.software_mentioned}")
-```
-
-**Benefits:**
-- Automatic PDF detection (no unnecessary webpage attempt)
-- Full Docling structure-aware parsing
-- PyPDF2 fallback if Docling fails
-
----
-
-## API Reference
-
-### Tier 1: Quick Abstract
-
-#### `get_quick_abstract()`
-
-Fast abstract retrieval via NCBI E-utilities (no PDF download).
-
-**Signature:**
-```python
-def get_quick_abstract(
+def get_abstract(
     self,
     identifier: str,
     force_refresh: bool = False
-) -> PublicationMetadata
-```
+) -> dict[str, any]:
+    """Tier 1: Fast abstract retrieval (200-500ms)."""
 
-**Parameters:**
-- `identifier` (str): PMID, DOI, or publication ID
-- `force_refresh` (bool): Bypass cache if True (default: False)
-
-**Returns:**
-```python
-PublicationMetadata(
-    pmid: Optional[str],
-    doi: Optional[str],
-    title: str,
-    authors: List[str],
-    journal: Optional[str],
-    published: Optional[str],
-    abstract: str,
-    keywords: List[str],
-    source: Literal['pubmed', 'biorxiv', 'medrxiv']
-)
-```
-
-**Example:**
-```python
-service = UnifiedContentService(data_manager)
-
-# Quick abstract for decision-making
-abstract = service.get_quick_abstract("PMID:38448586")
-
-print(f"Title: {abstract.title}")
-print(f"Authors: {', '.join(abstract.authors)}")
-print(f"Abstract: {abstract.abstract}")
-
-# Check relevance before full extraction
-if "single-cell" in abstract.abstract.lower():
-    # Proceed to full content
-    content = service.get_full_content(abstract.pmid)
-```
-
-**Performance:**
-- Cache hit: <50ms
-- Cache miss: 200-500ms
-- Use case: Quick screening of multiple papers
-
-### Tier 2: Full Content
-
-#### `get_full_content()`
-
-Deep content extraction with webpage-first strategy.
-
-**Signature:**
-```python
 def get_full_content(
     self,
-    identifier: str,
-    prefer_webpage: bool = True
-) -> ContentResult
-```
+    source: str,
+    prefer_webpage: bool = True,
+    keywords: Optional[list[str]] = None,
+    max_paragraphs: int = 100,
+    max_retries: int = 2
+) -> dict[str, any]:
+    """Tier 2: Full content with PMC-first cascade."""
 
-**Parameters:**
-- `identifier` (str): **Auto-detects and resolves multiple formats:**
-  - **Bare DOI:** `"10.1101/2024.08.29.610467"` → Auto-resolved to bioRxiv
-  - **DOI with prefix:** `"DOI:10.1038/s41586-025-09686-5"` → Auto-resolved
-  - **PMID:** `"PMID:39370688"` or `"39370688"` → Auto-resolved to PMC
-  - **Direct URL:** `"https://www.nature.com/articles/..."` → Used directly
-  - **PMC URL:** `"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC..."` → Format auto-detected
-- `prefer_webpage` (bool): Try webpage before PDF (default: True)
-
-**Resolution Strategy (v2.3+ Enhanced):**
-1. Check DataManager cache
-2. **Auto-detect identifier type** (DOI, PMID, or direct URL)
-3. **If DOI/PMID:** Use PublicationResolver to resolve to accessible URL
-   - Handles paywalled papers gracefully (returns suggestions, no crash)
-4. **If prefer_webpage:** Try WebpageProvider for publisher sites
-   - Nature, Science, Cell Press direct extraction
-5. **Format auto-detection:** Docling determines HTML vs PDF content
-   - No rigid URL classification (handles PMC HTML correctly)
-6. **Graceful fallback:** HTML → PDF → PyPDF2 if needed
-7. Cache result in DataManager
-8. Return ContentResult
-
-**Returns:**
-```python
-ContentResult(
-    identifier: str,
-    content_type: Literal['webpage', 'pdf', 'abstract'],
-    markdown: str,  # Clean markdown from Docling
-    source: Literal['pmc', 'biorxiv', 'medrxiv', 'publisher', 'webpage'],
-    metadata: Optional[PublicationMetadata],
-    extraction_timestamp: datetime,
-
-    # Docling-specific enrichments
-    tables: List[Dict[str, Any]],
-    formulas: List[str],
-    software_mentioned: List[str]
-)
-```
-
-**Examples (v2.3+ Auto-Resolution):**
-
-```python
-service = UnifiedContentService(data_manager)
-
-# Example 1: Direct DOI input (NEW - automatically resolved)
-content = service.get_full_content("10.1101/2024.08.29.610467")
-# System logs: "Detected identifier (DOI), resolving to URL..."
-# System logs: "Resolved to: https://www.biorxiv.org/content/10.1101/2024.08.29.610467.full.pdf"
-print(f"Content type: {content.content_type}")  # 'pdf' (auto-detected)
-print(f"Source: {content.source}")  # 'biorxiv'
-
-# Example 2: PMID input (NEW - automatically resolved)
-content = service.get_full_content("PMID:39370688")
-# System logs: "Resolved to: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC.../pdf/"
-# System logs: "detected formats: [<InputFormat.HTML: 'html'>]" (auto-detected!)
-print(f"Content type: {content.content_type}")  # 'html' (auto-detected)
-print(f"Source: {content.source}")  # 'pmc'
-
-# Example 3: Direct URL (existing behavior maintained)
-content = service.get_full_content(
-    "https://www.nature.com/articles/s41586-025-09686-5",
-    prefer_webpage=True
-)
-print(f"Content type: {content.content_type}")  # 'webpage'
-print(f"Source: {content.source}")  # 'publisher'
-
-# Example 4: Paywalled DOI (NEW - graceful handling)
-try:
-    content = service.get_full_content("10.18632/aging.204666")
-except PaywalledError as e:
-    print(f"Paper is paywalled: {e.suggestions}")
-    # Suggests: try institutional access, check for preprints, etc.
-
-# Access extracted content
-print(f"Full text: {len(content.markdown)} characters")
-print(f"Tables: {len(content.tables)}")
-print(f"Software mentioned: {content.software_mentioned}")
-```
-
-**Performance:**
-- Cache hit: <100ms
-- Webpage extraction: 2-5 seconds
-- PDF extraction: 3-8 seconds
-- Retry overhead: +2 seconds per retry
-
-### Methods Extraction
-
-#### `extract_methods_section()`
-
-Extract computational methods from retrieved content using LLM.
-
-**Signature:**
-```python
-def extract_methods_section(
+def extract_methods(
     self,
-    content_result: ContentResult,
-    llm: Optional[Any] = None,
+    content_result: dict[str, any],
+    llm: Optional[any] = None,
     include_tables: bool = True
-) -> MethodsExtraction
+) -> dict[str, any]:
+    """Extract structured methods from content."""
 ```
 
-**Parameters:**
-- `content_result` (ContentResult): Result from `get_full_content()`
-- `llm` (Optional[Any]): Custom LLM instance (uses default if None)
-- `include_tables` (bool): Include parameter tables in context (default: True)
-
-**Returns:**
+**System (1 method):**
 ```python
-MethodsExtraction(
-    software_used: List[str],
-    parameters: Dict[str, Any],
-    statistical_methods: List[str],
-    data_sources: List[str],
-    sample_sizes: Dict[str, str],
-    normalization_methods: List[str],
-    quality_control: List[str],
-    content_source: ContentResult,
-    extraction_confidence: float
-)
+def query_capabilities(self) -> str:
+    """Query available providers and capabilities."""
 ```
+
+#### 2. **ProviderRegistry** (Routing Layer)
+
+**Location:** `lobster/tools/providers/provider_registry.py`
+
+**Responsibilities:**
+- Provider registration and lifecycle management
+- Capability-based routing to best-fit provider
+- Priority-based provider ordering
+- Dataset type mapping to providers
+- Capability matrix generation for debugging
+
+**Key Methods:**
+```python
+def register_provider(self, provider: BaseProvider) -> None:
+    """Register a provider with its capabilities."""
+
+def get_providers_for_capability(
+    self,
+    capability: ProviderCapability
+) -> List[BaseProvider]:
+    """Get all providers supporting a capability (sorted by priority)."""
+
+def get_provider_for_dataset_type(
+    self,
+    dataset_type: DatasetType
+) -> Optional[BaseProvider]:
+    """Get provider for specific dataset type."""
+
+def get_capability_matrix(self) -> str:
+    """Generate debug matrix of providers and capabilities."""
+```
+
+#### 3. **Provider Layer** (Specialized Data Access)
+
+**Provider Architecture:**
+
+```python
+# Base provider interface
+class BaseProvider(ABC):
+    name: str
+    priority: int  # Lower = higher priority (10 = high, 50 = low)
+    capabilities: Set[ProviderCapability]
+    supported_dataset_types: Set[DatasetType]
+
+    @abstractmethod
+    def search_publications(
+        self,
+        query: str,
+        max_results: int = 5,
+        filters: Optional[dict] = None
+    ) -> str:
+        """Search for publications/datasets."""
+```
+
+**5 Registered Providers:**
+
+| Provider | Priority | Capabilities | Performance | Coverage |
+|----------|----------|--------------|-------------|----------|
+| **AbstractProvider** | 10 (high) | GET_ABSTRACT | 200-500ms | All PubMed |
+| **PubMedProvider** | 10 (high) | SEARCH_LITERATURE, FIND_LINKED_DATASETS, EXTRACT_METADATA | 1-3s | All PubMed indexed |
+| **GEOProvider** | 10 (high) | DISCOVER_DATASETS, EXTRACT_METADATA, VALIDATE_METADATA | 2-5s | All GEO/SRA datasets |
+| **PMCProvider** | 10 (high) | GET_FULL_CONTENT | 500ms-2s | 30-40% (NIH-funded + open access) |
+| **WebpageProvider** | 50 (low) | GET_FULL_CONTENT | 2-8s | Major publishers + PDFs |
+
+**Provider Details:**
+
+**AbstractProvider** (Fast Path):
+```python
+# Location: lobster/tools/providers/abstract_provider.py
+class AbstractProvider(BaseProvider):
+    """Fast abstract retrieval via NCBI E-utilities."""
+
+    capabilities = {ProviderCapability.GET_ABSTRACT}
+    priority = 10  # High priority (fast)
+
+    def get_abstract(self, identifier: str) -> PublicationMetadata:
+        """Retrieve abstract metadata without full-text download."""
+```
+
+**PubMedProvider** (Literature & Linking):
+```python
+# Location: lobster/tools/providers/pubmed_provider.py
+class PubMedProvider(BaseProvider):
+    """PubMed literature search and dataset linking."""
+
+    capabilities = {
+        ProviderCapability.SEARCH_LITERATURE,
+        ProviderCapability.FIND_LINKED_DATASETS,
+        ProviderCapability.EXTRACT_METADATA,
+    }
+    priority = 10
+
+    def search_publications(self, query: str, **kwargs) -> str:
+        """Search PubMed with E-utilities."""
+
+    def find_datasets_from_publication(self, identifier: str) -> str:
+        """Find GEO/SRA datasets linked via PubMed."""
+```
+
+**GEOProvider** (Dataset Discovery):
+```python
+# Location: lobster/tools/providers/geo_provider.py
+class GEOProvider(BaseProvider):
+    """GEO dataset discovery and validation."""
+
+    capabilities = {
+        ProviderCapability.DISCOVER_DATASETS,
+        ProviderCapability.EXTRACT_METADATA,
+        ProviderCapability.VALIDATE_METADATA,
+    }
+    supported_dataset_types = {DatasetType.GEO}
+    priority = 10
+
+    def search_publications(self, query: str, **kwargs) -> str:
+        """Search GEO datasets."""
+
+    def search_by_accession(
+        self,
+        accession: str,
+        include_parent_series: bool = False
+    ) -> str:
+        """Direct accession lookup with enhanced GSM handling."""
+```
+
+**PMCProvider** (Priority Full-Text):
+```python
+# Location: lobster/tools/providers/pmc_provider.py
+class PMCProvider(BaseProvider):
+    """PMC full-text extraction via XML API (PRIORITY PATH)."""
+
+    capabilities = {ProviderCapability.GET_FULL_CONTENT}
+    priority = 10  # High priority (10x faster than webpage)
+
+    def extract_full_text(self, identifier: str) -> PMCFullTextResult:
+        """
+        Extract full-text from PMC XML with semantic tags.
+
+        Benefits:
+        - 10x faster (500ms vs 2-5s HTML scraping)
+        - 95% accuracy for methods extraction
+        - 100% table parsing success
+        - Structured sections with <sec sec-type=\"methods\">
+        - 30-40% coverage (NIH-funded + open access)
+        """
+```
+
+**WebpageProvider** (Fallback Path):
+```python
+# Location: lobster/tools/providers/webpage_provider.py
+class WebpageProvider(BaseProvider):
+    """Webpage scraping and PDF extraction (FALLBACK)."""
+
+    capabilities = {ProviderCapability.GET_FULL_CONTENT}
+    priority = 50  # Low priority (slower fallback)
+
+    def __init__(self, data_manager: DataManagerV2):
+        self.docling_service = DoclingService(data_manager)  # Composition
+
+    def extract_content(
+        self,
+        url: str,
+        keywords: Optional[List[str]] = None,
+        max_paragraphs: int = 100
+    ) -> dict:
+        """
+        Extract content via webpage or PDF (uses DoclingService).
+
+        Automatically detects format and routes to appropriate parser.
+        """
+```
+
+**DoclingService** (Internal, Not Registered):
+- Used internally by WebpageProvider via composition
+- Not registered as separate provider
+- Handles both webpage HTML and PDF parsing
+- Structure-aware parsing with table extraction
+
+---
+
+## Three-Tier Content Cascade
+
+The system implements intelligent fallback for full-text retrieval:
+
+### Cascade Flow
+
+```
+User Request: get_full_content("PMID:35042229")
+    ↓
+Step 1: Check DataManager cache
+    ├─ Cache hit? → Return immediately (<100ms)
+    └─ Cache miss → Continue to Tier 1
+    ↓
+Tier 1: PMC XML API (Priority 10)
+    ├─ Provider: PMCProvider
+    ├─ Duration: 500ms-2s
+    ├─ Coverage: 30-40% of biomedical literature
+    ├─ Success? → Cache + Return ✅
+    └─ PMCNotAvailableError → Continue to Tier 2
+    ↓
+Tier 2: Resolve to URL (if identifier)
+    ├─ Use PublicationResolver
+    ├─ PMID/DOI → Accessible URL
+    ├─ Check accessibility
+    └─ If paywalled → Return error with suggestions
+    ↓
+Tier 3: Webpage/PDF Extraction (Priority 50)
+    ├─ Provider: WebpageProvider
+    ├─ Auto-detect: Webpage HTML or PDF
+    ├─ Duration: 2-8s
+    ├─ Uses: DoclingService internally
+    ├─ Success? → Cache + Return ✅
+    └─ Failure → Return error
+```
+
+### Performance Characteristics
+
+| Tier | Path | Duration | Success Rate | Coverage |
+|------|------|----------|--------------|----------|
+| **Cache** | DataManager lookup | <100ms | 100% (if cached) | Previously accessed |
+| **Tier 1** | PMC XML API | 500ms-2s | 95% | 30-40% (open access) |
+| **Tier 2** | URL Resolution | Variable | 70-80% | Depends on accessibility |
+| **Tier 3** | Webpage/PDF | 2-8s | 70% | Major publishers + preprints |
+
+### Code Example
+
+```python
+from lobster.tools.content_access_service import ContentAccessService
+
+service = ContentAccessService(data_manager)
+
+# Automatic three-tier cascade
+content = service.get_full_content("PMID:35042229")
+
+# Check which tier was used
+print(f"Tier used: {content['tier_used']}")
+# Possible values:
+# - 'full_cached' (cache hit)
+# - 'full_pmc_xml' (Tier 1: PMC)
+# - 'full_webpage' (Tier 3: webpage HTML)
+# - 'full_pdf' (Tier 3: PDF via Docling)
+
+print(f"Source type: {content['source_type']}")
+print(f"Extraction time: {content['extraction_time']:.2f}s")
+print(f"Content length: {len(content['content'])} characters")
+```
+
+---
+
+## Method Categories & Usage
+
+### Discovery Methods (3)
+
+#### search_literature()
+
+Search PubMed, bioRxiv, medRxiv for publications.
 
 **Example:**
 ```python
-# Get full content
-content = service.get_full_content("PMID:38448586")
-
-# Extract methods with LLM
-methods = service.extract_methods_section(
-    content,
-    include_tables=True
+results, stats, ir = service.search_literature(
+    query="BRCA1 breast cancer",
+    max_results=10,
+    sources=["pubmed"],  # Optional: filter to specific sources
+    filters={"publication_year": "2023"}  # Optional: date filters
 )
 
-print("Software used:", methods.software_used)
-# ['Scanpy', 'Seurat', 'DESeq2']
-
-print("Parameters:", methods.parameters)
-# {'min_genes': 200, 'max_mt_pct': 5, 'resolution': 0.8}
-
-print("Statistical methods:", methods.statistical_methods)
-# ['Wilcoxon rank-sum test', 'Benjamini-Hochberg FDR']
-
-print("Confidence:", methods.extraction_confidence)
-# 0.92
+print(f"Found {stats['results_count']} papers")
+print(f"Provider: {stats['provider_used']}")  # PubMedProvider
+print(f"Time: {stats['execution_time_ms']}ms")
 ```
+
+#### discover_datasets()
+
+Search for omics datasets with automatic accession detection.
+
+**Example:**
+```python
+# Direct accession (auto-detected)
+results, stats, ir = service.discover_datasets(
+    query="GSM6204600",  # GEO sample ID
+    dataset_type=DatasetType.GEO
+)
+
+# Text search
+results, stats, ir = service.discover_datasets(
+    query="single-cell RNA-seq breast cancer",
+    dataset_type=DatasetType.GEO,
+    max_results=5
+)
+
+print(f"Found {stats['results_count']} datasets")
+print(f"Accession detected: {stats.get('accession_detected', False)}")
+```
+
+#### find_linked_datasets()
+
+Find datasets associated with a publication.
+
+**Example:**
+```python
+results = service.find_linked_datasets(
+    identifier="PMID:35042229",
+    dataset_types=[DatasetType.GEO, DatasetType.SRA]
+)
+
+print(results)  # Formatted list of linked datasets
+```
+
+### Metadata Methods (2)
+
+#### extract_metadata()
+
+Extract publication or dataset metadata.
+
+**Example:**
+```python
+# Publication metadata
+metadata = service.extract_metadata("PMID:35042229")
+
+print(f"Title: {metadata.title}")
+print(f"Authors: {metadata.authors}")
+print(f"Abstract: {metadata.abstract[:200]}...")
+
+# Dataset metadata
+metadata = service.extract_metadata("GSE180759", source="geo")
+```
+
+#### validate_metadata()
+
+Validate dataset metadata completeness before download.
+
+**Example:**
+```python
+report = service.validate_metadata(
+    dataset_id="GSE180759",
+    required_fields=["smoking_status", "treatment_response"],
+    threshold=0.8  # 80% of samples must have fields
+)
+
+print(report)
+# Formatted validation report with:
+# - Completeness scores
+# - Missing fields
+# - Sample coverage
+# - Recommendations (PROCEED/COHORT/SKIP)
+```
+
+### Content Methods (3)
+
+#### get_abstract()
+
+Fast abstract retrieval (Tier 1: 200-500ms).
+
+**Example:**
+```python
+abstract = service.get_abstract("PMID:35042229")
+
+print(f"Title: {abstract['title']}")
+print(f"Authors: {abstract['authors']}")
+print(f"Abstract: {abstract['abstract']}")
+print(f"Keywords: {abstract['keywords']}")
+```
+
+#### get_full_content()
+
+Full-text extraction with three-tier cascade.
+
+**Example:**
+```python
+# Automatic cascade: PMC → Webpage → PDF
+content = service.get_full_content("PMID:35042229")
+
+print(f"Tier used: {content['tier_used']}")
+print(f"Methods section: {content.get('methods_text', 'N/A')[:200]}...")
+print(f"Tables: {content['metadata']['tables']}")
+print(f"Software detected: {content['metadata']['software']}")
+```
+
+#### extract_methods()
+
+Extract structured methods from full content.
+
+**Example:**
+```python
+# Get full content first
+content = service.get_full_content("PMID:35042229")
+
+# Extract methods
+methods = service.extract_methods(content, include_tables=True)
+
+print(f"Software: {methods['software_used']}")
+print(f"GitHub repos: {methods['github_repos']}")
+```
+
+### System Methods (1)
+
+#### query_capabilities()
+
+Query available providers and their capabilities.
+
+**Example:**
+```python
+capabilities = service.query_capabilities()
+
+print(capabilities)
+# Returns formatted matrix showing:
+# - Available operations
+# - Registered providers
+# - Supported dataset types
+# - Performance tiers
+# - Cascade logic
+```
+
+---
+
+## Integration with Research Agent
+
+The research_agent uses ContentAccessService through 10 tools:
+
+### Tool Mapping
+
+| Agent Tool | ContentAccessService Method | Category |
+|-----------|----------------------------|----------|
+| `search_literature` | `search_literature()` | Discovery |
+| `fast_dataset_search` | `discover_datasets()` | Discovery |
+| `find_related_entries` | `find_linked_datasets()` | Discovery |
+| `get_dataset_metadata` | `extract_metadata()` | Metadata |
+| `fast_abstract_search` | `get_abstract()` | Content |
+| `read_full_publication` | `get_full_content()` | Content |
+| `extract_methods` | `extract_methods()` | Content |
+| `validate_dataset_metadata` | `validate_metadata()` | Metadata |
+
+### Example Agent Workflow
+
+```python
+# User: "Find breast cancer datasets with smoking status"
+
+# Step 1: Literature search (PubMedProvider)
+results, stats, ir = service.search_literature("breast cancer smoking")
+
+# Step 2: Discover datasets (GEOProvider)
+datasets, stats, ir = service.discover_datasets(
+    "breast cancer",
+    DatasetType.GEO,
+    filters={"organism": "human"}
+)
+
+# Step 3: Validate metadata (GEOProvider)
+report = service.validate_metadata(
+    "GSE180759",
+    required_fields=["smoking_status"]
+)
+
+# Step 4: Get full publication (PMC → Webpage → PDF cascade)
+content = service.get_full_content("PMID:35042229")
+
+# All operations tracked in W3C-PROV provenance
+```
+
+---
+
+## Performance Benchmarks
+
+### Provider Performance
+
+| Provider | Operation | Mean Duration | P95 | P99 | Success Rate |
+|----------|-----------|---------------|-----|-----|--------------|
+| **AbstractProvider** | `get_abstract()` | 350ms | 450ms | 500ms | 95%+ |
+| **PubMedProvider** | `search_literature()` | 2.1s | 3.5s | 5s | 99%+ |
+| **GEOProvider** | `discover_datasets()` | 3.2s | 4.8s | 6s | 95%+ |
+| **PMCProvider** | `get_full_content()` | 1.2s | 2s | 2.5s | 95% (of eligible) |
+| **WebpageProvider** | `get_full_content()` | 4.5s | 7s | 10s | 70-80% |
+
+### Cascade Performance
+
+| Scenario | Tier Used | Duration | Frequency |
+|----------|-----------|----------|-----------|
+| **Cache hit** | Cache | <100ms | High (repeated access) |
+| **PMC available** | Tier 1 | 500ms-2s | 30-40% of requests |
+| **PMC unavailable** | Tier 3 | 2-8s | 60-70% of requests |
+| **Paywalled** | Error | Variable | 10-15% of requests |
+
+### Optimization Strategies
+
+1. **DataManager-first caching** - All operations check cache before API calls
+2. **Capability-based routing** - Optimal provider selected automatically
+3. **Priority ordering** - Fast providers tried first (Priority 10 before 50)
+4. **Graceful degradation** - Automatic fallback on provider failures
+5. **Session persistence** - Workspace caching for handoffs
 
 ---
 
@@ -550,436 +720,195 @@ print("Confidence:", methods.extraction_confidence)
 
 All caching goes through DataManagerV2 (architectural requirement).
 
+### Cache Flow
+
+```
+Service Method Call
+    ↓
+1. Check DataManager cache
+    ├─ Cache hit? → Return immediately
+    └─ Cache miss → Continue
+    ↓
+2. Execute provider operation
+    ├─ Success? → Store in DataManager + Return
+    └─ Error? → Return error (no cache)
+    ↓
+3. DataManager stores:
+    ├─ In-memory cache (session-scoped)
+    ├─ Workspace filesystem (persistent)
+    └─ W3C-PROV provenance log
+```
+
 ### Cache Methods
 
-#### `cache_publication_content()`
-
-Cache publication content with provenance tracking.
-
-**Signature:**
 ```python
-def cache_publication_content(
-    identifier: str,
-    content: ContentResult
-) -> None
+# ContentAccessService automatically caches all operations
+
+# Cache publication content
+data_manager.cache_publication_content(
+    identifier="PMID:38448586",
+    content=content_result,
+    format="json"
+)
+
+# Retrieve cached content
+cached = data_manager.get_cached_publication("PMID:38448586")
+
+# Cache location
+# ~/.lobster/literature_cache/{identifier}.json
 ```
-
-**Behavior:**
-1. Store in memory cache (`self._publication_cache`)
-2. Log as tool usage for W3C-PROV provenance
-3. Persist to workspace (`~/.lobster/literature_cache/{identifier}.json`)
-
-**Example:**
-```python
-# UnifiedContentService automatically caches
-content = service.get_full_content("PMID:38448586")
-
-# Behind the scenes:
-# data_manager.cache_publication_content("PMID:38448586", content)
-
-# Subsequent calls are fast (<100ms)
-cached = service.get_full_content("PMID:38448586")  # Cache hit
-```
-
-#### `get_cached_publication()`
-
-Retrieve cached content.
-
-**Signature:**
-```python
-def get_cached_publication(identifier: str) -> Optional[ContentResult]
-```
-
-**Behavior:**
-1. Check memory cache first
-2. Check persistent cache (`~/.lobster/literature_cache/`)
-3. Return None if cache miss
-
-**Cache Location:**
-```
-~/.lobster/literature_cache/
-├── PMID:38448586.json
-├── 10.1101_2024.01.001.json
-└── nature_s41586-025-09686-5.json
-```
-
-**Cache Format:**
-```json
-{
-  "identifier": "PMID:38448586",
-  "content_type": "pdf",
-  "markdown": "# Methods\n...",
-  "source": "pmc",
-  "metadata": { ... },
-  "tables": [ ... ],
-  "formulas": [ ... ],
-  "software_mentioned": ["Scanpy", "Seurat"],
-  "extraction_timestamp": "2025-01-02T10:30:00Z"
-}
-```
-
----
-
-## Integration with Research Agent
-
-The Research Agent provides two-tier publication access tools.
-
-### Tool 1: `get_quick_abstract()`
-
-**Description:** Quick abstract retrieval for paper screening (200-500ms).
-
-**Usage:**
-```python
-# Research Agent tool
-@tool
-def get_quick_abstract(identifier: str) -> str:
-    """
-    Get quick abstract for paper screening (no PDF download).
-
-    Fast path for checking if paper is relevant before full extraction.
-    Returns title, authors, abstract, keywords.
-
-    Use this when:
-    - User asks to "check if paper X is relevant"
-    - Screening multiple papers quickly
-    - Getting basic information before full extraction
-    """
-    abstract = abstract_provider.get_quick_abstract(identifier)
-    return formatted_abstract
-```
-
-**Example workflow:**
-```
-User: "Is PMID:38448586 about single-cell RNA-seq?"
-
-Agent: [Uses get_quick_abstract]
-"Yes! Title: 'Single-cell transcriptomics reveals...'
-Abstract mentions single-cell RNA-seq with Scanpy.
-Would you like me to extract full methods?"
-
-User: "Yes, get full content"
-
-Agent: [Uses get_publication_overview]
-"Full content extracted. Found Methods section with..."
-```
-
-### Tool 2: `get_publication_overview()`
-
-**Description:** Deep content extraction with webpage-first strategy (2-8 seconds).
-
-**Usage:**
-```python
-@tool
-def get_publication_overview(
-    identifier: str,
-    include_methods: bool = True
-) -> str:
-    """
-    Get full publication content with webpage-first extraction.
-
-    Deep path for comprehensive content analysis.
-    Returns full text, tables, formulas, extracted methods.
-
-    Use this when:
-    - User needs full publication content
-    - Extracting computational methods
-    - Analyzing tables or formulas
-    - User provides webpage URL (Nature, Science, etc.)
-    """
-    service = UnifiedContentService(data_manager)
-    content = service.get_full_content(identifier, prefer_webpage=True)
-
-    if include_methods:
-        methods = service.extract_methods_section(content)
-        return formatted_with_methods
-
-    return formatted_content
-```
-
-**Example workflows:**
-
-**A. DOI Auto-Resolution (v2.3+ Enhancement):**
-```
-User: "Extract methods from 10.1101/2024.08.29.610467"
-
-Agent: [DOI detected → PublicationResolver → bioRxiv URL → extraction]
-"✅ Resolved DOI to bioRxiv PDF (automatic detection)
-
-**Source:** bioRxiv preprint
-**Content type:** PDF (auto-detected)
-**Tables found:** 2
-**Software detected:** Scanpy, Seurat, CellRanger
-
-**Methods:**
-- Software: Scanpy v1.9.1, Seurat v5.0.1
-- Parameters: min_genes=200, max_mt_pct=15%
-- Normalization: SCTransform with default parameters
-- Clustering: Leiden algorithm, resolution=0.5"
-```
-
-**B. PMID Auto-Resolution (v2.3+ Enhancement):**
-```
-User: "Extract methods from PMID:39370688"
-
-Agent: [PMID detected → PublicationResolver → PMC URL → HTML extraction]
-"✅ Resolved PMID to PMC article (automatic detection)
-
-**Source:** PMC Open Access
-**Content type:** HTML (auto-detected)
-**Extraction time:** 1.5 seconds
-**Software detected:** R, DESeq2, EdgeR
-
-**Methods:**
-- Platform: RNA-seq analysis using R 4.3
-- Differential expression: DESeq2 with default parameters
-- Multiple testing correction: Benjamini-Hochberg (FDR < 0.05)
-- Pathway analysis: GSEA with MSigDB Hallmark gene sets"
-```
-
-**C. Direct URL (Legacy Behavior Maintained):**
-```
-User: "Extract methods from https://www.nature.com/articles/s41586-025-09686-5"
-
-Agent: [Direct URL → webpage-first extraction]
-"Extracted content from Nature webpage (no PDF needed).
-
-**Content type:** webpage
-**Tables found:** 3
-**Software detected:** Scanpy, Seurat, CellRanger"
-```
-
----
-
-## Performance Benchmarks
-
-### Tier 1: Quick Abstract
-
-| Operation | Time | Use Case |
-|-----------|------|----------|
-| Cache hit | <50ms | Repeated access |
-| Cache miss (NCBI) | 200-500ms | First access |
-| Screening 10 papers | 2-5 seconds | Literature review |
-
-### Tier 2: Full Content
-
-| Content Type | First Access | Cache Hit | Notes |
-|-------------|--------------|-----------|-------|
-| **Webpage (Nature)** | 2-5 seconds | <100ms | Direct extraction |
-| **Webpage (Science)** | 2-5 seconds | <100ms | Direct extraction |
-| **PDF (bioRxiv)** | 3-8 seconds | <100ms | Docling parsing |
-| **PDF (PMC)** | 3-8 seconds | <100ms | Docling parsing |
-
-### Memory Usage
-
-| Component | Memory |
-|-----------|--------|
-| UnifiedContentService | ~50MB |
-| AbstractProvider | ~20MB |
-| WebpageProvider | ~100MB |
-| DoclingService | ~500MB (peak during parsing) |
-| After gc.collect() | ~200MB |
 
 ---
 
 ## Troubleshooting
 
-### Issue: Slow First Access
-
-**Symptom:** First call to `get_full_content()` takes 3-8 seconds.
-
-**Explanation:** This is expected behavior for deep content extraction:
-- Docling structure-aware parsing: 2-5 seconds
-- Table extraction: +1-2 seconds
-- Formula detection: +0.5 seconds
-
-**Solution:** Use two-tier pattern:
-1. Start with `get_quick_abstract()` (200-500ms)
-2. Only call `get_full_content()` if user needs full content
-3. Subsequent calls are fast (<100ms from cache)
-
-### Issue: Webpage Extraction Failed
+### Issue: "No providers available for capability"
 
 **Symptom:**
 ```
-WARNING: Webpage extraction failed, falling back to PDF
+ERROR: No available providers for literature search.
 ```
 
-**Causes:**
-1. Paywalled content (not openly accessible)
-2. Publisher uses non-standard HTML structure
-3. Network timeout or rate limiting
+**Cause:** Provider not registered or capability not declared.
 
-**Solution:** Automatic fallback to PDF extraction (no action needed)
-
-**Check fallback:**
+**Solution:**
 ```python
-content = service.get_full_content(url)
-if content.content_type == 'pdf':
-    print("Used PDF fallback (webpage extraction failed)")
+# Check capability matrix
+capabilities = service.query_capabilities()
+print(capabilities)
+
+# Verify provider registration
+providers = service.registry.get_all_providers()
+print(f"Registered providers: {len(providers)}")
 ```
 
-### Issue: Methods Section Not Found
+### Issue: PMC Full-Text Not Available
 
 **Symptom:**
 ```
-WARNING: No Methods section found with default keywords
+INFO: PMC full text not available for PMID:12345, falling back...
 ```
 
-**Solution 1:** Check if paper uses non-standard section names:
+**Cause:** Paper not in PMC open access collection (70% of papers).
+
+**Expected:** Automatic fallback to Tier 3 (Webpage/PDF).
+
+**Verification:**
 ```python
-# Use custom keywords via DoclingService
-content = service.get_full_content(url)
-# Methods extraction handles this internally
+content = service.get_full_content("PMID:12345")
+print(f"Tier used: {content['tier_used']}")  # Should be 'full_webpage' or 'full_pdf'
 ```
 
-**Solution 2:** Inspect full content:
-```python
-content = service.get_full_content(url)
-print(content.markdown[:1000])  # Check structure
-```
-
-### Issue: PaywalledError
+### Issue: Dataset Validation Failed
 
 **Symptom:**
 ```
-PaywalledError: Paper PMID:12345678 is paywalled
+WARNING: Dataset GSE12345 missing required metadata
 ```
 
-**Cause:** Paper not openly accessible
+**Solution:**
+```python
+# Check validation report
+report = service.validate_metadata(
+    "GSE12345",
+    required_fields=["condition", "sample_id"]
+)
+print(report)
 
-**Solutions:**
-1. Check if paper has preprint version (bioRxiv/medRxiv)
-2. Use institutional access via VPN
-3. Request paper from authors via ResearchGate
-4. Use `get_quick_abstract()` for basic information
+# Review recommendations:
+# - PROCEED: Full integration possible
+# - COHORT: Cohort-level only
+# - SKIP: Insufficient metadata
+```
 
 ---
 
 ## Best Practices
 
-### 1. Two-Tier Pattern
+### 1. Use Capability-Based Routing
 
-**Always start with quick abstract:**
+**✅ GOOD: Let the registry route**
 ```python
-# ✅ GOOD: Two-tier approach
-abstract = service.get_quick_abstract("PMID:38448586")
-if "single-cell" in abstract.abstract.lower():
-    content = service.get_full_content("PMID:38448586")
-
-# ❌ BAD: Skip quick check
-content = service.get_full_content("PMID:38448586")  # Wastes 2-8 seconds if irrelevant
+# System automatically selects PubMedProvider
+results, stats, ir = service.search_literature("BRCA1")
 ```
 
-### 2. Webpage-First Preference
-
-**Use webpage-first for supported publishers:**
+**❌ BAD: Manual provider selection**
 ```python
-# ✅ GOOD: Webpage-first (faster, better quality)
-content = service.get_full_content(nature_url, prefer_webpage=True)
-
-# ❌ BAD: Force PDF
-content = service.get_full_content(nature_url, prefer_webpage=False)
+# Don't access providers directly
+provider = service.registry.get_provider_for_capability(...)
 ```
 
-### 3. Cache Awareness
+### 2. Leverage Three-Tier Cascade
 
-**Leverage caching for repeated access:**
+**✅ GOOD: Trust the cascade**
 ```python
-# First call: 3-8 seconds (cache miss)
-content1 = service.get_full_content("PMID:38448586")
-
-# Second call: <100ms (cache hit)
-content2 = service.get_full_content("PMID:38448586")  # Same paper, fast
+# Automatically tries PMC → Webpage → PDF
+content = service.get_full_content("PMID:35042229")
 ```
 
-### 4. Error Handling
-
-**Handle PaywalledError gracefully:**
+**❌ BAD: Force specific tier**
 ```python
-from lobster.tools.unified_content_service import PaywalledError
-
-try:
-    content = service.get_full_content(identifier)
-except PaywalledError as e:
-    print(f"Paywalled: {e.suggestions}")
-    # Fallback: Try quick abstract
-    abstract = service.get_quick_abstract(identifier)
+# Don't try to manually control cascade
 ```
 
-### 5. Batch Processing
+### 3. Validate Before Download
 
-**Use quick abstract for screening:**
+**✅ GOOD: Pre-download validation**
 ```python
-relevant_papers = []
+# Check metadata first
+report = service.validate_metadata("GSE180759", required_fields=["condition"])
 
-for pmid in candidate_pmids:
-    # Fast screening (200-500ms each)
-    abstract = service.get_quick_abstract(pmid)
-
-    if matches_criteria(abstract):
-        relevant_papers.append(pmid)
-
-# Deep extraction only for relevant papers
-for pmid in relevant_papers:
-    content = service.get_full_content(pmid)
-    # ... analyze content ...
+if "PROCEED" in report:
+    # Then download dataset
+    pass
 ```
 
----
+### 4. Check Capabilities
 
-## Future Enhancements
-
-### Short-term (Planned v2.4)
-
-**Additional Provider Support:**
-- arXiv LaTeX source extraction
-- PubMed Central XML parsing
-- Springer/Elsevier APIs (requires authentication)
-
-### Medium-term (Planned v2.5)
-
-**Enhanced Caching:**
-- Distributed caching (Redis support)
-- Cache warming for frequently accessed papers
-- Automatic cache invalidation on paper updates
-
-### Long-term (Planned v3.0)
-
-**Multi-Modal Content:**
-- Figure extraction and understanding
-- Chemical structure parsing
-- Supplementary data integration
+**✅ GOOD: Query capabilities first**
+```python
+# Check what's available
+capabilities = service.query_capabilities()
+print(capabilities)
+```
 
 ---
 
 ## Version History
 
-**v2.3.0 (January 2025):**
-- ✅ Phase 1: Two-tier access architecture
-- ✅ Phase 1: AbstractProvider (quick abstract)
-- ✅ Phase 1: WebpageProvider (webpage-first extraction)
-- ✅ Phase 2: DataManager-first caching
-- ✅ Phase 2: MetadataValidationService extraction
-- ✅ Phase 3: UnifiedContentService (coordination layer)
-- ✅ Phase 3: PublicationIntelligenceService deletion
-- Deprecated: PublicationIntelligenceService (use UnifiedContentService)
-- Added: DoclingService (shared PDF/webpage foundation)
-- Enhanced: Research Agent two-tier tools
+**v2.4.0 (January 2025) - Phase 1-6 Complete:**
+- ✅ Phase 1: Provider infrastructure (5 providers)
+- ✅ Phase 2: ContentAccessService consolidation (10 methods)
+- ✅ Phase 3: metadata_assistant agent (4 tools)
+- ✅ Phase 4: research_agent enhancements (10 tools)
+- ✅ Phase 5: Multi-agent handoff patterns (3 workflows)
+- ✅ Phase 6: Integration testing (127 tests, 3988 lines)
+- Added: ProviderRegistry with capability-based routing
+- Added: GEOProvider for dataset discovery
+- Added: Validation and metadata standardization
+- Enhanced: Three-tier cascade with PMC priority
+- Deprecated: UnifiedContentService (archived)
+- Deprecated: PublicationService (replaced)
+
+**v2.3.0 (January 2025) - Phase 3:**
+- ✅ UnifiedContentService (coordination layer)
+- ✅ PMC-first access strategy
+- ✅ DoclingService integration
+- ✅ PublicationIntelligenceService deletion
 
 **v2.2.0 (November 2024):**
 - Initial: PublicationIntelligenceService with Docling
-- Initial: Structure-aware PDF parsing
-- Initial: Document caching system
 
 ---
 
 ## References
 
-- **Docling Documentation:** https://docling-project.github.io/
-- **Docling GitHub:** https://github.com/DS4SD/docling
-- **Technical Paper:** https://arxiv.org/pdf/2408.09869
-- **UnifiedContentService API:** See [16-services-api.md](16-services-api.md)
+- **ContentAccessService API:** See [16-services-api.md](16-services-api.md)
+- **Provider Architecture:** Source code in `lobster/tools/providers/`
 - **Research Agent:** See [15-agents-api.md](15-agents-api.md)
+- **Metadata Assistant:** Phase 3 documentation in code
+- **Integration Tests:** `tests/integration/test_*_real_api.py` (127 tests)
 
 ---
 
@@ -987,4 +916,4 @@ for pmid in relevant_papers:
 - Review [16-services-api.md](16-services-api.md) for detailed API documentation
 - See [15-agents-api.md](15-agents-api.md) for Research Agent integration
 - Check [28-troubleshooting.md](28-troubleshooting.md) for common issues
-- Explore [06-data-analysis-workflows.md](06-data-analysis-workflows.md) for workflow examples
+- Explore Phase 7 test suite for usage examples
