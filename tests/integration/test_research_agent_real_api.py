@@ -42,9 +42,9 @@ from pathlib import Path
 
 import pytest
 
+from lobster.agents.research_agent import research_agent
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.agents.research_agent import research_agent
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -144,9 +144,7 @@ class TestSearchLiterature:
         response_text = result["messages"][-1].content
 
         # Verify related papers found
-        assert (
-            "related" in response_text.lower() or "citing" in response_text.lower()
-        )
+        assert "related" in response_text.lower() or "citing" in response_text.lower()
 
     def test_search_with_date_filters(self, agent, check_api_keys):
         """Test literature search with date range filters."""
@@ -165,7 +163,9 @@ class TestSearchLiterature:
         response_text = result["messages"][-1].content
 
         # Verify search executed with filters
-        assert "single-cell" in response_text.lower() or "rna-seq" in response_text.lower()
+        assert (
+            "single-cell" in response_text.lower() or "rna-seq" in response_text.lower()
+        )
 
     def test_invalid_query_handling(self, agent, check_api_keys):
         """Test error handling for invalid search queries."""
@@ -204,9 +204,7 @@ class TestFindRelatedEntries:
         result = agent.invoke(
             {
                 "messages": [
-                    HumanMessage(
-                        content="Find datasets from publication PMID:35042229"
-                    )
+                    HumanMessage(content="Find datasets from publication PMID:35042229")
                 ]
             }
         )
@@ -352,11 +350,7 @@ class TestFastDatasetSearch:
         from langchain_core.messages import HumanMessage
 
         result = agent.invoke(
-            {
-                "messages": [
-                    HumanMessage(content="Search GEO for dataset INVALID99999")
-                ]
-            }
+            {"messages": [HumanMessage(content="Search GEO for dataset INVALID99999")]}
         )
 
         response_text = result["messages"][-1].content
@@ -395,9 +389,7 @@ class TestGetDatasetMetadata:
 
         # Verify metadata extracted
         assert "GSE180759" in response_text
-        assert (
-            "sample" in response_text.lower() or "platform" in response_text.lower()
-        )
+        assert "sample" in response_text.lower() or "platform" in response_text.lower()
 
     def test_publication_metadata_extraction(self, agent, check_api_keys):
         """Test extracting metadata from publication."""
@@ -515,7 +507,9 @@ class TestValidateDatasetMetadata:
         response_text = result["messages"][-1].content
 
         # Should mention platform
-        assert "platform" in response_text.lower() or "illumina" in response_text.lower()
+        assert (
+            "platform" in response_text.lower() or "illumina" in response_text.lower()
+        )
 
     def test_incomplete_metadata_warning(self, agent, check_api_keys):
         """Test validation warns about incomplete metadata."""
@@ -559,11 +553,7 @@ class TestExtractMethods:
 
         # Use PMID with PMC full text
         result = agent.invoke(
-            {
-                "messages": [
-                    HumanMessage(content="Extract methods from PMID:35042229")
-                ]
-            }
+            {"messages": [HumanMessage(content="Extract methods from PMID:35042229")]}
         )
 
         response_text = result["messages"][-1].content
@@ -598,9 +588,7 @@ class TestExtractMethods:
         result = agent.invoke(
             {
                 "messages": [
-                    HumanMessage(
-                        content="Extract software tools used in PMID:35042229"
-                    )
+                    HumanMessage(content="Extract software tools used in PMID:35042229")
                 ]
             }
         )
@@ -660,7 +648,9 @@ class TestFastAbstractSearch:
         assert "abstract" in response_text.lower() or "35042229" in response_text
 
         # Performance expectation: <500ms (may be slower with agent overhead)
-        logger.info(f"fast_abstract_search took {elapsed:.2f}s (target: <1s with agent)")
+        logger.info(
+            f"fast_abstract_search took {elapsed:.2f}s (target: <1s with agent)"
+        )
 
     def test_performance_target_500ms(self, agent, check_api_keys):
         """Test abstract retrieval meets <500ms target."""
@@ -739,11 +729,7 @@ class TestReadFullPublication:
 
         # Use PMID with PMC full text
         result = agent.invoke(
-            {
-                "messages": [
-                    HumanMessage(content="Read full publication PMID:35042229")
-                ]
-            }
+            {"messages": [HumanMessage(content="Read full publication PMID:35042229")]}
         )
 
         elapsed = time.time() - start_time
@@ -779,7 +765,9 @@ class TestReadFullPublication:
         response_text = result["messages"][-1].content
 
         # Verify content retrieved
-        assert "publication" in response_text.lower() or "content" in response_text.lower()
+        assert (
+            "publication" in response_text.lower() or "content" in response_text.lower()
+        )
 
         logger.info(f"Webpage extraction took {elapsed:.2f}s (target: 2-5s)")
 
@@ -863,20 +851,14 @@ class TestWriteToWorkspace:
 
         # First read a publication
         result1 = agent.invoke(
-            {
-                "messages": [
-                    HumanMessage(content="Read abstract for PMID:35042229")
-                ]
-            }
+            {"messages": [HumanMessage(content="Read abstract for PMID:35042229")]}
         )
 
         # Then cache it
         result2 = agent.invoke(
             {
                 "messages": [
-                    HumanMessage(
-                        content="Cache publication PMID:35042229 to workspace"
-                    )
+                    HumanMessage(content="Cache publication PMID:35042229 to workspace")
                 ]
             }
         )
@@ -928,8 +910,7 @@ class TestWriteToWorkspace:
 
         # Verify operation attempted
         assert (
-            "publication" in response_text.lower()
-            or "cache" in response_text.lower()
+            "publication" in response_text.lower() or "cache" in response_text.lower()
         )
 
     def test_duplicate_id_handling(self, agent, check_api_keys):
@@ -938,11 +919,7 @@ class TestWriteToWorkspace:
 
         # Cache once
         result1 = agent.invoke(
-            {
-                "messages": [
-                    HumanMessage(content="Cache PMID:35042229 to workspace")
-                ]
-            }
+            {"messages": [HumanMessage(content="Cache PMID:35042229 to workspace")]}
         )
 
         # Try caching again (duplicate)
@@ -997,20 +974,12 @@ class TestGetContentFromWorkspace:
 
         # First cache something
         result1 = agent.invoke(
-            {
-                "messages": [
-                    HumanMessage(content="Cache metadata for GSE180759")
-                ]
-            }
+            {"messages": [HumanMessage(content="Cache metadata for GSE180759")]}
         )
 
         # Then retrieve it
         result2 = agent.invoke(
-            {
-                "messages": [
-                    HumanMessage(content="Get cached content for GSE180759")
-                ]
-            }
+            {"messages": [HumanMessage(content="Get cached content for GSE180759")]}
         )
 
         response_text = result2["messages"][-1].content
@@ -1043,11 +1012,7 @@ class TestGetContentFromWorkspace:
 
         # Cache publication first
         result1 = agent.invoke(
-            {
-                "messages": [
-                    HumanMessage(content="Cache PMID:35042229 to workspace")
-                ]
-            }
+            {"messages": [HumanMessage(content="Cache PMID:35042229 to workspace")]}
         )
 
         # Retrieve methods
@@ -1077,11 +1042,7 @@ class TestGetContentFromWorkspace:
 
         # Retrieve samples
         result2 = agent.invoke(
-            {
-                "messages": [
-                    HumanMessage(content="Get sample IDs from cached GSE180759")
-                ]
-            }
+            {"messages": [HumanMessage(content="Get sample IDs from cached GSE180759")]}
         )
 
         response_text = result2["messages"][-1].content
@@ -1117,9 +1078,7 @@ class TestGetContentFromWorkspace:
         result = agent.invoke(
             {
                 "messages": [
-                    HumanMessage(
-                        content="Get content for identifier NONEXISTENT_12345"
-                    )
+                    HumanMessage(content="Get content for identifier NONEXISTENT_12345")
                 ]
             }
         )
@@ -1160,11 +1119,7 @@ class TestResearchAgentIntegration:
 
         # 2. Find datasets from first paper (PMID:35042229)
         result2 = agent.invoke(
-            {
-                "messages": [
-                    HumanMessage(content="Find datasets from PMID:35042229")
-                ]
-            }
+            {"messages": [HumanMessage(content="Find datasets from PMID:35042229")]}
         )
 
         # 3. Validate dataset metadata
@@ -1189,8 +1144,9 @@ class TestResearchAgentIntegration:
 
     def test_performance_benchmark_suite(self, agent, check_api_keys):
         """Benchmark performance of all key operations."""
-        from langchain_core.messages import HumanMessage
         import time
+
+        from langchain_core.messages import HumanMessage
 
         benchmarks = {}
 
@@ -1208,9 +1164,7 @@ class TestResearchAgentIntegration:
 
         # Literature search
         start = time.time()
-        agent.invoke(
-            {"messages": [HumanMessage(content="Search PubMed for 'cancer'")]}
-        )
+        agent.invoke({"messages": [HumanMessage(content="Search PubMed for 'cancer'")]})
         benchmarks["search"] = time.time() - start
 
         # Log results

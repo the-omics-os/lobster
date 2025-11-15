@@ -438,7 +438,6 @@ from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.providers.abstract_provider import AbstractProvider
 from lobster.tools.providers.pubmed_provider import PubMedProvider
 
-
 # Fixtures for real API integration tests
 
 

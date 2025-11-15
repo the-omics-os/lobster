@@ -35,9 +35,9 @@ from pathlib import Path
 
 import pytest
 
+from lobster.agents.metadata_assistant import metadata_assistant
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.agents.metadata_assistant import metadata_assistant
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -81,9 +81,7 @@ def check_api_keys():
 
     # NCBI_API_KEY is recommended but not required
     if not os.getenv("NCBI_API_KEY"):
-        logger.warning(
-            "NCBI_API_KEY not set - GEO requests may be rate limited"
-        )
+        logger.warning("NCBI_API_KEY not set - GEO requests may be rate limited")
 
 
 @pytest.fixture(scope="module")
@@ -126,10 +124,7 @@ class TestMapSamplesByID:
         response_text = result["messages"][-1].content
 
         # Verify mapping executed with exact strategy
-        assert (
-            "mapping" in response_text.lower()
-            or "match" in response_text.lower()
-        )
+        assert "mapping" in response_text.lower() or "match" in response_text.lower()
 
     def test_fuzzy_matching_strategy(self, agent, check_api_keys):
         """Test sample mapping using fuzzy matching strategy."""
@@ -171,10 +166,7 @@ class TestMapSamplesByID:
         response_text = result["messages"][-1].content
 
         # Should mention pattern or mapping
-        assert (
-            "pattern" in response_text.lower()
-            or "mapping" in response_text.lower()
-        )
+        assert "pattern" in response_text.lower() or "mapping" in response_text.lower()
 
     def test_metadata_assisted_mapping(self, agent, check_api_keys):
         """Test sample mapping using metadata-assisted strategy."""
@@ -193,10 +185,7 @@ class TestMapSamplesByID:
         response_text = result["messages"][-1].content
 
         # Verify metadata strategy attempted
-        assert (
-            "metadata" in response_text.lower()
-            or "mapping" in response_text.lower()
-        )
+        assert "metadata" in response_text.lower() or "mapping" in response_text.lower()
 
     def test_all_strategies_combined(self, agent, check_api_keys):
         """Test sample mapping using all strategies (default)."""
@@ -215,10 +204,7 @@ class TestMapSamplesByID:
         response_text = result["messages"][-1].content
 
         # Should report mapping results
-        assert (
-            "mapping" in response_text.lower()
-            or "match" in response_text.lower()
-        )
+        assert "mapping" in response_text.lower() or "match" in response_text.lower()
 
     def test_confidence_scoring(self, agent, check_api_keys):
         """Test confidence score reporting for fuzzy matches."""
@@ -320,8 +306,7 @@ class TestReadSampleMetadata:
 
         # Verify detailed format (JSON-like)
         assert (
-            "metadata" in response_text.lower()
-            or "detailed" in response_text.lower()
+            "metadata" in response_text.lower() or "detailed" in response_text.lower()
         )
 
     def test_schema_format(self, agent, check_api_keys):
@@ -341,10 +326,7 @@ class TestReadSampleMetadata:
         response_text = result["messages"][-1].content
 
         # Verify schema format (table-like)
-        assert (
-            "schema" in response_text.lower()
-            or "metadata" in response_text.lower()
-        )
+        assert "schema" in response_text.lower() or "metadata" in response_text.lower()
 
     def test_field_filtering(self, agent, check_api_keys):
         """Test extracting specific fields only."""
@@ -457,9 +439,7 @@ class TestStandardizeSampleMetadata:
         result = agent.invoke(
             {
                 "messages": [
-                    HumanMessage(
-                        content="Standardize metadata to proteomics schema"
-                    )
+                    HumanMessage(content="Standardize metadata to proteomics schema")
                 ]
             }
         )
@@ -594,8 +574,7 @@ class TestValidateDatasetContent:
 
         # Verify validation executed
         assert (
-            "sample" in response_text.lower()
-            or "validation" in response_text.lower()
+            "sample" in response_text.lower() or "validation" in response_text.lower()
         )
 
     def test_condition_presence_check(self, agent, check_api_keys):
@@ -625,21 +604,14 @@ class TestValidateDatasetContent:
         from langchain_core.messages import HumanMessage
 
         result = agent.invoke(
-            {
-                "messages": [
-                    HumanMessage(
-                        content="Validate dataset has control samples"
-                    )
-                ]
-            }
+            {"messages": [HumanMessage(content="Validate dataset has control samples")]}
         )
 
         response_text = result["messages"][-1].content
 
         # Should mention controls
         assert (
-            "control" in response_text.lower()
-            or "validation" in response_text.lower()
+            "control" in response_text.lower() or "validation" in response_text.lower()
         )
 
     def test_duplicate_id_check(self, agent, check_api_keys):
@@ -649,9 +621,7 @@ class TestValidateDatasetContent:
         result = agent.invoke(
             {
                 "messages": [
-                    HumanMessage(
-                        content="Validate dataset has no duplicate sample IDs"
-                    )
+                    HumanMessage(content="Validate dataset has no duplicate sample IDs")
                 ]
             }
         )
@@ -671,9 +641,7 @@ class TestValidateDatasetContent:
         result = agent.invoke(
             {
                 "messages": [
-                    HumanMessage(
-                        content="Validate dataset platform consistency"
-                    )
+                    HumanMessage(content="Validate dataset platform consistency")
                 ]
             }
         )
@@ -682,8 +650,7 @@ class TestValidateDatasetContent:
 
         # Should mention platform or validation
         assert (
-            "platform" in response_text.lower()
-            or "validation" in response_text.lower()
+            "platform" in response_text.lower() or "validation" in response_text.lower()
         )
 
     def test_multiple_failures_edge_case(self, agent, check_api_keys):
@@ -788,9 +755,7 @@ class TestMetadataAssistantWorkflows:
         result2 = agent.invoke(
             {
                 "messages": [
-                    HumanMessage(
-                        content="Standardize all datasets to common schema"
-                    )
+                    HumanMessage(content="Standardize all datasets to common schema")
                 ]
             }
         )

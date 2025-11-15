@@ -37,13 +37,13 @@ Phase 7 - Task Group 4: Multi-Agent Handoff Validation Tests
 import os
 import time
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 import pytest
 
 from lobster.config.settings import get_settings
-from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.client import AgentClient
+from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -89,9 +89,7 @@ def check_api_keys():
 
     # NCBI_API_KEY is recommended but not required
     if not os.getenv("NCBI_API_KEY"):
-        logger.warning(
-            "NCBI_API_KEY not set - GEO requests may be rate limited"
-        )
+        logger.warning("NCBI_API_KEY not set - GEO requests may be rate limited")
 
 
 @pytest.fixture(scope="module")
@@ -204,7 +202,9 @@ class TestResearchToDataExpertHandoff:
     ):
         """Test that workspace state is accessible after handoff."""
         # Step 1: Research agent caches dataset
-        result1 = agent_client.query(f"Cache metadata for {known_identifiers['dataset']} to workspace")
+        result1 = agent_client.query(
+            f"Cache metadata for {known_identifiers['dataset']} to workspace"
+        )
 
         response1 = result1.get("response", "")
 
@@ -228,7 +228,9 @@ class TestResearchToDataExpertHandoff:
     ):
         """Test handoff when dataset loading is required."""
         # Request dataset download (requires data_expert)
-        result = agent_client.query(f"Download {known_identifiers['dataset']} and tell me the number of samples")
+        result = agent_client.query(
+            f"Download {known_identifiers['dataset']} and tell me the number of samples"
+        )
 
         response = result.get("response", "")
 
@@ -243,7 +245,9 @@ class TestResearchToDataExpertHandoff:
         self, agent_client, check_api_keys, known_identifiers
     ):
         """Test handoff for data quality assessment."""
-        result = agent_client.query(f"Check if {known_identifiers['dataset']} has missing values")
+        result = agent_client.query(
+            f"Check if {known_identifiers['dataset']} has missing values"
+        )
 
         response = result.get("response", "")
 
@@ -254,9 +258,7 @@ class TestResearchToDataExpertHandoff:
             or "data" in response.lower()
         )
 
-    def test_cache_miss_recovery(
-        self, agent_client, data_manager, check_api_keys
-    ):
+    def test_cache_miss_recovery(self, agent_client, data_manager, check_api_keys):
         """Test handoff recovery when cached dataset not found."""
         # Request non-existent cached dataset
         result = agent_client.query("Get content for dataset NONEXISTENT_12345")
@@ -287,7 +289,9 @@ class TestMetadataToResearchHandback:
     ):
         """Test handback to research_agent after metadata validation."""
         # Step 1: Validate dataset (metadata_assistant)
-        result1 = agent_client.query(f"Validate {known_identifiers['dataset']} metadata completeness")
+        result1 = agent_client.query(
+            f"Validate {known_identifiers['dataset']} metadata completeness"
+        )
 
         response1 = result1.get("response", "")
 
@@ -309,7 +313,9 @@ class TestMetadataToResearchHandback:
     ):
         """Test handback for literature search after metadata standardization."""
         # Step 1: Standardize metadata
-        result1 = agent_client.query(f"Standardize {known_identifiers['dataset']} to transcriptomics schema")
+        result1 = agent_client.query(
+            f"Standardize {known_identifiers['dataset']} to transcriptomics schema"
+        )
 
         response1 = result1.get("response", "")
 
@@ -332,7 +338,9 @@ class TestMetadataToResearchHandback:
     ):
         """Test complete bidirectional workflow (research→metadata→research)."""
         # Step 1: Find dataset (research_agent)
-        result1 = agent_client.query(f"Find datasets from publication {known_identifiers['publication']}")
+        result1 = agent_client.query(
+            f"Find datasets from publication {known_identifiers['publication']}"
+        )
 
         # Step 2: Validate dataset (→ metadata_assistant)
         result2 = agent_client.query(
@@ -340,9 +348,7 @@ class TestMetadataToResearchHandback:
         )
 
         # Step 3: Find related papers (→ research_agent)
-        result3 = agent_client.query(
-            "Find other papers by the same authors"
-        )
+        result3 = agent_client.query("Find other papers by the same authors")
 
         response3 = result3.get("response", "")
 
@@ -353,12 +359,12 @@ class TestMetadataToResearchHandback:
             or "PMID" in response3
         )
 
-    def test_agent_unavailable_recovery(
-        self, agent_client, check_api_keys
-    ):
+    def test_agent_unavailable_recovery(self, agent_client, check_api_keys):
         """Test recovery when handback target agent unavailable."""
         # Request operation that might fail
-        result = agent_client.query("Perform complex analysis requiring multiple unavailable agents")
+        result = agent_client.query(
+            "Perform complex analysis requiring multiple unavailable agents"
+        )
 
         response = result.get("response", "")
 
@@ -388,7 +394,9 @@ class TestSupervisorCoordination:
         start_time = time.time()
 
         # Step 1: Literature search (research_agent)
-        result1 = agent_client.query("Search PubMed for 'breast cancer single-cell RNA-seq' (max 3 results)")
+        result1 = agent_client.query(
+            "Search PubMed for 'breast cancer single-cell RNA-seq' (max 3 results)"
+        )
 
         response1 = result1.get("response", "")
         logger.info(f"Step 1 (research): {len(response1)} chars")
@@ -438,7 +446,9 @@ class TestSupervisorCoordination:
         assert "paper" in response1.lower() or "PMID" in response1
 
         # Test 2: Should delegate to metadata_assistant
-        result2 = agent_client.query(f"Validate {known_identifiers['dataset']} metadata")
+        result2 = agent_client.query(
+            f"Validate {known_identifiers['dataset']} metadata"
+        )
 
         response2 = result2.get("response", "")
         assert "validation" in response2.lower() or "metadata" in response2.lower()
@@ -449,12 +459,12 @@ class TestSupervisorCoordination:
         response3 = result3.get("response", "")
         assert "workspace" in response3.lower() or "cached" in response3.lower()
 
-    def test_complex_orchestration_with_failures(
-        self, agent_client, check_api_keys
-    ):
+    def test_complex_orchestration_with_failures(self, agent_client, check_api_keys):
         """Test supervisor coordination when some operations fail."""
         # Request workflow with potential failures
-        result = agent_client.query("Find datasets from PMID:INVALID, validate metadata, and cache to workspace")
+        result = agent_client.query(
+            "Find datasets from PMID:INVALID, validate metadata, and cache to workspace"
+        )
 
         response = result.get("response", "")
 
@@ -473,7 +483,9 @@ class TestSupervisorCoordination:
     ):
         """Test recovery when mid-workflow step fails."""
         # Step 1: Successful operation
-        result1 = agent_client.query(f"Find datasets from {known_identifiers['publication']}")
+        result1 = agent_client.query(
+            f"Find datasets from {known_identifiers['publication']}"
+        )
 
         # Step 2: Operation that may fail
         result2 = agent_client.query("Validate metadata for INVALID_DATASET")
@@ -502,7 +514,9 @@ class TestSupervisorCoordination:
     ):
         """Test supervisor handling multiple agent requests efficiently."""
         # Request task requiring coordination
-        result = agent_client.query(f"For {known_identifiers['dataset']}: validate metadata, find the publication, and check data quality")
+        result = agent_client.query(
+            f"For {known_identifiers['dataset']}: validate metadata, find the publication, and check data quality"
+        )
 
         response = result.get("response", "")
 
@@ -515,7 +529,9 @@ class TestSupervisorCoordination:
     ):
         """Test that shared state remains consistent across multiple handoffs."""
         # Workflow with multiple handoffs
-        result1 = agent_client.query(f"Cache {known_identifiers['dataset']} to workspace")
+        result1 = agent_client.query(
+            f"Cache {known_identifiers['dataset']} to workspace"
+        )
 
         # Check workspace from different agent
         result2 = agent_client.query("List all cached datasets")
@@ -524,7 +540,9 @@ class TestSupervisorCoordination:
 
         # Workspace state should be consistent
         assert (
-            "GSE" in response2 or "cached" in response2.lower() or "no" in response2.lower()
+            "GSE" in response2
+            or "cached" in response2.lower()
+            or "no" in response2.lower()
         )
 
 
@@ -566,7 +584,9 @@ class TestMultiAgentIntegrationWorkflows:
     ):
         """Test workflow for preparing multiple datasets for meta-analysis."""
         # Workflow: Find datasets → Standardize metadata → Validate compatibility
-        result1 = agent_client.query("Find datasets related to breast cancer transcriptomics")
+        result1 = agent_client.query(
+            "Find datasets related to breast cancer transcriptomics"
+        )
 
         result2 = agent_client.query(
             f"Standardize metadata for {known_identifiers['dataset']} to transcriptomics schema"

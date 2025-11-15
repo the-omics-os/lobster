@@ -132,11 +132,15 @@ class TestPseudobulkSchema:
 
         assert isinstance(validator, FlexibleValidator)
         assert validator.name == "TranscriptomicsValidator_pseudobulk"
-        assert len(validator.custom_rules) == 6  # 6 custom validation rules (2 common + 4 pseudobulk-specific)
+        assert (
+            len(validator.custom_rules) == 6
+        )  # 6 custom validation rules (2 common + 4 pseudobulk-specific)
 
     def test_create_validator_strict(self):
         """Test validator creation with strict mode."""
-        validator = TranscriptomicsSchema.create_validator(schema_type="pseudobulk", strict=True)
+        validator = TranscriptomicsSchema.create_validator(
+            schema_type="pseudobulk", strict=True
+        )
 
         assert isinstance(validator, FlexibleValidator)
         # Strict mode should still have same structure
@@ -144,7 +148,9 @@ class TestPseudobulkSchema:
     def test_create_validator_ignore_warnings(self):
         """Test validator creation with ignored warnings."""
         ignore_warnings = ["missing values", "unexpected columns"]
-        validator = TranscriptomicsSchema.create_validator(schema_type="pseudobulk", ignore_warnings=ignore_warnings)
+        validator = TranscriptomicsSchema.create_validator(
+            schema_type="pseudobulk", ignore_warnings=ignore_warnings
+        )
 
         expected_ignored = {
             "missing values",
@@ -157,7 +163,9 @@ class TestPseudobulkSchema:
 
     def test_get_recommended_qc_thresholds(self):
         """Test QC thresholds structure and values."""
-        thresholds = TranscriptomicsSchema.get_recommended_qc_thresholds(schema_type="pseudobulk")
+        thresholds = TranscriptomicsSchema.get_recommended_qc_thresholds(
+            schema_type="pseudobulk"
+        )
 
         assert isinstance(thresholds, dict)
         assert "min_cells_per_pseudobulk" in thresholds
@@ -343,7 +351,9 @@ class TestPseudobulkValidator:
 
     def test_validator_with_valid_data(self, valid_pseudobulk_data):
         """Test validator with completely valid pseudobulk data."""
-        validator = TranscriptomicsSchema.create_validator(schema_type="pseudobulk", strict=False)
+        validator = TranscriptomicsSchema.create_validator(
+            schema_type="pseudobulk", strict=False
+        )
 
         result = validator.validate(valid_pseudobulk_data)
 
@@ -353,7 +363,9 @@ class TestPseudobulkValidator:
 
     def test_validator_with_invalid_data(self, invalid_pseudobulk_data):
         """Test validator with invalid pseudobulk data."""
-        validator = TranscriptomicsSchema.create_validator(schema_type="pseudobulk", strict=True)
+        validator = TranscriptomicsSchema.create_validator(
+            schema_type="pseudobulk", strict=True
+        )
 
         result = validator.validate(invalid_pseudobulk_data)
 
@@ -411,7 +423,9 @@ class TestPseudobulkValidator:
 
     def test_qc_thresholds_structure(self):
         """Test QC thresholds return expected structure."""
-        thresholds = TranscriptomicsSchema.get_recommended_qc_thresholds(schema_type="pseudobulk")
+        thresholds = TranscriptomicsSchema.get_recommended_qc_thresholds(
+            schema_type="pseudobulk"
+        )
 
         required_thresholds = [
             "min_cells_per_pseudobulk",

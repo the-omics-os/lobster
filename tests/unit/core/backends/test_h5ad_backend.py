@@ -686,9 +686,7 @@ class TestH5ADDataSanitization:
 
         # Verify nested Path objects were also converted
         assert isinstance(adata_loaded.uns["nested_metadata"]["file_path"], str)
-        assert (
-            adata_loaded.uns["nested_metadata"]["file_path"] == "/path/to/file.txt"
-        )
+        assert adata_loaded.uns["nested_metadata"]["file_path"] == "/path/to/file.txt"
         assert isinstance(adata_loaded.uns["nested_metadata"]["directory"], str)
         assert adata_loaded.uns["nested_metadata"]["directory"] == "/path/to/dir"
 

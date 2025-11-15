@@ -40,16 +40,15 @@ Rate Limiting:
 import os
 import time
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.content_access_service import ContentAccessService
 from lobster.tools.providers.abstract_provider import AbstractProvider
-from lobster.tools.providers.pubmed_provider import PubMedProvider
 from lobster.tools.providers.provider_registry import ProviderRegistry
-
+from lobster.tools.providers.pubmed_provider import PubMedProvider
 
 # ============================================================================
 # Fixtures
@@ -95,7 +94,7 @@ def mock_provider_registry():
 
     registry.get_providers_for_capability.return_value = [
         mock_abstract_provider,
-        mock_pubmed_provider
+        mock_pubmed_provider,
     ]
 
     return registry
@@ -105,8 +104,7 @@ def mock_provider_registry():
 def mock_content_access_service(mock_data_manager, mock_provider_registry):
     """Create a mock ContentAccessService for unit testing."""
     return ContentAccessService(
-        data_manager=mock_data_manager,
-        provider_registry=mock_provider_registry
+        data_manager=mock_data_manager, provider_registry=mock_provider_registry
     )
 
 
@@ -124,8 +122,7 @@ def real_content_access_service(real_data_manager):
     registry.register_provider(pubmed_provider)
 
     return ContentAccessService(
-        data_manager=real_data_manager,
-        provider_registry=registry
+        data_manager=real_data_manager, provider_registry=registry
     )
 
 
@@ -143,9 +140,9 @@ class TestDiscoveryMethods:
         mock_provider.search_literature.return_value = {
             "results": [
                 {"pmid": "12345", "title": "Test Paper 1"},
-                {"pmid": "67890", "title": "Test Paper 2"}
+                {"pmid": "67890", "title": "Test Paper 2"},
             ],
-            "total_count": 2
+            "total_count": 2,
         }
 
         mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
@@ -167,9 +164,9 @@ class TestDiscoveryMethods:
         mock_provider.discover_datasets.return_value = {
             "results": [
                 {"accession": "GSE12345", "title": "Test Dataset 1", "samples": 48},
-                {"accession": "GSE67890", "title": "Test Dataset 2", "samples": 36}
+                {"accession": "GSE67890", "title": "Test Dataset 2", "samples": 36},
             ],
-            "total_count": 2
+            "total_count": 2,
         }
 
         mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
@@ -189,10 +186,8 @@ class TestDiscoveryMethods:
         """Test finding datasets linked to publication (mock)."""
         mock_provider = Mock()
         mock_provider.find_linked_datasets.return_value = {
-            "results": [
-                {"accession": "GSE12345", "link_type": "supplementary"}
-            ],
-            "total_count": 1
+            "results": [{"accession": "GSE12345", "link_type": "supplementary"}],
+            "total_count": 1,
         }
 
         mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
@@ -212,7 +207,7 @@ class TestDiscoveryMethods:
         mock_provider = Mock()
         mock_provider.search_literature.return_value = {
             "results": [{"pmid": "12345"}],
-            "total_count": 1
+            "total_count": 1,
         }
 
         mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
@@ -220,8 +215,7 @@ class TestDiscoveryMethods:
         ]
 
         results = mock_content_access_service.search_literature(
-            query="BRCA1",
-            filters={"organism": "human", "year_from": 2020}
+            query="BRCA1", filters={"organism": "human", "year_from": 2020}
         )
 
         assert results["total_count"] == 1
@@ -232,7 +226,7 @@ class TestDiscoveryMethods:
         mock_provider = Mock()
         mock_provider.search_literature.return_value = {
             "results": [{"pmid": str(i)} for i in range(10)],
-            "total_count": 100
+            "total_count": 100,
         }
 
         mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
@@ -249,10 +243,7 @@ class TestDiscoveryMethods:
     def test_empty_results_mock(self, mock_content_access_service):
         """Test handling of empty search results."""
         mock_provider = Mock()
-        mock_provider.search_literature.return_value = {
-            "results": [],
-            "total_count": 0
-        }
+        mock_provider.search_literature.return_value = {"results": [], "total_count": 0}
 
         mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
             mock_provider
@@ -284,7 +275,7 @@ class TestMetadataMethods:
             "journal": "Nature",
             "year": 2022,
             "doi": "10.1038/s41586-021-03852-1",
-            "abstract": "This study..."
+            "abstract": "This study...",
         }
 
         mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
@@ -307,7 +298,7 @@ class TestMetadataMethods:
             "organism": "Homo sapiens",
             "platform": "GPL16791",
             "samples": 48,
-            "summary": "This dataset contains..."
+            "summary": "This dataset contains...",
         }
 
         mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
@@ -326,7 +317,7 @@ class TestMetadataMethods:
         mock_provider = Mock()
         mock_provider.get_publication_metadata.return_value = {
             "pmid": "35042229",
-            "title": "Test Paper"
+            "title": "Test Paper",
         }
 
         mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
@@ -334,10 +325,14 @@ class TestMetadataMethods:
         ]
 
         # First call
-        metadata1 = mock_content_access_service.get_publication_metadata("PMID:35042229")
+        metadata1 = mock_content_access_service.get_publication_metadata(
+            "PMID:35042229"
+        )
 
         # Second call (should use cache if implemented)
-        metadata2 = mock_content_access_service.get_publication_metadata("PMID:35042229")
+        metadata2 = mock_content_access_service.get_publication_metadata(
+            "PMID:35042229"
+        )
 
         assert metadata1["pmid"] == metadata2["pmid"]
 
@@ -370,7 +365,7 @@ class TestContentMethods:
             "abstract": "This study presents single-cell RNA-seq analysis...",
             "title": "Single-cell analysis reveals...",
             "provider": "AbstractProvider",
-            "response_time": 0.3
+            "response_time": 0.3,
         }
 
         mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
@@ -393,7 +388,7 @@ class TestContentMethods:
             "format": "xml",
             "provider": "PubMedProvider",
             "tier": 1,
-            "response_time": 0.5
+            "response_time": 0.5,
         }
 
         mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
@@ -407,7 +402,9 @@ class TestContentMethods:
         assert result["tier"] == 1
         assert result["response_time"] < 1.0
 
-    def test_get_full_content_pmc_fail_webpage_success_mock(self, mock_content_access_service):
+    def test_get_full_content_pmc_fail_webpage_success_mock(
+        self, mock_content_access_service
+    ):
         """Test full content retrieval - Tier 1 fail → Tier 2 success."""
         # First provider (PMC) fails
         mock_pmc_provider = Mock()
@@ -420,12 +417,12 @@ class TestContentMethods:
             "format": "html",
             "provider": "WebpageProvider",
             "tier": 2,
-            "response_time": 2.5
+            "response_time": 2.5,
         }
 
         mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
             mock_pmc_provider,
-            mock_webpage_provider
+            mock_webpage_provider,
         ]
 
         result = mock_content_access_service.get_full_content("PMID:35042229")
@@ -453,7 +450,7 @@ class TestContentMethods:
         mock_provider.extract_methods_section.return_value = {
             "methods": "RNA was extracted using Qiagen RNeasy kit...",
             "confidence": 0.95,
-            "provider": "PubMedProvider"
+            "provider": "PubMedProvider",
         }
 
         mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
@@ -471,7 +468,7 @@ class TestContentMethods:
         mock_provider = Mock()
         mock_provider.get_abstract.return_value = {
             "pmid": "35042229",
-            "abstract": "Test abstract"
+            "abstract": "Test abstract",
         }
 
         mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
@@ -491,7 +488,7 @@ class TestContentMethods:
         mock_provider = Mock()
         mock_provider.get_full_content.return_value = {
             "content": "<xml>Full text</xml>",
-            "format": "xml"
+            "format": "xml",
         }
 
         mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
@@ -499,8 +496,7 @@ class TestContentMethods:
         ]
 
         result = mock_content_access_service.get_full_content(
-            "PMID:35042229",
-            output_format="text"
+            "PMID:35042229", output_format="text"
         )
 
         # Should convert XML to text if format conversion is implemented
@@ -510,9 +506,7 @@ class TestContentMethods:
         """Test partial content retrieval (abstract only when full text unavailable)."""
         mock_provider = Mock()
         mock_provider.get_full_content.return_value = None
-        mock_provider.get_abstract.return_value = {
-            "abstract": "Test abstract"
-        }
+        mock_provider.get_abstract.return_value = {"abstract": "Test abstract"}
 
         mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
             mock_provider
@@ -528,7 +522,7 @@ class TestContentMethods:
         mock_provider = Mock()
         mock_provider.get_full_content.return_value = {
             "content": "Too short",
-            "format": "text"
+            "format": "text",
         }
 
         mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
@@ -549,7 +543,9 @@ class TestContentMethods:
             mock_provider
         ]
 
-        result = mock_content_access_service.get_full_content("PMID:35042229", timeout=5)
+        result = mock_content_access_service.get_full_content(
+            "PMID:35042229", timeout=5
+        )
 
         # Should handle timeout gracefully
         assert result is None or "error" in result
@@ -801,7 +797,10 @@ class TestRealAPIThreeTierCascade:
         assert result is not None
         assert "content" in result
         assert len(result["content"]) > 5000
-        assert result.get("provider") == "PubMedProvider" or "pmc" in result.get("provider", "").lower()
+        assert (
+            result.get("provider") == "PubMedProvider"
+            or "pmc" in result.get("provider", "").lower()
+        )
         assert elapsed < 2.0, f"Tier 1 PMC took {elapsed:.2f}s (expected <2s)"
 
         # Rate limiting
@@ -864,8 +863,7 @@ class TestRealAPIThreeTierCascade:
 
         start_time = time.time()
         result = real_content_access_service.get_full_content(
-            identifier,
-            force_pdf=True  # Force PDF extraction if supported
+            identifier, force_pdf=True  # Force PDF extraction if supported
         )
         elapsed = time.time() - start_time
 
@@ -921,7 +919,7 @@ class TestCachingBehavior:
         mock_provider = Mock()
         mock_provider.get_abstract.return_value = {
             "pmid": "35042229",
-            "abstract": "Test abstract"
+            "abstract": "Test abstract",
         }
 
         mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
@@ -959,7 +957,7 @@ class TestCachingBehavior:
         mock_provider = Mock()
         mock_provider.get_abstract.return_value = {
             "pmid": "35042229",
-            "abstract": "Test abstract"
+            "abstract": "Test abstract",
         }
 
         mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
@@ -970,7 +968,7 @@ class TestCachingBehavior:
         result1 = mock_content_access_service.get_abstract("PMID:35042229")
 
         # Clear cache if method exists
-        if hasattr(mock_content_access_service, 'clear_cache'):
+        if hasattr(mock_content_access_service, "clear_cache"):
             mock_content_access_service.clear_cache()
 
         # Second call after cache clear
@@ -981,7 +979,7 @@ class TestCachingBehavior:
     def test_cache_statistics_mock(self, mock_content_access_service):
         """Test cache statistics (hit rate calculation)."""
         # Placeholder for cache statistics testing
-        if hasattr(mock_content_access_service, 'cache_stats'):
+        if hasattr(mock_content_access_service, "cache_stats"):
             stats = mock_content_access_service.cache_stats()
             assert "hit_rate" in stats or "hits" in stats
 
@@ -996,7 +994,9 @@ class TestErrorHandling:
 
     def test_no_providers_available_mock(self, mock_content_access_service):
         """Test error when no providers available."""
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = []
+        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = (
+            []
+        )
 
         result = mock_content_access_service.get_abstract("PMID:35042229")
 
@@ -1039,4 +1039,6 @@ class TestErrorHandling:
         result = mock_content_access_service.get_abstract("PMID:35042229")
 
         # Should handle rate limiting gracefully
-        assert result is None or "rate limit" in str(result).lower() or "error" in result
+        assert (
+            result is None or "rate limit" in str(result).lower() or "error" in result
+        )

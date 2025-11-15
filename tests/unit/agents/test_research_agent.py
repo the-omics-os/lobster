@@ -16,8 +16,8 @@ import pytest
 
 from lobster.agents.research_agent import research_agent
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.providers.base_provider import PublicationMetadata
 from lobster.tools.content_access_service import ContentAccessService
+from lobster.tools.providers.base_provider import PublicationMetadata
 from tests.mock_data.base import SMALL_DATASET_CONFIG
 from tests.mock_data.factories import SingleCellDataFactory
 
@@ -73,9 +73,7 @@ def mock_content_access_service():
         mock_service.find_linked_datasets.return_value = (
             "Found datasets from publication"
         )
-        mock_service.query_capabilities.return_value = (
-            "Provider capabilities listed"
-        )
+        mock_service.query_capabilities.return_value = "Provider capabilities listed"
         mock_service.get_abstract.return_value = "Abstract text"
         mock_service.get_full_content.return_value = "Full content text"
         mock_service.extract_methods.return_value = "Methods section"
@@ -109,7 +107,9 @@ class TestResearchAgentCore:
         assert agent is not None
         assert hasattr(agent, "get_graph")
 
-    def test_agent_graph_structure(self, mock_data_manager, mock_content_access_service):
+    def test_agent_graph_structure(
+        self, mock_data_manager, mock_content_access_service
+    ):
         """Test that the agent graph is properly structured."""
         agent = research_agent(mock_data_manager)
         graph = agent.get_graph()
@@ -238,17 +238,13 @@ class TestServiceIntegration:
 
             # Test various service methods
             mock_service.search_literature.return_value = "Literature search results"
-            mock_service.discover_datasets.return_value = (
-                "Dataset search results"
-            )
-            mock_service.extract_metadata.return_value = (
-                PublicationMetadata(
-                    uid="123",
-                    title="Test",
-                    authors=[],
-                    journal="Test Journal",
-                    published="2023",
-                )
+            mock_service.discover_datasets.return_value = "Dataset search results"
+            mock_service.extract_metadata.return_value = PublicationMetadata(
+                uid="123",
+                title="Test",
+                authors=[],
+                journal="Test Journal",
+                published="2023",
             )
             mock_service.find_linked_datasets.return_value = "Found datasets"
             mock_service.query_capabilities.return_value = "Capabilities"
@@ -274,7 +270,9 @@ class TestServiceIntegration:
             MockAssistant.assert_called_once()
             assert agent is not None
 
-    def test_geo_service_integration(self, mock_data_manager, mock_content_access_service):
+    def test_geo_service_integration(
+        self, mock_data_manager, mock_content_access_service
+    ):
         """Test integration with GEO service in validate_dataset_metadata."""
         # This test verifies that the validate_dataset_metadata tool can integrate with GEOService
         mock_data_manager.metadata_store = {}
@@ -352,14 +350,12 @@ class TestToolFunctions:
 
             # Configure the mock service
             mock_service.search_literature.return_value = "Search results"
-            mock_service.extract_metadata.return_value = (
-                PublicationMetadata(
-                    uid="123",
-                    title="Test",
-                    authors=[],
-                    journal="Test",
-                    published="2023",
-                )
+            mock_service.extract_metadata.return_value = PublicationMetadata(
+                uid="123",
+                title="Test",
+                authors=[],
+                journal="Test",
+                published="2023",
             )
 
             agent = research_agent(mock_data_manager)
@@ -462,7 +458,11 @@ class TestContentAccessIntegration:
     @patch("lobster.agents.research_agent.create_react_agent")
     @patch("lobster.agents.research_agent.create_llm")
     def test_content_access_service_initialization(
-        self, mock_create_llm, mock_create_agent, mock_content_service_class, mock_data_manager
+        self,
+        mock_create_llm,
+        mock_create_agent,
+        mock_content_service_class,
+        mock_data_manager,
     ):
         """Test that ContentAccessService is properly initialized with provider registry."""
         mock_llm = Mock()
@@ -486,7 +486,11 @@ class TestContentAccessIntegration:
     @patch("lobster.agents.research_agent.create_react_agent")
     @patch("lobster.agents.research_agent.create_llm")
     def test_search_literature_with_content_service(
-        self, mock_create_llm, mock_create_agent, mock_content_service_class, mock_data_manager
+        self,
+        mock_create_llm,
+        mock_create_agent,
+        mock_content_service_class,
+        mock_data_manager,
     ):
         """Test literature search using ContentAccessService."""
         mock_llm = Mock()
@@ -512,7 +516,9 @@ class TestContentAccessIntegration:
         mock_create_agent.assert_called_once()
 
         # Verify ContentAccessService can be called
-        results = mock_content_service.search_literature(query="BRCA1 breast cancer", limit=10)
+        results = mock_content_service.search_literature(
+            query="BRCA1 breast cancer", limit=10
+        )
         assert results["total_count"] == 2
         assert len(results["results"]) == 2
 
@@ -520,7 +526,11 @@ class TestContentAccessIntegration:
     @patch("lobster.agents.research_agent.create_react_agent")
     @patch("lobster.agents.research_agent.create_llm")
     def test_get_abstract_via_content_service(
-        self, mock_create_llm, mock_create_agent, mock_content_service_class, mock_data_manager
+        self,
+        mock_create_llm,
+        mock_create_agent,
+        mock_content_service_class,
+        mock_data_manager,
     ):
         """Test abstract retrieval via ContentAccessService (Tier 1)."""
         mock_llm = Mock()
@@ -552,7 +562,11 @@ class TestContentAccessIntegration:
     @patch("lobster.agents.research_agent.create_react_agent")
     @patch("lobster.agents.research_agent.create_llm")
     def test_three_tier_cascade_mock(
-        self, mock_create_llm, mock_create_agent, mock_content_service_class, mock_data_manager
+        self,
+        mock_create_llm,
+        mock_create_agent,
+        mock_content_service_class,
+        mock_data_manager,
     ):
         """Test three-tier cascade strategy (mock).
 
@@ -712,7 +726,11 @@ class TestMetadataAssistantHandoff:
     @patch("lobster.agents.research_agent.create_llm")
     @patch("lobster.agents.research_agent.ContentAccessService")
     def test_handoff_for_sample_mapping(
-        self, mock_content_service_class, mock_create_llm, mock_create_agent, mock_data_manager
+        self,
+        mock_content_service_class,
+        mock_create_llm,
+        mock_create_agent,
+        mock_data_manager,
     ):
         """Test handoff to metadata_assistant for sample ID mapping task.
 
@@ -751,7 +769,11 @@ class TestMetadataAssistantHandoff:
     @patch("lobster.agents.research_agent.create_llm")
     @patch("lobster.agents.research_agent.ContentAccessService")
     def test_handoff_for_metadata_standardization(
-        self, mock_content_service_class, mock_create_llm, mock_create_agent, mock_data_manager
+        self,
+        mock_content_service_class,
+        mock_create_llm,
+        mock_create_agent,
+        mock_data_manager,
     ):
         """Test handoff for metadata standardization task.
 
@@ -796,7 +818,11 @@ class TestMetadataAssistantHandoff:
     @patch("lobster.agents.research_agent.create_llm")
     @patch("lobster.agents.research_agent.ContentAccessService")
     def test_handoff_message_format(
-        self, mock_content_service_class, mock_create_llm, mock_create_agent, mock_data_manager
+        self,
+        mock_content_service_class,
+        mock_create_llm,
+        mock_create_agent,
+        mock_data_manager,
     ):
         """Test handoff message format compliance.
 

@@ -1357,11 +1357,16 @@ Use exact and pattern matching strategies. Return mapping report with:
 
         # Assert: Verify coordination and validation report
         assert supervisor_result["current_agent"] == "metadata_assistant"
-        assert supervisor_result["delegation_context"]["operation"] == "validate_dataset_content"
+        assert (
+            supervisor_result["delegation_context"]["operation"]
+            == "validate_dataset_content"
+        )
 
         assert validation_result["current_agent"] == "supervisor_agent"  # Handed back
         assert validation_result["validation_summary"]["platform_consistency"] is True
-        assert "control" in validation_result["validation_summary"]["missing_conditions"]
+        assert (
+            "control" in validation_result["validation_summary"]["missing_conditions"]
+        )
         assert "⚠️" in validation_result["messages"][0]["content"]
         assert "Dataset has issues" in validation_result["messages"][0]["content"]
 

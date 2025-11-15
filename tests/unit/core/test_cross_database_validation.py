@@ -11,21 +11,29 @@ import pandas as pd
 import pytest
 
 from lobster.core.interfaces.validator import ValidationResult
-from lobster.core.schemas.transcriptomics import (
-    TranscriptomicsSchema,
-    _validate_cross_database_accessions as transcriptomics_validate,
-)
-from lobster.core.schemas.proteomics import (
-    ProteomicsSchema,
-    _validate_cross_database_accessions as proteomics_validate,
-)
 from lobster.core.schemas.metabolomics import (
     MetabolomicsSchema,
+)
+from lobster.core.schemas.metabolomics import (
     _validate_cross_database_accessions as metabolomics_validate,
 )
 from lobster.core.schemas.metagenomics import (
     MetagenomicsSchema,
+)
+from lobster.core.schemas.metagenomics import (
     _validate_cross_database_accessions as metagenomics_validate,
+)
+from lobster.core.schemas.proteomics import (
+    ProteomicsSchema,
+)
+from lobster.core.schemas.proteomics import (
+    _validate_cross_database_accessions as proteomics_validate,
+)
+from lobster.core.schemas.transcriptomics import (
+    TranscriptomicsSchema,
+)
+from lobster.core.schemas.transcriptomics import (
+    _validate_cross_database_accessions as transcriptomics_validate,
 )
 
 
@@ -349,7 +357,9 @@ class TestCrossModalityAccessions:
         ]:
             result = validate_func(basic_adata, modality=modality)
             assert not result.has_errors(), f"Failed for {modality}"
-            assert any(doi in msg for msg in result.info), f"Missing info for {modality}"
+            assert any(
+                doi in msg for msg in result.info
+            ), f"Missing info for {modality}"
 
 
 @pytest.mark.unit

@@ -91,7 +91,9 @@ class TestAccessionValidation:
 
     def test_validate_geo_invalid(self):
         """Test rejection of invalid GEO accessions."""
-        assert not validate_accession("geo_accession", "GSE12")  # Too short (need 3+ digits)
+        assert not validate_accession(
+            "geo_accession", "GSE12"
+        )  # Too short (need 3+ digits)
         assert not validate_accession("geo_accession", "PRJNA123456")
         assert not validate_accession("geo_accession", "GSEabc123")
 
@@ -135,8 +137,12 @@ class TestAccessionValidation:
 
     def test_validate_metabolomics_workbench_invalid(self):
         """Test rejection of invalid Metabolomics Workbench accessions."""
-        assert not validate_accession("metabolomics_workbench_accession", "ST12345")  # Too long
-        assert not validate_accession("metabolomics_workbench_accession", "ST123")  # Too short
+        assert not validate_accession(
+            "metabolomics_workbench_accession", "ST12345"
+        )  # Too long
+        assert not validate_accession(
+            "metabolomics_workbench_accession", "ST123"
+        )  # Too short
 
     def test_validate_mgnify_valid(self):
         """Test validation of MGnify accessions."""
@@ -167,8 +173,12 @@ class TestAccessionValidation:
 
     def test_validate_arrayexpress_invalid(self):
         """Test rejection of invalid ArrayExpress accessions."""
-        assert not validate_accession("arrayexpress_accession", "E-MT-12345")  # Prefix too short
-        assert not validate_accession("arrayexpress_accession", "E-MTABCD-12345")  # Prefix too long
+        assert not validate_accession(
+            "arrayexpress_accession", "E-MT-12345"
+        )  # Prefix too short
+        assert not validate_accession(
+            "arrayexpress_accession", "E-MTABCD-12345"
+        )  # Prefix too long
         assert not validate_accession("arrayexpress_accession", "GSE123456")
 
     def test_validate_doi_valid(self):
@@ -179,7 +189,9 @@ class TestAccessionValidation:
 
     def test_validate_doi_invalid(self):
         """Test rejection of invalid DOI format."""
-        assert not validate_accession("publication_doi", "10.123/test")  # Registrant too short
+        assert not validate_accession(
+            "publication_doi", "10.123/test"
+        )  # Registrant too short
         assert not validate_accession("publication_doi", "11.1234/test")  # Wrong prefix
         assert not validate_accession("publication_doi", "10.1234")  # Missing suffix
 
@@ -329,7 +341,12 @@ class TestRequiredAccessions:
 
     def test_list_required_accessions_all_optional(self):
         """Test that all accessions are currently optional."""
-        for modality in ["transcriptomics", "proteomics", "metabolomics", "metagenomics"]:
+        for modality in [
+            "transcriptomics",
+            "proteomics",
+            "metabolomics",
+            "metagenomics",
+        ]:
             required = list_required_accessions(modality)
             assert len(required) == 0  # All cross-database accessions are optional
 
@@ -402,8 +419,9 @@ class TestRegistryCompleteness:
         for field_name, accession in DATABASE_ACCESSION_REGISTRY.items():
             assert len(accession.example) > 0
             # Example should validate against pattern
-            assert validate_accession(field_name, accession.example), \
-                f"Example for {field_name} ({accession.example}) does not validate"
+            assert validate_accession(
+                field_name, accession.example
+            ), f"Example for {field_name} ({accession.example}) does not validate"
 
 
 if __name__ == "__main__":

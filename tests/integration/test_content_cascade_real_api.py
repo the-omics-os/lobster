@@ -121,7 +121,9 @@ class TestPMCFastPath:
 
         # PMC extraction should be fast (allow some overhead)
         # Note: With network latency, may exceed 500ms, but should be <2s
-        assert elapsed < 2.0, f"PMC extraction took {elapsed:.3f}s (target: <500ms base + network)"
+        assert (
+            elapsed < 2.0
+        ), f"PMC extraction took {elapsed:.3f}s (target: <500ms base + network)"
 
     def test_pmc_structured_content_quality(self, content_service, check_api_keys):
         """Test PMC XML provides structured, high-quality content."""
@@ -144,7 +146,9 @@ class TestPMCFastPath:
         )
 
         # Should have reasonable length (not truncated)
-        assert len(content) > 1000, "PMC content too short - extraction may be incomplete"
+        assert (
+            len(content) > 1000
+        ), "PMC content too short - extraction may be incomplete"
 
     def test_pmc_metadata_extraction(self, content_service, check_api_keys):
         """Test PMC XML extracts comprehensive metadata."""

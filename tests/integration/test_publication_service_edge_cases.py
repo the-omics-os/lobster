@@ -19,8 +19,8 @@ import pytest
 import requests
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.providers.base_provider import DatasetType, PublicationSource
 from lobster.tools.content_access_service import ContentAccessService
+from lobster.tools.providers.base_provider import DatasetType, PublicationSource
 
 # ===============================================================================
 # Fixtures
@@ -351,7 +351,9 @@ class TestDatabaseSearchEdgeCases:
         ]
 
         for query in special_queries:
-            result = content_access_service.search_literature(query=query, max_results=5)
+            result = content_access_service.search_literature(
+                query=query, max_results=5
+            )
 
             # Should handle special characters
             assert isinstance(result, str)
@@ -363,7 +365,9 @@ class TestDatabaseSearchEdgeCases:
             )
 
     @patch("lobster.tools.providers.pubmed_provider.Entrez")
-    def test_search_with_sql_injection_attempt(self, mock_entrez, content_access_service):
+    def test_search_with_sql_injection_attempt(
+        self, mock_entrez, content_access_service
+    ):
         """Test that SQL injection attempts are safely handled."""
         mock_search_handle = StringIO(
             json.dumps(
@@ -385,7 +389,9 @@ class TestDatabaseSearchEdgeCases:
         ]
 
         for query in injection_queries:
-            result = content_access_service.search_literature(query=query, max_results=5)
+            result = content_access_service.search_literature(
+                query=query, max_results=5
+            )
 
             # Should handle safely (treat as normal text)
             assert isinstance(result, str)
@@ -416,7 +422,9 @@ class TestDatabaseSearchEdgeCases:
         ]
 
         for query in unicode_queries:
-            result = content_access_service.search_literature(query=query, max_results=5)
+            result = content_access_service.search_literature(
+                query=query, max_results=5
+            )
 
             # Should handle Unicode
             assert isinstance(result, str)
@@ -439,7 +447,9 @@ class TestDatabaseSearchEdgeCases:
         # Generate very long query (>1000 characters)
         long_query = " AND ".join([f"gene{i}" for i in range(200)])
 
-        result = content_access_service.search_literature(query=long_query, max_results=5)
+        result = content_access_service.search_literature(
+            query=long_query, max_results=5
+        )
 
         # Should handle long query (may truncate or reject)
         assert isinstance(result, str)

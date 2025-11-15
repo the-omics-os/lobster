@@ -33,16 +33,16 @@ Phase 7 - Task Group 5: Performance & Error Recovery Tests
 import os
 import time
 from pathlib import Path
-from typing import List, Dict, Any
 from statistics import mean, stdev
+from typing import Any, Dict, List
 
 import pytest
 
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.content_access_service import ContentAccessService
-from lobster.tools.providers.pubmed_provider import PubMedProvider
 from lobster.tools.providers.geo_provider import GEOProvider
+from lobster.tools.providers.pubmed_provider import PubMedProvider
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -107,40 +107,148 @@ def benchmark_identifiers():
     return {
         # 100 PMIDs for abstract retrieval benchmarking
         "pmids_100": [
-            "35042229", "33057194", "32424251", "31653868", "30971826",
-            "30850634", "29773078", "28991235", "28825706", "27667667",
-            "26000488", "25326322", "24336226", "23222524", "22237782",
-            "21177976", "20133650", "19167326", "18073375", "17056742",
-            "35985862", "34654798", "33452582", "32321885", "31178587",
-            "30352040", "29686286", "28745302", "27666365", "26590405",
-            "25594175", "24532714", "23415227", "22343896", "21297699",
-            "20124765", "19053174", "17989696", "16895544", "15920530",
-            "35123456", "34789012", "33456789", "32123456", "31987654",
-            "30654321", "29321098", "28987654", "27654321", "26321098",
-            "25987654", "24654321", "23321098", "22987654", "21654321",
-            "20321098", "19987654", "18654321", "17321098", "16987654",
-            "36789012", "35456789", "34123890", "33789456", "32456123",
-            "31123789", "30789456", "29456123", "28123789", "27789456",
-            "26456789", "25123456", "24789123", "23456789", "22123456",
-            "21789123", "20456789", "19123456", "18789123", "17456789",
-            "37123456", "36789123", "35456123", "34123456", "33789123",
-            "32456789", "31123456", "30789123", "29456789", "28123456",
-            "27789123", "26456123", "25123890", "24789456", "23456123"
+            "35042229",
+            "33057194",
+            "32424251",
+            "31653868",
+            "30971826",
+            "30850634",
+            "29773078",
+            "28991235",
+            "28825706",
+            "27667667",
+            "26000488",
+            "25326322",
+            "24336226",
+            "23222524",
+            "22237782",
+            "21177976",
+            "20133650",
+            "19167326",
+            "18073375",
+            "17056742",
+            "35985862",
+            "34654798",
+            "33452582",
+            "32321885",
+            "31178587",
+            "30352040",
+            "29686286",
+            "28745302",
+            "27666365",
+            "26590405",
+            "25594175",
+            "24532714",
+            "23415227",
+            "22343896",
+            "21297699",
+            "20124765",
+            "19053174",
+            "17989696",
+            "16895544",
+            "15920530",
+            "35123456",
+            "34789012",
+            "33456789",
+            "32123456",
+            "31987654",
+            "30654321",
+            "29321098",
+            "28987654",
+            "27654321",
+            "26321098",
+            "25987654",
+            "24654321",
+            "23321098",
+            "22987654",
+            "21654321",
+            "20321098",
+            "19987654",
+            "18654321",
+            "17321098",
+            "16987654",
+            "36789012",
+            "35456789",
+            "34123890",
+            "33789456",
+            "32456123",
+            "31123789",
+            "30789456",
+            "29456123",
+            "28123789",
+            "27789456",
+            "26456789",
+            "25123456",
+            "24789123",
+            "23456789",
+            "22123456",
+            "21789123",
+            "20456789",
+            "19123456",
+            "18789123",
+            "17456789",
+            "37123456",
+            "36789123",
+            "35456123",
+            "34123456",
+            "33789123",
+            "32456789",
+            "31123456",
+            "30789123",
+            "29456789",
+            "28123456",
+            "27789123",
+            "26456123",
+            "25123890",
+            "24789456",
+            "23456123",
         ],
         # 20 PMIDs with PMC full text for PMC retrieval benchmarking
         "pmids_pmc_20": [
-            "35042229", "33057194", "32424251", "31653868", "30971826",
-            "30850634", "29773078", "28991235", "28825706", "27667667",
-            "26000488", "25326322", "24336226", "23222524", "22237782",
-            "21177976", "20133650", "19167326", "18073375", "17056742"
+            "35042229",
+            "33057194",
+            "32424251",
+            "31653868",
+            "30971826",
+            "30850634",
+            "29773078",
+            "28991235",
+            "28825706",
+            "27667667",
+            "26000488",
+            "25326322",
+            "24336226",
+            "23222524",
+            "22237782",
+            "21177976",
+            "20133650",
+            "19167326",
+            "18073375",
+            "17056742",
         ],
         # 20 GEO dataset IDs for metadata retrieval benchmarking
         "geo_datasets_20": [
-            "GSE180759", "GSE156793", "GSE135893", "GSE122960", "GSE114727",
-            "GSE107585", "GSE99254", "GSE89232", "GSE81608", "GSE75748",
-            "GSE67835", "GSE58596", "GSE52778", "GSE43777", "GSE38661",
-            "GSE32591", "GSE26495", "GSE19804", "GSE13159", "GSE9006"
-        ]
+            "GSE180759",
+            "GSE156793",
+            "GSE135893",
+            "GSE122960",
+            "GSE114727",
+            "GSE107585",
+            "GSE99254",
+            "GSE89232",
+            "GSE81608",
+            "GSE75748",
+            "GSE67835",
+            "GSE58596",
+            "GSE52778",
+            "GSE43777",
+            "GSE38661",
+            "GSE32591",
+            "GSE26495",
+            "GSE19804",
+            "GSE13159",
+            "GSE9006",
+        ],
     }
 
 
@@ -186,9 +294,7 @@ class TestAbstractRetrievalPerformance:
                     time.sleep(0.11)  # 10 requests per second
 
                 if (i + 1) % 20 == 0:
-                    logger.info(
-                        f"Progress: {i+1}/{len(pmids)} abstracts retrieved"
-                    )
+                    logger.info(f"Progress: {i+1}/{len(pmids)} abstracts retrieved")
 
             except Exception as e:
                 logger.warning(f"Failed to retrieve PMID {pmid}: {e}")
@@ -206,7 +312,9 @@ class TestAbstractRetrievalPerformance:
         logger.info("Abstract Retrieval Performance Benchmark")
         logger.info(f"{'='*60}")
         logger.info(f"Total PMIDs: {len(pmids)}")
-        logger.info(f"Successful: {successful_retrievals} ({successful_retrievals/len(pmids)*100:.1f}%)")
+        logger.info(
+            f"Successful: {successful_retrievals} ({successful_retrievals/len(pmids)*100:.1f}%)"
+        )
         logger.info(f"Failed: {len(failed_retrievals)}")
         logger.info(f"Mean latency: {mean_latency:.2f}ms (target: <500ms)")
         logger.info(f"Std deviation: {std_latency:.2f}ms")
@@ -215,10 +323,18 @@ class TestAbstractRetrievalPerformance:
         logger.info(f"{'='*60}\n")
 
         # Assertions
-        assert successful_retrievals >= 95, f"Too many failures: {len(failed_retrievals)}/100"
-        assert mean_latency < 500, f"Mean latency {mean_latency:.2f}ms exceeds 500ms target"
-        assert p95_latency < 750, f"P95 latency {p95_latency:.2f}ms exceeds 750ms target"
-        assert p99_latency < 1000, f"P99 latency {p99_latency:.2f}ms exceeds 1000ms target"
+        assert (
+            successful_retrievals >= 95
+        ), f"Too many failures: {len(failed_retrievals)}/100"
+        assert (
+            mean_latency < 500
+        ), f"Mean latency {mean_latency:.2f}ms exceeds 500ms target"
+        assert (
+            p95_latency < 750
+        ), f"P95 latency {p95_latency:.2f}ms exceeds 750ms target"
+        assert (
+            p99_latency < 1000
+        ), f"P99 latency {p99_latency:.2f}ms exceeds 1000ms target"
 
 
 @pytest.mark.real_api
@@ -248,7 +364,7 @@ class TestPMCRetrievalPerformance:
                 result = content_service.get_full_content(
                     source=f"PMID:{pmid}",
                     prefer_webpage=False,  # Force PMC first
-                    max_paragraphs=100
+                    max_paragraphs=100,
                 )
                 elapsed = time.time() - start_time
 
@@ -280,7 +396,9 @@ class TestPMCRetrievalPerformance:
         logger.info("PMC Retrieval Performance Benchmark")
         logger.info(f"{'='*60}")
         logger.info(f"Total papers: {len(pmids)}")
-        logger.info(f"Successful: {successful_retrievals} ({successful_retrievals/len(pmids)*100:.1f}%)")
+        logger.info(
+            f"Successful: {successful_retrievals} ({successful_retrievals/len(pmids)*100:.1f}%)"
+        )
         logger.info(f"Failed: {len(failed_retrievals)}")
         logger.info(f"Mean latency: {mean_latency:.2f}s (target: <2s)")
         logger.info(f"Std deviation: {std_latency:.2f}s")
@@ -289,7 +407,9 @@ class TestPMCRetrievalPerformance:
         logger.info(f"{'='*60}\n")
 
         # Assertions
-        assert successful_retrievals >= 15, f"Too many failures: {len(failed_retrievals)}/20"
+        assert (
+            successful_retrievals >= 15
+        ), f"Too many failures: {len(failed_retrievals)}/20"
         assert mean_latency < 2.0, f"Mean latency {mean_latency:.2f}s exceeds 2s target"
 
 
@@ -348,7 +468,9 @@ class TestGEOMetadataPerformance:
         logger.info("GEO Metadata Retrieval Performance Benchmark")
         logger.info(f"{'='*60}")
         logger.info(f"Total datasets: {len(geo_ids)}")
-        logger.info(f"Successful: {successful_retrievals} ({successful_retrievals/len(geo_ids)*100:.1f}%)")
+        logger.info(
+            f"Successful: {successful_retrievals} ({successful_retrievals/len(geo_ids)*100:.1f}%)"
+        )
         logger.info(f"Failed: {len(failed_retrievals)}")
         logger.info(f"Mean latency: {mean_latency:.2f}s (target: <3s)")
         logger.info(f"Std deviation: {std_latency:.2f}s")
@@ -357,7 +479,9 @@ class TestGEOMetadataPerformance:
         logger.info(f"{'='*60}\n")
 
         # Assertions
-        assert successful_retrievals >= 15, f"Too many failures: {len(failed_retrievals)}/20"
+        assert (
+            successful_retrievals >= 15
+        ), f"Too many failures: {len(failed_retrievals)}/20"
         assert mean_latency < 3.0, f"Mean latency {mean_latency:.2f}s exceeds 3s target"
 
 
@@ -371,9 +495,7 @@ class TestGEOMetadataPerformance:
 class TestRateLimitingBehavior:
     """Test rate limiting handling and backoff strategies."""
 
-    def test_rapid_requests_trigger_backoff(
-        self, pubmed_provider, check_api_keys
-    ):
+    def test_rapid_requests_trigger_backoff(self, pubmed_provider, check_api_keys):
         """Test that rapid requests trigger appropriate backoff behavior."""
         pmids = ["35042229", "33057194", "32424251", "31653868", "30971826"]
         request_times = []
@@ -401,9 +523,7 @@ class TestRateLimitingBehavior:
         assert len(request_times) >= 3, "Too few successful requests"
         logger.info(f"All {len(request_times)} requests succeeded")
 
-    def test_respectful_rate_compliance_without_api_key(
-        self, pubmed_provider
-    ):
+    def test_respectful_rate_compliance_without_api_key(self, pubmed_provider):
         """Test compliance with 3 requests/second limit (no API key)."""
         # Temporarily remove API key
         original_key = os.getenv("NCBI_API_KEY")
@@ -516,7 +636,7 @@ class TestInvalidIdentifierHandling:
             "htp://invalid-url.com",
             "not-a-url",
             "ftp://unsupported-protocol.com",
-            ""
+            "",
         ]
 
         for url in malformed_urls:
@@ -546,17 +666,15 @@ class TestInvalidIdentifierHandling:
 class TestGracefulDegradation:
     """Test graceful degradation when services are unavailable."""
 
-    def test_partial_failure_in_batch_request(
-        self, pubmed_provider, check_api_keys
-    ):
+    def test_partial_failure_in_batch_request(self, pubmed_provider, check_api_keys):
         """Test that partial failures in batch don't break entire request."""
         # Mix of valid and invalid PMIDs
         mixed_pmids = [
-            "35042229",     # Valid
-            "INVALID123",   # Invalid
-            "33057194",     # Valid
-            "99999999",     # Invalid
-            "32424251"      # Valid
+            "35042229",  # Valid
+            "INVALID123",  # Invalid
+            "33057194",  # Valid
+            "99999999",  # Invalid
+            "32424251",  # Valid
         ]
 
         successful = 0
@@ -580,9 +698,7 @@ class TestGracefulDegradation:
         assert successful >= 3, "Valid PMIDs should succeed"
         assert failed >= 2, "Invalid PMIDs should fail"
 
-    def test_cascade_fallback_on_pmc_unavailable(
-        self, content_service, check_api_keys
-    ):
+    def test_cascade_fallback_on_pmc_unavailable(self, content_service, check_api_keys):
         """Test cascade falls back gracefully when PMC is unavailable."""
         # Use PMID without PMC full text
         pmid_no_pmc = "PMID:10000000"
@@ -606,9 +722,7 @@ class TestGracefulDegradation:
             logger.info(f"Expected failure for unavailable PMID: {e}")
             assert "error" in str(e).lower() or "not found" in str(e).lower()
 
-    def test_provider_unavailability_recovery(
-        self, content_service, check_api_keys
-    ):
+    def test_provider_unavailability_recovery(self, content_service, check_api_keys):
         """Test recovery when provider is temporarily unavailable."""
         # Use valid identifier that should work
         identifier = "PMID:35042229"
@@ -662,14 +776,16 @@ class TestPerformanceAndErrorSummary:
             "abstract_retrieval": {"success": False, "latency": 0},
             "pmc_retrieval": {"success": False, "latency": 0},
             "geo_metadata": {"success": False, "latency": 0},
-            "error_recovery": {"success": False}
+            "error_recovery": {"success": False},
         }
 
         # Step 1: Abstract retrieval
         try:
             start = time.time()
             result = pubmed_provider.fetch_abstract("35042229")
-            workflow_results["abstract_retrieval"]["latency"] = (time.time() - start) * 1000
+            workflow_results["abstract_retrieval"]["latency"] = (
+                time.time() - start
+            ) * 1000
             workflow_results["abstract_retrieval"]["success"] = result is not None
             logger.info(
                 f"Abstract retrieval: {workflow_results['abstract_retrieval']['latency']:.2f}ms"
@@ -723,9 +839,9 @@ class TestPerformanceAndErrorSummary:
         for step, result in workflow_results.items():
             status = "✅" if result["success"] else "❌"
             latency_info = (
-                f" ({result['latency']:.2f}ms)" if "latency" in result and result["latency"] > 0
-                else f" ({result['latency']:.2f}s)" if "latency" in result
-                else ""
+                f" ({result['latency']:.2f}ms)"
+                if "latency" in result and result["latency"] > 0
+                else f" ({result['latency']:.2f}s)" if "latency" in result else ""
             )
             logger.info(f"{status} {step}{latency_info}")
         logger.info(f"{'='*60}\n")

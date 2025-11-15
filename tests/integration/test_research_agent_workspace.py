@@ -22,7 +22,6 @@ import pytest
 from lobster.agents.research_agent import research_agent
 from lobster.core.data_manager_v2 import DataManagerV2
 
-
 # ===============================================================================
 # Test Fixtures
 # ===============================================================================
@@ -193,7 +192,9 @@ class TestWorkspaceCaching:
         # Create some test cached content
         literature_dir = temp_workspace / "literature"
         test_file = literature_dir / "publication_PMID12345678.json"
-        test_file.write_text('{"identifier": "PMID:12345678", "cached_at": "2025-01-12"}')
+        test_file.write_text(
+            '{"identifier": "PMID:12345678", "cached_at": "2025-01-12"}'
+        )
 
         # This would require agent execution to call get_content_from_workspace()
         # with no identifier (list mode)
@@ -283,9 +284,7 @@ class TestMetadataAssistantHandoff:
 
         # Create second dataset with lowercase naming
         second_dataset = sample_dataset.copy()
-        second_dataset.obs.index = [
-            f"sample_{i}" for i in range(1, 11)
-        ]  # Lowercase
+        second_dataset.obs.index = [f"sample_{i}" for i in range(1, 11)]  # Lowercase
         data_manager.modalities["geo_gse67890"] = second_dataset
 
         # This test would verify:
