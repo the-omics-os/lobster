@@ -73,8 +73,10 @@ def metadata_assistant(
 
     @tool
     def map_samples_by_id(
-        source_identifier: str,
-        target_identifier: str,
+        source: str,
+        target: str,
+        source_type: str,
+        target_type: str,
         min_confidence: float = 0.75,
         strategies: str = "all",
     ) -> str:
@@ -89,19 +91,44 @@ def metadata_assistant(
         - Metadata: Metadata-supported matching (condition, tissue, timepoint, etc.)
 
         Args:
-            source_identifier: Source dataset identifier (e.g., "geo_gse12345")
-            target_identifier: Target dataset identifier (e.g., "geo_gse67890")
+            source: Source modality name or dataset ID
+            target: Target modality name or dataset ID
+            source_type: Source data type - REQUIRED, must be "modality" or "metadata_store"
+                - "modality": Work with loaded AnnData in DataManagerV2
+                - "metadata_store": Work with cached metadata (pre-download validation)
+            target_type: Target data type - REQUIRED, must be "modality" or "metadata_store"
             min_confidence: Minimum confidence threshold for fuzzy matches (0.0-1.0, default: 0.75)
             strategies: Comma-separated strategies to use (default: "all", options: "exact,fuzzy,pattern,metadata")
 
         Returns:
             Formatted markdown report with match results, confidence scores, and unmapped samples
+
+        Examples:
+            # Map between two loaded modalities
+            map_samples_by_id(source="geo_gse1", target="geo_gse2",
+                            source_type="modality", target_type="modality")
+
+            # Map between cached metadata (pre-download)
+            map_samples_by_id(source="geo_gse1", target="geo_gse2",
+                            source_type="metadata_store", target_type="metadata_store")
+
+            # Mixed: modality to cached metadata
+            map_samples_by_id(source="geo_gse1", target="geo_gse2",
+                            source_type="modality", target_type="metadata_store")
         """
         try:
             logger.info(
-                f"Mapping samples: {source_identifier} → {target_identifier} "
-                f"(min_confidence={min_confidence})"
+                f"Mapping samples: {source} → {target} "
+                f"(source_type={source_type}, target_type={target_type}, min_confidence={min_confidence})"
             )
+
+            # Validate source_type and target_type
+            for stype, name in [
+                (source_type, "source_type"),
+                (target_type, "target_type"),
+            ]:
+                if stype not in ["modality", "metadata_store"]:
+                    return f"❌ Error: {name} must be 'modality' or 'metadata_store', got '{stype}'"
 
             # Parse strategies
             strategy_list = None
@@ -116,10 +143,37 @@ def metadata_assistant(
                         f"Valid options: {valid_strategies}"
                     )
 
-            # Call mapping service
+            # Helper function to get samples based on type
+            import pandas as pd
+
+            def get_samples(identifier: str, id_type: str) -> pd.DataFrame:
+                if id_type == "modality":
+                    if identifier not in data_manager.list_modalities():
+                        raise ValueError(
+                            f"Modality '{identifier}' not found. Available: {', '.join(data_manager.list_modalities())}"
+                        )
+                    adata = data_manager.get_modality(identifier)
+                    return adata.obs  # Returns sample metadata DataFrame
+
+                elif id_type == "metadata_store":
+                    if identifier not in data_manager.metadata_store:
+                        raise ValueError(
+                            f"'{identifier}' not found in metadata_store. Use research_agent.validate_dataset_metadata() first."
+                        )
+                    cached = data_manager.metadata_store[identifier]
+                    samples_dict = cached.get("metadata", {}).get("samples", {})
+                    if not samples_dict:
+                        raise ValueError(f"No sample metadata in '{identifier}'")
+                    return pd.DataFrame.from_dict(samples_dict, orient="index")
+
+            # Get samples from both sources
+            source_samples = get_samples(source, source_type)
+            target_samples = get_samples(target, target_type)
+
+            # Call mapping service (updated to work with DataFrames directly)
             result = sample_mapping_service.map_samples_by_id(
-                source_identifier=source_identifier,
-                target_identifier=target_identifier,
+                source_identifier=source,
+                target_identifier=target,
                 strategies=strategy_list,
             )
 
@@ -127,8 +181,10 @@ def metadata_assistant(
             data_manager.log_tool_usage(
                 tool_name="map_samples_by_id",
                 parameters={
-                    "source": source_identifier,
-                    "target": target_identifier,
+                    "source": source,
+                    "target": target,
+                    "source_type": source_type,
+                    "target_type": target_type,
                     "min_confidence": min_confidence,
                     "strategies": strategies,
                 },
@@ -161,10 +217,13 @@ def metadata_assistant(
 
     @tool
     def read_sample_metadata(
-        identifier: str, fields: str = None, return_format: str = "summary"
+        source: str,
+        source_type: str,
+        fields: str = None,
+        return_format: str = "summary",
     ) -> str:
         """
-        Read and format sample-level metadata from a dataset.
+        Read and format sample-level metadata from loaded modality OR cached metadata.
 
         Use this tool to extract sample metadata in different formats:
         - "summary": Quick overview with field coverage percentages
@@ -172,47 +231,96 @@ def metadata_assistant(
         - "schema": Full metadata table for inspection
 
         Args:
-            identifier: Dataset identifier (e.g., "geo_gse12345")
+            source: Modality name or dataset ID
+            source_type: Data source type - REQUIRED, must be "modality" or "metadata_store"
+                - "modality": Work with loaded AnnData in DataManagerV2
+                - "metadata_store": Work with cached metadata (pre-download validation)
             fields: Optional comma-separated list of fields to extract (default: all fields)
             return_format: Output format (default: "summary", options: "summary,detailed,schema")
 
         Returns:
             Formatted metadata according to return_format specification
+
+        Examples:
+            # Read from loaded modality
+            read_sample_metadata(source="geo_gse180759", source_type="modality")
+
+            # Read from cached metadata (pre-download)
+            read_sample_metadata(source="geo_gse180759", source_type="metadata_store")
         """
         try:
-            logger.info(f"Reading metadata for {identifier} (format: {return_format})")
+            logger.info(
+                f"Reading metadata for {source} (source_type={source_type}, format: {return_format})"
+            )
+
+            # Validate source_type
+            if source_type not in ["modality", "metadata_store"]:
+                return f"❌ Error: source_type must be 'modality' or 'metadata_store', got '{source_type}'"
 
             # Parse fields
             field_list = None
             if fields:
                 field_list = [f.strip() for f in fields.split(",")]
 
-            # Call standardization service
-            result = metadata_standardization_service.read_sample_metadata(
-                identifier=identifier, fields=field_list, return_format=return_format
-            )
+            # Get sample metadata based on source_type
+            import pandas as pd
+
+            if source_type == "modality":
+                if source not in data_manager.list_modalities():
+                    return f"❌ Error: Modality '{source}' not found. Available: {', '.join(data_manager.list_modalities())}"
+                adata = data_manager.get_modality(source)
+                sample_df = adata.obs
+            elif source_type == "metadata_store":
+                if source not in data_manager.metadata_store:
+                    return f"❌ Error: '{source}' not found in metadata_store. Use research_agent.validate_dataset_metadata() first."
+                cached = data_manager.metadata_store[source]
+                samples_dict = cached.get("metadata", {}).get("samples", {})
+                if not samples_dict:
+                    return f"❌ Error: No sample metadata in '{source}'"
+                sample_df = pd.DataFrame.from_dict(samples_dict, orient="index")
+
+            # Filter fields if specified
+            if field_list:
+                available_fields = list(sample_df.columns)
+                missing_fields = [f for f in field_list if f not in available_fields]
+                if missing_fields:
+                    return f"❌ Error: Fields not found: {', '.join(missing_fields)}"
+                sample_df = sample_df[field_list]
 
             # Log provenance
             data_manager.log_tool_usage(
                 tool_name="read_sample_metadata",
                 parameters={
-                    "identifier": identifier,
+                    "source": source,
+                    "source_type": source_type,
                     "fields": fields,
                     "return_format": return_format,
                 },
-                result_summary={"format": return_format},
+                result_summary={"format": return_format, "num_samples": len(sample_df)},
             )
 
             # Format output based on return_format
             if return_format == "summary":
-                logger.info(f"Metadata summary generated for {identifier}")
-                return result
+                logger.info(f"Metadata summary generated for {source}")
+                # Generate summary
+                summary = [
+                    f"# Sample Metadata Summary\n",
+                    f"**Dataset**: {source}",
+                    f"**Source Type**: {source_type}",
+                    f"**Total Samples**: {len(sample_df)}\n",
+                    "## Field Coverage:",
+                ]
+                for col in sample_df.columns:
+                    non_null = sample_df[col].notna().sum()
+                    pct = (non_null / len(sample_df)) * 100
+                    summary.append(f"- {col}: {pct:.1f}% ({non_null}/{len(sample_df)})")
+                return "\n".join(summary)
             elif return_format == "detailed":
-                logger.info(f"Detailed metadata extracted for {identifier}")
-                return json.dumps(result, indent=2)
+                logger.info(f"Detailed metadata extracted for {source}")
+                return json.dumps(sample_df.to_dict(orient="records"), indent=2)
             elif return_format == "schema":
-                logger.info(f"Metadata schema extracted for {identifier}")
-                return result.to_markdown(index=True)
+                logger.info(f"Metadata schema extracted for {source}")
+                return sample_df.to_markdown(index=True)
             else:
                 return f"❌ Invalid return_format '{return_format}'"
 
@@ -229,7 +337,8 @@ def metadata_assistant(
 
     @tool
     def standardize_sample_metadata(
-        identifier: str,
+        source: str,
+        source_type: str,
         target_schema: str,
         controlled_vocabularies: str = None,
     ) -> str:
@@ -241,17 +350,33 @@ def metadata_assistant(
         normalization and controlled vocabulary enforcement.
 
         Args:
-            identifier: Dataset identifier (e.g., "geo_gse12345")
+            source: Modality name or dataset ID
+            source_type: Data source type - REQUIRED, must be "modality" or "metadata_store"
+                - "modality": Work with loaded AnnData in DataManagerV2
+                - "metadata_store": Work with cached metadata (pre-download validation)
             target_schema: Target schema type (options: "transcriptomics", "proteomics", "bulk_rna_seq", "single_cell", "mass_spectrometry", "affinity")
             controlled_vocabularies: Optional JSON string of controlled vocabularies (e.g., '{"condition": ["Control", "Treatment"]}')
 
         Returns:
             Standardization report with field coverage, validation errors, and warnings
+
+        Examples:
+            # Standardize from loaded modality
+            standardize_sample_metadata(source="geo_gse12345", source_type="modality",
+                                       target_schema="transcriptomics")
+
+            # Standardize from cached metadata
+            standardize_sample_metadata(source="geo_gse12345", source_type="metadata_store",
+                                       target_schema="transcriptomics")
         """
         try:
             logger.info(
-                f"Standardizing metadata for {identifier} with {target_schema} schema"
+                f"Standardizing metadata for {source} (source_type={source_type}) with {target_schema} schema"
             )
+
+            # Validate source_type
+            if source_type not in ["modality", "metadata_store"]:
+                return f"❌ Error: source_type must be 'modality' or 'metadata_store', got '{source_type}'"
 
             # Parse controlled vocabularies if provided
             controlled_vocab_dict = None
@@ -262,8 +387,9 @@ def metadata_assistant(
                     return f"❌ Invalid controlled_vocabularies JSON: {str(e)}"
 
             # Call standardization service
+            # Note: standardization service may need to be updated to handle source_type
             result, stats, ir = metadata_standardization_service.standardize_metadata(
-                identifier=identifier,
+                identifier=source,
                 target_schema=target_schema,
                 controlled_vocabularies=controlled_vocab_dict,
             )
@@ -272,7 +398,8 @@ def metadata_assistant(
             data_manager.log_tool_usage(
                 tool_name="standardize_sample_metadata",
                 parameters={
-                    "identifier": identifier,
+                    "source": source,
+                    "source_type": source_type,
                     "target_schema": target_schema,
                     "controlled_vocabularies": controlled_vocabularies,
                 },
@@ -287,7 +414,8 @@ def metadata_assistant(
             # Format report
             report_lines = [
                 "# Metadata Standardization Report\n",
-                f"**Dataset:** {identifier}",
+                f"**Dataset:** {source}",
+                f"**Source Type:** {source_type}",
                 f"**Target Schema:** {target_schema}",
                 f"**Valid Samples:** {len(result.standardized_metadata)}",
                 f"**Validation Errors:** {len(result.validation_errors)}\n",
@@ -324,7 +452,7 @@ def metadata_assistant(
                     report_lines.append(f"- ... and {len(result.warnings) - 10} more")
 
             report = "\n".join(report_lines)
-            logger.info(f"Standardization complete for {identifier}")
+            logger.info(f"Standardization complete for {source}")
             return report
 
         except ValueError as e:
@@ -340,14 +468,15 @@ def metadata_assistant(
 
     @tool
     def validate_dataset_content(
-        identifier: str,
+        source: str,
+        source_type: str,
         expected_samples: int = None,
         required_conditions: str = None,
         check_controls: bool = True,
         check_duplicates: bool = True,
     ) -> str:
         """
-        Validate dataset completeness and metadata quality before download or analysis.
+        Validate dataset completeness and metadata quality from loaded modality OR cached metadata.
 
         Use this tool to verify that a dataset meets minimum requirements:
         - Sample count verification
@@ -357,7 +486,10 @@ def metadata_assistant(
         - Platform consistency check
 
         Args:
-            identifier: Dataset identifier (e.g., "geo_gse12345")
+            source: Modality name (if source_type="modality") or dataset ID (if source_type="metadata_store")
+            source_type: Data source type - REQUIRED, must be "modality" or "metadata_store"
+                - "modality": Validate from loaded AnnData in DataManagerV2
+                - "metadata_store": Validate from cached GEO metadata (pre-download validation)
             expected_samples: Minimum expected sample count (optional)
             required_conditions: Comma-separated list of required condition values (optional)
             check_controls: Whether to check for control samples (default: True)
@@ -365,9 +497,22 @@ def metadata_assistant(
 
         Returns:
             Validation report with checks results, warnings, and recommendations
+
+        Examples:
+            # Post-download validation
+            validate_dataset_content(source="geo_gse180759", source_type="modality")
+
+            # Pre-download validation (before loading dataset)
+            validate_dataset_content(source="geo_gse180759", source_type="metadata_store")
         """
         try:
-            logger.info(f"Validating dataset content for {identifier}")
+            logger.info(
+                f"Validating dataset content for {source} (source_type={source_type})"
+            )
+
+            # Validate source_type parameter
+            if source_type not in ["modality", "metadata_store"]:
+                return f"❌ Error: source_type must be 'modality' or 'metadata_store', got '{source_type}'"
 
             # Parse required conditions
             required_condition_list = None
@@ -376,20 +521,80 @@ def metadata_assistant(
                     c.strip() for c in required_conditions.split(",")
                 ]
 
-            # Call validation service
-            result, stats, ir = metadata_standardization_service.validate_dataset_content(
-                identifier=identifier,
-                expected_samples=expected_samples,
-                required_conditions=required_condition_list,
-                check_controls=check_controls,
-                check_duplicates=check_duplicates,
-            )
+            # Branch based on source_type
+            if source_type == "modality":
+                # EXISTING BEHAVIOR: Validate from loaded modality
+                if source not in data_manager.list_modalities():
+                    return (
+                        f"❌ Error: Modality '{source}' not found in DataManager. "
+                        f"Available modalities: {', '.join(data_manager.list_modalities())}"
+                    )
 
-            # Log provenance with IR
+                # Call validation service
+                result, stats, ir = (
+                    metadata_standardization_service.validate_dataset_content(
+                        identifier=source,
+                        expected_samples=expected_samples,
+                        required_conditions=required_condition_list,
+                        check_controls=check_controls,
+                        check_duplicates=check_duplicates,
+                    )
+                )
+
+            elif source_type == "metadata_store":
+                # NEW BEHAVIOR: Pre-download validation from cached metadata
+                if source not in data_manager.metadata_store:
+                    return (
+                        f"❌ Error: '{source}' not found in metadata_store. "
+                        f"Use research_agent.validate_dataset_metadata() first to cache metadata."
+                    )
+
+                cached_metadata = data_manager.metadata_store[source]
+                metadata_dict = cached_metadata.get("metadata", {})
+
+                # Extract sample metadata from GEO structure
+                samples_dict = metadata_dict.get("samples", {})
+                if not samples_dict:
+                    return f"❌ Error: No sample metadata in '{source}'. Cannot validate from metadata_store."
+
+                # Convert to DataFrame for validation
+                import pandas as pd
+
+                sample_df = pd.DataFrame.from_dict(samples_dict, orient="index")
+
+                # Perform validation using MetadataValidationService
+                # Note: We need to import and use the validation service directly here
+                from lobster.tools.metadata_validation_service import (
+                    MetadataValidationService,
+                )
+
+                validation_service = MetadataValidationService(
+                    data_manager=data_manager
+                )
+
+                result = validation_service.validate_sample_metadata(
+                    sample_df=sample_df,
+                    expected_samples=expected_samples,
+                    required_conditions=required_condition_list,
+                    check_controls=check_controls,
+                    check_duplicates=check_duplicates,
+                )
+
+                # For metadata_store, we don't have IR (no provenance tracking for cached metadata)
+                ir = None
+                stats = {
+                    "total_samples": len(sample_df),
+                    "validation_passed": result.has_required_samples
+                    and result.platform_consistency
+                    and not result.duplicate_ids,
+                }
+
+            # Log provenance with IR (only for modality source_type)
             data_manager.log_tool_usage(
                 tool_name="validate_dataset_content",
                 parameters={
-                    "identifier": identifier,
+                    "source": source,
+                    "source_type": source_type,
                     "expected_samples": expected_samples,
                     "required_conditions": required_conditions,
                     "check_controls": check_controls,
@@ -402,13 +607,14 @@ def metadata_assistant(
                     "platform_consistency": result.platform_consistency,
                     "warnings": len(result.warnings),
                 },
-                ir=ir,  # Pass IR for provenance tracking
+                ir=ir,  # Pass IR for provenance tracking (None for metadata_store)
             )
 
             # Format report
             report_lines = [
                 "# Dataset Validation Report\n",
-                f"**Dataset:** {identifier}\n",
+                f"**Dataset:** {source}",
+                f"**Source Type:** {source_type}\n",
                 "## Validation Checks",
                 (
                     f"✅ Sample Count: {result.summary['total_samples']} samples"
@@ -465,7 +671,7 @@ def metadata_assistant(
                 )
 
             report = "\n".join(report_lines)
-            logger.info(f"Validation complete for {identifier}")
+            logger.info(f"Validation complete for {source}")
             return report
 
         except ValueError as e:
@@ -481,6 +687,20 @@ def metadata_assistant(
 
     system_prompt = """
 # Metadata Assistant - Cross-Dataset Harmonization Specialist
+
+## Tool Usage Requirements (BREAKING CHANGE v2.4+)
+
+ALL metadata_assistant tools now require explicit source_type parameter:
+- source_type="modality": Work with loaded AnnData in DataManagerV2
+- source_type="metadata_store": Work with cached metadata (pre-download validation)
+
+**Examples**:
+- Pre-download: validate_dataset_content(source="geo_gse12345", source_type="metadata_store")
+- Post-download: validate_dataset_content(source="geo_gse12345", source_type="modality")
+- Mixed mapping: map_samples_by_id(source="geo_gse1", target="geo_gse2",
+                                   source_type="modality", target_type="metadata_store")
+
+NEVER omit source_type parameter - it is required for all operations.
 
 ## Your Identity and Role
 

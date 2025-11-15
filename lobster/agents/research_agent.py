@@ -8,7 +8,8 @@ architecture with DataManagerV2 integration.
 
 import json
 import re
-from datetime import date
+import uuid
+from datetime import date, datetime
 from typing import List
 
 from langchain_core.tools import tool
@@ -17,13 +18,22 @@ from langgraph.prebuilt import create_react_agent
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.schemas.download_queue import (
+    DownloadQueueEntry,
+    DownloadStatus,
+    StrategyConfig,
+)
 from lobster.tools.content_access_service import ContentAccessService
-from lobster.tools.metadata_validation_service import MetadataValidationService
+from lobster.tools.metadata_validation_service import (
+    MetadataValidationConfig,
+    MetadataValidationService,
+)
 
 # Phase 1: New providers for two-tier access
 from lobster.tools.providers.abstract_provider import AbstractProvider
-from lobster.tools.providers.base_provider import DatasetType, PublicationSource
+from lobster.tools.providers.base_provider import DatasetType
 from lobster.tools.providers.webpage_provider import WebpageProvider
+from lobster.tools.workspace_tool import create_get_content_from_workspace_tool
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -145,17 +155,16 @@ def research_agent(
             if not query:
                 return "Error: Either 'query' or 'related_to' must be provided for literature search"
 
-            # Parse sources
+            # Parse sources (keep as strings - service expects list[str])
             source_list = []
             if sources:
                 for source in sources.split(","):
                     source = source.strip().lower()
-                    if source == "pubmed":
-                        source_list.append(PublicationSource.PUBMED)
-                    elif source == "biorxiv":
-                        source_list.append(PublicationSource.BIORXIV)
-                    elif source == "medrxiv":
-                        source_list.append(PublicationSource.MEDRXIV)
+                    # Validate source is supported
+                    if source in ["pubmed", "biorxiv", "medrxiv"]:
+                        source_list.append(source)
+                    else:
+                        logger.warning(f"Unsupported source '{source}' ignored")
 
             # Parse filters if provided
             filter_dict = None
@@ -201,55 +210,33 @@ def research_agent(
         identifier: str,
         dataset_types: str = None,
         include_related: bool = True,
-        entry_type: str = None,
     ) -> str:
         """
         Find connected publications, datasets, samples, and metadata for a given identifier.
 
         This tool discovers related research content across databases, supporting multi-omics
         integration workflows. Use this to find datasets from publications, or to explore
-        the full ecosystem of related research artifacts. Can filter results by entry type.
+        the full ecosystem of related research artifacts.
 
         Args:
             identifier: Publication identifier (DOI or PMID) or dataset identifier (GSE, SRA)
             dataset_types: Filter by dataset types, comma-separated (e.g., "geo,sra,arrayexpress")
             include_related: Whether to include related/linked datasets (default: True)
-            entry_type: Filter by entry type, comma-separated (options: "publication", "dataset",
-                       "sample", "metadata"). If None, returns all types. Use this to focus discovery
-                       on specific content types.
 
         Returns:
             Formatted report of connected datasets, publications, and metadata
 
         Examples:
-            # Find datasets from publication
+            # Find datasets from publication, filtered by repository type
             find_related_entries("PMID:12345678", dataset_types="geo")
-
-            # Find only datasets (no publications or samples)
-            find_related_entries("PMID:12345678", entry_type="dataset")
-
-            # Find publications and samples related to a dataset
-            find_related_entries("GSE12345", entry_type="publication,sample")
 
             # Find all related content (datasets + publications + samples)
             find_related_entries("GSE12345")
+
+            # Find related entries without including indirectly related datasets
+            find_related_entries("GSE12345", include_related=False)
         """
         try:
-            # Parse entry types for filtering
-            entry_types_list = None
-            if entry_type:
-                valid_types = {"publication", "dataset", "sample", "metadata"}
-                entry_types_list = [
-                    t.strip().lower()
-                    for t in entry_type.split(",")
-                    if t.strip().lower() in valid_types
-                ]
-                if not entry_types_list:
-                    logger.warning(
-                        f"Invalid entry_type values: {entry_type}. Valid: publication, dataset, sample, metadata"
-                    )
-                    entry_types_list = None
-
             # Parse dataset types
             type_list = []
             if dataset_types:
@@ -272,7 +259,6 @@ def research_agent(
                 identifier=identifier,
                 dataset_types=type_list if type_list else None,
                 include_related=include_related,
-                entry_types=entry_types_list,  # Pass entry type filter to service
             )
 
             logger.info(f"Dataset discovery completed for: {identifier}")
@@ -297,17 +283,41 @@ def research_agent(
             query: Search query for datasets (keywords, disease names, technology)
             data_type: Database to search (default: "geo", options: "geo,sra,bioproject,biosample,dbgap")
             max_results: Maximum results to return (default: 5)
-            filters: Optional filters as JSON string (e.g., '{{"organism": "human", "year": "2023"}}')
+            filters: Optional filters as JSON string. Available filters vary by database:
+
+                     **SRA filters** (metagenomics, RNA-seq, etc.):
+                     - organism: str (e.g., "Homo sapiens", "Mus musculus") - use scientific names
+                     - strategy: str (e.g., "AMPLICON" for 16S/ITS, "RNA-Seq", "WGS", "ChIP-Seq")
+                     - source: str (e.g., "METAGENOMIC", "TRANSCRIPTOMIC", "GENOMIC")
+                     - layout: str (e.g., "PAIRED", "SINGLE")
+                     - platform: str (e.g., "ILLUMINA", "PACBIO", "OXFORD_NANOPORE")
+
+                     **GEO filters** (microarray, RNA-seq):
+                     - organism: str
+                     - year: str (e.g., "2023")
 
         Returns:
             Formatted list of matching datasets with accessions and metadata
 
         Examples:
-            # Search GEO for lung cancer datasets
+            # Search GEO for single-cell lung cancer
             fast_dataset_search("lung cancer single-cell", data_type="geo")
 
-            # Search SRA with organism filter
-            fast_dataset_search("CRISPR screen", data_type="sra", filters='{{"organism": "human"}}')
+            # Search SRA for 16S microbiome studies (AMPLICON strategy)
+            fast_dataset_search("IBS microbiome", data_type="sra",
+                               filters='{{"organism": "Homo sapiens", "strategy": "AMPLICON"}}')
+
+            # Search SRA for metagenomic shotgun sequencing
+            fast_dataset_search("gut microbiome", data_type="sra",
+                               filters='{{"source": "METAGENOMIC", "strategy": "WGS"}}')
+
+            # Search SRA for RNA-seq with organism filter
+            fast_dataset_search("CRISPR screen", data_type="sra",
+                               filters='{{"organism": "Homo sapiens", "strategy": "RNA-Seq"}}')
+
+            # Search SRA for Oxford Nanopore long-read sequencing
+            fast_dataset_search("cancer transcriptome", data_type="sra",
+                               filters='{{"platform": "OXFORD_NANOPORE", "strategy": "RNA-Seq"}}')
         """
         try:
             # Map string to DatasetType
@@ -364,7 +374,10 @@ def research_agent(
 
     @tool
     def get_dataset_metadata(
-        identifier: str, source: str = "auto", database: str = None, level: str = "standard"
+        identifier: str,
+        source: str = "auto",
+        database: str = None,
+        level: str = "standard",
     ) -> str:
         """
         Get comprehensive metadata for datasets or publications.
@@ -384,7 +397,7 @@ def research_agent(
                    Controls output length to prevent context overflow:
                    - "brief": Essential fields only (accession, title, status, pubmed_id, summary)
                    - "standard": Brief + standard fields with sample/platform previews (recommended)
-                   - "full": All fields including complete nested structures (verbose)
+                   - "full": All fields including complete nested structures (verbose). NEVER USE FULL EXCEPT IF USER REQUESTS
 
         Returns:
             Formatted metadata report with bibliographic and experimental details
@@ -475,17 +488,35 @@ def research_agent(
                                     continue
 
                                 # Special formatting for nested structures in standard mode
-                                if level == "standard" and key == "samples" and isinstance(value, dict):
+                                if (
+                                    level == "standard"
+                                    and key == "samples"
+                                    and isinstance(value, dict)
+                                ):
                                     formatted += f"**Sample Count**: {len(value)}\n"
                                     formatted += "**Sample Preview** (first 3):\n"
-                                    for i, (gsm_id, sample_data) in enumerate(list(value.items())[:3]):
-                                        sample_title = sample_data.get('title', 'No title') if isinstance(sample_data, dict) else str(sample_data)
+                                    for i, (gsm_id, sample_data) in enumerate(
+                                        list(value.items())[:3]
+                                    ):
+                                        sample_title = (
+                                            sample_data.get("title", "No title")
+                                            if isinstance(sample_data, dict)
+                                            else str(sample_data)
+                                        )
                                         formatted += f"  - {gsm_id}: {sample_title}\n"
-                                elif level == "standard" and key == "platforms" and isinstance(value, dict):
+                                elif (
+                                    level == "standard"
+                                    and key == "platforms"
+                                    and isinstance(value, dict)
+                                ):
                                     formatted += f"**Platform Count**: {len(value)}\n"
                                     formatted += "**Platforms**:\n"
                                     for gpl_id, platform_data in value.items():
-                                        platform_title = platform_data.get('title', 'No title') if isinstance(platform_data, dict) else str(platform_data)
+                                        platform_title = (
+                                            platform_data.get("title", "No title")
+                                            if isinstance(platform_data, dict)
+                                            else str(platform_data)
+                                        )
                                         formatted += f"  - {gpl_id}: {platform_title}\n"
                                 else:
                                     # Standard field display
@@ -504,18 +535,11 @@ def research_agent(
 
             else:
                 # Publication metadata extraction (existing behavior)
-                # Map source string to PublicationSource
-                source_obj = None
-                if source != "auto":
-                    source_mapping = {
-                        "pubmed": PublicationSource.PUBMED,
-                        "biorxiv": PublicationSource.BIORXIV,
-                        "medrxiv": PublicationSource.MEDRXIV,
-                    }
-                    source_obj = source_mapping.get(source.lower())
+                # Keep source as string - service expects Optional[str]
+                source_str = None if source == "auto" else source.lower()
 
                 metadata = content_access_service.extract_metadata(
-                    identifier=identifier, source=source_obj
+                    identifier=identifier, source=source_str
                 )
 
                 if isinstance(metadata, str):
@@ -554,18 +578,24 @@ def research_agent(
         required_fields: str,
         required_values: str = None,
         threshold: float = 0.8,
+        add_to_queue: bool = True,
     ) -> str:
         """
         Quickly validate if a dataset contains required metadata without downloading.
+
+        NOW ALSO: Extracts download URLs and adds entry to download queue
+        for supervisor → data_expert handoff.
 
         Args:
             accession: Dataset ID (GSE, E-MTAB, etc.)
             required_fields: Comma-separated required fields (e.g., "smoking_status,treatment_response")
             required_values: Optional JSON of required values (e.g., '{{"smoking_status": ["smoker", "non-smoker"]}}')
             threshold: Minimum fraction of samples with required fields (default: 0.8)
+            add_to_queue: If True, add validated dataset to download queue (default: True)
 
         Returns:
             Validation report with recommendation (proceed/skip/manual_check)
+            + download queue confirmation (if add_to_queue=True)
         """
         try:
             # Parse required fields
@@ -592,8 +622,132 @@ def research_agent(
                 logger.debug(
                     f"Metadata already stored for: {accession}. returning summary"
                 )
-                metadata = data_manager.metadata_store[accession]["metadata"]
-                return metadata
+                cached_data = data_manager.metadata_store[accession]
+                metadata = cached_data.get("metadata", {})
+
+                # Check if already in download queue
+                queue_entries = [
+                    entry for entry in data_manager.download_queue.list_entries()
+                    if entry.dataset_id == accession
+                ]
+
+                # Add to queue if requested and not already present
+                if add_to_queue and not queue_entries:
+                    try:
+                        logger.info(f"Adding cached dataset {accession} to download queue")
+
+                        # Import GEOProvider
+                        from lobster.tools.providers.geo_provider import GEOProvider
+
+                        geo_provider = GEOProvider(data_manager)
+
+                        # Extract URLs using cached metadata
+                        url_data = geo_provider.get_download_urls(accession)
+
+                        if url_data.get("error"):
+                            logger.warning(f"URL extraction warning for {accession}: {url_data['error']}")
+
+                        # Create DownloadQueueEntry
+                        entry_id = f"queue_{accession}_{uuid.uuid4().hex[:8]}"
+
+                        # Reconstruct validation result for cached datasets
+                        # Cached = previously validated successfully
+                        cached_validation = MetadataValidationConfig(
+                            has_required_fields=True,
+                            missing_fields=[],
+                            available_fields={},
+                            sample_count_by_field={},
+                            total_samples=metadata.get('n_samples', len(metadata.get('samples', {}))),
+                            field_coverage={},
+                            recommendation="proceed",
+                            confidence_score=1.0,
+                            warnings=[]
+                        )
+
+                        queue_entry = DownloadQueueEntry(
+                            entry_id=entry_id,
+                            dataset_id=accession,
+                            database="geo",
+                            priority=5,
+                            status=DownloadStatus.PENDING,
+                            metadata=metadata,
+                            validation_result=cached_validation.__dict__,
+                            matrix_url=url_data.get("matrix_url"),
+                            raw_urls=url_data.get("raw_urls", []),
+                            supplementary_urls=url_data.get("supplementary_urls", []),
+                            h5_url=url_data.get("h5_url"),
+                            created_at=datetime.now(),
+                            updated_at=datetime.now(),
+                            recommended_strategy=None,
+                            downloaded_by=None,
+                            modality_name=None,
+                            error_log=[],
+                        )
+
+                        # Add to download queue
+                        data_manager.download_queue.add_entry(queue_entry)
+
+                        logger.info(f"Successfully added cached dataset {accession} to download queue with entry_id: {entry_id}")
+
+                        # Update queue_entries list for response building
+                        queue_entries = [queue_entry]
+
+                    except Exception as e:
+                        logger.error(f"Failed to add cached dataset {accession} to download queue: {e}")
+                        # Continue with response - queue addition is optional
+
+                # Build concise response for cached datasets
+                title = metadata.get('title', 'N/A')
+                if len(title) > 100:
+                    title = title[:100] + "..."
+
+                response_parts = [
+                    f"## Dataset Already Validated: {accession}",
+                    "",
+                    f"**Status**: ✅ Metadata cached in system",
+                    f"**Title**: {title}",
+                    f"**Sample Count**: {metadata.get('n_samples', len(metadata.get('samples', {})))}",
+                    f"**Database**: {metadata.get('database', 'GEO')}",
+                    ""
+                ]
+
+                # Add queue status if exists
+                if queue_entries:
+                    entry = queue_entries[0]
+                    response_parts.extend([
+                        f"**Download Queue**: {entry.status.upper()}",
+                        f"**Entry ID**: `{entry.entry_id}`",
+                        f"**Priority**: {entry.priority}",
+                        "",
+                        "**Next steps**:",
+                        f"- Status is {entry.status}: " + (
+                            "Ready for data_expert download" if entry.status == DownloadStatus.PENDING
+                            else f"Already {entry.status}"
+                        )
+                    ])
+                    if entry.status == DownloadStatus.COMPLETED:
+                        response_parts.append(f"- Load from workspace: `/workspace load {entry.modality_name}`")
+                else:
+                    # No queue entry exists - explain why
+                    if not add_to_queue:
+                        response_parts.extend([
+                            "**Download Queue**: Not added (add_to_queue=False)",
+                            "",
+                            "**Next steps**:",
+                            f"1. Call `validate_dataset_metadata(accession='{accession}', add_to_queue=True)` to add to download queue",
+                            "2. Then hand off to data_expert with the entry_id from the response"
+                        ])
+                    else:
+                        # Should not happen after fix, but handle gracefully
+                        response_parts.extend([
+                            "**Download Queue**: Failed to add (check logs for details)",
+                            "",
+                            "**Next steps**:",
+                            f"1. Check logs for queue addition error",
+                            f"2. Retry: `validate_dataset_metadata(accession='{accession}', add_to_queue=True)`"
+                        ])
+
+                return "\n".join(response_parts)
 
             # ------------------------------------------------
             # If not fetch and return metadata & val res
@@ -623,6 +777,86 @@ def research_agent(
                         logger.info(
                             f"Metadata validation completed for {accession}: {validation_result.recommendation}"
                         )
+
+                        # NEW: Add to download queue if validation passed and add_to_queue=True
+                        if (
+                            validation_result.recommendation == "proceed"
+                            and add_to_queue
+                        ):
+                            try:
+                                # Import GEOProvider
+                                from lobster.tools.providers.geo_provider import (
+                                    GEOProvider,
+                                )
+
+                                geo_provider = GEOProvider(data_manager)
+
+                                # Extract URLs
+                                url_data = geo_provider.get_download_urls(accession)
+
+                                # Check for URL extraction errors
+                                if url_data.get("error"):
+                                    logger.warning(
+                                        f"URL extraction warning for {accession}: {url_data['error']}"
+                                    )
+
+                                # Create DownloadQueueEntry
+                                entry_id = f"queue_{accession}_{uuid.uuid4().hex[:8]}"
+
+                                queue_entry = DownloadQueueEntry(
+                                    entry_id=entry_id,
+                                    dataset_id=accession,
+                                    database="geo",
+                                    priority=5,  # Default priority
+                                    status=DownloadStatus.PENDING,
+                                    # Metadata from validation
+                                    metadata=metadata,
+                                    validation_result=validation_result.__dict__,
+                                    # URLs from GEOProvider
+                                    matrix_url=url_data.get("matrix_url"),
+                                    raw_urls=url_data.get("raw_urls", []),
+                                    supplementary_urls=url_data.get(
+                                        "supplementary_urls", []
+                                    ),
+                                    h5_url=url_data.get("h5_url"),
+                                    # Timestamps
+                                    created_at=datetime.now(),
+                                    updated_at=datetime.now(),
+                                    # Initially empty (filled by data_expert_assistant later)
+                                    recommended_strategy=None,
+                                    downloaded_by=None,
+                                    modality_name=None,
+                                    error_log=[],
+                                )
+
+                                # Add to download queue
+                                data_manager.download_queue.add_entry(queue_entry)
+
+                                logger.info(
+                                    f"Added {accession} to download queue with entry_id: {entry_id}"
+                                )
+
+                                # Enhanced response
+                                report += f"\n\n## Download Queue\n\n"
+                                report += f"✅ Dataset added to download queue:\n"
+                                report += f"- **Entry ID**: `{entry_id}`\n"
+                                report += f"- **Status**: PENDING\n"
+                                report += f"- **Files found**: {url_data.get('file_count', 0)}\n"
+                                if url_data.get("matrix_url"):
+                                    report += f"- **Matrix file**: Available\n"
+                                if url_data.get("supplementary_urls"):
+                                    report += f"- **Supplementary files**: {len(url_data['supplementary_urls'])} file(s)\n"
+                                report += f"\n**Next steps**:\n"
+                                report += f"1. Supervisor can query queue: `get_content_from_workspace(workspace='download_queue')`\n"
+                                report += f"2. Hand off to data_expert with entry_id: `{entry_id}`\n"
+
+                            except Exception as e:
+                                logger.error(
+                                    f"Failed to add {accession} to download queue: {e}"
+                                )
+                                # Return validation result even if queue addition fails
+                                report += f"\n\n⚠️ Warning: Could not add to download queue: {str(e)}\n"
+
                         return report
                     else:
                         return f"Error: Failed to validate metadata for {accession}"
@@ -1275,257 +1509,8 @@ Could not extract content for: {identifier}
             logger.error(f"Error caching to workspace: {e}")
             return f"Error caching content to workspace: {str(e)}"
 
-    @tool
-    def get_content_from_workspace(
-        identifier: str = None, workspace: str = None, level: str = "summary"
-    ) -> str:
-        """
-        Retrieve cached research content from workspace with flexible detail levels.
-
-        Reads previously cached publications, datasets, and metadata from workspace
-        directories. Supports listing all content, filtering by workspace, and
-        extracting specific details (summary, methods, samples, platform, full metadata).
-
-        Detail Levels:
-        - "summary": Key-value pairs, high-level overview (default)
-        - "methods": Methods section (for publications)
-        - "samples": Sample IDs list (for datasets)
-        - "platform": Platform information (for datasets)
-        - "metadata": Full metadata (for any content)
-        - "github": GitHub repositories (for publications)
-
-        Args:
-            identifier: Content identifier to retrieve (None = list all)
-            workspace: Filter by workspace category (None = all workspaces)
-            level: Detail level to extract (default: "summary")
-
-        Returns:
-            Formatted content based on detail level or list of cached items
-
-        Examples:
-            # List all cached content
-            get_content_from_workspace()
-
-            # List content in specific workspace
-            get_content_from_workspace(workspace="literature")
-
-            # Read publication methods section
-            get_content_from_workspace(
-                identifier="publication_PMID12345",
-                workspace="literature",
-                level="methods"
-            )
-
-            # Get dataset sample IDs
-            get_content_from_workspace(
-                identifier="dataset_GSE12345",
-                workspace="data",
-                level="samples"
-            )
-
-            # Get full metadata
-            get_content_from_workspace(
-                identifier="metadata_GSE12345_samples",
-                workspace="metadata",
-                level="metadata"
-            )
-        """
-        try:
-            import json
-
-            from lobster.tools.workspace_content_service import (
-                ContentType,
-                RetrievalLevel,
-                WorkspaceContentService,
-            )
-
-            # Initialize workspace service
-            workspace_service = WorkspaceContentService(data_manager=data_manager)
-
-            # Map workspace strings to ContentType enum
-            workspace_to_content_type = {
-                "literature": ContentType.PUBLICATION,
-                "data": ContentType.DATASET,
-                "metadata": ContentType.METADATA,
-            }
-
-            # Map level strings to RetrievalLevel enum
-            level_to_retrieval = {
-                "summary": RetrievalLevel.SUMMARY,
-                "methods": RetrievalLevel.METHODS,
-                "samples": RetrievalLevel.SAMPLES,
-                "platform": RetrievalLevel.PLATFORM,
-                "metadata": RetrievalLevel.FULL,
-                "github": None,  # Special case, handle separately
-            }
-
-            # Validate detail level using enum keys
-            if level not in level_to_retrieval:
-                valid = list(level_to_retrieval.keys())
-                return f"Error: Invalid detail level '{level}'. Valid options: {', '.join(valid)}"
-
-            # Validate workspace if provided
-            if workspace and workspace not in workspace_to_content_type:
-                valid_ws = list(workspace_to_content_type.keys())
-                return f"Error: Invalid workspace '{workspace}'. Valid options: {', '.join(valid_ws)}"
-
-            # List mode: Use service instead of manual scanning
-            if identifier is None:
-                logger.info("Listing all cached workspace content")
-
-                # Determine content type filter
-                content_type_filter = None
-                if workspace:
-                    content_type_filter = workspace_to_content_type[workspace]
-
-                # Use service to list content (replaces manual glob + JSON reading)
-                all_cached = workspace_service.list_content(
-                    content_type=content_type_filter
-                )
-
-                if not all_cached:
-                    filter_msg = f" in workspace '{workspace}'" if workspace else ""
-                    return f"No cached content found{filter_msg}. Use write_to_workspace() to cache content first."
-
-                # Format list response (same output format)
-                response = f"## Cached Workspace Content ({len(all_cached)} items)\n\n"
-                for item in all_cached:
-                    response += f"- **{item['identifier']}**\n"
-                    response += f"  - Workspace: {item.get('_content_type', 'unknown')}\n"
-                    response += f"  - Type: {item.get('content_type', 'unknown')}\n"
-                    response += f"  - Cached: {item.get('cached_at', 'unknown')}\n\n"
-                return response
-
-            # Retrieve mode: Handle "github" level specially (not in RetrievalLevel enum)
-            if level == "github":
-                # Try each content type if workspace not specified
-                if workspace:
-                    content_types_to_try = [workspace_to_content_type[workspace]]
-                else:
-                    content_types_to_try = list(ContentType)
-
-                cached_content = None
-                for content_type in content_types_to_try:
-                    try:
-                        # GitHub requires full content retrieval
-                        cached_content = workspace_service.read_content(
-                            identifier=identifier,
-                            content_type=content_type,
-                            level=RetrievalLevel.FULL,
-                        )
-                        break
-                    except FileNotFoundError:
-                        continue
-
-                if not cached_content:
-                    workspace_filter = f" in workspace '{workspace}'" if workspace else ""
-                    return f"Error: Identifier '{identifier}' not found{workspace_filter}. Available content:\n{get_content_from_workspace(workspace=workspace)}"
-
-                # Extract GitHub repos from data
-                data = cached_content.get("data", {})
-                if "github_repos" in data:
-                    repos = data["github_repos"]
-                    response = f"## GitHub Repositories for {identifier}\n\n"
-                    response += f"**Found**: {len(repos)} repositories\n\n"
-                    for repo in repos:
-                        response += f"- {repo}\n"
-                    return response
-                else:
-                    return f"No GitHub repositories found for '{identifier}'. This detail level is typically for publications with code."
-
-            # Standard level retrieval using service with automatic filtering
-            retrieval_level = level_to_retrieval[level]
-
-            # Try each content type if workspace not specified
-            if workspace:
-                content_types_to_try = [workspace_to_content_type[workspace]]
-            else:
-                content_types_to_try = list(ContentType)
-
-            cached_content = None
-            found_content_type = None
-
-            for content_type in content_types_to_try:
-                try:
-                    # Use service with level-based filtering (replaces manual if/elif)
-                    cached_content = workspace_service.read_content(
-                        identifier=identifier,
-                        content_type=content_type,
-                        level=retrieval_level,  # Service handles filtering automatically
-                    )
-                    found_content_type = content_type
-                    break
-                except FileNotFoundError:
-                    continue
-
-            if not cached_content:
-                workspace_filter = f" in workspace '{workspace}'" if workspace else ""
-                return f"Error: Identifier '{identifier}' not found{workspace_filter}. Available content:\n{get_content_from_workspace(workspace=workspace)}"
-
-            # Format response based on level (service already filtered content)
-            if level == "summary":
-                data = cached_content.get("data", {})
-                response = f"""## Summary: {identifier}
-
-**Workspace**: {found_content_type.value if found_content_type else 'unknown'}
-**Content Type**: {cached_content.get('content_type', 'unknown')}
-**Cached At**: {cached_content.get('cached_at', 'unknown')}
-
-**Data Overview**:
-"""
-                # Format data as key-value pairs
-                if isinstance(data, dict):
-                    for key, value in data.items():
-                        if isinstance(value, (list, dict)):
-                            value_str = f"{type(value).__name__} with {len(value)} items"
-                        else:
-                            value_str = str(value)[:100]
-                            if len(str(value)) > 100:
-                                value_str += "..."
-                        response += f"- **{key}**: {value_str}\n"
-                return response
-
-            elif level == "methods":
-                # Service already filtered to methods fields
-                if "methods" in cached_content:
-                    return f"## Methods Section\n\n{cached_content['methods']}"
-                else:
-                    return f"No methods section found for '{identifier}'. This detail level is typically for publications."
-
-            elif level == "samples":
-                # Service already filtered to samples fields
-                if "samples" in cached_content:
-                    sample_list = cached_content["samples"]
-                    response = f"## Sample IDs for {identifier}\n\n"
-                    response += f"**Total Samples**: {len(sample_list)}\n\n"
-                    response += "\n".join(f"- {sample}" for sample in sample_list[:50])
-                    if len(sample_list) > 50:
-                        response += f"\n\n... and {len(sample_list) - 50} more samples"
-                    return response
-                elif "obs_columns" in cached_content:
-                    # For modalities, show obs_columns
-                    return f"## Sample Information for {identifier}\n\n**N Observations**: {cached_content.get('n_obs')}\n**Obs Columns**: {', '.join(cached_content['obs_columns'])}"
-                else:
-                    return f"No sample information found for '{identifier}'. This detail level is typically for datasets."
-
-            elif level == "platform":
-                # Service already filtered to platform fields
-                if "platform" in cached_content:
-                    return f"## Platform Information\n\n{json.dumps(cached_content['platform'], indent=2)}"
-                elif "var_columns" in cached_content:
-                    # For modalities, show var_columns
-                    return f"## Platform/Feature Information for {identifier}\n\n**N Variables**: {cached_content.get('n_vars')}\n**Var Columns**: {', '.join(cached_content['var_columns'])}"
-                else:
-                    return f"No platform information found for '{identifier}'. This detail level is typically for datasets."
-
-            elif level == "metadata":
-                # Service returned full content when level=FULL
-                data = cached_content.get("data", cached_content)
-                return f"## Full Metadata for {identifier}\n\n```json\n{json.dumps(data, indent=2, default=str)}\n```"
-
-        except Exception as e:
-            logger.error(f"Error retrieving from workspace: {e}")
-            return f"Error retrieving content from workspace: {str(e)}"
+    # Create workspace content retrieval tool using shared factory (Phase 7+: deduplication)
+    get_content_from_workspace = create_get_content_from_workspace_tool(data_manager)
 
     base_tools = [
         # --------------------------------
@@ -1866,7 +1851,7 @@ metadata_assistant will return one of these response types:
 **Your Actions:**
 1. Parse metrics (mapping rate, confidence, coverage, validation status)
 2. Cache report if needed: `write_to_workspace("metadata_mapping_report", report)`
-3. Report to supervisor (2-3 sentences): "Mapped 36/36 samples between RNA and protein data (100% rate, avg confidence 0.95). High-confidence exact matches via pattern 'Sample_(\d+)'. Proceeding with sample-level integration."
+3. Report to supervisor (2-3 sentences): "Mapped 36/36 samples between RNA and protein data (100% rate, avg confidence 0.95). High-confidence exact matches via pattern 'Sample_(\\d+)'. Proceeding with sample-level integration."
 4. Recommend next steps: "Ready for handoff to data_expert for download and QC."
 
 ### 2. Partial Success Handback (Task Completed with Warnings)
@@ -1961,7 +1946,7 @@ handoff_to_metadata_assistant(
 ```
 Sample Mapping Report:
 - Mapping Rate: 36/36 proteomics samples mapped (100%)
-- Avg Confidence: 0.95 (exact matches via pattern: "Sample_(\d+)")
+- Avg Confidence: 0.95 (exact matches via pattern: "Sample_(\\d+)")
 - Unmapped: 12 RNA-only samples (no protein data)
 - ✅ Recommendation: Proceed with sample-level integration
 ```

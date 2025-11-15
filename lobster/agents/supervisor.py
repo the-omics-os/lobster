@@ -106,7 +106,17 @@ def _build_tools_section() -> str:
     return """<Available Tools>
     **list_available_modalities**: A tool that lists all data modalities currently loaded in the system. Use this to inform your decisions about analysis steps and agent delegation. You can use this tool if a user asks to do something with a loaded modality.
 
-    **list_session_publications**: A tool that lists all publications analyzed during the current session. Use this when users ask about previously extracted methods, want to reference earlier literature analysis, or need to coordinate follow-up tasks on papers already processed. After listing publications, handoff to research_agent or data_expert with specific paper identifiers for detailed reading and analysis."""
+    **get_content_from_workspace**: Retrieve cached content from workspace without re-fetching from external sources. Supports four workspace categories:
+       - `workspace="literature"`: Publications, papers, abstracts (previously cached by research_agent)
+       - `workspace="data"`: Dataset metadata, GEO records (previously validated)
+       - `workspace="metadata"`: Validation results, sample mappings (from metadata_assistant)
+       - `workspace="download_queue"`: Pending/completed download tasks (research_agent → data_expert handoffs)
+
+       **Usage examples**:
+       - List all cached publications: `get_content_from_workspace(workspace="literature")`
+       - Get publication methods: `get_content_from_workspace(identifier="publication_PMID35042229", workspace="literature", level="methods")`
+       - Check download queue: `get_content_from_workspace(workspace="download_queue", status_filter="PENDING")`
+       - Get dataset summary: `get_content_from_workspace(identifier="geo_gse180759", workspace="data", level="summary")`"""
 
 
 def _build_agents_section(active_agents: List[str], config: SupervisorConfig) -> str:
@@ -193,7 +203,8 @@ def _get_agent_delegation_rules(agent_name: str, agent_config) -> str:
         "data_expert_agent": """       - Use the list_available_modalities tool to check loaded data before proceeding to inform the data expert.
        - Questions about data structures like AnnData, Seurat, or Scanpy objects.
        - Fetching GEO metadata to preview datasets (always before any download).
-       - Downloading datasets (only after metadata preview and explicit user confirmation).
+       - Downloading datasets from the download queue (ONLY after research_agent has validated and queued the dataset).
+       - CRITICAL: For GEO downloads, ensure research_agent validates first, then extract entry_id from queue before delegating.
        - Loading raw count matrices (e.g., CSV, H5AD).
        - Managing or listing datasets already loaded.
        - Providing summaries of available data.""",
@@ -293,6 +304,20 @@ def _build_workflow_section(active_agents: List[str], config: SupervisorConfig) 
       1. data_expert_agent loads and identifies data type.
       2. Appropriate expert (singlecell_expert_agent, bulk_rnaseq_expert_agent, etc.) performs QC & concatenation.
       3. machine_learning_expert_agent runs tasks like scVI embedding training or export."""
+
+    # Add download queue coordination pattern if both agents are present
+    if "research_agent" in active_agents and "data_expert_agent" in active_agents:
+        section += """
+
+    **Download Queue Coordination (v2.4+):**
+    - For GEO/SRA dataset downloads, you MUST coordinate via download queue:
+      1. Delegate to research_agent: validate_dataset_metadata(dataset_id, add_to_queue=True)
+      2. Extract entry_id from research_agent response (format: "queue_GSEXXXXX_abc123")
+      3. Query queue status if needed: get_content_from_workspace(workspace="download_queue", status_filter="PENDING")
+      4. Confirm with user before downloading
+      5. Delegate to data_expert_agent: execute_download_from_queue(entry_id="<extracted_id>")
+    - NEVER delegate download to data_expert without confirming queue entry exists
+    - If unsure about entry_id, query the queue first"""
 
     return section.rstrip()
 
@@ -435,11 +460,15 @@ def _build_examples_section() -> str:
     - Present results and ask user which datasets to download. Ensure to present at least 3 results in the same format to not remove too much information from the agent output
     - Upon confirmation, delegate to data_expert to download selected GEO IDs
 
-    **Dataset Download from Publication:**
+    **Dataset Download from Publication (Queue Workflow v2.4+):**
     - User: "Can you download the dataset from this publication <DOI>"
-    - You delegate to research_agent to find datasets associated with the DOI
-    - Once identified, delegate to data_expert_agent to fetch metadata
-    - IMPORTANT: Always confirm with user before downloading datasets
+    - Step 1: You delegate to research_agent to find datasets associated with the DOI
+    - Step 2: research_agent identifies GEO ID (e.g., GSE180759)
+    - Step 3: You delegate to research_agent to validate and queue: validate_dataset_metadata(geo_id, add_to_queue=True)
+    - Step 4: research_agent returns entry_id (e.g., "queue_GSE180759_abc123")
+    - Step 5: IMPORTANT: Confirm with user before downloading
+    - Step 6: You delegate to data_expert_agent with entry_id: execute_download_from_queue(entry_id="queue_GSE180759_abc123")
+    - NOTE: Always extract entry_id from research_agent response before delegating to data_expert
 
     **Parameter Extraction:**
     - User: "Extract parameters from this paper <DOI>"
