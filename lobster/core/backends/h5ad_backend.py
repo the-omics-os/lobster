@@ -163,11 +163,14 @@ class H5ADBackend(BaseBackend):
             # If object is not JSON-serializable, h5py will fail → stringify
             try:
                 import json
+
                 json.dumps(obj)  # Test if object is JSON-serializable
                 return obj  # If successful, h5py might handle it
             except (TypeError, ValueError):
                 # Object not JSON-serializable → convert to string
-                logger.debug(f"Converting non-serializable object of type {type(obj).__name__} to string for H5AD compatibility")
+                logger.debug(
+                    f"Converting non-serializable object of type {type(obj).__name__} to string for H5AD compatibility"
+                )
                 return str(obj)
 
         # Sanitize uns (unstructured metadata)

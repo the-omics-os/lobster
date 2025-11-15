@@ -162,6 +162,13 @@ class DataManagerV2:
         # Metadata storage for GEO datasets and other sources temporary until data is loaded
         self.metadata_store: Dict[str, Dict[str, Any]] = {}
 
+        # Download queue for dataset downloads (research_agent → data_expert handoff)
+        from lobster.core.download_queue import DownloadQueue
+
+        queue_file = self.workspace_path / ".lobster" / "download_queue.jsonl"
+        queue_file.parent.mkdir(parents=True, exist_ok=True)
+        self.download_queue: DownloadQueue = DownloadQueue(queue_file=queue_file)
+
         # Processing log for user-facing messages
         self.processing_log: List[str] = []
 
