@@ -20,6 +20,7 @@ class PublicationSource(Enum):
     MEDRXIV = "medrxiv"
     ARXIV = "arxiv"
     GEO = "geo"
+    SRA = "sra"
 
 
 class ProviderCapability:

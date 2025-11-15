@@ -38,6 +38,7 @@ class ContentType(str, Enum):
     PUBLICATION = "publication"
     DATASET = "dataset"
     METADATA = "metadata"
+    DOWNLOAD_QUEUE = "download_queue"
 
 
 class RetrievalLevel(str, Enum):
@@ -67,17 +68,19 @@ class PublicationContent(BaseModel):
         ..., description="Publication identifier (PMID, DOI, or bioRxiv ID)"
     )
     title: Optional[str] = Field(None, description="Publication title")
-    authors: List[str] = Field(
-        default_factory=list, description="List of author names"
-    )
+    authors: List[str] = Field(default_factory=list, description="List of author names")
     journal: Optional[str] = Field(None, description="Journal name")
     year: Optional[int] = Field(None, description="Publication year")
     abstract: Optional[str] = Field(None, description="Abstract text")
     methods: Optional[str] = Field(None, description="Methods section text")
     full_text: Optional[str] = Field(None, description="Full publication text")
-    keywords: List[str] = Field(default_factory=list, description="Publication keywords")
+    keywords: List[str] = Field(
+        default_factory=list, description="Publication keywords"
+    )
     source: str = Field(..., description="Source provider (PMC, PubMed, bioRxiv, etc.)")
-    cached_at: str = Field(..., description="ISO 8601 timestamp when content was cached")
+    cached_at: str = Field(
+        ..., description="ISO 8601 timestamp when content was cached"
+    )
     url: Optional[str] = Field(None, description="Publication URL")
 
     @field_validator("identifier")
@@ -141,7 +144,9 @@ class DatasetContent(BaseModel):
         default_factory=list, description="Associated PubMed IDs"
     )
     source: str = Field(..., description="Source repository (GEO, SRA, PRIDE, etc.)")
-    cached_at: str = Field(..., description="ISO 8601 timestamp when content was cached")
+    cached_at: str = Field(
+        ..., description="ISO 8601 timestamp when content was cached"
+    )
     url: Optional[str] = Field(None, description="Dataset URL")
 
     @field_validator("identifier")
@@ -196,7 +201,9 @@ class MetadataContent(BaseModel):
         default_factory=list, description="Related dataset identifiers"
     )
     source: str = Field(..., description="Source of metadata (tool or service name)")
-    cached_at: str = Field(..., description="ISO 8601 timestamp when content was cached")
+    cached_at: str = Field(
+        ..., description="ISO 8601 timestamp when content was cached"
+    )
 
     @field_validator("identifier")
     @classmethod
@@ -296,11 +303,13 @@ class WorkspaceContentService:
         self.publications_dir = self.workspace_base / "literature"
         self.datasets_dir = self.workspace_base / "data"
         self.metadata_dir = self.workspace_base / "metadata"
+        self.download_queue_dir = self.workspace_base / "download_queue"
 
         # Create directories if they don't exist
         self.publications_dir.mkdir(parents=True, exist_ok=True)
         self.datasets_dir.mkdir(parents=True, exist_ok=True)
         self.metadata_dir.mkdir(parents=True, exist_ok=True)
+        self.download_queue_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(
             f"WorkspaceContentService initialized with workspace at {self.workspace_base}"
@@ -322,6 +331,8 @@ class WorkspaceContentService:
             return self.datasets_dir
         elif content_type == ContentType.METADATA:
             return self.metadata_dir
+        elif content_type == ContentType.DOWNLOAD_QUEUE:
+            return self.download_queue_dir
         else:
             raise ValueError(f"Unknown content type: {content_type}")
 
@@ -396,7 +407,9 @@ class WorkspaceContentService:
         if content_type == ContentType.PUBLICATION and not isinstance(
             content, PublicationContent
         ):
-            raise ValueError("Content type PUBLICATION requires PublicationContent model")
+            raise ValueError(
+                "Content type PUBLICATION requires PublicationContent model"
+            )
         elif content_type == ContentType.DATASET and not isinstance(
             content, DatasetContent
         ):
@@ -613,9 +626,7 @@ class WorkspaceContentService:
         content_list = []
 
         # Determine which content types to list
-        types_to_list = (
-            [content_type] if content_type else list(ContentType)
-        )
+        types_to_list = [content_type] if content_type else list(ContentType)
 
         for ctype in types_to_list:
             content_dir = self._get_content_dir(ctype)
@@ -671,6 +682,86 @@ class WorkspaceContentService:
                 f"{content_type.value.capitalize()} '{identifier}' not found in workspace"
             )
             return False
+
+    def read_download_queue_entry(self, entry_id: str) -> Dict[str, Any]:
+        """
+        Read a specific download queue entry.
+
+        Args:
+            entry_id: Queue entry identifier
+
+        Returns:
+            Dict[str, Any]: Entry details
+
+        Raises:
+            FileNotFoundError: If entry not found in queue
+            AttributeError: If DataManager download_queue not available
+
+        Examples:
+            >>> entry = service.read_download_queue_entry("queue_entry_123")
+            >>> print(entry['dataset_id'])
+            GSE180759
+        """
+        if not self.data_manager or not hasattr(self.data_manager, "download_queue"):
+            raise AttributeError("DataManager download_queue not available")
+
+        if self.data_manager.download_queue is None:
+            raise AttributeError("DataManager download_queue not available")
+
+        try:
+            entry = self.data_manager.download_queue.get_entry(entry_id)
+            return entry.model_dump(mode="json")  # Pydantic v2 method
+        except Exception as e:
+            raise FileNotFoundError(
+                f"Download queue entry '{entry_id}' not found"
+            ) from e
+
+    def list_download_queue_entries(
+        self, status_filter: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        List all download queue entries with optional status filtering.
+
+        Args:
+            status_filter: Optional status to filter by (PENDING, IN_PROGRESS, COMPLETED, FAILED)
+
+        Returns:
+            List[Dict[str, Any]]: List of entry dictionaries
+
+        Examples:
+            >>> # List all entries
+            >>> entries = service.list_download_queue_entries()
+            >>> print(len(entries))
+            5
+            >>>
+            >>> # Filter by status
+            >>> pending = service.list_download_queue_entries(status_filter="PENDING")
+            >>> print(len(pending))
+            2
+        """
+        if not self.data_manager or not hasattr(self.data_manager, "download_queue"):
+            return []
+
+        if self.data_manager.download_queue is None:
+            return []
+
+        from lobster.core.schemas.download_queue import DownloadStatus
+
+        # Convert string to enum if provided
+        status_enum = None
+        if status_filter:
+            try:
+                # DownloadStatus enum values are lowercase ("pending", "completed")
+                status_enum = DownloadStatus(status_filter.lower())
+            except ValueError:
+                # Invalid status, return empty list
+                logger.warning(
+                    f"Invalid status filter '{status_filter}', returning empty list"
+                )
+                return []
+
+        entries = self.data_manager.download_queue.list_entries(status=status_enum)
+        return [entry.model_dump(mode="json") for entry in entries]
 
     def get_workspace_stats(self) -> Dict[str, Any]:
         """

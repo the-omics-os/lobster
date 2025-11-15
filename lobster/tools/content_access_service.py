@@ -29,6 +29,7 @@ from lobster.tools.providers.geo_provider import GEOProvider
 from lobster.tools.providers.pmc_provider import PMCProvider
 from lobster.tools.providers.provider_registry import ProviderRegistry
 from lobster.tools.providers.pubmed_provider import PubMedProvider
+from lobster.tools.providers.sra_provider import SRAProvider
 from lobster.tools.providers.webpage_provider import WebpageProvider
 from lobster.utils.logger import get_logger
 
@@ -129,9 +130,10 @@ class ContentAccessService:
         Providers are registered in order:
         1. AbstractProvider (priority 10) - Fast abstracts
         2. PubMedProvider (priority 10) - Literature search
-        3. GEOProvider (priority 10) - Dataset discovery
-        4. PMCProvider (priority 10) - PMC full-text
-        5. WebpageProvider (priority 50) - Webpage scraping
+        3. GEOProvider (priority 10) - GEO dataset discovery
+        4. SRAProvider (priority 10) - SRA dataset discovery
+        5. PMCProvider (priority 10) - PMC full-text
+        6. WebpageProvider (priority 50) - Webpage scraping
 
         Each provider is instantiated with the DataManagerV2 instance
         for provenance tracking.
@@ -159,14 +161,29 @@ class ContentAccessService:
         except Exception as e:
             logger.error(f"Failed to initialize GEOProvider: {e}")
 
-        # 4. PMCProvider - PMC full-text extraction
+        # 4. SRAProvider - SRA dataset discovery
+        try:
+            import pysradb  # Check if pysradb is available
+
+            sra_provider = SRAProvider(data_manager=self.data_manager)
+            self.registry.register_provider(sra_provider)
+            logger.debug("SRAProvider registered successfully")
+        except ImportError:
+            logger.warning(
+                "pysradb not available - SRA provider disabled. "
+                "Install with: pip install pysradb"
+            )
+        except Exception as e:
+            logger.error(f"Failed to initialize SRAProvider: {e}")
+
+        # 5. PMCProvider - PMC full-text extraction
         try:
             pmc_provider = PMCProvider(data_manager=self.data_manager)
             self.registry.register_provider(pmc_provider)
         except Exception as e:
             logger.error(f"Failed to initialize PMCProvider: {e}")
 
-        # 5. WebpageProvider - Webpage scraping (includes PDF via Docling)
+        # 6. WebpageProvider - Webpage scraping (includes PDF via Docling)
         try:
             webpage_provider = WebpageProvider(data_manager=self.data_manager)
             self.registry.register_provider(webpage_provider)
@@ -366,7 +383,11 @@ class ContentAccessService:
                         operation="search_literature",
                         tool_name="search_literature",
                         description=f"Literature search: {query[:50]}",
-                        parameters={"query": query, "max_results": max_results, "sources": sources},
+                        parameters={
+                            "query": query,
+                            "max_results": max_results,
+                            "sources": sources,
+                        },
                         stats=stats,
                     )
                     return error_msg, stats, ir
@@ -383,7 +404,9 @@ class ContentAccessService:
             )
 
             # Count results (approximate based on string content)
-            stats["results_count"] = results.count("PMID:") if isinstance(results, str) else 0
+            stats["results_count"] = (
+                results.count("PMID:") if isinstance(results, str) else 0
+            )
             stats["execution_time_ms"] = int((time.time() - start_time) * 1000)
 
             # Create IR for provenance
@@ -476,7 +499,11 @@ class ContentAccessService:
         # Initialize statistics
         stats = {
             "query": query[:100],
-            "dataset_type": dataset_type.value if hasattr(dataset_type, "value") else str(dataset_type),
+            "dataset_type": (
+                dataset_type.value
+                if hasattr(dataset_type, "value")
+                else str(dataset_type)
+            ),
             "max_results": max_results,
             "filters": filters,
             "accession_detected": False,
@@ -502,10 +529,14 @@ class ContentAccessService:
                 )
             else:
                 # Fall back to text-based search
-                results = self._handle_text_search(query, dataset_type, max_results, filters)
+                results = self._handle_text_search(
+                    query, dataset_type, max_results, filters
+                )
 
             # Count results (approximate)
-            stats["results_count"] = results.count("GSE") if isinstance(results, str) else 0
+            stats["results_count"] = (
+                results.count("GSE") if isinstance(results, str) else 0
+            )
             stats["execution_time_ms"] = int((time.time() - start_time) * 1000)
 
             # Create IR for provenance

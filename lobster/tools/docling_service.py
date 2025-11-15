@@ -153,7 +153,9 @@ class DoclingService:
             }
 
             self.converter = self._create_docling_converter()
-            logger.debug("Initialized Docling converter for structure-aware PDF parsing")
+            logger.debug(
+                "Initialized Docling converter for structure-aware PDF parsing"
+            )
         except ImportError:
             logger.warning(
                 "Docling not installed, structure-aware extraction unavailable. "

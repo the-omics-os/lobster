@@ -14,9 +14,15 @@ import urllib.parse
 import urllib.request
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field
+
+try:
+    import GEOparse
+except ImportError:
+    GEOparse = None
 
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
@@ -136,6 +142,10 @@ class GEOProvider(BasePublicationProvider):
                 self.config = config
 
         self.query_builder = GEOQueryBuilder()
+
+        # Initialize cache directory for GEOparse
+        self.cache_dir = Path(settings.GEO_CACHE_DIR)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize XML parser
         try:
@@ -657,6 +667,224 @@ class GEOProvider(BasePublicationProvider):
             logger.warning(f"Error finding linked PubMed IDs: {e}")
 
         return linked
+
+    def get_download_urls(self, geo_id: str) -> Dict[str, Any]:
+        """
+        Extract download URLs from GEO metadata without downloading files.
+
+        Supports GSE (series) and GDS (dataset) accessions. Extracts FTP URLs for:
+        - Matrix files (series_matrix.txt.gz)
+        - Raw data files (CEL, FASTQ, etc.)
+        - Supplementary files (processed data)
+        - H5AD files (if available)
+
+        Args:
+            geo_id: GEO accession (GSE12345, GDS5678, etc.)
+
+        Returns:
+            Dict with structure:
+            {
+                "geo_id": str,
+                "matrix_url": Optional[str],  # Series matrix file
+                "raw_urls": List[str],        # Raw data files
+                "supplementary_urls": List[str],  # Supplementary files
+                "h5_url": Optional[str],      # H5AD file if exists
+                "ftp_base": str,              # Base FTP directory
+                "file_count": int,            # Total files found
+                "total_size_mb": Optional[float],  # Estimated size
+            }
+
+        Raises:
+            ValueError: If geo_id format invalid
+            Exception: If GEO fetch fails
+        """
+        # Validate GEO ID format
+        if not geo_id or not isinstance(geo_id, str):
+            raise ValueError(f"Invalid GEO ID: {geo_id}")
+
+        geo_id = geo_id.upper().strip()
+        if not (geo_id.startswith("GSE") or geo_id.startswith("GDS")):
+            raise ValueError(f"GEO ID must start with GSE or GDS: {geo_id}")
+
+        # Check if GEOparse is available
+        if GEOparse is None:
+            raise ImportError(
+                "GEOparse is required for URL extraction. Install with: pip install GEOparse"
+            )
+
+        logger.info(f"Extracting download URLs for {geo_id}")
+
+        try:
+            # Construct FTP base URL
+            ftp_base = self._construct_ftp_base_url(geo_id)
+
+            # Fetch GEO metadata using GEOparse
+            # Note: This downloads metadata but not actual data files
+            logger.debug(f"Fetching GEO metadata for {geo_id} using GEOparse")
+            gse = GEOparse.get_GEO(
+                geo=geo_id,
+                destdir=str(self.cache_dir),
+                silent=True,
+                # Don't use 'brief' as it skips supplementary file metadata
+            )
+
+            # Initialize result structure
+            matrix_url = None
+            raw_urls = []
+            supplementary_urls = []
+            h5_url = None
+            all_urls = []
+
+            # Extract series matrix URL
+            if hasattr(gse, "metadata") and gse.metadata:
+                series_matrix = gse.metadata.get("series_matrix_file")
+                if series_matrix:
+                    if isinstance(series_matrix, list):
+                        matrix_url = series_matrix[0]
+                    else:
+                        matrix_url = series_matrix
+                    all_urls.append(matrix_url)
+                    logger.debug(f"Found matrix URL: {matrix_url}")
+
+            # If no matrix URL from metadata, construct it
+            if not matrix_url and geo_id.startswith("GSE"):
+                matrix_url = f"{ftp_base}matrix/{geo_id}_series_matrix.txt.gz"
+                all_urls.append(matrix_url)
+                logger.debug(f"Constructed matrix URL: {matrix_url}")
+
+            # Extract supplementary files from metadata
+            supplementary_files = []
+
+            # Check series-level supplementary files
+            if hasattr(gse, "metadata") and gse.metadata:
+                suppl = gse.metadata.get("supplementary_file", [])
+                if isinstance(suppl, str):
+                    supplementary_files.append(suppl)
+                elif isinstance(suppl, list):
+                    supplementary_files.extend(suppl)
+
+            # Check sample-level supplementary files
+            if hasattr(gse, "gsms") and gse.gsms:
+                for gsm_id, gsm in gse.gsms.items():
+                    if hasattr(gsm, "metadata") and gsm.metadata:
+                        gsm_suppl = gsm.metadata.get("supplementary_file", [])
+                        if isinstance(gsm_suppl, str):
+                            supplementary_files.append(gsm_suppl)
+                        elif isinstance(gsm_suppl, list):
+                            supplementary_files.extend(gsm_suppl)
+
+            # Categorize supplementary files
+            for file_url in supplementary_files:
+                if not file_url:
+                    continue
+
+                file_url = file_url.strip()
+                file_lower = file_url.lower()
+
+                # Check for H5AD files
+                if file_url.endswith(".h5ad") or file_url.endswith(".h5"):
+                    h5_url = file_url
+                    all_urls.append(file_url)
+                    logger.debug(f"Found H5AD file: {file_url}")
+
+                # Check for raw data files
+                elif any(
+                    ext in file_lower
+                    for ext in [
+                        ".cel",
+                        ".cel.gz",
+                        ".fastq",
+                        ".fastq.gz",
+                        ".fq",
+                        ".fq.gz",
+                        ".bam",
+                        ".sam",
+                        ".sra",
+                        ".srf",
+                    ]
+                ):
+                    raw_urls.append(file_url)
+                    all_urls.append(file_url)
+                    logger.debug(f"Found raw data file: {file_url}")
+
+                # All other supplementary files
+                else:
+                    supplementary_urls.append(file_url)
+                    all_urls.append(file_url)
+                    logger.debug(f"Found supplementary file: {file_url}")
+
+            # Calculate file count
+            file_count = len(all_urls)
+
+            # Prepare result
+            result = {
+                "geo_id": geo_id,
+                "matrix_url": matrix_url,
+                "raw_urls": raw_urls,
+                "supplementary_urls": supplementary_urls,
+                "h5_url": h5_url,
+                "ftp_base": ftp_base,
+                "file_count": file_count,
+                "total_size_mb": None,  # Size estimation would require FTP SIZE commands
+            }
+
+            logger.info(
+                f"Extracted {file_count} URLs for {geo_id}: "
+                f"matrix={1 if matrix_url else 0}, "
+                f"raw={len(raw_urls)}, "
+                f"supplementary={len(supplementary_urls)}, "
+                f"h5={1 if h5_url else 0}"
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to extract URLs for {geo_id}: {e}")
+            # Return partial results on error
+            return {
+                "geo_id": geo_id,
+                "matrix_url": None,
+                "raw_urls": [],
+                "supplementary_urls": [],
+                "h5_url": None,
+                "ftp_base": (
+                    self._construct_ftp_base_url(geo_id)
+                    if geo_id.startswith("GSE")
+                    else ""
+                ),
+                "file_count": 0,
+                "total_size_mb": None,
+                "error": str(e),
+            }
+
+    def _construct_ftp_base_url(self, geo_id: str) -> str:
+        """
+        Construct FTP base URL for GEO series.
+
+        Args:
+            geo_id: GEO series ID (e.g., GSE180759)
+
+        Returns:
+            Base FTP URL (e.g., ftp://ftp.ncbi.nlm.nih.gov/geo/series/GSE180nnn/GSE180759/)
+        """
+        if not geo_id.startswith("GSE"):
+            return ""
+
+        # Extract numeric part
+        gse_str = geo_id[3:]  # Remove 'GSE'
+
+        # Determine series folder (replace last 3 digits with 'nnn')
+        if len(gse_str) >= 3:
+            gse_num_base = gse_str[:-3]  # Remove last 3 digits
+            series_folder = f"GSE{gse_num_base}nnn"
+        else:
+            # For short IDs like GSE1, GSE12
+            series_folder = "GSEnnn"
+
+        # Construct base URL
+        base_url = f"ftp://ftp.ncbi.nlm.nih.gov/geo/series/{series_folder}/{geo_id}/"
+
+        return base_url
 
     # Helper methods
 
