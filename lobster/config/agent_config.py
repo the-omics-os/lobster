@@ -152,11 +152,13 @@ class LobsterAgentConfigurator:
         "bulk_rnaseq_expert_agent",
         # "method_expert_agent",  # DEPRECATED v2.2+: merged into research_agent
         "research_agent",
+        "metadata_assistant",  # Metadata operations and cross-dataset mapping
         "data_expert_agent",
         "machine_learning_expert_agent",
         "visualization_expert_agent",
         "ms_proteomics_expert_agent",
         "affinity_proteomics_expert_agent",
+        "custom_feature_agent",  # META-AGENT for code generation
     ]
 
     # Thinking configuration presets
@@ -182,9 +184,11 @@ class LobsterAgentConfigurator:
             "data_expert_agent": "claude-4-5-haiku",
             "machine_learning_expert_agent": "claude-4-5-haiku",
             "research_agent": "claude-4-5-haiku",
+            "metadata_assistant": "claude-4-5-haiku",
             "ms_proteomics_expert_agent": "claude-4-5-haiku",
             "affinity_proteomics_expert_agent": "claude-4-5-haiku",
             "visualization_expert_agent": "claude-4-5-haiku",
+            "custom_feature_agent": "claude-4-5-sonnet",  # Use Sonnet for code generation
             "thinking": {},  # No thinking in development mode for faster testing
         },
         "production": {
@@ -199,9 +203,11 @@ class LobsterAgentConfigurator:
             "data_expert_agent": "claude-4-sonnet",
             "machine_learning_expert_agent": "claude-4-sonnet",
             "research_agent": "claude-4-sonnet",
+            "metadata_assistant": "claude-4-sonnet",
             "ms_proteomics_expert_agent": "claude-4-sonnet",
             "affinity_proteomics_expert_agent": "claude-4-sonnet",
             "visualization_expert_agent": "claude-4-sonnet",
+            "custom_feature_agent": "claude-4-5-sonnet",  # Use Sonnet 4.5 for code generation
             "thinking": {},  # No thinking configured for production
         },
         "ultra": {
@@ -214,9 +220,11 @@ class LobsterAgentConfigurator:
             "data_expert_agent": "claude-4-5-sonnet",
             "machine_learning_expert_agent": "claude-4-5-sonnet",
             "research_agent": "claude-4-5-sonnet",
+            "metadata_assistant": "claude-4-5-sonnet",
             "ms_proteomics_expert_agent": "claude-4-5-sonnet",
             "affinity_proteomics_expert_agent": "claude-4-5-sonnet",
             "visualization_expert_agent": "claude-4-5-sonnet",
+            "custom_feature_agent": "claude-4-5-sonnet",  # Use Sonnet 4.5 for code generation
             "thinking": {},  # No thinking configured for godmode
         },
         "godmode": {
@@ -229,9 +237,11 @@ class LobsterAgentConfigurator:
             "data_expert_agent": "claude-4-5-sonnet",
             "machine_learning_expert_agent": "claude-4-5-sonnet",
             "research_agent": "claude-4-5-sonnet",
+            "metadata_assistant": "claude-4-5-sonnet",
             "ms_proteomics_expert_agent": "claude-4-5-sonnet",
             "affinity_proteomics_expert_agent": "claude-4-5-sonnet",
             "visualization_expert_agent": "claude-4-5-sonnet",
+            "custom_feature_agent": "claude-4-1-opus",  # Use Opus 4.1 for best code generation
             "thinking": {},  # No thinking configured for godmode
         },
     }

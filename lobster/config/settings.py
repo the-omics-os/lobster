@@ -29,6 +29,10 @@ class Settings:
         # Load dotenv
         load_dotenv()
 
+        # hackathon
+        self.LINKUP_API_KEY = os.environ.get("LINKUP_API_KEY", "")
+
+
         # CDK variables
         self.STACK_NAME = "LobsterStack"
         self.CUSTOM_HEADER_VALUE = "omics-osBeatsKepler"

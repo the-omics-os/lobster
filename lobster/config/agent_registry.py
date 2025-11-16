@@ -97,6 +97,52 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
         handoff_tool_name="handoff_to_visualization_expert_agent",
         handoff_tool_description="Delegate visualization tasks to the visualization expert agent",
     ),
+    "custom_feature_agent": AgentRegistryConfig(
+        name="custom_feature_agent",
+        display_name="Custom Feature Agent",
+        description="""META-AGENT that generates new Lobster components using Claude Code SDK.
+
+        Capabilities:
+        - Generate new agents following Lobster architectural patterns (registry-driven, stateless services)
+        - Create services with 3-tuple return pattern (AnnData, stats, IR)
+        - Build providers for external data sources (PubMed, GEO, custom APIs)
+        - Generate adapters for new file formats (H5AD, CSV, custom formats)
+        - Create comprehensive test suites (unit, integration)
+        - Validate integration with registry patterns
+        - Research best practices via Linkup SDK (GitHub repos, Python packages)
+        - Generate complete documentation (wiki pages, usage examples)
+
+        When to delegate:
+        - User requests NEW CAPABILITIES or MODALITIES (e.g., metabolomics, metagenomics, spatial)
+        - Need to ADD NEW DATA SOURCES (e.g., PRIDE, Metabolomics Workbench)
+        - Request involves GENERATING CODE (not analyzing data)
+        - Building custom extensions for new analysis types
+        - Creating providers for external APIs
+        - Need adapters for specialized file formats
+
+        DO NOT delegate for:
+        - Standard data analysis tasks (use domain experts: singlecell, bulk, proteomics)
+        - Visualization requests (use visualization_expert)
+        - Literature search (use research_agent)
+        - Data loading/download (use data_expert)
+        - Metadata operations (use metadata_assistant)
+
+        Note: This is a CODE GENERATION agent, not a DATA ANALYSIS agent.
+        Uses Claude Code SDK for file creation and Linkup SDK for research.
+        """,
+        factory_function="lobster.agents.custom_feature_agent.custom_feature_agent",
+        handoff_tool_name="handoff_to_custom_feature_agent",
+        handoff_tool_description="""Delegate to Custom Feature Agent when user requests:
+        1. NEW CAPABILITIES: "Add support for metabolomics", "Create metagenomics analysis"
+        2. NEW DATA SOURCES: "Integrate PRIDE database", "Add Metabolomics Workbench"
+        3. CODE GENERATION: "Generate an agent for...", "Create a service for..."
+        4. CUSTOM EXTENSIONS: "Build adapter for X format", "Create provider for Y API"
+
+        Key indicators: "add support", "create agent", "generate", "build", "integrate new", "extend with"
+
+        DO NOT delegate for standard analysis (clustering, DE, QC, visualization, literature search).
+        """,
+    ),
 }
 
 

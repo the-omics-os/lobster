@@ -10,7 +10,7 @@ authors = [
 ]
 description = "Multi-Agent Bioinformatics Analysis System powered by LangGraph"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 license = {text = "MIT"}
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -104,6 +104,9 @@ dependencies = [
     "docling-core>=2.50.0",
     "redis>=6.4.0",
     "pysradb>=2.5.1",
+    # Custom Feature Agent (META-AGENT for code generation)
+    "claude-agent-sdk>=0.1.0",  # Claude Code SDK for programmatic agent creation
+    "linkup>=0.1.0",  # Linkup SDK for web research (GitHub repos, packages, best practices)
 ]
 
 [project.optional-dependencies]
@@ -206,7 +209,7 @@ local_scheme = "node-and-date"
 # Development tools configurations
 [tool.black]
 line-length = 88
-target-version = ["py312"]
+target-version = ["py311"]
 
 [tool.isort]
 profile = "black"
@@ -248,7 +251,7 @@ minversion = "7.0"
 timeout = 300
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

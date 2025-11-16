@@ -186,3 +186,32 @@ class VisualizationExpertState(AgentState):
     intermediate_outputs: Dict[
         str, Any
     ]  # For partial visualization work before returning to supervisor
+
+
+class CustomFeatureAgentState(AgentState):
+    """
+    State for the custom feature creation agent.
+
+    This agent uses Claude Code SDK to generate new agents, services,
+    providers, tools, tests, and documentation following Lobster patterns.
+    """
+
+    next: str
+
+    # Feature creation specific context
+    task_description: str  # Description of the feature creation task
+    feature_name: str  # Name of the feature being created
+    feature_type: str  # Type: agent, service, provider, agent_with_service
+    requirements: str  # Detailed feature requirements
+    research_findings: Dict[str, Any]  # Internet research results (Linkup)
+    created_files: List[str]  # List of files created during feature generation
+    validation_errors: List[str]  # Validation errors encountered
+    sdk_output: str  # Output from Claude Code SDK
+    integration_instructions: str  # Instructions for manual integration steps
+    test_results: Dict[str, Any]  # Results from automated testing
+    file_paths: List[str]  # Paths to created files
+    methodology_parameters: Dict[str, Any]  # Feature creation parameters
+    data_context: str  # Context about the feature being created
+    intermediate_outputs: Dict[
+        str, Any
+    ]  # For partial feature creation work before returning to supervisor
