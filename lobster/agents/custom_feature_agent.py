@@ -143,6 +143,246 @@ def custom_feature_agent(
 
         return existing
 
+    def create_feature_branch(feature_name: str) -> Dict[str, Any]:
+        """
+        Create git branch for new feature with standard naming convention.
+
+        Branch format: feature/{feature_name}_{YYMMDD}
+
+        Args:
+            feature_name: Name of the feature for branch naming
+
+        Returns:
+            Dictionary with:
+                - success: bool
+                - branch_name: str (if successful)
+                - error: str (if failed)
+        """
+        import subprocess
+        from datetime import date
+
+        # Generate branch name with date
+        date_str = date.today().strftime('%y%m%d')
+        branch_name = f"feature/{feature_name}_{date_str}"
+
+        try:
+            # Check if branch already exists
+            result = subprocess.run(
+                ["git", "rev-parse", "--verify", branch_name],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=str(lobster_root)
+            )
+
+            if result.returncode == 0:
+                logger.warning(f"Branch {branch_name} already exists")
+                return {
+                    "success": False,
+                    "error": f"Branch '{branch_name}' already exists. Use a different feature name or delete the existing branch."
+                }
+
+            # Check for uncommitted changes
+            status_result = subprocess.run(
+                ["git", "status", "--porcelain"],
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=str(lobster_root)
+            )
+
+            if status_result.stdout.strip():
+                logger.warning("Uncommitted changes detected")
+                return {
+                    "success": False,
+                    "error": "Working directory has uncommitted changes. Please commit or stash them before creating a new feature branch."
+                }
+
+            # Create and switch to branch
+            subprocess.run(
+                ["git", "checkout", "-b", branch_name],
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=str(lobster_root)
+            )
+
+            logger.info(f"Created feature branch: {branch_name}")
+            return {
+                "success": True,
+                "branch_name": branch_name,
+                "message": f"Successfully created and switched to branch: {branch_name}"
+            }
+
+        except subprocess.CalledProcessError as e:
+            error_msg = f"Git operation failed: {e.stderr if e.stderr else str(e)}"
+            logger.error(error_msg)
+            return {
+                "success": False,
+                "error": error_msg
+            }
+        except Exception as e:
+            error_msg = f"Unexpected error during branch creation: {str(e)}"
+            logger.error(error_msg)
+            return {
+                "success": False,
+                "error": error_msg
+            }
+
+    def detect_packages_in_files(file_paths: List[str]) -> Dict[str, List[str]]:
+        """
+        Parse import statements from Python files and categorize packages.
+
+        Categorizes as:
+        - python_packages: pip-installable packages (non-stdlib)
+        - system_packages: system tools (detected via common patterns)
+        - standard_lib: Python standard library modules
+        - unknown: Unclassifiable imports
+
+        Args:
+            file_paths: List of absolute paths to Python files
+
+        Returns:
+            Dictionary with categorized package lists
+        """
+        import sys
+
+        # Python standard library modules (Python 3.12+)
+        stdlib_modules = set(sys.stdlib_module_names)
+
+        # Common system tools that might be imported or used
+        system_tools = {
+            'samtools', 'bcftools', 'bedtools', 'bwa', 'bowtie2',
+            'kallisto', 'salmon', 'star', 'hisat2', 'featurecounts',
+            'blastn', 'blastp', 'blastx', 'makeblastdb'
+        }
+
+        python_packages = set()
+        system_packages = set()
+        standard_lib = set()
+        unknown = set()
+
+        for file_path in file_paths:
+            if not file_path.endswith('.py'):
+                continue
+
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+
+                # Extract import statements
+                import_pattern = r'^(?:import|from)\s+(\w+)'
+                matches = re.findall(import_pattern, content, re.MULTILINE)
+
+                for module_name in matches:
+                    # Skip local imports
+                    if module_name.startswith('lobster'):
+                        continue
+
+                    # Categorize
+                    if module_name in stdlib_modules:
+                        standard_lib.add(module_name)
+                    elif module_name.lower() in system_tools:
+                        system_packages.add(module_name.lower())
+                    elif module_name in ['os', 'sys', 'pathlib']:  # Explicit stdlib
+                        standard_lib.add(module_name)
+                    else:
+                        # Assume third-party Python package
+                        python_packages.add(module_name)
+
+            except Exception as e:
+                logger.warning(f"Failed to parse imports from {file_path}: {e}")
+                continue
+
+        return {
+            "python_packages": sorted(list(python_packages)),
+            "system_packages": sorted(list(system_packages)),
+            "standard_lib": sorted(list(standard_lib)),
+            "unknown": sorted(list(unknown))
+        }
+
+    def check_package_installation(packages: Dict[str, List[str]]) -> Dict[str, Dict[str, bool]]:
+        """
+        Check if packages are installed using importlib (pip) and subprocess (brew).
+
+        Args:
+            packages: Dictionary with categorized package lists from detect_packages_in_files()
+
+        Returns:
+            Dictionary mapping package names to installation status:
+                {
+                    "python_packages": {"package": bool, ...},
+                    "system_packages": {"tool": bool, ...}
+                }
+        """
+        import importlib.util
+        import subprocess
+        import shutil
+
+        python_status = {}
+        system_status = {}
+
+        # Check Python packages using importlib
+        for package in packages.get("python_packages", []):
+            try:
+                spec = importlib.util.find_spec(package)
+                python_status[package] = spec is not None
+            except (ImportError, ModuleNotFoundError, ValueError):
+                python_status[package] = False
+            except Exception as e:
+                logger.warning(f"Error checking package {package}: {e}")
+                python_status[package] = False
+
+        # Check system packages using shutil.which (checks PATH)
+        for tool in packages.get("system_packages", []):
+            try:
+                system_status[tool] = shutil.which(tool) is not None
+            except Exception as e:
+                logger.warning(f"Error checking system tool {tool}: {e}")
+                system_status[tool] = False
+
+        return {
+            "python_packages": python_status,
+            "system_packages": system_status
+        }
+
+    def format_package_warnings(package_status: Dict[str, Dict[str, bool]],
+                               detected_packages: Dict[str, List[str]]) -> str:
+        """
+        Format missing package warnings for user response.
+
+        Args:
+            package_status: Installation status from check_package_installation()
+            detected_packages: Package categorization from detect_packages_in_files()
+
+        Returns:
+            Markdown-formatted warning section with installation instructions
+        """
+        missing_python = [pkg for pkg, installed in package_status.get("python_packages", {}).items() if not installed]
+        missing_system = [pkg for pkg, installed in package_status.get("system_packages", {}).items() if not installed]
+
+        if not missing_python and not missing_system:
+            return ""
+
+        warning = "⚠️ **Package Dependencies Detected**\n\n"
+        warning += "The generated code imports packages that may not be installed:\n\n"
+
+        if missing_python:
+            warning += "**Python Packages (install with pip):**\n"
+            warning += "```bash\n"
+            warning += f"pip install {' '.join(missing_python)}\n"
+            warning += "```\n\n"
+
+        if missing_system:
+            warning += "**System Tools (install with brew):**\n"
+            warning += "```bash\n"
+            warning += f"brew install {' '.join(missing_system)}\n"
+            warning += "```\n\n"
+
+        warning += "**Note:** The feature has been created, but you should install these dependencies before running the code.\n"
+
+        return warning
+
     def research_with_linkup(
         feature_description: str,
         search_focus: str = "GitHub repositories, packages, best practices"
@@ -359,6 +599,28 @@ Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositori
             logger.info(f"[DEBUG] Starting feature creation: {feature_type} - {feature_name}")
             debug_info["steps"].append("Starting feature creation")
 
+            # STEP 0: Create feature branch BEFORE any code generation
+            logger.info(f"[DEBUG] Creating feature branch for {feature_name}...")
+            debug_info["steps"].append("Creating feature branch")
+
+            branch_result = create_feature_branch(feature_name)
+            if not branch_result["success"]:
+                logger.error(f"[DEBUG] Branch creation failed: {branch_result['error']}")
+                debug_info["errors"].append(f"Branch creation failed: {branch_result['error']}")
+                debug_info["steps"].append("Branch creation failed")
+                return {
+                    "success": False,
+                    "created_files": [],
+                    "error": f"Failed to create feature branch: {branch_result['error']}",
+                    "sdk_output": "",
+                    "debug_info": debug_info
+                }
+
+            branch_name = branch_result["branch_name"]
+            debug_info["branch_name"] = branch_name
+            debug_info["steps"].append(f"Created branch: {branch_name}")
+            logger.info(f"[DEBUG] Feature branch created successfully: {branch_name}")
+
             # Set environment variables for Claude Code SDK with AWS Bedrock
             logger.info("[DEBUG] Setting AWS Bedrock environment variables...")
             settings = get_settings()
@@ -482,6 +744,12 @@ CRITICAL RULES:
                 }
 
             prompt = f"""Create a new Lobster {feature_type} following the patterns in CLAUDE.md.
+
+⚠️ IMPORTANT GIT CONTEXT:
+You are working on feature branch: {branch_name}
+All changes will be committed to this feature branch, NOT main.
+The branch has been created and checked out automatically.
+DO NOT create or switch branches - you are already on the correct branch.
 
 Feature Name: {feature_name}
 
@@ -706,6 +974,36 @@ Begin implementation now."""
 
                 logger.info(f"[DEBUG] Verification complete: {len(verified_files)}/{len(expected_files)} files created")
 
+                # STEP: Detect required packages from created files
+                detected_packages = {"python_packages": [], "system_packages": [], "standard_lib": [], "unknown": []}
+                package_status = {"python_packages": {}, "system_packages": {}}
+                missing_python = []
+                missing_system = []
+
+                try:
+                    logger.info(f"[DEBUG] Detecting required packages from created files...")
+                    debug_info["steps"].append("Detecting required packages")
+
+                    detected_packages = detect_packages_in_files(verified_files)
+                    package_status = check_package_installation(detected_packages)
+
+                    # Separate installed vs missing
+                    missing_python = [pkg for pkg, installed in package_status["python_packages"].items() if not installed]
+                    missing_system = [pkg for pkg, installed in package_status["system_packages"].items() if not installed]
+
+                    debug_info["detected_packages"] = detected_packages
+                    debug_info["package_status"] = package_status
+                    debug_info["missing_python_packages"] = missing_python
+                    debug_info["missing_system_packages"] = missing_system
+                    debug_info["steps"].append(f"Package detection complete: {len(missing_python)} pip, {len(missing_system)} brew missing")
+
+                    logger.info(f"[DEBUG] Package detection complete: {len(missing_python)} pip packages missing, {len(missing_system)} brew packages missing")
+
+                except Exception as e:
+                    logger.warning(f"[DEBUG] Package detection failed: {e}")
+                    debug_info["errors"].append(f"Package detection failed: {e}")
+                    # Non-blocking - continue with feature creation
+
                 # Require ALL expected files to be present for success
                 all_present = len(verified_files) == len(expected_files)
                 error_msg = None if all_present else f"Missing files: {', '.join(missing_files)}"
@@ -713,6 +1011,11 @@ Begin implementation now."""
                 return {
                     "success": all_present,
                     "created_files": verified_files,
+                    "branch_name": branch_name,
+                    "detected_packages": detected_packages,
+                    "package_status": package_status,
+                    "missing_python_packages": missing_python,
+                    "missing_system_packages": missing_system,
                     "error": error_msg,
                     "sdk_output": "\n".join(sdk_output_lines),
                     "debug_info": debug_info
@@ -743,13 +1046,14 @@ Begin implementation now."""
                 "debug_info": debug_info
             }
 
-    def generate_integration_instructions(feature_name: str, feature_type: str) -> str:
+    def generate_integration_instructions(feature_name: str, feature_type: str, branch_name: str) -> str:
         """
         Generate comprehensive integration instructions for registry AND configuration.
 
         Args:
             feature_name: Name of the feature
             feature_type: Type of feature created
+            branch_name: Git branch name where changes were made
 
         Returns:
             Formatted instructions with code snippets for both registry and config
@@ -828,6 +1132,38 @@ To make your new agent fully functional in Lobster, you need to update TWO confi
 **Why both files are needed:**
 - `agent_registry.py` → Registers the agent in the system (handoff tools, routing)
 - `agent_config.py` → Configures LLM model for the agent (prevents KeyError)
+
+## Step 4: Git Workflow (Commit & Merge)
+
+Your changes are on branch: `{branch_name}`
+
+1. **Verify tests pass:**
+   ```bash
+   make test
+   make lint
+   make type-check
+   ```
+
+2. **Commit your configuration changes:**
+   ```bash
+   git add lobster/config/agent_registry.py lobster/config/agent_config.py
+   git commit -m "feat: integrate {feature_name} agent into registry and config"
+   ```
+
+3. **Push branch and create PR:**
+   ```bash
+   git push origin {branch_name}
+   ```
+   Then create a Pull Request on GitHub for review.
+
+4. **After PR approval, merge to main:**
+   - Merge via GitHub UI
+   - Delete feature branch after merge
+
+**Branch Safety:**
+- All feature code is on `{branch_name}`
+- Main branch remains unchanged until PR is merged
+- Tests must pass before merging
 """
         else:
             # Service only
@@ -1071,48 +1407,91 @@ If the error persists, please report it to the Lobster team with the debug infor
                 for f in wiki:
                     response += f"  ✓ {Path(f).relative_to(lobster_root)}\n"
 
+            # Add branch information
+            branch_name = result.get("branch_name", "unknown")
+            response += f"\n\n🌿 **Git Branch:**\n"
+            response += f"  ✓ Created and switched to: `{branch_name}`\n"
+            response += f"  - All changes are on this feature branch\n"
+            response += f"  - Main branch remains unchanged\n"
+
+            # Add package warnings if any missing
+            missing_python = result.get("missing_python_packages", [])
+            missing_system = result.get("missing_system_packages", [])
+
+            if missing_python or missing_system:
+                detected_packages = result.get("detected_packages", {})
+                package_status = result.get("package_status", {})
+                warnings = format_package_warnings(package_status, detected_packages)
+                if warnings:
+                    response += f"\n\n{warnings}"
+
             # 8. Add integration instructions (registry + configuration)
-            integration_instructions = generate_integration_instructions(feature_name, feature_type)
+            integration_instructions = generate_integration_instructions(feature_name, feature_type, branch_name)
             response += f"\n\n{integration_instructions}"
 
             # 9. Add next steps
-            response += f"""
+            step_number = 1
+            response += "\n\n🔧 **Next Steps:**\n\n"
 
-🔧 **Next Steps:**
+            # Step 1: Install dependencies if needed
+            if missing_python or missing_system:
+                response += f"{step_number}. **Install Missing Dependencies** ⚠️\n"
+                if missing_python:
+                    response += f"   Python packages (pip):\n"
+                    response += f"   ```bash\n"
+                    response += f"   pip install {' '.join(missing_python)}\n"
+                    response += f"   ```\n"
+                if missing_system:
+                    response += f"   System packages (brew):\n"
+                    response += f"   ```bash\n"
+                    response += f"   brew install {' '.join(missing_system)}\n"
+                    response += f"   ```\n"
+                response += "\n"
+                step_number += 1
 
-1. **Review Generated Code**
-   - Check that the implementation matches your requirements
-   - Verify naming conventions are followed
-   - Ensure docstrings are complete
+            # Step N: Review Code
+            response += f"{step_number}. **Review Generated Code**\n"
+            response += f"   - Check that the implementation matches your requirements\n"
+            response += f"   - Verify naming conventions are followed\n"
+            response += f"   - Ensure docstrings are complete\n\n"
+            step_number += 1
 
-2. **Run Tests**
-   ```bash
-   make test
-   ```
+            # Step N+1: Run Tests
+            response += f"{step_number}. **Run Tests**\n"
+            response += f"   ```bash\n"
+            response += f"   make test\n"
+            response += f"   ```\n\n"
+            step_number += 1
 
-3. **Check Code Quality**
-   ```bash
-   make lint
-   make type-check
-   ```
+            # Step N+2: Check Quality
+            response += f"{step_number}. **Check Code Quality**\n"
+            response += f"   ```bash\n"
+            response += f"   make lint\n"
+            response += f"   make type-check\n"
+            response += f"   ```\n\n"
+            step_number += 1
 
-4. **Update Registry & Configuration** (if agent was created)
-   - Follow the instructions above to add to agent_registry.py AND agent_config.py
-   - BOTH files must be updated to avoid KeyError
+            # Step N+3: Update Registry
+            response += f"{step_number}. **Update Registry & Configuration** (if agent was created)\n"
+            response += f"   - Follow the instructions above to add to agent_registry.py AND agent_config.py\n"
+            response += f"   - BOTH files must be updated to avoid KeyError\n\n"
+            step_number += 1
 
-5. **Restart Lobster**
-   ```bash
-   lobster chat
-   ```
+            # Step N+4: Restart Lobster
+            response += f"{step_number}. **Restart Lobster**\n"
+            response += f"   ```bash\n"
+            response += f"   lobster chat\n"
+            response += f"   ```\n\n"
+            step_number += 1
 
-6. **Test Your Feature**
-   - Interact with the new agent through the supervisor
-   - Try different workflows and edge cases
+            # Step N+5: Test Feature
+            response += f"{step_number}. **Test Your Feature**\n"
+            response += f"   - Interact with the new agent through the supervisor\n"
+            response += f"   - Try different workflows and edge cases\n\n"
 
-📚 **Documentation:** See lobster/wiki/{feature_name.replace('_', '-').lower()}.md for usage examples
-
-The new {feature_type} is ready to use! 🚀
-"""
+            # Footer
+            response += f"📚 **Documentation:** See lobster/wiki/{feature_name.replace('_', '-').lower()}.md for usage examples\n\n"
+            response += f"The new {feature_type} is ready to use! 🚀\n"
 
             # Store results
             creation_results["details"]["feature_creation"] = response
