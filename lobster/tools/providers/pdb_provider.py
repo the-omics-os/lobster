@@ -19,13 +19,11 @@ import requests
 from pydantic import BaseModel, Field
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.providers.base_provider import (
-    BasePublicationProvider,
-    DatasetMetadata,
-    DatasetType,
-    ProviderCapability,
-    PublicationMetadata,
-    PublicationSource,
+from lobster.tools.providers.structure_provider import (
+    BaseStructureProvider,
+    StructureMetadata,
+    StructureSource,
+    StructureProviderCapability,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,6 +49,10 @@ class PDBExperimentMethod(str, Enum):
     ELECTRON_CRYST = "ELECTRON CRYSTALLOGRAPHY"
     SOLID_STATE_NMR = "SOLID-STATE NMR"
     PREDICTED = "PREDICTED"  # AlphaFold structures
+
+
+# Note: PDBStructureMetadata is kept for backward compatibility but uses StructureMetadata from base
+PDBStructureMetadata = StructureMetadata
 
 
 class PDBSearchFilters(BaseModel):
@@ -85,24 +87,7 @@ class PDBProviderConfig(BaseModel):
     download_timeout: int = 30
 
 
-class PDBStructureMetadata(BaseModel):
-    """Metadata for a PDB structure."""
-
-    pdb_id: str
-    title: str
-    experiment_method: str
-    resolution: Optional[float] = None
-    organism: Optional[str] = None
-    chains: List[str] = []
-    ligands: List[str] = []
-    deposition_date: Optional[str] = None
-    release_date: Optional[str] = None
-    authors: List[str] = []
-    publication_doi: Optional[str] = None
-    citation: Optional[str] = None
-
-
-class PDBProvider(BasePublicationProvider):
+class PDBProvider(BaseStructureProvider):
     """
     Provider for RCSB Protein Data Bank (PDB) database.
 
@@ -110,10 +95,9 @@ class PDBProvider(BasePublicationProvider):
     file download capabilities using the PDB REST API.
 
     Capabilities:
-    - SEARCH_LITERATURE: Search PDB by keywords
-    - DISCOVER_DATASETS: Find protein structures
-    - EXTRACT_METADATA: Get structure metadata
-    - Download structure files (PDB, mmCIF)
+    - SEARCH_STRUCTURES: Search PDB by keywords
+    - GET_METADATA: Get structure metadata
+    - DOWNLOAD_STRUCTURE: Download structure files (PDB, mmCIF)
     """
 
     def __init__(
@@ -142,16 +126,9 @@ class PDBProvider(BasePublicationProvider):
         })
 
     @property
-    def source(self) -> PublicationSource:
-        """Return PDB as the publication source."""
-        # Note: PDB is not in the base enum, but we can still return a value
-        return PublicationSource.GEO  # Closest match, or we could extend the enum
-
-    @property
-    def supported_dataset_types(self) -> List[DatasetType]:
-        """Return list of dataset types (PDB structures)."""
-        # PDB isn't in DatasetType enum, but we can note it handles structures
-        return []
+    def source(self) -> StructureSource:
+        """Return PDB as the structure source."""
+        return StructureSource.PDB
 
     @property
     def priority(self) -> int:
@@ -173,26 +150,29 @@ class PDBProvider(BasePublicationProvider):
             Dict[str, bool]: Capability mapping
         """
         return {
-            ProviderCapability.SEARCH_LITERATURE: True,
-            ProviderCapability.DISCOVER_DATASETS: True,
-            ProviderCapability.EXTRACT_METADATA: True,
-            ProviderCapability.VALIDATE_METADATA: True,
-            ProviderCapability.QUERY_CAPABILITIES: True,
+            StructureProviderCapability.SEARCH_STRUCTURES: True,
+            StructureProviderCapability.GET_METADATA: True,
+            StructureProviderCapability.DOWNLOAD_STRUCTURE: True,
         }
 
-    def search_publications(
-        self, query: str, max_results: int = 10, **kwargs
-    ) -> List[PublicationMetadata]:
+    def search_structures(
+        self,
+        query: str,
+        max_results: int = 10,
+        filters: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> List[StructureMetadata]:
         """
         Search PDB database for structures matching query.
 
         Args:
             query: Search query (protein name, PDB ID, keywords)
             max_results: Maximum number of results
+            filters: Optional filters (not yet implemented)
             **kwargs: Additional search parameters
 
         Returns:
-            List[PublicationMetadata]: Search results
+            List[StructureMetadata]: Search results
         """
         logger.info(f"Searching PDB for: {query} (max_results={max_results})")
 
@@ -231,20 +211,7 @@ class PDBProvider(BasePublicationProvider):
                 try:
                     metadata = self.get_structure_metadata(pdb_id)
                     if metadata:
-                        # Convert to PublicationMetadata format
-                        pub_meta = PublicationMetadata(
-                            uid=metadata.pdb_id,
-                            title=metadata.title,
-                            journal=None,
-                            published=metadata.release_date,
-                            doi=metadata.publication_doi,
-                            pmid=None,
-                            abstract=f"Experiment: {metadata.experiment_method}, "
-                                    f"Resolution: {metadata.resolution} Å" if metadata.resolution else f"Experiment: {metadata.experiment_method}",
-                            authors=metadata.authors,
-                            keywords=[metadata.experiment_method, metadata.organism] if metadata.organism else [metadata.experiment_method],
-                        )
-                        results.append(pub_meta)
+                        results.append(metadata)
                 except Exception as e:
                     logger.warning(f"Failed to get metadata for {pdb_id}: {e}")
                     continue
@@ -256,15 +223,16 @@ class PDBProvider(BasePublicationProvider):
             logger.error(f"PDB search failed: {e}")
             return []
 
-    def get_structure_metadata(self, pdb_id: str) -> Optional[PDBStructureMetadata]:
+    def get_structure_metadata(self, pdb_id: str, **kwargs) -> Optional[StructureMetadata]:
         """
         Get detailed metadata for a PDB structure.
 
         Args:
             pdb_id: PDB identifier (4 characters)
+            **kwargs: Additional parameters (not used, for interface compatibility)
 
         Returns:
-            Optional[PDBStructureMetadata]: Structure metadata or None if not found
+            Optional[StructureMetadata]: Structure metadata or None if not found
         """
         pdb_id = pdb_id.upper()
         logger.info(f"Fetching metadata for PDB ID: {pdb_id}")
@@ -279,7 +247,7 @@ class PDBProvider(BasePublicationProvider):
             data = response.json()
 
             # Extract metadata
-            metadata = PDBStructureMetadata(
+            metadata = StructureMetadata(
                 pdb_id=pdb_id,
                 title=data.get("struct", {}).get("title", "Unknown"),
                 experiment_method=data.get("exptl", [{}])[0].get("method", "UNKNOWN"),
@@ -308,27 +276,32 @@ class PDBProvider(BasePublicationProvider):
 
     def download_structure(
         self,
-        pdb_id: str,
+        structure_id: str,
+        output_path: str,
         format: str = "cif",
-        output_path: Optional[Path] = None,
-    ) -> Optional[Path]:
+        **kwargs,
+    ) -> str:
         """
         Download structure file from PDB.
 
         Args:
-            pdb_id: PDB identifier
+            structure_id: PDB identifier
+            output_path: Output path for the downloaded file
             format: File format (pdb, cif, mmcif)
-            output_path: Optional output path, auto-generated if None
+            **kwargs: Additional parameters (not used)
 
         Returns:
-            Optional[Path]: Path to downloaded file or None if failed
+            str: Path to downloaded file
+
+        Raises:
+            ValueError: If format is unsupported or download fails
         """
-        pdb_id = pdb_id.upper()
+        pdb_id = structure_id.upper()
         format = format.lower()
 
         if format not in ["pdb", "cif", "mmcif"]:
             logger.error(f"Unsupported format: {format}. Use 'pdb' or 'cif'")
-            return None
+            raise ValueError(f"Unsupported format: {format}. Use 'pdb' or 'cif'")
 
         # Normalize format names
         if format == "mmcif":
@@ -338,11 +311,9 @@ class PDBProvider(BasePublicationProvider):
         extension = "cif" if format == "cif" else "pdb"
         url = f"{self.config.files_url}/{pdb_id}.{extension}"
 
-        # Determine output path
-        if output_path is None:
-            output_dir = Path.cwd() / "structures"
-            output_dir.mkdir(parents=True, exist_ok=True)
-            output_path = output_dir / f"{pdb_id}.{extension}"
+        # Convert output_path to Path object and ensure parent directory exists
+        output_path_obj = Path(output_path)
+        output_path_obj.parent.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"Downloading {pdb_id} ({format}) to {output_path}")
 
@@ -356,22 +327,23 @@ class PDBProvider(BasePublicationProvider):
             response.raise_for_status()
 
             # Write file
-            with open(output_path, 'wb') as f:
+            with open(output_path_obj, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
 
             logger.info(f"Successfully downloaded {pdb_id} to {output_path}")
-            return output_path
+            return str(output_path_obj)
 
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 404:
                 logger.error(f"Structure file not found: {pdb_id}.{extension}")
+                raise ValueError(f"Structure file not found: {pdb_id}.{extension}")
             else:
                 logger.error(f"HTTP error downloading {pdb_id}: {e}")
-            return None
+                raise ValueError(f"HTTP error downloading {pdb_id}: {e}")
         except Exception as e:
             logger.error(f"Failed to download {pdb_id}: {e}")
-            return None
+            raise ValueError(f"Failed to download {pdb_id}: {e}")
 
     def validate_pdb_id(self, pdb_id: str) -> bool:
         """
@@ -512,7 +484,7 @@ class PDBProvider(BasePublicationProvider):
 
     def search_by_filters(
         self, filters: PDBSearchFilters
-    ) -> List[PDBStructureMetadata]:
+    ) -> List[StructureMetadata]:
         """
         Search PDB with advanced filters.
 
@@ -520,7 +492,7 @@ class PDBProvider(BasePublicationProvider):
             filters: Search filters
 
         Returns:
-            List[PDBStructureMetadata]: Matching structures
+            List[StructureMetadata]: Matching structures
         """
         # Build complex search query
         query_parts = []

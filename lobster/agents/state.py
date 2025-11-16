@@ -217,9 +217,13 @@ class CustomFeatureAgentState(AgentState):
     ]  # For partial feature creation work before returning to supervisor
 
 
-class ProteinStructureExpertState(AgentState):
+class ProteinStructureVisualizationExpertState(AgentState):
     """
-    State for the protein structure expert agent.
+    State for the protein structure visualization expert agent.
+
+    This agent specializes in fetching protein structures from PDB,
+    creating ChimeraX visualizations, performing structural analysis,
+    and linking structures to omics data.
     """
 
     next: str
@@ -229,11 +233,11 @@ class ProteinStructureExpertState(AgentState):
     structure_data: Dict[str, Any]  # Current protein structure data
     pdb_ids: List[str]  # List of PDB IDs being worked with
     visualization_settings: Dict[str, Any]  # ChimeraX visualization parameters
-    analysis_results: Dict[str, Any]  # Structure analysis results
-    comparison_results: Dict[str, Any]  # RMSD comparison results
-    metadata: Dict[str, Any]  # PDB metadata for structures
-    file_paths: List[str]  # Paths to structure files
-    methodology_parameters: Dict[str, Any]  # Analysis parameters
+    analysis_results: Dict[str, Any]  # Structure analysis results (RMSD, secondary structure, geometry)
+    comparison_results: Dict[str, Any]  # RMSD comparison results between structures
+    metadata: Dict[str, Any]  # PDB metadata (organism, resolution, experiment method)
+    file_paths: List[str]  # Paths to structure files and visualizations
+    methodology_parameters: Dict[str, Any]  # Analysis parameters and settings
     data_context: str  # Structural biology context
     intermediate_outputs: Dict[
         str, Any

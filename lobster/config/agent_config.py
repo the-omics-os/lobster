@@ -159,6 +159,7 @@ class LobsterAgentConfigurator:
         "ms_proteomics_expert_agent",
         "affinity_proteomics_expert_agent",
         "custom_feature_agent",  # META-AGENT for code generation
+        "protein_structure_visualization_expert_agent",  # Protein structure visualization
     ]
 
     # Thinking configuration presets
@@ -188,6 +189,7 @@ class LobsterAgentConfigurator:
             "ms_proteomics_expert_agent": "claude-4-5-haiku",
             "affinity_proteomics_expert_agent": "claude-4-5-haiku",
             "visualization_expert_agent": "claude-4-5-haiku",
+            "protein_structure_visualization_expert_agent": "claude-4-5-haiku",
             "custom_feature_agent": "claude-4-5-sonnet",  # Use Sonnet for code generation
             "thinking": {},  # No thinking in development mode for faster testing
         },
@@ -207,6 +209,7 @@ class LobsterAgentConfigurator:
             "ms_proteomics_expert_agent": "claude-4-sonnet",
             "affinity_proteomics_expert_agent": "claude-4-sonnet",
             "visualization_expert_agent": "claude-4-sonnet",
+            "protein_structure_visualization_expert_agent": "claude-4-sonnet",
             "custom_feature_agent": "claude-4-5-sonnet",  # Use Sonnet 4.5 for code generation
             "thinking": {},  # No thinking configured for production
         },
@@ -224,6 +227,7 @@ class LobsterAgentConfigurator:
             "ms_proteomics_expert_agent": "claude-4-5-sonnet",
             "affinity_proteomics_expert_agent": "claude-4-5-sonnet",
             "visualization_expert_agent": "claude-4-5-sonnet",
+            "protein_structure_visualization_expert_agent": "claude-4-5-sonnet",
             "custom_feature_agent": "claude-4-5-sonnet",  # Use Sonnet 4.5 for code generation
             "thinking": {},  # No thinking configured for godmode
         },
@@ -241,6 +245,7 @@ class LobsterAgentConfigurator:
             "ms_proteomics_expert_agent": "claude-4-5-sonnet",
             "affinity_proteomics_expert_agent": "claude-4-5-sonnet",
             "visualization_expert_agent": "claude-4-5-sonnet",
+            "protein_structure_visualization_expert_agent": "claude-4-5-sonnet",
             "custom_feature_agent": "claude-4-1-opus",  # Use Opus 4.1 for best code generation
             "thinking": {},  # No thinking configured for godmode
         },

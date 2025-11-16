@@ -142,7 +142,15 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
 
         DO NOT delegate for standard analysis (clustering, DE, QC, visualization, literature search).
         """,
-    )
+    ),
+    "protein_structure_visualization_expert_agent": AgentRegistryConfig(
+        name="protein_structure_visualization_expert_agent",
+        display_name="Protein Structure Visualization Expert",
+        description="Handles 3D protein structure visualization, structural analysis, and integration with omics data using PDB and ChimeraX",
+        factory_function="lobster.agents.protein_structure_visualization_expert.protein_structure_visualization_expert",
+        handoff_tool_name="handoff_to_protein_structure_visualization_expert_agent",
+        handoff_tool_description="Assign protein structure visualization tasks (PDB structure fetching, ChimeraX visualization, RMSD calculation, secondary structure analysis, linking structures to gene expression data) to the protein structure visualization expert agent",
+    ),
 }
 
 

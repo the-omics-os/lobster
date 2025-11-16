@@ -151,9 +151,19 @@ class Settings:
             params["provider"] = self.llm_provider
             return params
         except KeyError as k:
-            # Fallback to legacy settings if agent not configured
-            print(f"FAILED TO GET PARAMS: {k}")
-            raise KeyError(f"{k}")
+            # Fallback to data_expert settings with warning
+            print(f"⚠️  WARNING: No configuration found for agent '{agent_name}'")
+            print(f"⚠️  Falling back to data_expert_agent configuration")
+            print(f"⚠️  To fix: Add '{agent_name}' to all profiles in agent_config.py")
+
+            try:
+                # Use data_expert as fallback
+                params = self.agent_configurator.get_llm_params("data_expert_agent")
+                params["provider"] = self.llm_provider
+                return params
+            except KeyError:
+                # If data_expert doesn't exist either, raise original error
+                raise KeyError(f"{k}")
 
     def get_assistant_llm_params(self, agent_name: str) -> Dict[str, Any]:
         """
@@ -168,9 +178,17 @@ class Settings:
         try:
             return self.agent_configurator.get_llm_params(agent_name)
         except KeyError as k:
-            # Fallback to legacy settings if agent not configured
-            print(f"FAILED TO GET PARAMS: {k}")
-            raise KeyError(f"{k}")
+            # Fallback to data_expert settings with warning
+            print(f"⚠️  WARNING: No configuration found for assistant '{agent_name}'")
+            print(f"⚠️  Falling back to data_expert_agent configuration")
+            print(f"⚠️  To fix: Add '{agent_name}' to all profiles in agent_config.py")
+
+            try:
+                # Use data_expert as fallback
+                return self.agent_configurator.get_llm_params("data_expert_agent")
+            except KeyError:
+                # If data_expert doesn't exist either, raise original error
+                raise KeyError(f"{k}")
 
     def get_agent_model_config(self, agent_name: str):
         """
