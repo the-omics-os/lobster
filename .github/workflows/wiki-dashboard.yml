@@ -1,0 +1,74 @@
+name: Update Wiki Dashboard
+
+on:
+  push:
+    paths:
+      - 'wiki/**'
+      - 'scripts/**'
+  schedule:
+    # Run daily at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  update-dashboard:
+    runs-on: ubuntu-latest
+    name: Generate Wiki Health Dashboard
+
+    # Only run on main/dev branches to avoid polluting PRs
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Install core dependencies needed for various checks
+          pip install anndata scanpy numpy pandas requests
+
+      - name: Generate dashboard
+        run: |
+          python scripts/generate_wiki_dashboard.py --output wiki/WIKI_HEALTH_DASHBOARD.md
+
+      - name: Check if dashboard changed
+        id: check_changes
+        run: |
+          git diff --quiet wiki/WIKI_HEALTH_DASHBOARD.md || echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: Commit and push dashboard
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          git config user.name "Wiki Dashboard Bot"
+          git config user.email "bot@omics-os.com"
+          git add wiki/WIKI_HEALTH_DASHBOARD.md
+          git commit -m "chore: update wiki health dashboard [skip ci]"
+          git push
+
+      - name: Upload dashboard artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiki-health-dashboard
+          path: wiki/WIKI_HEALTH_DASHBOARD.md
+          retention-days: 90
+
+      - name: Post summary
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        run: |
+          echo "### Wiki Health Dashboard Updated 📊" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Dashboard available at: \`wiki/WIKI_HEALTH_DASHBOARD.md\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Extract health score from dashboard
+          HEALTH_SCORE=$(grep "Overall Health" wiki/WIKI_HEALTH_DASHBOARD.md | head -1)
+          echo "$HEALTH_SCORE" >> $GITHUB_STEP_SUMMARY
