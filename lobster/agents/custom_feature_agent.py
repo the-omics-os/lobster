@@ -6,7 +6,6 @@ architectural patterns defined in lobster/agents/CLAUDE.md.
 """
 
 import asyncio
-import concurrent.futures
 import os
 import re
 from datetime import date
@@ -943,16 +942,10 @@ Minimum 20 characters required."""
             # 5. Create feature using Claude Code SDK
             logger.info(f"Spawning Claude Code SDK for {feature_type}: {feature_name}")
 
-            # Run async SDK call safely (avoids event loop conflicts)
-            def _run_coro(coro):
-                """Run coroutine in a new event loop (thread-safe)."""
-                return asyncio.run(coro)
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                result = executor.submit(
-                    _run_coro,
-                    create_with_claude_sdk(feature_type, feature_name, requirements)
-                ).result()
+            # Run async SDK call with verbose output
+            result = asyncio.run(
+                create_with_claude_sdk(feature_type, feature_name, requirements, debug=True)
+            )
 
             # 6. Check results
             if not result["success"]:
