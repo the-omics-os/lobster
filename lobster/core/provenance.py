@@ -379,6 +379,35 @@ class ProvenanceTracker:
 
         return lineage
 
+    def get_all_activities(self) -> List[Dict[str, Any]]:
+        """
+        Get all provenance activities recorded in this tracker.
+
+        This method provides direct access to the complete list of activities
+        for inspection, analysis, or export. It's particularly useful for
+        system tests, debugging, and provenance auditing.
+
+        Returns:
+            List[Dict[str, Any]]: List of all activity records, each containing:
+                - id: Unique activity identifier
+                - type: Activity type (e.g., 'data_loading', 'normalization')
+                - agent: Agent that performed the activity
+                - timestamp: ISO format timestamp
+                - inputs: List of input entities
+                - outputs: List of output entities
+                - parameters: Parameters used
+                - description: Human-readable description
+                - ir: Intermediate representation (if available)
+
+        Example:
+            >>> tracker = ProvenanceTracker()
+            >>> # ... perform some operations ...
+            >>> activities = tracker.get_all_activities()
+            >>> print(f"Recorded {len(activities)} activities")
+            Recorded 5 activities
+        """
+        return self.activities
+
     def to_dict(self) -> Dict[str, Any]:
         """
         Export provenance data as dictionary.

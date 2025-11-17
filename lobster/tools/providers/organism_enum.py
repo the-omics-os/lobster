@@ -56,6 +56,7 @@ class OrganismEnum(Enum):
     RHESUS_MACAQUE = "Macaca mulatta"
     CYNOMOLGUS_MACAQUE = "Macaca fascicularis"
     CHIMPANZEE = "Pan troglodytes"
+    GORILLA = "Gorilla gorilla"
 
     # Model Organisms - Non-Mammalian
     ZEBRAFISH = "Danio rerio"
@@ -72,6 +73,7 @@ class OrganismEnum(Enum):
     TOMATO = "Solanum lycopersicum"
     SOYBEAN = "Glycine max"
     TOBACCO = "Nicotiana tabacum"
+    WHEAT = "Triticum aestivum"
 
     # Fungi
     YEAST = "Saccharomyces cerevisiae"

@@ -32,12 +32,13 @@ Lobster AI is a bioinformatics platform that combines specialized AI agents with
 
 ### Prerequisites
 
-- Python 3.12 or higher
+- Python 3.12 or higher (for native installation)
 - An LLM API key (Claude or AWS Bedrock)
+- Docker Desktop (for Docker installation - recommended for Windows users)
 
-### Installation
+### Installation by Platform
 
-#### Option 1: Python Installation (Recommended for Development)
+#### 🍎 macOS Installation (Native - Recommended)
 
 ```bash
 # 1. Clone the repository
@@ -49,19 +50,8 @@ make install
 
 # 3. Configure your API key
 # The .env file is automatically created during installation
-# Edit it with your preferred editor:
-
-# macOS:
 open .env
-
-# Linux:
-nano .env
-
-# Windows (untested):
-notepad .env
-
-# Add your API key to the .env file:
-# ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+# Add your API key: ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
 
 # 4. Activate the virtual environment
 source .venv/bin/activate
@@ -75,7 +65,100 @@ lobster chat --reasoning
 make install-global
 ```
 
-#### Option 2: Docker Installation (Recommended for Production)
+#### 🐧 Ubuntu/Debian Installation (Native)
+
+```bash
+# 1. Install system dependencies (REQUIRED)
+sudo apt update
+sudo apt install -y \
+    build-essential \
+    python3.12-dev \
+    python3.12-venv \
+    libhdf5-dev \
+    libxml2-dev \
+    libxslt-dev \
+    libffi-dev \
+    libssl-dev \
+    libblas-dev \
+    liblapack-dev
+
+# 2. Clone the repository
+git clone https://github.com/the-omics-os/lobster-local.git
+cd lobster-local
+
+# 3. Install Lobster
+make install
+
+# 4. Configure your API key
+nano .env
+# Add your API key: ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+
+# 5. Activate and run
+source .venv/bin/activate
+lobster chat
+```
+
+**Alternative for Ubuntu**: Use the helper script
+```bash
+./install-ubuntu.sh  # Auto-detects and installs system dependencies
+```
+
+#### 🪟 Windows Installation
+
+**Option 1: Docker Desktop (Recommended)**
+
+Docker provides the most reliable experience on Windows:
+
+```powershell
+# 1. Install Docker Desktop for Windows
+# Download from: https://www.docker.com/products/docker-desktop/
+
+# 2. Clone the repository
+git clone https://github.com/the-omics-os/lobster-local.git
+cd lobster-local
+
+# 3. Configure your API key
+copy .env.example .env
+notepad .env
+# Add your API key: ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+
+# 4. Run Lobster in Docker
+docker-compose run --rm lobster-cli
+
+# OR run as web service
+docker-compose up lobster-server
+# Access at http://localhost:8000
+```
+
+**Option 2: Native Installation (Experimental)**
+
+Native Windows installation is currently experimental. For the best experience, use Docker Desktop.
+
+```powershell
+# 1. Install Python 3.12 from python.org
+# Download from: https://www.python.org/downloads/
+
+# 2. Clone the repository
+git clone https://github.com/the-omics-os/lobster-local.git
+cd lobster-local
+
+# 3. Run the Windows installer
+.\install.ps1
+
+# 4. Configure your API key
+notepad .env
+# Add your API key: ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+
+# 5. Activate and run
+.\.venv\Scripts\Activate.ps1
+lobster chat
+```
+
+**Troubleshooting Windows**: See detailed guide at `docs/WINDOWS_INSTALLATION.md`
+
+---
+
+#### 🐳 Docker Installation (Cross-Platform - Production Ready)
 
 **Prerequisites:**
 - Docker 20.10+ and Docker Compose 2.0+ installed
@@ -124,7 +207,7 @@ make docker-compose-down
 - ✅ **Cloud deployment** - Ready for AWS ECS, Kubernetes, or Docker Swarm
 - ✅ **Consistent setup** - Same environment across all machines
 
-📚 **See [Docker Deployment Guide](wiki/42-docker-deployment-guide.md) for:**
+📚 **See [Docker Deployment Guide](wiki/43-docker-deployment-guide.md) for:**
 - AWS ECS/Fargate deployment
 - Kubernetes manifests
 - Volume management strategies
@@ -296,21 +379,47 @@ lobster query --verbose "load and normalize data"
 - Sample ID mapping and validation
 - Automatic visualization generation
 
-### Coming Soon
+### 🗓️ Roadmap & Premium Features
 
-#### **Proteomics Analysis** *(In Development)*
-- Mass spectrometry proteomics (DDA/DIA workflows)
-- Affinity proteomics (Olink panels, antibody arrays)
-- Missing value handling and normalization
-- Pathway enrichment analysis
+Lobster follows an **open-core model**: core transcriptomics capabilities are open source, while advanced features are available in premium tiers.
 
-#### **Multi-Omics Integration** *(In Development)*
-- Cross-platform data integration
-- Multi-modal analysis workflows
+#### **Open-Core (Public - lobster-local)**
+✅ **Available Now:**
+- Single-cell & bulk RNA-seq analysis
+- Literature mining & dataset discovery
+- Research agents & workflow automation
+- Protein structure visualization (v2.4+)
 
-#### **Lobster Cloud** *(In Development)*
-- Scalable cloud computing
-- No local hardware requirements
+#### **Premium Features (Private)**
+
+##### **Q1 2025 - Proteomics Platform** *(In Development)*
+- 🔬 Mass spectrometry proteomics (DDA/DIA workflows)
+- 🧬 Affinity proteomics (Olink panels, antibody arrays)
+- 📊 Missing value handling and normalization
+- 🧪 Peptide-to-protein aggregation
+- 📈 Differential expression analysis
+
+##### **Q2 2025 - AI Agent Toolkit** *(Private Beta)*
+- 🤖 Custom feature agent (code generation with Claude Code SDK)
+- 🛠️ Agent creation templates & frameworks
+- 🔧 Unified agent development patterns
+
+##### **Q2-Q3 2025 - Multi-Omics Integration**
+- 🔗 Cross-platform data integration (RNA + Protein)
+- 🎯 Multi-modal analysis workflows
+- 📊 Integrated visualization suite
+
+##### **Q3 2025 - Lobster Cloud** *(Launching)*
+- ☁️ Scalable cloud computing (AWS Bedrock optimization)
+- 🚀 No local hardware requirements
+- 🔐 HIPAA/GDPR compliance (SOC2 in progress)
+- 💼 Enterprise SaaS ($6K-$30K/year)
+
+**Target:** 50 paying customers, $810K ARR by Month 18
+
+---
+
+**Note:** Premium features are available for enterprise customers and research collaborations. [Contact us](mailto:info@omics-os.com) for access.
 
 ## 🔬 Literature Mining & Metadata
 
@@ -412,9 +521,17 @@ LOBSTER_CLOUD_KEY=your-cloud-api-key
 
 ### Platform Support
 
-- ✅ **macOS**: Fully tested and supported
-- ✅ **Linux**: Tested and supported
-- ⚠️ **Windows**: Not currently tested (may work but no guarantees)
+| Platform | Native Installation | Docker | Status |
+|----------|---------------------|--------|--------|
+| **macOS** | ✅ Fully supported | ✅ Supported | Production ready |
+| **Ubuntu/Debian** | ✅ Supported (system deps required) | ✅ Supported | Production ready |
+| **Other Linux** | ⚠️ Manual setup needed | ✅ Supported | Community tested |
+| **Windows 10/11** | ⚠️ Experimental (use install.ps1) | ✅ Fully supported | Docker recommended |
+
+**Recommended Installation Method:**
+- **macOS/Ubuntu**: Native installation (simpler, faster)
+- **Windows**: Docker Desktop (most reliable)
+- **Enterprise/Production**: Docker (consistent across environments)
 
 ## 📚 Documentation
 

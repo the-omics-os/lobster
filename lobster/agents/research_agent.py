@@ -951,7 +951,7 @@ def research_agent(
                         )
 
                         # Extract methods
-                        methods = content_service.extract_methods_section(content)
+                        methods = content_service.extract_methods(content)
 
                         batch_results.append(
                             {
@@ -1024,7 +1024,7 @@ def research_agent(
                 )
 
                 # Extract methods section
-                methods = content_service.extract_methods_section(content)
+                methods = content_service.extract_methods(content)
 
                 # Apply focus filter if specified
                 if focus and focus.lower() in ["software", "parameters", "statistics"]:

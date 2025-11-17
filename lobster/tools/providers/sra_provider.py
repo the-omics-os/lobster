@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.providers.base_provider import (
     BasePublicationProvider,
@@ -30,7 +31,7 @@ class SRAProviderConfig(BaseModel):
     """Configuration for SRA provider."""
 
     max_results: int = Field(default=20, ge=1, le=100000)
-    email: str = "kevin.yar@omics-os.com"
+    email: str = Field(default_factory=lambda: get_settings().NCBI_EMAIL)
     api_key: Optional[str] = None
     expand_attributes: bool = Field(
         default=False,

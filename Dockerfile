@@ -5,7 +5,7 @@
 # ==============================================================================
 # Stage 1: Base image with system dependencies
 # ==============================================================================
-FROM --platform=linux/amd64 python:3.13-slim AS base
+FROM --platform=linux/amd64 python:3.11-slim AS base
 
 # Install system dependencies required for bioinformatics packages
 # Includes compilers, HDF5, XML parsers, BLAS/LAPACK for numerical computing
@@ -44,6 +44,10 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Upgrade pip and install build tools inside the venv
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel packaging build
+
+# Install PyTorch CPU-only FIRST (avoids 3GB CUDA packages)
+# This must happen before installing the main package to avoid pulling CUDA version
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
 # Install application + dependencies inside venv
 COPY . .
@@ -91,10 +95,10 @@ ENV PYTHONUNBUFFERED=1 \
 LABEL maintainer="Omics-OS <info@omics-os.com>" \
       description="Lobster AI - Multi-Agent Bioinformatics CLI" \
       version="2.5.0" \
-      org.opencontainers.image.source="https://github.com/the-omics-os/lobster" \
-      org.opencontainers.image.documentation="https://github.com/the-omics-os/lobster/wiki"
+      org.opencontainers.image.source="https://github.com/the-omics-os/lobster-local" \
+      org.opencontainers.image.documentation="https://github.com/the-omics-os/lobster-local/wiki"
 
 # Default: Interactive CLI mode
 # Can be overridden with: docker run ... lobster query "..."
 ENTRYPOINT ["lobster"]
-CMD ["chat"]
+CMD ["chat --reasoning"]

@@ -44,7 +44,33 @@ Deep dive into system design
 - [**20 - Data Management**](20-data-management.md) - DataManagerV2 and modality system
 - [**21 - Cloud/Local Architecture**](21-cloud-local-architecture.md) - Hybrid deployment design
 - [**22 - Performance Optimization**](22-performance-optimization.md) - Memory and speed optimizations
+
+### 🔬 **Advanced Features & Internals**
+Deep dives into specialized capabilities and system internals (v2.3+)
+
+**Agent Enhancements:**
+- [**31 - Data Expert Agent Enhancements**](31-data-expert-agent-enhancements.md) - Workspace restoration and session continuity
+- [**32 - Agent-Guided Formula Construction**](32-agent-guided-formula-construction.md) - Interactive formula design for DE analysis
+- [**36 - Supervisor Configuration**](36-supervisor-configuration.md) - Dynamic agent registry and auto-discovery
+- [**45 - Agent Customization Advanced**](45-agent-customization-advanced.md) - Advanced agent development patterns
+
+**Content & Publication Intelligence:**
 - [**37 - Publication Intelligence Deep Dive**](37-publication-intelligence-deep-dive.md) 🆕 - Docling integration & PDF parsing ✨
+- [**38 - Workspace Content Service**](38-workspace-content-service.md) - Type-safe caching for research content
+
+**Infrastructure & Performance:**
+- [**35 - Download Queue System**](35-download-queue-system.md) 🆕 - Robust multi-step data acquisition with JSONL persistence ✨
+- [**39 - Two-Tier Caching Architecture**](39-two-tier-caching-architecture.md) - 30-50x speedup on repeat content access
+- [**43 - Docker Deployment Guide**](43-docker-deployment-guide.md) - Production containerization strategies
+
+**Specialized Features:**
+- [**40 - Protein Structure Visualization**](40-protein-structure-visualization.md) 🆕 - PyMOL integration for 3D protein analysis ✨
+- [**44 - S3 Backend Guide**](44-s3-backend-guide.md) - Cloud storage integration
+- [**46 - Multi-Omics Integration**](46-multiomics-integration.md) - Cross-platform analysis workflows
+
+**Migration & Maintenance:**
+- [**41 - Migration Guides**](41-migration-guides.md) - Upgrade paths and breaking changes
+- [**44 - Maintaining Documentation**](44-maintaining-documentation.md) - Documentation workflows and standards
 
 ### 🎯 **Tutorials & Examples**
 Learn by doing with practical tutorials
@@ -91,6 +117,13 @@ Help and additional resources
 - [Resolve data loading errors](28-troubleshooting.md)
 - [Debug analysis failures](28-troubleshooting.md)
 
+#### **Master Advanced Features**
+- [Understand the two-tier caching system](39-two-tier-caching-architecture.md)
+- [Implement custom download workflows](35-download-queue-system.md)
+- [Optimize publication content access](37-publication-intelligence-deep-dive.md)
+- [Visualize protein structures with PyMOL](40-protein-structure-visualization.md)
+- [Deploy with Docker in production](43-docker-deployment-guide.md)
+
 ## 🌟 Key Features
 
 ### **🤖 AI-Powered Analysis**
@@ -122,7 +155,7 @@ Help and additional resources
 ### **v2.4+ Features** 🆕✨
 - 🧬 **Protein Structure Visualization** - PyMOL integration for 3D protein visualization and analysis ([Details](40-protein-structure-visualization.md))
 - 🔌 **ContentAccessService** - Unified publication/dataset access with 5 specialized providers ([Details](37-publication-intelligence-deep-dive.md))
-- 📥 **Download Queue System** - Robust multi-step data acquisition with JSONL persistence ([Details](25-download-queue-system.md))
+- 📥 **Download Queue System** - Robust multi-step data acquisition with JSONL persistence ([Details](35-download-queue-system.md))
 - ⚡ **Enhanced Two-Tier Caching** - 30-50x speedup on repeat content access (0.2-0.5s cached)
 - 🏗️ **Provider Infrastructure** - Modular, extensible architecture for content retrieval
 

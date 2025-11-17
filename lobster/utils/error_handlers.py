@@ -108,7 +108,7 @@ class RateLimitErrorHandler(ErrorHandler):
             ),
             solutions=[
                 "Wait a few minutes and try again (limits reset periodically)",
-                "Request a rate increase at: https://docs.anthropic.com/en/api/rate-limits",
+                "Request an Anthropic rate increase at: https://docs.anthropic.com/en/api/rate-limits",
                 "Switch to AWS Bedrock (recommended for production): See installation docs",
                 "Contact us for assistance: info@omics-os.com",
             ],

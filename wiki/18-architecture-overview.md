@@ -68,7 +68,7 @@ graph TB
 | Component | Technology | Purpose |
 |-----------|------------|---------|
 | **Agent Framework** | LangGraph | Multi-agent coordination and workflows |
-| **AI Models** | AWS Bedrock, OpenAI | Large language models for agent intelligence |
+| **AI Models** | AWS Bedrock | Large language models for agent intelligence |
 | **Data Management** | AnnData, MuData | Biological data structures and storage |
 | **Bioinformatics** | Scanpy, PyDESeq2 | Scientific analysis algorithms |
 | **CLI Interface** | Typer, Rich | Terminal-based interaction |
@@ -214,7 +214,7 @@ sequenceDiagram
 
 **Total Code Changes**: +462 net lines, -225 lines removed = **+237 lines** overall
 
-See: [Download Queue System (Wiki 25)](./25-download-queue-system.md) for detailed documentation.
+See: [Download Queue System (Wiki 35)](./35-download-queue-system.md) for detailed documentation.
 
 ## Core System Components
 

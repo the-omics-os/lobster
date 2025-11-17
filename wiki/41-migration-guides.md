@@ -201,7 +201,7 @@ Automatically handled for:
 - SRA file retrieval
 - Large multi-file downloads
 
-**Related documentation:** [25-download-queue-system.md](25-download-queue-system.md)
+**Related documentation:** [35-download-queue-system.md](35-download-queue-system.md)
 
 #### 4. Enhanced Two-Tier Caching
 

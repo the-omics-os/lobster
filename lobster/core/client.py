@@ -17,6 +17,8 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 
 from lobster.agents.graph import create_bioinformatics_graph
+from lobster.config.settings import MODEL_PRICING
+from lobster.utils.callbacks import TokenTrackingCallback
 
 # Import shared archive handling utilities
 from lobster.core.archive_utils import (
@@ -82,6 +84,14 @@ class AgentClient(BaseClient):
 
         # Set up callbacks
         self.callbacks = []
+
+        # Initialize token tracking (always enabled)
+        self.token_tracker = TokenTrackingCallback(
+            session_id=self.session_id,
+            pricing_config=MODEL_PRICING
+        )
+        self.callbacks.append(self.token_tracker)
+
         if enable_langfuse and os.getenv("LANGFUSE_PUBLIC_KEY"):
             self.callbacks.append(LangfuseCallback())
         if custom_callbacks:
@@ -161,6 +171,9 @@ class AgentClient(BaseClient):
             if final_response:
                 self.messages.append(AIMessage(content=final_response))
 
+            # Get token usage information
+            token_cost = self.token_tracker.get_latest_cost()
+
             return {
                 "success": True,
                 "response": final_response,
@@ -174,6 +187,7 @@ class AgentClient(BaseClient):
                     else []
                 ),
                 "last_agent": last_agent,  # Include which agent provided the response
+                "token_usage": token_cost,  # Include token cost information
             }
 
         except Exception as e:
@@ -1803,7 +1817,17 @@ class AgentClient(BaseClient):
             "reasoning_enabled": self.enable_reasoning,
             "callbacks_count": len(self.callbacks),
             "redis_health": self._check_redis_health(),
+            "token_usage": self.get_token_usage(),
         }
+
+    def get_token_usage(self) -> Dict[str, Any]:
+        """
+        Get comprehensive token usage and cost information for this session.
+
+        Returns:
+            Dictionary with session totals, per-agent breakdown, and invocation log
+        """
+        return self.token_tracker.get_usage_summary()
 
     def reset(self):
         """Reset the conversation state."""
@@ -1812,6 +1836,9 @@ class AgentClient(BaseClient):
 
     def export_session(self, export_path: Optional[Path] = None) -> Path:
         """Export the current session data."""
+        # Save token usage to workspace
+        self.token_tracker.save_to_workspace(self.data_manager.workspace_path)
+
         if self.data_manager.has_data():
             export_path = self.data_manager.create_data_package(
                 output_dir=str(self.data_manager.exports_dir)
@@ -1828,6 +1855,7 @@ class AgentClient(BaseClient):
             "conversation": self.get_conversation_history(),
             "status": self.get_status(),
             "workspace_status": self.data_manager.get_workspace_status(),
+            "token_usage": self.get_token_usage(),
             "exported_at": datetime.now().isoformat(),
         }
 

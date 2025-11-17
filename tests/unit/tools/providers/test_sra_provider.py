@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pandas as pd
 import pytest
 
+from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.providers.base_provider import (
     DatasetType,
@@ -677,7 +678,7 @@ class TestConfiguration:
         provider = SRAProvider(data_manager=mock_data_manager)
 
         assert provider.config.max_results == 20
-        assert provider.config.email == "kevin.yar@omics-os.com"
+        assert provider.config.email == get_settings().NCBI_EMAIL
         assert provider.config.expand_attributes is False
 
     def test_custom_config(self, mock_data_manager):

@@ -19,6 +19,9 @@ from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Global flag to ensure we only warn about Redis unavailability once
+_REDIS_WARNING_SHOWN = False
+
 
 def get_redis_client() -> Optional[redis.Redis]:
     """
@@ -30,6 +33,8 @@ def get_redis_client() -> Optional[redis.Redis]:
     Returns:
         Redis client if available, None otherwise
     """
+    global _REDIS_WARNING_SHOWN
+
     try:
         client = redis.Redis(
             host=os.getenv("REDIS_HOST", "localhost"),
@@ -42,18 +47,22 @@ def get_redis_client() -> Optional[redis.Redis]:
 
         # Health check
         client.ping()
-        logger.info("Redis connection established for rate limiting")
+        logger.info("✓ Redis connection established for rate limiting")
         return client
 
     except ConnectionError as e:
-        logger.error(f"Redis connection failed: {e}")
-        logger.warning(
-            "⚠️  Rate limiting DISABLED - Redis unavailable. "
-            "API ban risk increased! Check Redis service status."
-        )
+        # Only show warning once during application startup
+        if not _REDIS_WARNING_SHOWN:
+            logger.warning(
+                "⚠️  Redis unavailable - rate limiting disabled. "
+                "For production use, start Redis with: docker-compose up -d redis"
+            )
+            _REDIS_WARNING_SHOWN = True
         return None
     except Exception as e:
-        logger.error(f"Unexpected error connecting to Redis: {e}")
+        if not _REDIS_WARNING_SHOWN:
+            logger.error(f"Unexpected error connecting to Redis: {e}")
+            _REDIS_WARNING_SHOWN = True
         return None
 
 
@@ -89,11 +98,6 @@ class NCBIRateLimiter:
         self.rate_limit = 9 if self.ncbi_api_key else 2
         self.window_seconds = 1
 
-        if self.redis_client is None:
-            logger.warning(
-                "NCBIRateLimiter initialized without Redis - rate limiting disabled"
-            )
-
     def check_rate_limit(self, api_name: str, user_id: str = "default") -> bool:
         """
         Check if request is within rate limit.
@@ -109,11 +113,7 @@ class NCBIRateLimiter:
             True if request should be allowed, False if rate limit exceeded
         """
         if self.redis_client is None:
-            # Redis unavailable - allow request but log warning
-            logger.warning(
-                f"Rate limiting bypassed for {api_name} (Redis unavailable). "
-                "Risk of API ban!"
-            )
+            # Redis unavailable - allow request silently (warning already shown at startup)
             return True  # Fail open - risky but better than blocking all requests
 
         try:

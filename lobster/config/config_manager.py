@@ -221,7 +221,6 @@ def generate_env_template():
 # =============================================================================
 # API KEYS (Required)
 # =============================================================================
-OPENAI_API_KEY="your-openai-api-key-here"
 AWS_BEDROCK_ACCESS_KEY="your-aws-access-key-here"
 AWS_BEDROCK_SECRET_ACCESS_KEY="your-aws-secret-key-here"
 NCBI_API_KEY="your-ncbi-api-key-here"

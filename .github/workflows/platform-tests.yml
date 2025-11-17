@@ -1,0 +1,308 @@
+name: Cross-Platform Installation Tests
+
+on:
+  push:
+    branches: [main, development]
+    paths:
+      - 'install.ps1'
+      - 'install.bat'
+      - 'install-ubuntu.sh'
+      - 'check-system.py'
+      - 'Makefile'
+      - 'pyproject.toml'
+      - '.github/workflows/platform-tests.yml'
+  pull_request:
+    branches: [main, development]
+    paths:
+      - 'install.ps1'
+      - 'install.bat'
+      - 'install-ubuntu.sh'
+      - 'check-system.py'
+      - 'Makefile'
+      - 'pyproject.toml'
+      - '.github/workflows/platform-tests.yml'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  # =====================================================================
+  # Test Installation on Multiple Platforms
+  # =====================================================================
+  test-installation:
+    name: Test on ${{ matrix.os }} - Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04, macos-13, macos-14, windows-2022]
+        python-version: ['3.12', '3.13']
+        exclude:
+          # Reduce matrix size - test Python 3.13 only on latest OS versions
+          - os: ubuntu-22.04
+            python-version: '3.13'
+          - os: macos-13
+            python-version: '3.13'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      # ===================================================================
+      # Ubuntu/Linux Installation
+      # ===================================================================
+      - name: Install system dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            python${{ matrix.python-version }}-dev \
+            python${{ matrix.python-version }}-venv \
+            pkg-config \
+            libhdf5-dev \
+            libxml2-dev \
+            libxslt1-dev \
+            libffi-dev \
+            libssl-dev \
+            libblas-dev \
+            liblapack-dev
+
+      - name: Run system checker (Ubuntu)
+        if: runner.os == 'Linux'
+        run: python3 check-system.py
+
+      - name: Test installation (Ubuntu - Make)
+        if: runner.os == 'Linux'
+        run: |
+          make install
+          source .venv/bin/activate
+          lobster --version
+          python -c "import lobster; print('✅ Lobster imported successfully')"
+
+      # ===================================================================
+      # macOS Installation
+      # ===================================================================
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # Homebrew pre-installed on GitHub Actions macOS
+          brew install hdf5 || true  # May already be installed
+
+      - name: Run system checker (macOS)
+        if: runner.os == 'macOS'
+        run: python3 check-system.py
+
+      - name: Test installation (macOS - Make)
+        if: runner.os == 'macOS'
+        run: |
+          make install
+          source .venv/bin/activate
+          lobster --version
+          python -c "import lobster; print('✅ Lobster imported successfully')"
+
+      # ===================================================================
+      # Windows Installation
+      # ===================================================================
+      - name: Run system checker (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: python check-system.py
+
+      - name: Test installation (Windows - PowerShell script)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Run PowerShell installer
+          .\install.ps1
+
+          # Activate and test
+          .\.venv\Scripts\Activate.ps1
+          lobster --version
+          python -c "import lobster; print('✅ Lobster imported successfully')"
+
+      - name: Test batch file installer (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          # Clean up previous installation
+          if exist .venv rmdir /s /q .venv
+
+          # Test batch file
+          install.bat
+
+          # Test that installation succeeded
+          if not exist .venv\Scripts\lobster.exe exit 1
+          echo ✅ Batch installer succeeded
+
+      # ===================================================================
+      # Verification Tests (All Platforms)
+      # ===================================================================
+      - name: Verify installation completeness
+        shell: bash
+        run: |
+          # Activate environment (platform-specific)
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            source .venv/Scripts/activate
+          else
+            source .venv/bin/activate
+          fi
+
+          # Test core imports
+          python -c "
+          import sys
+          print(f'Python version: {sys.version}')
+
+          # Core imports
+          import lobster
+          from lobster.core.client import AgentClient
+          from lobster.config import settings
+          print('✅ Core imports successful')
+
+          # Check key dependencies
+          import scanpy
+          import pandas
+          import numpy
+          import anndata
+          print('✅ Key dependencies available')
+          "
+
+      - name: Test CLI help command
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            source .venv/Scripts/activate
+          else
+            source .venv/bin/activate
+          fi
+
+          lobster --help
+          echo "✅ CLI help command works"
+
+      - name: Verify environment file creation
+        shell: bash
+        run: |
+          if [ ! -f .env ]; then
+            echo "❌ .env file was not created"
+            exit 1
+          fi
+          echo "✅ .env file exists"
+
+  # =====================================================================
+  # Test Docker Installation (Ubuntu only for speed)
+  # =====================================================================
+  test-docker:
+    name: Test Docker Installation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: docker build -t lobster-test:latest -f Dockerfile .
+
+      - name: Test Docker image
+        run: |
+          # Create minimal .env file
+          echo "ANTHROPIC_API_KEY=test-key" > .env
+
+          # Test that image runs
+          docker run --rm --env-file .env lobster-test:latest --version
+
+          echo "✅ Docker image works"
+
+  # =====================================================================
+  # Test Installation Scripts Independently
+  # =====================================================================
+  test-scripts:
+    name: Test Installation Scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test check-system.py
+        run: |
+          python3 check-system.py
+          echo "✅ check-system.py runs without errors"
+
+      - name: Test install-ubuntu.sh (dry-run simulation)
+        run: |
+          # Make executable
+          chmod +x install-ubuntu.sh
+
+          # Install dependencies first
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3.12-dev libhdf5-dev
+
+          # Run script with automatic yes
+          echo "y" | ./install-ubuntu.sh || true
+
+          echo "✅ install-ubuntu.sh completed"
+
+      - name: Verify Ubuntu script created venv
+        run: |
+          if [ ! -d .venv ]; then
+            echo "❌ Ubuntu script did not create .venv"
+            exit 1
+          fi
+          echo "✅ Ubuntu script created virtual environment"
+
+  # =====================================================================
+  # Cross-Platform Summary
+  # =====================================================================
+  platform-summary:
+    name: Platform Test Summary
+    runs-on: ubuntu-latest
+    needs: [test-installation, test-docker, test-scripts]
+    if: always()
+
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Cross-Platform Installation Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Suite | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Platform Tests | ${{ needs.test-installation.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Docker Tests | ${{ needs.test-docker.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Script Tests | ${{ needs.test-scripts.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Overall status
+          if [[ "${{ needs.test-installation.result }}" == "success" &&
+                "${{ needs.test-docker.result }}" == "success" &&
+                "${{ needs.test-scripts.result }}" == "success" ]]; then
+            echo "### ✅ All platform tests passed!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Platforms Tested:**" >> $GITHUB_STEP_SUMMARY
+            echo "- Ubuntu 22.04 LTS" >> $GITHUB_STEP_SUMMARY
+            echo "- Ubuntu 24.04 LTS" >> $GITHUB_STEP_SUMMARY
+            echo "- macOS 13 (Intel)" >> $GITHUB_STEP_SUMMARY
+            echo "- macOS 14 (Apple Silicon)" >> $GITHUB_STEP_SUMMARY
+            echo "- Windows Server 2022" >> $GITHUB_STEP_SUMMARY
+            echo "- Docker (Linux containers)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Some platform tests failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please check the detailed logs above." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi

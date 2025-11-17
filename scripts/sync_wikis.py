@@ -26,6 +26,9 @@ class WikiSync:
         }
         # Get PAT from environment for HTTPS authentication
         self.wiki_pat = os.environ.get('WIKI_SYNC_PAT', '')
+        # Get git user info from environment
+        self.git_user_name = os.environ.get('GIT_USER_NAME', 'omics-os-bot')
+        self.git_user_email = os.environ.get('GIT_USER_EMAIL', 'bot@omics-os.com')
 
     def inject_pat_token(self, url: str) -> str:
         """Inject PAT token into HTTPS URLs for authentication.
@@ -113,8 +116,8 @@ class WikiSync:
                 return False
 
             # Configure git
-            subprocess.run(['git', 'config', 'user.name', 'cewinharhar'], check=True, cwd=wiki_path)
-            subprocess.run(['git', 'config', 'user.email', 'kevin.yar@outlook.com'], check=True, cwd=wiki_path)
+            subprocess.run(['git', 'config', 'user.name', self.git_user_name], check=True, cwd=wiki_path)
+            subprocess.run(['git', 'config', 'user.email', self.git_user_email], check=True, cwd=wiki_path)
             
             # Remove all existing files (except .git)
             print("Cleaning existing wiki files...")

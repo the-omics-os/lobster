@@ -53,7 +53,7 @@ if ! python -c "import lobster.core.client" 2>/dev/null; then
     echo -e "${RED}Error: Lobster package not found or not properly installed!${NC}"
     echo "Please make sure you have:"
     echo "  1. Installed the lobster package: pip install -e ."
-    echo "  2. Set up your environment variables (OPENAI_API_KEY, etc.)"
+    echo "  2. Set up your environment variables (etc.)"
     echo "  3. Are running from the project root directory"
     exit 1
 fi

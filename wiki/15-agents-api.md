@@ -30,10 +30,14 @@ AGENT_REGISTRY = {
     'singlecell_expert_agent': AgentRegistryConfig(...),
     'bulk_rnaseq_expert_agent': AgentRegistryConfig(...),
     'research_agent': AgentRegistryConfig(...),
-    'method_expert_agent': AgentRegistryConfig(...),
-    'ms_proteomics_expert_agent': AgentRegistryConfig(...),
-    'affinity_proteomics_expert_agent': AgentRegistryConfig(...),
-    'machine_learning_expert_agent': AgentRegistryConfig(...)
+    'metadata_assistant': AgentRegistryConfig(...),
+    'machine_learning_expert_agent': AgentRegistryConfig(...),
+    'visualization_expert_agent': AgentRegistryConfig(...),
+    'custom_feature_agent': AgentRegistryConfig(...),
+    'protein_structure_visualization_expert_agent': AgentRegistryConfig(...)
+    # Coming soon:
+    # 'ms_proteomics_expert_agent': AgentRegistryConfig(...),
+    # 'affinity_proteomics_expert_agent': AgentRegistryConfig(...),
 }
 ```
 
@@ -413,6 +417,8 @@ Create volcano plot for differential expression results.
 
 ## Mass Spectrometry Proteomics Expert
 
+> **⚠️ Status: Coming Soon** - This agent is currently in development and not yet available in the active agent registry. The tools and functionality documented below represent the planned implementation.
+
 Specialized in MS proteomics analysis including DDA/DIA workflows.
 
 ### Factory Function
@@ -467,6 +473,8 @@ def normalize_proteomics_data(
 Normalize proteomics intensity data.
 
 ## Affinity Proteomics Expert
+
+> **⚠️ Status: Coming Soon** - This agent is currently in development and not yet available in the active agent registry. The tools and functionality documented below represent the planned implementation.
 
 Specialized in affinity proteomics including Olink panels and antibody arrays.
 
@@ -804,6 +812,131 @@ Extract computational methods from multiple papers in batch (2-5 papers recommen
 
 **Use case**: Competitive analysis of methods across multiple publications.
 
+## Metadata Assistant Agent
+
+Handles cross-dataset metadata operations, sample ID mapping, and metadata standardization for multi-omics workflows.
+
+### Factory Function
+
+```python
+def metadata_assistant(
+    data_manager: DataManagerV2,
+    callback_handler=None,
+    agent_name: str = "metadata_assistant",
+    handoff_tools: List = None
+)
+```
+
+### Tools
+
+#### map_samples_by_id
+
+```python
+@tool
+def map_samples_by_id(
+    dataset1: str,
+    dataset2: str,
+    strategy: str = "auto"
+) -> str
+```
+
+Map sample IDs between two datasets using intelligent matching strategies.
+
+**Parameters**:
+- `dataset1` (str): First dataset modality name
+- `dataset2` (str): Second dataset modality name
+- `strategy` (str): Matching strategy - "exact", "fuzzy", "pattern", or "auto" (default)
+
+**Returns**:
+- Mapping results with confidence scores and unmatched samples
+
+**Matching Strategies**:
+- **Exact**: Direct string matching
+- **Fuzzy**: Levenshtein distance-based matching
+- **Pattern**: Regular expression pattern matching
+- **Auto**: Tries all strategies and returns best results
+
+**Use Cases**:
+- Multi-omics integration (RNA + protein)
+- Meta-analysis across datasets
+- Sample harmonization
+
+#### read_sample_metadata
+
+```python
+@tool
+def read_sample_metadata(
+    modality_name: str,
+    format: str = "summary",
+    fields: str = None
+) -> str
+```
+
+Read and summarize sample metadata from a dataset.
+
+**Parameters**:
+- `modality_name` (str): Dataset to read metadata from
+- `format` (str): Output format - "summary", "detailed", or "schema"
+- `fields` (str): Comma-separated fields to extract (optional)
+
+**Returns**:
+- Formatted metadata summary or field-specific extraction
+
+#### standardize_sample_metadata
+
+```python
+@tool
+def standardize_sample_metadata(
+    modality_name: str,
+    schema: str = "transcriptomics",
+    controlled_vocabularies: bool = True
+) -> str
+```
+
+Standardize sample metadata to conform to defined schemas.
+
+**Parameters**:
+- `modality_name` (str): Dataset to standardize
+- `schema` (str): Target schema - "transcriptomics", "proteomics", "metabolomics"
+- `controlled_vocabularies` (bool): Apply controlled vocabulary mapping
+
+**Returns**:
+- Standardization report with coverage statistics and warnings
+
+**Features**:
+- Pydantic schema validation
+- Field normalization (e.g., "smoking status" → "smoking_status")
+- Controlled vocabulary mapping
+- Coverage reporting
+
+#### validate_dataset_content
+
+```python
+@tool
+def validate_dataset_content(
+    modality_name: str,
+    required_fields: str,
+    min_samples: int = 6
+) -> str
+```
+
+Validate that dataset contains required metadata fields and sufficient samples.
+
+**Parameters**:
+- `modality_name` (str): Dataset to validate
+- `required_fields` (str): Comma-separated required fields
+- `min_samples` (int): Minimum samples required (default: 6)
+
+**Returns**:
+- Validation report with pass/fail status and recommendations
+
+**Validation Checks**:
+- Sample count adequacy
+- Required field presence
+- Condition balance
+- Duplicate ID detection
+- Platform consistency
+
 ## ~~Method Expert Agent~~ (DEPRECATED v2.2+)
 
 **Deprecated:** Method Expert functionality has been merged into Research Agent with Phase 1 enhancements. The Research Agent now handles all method extraction with automatic PMID/DOI → PDF resolution (70-80% success rate).
@@ -884,6 +1017,316 @@ def create_train_test_splits(
 ```
 
 Create stratified train/test splits for ML.
+
+## Visualization Expert Agent
+
+Handles publication-quality visualization generation using Plotly for interactive plots.
+
+### Factory Function
+
+```python
+def visualization_expert(
+    data_manager: DataManagerV2,
+    callback_handler=None,
+    agent_name: str = "visualization_expert_agent",
+    handoff_tools: List = None
+)
+```
+
+### Tools
+
+#### create_publication_plot
+
+```python
+@tool
+def create_publication_plot(
+    modality_name: str,
+    plot_type: str,
+    **plot_params
+) -> str
+```
+
+Create high-quality, publication-ready plots.
+
+**Parameters**:
+- `modality_name` (str): Dataset to visualize
+- `plot_type` (str): Plot type - "umap", "violin", "heatmap", "dotplot", "volcano", "ma"
+- `**plot_params`: Plot-specific parameters
+
+**Supported Plot Types**:
+- **UMAP**: Dimensionality reduction visualization
+- **Violin**: Gene expression distributions
+- **Heatmap**: Expression patterns across samples
+- **Dotplot**: Marker gene expression
+- **Volcano**: Differential expression results
+- **MA Plot**: Log fold change vs mean expression
+
+**Features**:
+- Interactive Plotly-based plots
+- Scientific color palettes
+- Automatic legend formatting
+- Export-ready layouts
+
+#### customize_plot_style
+
+```python
+@tool
+def customize_plot_style(
+    plot_id: str,
+    style_params: str
+) -> str
+```
+
+Customize appearance of existing plots.
+
+**Parameters**:
+- `plot_id` (str): Plot identifier
+- `style_params` (str): JSON string with style parameters
+
+**Customization Options**:
+- Color schemes
+- Font sizes and families
+- Figure dimensions
+- Legend positioning
+- Axis labels and titles
+
+## Custom Feature Agent
+
+META-AGENT for code generation and custom analysis workflows using Claude Code SDK.
+
+### Factory Function
+
+```python
+def custom_feature_agent(
+    data_manager: DataManagerV2,
+    callback_handler=None,
+    agent_name: str = "custom_feature_agent",
+    handoff_tools: List = None
+)
+```
+
+### Overview
+
+The Custom Feature Agent is a **meta-agent** that uses the Claude Code SDK to generate and execute custom Python code for bioinformatics analyses not covered by existing agents. It can:
+
+- Generate custom analysis scripts
+- Create new visualization types
+- Implement novel algorithms
+- Automate complex workflows
+
+### Tools
+
+#### generate_custom_analysis
+
+```python
+@tool
+def generate_custom_analysis(
+    task_description: str,
+    modality_name: str,
+    output_format: str = "auto"
+) -> str
+```
+
+Generate and execute custom analysis code.
+
+**Parameters**:
+- `task_description` (str): Natural language description of the analysis
+- `modality_name` (str): Dataset to analyze
+- `output_format` (str): Desired output format - "auto", "plot", "table", "stats"
+
+**Returns**:
+- Execution results with generated code and outputs
+
+**Features**:
+- Natural language → Python code generation
+- Automatic dependency detection
+- Error handling and debugging
+- Code optimization suggestions
+
+**Example Use Cases**:
+```python
+# Custom dimensionality reduction
+generate_custom_analysis(
+    "Perform t-SNE with perplexity=50 and visualize with custom color scheme",
+    modality_name="my_dataset"
+)
+
+# Novel statistical test
+generate_custom_analysis(
+    "Run permutation test comparing cluster 1 vs cluster 2 marker genes",
+    modality_name="clustered_data"
+)
+
+# Custom quality metrics
+generate_custom_analysis(
+    "Calculate custom QC metric: ratio of ribosomal to mitochondrial genes",
+    modality_name="raw_counts"
+)
+```
+
+**Safety Features**:
+- Sandboxed execution environment
+- Resource limits (memory, CPU time)
+- Code review before execution
+- Rollback on errors
+
+#### detect_analysis_packages
+
+```python
+@tool
+def detect_analysis_packages(
+    modality_name: str
+) -> str
+```
+
+Detect which analysis packages are best suited for the dataset.
+
+**Returns**:
+- Recommended packages based on data type and structure
+- Installation status of suggested packages
+- Alternative package suggestions
+
+## Protein Structure Visualization Expert
+
+Handles 3D protein structure visualization using PyMOL with support for residue highlighting and custom styling.
+
+### Factory Function
+
+```python
+def protein_structure_visualization_expert(
+    data_manager: DataManagerV2,
+    callback_handler=None,
+    agent_name: str = "protein_structure_visualization_expert_agent",
+    handoff_tools: List = None
+)
+```
+
+### Tools
+
+#### fetch_protein_structure
+
+```python
+@tool
+def fetch_protein_structure(
+    pdb_id: str,
+    format: str = "pdb",
+    cache_dir: str = None
+) -> str
+```
+
+Fetch protein structure from PDB database.
+
+**Parameters**:
+- `pdb_id` (str): PDB accession code (e.g., "1AKE", "4HHB")
+- `format` (str): File format - "pdb", "cif", "mmcif"
+- `cache_dir` (str): Optional cache directory path
+
+**Returns**:
+- Structure metadata with file path and basic properties
+
+#### visualize_with_pymol
+
+```python
+@tool
+def visualize_with_pymol(
+    structure_file: str,
+    mode: str = "batch",
+    style: str = "cartoon",
+    color_by: str = "chain",
+    highlight_residues: str = None,
+    highlight_groups: str = None
+) -> str
+```
+
+Create 3D visualization of protein structure with PyMOL.
+
+**Parameters**:
+- `structure_file` (str): Path to PDB/CIF file
+- `mode` (str): Execution mode - "batch" (script only), "interactive" (launch PyMOL GUI)
+- `style` (str): Representation - "cartoon", "ribbon", "surface", "sticks", "spheres"
+- `color_by` (str): Coloring scheme - "chain", "element", "residue", "hydrophobicity"
+- `highlight_residues` (str): Comma-separated residue numbers to highlight (e.g., "15,42,89")
+- `highlight_groups` (str): Multiple highlight groups (format: "residues|color|style;residues2|color2|style2")
+
+**Highlight Syntax**:
+- Simple list: `"15,42,89"` - single residues
+- Ranges: `"15-20,42-50"` - residue ranges
+- Chain-specific: `"A:15,B:42"` - chain A residue 15, chain B residue 42
+- Multiple groups: `"15,42|red|sticks;100-120|blue|surface"`
+
+**Returns**:
+- PyMOL script path and execution instructions
+
+**Example**:
+```python
+# Visualize with active site highlighted
+visualize_with_pymol(
+    structure_file="1AKE.pdb",
+    mode="batch",
+    style="cartoon",
+    color_by="chain",
+    highlight_residues="15,42,89",
+    highlight_color="red",
+    highlight_style="sticks"
+)
+
+# Multiple highlight groups
+visualize_with_pymol(
+    structure_file="protein.pdb",
+    highlight_groups="15,42|red|sticks;100-120|blue|surface;200,215|green|spheres"
+)
+```
+
+#### analyze_structure
+
+```python
+@tool
+def analyze_structure(
+    structure_file: str,
+    analysis_type: str = "geometry"
+) -> str
+```
+
+Analyze structural properties of protein.
+
+**Parameters**:
+- `structure_file` (str): Path to structure file
+- `analysis_type` (str): Analysis type - "geometry", "secondary_structure", "residue_contacts"
+
+**Returns**:
+- Analysis results with structural metrics
+
+**Analysis Types**:
+- **Geometry**: Radius of gyration, center of mass, chain lengths
+- **Secondary Structure**: α-helix, β-sheet, loop content (requires DSSP)
+- **Residue Contacts**: Inter-residue distance analysis
+
+#### link_structures_to_genes
+
+```python
+@tool
+def link_structures_to_genes(
+    modality_name: str,
+    gene_column: str = "gene_symbol",
+    organism: str = "Homo sapiens"
+) -> str
+```
+
+Link gene symbols in dataset to available protein structures.
+
+**Parameters**:
+- `modality_name` (str): Dataset containing gene information
+- `gene_column` (str): Column with gene symbols
+- `organism` (str): Organism name
+
+**Returns**:
+- Mapping of genes to PDB structures with metadata
+
+**Features**:
+- Automatic PDB search for each gene
+- Structure quality filtering
+- Resolution and coverage reporting
+- Links to PDB database
 
 ## Agent Configuration and Model Management
 

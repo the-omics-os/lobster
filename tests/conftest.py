@@ -291,6 +291,49 @@ def mock_agent_environment(isolated_environment: Path, mocker: MockerFixture) ->
     }
 
 
+@pytest.fixture(scope="session", autouse=True)
+def configure_ssl_for_tests():
+    """Configure SSL certificate handling for test environment.
+
+    Disables SSL verification for external API calls during testing to prevent
+    CERTIFICATE_VERIFY_FAILED errors when hitting NCBI/PubMed/GEO APIs.
+
+    This fixture:
+    - Runs automatically for all tests (autouse=True)
+    - Only affects test environment (not production code)
+    - Restores default SSL context after test session
+
+    Applies to tests marked with @pytest.mark.real_api that make actual
+    network calls to external services.
+
+    Note: This is test-only configuration. Production code should use proper
+    SSL certificate validation via certifi or system certificates.
+
+    Yields:
+        None: SSL context is modified, then restored after tests
+
+    Example:
+        This runs automatically, no explicit usage needed:
+        >>> @pytest.mark.real_api
+        ... def test_pubmed_api():
+        ...     # SSL verification is disabled for this test
+        ...     # No CERTIFICATE_VERIFY_FAILED errors
+        ...     pass
+    """
+    import ssl
+
+    # Save the original SSL context factory
+    original_https_context = ssl._create_default_https_context
+
+    # Set unverified context for test environment
+    ssl._create_default_https_context = ssl._create_unverified_context
+
+    yield
+
+    # Restore original SSL context after tests
+    ssl._create_default_https_context = original_https_context
+
+
 @pytest.fixture(scope="session")
 def dataset_manager():
     """

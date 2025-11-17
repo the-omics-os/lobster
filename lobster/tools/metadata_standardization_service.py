@@ -20,11 +20,19 @@ from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.schemas.metabolomics import MetabolomicsMetadataSchema
 from lobster.core.schemas.metagenomics import MetagenomicsMetadataSchema
-from lobster.core.schemas.proteomics import ProteomicsMetadataSchema
 from lobster.core.schemas.transcriptomics import TranscriptomicsMetadataSchema
 from lobster.tools.metadata_validation_service import MetadataValidationService
 
 logger = logging.getLogger(__name__)
+
+# Proteomics schema (optional - premium feature)
+try:
+    from lobster.core.schemas.proteomics import ProteomicsMetadataSchema
+    PROTEOMICS_AVAILABLE = True
+except ImportError:
+    ProteomicsMetadataSchema = None  # type: ignore
+    PROTEOMICS_AVAILABLE = False
+    logger.warning("Proteomics schema not available - proteomics metadata operations disabled")
 
 
 # =============================================================================
@@ -124,13 +132,18 @@ class MetadataStandardizationService:
             "transcriptomics": TranscriptomicsMetadataSchema,
             "single_cell": TranscriptomicsMetadataSchema,
             "bulk_rna_seq": TranscriptomicsMetadataSchema,
-            "proteomics": ProteomicsMetadataSchema,
-            "mass_spectrometry": ProteomicsMetadataSchema,
-            "affinity": ProteomicsMetadataSchema,
             "metabolomics": MetabolomicsMetadataSchema,
             "metagenomics": MetagenomicsMetadataSchema,
             "microbiome": MetagenomicsMetadataSchema,
         }
+
+        # Add proteomics schemas only if available (premium feature)
+        if PROTEOMICS_AVAILABLE:
+            self.schema_registry.update({
+                "proteomics": ProteomicsMetadataSchema,
+                "mass_spectrometry": ProteomicsMetadataSchema,
+                "affinity": ProteomicsMetadataSchema,
+            })
 
         logger.info("MetadataStandardizationService initialized")
 

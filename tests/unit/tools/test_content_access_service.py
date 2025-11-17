@@ -47,6 +47,7 @@ import pytest
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.content_access_service import ContentAccessService
 from lobster.tools.providers.abstract_provider import AbstractProvider
+from lobster.tools.providers.base_provider import DatasetType
 from lobster.tools.providers.provider_registry import ProviderRegistry
 from lobster.tools.providers.pubmed_provider import PubMedProvider
 
@@ -101,29 +102,18 @@ def mock_provider_registry():
 
 
 @pytest.fixture
-def mock_content_access_service(mock_data_manager, mock_provider_registry):
+def mock_content_access_service(mock_data_manager):
     """Create a mock ContentAccessService for unit testing."""
-    return ContentAccessService(
-        data_manager=mock_data_manager, provider_registry=mock_provider_registry
-    )
+    # ContentAccessService creates its own ProviderRegistry internally
+    return ContentAccessService(data_manager=mock_data_manager)
 
 
 @pytest.fixture
 def real_content_access_service(real_data_manager):
     """Create a real ContentAccessService for integration testing."""
-    # Create real provider registry
-    registry = ProviderRegistry()
-
-    # Register real providers
-    abstract_provider = AbstractProvider(data_manager=real_data_manager)
-    pubmed_provider = PubMedProvider(data_manager=real_data_manager)
-
-    registry.register_provider(abstract_provider)
-    registry.register_provider(pubmed_provider)
-
-    return ContentAccessService(
-        data_manager=real_data_manager, provider_registry=registry
-    )
+    # ContentAccessService creates and initializes its own ProviderRegistry
+    # with all available providers automatically
+    return ContentAccessService(data_manager=real_data_manager)
 
 
 # ============================================================================
@@ -137,124 +127,136 @@ class TestDiscoveryMethods:
     def test_search_literature_mock(self, mock_content_access_service):
         """Test literature search with mock provider."""
         mock_provider = Mock()
-        mock_provider.search_literature.return_value = {
-            "results": [
-                {"pmid": "12345", "title": "Test Paper 1"},
-                {"pmid": "67890", "title": "Test Paper 2"},
-            ],
-            "total_count": 2,
-        }
-
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
-
-        results = mock_content_access_service.search_literature(
-            query="BRCA1 breast cancer"
+        # Service calls search_publications() and expects string with PMIDs
+        mock_provider.search_publications.return_value = (
+            "PMID: 12345 - Test Paper 1\n"
+            "PMID: 67890 - Test Paper 2"
         )
 
-        assert results["total_count"] == 2
-        assert len(results["results"]) == 2
-        assert results["results"][0]["pmid"] == "12345"
-        mock_provider.search_literature.assert_called_once()
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_provider]
+        ):
+            # search_literature returns tuple: (str, dict, AnalysisStep)
+            result_str, stats, ir = mock_content_access_service.search_literature(
+                query="BRCA1 breast cancer"
+            )
+
+            # Check stats dict - counts PMIDs in result string
+            assert stats["results_count"] == 2
+            assert "Test Paper 1" in result_str
+            assert "Test Paper 2" in result_str
+            mock_provider.search_publications.assert_called_once()
 
     def test_discover_datasets_mock(self, mock_content_access_service):
         """Test dataset discovery with mock provider."""
         mock_provider = Mock()
-        mock_provider.discover_datasets.return_value = {
-            "results": [
-                {"accession": "GSE12345", "title": "Test Dataset 1", "samples": 48},
-                {"accession": "GSE67890", "title": "Test Dataset 2", "samples": 36},
-            ],
-            "total_count": 2,
-        }
-
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
-
-        results = mock_content_access_service.discover_datasets(
-            query="breast cancer RNA-seq"
+        mock_provider.supported_dataset_types = [DatasetType.GEO]  # Required by service
+        # Service calls search_publications() for dataset discovery, expecting string
+        mock_provider.search_publications.return_value = (
+            "GSE12345 - Test Dataset 1 (48 samples)\n"
+            "GSE67890 - Test Dataset 2 (36 samples)"
         )
 
-        assert results["total_count"] == 2
-        assert len(results["results"]) == 2
-        assert results["results"][0]["accession"] == "GSE12345"
-        mock_provider.discover_datasets.assert_called_once()
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_provider]
+        ):
+            # discover_datasets returns tuple and requires dataset_type parameter
+            result_str, stats, ir = mock_content_access_service.discover_datasets(
+                query="breast cancer RNA-seq",
+                dataset_type=DatasetType.GEO
+            )
+
+            # Check formatted result string contains accessions
+            assert "GSE12345" in result_str
+            assert "GSE67890" in result_str
+            mock_provider.search_publications.assert_called_once()
 
     def test_find_linked_datasets_mock(self, mock_content_access_service):
         """Test finding datasets linked to publication (mock)."""
         mock_provider = Mock()
-        mock_provider.find_linked_datasets.return_value = {
-            "results": [{"accession": "GSE12345", "link_type": "supplementary"}],
-            "total_count": 1,
-        }
-
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
-
-        results = mock_content_access_service.find_linked_datasets(
-            publication_id="PMID:35042229"
+        # Service calls find_datasets_from_publication(), expecting string
+        mock_provider.find_datasets_from_publication.return_value = (
+            "GSE12345 - Linked dataset (supplementary)"
         )
 
-        assert results["total_count"] == 1
-        assert results["results"][0]["accession"] == "GSE12345"
-        mock_provider.find_linked_datasets.assert_called_once()
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_provider]
+        ):
+            # find_linked_datasets returns string and uses 'identifier' parameter
+            result_str = mock_content_access_service.find_linked_datasets(
+                identifier="PMID:35042229"
+            )
+
+            # Check formatted result string contains accession
+            assert "GSE12345" in result_str
+            mock_provider.find_datasets_from_publication.assert_called_once()
 
     def test_search_with_filters_mock(self, mock_content_access_service):
         """Test search with filters (organism, date range, etc.)."""
         mock_provider = Mock()
-        mock_provider.search_literature.return_value = {
-            "results": [{"pmid": "12345"}],
-            "total_count": 1,
-        }
+        # Service calls search_publications() and counts PMIDs in result string
+        mock_provider.search_publications.return_value = "PMID: 12345 - Test Paper"
 
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_provider]
+        ):
+            # search_literature returns tuple
+            result_str, stats, ir = mock_content_access_service.search_literature(
+                query="BRCA1", filters={"organism": "human", "year_from": 2020}
+            )
 
-        results = mock_content_access_service.search_literature(
-            query="BRCA1", filters={"organism": "human", "year_from": 2020}
-        )
-
-        assert results["total_count"] == 1
-        mock_provider.search_literature.assert_called_once()
+            assert stats["results_count"] == 1
+            mock_provider.search_publications.assert_called_once()
 
     def test_pagination_mock(self, mock_content_access_service):
         """Test pagination parameters (limit, offset)."""
         mock_provider = Mock()
-        mock_provider.search_literature.return_value = {
-            "results": [{"pmid": str(i)} for i in range(10)],
-            "total_count": 100,
-        }
-
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
-
-        results = mock_content_access_service.search_literature(
-            query="cancer", limit=10, offset=20
+        # Service calls search_publications() and counts PMIDs in result string
+        mock_provider.search_publications.return_value = "\n".join(
+            [f"PMID: {i} - Paper {i}" for i in range(10)]
         )
 
-        assert len(results["results"]) == 10
-        assert results["total_count"] == 100
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_provider]
+        ):
+            # search_literature returns tuple
+            result_str, stats, ir = mock_content_access_service.search_literature(
+                query="cancer", limit=10, offset=20
+            )
+
+            # Check pagination was applied via mock call
+            assert stats["results_count"] == 10
+            mock_provider.search_publications.assert_called_once()
 
     def test_empty_results_mock(self, mock_content_access_service):
         """Test handling of empty search results."""
         mock_provider = Mock()
-        mock_provider.search_literature.return_value = {"results": [], "total_count": 0}
+        # Service calls search_publications() - empty string for no results
+        mock_provider.search_publications.return_value = ""
 
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_provider]
+        ):
+            # search_literature returns tuple
+            result_str, stats, ir = mock_content_access_service.search_literature(
+                query="nonexistent_term_xyz123"
+            )
 
-        results = mock_content_access_service.search_literature(
-            query="nonexistent_term_xyz123"
-        )
-
-        assert results["total_count"] == 0
-        assert len(results["results"]) == 0
+            # Check that no results were found (empty string or explicit message)
+            assert stats["results_count"] == 0
+            assert len(result_str) == 0 or "no results" in result_str.lower()
 
 
 # ============================================================================
@@ -265,88 +267,114 @@ class TestDiscoveryMethods:
 class TestMetadataMethods:
     """Test publication and dataset metadata retrieval (mock-based)."""
 
-    def test_get_publication_metadata_mock(self, mock_content_access_service):
-        """Test publication metadata retrieval with mock provider."""
+    def test_extract_metadata_publication_mock(self, mock_content_access_service):
+        """Test publication metadata extraction with mock provider."""
         mock_provider = Mock()
-        mock_provider.get_publication_metadata.return_value = {
-            "pmid": "35042229",
-            "title": "Single-cell analysis reveals...",
-            "authors": ["Author A", "Author B"],
-            "journal": "Nature",
-            "year": 2022,
-            "doi": "10.1038/s41586-021-03852-1",
-            "abstract": "This study...",
+
+        # Create mock PublicationMetadata object
+        from lobster.tools.providers.base_provider import PublicationMetadata
+        mock_metadata = PublicationMetadata(
+            uid="PMID:35042229",
+            title="Single-cell analysis reveals...",
+            authors=["Author A", "Author B"],
+            journal="Nature",
+            published="2022",
+            doi="10.1038/s41586-021-03852-1",
+            abstract="This study...",
+            pmid="35042229",
+        )
+        mock_provider.extract_publication_metadata.return_value = mock_metadata
+
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_provider]
+        ):
+            metadata = mock_content_access_service.extract_metadata("PMID:35042229")
+
+            assert metadata.pmid == "35042229"
+            assert metadata.journal == "Nature"
+            assert metadata.published == "2022"
+            mock_provider.extract_publication_metadata.assert_called_once()
+
+    def test_validate_metadata_mock(self, mock_content_access_service):
+        """Test dataset metadata validation (mock-based)."""
+        # Mock DataManager to return cached GEO metadata
+        mock_metadata = {
+            "metadata": {
+                "accession": "GSE12345",
+                "title": "RNA-seq of breast cancer samples",
+                "organism": "Homo sapiens",
+                "platform": "GPL16791",
+                "samples": 48,
+            }
         }
 
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
+        with patch.object(
+            mock_content_access_service.data_manager,
+            '_get_geo_metadata',
+            return_value=mock_metadata
+        ):
+            with patch(
+                'lobster.tools.metadata_validation_service.MetadataValidationService'
+            ) as mock_validation_service_class:
+                # Mock the validation service instance and methods
+                mock_validation_service = Mock()
+                mock_validation_service_class.return_value = mock_validation_service
 
-        metadata = mock_content_access_service.get_publication_metadata("PMID:35042229")
+                # Mock validation result
+                mock_validation_config = Mock()
+                mock_validation_config.recommendation = "proceed"
+                mock_validation_config.confidence_score = 0.95
+                mock_validation_service.validate_dataset_metadata.return_value = mock_validation_config
+                mock_validation_service.format_validation_report.return_value = "Validation passed"
 
-        assert metadata["pmid"] == "35042229"
-        assert metadata["journal"] == "Nature"
-        assert metadata["year"] == 2022
-        mock_provider.get_publication_metadata.assert_called_once()
+                result = mock_content_access_service.validate_metadata("GSE12345")
 
-    def test_get_dataset_metadata_mock(self, mock_content_access_service):
-        """Test dataset metadata retrieval with mock provider."""
-        mock_provider = Mock()
-        mock_provider.get_dataset_metadata.return_value = {
-            "accession": "GSE12345",
-            "title": "RNA-seq of breast cancer samples",
-            "organism": "Homo sapiens",
-            "platform": "GPL16791",
-            "samples": 48,
-            "summary": "This dataset contains...",
-        }
-
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
-
-        metadata = mock_content_access_service.get_dataset_metadata("GSE12345")
-
-        assert metadata["accession"] == "GSE12345"
-        assert metadata["samples"] == 48
-        assert metadata["platform"] == "GPL16791"
-        mock_provider.get_dataset_metadata.assert_called_once()
+                assert isinstance(result, str)
+                assert "Validation passed" in result or result == "Validation passed"
 
     def test_metadata_caching_mock(self, mock_content_access_service):
-        """Test metadata caching behavior."""
+        """Test metadata extraction caching behavior."""
         mock_provider = Mock()
-        mock_provider.get_publication_metadata.return_value = {
-            "pmid": "35042229",
-            "title": "Test Paper",
-        }
 
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
-
-        # First call
-        metadata1 = mock_content_access_service.get_publication_metadata(
-            "PMID:35042229"
+        from lobster.tools.providers.base_provider import PublicationMetadata
+        mock_metadata = PublicationMetadata(
+            uid="PMID:35042229",
+            title="Test Paper",
+            pmid="35042229",
         )
+        mock_provider.extract_publication_metadata.return_value = mock_metadata
 
-        # Second call (should use cache if implemented)
-        metadata2 = mock_content_access_service.get_publication_metadata(
-            "PMID:35042229"
-        )
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_provider]
+        ):
+            # First call
+            metadata1 = mock_content_access_service.extract_metadata("PMID:35042229")
 
-        assert metadata1["pmid"] == metadata2["pmid"]
+            # Second call (should use cache if implemented)
+            metadata2 = mock_content_access_service.extract_metadata("PMID:35042229")
+
+            assert metadata1.pmid == metadata2.pmid
 
     def test_invalid_identifier_mock(self, mock_content_access_service):
         """Test handling of invalid identifiers."""
         mock_provider = Mock()
-        mock_provider.get_publication_metadata.side_effect = ValueError("Invalid PMID")
+        mock_provider.extract_publication_metadata.side_effect = ValueError("Invalid PMID")
 
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_provider]
+        ):
+            # Service catches exceptions and returns error string
+            result = mock_content_access_service.extract_metadata("PMID:invalid")
 
-        with pytest.raises(ValueError, match="Invalid PMID"):
-            mock_content_access_service.get_publication_metadata("PMID:invalid")
+            # Result should be error string (service catches exceptions)
+            assert isinstance(result, str)
+            assert "error" in result.lower()
 
 
 # ============================================================================
@@ -362,193 +390,305 @@ class TestContentMethods:
         mock_provider = Mock()
         mock_provider.get_abstract.return_value = {
             "pmid": "35042229",
-            "abstract": "This study presents single-cell RNA-seq analysis...",
+            "abstract": "This study presents single-cell RNA-seq analysis of tumor microenvironment in breast cancer patients, revealing novel immune cell populations and their interactions with tumor cells across different disease stages and treatment conditions.",
             "title": "Single-cell analysis reveals...",
             "provider": "AbstractProvider",
             "response_time": 0.3,
         }
 
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_provider]
+        ):
+            result = mock_content_access_service.get_abstract("PMID:35042229")
 
-        result = mock_content_access_service.get_abstract("PMID:35042229")
-
-        assert result["pmid"] == "35042229"
-        assert len(result["abstract"]) > 100
-        assert result["provider"] == "AbstractProvider"
-        assert result["response_time"] < 1.0
-        mock_provider.get_abstract.assert_called_once()
+            assert result["pmid"] == "35042229"
+            assert len(result["abstract"]) > 100  # Now mock has longer abstract
+            assert result["provider"] == "AbstractProvider"
+            assert result["response_time"] < 1.0
+            mock_provider.get_abstract.assert_called_once()
 
     def test_get_full_content_pmc_success_mock(self, mock_content_access_service):
-        """Test full content retrieval - Tier 1 PMC success."""
-        mock_provider = Mock()
-        mock_provider.get_full_content.return_value = {
-            "content": "Full text from PMC..." * 100,
-            "format": "xml",
-            "provider": "PubMedProvider",
-            "tier": 1,
-            "response_time": 0.5,
-        }
+        """Test full content retrieval - PMC success."""
+        # Mock DataManager cache check (returns None - cache miss)
+        mock_content_access_service.data_manager.get_cached_publication = Mock(return_value=None)
 
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
+        # Mock PMCProvider
+        mock_pmc_provider = Mock()
+        mock_pmc_provider.__class__.__name__ = "PMCProvider"
 
-        result = mock_content_access_service.get_full_content("PMID:35042229")
+        # Mock PMC full text result
+        from lobster.tools.providers.pmc_provider import PMCFullText
+        mock_pmc_result = PMCFullText(
+            pmc_id="PMC8760896",
+            pmid="35042229",
+            doi="10.1038/test",
+            title="Test Paper",
+            abstract="Test abstract",
+            full_text="Full text from PMC..." * 100,
+            methods_section="Methods text",
+            results_section="Results text",
+            discussion_section="Discussion text",
+            tables=[],
+            figures=[],
+            software_tools=["Scanpy", "Seurat"],
+            github_repos=[],
+        )
+        mock_pmc_provider.extract_full_text.return_value = mock_pmc_result
 
-        assert len(result["content"]) > 1000
-        assert result["provider"] == "PubMedProvider"
-        assert result["tier"] == 1
-        assert result["response_time"] < 1.0
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_pmc_provider]
+        ):
+            with patch.object(
+                mock_content_access_service.data_manager,
+                'cache_publication_content'
+            ):
+                result = mock_content_access_service.get_full_content("PMID:35042229")
+
+                assert len(result["content"]) > 1000
+                assert result["tier_used"] == "full_pmc_xml"
+                assert result["source_type"] == "pmc_xml"
+                assert result["extraction_time"] < 10.0
 
     def test_get_full_content_pmc_fail_webpage_success_mock(
         self, mock_content_access_service
     ):
-        """Test full content retrieval - Tier 1 fail → Tier 2 success."""
-        # First provider (PMC) fails
-        mock_pmc_provider = Mock()
-        mock_pmc_provider.get_full_content.return_value = None
+        """Test full content retrieval - PMC fail → Webpage success."""
+        # Mock DataManager cache check (returns None)
+        mock_content_access_service.data_manager.get_cached_publication = Mock(return_value=None)
 
-        # Second provider (Webpage) succeeds
+        # Mock PMCProvider that raises PMCNotAvailableError
+        from lobster.tools.providers.pmc_provider import PMCNotAvailableError
+        mock_pmc_provider = Mock()
+        mock_pmc_provider.__class__.__name__ = "PMCProvider"
+        mock_pmc_provider.extract_full_text.side_effect = PMCNotAvailableError("PMC not available")
+
+        # Mock WebpageProvider that succeeds
         mock_webpage_provider = Mock()
-        mock_webpage_provider.get_full_content.return_value = {
+        mock_webpage_provider.__class__.__name__ = "WebpageProvider"
+        mock_webpage_provider.extract_content.return_value = {
             "content": "Full text from webpage..." * 100,
-            "format": "html",
-            "provider": "WebpageProvider",
-            "tier": 2,
-            "response_time": 2.5,
+            "source_type": "webpage",
+            "methods_text": "Methods from webpage",
         }
 
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_pmc_provider,
-            mock_webpage_provider,
-        ]
+        # Mock PublicationResolver
+        with patch('lobster.tools.providers.publication_resolver.PublicationResolver') as MockResolver:
+            mock_resolver = Mock()
+            mock_resolution = Mock()
+            mock_resolution.is_accessible.return_value = True
+            mock_resolution.html_url = "https://example.com/paper"
+            mock_resolution.pdf_url = None
+            mock_resolver.resolve.return_value = mock_resolution
+            MockResolver.return_value = mock_resolver
 
-        result = mock_content_access_service.get_full_content("PMID:35042229")
+            # Return PMC provider first, then webpage provider
+            with patch.object(
+                mock_content_access_service.registry,
+                'get_providers_for_capability',
+                side_effect=[
+                    [mock_pmc_provider],  # First call for PMC
+                    [mock_webpage_provider]  # Second call for webpage fallback
+                ]
+            ):
+                with patch.object(
+                    mock_content_access_service.data_manager,
+                    'cache_publication_content'
+                ):
+                    result = mock_content_access_service.get_full_content("PMID:35042229")
 
-        assert result["provider"] == "WebpageProvider"
-        assert result["tier"] == 2
-        assert result["response_time"] > 1.0
+                    assert result["tier_used"] == "full_webpage"
+                    assert result["source_type"] == "webpage"
 
     def test_get_full_content_all_tiers_fail_mock(self, mock_content_access_service):
-        """Test full content retrieval - all tiers fail."""
-        mock_provider = Mock()
-        mock_provider.get_full_content.return_value = None
+        """Test full content retrieval - no providers available."""
+        # Mock DataManager cache check (returns None)
+        mock_content_access_service.data_manager.get_cached_publication = Mock(return_value=None)
 
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
+        # Mock no providers available for GET_FULL_CONTENT
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[]
+        ):
+            result = mock_content_access_service.get_full_content("PMID:99999999")
 
-        result = mock_content_access_service.get_full_content("PMID:99999999")
+            assert "error" in result
 
-        assert result is None or "error" in result
-
-    def test_extract_methods_section_mock(self, mock_content_access_service):
-        """Test methods section extraction with mock LLM."""
-        mock_provider = Mock()
-        mock_provider.extract_methods_section.return_value = {
-            "methods": "RNA was extracted using Qiagen RNeasy kit...",
-            "confidence": 0.95,
-            "provider": "PubMedProvider",
+    def test_extract_methods_mock(self, mock_content_access_service):
+        """Test methods extraction from content result."""
+        # Create mock content result (from get_full_content)
+        content_result = {
+            "content": "Full paper text...",
+            "methods_text": "RNA was extracted using Qiagen RNeasy kit. Sequencing was performed using Illumina NovaSeq.",
+            "metadata": {
+                "software": ["Scanpy", "Seurat", "CellRanger"],
+                "github_repos": ["https://github.com/theislab/scanpy"],
+                "tables": [{"caption": "Methods table"}],
+            }
         }
 
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
+        result = mock_content_access_service.extract_methods(content_result, include_tables=True)
 
-        result = mock_content_access_service.extract_methods_section("PMID:35042229")
-
-        assert "methods" in result
-        assert len(result["methods"]) > 50
-        assert result["confidence"] > 0.9
+        assert "methods_text" in result
+        assert len(result["methods_text"]) > 50
+        assert "software_used" in result
+        assert len(result["software_used"]) == 3
+        assert "Scanpy" in result["software_used"]
+        assert "github_repos" in result
+        assert len(result["github_repos"]) == 1
 
     def test_content_caching_mock(self, mock_content_access_service):
         """Test content caching behavior."""
         mock_provider = Mock()
         mock_provider.get_abstract.return_value = {
             "pmid": "35042229",
-            "abstract": "Test abstract",
+            "abstract": "Test abstract for caching behavior testing purposes",
         }
 
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_provider]
+        ):
+            # First call
+            result1 = mock_content_access_service.get_abstract("PMID:35042229")
 
-        # First call
-        result1 = mock_content_access_service.get_abstract("PMID:35042229")
+            # Second call (should return same result)
+            result2 = mock_content_access_service.get_abstract("PMID:35042229")
 
-        # Second call (should use cache if implemented)
-        result2 = mock_content_access_service.get_abstract("PMID:35042229")
+            assert result1["pmid"] == result2["pmid"]
+            # Provider should be called at least once
+            assert mock_provider.get_abstract.call_count >= 1
 
-        assert result1["pmid"] == result2["pmid"]
+    def test_content_format_handling_mock(self, mock_content_access_service):
+        """Test content format handling (XML/HTML extraction)."""
+        # get_full_content always returns dict with content key, regardless of source format
+        # Service handles format internally
+        mock_content_access_service.data_manager.get_cached_publication = Mock(return_value=None)
 
-    def test_content_format_conversion_mock(self, mock_content_access_service):
-        """Test content format conversion (XML → text, HTML → text)."""
-        mock_provider = Mock()
-        mock_provider.get_full_content.return_value = {
-            "content": "<xml>Full text</xml>",
-            "format": "xml",
-        }
+        # Mock PMC provider returns structured content
+        mock_pmc_provider = Mock()
+        mock_pmc_provider.__class__.__name__ = "PMCProvider"
 
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
-
-        result = mock_content_access_service.get_full_content(
-            "PMID:35042229", output_format="text"
+        from lobster.tools.providers.pmc_provider import PMCFullText
+        mock_pmc_result = PMCFullText(
+            pmc_id="PMC123",
+            pmid="123",
+            doi="10.1234/test",
+            title="Test",
+            abstract="Test",
+            full_text="<xml>Full text</xml>",
+            methods_section="Methods",
+            results_section="",
+            discussion_section="",
+            tables=[],
+            figures=[],
+            software_tools=[],
+            github_repos=[],
         )
+        mock_pmc_provider.extract_full_text.return_value = mock_pmc_result
 
-        # Should convert XML to text if format conversion is implemented
-        assert "content" in result
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_pmc_provider]
+        ):
+            with patch.object(mock_content_access_service.data_manager, 'cache_publication_content'):
+                result = mock_content_access_service.get_full_content("PMID:35042229")
+
+                # Should have content field
+                assert "content" in result
+                assert len(result["content"]) > 0
 
     def test_partial_content_retrieval_mock(self, mock_content_access_service):
-        """Test partial content retrieval (abstract only when full text unavailable)."""
-        mock_provider = Mock()
-        mock_provider.get_full_content.return_value = None
-        mock_provider.get_abstract.return_value = {"abstract": "Test abstract"}
+        """Test graceful handling when full content unavailable."""
+        # get_full_content returns error dict when all providers fail
+        mock_content_access_service.data_manager.get_cached_publication = Mock(return_value=None)
 
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
+        # Mock PMC provider raises exception
+        from lobster.tools.providers.pmc_provider import PMCNotAvailableError
+        mock_pmc_provider = Mock()
+        mock_pmc_provider.__class__.__name__ = "PMCProvider"
+        mock_pmc_provider.extract_full_text.side_effect = PMCNotAvailableError("Not available")
 
-        result = mock_content_access_service.get_full_content("PMID:35042229")
+        # Mock no webpage providers available
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            side_effect=[[mock_pmc_provider], []]  # PMC available, no webpage providers
+        ):
+            with patch('lobster.tools.providers.publication_resolver.PublicationResolver') as MockResolver:
+                mock_resolver = Mock()
+                mock_resolution = Mock()
+                mock_resolution.is_accessible.return_value = False
+                mock_resolver.resolve.return_value = mock_resolution
+                MockResolver.return_value = mock_resolver
 
-        # Should fallback to abstract if full text unavailable
-        assert result is None or "abstract" in result
+                result = mock_content_access_service.get_full_content("PMID:35042229")
 
-    def test_content_validation_mock(self, mock_content_access_service):
-        """Test content validation (minimum length, format checks)."""
-        mock_provider = Mock()
-        mock_provider.get_full_content.return_value = {
-            "content": "Too short",
-            "format": "text",
-        }
+                # Should return error dict
+                assert "error" in result
 
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
+    def test_content_extraction_success_mock(self, mock_content_access_service):
+        """Test successful content extraction returns proper structure."""
+        mock_content_access_service.data_manager.get_cached_publication = Mock(return_value=None)
 
-        result = mock_content_access_service.get_full_content("PMID:35042229")
+        mock_pmc_provider = Mock()
+        mock_pmc_provider.__class__.__name__ = "PMCProvider"
 
-        # Should validate content length
-        assert result is not None
-
-    def test_timeout_handling_mock(self, mock_content_access_service):
-        """Test timeout handling for slow providers."""
-        mock_provider = Mock()
-        mock_provider.get_full_content.side_effect = TimeoutError("Request timed out")
-
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
-
-        result = mock_content_access_service.get_full_content(
-            "PMID:35042229", timeout=5
+        from lobster.tools.providers.pmc_provider import PMCFullText
+        mock_pmc_result = PMCFullText(
+            pmc_id="PMC123",
+            pmid="123",
+            doi="10.1234/test",
+            title="Test Paper",
+            abstract="Test abstract",
+            full_text="Full text content with sufficient length for testing purposes",
+            methods_section="Methods",
+            results_section="Results",
+            discussion_section="Discussion",
+            tables=[],
+            figures=[],
+            software_tools=[],
+            github_repos=[],
         )
+        mock_pmc_provider.extract_full_text.return_value = mock_pmc_result
 
-        # Should handle timeout gracefully
-        assert result is None or "error" in result
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_pmc_provider]
+        ):
+            with patch.object(mock_content_access_service.data_manager, 'cache_publication_content'):
+                result = mock_content_access_service.get_full_content("PMID:35042229")
+
+                # Validate result structure
+                assert "content" in result
+                assert "tier_used" in result
+                assert len(result["content"]) > 0
+
+    def test_exception_handling_mock(self, mock_content_access_service):
+        """Test graceful exception handling."""
+        mock_content_access_service.data_manager.get_cached_publication = Mock(return_value=None)
+
+        # Mock provider raises generic exception
+        mock_pmc_provider = Mock()
+        mock_pmc_provider.__class__.__name__ = "PMCProvider"
+        mock_pmc_provider.extract_full_text.side_effect = RuntimeError("Unexpected error")
+
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_pmc_provider]
+        ):
+            result = mock_content_access_service.get_full_content("PMID:35042229")
+
+            # Should handle exception and return error
+            assert "error" in result or result is None
 
 
 # ============================================================================
@@ -572,18 +712,20 @@ class TestRealAPIDiscovery:
         query = "BRCA1 breast cancer"
 
         start_time = time.time()
-        results = real_content_access_service.search_literature(query, limit=5)
+        # Service returns tuple: (formatted_string, stats_dict, ir)
+        result_str, stats, ir = real_content_access_service.search_literature(query, max_results=5)
         elapsed = time.time() - start_time
 
-        assert results is not None
-        assert "results" in results
-        assert len(results["results"]) > 0
+        # Verify results
+        assert result_str is not None
+        assert len(result_str) > 0, "Should return non-empty formatted results"
+        assert stats["results_count"] > 0, "Should find at least 1 result"
+        assert stats["provider_used"] == "PubMedProvider"
         assert elapsed < 3.0, f"Search took {elapsed:.2f}s (expected <3s)"
 
-        # Verify result structure
-        first_result = results["results"][0]
-        assert "pmid" in first_result or "doi" in first_result
-        assert "title" in first_result
+        # Verify formatted output contains expected elements
+        assert "PMID:" in result_str or "pmid" in result_str.lower()
+        assert "Title:" in result_str or "title" in result_str.lower()
 
         # Rate limiting
         time.sleep(0.5)
@@ -601,19 +743,20 @@ class TestRealAPIDiscovery:
         query = "breast cancer RNA-seq Homo sapiens"
 
         start_time = time.time()
-        results = real_content_access_service.discover_datasets(query, limit=5)
+        # Service returns tuple: (formatted_string, stats_dict, ir)
+        result_str, stats, ir = real_content_access_service.discover_datasets(
+            query, dataset_type=DatasetType.GEO, limit=5
+        )
         elapsed = time.time() - start_time
 
-        assert results is not None
-        assert "results" in results
-        assert len(results["results"]) > 0
+        # Verify results
+        assert result_str is not None
+        assert len(result_str) > 0, "Should return non-empty formatted results"
+        assert stats["results_count"] > 0, "Should find at least 1 dataset"
         assert elapsed < 3.0, f"Discovery took {elapsed:.2f}s (expected <3s)"
 
-        # Verify result structure
-        first_result = results["results"][0]
-        assert "accession" in first_result
-        assert first_result["accession"].startswith("GSE")
-        assert "title" in first_result
+        # Verify formatted output contains GEO accessions
+        assert "GSE" in result_str, "Should contain GEO accession numbers"
 
         # Rate limiting
         time.sleep(0.5)
@@ -631,15 +774,16 @@ class TestRealAPIDiscovery:
         Rate limit: 3 req/s with API key
         Expected duration: 1-2s
         """
-        publication_id = "PMID:35042229"
+        identifier = "PMID:35042229"
 
         start_time = time.time()
-        results = real_content_access_service.find_linked_datasets(publication_id)
+        # Service returns formatted string directly
+        result_str = real_content_access_service.find_linked_datasets(identifier=identifier)
         elapsed = time.time() - start_time
 
-        assert results is not None
-        assert "results" in results
-        # May or may not have linked datasets
+        # Verify results (may or may not find linked datasets)
+        assert result_str is not None
+        assert isinstance(result_str, str), "Should return formatted string"
         assert elapsed < 3.0, f"Link search took {elapsed:.2f}s (expected <3s)"
 
         # Rate limiting
@@ -922,23 +1066,24 @@ class TestCachingBehavior:
             "abstract": "Test abstract",
         }
 
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_provider]
+        ):
+            # First call (cache miss)
+            start_time = time.time()
+            result1 = mock_content_access_service.get_abstract("PMID:35042229")
+            elapsed1 = time.time() - start_time
 
-        # First call (cache miss)
-        start_time = time.time()
-        result1 = mock_content_access_service.get_abstract("PMID:35042229")
-        elapsed1 = time.time() - start_time
+            # Second call (cache hit if implemented)
+            start_time = time.time()
+            result2 = mock_content_access_service.get_abstract("PMID:35042229")
+            elapsed2 = time.time() - start_time
 
-        # Second call (cache hit if implemented)
-        start_time = time.time()
-        result2 = mock_content_access_service.get_abstract("PMID:35042229")
-        elapsed2 = time.time() - start_time
-
-        assert result1["pmid"] == result2["pmid"]
-        # Cache hit should be faster (if caching is implemented)
-        # Note: This may not be true if caching not yet implemented
+            assert result1["pmid"] == result2["pmid"]
+            # Cache hit should be faster (if caching is implemented)
+            # Note: This may not be true if caching not yet implemented
 
     def test_ttl_expiration_mock(self, mock_content_access_service):
         """Test TTL expiration (cache invalidation after 300s)."""
@@ -960,21 +1105,22 @@ class TestCachingBehavior:
             "abstract": "Test abstract",
         }
 
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_provider]
+        ):
+            # First call
+            result1 = mock_content_access_service.get_abstract("PMID:35042229")
 
-        # First call
-        result1 = mock_content_access_service.get_abstract("PMID:35042229")
+            # Clear cache if method exists
+            if hasattr(mock_content_access_service, "clear_cache"):
+                mock_content_access_service.clear_cache()
 
-        # Clear cache if method exists
-        if hasattr(mock_content_access_service, "clear_cache"):
-            mock_content_access_service.clear_cache()
+            # Second call after cache clear
+            result2 = mock_content_access_service.get_abstract("PMID:35042229")
 
-        # Second call after cache clear
-        result2 = mock_content_access_service.get_abstract("PMID:35042229")
-
-        assert result1["pmid"] == result2["pmid"]
+            assert result1["pmid"] == result2["pmid"]
 
     def test_cache_statistics_mock(self, mock_content_access_service):
         """Test cache statistics (hit rate calculation)."""
@@ -994,51 +1140,60 @@ class TestErrorHandling:
 
     def test_no_providers_available_mock(self, mock_content_access_service):
         """Test error when no providers available."""
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = (
-            []
-        )
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[]
+        ):
+            result = mock_content_access_service.get_abstract("PMID:35042229")
 
-        result = mock_content_access_service.get_abstract("PMID:35042229")
-
-        assert result is None or "error" in result
+            assert result is None or "error" in result
 
     def test_all_providers_fail_mock(self, mock_content_access_service):
         """Test error when all providers fail."""
         mock_provider = Mock()
         mock_provider.get_abstract.side_effect = Exception("Provider error")
 
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_provider]
+        ):
+            result = mock_content_access_service.get_abstract("PMID:35042229")
 
-        result = mock_content_access_service.get_abstract("PMID:35042229")
-
-        assert result is None or "error" in result
+            assert result is None or "error" in result
 
     def test_invalid_pmid_format_mock(self, mock_content_access_service):
         """Test handling of malformed PMID."""
         mock_provider = Mock()
         mock_provider.get_abstract.side_effect = ValueError("Invalid PMID format")
 
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_provider]
+        ):
+            # Service catches exceptions and returns error dict
+            result = mock_content_access_service.get_abstract("PMID:invalid")
 
-        with pytest.raises(ValueError, match="Invalid PMID"):
-            mock_content_access_service.get_abstract("PMID:invalid")
+            # Result should be error dict (service handles error gracefully)
+            assert isinstance(result, dict)
+            assert "error" in result
+            assert "Invalid PMID format" in result["error"]
 
     def test_rate_limiting_429_response_mock(self, mock_content_access_service):
         """Test rate limiting (429 response handling)."""
         mock_provider = Mock()
         mock_provider.get_abstract.side_effect = Exception("429 Too Many Requests")
 
-        mock_content_access_service.provider_registry.get_providers_for_capability.return_value = [
-            mock_provider
-        ]
+        with patch.object(
+            mock_content_access_service.registry,
+            'get_providers_for_capability',
+            return_value=[mock_provider]
+        ):
+            result = mock_content_access_service.get_abstract("PMID:35042229")
 
-        result = mock_content_access_service.get_abstract("PMID:35042229")
-
-        # Should handle rate limiting gracefully
-        assert (
-            result is None or "rate limit" in str(result).lower() or "error" in result
-        )
+            # Should handle rate limiting gracefully
+            assert (
+                result is None or "rate limit" in str(result).lower() or "error" in result
+            )

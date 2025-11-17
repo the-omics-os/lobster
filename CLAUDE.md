@@ -264,6 +264,28 @@ lobster/
 | `ms_proteomics_expert` | DDA/DIA workflows, missing values, normalization |
 | `affinity_proteomics_expert` | Olink/antibody arrays, NPX, CV, panel harmonization |
 
+### 3.4 Deployment & Infrastructure
+
+| File | Purpose | Mode |
+|------|---------|------|
+| `Dockerfile` | CLI mode container (local agent execution) | development/production |
+| `Dockerfile.server` | FastAPI server mode (cloud-like API) | production/staging |
+| `docker-compose.yml` | Multi-service orchestration (server + dependencies) | local dev/integration |
+| `Makefile` | Build, test, deploy automation | all environments |
+| `.github/workflows/` | CI/CD pipelines | automation |
+| ├─ `docker.yml` | Container build + push | production |
+| ├─ `sync-to-public.yml` | Code sync to lobster-local | automation |
+| ├─ `sync-wikis.yml` | Wiki sync to public/private repos | automation |
+| └─ `ci-basic.yml` | Test + lint on PR | development/CI |
+| `pyproject.toml` | Dependencies (do NOT edit – see 4.1) | all environments |
+| `pytest.ini` | Test configuration | development/CI |
+
+**Deployment modes**:
+- **CLI mode** (`Dockerfile`): single container, local agent execution, workspace in volume
+- **Server mode** (`Dockerfile.server` + `docker-compose.yml`): FastAPI + Redis + workers, cloud-like API, suitable for multi-user/production
+
+Full guide: `wiki/42-docker-deployment-guide.md`
+
 ---
 
 ## 4. RULES – Development Guidelines
@@ -430,7 +452,7 @@ Data standards:
 | Area | Tech |
 |------|------|
 | Agent framework | LangGraph |
-| Models | AWS Bedrock (Claude), OpenAI |
+| Models | AWS Bedrock (Claude) |
 | Language | Python 3.12+ (typing, async/await) |
 | Data structures | AnnData, MuData |
 | Bioinformatics | Scanpy, PyDESeq2 |

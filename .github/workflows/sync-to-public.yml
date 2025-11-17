@@ -35,9 +35,12 @@ jobs:
         python-version: '3.12'
         
     - name: Configure Git
+      env:
+        GIT_USER_NAME: ${{ secrets.GIT_USER_NAME || 'omics-os-bot' }}
+        GIT_USER_EMAIL: ${{ secrets.GIT_USER_EMAIL || 'bot@omics-os.com' }}
       run: |
-        git config --global user.name "cewinharhar"
-        git config --global user.email "kevin.yar@outlook.com"
+        git config --global user.name "$GIT_USER_NAME"
+        git config --global user.email "$GIT_USER_EMAIL"
         
     - name: Setup SSH for public repo
       run: |
@@ -49,6 +52,8 @@ jobs:
     - name: Run sync script
       env:
         PUBLIC_REPO: git@github.com:the-omics-os/lobster-local.git
+        GIT_USER_NAME: ${{ secrets.GIT_USER_NAME || 'omics-os-bot' }}
+        GIT_USER_EMAIL: ${{ secrets.GIT_USER_EMAIL || 'bot@omics-os.com' }}
       run: |
         # Normal sync preserves git history for continuous updates
         # Force push only used when manually triggered with force_push=true

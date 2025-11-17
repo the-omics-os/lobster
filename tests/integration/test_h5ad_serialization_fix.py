@@ -39,11 +39,12 @@ def data_manager(temp_workspace):
 
 
 @pytest.fixture
-def geo_service(temp_workspace):
-    """Create a GEOService instance with temporary cache."""
+def geo_service(data_manager, temp_workspace):
+    """Create a GEOService instance with temporary cache and data_manager."""
     cache_dir = temp_workspace / "geo_cache"
     cache_dir.mkdir(exist_ok=True)
-    return GEOService(cache_dir=str(cache_dir))
+    # GEOService requires data_manager as first parameter
+    return GEOService(data_manager=data_manager, cache_dir=str(cache_dir))
 
 
 class TestH5ADSerializationFix:

@@ -41,7 +41,7 @@ class PubMedProviderConfig(BaseModel):
     doc_content_chars_max: int = Field(default=6000, ge=1000, le=20000)
 
     # NCBI API settings
-    email: str = "kevin.yar@omics-os.com"
+    email: str = Field(default_factory=lambda: get_settings().NCBI_EMAIL)
     api_key: Optional[str] = None
 
     # Rate limiting and retry settings

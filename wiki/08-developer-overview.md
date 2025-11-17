@@ -133,7 +133,7 @@ python -m lobster --help
 ### 2. Required Environment Variables
 ```bash
 # Required API Keys
-export OPENAI_API_KEY="your-openai-api-key"
+export OPENAI_API_KEY="your-openai-api-key" #TODO future support
 export AWS_BEDROCK_ACCESS_KEY="your-aws-access-key"
 export AWS_BEDROCK_SECRET_ACCESS_KEY="your-aws-secret-key"
 

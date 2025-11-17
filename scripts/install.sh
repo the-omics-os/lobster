@@ -316,7 +316,6 @@ setup_config() {
 # Please add your API keys below
 
 # Required
-OPENAI_API_KEY=
 AWS_BEDROCK_ACCESS_KEY=
 AWS_BEDROCK_SECRET_ACCESS_KEY=
 

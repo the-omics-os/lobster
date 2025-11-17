@@ -16,6 +16,9 @@ services:
     stdin_open: true  # Enable interactive terminal
     tty: true         # Allocate pseudo-TTY
     env_file: .env
+    environment:
+      - REDIS_HOST=redis  # Connect to Redis service
+      - REDIS_PORT=6379
     volumes:
       # Mount local data directory for input files
       - ./data:/app/data
@@ -25,6 +28,9 @@ services:
       - lobster-cache:/app/.geo_cache
     networks:
       - lobster-network
+    depends_on:
+      redis:
+        condition: service_healthy
     # Override default CMD for custom commands
     # Example: docker-compose run lobster-cli query "download GSE12345"
     command: chat
@@ -41,12 +47,18 @@ services:
     ports:
       - "8000:8000"  # Map host:container ports
     env_file: .env
+    environment:
+      - REDIS_HOST=redis  # Connect to Redis service
+      - REDIS_PORT=6379
     volumes:
       - ./data:/app/data
       - lobster-workspace:/app/.lobster_workspace
       - lobster-cache:/app/.geo_cache
     networks:
       - lobster-network
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -65,24 +77,24 @@ services:
           memory: 4G
 
   # ============================================================================
-  # Redis (Optional - for future caching layer)
+  # Redis (Rate Limiting & Caching)
   # ============================================================================
-  # Uncomment to enable Redis caching for API responses
-  # redis:
-  #   image: redis:7-alpine
-  #   container_name: lobster-redis
-  #   ports:
-  #     - "6379:6379"
-  #   networks:
-  #     - lobster-network
-  #   volumes:
-  #     - redis-data:/data
-  #   healthcheck:
-  #     test: ["CMD", "redis-cli", "ping"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #   restart: unless-stopped
+  # Used for distributed rate limiting of NCBI API calls
+  redis:
+    image: redis:7-alpine
+    container_name: lobster-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - lobster-network
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
 
 # ==============================================================================
 # Named Volumes for Data Persistence
@@ -96,9 +108,9 @@ volumes:
   lobster-cache:
     driver: local
 
-  # Redis data (if enabled)
-  # redis-data:
-  #   driver: local
+  # Redis data for rate limiting
+  redis-data:
+    driver: local
 
 # ==============================================================================
 # Networks

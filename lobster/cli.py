@@ -1911,6 +1911,23 @@ def chat(
                 )
                 console_manager.print(response_panel)
 
+                # Show token usage and cost if available
+                if result.get("token_usage"):
+                    token_info = result["token_usage"]
+                    latest_cost = token_info.get("latest_cost_usd", 0.0)
+                    session_total = token_info.get("session_total_usd", 0.0)
+                    total_tokens = token_info.get("total_tokens", 0)
+
+                    # Format cost display
+                    cost_display = f"💰 Session cost: ${session_total:.4f}"
+                    if latest_cost > 0:
+                        cost_display += f" (+${latest_cost:.4f} this response)"
+                    cost_display += f" | Total tokens: {total_tokens:,}"
+
+                    console_manager.print(
+                        f"[dim grey50]{cost_display}[/dim grey50]"
+                    )
+
                 # Show any generated plots with orange styling
                 if result.get("plots"):
                     plot_text = f"📊 Generated {len(result['plots'])} visualization(s)"
@@ -1924,8 +1941,20 @@ def chat(
             if Confirm.ask(
                 f"\n[{LobsterTheme.PRIMARY_ORANGE}]🦞 Exit Lobster?[/{LobsterTheme.PRIMARY_ORANGE}]"
             ):
-                goodbye_message = f"""👋 Thank you for using Lobster by Omics-OS!
+                # Get final token usage
+                try:
+                    token_usage = client.get_token_usage()
+                    if token_usage and "error" not in token_usage:
+                        total_cost = token_usage.get("total_cost_usd", 0.0)
+                        total_tokens = token_usage.get("total_tokens", 0)
+                        cost_info = f"\n[bold white]💰 Session Summary:[/bold white]\nTotal tokens used: {total_tokens:,}\nTotal cost: ${total_cost:.4f}\n"
+                    else:
+                        cost_info = ""
+                except Exception:
+                    cost_info = ""
 
+                goodbye_message = f"""👋 Thank you for using Lobster by Omics-OS!
+{cost_info}
 [bold white]🌟 Help us improve Lobster![/bold white]
 Your feedback matters! Please take 1 minute to share your experience:
 
@@ -2077,6 +2106,7 @@ def _execute_command(cmd: str, client: AgentClient) -> Optional[str]:
 
 [{LobsterTheme.PRIMARY_ORANGE}]/help[/{LobsterTheme.PRIMARY_ORANGE}]         [grey50]-[/grey50] Show this help message
 [{LobsterTheme.PRIMARY_ORANGE}]/status[/{LobsterTheme.PRIMARY_ORANGE}]       [grey50]-[/grey50] Show system status
+[{LobsterTheme.PRIMARY_ORANGE}]/tokens[/{LobsterTheme.PRIMARY_ORANGE}]       [grey50]-[/grey50] Show token usage and cost for this session
 [{LobsterTheme.PRIMARY_ORANGE}]/input-features[/{LobsterTheme.PRIMARY_ORANGE}] [grey50]-[/grey50] Show input capabilities and navigation features
 [{LobsterTheme.PRIMARY_ORANGE}]/dashboard[/{LobsterTheme.PRIMARY_ORANGE}]    [grey50]-[/grey50] Show comprehensive system dashboard
 [{LobsterTheme.PRIMARY_ORANGE}]/workspace-info[/{LobsterTheme.PRIMARY_ORANGE}] [grey50]-[/grey50] Show detailed workspace overview
@@ -2134,6 +2164,69 @@ def _execute_command(cmd: str, client: AgentClient) -> Optional[str]:
 
     elif cmd == "/status":
         display_status(client)
+
+    elif cmd == "/tokens":
+        # Display token usage and cost information
+        try:
+            token_usage = client.get_token_usage()
+
+            if not token_usage or "error" in token_usage:
+                console_manager.print(
+                    "[yellow]Token tracking not available for this client type[/yellow]"
+                )
+                return
+
+            # Create summary table
+            summary_table = Table(title="💰 Session Token Usage & Cost", box=box.ROUNDED)
+            summary_table.add_column("Metric", style="cyan", no_wrap=True)
+            summary_table.add_column("Value", style="green")
+
+            summary_table.add_row("Session ID", token_usage["session_id"])
+            summary_table.add_row(
+                "Total Input Tokens", f"{token_usage['total_input_tokens']:,}"
+            )
+            summary_table.add_row(
+                "Total Output Tokens", f"{token_usage['total_output_tokens']:,}"
+            )
+            summary_table.add_row(
+                "Total Tokens", f"{token_usage['total_tokens']:,}"
+            )
+            summary_table.add_row(
+                "Total Cost (USD)", f"${token_usage['total_cost_usd']:.4f}"
+            )
+
+            console_manager.print(summary_table)
+
+            # Create per-agent breakdown table if agents have been used
+            if token_usage.get("by_agent"):
+                agent_table = Table(
+                    title="📊 Cost by Agent", box=box.ROUNDED
+                )
+                agent_table.add_column("Agent", style="cyan")
+                agent_table.add_column("Input", style="blue", justify="right")
+                agent_table.add_column("Output", style="magenta", justify="right")
+                agent_table.add_column("Total", style="yellow", justify="right")
+                agent_table.add_column("Cost (USD)", style="green", justify="right")
+                agent_table.add_column("Calls", style="grey50", justify="right")
+
+                for agent_name, stats in token_usage["by_agent"].items():
+                    agent_display = agent_name.replace("_", " ").title()
+                    agent_table.add_row(
+                        agent_display,
+                        f"{stats['input_tokens']:,}",
+                        f"{stats['output_tokens']:,}",
+                        f"{stats['total_tokens']:,}",
+                        f"${stats['cost_usd']:.4f}",
+                        str(stats['invocation_count'])
+                    )
+
+                console_manager.print("\n")
+                console_manager.print(agent_table)
+
+        except Exception as e:
+            console_manager.print_error_panel(
+                f"Failed to retrieve token usage: {str(e)}"
+            )
 
     elif cmd == "/input-features":
         # Show input capabilities and navigation features
@@ -5164,7 +5257,6 @@ def generate_env():
 # =============================================================================
 # API KEYS (Required)
 # =============================================================================
-OPENAI_API_KEY="your-openai-api-key-here"
 AWS_BEDROCK_ACCESS_KEY="your-aws-access-key-here"
 AWS_BEDROCK_SECRET_ACCESS_KEY="your-aws-secret-key-here"
 NCBI_API_KEY="your-ncbi-api-key-here"

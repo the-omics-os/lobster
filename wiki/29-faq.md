@@ -85,7 +85,7 @@ lobster chat
 ### Q: What API keys do I need?
 
 **A:** Required API keys:
-- **OpenAI API key** - For GPT models (required)
+- **Anthropic API key** - OR
 - **AWS Bedrock credentials** - For Claude models (required)
 
 Optional API keys:
@@ -94,7 +94,7 @@ Optional API keys:
 
 Set these in your `.env` file:
 ```bash
-OPENAI_API_KEY=your-openai-key
+OPENAI_API_KEY=your-openai-key #TODO future support
 AWS_BEDROCK_ACCESS_KEY=your-aws-access-key
 AWS_BEDROCK_SECRET_ACCESS_KEY=your-aws-secret-key
 ```
@@ -624,7 +624,7 @@ export AWS_BEDROCK_SECRET_ACCESS_KEY=your_secret_key
 export ANTHROPIC_API_KEY=sk-ant-xxx
 # Remove: AWS_BEDROCK_*
 
-# Use OpenAI (if configured)
+# Use OpenAI (if configured) #TODO future support
 export OPENAI_API_KEY=sk-xxx
 # Remove: ANTHROPIC_API_KEY
 

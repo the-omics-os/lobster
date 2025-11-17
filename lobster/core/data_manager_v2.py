@@ -879,6 +879,62 @@ class DataManagerV2:
         logger.info(f"Exported provenance to {path}")
         return str(path)
 
+    def save_workspace(self, workspace_name: str) -> Path:
+        """
+        Save all current modalities to a named workspace directory.
+
+        This method creates a dedicated directory for the workspace and saves
+        all loaded modalities as individual .h5ad files. It also saves session
+        metadata including the list of active modalities for later restoration.
+
+        Args:
+            workspace_name: Name for the workspace (will create a subdirectory)
+
+        Returns:
+            Path: Path to the workspace directory containing saved modalities
+
+        Example:
+            >>> dm.save_workspace("my_analysis_20250116")
+            PosixPath('/path/.lobster_workspace/my_analysis_20250116')
+
+        Note:
+            - Uses thread-safe locking to prevent concurrent saves
+            - Saves all modalities as {modality_name}.h5ad files
+            - Creates session metadata for restoration via restore_session()
+        """
+        # Create workspace directory
+        workspace_dir = self.workspace_path / workspace_name
+        workspace_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save each modality
+        saved_modalities = []
+        for modality_name in self.modalities:
+            try:
+                save_path = workspace_dir / f"{modality_name}.h5ad"
+                self.save_modality(modality_name, str(save_path))
+                saved_modalities.append(modality_name)
+                logger.debug(f"Saved modality '{modality_name}' to {save_path}")
+            except Exception as e:
+                logger.error(f"Failed to save modality '{modality_name}': {e}")
+
+        # Save session metadata
+        session_metadata = {
+            "workspace_name": workspace_name,
+            "active_modalities": saved_modalities,
+            "session_id": self.session_id,
+            "timestamp": datetime.now().isoformat(),
+            "n_modalities": len(saved_modalities),
+        }
+
+        metadata_path = workspace_dir / ".session.json"
+        with open(metadata_path, "w") as f:
+            json.dump(session_metadata, f, indent=2)
+
+        logger.info(
+            f"Saved workspace '{workspace_name}' with {len(saved_modalities)} modalities to {workspace_dir}"
+        )
+        return workspace_dir
+
     def clear_workspace(self, confirm: bool = False) -> None:
         """
         Clear all modalities and optionally workspace files.
@@ -900,6 +956,30 @@ class DataManagerV2:
             self.provenance = ProvenanceTracker()
 
         logger.info("Cleared workspace")
+
+    def clear(self) -> None:
+        """
+        Clear all modalities from memory without requiring confirmation.
+
+        This is a convenience alias for clear_workspace() that doesn't require
+        the confirm=True parameter. Use this for programmatic clearing in tests
+        and scripts where confirmation prompts are not needed.
+
+        Note:
+            This method clears modalities and resets provenance but does not
+            delete files from disk.
+
+        Example:
+            >>> dm.clear()  # Simple, no confirmation needed
+        """
+        # Clear modalities from memory
+        self.modalities.clear()
+
+        # Reset provenance
+        if self.provenance:
+            self.provenance = ProvenanceTracker()
+
+        logger.info("Cleared workspace (via clear() alias)")
 
     def get_backend_info(self) -> Dict[str, Any]:
         """

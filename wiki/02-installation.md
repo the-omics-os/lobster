@@ -73,6 +73,31 @@ Choose ONE of the following LLM providers:
    - Visit [NCBI E-utilities](https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/)
    - Enhances literature search capabilities
 
+## Pre-Installation Check
+
+Before installing Lobster AI, run the system checker to verify your environment:
+
+```bash
+# Clone repository
+git clone https://github.com/the-omics-os/lobster-local.git
+cd lobster-local
+
+# Run system checker
+python3 check-system.py
+```
+
+The checker will:
+- ✅ Verify Python 3.12+ is installed
+- ✅ Detect missing system dependencies (Linux)
+- ✅ Check for Docker availability
+- ✅ Recommend best installation method for your platform
+- ✅ Provide installation commands for missing dependencies
+
+**Platform-Specific Recommendations:**
+- **macOS**: Native installation (Make-based)
+- **Linux**: Native with system dependencies
+- **Windows**: Docker Desktop (most reliable)
+
 ## Installation Methods
 
 ### Method 1: Quick Install (Recommended)
@@ -192,13 +217,74 @@ pip install -e .
 
 ### Linux (Ubuntu/Debian)
 
-**Install Dependencies:**
-```bash
-# Update package list
-sudo apt update
+**⚠️ IMPORTANT: System Dependencies Required**
 
+Ubuntu/Debian require system libraries for compilation. Install these BEFORE running `make install`:
+
+**Quick Install (Recommended - All Dependencies):**
+```bash
+# Run the automated installer
+git clone https://github.com/the-omics-os/lobster-local.git
+cd lobster-local
+./install-ubuntu.sh
+```
+
+The installer script will:
+- Check for Python 3.12+
+- Detect missing system packages
+- Offer to install them automatically
+- Run `make install` when ready
+
+**Manual Installation:**
+```bash
+# 1. Install ALL system dependencies (REQUIRED)
+sudo apt update
+sudo apt install -y \
+    build-essential \
+    python3.12-dev \
+    python3.12-venv \
+    pkg-config \
+    libhdf5-dev \
+    libxml2-dev \
+    libxslt1-dev \
+    libffi-dev \
+    libssl-dev \
+    libblas-dev \
+    liblapack-dev \
+    git
+
+# 2. Clone and install
+git clone https://github.com/the-omics-os/lobster-local.git
+cd lobster-local
+make install
+```
+
+**Why These Packages Are Required:**
+- `build-essential`: C/C++ compilers (gcc, g++, make)
+- `python3.12-dev`: Python header files for building extensions
+- `libhdf5-dev`: HDF5 file format support (required for AnnData)
+- `libblas-dev`, `liblapack-dev`: Linear algebra libraries (required for NumPy/SciPy)
+- `libxml2-dev`, `libxslt1-dev`: XML parsing (required for web scraping)
+- `libffi-dev`, `libssl-dev`: Cryptography and SSL support
+
+**Ubuntu Version Notes:**
+- **Ubuntu 22.04 LTS**: Requires PPA for Python 3.12
+  ```bash
+  sudo add-apt-repository ppa:deadsnakes/ppa
+  sudo apt update
+  sudo apt install python3.12 python3.12-venv python3.12-dev
+  ```
+- **Ubuntu 24.04 LTS**: Python 3.12+ available in default repositories
+
+**CentOS/RHEL/Fedora:**
+```bash
 # Install Python 3.12+
-sudo apt install python3.12 python3.12-venv python3.12-dev
+sudo dnf install python3.12 python3.12-devel
+
+# Install development tools and libraries
+sudo dnf groupinstall "Development Tools"
+sudo dnf install hdf5-devel libxml2-devel libxslt-devel \
+                 openssl-devel libffi-devel blas-devel lapack-devel
 
 # Clone and install
 git clone https://github.com/the-omics-os/lobster-local.git
@@ -206,41 +292,86 @@ cd lobster-local
 make install
 ```
 
-**CentOS/RHEL/Fedora:**
-```bash
-# Install Python 3.12+
-sudo dnf install python3.12 python3.12-devel
-
-# Install development tools
-sudo dnf groupinstall "Development Tools"
-
-    # Clone and install
-    git clone https://github.com/the-omics-os/lobster-local.git
-    cd lobster-localmake install
-```
-
 ### Windows
 
-**Using PowerShell:**
-```powershell
-# Install Python 3.12+ from python.org
-# Ensure Python is in PATH
+**⚠️ Native Windows installation is experimental. Docker Desktop is strongly recommended for Windows users.**
 
-# Clone repository
+For comprehensive Windows instructions, see: [Windows Installation Guide](../docs/WINDOWS_INSTALLATION.md)
+
+**Option 1: Docker Desktop (Recommended)**
+
+Docker provides the most reliable experience on Windows:
+
+```powershell
+# 1. Install Docker Desktop for Windows
+# Download from: https://www.docker.com/products/docker-desktop/
+
+# 2. Clone repository
 git clone https://github.com/the-omics-os/lobster-local.git
 cd lobster-local
 
-# Create virtual environment
-python -m venv .venv
-.venv\Scripts\activate
+# 3. Configure API keys
+copy .env.example .env
+notepad .env
+# Add: ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
 
-# Install
-pip install --upgrade pip wheel
-pip install -e .
+# 4. Run Lobster
+docker-compose run --rm lobster-cli
 ```
 
-**Using Windows Subsystem for Linux (WSL):**
-Follow the Linux installation instructions within WSL.
+**Option 2: Native Installation (Experimental)**
+
+Prerequisites:
+- Python 3.12+ from [python.org](https://www.python.org/downloads/)
+- Git for Windows from [git-scm.com](https://git-scm.com/download/win)
+- (Optional) Visual Studio Build Tools if compilation errors occur
+
+```powershell
+# 1. Clone repository
+git clone https://github.com/the-omics-os/lobster-local.git
+cd lobster-local
+
+# 2. Run automated installer (PowerShell)
+.\install.ps1
+
+# If execution policy blocks the script:
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+.\install.ps1
+
+# Alternative: Batch file
+install.bat
+
+# 3. Configure API keys
+notepad .env
+
+# 4. Activate and run
+.\.venv\Scripts\Activate.ps1
+lobster chat
+```
+
+**Option 3: Windows Subsystem for Linux (WSL)**
+
+WSL 2 provides a full Linux environment with excellent performance:
+
+```powershell
+# 1. Install WSL 2
+wsl --install
+
+# 2. Install Ubuntu from Microsoft Store
+
+# 3. Open Ubuntu terminal and follow Linux installation instructions
+git clone https://github.com/the-omics-os/lobster-local.git
+cd lobster-local
+./install-ubuntu.sh
+```
+
+**Common Windows Issues:**
+- **Compiler errors**: Install Visual Studio Build Tools or use Docker
+- **Permission denied**: Run PowerShell as Administrator or use Docker
+- **Python not found**: Reinstall Python with "Add to PATH" checked
+- **Long path errors**: Enable long path support in Windows Registry or use Docker
+
+See [Windows Installation Guide](../docs/WINDOWS_INSTALLATION.md) for detailed troubleshooting.
 
 ### Python Version Considerations
 
@@ -638,9 +769,11 @@ See [Configuration Guide](03-configuration.md) for complete cloud setup details.
 
 ## Docker Deployment
 
-Lobster supports Docker for both CLI and FastAPI server modes. For comprehensive deployment guides, see [Docker Deployment Guide](42-docker-deployment-guide.md).
+Lobster supports Docker for both CLI and FastAPI server modes. For comprehensive deployment guides, see [Docker Deployment Guide](43-docker-deployment-guide.md).
 
 ### Quick Start with Docker
+
+**Unix/macOS/Linux (using Makefile):**
 
 ```bash
 # 1. Build images
@@ -653,18 +786,52 @@ make docker-run-cli
 make docker-run-server
 ```
 
+**Windows (using PowerShell):**
+
+```powershell
+# 1. Build CLI image
+docker build -t lobster:latest -f Dockerfile .
+
+# 2. Run CLI interactively
+docker run -it --rm \
+  --env-file .env \
+  -v ${PWD}/data:/app/data \
+  -v lobster-workspace:/app/.lobster_workspace \
+  lobster:latest chat
+
+# 3. Or run FastAPI server
+docker build -t lobster:server -f Dockerfile.server .
+docker run -d --name lobster-api -p 8000:8000 --env-file .env lobster:server
+```
+
 ### Build Docker Images
 
+**Unix/macOS/Linux:**
+
 ```bash
-# Build both CLI and server images
+# Build both CLI and server images (using Makefile)
 make docker-build
 
 # Or manually
-docker build -t omicsos/lobster:latest -f Dockerfile .
-docker build -t omicsos/lobster:server -f Dockerfile.server .
+docker build -t lobster:latest -f Dockerfile .
+docker build -t lobster:server -f Dockerfile.server .
 ```
 
+**Windows (PowerShell):**
+
+```powershell
+# Build CLI image
+docker build -t lobster:latest -f Dockerfile .
+
+# Build server image (optional, for FastAPI mode)
+docker build -t lobster:server -f Dockerfile.server .
+```
+
+**Note for Windows users:** The `make` command is not available by default on Windows. Use the manual `docker build` commands shown above.
+
 ### Run CLI with Docker
+
+**Unix/macOS/Linux:**
 
 ```bash
 # Using Makefile (recommended)
@@ -675,16 +842,47 @@ docker run -it --rm \
   --env-file .env \
   -v $(pwd)/data:/app/data \
   -v lobster-workspace:/app/.lobster_workspace \
-  omicsos/lobster:latest chat
+  lobster:latest chat
 
 # Single query mode (automation)
 docker run --rm \
   --env-file .env \
   -v $(pwd)/data:/app/data \
-  omicsos/lobster:latest query "download GSE12345"
+  lobster:latest query "download GSE12345"
 ```
 
+**Windows (PowerShell):**
+
+```powershell
+# Interactive chat mode
+docker run -it --rm `
+  --env-file .env `
+  -v ${PWD}/data:/app/data `
+  -v lobster-workspace:/app/.lobster_workspace `
+  lobster:latest chat
+
+# Single query mode (automation)
+docker run --rm `
+  --env-file .env `
+  -v ${PWD}/data:/app/data `
+  lobster:latest query "download GSE12345"
+
+# With individual environment variables (if .env file not available)
+docker run -it --rm `
+  -e ANTHROPIC_API_KEY=your-key-here `
+  -v ${PWD}/data:/app/data `
+  -v lobster-workspace:/app/.lobster_workspace `
+  lobster:latest chat
+```
+
+**Windows Notes:**
+- Use backtick (`) for line continuation in PowerShell
+- Use `${PWD}` to reference current directory
+- Named volumes (like `lobster-workspace`) work the same on all platforms
+
 ### Run FastAPI Server with Docker
+
+**Unix/macOS/Linux:**
 
 ```bash
 # Using Makefile (recommended)
@@ -696,7 +894,7 @@ docker run -d \
   -p 8000:8000 \
   --env-file .env \
   -v $(pwd)/data:/app/data \
-  omicsos/lobster:server
+  lobster:server
 
 # Check server health
 curl http://localhost:8000/health
@@ -705,7 +903,36 @@ curl http://localhost:8000/health
 docker stop lobster-api
 ```
 
+**Windows (PowerShell):**
+
+```powershell
+# Run server in detached mode
+docker run -d `
+  --name lobster-api `
+  -p 8000:8000 `
+  --env-file .env `
+  -v ${PWD}/data:/app/data `
+  lobster:server
+
+# Check server health (PowerShell)
+Invoke-WebRequest -Uri http://localhost:8000/health
+
+# Or use curl if installed
+curl http://localhost:8000/health
+
+# View server logs
+docker logs lobster-api
+
+# Stop server
+docker stop lobster-api
+
+# Remove stopped container
+docker rm lobster-api
+```
+
 ### Docker Compose
+
+**Unix/macOS/Linux:**
 
 ```bash
 # Run CLI interactively
@@ -721,7 +948,25 @@ docker-compose logs -f lobster-server
 make docker-compose-down
 ```
 
-**docker-compose.yml** supports both CLI and server modes. See [Docker Deployment Guide](42-docker-deployment-guide.md) for full configuration details.
+**Windows (PowerShell):**
+
+```powershell
+# Run CLI interactively
+docker-compose run --rm lobster-cli chat
+
+# Start FastAPI server in background
+docker-compose up -d lobster-server
+
+# View logs
+docker-compose logs -f lobster-server
+
+# Stop all services
+docker-compose down
+```
+
+**docker-compose.yml** supports both CLI and server modes. See [Docker Deployment Guide](43-docker-deployment-guide.md) for full configuration details.
+
+**Note:** Docker Compose works identically on Windows, macOS, and Linux. The commands are the same across platforms.
 
 ## Troubleshooting
 
