@@ -6,9 +6,7 @@ proteomics data analysis, generating interactive and publication-quality plots u
 Handles missing value patterns, intensity distributions, and platform-specific requirements.
 """
 
-import time
-import warnings
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import anndata
 import networkx as nx
@@ -18,12 +16,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotly.io as pio
 from plotly.subplots import make_subplots
-from scipy import stats
 from scipy.cluster.hierarchy import dendrogram, linkage
 from scipy.sparse import issparse
-from scipy.spatial.distance import pdist, squareform
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
+from scipy.spatial.distance import pdist
 
 from lobster.utils.logger import get_logger
 
@@ -653,7 +648,7 @@ class ProteomicsVisualizationService:
             significant_down = (df[fold_change_col] < -fc_threshold) & (
                 df[pvalue_col] < pvalue_threshold
             )
-            not_significant = ~(significant_up | significant_down)
+            ~(significant_up | significant_down)
 
             # Create colors
             colors = []
@@ -1461,7 +1456,6 @@ class ProteomicsVisualizationService:
         Returns:
             List[str]: Paths to saved files
         """
-        import os
         from pathlib import Path
 
         saved_files = []

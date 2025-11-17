@@ -66,14 +66,14 @@ Help and additional resources
 
 #### **Get Started Quickly**
 - [Install Lobster AI in 5 minutes](01-getting-started.md)
-- [Configure my API keys](03-configuration.md#required-api-keys)
-- [Run my first analysis](01-getting-started.md#your-first-analysis)
+- [Configure my API keys](03-configuration.md)
+- [Run my first analysis](01-getting-started.md)
 
 #### **Analyze My Data**
 - [Analyze single-cell RNA-seq data](23-tutorial-single-cell.md)
 - [Perform bulk RNA-seq differential expression](24-tutorial-bulk-rnaseq.md)
 - [Process proteomics data](25-tutorial-proteomics.md)
-- [Download and analyze GEO datasets](06-data-analysis-workflows.md#geo-database-integration)
+- [Download and analyze GEO datasets](06-data-analysis-workflows.md)
 
 #### **Understand the System**
 - [Learn about the architecture](18-architecture-overview.md)
@@ -84,12 +84,12 @@ Help and additional resources
 - [Create a new agent](09-creating-agents.md)
 - [Add a new analysis service](10-creating-services.md)
 - [Support a new data format](11-creating-adapters.md)
-- [Contribute to the project](08-developer-overview.md#contributing)
+- [Contribute to the project](08-developer-overview.md)
 
 #### **Solve Problems**
-- [Fix installation issues](28-troubleshooting.md#installation-issues)
-- [Resolve data loading errors](28-troubleshooting.md#data-loading-issues)
-- [Debug analysis failures](28-troubleshooting.md#analysis-failures)
+- [Fix installation issues](28-troubleshooting.md)
+- [Resolve data loading errors](28-troubleshooting.md)
+- [Debug analysis failures](28-troubleshooting.md)
 
 ## 🌟 Key Features
 
@@ -117,13 +117,23 @@ Help and additional resources
 
 ## 📈 Version Highlights
 
+> **Migration Guide**: Upgrading from v2.3 or earlier? See the [comprehensive migration guide](41-migration-guides.md) for breaking changes, new features, and upgrade steps.
+
+### **v2.4+ Features** 🆕✨
+- 🧬 **Protein Structure Visualization** - PyMOL integration for 3D protein visualization and analysis ([Details](40-protein-structure-visualization.md))
+- 🔌 **ContentAccessService** - Unified publication/dataset access with 5 specialized providers ([Details](37-publication-intelligence-deep-dive.md))
+- 📥 **Download Queue System** - Robust multi-step data acquisition with JSONL persistence ([Details](25-download-queue-system.md))
+- ⚡ **Enhanced Two-Tier Caching** - 30-50x speedup on repeat content access (0.2-0.5s cached)
+- 🏗️ **Provider Infrastructure** - Modular, extensible architecture for content retrieval
+
 ### **v2.3+ Features** 🆕
 - 📄 **Docling PDF Parsing** - Structure-aware Methods section extraction ([Details](37-publication-intelligence-deep-dive.md))
 - 🎯 **Intelligent Detection** - >90% Methods section hit rate (vs ~30% previously)
 - 📊 **Table Extraction** - Parameter tables from scientific publications
 - 🧮 **Formula Preservation** - Mathematical formulas in LaTeX format
-- 💾 **Document Caching** - 30-50x faster repeat access (<100ms cached)
-- 🔄 **Comprehensive Retry Logic** - Automatic PyPDF2 fallback for reliability
+- 🧪 **Formula-Based Differential Expression** - Complex experimental designs with R-style formulas ([Details](32-agent-guided-formula-construction.md))
+- 🏗️ **Agent Registry Auto-Discovery** - Dynamic agent configuration ([Details](36-supervisor-configuration.md))
+- 💾 **WorkspaceContentService** - Type-safe caching for research content ([Details](38-workspace-content-service.md))
 
 ### **v2.2+ Features**
 - 🔄 **Workspace Restoration** - Seamless session continuity ([Details](31-data-expert-agent-enhancements.md))
@@ -135,6 +145,45 @@ Help and additional resources
 - ⌨️ **Enhanced CLI** - Arrow navigation and command history
 - 🎨 **Rich Interface** - Professional orange branding
 - ⚡ **Performance** - Optimized startup and processing
+
+## 🗂️ Feature Availability Matrix
+
+Quick reference for feature availability across versions and deployment modes.
+
+### Core Features by Version
+
+| Feature | v2.2 | v2.3 | v2.4 | Local | Cloud |
+|---------|:----:|:----:|:----:|:-----:|:-----:|
+| **Content Intelligence** |
+| PyPDF2 parsing | ✅ | ⚠️ | ❌ | - | - |
+| Docling structure-aware parsing | ❌ | ✅ | ✅ | ✅ | ✅ |
+| Two-tier publication access | ❌ | ✅ | ✅ | ✅ | ✅ |
+| ContentAccessService | ❌ | ❌ | ✅ | ✅ | ✅ |
+| Provider infrastructure (5 providers) | ❌ | ⚠️ | ✅ | ✅ | ✅ |
+| **Analysis Capabilities** |
+| Simple DE (two-group) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Formula-based DE | ❌ | ✅ | ✅ | ✅ | ✅ |
+| Agent-guided formulas | ❌ | ✅ | ✅ | ✅ | ✅ |
+| Protein visualization (batch) | ❌ | ❌ | ✅ | ✅ | ✅ |
+| Protein visualization (interactive) | ❌ | ❌ | ✅ | ✅ | ⚠️ |
+| **Data Management** |
+| Basic workspace | ✅ | ✅ | ✅ | ✅ | ✅ |
+| WorkspaceContentService | ❌ | ✅ | ✅ | ✅ | ✅ |
+| Download queue (JSONL) | ❌ | ❌ | ✅ | ✅ | ✅ |
+| Two-tier caching | ❌ | ⚠️ | ✅ | ✅ | ✅ |
+| **Infrastructure** |
+| Manual agent registry | ✅ | ⚠️ | ❌ | - | - |
+| Auto agent discovery | ❌ | ✅ | ✅ | ✅ | ✅ |
+| FTP retry logic | ❌ | ✅ | ✅ | ✅ | ✅ |
+
+**Legend:**
+- ✅ Full support
+- ⚠️ Partial support / Deprecated
+- ❌ Not available
+
+> **Note:** Interactive PyMOL visualization requires local GUI support. Cloud mode supports batch image generation only.
+
+For detailed version-specific information, see the [Migration Guide](41-migration-guides.md#version-feature-matrix).
 
 ## 🔗 Quick Links
 
@@ -155,9 +204,9 @@ This documentation follows these principles:
 ## 🤝 Contributing to Documentation
 
 Found an issue or want to improve the documentation?
-1. Check our [contribution guidelines](08-developer-overview.md#contributing)
+1. Check our [developer overview](08-developer-overview.md)
 2. Submit a pull request to the `docs/wiki` directory
-3. Follow our [documentation style guide](08-developer-overview.md#documentation-style)
+3. Follow our [code style guidelines](08-developer-overview.md)
 
 ---
 

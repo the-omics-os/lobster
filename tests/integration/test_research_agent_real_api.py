@@ -65,7 +65,7 @@ def test_workspace(tmp_path_factory):
 def data_manager(test_workspace):
     """Initialize DataManagerV2 with test workspace."""
     settings = get_settings()
-    dm = DataManagerV2(workspace_dir=test_workspace, console=None)
+    dm = DataManagerV2(workspace_path=test_workspace, console=None)
     return dm
 
 

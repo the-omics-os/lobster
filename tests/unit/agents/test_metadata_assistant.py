@@ -6,6 +6,17 @@ Tests all 4 metadata tools independently with mock services:
 - read_sample_metadata
 - standardize_sample_metadata
 - validate_dataset_content
+
+TODO: Consider splitting this 2,321-line file into separate files by test class:
+  - test_metadata_assistant_init.py (TestMetadataAssistantInit)
+  - test_metadata_assistant_mapping.py (TestMapSamplesByID)
+  - test_metadata_assistant_reading.py (TestReadSampleMetadata)
+  - test_metadata_assistant_standardization.py (TestStandardizeSampleMetadata)
+  - test_metadata_assistant_validation.py (TestValidateDatasetContent)
+  - test_metadata_assistant_system.py (TestSystemPrompt, TestUnexpectedErrors)
+  - test_metadata_assistant_routing.py (TestToolRouting)
+  - test_metadata_assistant_handoff.py (TestHandoffCoordination)
+All test classes have clear boundaries (not tightly coupled). Split would improve maintainability.
 """
 
 import json

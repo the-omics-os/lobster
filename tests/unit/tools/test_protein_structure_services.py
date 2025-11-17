@@ -20,7 +20,7 @@ import pytest
 from Bio import PDB
 
 from lobster.core.analysis_ir import AnalysisStep
-from lobster.tools.chimerax_visualization_service import (
+from lobster.tools.chimerax_visualization_service_ALPHA import (
     ChimeraXVisualizationError,
     ChimeraXVisualizationService,
 )

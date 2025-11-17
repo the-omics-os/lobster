@@ -6,10 +6,9 @@ and generating visualizations of the results.
 """
 
 import time
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import anndata
-import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import scanpy as sc
@@ -1072,7 +1071,7 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
             marker_summary = "\n\n**Top Marker Genes by Cluster:**\n"
             for cluster in sorted(adata.obs["leiden"].unique(), key=lambda x: int(x)):
                 genes = adata.uns["rank_genes_groups"]["names"][cluster][:5]
-                scores = adata.uns["rank_genes_groups"]["scores"][cluster][:5]
+                adata.uns["rank_genes_groups"]["scores"][cluster][:5]
                 marker_summary += f"- Cluster {cluster}: {', '.join(genes)}\n"
 
         # Batch correction information

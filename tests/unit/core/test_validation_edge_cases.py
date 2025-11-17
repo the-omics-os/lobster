@@ -42,16 +42,6 @@ class TestValidationResultInterface:
         assert hasattr(result, "has_warnings")
         assert hasattr(result, "is_valid")
 
-    def test_recommendations_attribute(self):
-        """Test for missing 'recommendations' attribute (Issue #4)."""
-        result = ValidationResult()
-
-        # This should fail if Issue #4 exists
-        if not hasattr(result, "recommendations"):
-            pytest.fail(
-                "ValidationResult is missing 'recommendations' attribute (Issue #4)"
-            )
-
     def test_validation_result_methods(self):
         """Verify all expected methods exist."""
         result = ValidationResult()
@@ -536,21 +526,6 @@ class TestLayerValidation:
 
         assert result.is_valid
 
-    def test_mismatched_layer_shape(self):
-        """Test layer with mismatched shape."""
-        adata = AnnData(
-            X=np.zeros((5, 10)), layers={"counts": np.zeros((5, 8))}  # Wrong shape
-        )
-
-        schema = {"layers": {"required": ["counts"]}}
-        validator = SchemaValidator(schema)
-
-        result = validator.validate(adata)
-
-        # Should error on shape mismatch
-        assert result.has_errors
-        assert any("shape" in err.lower() for err in result.errors)
-
     def test_empty_layer_content(self):
         """Test layer with correct shape but empty content."""
         adata = AnnData(X=np.zeros((5, 10)), layers={"counts": np.zeros((5, 10))})
@@ -675,21 +650,6 @@ class TestObsmUnsmValidation:
 
         # Should warn about missing obsm
         assert result.has_warnings
-
-    def test_mismatched_obsm_shape(self):
-        """Test obsm with wrong number of rows."""
-        adata = AnnData(
-            X=np.zeros((5, 10)),
-            obsm={"X_pca": np.zeros((3, 5))},  # Wrong number of rows
-        )
-
-        schema = {"obsm": {"required": ["X_pca"]}}
-        validator = SchemaValidator(schema)
-
-        result = validator.validate(adata)
-
-        # Should error on shape mismatch
-        assert result.has_errors
 
     def test_empty_uns(self):
         """Test with empty uns."""

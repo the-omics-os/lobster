@@ -255,20 +255,8 @@ class TestServiceIntegration:
             MockService.assert_called_once_with(data_manager=mock_data_manager)
             assert agent is not None
 
-    def test_research_assistant_integration(
-        self, mock_data_manager, mock_content_access_service
-    ):
-        """Test integration with ResearchAgentAssistant."""
-        with patch(
-            "lobster.agents.research_agent.ResearchAgentAssistant"
-        ) as MockAssistant:
-            mock_assistant = MockAssistant.return_value
-
-            agent = research_agent(mock_data_manager)
-
-            # Verify the assistant was initialized
-            MockAssistant.assert_called_once()
-            assert agent is not None
+    # DELETED: test_research_assistant_integration
+    # ResearchAgentAssistant has been archived/deprecated, test no longer relevant
 
     def test_geo_service_integration(
         self, mock_data_manager, mock_content_access_service
@@ -542,7 +530,7 @@ class TestContentAccessIntegration:
         mock_content_service = Mock()
         mock_content_service.get_abstract.return_value = {
             "pmid": "35042229",
-            "abstract": "This study presents single-cell RNA-seq analysis...",
+            "abstract": "This study presents single-cell RNA-seq analysis of cellular heterogeneity in tumor microenvironment. We identified novel cell populations and characterized their transcriptional profiles across multiple conditions.",
             "title": "Single-cell analysis reveals...",
             "provider": "AbstractProvider",
             "response_time": 0.3,

@@ -9,12 +9,9 @@ This module handles:
 This eliminates manual PDF discovery - the #1 user pain point.
 """
 
-import json
-import re
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, List, Optional
 
 from langchain_aws import ChatBedrockConverse
-from pydantic import BaseModel, Field, validator
 
 from lobster.config.settings import get_settings
 from lobster.tools.providers.publication_resolver import (
@@ -361,7 +358,7 @@ class ResearchAgentAssistant:
             report += f"\n\n### ❌ Paywalled Papers ({len(paywalled)}):\n"
             for r in paywalled:
                 report += f"\n**{r.identifier}**\n"
-                report += f"- See alternative access options below\n"
+                report += "- See alternative access options below\n"
 
         if errors:
             report += f"\n\n### ⚠️ Errors ({len(errors)}):\n"

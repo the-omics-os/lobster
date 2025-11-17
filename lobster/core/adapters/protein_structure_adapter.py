@@ -8,7 +8,7 @@ and other structural formats using BioPython.
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Union
 
 import anndata
 import numpy as np

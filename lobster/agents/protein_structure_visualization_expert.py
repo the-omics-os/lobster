@@ -7,7 +7,7 @@ with ChimeraX, performing structural analysis, and linking structures to omics d
 
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
@@ -160,7 +160,7 @@ def protein_structure_visualization_expert(
 - DOI: {metadata['publication_doi']}
 - Citation: {metadata.get('citation', 'N/A')}"""
 
-            response += f"""
+            response += """
 
 🎯 **Next Steps:**
 You can now:
@@ -619,7 +619,7 @@ Total Residues: {analysis_results.get('total_residues', 0)}"""
 
 Top contacts shown: {min(len(analysis_results.get('contacts', [])), 10)} (of {analysis_results.get('n_contacts', 0)} total)"""
 
-            response += f"""
+            response += """
 
 💾 **Analysis Results Stored:**
 Results are stored in memory and can be accessed for further processing.
@@ -742,14 +742,14 @@ Results are stored in memory and can be accessed for further processing.
 - > 5 Å: Different (e.g., different folds, large conformational changes)"""
 
             if align and "rotation_matrix" in rmsd_results:
-                response += f"""
+                response += """
 
 🔧 **Alignment Details:**
 - Superposition successfully applied
 - Rotation and translation matrices computed
 - Structures aligned for optimal RMSD"""
 
-            response += f"""
+            response += """
 
 🎯 **Next Steps:**
 - Visualize both structures to see differences

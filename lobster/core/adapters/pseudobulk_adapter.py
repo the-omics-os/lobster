@@ -8,7 +8,7 @@ appropriate schema enforcement.
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Union
 
 import anndata
 import numpy as np
@@ -104,7 +104,7 @@ class PseudobulkAdapter(BaseAdapter):
             # Validate schema if requested
             if validate_schema:
                 validation_result = self.validate(adata, strict=self.strict_validation)
-                if validation_result.has_errors():
+                if validation_result.has_errors:
                     if self.strict_validation:
                         raise ValidationError(
                             f"Pseudobulk schema validation failed: {validation_result.get_error_summary()}",

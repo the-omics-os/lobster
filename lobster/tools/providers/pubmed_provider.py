@@ -13,28 +13,17 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Union
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.providers.base_provider import (
     BasePublicationProvider,
-    DatasetMetadata,
     DatasetType,
     PublicationMetadata,
     PublicationSource,
-)
-from lobster.tools.providers.ncbi_query_builder import (
-    NCBIDatabase,
-)
-from lobster.tools.providers.ncbi_query_builder import (
-    PubMedQueryBuilder as QueryBuilder,
-)
-from lobster.tools.providers.ncbi_query_builder import (
-    build_pubmed_query,
 )
 from lobster.tools.rate_limiter import NCBIRateLimiter
 from lobster.utils.logger import get_logger
@@ -438,7 +427,7 @@ class PubMedProvider(BasePublicationProvider):
 
         except Exception as e:
             logger.error(f"Error finding datasets: {e}")
-            logger.exception(f"[DEFENSIVE] Full traceback for slice bug investigation:")
+            logger.exception("[DEFENSIVE] Full traceback for slice bug investigation:")
             return f"Error finding datasets from publication: {str(e)}"
 
     def extract_publication_metadata(
@@ -1247,7 +1236,7 @@ class PubMedProvider(BasePublicationProvider):
         if total_datasets == 0:
             response += "**No datasets found**. Check supplementary materials or contact authors.\n"
         else:
-            response += f"**Found dataset(s)**:\n\n"
+            response += "**Found dataset(s)**:\n\n"
 
             dataset_lines = []
 

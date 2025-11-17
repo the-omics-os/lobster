@@ -294,28 +294,28 @@ class DataExpertAssistant:
         )
         if has_chromatin and has_rna:
             logger.info(
-                f"[PRE-FILTER] Detected multiome keywords: chromatin_accessibility + RNA"
+                "[PRE-FILTER] Detected multiome keywords: chromatin_accessibility + RNA"
             )
             return "multiome_gex_atac"
 
         # Check for CITE-seq keywords
         if "cite-seq" in text or ("antibody" in text and has_rna):
-            logger.info(f"[PRE-FILTER] Detected CITE-seq keywords")
+            logger.info("[PRE-FILTER] Detected CITE-seq keywords")
             return "cite_seq"
 
         # Check for spatial keywords
         if "spatial transcriptomics" in text or "visium" in text:
-            logger.info(f"[PRE-FILTER] Detected spatial keywords")
+            logger.info("[PRE-FILTER] Detected spatial keywords")
             return "spatial_visium"
 
         # Check for Perturb-seq keywords
         if "perturb-seq" in text or ("crispr" in text and has_rna):
-            logger.info(f"[PRE-FILTER] Detected Perturb-seq keywords")
+            logger.info("[PRE-FILTER] Detected Perturb-seq keywords")
             return "perturb_seq"
 
         # Check for scATAC (chromatin only, no RNA)
         if has_chromatin and not has_rna:
-            logger.info(f"[PRE-FILTER] Detected scATAC keywords")
+            logger.info("[PRE-FILTER] Detected scATAC keywords")
             return "scatac_10x"
 
         return None
@@ -367,7 +367,7 @@ class DataExpertAssistant:
                         "Multi-omics data may be in controlled-access repositories (dbGaP) and not visible in GEO files."
                     ),
                     detected_signals=[
-                        f"Keyword pattern detected in metadata (pre-filter)",
+                        "Keyword pattern detected in metadata (pre-filter)",
                         f"Title/Summary/Design mentions multi-omics modality: {pre_filtered_modality}",
                     ],
                     suggestions=[
@@ -381,7 +381,7 @@ class DataExpertAssistant:
             summary = metadata.get("summary", "N/A")
             overall_design = metadata.get("overall_design", "N/A")
             platforms = metadata.get("platforms", {})
-            samples = metadata.get("samples", {})
+            metadata.get("samples", {})
 
             # Use shared utility for file formatting
             file_display = self._format_supplementary_files_for_llm(metadata)

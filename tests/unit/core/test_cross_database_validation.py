@@ -58,7 +58,7 @@ class TestTranscriptomicsAccessionValidation:
         result = transcriptomics_validate(basic_adata, modality="transcriptomics")
 
         assert isinstance(result, ValidationResult)
-        assert not result.has_errors()
+        assert not result.has_errors
         # Should have info message with URL
         assert any("Valid" in msg for msg in result.info)
         assert any("PRJNA123456" in msg for msg in result.info)
@@ -70,7 +70,7 @@ class TestTranscriptomicsAccessionValidation:
         result = transcriptomics_validate(basic_adata, modality="transcriptomics")
 
         assert isinstance(result, ValidationResult)
-        assert result.has_warnings()
+        assert result.has_warnings
         warning_msg = " ".join(result.warnings)
         assert "Invalid" in warning_msg
         assert "BioProject" in warning_msg
@@ -83,7 +83,7 @@ class TestTranscriptomicsAccessionValidation:
         result = transcriptomics_validate(basic_adata, modality="transcriptomics")
 
         assert isinstance(result, ValidationResult)
-        assert not result.has_errors()
+        assert not result.has_errors
         assert any("Valid" in msg for msg in result.info)
         assert any("GSE194247" in msg for msg in result.info)
 
@@ -93,7 +93,7 @@ class TestTranscriptomicsAccessionValidation:
 
         result = transcriptomics_validate(basic_adata, modality="transcriptomics")
 
-        assert result.has_warnings()
+        assert result.has_warnings
         assert "Invalid" in " ".join(result.warnings)
 
     def test_validate_multiple_accessions(self, basic_adata):
@@ -104,7 +104,7 @@ class TestTranscriptomicsAccessionValidation:
 
         result = transcriptomics_validate(basic_adata, modality="transcriptomics")
 
-        assert not result.has_errors()
+        assert not result.has_errors
         # Should have info messages for all three valid accessions
         assert len([msg for msg in result.info if "Valid" in msg]) == 3
 
@@ -115,7 +115,7 @@ class TestTranscriptomicsAccessionValidation:
 
         result = transcriptomics_validate(basic_adata, modality="transcriptomics")
 
-        assert result.has_warnings()
+        assert result.has_warnings
         # Should have one info (valid) and one warning (invalid)
         assert len([msg for msg in result.info if "Valid" in msg]) == 1
         assert len([msg for msg in result.warnings if "Invalid" in msg]) == 1
@@ -127,8 +127,8 @@ class TestTranscriptomicsAccessionValidation:
         result = transcriptomics_validate(basic_adata, modality="transcriptomics")
 
         # Empty strings should be skipped - no errors or warnings
-        assert not result.has_errors()
-        assert not result.has_warnings()
+        assert not result.has_errors
+        assert not result.has_warnings
 
     def test_validate_none_value(self, basic_adata):
         """Test validation with None value (should be skipped)."""
@@ -137,8 +137,8 @@ class TestTranscriptomicsAccessionValidation:
         result = transcriptomics_validate(basic_adata, modality="transcriptomics")
 
         # None values should be skipped
-        assert not result.has_errors()
-        assert not result.has_warnings()
+        assert not result.has_errors
+        assert not result.has_warnings
 
     def test_validator_integration(self, basic_adata):
         """Test that validation is integrated with create_validator."""
@@ -153,7 +153,7 @@ class TestTranscriptomicsAccessionValidation:
         result = validator.validate(basic_adata)
 
         # Should detect the invalid accession
-        assert result.has_warnings()
+        assert result.has_warnings
 
 
 @pytest.mark.unit
@@ -167,7 +167,7 @@ class TestProteomicsAccessionValidation:
         result = proteomics_validate(basic_adata, modality="proteomics")
 
         assert isinstance(result, ValidationResult)
-        assert not result.has_errors()
+        assert not result.has_errors
         assert any("Valid" in msg and "PXD012345" in msg for msg in result.info)
 
     def test_validate_invalid_pride_accession(self, basic_adata):
@@ -176,7 +176,7 @@ class TestProteomicsAccessionValidation:
 
         result = proteomics_validate(basic_adata, modality="proteomics")
 
-        assert result.has_warnings()
+        assert result.has_warnings
         assert "Invalid" in " ".join(result.warnings)
 
     def test_validate_valid_massive_accession(self, basic_adata):
@@ -185,7 +185,7 @@ class TestProteomicsAccessionValidation:
 
         result = proteomics_validate(basic_adata, modality="proteomics")
 
-        assert not result.has_errors()
+        assert not result.has_errors
         assert any("Valid" in msg and "MSV000012345" in msg for msg in result.info)
 
     def test_validator_integration(self, basic_adata):
@@ -198,7 +198,7 @@ class TestProteomicsAccessionValidation:
         assert "check_cross_database_accessions" in validator.custom_rules
 
         result = validator.validate(basic_adata)
-        assert result.has_warnings()
+        assert result.has_warnings
 
 
 @pytest.mark.unit
@@ -212,7 +212,7 @@ class TestMetabolomicsAccessionValidation:
         result = metabolomics_validate(basic_adata, modality="metabolomics")
 
         assert isinstance(result, ValidationResult)
-        assert not result.has_errors()
+        assert not result.has_errors
         assert any("Valid" in msg and "MTBLS1234" in msg for msg in result.info)
 
     def test_validate_invalid_metabolights_accession(self, basic_adata):
@@ -221,7 +221,7 @@ class TestMetabolomicsAccessionValidation:
 
         result = metabolomics_validate(basic_adata, modality="metabolomics")
 
-        assert result.has_warnings()
+        assert result.has_warnings
         assert "Invalid" in " ".join(result.warnings)
 
     def test_validate_valid_workbench_accession(self, basic_adata):
@@ -230,7 +230,7 @@ class TestMetabolomicsAccessionValidation:
 
         result = metabolomics_validate(basic_adata, modality="metabolomics")
 
-        assert not result.has_errors()
+        assert not result.has_errors
         assert any("Valid" in msg and "ST001234" in msg for msg in result.info)
 
     def test_validator_integration(self, basic_adata):
@@ -243,7 +243,7 @@ class TestMetabolomicsAccessionValidation:
         assert "check_cross_database_accessions" in validator.custom_rules
 
         result = validator.validate(basic_adata)
-        assert result.has_warnings()
+        assert result.has_warnings
 
 
 @pytest.mark.unit
@@ -257,7 +257,7 @@ class TestMetagenomicsAccessionValidation:
         result = metagenomics_validate(basic_adata, modality="metagenomics")
 
         assert isinstance(result, ValidationResult)
-        assert not result.has_errors()
+        assert not result.has_errors
         assert any("Valid" in msg and "MGYS00001234" in msg for msg in result.info)
 
     def test_validate_invalid_mgnify_accession(self, basic_adata):
@@ -266,7 +266,7 @@ class TestMetagenomicsAccessionValidation:
 
         result = metagenomics_validate(basic_adata, modality="metagenomics")
 
-        assert result.has_warnings()
+        assert result.has_warnings
         assert "Invalid" in " ".join(result.warnings)
 
     def test_validate_valid_qiita_accession(self, basic_adata):
@@ -275,7 +275,7 @@ class TestMetagenomicsAccessionValidation:
 
         result = metagenomics_validate(basic_adata, modality="metagenomics")
 
-        assert not result.has_errors()
+        assert not result.has_errors
         assert any("Valid" in msg and "10317" in msg for msg in result.info)
 
     def test_validator_integration_16s(self, basic_adata):
@@ -288,7 +288,7 @@ class TestMetagenomicsAccessionValidation:
         assert "check_cross_database_accessions" in validator.custom_rules
 
         result = validator.validate(basic_adata)
-        assert result.has_warnings()
+        assert result.has_warnings
 
     def test_validator_integration_shotgun(self, basic_adata):
         """Test that validation is integrated with create_validator for shotgun."""
@@ -300,7 +300,7 @@ class TestMetagenomicsAccessionValidation:
         assert "check_cross_database_accessions" in validator.custom_rules
 
         result = validator.validate(basic_adata)
-        assert result.has_warnings()
+        assert result.has_warnings
 
 
 @pytest.mark.unit
@@ -313,7 +313,7 @@ class TestCrossModalityAccessions:
 
         result = transcriptomics_validate(basic_adata, modality="transcriptomics")
 
-        assert not result.has_errors()
+        assert not result.has_errors
         assert any("Valid" in msg for msg in result.info)
 
     def test_bioproject_in_proteomics(self, basic_adata):
@@ -322,7 +322,7 @@ class TestCrossModalityAccessions:
 
         result = proteomics_validate(basic_adata, modality="proteomics")
 
-        assert not result.has_errors()
+        assert not result.has_errors
         assert any("Valid" in msg for msg in result.info)
 
     def test_bioproject_in_metabolomics(self, basic_adata):
@@ -331,7 +331,7 @@ class TestCrossModalityAccessions:
 
         result = metabolomics_validate(basic_adata, modality="metabolomics")
 
-        assert not result.has_errors()
+        assert not result.has_errors
         assert any("Valid" in msg for msg in result.info)
 
     def test_bioproject_in_metagenomics(self, basic_adata):
@@ -340,7 +340,7 @@ class TestCrossModalityAccessions:
 
         result = metagenomics_validate(basic_adata, modality="metagenomics")
 
-        assert not result.has_errors()
+        assert not result.has_errors
         assert any("Valid" in msg for msg in result.info)
 
     def test_publication_doi_all_modalities(self, basic_adata):
@@ -356,7 +356,7 @@ class TestCrossModalityAccessions:
             ("metagenomics", metagenomics_validate),
         ]:
             result = validate_func(basic_adata, modality=modality)
-            assert not result.has_errors(), f"Failed for {modality}"
+            assert not result.has_errors, f"Failed for {modality}"
             assert any(
                 doi in msg for msg in result.info
             ), f"Missing info for {modality}"

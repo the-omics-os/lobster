@@ -7,9 +7,8 @@ architecture with DataManagerV2 integration.
 """
 
 import json
-import re
 import uuid
-from datetime import date, datetime
+from datetime import datetime
 from typing import List
 
 from langchain_core.tools import tool
@@ -21,7 +20,6 @@ from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.schemas.download_queue import (
     DownloadQueueEntry,
     DownloadStatus,
-    StrategyConfig,
 )
 from lobster.tools.content_access_service import ContentAccessService
 from lobster.tools.metadata_validation_service import (
@@ -466,7 +464,7 @@ def research_agent(
                     try:
                         metadata_info, _ = geo_service.fetch_metadata_only(identifier)
                         formatted = f"## Dataset Metadata for {identifier}\n\n"
-                        formatted += f"**Database**: GEO\n"
+                        formatted += "**Database**: GEO\n"
                         formatted += f"**Accession**: {identifier}\n"
 
                         # Add available metadata fields with verbosity control
@@ -704,7 +702,7 @@ def research_agent(
                 response_parts = [
                     f"## Dataset Already Validated: {accession}",
                     "",
-                    f"**Status**: ✅ Metadata cached in system",
+                    "**Status**: ✅ Metadata cached in system",
                     f"**Title**: {title}",
                     f"**Sample Count**: {metadata.get('n_samples', len(metadata.get('samples', {})))}",
                     f"**Database**: {metadata.get('database', 'GEO')}",
@@ -743,7 +741,7 @@ def research_agent(
                             "**Download Queue**: Failed to add (check logs for details)",
                             "",
                             "**Next steps**:",
-                            f"1. Check logs for queue addition error",
+                            "1. Check logs for queue addition error",
                             f"2. Retry: `validate_dataset_metadata(accession='{accession}', add_to_queue=True)`"
                         ])
 
@@ -837,17 +835,17 @@ def research_agent(
                                 )
 
                                 # Enhanced response
-                                report += f"\n\n## Download Queue\n\n"
-                                report += f"✅ Dataset added to download queue:\n"
+                                report += "\n\n## Download Queue\n\n"
+                                report += "✅ Dataset added to download queue:\n"
                                 report += f"- **Entry ID**: `{entry_id}`\n"
-                                report += f"- **Status**: PENDING\n"
+                                report += "- **Status**: PENDING\n"
                                 report += f"- **Files found**: {url_data.get('file_count', 0)}\n"
                                 if url_data.get("matrix_url"):
-                                    report += f"- **Matrix file**: Available\n"
+                                    report += "- **Matrix file**: Available\n"
                                 if url_data.get("supplementary_urls"):
                                     report += f"- **Supplementary files**: {len(url_data['supplementary_urls'])} file(s)\n"
-                                report += f"\n**Next steps**:\n"
-                                report += f"1. Supervisor can query queue: `get_content_from_workspace(workspace='download_queue')`\n"
+                                report += "\n**Next steps**:\n"
+                                report += "1. Supervisor can query queue: `get_content_from_workspace(workspace='download_queue')`\n"
                                 report += f"2. Hand off to data_expert with entry_id: `{entry_id}`\n"
 
                             except Exception as e:
@@ -2379,9 +2377,7 @@ Dataset Discovery Results for [Drug Target/Indication]
 
 **Note**: For stop conditions and operational limits, refer to the "Operational Limits" section in Critical_Rules above.
 
-""".format(
-        date=date.today()
-    )
+"""
     return create_react_agent(
         model=llm, tools=tools, prompt=system_prompt, name=agent_name
     )

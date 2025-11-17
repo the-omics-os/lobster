@@ -8,15 +8,13 @@ quality control, quantification, and differential expression analysis.
 import os
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import anndata
 import numpy as np
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 
-from lobster.core import DesignMatrixError, FormulaError, PseudobulkError
+from lobster.core import FormulaError
 from lobster.tools.differential_formula_service import DifferentialFormulaService
 from lobster.utils.logger import get_logger
 
@@ -1033,7 +1031,7 @@ Next suggested step: Import quantification data with tximport for differential e
         # Check H5 support
         if use_h5:
             try:
-                import h5py
+                import h5py  # noqa: F401
             except ImportError:
                 logger.warning("h5py not available, falling back to TSV format")
                 use_h5 = False
@@ -1297,7 +1295,7 @@ Next suggested step: Import quantification data with tximport for differential e
 
             # Parse formula and validate design
             design_info = self.formula_service.parse_formula(formula, metadata)
-            design_result = self.formula_service.construct_design_matrix(
+            self.formula_service.construct_design_matrix(
                 design_info, metadata, contrast
             )
 
@@ -1452,8 +1450,8 @@ Next suggested step: Import quantification data with tximport for differential e
         status = {}
 
         try:
-            from pydeseq2.dds import DeseqDataSet
-            from pydeseq2.ds import DeseqStats
+            from pydeseq2.dds import DeseqDataSet  # noqa: F401
+            from pydeseq2.ds import DeseqStats  # noqa: F401
 
             status["pydeseq2"] = True
             status["pydeseq2_available"] = True  # Add expected key for tests
@@ -1464,7 +1462,7 @@ Next suggested step: Import quantification data with tximport for differential e
             status["pydeseq2_available"] = False
 
         try:
-            from pydeseq2.default_inference import DefaultInference
+            from pydeseq2.default_inference import DefaultInference  # noqa: F401
 
             status["pydeseq2_inference"] = True
             logger.debug("pyDESeq2 inference components available")

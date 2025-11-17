@@ -305,7 +305,7 @@ LOBSTER_CLOUD_KEY="key" python -m lobster chat  # Cloud mode
 - **[Creating Services Guide](10-creating-services.md)** - Service implementation patterns
 - **[Creating Adapters Guide](11-creating-adapters.md)** - Data adapter development
 - **[Testing Guide](12-testing-guide.md)** - Comprehensive testing framework
-- **[CLAUDE.md](../../CLAUDE.md)** - Complete architectural documentation
+- **[CLAUDE.md](CLAUDE.md)** - Complete architectural documentation
 
 ## 🎯 Quick Reference
 

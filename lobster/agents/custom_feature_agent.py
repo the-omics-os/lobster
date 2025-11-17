@@ -11,7 +11,7 @@ import os
 import re
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
@@ -316,7 +316,6 @@ def custom_feature_agent(
                 }
         """
         import importlib.util
-        import subprocess
         import shutil
 
         python_status = {}
@@ -334,12 +333,12 @@ def custom_feature_agent(
                 python_status[package] = False
 
         # Check system packages using shutil.which (checks PATH)
-        for tool in packages.get("system_packages", []):
+        for sys_tool in packages.get("system_packages", []):
             try:
-                system_status[tool] = shutil.which(tool) is not None
+                system_status[sys_tool] = shutil.which(sys_tool) is not None
             except Exception as e:
-                logger.warning(f"Error checking system tool {tool}: {e}")
-                system_status[tool] = False
+                logger.warning(f"Error checking system tool {sys_tool}: {e}")
+                system_status[sys_tool] = False
 
         return {
             "python_packages": python_status,
@@ -665,7 +664,7 @@ Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositori
 
             # Configure SDK options
             try:
-                logger.info(f"[DEBUG] Configuring SDK options...")
+                logger.info("[DEBUG] Configuring SDK options...")
                 logger.info(f"[DEBUG] Working directory: {lobster_root}")
                 logger.info(f"[DEBUG] CLAUDE.md path: {lobster_root / 'CLAUDE.md'}")
 
@@ -777,7 +776,7 @@ Begin implementation now."""
 
             # Spawn Claude Code SDK
             try:
-                logger.info(f"[DEBUG] Spawning Claude Code SDK...")
+                logger.info("[DEBUG] Spawning Claude Code SDK...")
                 debug_info["steps"].append("Spawning SDK client")
 
                 sdk_output_lines = []
@@ -785,7 +784,7 @@ Begin implementation now."""
                 message_count = 0
 
                 async with ClaudeSDKClient(options=options) as client:
-                    logger.info(f"[DEBUG] SDK client connected successfully")
+                    logger.info("[DEBUG] SDK client connected successfully")
                     debug_info["steps"].append("SDK client connected")
 
                     # Send prompt
@@ -799,7 +798,7 @@ Begin implementation now."""
                         debug_info["prompt_length"] = len(prompt)
 
                         await client.query(prompt)
-                        logger.info(f"[DEBUG] Prompt sent successfully")
+                        logger.info("[DEBUG] Prompt sent successfully")
                         debug_info["steps"].append("Prompt sent")
                     except Exception as e:
                         error_msg = f"Failed to send prompt to SDK: {e}"
@@ -810,7 +809,7 @@ Begin implementation now."""
 
                     # Collect responses
                     try:
-                        logger.info(f"[DEBUG] Receiving SDK responses...")
+                        logger.info("[DEBUG] Receiving SDK responses...")
                         debug_info["steps"].append("Receiving SDK responses")
 
                         async for message in client.receive_response():
@@ -934,7 +933,7 @@ Begin implementation now."""
 
             # Verify files were created
             try:
-                logger.info(f"[DEBUG] Verifying created files...")
+                logger.info("[DEBUG] Verifying created files...")
                 debug_info["steps"].append("Verifying created files")
 
                 expected_files = []
@@ -981,7 +980,7 @@ Begin implementation now."""
                 missing_system = []
 
                 try:
-                    logger.info(f"[DEBUG] Detecting required packages from created files...")
+                    logger.info("[DEBUG] Detecting required packages from created files...")
                     debug_info["steps"].append("Detecting required packages")
 
                     detected_packages = detect_packages_in_files(verified_files)
@@ -1335,7 +1334,7 @@ Minimum 20 characters required."""
                         if debug_info.get("verified_files"):
                             debug_section += f"**Verified files:** {len(debug_info['verified_files'])}\n"
                         if debug_info.get("missing_files"):
-                            debug_section += f"\n**Missing files:**\n"
+                            debug_section += "\n**Missing files:**\n"
                             for missing in debug_info["missing_files"]:
                                 debug_section += f"  ✗ {missing}\n"
 
@@ -1409,10 +1408,10 @@ If the error persists, please report it to the Lobster team with the debug infor
 
             # Add branch information
             branch_name = result.get("branch_name", "unknown")
-            response += f"\n\n🌿 **Git Branch:**\n"
+            response += "\n\n🌿 **Git Branch:**\n"
             response += f"  ✓ Created and switched to: `{branch_name}`\n"
-            response += f"  - All changes are on this feature branch\n"
-            response += f"  - Main branch remains unchanged\n"
+            response += "  - All changes are on this feature branch\n"
+            response += "  - Main branch remains unchanged\n"
 
             # Add package warnings if any missing
             missing_python = result.get("missing_python_packages", [])
@@ -1437,57 +1436,57 @@ If the error persists, please report it to the Lobster team with the debug infor
             if missing_python or missing_system:
                 response += f"{step_number}. **Install Missing Dependencies** ⚠️\n"
                 if missing_python:
-                    response += f"   Python packages (pip):\n"
-                    response += f"   ```bash\n"
+                    response += "   Python packages (pip):\n"
+                    response += "   ```bash\n"
                     response += f"   pip install {' '.join(missing_python)}\n"
-                    response += f"   ```\n"
+                    response += "   ```\n"
                 if missing_system:
-                    response += f"   System packages (brew):\n"
-                    response += f"   ```bash\n"
+                    response += "   System packages (brew):\n"
+                    response += "   ```bash\n"
                     response += f"   brew install {' '.join(missing_system)}\n"
-                    response += f"   ```\n"
+                    response += "   ```\n"
                 response += "\n"
                 step_number += 1
 
             # Step N: Review Code
             response += f"{step_number}. **Review Generated Code**\n"
-            response += f"   - Check that the implementation matches your requirements\n"
-            response += f"   - Verify naming conventions are followed\n"
-            response += f"   - Ensure docstrings are complete\n\n"
+            response += "   - Check that the implementation matches your requirements\n"
+            response += "   - Verify naming conventions are followed\n"
+            response += "   - Ensure docstrings are complete\n\n"
             step_number += 1
 
             # Step N+1: Run Tests
             response += f"{step_number}. **Run Tests**\n"
-            response += f"   ```bash\n"
-            response += f"   make test\n"
-            response += f"   ```\n\n"
+            response += "   ```bash\n"
+            response += "   make test\n"
+            response += "   ```\n\n"
             step_number += 1
 
             # Step N+2: Check Quality
             response += f"{step_number}. **Check Code Quality**\n"
-            response += f"   ```bash\n"
-            response += f"   make lint\n"
-            response += f"   make type-check\n"
-            response += f"   ```\n\n"
+            response += "   ```bash\n"
+            response += "   make lint\n"
+            response += "   make type-check\n"
+            response += "   ```\n\n"
             step_number += 1
 
             # Step N+3: Update Registry
             response += f"{step_number}. **Update Registry & Configuration** (if agent was created)\n"
-            response += f"   - Follow the instructions above to add to agent_registry.py AND agent_config.py\n"
-            response += f"   - BOTH files must be updated to avoid KeyError\n\n"
+            response += "   - Follow the instructions above to add to agent_registry.py AND agent_config.py\n"
+            response += "   - BOTH files must be updated to avoid KeyError\n\n"
             step_number += 1
 
             # Step N+4: Restart Lobster
             response += f"{step_number}. **Restart Lobster**\n"
-            response += f"   ```bash\n"
-            response += f"   lobster chat\n"
-            response += f"   ```\n\n"
+            response += "   ```bash\n"
+            response += "   lobster chat\n"
+            response += "   ```\n\n"
             step_number += 1
 
             # Step N+5: Test Feature
             response += f"{step_number}. **Test Your Feature**\n"
-            response += f"   - Interact with the new agent through the supervisor\n"
-            response += f"   - Try different workflows and edge cases\n\n"
+            response += "   - Interact with the new agent through the supervisor\n"
+            response += "   - Try different workflows and edge cases\n\n"
 
             # Footer
             response += f"📚 **Documentation:** See lobster/wiki/{feature_name.replace('_', '-').lower()}.md for usage examples\n\n"

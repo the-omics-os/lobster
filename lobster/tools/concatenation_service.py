@@ -7,14 +7,10 @@ and geo_service.py, implementing a strategy pattern for different data types
 with advanced memory management and progress tracking.
 """
 
-import gc
-import os
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -22,9 +18,11 @@ import pandas as pd
 import psutil
 
 try:
+    import anndata
     import anndata as ad
 except ImportError:
     ad = None
+    anndata = None
 
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.data_manager_v2 import DataManagerV2
@@ -417,7 +415,7 @@ class MemoryEfficientStrategy(BaseConcatenationStrategy):
         """Concatenate using memory-efficient chunked processing."""
         import time
 
-        start_time = time.time()
+        time.time()
 
         try:
             validation = self.validate(sample_data)

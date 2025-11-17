@@ -134,7 +134,7 @@ class TestDataManagerV2Initialization:
         assert isinstance(dm.modalities, dict)
         assert len(dm.modalities) == 0
         assert isinstance(dm.metadata_store, dict)
-        assert isinstance(dm.tool_usage_history, list)
+        # tool_usage_history moved to provenance.tool_history
         assert isinstance(dm.latest_plots, list)
 
         # Check legacy compatibility attributes
@@ -977,7 +977,7 @@ class TestWorkspaceManagement:
 
         test_data = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
         dm.modalities["test_mod"] = test_data
-        dm.tool_usage_history.append({"tool": "test", "params": {}})
+        # tool_usage_history has been removed - provenance is tracked differently
 
         with patch.object(dm, "save_modality") as mock_save:
             mock_save.return_value = "/path/to/saved.h5ad"
@@ -2495,7 +2495,7 @@ class TestIntegrationScenarios:
 
         # Validate workflow completion
         assert len(dm.modalities) == 1
-        assert len(dm.provenance.activities) == 2  # Updated to use provenance
+        assert len(dm.provenance.activities) == 4  # load, QC, normalize, save
         assert len(dm.latest_plots) == 1
         mock_backend.save.assert_called_once()
 
@@ -2600,7 +2600,7 @@ class TestIntegrationScenarios:
 
         # Verify state consistency
         assert len(dm.modalities) == 2
-        assert len(dm.tool_usage_history) == 2
+        # tool_usage_history has been removed - provenance is tracked differently
         assert len(dm.latest_plots) == 1
 
     @patch("lobster.core.data_manager_v2.H5ADBackend")

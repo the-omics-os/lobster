@@ -409,8 +409,9 @@ class TestStructuralExtremes:
 class TestMetadataExtremes:
     """Test problematic metadata and annotations."""
 
+    @pytest.mark.slow
     def test_thousands_of_metadata_columns(self, h5ad_backend, temp_workspace):
-        """Test obs with 10,000+ metadata columns."""
+        """Test obs with 10,000+ metadata columns (slow: 9.3s)."""
         n_cols = 10000
         obs_data = {
             f"meta_{i}": [f"val_{i}_{j}" for j in range(100)] for i in range(n_cols)
@@ -679,7 +680,7 @@ class TestMemoryPerformanceExtremes:
     """Test resource exhaustion scenarios."""
 
     def test_million_gene_dataset_save_load(self, h5ad_backend, temp_workspace):
-        """Test dataset with 1 million variables (genes).
+        """Test dataset with 1 million variables (genes) (slow: 6.4s).
 
         NOTE: This test may be skipped on systems with limited memory.
         """

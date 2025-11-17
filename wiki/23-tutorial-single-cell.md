@@ -14,7 +14,7 @@ In this tutorial, you will learn to:
 
 ## Prerequisites
 
-- Lobster AI installed and configured (see [Installation Guide](../INSTALLATION.md))
+- Lobster AI installed and configured (see [Installation Guide](02-installation.md))
 - API keys set up in your `.env` file
 - Basic understanding of single-cell RNA-seq concepts
 

@@ -12,8 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pytest
 
-# Skip all proteomics tests as they are in development
-pytestmark = pytest.mark.skip(reason="Proteomics services are still in development")
+# Proteomics services tests (skip marker removed - tests now active)
 import os
 import tempfile
 from pathlib import Path

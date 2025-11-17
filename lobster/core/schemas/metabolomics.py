@@ -438,7 +438,6 @@ def _validate_metabolite_ids(adata) -> "ValidationResult":
 
 def _validate_intensity_data(adata) -> "ValidationResult":
     """Validate intensity data characteristics."""
-    import numpy as np
 
     from lobster.core.interfaces.validator import ValidationResult
 

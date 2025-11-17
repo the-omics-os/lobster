@@ -8,7 +8,7 @@ provider selection based on required capabilities and priority.
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from lobster.tools.providers.base_provider import DatasetType, ProviderCapability
+from lobster.tools.providers.base_provider import DatasetType
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)

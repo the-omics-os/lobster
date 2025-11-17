@@ -180,7 +180,7 @@ def test_config():
 ### Service Unit Test Template
 
 ```python
-# tests/unit/services/test_your_service.py
+# tests/unit/tools/test_your_service.py
 import pytest
 import numpy as np
 import pandas as pd

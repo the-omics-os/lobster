@@ -9,6 +9,11 @@ This guide covers all installation methods for Lobster AI, from quick setup to a
 - [Platform-Specific Instructions](#platform-specific-instructions)
 - [Verification](#verification)
 - [Development Installation](#development-installation)
+- [Optional Dependencies](#optional-dependencies)
+  - [PyMOL (Protein Structure Visualization)](#pymol-protein-structure-visualization)
+  - [Docling (Advanced PDF Parsing)](#docling-advanced-pdf-parsing)
+  - [AWS Bedrock (Enhanced Setup)](#aws-bedrock-enhanced-setup)
+  - [Cloud Mode Configuration](#cloud-mode-configuration)
 - [Docker Deployment](#docker-deployment)
 - [Troubleshooting](#troubleshooting)
 
@@ -42,7 +47,7 @@ Choose ONE of the following LLM providers:
 
 1. **Claude API Key** (Recommended for most users)
 
-   ⚠️ **Important: Rate Limits** - Anthropic applies conservative rate limits to new accounts. For production use or heavy workloads, we recommend AWS Bedrock. If you encounter rate limit errors, see [Troubleshooting Guide](28-troubleshooting.md#rate-limit-errors-429).
+   ⚠️ **Important: Rate Limits** - Anthropic applies conservative rate limits to new accounts. For production use or heavy workloads, we recommend AWS Bedrock. If you encounter rate limit errors, see [Troubleshooting Guide](28-troubleshooting.md).
 
    - Visit [Anthropic Console](https://console.anthropic.com/)
    - Create account and generate API key
@@ -357,69 +362,366 @@ make setup-pre-commit
 pre-commit run --all-files
 ```
 
+## Optional Dependencies
+
+These optional components enhance Lobster AI with advanced features. Install based on your analysis needs.
+
+### PyMOL (Protein Structure Visualization)
+
+PyMOL enables 3D protein structure visualization and analysis (v2.4+).
+
+**Automated Installation (macOS):**
+```bash
+cd lobster
+make install-pymol
+```
+
+**Manual Installation:**
+
+#### macOS
+```bash
+# Via Homebrew
+brew install brewsci/bio/pymol
+
+# Verify installation
+pymol -c -Q
+```
+
+#### Linux (Ubuntu/Debian)
+```bash
+# Via apt
+sudo apt-get update
+sudo apt-get install pymol
+
+# Verify installation
+which pymol
+pymol -c -Q
+```
+
+#### Linux (Fedora/RHEL)
+```bash
+# Via DNF
+sudo dnf install pymol
+
+# Verify installation
+pymol -c -Q
+```
+
+#### Docker
+PyMOL is pre-installed in the Docker image - no additional setup needed.
+
+**Usage:**
+```bash
+# In Lobster chat
+🦞 You: "Fetch protein structure 1AKE"
+🦞 You: "Visualize 1AKE with PyMOL mode=interactive style=cartoon"
+🦞 You: "Link protein structures to my RNA-seq data"
+```
+
+**Troubleshooting:**
+If PyMOL is not found, check installation:
+```bash
+which pymol
+pymol --version
+```
+
+See [Protein Structure Visualization Guide](40-protein-structure-visualization.md) for complete usage details.
+
+### Docling (Advanced PDF Parsing)
+
+Docling provides professional-grade PDF parsing for extracting methods from scientific publications (v2.4+).
+
+**Installation:**
+```bash
+# Basic Docling
+pip install docling
+
+# Full installation with all features
+pip install "docling[all]"
+
+# With table extraction
+pip install "docling[table]"
+
+# With OCR support
+pip install "docling[ocr]"
+```
+
+**Verify Installation:**
+```bash
+python -c "from docling.document_converter import DocumentConverter; print('✓ Docling installed')"
+```
+
+**Benefits:**
+- **>90% Methods section detection** (vs 30% with PyPDF2 fallback)
+- **Table extraction** from scientific papers
+- **Formula recognition** in publications
+- **Better structure detection** for complex PDFs
+
+**Usage:**
+```bash
+# Docling is used automatically by ContentAccessService
+🦞 You: "Extract methods from PMID:38448586"
+🦞 You: "Read full publication PMID:35042229"
+```
+
+**Fallback Behavior:**
+If Docling is not installed, Lobster automatically falls back to PyPDF2 with reduced functionality.
+
+**Troubleshooting:**
+```bash
+# Test Docling functionality
+python -c "import docling; print(docling.__version__)"
+
+# Check dependencies
+pip list | grep docling
+```
+
+See [Publication Intelligence Guide](37-publication-intelligence-deep-dive.md) for technical details.
+
+### AWS Bedrock (Enhanced Setup)
+
+Detailed AWS Bedrock configuration for production deployments.
+
+**Step 1: Create AWS Account**
+1. Visit [AWS Console](https://console.aws.amazon.com/)
+2. Create account or sign in
+3. Navigate to AWS Bedrock service
+
+**Step 2: Request Model Access**
+```bash
+# Navigate to: AWS Bedrock → Model Access
+# Request access to: Claude 3.5 Sonnet, Claude 3 Opus
+# Approval typically takes 1-2 business days
+```
+
+**Step 3: Create IAM User**
+```bash
+# AWS Console → IAM → Users → Create User
+# User name: lobster-ai-user
+# Access type: Programmatic access
+
+# Attach policy: AmazonBedrockFullAccess
+# OR create custom policy (recommended):
+```
+
+**Custom IAM Policy (Least Privilege):**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream",
+        "bedrock:ListFoundationModels"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+**Step 4: Configure Credentials**
+```bash
+# Option 1: AWS CLI configuration (recommended)
+aws configure
+# Enter: Access Key ID, Secret Access Key, Region (us-east-1), Output format (json)
+
+# Option 2: Environment variables
+export AWS_BEDROCK_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE
+export AWS_BEDROCK_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+export AWS_DEFAULT_REGION=us-east-1
+
+# Option 3: .env file (for Lobster)
+cat >> .env << EOF
+AWS_BEDROCK_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE
+AWS_BEDROCK_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+AWS_DEFAULT_REGION=us-east-1
+EOF
+```
+
+**Step 5: Verify Access**
+```bash
+# Test Bedrock connectivity
+aws bedrock list-foundation-models --region us-east-1
+
+# Test in Lobster
+lobster chat
+> /status
+# Should show: "Model: AWS Bedrock (Claude)"
+```
+
+**Troubleshooting AWS Bedrock:**
+```bash
+# Check credentials
+aws sts get-caller-identity
+
+# Test model access
+aws bedrock list-foundation-models --region us-east-1 | grep Claude
+
+# Common issues:
+# 1. Model access not approved → Wait for approval or request again
+# 2. Wrong region → Bedrock availability varies by region
+# 3. IAM permissions → Verify user has bedrock:InvokeModel permission
+```
+
+**Regional Availability:**
+AWS Bedrock Claude models are available in:
+- `us-east-1` (US East, N. Virginia) - Recommended
+- `us-west-2` (US West, Oregon)
+- `eu-west-1` (Europe, Ireland)
+- `ap-southeast-1` (Asia Pacific, Singapore)
+
+See [AWS Bedrock Regions](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-regions.html) for current availability.
+
+### Cloud Mode Configuration
+
+Enable cloud processing for large-scale analyses (v2.4+).
+
+**Setup:**
+```bash
+# 1. Request cloud API key
+# Email: info@omics-os.com
+# Subject: "Lobster Cloud API Key Request"
+# Include: Organization name, use case, expected usage
+
+# 2. Configure API key
+export LOBSTER_CLOUD_KEY="your-cloud-api-key-here"
+
+# 3. Start Lobster in cloud mode
+lobster chat
+
+# 4. Verify cloud mode active
+> /status
+# Should show: "Cloud mode: active"
+```
+
+**Benefits:**
+- **Scalable compute** for datasets >100K cells
+- **No local memory limits** for large datasets
+- **Faster processing** with distributed infrastructure
+- **Automatic resource management**
+
+**Usage:**
+```bash
+# Cloud mode is automatic when LOBSTER_CLOUD_KEY is set
+🦞 You: "Download GSE123456 and analyze with cloud resources"
+🦞 You: "Process this large dataset using cloud infrastructure"
+
+# Switch back to local mode
+unset LOBSTER_CLOUD_KEY
+lobster chat
+```
+
+**Cost Structure:**
+- Free tier: 10 analyses/month
+- Pro tier: $6K-$18K/year (based on usage)
+- Enterprise: Custom pricing
+
+**Troubleshooting Cloud Mode:**
+```bash
+# Check API key is set
+echo $LOBSTER_CLOUD_KEY
+
+# Test cloud connectivity
+lobster chat
+> /status
+
+# Common issues:
+# 1. API key not set → Export LOBSTER_CLOUD_KEY
+# 2. Key expired → Request new key from info@omics-os.com
+# 3. Network timeout → Check firewall/proxy settings
+```
+
+See [Configuration Guide](03-configuration.md) for complete cloud setup details.
+
 ## Docker Deployment
 
-### Build Docker Image
+Lobster supports Docker for both CLI and FastAPI server modes. For comprehensive deployment guides, see [Docker Deployment Guide](42-docker-deployment-guide.md).
+
+### Quick Start with Docker
 
 ```bash
-# Build image
+# 1. Build images
+make docker-build
+
+# 2. Run CLI interactively
+make docker-run-cli
+
+# 3. Or run FastAPI server
+make docker-run-server
+```
+
+### Build Docker Images
+
+```bash
+# Build both CLI and server images
 make docker-build
 
 # Or manually
-docker build -t omicsos/lobster:latest .
+docker build -t omicsos/lobster:latest -f Dockerfile .
+docker build -t omicsos/lobster:server -f Dockerfile.server .
 ```
 
-### Run with Docker
+### Run CLI with Docker
 
 ```bash
-# Create .env file first (see Configuration Guide)
+# Using Makefile (recommended)
+make docker-run-cli
 
-# Run interactive container
-make docker-run
-
-# Or manually with custom settings (Claude API example)
+# Or manually with environment file
 docker run -it --rm \
-  -v ~/.lobster:/root/.lobster \
+  --env-file .env \
   -v $(pwd)/data:/app/data \
-  -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
-  omicsos/lobster:latest
+  -v lobster-workspace:/app/.lobster_workspace \
+  omicsos/lobster:latest chat
 
-# Or with AWS Bedrock
-docker run -it --rm \
-  -v ~/.lobster:/root/.lobster \
+# Single query mode (automation)
+docker run --rm \
+  --env-file .env \
   -v $(pwd)/data:/app/data \
-  -e AWS_BEDROCK_ACCESS_KEY=$AWS_BEDROCK_ACCESS_KEY \
-  -e AWS_BEDROCK_SECRET_ACCESS_KEY=$AWS_BEDROCK_SECRET_ACCESS_KEY \
-  omicsos/lobster:latest
+  omicsos/lobster:latest query "download GSE12345"
+```
+
+### Run FastAPI Server with Docker
+
+```bash
+# Using Makefile (recommended)
+make docker-run-server
+
+# Or manually
+docker run -d \
+  --name lobster-api \
+  -p 8000:8000 \
+  --env-file .env \
+  -v $(pwd)/data:/app/data \
+  omicsos/lobster:server
+
+# Check server health
+curl http://localhost:8000/health
+
+# Stop server
+docker stop lobster-api
 ```
 
 ### Docker Compose
 
 ```bash
-# Start with docker-compose
-docker-compose up
+# Run CLI interactively
+make docker-compose-cli
 
-# Run in background
-docker-compose up -d
+# Start FastAPI server in background
+make docker-compose-up
 
 # View logs
-docker-compose logs -f
+docker-compose logs -f lobster-server
+
+# Stop all services
+make docker-compose-down
 ```
 
-**docker-compose.yml configuration:**
-```yaml
-version: '3.8'
-services:
-  lobster:
-    build: .
-    ports:
-      - "8501:8501"
-    env_file:
-      - .env
-    volumes:
-      - ./data:/app/data
-      - ~/.lobster:/root/.lobster
-```
+**docker-compose.yml** supports both CLI and server modes. See [Docker Deployment Guide](42-docker-deployment-guide.md) for full configuration details.
 
 ## Troubleshooting
 
@@ -604,7 +906,7 @@ export LOBSTER_LOG_LEVEL=DEBUG
 - **GitHub Issues**: [Report bugs](https://github.com/the-omics-os/lobster/issues)
 - **Discord**: [Join community](https://discord.gg/HDTRbWJ8omicsos)
 - **Email**: [Direct support](mailto:info@omics-os.com)
-- **Documentation**: [Full docs](../README.md)
+- **Documentation**: [Full docs](README.md)
 
 ### Clean Reinstallation
 

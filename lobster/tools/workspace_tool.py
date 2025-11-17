@@ -373,7 +373,6 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
 
     def _format_queue_entry_summary(entry: dict) -> str:
         """Format queue entry as summary."""
-        from typing import Any
 
         summary = f"## Download Queue Entry: {entry['entry_id']}\n\n"
         summary += f"**Dataset**: {entry['dataset_id']}\n"
@@ -386,7 +385,7 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
             summary += f"**Modality**: {entry['modality_name']}\n"
 
         if entry.get("validation_result"):
-            summary += f"\n**Validation**: Available (use level='validation' to view)\n"
+            summary += "\n**Validation**: Available (use level='validation' to view)\n"
 
         if entry.get("recommended_strategy"):
             strategy = entry["recommended_strategy"]

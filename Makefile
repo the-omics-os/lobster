@@ -98,6 +98,9 @@ help:
 	@echo "  PYTHON=/path/to/python3.11 make install  # Use specific Python version"
 	@echo "  PYTHON=python3.12 make install           # Use Python 3.12"
 	@echo ""
+	@echo "Optional Components:"
+	@echo "  make install-pymol  Install PyMOL for protein structure visualization"
+	@echo ""
 	@echo "Development:"
 	@echo "  make test          Run all tests"
 	@echo "  make test-fast     Run tests (parallel)"
@@ -107,9 +110,13 @@ help:
 	@echo "  make verify        Verify installation integrity"
 	@echo ""
 	@echo "Docker:"
-	@echo "  make docker-build  Build Docker image"
-	@echo "  make docker-run    Run Docker container"
-	@echo "  make docker-push   Push to Docker Hub"
+	@echo "  make docker-build         Build Docker images (CLI + server)"
+	@echo "  make docker-run-cli       Run CLI in Docker container"
+	@echo "  make docker-run-server    Run FastAPI server in Docker"
+	@echo "  make docker-compose-up    Start services with docker-compose"
+	@echo "  make docker-compose-cli   Run CLI via docker-compose"
+	@echo "  make docker-compose-down  Stop docker-compose services"
+	@echo "  make docker-push          Push images to Docker Hub"
 	@echo ""
 	@echo "Release:"
 	@echo "  make release       Create a new release"
@@ -381,6 +388,70 @@ setup-env: $(VENV_PATH)
 		echo "$(GREEN)✅ .env file already exists$(NC)"; \
 	fi
 
+# Install PyMOL (optional prerequisite for protein structure visualization)
+install-pymol:
+	@echo "$(BLUE)🔬 Installing PyMOL for protein structure visualization...$(NC)"
+	@if command -v pymol >/dev/null 2>&1; then \
+		echo "$(GREEN)✅ PyMOL is already installed$(NC)"; \
+		pymol -c -Q 2>/dev/null && echo "   Version: $$(pymol -c -Q 2>&1 | head -1)" || echo "   (command-line mode detected)"; \
+	else \
+		UNAME_S=$$(uname -s 2>/dev/null || echo "Unknown"); \
+		if [ "$$UNAME_S" = "Darwin" ]; then \
+			echo "$(BLUE)🍎 macOS detected - Installing via Homebrew...$(NC)"; \
+			if ! command -v brew >/dev/null 2>&1; then \
+				echo "$(RED)❌ Homebrew not found. Please install Homebrew first:$(NC)"; \
+				echo "   /bin/bash -c \"\$$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""; \
+				exit 1; \
+			fi; \
+			if brew tap | grep -q "brewsci/bio"; then \
+				echo "$(GREEN)✓ brewsci/bio tap already added$(NC)"; \
+			else \
+				echo "$(YELLOW)📦 Adding brewsci/bio tap...$(NC)"; \
+				brew tap brewsci/bio; \
+			fi; \
+			echo "$(YELLOW)📦 Installing PyMOL...$(NC)"; \
+			brew install brewsci/bio/pymol && echo "$(GREEN)✅ PyMOL installed successfully!$(NC)" || { \
+				echo "$(RED)❌ PyMOL installation failed$(NC)"; \
+				exit 1; \
+			}; \
+		elif [ "$$UNAME_S" = "Linux" ]; then \
+			echo "$(BLUE)🐧 Linux detected - Installing via package manager...$(NC)"; \
+			if command -v apt-get >/dev/null 2>&1; then \
+				echo "$(YELLOW)📦 Installing PyMOL via apt-get (requires sudo)...$(NC)"; \
+				sudo apt-get update && sudo apt-get install -y pymol && echo "$(GREEN)✅ PyMOL installed successfully!$(NC)" || { \
+					echo "$(RED)❌ PyMOL installation failed$(NC)"; \
+					exit 1; \
+				}; \
+			elif command -v dnf >/dev/null 2>&1; then \
+				echo "$(YELLOW)📦 Installing PyMOL via dnf (requires sudo)...$(NC)"; \
+				sudo dnf install -y pymol && echo "$(GREEN)✅ PyMOL installed successfully!$(NC)" || { \
+					echo "$(RED)❌ PyMOL installation failed$(NC)"; \
+					exit 1; \
+				}; \
+			elif command -v brew >/dev/null 2>&1; then \
+				echo "$(YELLOW)📦 Installing PyMOL via Homebrew on Linux...$(NC)"; \
+				brew tap brewsci/bio && brew install brewsci/bio/pymol && echo "$(GREEN)✅ PyMOL installed successfully!$(NC)" || { \
+					echo "$(RED)❌ PyMOL installation failed$(NC)"; \
+					exit 1; \
+				}; \
+			else \
+				echo "$(RED)❌ No supported package manager found (apt-get, dnf, or brew)$(NC)"; \
+				echo "$(YELLOW)Please install PyMOL manually:$(NC)"; \
+				echo "   Ubuntu/Debian: sudo apt-get install pymol"; \
+				echo "   Fedora/RHEL: sudo dnf install pymol"; \
+				echo "   Or visit: https://pymol.org/"; \
+				exit 1; \
+			fi; \
+		else \
+			echo "$(RED)❌ Unsupported operating system: $$UNAME_S$(NC)"; \
+			echo "$(YELLOW)Please install PyMOL manually: https://pymol.org/$(NC)"; \
+			exit 1; \
+		fi; \
+	fi
+	@echo ""
+	@echo "$(GREEN)🎉 PyMOL installation complete!$(NC)"
+	@echo "$(BLUE)💡 Test with: pymol -c -Q$(NC)"
+
 # Installation targets
 install: $(VENV_PATH) setup-env
 	@echo "🦞 Installing Lobster AI..."
@@ -552,22 +623,54 @@ type-check: $(VENV_PATH)
 
 # Docker targets
 docker-build:
-	@echo "🐳 Building Docker image..."
-	docker build -t omicsos/lobster:latest .
-	@echo "$(GREEN)✅ Docker image built!$(NC)"
+	@echo "🐳 Building Docker images..."
+	docker build -t omicsos/lobster:latest -f Dockerfile .
+	docker build -t omicsos/lobster:server -f Dockerfile.server .
+	@echo "$(GREEN)✅ Docker images built successfully!$(NC)"
+	@echo "  - omicsos/lobster:latest (CLI mode)"
+	@echo "  - omicsos/lobster:server (FastAPI server)"
 
-docker-run:
-	@echo "🐳 Running Docker container..."
+docker-run-cli:
+	@echo "🐳 Running Lobster CLI in Docker..."
 	docker run -it --rm \
-		-v ~/.lobster:/root/.lobster \
-		-e ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY} \
-		-e AWS_BEDROCK_ACCESS_KEY=${AWS_BEDROCK_ACCESS_KEY} \
-		-e AWS_BEDROCK_SECRET_ACCESS_KEY=${AWS_BEDROCK_SECRET_ACCESS_KEY} \
-		omicsos/lobster:latest
+		-v $(shell pwd)/data:/app/data \
+		-v lobster-workspace:/app/.lobster_workspace \
+		--env-file .env \
+		omicsos/lobster:latest chat
+
+docker-run-server:
+	@echo "🐳 Running Lobster FastAPI server..."
+	docker run -d --rm \
+		--name lobster-server \
+		-p 8000:8000 \
+		-v $(shell pwd)/data:/app/data \
+		-v lobster-workspace:/app/.lobster_workspace \
+		--env-file .env \
+		omicsos/lobster:server
+	@echo "$(GREEN)✅ Server running at http://localhost:8000$(NC)"
+	@echo "  Stop with: docker stop lobster-server"
+
+docker-compose-up:
+	@echo "🐳 Starting services with docker-compose..."
+	docker-compose up -d lobster-server
+	@echo "$(GREEN)✅ Services started!$(NC)"
+
+docker-compose-cli:
+	@echo "🐳 Running CLI with docker-compose..."
+	docker-compose run --rm lobster-cli
+
+docker-compose-down:
+	@echo "🐳 Stopping docker-compose services..."
+	docker-compose down
 
 docker-push:
-	@echo "🐳 Pushing to Docker Hub..."
+	@echo "🐳 Pushing images to Docker Hub..."
 	docker push omicsos/lobster:latest
+	docker push omicsos/lobster:server
+	@echo "$(GREEN)✅ Images pushed successfully!$(NC)"
+
+# Legacy alias for backward compatibility
+docker-run: docker-run-cli
 
 # Release targets
 version: $(VENV_PATH)

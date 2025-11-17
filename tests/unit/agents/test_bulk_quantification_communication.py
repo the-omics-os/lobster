@@ -147,7 +147,8 @@ class TestQuantificationLoadingCommunication:
 
         # Check orientation metadata for user guidance
         assert "transpose_info" in stored_adata.uns
-        assert stored_adata.uns["transpose_info"]["transpose_applied"] == True
+        # Note: sanitize_value() converts bool → str for HDF5 compatibility
+        assert stored_adata.uns["transpose_info"]["transpose_applied"] == "True"
 
     def test_error_message_format(self, mock_data_manager):
         """Test that error messages are clear and actionable."""

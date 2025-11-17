@@ -7,14 +7,14 @@ restoration, and multi-omics data integration with proper modality handling and
 schema validation.
 """
 
-from datetime import date, datetime
-from typing import Dict, List
+from datetime import date
+from typing import List
 
 import pandas as pd
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 
-from lobster.agents.data_expert_assistant import DataExpertAssistant, StrategyConfig
+from lobster.agents.data_expert_assistant import DataExpertAssistant
 from lobster.agents.state import DataExpertState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
@@ -374,7 +374,7 @@ def data_expert(
 
                 # 7. RETURN SUCCESS REPORT
                 response = f"## Download Complete: {entry.dataset_id}\n\n"
-                response += f"✅ **Status**: Downloaded successfully\n"
+                response += "✅ **Status**: Downloaded successfully\n"
                 response += f"- **Modality name**: `{modality_name}`\n"
                 response += f"- **Samples**: {result_adata.n_obs}\n"
                 response += f"- **Features**: {result_adata.n_vars}\n"
@@ -397,13 +397,13 @@ def data_expert(
                 logger.error(f"Download failed for {entry.dataset_id}: {error_msg}")
 
                 response = f"## Download Failed: {entry.dataset_id}\n\n"
-                response += f"❌ **Status**: Download failed\n"
+                response += "❌ **Status**: Download failed\n"
                 response += f"- **Error**: {error_msg}\n"
                 response += f"- **Queue entry**: `{entry_id}` (FAILED)\n"
-                response += f"\n**Troubleshooting**:\n"
+                response += "\n**Troubleshooting**:\n"
                 response += f"1. Check GEO dataset availability: {entry.dataset_id}\n"
-                response += f"2. Verify URLs are accessible\n"
-                response += f"3. Review error log in queue entry\n"
+                response += "2. Verify URLs are accessible\n"
+                response += "3. Review error log in queue entry\n"
 
                 return response
 
@@ -497,7 +497,7 @@ def data_expert(
                             response += f"\n**Provenance**: {prov_info}\n"
                     except AttributeError:
                         # Fallback if method doesn't exist
-                        response += f"\n**Provenance**: Not available\n"
+                        response += "\n**Provenance**: Not available\n"
 
                 return response
 
@@ -532,9 +532,9 @@ def data_expert(
                 return f"File not found: {file_path}"
 
             if not isinstance(adapter, str):
-                return f"Modality type must be a string"
+                return "Modality type must be a string"
             elif not adapter:
-                return f"Modality type can not be None"
+                return "Modality type can not be None"
 
             # Auto-detect modality type if requested
             if adapter == "auto_detect":
@@ -558,7 +558,7 @@ def data_expert(
                     logger.info(
                         f"Auto-detected modality type: {adapter} (based on {n_cols} features)"
                     )
-                except:
+                except Exception:
                     adapter = "single_cell"  # Safe default
 
             modality_name = f"{dataset_type}_{dataset_id}"
@@ -575,7 +575,7 @@ def data_expert(
 
             # Save to workspace
             save_path = f"{dataset_id}_{adapter}.h5ad"
-            saved_path = data_manager.save_modality(modality_name, save_path)
+            data_manager.save_modality(modality_name, save_path)
 
             # Get quality metrics
             metrics = data_manager.get_quality_metrics(modality_name)
@@ -611,7 +611,6 @@ The dataset is now available as modality '{modality_name}' for analysis."""
             str: Status of loading operation
         """
         try:
-            from pathlib import Path
 
             file_path = data_manager.data_dir / file_path
 
@@ -702,7 +701,7 @@ The modality is now available for analysis and can be used by other agents."""
 
             # Save the MuData object
             mudata_path = f"{output_name}.h5mu"
-            saved_path = data_manager.save_mudata(
+            data_manager.save_mudata(
                 mudata_path, modalities=modality_names
             )
 
@@ -850,7 +849,6 @@ The MuData object contains all selected modalities and is ready for cross-modal 
 
             # Format results for user display
             if save_to_file:
-                save_path = f"{output_modality_name}.h5ad"
                 return f"""Successfully concatenated {statistics['n_samples']} samples using ConcatenationService.
 
 Output modality: '{output_modality_name}'

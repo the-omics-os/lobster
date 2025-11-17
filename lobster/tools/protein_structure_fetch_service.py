@@ -6,13 +6,10 @@ the RCSB PDB database, caching files locally, and extracting structural metadata
 following the Lobster 3-tuple pattern (AnnData, stats, IR).
 """
 
-import logging
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import anndata
-import numpy as np
-import pandas as pd
 from Bio import PDB
 
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec

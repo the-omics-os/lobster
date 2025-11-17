@@ -195,7 +195,7 @@ class GEODownloadManager:
                     )
 
                     # Setup progress tracking for extraction
-                    total_size = sum(member.size for member in safe_members)
+                    sum(member.size for member in safe_members)
                     progress_columns = [
                         BarColumn(),
                         "•",
@@ -842,7 +842,7 @@ class GEODownloadManager:
             # Read entire file in chunks to verify complete decompression
             # Using 32KB chunks for memory efficiency
             with gzip.open(file_path, "rb") as f:
-                while chunk := f.read(32768):
+                while _ := f.read(32768):
                     pass
 
             logger.debug(f"Gzip validation passed: {file_path.name}")

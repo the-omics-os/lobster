@@ -12,17 +12,15 @@ os.environ["PYDEVD_WARN_EVALUATION_TIMEOUT"] = "900000"
 import ast
 import inspect
 import json
+import logging
 import shutil
-import subprocess
 import time
 from typing import Any, Dict, Iterable, List
 
 import numpy as np
 import pandas as pd
-import tabulate
 import typer
-from rich import box, console
-from rich import get_console as rich_get_console
+from rich import box
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -30,7 +28,6 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm, Prompt
 from rich.syntax import Syntax
 from rich.table import Table
-from tabulate import tabulate
 
 from lobster.config.agent_config import (
     LobsterAgentConfigurator,
@@ -40,19 +37,14 @@ from lobster.config.agent_config import (
 from lobster.core.client import AgentClient
 
 # Import new UI system
-from lobster.ui import LobsterTheme, get_console, get_progress_manager, setup_logging
+from lobster.ui import LobsterTheme, setup_logging
 from lobster.ui.components import (
-    create_analysis_dashboard,
     create_file_tree,
-    create_multi_progress_layout,
-    create_system_dashboard,
-    create_workspace_dashboard,
     create_workspace_tree,
     get_multi_progress_manager,
     get_status_display,
 )
 from lobster.ui.console_manager import get_console_manager
-from lobster.ui.live_dashboard import get_dashboard
 
 # Import the proper callback handler and system utilities
 from lobster.utils import SimpleTerminalCallback, TerminalCallbackHandler, open_path
@@ -75,6 +67,8 @@ try:
 except ImportError:
     PROMPT_TOOLKIT_AVAILABLE = False
 
+# Module logger
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # Progress Management
@@ -273,7 +267,7 @@ class CloudAwareCache:
                     if key in self.cache:
                         console = console_manager.get_console()
                         console.print(
-                            f"[dim yellow]Using cached data due to connection issue[/dim yellow]"
+                            "[dim yellow]Using cached data due to connection issue[/dim yellow]"
                         )
                         return self.cache[key]["data"]
                 raise e
@@ -314,7 +308,7 @@ def _add_command_to_history(
         else:
             # Fallback for other client types (cloud, API, etc.)
             console.print(
-                f"[dim yellow]Command history not supported for this client type[/dim yellow]",
+                "[dim yellow]Command history not supported for this client type[/dim yellow]",
                 style="dim",
             )
 
@@ -346,7 +340,6 @@ def check_for_missing_slash_command(user_input: str) -> Optional[str]:
 
 def extract_available_commands() -> Dict[str, str]:
     """Extract commands dynamically from _execute_command implementation."""
-    commands = {}
 
     # Static command definitions with descriptions (extracted from help text)
     command_descriptions = {
@@ -598,7 +591,7 @@ if PROMPT_TOOLKIT_AVAILABLE:
                                     meta = (
                                         f"{adata.n_obs:,} obs × {adata.n_vars:,} vars"
                                     )
-                                except:
+                                except Exception:
                                     meta = "modality"
 
                                 yield Completion(
@@ -834,7 +827,6 @@ def init_client(
     # Configure logging level based on debug flag
     import logging
 
-    from lobster.ui import setup_logging
 
     if debug:
         setup_logging(logging.DEBUG)
@@ -1157,7 +1149,6 @@ def execute_shell_command(command: str) -> bool:
                     content = file_path.read_text(encoding="utf-8", errors="replace")
 
                     # Try to guess syntax from extension for highlighting
-                    import mimetypes
 
                     ext = file_path.suffix.lower()
 
@@ -1431,7 +1422,7 @@ def display_welcome():
     elif PROMPT_TOOLKIT_AVAILABLE:
         input_status = f"[dim {LobsterTheme.PRIMARY_ORANGE}]✨ Enhanced input: Tab autocomplete enabled[/dim {LobsterTheme.PRIMARY_ORANGE}]"
     else:
-        input_status = f"[dim grey50]💡 Enhanced input & autocomplete available: pip install prompt-toolkit[/dim grey50]"
+        input_status = "[dim grey50]💡 Enhanced input & autocomplete available: pip install prompt-toolkit[/dim grey50]"
 
     welcome_content = f"""[bold white]Multi-Agent Bioinformatics Analysis System v2.0[/bold white]
 
@@ -1749,7 +1740,7 @@ def init_client_with_animation(
 
     from lobster.config.agent_registry import AGENT_REGISTRY
 
-    console_manager = get_console_manager()
+    get_console_manager()
 
     # Agent emojis
     agent_emojis = {
@@ -1782,7 +1773,7 @@ def init_client_with_animation(
     )
     client = init_client(workspace, reasoning, verbose, debug)
 
-    console.print(f"[bold green]✅ Lobster is cooked and ready![/bold green]\n")
+    console.print("[bold green]✅ Lobster is cooked and ready![/bold green]\n")
     return client
 
 
@@ -1823,7 +1814,6 @@ def chat(
     # Configure logging level based on debug flag
     import logging
 
-    from lobster.ui import setup_logging
 
     if debug:
         setup_logging(logging.DEBUG)
@@ -1896,7 +1886,7 @@ def chat(
             if should_show_progress(client):
                 # Normal mode: show progress spinner
                 with create_progress(client_arg=client) as progress:
-                    task = progress.add_task(
+                    progress.add_task(
                         f"🦞 Processing: {user_input[:50]}{'...' if len(user_input) > 50 else ''}",
                         total=None,
                     )
@@ -2466,7 +2456,7 @@ when they are started by agents or analysis workflows.
                 # Display results
                 if load_result["success"]:
                     console.print(f"[green]✅ {load_result['message']}[/green]\n")
-                    console.print(f"[cyan]📊 Data Summary:[/cyan]")
+                    console.print("[cyan]📊 Data Summary:[/cyan]")
                     console.print(
                         f"  • Modality: [bold]{load_result['modality_name']}[/bold]"
                     )
@@ -2644,15 +2634,15 @@ when they are started by agents or analysis workflows.
                 console.print(summary_table)
 
                 # Show next steps
-                console.print(f"\n[bold white]🎯 Ready for Analysis![/bold white]")
+                console.print("\n[bold white]🎯 Ready for Analysis![/bold white]")
                 console.print(
-                    f"[white]Use these commands to work with your data:[/white]"
+                    "[white]Use these commands to work with your data:[/white]"
                 )
                 console.print(
-                    f"  • [yellow]/data[/yellow] - View data summary for all loaded datasets"
+                    "  • [yellow]/data[/yellow] - View data summary for all loaded datasets"
                 )
                 console.print(
-                    f"  • [yellow]/modalities[/yellow] - View detailed information for each modality"
+                    "  • [yellow]/modalities[/yellow] - View detailed information for each modality"
                 )
                 console.print(
                     f"  • [yellow]Compare the {loaded_files[0]['modality_name']} and {loaded_files[-1]['modality_name']} datasets[/yellow] - Start comparative analysis"
@@ -2711,7 +2701,7 @@ when they are started by agents or analysis workflows.
             and file_type in ["delimited_data", "spreadsheet_data"]
         ):
             # This is a data file - load it into DataManager
-            console.print(f"[cyan]🧬 Loading data into workspace...[/cyan]")
+            console.print("[cyan]🧬 Loading data into workspace...[/cyan]")
 
             with create_progress(client_arg=client) as progress:
                 progress.add_task("Loading data...", total=None)
@@ -2753,11 +2743,11 @@ when they are started by agents or analysis workflows.
                 console.print(info_table)
 
                 # Provide next step suggestions
-                console.print(f"\n[bold white]🎯 Ready for Analysis![/bold white]")
+                console.print("\n[bold white]🎯 Ready for Analysis![/bold white]")
                 console.print(
-                    f"[white]Use these commands to analyze your data:[/white]"
+                    "[white]Use these commands to analyze your data:[/white]"
                 )
-                console.print(f"  • [yellow]/data[/yellow] - View data summary")
+                console.print("  • [yellow]/data[/yellow] - View data summary")
                 console.print(
                     f"  • [yellow]Analyze the {load_result['modality_name']} dataset[/yellow] - Start analysis"
                 )
@@ -2842,7 +2832,7 @@ when they are started by agents or analysis workflows.
                     return f"Displayed text file '{filename}' ({file_description}, {len(content.splitlines())} lines)"
                 else:
                     console.print(
-                        f"[bold red on white] ⚠️  Error [/bold red on white] [red]Could not read file content[/red]"
+                        "[bold red on white] ⚠️  Error [/bold red on white] [red]Could not read file content[/red]"
                     )
                     return f"Failed to read text file '{filename}'"
             except Exception as e:
@@ -2854,23 +2844,23 @@ when they are started by agents or analysis workflows.
         else:
             # Binary file or unsupported type
             console.print(
-                f"[bold yellow on black] ℹ️  File Info [/bold yellow on black]"
+                "[bold yellow on black] ℹ️  File Info [/bold yellow on black]"
             )
             console.print(
                 f"[white]File type '[yellow]{file_description}[/yellow]' is not supported for reading or loading.[/white]"
             )
             console.print(
-                f"[grey50]This appears to be a binary file or unsupported format.[/grey50]"
+                "[grey50]This appears to be a binary file or unsupported format.[/grey50]"
             )
 
             if file_category == "image":
                 console.print(
-                    f"[cyan]💡 This is an image file. Use your system's image viewer to open it.[/cyan]"
+                    "[cyan]💡 This is an image file. Use your system's image viewer to open it.[/cyan]"
                 )
             elif file_category == "archive":
                 # Smart archive handling - inspect first for nested archives
                 console.print(
-                    f"[bold cyan on black] 📦 Archive Detected [/bold cyan on black]"
+                    "[bold cyan on black] 📦 Archive Detected [/bold cyan on black]"
                 )
                 console.print(
                     f"[white]Archive type: [yellow]{file_description}[/yellow][/white]"
@@ -2878,14 +2868,14 @@ when they are started by agents or analysis workflows.
                 console.print(
                     f"[white]Size: [yellow]{file_info['size_bytes'] / 1024 / 1024:.2f} MB[/yellow][/white]"
                 )
-                console.print(f"\n[cyan]🔍 Inspecting archive structure...[/cyan]")
+                console.print("\n[cyan]🔍 Inspecting archive structure...[/cyan]")
 
                 # Inspect archive to detect nested structures
                 with console.status("[cyan]Analyzing archive contents...[/cyan]"):
                     inspection = client.inspect_archive(filename)
 
                 if not inspection["success"]:
-                    console.print(f"\n[red]✗ Archive inspection failed[/red]")
+                    console.print("\n[red]✗ Archive inspection failed[/red]")
                     console.print(f"[red]{inspection['error']}[/red]")
                     return (
                         f"Failed to inspect archive '{filename}': {inspection['error']}"
@@ -2897,7 +2887,7 @@ when they are started by agents or analysis workflows.
 
                     # Display inspection report
                     console.print(
-                        f"\n[bold green]✓ Detected Nested Archive Structure[/bold green]"
+                        "\n[bold green]✓ Detected Nested Archive Structure[/bold green]"
                     )
                     console.print(
                         f"[white]Total nested archives: [yellow]{nested_info.total_count}[/yellow][/white]"
@@ -2909,7 +2899,7 @@ when they are started by agents or analysis workflows.
                     # Show condition groups
                     if nested_info.groups:
                         console.print(
-                            f"\n[bold white]📂 Condition Groups:[/bold white]"
+                            "\n[bold white]📂 Condition Groups:[/bold white]"
                         )
                         groups_table = Table(box=box.ROUNDED, border_style="cyan")
                         groups_table.add_column("Condition", style="bold orange1")
@@ -2933,17 +2923,17 @@ when they are started by agents or analysis workflows.
                         )
 
                     # Recommended actions
-                    console.print(f"\n[bold white]🎯 Next Steps:[/bold white]")
+                    console.print("\n[bold white]🎯 Next Steps:[/bold white]")
                     console.print(
-                        f"[orange1]  • /archive list[/orange1]           - Show detailed sample list"
+                        "[orange1]  • /archive list[/orange1]           - Show detailed sample list"
                     )
                     console.print(
-                        f"[orange1]  • /archive load <pattern>[/orange1] - Load specific samples"
+                        "[orange1]  • /archive load <pattern>[/orange1] - Load specific samples"
                     )
-                    console.print(f"[dim]    Examples:[/dim]")
-                    console.print(f"[dim]      /archive load GSM4710689[/dim]")
-                    console.print(f"[dim]      /archive load TISSUE[/dim]")
-                    console.print(f"[dim]      /archive load PDAC_* --limit 3[/dim]")
+                    console.print("[dim]    Examples:[/dim]")
+                    console.print("[dim]      /archive load GSM4710689[/dim]")
+                    console.print("[dim]      /archive load TISSUE[/dim]")
+                    console.print("[dim]      /archive load PDAC_* --limit 3[/dim]")
 
                     # Store cache ID for subsequent commands
                     client._last_archive_cache = inspection["cache_id"]
@@ -2953,14 +2943,14 @@ when they are started by agents or analysis workflows.
 
                 # Handle regular archives with auto-load
                 else:
-                    console.print(f"[cyan]🔄 Extracting and loading archive...[/cyan]")
+                    console.print("[cyan]🔄 Extracting and loading archive...[/cyan]")
 
                     with console.status("[cyan]Extracting archive...[/cyan]"):
                         extract_result = client.extract_and_load_archive(filename)
 
                     if extract_result["success"]:
                         console.print(
-                            f"\n[green]✓ Successfully loaded archive contents[/green]"
+                            "\n[green]✓ Successfully loaded archive contents[/green]"
                         )
                         console.print(
                             f"[white]Modality: [bold cyan]{extract_result['modality_name']}[/bold cyan][/white]"
@@ -2981,7 +2971,7 @@ when they are started by agents or analysis workflows.
                         return f"Successfully loaded archive '{filename}' as modality '{extract_result['modality_name']}' with shape {extract_result['data_shape']}"
 
                     else:
-                        console.print(f"\n[red]✗ Archive extraction failed[/red]")
+                        console.print("\n[red]✗ Archive extraction failed[/red]")
                         console.print(f"[red]{extract_result['error']}[/red]")
 
                         if "suggestion" in extract_result:
@@ -2991,7 +2981,7 @@ when they are started by agents or analysis workflows.
 
                         if "manifest" in extract_result:
                             manifest = extract_result["manifest"]
-                            console.print(f"\n[dim]Archive contents:[/dim]")
+                            console.print("\n[dim]Archive contents:[/dim]")
                             console.print(
                                 f"[dim]  Files: {manifest['file_count']}[/dim]"
                             )
@@ -3003,7 +2993,7 @@ when they are started by agents or analysis workflows.
 
             else:
                 console.print(
-                    f"[cyan]💡 Consider converting to a supported format or use external tools to view this file.[/cyan]"
+                    "[cyan]💡 Consider converting to a supported format or use external tools to view this file.[/cyan]"
                 )
 
             # Return summary for conversation history (for non-archive unsupported files)
@@ -3027,7 +3017,7 @@ when they are started by agents or analysis workflows.
             # Show detailed list of all nested samples
             nested_info = client._last_archive_info
 
-            console.print(f"\n[bold white]📋 Archive Contents:[/bold white]")
+            console.print("\n[bold white]📋 Archive Contents:[/bold white]")
             console.print(f"[dim]Cache ID: {client._last_archive_cache}[/dim]\n")
 
             samples_table = Table(
@@ -3054,7 +3044,7 @@ when they are started by agents or analysis workflows.
             # Show condition groups summary
             nested_info = client._last_archive_info
 
-            console.print(f"\n[bold white]📂 Condition Groups:[/bold white]\n")
+            console.print("\n[bold white]📂 Condition Groups:[/bold white]\n")
 
             groups_table = Table(box=box.ROUNDED, border_style="cyan")
             groups_table.add_column("Condition", style="bold orange1")
@@ -3103,7 +3093,7 @@ when they are started by agents or analysis workflows.
                 f"[cyan]🔄 Loading samples matching '[bold]{pattern}[/bold]'...[/cyan]"
             )
 
-            with console.status(f"[cyan]Loading samples...[/cyan]"):
+            with console.status("[cyan]Loading samples...[/cyan]"):
                 result = client.load_from_cache(
                     client._last_archive_cache, pattern, limit
                 )
@@ -3120,8 +3110,6 @@ when they are started by agents or analysis workflows.
                         merged_adata = client.data_manager.get_modality(merged_name)
 
                         # Create prominent merged dataset panel
-                        from rich.panel import Panel
-
                         merged_info = f"""[bold white]Merged Dataset:[/bold white] [orange1]{merged_name}[/orange1]
 
 [white]Shape:[/white] [cyan]{merged_adata.n_obs:,} cells × {merged_adata.n_vars:,} genes[/cyan]
@@ -3159,17 +3147,17 @@ when they are started by agents or analysis workflows.
 
                 else:
                     # Single sample or no auto-concatenation
-                    console.print(f"\n[bold white]Loaded Modalities:[/bold white]")
+                    console.print("\n[bold white]Loaded Modalities:[/bold white]")
                     for modality in result["modalities"]:
                         console.print(f"  • [cyan]{modality}[/cyan]")
 
                     # Suggest next steps
-                    console.print(f"\n[bold white]🎯 Next Steps:[/bold white]")
+                    console.print("\n[bold white]🎯 Next Steps:[/bold white]")
                     console.print(
-                        f"[grey70]  • Use /data to inspect the dataset[/grey70]"
+                        "[grey70]  • Use /data to inspect the dataset[/grey70]"
                     )
                     console.print(
-                        f"[grey70]  • Say: 'Analyze this dataset' for natural language analysis[/grey70]"
+                        "[grey70]  • Say: 'Analyze this dataset' for natural language analysis[/grey70]"
                     )
 
                 if result["failed"]:
@@ -3202,7 +3190,7 @@ when they are started by agents or analysis workflows.
             cache_manager = ExtractionCacheManager(client.workspace_path)
             all_caches = cache_manager.list_all_caches()
 
-            console.print(f"\n[bold white]📊 Extraction Cache Status:[/bold white]\n")
+            console.print("\n[bold white]📊 Extraction Cache Status:[/bold white]\n")
             console.print(
                 f"[white]Total cached extractions: [yellow]{len(all_caches)}[/yellow][/white]"
             )
@@ -3243,7 +3231,7 @@ when they are started by agents or analysis workflows.
 
         else:
             # Show help
-            console.print(f"\n[bold white]📦 /archive Commands:[/bold white]\n")
+            console.print("\n[bold white]📦 /archive Commands:[/bold white]\n")
             console.print(
                 "[orange1]/archive list[/orange1]             - List all samples in inspected archive"
             )
@@ -3358,7 +3346,7 @@ when they are started by agents or analysis workflows.
             description = Prompt.ask("Description (optional)", default="")
 
             # Export via DataManagerV2
-            console.print(f"\n[yellow]Exporting notebook...[/yellow]")
+            console.print("\n[yellow]Exporting notebook...[/yellow]")
             path = client.data_manager.export_notebook(name, description)
 
             console.print(f"\n[green]✓ Notebook exported:[/green] {path}")
@@ -3518,7 +3506,7 @@ when they are started by agents or analysis workflows.
                 for warning in validation.warnings:
                     console.print(f"  • {warning}")
 
-            console.print(f"\n[green]✓ Validation passed[/green]")
+            console.print("\n[green]✓ Validation passed[/green]")
             console.print(f"  Steps to execute: {dry_result['steps_to_execute']}")
             console.print(
                 f"  Estimated time: {dry_result['estimated_duration_minutes']} min"
@@ -3536,14 +3524,14 @@ when they are started by agents or analysis workflows.
                 result = client.data_manager.run_notebook(notebook_name, input_modality)
 
             if result["status"] == "success":
-                console.print(f"\n[green]✓ Execution complete![/green]")
+                console.print("\n[green]✓ Execution complete![/green]")
                 console.print(f"  Output: {result['output_notebook']}")
                 console.print(f"  Duration: {result['execution_time']:.1f}s")
                 return (
                     f"Notebook executed successfully in {result['execution_time']:.1f}s"
                 )
             else:
-                console.print(f"\n[red]✗ Execution failed[/red]")
+                console.print("\n[red]✗ Execution failed[/red]")
                 console.print(f"  Error: {result.get('error', 'Unknown')}")
                 console.print(
                     f"  Partial output: {result.get('output_notebook', 'N/A')}"
@@ -3598,7 +3586,7 @@ when they are started by agents or analysis workflows.
             console.print(
                 f"Lobster version: {metadata.get('lobster_version', 'unknown')}"
             )
-            console.print(f"\nDependencies:")
+            console.print("\nDependencies:")
             for pkg, ver in metadata.get("dependencies", {}).items():
                 console.print(f"  {pkg}: {ver}")
 
@@ -3715,7 +3703,7 @@ when they are started by agents or analysis workflows.
 
             # Show individual modality details if multiple modalities are loaded
             if summary.get("modalities"):
-                console.print(f"\n[bold red]🧬 Individual Modality Details[/bold red]")
+                console.print("\n[bold red]🧬 Individual Modality Details[/bold red]")
 
                 modalities_table = Table(
                     box=box.SIMPLE, border_style="red", show_header=True
@@ -3840,7 +3828,7 @@ when they are started by agents or analysis workflows.
                             timestamp.replace("Z", "+00:00")
                         )
                         cached_str = cached_time.strftime("%Y-%m-%d %H:%M")
-                    except:
+                    except Exception:
                         cached_str = timestamp[:16] if timestamp else "N/A"
 
                     store_table.add_row(
@@ -3906,12 +3894,12 @@ when they are started by agents or analysis workflows.
                 workspace_path = client.data_manager.workspace_path
                 data_dir = workspace_path / "data"
 
-                console.print(f"[yellow]📂 No datasets found in workspace[/yellow]")
+                console.print("[yellow]📂 No datasets found in workspace[/yellow]")
                 console.print(f"[grey70]Workspace: {workspace_path}[/grey70]")
                 console.print(f"[grey70]Data directory: {data_dir}[/grey70]")
 
                 if not data_dir.exists():
-                    console.print(f"[red]⚠️  Data directory doesn't exist[/red]")
+                    console.print("[red]⚠️  Data directory doesn't exist[/red]")
                     console.print(
                         f"[cyan]💡 Create it with: mkdir -p {data_dir}[/cyan]"
                     )
@@ -3972,7 +3960,7 @@ when they are started by agents or analysis workflows.
                 table.add_row(str(idx), status, display_name, size, shape, modified)
 
             console.print(table)
-            console.print(f"\n[dim]Use '/workspace info <#>' to see full details[/dim]")
+            console.print("\n[dim]Use '/workspace info <#>' to see full details[/dim]")
             return f"Listed {len(available)} available datasets"
 
         elif subcommand == "info":
@@ -4126,7 +4114,7 @@ when they are started by agents or analysis workflows.
                         console.print(
                             f"[green]✓ Loaded dataset: {dataset_name} ({available[dataset_name]['size_mb']:.1f} MB)[/green]"
                         )
-                        return f"Loaded dataset from workspace"
+                        return "Loaded dataset from workspace"
                     else:
                         console.print(
                             f"[red]Failed to load dataset: {dataset_name}[/red]"
@@ -4213,22 +4201,22 @@ when they are started by agents or analysis workflows.
             # Show directories
             if workspace_status.get("directories"):
                 dirs = workspace_status["directories"]
-                console.print(f"\n[bold white]📁 Directories:[/bold white]")
+                console.print("\n[bold white]📁 Directories:[/bold white]")
                 for dir_type, path in dirs.items():
                     console.print(f"  • {dir_type.title()}: [grey74]{path}[/grey74]")
 
             # Show loaded modalities
             if workspace_status.get("modality_names"):
-                console.print(f"\n[bold white]🧬 Loaded Modalities:[/bold white]")
+                console.print("\n[bold white]🧬 Loaded Modalities:[/bold white]")
                 for modality in workspace_status["modality_names"]:
                     console.print(f"  • {modality}")
 
             # Show available backends and adapters
-            console.print(f"\n[bold white]🔧 Available Backends:[/bold white]")
+            console.print("\n[bold white]🔧 Available Backends:[/bold white]")
             for backend in workspace_status.get("registered_backends", []):
                 console.print(f"  • {backend}")
 
-            console.print(f"\n[bold white]🔌 Available Adapters:[/bold white]")
+            console.print("\n[bold white]🔌 Available Adapters:[/bold white]")
             for adapter in workspace_status.get("registered_adapters", []):
                 console.print(f"  • {adapter}")
 
@@ -4342,7 +4330,7 @@ when they are started by agents or analysis workflows.
 
                 # Basic Information
                 matrix_info = _get_matrix_info(adata.X)
-                console.print(f"\n[bold white]📊 Basic Information[/bold white]")
+                console.print("\n[bold white]📊 Basic Information[/bold white]")
                 basic_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
                 basic_table.add_column("Property", style="grey70")
                 basic_table.add_column("Value", style="white")
@@ -4365,8 +4353,8 @@ when they are started by agents or analysis workflows.
                 console.print(basic_table)
 
                 # Data Matrix (X) Preview
-                console.print(f"\n[bold white]📈 Data Matrix (X)[/bold white]")
-                console.print(f"[grey70]Preview (first 5×5 cells):[/grey70]")
+                console.print("\n[bold white]📈 Data Matrix (X)[/bold white]")
+                console.print("[grey70]Preview (first 5×5 cells):[/grey70]")
                 x_preview = _format_data_preview(adata.X)
                 console.print(x_preview)
 
@@ -4392,7 +4380,7 @@ when they are started by agents or analysis workflows.
 
                     # Preview table
                     if len(adata.obs) > 0:
-                        console.print(f"[grey70]Preview:[/grey70]")
+                        console.print("[grey70]Preview:[/grey70]")
                         obs_preview = _format_dataframe_preview(adata.obs)
                         console.print(obs_preview)
 
@@ -4418,13 +4406,13 @@ when they are started by agents or analysis workflows.
 
                     # Preview table
                     if len(adata.var) > 0:
-                        console.print(f"[grey70]Preview:[/grey70]")
+                        console.print("[grey70]Preview:[/grey70]")
                         var_preview = _format_dataframe_preview(adata.var)
                         console.print(var_preview)
 
                 # Additional Data Structures
                 console.print(
-                    f"\n[bold white]📦 Additional Data Structures[/bold white]"
+                    "\n[bold white]📦 Additional Data Structures[/bold white]"
                 )
 
                 # Layers
@@ -4438,35 +4426,35 @@ when they are started by agents or analysis workflows.
 
                 # Obsm (observation matrices)
                 if adata.obsm:
-                    console.print(f"\n[cyan]Observation Matrices (obsm):[/cyan]")
+                    console.print("\n[cyan]Observation Matrices (obsm):[/cyan]")
                     obsm_table = _format_array_info(dict(adata.obsm))
                     if obsm_table:
                         console.print(obsm_table)
 
                 # Varm (variable matrices)
                 if adata.varm:
-                    console.print(f"\n[cyan]Variable Matrices (varm):[/cyan]")
+                    console.print("\n[cyan]Variable Matrices (varm):[/cyan]")
                     varm_table = _format_array_info(dict(adata.varm))
                     if varm_table:
                         console.print(varm_table)
 
                 # Obsp (observation pairwise)
                 if adata.obsp:
-                    console.print(f"\n[cyan]Observation Pairwise (obsp):[/cyan]")
+                    console.print("\n[cyan]Observation Pairwise (obsp):[/cyan]")
                     for key in adata.obsp.keys():
                         matrix = adata.obsp[key]
                         console.print(f"  • {key}: {matrix.shape[0]}×{matrix.shape[1]}")
 
                 # Varp (variable pairwise)
                 if adata.varp:
-                    console.print(f"\n[cyan]Variable Pairwise (varp):[/cyan]")
+                    console.print("\n[cyan]Variable Pairwise (varp):[/cyan]")
                     for key in adata.varp.keys():
                         matrix = adata.varp[key]
                         console.print(f"  • {key}: {matrix.shape[0]}×{matrix.shape[1]}")
 
                 # Unstructured data (uns)
                 if adata.uns:
-                    console.print(f"\n[cyan]Unstructured Data (uns):[/cyan]")
+                    console.print("\n[cyan]Unstructured Data (uns):[/cyan]")
                     uns_items = []
                     for key, value in adata.uns.items():
                         if isinstance(value, dict):
@@ -4496,7 +4484,7 @@ when they are started by agents or analysis workflows.
                     and modality_name in client.data_manager.metadata_store
                 ):
                     metadata = client.data_manager.metadata_store[modality_name]
-                    console.print(f"\n[bold white]📋 Metadata[/bold white]")
+                    console.print("\n[bold white]📋 Metadata[/bold white]")
                     meta_table = Table(
                         box=box.SIMPLE, show_header=False, padding=(0, 2)
                     )
@@ -4548,7 +4536,7 @@ when they are started by agents or analysis workflows.
                         plot["timestamp"].replace("Z", "+00:00")
                     )
                     created_str = created.strftime("%Y-%m-%d %H:%M")
-                except:
+                except Exception:
                     created_str = plot["timestamp"][:16] if plot["timestamp"] else "N/A"
 
                 table.add_row(
@@ -4658,7 +4646,7 @@ when they are started by agents or analysis workflows.
                         )
                 else:
                     console.print(
-                        f"[bold red on white] ⚠️  Error [/bold red on white] [red]Plot file not found. Try running /save first.[/red]"
+                        "[bold red on white] ⚠️  Error [/bold red on white] [red]Plot file not found. Try running /save first.[/red]"
                     )
             else:
                 console.print(
@@ -4739,7 +4727,7 @@ when they are started by agents or analysis workflows.
         saved_items = client.data_manager.auto_save_state()
 
         if saved_items:
-            console.print(f"[bold red]✓[/bold red] [white]Saved to workspace:[/white]")
+            console.print("[bold red]✓[/bold red] [white]Saved to workspace:[/white]")
             for item in saved_items:
                 console.print(f"  • {item}")
             return f"Saved {len(saved_items)} items to workspace: {', '.join(saved_items[:3])}{'...' if len(saved_items) > 3 else ''}"
@@ -5047,7 +5035,7 @@ def test(
             # Test specific agent
             try:
                 config = configurator.get_agent_model_config(agent)
-                params = configurator.get_llm_params(agent)
+                configurator.get_llm_params(agent)
 
                 console.print(
                     f"\n[green]✅ Agent '{agent}' configuration is valid[/green]"
@@ -5072,7 +5060,7 @@ def test(
             for agent_name in available_agents:
                 try:
                     config = configurator.get_agent_model_config(agent_name)
-                    params = configurator.get_llm_params(agent_name)
+                    configurator.get_llm_params(agent_name)
                     console.print(
                         f"   [green]✅ {agent_name}: {config.model_config.model_id}[/green]"
                     )

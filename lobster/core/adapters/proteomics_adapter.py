@@ -611,14 +611,14 @@ class ProteomicsAdapter(BaseAdapter):
         # Contaminant and reverse metrics
         if "is_contaminant" in adata.var.columns:
             metrics["contaminant_proteins"] = int(
-                (adata.var["is_contaminant"] == True).sum()
+                (adata.var["is_contaminant"]).sum()
             )
             metrics["contaminant_percentage"] = float(
-                ((adata.var["is_contaminant"] == True).sum() / len(adata.var)) * 100
+                ((adata.var["is_contaminant"]).sum() / len(adata.var)) * 100
             )
 
         if "is_reverse" in adata.var.columns:
-            metrics["reverse_hits"] = int((adata.var["is_reverse"] == True).sum())
+            metrics["reverse_hits"] = int((adata.var["is_reverse"]).sum())
 
         return metrics
 

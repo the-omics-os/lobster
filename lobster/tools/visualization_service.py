@@ -5,9 +5,7 @@ This service provides comprehensive visualization methods for single-cell data a
 generating interactive and publication-quality plots using Plotly.
 """
 
-import time
-import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import anndata
 import numpy as np
@@ -15,9 +13,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import plotly.io as pio
-import scanpy as sc
 from plotly.subplots import make_subplots
-from scipy import stats
 from scipy.sparse import issparse
 
 from lobster.utils.logger import get_logger
@@ -558,7 +554,7 @@ class SingleCellVisualizationService:
 
             # Update layout
             fig.update_layout(
-                title=f"Feature Plot - Gene Expression",
+                title="Feature Plot - Gene Expression",
                 width=400 * min(ncols, n_genes),
                 height=400 * nrows,
                 plot_bgcolor="white",
@@ -1023,7 +1019,6 @@ class SingleCellVisualizationService:
             # Define professional color scheme
             color_quality = px.colors.sequential.Viridis
             color_mito = px.colors.sequential.Reds
-            color_ribo = px.colors.sequential.Blues
             color_discrete = px.colors.qualitative.Set2
 
             # Calculate QC thresholds using MAD-based approach
@@ -1805,7 +1800,6 @@ class SingleCellVisualizationService:
         Returns:
             List[str]: Paths to saved files
         """
-        import os
         from pathlib import Path
 
         saved_files = []
@@ -1933,7 +1927,7 @@ class SingleCellVisualizationService:
             fig.update_layout(
                 annotations=[
                     dict(
-                        text=f"Colors synchronized with Rich terminal interface",
+                        text="Colors synchronized with Rich terminal interface",
                         showarrow=False,
                         xref="paper",
                         yref="paper",

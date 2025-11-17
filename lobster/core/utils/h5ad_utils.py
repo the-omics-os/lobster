@@ -10,7 +10,7 @@ import collections
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List
 
 import numpy as np
 

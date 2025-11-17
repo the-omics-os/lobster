@@ -554,11 +554,11 @@ class TestWorkspacePerformance:
 
         # Test restoration performance
         start_time = time.time()
-        result = dm.restore_session(pattern="dataset_0*", max_size_mb=1000)
+        result = dm.restore_session(pattern="dataset_00*", max_size_mb=1000)
         restore_time = time.time() - start_time
 
         assert restore_time < 5.0
-        assert len(result["restored"]) == 10  # dataset_000 through dataset_099
+        assert len(result["restored"]) == 10  # dataset_000 through dataset_009
 
     def test_mixed_size_dataset_handling(self, temp_workspace):
         """Test handling of mixed-size datasets."""

@@ -7,7 +7,7 @@ ensuring consistency between local and cloud implementations.
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 class BaseClient(ABC):

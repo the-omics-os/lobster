@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.providers.abstract_provider import AbstractProvider
+from lobster.tools.providers.base_provider import DatasetType, PublicationMetadata
 from lobster.tools.providers.geo_provider import GEOProvider
 from lobster.tools.providers.pmc_provider import PMCProvider
 from lobster.tools.providers.provider_registry import ProviderRegistry
@@ -163,7 +164,7 @@ class ContentAccessService:
 
         # 4. SRAProvider - SRA dataset discovery
         try:
-            import pysradb  # Check if pysradb is available
+            import pysradb  # noqa: F401 - Check if pysradb is available
 
             sra_provider = SRAProvider(data_manager=self.data_manager)
             self.registry.register_provider(sra_provider)
@@ -485,13 +486,8 @@ class ContentAccessService:
             >>> # Text search
             >>> results, stats, ir = service.discover_datasets("single-cell RNA-seq", DatasetType.GEO)
         """
-        from lobster.tools.providers.base_provider import (
-            DatasetType,
-            ProviderCapability,
-        )
         from lobster.tools.providers.geo_utils import (
             extract_accession_info,
-            is_geo_sample_accession,
         )
 
         logger.info(f"Dataset search: {query[:50]}... for {dataset_type.value}")
@@ -589,7 +585,7 @@ class ContentAccessService:
         Returns:
             str: Formatted search results with enhanced information
         """
-        from lobster.tools.providers.base_provider import DatasetType, PublicationSource
+        from lobster.tools.providers.base_provider import DatasetType
         from lobster.tools.providers.geo_utils import is_geo_sample_accession
 
         # Get provider for this dataset type
@@ -798,7 +794,6 @@ class ContentAccessService:
         """
         from lobster.tools.providers.base_provider import (
             ProviderCapability,
-            PublicationMetadata,
         )
 
         logger.info(f"Extracting metadata for: {identifier}")
@@ -1081,7 +1076,7 @@ class ContentAccessService:
 
             if webpage_providers:
                 webpage_provider = webpage_providers[0]
-                logger.info(f"Using WebpageProvider for URL extraction")
+                logger.info("Using WebpageProvider for URL extraction")
 
                 # Extract content (handles both webpage and PDF internally)
                 content_result = webpage_provider.extract_content(

@@ -200,7 +200,7 @@ class EnhancedSingleCellService:
         """
         logger.info("Using fallback doublet detection method")
 
-        n_cells = counts_matrix.shape[0]
+        counts_matrix.shape[0]
 
         # Calculate per-cell metrics that indicate doublets
         total_counts = np.sum(counts_matrix, axis=1)

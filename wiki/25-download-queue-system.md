@@ -879,14 +879,14 @@ data_manager.download_queue.add_entry(entry)
 ## See Also
 
 ### Wiki Pages
-- [Architecture Overview (Wiki 18)](./18-architecture-overview.md) - System-wide architecture
-- [Two-Tier Caching Architecture (Wiki 39)](./39-two-tier-caching-architecture.md) - Metadata caching strategy
-- [DataManagerV2 API Reference (Wiki 17)](./17-data-manager-v2.md) - Data management patterns
+- [Architecture Overview (Wiki 18)](18-architecture-overview.md) - System-wide architecture
+- [Two-Tier Caching Architecture (Wiki 39)](39-two-tier-caching-architecture.md) - Metadata caching strategy
+- [Data Management (Wiki 20)](20-data-management.md) - Data management patterns
 
 ### Developer Documentation
-- [Developer Guide: Data Expert](../docs/developer_guide_data_expert.md) - Agent implementation details
-- [Developer Guide: Research Agent](../docs/developer_guide_research_agent.md) - Metadata validation workflows
-- [Pydantic Schemas](../docs/pydantic_schemas.md) - Schema definitions
+- Data Expert Agent - See agent implementation in `lobster/agents/data_expert.py`
+- Research Agent - See agent implementation in `lobster/agents/research_agent.py`
+- Pydantic Schemas - See schema definitions in `lobster/core/schemas/`
 
 ### Code References
 - `lobster/core/download_queue.py` - Queue implementation (342 lines)

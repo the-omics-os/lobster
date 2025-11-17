@@ -4,7 +4,7 @@ Quick Status Check for Lobster AI Tools Testing
 Provides rapid assessment of critical testing gaps and failures.
 
 Usage:
-    python tests/pre-release-report/tools_quick_status_check.py
+    python docs/testing/pre-release-2025-09/tools_quick_status_check.py
 """
 
 import importlib

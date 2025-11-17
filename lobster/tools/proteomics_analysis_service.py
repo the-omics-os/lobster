@@ -7,14 +7,14 @@ analysis, GO term analysis, and protein network analysis.
 """
 
 from itertools import combinations
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import anndata
 import numpy as np
 import pandas as pd
 from scipy import stats
-from scipy.cluster.hierarchy import dendrogram, fcluster, linkage
-from scipy.spatial.distance import pdist, squareform
+from scipy.cluster.hierarchy import fcluster, linkage
+from scipy.spatial.distance import pdist
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
@@ -129,7 +129,7 @@ class ProteomicsAnalysisService:
             # Store results in AnnData
             if test_results:
                 # Convert results to DataFrame for easier handling
-                results_df = pd.DataFrame(test_results)
+                pd.DataFrame(test_results)
 
                 # Store in uns
                 adata_stats.uns["statistical_tests"] = {
@@ -756,7 +756,7 @@ class ProteomicsAnalysisService:
             from sklearn.metrics import silhouette_score
 
             quality_score = silhouette_score(X, labels)
-        except:
+        except Exception:
             quality_score = None
 
         return {

@@ -167,8 +167,8 @@ def metadata_assistant(
                     return pd.DataFrame.from_dict(samples_dict, orient="index")
 
             # Get samples from both sources
-            source_samples = get_samples(source, source_type)
-            target_samples = get_samples(target, target_type)
+            get_samples(source, source_type)
+            get_samples(target, target_type)
 
             # Call mapping service (updated to work with DataFrames directly)
             result = sample_mapping_service.map_samples_by_id(
@@ -304,7 +304,7 @@ def metadata_assistant(
                 logger.info(f"Metadata summary generated for {source}")
                 # Generate summary
                 summary = [
-                    f"# Sample Metadata Summary\n",
+                    "# Sample Metadata Summary\n",
                     f"**Dataset**: {source}",
                     f"**Source Type**: {source_type}",
                     f"**Total Samples**: {len(sample_df)}\n",
@@ -582,7 +582,7 @@ def metadata_assistant(
 
                 # For metadata_store, we don't have IR (no provenance tracking for cached metadata)
                 ir = None
-                stats = {
+                {
                     "total_samples": len(sample_df),
                     "validation_passed": result.has_required_samples
                     and result.platform_consistency
@@ -622,17 +622,17 @@ def metadata_assistant(
                     else f"❌ Sample Count: {result.summary['total_samples']} samples (below minimum)"
                 ),
                 (
-                    f"✅ Platform Consistency: Consistent"
+                    "✅ Platform Consistency: Consistent"
                     if result.platform_consistency
-                    else f"⚠️ Platform Consistency: Inconsistent"
+                    else "⚠️ Platform Consistency: Inconsistent"
                 ),
                 (
-                    f"✅ No Duplicate IDs"
+                    "✅ No Duplicate IDs"
                     if not result.duplicate_ids
                     else f"❌ Duplicate IDs: {len(result.duplicate_ids)} found"
                 ),
                 (
-                    f"✅ Control Samples: Detected"
+                    "✅ Control Samples: Detected"
                     if not result.control_issues
                     else f"⚠️ Control Samples: {', '.join(result.control_issues)}"
                 ),

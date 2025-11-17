@@ -354,7 +354,7 @@ class DoclingService:
                 error_msg = str(e)
                 if "page-dimensions" in error_msg:
                     logger.error(
-                        f"RuntimeError: Incompatible PDF (page-dimensions issue)"
+                        "RuntimeError: Incompatible PDF (page-dimensions issue)"
                     )
                     # Don't retry this error - it's a permanent PDF incompatibility
                     raise PDFExtractionError(f"Incompatible PDF format: {e}")

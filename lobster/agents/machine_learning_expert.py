@@ -7,7 +7,7 @@ using the modular DataManagerV2 system.
 """
 
 from datetime import date
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -152,13 +152,13 @@ def machine_learning_expert(
                 response += f"  - Sparsity: {info['sparsity']:.1%}\n"
 
                 if info["has_batch"]:
-                    response += f"  - Batch info: ✓ (consider batch correction)\n"
+                    response += "  - Batch info: ✓ (consider batch correction)\n"
 
                 # ML recommendations
                 if info["shape"][0] < 50:
-                    response += f"  - ⚠️ Small sample size - consider regularization\n"
+                    response += "  - ⚠️ Small sample size - consider regularization\n"
                 elif info["shape"][0] > 10000:
-                    response += f"  - 📊 Large dataset - suitable for deep learning\n"
+                    response += "  - 📊 Large dataset - suitable for deep learning\n"
 
                 response += "\n"
 
@@ -556,7 +556,7 @@ def machine_learning_expert(
                 response += f"\n- Stratified by: {stratify_by}"
 
                 # Show class distribution
-                response += f"\n\n📈 **Class Distribution in Splits:**"
+                response += "\n\n📈 **Class Distribution in Splits:**"
                 for split_name in ["train", "test", "validation"]:
                     if split_stats.get(split_name, 0) > 0:
                         split_data = adata[adata.obs["ml_split"] == split_name]
@@ -565,14 +565,14 @@ def machine_learning_expert(
                         for class_name, count in class_counts.head(5).items():
                             response += f"\n  - {class_name}: {count} ({count/split_stats[split_name]*100:.1f}%)"
 
-            response += f"\n\n💾 **New modalities created**:"
+            response += "\n\n💾 **New modalities created**:"
             response += f"\n- '{train_modality}' (training data)"
             response += f"\n- '{test_modality}' (test data)"
             if split_stats["validation"] > 0:
                 response += f"\n- '{val_modality}' (validation data)"
 
             response += (
-                f"\n\nOriginal modality updated with 'ml_split' column for tracking."
+                "\n\nOriginal modality updated with 'ml_split' column for tracking."
             )
 
             ml_results["details"]["data_splitting"] = response
@@ -615,7 +615,6 @@ def machine_learning_expert(
 
             # Create output directory
             import os
-            from pathlib import Path
 
             export_path = data_manager.exports_dir / output_dir
             export_path.mkdir(exist_ok=True)
@@ -825,7 +824,7 @@ def machine_learning_expert(
                     or "test" in mod.lower()
                 ]
 
-                summary += f"## Current ML-Ready Modalities\n"
+                summary += "## Current ML-Ready Modalities\n"
                 summary += f"ML-prepared modalities ({len(ml_modalities)}): {', '.join(ml_modalities)}\n\n"
 
                 # Add modality details
@@ -850,7 +849,7 @@ def machine_learning_expert(
                         ]
                         if key_cols:
                             summary += f"  - ML annotations: {', '.join(key_cols)}\n"
-                    except Exception as e:
+                    except Exception:
                         summary += f"- **{mod_name}**: Error accessing modality\n"
 
             ml_results["summary"] = summary
@@ -1240,7 +1239,7 @@ After installation, restart your session and run this tool again."""
                 else:
                     response += f"\n- Model saved: ✓ (current directory: {modality_name}_scvi_model/)"
 
-            response += f"""
+            response += """
 
 🎯 **Next Steps:**
 The scVI embeddings are now available in modality.obsm['X_scvi'] and can be used for:

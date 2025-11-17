@@ -17,7 +17,6 @@ import time
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -47,7 +46,6 @@ from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
 from lobster.tools.geo_downloader import GEODownloadManager
 from lobster.tools.geo_parser import GEOParser
 from lobster.tools.pipeline_strategy import (
-    PipelineContext,
     PipelineStrategyEngine,
     PipelineType,
     create_pipeline_context,
@@ -180,7 +178,6 @@ PLATFORM_REGISTRY: Dict[str, PlatformCompatibility] = {
     "GPL1708": PlatformCompatibility.UNSUPPORTED,  # Agilent-012391 Whole Human Genome
     "GPL7202": PlatformCompatibility.UNSUPPORTED,  # Agilent-014868 Whole Mouse Genome
     # Other microarray platforms
-    "GPL91": PlatformCompatibility.UNSUPPORTED,  # Affymetrix Murine Genome U74Av2
     "GPL341": PlatformCompatibility.UNSUPPORTED,  # Affymetrix RG_U34A
     "GPL85": PlatformCompatibility.UNSUPPORTED,  # Affymetrix RG_U34B
     "GPL1355": PlatformCompatibility.UNSUPPORTED,  # Affymetrix Rat Genome 230 2.0
@@ -658,8 +655,8 @@ class GEOService:
                 if "CERTIFICATE_VERIFY_FAILED" in error_str or "SSL" in error_str:
                     handle_ssl_error(e, url, logger)
                     raise Exception(
-                        f"SSL certificate verification failed when fetching GDS metadata. "
-                        f"See error message above for solutions."
+                        "SSL certificate verification failed when fetching GDS metadata. "
+                        "See error message above for solutions."
                     )
                 raise
 
@@ -850,8 +847,8 @@ class GEOService:
                 if "CERTIFICATE_VERIFY_FAILED" in error_str or "SSL" in error_str:
                     handle_ssl_error(e, url, logger)
                     raise Exception(
-                        f"SSL certificate verification failed when fetching GSE metadata via Entrez. "
-                        f"See error message above for solutions."
+                        "SSL certificate verification failed when fetching GSE metadata via Entrez. "
+                        "See error message above for solutions."
                     )
                 raise
 
@@ -1150,7 +1147,7 @@ class GEOService:
                 cached_metadata = self.data_manager.metadata_store[clean_geo_id][
                     "metadata"
                 ]
-                predicted_type = self._determine_data_type_from_metadata(
+                self._determine_data_type_from_metadata(
                     cached_metadata
                 )
 
@@ -1366,7 +1363,7 @@ class GEOService:
 
             return GEOResult(
                 success=False,
-                error_message=f"All pipeline steps failed after enough attempts",
+                error_message="All pipeline steps failed after enough attempts",
                 metadata=cached_metadata,
                 source=GEODataSource.GEOPARSE,
             )
@@ -1838,7 +1835,6 @@ class GEOService:
 
             # Determine data type from metadata
             data_type = self._determine_data_type_from_metadata(metadata)
-            is_single_cell = data_type == "single_cell_rna_seq"
 
             # Use instance variable if set, otherwise use parameter default
             concat_strategy = getattr(
@@ -2036,7 +2032,7 @@ class GEOService:
                 )
                 return (
                     True,
-                    f"Mixed platform dataset - will filter to supported samples",
+                    "Mixed platform dataset - will filter to supported samples",
                 )
 
             # Pure unsupported dataset - reject
@@ -2077,7 +2073,7 @@ class GEOService:
                 f"{geo_id} uses experimental platform(s): {platform_list}. "
                 f"Analysis may require manual validation."
             )
-            return True, f"Experimental platform detected - proceed with validation"
+            return True, "Experimental platform detected - proceed with validation"
 
         # Handle unknown platforms conservatively
         if unknown_platforms and not supported_platforms:
@@ -2086,7 +2082,7 @@ class GEOService:
                 f"{geo_id} has unknown platform(s): {platform_list}. "
                 f"Will attempt loading but recommend validation."
             )
-            return True, f"Unknown platform - will attempt loading"
+            return True, "Unknown platform - will attempt loading"
 
         # All platforms supported (GPL registry check passed)
         platform_list = ", ".join([pid for pid, _ in supported_platforms])
@@ -2204,9 +2200,9 @@ class GEOService:
             elif has_rna and not has_unsupported:
                 # RNA-only dataset that was misclassified by pre-filter
                 logger.info(
-                    f"Dataset is RNA-only despite modality detection. Proceeding with load."
+                    "Dataset is RNA-only despite modality detection. Proceeding with load."
                 )
-                return (True, f"RNA-only dataset (pre-filter was overly conservative)")
+                return (True, "RNA-only dataset (pre-filter was overly conservative)")
 
             else:
                 # No RNA samples found - truly unsupported
@@ -2746,7 +2742,6 @@ class GEOService:
 
             # Robust validation status handling with type checking
             validation_status = "UNKNOWN"
-            alignment_pct_raw = "UNKNOWN"
             alignment_pct_formatted = "UNKNOWN"
             predicted_type = "UNKNOWN"
             aligned_fields = "UNKNOWN"
@@ -2764,11 +2759,10 @@ class GEOService:
                     try:
                         # Try to convert to float
                         alignment_float = float(alignment_raw)
-                        alignment_pct_raw = alignment_float
                         alignment_pct_formatted = f"{alignment_float:.1f}"
                     except (ValueError, TypeError):
                         # If conversion fails, use string representation
-                        alignment_pct_raw = str(alignment_raw)
+                        str(alignment_raw)
                         alignment_pct_formatted = str(alignment_raw)
 
                 # Predicted type
@@ -3476,7 +3470,7 @@ The actual expression data download will be much faster now that metadata is pre
                 )
                 return df
 
-        except Exception as e:
+        except Exception:
             # Fallback to expression table
             if hasattr(gsm, "table") and gsm.table is not None:
                 matrix = gsm.table
@@ -4038,7 +4032,7 @@ The actual expression data download will be much faster now that metadata is pre
             if not local_path.exists():
                 logger.info(f"Downloading H5 file: {url}")
                 if not self.geo_downloader.download_file(url, local_path):
-                    logger.error(f"Failed to download H5 file")
+                    logger.error("Failed to download H5 file")
                     return None
             else:
                 logger.info(f"Using cached H5 file: {local_path}")
@@ -4193,7 +4187,7 @@ The actual expression data download will be much faster now that metadata is pre
             if not local_path.exists():
                 logger.info(f"Downloading expression file: {url}")
                 if not self.geo_downloader.download_file(url, local_path):
-                    logger.error(f"Failed to download expression file")
+                    logger.error("Failed to download expression file")
                     return None
             else:
                 logger.info(f"Using cached expression file: {local_path}")
@@ -4666,7 +4660,7 @@ The actual expression data download will be much faster now that metadata is pre
             logger.info(f"   Mean: {mean_genes:,.0f} ± {std_genes:,.0f}")
             logger.info(f"   Coefficient of Variation: {cv:.1%}")
             logger.info("")
-            logger.info(f"📐 Decision Criteria:")
+            logger.info("📐 Decision Criteria:")
             logger.info(
                 f"   CV threshold: {VARIANCE_THRESHOLD:.1%}, Range ratio threshold: {RANGE_RATIO_THRESHOLD:.2f}x"
             )
@@ -4676,19 +4670,19 @@ The actual expression data download will be much faster now that metadata is pre
                 logger.info("✓ Selected: INNER JOIN (intersection of genes)")
                 logger.info(f"  📌 Reason: {metadata['reasoning']}")
                 logger.info(
-                    f"  📍 Effect: Only genes present in ALL samples will be retained"
+                    "  📍 Effect: Only genes present in ALL samples will be retained"
                 )
                 logger.info(
-                    f"  ⚠️  Warning: Genes unique to some samples will be excluded"
+                    "  ⚠️  Warning: Genes unique to some samples will be excluded"
                 )
             else:
                 logger.info("⚠️  VARIABILITY DETECTED")
                 logger.info("✓ Selected: OUTER JOIN (union of all genes)")
                 logger.info(f"  📌 Reason: {metadata['reasoning']}")
                 logger.info(
-                    f"  📍 Effect: ALL genes included, missing values filled with zeros"
+                    "  📍 Effect: ALL genes included, missing values filled with zeros"
                 )
-                logger.info(f"  ℹ️  Note: This preserves maximum biological information")
+                logger.info("  ℹ️  Note: This preserves maximum biological information")
 
             logger.info("=" * 70)
 
@@ -4832,9 +4826,9 @@ The actual expression data download will be much faster now that metadata is pre
                 }
 
             logger.info(
-                f"✓ Concatenation decision stored in metadata_store for supervisor access"
+                "✓ Concatenation decision stored in metadata_store for supervisor access"
             )
-            logger.info(f"✓ Provenance tracked in tool_usage_history")
+            logger.info("✓ Provenance tracked in tool_usage_history")
             logger.info(f"ConcatenationService completed: {statistics}")
 
             return concatenated_adata
@@ -4892,7 +4886,7 @@ The actual expression data download will be much faster now that metadata is pre
 
             # Save to workspace
             save_path = f"{gsm_id.lower()}_sample.h5ad"
-            saved_file = self.data_manager.save_modality(modality_name, save_path)
+            self.data_manager.save_modality(modality_name, save_path)
 
             return f"""Successfully downloaded single-cell sample {gsm_id}!
 

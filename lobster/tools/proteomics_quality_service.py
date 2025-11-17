@@ -6,16 +6,12 @@ proteomics data including missing value pattern analysis, contaminant detection,
 dynamic range evaluation, and technical replicate validation.
 """
 
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import anndata
 import numpy as np
-import pandas as pd
 from scipy import stats
-from scipy.cluster.hierarchy import fcluster, linkage
-from scipy.spatial.distance import pdist
 from sklearn.decomposition import PCA
-from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
 
 from lobster.utils.logger import get_logger
@@ -908,7 +904,7 @@ class ProteomicsQualityService:
                 if valid_mask.sum() >= 3:
                     valid_values = protein_values[valid_mask]
                     # Calculate median intensity of valid values
-                    median_intensity = np.median(valid_values)
+                    np.median(valid_values)
                     mean_intensity = np.mean(valid_values)
 
                     # MNAR proteins typically have lower mean/median intensities

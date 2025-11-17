@@ -687,6 +687,13 @@ content = service.get_full_content("PMID:35042229")
 
 ## Performance Benchmarks
 
+**Benchmark Metadata:**
+- **Date Measured:** 2025-01-15
+- **Lobster Version:** v2.4.0
+- **Network:** Residential broadband (100 Mbps)
+- **Sample Size:** 100 operations per provider
+- **Test Conditions:** Mixed cache hit/miss scenarios
+
 ### Provider Performance
 
 | Provider | Operation | Mean Duration | P95 | P99 | Success Rate |
@@ -696,6 +703,8 @@ content = service.get_full_content("PMID:35042229")
 | **GEOProvider** | `discover_datasets()` | 3.2s | 4.8s | 6s | 95%+ |
 | **PMCProvider** | `get_full_content()` | 1.2s | 2s | 2.5s | 95% (of eligible) |
 | **WebpageProvider** | `get_full_content()` | 4.5s | 7s | 10s | 70-80% |
+
+**Note:** Performance varies with network conditions and external API load. P95/P99 represent 95th and 99th percentile latencies.
 
 ### Cascade Performance
 

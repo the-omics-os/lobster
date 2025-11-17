@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from lobster.core.interfaces.validator import ValidationResult
 from .validation import FlexibleValidator
 
 
@@ -177,8 +178,6 @@ class ProteinStructureSchema:
 
 def _validate_atom_counts(adata) -> "ValidationResult":
     """Validate atom counts and structure size."""
-    from lobster.core.interfaces.validator import ValidationResult
-
     result = ValidationResult()
 
     # Check minimum atom count
@@ -208,7 +207,6 @@ def _validate_atom_counts(adata) -> "ValidationResult":
 def _validate_coordinates(adata) -> "ValidationResult":
     """Validate 3D coordinates are reasonable."""
     import numpy as np
-    from lobster.core.interfaces.validator import ValidationResult
 
     result = ValidationResult()
 
@@ -250,8 +248,6 @@ def _validate_coordinates(adata) -> "ValidationResult":
 
 def _validate_pdb_id(adata) -> "ValidationResult":
     """Validate PDB ID format."""
-    from lobster.core.interfaces.validator import ValidationResult
-
     result = ValidationResult()
 
     if "pdb_id" in adata.uns:
@@ -278,8 +274,6 @@ def _validate_pdb_id(adata) -> "ValidationResult":
 
 def _validate_chain_consistency(adata) -> "ValidationResult":
     """Validate chain assignments are consistent."""
-    from lobster.core.interfaces.validator import ValidationResult
-
     result = ValidationResult()
 
     if "chain_id" not in adata.obs.columns:

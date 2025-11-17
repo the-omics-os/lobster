@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional
 
+import pandas as pd
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langfuse.langchain import CallbackHandler as LangfuseCallback
 from langgraph.checkpoint.memory import InMemorySaver
@@ -23,7 +24,6 @@ from lobster.core.archive_utils import (
     ArchiveExtractor,
     ArchiveInspector,
     ContentDetector,
-    NestedArchiveInfo,
 )
 from lobster.core.data_manager_v2 import DataManagerV2
 

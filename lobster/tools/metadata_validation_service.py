@@ -511,19 +511,19 @@ IMPORTANT:
         # Add missing fields
         missing = config_dict.get("missing_fields", [])
         if missing:
-            report += f"\n### Missing Required Fields:\n"
+            report += "\n### Missing Required Fields:\n"
             for field in missing:
                 report += f"- ❌ {field}\n"
 
         # Add warnings
         warnings = config_dict.get("warnings", [])
         if warnings:
-            report += f"\n### ⚠️ Warnings:\n"
+            report += "\n### ⚠️ Warnings:\n"
             for warning in warnings:
                 report += f"- {warning}\n"
 
         # Add recommendation explanation
-        report += f"\n### 💡 Recommendation Rationale:\n"
+        report += "\n### 💡 Recommendation Rationale:\n"
         if config_dict.get("recommendation") == "proceed":
             report += "All required fields are present with sufficient coverage. Dataset is suitable for analysis.\n"
         elif config_dict.get("recommendation") == "skip":

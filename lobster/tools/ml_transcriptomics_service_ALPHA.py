@@ -7,11 +7,9 @@ These are template tools that demonstrate ML workflows but are not yet integrate
 """
 
 import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional
 
 import numpy as np
-import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +69,7 @@ class MLTranscriptomicsService:
         """
         try:
             # Template implementation - would use PyTorch or TensorFlow in practice
-            logger.debug(f"Training deep learning model for cell type classification")
+            logger.debug("Training deep learning model for cell type classification")
             logger.info(
                 f"Data: {X_train.shape[0]} train, {X_test.shape[0]} test samples"
             )
@@ -202,7 +200,6 @@ class MLTranscriptomicsService:
             top_features_idx = np.argsort(feature_importance)[-20:]  # Top 20 features
 
             # Simulate additional metrics
-            from sklearn.metrics import precision_recall_fscore_support, roc_auc_score
 
             # Mock balanced metrics
             precision = 0.8 + np.random.random() * 0.15
@@ -385,7 +382,7 @@ class MLTranscriptomicsService:
             )
 
             n_samples, n_genes = X.shape
-            n_conditions = len(np.unique(y))
+            len(np.unique(y))
 
             # Simulate signature discovery
             signatures = {}

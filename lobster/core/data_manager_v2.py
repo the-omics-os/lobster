@@ -408,7 +408,7 @@ class DataManagerV2:
 
         # Log provenance
         if self.provenance:
-            entity_id = self.provenance.create_entity(
+            self.provenance.create_entity(
                 entity_type="modality_data",
                 metadata={
                     "modality_name": name,
@@ -502,7 +502,7 @@ class DataManagerV2:
 
         # Log provenance
         if self.provenance:
-            entity_id = self.provenance.create_entity(
+            self.provenance.create_entity(
                 entity_type="modality_data",
                 uri=path,  # Use in-memory representation as source
                 metadata={"modality_name": name, "shape": adata.shape},
@@ -1022,7 +1022,7 @@ class DataManagerV2:
             filepath = self.data_dir / filename
 
             # Save using appropriate backend
-            saved_path = self.save_modality(modality_name, filepath)
+            self.save_modality(modality_name, filepath)
 
             # Create enhanced metadata
             enhanced_metadata = {
@@ -1929,7 +1929,7 @@ class DataManagerV2:
                 modality_name = "legacy_bulk"
 
             # Load as modality
-            adata = self.load_modality(
+            self.load_modality(
                 name=modality_name,
                 source=data,
                 adapter=adapter_name,
@@ -2283,12 +2283,6 @@ class DataManagerV2:
 
         # Import sklearn components (always needed)
         try:
-            from sklearn.feature_selection import (
-                SelectKBest,
-                VarianceThreshold,
-                chi2,
-                mutual_info_classif,
-            )
             from sklearn.preprocessing import MinMaxScaler, RobustScaler, StandardScaler
         except ImportError:
             raise ImportError(
@@ -2322,7 +2316,7 @@ class DataManagerV2:
                 X = adata.X.toarray() if hasattr(adata.X, "toarray") else adata.X
                 X = X / np.sum(X, axis=1, keepdims=True) * 1e6
                 adata.X = X
-            processing_steps.append(f"Applied CPM normalization")
+            processing_steps.append("Applied CPM normalization")
 
         # Step 2: Feature Selection
         X = adata.X.toarray() if hasattr(adata.X, "toarray") else adata.X
@@ -3244,7 +3238,7 @@ https://github.com/OmicsOS/lobster
                 from importlib.metadata import version
 
                 lobster_version = version("lobster")
-            except:
+            except Exception:
                 lobster_version = "unknown"
 
             session_data = {
@@ -3594,7 +3588,6 @@ https://github.com/OmicsOS/lobster
         """
         import hashlib
 
-        from lobster.tools.docling_service import DoclingService
 
         publications_dir = self.literature_cache_dir / "publications"
         publications_dir.mkdir(parents=True, exist_ok=True)
@@ -3691,7 +3684,6 @@ https://github.com/OmicsOS/lobster
         """
         import hashlib
         import json
-        from datetime import datetime
 
         publications_dir = self.literature_cache_dir / "publications"
 

@@ -157,8 +157,9 @@ class TestAgent15CompleteWorkflows:
             METRICS.record_fail(test_name, str(e))
             pytest.fail(f"Test 1 failed: {e}")
 
+    @pytest.mark.slow
     def test_02_complete_workflow_scanpy(self, data_manager):
-        """Test 2: Complete scRNA-seq workflow with scanpy."""
+        """Test 2: Complete scRNA-seq workflow with scanpy (slow: 5.0s)."""
         test_name = "test_02_complete_workflow"
         try:
             if "synthetic_raw" not in data_manager.list_modalities():
@@ -225,8 +226,9 @@ class TestAgent15CompleteWorkflows:
             METRICS.record_fail(test_name, str(e))
             pytest.fail(f"Test 2 failed: {e}")
 
+    @pytest.mark.slow
     def test_03_larger_dataset_workflow(self, data_manager):
-        """Test 3: Workflow with larger dataset (2000 cells)."""
+        """Test 3: Workflow with larger dataset (2000 cells) (slow: 5.0s)."""
         test_name = "test_03_larger_workflow"
         try:
             # Create larger dataset

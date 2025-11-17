@@ -27,12 +27,11 @@ References:
 
 import re
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.providers.base_provider import PublicationMetadata, PublicationSource
 from lobster.tools.providers.pubmed_provider import PubMedProvider, PubMedProviderConfig
 from lobster.utils.logger import get_logger
 
@@ -558,7 +557,7 @@ class PMCProvider:
             try:
                 metadata = self.pubmed_provider.extract_publication_metadata(identifier)
                 return metadata.pmid
-            except:
+            except Exception:
                 return None
 
         return None

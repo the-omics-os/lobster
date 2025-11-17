@@ -10,9 +10,7 @@ This module provides intelligent PDF access resolution with a tiered waterfall s
 This eliminates the #1 user pain point: manually finding PDF URLs.
 """
 
-import re
 from typing import Any, Dict, List, Optional
-from urllib.parse import urljoin
 
 import requests
 

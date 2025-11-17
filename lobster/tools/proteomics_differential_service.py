@@ -7,7 +7,7 @@ effect size calculations, and MSstats-like workflows.
 """
 
 from itertools import combinations
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import anndata
 import numpy as np
@@ -15,7 +15,6 @@ import pandas as pd
 from scipy import stats
 from scipy.stats import pearsonr, spearmanr
 from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import StandardScaler
 
 from lobster.utils.logger import get_logger
 
@@ -606,7 +605,7 @@ class ProteomicsDifferentialService:
         # Remove invalid variances
         valid_mask = np.isfinite(all_variances) & (all_variances > 0) & (all_dfs > 0)
         valid_vars = all_variances[valid_mask]
-        valid_dfs = all_dfs[valid_mask]
+        all_dfs[valid_mask]
 
         if len(valid_vars) < 10:
             # Not enough proteins for reliable prior estimation
@@ -932,7 +931,6 @@ class ProteomicsDifferentialService:
         self, time_points: np.ndarray, protein_values: np.ndarray
     ) -> Tuple[float, float, float]:
         """Perform linear trend test for time course analysis."""
-        from sklearn.linear_model import LinearRegression
         from sklearn.metrics import r2_score
 
         # Reshape for sklearn
@@ -968,7 +966,6 @@ class ProteomicsDifferentialService:
         self, time_points: np.ndarray, protein_values: np.ndarray
     ) -> Tuple[float, float, float]:
         """Perform polynomial trend test for time course analysis."""
-        from sklearn.linear_model import LinearRegression
         from sklearn.metrics import r2_score
         from sklearn.preprocessing import PolynomialFeatures
 

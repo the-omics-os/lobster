@@ -338,7 +338,7 @@ class TranscriptomicsAdapter(BaseAdapter):
             # Try to load as scanpy H5 format first
             adata = sc.read_h5ad(path)
             return adata
-        except:
+        except Exception:
             # Fallback to pandas HDF5
             key = kwargs.get("key", "expression_data")
             df = pd.read_hdf(path, key=key)
@@ -613,10 +613,10 @@ class TranscriptomicsAdapter(BaseAdapter):
 
         # Gene-level metrics
         if "mt" in adata.var.columns:
-            metrics["mt_genes"] = int((adata.var["mt"] == True).sum())
+            metrics["mt_genes"] = int((adata.var["mt"]).sum())
 
         if "ribo" in adata.var.columns:
-            metrics["ribo_genes"] = int((adata.var["ribo"] == True).sum())
+            metrics["ribo_genes"] = int((adata.var["ribo"]).sum())
 
         if "n_cells_by_counts" in adata.var.columns:
             metrics["mean_cells_per_gene"] = float(
@@ -637,7 +637,6 @@ class TranscriptomicsAdapter(BaseAdapter):
         """
         # Heuristics for detecting data type
         n_obs = adata.n_obs
-        n_vars = adata.n_vars
 
         # Calculate sparsity
         if hasattr(adata.X, "nnz"):

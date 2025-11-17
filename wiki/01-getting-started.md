@@ -158,7 +158,7 @@ Once in the chat interface (`lobster chat`), try these commands:
 
 1. **[Installation Guide](02-installation.md)** - Detailed installation options
 2. **[Configuration Guide](03-configuration.md)** - Advanced configuration
-3. **[Main Documentation](../README.md)** - Complete feature overview
+3. **[Main Documentation](README.md)** - Complete feature overview
 4. **[Discord Community](https://discord.gg/HDTRbWJ8omicsos)** - Get help from the community
 
 ## Troubleshooting Quick Fixes

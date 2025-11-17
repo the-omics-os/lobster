@@ -99,9 +99,16 @@ class TestProteinStructureVisualizationExpertFactory:
 
     def test_agent_factory_with_handoff_tools(self, mock_data_manager):
         """Test factory with handoff tools."""
-        mock_handoff_tool = Mock()
+        # Create a proper mock tool function instead of Mock object
+        def mock_handoff_tool():
+            """Mock handoff tool."""
+            return "Mock handoff executed"
+
+        mock_handoff_tool.__name__ = "mock_handoff_tool"
+        mock_handoff_tools = [mock_handoff_tool]
+
         agent = protein_structure_visualization_expert(
-            data_manager=mock_data_manager, handoff_tools=[mock_handoff_tool]
+            data_manager=mock_data_manager, handoff_tools=mock_handoff_tools
         )
 
         assert agent is not None

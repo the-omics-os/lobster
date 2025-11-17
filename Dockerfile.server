@@ -1,0 +1,21 @@
+# Dockerfile for Lobster AI FastAPI Server
+# Extends the base CLI image to run 'lobster serve' for API access
+# Use this for deploying Lobster as a web service
+
+FROM omicsos/lobster:latest
+
+# Expose FastAPI default port
+EXPOSE 8000
+
+# Health check endpoint for orchestrators (Kubernetes, ECS, Docker Swarm)
+# Assumes 'lobster serve' provides /health endpoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Override labels for server variant
+LABEL variant="server" \
+      description="Lobster AI - FastAPI Server Mode"
+
+# Override CMD to run FastAPI server instead of CLI
+# Server will listen on all interfaces (0.0.0.0) at port 8000
+CMD ["lobster", "serve", "--host", "0.0.0.0", "--port", "8000"]

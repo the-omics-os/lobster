@@ -133,8 +133,8 @@ class TestPseudobulkSchema:
         assert isinstance(validator, FlexibleValidator)
         assert validator.name == "TranscriptomicsValidator_pseudobulk"
         assert (
-            len(validator.custom_rules) == 6
-        )  # 6 custom validation rules (2 common + 4 pseudobulk-specific)
+            len(validator.custom_rules) == 7
+        )  # 7 custom validation rules (3 common + 4 pseudobulk-specific)
 
     def test_create_validator_strict(self):
         """Test validator creation with strict mode."""

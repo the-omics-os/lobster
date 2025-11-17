@@ -8,15 +8,13 @@ The exporter uses Service-Emitted Intermediate Representation (IR) to automatica
 generate code without manual mapping registries, achieving 95%+ executable notebooks.
 """
 
-import ast
 import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 import nbformat
-from jinja2 import Template
 from nbformat import NotebookNode
 from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
 
@@ -179,7 +177,7 @@ class NotebookExporter:
         else:
             # Manual filtering not implemented yet
             logger.warning(
-                f"Manual filter strategy not implemented, using 'successful'"
+                "Manual filter strategy not implemented, using 'successful'"
             )
             return self._filter_activities("successful")
 

@@ -816,7 +816,6 @@ def _validate_annotations(adata) -> "ValidationResult":
 
 def _validate_gene_abundance(adata) -> "ValidationResult":
     """Validate gene abundance data characteristics."""
-    import numpy as np
 
     from lobster.core.interfaces.validator import ValidationResult
 

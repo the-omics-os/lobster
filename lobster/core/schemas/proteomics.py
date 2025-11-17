@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from lobster.core.interfaces.validator import ValidationResult
 from .validation import FlexibleValidator
 
 # =============================================================================
@@ -422,8 +423,6 @@ class ProteomicsSchema:
 
 def _validate_protein_ids(adata) -> "ValidationResult":
     """Validate protein identifier format and uniqueness."""
-    from lobster.core.interfaces.validator import ValidationResult
-
     result = ValidationResult()
 
     # Check for protein IDs in var
@@ -449,8 +448,6 @@ def _validate_protein_ids(adata) -> "ValidationResult":
 def _validate_missing_values(adata) -> "ValidationResult":
     """Validate missing values in proteomics data."""
     import numpy as np
-
-    from lobster.core.interfaces.validator import ValidationResult
 
     result = ValidationResult()
 
@@ -492,8 +489,6 @@ def _validate_intensity_data(adata) -> "ValidationResult":
     """Validate intensity data characteristics."""
     import numpy as np
 
-    from lobster.core.interfaces.validator import ValidationResult
-
     result = ValidationResult()
 
     # Check for negative values (unusual in proteomics)
@@ -528,8 +523,6 @@ def _validate_intensity_data(adata) -> "ValidationResult":
 
 def _validate_ms_metrics(adata) -> "ValidationResult":
     """Validate mass spectrometry specific metrics."""
-    from lobster.core.interfaces.validator import ValidationResult
-
     result = ValidationResult()
 
     # Check peptide counts if available
@@ -562,8 +555,6 @@ def _validate_ms_metrics(adata) -> "ValidationResult":
 
 def _validate_affinity_metrics(adata) -> "ValidationResult":
     """Validate affinity proteomics specific metrics."""
-    from lobster.core.interfaces.validator import ValidationResult
-
     result = ValidationResult()
 
     # Check signal-to-background ratio if available
@@ -601,7 +592,6 @@ def _validate_cross_database_accessions(
     Returns:
         ValidationResult: Validation results with accession format errors/warnings
     """
-    from lobster.core.interfaces.validator import ValidationResult
     from lobster.core.schemas.database_mappings import (
         get_accession_url,
         get_accessions_for_modality,

@@ -112,9 +112,10 @@ def corrupted_tar_file(temp_cache_dir):
 class TestGEODownloadTimeouts:
     """Test GEO download timeout scenarios."""
 
+    @pytest.mark.slow
     @patch("ftplib.FTP")
     def test_ftp_connection_timeout(self, mock_ftp_class, geo_service, temp_cache_dir):
-        """Test FTP connection timeout handling."""
+        """Test FTP connection timeout handling (slow: 12s)."""
         mock_ftp = MagicMock()
         mock_ftp.connect.side_effect = socket.timeout("Connection timed out")
         mock_ftp_class.return_value = mock_ftp

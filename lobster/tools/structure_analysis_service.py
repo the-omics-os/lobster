@@ -6,7 +6,6 @@ comparing structures, and annotating structural features using BioPython,
 following the Lobster 3-tuple pattern (Dict, stats, IR).
 """
 
-import logging
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 

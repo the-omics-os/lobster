@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional, Type
 
 from .enhanced_handoff_tool import (
     DATA_LOADING_SCHEMA,
-    METHOD_CONTEXT_SCHEMA,
     PSEUDOBULK_CONTEXT_SCHEMA,
     SCVI_CONTEXT_SCHEMA,
 )

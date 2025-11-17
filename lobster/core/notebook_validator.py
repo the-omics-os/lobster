@@ -8,7 +8,6 @@ including Python syntax checking, import resolution, and code structure analysis
 import ast
 import importlib.util
 import logging
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple

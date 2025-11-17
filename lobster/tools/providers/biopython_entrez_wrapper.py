@@ -18,7 +18,6 @@ Key differences from raw urllib + xmltodict:
 """
 
 import logging
-import time
 from typing import Any, Dict, List, Optional
 
 from lobster.config.settings import get_settings

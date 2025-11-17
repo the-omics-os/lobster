@@ -7,13 +7,9 @@ using the PDB REST API, supporting structure search, metadata extraction, and fi
 
 import logging
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from urllib.parse import quote
 
 import requests
 from pydantic import BaseModel, Field

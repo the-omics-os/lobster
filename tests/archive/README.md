@@ -177,3 +177,26 @@ If you encounter issues with:
 - **Integration tests failing**: Verify API keys set, check rate limiting (0.5-1s between calls)
 
 **Contact:** See `CLAUDE.md` for development guidelines and architectural context.
+
+---
+
+## Recent Infrastructure Changes (2025-11-16)
+
+### Documentation Relocation
+Pre-release testing documentation has been moved to a more appropriate location:
+- **Old Location**: `tests/pre-release-report/` (18 files)
+- **New Location**: `docs/testing/pre-release-2025-09/` (15 markdown files, 2 Python scripts, 1 JSON file)
+- **Rationale**: Test reports and analysis scripts belong in documentation, not in test directory
+
+### Services Directory Removal
+The deprecated `tests/services/` directory has been removed:
+- **Reason**: Tests duplicated functionality in `tests/unit/tools/` and used outdated service patterns
+- **Migration**: All service tests consolidated into `tests/unit/tools/` with proper organization
+- **Date**: 2025-11-16
+
+### Fixture Documentation Enhancement
+All fixtures in `tests/conftest.py` have been enhanced with:
+- Comprehensive docstrings explaining purpose and usage
+- Type hints for all fixtures
+- Example code showing proper fixture usage
+- Fixture dependency map in module docstring (26 documented fixtures total)

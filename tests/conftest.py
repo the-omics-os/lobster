@@ -3,6 +3,39 @@ Comprehensive pytest configuration and fixtures for Lobster AI testing framework
 
 This module provides all core fixtures, mock configurations, and test utilities
 needed for testing the multi-agent bioinformatics analysis platform.
+
+Fixture Dependency Map:
+=======================
+
+Core Environment Fixtures:
+├── test_config (session-scoped base configuration)
+├── temp_workspace (function-scoped isolated workspace)
+│   ├── isolated_environment (complete environment isolation)
+│   │   └── mock_agent_environment (agent testing with mocked LLMs)
+│   ├── mock_data_manager_v2 (mocked data manager)
+│   └── mock_agent_client (mocked agent client)
+
+Data Generation Fixtures:
+├── synthetic_single_cell_data (scRNA-seq test data)
+├── synthetic_bulk_rnaseq_data (bulk RNA-seq test data)
+├── synthetic_proteomics_data (proteomics test data)
+└── mock_geo_response (GEO API response data)
+
+Dataset Management Fixtures:
+├── dataset_manager (session-scoped real dataset access)
+└── datasets_dir (root directory for test datasets)
+
+Mock Service Fixtures:
+├── mock_llm_responses (mocked LLM API responses)
+├── mock_geo_service (mocked GEO data service)
+└── mock_external_apis (mocked external HTTP APIs)
+
+Performance & Utilities:
+├── benchmark_config (performance testing configuration)
+└── test_data_registry (registry of test data descriptions)
+
+Cleanup Fixtures:
+└── cleanup_test_artifacts (session-scoped automatic cleanup)
 """
 
 import json
@@ -82,7 +115,27 @@ def pytest_collection_modifyitems(config, items):
 
 @pytest.fixture(scope="session")
 def test_config() -> Dict[str, Any]:
-    """Global test configuration."""
+    """Global test configuration shared across all tests.
+
+    Provides consistent configuration values for test execution including
+    workspace prefixes, timeouts, and synthetic data generation parameters.
+
+    Returns:
+        Dict[str, Any]: Configuration dictionary with the following keys:
+            - workspace_prefix: Prefix for temporary test workspaces
+            - timeout: Default test timeout in seconds (300s)
+            - mock_api_url: Base URL for mocked API endpoints
+            - enable_logging: Whether to enable logging during tests
+            - cleanup_workspaces: Whether to cleanup workspaces after tests
+            - synthetic_data_seed: Random seed for reproducible synthetic data (42)
+            - default_cell_count: Default number of cells for scRNA-seq data (1000)
+            - default_gene_count: Default number of genes/features (2000)
+
+    Example:
+        >>> def test_workspace_setup(test_config):
+        ...     assert test_config["synthetic_data_seed"] == 42
+        ...     assert test_config["default_cell_count"] == 1000
+    """
     return {
         "workspace_prefix": TEST_WORKSPACE_PREFIX,
         "timeout": DEFAULT_TEST_TIMEOUT,
@@ -97,7 +150,23 @@ def test_config() -> Dict[str, Any]:
 
 @pytest.fixture(scope="function")
 def temp_workspace(test_config: Dict[str, Any]) -> Generator[Path, None, None]:
-    """Create isolated temporary workspace for each test."""
+    """Create isolated temporary workspace for each test.
+
+    Creates a temporary directory with standard Lobster workspace structure
+    (data/, exports/, cache/) and automatically cleans it up after the test.
+
+    Args:
+        test_config: Global test configuration fixture
+
+    Yields:
+        Path: Path to temporary workspace directory
+
+    Example:
+        >>> def test_file_operations(temp_workspace):
+        ...     data_file = temp_workspace / "data" / "test.h5ad"
+        ...     data_file.write_text("test data")
+        ...     assert data_file.exists()
+    """
     workspace_path = Path(tempfile.mkdtemp(prefix=test_config["workspace_prefix"]))
 
     # Create standard workspace structure
@@ -114,8 +183,28 @@ def temp_workspace(test_config: Dict[str, Any]) -> Generator[Path, None, None]:
 
 
 @pytest.fixture(scope="function")
-def isolated_environment(temp_workspace: Path, monkeypatch):
-    """Create completely isolated environment for testing."""
+def isolated_environment(temp_workspace: Path, monkeypatch) -> Generator[Path, None, None]:
+    """Create completely isolated environment for testing.
+
+    Provides full environment isolation by:
+    - Setting temp_workspace as current working directory
+    - Mocking all required API keys (OpenAI, AWS Bedrock, NCBI, Anthropic)
+    - Ensuring no real API calls or file system pollution
+
+    Args:
+        temp_workspace: Temporary workspace path fixture
+        monkeypatch: Pytest monkeypatch fixture for environment modification
+
+    Yields:
+        Path: Path to isolated workspace (same as temp_workspace)
+
+    Example:
+        >>> def test_with_isolation(isolated_environment):
+        ...     # All API keys are mocked, safe to test API code
+        ...     assert os.getenv("ANTHROPIC_API_KEY") == "test-anthropic-key"
+        ...     # Working directory is isolated
+        ...     assert Path.cwd() == isolated_environment
+    """
     # Set temporary workspace as working directory
     original_cwd = os.getcwd()
     monkeypatch.chdir(temp_workspace)
@@ -140,13 +229,32 @@ def isolated_environment(temp_workspace: Path, monkeypatch):
 
 
 @pytest.fixture(scope="function")
-def mock_agent_environment(isolated_environment, mocker: MockerFixture):
+def mock_agent_environment(isolated_environment: Path, mocker: MockerFixture) -> Dict[str, Any]:
     """Complete agent testing environment with mocked LLMs and settings.
 
     This fixture provides a unified environment for testing all agents with:
     - Mocked settings that return test API keys
     - Mocked LLM creation to prevent real API calls
     - Isolated workspace and environment variables
+    - Mocked agent configurator for consistent agent behavior
+
+    Args:
+        isolated_environment: Isolated environment fixture
+        mocker: Pytest-mock fixture for patching
+
+    Returns:
+        Dict[str, Any]: Environment dictionary containing:
+            - workspace: Path to isolated workspace
+            - settings: Mocked settings instance
+            - llm: Mocked LLM instance
+            - agent_config: Mocked agent configurator
+
+    Example:
+        >>> def test_agent(mock_agent_environment):
+        ...     workspace = mock_agent_environment["workspace"]
+        ...     llm = mock_agent_environment["llm"]
+        ...     # Test agent logic without real API calls
+        ...     assert workspace.exists()
     """
     # Mock the settings to ensure they use our test environment
     mock_settings = mocker.patch("lobster.config.settings.get_settings")
@@ -211,11 +319,22 @@ def dataset_manager():
 
 
 @pytest.fixture
-def datasets_dir(dataset_manager):
-    """
-    Root directory containing all test datasets.
+def datasets_dir(dataset_manager) -> Path:
+    """Root directory containing all test datasets.
 
     Provided for backward compatibility with tests that need direct path access.
+    Use dataset_manager fixture for hierarchical and tag-based dataset access.
+
+    Args:
+        dataset_manager: Dataset manager fixture
+
+    Returns:
+        Path: Root directory path to test datasets
+
+    Example:
+        >>> def test_dataset_path(datasets_dir):
+        ...     assert datasets_dir.exists()
+        ...     assert (datasets_dir / "single_cell").exists()
     """
     return dataset_manager.datasets_dir
 
@@ -227,7 +346,30 @@ def datasets_dir(dataset_manager):
 
 @pytest.fixture(scope="function")
 def synthetic_single_cell_data(test_config: Dict[str, Any]) -> ad.AnnData:
-    """Generate realistic synthetic single-cell RNA-seq data."""
+    """Generate realistic synthetic single-cell RNA-seq data.
+
+    Creates an AnnData object with realistic single-cell RNA-seq characteristics:
+    - Negative binomial count distribution (simulates biological variation)
+    - 70% sparsity (typical for scRNA-seq)
+    - Cell type annotations and batch metadata
+    - QC metrics (total_counts, n_genes_by_counts, pct_counts_mt)
+
+    Args:
+        test_config: Global test configuration with data generation parameters
+
+    Returns:
+        ad.AnnData: Synthetic scRNA-seq dataset with:
+            - X: Sparse count matrix (default: 1000 cells x 2000 genes)
+            - obs: Cell metadata (cell_type, batch, QC metrics)
+            - var: Gene metadata (gene_ids, chromosome, feature_types)
+
+    Example:
+        >>> def test_clustering(synthetic_single_cell_data):
+        ...     adata = synthetic_single_cell_data
+        ...     assert adata.shape == (1000, 2000)
+        ...     assert "cell_type" in adata.obs.columns
+        ...     assert adata.X.min() >= 0  # Non-negative counts
+    """
     n_obs = test_config["default_cell_count"]
     n_vars = test_config["default_gene_count"]
 
@@ -282,7 +424,30 @@ def synthetic_single_cell_data(test_config: Dict[str, Any]) -> ad.AnnData:
 
 @pytest.fixture(scope="function")
 def synthetic_bulk_rnaseq_data(test_config: Dict[str, Any]) -> ad.AnnData:
-    """Generate realistic synthetic bulk RNA-seq data."""
+    """Generate realistic synthetic bulk RNA-seq data.
+
+    Creates an AnnData object with typical bulk RNA-seq experiment structure:
+    - Higher counts than single-cell (negative binomial n=20)
+    - Balanced experimental design (12 treatment, 12 control)
+    - Batch effects (2 batches)
+    - Biological covariates (sex, age)
+
+    Args:
+        test_config: Global test configuration with data generation parameters
+
+    Returns:
+        ad.AnnData: Synthetic bulk RNA-seq dataset with:
+            - X: Count matrix (24 samples x 2000 genes)
+            - obs: Sample metadata (condition, batch, sex, age)
+            - var: Gene metadata (gene_ids, gene_name, biotype)
+
+    Example:
+        >>> def test_differential_expression(synthetic_bulk_rnaseq_data):
+        ...     adata = synthetic_bulk_rnaseq_data
+        ...     assert adata.shape == (24, 2000)
+        ...     assert adata.obs["condition"].value_counts()["Treatment"] == 12
+        ...     assert "protein_coding" in adata.var["biotype"].values
+    """
     n_obs = 24  # Typical sample count for bulk RNA-seq
     n_vars = test_config["default_gene_count"]
 
@@ -321,7 +486,31 @@ def synthetic_bulk_rnaseq_data(test_config: Dict[str, Any]) -> ad.AnnData:
 
 @pytest.fixture(scope="function")
 def synthetic_proteomics_data(test_config: Dict[str, Any]) -> ad.AnnData:
-    """Generate realistic synthetic proteomics data."""
+    """Generate realistic synthetic proteomics data.
+
+    Creates an AnnData object with typical proteomics characteristics:
+    - Log-normal intensity distribution (mass spec output)
+    - 20% missing values (common in proteomics)
+    - Three-condition experimental design (Disease/Healthy/Control)
+    - Multiple tissue types and batch structure
+
+    Args:
+        test_config: Global test configuration with data generation parameters
+
+    Returns:
+        ad.AnnData: Synthetic proteomics dataset with:
+            - X: Intensity matrix with NaN values (48 samples x 500 proteins)
+            - obs: Sample metadata (condition, tissue, batch)
+            - var: Protein metadata (protein_ids, protein_names, molecular_weight)
+
+    Example:
+        >>> def test_proteomics_normalization(synthetic_proteomics_data):
+        ...     adata = synthetic_proteomics_data
+        ...     assert adata.shape == (48, 500)
+        ...     assert adata.obs["condition"].nunique() == 3
+        ...     # Check for missing values (realistic for proteomics)
+        ...     assert np.isnan(adata.X).sum() > 0
+    """
     n_obs = 48  # Typical proteomics sample count
     n_vars = 500  # Typical protein count
 
@@ -358,7 +547,27 @@ def synthetic_proteomics_data(test_config: Dict[str, Any]) -> ad.AnnData:
 
 @pytest.fixture(scope="function")
 def mock_geo_response() -> Dict[str, Any]:
-    """Generate mock GEO dataset response."""
+    """Generate mock GEO dataset response.
+
+    Provides realistic GEO dataset metadata structure for testing GEO
+    data provider and download functionality without making real API calls.
+
+    Returns:
+        Dict[str, Any]: Mock GEO response with structure:
+            - gse_id: GEO series ID
+            - title: Dataset title
+            - summary: Dataset description
+            - organism: Source organism
+            - platform: Sequencing/array platform
+            - samples: List of sample metadata dictionaries
+            - supplementary_files: List of downloadable file names
+
+    Example:
+        >>> def test_geo_parser(mock_geo_response):
+        ...     assert mock_geo_response["gse_id"] == "GSE123456"
+        ...     assert len(mock_geo_response["samples"]) == 2
+        ...     assert "matrix.mtx.gz" in mock_geo_response["supplementary_files"][0]
+    """
     return {
         "gse_id": "GSE123456",
         "title": "Test Single-Cell RNA-seq Dataset",
@@ -400,7 +609,35 @@ def mock_geo_response() -> Dict[str, Any]:
 
 @pytest.fixture(scope="function")
 def mock_data_manager_v2(temp_workspace: Path) -> Mock:
-    """Mock DataManagerV2 with realistic behavior."""
+    """Mock DataManagerV2 with realistic behavior.
+
+    Provides a fully mocked DataManagerV2 instance with working methods
+    for testing agents and services without real data persistence.
+
+    Args:
+        temp_workspace: Temporary workspace path fixture
+
+    Returns:
+        Mock: Mocked DataManagerV2 with functional methods:
+            - modalities: Dict of loaded datasets
+            - metadata_store: Dict of dataset metadata
+            - latest_plots: List of generated plot data
+            - tool_usage_history: List of tool usage records
+            - list_modalities(): Returns available dataset names
+            - get_modality(name): Returns dataset by name
+            - add_modality(name, data): Adds new dataset
+            - remove_modality(name): Removes dataset
+            - save_modality(): Persists dataset (mocked)
+            - load_modality(): Loads dataset (mocked)
+            - export_workspace(): Exports workspace (mocked)
+
+    Example:
+        >>> def test_data_operations(mock_data_manager_v2, synthetic_single_cell_data):
+        ...     mock_data_manager_v2.add_modality("test_data", synthetic_single_cell_data)
+        ...     assert "test_data" in mock_data_manager_v2.list_modalities()
+        ...     data = mock_data_manager_v2.get_modality("test_data")
+        ...     assert data is not None
+    """
     mock_dm = Mock()
 
     # Mock basic properties
@@ -430,7 +667,27 @@ def mock_data_manager_v2(temp_workspace: Path) -> Mock:
 
 @pytest.fixture(scope="function")
 def mock_agent_client(temp_workspace: Path) -> Mock:
-    """Mock AgentClient for testing agent interactions."""
+    """Mock AgentClient for testing agent interactions.
+
+    Provides a mocked AgentClient for testing CLI commands and client
+    behavior without running the full LangGraph agent system.
+
+    Args:
+        temp_workspace: Temporary workspace path fixture
+
+    Returns:
+        Mock: Mocked AgentClient with methods:
+            - session_id: Unique test session identifier
+            - workspace_path: Path to workspace
+            - query(user_input, stream): Execute query (returns mock response)
+            - get_status(): Get session status (returns mock status)
+
+    Example:
+        >>> def test_client_query(mock_agent_client):
+        ...     response = mock_agent_client.query("analyze my data")
+        ...     assert response["success"] is True
+        ...     assert "Mock response" in response["response"]
+    """
     mock_client = Mock()
 
     # Mock basic properties
@@ -463,7 +720,23 @@ def mock_agent_client(temp_workspace: Path) -> Mock:
 
 @pytest.fixture(scope="function")
 def mock_llm_responses(mocker: MockerFixture) -> Mock:
-    """Mock LLM API responses for consistent agent testing."""
+    """Mock LLM API responses for consistent agent testing.
+
+    Mocks both OpenAI and AWS Bedrock API calls to prevent real API usage
+    during testing. Returns consistent, predictable responses for each agent.
+
+    Args:
+        mocker: Pytest-mock fixture for patching
+
+    Returns:
+        Mock: Mocked OpenAI API response object with predefined agent responses
+
+    Example:
+        >>> def test_llm_integration(mock_llm_responses):
+        ...     # LLM calls are automatically mocked
+        ...     # Test code that would normally call OpenAI/Bedrock
+        ...     assert mock_llm_responses.called
+    """
     mock_responses = {
         "supervisor": "I understand your request. Let me delegate this to the appropriate expert agent.",
         "data_expert": "I can help you load and analyze your dataset. Let me check the data format.",
@@ -497,7 +770,25 @@ def mock_llm_responses(mocker: MockerFixture) -> Mock:
 
 @pytest.fixture(scope="function")
 def mock_geo_service(mocker: MockerFixture) -> Mock:
-    """Mock GEO service for testing data download."""
+    """Mock GEO service for testing data download.
+
+    Provides a fully mocked GEO data service to test download workflows
+    without making real network requests to NCBI GEO servers.
+
+    Args:
+        mocker: Pytest-mock fixture for patching
+
+    Returns:
+        Mock: Mocked GEOService with methods:
+            - download_gse(): Returns success status and mock download info
+            - get_gse_metadata(): Returns mock GEO metadata
+
+    Example:
+        >>> def test_geo_download(mock_geo_service):
+        ...     result = mock_geo_service.download_gse("GSE123456")
+        ...     assert result["success"] is True
+        ...     assert result["gse_id"] == "GSE123456"
+    """
     mock_service = Mock()
 
     # Mock successful download
@@ -521,8 +812,24 @@ def mock_geo_service(mocker: MockerFixture) -> Mock:
 
 
 @pytest.fixture(scope="function")
-def mock_external_apis():
-    """Mock external API calls using responses library."""
+def mock_external_apis() -> Generator[responses.RequestsMock, None, None]:
+    """Mock external API calls using responses library.
+
+    Provides mocked HTTP responses for external APIs including NCBI, PubMed,
+    and GEO services. Uses the `responses` library to intercept HTTP requests.
+
+    Yields:
+        RequestsMock: Active responses mock context with pre-configured endpoints:
+            - NCBI E-utilities search endpoint
+            - PubMed fetch endpoint
+
+    Example:
+        >>> def test_pubmed_search(mock_external_apis):
+        ...     # HTTP calls to NCBI are automatically mocked
+        ...     import requests
+        ...     response = requests.get("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi")
+        ...     assert response.status_code == 200
+    """
     with responses.RequestsMock() as rsps:
         # Mock NCBI/GEO API
         rsps.add(
@@ -550,7 +857,27 @@ def mock_external_apis():
 
 @pytest.fixture(scope="function")
 def benchmark_config() -> Dict[str, Any]:
-    """Configuration for performance benchmarking."""
+    """Configuration for performance benchmarking.
+
+    Provides standardized configuration for pytest-benchmark performance tests
+    to ensure consistent and reproducible benchmark measurements.
+
+    Returns:
+        Dict[str, Any]: Benchmark configuration with:
+            - min_rounds: Minimum number of test rounds (3)
+            - max_time: Maximum benchmark time in seconds (10.0)
+            - timer: Timer function to use ("time.perf_counter")
+            - disable_gc: Whether to disable GC during benchmarks (True)
+            - warmup: Whether to run warmup rounds (True)
+
+    Example:
+        >>> def test_performance(benchmark, benchmark_config):
+        ...     result = benchmark.pedantic(
+        ...         my_function,
+        ...         rounds=benchmark_config["min_rounds"],
+        ...         warmup_rounds=1 if benchmark_config["warmup"] else 0
+        ...     )
+    """
     return {
         "min_rounds": 3,
         "max_time": 10.0,
@@ -567,7 +894,20 @@ def benchmark_config() -> Dict[str, Any]:
 
 @pytest.fixture(scope="session")
 def test_data_registry() -> Dict[str, str]:
-    """Registry of test data files and their descriptions."""
+    """Registry of test data files and their descriptions.
+
+    Provides a catalog of available test datasets with human-readable
+    descriptions for documentation and test discovery.
+
+    Returns:
+        Dict[str, str]: Registry mapping dataset keys to descriptions
+
+    Example:
+        >>> def test_registry_access(test_data_registry):
+        ...     assert "small_single_cell" in test_data_registry
+        ...     description = test_data_registry["small_single_cell"]
+        ...     assert "100 cells" in description
+    """
     return {
         "small_single_cell": "Small single-cell dataset (100 cells, 500 genes)",
         "medium_single_cell": "Medium single-cell dataset (1000 cells, 2000 genes)",
@@ -608,8 +948,22 @@ def assert_adata_equal(
 
 
 @pytest.fixture(scope="session", autouse=True)
-def cleanup_test_artifacts():
-    """Cleanup test artifacts at the end of test session."""
+def cleanup_test_artifacts() -> Generator[None, None, None]:
+    """Cleanup test artifacts at the end of test session.
+
+    Automatically removes all temporary test workspaces created during
+    the test session. This fixture runs automatically (autouse=True) and
+    ensures no test artifacts are left in the system temp directory.
+
+    Yields:
+        None: Allows tests to run, then performs cleanup
+
+    Example:
+        This fixture runs automatically, no explicit usage needed:
+        >>> def test_something(temp_workspace):
+        ...     # temp_workspace will be cleaned up after session
+        ...     pass
+    """
     yield
 
     # Cleanup any remaining temporary files

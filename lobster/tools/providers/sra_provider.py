@@ -869,7 +869,7 @@ class SRAProvider(BasePublicationProvider):
                     f"💡 **Tip**: Try searching GEO for this publication - many studies have both GEO and SRA accessions."
                 )
 
-            response = f"## 🧬 SRA Datasets Linked to Publication\n\n"
+            response = "## 🧬 SRA Datasets Linked to Publication\n\n"
             response += f"**{id_type}**: {id_value}\n"
             response += f"**Total Datasets**: {len(df)}\n\n"
 

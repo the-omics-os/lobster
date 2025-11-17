@@ -6,11 +6,9 @@ in the H5AD format with support for local storage and future
 S3 integration without API changes.
 """
 
-import collections
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
-from urllib.parse import urlparse
+from typing import Any, Dict, Optional, Union
 
 import anndata
 import numpy as np
@@ -292,7 +290,7 @@ class H5ADBackend(BaseBackend):
             if resolved_path.exists():
                 try:
                     resolved_path.unlink()
-                except:
+                except Exception:
                     pass
             raise ValueError(f"Failed to save H5AD file {resolved_path}: {e}")
 

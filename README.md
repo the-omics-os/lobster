@@ -37,6 +37,8 @@ Lobster AI is a bioinformatics platform that combines specialized AI agents with
 
 ### Installation
 
+#### Option 1: Python Installation (Recommended for Development)
+
 ```bash
 # 1. Clone the repository
 git clone https://github.com/the-omics-os/lobster-local.git
@@ -72,6 +74,61 @@ lobster chat --reasoning
 # Optional: Install globally to use 'lobster' from any directory
 make install-global
 ```
+
+#### Option 2: Docker Installation (Recommended for Production)
+
+**Prerequisites:**
+- Docker 20.10+ and Docker Compose 2.0+ installed
+- `.env` file with API keys (see Configuration section)
+
+**Quick Start:**
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/the-omics-os/lobster-local.git
+cd lobster-local
+
+# 2. Configure your API keys
+cp .env.example .env
+# Edit .env with your ANTHROPIC_API_KEY or AWS Bedrock credentials
+
+# 3. Build Docker images
+make docker-build
+
+# 4. Run interactively (CLI mode)
+make docker-run-cli
+
+# OR run as a web service (FastAPI server)
+make docker-run-server
+
+# Check server health
+curl http://localhost:8000/health
+```
+
+**Docker Compose (Multi-Service):**
+
+```bash
+# Run CLI interactively
+make docker-compose-cli
+
+# Start FastAPI server in background
+make docker-compose-up
+
+# Stop all services
+make docker-compose-down
+```
+
+**Why Docker?**
+- ✅ **Isolated environment** - No Python version conflicts
+- ✅ **Production-ready** - Includes healthchecks and resource limits
+- ✅ **Cloud deployment** - Ready for AWS ECS, Kubernetes, or Docker Swarm
+- ✅ **Consistent setup** - Same environment across all machines
+
+📚 **See [Docker Deployment Guide](wiki/42-docker-deployment-guide.md) for:**
+- AWS ECS/Fargate deployment
+- Kubernetes manifests
+- Volume management strategies
+- Troubleshooting and best practices
 
 ### ⚠️ Important: API Keys & Rate Limits
 

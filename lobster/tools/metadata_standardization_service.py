@@ -386,7 +386,7 @@ class MetadataStandardizationService:
         if fields:
             available_fields = [f for f in fields if f in adata.obs.columns]
             if not available_fields:
-                raise ValueError(f"None of the requested fields found in dataset")
+                raise ValueError("None of the requested fields found in dataset")
             metadata_df = adata.obs[available_fields]
         else:
             metadata_df = adata.obs

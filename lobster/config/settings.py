@@ -7,7 +7,7 @@ including the new professional agent configuration system.
 
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from dotenv import load_dotenv
 
@@ -33,10 +33,8 @@ class Settings:
         self.LINKUP_API_KEY = os.environ.get("LINKUP_API_KEY", "")
 
 
-        # CDK variables
+        # CDK variables (used by lobster-cloud deployment)
         self.STACK_NAME = "LobsterStack"
-        self.CUSTOM_HEADER_VALUE = "omics-osBeatsKepler"
-        self.SECRETS_MANAGER_ID = f"{self.STACK_NAME}ParamCognitoSecret"
         self.CDK_DEPLY_ACCOUNT = "649207544517"
         # AWS Fargate CPU/Memory options summary:
         # - 256 (.25 vCPU): 512 MiB, 1 GB, 2 GB (Linux)
@@ -78,8 +76,8 @@ class Settings:
         # AWS region (fallback for backward compatibility)
         self.REGION = os.environ.get("AWS_REGION", "us-east-1")
 
-        # Web server settings
-        self.PORT = int(os.environ.get("PORT", "8501"))
+        # Web server settings (for 'lobster serve' FastAPI server)
+        self.PORT = int(os.environ.get("PORT", "8000"))
         self.HOST = os.environ.get("HOST", "0.0.0.0")
         self.DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
@@ -153,7 +151,7 @@ class Settings:
         except KeyError as k:
             # Fallback to data_expert settings with warning
             print(f"⚠️  WARNING: No configuration found for agent '{agent_name}'")
-            print(f"⚠️  Falling back to data_expert_agent configuration")
+            print("⚠️  Falling back to data_expert_agent configuration")
             print(f"⚠️  To fix: Add '{agent_name}' to all profiles in agent_config.py")
 
             try:
@@ -180,7 +178,7 @@ class Settings:
         except KeyError as k:
             # Fallback to data_expert settings with warning
             print(f"⚠️  WARNING: No configuration found for assistant '{agent_name}'")
-            print(f"⚠️  Falling back to data_expert_agent configuration")
+            print("⚠️  Falling back to data_expert_agent configuration")
             print(f"⚠️  To fix: Add '{agent_name}' to all profiles in agent_config.py")
 
             try:

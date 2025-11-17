@@ -55,7 +55,7 @@ If you must use the built-in templates:
 - Cell Ontology (CL ID) annotations
 - Species-specific marker sets
 
-**See [README.md](../README.md#️-cell-type-annotation---development-status) for full details.**
+**See [README.md](README.md) for full details.**
 
 ## Key Features
 

@@ -742,7 +742,7 @@ validation_report = validate_dataset_metadata(
 
 **Performance**: 2-5 seconds (metadata fetch + LLM analysis, no expression data download)
 
-**See also**: [MetadataValidationService](16-services-api.md#metadatavalidationservice) for implementation details.
+**See also**: [Services API Documentation](16-services-api.md) for implementation details.
 
 #### extract_paper_methods ✨ (v2.3+ Enhanced with Docling)
 
