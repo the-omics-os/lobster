@@ -1,0 +1,459 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 0.2.0 - without v prefix)'
+        required: true
+        type: string
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - testpypi
+          - pypi
+
+env:
+  PACKAGE_NAME: lobster-ai
+  PUBLIC_REPO_URL: git@github.com:the-omics-os/lobster-local.git
+
+jobs:
+  # =====================================================================
+  # Step 1: Sync to Public Repository
+  # =====================================================================
+  sync-to-public:
+    name: Sync to lobster-local
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+    - name: Checkout private repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for sync
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+
+    - name: Configure SSH for deployment
+      env:
+        SSH_PRIVATE_KEY: ${{ secrets.PUBLIC_REPO_DEPLOY_KEY }}
+      run: |
+        mkdir -p ~/.ssh
+        echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+        chmod 600 ~/.ssh/id_ed25519
+        ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+    - name: Sync to public repository
+      run: |
+        python scripts/sync_to_public.py \
+          --repo ${{ env.PUBLIC_REPO_URL }} \
+          --branch main
+
+    - name: Verify sync completed
+      run: |
+        echo "✅ Code synced to lobster-local successfully"
+
+  # =====================================================================
+  # Step 2: Build Package from Public Repository
+  # =====================================================================
+  build-package:
+    name: Build Package from lobster-local
+    needs: [sync-to-public]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - name: Clone public repository
+      run: |
+        git clone --depth 1 https://github.com/the-omics-os/lobster-local.git
+        cd lobster-local
+        echo "Building from commit: $(git rev-parse HEAD)"
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine setuptools-scm wheel
+
+    - name: Extract version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/v}"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "📦 Building version: $VERSION"
+
+    - name: Build package
+      working-directory: lobster-local
+      run: |
+        echo "Building package from public code..."
+        python -m build
+
+        echo "Build artifacts:"
+        ls -lh dist/
+
+    - name: Verify package integrity
+      working-directory: lobster-local
+      run: |
+        echo "Checking package with twine..."
+        twine check dist/*
+
+        echo "Inspecting wheel contents..."
+        unzip -l dist/*.whl | head -100
+
+    - name: Verify no private code in package
+      working-directory: lobster-local
+      run: |
+        echo "🔍 Verifying no premium/private code in package..."
+
+        # Extract wheel to temp directory
+        mkdir -p /tmp/package-check
+        unzip -q dist/*.whl -d /tmp/package-check
+
+        # Check for excluded files/modules
+        PRIVATE_PATTERNS=(
+          "ms_proteomics_expert"
+          "affinity_proteomics_expert"
+          "custom_feature_agent"
+          "proteomics_analysis_service"
+          "proteomics_preprocessing_service"
+          "api/server"
+          "cdk/"
+        )
+
+        for pattern in "${PRIVATE_PATTERNS[@]}"; do
+          if find /tmp/package-check -name "*${pattern}*" | grep -q .; then
+            echo "❌ ERROR: Found private code pattern: $pattern"
+            find /tmp/package-check -name "*${pattern}*"
+            exit 1
+          fi
+        done
+
+        echo "✅ No private code detected in package"
+
+    - name: Test installation
+      working-directory: lobster-local
+      run: |
+        echo "Testing package installation..."
+        pip install dist/*.whl
+
+        # Verify imports work
+        python -c "import lobster; print(f'✅ Lobster version: {lobster.__version__}')"
+
+        # Verify CLI is available
+        lobster --help
+
+        # Verify public agents are available
+        python -c "from lobster.agents import supervisor; print('✅ Supervisor agent available')"
+        python -c "from lobster.agents import research_agent; print('✅ Research agent available')"
+        python -c "from lobster.agents import singlecell_expert; print('✅ Single-cell agent available')"
+
+        # Verify private agents are NOT available
+        if python -c "from lobster.agents import ms_proteomics_expert" 2>/dev/null; then
+          echo "❌ ERROR: Private proteomics agent should not be in public package!"
+          exit 1
+        fi
+        echo "✅ Private agents correctly excluded"
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist-packages-${{ steps.version.outputs.version }}
+        path: lobster-local/dist/
+        retention-days: 30
+
+  # =====================================================================
+  # Step 3: Publish to TestPyPI
+  # =====================================================================
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: [build-package]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.inputs.environment == 'testpypi'
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/${{ env.PACKAGE_NAME }}/
+    timeout-minutes: 10
+
+    steps:
+    - name: Extract version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/v}"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: dist-packages-${{ steps.version.outputs.version }}
+        path: dist/
+
+    - name: Publish to TestPyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        repository-url: https://test.pypi.org/legacy/
+        password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+        skip-existing: true
+        verbose: true
+
+    - name: Wait for package to be available
+      run: |
+        echo "⏳ Waiting 30 seconds for TestPyPI to process package..."
+        sleep 30
+
+    - name: Test installation from TestPyPI
+      run: |
+        echo "📦 Testing installation from TestPyPI..."
+        pip install --index-url https://test.pypi.org/simple/ \
+                    --extra-index-url https://pypi.org/simple \
+                    ${{ env.PACKAGE_NAME }}==${{ steps.version.outputs.version }}
+
+        # Verify it works
+        python -c "import lobster; print(f'Installed version: {lobster.__version__}')"
+        lobster --help
+
+        echo "✅ Package successfully installed from TestPyPI!"
+
+    - name: Comment on PR (if applicable)
+      if: github.event_name == 'push'
+      run: |
+        echo "✅ Package published to TestPyPI"
+        echo "Test installation:"
+        echo "pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ${{ env.PACKAGE_NAME }}==${{ steps.version.outputs.version }}"
+
+  # =====================================================================
+  # Step 4: Manual Approval Gate
+  # =====================================================================
+  approve-production:
+    name: Approve Production Release
+    needs: [publish-testpypi]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    environment:
+      name: pypi-approval
+    timeout-minutes: 1440  # 24 hours for manual approval
+
+    steps:
+    - name: Manual approval required
+      run: |
+        echo "🚦 Manual approval required to publish to production PyPI"
+        echo "Review the TestPyPI release before approving"
+
+  # =====================================================================
+  # Step 5: Publish to Production PyPI
+  # =====================================================================
+  publish-pypi:
+    name: Publish to Production PyPI
+    needs: [approve-production]
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'push' && needs.approve-production.result == 'success') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'pypi')
+    environment:
+      name: pypi
+      url: https://pypi.org/project/${{ env.PACKAGE_NAME }}/
+    timeout-minutes: 10
+
+    steps:
+    - name: Extract version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/v}"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: dist-packages-${{ steps.version.outputs.version }}
+        path: dist/
+
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }}
+        verbose: true
+
+    - name: Wait for package to be available
+      run: |
+        echo "⏳ Waiting 60 seconds for PyPI to process package..."
+        sleep 60
+
+    - name: Test installation from PyPI
+      run: |
+        echo "📦 Testing installation from production PyPI..."
+        pip install ${{ env.PACKAGE_NAME }}==${{ steps.version.outputs.version }}
+
+        # Verify it works
+        python -c "import lobster; print(f'Installed version: {lobster.__version__}')"
+        lobster --help
+
+        echo "✅ Package successfully installed from PyPI!"
+
+  # =====================================================================
+  # Step 6: Create GitHub Release
+  # =====================================================================
+  create-release:
+    name: Create GitHub Release
+    needs: [publish-pypi]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    timeout-minutes: 10
+
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Extract version
+      id: version
+      run: |
+        VERSION="${GITHUB_REF#refs/tags/}"
+        VERSION_NUM="${VERSION#v}"
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "version_number=$VERSION_NUM" >> $GITHUB_OUTPUT
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: dist-packages-${{ steps.version.outputs.version_number }}
+        path: dist/
+
+    - name: Generate release notes
+      id: notes
+      run: |
+        cat > release_notes.md << 'EOF'
+        # Lobster AI ${{ steps.version.outputs.version }}
+
+        ## 📦 Installation
+
+        ### From PyPI (Recommended)
+
+        ```bash
+        pip install lobster-ai
+        ```
+
+        ### From TestPyPI
+
+        ```bash
+        pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple lobster-ai
+        ```
+
+        ### From GitHub Release
+
+        ```bash
+        pip install https://github.com/the-omics-os/lobster-local/releases/download/${{ steps.version.outputs.version }}/lobster_ai-${{ steps.version.outputs.version_number }}-py3-none-any.whl
+        ```
+
+        ## 📋 Package Information
+
+        - **Package Name**: lobster-ai
+        - **Version**: ${{ steps.version.outputs.version_number }}
+        - **Python**: 3.11+
+        - **License**: Apache 2.0
+        - **Repository**: [lobster-local](https://github.com/the-omics-os/lobster-local)
+
+        ## 🔗 Links
+
+        - **PyPI**: https://pypi.org/project/lobster-ai/
+        - **Documentation**: https://github.com/the-omics-os/lobster-local/wiki
+        - **Source Code**: https://github.com/the-omics-os/lobster-local
+
+        ## 🔄 What's New
+
+        See [CHANGELOG.md](https://github.com/the-omics-os/lobster-local/blob/main/CHANGELOG.md) for detailed changes.
+
+        ---
+
+        📦 *Built and published automatically via GitHub Actions*
+        EOF
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.version.outputs.version }}
+        name: Release ${{ steps.version.outputs.version }}
+        body_path: release_notes.md
+        draft: false
+        prerelease: ${{ contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'rc') }}
+        files: |
+          dist/*.whl
+          dist/*.tar.gz
+
+  # =====================================================================
+  # Step 7: Summary
+  # =====================================================================
+  summary:
+    name: Release Summary
+    runs-on: ubuntu-latest
+    needs: [sync-to-public, build-package, publish-testpypi, publish-pypi, create-release]
+    if: always()
+
+    steps:
+    - name: Extract version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/v}"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Generate summary
+      run: |
+        echo "## 📦 PyPI Release Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Package**: ${{ env.PACKAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Sync to Public**: ${{ needs.sync-to-public.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Build**: ${{ needs.build-package.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **TestPyPI**: ${{ needs.publish-testpypi.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Production PyPI**: ${{ needs.publish-pypi.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **GitHub Release**: ${{ needs.create-release.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [[ "${{ needs.publish-pypi.result }}" == "success" ]]; then
+          echo "### ✅ Release Successful!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Package is now available at:" >> $GITHUB_STEP_SUMMARY
+          echo "- **PyPI**: https://pypi.org/project/${{ env.PACKAGE_NAME }}/" >> $GITHUB_STEP_SUMMARY
+          echo "- **TestPyPI**: https://test.pypi.org/project/${{ env.PACKAGE_NAME }}/" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Install with:" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "pip install ${{ env.PACKAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+        elif [[ "${{ needs.publish-testpypi.result }}" == "success" ]]; then
+          echo "### 🟡 TestPyPI Release Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Awaiting manual approval for production PyPI release" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "### ❌ Release Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Please review the job outputs above for details." >> $GITHUB_STEP_SUMMARY
+        fi

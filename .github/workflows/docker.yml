@@ -49,50 +49,31 @@ jobs:
           file: ./Dockerfile
           push: false
           load: true
-          tags: lobster:test-cli
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
-
-      - name: Build Server Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile.server
-          push: false
-          load: true
-          tags: lobster:test-server
+          tags: ${{ env.IMAGE_NAME }}:test
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
       # Test CLI functionality
       - name: Test CLI --help
-        run: docker run --rm lobster:test-cli --help
+        run: docker run --rm ${{ env.IMAGE_NAME }}:test --help
 
-      - name: Test CLI --version
-        run: docker run --rm lobster:test-cli --version
+      - name: Test CLI query command
+        run: docker run --rm ${{ env.IMAGE_NAME }}:test query --help
 
       # Security scanning with Trivy
-      - name: Run Trivy security scanner (CLI)
+      - name: Run Trivy security scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: lobster:test-cli
+          image-ref: ${{ env.IMAGE_NAME }}:test
           format: 'sarif'
-          output: 'trivy-results-cli.sarif'
-          severity: 'CRITICAL,HIGH'
-
-      - name: Run Trivy security scanner (Server)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: lobster:test-server
-          format: 'sarif'
-          output: 'trivy-results-server.sarif'
+          output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          sarif_file: 'trivy-results-cli.sarif'
+          sarif_file: 'trivy-results.sarif'
 
       # Move cache to avoid growing indefinitely
       - name: Move cache
@@ -146,56 +127,46 @@ jobs:
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
 
-      - name: Build and push Server image (multi-arch)
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile.server
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ${{ env.IMAGE_NAME }}:server
-            ${{ env.IMAGE_NAME }}:server-${{ steps.version.outputs.version }}
-          labels: |
-            org.opencontainers.image.source=${{ github.repositoryUrl }}
-            org.opencontainers.image.version=${{ steps.version.outputs.version }}
-            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
-            variant=server
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           body: |
-            ## Docker Images
-            - CLI: `docker pull ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}`
-            - Server: `docker pull ${{ env.IMAGE_NAME }}:server-${{ steps.version.outputs.version }}`
+            ## Docker Image
+            ```bash
+            docker pull ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+            # or
+            docker pull ${{ env.IMAGE_NAME }}:latest
+            ```
 
-            See [Docker Deployment Guide](https://github.com/the-omics-os/lobster/wiki/42-docker-deployment-guide) for usage instructions.
+            See [Installation Guide](https://github.com/the-omics-os/lobster-local/wiki/02-installation) for usage instructions.
 
   # ============================================================================
-  # Job 3: Test docker-compose Configuration
+  # Job 3: Test docker-compose Configuration (DISABLED)
   # ============================================================================
-  test-compose:
-    name: Test docker-compose
-    needs: build-and-test
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Create dummy .env file
-        run: |
-          cat > .env << EOF
-          ANTHROPIC_API_KEY=dummy-key-for-testing
-          EOF
-
-      - name: Validate docker-compose.yml
-        run: docker-compose config
-
-      - name: Test docker-compose build
-        run: docker-compose build lobster-cli
-
-      - name: Test CLI via docker-compose
-        run: docker-compose run --rm lobster-cli --help
+  # NOTE: docker-compose.yml is PRIVATE - not synced to lobster-local
+  # This test job is commented out since docker-compose is for internal use only
+  #
+  # test-compose:
+  #   name: Test docker-compose
+  #   needs: build-and-test
+  #   runs-on: ubuntu-latest
+  #
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Create dummy .env file
+  #       run: |
+  #         cat > .env << EOF
+  #         ANTHROPIC_API_KEY=dummy-key-for-testing
+  #         EOF
+  #
+  #     - name: Validate docker-compose.yml
+  #       run: docker-compose config
+  #
+  #     - name: Test docker-compose build
+  #       run: docker-compose build lobster-cli
+  #
+  #     - name: Test CLI via docker-compose
+  #       run: docker-compose run --rm lobster-cli --help

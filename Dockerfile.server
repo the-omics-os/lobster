@@ -1,8 +1,15 @@
 # Dockerfile for Lobster AI FastAPI Server
 # Extends the base CLI image to run 'lobster serve' for API access
 # Use this for deploying Lobster as a web service
+#
+# NOTE: This is a PRIVATE file - not synced to lobster-local (public repo)
+# It builds from the local Dockerfile rather than pulling from Docker Hub
 
-FROM omicsos/lobster:latest
+# Build argument for CLI base image (allows local or Docker Hub source)
+# Default: local build tag used by Makefile
+# Production: omicsos/lobster:latest from Docker Hub
+ARG CLI_BASE_IMAGE=omicsos/lobster:latest
+FROM ${CLI_BASE_IMAGE}
 
 # Expose FastAPI default port
 EXPOSE 8000

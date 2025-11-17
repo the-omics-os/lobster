@@ -122,12 +122,8 @@ copy .env.example .env
 notepad .env
 # Add your API key: ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
 
-# 4. Run Lobster in Docker
-docker-compose run --rm lobster-cli
-
-# OR run as web service
-docker-compose up lobster-server
-# Access at http://localhost:8000
+# 4. Run Lobster in Docker (CLI mode)
+make docker-run-cli
 ```
 
 **Option 2: Native Installation (Experimental)**
@@ -158,10 +154,10 @@ lobster chat
 
 ---
 
-#### 🐳 Docker Installation (Cross-Platform - Production Ready)
+#### 🐳 Docker Installation (Cross-Platform)
 
 **Prerequisites:**
-- Docker 20.10+ and Docker Compose 2.0+ installed
+- Docker 20.10+ installed
 - `.env` file with API keys (see Configuration section)
 
 **Quick Start:**
@@ -180,38 +176,12 @@ make docker-build
 
 # 4. Run interactively (CLI mode)
 make docker-run-cli
-
-# OR run as a web service (FastAPI server)
-make docker-run-server
-
-# Check server health
-curl http://localhost:8000/health
-```
-
-**Docker Compose (Multi-Service):**
-
-```bash
-# Run CLI interactively
-make docker-compose-cli
-
-# Start FastAPI server in background
-make docker-compose-up
-
-# Stop all services
-make docker-compose-down
 ```
 
 **Why Docker?**
 - ✅ **Isolated environment** - No Python version conflicts
-- ✅ **Production-ready** - Includes healthchecks and resource limits
-- ✅ **Cloud deployment** - Ready for AWS ECS, Kubernetes, or Docker Swarm
 - ✅ **Consistent setup** - Same environment across all machines
-
-📚 **See [Docker Deployment Guide](wiki/43-docker-deployment-guide.md) for:**
-- AWS ECS/Fargate deployment
-- Kubernetes manifests
-- Volume management strategies
-- Troubleshooting and best practices
+- ✅ **Cross-platform** - Works on macOS, Linux, and Windows
 
 ### ⚠️ Important: API Keys & Rate Limits
 
