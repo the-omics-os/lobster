@@ -1,6 +1,11 @@
 # Wiki allowlist for lobster-local.wiki sync
 # Patterns use simple filename matching
 # Files not in this list will be excluded from lobster-local.wiki
+# Lines starting with ! are explicitly excluded even if they match other patterns
+
+# =============================================================================
+# PUBLIC FILES - Open-Core Documentation
+# =============================================================================
 
 # User guides and getting started
 01-getting-started.md
@@ -17,46 +22,73 @@
 10-creating-services.md
 11-creating-adapters.md
 12-testing-guide.md
+44-custom-providers-guide.md
+44-maintaining-documentation.md
+45-agent-customization-advanced.md
 
-# API documentation (public subset)
+# API documentation (core API, not cloud)
 13-api-overview.md
 14-core-api.md
 15-agents-api.md
 16-services-api.md
 17-interfaces-api.md
 
-# Architecture (excluding cloud-specific)
+# Architecture (core system, excluding cloud-specific)
 18-architecture-overview.md
 19-agent-system.md
 20-data-management.md
-# EXCLUDE: 21-cloud-local-architecture.md (cloud-specific)
 22-performance-optimization.md
+34-architecture-diagram.md
+35-download-queue-system.md
+37-publication-intelligence-deep-dive.md
+38-workspace-content-service.md
+39-two-tier-caching-architecture.md
 
-# Tutorials
+# Tutorials (non-premium)
 23-tutorial-single-cell.md
 24-tutorial-bulk-rnaseq.md
-!25-tutorial-proteomics.md
 26-tutorial-custom-agent.md
 27-examples-cookbook.md
 
-# Reference
+# Reference and support
 28-troubleshooting.md
 29-faq.md
 30-glossary.md
+41-migration-guides.md
 
-# Advanced topics
+# Agent and service enhancements (core features)
 31-data-expert-agent-enhancements.md
 32-agent-guided-formula-construction.md
-!33-api-documentation.md
-34-architecture-diagram.md
 35-manual-annotation-service.md
 36-supervisor-configuration.md
-37-publication-intelligence-deep-dive.md
+40-protein-structure-visualization.md
+
+# Deployment and dependencies
+43-docker-deployment-guide.md
+43-optional-dependencies.md
+46-multiomics-integration.md
 
 # General files
-#CLAUDE.md
 Home.md
-#README.md
+README.md
+
+# =============================================================================
+# EXPLICITLY EXCLUDED - Private/Cloud/Premium
+# =============================================================================
+
+# Cloud-specific architecture and infrastructure
+!21-cloud-local-architecture.md
+!33-api-documentation.md
+!43-s3-backend-guide.md
+!46-multiomics-integration.md
+
+# Premium features (proteomics)
+!25-tutorial-proteomics.md
+
+# Internal documentation
+!CLAUDE.md
+!WIKI_HEALTH_DASHBOARD.md
+!PHASE3_FEATURE_DOCUMENTATION_REPORT.md
 
 # Data directory (if needed)
 data/**
