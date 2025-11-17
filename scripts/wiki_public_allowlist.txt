@@ -51,6 +51,7 @@
 34-architecture-diagram.md
 35-manual-annotation-service.md
 36-supervisor-configuration.md
+37-publication-intelligence-deep-dive.md
 
 # General files
 #CLAUDE.md

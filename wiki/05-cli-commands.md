@@ -132,7 +132,93 @@ List all available datasets in workspace without loading them.
 /workspace list
 ```
 
-Shows datasets with status (loaded/available), size, shape, and modification date.
+Shows datasets with:
+- **Index Number** (#) - Use for quick loading with `/workspace load` or `/workspace info`
+- **Status** - ✓ (loaded) or ○ (available)
+- **Name** - Intelligently truncated with middle-ellipsis for long names (max 60 chars)
+- **Size** - Dataset size in MB
+- **Shape** - Observations × variables
+- **Modified** - Last modification date
+
+**Features** (v2.3+):
+- Numbered index for each dataset (1, 2, 3...) enables index-based loading
+- Smart truncation preserves start and end of long dataset names
+- Example: `geo_gse155698_quality_assess...ted_clustered_markers`
+- Contextual help footer: "Use '/workspace info <#>' to see full details"
+- Fixed column widths for professional table formatting
+
+#### `/workspace info <#|pattern>`
+Show detailed information for specific dataset(s) (v2.3+).
+
+```
+/workspace info 1                      # Show details for first dataset (index)
+/workspace info gse12345              # Show details by name pattern
+/workspace info *clustered*           # Show details for matching datasets
+```
+
+**Input Options**:
+- **Index number**: Use # from `/workspace list` (e.g., `1`, `5`, `10`)
+- **Name pattern**: Full or partial dataset name
+- **Glob pattern**: Wildcards for multiple matches (e.g., `*liver*`, `geo_*`)
+
+**Detailed Output**:
+- Full dataset name (no truncation)
+- Load status (✓ Loaded / ○ Not Loaded)
+- Complete file path
+- Precise size in MB
+- Shape with formatted numbers (e.g., 50,000 observations × 20,000 variables)
+- File type (H5AD, MuData, etc.)
+- Modification timestamp
+- Detected processing stages (quality, filter, normal, doublet, cluster, marker, annot, pseudobulk)
+
+**Features**:
+- Index-based selection for convenience (no typing long names)
+- Pattern matching with wildcards for flexibility
+- Multiple datasets displayed when pattern matches many
+- Automatic lineage detection from dataset naming convention
+
+**Example**:
+```
+/workspace info 1
+
+Dataset #1 Details:
+────────────────────────────────────────────────────────────
+Name:        geo_gse155698_quality_assessed_filtered_normalized_doublets_detected_clustered_markers
+Status:      ✓ Loaded
+Path:        /workspace/geo_gse155698_quality_assessed_filtered_normalized_doublets_detected_clustered_markers.h5ad
+Size:        287.4 MB
+Shape:       94,371 observations × 32,738 variables
+Type:        H5AD
+Modified:    2025-01-10 14:23:45
+Stages:      quality → filter → normal → doublet → cluster → marker
+```
+
+#### `/workspace load <#|pattern>`
+Load specific dataset(s) from workspace by index or pattern (v2.3+).
+
+```
+/workspace load 1                     # Load first dataset (index-based)
+/workspace load 5                     # Load fifth dataset
+/workspace load my_dataset            # Load by name
+/workspace load *clustered*           # Load all matching pattern
+```
+
+**Input Options**:
+- **Index number**: Use # from `/workspace list` - fast and convenient
+- **Name pattern**: Full or partial dataset name for targeted loading
+- **Glob pattern**: Wildcards for loading multiple related datasets
+
+**Features**:
+- **Index-based loading** (v2.3+): No need to type long dataset names
+- **Pattern matching**: Load multiple datasets matching criteria
+- **Progress tracking**: Shows loading progress for each dataset
+- **Automatic validation**: Data quality checks during load
+- **Smart caching**: Efficient memory usage
+
+**When to use**:
+- Use `/workspace load <#>` for loading single datasets by index (fastest)
+- Use `/workspace load <pattern>` for loading specific datasets by name
+- Use `/restore` for session continuation and bulk loading workflows
 
 #### `/restore [pattern]`
 Restore datasets from workspace based on pattern matching.
@@ -159,7 +245,7 @@ Restore datasets from workspace based on pattern matching.
 - `<dataset_name>` - Load specific dataset by exact name
 - `<partial_name>*` - Load datasets matching partial name pattern
 
-> **Note**: This command replaces the previous `/workspace load` functionality with enhanced pattern matching and better integration with the data expert agent system.
+> **Note**: Use `/restore` for session continuation and bulk loading workflows. Use `/workspace load` (v2.3+) for targeted single-dataset loading by index or specific pattern.
 
 **Parameters**:
 - `recent`: Datasets from last session (default)
@@ -210,6 +296,48 @@ Load and analyze files from workspace or current directory.
 - Automatic format detection
 - Batch loading with progress tracking
 - Format conversion on-the-fly
+
+#### `/archive <file>`
+Load data from compressed archives containing bioinformatics data.
+
+```
+/archive GSE155698_RAW.tar         # Load 10X Genomics samples
+/archive kallisto_results.tar.gz   # Load Kallisto quantification
+/archive salmon_quant.zip          # Load Salmon quantification
+```
+
+**Supported Archive Formats**:
+- TAR (`.tar`, `.tar.gz`, `.tar.bz2`)
+- ZIP (`.zip`)
+
+**Supported Data Formats**:
+- **10X Genomics**: Both V2 (`genes.tsv`) and V3 (`features.tsv`) chemistry
+  - Handles compressed and uncompressed files
+  - Automatic sample detection and concatenation
+- **Kallisto Quantification**: Multiple samples with `abundance.tsv` or `abundance.h5`
+- **Salmon Quantification**: Multiple samples with `quant.sf`
+- **GEO RAW Files**: GSM-prefixed expression files
+
+**Features**:
+- Smart content detection without full extraction
+- Automatic format identification
+- Memory-efficient processing
+- Handles nested archive structures
+- Sample concatenation for multi-sample archives
+- Compressed file support (`.gz`, `.bz2`)
+
+**Example Workflow**:
+```
+/archive /path/to/GSE155698_RAW.tar
+# Automatically detects:
+# - 17 10X Genomics samples (V2 and V3 mixed)
+# - Loads and concatenates all samples
+# - Result: 94,371 cells × 32,738 genes
+```
+
+**When to Use `/archive` vs `/read`**:
+- Use `/archive` for: Compressed archives with multiple samples or nested structures
+- Use `/read` for: Individual data files (H5AD, CSV, Excel)
 
 #### `/open <file>`
 Open file or folder in system default application.
@@ -494,10 +622,13 @@ lobster chat
 # Check existing workspace
 /workspace list
 
-# Load previous work or start fresh
+# Load previous work by index (v2.3+)
+/workspace load 1
+
+# Or restore recent session
 /restore recent
 
-# Load new data
+# Or load new data
 /read my_data.h5ad
 
 # Check data status
@@ -505,6 +636,28 @@ lobster chat
 
 # Begin analysis
 "Analyze this single-cell RNA-seq data and identify cell types"
+```
+
+#### Dataset Browsing and Selection (v2.3+)
+
+```bash
+# List all datasets with numbered index
+/workspace list
+
+# Get detailed info for first dataset
+/workspace info 1
+
+# Load that dataset by index
+/workspace load 1
+
+# Or get info about specific pattern
+/workspace info *liver*
+
+# Check full details before loading
+/workspace info geo_gse12345
+
+# Load by pattern
+/workspace load *clustered*
 ```
 
 #### Data Exploration

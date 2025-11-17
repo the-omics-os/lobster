@@ -1,0 +1,89 @@
+
+================================================================================
+FALLBACK CHAIN TESTING REPORT
+================================================================================
+
+### Scenario 1: PMC Available
+- **Input**: PMID:35042229
+- **Expected Path**: PMC ✅ → (no fallback needed)
+- **Actual Path**: full_pmc_xml
+- **Source Type**: pmc_xml
+- **Time**: 1.67 seconds
+- **Methods Length**: 1738 chars
+- **Result**: ✅ SUCCESS
+
+### Scenario 2: PMC Unavailable, Webpage Available
+- **Input**: https://www.nature.com/articles/s41586-021-03852-1
+- **Expected Path**: (PMC skipped for URL) → Webpage ✅
+- **Actual Path**: full_webpage
+- **Source Type**: webpage
+- **Time**: 3.31 seconds
+- **Methods Length**: 193 chars
+- **Result**: ✅ SUCCESS
+
+### Scenario 3: Non-existent PMID
+- **Input**: PMID:99999999
+- **Expected Path**: PMC ❌ → Fallback attempted → Error handling
+- **Tier Used**: paywalled
+- **Error Type**: PaywalledError
+- **Time**: 2.76 seconds
+- **Error**: Paper PMID:99999999 is paywalled. ## Alternative Access Options
+
+1. **PubMed Central Accepted Manuscript**: Check if an accepted manuscript version is available:
+   - https://www.ncbi.nlm.nih.gov/pmc/?term=99999999
+
+2. **Preprint Servers**: Check for preprints on bioRxiv or medRxiv:
+   - bioRxiv: https://www.biorxiv.org/search/99999999
+   - medRxiv: https://www.medrxiv.org/search/99999999
+
+3. **Institutional Access**: If you're affiliated with a university, try:
+   - Accessing through your institution's library proxy
+   - Using VPN to connect to institutional network
+   - Requesting through interlibrary loan
+
+4. **Contact Authors**: You can:
+   - Email the corresponding author to request a PDF
+   - Check author profiles on ResearchGate or Academia.edu
+   - PubMed author info: https://pubmed.ncbi.nlm.nih.gov/99999999/
+
+
+💡 **Tip**: Many publishers allow authors to share accepted manuscripts. Contacting the corresponding author is often successful!
+- **Result**: ❌ FAILED
+
+### Scenario 4: DOI with PMC
+- **Input**: 10.1038/s41586-021-03852-1
+- **Expected Path**: PMC ✅ → (no fallback needed)
+- **Actual Path**: full_pmc_xml
+- **Source Type**: pmc_xml
+- **Time**: 4.08 seconds
+- **Methods Length**: 1607 chars
+- **Result**: ✅ SUCCESS
+
+### Scenario 5: bioRxiv Preprint (PDF)
+- **Input**: https://www.biorxiv.org/content/10.1101/2024.01.23.576916v1
+- **Expected Path**: (PMC skipped for URL) → Webpage → PDF ✅
+- **Actual Path**: full_webpage
+- **Source Type**: webpage
+- **Time**: 1.80 seconds
+- **Methods Length**: 6035 chars
+- **Result**: ✅ SUCCESS
+
+### Fallback Chain Summary:
+- **Total Tests**: 5
+- **Successful**: 4
+- **Failed**: 1
+- **PMC Used**: 2
+- **Webpage Used**: 2
+- **PDF Used**: 0
+
+### Performance:
+- **Average Time**: 2.71s
+- **Min Time**: 1.67s
+- **Max Time**: 4.08s
+
+### Assessment:
+- **PMC-first logic working**: ✅
+- **Fallback transitions smooth**: ✅
+- **Error handling graceful**: ✅
+
+================================================================================

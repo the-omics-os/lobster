@@ -6,16 +6,12 @@ proteomics data including missing value pattern analysis, contaminant detection,
 dynamic range evaluation, and technical replicate validation.
 """
 
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import anndata
 import numpy as np
-import pandas as pd
 from scipy import stats
-from scipy.cluster.hierarchy import fcluster, linkage
-from scipy.spatial.distance import pdist
 from sklearn.decomposition import PCA
-from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
 
 from lobster.utils.logger import get_logger
@@ -66,7 +62,7 @@ class ProteomicsQualityService:
         protein_threshold: float = 0.8,
     ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
         """
-        Analyze missing value patterns in proteomics data.
+        Analyze missing value patterns in proteomics data with MNAR/MCAR detection.
 
         Args:
             adata: AnnData object with proteomics data
@@ -92,15 +88,9 @@ class ProteomicsQualityService:
             X = adata_qc.X.copy()
 
             # Calculate missing value statistics
-            if hasattr(X, "isnan"):
-                is_missing = np.isnan(X)
-                total_missing = is_missing.sum()
-                total_values = X.size
-            else:
-                # Assume missing values are represented as zeros or very small values
-                is_missing = (X == 0) | (X < 1e-10)
-                total_missing = is_missing.sum()
-                total_values = X.size
+            is_missing = np.isnan(X)
+            total_missing = is_missing.sum()
+            total_values = X.size
 
             # Sample-level missing value analysis
             sample_missing_counts = is_missing.sum(axis=1)
@@ -111,6 +101,7 @@ class ProteomicsQualityService:
             protein_missing_rates = protein_missing_counts / adata_qc.n_obs
 
             # Add QC metrics to observations (samples)
+            adata_qc.obs["missing_value_percentage"] = sample_missing_rates * 100
             adata_qc.obs["missing_protein_count"] = sample_missing_counts
             adata_qc.obs["missing_protein_rate"] = sample_missing_rates
             adata_qc.obs["high_missing_sample"] = (
@@ -121,6 +112,7 @@ class ProteomicsQualityService:
             )
 
             # Add QC metrics to variables (proteins)
+            adata_qc.var["missing_value_percentage"] = protein_missing_rates * 100
             adata_qc.var["missing_sample_count"] = protein_missing_counts
             adata_qc.var["missing_sample_rate"] = protein_missing_rates
             adata_qc.var["high_missing_protein"] = (
@@ -130,6 +122,10 @@ class ProteomicsQualityService:
                 adata_qc.n_obs - protein_missing_counts
             )
 
+            # Perform MNAR/MCAR detection
+            mnar_mcar_analysis = self._detect_mnar_mcar_patterns(X, is_missing)
+            adata_qc.var["missing_pattern"] = mnar_mcar_analysis["protein_patterns"]
+
             # Identify missing value patterns
             missing_patterns = self._identify_missing_patterns(is_missing)
 
@@ -137,23 +133,37 @@ class ProteomicsQualityService:
             missing_stats = {
                 "total_missing_values": int(total_missing),
                 "total_possible_values": int(total_values),
+                "total_missing_percentage": float((total_missing / total_values) * 100),
                 "overall_missing_rate": float(total_missing / total_values),
+                "n_high_missing_samples": int(
+                    (sample_missing_rates > sample_threshold).sum()
+                ),
                 "high_missing_samples": int(
                     (sample_missing_rates > sample_threshold).sum()
+                ),
+                "n_high_missing_proteins": int(
+                    (protein_missing_rates > protein_threshold).sum()
                 ),
                 "high_missing_proteins": int(
                     (protein_missing_rates > protein_threshold).sum()
                 ),
                 "median_missing_rate_samples": float(np.median(sample_missing_rates)),
                 "median_missing_rate_proteins": float(np.median(protein_missing_rates)),
+                "sample_threshold": sample_threshold,
+                "protein_threshold": protein_threshold,
+                "missing_value_patterns": missing_patterns,
+                "mnar_proteins": int(mnar_mcar_analysis["n_mnar"]),
+                "mcar_proteins": int(mnar_mcar_analysis["n_mcar"]),
                 "samples_processed": adata_qc.n_obs,
                 "proteins_processed": adata_qc.n_vars,
-                "analysis_type": "missing_value_patterns",
-                **missing_patterns,
+                "analysis_type": "missing_value_assessment",
             }
 
             logger.info(
                 f"Missing value analysis completed: {total_missing:,} missing values ({(total_missing/total_values)*100:.1f}%)"
+            )
+            logger.info(
+                f"MNAR/MCAR: {mnar_mcar_analysis['n_mnar']} MNAR, {mnar_mcar_analysis['n_mcar']} MCAR proteins"
             )
             return adata_qc, missing_stats
 
@@ -166,25 +176,39 @@ class ProteomicsQualityService:
     def assess_coefficient_variation(
         self,
         adata: anndata.AnnData,
-        cv_threshold: float = 50.0,
+        replicate_column: Optional[str] = None,
+        cv_threshold: float = 0.2,
         min_observations: int = 3,
     ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
         """
-        Assess coefficient of variation (CV) for proteins and samples.
+        Assess coefficient of variation (CV) for proteins with optional replicate grouping.
+
+        CV is calculated as std/mean and returned as fractional values (0.0 to 1.0),
+        where 0.2 represents 20% variation.
 
         Args:
             adata: AnnData object with proteomics data
-            cv_threshold: Threshold for high CV proteins (%)
+            replicate_column: Column in obs containing replicate groups (None for overall CV)
+            cv_threshold: Threshold for high CV proteins (fractional, e.g., 0.2 = 20%)
             min_observations: Minimum observations required for CV calculation
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: AnnData with CV metrics and analysis stats
+            Tuple[anndata.AnnData, Dict[str, Any]]: AnnData with CV metrics (fractional units) and analysis stats
 
         Raises:
             ProteomicsQualityError: If assessment fails
         """
         try:
             logger.info("Starting coefficient of variation assessment")
+
+            # Validate replicate column if provided
+            if (
+                replicate_column is not None
+                and replicate_column not in adata.obs.columns
+            ):
+                raise ProteomicsQualityError(
+                    f"Replicate column '{replicate_column}' not found in obs"
+                )
 
             # Create working copy
             adata_qc = adata.copy()
@@ -196,103 +220,141 @@ class ProteomicsQualityService:
             X = adata_qc.X.copy()
 
             # Calculate protein-level CVs
-            protein_cvs = []
-            protein_means = []
-            protein_stds = []
+            if replicate_column is not None:
+                # Group-wise CV calculation
+                replicate_groups = adata_qc.obs[replicate_column]
+                unique_groups = replicate_groups.unique()
 
-            for i in range(adata_qc.n_vars):
-                protein_values = X[:, i]
+                protein_cv_means = []
+                protein_cv_medians = []
+                protein_cv_list_per_protein = []
 
-                # Remove missing values for CV calculation
-                if hasattr(protein_values, "isnan"):
-                    valid_values = protein_values[~np.isnan(protein_values)]
-                else:
-                    valid_values = protein_values[protein_values > 0]
+                for i in range(adata_qc.n_vars):
+                    group_cvs = []
+                    for group in unique_groups:
+                        group_mask = replicate_groups == group
+                        protein_values = X[group_mask, i]
 
-                if len(valid_values) >= min_observations:
-                    mean_val = np.mean(valid_values)
-                    std_val = np.std(valid_values)
-                    cv_val = (std_val / mean_val) * 100 if mean_val > 0 else np.inf
-                else:
-                    mean_val = np.nan
-                    std_val = np.nan
-                    cv_val = np.nan
+                        # Remove missing values
+                        if hasattr(protein_values, "isnan"):
+                            valid_values = protein_values[~np.isnan(protein_values)]
+                        else:
+                            valid_values = protein_values[protein_values > 0]
 
-                protein_means.append(mean_val)
-                protein_stds.append(std_val)
-                protein_cvs.append(cv_val)
+                        if len(valid_values) >= min_observations:
+                            mean_val = np.mean(valid_values)
+                            std_val = np.std(valid_values, ddof=1)
+                            cv_val = (std_val / mean_val) if mean_val > 0 else np.inf
+                            group_cvs.append(cv_val)
 
-            # Calculate sample-level CVs (across proteins)
-            sample_cvs = []
-            sample_means = []
-            sample_stds = []
+                    if len(group_cvs) > 0:
+                        valid_cvs = [
+                            cv
+                            for cv in group_cvs
+                            if not np.isnan(cv) and not np.isinf(cv)
+                        ]
+                        if valid_cvs:
+                            protein_cv_means.append(np.mean(valid_cvs))
+                            protein_cv_medians.append(np.median(valid_cvs))
+                            protein_cv_list_per_protein.append(valid_cvs)
+                        else:
+                            protein_cv_means.append(np.nan)
+                            protein_cv_medians.append(np.nan)
+                            protein_cv_list_per_protein.append([])
+                    else:
+                        protein_cv_means.append(np.nan)
+                        protein_cv_medians.append(np.nan)
+                        protein_cv_list_per_protein.append([])
 
-            for i in range(adata_qc.n_obs):
-                sample_values = X[i, :]
+                # Add CV metrics to variables (proteins)
+                adata_qc.var["cv_mean"] = protein_cv_means
+                adata_qc.var["cv_median"] = protein_cv_medians
+                adata_qc.var["high_cv_protein"] = (
+                    np.array(protein_cv_means) > cv_threshold
+                )
 
-                # Remove missing values for CV calculation
-                if hasattr(sample_values, "isnan"):
-                    valid_values = sample_values[~np.isnan(sample_values)]
-                else:
-                    valid_values = sample_values[sample_values > 0]
+                # Calculate overall CV statistics
+                valid_protein_cvs = [
+                    cv
+                    for cv in protein_cv_means
+                    if not np.isnan(cv) and not np.isinf(cv)
+                ]
 
-                if len(valid_values) >= min_observations:
-                    mean_val = np.mean(valid_values)
-                    std_val = np.std(valid_values)
-                    cv_val = (std_val / mean_val) * 100 if mean_val > 0 else np.inf
-                else:
-                    mean_val = np.nan
-                    std_val = np.nan
-                    cv_val = np.nan
+                cv_stats = {
+                    "mean_cv_across_proteins": (
+                        float(np.mean(valid_protein_cvs))
+                        if valid_protein_cvs
+                        else np.nan
+                    ),
+                    "median_cv_across_proteins": (
+                        float(np.median(valid_protein_cvs))
+                        if valid_protein_cvs
+                        else np.nan
+                    ),
+                    "n_high_cv_proteins": int(
+                        np.sum(np.array(protein_cv_means) > cv_threshold)
+                    ),
+                    "cv_threshold": cv_threshold,
+                    "min_observations": min_observations,
+                    "replicate_column": replicate_column,
+                    "samples_processed": adata_qc.n_obs,
+                    "proteins_processed": adata_qc.n_vars,
+                    "analysis_type": "coefficient_variation_assessment",
+                }
+            else:
+                # Overall CV calculation (no replicate grouping)
+                protein_cvs = []
+                for i in range(adata_qc.n_vars):
+                    protein_values = X[:, i]
 
-                sample_means.append(mean_val)
-                sample_stds.append(std_val)
-                sample_cvs.append(cv_val)
+                    # Remove missing values
+                    if hasattr(protein_values, "isnan"):
+                        valid_values = protein_values[~np.isnan(protein_values)]
+                    else:
+                        valid_values = protein_values[protein_values > 0]
 
-            # Add CV metrics to observations (samples)
-            adata_qc.obs["intensity_mean"] = sample_means
-            adata_qc.obs["intensity_std"] = sample_stds
-            adata_qc.obs["intensity_cv"] = sample_cvs
-            adata_qc.obs["high_cv_sample"] = np.array(sample_cvs) > cv_threshold
+                    if len(valid_values) >= min_observations:
+                        mean_val = np.mean(valid_values)
+                        std_val = np.std(valid_values, ddof=1)
+                        cv_val = (std_val / mean_val) if mean_val > 0 else np.inf
+                    else:
+                        cv_val = np.nan
 
-            # Add CV metrics to variables (proteins)
-            adata_qc.var["intensity_mean"] = protein_means
-            adata_qc.var["intensity_std"] = protein_stds
-            adata_qc.var["intensity_cv"] = protein_cvs
-            adata_qc.var["high_cv_protein"] = np.array(protein_cvs) > cv_threshold
+                    protein_cvs.append(cv_val)
 
-            # Calculate CV statistics
-            valid_protein_cvs = [
-                cv for cv in protein_cvs if not np.isnan(cv) and not np.isinf(cv)
-            ]
-            valid_sample_cvs = [
-                cv for cv in sample_cvs if not np.isnan(cv) and not np.isinf(cv)
-            ]
+                # Add CV metrics to variables
+                adata_qc.var["cv_overall"] = protein_cvs
+                adata_qc.var["cv_mean"] = protein_cvs  # Alias for consistency
+                adata_qc.var["cv_median"] = protein_cvs  # Same as mean for overall
+                adata_qc.var["high_cv_protein"] = np.array(protein_cvs) > cv_threshold
 
-            cv_stats = {
-                "median_protein_cv": (
-                    float(np.median(valid_protein_cvs)) if valid_protein_cvs else np.nan
-                ),
-                "mean_protein_cv": (
-                    float(np.mean(valid_protein_cvs)) if valid_protein_cvs else np.nan
-                ),
-                "high_cv_proteins": int(np.sum(np.array(protein_cvs) > cv_threshold)),
-                "median_sample_cv": (
-                    float(np.median(valid_sample_cvs)) if valid_sample_cvs else np.nan
-                ),
-                "mean_sample_cv": (
-                    float(np.mean(valid_sample_cvs)) if valid_sample_cvs else np.nan
-                ),
-                "high_cv_samples": int(np.sum(np.array(sample_cvs) > cv_threshold)),
-                "cv_threshold": cv_threshold,
-                "min_observations": min_observations,
-                "samples_processed": adata_qc.n_obs,
-                "proteins_processed": adata_qc.n_vars,
-                "analysis_type": "coefficient_variation",
-            }
+                valid_protein_cvs = [
+                    cv for cv in protein_cvs if not np.isnan(cv) and not np.isinf(cv)
+                ]
+
+                cv_stats = {
+                    "mean_cv_across_proteins": (
+                        float(np.mean(valid_protein_cvs))
+                        if valid_protein_cvs
+                        else np.nan
+                    ),
+                    "median_cv_across_proteins": (
+                        float(np.median(valid_protein_cvs))
+                        if valid_protein_cvs
+                        else np.nan
+                    ),
+                    "n_high_cv_proteins": int(
+                        np.sum(np.array(protein_cvs) > cv_threshold)
+                    ),
+                    "cv_threshold": cv_threshold,
+                    "min_observations": min_observations,
+                    "samples_processed": adata_qc.n_obs,
+                    "proteins_processed": adata_qc.n_vars,
+                    "analysis_type": "coefficient_variation_assessment",
+                }
 
             logger.info(
-                f"CV assessment completed: median protein CV = {cv_stats['median_protein_cv']:.1f}%"
+                f"CV assessment completed: mean protein CV = {cv_stats['mean_cv_across_proteins']:.3f}"
             )
             return adata_qc, cv_stats
 
@@ -666,13 +728,16 @@ class ProteomicsQualityService:
         """
         Assess technical replicate reproducibility and variation.
 
+        CV is calculated as std/mean in fractional units (0.0 to 1.0), consistent with
+        assess_coefficient_variation(). A CV of 0.2 represents 20% variation.
+
         Args:
             adata: AnnData object with proteomics data
             replicate_column: Column in obs identifying technical replicates
             correlation_method: Method for correlation analysis ('pearson', 'spearman')
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: AnnData with replicate metrics and analysis stats
+            Tuple[anndata.AnnData, Dict[str, Any]]: AnnData with replicate metrics (CV in fractional units) and analysis stats
 
         Raises:
             ProteomicsQualityError: If assessment fails
@@ -750,7 +815,7 @@ class ProteomicsQualityService:
                     if len(valid_values) >= 2:
                         mean_val = np.mean(valid_values)
                         std_val = np.std(valid_values)
-                        cv_val = (std_val / mean_val) * 100 if mean_val > 0 else np.nan
+                        cv_val = (std_val / mean_val) if mean_val > 0 else np.nan
                         group_cvs_per_protein.append(cv_val)
 
                 replicate_cvs.extend(group_cvs_per_protein)
@@ -800,6 +865,77 @@ class ProteomicsQualityService:
             )
 
     # Helper methods
+    def _detect_mnar_mcar_patterns(
+        self, X: np.ndarray, is_missing: np.ndarray
+    ) -> Dict[str, Any]:
+        """
+        Detect MNAR (Missing Not at Random) vs MCAR (Missing Completely at Random) patterns.
+
+        MNAR detection is based on intensity: low-abundance proteins tend to have more missing values.
+        MCAR detection is based on random distribution of missing values.
+
+        Args:
+            X: Data matrix with values
+            is_missing: Boolean matrix indicating missing values
+
+        Returns:
+            Dictionary with pattern classification
+        """
+        n_samples, n_proteins = X.shape
+        protein_patterns = []
+
+        for protein_idx in range(n_proteins):
+            protein_values = X[:, protein_idx]
+            protein_missing = is_missing[:, protein_idx]
+
+            # Calculate missing rate
+            missing_rate = protein_missing.sum() / n_samples
+
+            if missing_rate < 0.1:
+                # Low missing rate - assume MCAR
+                pattern = "MCAR"
+            elif missing_rate > 0.7:
+                # Very high missing rate - likely MNAR (low abundance)
+                pattern = "MNAR"
+            else:
+                # Intermediate - test correlation with intensity
+                # Get valid (non-missing) values
+                valid_mask = ~protein_missing
+                if valid_mask.sum() >= 3:
+                    valid_values = protein_values[valid_mask]
+                    # Calculate median intensity of valid values
+                    np.median(valid_values)
+                    mean_intensity = np.mean(valid_values)
+
+                    # MNAR proteins typically have lower mean/median intensities
+                    # and missing values correlate with low abundance
+                    # Simple heuristic: if this protein is in bottom 30% of intensities, likely MNAR
+                    all_valid_values = X[~is_missing]
+                    if len(all_valid_values) > 0:
+                        percentile_30 = np.percentile(all_valid_values, 30)
+                        if mean_intensity < percentile_30:
+                            pattern = "MNAR"
+                        else:
+                            pattern = "MCAR"
+                    else:
+                        pattern = "Unknown"
+                else:
+                    pattern = "Unknown"
+
+            protein_patterns.append(pattern)
+
+        # Count patterns
+        n_mnar = sum(1 for p in protein_patterns if p == "MNAR")
+        n_mcar = sum(1 for p in protein_patterns if p == "MCAR")
+        n_unknown = sum(1 for p in protein_patterns if p == "Unknown")
+
+        return {
+            "protein_patterns": protein_patterns,
+            "n_mnar": n_mnar,
+            "n_mcar": n_mcar,
+            "n_unknown": n_unknown,
+        }
+
     def _identify_missing_patterns(self, is_missing: np.ndarray) -> Dict[str, Any]:
         """Identify common missing value patterns."""
         n_samples, n_proteins = is_missing.shape
@@ -810,10 +946,17 @@ class ProteomicsQualityService:
         # Pattern 2: Completely missing samples
         completely_missing_samples = np.sum(is_missing, axis=1) == n_proteins
 
-        # Pattern 3: Block missing patterns (simple heuristic)
+        # Pattern 3: Sample-wise patterns (samples with high missing rates)
+        sample_missing_rates = is_missing.sum(axis=1) / n_proteins
+        high_sample_missing = (sample_missing_rates > 0.5).sum()
+
+        # Pattern 4: Protein-wise patterns (proteins with high missing rates)
+        protein_missing_rates = is_missing.sum(axis=0) / n_samples
+        high_protein_missing = (protein_missing_rates > 0.5).sum()
+
+        # Pattern 5: Block missing patterns (consecutive missing)
         missing_blocks = 0
         for i in range(n_samples):
-            # Count consecutive missing values
             missing_runs = []
             current_run = 0
             for j in range(n_proteins):
@@ -830,8 +973,11 @@ class ProteomicsQualityService:
             missing_blocks += sum(1 for run in missing_runs if run >= 10)
 
         return {
+            "sample_wise": int(high_sample_missing),
+            "protein_wise": int(high_protein_missing),
+            "total_patterns": int(high_sample_missing + high_protein_missing),
             "completely_missing_proteins": int(completely_missing_proteins.sum()),
             "completely_missing_samples": int(completely_missing_samples.sum()),
             "estimated_missing_blocks": missing_blocks,
-            "random_missing_pattern": missing_blocks < n_samples * 0.1,  # Heuristic
+            "random_missing_pattern": missing_blocks < n_samples * 0.1,
         }

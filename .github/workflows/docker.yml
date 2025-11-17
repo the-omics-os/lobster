@@ -1,0 +1,201 @@
+name: Docker Build & Publish
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:  # Allow manual triggering
+
+env:
+  DOCKER_REGISTRY: docker.io
+  IMAGE_NAME: omicsos/lobster
+
+jobs:
+  # ============================================================================
+  # Job 1: Build and Test Docker Images
+  # ============================================================================
+  build-and-test:
+    name: Build & Test Docker Images
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Build CLI Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          load: true
+          tags: lobster:test-cli
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+      - name: Build Server Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.server
+          push: false
+          load: true
+          tags: lobster:test-server
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+      # Test CLI functionality
+      - name: Test CLI --help
+        run: docker run --rm lobster:test-cli --help
+
+      - name: Test CLI --version
+        run: docker run --rm lobster:test-cli --version
+
+      # Security scanning with Trivy
+      - name: Run Trivy security scanner (CLI)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: lobster:test-cli
+          format: 'sarif'
+          output: 'trivy-results-cli.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Run Trivy security scanner (Server)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: lobster:test-server
+          format: 'sarif'
+          output: 'trivy-results-server.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results-cli.sarif'
+
+      # Move cache to avoid growing indefinitely
+      - name: Move cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+  # ============================================================================
+  # Job 2: Publish to Docker Hub (only on tags)
+  # ============================================================================
+  publish:
+    name: Publish to Docker Hub
+    needs: build-and-test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Build and push CLI image (multi-arch)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+
+      - name: Build and push Server image (multi-arch)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.server
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.IMAGE_NAME }}:server
+            ${{ env.IMAGE_NAME }}:server-${{ steps.version.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            variant=server
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            ## Docker Images
+            - CLI: `docker pull ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}`
+            - Server: `docker pull ${{ env.IMAGE_NAME }}:server-${{ steps.version.outputs.version }}`
+
+            See [Docker Deployment Guide](https://github.com/the-omics-os/lobster/wiki/42-docker-deployment-guide) for usage instructions.
+
+  # ============================================================================
+  # Job 3: Test docker-compose Configuration
+  # ============================================================================
+  test-compose:
+    name: Test docker-compose
+    needs: build-and-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create dummy .env file
+        run: |
+          cat > .env << EOF
+          ANTHROPIC_API_KEY=dummy-key-for-testing
+          EOF
+
+      - name: Validate docker-compose.yml
+        run: docker-compose config
+
+      - name: Test docker-compose build
+        run: docker-compose build lobster-cli
+
+      - name: Test CLI via docker-compose
+        run: docker-compose run --rm lobster-cli --help

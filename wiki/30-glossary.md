@@ -10,8 +10,17 @@ Protein analysis method using antibody-based assays for targeted protein detecti
 **Agent**
 Specialized AI component in Lobster AI that handles specific analysis domains (e.g., Single-cell Expert, Proteomics Expert). Agents use natural language understanding to execute appropriate tools and workflows.
 
+**Agent Factory Function**
+Python function that creates and configures an agent instance. Specified in the agent registry for dynamic agent loading. Example: `lobster.agents.singlecell_expert.singlecell_expert`.
+
+**Agent Handoff**
+Architectural pattern in Lobster AI where agents transfer tasks to other agents based on analysis requirements. Coordinated by the supervisor agent using handoff tools. Example: supervisor hands off single-cell analysis to `singlecell_expert`.
+
 **Agent Registry**
-Centralized system in Lobster AI that manages all available agents, their configurations, and handoff capabilities. Located in `lobster/config/agent_registry.py`.
+Centralized system in Lobster AI that manages all available agents, their configurations, and handoff capabilities. Located in `lobster/config/agent_registry.py`. Single source of truth for agent configuration.
+
+**Analysis Step IR (Intermediate Representation)**
+Structured representation of analysis operations used for provenance tracking and notebook export. Contains operation details, parameters, code templates, and execution context. Required for reproducibility.
 
 **AnnData**
 Annotated data structure used in Python bioinformatics for storing high-dimensional biological data. Contains expression matrix (X), observations (obs), variables (var), and additional metadata.
@@ -36,11 +45,20 @@ RNA sequencing of entire tissue samples or cell populations, providing average e
 
 ## C
 
+**Capability-Based Routing**
+Architecture pattern in ContentAccessService (v2.4+) where providers register their capabilities and are selected based on query requirements. Enables flexible provider selection with priority-based fallback.
+
 **Cell Type Annotation**
-Process of identifying and labeling cell populations in single-cell data based on marker gene expression patterns and biological knowledge.
+Process of identifying and labeling cell populations in single-cell data based on marker gene expression patterns and biological knowledge. Can be automated (CellTypist) or manual (expert curation).
 
 **Clustering**
 Computational method to group similar observations (cells, samples, genes) based on expression patterns. Common algorithms include Leiden, Louvain, and k-means.
+
+**Content Caching**
+Two-tier caching system in Lobster AI (v2.4+) with session cache (in-memory, temporary) and workspace cache (filesystem, persistent). Provides 30-50x speedup for repeated access to publications and datasets.
+
+**ContentAccessService**
+Unified service in Lobster AI (v2.4+) for accessing scientific content through five specialized providers: AbstractProvider, PubMedProvider, GEOProvider, PMCProvider, and WebpageProvider. Implements three-tier cascade (PMC XML → Webpage → PDF) with automatic fallback.
 
 **Coefficient of Variation (CV)**
 Statistical measure of relative variability, calculated as standard deviation divided by mean. Used to assess technical reproducibility in proteomics.
@@ -70,8 +88,14 @@ Statistical analysis to identify genes or proteins with significantly different 
 **Design Matrix**
 Mathematical representation of experimental design used in statistical models. Encodes relationships between samples and experimental factors.
 
+**Docling**
+Advanced PDF parsing library in Lobster AI (v2.4+) for extracting scientific content from publications. Achieves >90% Methods section detection rate, handles tables and formulas. Falls back to PyPDF2 (30% detection) when unavailable. Install: `pip install lobster[docling]`.
+
 **Doublet**
 Artifact in single-cell RNA-seq where two cells are captured and sequenced together, appearing as a single cell with unusually high gene counts.
+
+**Download Queue**
+Orchestration system in Lobster AI for managing multi-agent downloads. Research agent discovers URLs and creates queue entries (PENDING), supervisor polls queue and hands off to data_expert, which downloads and updates status (IN_PROGRESS → COMPLETED/FAILED).
 
 ---
 
@@ -152,6 +176,9 @@ Mathematical transformation that converts multiplicative relationships to additi
 **MA Plot**
 Scatter plot showing log fold change (M) vs average expression (A). Used to visualize differential expression results and identify bias.
 
+**Manual Curation Workflow**
+Interactive workflow in Lobster AI for expert-guided cell type annotation, metadata harmonization, and quality assessment. Combines automated suggestions with domain expertise for improved biological accuracy.
+
 **Marker Genes**
 Genes specifically or highly expressed in particular cell types or conditions. Used for cell type identification and validation.
 
@@ -180,8 +207,11 @@ Data structure for storing and analyzing multi-modal omics data. Extends AnnData
 **Normalization**
 Process of adjusting data to remove technical variation and enable comparison between samples. Methods include library size normalization, quantile normalization, and TMM.
 
+**Notebook Export**
+Feature in Lobster AI that exports complete analysis workflows as reproducible Jupyter notebooks. Uses Papermill for parameterization, includes provenance metadata, code snippets, and execution instructions. Access via `/pipeline export` command.
+
 **NPX (Normalized Protein eXpression)**
-Log2-transformed and normalized protein abundance values used in Olink affinity proteomics assays.
+Log2-transformed and normalized protein abundance values used in Olink affinity proteomics assays. Already log2-scaled, so should not be log-transformed again during preprocessing.
 
 ---
 
@@ -200,14 +230,32 @@ Structured vocabulary defining relationships between biological concepts. Gene O
 **PCA (Principal Component Analysis)**
 Dimensionality reduction technique that identifies the directions of maximum variance in data. Used for visualization and quality control.
 
+**PDB (Protein Data Bank)**
+Public repository of 3D structural data for proteins and nucleic acids. Lobster AI (v2.4+) fetches structures using 4-character PDB IDs (e.g., "1AKE") and links them to gene expression data. Supports both PDB and mmCIF formats.
+
+**PMC (PubMed Central)**
+Free full-text archive of biomedical literature. Lobster AI (v2.4+) uses PMC XML API as priority source for publication content (500ms-2s response time, 30-40% coverage). Part of ContentAccessService three-tier cascade.
+
+**Protein Structure Visualization**
+Feature in Lobster AI (v2.4+) for visualizing protein 3D structures using PyMOL. Supports interactive mode (GUI) and batch mode (PNG generation), residue highlighting, and automatic structure-to-gene linking. Install: `make install-pymol`.
+
+**Provider**
+Component in ContentAccessService (v2.4+) that implements access to specific content sources. Five providers: AbstractProvider (abstracts, fast), PubMedProvider (literature search), GEOProvider (dataset discovery), PMCProvider (full-text, priority), WebpageProvider (fallback, PDF support).
+
 **Pseudobulk**
-Method to aggregate single-cell data to sample-level summaries, enabling population-level statistical analysis with established bulk RNA-seq methods.
+Method to aggregate single-cell data to sample-level summaries, enabling population-level statistical analysis with established bulk RNA-seq methods. Recommended for differential expression testing across conditions.
+
+**Publication Intelligence**
+Automated system in Lobster AI (v2.4+) for extracting scientific methods and parameters from publications. Uses Docling for PDF parsing, ContentAccessService for content access, and structured schemas for metadata extraction.
 
 **Pseudotime**
 Computational measure of cell progression along a biological process, such as differentiation or cell cycle, based on expression similarity.
 
 **pyDESeq2**
 Pure Python implementation of the DESeq2 algorithm for differential expression analysis of RNA-seq data.
+
+**PyMOL**
+Professional molecular visualization system for protein structures. Integrated into Lobster AI (v2.4+) for 3D structure visualization. Supports both interactive GUI mode and headless batch mode (PNG generation). Install: `make install-pymol` or `brew install brewsci/bio/pymol`.
 
 ---
 
@@ -230,11 +278,20 @@ Method to predict future cell states by analyzing spliced and unspliced mRNA rat
 
 ## S
 
+**S3 Backend**
+Cloud storage integration in Lobster AI (v2.4+) for storing analysis data and results in AWS S3. Provides scalable storage for large datasets with seamless switching between local and cloud storage. Requires AWS credentials configuration.
+
 **scanpy**
 Python package for analyzing single-cell gene expression data. Provides comprehensive tools for preprocessing, visualization, and analysis.
 
 **Service**
 In Lobster AI architecture, stateless components that perform specific analysis tasks. Services receive AnnData objects and return results with statistics.
+
+**Session Export**
+Feature in Lobster AI that exports complete analysis session including conversation history, loaded modalities, workspace content, generated plots, and provenance metadata. Access via `/export session` command. Enables session restoration and sharing.
+
+**Supervisor Agent**
+Central coordinator agent in Lobster AI that routes user queries to specialized agents based on analysis requirements. Manages agent handoffs, monitors download queue, and orchestrates multi-agent workflows. Entry point for all user interactions.
 
 **Silhouette Score**
 Measure of clustering quality that quantifies how similar objects are within clusters compared to other clusters.
@@ -251,6 +308,9 @@ Analysis of molecular data with preserved spatial context, such as Visium spatia
 
 **t-SNE**
 Non-linear dimensionality reduction method that preserves local structure. Often used for visualizing high-dimensional single-cell data.
+
+**Three-Tier Cascade**
+Content access strategy in ContentAccessService (v2.4+) that attempts multiple access methods with automatic fallback: (1) PMC XML API (priority, 500ms-2s, 30-40% coverage), (2) Webpage/PDF extraction (fallback, 2-8s, 60-70% coverage), (3) Error with alternative suggestions. Maximizes content accessibility.
 
 **TMM (Trimmed Mean of M-values)**
 Normalization method commonly used in proteomics that assumes most proteins are not differentially expressed.
@@ -292,9 +352,6 @@ Method for constructing gene co-expression networks and identifying modules of h
 
 ## Technical Terms (Lobster AI Specific)
 
-**Agent Factory Function**
-Python function that creates and configures an agent instance. Specified in the agent registry for dynamic agent loading.
-
 **CLI (Command Line Interface)**
 Lobster's Rich-enhanced terminal interface with orange branding, autocomplete, and real-time monitoring capabilities.
 
@@ -302,7 +359,7 @@ Lobster's Rich-enhanced terminal interface with orange branding, autocomplete, a
 Operating mode where analyses are processed on cloud infrastructure. Activated by setting `LOBSTER_CLOUD_KEY` environment variable.
 
 **Handoff Tool**
-Specialized tool that allows agents to transfer tasks to other agents based on analysis requirements.
+Specialized tool registered in agent registry that allows supervisor agent to transfer tasks to specialist agents based on analysis requirements. Enables seamless multi-agent coordination with context preservation.
 
 **LangGraph**
 Framework used by Lobster AI for creating multi-agent workflows with state management and tool integration.
@@ -326,7 +383,10 @@ Lobster AI's architectural pattern where stateless services handle analysis logi
 Function available to agents for performing specific tasks. Tools follow standardized patterns for data validation, service calls, and result storage.
 
 **Workspace**
-Directory structure used by Lobster AI to organize data, results, and analysis history. Default location is `.lobster_workspace/`.
+Directory structure used by Lobster AI to organize data, results, and analysis history. Default location is `.lobster_workspace/`. Contains three subdirectories: `literature/` (publications), `data/` (datasets), `metadata/` (custom content).
+
+**WorkspaceContentService**
+Type-safe caching system in Lobster AI (v2.4+) for persistent storage of research content. Uses Pydantic schemas (PublicationContent, DatasetContent, MetadataContent) with enum-based validation (ContentType, RetrievalLevel). Provides identifier-based access to cached publications and datasets across sessions.
 
 ---
 

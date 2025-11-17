@@ -7,11 +7,9 @@ These are template tools that demonstrate ML workflows but are not yet integrate
 """
 
 import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional
 
 import numpy as np
-import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -343,7 +341,7 @@ class MLProteomicsService:
             )
 
             if drug_response.ndim == 1:
-                logger.info(f"Single drug response analysis")
+                logger.info("Single drug response analysis")
                 n_drugs = 1
             else:
                 logger.info(f"Multi-drug analysis: {drug_response.shape[1]} drugs")
@@ -540,7 +538,7 @@ class MLProteomicsService:
 
             # Simulate training/validation split
             n_train = int(n_possible_interactions * (1 - validation_split))
-            n_val = n_possible_interactions - n_train
+            n_possible_interactions - n_train
 
             # Simulate model performance
             train_accuracy = 0.88 + np.random.random() * 0.10  # 88-98%

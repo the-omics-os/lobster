@@ -5,11 +5,11 @@ This comprehensive FAQ addresses common questions about Lobster AI, covering eve
 ## Table of Contents
 
 1. [General Questions](#general-questions)
-2. [Installation & Setup](#installation--setup)
-3. [Data & File Formats](#data--file-formats)
+2. [Installation & Setup](#installation-setup)
+3. [Data & File Formats](#data-file-formats)
 4. [Analysis Capabilities](#analysis-capabilities)
-5. [Performance & Scalability](#performance--scalability)
-6. [Visualization & Output](#visualization--output)
+5. [Performance & Scalability](#performance-scalability)
+6. [Visualization & Output](#visualization-output)
 7. [Cloud Integration](#cloud-integration)
 8. [Comparison with Other Tools](#comparison-with-other-tools)
 9. [Technical Details](#technical-details)
@@ -85,7 +85,7 @@ lobster chat
 ### Q: What API keys do I need?
 
 **A:** Required API keys:
-- **OpenAI API key** - For GPT models (required)
+- **Anthropic API key** - OR
 - **AWS Bedrock credentials** - For Claude models (required)
 
 Optional API keys:
@@ -94,7 +94,7 @@ Optional API keys:
 
 Set these in your `.env` file:
 ```bash
-OPENAI_API_KEY=your-openai-key
+OPENAI_API_KEY=your-openai-key #TODO future support
 AWS_BEDROCK_ACCESS_KEY=your-aws-access-key
 AWS_BEDROCK_SECRET_ACCESS_KEY=your-aws-secret-key
 ```
@@ -581,6 +581,684 @@ See the [Custom Agent Tutorial](26-tutorial-custom-agent.md) for details.
 
 ---
 
+## General Questions (v2.4+)
+
+### Q: What's the difference between local and cloud mode?
+
+**A:** Mode comparison:
+
+| Aspect | Local Mode | Cloud Mode |
+|--------|-----------|------------|
+| **Execution** | On your machine | Remote servers |
+| **API Key** | Not required (except LLM) | Requires LOBSTER_CLOUD_KEY |
+| **Data Storage** | Local filesystem | Cloud storage (S3) |
+| **Performance** | Depends on hardware | Scalable resources |
+| **Cost** | Free (own hardware) | Usage-based pricing |
+| **Privacy** | Full local control | Data transmitted to cloud |
+| **Use Case** | Small-medium datasets, sensitive data | Large datasets, collaboration |
+
+```bash
+# Check current mode
+> /status
+
+# Switch to cloud mode
+export LOBSTER_CLOUD_KEY="your-key"
+lobster chat
+
+# Switch back to local
+unset LOBSTER_CLOUD_KEY
+lobster chat
+```
+
+### Q: How do I switch between Bedrock and OpenAI models?
+
+**A:** Model switching:
+
+```bash
+# Use AWS Bedrock (recommended for production)
+export AWS_BEDROCK_ACCESS_KEY=your_access_key
+export AWS_BEDROCK_SECRET_ACCESS_KEY=your_secret_key
+# Remove: ANTHROPIC_API_KEY
+
+# Use Claude API directly
+export ANTHROPIC_API_KEY=sk-ant-xxx
+# Remove: AWS_BEDROCK_*
+
+# Use OpenAI (if configured) #TODO future support
+export OPENAI_API_KEY=sk-xxx
+# Remove: ANTHROPIC_API_KEY
+
+# Verify active model
+> /status
+# Shows: "Model: AWS Bedrock (Claude)" or "Model: Anthropic API"
+```
+
+**Recommendation:** Use AWS Bedrock for production workloads (higher rate limits, better reliability).
+
+### Q: Can I use Lobster offline?
+
+**A:** Offline capabilities and limitations:
+
+**What works offline:**
+- Loading local data files
+- Analysis on previously loaded datasets
+- Accessing cached publications/datasets
+- Export and visualization generation
+- Pipeline execution (if cached)
+
+**What requires internet:**
+- LLM API calls (Anthropic, OpenAI, AWS Bedrock)
+- Downloading new GEO datasets
+- PubMed/literature searches
+- Fetching protein structures from PDB
+- ContentAccessService operations
+
+**Partial offline mode:**
+```bash
+# Work with cached content
+> "Show me cached publications"
+> "List available datasets in workspace"
+
+# Use local files only
+> "Load H5AD file from local directory"
+> "Analyze data without fetching external resources"
+```
+
+---
+
+## Data Management Questions (v2.4+)
+
+### Q: How do I access files from my workspace?
+
+**A:** Workspace file access (v2.4+ WorkspaceContentService):
+
+```bash
+# List all workspace content
+> /workspace
+> "What content do I have cached?"
+
+# List by type
+> "Show me cached publications"
+> "List cached datasets"
+> "Show metadata files"
+
+# Access specific content
+> "Show methods from PMID:35042229"
+> "Get sample metadata for GSE180759"
+> "Retrieve validation report for GSE12345"
+
+# Workspace structure
+~/.lobster_workspace/
+├── literature/     # Publications (PMIDs, DOIs)
+├── data/           # Dataset metadata (GSE, SRA)
+└── metadata/       # Custom metadata, mappings
+```
+
+### Q: What's the difference between modalities and workspace files?
+
+**A:** Key differences:
+
+| Aspect | Modalities | Workspace Files |
+|--------|-----------|-----------------|
+| **Type** | Analysis datasets (AnnData) | Research content (JSON) |
+| **Storage** | In-memory + H5AD/MuData | Filesystem (workspace dirs) |
+| **Purpose** | Active analysis data | Cached research content |
+| **Access** | `get_modality()` | `WorkspaceContentService` |
+| **Examples** | rna_seq_normalized, proteomics_filtered | publication_PMID12345, dataset_GSE180759 |
+| **Lifespan** | Session | Persistent across sessions |
+
+**Use modalities for:**
+- Active bioinformatics analysis
+- QC, normalization, clustering
+- Statistical testing, DE analysis
+
+**Use workspace files for:**
+- Caching publications for later reference
+- Storing dataset metadata before download
+- Persistent research context across sessions
+
+```bash
+# Modalities (analysis data)
+> "List all loaded datasets"  # /data command
+
+# Workspace files (research content)
+> "Show cached publications"  # WorkspaceContentService
+```
+
+### Q: How do I export my analysis results?
+
+**A:** Comprehensive export options:
+
+**Session Export:**
+```bash
+# Export entire session
+> /export session
+
+# Includes:
+# - Conversation history
+# - Loaded modalities
+# - Workspace content
+# - Generated plots
+# - Analysis provenance
+```
+
+**Modality Export:**
+```bash
+# Export specific dataset
+> "Export rna_seq_normalized as H5AD"
+> "Save proteomics_data to CSV"
+
+# Export with metadata
+> "Export dataset with full provenance and plots"
+```
+
+**Pipeline Export:**
+```bash
+# Export reproducible notebook
+> /pipeline export my_analysis.ipynb
+
+# Generated notebook includes:
+# - All analysis steps
+# - Parameter configurations
+# - Code snippets (Papermill-ready)
+# - Provenance metadata
+```
+
+**Plot Export:**
+```bash
+# Export visualizations
+> "Export all plots as high-resolution PNG"
+> "Save UMAP plot as SVG for publication"
+
+# Plots saved to workspace/plots/
+```
+
+---
+
+## Services & Features Questions (v2.4+)
+
+### Q: When should I use ContentAccessService vs providers?
+
+**A:** Service vs provider usage:
+
+**Use ContentAccessService (recommended):**
+- Automatic provider selection
+- Three-tier cascade (PMC → Webpage → PDF)
+- Built-in caching and fallback
+- Single API for all content types
+- W3C-PROV provenance tracking
+
+```bash
+# ContentAccessService (high-level)
+> "Read full publication PMID:35042229"
+> "Search literature for BRCA1"
+> "Discover datasets about breast cancer"
+```
+
+**Direct provider use (advanced):**
+- Debugging specific provider issues
+- Custom provider configuration
+- Testing provider capabilities
+
+```bash
+# Direct provider (low-level, for developers)
+from lobster.tools.providers.pmc_provider import PMCProvider
+provider = PMCProvider()
+# ... manual provider calls
+```
+
+**Recommendation:** Always use ContentAccessService unless you have specific advanced needs.
+
+### Q: How do I visualize protein structures?
+
+**A:** Protein visualization with PyMOL (v2.4+):
+
+**Step 1: Install PyMOL**
+```bash
+# Automated installation
+make install-pymol
+
+# Or manual
+brew install brewsci/bio/pymol  # macOS
+sudo apt-get install pymol       # Linux
+```
+
+**Step 2: Fetch and Visualize**
+```bash
+# Basic workflow
+> "Fetch protein structure 1AKE"
+> "Visualize 1AKE with PyMOL"
+
+# Interactive mode (opens GUI)
+> "Visualize 1AKE mode=interactive style=cartoon"
+
+# Batch mode (generates PNG)
+> "Visualize 1AKE mode=batch style=surface color_by=bfactor"
+```
+
+**Step 3: Link to Expression Data**
+```bash
+# Connect structures to your omics data
+> "Link protein structures to my RNA-seq data"
+
+# Result: adata.var gets columns:
+# - pdb_structures: comma-separated PDB IDs
+# - has_structure: boolean flag
+```
+
+**Highlight specific residues:**
+```bash
+# Single group
+> "Visualize 1AKE highlight_residues=15,42,89 highlight_color=red"
+
+# Multiple groups (binding site + active site)
+> "Visualize 1AKE highlight_groups='15,42|red|sticks;100-120|blue|surface'"
+```
+
+See [Protein Structure Visualization Guide](40-protein-structure-visualization.md) for details.
+
+### Q: Can I create custom agents?
+
+**A:** Yes! Custom agent development:
+
+**Requirements:**
+- Agent configuration in `config/agent_registry.py`
+- Factory function that returns agent
+- Tools for agent capabilities
+- Optional: handoff tool for supervisor
+
+**Basic structure:**
+```python
+from lobster.config.agent_registry import AgentConfig, AGENT_REGISTRY
+
+AGENT_REGISTRY["my_custom_agent"] = AgentConfig(
+    name="my_custom_agent",
+    display_name="My Custom Agent",
+    description="Specialized analysis for X",
+    factory_function="lobster.agents.my_agent.my_agent",
+    handoff_tool_name="handoff_to_my_custom_agent",
+    handoff_tool_description="When to use this agent"
+)
+```
+
+See [Creating Agents Guide](09-creating-agents.md) and [Custom Agent Tutorial](26-tutorial-custom-agent.md).
+
+---
+
+## Performance Questions (v2.4+)
+
+### Q: How do I speed up large dataset analysis?
+
+**A:** Performance optimization strategies:
+
+**1. Use Cloud Processing:**
+```bash
+# For datasets >50K cells or >10GB
+export LOBSTER_CLOUD_KEY="your-key"
+lobster chat
+> "Process this large dataset on cloud infrastructure"
+```
+
+**2. Enable Caching:**
+```bash
+# ContentAccessService caches automatically
+# DataManagerV2 caches modalities
+
+# Check cache usage
+> /workspace
+# Shows cached content size
+```
+
+**3. Sparse Matrix Conversion:**
+```bash
+# Convert dense to sparse (saves memory)
+> "Convert to sparse matrix format"
+# Can reduce memory by 10-100x for scRNA-seq
+```
+
+**4. Subsample for Testing:**
+```bash
+# Test parameters on subset
+> "Subsample 1000 cells for parameter testing"
+> "Once optimized, run on full dataset"
+```
+
+**5. Parallel Processing:**
+```bash
+# Use multiple cores (automatic in most services)
+export LOBSTER_N_CORES=8
+lobster chat
+```
+
+### Q: What's the recommended hardware for Lobster?
+
+**A:** Hardware recommendations by use case:
+
+**Minimum (Small Datasets <10K cells):**
+- CPU: 4 cores
+- RAM: 8GB
+- Storage: 10GB free
+- Network: Stable internet for API calls
+
+**Recommended (Medium Datasets 10K-100K cells):**
+- CPU: 8+ cores
+- RAM: 16-32GB
+- Storage: 50GB+ SSD
+- Network: High-speed internet
+
+**Advanced (Large Datasets >100K cells):**
+- CPU: 16+ cores or use cloud
+- RAM: 64GB+ or use cloud
+- Storage: 100GB+ NVMe SSD
+- Network: Gigabit ethernet
+- **Alternative:** Use cloud mode with LOBSTER_CLOUD_KEY
+
+**Cloud Mode (Any Size):**
+- Local: Just need API access
+- Cloud handles: All compute and storage
+- Recommended for: >100K cells, >10GB datasets
+
+### Q: How do I reduce memory usage?
+
+**A:** Memory reduction techniques:
+
+**1. Use Sparse Matrices:**
+```bash
+> "Convert data to sparse format"
+# Saves 10-100x memory for sparse data (scRNA-seq)
+```
+
+**2. Filter Early:**
+```bash
+# Remove low-quality cells/genes before downstream analysis
+> "Filter cells with <200 genes"
+> "Keep only highly variable genes"
+```
+
+**3. Chunked Processing:**
+```bash
+# Process in batches
+> "Process this dataset in chunks of 10,000 cells"
+```
+
+**4. Delete Unused Modalities:**
+```bash
+# Remove intermediate datasets
+> "Delete modality rna_seq_raw"  # Keep only final version
+```
+
+**5. Monitor Usage:**
+```bash
+# Check memory consumption
+> /dashboard
+
+# Shows:
+# - RAM usage
+# - Disk usage
+# - Active modalities
+# - Cache sizes
+```
+
+**6. Use Cloud Mode:**
+```bash
+# Offload to cloud resources
+export LOBSTER_CLOUD_KEY="your-key"
+> "Process this memory-intensive analysis on cloud"
+```
+
+---
+
+## Troubleshooting Questions (v2.4+)
+
+### Q: Why is my analysis taking so long?
+
+**A:** Performance debugging:
+
+**Check 1: Dataset Size**
+```bash
+> "Show dataset statistics"
+# Look for: number of cells, genes, total size
+
+# If very large (>100K cells):
+> "Use cloud processing for faster analysis"
+```
+
+**Check 2: Operation Type**
+```bash
+# Some operations are inherently slow:
+# - Slow: UMAP (minutes), clustering (minutes)
+# - Fast: QC metrics (seconds), filtering (seconds)
+```
+
+**Check 3: System Resources**
+```bash
+> /dashboard
+# Check: CPU usage, RAM usage, disk I/O
+
+# If maxed out:
+> "Reduce dataset size or use cloud mode"
+```
+
+**Check 4: Provider Performance**
+```bash
+# For ContentAccessService operations
+> "Query capabilities"
+# Shows provider performance tiers
+
+# PMC XML: 500ms-2s (fast)
+# Webpage/PDF: 2-8s (slower)
+```
+
+### Q: How do I debug failed analyses?
+
+**A:** Debugging workflow:
+
+**Step 1: Check Status**
+```bash
+> /status
+# Shows: system health, loaded data, errors
+```
+
+**Step 2: Enable Debug Mode**
+```bash
+# Start with verbose output
+lobster chat --debug --verbose
+
+# Or during session
+> "Enable detailed error reporting"
+```
+
+**Step 3: Review Error Messages**
+```bash
+# Lobster provides helpful error context
+# Look for:
+# - Specific error type
+# - Suggested solutions
+# - Related documentation links
+```
+
+**Step 4: Check Provenance**
+```bash
+# Review what was executed
+> "Show analysis history and provenance"
+> /pipeline list
+
+# Identify where failure occurred
+```
+
+**Step 5: Test Smaller Scope**
+```bash
+# Isolate the problem
+> "Test this analysis on a small subset"
+> "Run just the preprocessing step"
+```
+
+**Step 6: Generate Diagnostic Report**
+```bash
+> "Generate diagnostic report for troubleshooting"
+
+# Includes:
+# - System info
+# - Error logs
+# - Workspace state
+# - Recent operations
+```
+
+### Q: What do I do if I run out of disk space?
+
+**A:** Disk space management:
+
+**Check Usage:**
+```bash
+# Terminal
+df -h ~
+du -sh ~/.lobster_workspace/
+
+# In Lobster
+> /workspace
+# Shows workspace size
+```
+
+**Clean Workspace:**
+```bash
+# Remove old cached content (>30 days)
+find ~/.lobster_workspace/ -mtime +30 -delete
+
+# Or in Lobster
+> "Clear old cached publications from workspace"
+```
+
+**Archive Old Workspaces:**
+```bash
+# Backup and compress
+tar -czf lobster_backup_$(date +%Y%m%d).tar.gz ~/.lobster_workspace/
+
+# Delete original
+rm -rf ~/.lobster_workspace/
+
+# Lobster will recreate on next run
+```
+
+**Move to Larger Disk:**
+```bash
+# Move workspace to external drive
+mv ~/.lobster_workspace /mnt/external/lobster_workspace
+
+# Create symlink
+ln -s /mnt/external/lobster_workspace ~/.lobster_workspace
+```
+
+**Use S3 Backend:**
+```bash
+# Store data in cloud (v2.4+)
+export AWS_ACCESS_KEY_ID=your_key
+export AWS_SECRET_ACCESS_KEY=your_secret
+> "Use S3 backend for data storage"
+```
+
+**Set Size Limits:**
+```bash
+# Prevent workspace from growing too large
+export LOBSTER_MAX_WORKSPACE_SIZE_MB=500
+lobster chat
+```
+
+### Q: ContentAccessService says "not available" - how do I fix it?
+
+**A:** ContentAccessService troubleshooting:
+
+**Check 1: Service Initialization**
+```bash
+> "Query available capabilities"
+
+# Should show all 5 providers:
+# - AbstractProvider
+# - PubMedProvider
+# - GEOProvider
+# - PMCProvider
+# - WebpageProvider
+
+# If missing providers, service not properly initialized
+```
+
+**Check 2: Dependencies**
+```bash
+# Install optional dependencies
+pip install lobster[docling]
+
+# Verify
+python -c "import docling; print('OK')"
+```
+
+**Check 3: Restart**
+```bash
+# Clean restart
+rm -rf ~/.lobster_workspace/
+lobster chat
+```
+
+**Check 4: Check Logs**
+```bash
+# Enable debug logging
+lobster chat --debug
+
+# Look for initialization errors
+```
+
+**If still failing:**
+```bash
+# Use alternative methods
+> "Get abstract for PMID:12345"  # Simpler, always works
+> "Search PubMed directly"  # Bypass ContentAccessService
+```
+
+See [Troubleshooting Guide](28-troubleshooting.md) for detailed solutions.
+
+### Q: How do I resolve "permission denied" errors in workspace?
+
+**A:** Workspace permission fixes:
+
+**Fix Ownership:**
+```bash
+# Take ownership of workspace
+chown -R $USER:$USER ~/.lobster_workspace/
+```
+
+**Fix Permissions:**
+```bash
+# Make readable/writable
+chmod -R u+rw ~/.lobster_workspace/
+
+# Directories need execute permission
+chmod -R u+rwx ~/.lobster_workspace/*/
+```
+
+**Check SELinux (Linux):**
+```bash
+# If SELinux is enforcing
+getenforce
+
+# Temporarily disable for testing
+sudo setenforce 0
+
+# Don't disable permanently in production!
+```
+
+**Fresh Workspace:**
+```bash
+# Nuclear option: delete and recreate
+rm -rf ~/.lobster_workspace/
+lobster chat  # Recreates with correct permissions
+```
+
+**Alternative Location:**
+```bash
+# Use different path with proper permissions
+lobster chat --workspace /path/with/write/access
+```
+
+---
+
 ## Additional Resources
 
 ### Q: Where can I find more examples and tutorials?
@@ -611,4 +1289,4 @@ See the [Custom Agent Tutorial](26-tutorial-custom-agent.md) for details.
 
 ---
 
-This FAQ covers the most common questions about Lobster AI. For additional information, consult the comprehensive [documentation](../README.md) or reach out to the community through the support channels listed above.
+This FAQ covers the most common questions about Lobster AI. For additional information, consult the comprehensive [documentation](README.md) or reach out to the community through the support channels listed above.

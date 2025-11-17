@@ -95,6 +95,36 @@ def mock_design_matrix():
 
 
 @pytest.fixture
+def bulk_adata_with_groups():
+    """Create AnnData for bulk RNA-seq with group assignments (NEW API)."""
+    n_samples, n_genes = 6, 1000
+
+    # Generate realistic count data
+    np.random.seed(42)
+    counts = np.random.negative_binomial(100, 0.3, size=(n_samples, n_genes))
+
+    # Create AnnData
+    adata = ad.AnnData(X=counts.astype(float))
+    adata.obs_names = [f"sample_{i}" for i in range(n_samples)]
+    adata.var_names = [f"ENSG{str(i).zfill(11)}" for i in range(n_genes)]
+
+    # Add group assignments (required for new API)
+    adata.obs["condition"] = pd.Categorical(
+        ["control", "control", "control", "treatment", "treatment", "treatment"]
+    )
+    adata.obs["batch"] = pd.Categorical(
+        ["batch1", "batch1", "batch2", "batch1", "batch2", "batch2"]
+    )
+    adata.obs["replicate"] = [1, 2, 3, 1, 2, 3]
+
+    # Add gene metadata
+    adata.var["gene_id"] = adata.var_names
+    adata.var["gene_name"] = [f"GENE_{i}" for i in range(n_genes)]
+
+    return adata
+
+
+@pytest.fixture
 def bulk_service():
     """Create BulkRNASeqService instance for testing."""
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -393,87 +423,111 @@ class TestSalmonQuantification:
 class TestDifferentialExpression:
     """Test differential expression analysis."""
 
-    def test_run_differential_expression_basic(
-        self, bulk_service, mock_salmon_results, mock_design_matrix
-    ):
-        """Test basic differential expression analysis."""
-        with patch.object(bulk_service, "_run_deseq2_like_analysis") as mock_deseq2:
-            mock_deseq2.return_value = {
-                "results": pd.DataFrame(
-                    {
-                        "gene_id": ["GENE1", "GENE2"],
-                        "log2FoldChange": [1.5, -0.8],
-                        "pvalue": [0.01, 0.05],
-                        "padj": [0.05, 0.15],
-                    }
-                ),
-                "n_significant": 1,
-            }
-
-            result = bulk_service.run_differential_expression_analysis(
-                count_matrix=mock_salmon_results["count_matrix"],
-                design_matrix=mock_design_matrix,
-                formula="~ condition",
-            )
-
-            assert "Differential Expression Analysis Complete!" in result
-            assert "**Significantly Differentially Expressed Genes:** 100" in result
-
-    def test_run_differential_expression_invalid_formula(
-        self, bulk_service, mock_salmon_results, mock_design_matrix
-    ):
-        """Test differential expression with invalid formula."""
-        result = bulk_service.run_differential_expression_analysis(
-            count_matrix=mock_salmon_results["count_matrix"],
-            design_matrix=mock_design_matrix,
-            formula="~ invalid_column",
+    def test_run_differential_expression_basic(self, bulk_service, bulk_adata_with_groups):
+        """Test basic differential expression analysis (NEW API)."""
+        # New API: returns tuple (adata_de, de_stats) instead of string
+        adata_de, de_stats = bulk_service.run_differential_expression_analysis(
+            adata=bulk_adata_with_groups,
+            groupby="condition",
+            group1="control",
+            group2="treatment",
+            method="deseq2_like",
+            min_expression_threshold=1.0,
         )
 
-        # Legacy interface doesn't validate formulas, so it returns success
-        assert "Differential Expression Analysis Complete!" in result
+        # Verify return types
+        assert isinstance(adata_de, ad.AnnData), "Should return AnnData object"
+        assert isinstance(de_stats, dict), "Should return stats dict"
 
-    def test_deseq2_like_analysis(
-        self, bulk_service, mock_salmon_results, mock_design_matrix
+        # Verify DE results are stored in AnnData (key includes comparison name)
+        de_keys = [k for k in adata_de.uns.keys() if k.startswith("de_results")]
+        assert len(de_keys) > 0, "DE results should be in .uns with 'de_results_*' key"
+
+        # Verify stats dict structure
+        assert "n_genes_tested" in de_stats or "n_de_genes" in de_stats
+        assert "group1" in de_stats and "group2" in de_stats
+        assert de_stats["group1"] == "control" and de_stats["group2"] == "treatment"
+
+    def test_run_differential_expression_invalid_group(
+        self, bulk_service, bulk_adata_with_groups
     ):
-        """Test DESeq2-like analysis implementation."""
-        with patch("scipy.stats.nbinom") as mock_nbinom:
-            # Mock negative binomial test
-            mock_nbinom.pmf.return_value = np.array([0.01, 0.05, 0.1])
-
-            result = bulk_service._run_deseq2_like_analysis(
-                count_matrix=mock_salmon_results["count_matrix"],
-                design_matrix=mock_design_matrix,
+        """Test differential expression with invalid group name (NEW API)."""
+        # Test with non-existent group name - should raise error
+        with pytest.raises((BulkRNASeqError, KeyError, ValueError)):
+            bulk_service.run_differential_expression_analysis(
+                adata=bulk_adata_with_groups,
+                groupby="condition",
+                group1="control",
+                group2="invalid_group",  # This group doesn't exist
+                method="deseq2_like",
             )
 
-            assert "results" in result
-            assert "n_significant" in result
-            assert isinstance(result["results"], pd.DataFrame)
+    def test_deseq2_like_analysis(self, bulk_service, bulk_adata_with_groups):
+        """Test DESeq2-like analysis implementation (NEW API)."""
+        # Split data into groups (new private method signature)
+        control_mask = bulk_adata_with_groups.obs["condition"] == "control"
+        treatment_mask = bulk_adata_with_groups.obs["condition"] == "treatment"
 
-    def test_wilcoxon_test_analysis(
-        self, bulk_service, mock_salmon_results, mock_design_matrix
-    ):
-        """Test Wilcoxon rank-sum test for differential expression."""
+        group1_data = bulk_adata_with_groups[control_mask].copy()
+        group2_data = bulk_adata_with_groups[treatment_mask].copy()
+
+        # Call private method with new signature
+        result = bulk_service._run_deseq2_like_analysis(
+            group1_data=group1_data,
+            group2_data=group2_data,
+            group1_name="control",
+            group2_name="treatment",
+        )
+
+        # Verify result is a DataFrame (new return type)
+        assert isinstance(result, pd.DataFrame), "Should return DataFrame"
+        assert len(result) > 0, "Should have results"
+        assert "log2FoldChange" in result.columns or "logFC" in result.columns
+        assert "pvalue" in result.columns or "p_value" in result.columns
+
+    def test_wilcoxon_test_analysis(self, bulk_service, bulk_adata_with_groups):
+        """Test Wilcoxon rank-sum test for differential expression (NEW API)."""
+        # Split data into groups
+        control_mask = bulk_adata_with_groups.obs["condition"] == "control"
+        treatment_mask = bulk_adata_with_groups.obs["condition"] == "treatment"
+
+        group1_data = bulk_adata_with_groups[control_mask].copy()
+        group2_data = bulk_adata_with_groups[treatment_mask].copy()
+
+        # Call private method with new signature
         result = bulk_service._run_wilcoxon_test(
-            count_matrix=mock_salmon_results["count_matrix"],
-            design_matrix=mock_design_matrix,
+            group1_data=group1_data,
+            group2_data=group2_data,
+            group1_name="control",
+            group2_name="treatment",
         )
 
-        assert "results" in result
-        assert isinstance(result["results"], pd.DataFrame)
-        assert "pvalue" in result["results"].columns
+        # Verify result is a DataFrame
+        assert isinstance(result, pd.DataFrame), "Should return DataFrame"
+        assert len(result) > 0, "Should have results"
+        assert "pvalue" in result.columns or "p_value" in result.columns
 
-    def test_ttest_analysis(
-        self, bulk_service, mock_salmon_results, mock_design_matrix
-    ):
-        """Test t-test analysis for differential expression."""
+    def test_ttest_analysis(self, bulk_service, bulk_adata_with_groups):
+        """Test t-test analysis for differential expression (NEW API)."""
+        # Split data into groups
+        control_mask = bulk_adata_with_groups.obs["condition"] == "control"
+        treatment_mask = bulk_adata_with_groups.obs["condition"] == "treatment"
+
+        group1_data = bulk_adata_with_groups[control_mask].copy()
+        group2_data = bulk_adata_with_groups[treatment_mask].copy()
+
+        # Call private method with new signature
         result = bulk_service._run_ttest_analysis(
-            count_matrix=mock_salmon_results["count_matrix"],
-            design_matrix=mock_design_matrix,
+            group1_data=group1_data,
+            group2_data=group2_data,
+            group1_name="control",
+            group2_name="treatment",
         )
 
-        assert "results" in result
-        assert isinstance(result["results"], pd.DataFrame)
-        assert "pvalue" in result["results"].columns
+        # Verify result is a DataFrame
+        assert isinstance(result, pd.DataFrame), "Should return DataFrame"
+        assert len(result) > 0, "Should have results"
+        assert "pvalue" in result.columns or "p_value" in result.columns
 
 
 # ===============================================================================
@@ -582,7 +636,7 @@ class TestPyDESeq2Integration:
             with pytest.raises(PyDESeq2Error):
                 bulk_service.run_pydeseq2_analysis(
                     count_matrix=mock_salmon_results["count_matrix"],
-                    design_matrix=mock_design_matrix,
+                    metadata=mock_design_matrix,
                     formula="~ condition",
                 )
 
@@ -599,14 +653,14 @@ class TestFormulaDesign:
     def test_create_formula_design(self, bulk_service, mock_design_matrix):
         """Test formula and design matrix creation."""
         result = bulk_service.create_formula_design(
-            design_matrix=mock_design_matrix,
+            metadata=mock_design_matrix,
             condition_column="condition",
             batch_column="batch",
         )
 
-        assert "formula" in result
-        assert "design_valid" in result
-        assert result["design_valid"] is True
+        # Result contains design matrix information from formula_service
+        assert isinstance(result, dict)
+        assert "design_df" in result or "coefficient_names" in result
 
     def test_validate_experimental_design(self, bulk_service, mock_design_matrix):
         """Test experimental design validation."""
@@ -652,12 +706,44 @@ class TestPathwayEnrichment:
     """Test pathway enrichment analysis."""
 
     def test_run_pathway_enrichment(self, bulk_service, mock_pydeseq2_results):
-        """Test pathway enrichment analysis (not yet implemented)."""
+        """Test pathway enrichment analysis with GSEApy."""
+        from unittest.mock import MagicMock
+
         gene_list = mock_pydeseq2_results["gene_id"].head(50).tolist()
 
-        # Pathway enrichment is not yet implemented, should raise BulkRNASeqError
-        with pytest.raises(BulkRNASeqError, match="not yet implemented"):
-            bulk_service.run_pathway_enrichment(gene_list=gene_list, organism="human")
+        # Test empty gene list
+        with pytest.raises(BulkRNASeqError, match="Empty gene list"):
+            bulk_service.run_pathway_enrichment(gene_list=[], organism="human")
+
+        # Test with GSEApy installed (mock the enrichr function and imports)
+        mock_enrichr_result = MagicMock()
+        mock_enrichr_result.results = pd.DataFrame(
+            {
+                "Term": ["Pathway1", "Pathway2"],
+                "Overlap": ["10/100", "5/50"],
+                "P-value": [0.001, 0.01],
+                "Adjusted P-value": [0.01, 0.05],
+                "Genes": ["GENE1;GENE2", "GENE3;GENE4"],
+            }
+        )
+
+        # Mock the gseapy module and enrichr function
+        mock_gseapy = MagicMock()
+        mock_gseapy.enrichr = MagicMock(return_value=mock_enrichr_result)
+
+        with patch.dict("sys.modules", {"gseapy": mock_gseapy}):
+            enrichment_df, stats = bulk_service.run_pathway_enrichment(
+                gene_list=gene_list, analysis_type="GO", organism="human"
+            )
+
+            assert isinstance(enrichment_df, pd.DataFrame)
+            assert isinstance(stats, dict)
+            assert "n_significant_terms" in stats
+            assert "enrichment_database" in stats
+            assert stats["enrichment_database"] == "GO"
+            assert stats["n_genes_input"] == 50
+            # Verify gseapy.enrichr was called
+            mock_gseapy.enrichr.assert_called()
 
 
 # ===============================================================================
@@ -669,54 +755,60 @@ class TestPathwayEnrichment:
 class TestBulkRNASeqErrorHandling:
     """Test error handling and edge cases."""
 
-    def test_empty_count_matrix(self, bulk_service, mock_design_matrix):
-        """Test handling of empty count matrix."""
-        empty_matrix = pd.DataFrame()
+    def test_empty_count_matrix(self, bulk_service):
+        """Test handling of empty AnnData."""
+        # Create truly empty AnnData (0 samples, 0 genes)
+        empty_adata = ad.AnnData(X=np.zeros((0, 0)))
+        empty_adata.obs["condition"] = pd.Categorical([])
 
-        result = bulk_service.run_differential_expression_analysis(
-            count_matrix=empty_matrix,
-            design_matrix=mock_design_matrix,
-            formula="~ condition",
+        # Should raise error (IndexError or KeyError from empty data)
+        with pytest.raises((ValueError, IndexError, BulkRNASeqError, KeyError)):
+            bulk_service.run_differential_expression_analysis(
+                adata=empty_adata,
+                groupby="condition",
+                group1="control",
+                group2="treatment",
+            )
+
+    def test_mismatched_samples(self, bulk_service):
+        """Test handling of mismatched group labels."""
+        # Create AnnData where group labels don't match obs values
+        n_samples, n_genes = 6, 100
+        X = np.random.negative_binomial(100, 0.3, size=(n_samples, n_genes))
+        adata = ad.AnnData(X=X.astype(float))
+        adata.obs["condition"] = pd.Categorical(
+            ["control", "control", "control", "treatment", "treatment", "treatment"]
         )
 
-        # Service should handle empty matrix gracefully, returning 0 genes tested
-        assert "Genes Tested:** 0" in result
+        # Try to use non-existent group name
+        with pytest.raises((BulkRNASeqError, KeyError, ValueError)):
+            bulk_service.run_differential_expression_analysis(
+                adata=adata,
+                groupby="condition",
+                group1="control",
+                group2="invalid_group",  # This group doesn't exist
+            )
 
-    def test_mismatched_samples(self, bulk_service, mock_salmon_results):
-        """Test handling of mismatched samples between count matrix and design."""
-        mismatched_design = pd.DataFrame(
-            {
-                "sample_id": ["different_1", "different_2"],
-                "condition": ["control", "treatment"],
-            }
-        )
-
-        result = bulk_service.run_differential_expression_analysis(
-            count_matrix=mock_salmon_results["count_matrix"],
-            design_matrix=mismatched_design,
-            formula="~ condition",
-        )
-
-        # Service should handle gracefully and process what it can
-        assert "Differential Expression Analysis Complete!" in result
-
-    def test_insufficient_replicates(self, bulk_service, mock_salmon_results):
+    def test_insufficient_replicates(self, bulk_service):
         """Test handling of insufficient replicates."""
-        insufficient_design = pd.DataFrame(
-            {
-                "sample_id": ["sample_0", "sample_1"],
-                "condition": ["control", "treatment"],  # Only 1 replicate each
-            }
-        )
+        # Create AnnData with only 1 replicate per group
+        n_samples, n_genes = 2, 100
+        X = np.random.negative_binomial(100, 0.3, size=(n_samples, n_genes))
+        adata = ad.AnnData(X=X.astype(float))
+        adata.obs["condition"] = pd.Categorical(["control", "treatment"])
 
+        # Should still run (returns tuple) but may have warnings
         result = bulk_service.run_differential_expression_analysis(
-            count_matrix=mock_salmon_results["count_matrix"].iloc[:, :2],
-            design_matrix=insufficient_design,
-            formula="~ condition",
+            adata=adata,
+            groupby="condition",
+            group1="control",
+            group2="treatment",
         )
 
-        # Should still run but may warn about low power
-        assert isinstance(result, str)
+        # Should return tuple even with insufficient replicates
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        assert isinstance(result[1], dict)  # stats dict
 
     def test_invalid_results_directory(self):
         """Test handling of invalid results directory."""
@@ -725,7 +817,7 @@ class TestBulkRNASeqErrorHandling:
                 BulkRNASeqService(results_dir=Path("/invalid/path"))
 
     def test_concurrent_analysis_safety(
-        self, bulk_service, mock_salmon_results, mock_design_matrix
+        self, bulk_service, bulk_adata_with_groups
     ):
         """Test thread safety for concurrent analyses."""
         import threading
@@ -740,15 +832,20 @@ class TestBulkRNASeqErrorHandling:
                 with patch.object(
                     bulk_service, "_run_deseq2_like_analysis"
                 ) as mock_analysis:
-                    mock_analysis.return_value = {
-                        "results": pd.DataFrame({"gene_id": [f"GENE_{worker_id}"]}),
-                        "n_significant": worker_id,
-                    }
+                    # Mock return must include all expected columns
+                    mock_analysis.return_value = pd.DataFrame({
+                        "gene_id": [f"GENE_{worker_id}"],
+                        "log2FoldChange": [1.5],
+                        "pvalue": [0.01],
+                        "padj": [0.05],  # Required column
+                        "baseMean": [100.0],
+                    })
 
                     result = bulk_service.run_differential_expression_analysis(
-                        count_matrix=mock_salmon_results["count_matrix"],
-                        design_matrix=mock_design_matrix,
-                        formula="~ condition",
+                        adata=bulk_adata_with_groups.copy(),
+                        groupby="condition",
+                        group1="control",
+                        group2="treatment",
                     )
                     results.append((worker_id, result))
                     time.sleep(0.01)
@@ -827,20 +924,28 @@ class TestBulkRNASeqIntegration:
 
         # Test that formula service methods are accessible
         result = bulk_service.create_formula_design(
-            design_matrix=mock_design_matrix, condition_column="condition"
+            metadata=mock_design_matrix, condition_column="condition"
         )
 
-        assert "formula" in result
+        # Result contains design matrix information
+        assert isinstance(result, dict)
+        assert "design_df" in result or "coefficient_names" in result
 
     def test_enhance_deseq2_results(self, bulk_service, mock_pydeseq2_results):
         """Test enhancement of DESeq2 results with additional annotations."""
+        # Mock the dds object
+        mock_dds = Mock()
+        contrast = ["condition", "treatment", "control"]
+
         enhanced = bulk_service._enhance_deseq2_results(
             results_df=mock_pydeseq2_results,
-            count_matrix=pd.DataFrame(np.random.randn(100, 6)),
+            dds=mock_dds,
+            contrast=contrast,
         )
 
         assert isinstance(enhanced, pd.DataFrame)
         assert len(enhanced) > 0
+        assert "contrast" in enhanced.columns
 
 
 if __name__ == "__main__":

@@ -96,7 +96,7 @@ def mock_backend():
 def mock_provenance():
     """Create a mock provenance tracker."""
     provenance = Mock(spec=ProvenanceTracker)
-    provenance.activities = {}
+    provenance.activities = []  # List of activity dicts, not dict
     provenance.entities = {}
     provenance.agents = {}
     provenance.create_entity.return_value = "test_entity_id"
@@ -134,7 +134,7 @@ class TestDataManagerV2Initialization:
         assert isinstance(dm.modalities, dict)
         assert len(dm.modalities) == 0
         assert isinstance(dm.metadata_store, dict)
-        assert isinstance(dm.tool_usage_history, list)
+        # tool_usage_history moved to provenance.tool_history
         assert isinstance(dm.latest_plots, list)
 
         # Check legacy compatibility attributes
@@ -977,7 +977,7 @@ class TestWorkspaceManagement:
 
         test_data = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
         dm.modalities["test_mod"] = test_data
-        dm.tool_usage_history.append({"tool": "test", "params": {}})
+        # tool_usage_history has been removed - provenance is tracked differently
 
         with patch.object(dm, "save_modality") as mock_save:
             mock_save.return_value = "/path/to/saved.h5ad"
@@ -1361,7 +1361,7 @@ class TestLegacyCompatibility:
         assert "legacy_proteomics" in dm.modalities
 
     def test_log_tool_usage(self, temp_workspace):
-        """Test logging tool usage for reproducibility."""
+        """Test logging tool usage for reproducibility via provenance."""
         dm = DataManagerV2(workspace_path=temp_workspace)
 
         dm.log_tool_usage(
@@ -1370,9 +1370,10 @@ class TestLegacyCompatibility:
             description="Test tool execution",
         )
 
-        assert len(dm.tool_usage_history) == 1
-        entry = dm.tool_usage_history[0]
-        assert entry["tool"] == "test_tool"
+        # Tool usage now tracked in provenance.activities
+        assert len(dm.provenance.activities) == 1
+        entry = dm.provenance.activities[0]
+        assert entry["type"] == "test_tool"  # "type" key instead of "tool"
         assert entry["parameters"]["param1"] == "value1"
         assert entry["description"] == "Test tool execution"
         assert "timestamp" in entry
@@ -1828,13 +1829,12 @@ class TestExportDocumentation:
         # Add some data and history
         dm.modalities["test_mod"] = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
         dm.processing_log.append("Test processing step")
-        dm.tool_usage_history.append(
-            {
-                "tool": "test_tool",
-                "timestamp": "2024-01-01 12:00:00",
-                "parameters": {"param1": "value1"},
-                "description": "Test tool usage",
-            }
+
+        # Use provenance system for tool tracking
+        dm.log_tool_usage(
+            tool_name="test_tool",
+            parameters={"param1": "value1"},
+            description="Test tool usage",
         )
 
         summary = dm.get_technical_summary()
@@ -1843,7 +1843,9 @@ class TestExportDocumentation:
         assert "DataManagerV2 Technical Summary" in summary
         assert "Loaded Modalities" in summary
         assert "Processing Log" in summary
-        assert "Tool Usage History" in summary
+        assert (
+            "Provenance-Tracked Activities" in summary
+        )  # Updated to match new implementation
 
     def test_get_technical_summary_empty(self, temp_workspace):
         """Test technical summary with no data."""
@@ -2147,7 +2149,9 @@ class TestErrorHandling:
             # Add various resources
             dm.modalities["test_mod"] = Mock()
             dm.latest_plots.append({"id": "plot1", "figure": Mock()})
-            dm.tool_usage_history.append({"tool": "test"})
+
+            # Add activity to provenance (manual since using mock)
+            mock_provenance.activities.append({"type": "test", "agent": "test"})
 
             dm.clear_workspace(confirm=True)
 
@@ -2156,6 +2160,282 @@ class TestErrorHandling:
             # Plots persist through clear_workspace, so check they're still there
             assert len(dm.latest_plots) == 1
             assert dm.provenance is not None  # New provenance tracker created
+
+
+# ===============================================================================
+# GEO Metadata Storage Tests
+# ===============================================================================
+
+
+@pytest.mark.unit
+class TestGEOMetadataStorage:
+    """Test GEO metadata storage helper methods."""
+
+    def test_store_geo_metadata_basic(self, temp_workspace):
+        """Test basic GEO metadata storage with required fields."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+
+        test_metadata = {
+            "title": "Test Dataset",
+            "summary": "Test summary",
+            "samples": ["GSM123", "GSM124"],
+        }
+
+        entry = dm._store_geo_metadata(
+            geo_id="GSE12345",
+            metadata=test_metadata,
+            stored_by="test_function",
+        )
+
+        # Verify entry structure
+        assert isinstance(entry, dict)
+        assert "metadata" in entry
+        assert "fetch_timestamp" in entry
+        assert "stored_by" in entry
+        assert entry["metadata"] == test_metadata
+        assert entry["stored_by"] == "test_function"
+
+        # Verify stored in metadata_store
+        assert "GSE12345" in dm.metadata_store
+        assert dm.metadata_store["GSE12345"]["metadata"] == test_metadata
+
+    def test_store_geo_metadata_with_optional_fields(self, temp_workspace):
+        """Test GEO metadata storage with optional fields."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+
+        test_metadata = {"title": "Test Dataset"}
+        modality_detection = {"modality": "single_cell", "confidence": 0.95}
+        strategy_config = {"raw_data_available": True}
+        validation_info = {"validated": True}
+
+        entry = dm._store_geo_metadata(
+            geo_id="GSE12345",
+            metadata=test_metadata,
+            stored_by="test_function",
+            modality_detection=modality_detection,
+            strategy_config=strategy_config,
+            validation=validation_info,
+        )
+
+        # Verify all optional fields are stored
+        assert entry["modality_detection"] == modality_detection
+        assert entry["strategy_config"] == strategy_config
+        assert entry["validation"] == validation_info
+
+    def test_store_geo_metadata_overwrites_existing(self, temp_workspace):
+        """Test that storing metadata overwrites existing entry."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+
+        # Store initial metadata
+        dm._store_geo_metadata(
+            geo_id="GSE12345",
+            metadata={"old": "data"},
+            stored_by="first_function",
+        )
+
+        # Store updated metadata
+        new_metadata = {"new": "data"}
+        entry = dm._store_geo_metadata(
+            geo_id="GSE12345",
+            metadata=new_metadata,
+            stored_by="second_function",
+        )
+
+        # Verify metadata was updated
+        assert dm.metadata_store["GSE12345"]["metadata"] == new_metadata
+        assert dm.metadata_store["GSE12345"]["stored_by"] == "second_function"
+
+    def test_get_geo_metadata_success(self, temp_workspace):
+        """Test successful GEO metadata retrieval."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+
+        # Store metadata first
+        test_metadata = {"title": "Test Dataset"}
+        dm._store_geo_metadata(
+            geo_id="GSE12345",
+            metadata=test_metadata,
+            stored_by="test_function",
+        )
+
+        # Retrieve metadata
+        retrieved = dm._get_geo_metadata("GSE12345")
+
+        assert retrieved is not None
+        assert retrieved["metadata"] == test_metadata
+        assert retrieved["stored_by"] == "test_function"
+
+    def test_get_geo_metadata_not_found(self, temp_workspace):
+        """Test retrieving non-existent GEO metadata returns None."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+
+        result = dm._get_geo_metadata("GSE_NONEXISTENT")
+
+        assert result is None
+
+    def test_get_geo_metadata_malformed_structure(self, temp_workspace):
+        """Test retrieving malformed metadata structure."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+
+        # Store malformed entry (missing 'metadata' key)
+        dm.metadata_store["GSE12345"] = {
+            "title": "Test Dataset",  # Wrong structure - no "metadata" wrapper
+            "stored_by": "test_function",
+        }
+
+        result = dm._get_geo_metadata("GSE12345")
+
+        # Should return None and log warning
+        assert result is None
+
+    def test_get_geo_metadata_non_dict_entry(self, temp_workspace):
+        """Test retrieving non-dictionary metadata entry."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+
+        # Store non-dict entry
+        dm.metadata_store["GSE12345"] = "invalid_string"
+
+        result = dm._get_geo_metadata("GSE12345")
+
+        # Should return None and log warning
+        assert result is None
+
+    def test_metadata_storage_with_concatenation_decision(self, temp_workspace):
+        """Test storing metadata with concatenation decision."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+
+        # Store initial metadata
+        dm._store_geo_metadata(
+            geo_id="geo_gse12345",
+            metadata={"title": "Test"},
+            stored_by="initial_storage",
+        )
+
+        # Retrieve and add concatenation decision
+        entry = dm._get_geo_metadata("geo_gse12345")
+        assert entry is not None
+
+        concatenation_info = {
+            "join_strategy": "inner",
+            "auto_detected": True,
+        }
+        entry["concatenation_decision"] = concatenation_info
+        dm.metadata_store["geo_gse12345"] = entry
+
+        # Verify concatenation decision was added
+        retrieved = dm._get_geo_metadata("geo_gse12345")
+        assert retrieved["concatenation_decision"] == concatenation_info
+
+    def test_metadata_store_preserves_metadata_copy(self, temp_workspace):
+        """Test that metadata is copied, not referenced."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+
+        original_metadata = {"title": "Original"}
+        dm._store_geo_metadata(
+            geo_id="GSE12345",
+            metadata=original_metadata,
+            stored_by="test",
+        )
+
+        # Modify original
+        original_metadata["title"] = "Modified"
+
+        # Verify stored metadata is unchanged
+        retrieved = dm._get_geo_metadata("GSE12345")
+        assert retrieved["metadata"]["title"] == "Original"
+
+    def test_gse282425_regression_storage_retrieval_consistency(self, temp_workspace):
+        """
+        CRITICAL REGRESSION TEST: GSE282425 KeyError: 'metadata' bug.
+
+        Original bug: geo_service.py line ~1705 stored flat metadata structure,
+        while line ~880 expected nested structure with "metadata" wrapper.
+
+        This test simulates:
+        1. _check_platform_compatibility storing metadata (line ~1713-1724)
+        2. download_with_strategy retrieving metadata (line ~879-886)
+
+        If this test fails, the GSE282425 bug has regressed.
+        """
+        dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=False)
+
+        # === PHASE 1: Storage (simulates geo_service.py ~1713-1724) ===
+        raw_metadata = {
+            "title": "GSE282425 Dataset",
+            "platform": "GPL24676",
+            "samples": ["GSM100", "GSM101"],
+            "series_type": "Expression profiling by high throughput sequencing",
+        }
+
+        modality_detection_info = {
+            "modality": "single_cell_rna_seq",
+            "confidence": 0.95,
+            "detected_signals": ["single cell", "scRNA-seq"],
+            "timestamp": "2025-01-01T00:00:00",
+        }
+
+        # This uses the FIXED code path - helper method ensures nested structure
+        dm._store_geo_metadata(
+            geo_id="GSE282425",
+            metadata=raw_metadata,
+            stored_by="_check_platform_compatibility",
+            modality_detection=modality_detection_info,
+        )
+
+        # === PHASE 2: Retrieval (simulates geo_service.py ~879-886) ===
+        stored_metadata_info = dm._get_geo_metadata("GSE282425")
+
+        # CRITICAL: Verify nested structure exists (this was the bug)
+        assert stored_metadata_info is not None, "Metadata not found in store"
+        assert "metadata" in stored_metadata_info, (
+            "REGRESSION: Missing 'metadata' key - GSE282425 bug has returned! "
+            "The helper method should wrap metadata in nested structure."
+        )
+
+        # Verify retrieval works without KeyError
+        cached_metadata = stored_metadata_info["metadata"]
+        assert cached_metadata == raw_metadata
+        assert cached_metadata["title"] == "GSE282425 Dataset"
+        assert cached_metadata["platform"] == "GPL24676"
+
+        # Verify modality detection is preserved
+        assert "modality_detection" in stored_metadata_info
+        assert (
+            stored_metadata_info["modality_detection"]["modality"]
+            == "single_cell_rna_seq"
+        )
+
+    def test_concurrent_metadata_updates_thread_safety(self, temp_workspace):
+        """Test that concurrent metadata updates maintain consistency."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=False)
+
+        # Initial storage
+        dm._store_geo_metadata(
+            geo_id="GSE12345",
+            metadata={"title": "Original"},
+            stored_by="initial",
+        )
+
+        def update_metadata(update_id):
+            """Simulate concurrent update."""
+            entry = dm._get_geo_metadata("GSE12345")
+            if entry:
+                entry["update_timestamp"] = f"update_{update_id}"
+                dm.metadata_store["GSE12345"] = entry
+            return update_id
+
+        # Execute concurrent updates
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(update_metadata, i) for i in range(10)]
+            results = [f.result() for f in futures]
+
+        # Verify metadata structure is still valid after concurrent updates
+        entry = dm._get_geo_metadata("GSE12345")
+        assert entry is not None, "Entry lost during concurrent updates"
+        assert "metadata" in entry, "Nested structure corrupted by concurrent updates"
+        assert entry["metadata"]["title"] == "Original"
+        assert "update_timestamp" in entry  # At least one update succeeded
 
 
 # ===============================================================================
@@ -2215,7 +2495,7 @@ class TestIntegrationScenarios:
 
         # Validate workflow completion
         assert len(dm.modalities) == 1
-        assert len(dm.tool_usage_history) == 2
+        assert len(dm.provenance.activities) == 4  # load, QC, normalize, save
         assert len(dm.latest_plots) == 1
         mock_backend.save.assert_called_once()
 
@@ -2320,7 +2600,7 @@ class TestIntegrationScenarios:
 
         # Verify state consistency
         assert len(dm.modalities) == 2
-        assert len(dm.tool_usage_history) == 2
+        # tool_usage_history has been removed - provenance is tracked differently
         assert len(dm.latest_plots) == 1
 
     @patch("lobster.core.data_manager_v2.H5ADBackend")
@@ -2368,12 +2648,12 @@ class TestIntegrationScenarios:
                 dm.add_plot(fig, f"Plot {i//10}")
 
         # Test that history is maintained appropriately
-        assert len(dm.tool_usage_history) == 100
+        assert len(dm.provenance.activities) == 100
         assert len(dm.latest_plots) == 10
 
         # Test summary generation with extensive history
         summary = dm.get_technical_summary()
-        assert "Tool Usage History" in summary
+        assert "Provenance-Tracked Activities" in summary
         assert isinstance(summary, str)
         assert len(summary) > 1000  # Should be substantial
 

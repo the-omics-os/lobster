@@ -30,7 +30,6 @@ import pandas as pd
 # from lobster.agents.data_expert import data_expert_agent
 # from lobster.agents.singlecell_expert import singlecell_expert_agent
 # from lobster.agents.research_agent import research_agent
-# from lobster.agents.method_expert import method_expert_agent
 
 # from tests.mock_data.factories import SingleCellDataFactory, BulkRNASeqDataFactory
 # from tests.mock_data.base import SMALL_DATASET_CONFIG, LARGE_DATASET_CONFIG
@@ -219,44 +218,6 @@ class TestBasicAgentWorkflows:
             assert "literature_summary" in result
             assert "recommended_datasets" in result
 
-    def test_method_expert_parameter_extraction(
-        self, mock_agent_client, mock_workflow_state
-    ):
-        """Test method expert workflow for parameter extraction."""
-        state = mock_workflow_state.copy()
-        state["messages"] = [
-            {
-                "content": "Extract clustering parameters from PMID:12345678",
-                "sender": "human",
-            }
-        ]
-        state["current_agent"] = "method_expert_agent"
-
-        with patch("lobster.agents.method_expert.method_expert_agent") as mock_method:
-            mock_method.return_value = {
-                "messages": state["messages"]
-                + [
-                    {
-                        "content": "Extracted parameters from the paper",
-                        "sender": "method_expert_agent",
-                    }
-                ],
-                "extracted_parameters": {
-                    "leiden_resolution": 0.5,
-                    "n_neighbors": 15,
-                    "normalization_method": "log1p",
-                    "target_sum": 10000,
-                },
-                "parameter_confidence": 0.9,
-                "method_reproducibility": "high",
-            }
-
-            result = method_expert_agent(state)
-
-            assert "extracted_parameters" in result
-            assert result["extracted_parameters"]["leiden_resolution"] == 0.5
-            assert result["parameter_confidence"] == 0.9
-
 
 # ===============================================================================
 # Complex Multi-Agent Workflows
@@ -370,13 +331,16 @@ class TestComplexMultiAgentWorkflows:
     def test_research_guided_analysis_workflow(
         self, mock_agent_client, mock_workflow_state
     ):
-        """Test workflow where research agent guides method selection."""
+        """Test workflow where research agent guides method selection (method extraction now handled by research agent)."""
         workflow_states = []
 
-        # Step 1: Research agent finds relevant papers
+        # Step 1: Research agent finds relevant papers and extracts parameters (Phase 1)
         research_state = mock_workflow_state.copy()
         research_state["messages"] = [
-            {"content": "Find best methods for T cell analysis", "sender": "human"}
+            {
+                "content": "Find best methods for T cell analysis and extract parameters",
+                "sender": "human",
+            }
         ]
         research_state["current_agent"] = "research_agent"
 
@@ -385,7 +349,7 @@ class TestComplexMultiAgentWorkflows:
                 "messages": research_state["messages"]
                 + [
                     {
-                        "content": "Found optimal methods for T cell analysis",
+                        "content": "Found optimal methods and extracted parameters for T cell analysis",
                         "sender": "research_agent",
                     }
                 ],
@@ -394,29 +358,6 @@ class TestComplexMultiAgentWorkflows:
                         "pmid": "12345678",
                         "title": "Optimal T cell clustering",
                         "relevance": 0.95,
-                    }
-                ],
-                "next_agent": "method_expert_agent",
-                "handoff_data": {
-                    "target_pmid": "12345678",
-                    "analysis_type": "t_cell_clustering",
-                },
-            }
-
-            research_result = research_agent(research_state)
-            workflow_states.append(research_result)
-
-        # Step 2: Method expert extracts parameters
-        method_state = research_result.copy()
-        method_state["current_agent"] = "method_expert_agent"
-
-        with patch("lobster.agents.method_expert.method_expert_agent") as mock_method:
-            mock_method.return_value = {
-                "messages": method_state["messages"]
-                + [
-                    {
-                        "content": "Extracted optimal parameters for T cell analysis",
-                        "sender": "method_expert_agent",
                     }
                 ],
                 "extracted_parameters": {
@@ -432,11 +373,11 @@ class TestComplexMultiAgentWorkflows:
                 },
             }
 
-            method_result = method_expert_agent(method_state)
-            workflow_states.append(method_result)
+            research_result = research_agent(research_state)
+            workflow_states.append(research_result)
 
-        # Step 3: Single-cell expert applies optimized parameters
-        sc_state = method_result.copy()
+        # Step 2: Single-cell expert applies optimized parameters
+        sc_state = research_result.copy()
         sc_state["current_agent"] = "singlecell_expert_agent"
 
         with patch(
@@ -461,15 +402,15 @@ class TestComplexMultiAgentWorkflows:
             sc_result = singlecell_expert_agent(sc_state)
             workflow_states.append(sc_result)
 
-        # Verify research-guided workflow
-        assert len(workflow_states) == 3
-        assert workflow_states[1]["optimization_confidence"] == 0.92
+        # Verify research-guided workflow (now 2 steps: research agent + singlecell expert)
+        assert len(workflow_states) == 2
+        assert workflow_states[0]["optimization_confidence"] == 0.92
         assert (
-            workflow_states[2]["analysis_results"]["parameter_source"]
+            workflow_states[1]["analysis_results"]["parameter_source"]
             == "literature_optimized"
         )
         assert (
-            workflow_states[2]["analysis_results"]["improvement_over_default"] == 0.25
+            workflow_states[1]["analysis_results"]["improvement_over_default"] == 0.25
         )
 
     def test_parallel_agent_execution(self, mock_agent_client, mock_workflow_state):
@@ -480,7 +421,10 @@ class TestComplexMultiAgentWorkflows:
         tasks = [
             {"agent": "research_agent", "task": "Find T cell papers"},
             {"agent": "research_agent", "task": "Find B cell papers"},
-            {"agent": "method_expert_agent", "task": "Extract clustering parameters"},
+            {
+                "agent": "research_agent",
+                "task": "Extract clustering parameters from PMID:12345678",
+            },
         ]
 
         def execute_agent_task(task):
@@ -493,23 +437,20 @@ class TestComplexMultiAgentWorkflows:
                 with patch(
                     "lobster.agents.research_agent.research_agent"
                 ) as mock_agent:
-                    mock_agent.return_value = {
-                        "task_id": f"task_{task['task'][:10]}",
-                        "papers_found": 5,
-                        "execution_time": 2.5,
-                    }
+                    # Different response based on task type
+                    if "Extract" in task["task"]:
+                        mock_agent.return_value = {
+                            "task_id": f"task_{task['task'][:10]}",
+                            "parameters_extracted": 8,
+                            "execution_time": 1.8,
+                        }
+                    else:
+                        mock_agent.return_value = {
+                            "task_id": f"task_{task['task'][:10]}",
+                            "papers_found": 5,
+                            "execution_time": 2.5,
+                        }
                     return research_agent(state)
-
-            elif task["agent"] == "method_expert_agent":
-                with patch(
-                    "lobster.agents.method_expert.method_expert_agent"
-                ) as mock_agent:
-                    mock_agent.return_value = {
-                        "task_id": f"task_{task['task'][:10]}",
-                        "parameters_extracted": 8,
-                        "execution_time": 1.8,
-                    }
-                    return method_expert_agent(state)
 
         # Execute tasks in parallel
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
@@ -665,11 +606,11 @@ class TestAgentCommunication:
         assert sc_result["context"]["novel_cell_types_found"] == 3  # From SC expert
 
     def test_cross_agent_data_references(self, mock_agent_client, mock_workflow_state):
-        """Test cross-agent data references and sharing."""
+        """Test cross-agent data references and sharing (research agent now handles parameter extraction)."""
         # Setup shared data registry
         shared_data = {"datasets": {}, "analysis_results": {}, "literature_refs": {}}
 
-        # Research agent adds literature references
+        # Research agent adds literature references and extracts parameters (Phase 1)
         research_state = mock_workflow_state.copy()
         research_state["shared_data"] = shared_data
 
@@ -681,25 +622,9 @@ class TestAgentCommunication:
                         "t_cell_markers": ["PMID:12345678", "PMID:87654321"],
                         "clustering_methods": ["PMID:11111111"],
                     },
-                },
-                "next_agent": "method_expert_agent",
-            }
-
-            research_result = research_agent(research_state)
-
-        # Method expert uses literature references
-        method_state = research_result.copy()
-        method_state["current_agent"] = "method_expert_agent"
-
-        with patch("lobster.agents.method_expert.method_expert_agent") as mock_method:
-            mock_method.return_value = {
-                "shared_data": {
-                    **research_result["shared_data"],
                     "analysis_results": {
                         "optimized_parameters": {
-                            "source_papers": research_result["shared_data"][
-                                "literature_refs"
-                            ]["clustering_methods"],
+                            "source_papers": ["PMID:11111111"],
                             "parameters": {"resolution": 0.5, "n_neighbors": 15},
                         }
                     },
@@ -707,10 +632,10 @@ class TestAgentCommunication:
                 "next_agent": "singlecell_expert_agent",
             }
 
-            method_result = method_expert_agent(method_state)
+            research_result = research_agent(research_state)
 
-        # Single-cell expert applies parameters from method expert
-        sc_state = method_result.copy()
+        # Single-cell expert applies parameters from research agent
+        sc_state = research_result.copy()
         sc_state["current_agent"] = "singlecell_expert_agent"
 
         with patch(
@@ -718,10 +643,10 @@ class TestAgentCommunication:
         ) as mock_sc:
             mock_sc.return_value = {
                 "shared_data": {
-                    **method_result["shared_data"],
+                    **research_result["shared_data"],
                     "datasets": {
                         "clustered_data": {
-                            "parameters_used": method_result["shared_data"][
+                            "parameters_used": research_result["shared_data"][
                                 "analysis_results"
                             ]["optimized_parameters"]["parameters"],
                             "literature_validated": True,
@@ -1095,6 +1020,355 @@ class TestWorkflowStateManagement:
         assert branch_results["high_res"]["clusters_found"] == 15
         assert merged_results["recommended_branch"] == "standard_clustering"
         assert merged_results["branch_comparison"]["best_silhouette"] == 0.72
+
+
+# ===============================================================================
+# Metadata Assistant Coordination Tests (Phase 3)
+# ===============================================================================
+
+
+@pytest.mark.integration
+class TestMetadataAssistantCoordination:
+    """Test metadata_assistant coordination workflows (Phase 3).
+
+    Tests handoff patterns between research_agent, supervisor, and metadata_assistant
+    for cross-dataset metadata operations including sample mapping, standardization,
+    and dataset validation.
+    """
+
+    @patch("lobster.agents.research_agent.research_agent")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant")
+    def test_research_to_metadata_assistant_handoff(
+        self, mock_metadata_assistant, mock_research, mock_workflow_state
+    ):
+        """Test research_agent identifying metadata operation and handing off to metadata_assistant.
+
+        Workflow:
+        1. User requests sample mapping between datasets
+        2. research_agent identifies metadata operation
+        3. research_agent calls handoff_to_metadata_assistant with structured instruction
+        4. metadata_assistant processes sample mapping
+        5. metadata_assistant returns structured report
+        """
+        # Arrange: User request for cross-dataset sample mapping
+        initial_state = mock_workflow_state.copy()
+        initial_state["messages"] = [
+            {
+                "content": "Map samples between geo_gse180759 (RNA-seq) and pxd034567 (proteomics)",
+                "sender": "human",
+            }
+        ]
+        initial_state["current_agent"] = "research_agent"
+
+        # Mock research_agent identifying metadata operation
+        mock_research.return_value = {
+            "messages": initial_state["messages"]
+            + [
+                {
+                    "content": "This requires cross-dataset sample ID mapping. Handing off to metadata_assistant.",
+                    "sender": "research_agent",
+                }
+            ],
+            "current_agent": "metadata_assistant",
+            "handoff_instruction": """Map samples between geo_gse180759 (RNA-seq, 48 samples) and pxd034567
+(proteomics, 36 samples). Both datasets cached in metadata workspace.
+Use exact and pattern matching strategies. Return mapping report with:
+(1) mapping rate, (2) confidence scores, (3) unmapped samples, (4) integration recommendation.""",
+            "context": {
+                "operation_type": "sample_mapping",
+                "source_dataset": "geo_gse180759",
+                "target_dataset": "pxd034567",
+            },
+        }
+
+        # Mock metadata_assistant processing sample mapping
+        mock_metadata_assistant.return_value = {
+            "messages": [
+                {
+                    "content": """✅ Sample Mapping Complete
+
+**Datasets**: geo_gse180759 → pxd034567
+**Mapping Rate**: 100% (36/36 samples mapped)
+
+**Results**:
+- Exact matches: 36/36 samples (100%, confidence=1.0)
+- Pattern matches: 0/36 samples
+- Unmapped: 0/36 samples
+
+**Recommendation**: ✅ Proceed with sample-level integration. Perfect mapping achieved.""",
+                    "sender": "metadata_assistant",
+                }
+            ],
+            "current_agent": "research_agent",  # Hand back to research_agent
+            "mapping_summary": {
+                "mapping_rate": 1.0,
+                "exact_matches": 36,
+                "unmapped": 0,
+                "confidence": 1.0,
+            },
+        }
+
+        # Act: Execute handoff workflow
+        research_result = mock_research(initial_state)
+        metadata_state = {
+            "messages": research_result["messages"],
+            "current_agent": "metadata_assistant",
+            "context": research_result["context"],
+        }
+        metadata_result = mock_metadata_assistant(metadata_state)
+
+        # Assert: Verify handoff and structured report
+        assert research_result["current_agent"] == "metadata_assistant"
+        assert "handoff_instruction" in research_result
+        assert "Map samples between" in research_result["handoff_instruction"]
+        assert research_result["context"]["operation_type"] == "sample_mapping"
+
+        assert metadata_result["current_agent"] == "research_agent"  # Handed back
+        assert metadata_result["mapping_summary"]["mapping_rate"] == 1.0
+        assert "✅ Sample Mapping Complete" in metadata_result["messages"][0]["content"]
+        assert "Recommendation" in metadata_result["messages"][0]["content"]
+
+    @patch("lobster.agents.metadata_assistant.metadata_assistant")
+    def test_metadata_assistant_sample_mapping_workflow(
+        self, mock_metadata_assistant, mock_workflow_state
+    ):
+        """Test metadata_assistant processing sample mapping task with detailed results.
+
+        Verifies:
+        - Sample mapping between RNA-seq and proteomics datasets
+        - Structured report with quantitative metrics
+        - Actionable integration recommendation
+        """
+        # Arrange: Metadata operation state
+        mapping_state = mock_workflow_state.copy()
+        mapping_state["messages"] = [
+            {
+                "content": "Map samples between geo_gse12345 and geo_gse67890",
+                "sender": "research_agent",
+            }
+        ]
+        mapping_state["current_agent"] = "metadata_assistant"
+        mapping_state["context"] = {
+            "source_dataset": "geo_gse12345",
+            "target_dataset": "geo_gse67890",
+            "strategies": ["exact", "pattern"],
+        }
+
+        # Mock metadata_assistant sample mapping result
+        mock_metadata_assistant.return_value = {
+            "messages": mapping_state["messages"]
+            + [
+                {
+                    "content": """# Sample Mapping Report
+
+**Datasets**: geo_gse12345 → geo_gse67890
+**Mapping Rate**: 95% (18/19 samples mapped)
+
+**Results**:
+- Exact matches: 18/19 samples (95%, confidence=1.0)
+- Pattern matches: 0/19 samples
+- Unmapped: 1/19 samples (5%)
+
+**Unmapped Samples**:
+- sample19: No matching pattern found
+
+**Recommendation**: ✅ Proceed with sample-level integration. High confidence.""",
+                    "sender": "metadata_assistant",
+                }
+            ],
+            "mapping_summary": {
+                "total_source_samples": 19,
+                "total_target_samples": 19,
+                "exact_matches": 18,
+                "pattern_matches": 0,
+                "unmapped": 1,
+                "mapping_rate": 0.95,
+            },
+            "unmapped_samples": ["sample19"],
+            "current_agent": "supervisor_agent",
+        }
+
+        # Act: Process sample mapping
+        result = mock_metadata_assistant(mapping_state)
+
+        # Assert: Verify structured report
+        assert result["mapping_summary"]["mapping_rate"] == 0.95
+        assert result["mapping_summary"]["exact_matches"] == 18
+        assert result["mapping_summary"]["unmapped"] == 1
+        assert "sample19" in result["unmapped_samples"]
+        assert "✅" in result["messages"][-1]["content"]
+        assert "Recommendation" in result["messages"][-1]["content"]
+
+    @patch("lobster.agents.metadata_assistant.metadata_assistant")
+    def test_metadata_assistant_standardization_workflow(
+        self, mock_metadata_assistant, mock_workflow_state
+    ):
+        """Test metadata_assistant standardizing metadata to schema.
+
+        Verifies:
+        - Metadata standardization to transcriptomics schema
+        - Field coverage reporting
+        - Validation error summary
+        """
+        # Arrange: Standardization operation state
+        standardization_state = mock_workflow_state.copy()
+        standardization_state["messages"] = [
+            {
+                "content": "Standardize metadata for geo_gse12345 to transcriptomics schema",
+                "sender": "supervisor_agent",
+            }
+        ]
+        standardization_state["current_agent"] = "metadata_assistant"
+        standardization_state["context"] = {
+            "dataset": "geo_gse12345",
+            "target_schema": "transcriptomics",
+        }
+
+        # Mock metadata_assistant standardization result
+        mock_metadata_assistant.return_value = {
+            "messages": standardization_state["messages"]
+            + [
+                {
+                    "content": """# Metadata Standardization Report
+
+**Dataset**: geo_gse12345 → TranscriptomicsMetadataSchema
+**Valid Samples**: 46/48 (96%)
+**Validation Errors**: 2 samples
+
+## Field Coverage
+- sample_id: 100%
+- condition: 100%
+- tissue: 100%
+- organism: 98%
+- platform: 100%
+
+## Validation Errors
+- Sample_47: Missing 'organism' field
+- Sample_48: Missing 'organism' field
+
+**Recommendation**: Standardization successful. 96% valid.""",
+                    "sender": "metadata_assistant",
+                }
+            ],
+            "standardization_summary": {
+                "valid_samples": 46,
+                "total_samples": 48,
+                "validation_errors": 2,
+                "field_coverage": {
+                    "sample_id": 100.0,
+                    "condition": 100.0,
+                    "tissue": 100.0,
+                    "organism": 98.0,
+                    "platform": 100.0,
+                },
+            },
+            "current_agent": "supervisor_agent",
+        }
+
+        # Act: Process standardization
+        result = mock_metadata_assistant(standardization_state)
+
+        # Assert: Verify standardization report
+        assert result["standardization_summary"]["valid_samples"] == 46
+        assert result["standardization_summary"]["validation_errors"] == 2
+        assert result["standardization_summary"]["field_coverage"]["organism"] == 98.0
+        assert "96%" in result["messages"][-1]["content"]
+        assert "Metadata Standardization Report" in result["messages"][-1]["content"]
+
+    @patch("lobster.agents.supervisor.supervisor_agent")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant")
+    def test_supervisor_coordinates_metadata_operation(
+        self, mock_metadata_assistant, mock_supervisor, mock_workflow_state
+    ):
+        """Test supervisor coordinating metadata validation workflow.
+
+        Verifies:
+        - Supervisor delegates metadata validation to metadata_assistant
+        - metadata_assistant validates dataset content
+        - Supervisor receives structured validation report
+        """
+        # Arrange: User request for dataset validation
+        initial_state = mock_workflow_state.copy()
+        initial_state["messages"] = [
+            {
+                "content": "Validate dataset geo_gse99999 for quality and completeness",
+                "sender": "human",
+            }
+        ]
+        initial_state["current_agent"] = "supervisor_agent"
+
+        # Mock supervisor delegating to metadata_assistant
+        mock_supervisor.return_value = {
+            "messages": initial_state["messages"]
+            + [
+                {
+                    "content": "Delegating dataset validation to metadata_assistant",
+                    "sender": "supervisor_agent",
+                }
+            ],
+            "current_agent": "metadata_assistant",
+            "delegation_context": {
+                "operation": "validate_dataset_content",
+                "dataset": "geo_gse99999",
+            },
+        }
+
+        # Mock metadata_assistant validation result
+        mock_metadata_assistant.return_value = {
+            "messages": [
+                {
+                    "content": """# Dataset Validation Report
+
+**Dataset**: geo_gse99999
+**Sample Count**: ✅ 30 samples
+**Platform Consistency**: ✅ Consistent (Illumina NovaSeq)
+**Duplicate IDs**: ✅ No duplicates found
+**Control Samples**: ⚠️ No control samples detected
+
+## Missing Required Conditions
+- ❌ 'control' condition not found
+
+## Warnings
+- Expected 'control' condition not present
+- Recommend adding control samples
+
+⚠️ **Dataset has issues** - Missing control samples""",
+                    "sender": "metadata_assistant",
+                }
+            ],
+            "validation_summary": {
+                "has_required_samples": True,
+                "missing_conditions": ["control"],
+                "duplicate_ids": [],
+                "platform_consistency": True,
+                "warnings": ["Missing control samples"],
+            },
+            "current_agent": "supervisor_agent",
+        }
+
+        # Act: Execute supervisor coordination
+        supervisor_result = mock_supervisor(initial_state)
+        metadata_state = {
+            "messages": supervisor_result["messages"],
+            "current_agent": "metadata_assistant",
+            "context": supervisor_result["delegation_context"],
+        }
+        validation_result = mock_metadata_assistant(metadata_state)
+
+        # Assert: Verify coordination and validation report
+        assert supervisor_result["current_agent"] == "metadata_assistant"
+        assert (
+            supervisor_result["delegation_context"]["operation"]
+            == "validate_dataset_content"
+        )
+
+        assert validation_result["current_agent"] == "supervisor_agent"  # Handed back
+        assert validation_result["validation_summary"]["platform_consistency"] is True
+        assert (
+            "control" in validation_result["validation_summary"]["missing_conditions"]
+        )
+        assert "⚠️" in validation_result["messages"][0]["content"]
+        assert "Dataset has issues" in validation_result["messages"][0]["content"]
 
 
 if __name__ == "__main__":

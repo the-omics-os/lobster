@@ -1095,7 +1095,7 @@ Your custom agent is now ready to handle spatial omics analysis tasks through na
 
 ## Related Resources
 
-- **[Agent Architecture Documentation](../architecture_diagram.md)** - Technical details
-- **[API Documentation](../API_DOCUMENTATION.md)** - Core API reference
-- **[Testing Guide](../testing.md)** - Comprehensive testing strategies
+- **[Agent Architecture Documentation](19-agent-system.md)** - Technical details
+- **[API Documentation](13-api-overview.md)** - Core API reference
+- **[Testing Guide](12-testing-guide.md)** - Comprehensive testing strategies
 - **[Examples Cookbook](27-examples-cookbook.md)** - More advanced patterns

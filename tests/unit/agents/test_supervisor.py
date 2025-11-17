@@ -245,19 +245,30 @@ class TestSupervisorHandoffCoordination:
         assert handoff_tool.name == "transfer_to_research_agent"
         assert "research agent" in handoff_tool.description.lower()
 
-    def test_handoff_to_method_expert(self, mock_data_manager, mock_llm):
-        """Test handoff to method expert agent via supervisor graph."""
+    def test_handoff_to_metadata_assistant(self, mock_data_manager, mock_llm):
+        """Test handoff to metadata_assistant for metadata operations.
+
+        Tests supervisor's ability to hand off to metadata_assistant for:
+        - Sample ID mapping between datasets
+        - Metadata standardization to schemas
+        - Dataset content validation
+
+        Phase 3 addition: metadata_assistant handles cross-dataset metadata operations.
+        """
         from lobster.agents.langgraph_supervisor.handoff import create_handoff_tool
 
-        # Create a handoff tool for method expert
+        # Create a handoff tool for metadata_assistant
         handoff_tool = create_handoff_tool(
-            agent_name="method_expert_agent",
-            description="Transfer to method expert for parameter extraction",
+            agent_name="metadata_assistant",
+            description="Transfer to metadata assistant for cross-dataset metadata operations",
         )
 
         # Test that handoff tool is created properly
-        assert handoff_tool.name == "transfer_to_method_expert_agent"
-        assert "method expert" in handoff_tool.description.lower()
+        assert handoff_tool.name == "transfer_to_metadata_assistant"
+        assert "metadata assistant" in handoff_tool.description.lower()
+
+        # Verify handoff tool includes expected operations
+        assert "metadata" in handoff_tool.description.lower()
 
     def test_invalid_handoff_handling(self, mock_llm):
         """Test handling of invalid handoff requests."""
@@ -288,7 +299,10 @@ class TestSupervisorDecisionMaking:
             ("Load GEO dataset GSE12345", "data_expert_agent"),
             ("Perform single-cell clustering", "singlecell_expert_agent"),
             ("Find papers about T cells", "research_agent"),
-            ("Extract parameters from this method", "method_expert_agent"),
+            (
+                "Extract parameters from PMID:12345678",
+                "research_agent",
+            ),  # Phase 1: research_agent handles method extraction
             ("Analyze proteomics data", "proteomics_expert_agent"),
         ],
     )

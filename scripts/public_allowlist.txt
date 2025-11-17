@@ -8,6 +8,16 @@ setup.py
 pyproject.toml
 main.py
 scripts/install.sh
+scripts/release.sh
+!scripts/*
+
+# Installation files
+Dockerfile
+dev_install.sh
+install-ubuntu.sh
+install.bat
+install.ps1
+install.sh
 
 
 # README
@@ -37,19 +47,21 @@ lobster/lobster_cloud/
 lobster/lobster_cloud/*
 !lobster/streamlit_app.py
 
-#Agents in Development
+# Agents in Development - Proteomics (Premium)
 !lobster/agents/ms_proteomics_expert.py
 !lobster/agents/affinity_proteomics_expert.py
 !lobster/core/adapters/proteomics_adapter.py
 !lobster/core/schemas/proteomics.py
-
-!lobster/lobster/config/agent_config_comprehensive.py
 
 !lobster/tools/proteomics_analysis_service.py
 !lobster/tools/proteomics_differential_service.py
 !lobster/tools/proteomics_visualization_service.py
 !lobster/tools/proteomics_quality_service.py
 !lobster/tools/proteomics_preprocessing_service.py
+
+# Custom/Template Agents (Premium/Internal)
+!lobster/agents/custom_feature_agent.py
+!lobster/agents/unified_agent_creation_template.md
 
 # Configuration (safe defaults only)
 lobster/config/**
@@ -62,13 +74,14 @@ lobster/config/**
 examples/**
 !integration-results.xml
 
-# Container files
-!Dockerfile
+# Container files (exclude server/production configs)
+!Dockerfile.server
 !docker-compose.yml
 
 # Documentation
 *.md
-docs/**
+!docs/**
+!docs/
 LICENSE
 !wiki/
 !wiki/*

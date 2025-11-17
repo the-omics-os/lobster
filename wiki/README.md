@@ -117,8 +117,33 @@ jobs:
 | `28-troubleshooting.md` | Troubleshooting | Problem solutions |
 | `29-faq.md` | FAQ | Common questions |
 | `30-glossary.md` | Glossary | Term definitions |
+| `31-data-expert-agent-enhancements.md` | Data Expert Enhancements | Workspace restoration |
+| `32-agent-guided-formula-construction.md` | Formula Construction | Interactive DE formula design |
+| `33-api-documentation.md` | API Documentation | Extended API reference |
+| `34-architecture-diagram.md` | Architecture Diagram | System visualization |
+| `35-download-queue-system.md` | Download Queue System | Multi-step data acquisition |
+| `36-supervisor-configuration.md` | Supervisor Configuration | Agent registry setup |
+| `37-publication-intelligence-deep-dive.md` | Publication Intelligence | Docling integration |
+| `38-workspace-content-service.md` | Workspace Content Service | Type-safe caching |
+| `39-two-tier-caching-architecture.md` | Two-Tier Caching | Performance optimization |
+| `40-protein-structure-visualization.md` | Protein Structure Viz | PyMOL integration |
+| `41-migration-guides.md` | Migration Guides | Version upgrade paths |
+| `43-docker-deployment-guide.md` | Docker Deployment | Production containers |
+| `44-s3-backend-guide.md` | S3 Backend | Cloud storage |
+| `44-maintaining-documentation.md` | Maintaining Documentation | Documentation workflows |
+| `45-agent-customization-advanced.md` | Advanced Customization | Advanced agent patterns |
+| `46-multiomics-integration.md` | Multi-Omics Integration | Cross-platform analysis |
 
 ## 🔧 Maintaining Documentation
+
+### File Numbering Scheme
+
+Lobster AI wiki follows a structured numbering system:
+- **01-30**: Core documentation (Getting Started, User Guide, Developer Guide, API Reference, Architecture, Tutorials, Support)
+- **31-46**: Advanced features and system internals (Agent enhancements, Infrastructure, Specialized features)
+- **47+**: Reserved for future expansion
+
+**Important**: Avoid creating duplicate file numbers. When adding new files, use the next available number in the appropriate range.
 
 ### Updating Documentation
 

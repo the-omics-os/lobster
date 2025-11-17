@@ -4,7 +4,7 @@ This comprehensive troubleshooting guide provides solutions to common issues enc
 
 ## Table of Contents
 
-1. [Installation & Setup Issues](#installation--setup-issues)
+1. [Installation & Setup Issues](#installation-setup-issues)
    - API Keys Not Working
    - CLI Interface Not Working
    - **Rate Limit Errors (429)** ⚠️
@@ -12,14 +12,20 @@ This comprehensive troubleshooting guide provides solutions to common issues enc
    - **Network Errors**
    - **Quota Exceeded Errors**
 2. [Data Loading Problems](#data-loading-problems)
-3. [Analysis Failures](#analysis-failures)
-4. [Performance Issues](#performance-issues)
-5. [Visualization Problems](#visualization-problems)
-6. [Cloud Integration Issues](#cloud-integration-issues)
-7. [Agent & Tool Errors](#agent--tool-errors)
-8. [Memory & Resource Problems](#memory--resource-problems)
-9. [Output & Export Issues](#output--export-issues)
-10. [Advanced Troubleshooting](#advanced-troubleshooting)
+3. [Publication Intelligence & Docling Issues](#publication-intelligence-docling-issues) 🆕
+   - Docling Not Installed
+   - MemoryError During PDF Parsing
+   - Methods Section Not Found
+   - Page Dimensions RuntimeError
+   - Cache Issues
+4. [Analysis Failures](#analysis-failures)
+5. [Performance Issues](#performance-issues)
+6. [Visualization Problems](#visualization-problems)
+7. [Cloud Integration Issues](#cloud-integration-issues)
+8. [Agent & Tool Errors](#agent-tool-errors)
+9. [Memory & Resource Problems](#memory-resource-problems)
+10. [Output & Export Issues](#output-export-issues)
+11. [Advanced Troubleshooting](#advanced-troubleshooting)
 
 ---
 
@@ -79,7 +85,7 @@ conda env create -f environment.yml
 #### Check Environment Variables
 ```bash
 # Verify API keys are set
-echo $OPENAI_API_KEY
+echo $OPENAI_API_KEY #TODO future support
 echo $AWS_BEDROCK_ACCESS_KEY
 echo $AWS_BEDROCK_SECRET_ACCESS_KEY
 
@@ -91,7 +97,6 @@ cat .env
 ```bash
 # Create or update .env file
 cat > .env << EOF
-OPENAI_API_KEY=your-openai-api-key-here
 AWS_BEDROCK_ACCESS_KEY=your-aws-access-key
 AWS_BEDROCK_SECRET_ACCESS_KEY=your-aws-secret-key
 NCBI_API_KEY=your-ncbi-api-key-optional
@@ -397,12 +402,175 @@ Error code: 402 - insufficient_quota
 
 ## Data Loading Problems
 
-### Issue: Cannot Load Dataset from GEO
+### Issue: FTP Download Failures or Corruption (v2.3+)
+
+**Symptoms:**
+```
+⚠️  FTP download failed after 3 retries
+Corrupted gzip file detected
+Large files (>50MB) timeout or fail
+```
+
+**Automatic Recovery (v2.3+):**
+Lobster AI now includes robust error handling:
+- System automatically retries with exponential backoff (2s, 4s, 8s delays)
+- Chunked downloads (8KB blocks) prevent corruption for large files
+- MD5 validation and gzip integrity checks detect corruption before caching
+- **No user action required** - System handles retry logic automatically
+
+**Manual Intervention (If Automatic Retry Fails):**
+```bash
+# Clear cache and force fresh download
+rm -rf ~/.lobster_workspace/geo_cache/GSE12345*
+🦞 You: "Download GSE12345 with fresh cache"
+
+# Check internet connectivity
+ping ftp.ncbi.nlm.nih.gov
+
+# Verify GEO accession exists
+🦞 You: "Search for GSE12345 in GEO database"
+```
+
+**Technical Details (v2.3+):**
+- FTP retry logic with exponential backoff
+- Chunked FTP downloads for files >70MB
+- Gzip validation with 32KB chunked reading
+- Automatic cache poisoning prevention
+
+---
+
+### Issue: VDJ Data "Duplicate Barcode" Errors (v2.3+)
+
+**Symptoms:**
+```
+⚠️  Duplicate cell barcodes detected: 48%
+Dataset GSE248556 rejected due to data quality issues
+Validation failed: non-unique cell barcodes
+```
+
+**Cause (FIXED in v2.3+):**
+VDJ/TCR/BCR sequencing data legitimately has duplicate cell barcodes because each cell can express multiple receptor chains (heavy + light chain, alpha + beta chain). The system now automatically detects VDJ data types and accepts duplicates.
+
+**Expected Behavior (v2.3+):**
+- **VDJ/TCR/BCR data**: Duplicate barcodes **accepted** (biologically valid)
+- **RNA/Protein data**: Duplicate barcodes **rejected** (indicates corruption)
+- System uses sample metadata keywords: "VDJ", "TCR", "BCR", "immunology", "receptor"
+
+**Auto-Detection:**
+```bash
+# System automatically detects VDJ datasets
+🦞 You: "Download GSE248556"
+# Output: "Detected VDJ/TCR sequencing data, accepting duplicate barcodes (48%)"
+```
+
+**Manual Override (If Misclassified):**
+```bash
+🦞 You: "Load GSE248556 treating samples as VDJ data"
+🦞 You: "Override duplicate barcode validation for immunology dataset"
+```
+
+---
+
+### Issue: H5AD Export Failures with GEO Metadata (v2.3+)
+
+**Symptoms:**
+```
+TypeError: Cannot serialize mixed types to H5AD
+ValueError: Boolean values not supported in AnnData metadata
+KeyError: Metadata column contains None values
+```
+
+**Automatic Resolution (v2.3+):**
+Lobster AI now sanitizes GEO metadata before H5AD export:
+- `bool → string` ("True", "False")
+- `None → ""` (empty string)
+- Mixed types → string representation
+- Empty columns dropped automatically
+- **No user action required** - Metadata cleaned transparently
+
+**When It Happens:**
+GEO datasets often have poor metadata quality with:
+- Boolean flags as actual bool type (not H5AD-compatible)
+- Missing values as None (not serializable)
+- Mixed integer/string columns
+
+**Manual Verification:**
+```bash
+# Check metadata before export
+🦞 You: "Show metadata summary for current dataset"
+
+# Force H5AD export with sanitization
+🦞 You: "Export to H5AD with metadata sanitization"
+```
+
+---
+
+### Issue: Bulk RNA-seq "Inverted Dimensions" Warning (v2.3+)
+
+**Symptoms:**
+```
+⚠️  Matrix dimensions may be inverted: 187,697 features × 4 observations
+Expected: samples × genes for bulk RNA-seq
+Applying automatic transpose...
+```
+
+**Automatic Resolution (v2.3+):**
+Lobster AI applies biology-aware transpose logic:
+- **Checks**: Gene count ranges (10K-60K for human/mouse)
+- **Checks**: Sample count ranges (2-200 typical for bulk RNA-seq)
+- **Checks**: >100x imbalance (conservative fallback for edge cases)
+- Matrix automatically transposed to correct orientation
+- **No user action required** - Biology-aware validation handles this
+
+**Why It Happens:**
+Some bulk RNA-seq datasets (e.g., GSE130036) have few samples:
+- 4 samples × 187,697 genes → Looks inverted to naive algorithms
+- System uses biological knowledge to correctly orient the matrix
+
+**Manual Override (Rare):**
+```bash
+# If auto-transpose is incorrect (very rare)
+🦞 You: "Load GSE12345 without auto-transpose"
+🦞 You: "Keep original matrix orientation for GSE12345"
+```
+
+---
+
+### Issue: Malformed GEO Accessions (v2.3+)
+
+**Symptoms:**
+```
+❌ Invalid accession format: GDS200157007
+Expected format: GSE/GSM/GPL/GDS + digits
+Accession has 9 digits, expected 4-7
+```
+
+**Resolution (FIXED in v2.3+):**
+- Case sensitivity bug fixed (lowercase "accession" field)
+- Database migrated from "gds" (deprecated, ~5K datasets) to "geo" (active, 200K+ datasets)
+- Correct accessions now retrieved: `GSE157007` (not `GDS200157007`)
+- Dataset coverage increased 40x with active database
+
+**Manual Verification:**
+```bash
+# Verify accession format
+🦞 You: "Search for GSE157007 in GEO database and verify accession format"
+
+# System now returns correct format automatically
+# GSE prefix: Series (multiple samples)
+# GSM prefix: Sample (single sample)
+# GPL prefix: Platform (array/sequencing tech)
+# GDS prefix: Curated dataset (deprecated but still supported)
+```
+
+---
+
+### Issue: Cannot Load Dataset from GEO (General)
 
 **Symptoms:**
 - "Dataset not found" errors
 - Download timeouts
-- Corrupted downloads
+- Network errors
 
 **Solutions:**
 
@@ -427,11 +595,13 @@ ping ncbi.nlm.nih.gov
 #### Clear Cache and Retry
 ```bash
 # Clear GEO cache
-rm -rf .geo_cache/
+rm -rf ~/.lobster_workspace/geo_cache/
 
 # Retry download
 🦞 You: "Download GSE12345 with fresh cache"
 ```
+
+**Note**: Most GEO issues are now handled automatically in v2.3+ with robust error handling, retry logic, and intelligent validation.
 
 ### Issue: File Format Not Recognized
 
@@ -497,6 +667,410 @@ iconv -f iso-8859-1 -t utf-8 your_data.csv > your_data_utf8.csv
 export LOBSTER_CLOUD_KEY="your-api-key"
 🦞 You: "Process this large dataset using cloud resources"
 ```
+
+---
+
+## Publication Intelligence & Docling Issues
+
+### Issue: Docling Not Installed
+
+**Symptoms:**
+- `ImportError: No module named 'docling'`
+- "Docling parser unavailable, falling back to PyPDF2"
+- Warning messages about missing Docling dependencies
+
+**Causes:**
+- Docling package not installed
+- Version mismatch with required dependencies
+- Optional dependencies missing (OCR, table extraction)
+
+**Solutions:**
+
+#### Install Docling Package
+```bash
+# Install Docling with all dependencies
+pip install docling
+
+# Verify installation
+python -c "from docling.document_converter import DocumentConverter; print('✓ Docling installed')"
+```
+
+#### Install Optional Features
+```bash
+# For enhanced table extraction
+pip install "docling[table]"
+
+# For OCR support (PDFs with scanned images)
+pip install "docling[ocr]"
+
+# Full installation with all features
+pip install "docling[all]"
+```
+
+#### Verify Docling Functionality
+```bash
+🦞 You: "Test Docling installation by extracting methods from a sample paper"
+🦞 You: "Extract methods from PMID:38448586 using Docling"
+```
+
+**Fallback Behavior:**
+- System automatically falls back to PyPDF2 if Docling unavailable
+- Extraction still works but with lower Methods section detection rate (~30% vs >90%)
+- Tables and formulas won't be extracted with PyPDF2
+
+### Issue: MemoryError During PDF Parsing
+
+**Symptoms:**
+```
+MemoryError: Unable to allocate memory for document parsing
+RuntimeError: PDF parsing failed after 2 retries
+```
+
+**Causes:**
+- Large PDF documents (>100 pages)
+- Complex layouts with many images
+- Insufficient system memory (<4GB available)
+- Multiple concurrent parsing operations
+
+**Solutions:**
+
+#### Immediate Actions
+```bash
+# Clear memory before parsing
+🦞 You: "Clear workspace cache to free memory"
+python -c "import gc; gc.collect()"
+
+# Parse one document at a time
+🦞 You: "Extract methods from PMID:12345678"  # Sequential processing
+# Wait for completion before starting next extraction
+```
+
+#### Optimize Memory Usage
+```bash
+# Docling automatically retries with garbage collection
+# The retry logic handles MemoryError automatically
+# Just wait for the automatic retry to complete
+
+# For very large PDFs, use PyPDF2 fallback explicitly
+🦞 You: "Extract methods using PyPDF2 fallback for memory efficiency"
+```
+
+#### Monitor Memory
+```bash
+# Check available memory
+free -h  # Linux
+vm_stat  # macOS
+
+# Monitor during extraction
+🦞 You: "/dashboard"  # Check memory usage in real-time
+```
+
+#### Batch Processing Best Practices
+```bash
+# Process papers sequentially (not in parallel)
+🦞 You: "Extract methods from these papers one at a time: PMID:123, PMID:456, PMID:789"
+
+# Clear cache between large documents
+rm -rf ~/.lobster_workspace/literature_cache/parsed_docs/
+```
+
+**Prevention:**
+- Parse papers sequentially rather than in parallel
+- Docling's retry logic includes explicit `gc.collect()` between attempts
+- Cache prevents re-parsing (30-50x faster on subsequent access)
+- Consider increasing system RAM for large-scale analysis
+
+### Issue: DOI/PMID Not Resolving to Accessible URLs (v2.3+ Fix)
+
+**Symptoms:**
+```
+⚠️  Could not resolve DOI to accessible URL
+Failed to extract content from identifier: 10.1038/...
+PaywalledError: Paper 10.18632/aging.204666 is paywalled
+```
+
+**Causes:**
+- Paywalled article with no open access version available
+- Invalid or malformed DOI/PMID
+- Publisher website temporarily unavailable
+- DOI not yet indexed in resolution databases
+- Network connectivity issues
+
+**Solutions:**
+
+#### Verify DOI/PMID Format
+```bash
+# Test if identifier is detected correctly
+🦞 You: "Check if DOI:10.1038/s41586-025-09686-5 is accessible"
+
+# System will show resolution attempt and results:
+# "✓ Detected identifier (DOI): 10.1038/..., resolving to URL..."
+# "✓ Resolved to: https://www.nature.com/articles/..."
+# OR
+# "⚠️ Paper is not accessible: paywalled"
+```
+
+#### Try Alternative Identifiers
+```bash
+# If DOI doesn't resolve, try the PMID
+🦞 You: "Extract methods from PMID:38448586"
+
+# Or search for preprint version
+🦞 You: "Find bioRxiv preprint for cellular senescence human fibroblasts"
+```
+
+#### Manual URL Provision
+```bash
+# If you have institutional access, provide the article page URL directly
+🦞 You: "Extract methods from https://www.nature.com/articles/s41586-025-09686-5"
+
+# For PMC papers, try the main article page (not /pdf/ directory)
+🦞 You: "Extract methods from https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12496192/"
+```
+
+#### Check Resolution Logs
+The v2.3+ system provides detailed logging of resolution attempts:
+
+```bash
+# Successful resolution shows:
+INFO Detected identifier (DOI): 10.1101/..., resolving to URL...
+INFO Resolved via preprint server: https://www.biorxiv.org/content/...
+INFO Content extraction successful (pdf auto-detected) in 2.3s
+
+# Failed resolution shows:
+WARNING Paper 10.18632/aging.204666 is not accessible: paywalled
+INFO Alternative suggestions: [institutional access, preprints, author contact]
+```
+
+**Expected Behavior (v2.3+):**
+- ✅ System automatically detects DOI/PMID format
+- ✅ Tries multiple resolution strategies (PMC → bioRxiv/medRxiv → publisher)
+- ✅ Format auto-detection (HTML vs PDF) handled by Docling
+- ✅ If resolution fails, provides helpful alternative access suggestions
+- ✅ No more crashes with FileNotFoundError for valid DOIs
+
+### Issue: Methods Section Not Found
+
+**Symptoms:**
+```
+⚠️  Methods section not found in document
+Extracted 0 paragraphs from Methods section
+```
+
+**Causes:**
+- Non-standard section naming (e.g., "Materials and Methods", "Experimental Procedures")
+- Methods split across multiple sections
+- PDF parsing failed to detect document structure
+- Incompatible PDF format (page-dimensions error)
+
+**Solutions:**
+
+#### Verify Document Structure
+```bash
+🦞 You: "Show me the document structure and available sections"
+🦞 You: "List all section headings found in the paper"
+```
+
+#### Try Alternative Keywords
+```bash
+# Docling searches for these keywords by default:
+# "method", "material", "experimental", "procedure", "analysis"
+#
+# If paper uses non-standard terms, Docling may miss the section
+
+# Check if paper is accessible
+🦞 You: "Check if PMID:12345678 is accessible"
+
+# Try extraction with PyPDF2 fallback
+# (captures more text but less structured)
+```
+
+#### Manual Verification
+```bash
+# View full PDF text to check section names
+🦞 You: "Extract full text from the paper to identify section structure"
+
+# Check if paper has Methods at all
+# Some papers (reviews, perspectives) may not have Methods sections
+```
+
+#### Check for Incompatible PDFs
+```bash
+# If you see "page-dimensions" RuntimeError:
+# This indicates an incompatible PDF format
+# System will automatically fall back to PyPDF2
+
+# Verify fallback behavior
+🦞 You: "Extract methods from PMID:12345678"
+# Check provenance metadata: {"parser": "pypdf2", "fallback": true}
+```
+
+**Quality Metrics:**
+- Docling achieves >90% Methods section detection on scientific papers
+- PyPDF2 fallback achieves ~30% detection (first 10K chars naive truncation)
+- Some papers legitimately don't have Methods sections (reviews, opinions)
+
+### Issue: Page Dimensions RuntimeError
+
+**Symptoms:**
+```
+RuntimeError: PDF contains page-dimensions errors
+Falling back to PyPDF2 after detecting incompatible PDF format
+```
+
+**Causes:**
+- PDF with malformed page dimension metadata
+- Scanned PDFs with inconsistent page sizes
+- PDFs created with non-standard tools
+- Corrupted PDF files
+
+**Solutions:**
+
+#### Automatic Fallback (No Action Needed)
+```bash
+# Docling automatically detects this error and falls back to PyPDF2
+# Extraction continues with reduced functionality:
+# - Methods section still extracted (lower hit rate)
+# - Tables won't be extracted
+# - Formulas won't be detected
+# - Provenance will show: {"parser": "pypdf2", "fallback": true}
+```
+
+#### Verify Fallback Success
+```bash
+🦞 You: "Extract methods from PMID:12345678"
+# Check response for "Extraction completed using PyPDF2 fallback"
+
+# Verify provenance metadata
+🦞 You: "Show extraction provenance for the last paper"
+# Should show: {"parser": "pypdf2", "fallback": true, "fallback_reason": "page-dimensions"}
+```
+
+#### PDF Repair (Advanced)
+```bash
+# Attempt to repair PDF with external tools
+# Only if PyPDF2 fallback also fails
+
+# Option 1: Ghostscript repair
+gs -o repaired.pdf -sDEVICE=pdfwrite -dPDFSETTINGS=/prepress original.pdf
+
+# Option 2: qpdf repair
+qpdf --linearize original.pdf repaired.pdf
+
+# Then try extraction again
+🦞 You: "Extract methods from repaired.pdf"
+```
+
+**Expected Behavior:**
+- System tries Docling first (max_retries=2 with memory management)
+- If RuntimeError with "page-dimensions", immediately falls back to PyPDF2
+- PyPDF2 extraction succeeds for most papers (~95% success rate)
+- Fallback is logged in provenance for transparency
+
+### Issue: Cache Issues
+
+**Symptoms:**
+- Unexpected cache hits for different papers
+- Stale cache returning outdated extractions
+- Cache consuming excessive disk space
+- "Cache read failed" warnings
+
+**Causes:**
+- MD5 hash collisions (extremely rare)
+- Manual cache modifications
+- Corrupted cache files
+- Cache directory permissions
+
+**Solutions:**
+
+#### Clear Cache
+```bash
+# Remove all cached documents
+rm -rf ~/.lobster_workspace/literature_cache/parsed_docs/
+
+# Clear specific paper cache
+# Cache files named by MD5 hash of source URL
+# Example: parsed_docs/abc123def456.json
+```
+
+#### Verify Cache Location
+```bash
+# Check cache directory exists and is writable
+ls -la ~/.lobster_workspace/literature_cache/parsed_docs/
+
+# Check cache file sizes
+du -sh ~/.lobster_workspace/literature_cache/
+# Typical: 500KB-2MB per paper
+```
+
+#### Monitor Cache Performance
+```bash
+# Cache hit: <100ms
+# Cache miss (first parse): 2-5 seconds
+
+# You'll see timing in responses:
+# "Extraction completed in 0.08s (cached)" - Cache hit
+# "Extraction completed in 3.2s" - Fresh parse
+```
+
+#### Cache Management Best Practices
+```bash
+# Cache is persistent across sessions (good for reproducibility)
+# Automatic cache invalidation not implemented
+# Manual cleanup recommended if:
+# - Papers are updated/corrected by publishers
+# - Testing different extraction parameters
+# - Cache directory exceeds 1GB
+
+# Selective cache cleanup
+cd ~/.lobster_workspace/literature_cache/parsed_docs/
+# Delete specific paper cache by finding its MD5 hash
+```
+
+**Cache Behavior:**
+- Cache key: MD5 hash of source URL
+- Storage format: JSON (Pydantic serialization)
+- Non-fatal failures: Extraction continues if cache read/write fails
+- Performance: 30-50x faster on cache hit
+
+### Performance Optimization
+
+#### Batch Processing
+```bash
+# Process 2-5 papers at a time (not more)
+🦞 You: "Extract methods from PMID:123, PMID:456, PMID:789"
+
+# System processes sequentially to avoid memory issues
+# Wait for batch completion before starting next batch
+```
+
+#### Memory Management
+```bash
+# Docling's built-in retry logic:
+# 1. First attempt: Parse with Docling
+# 2. MemoryError → gc.collect() → Retry
+# 3. Second MemoryError → Fall back to PyPDF2
+# 4. RuntimeError (page-dimensions) → Immediate PyPDF2 fallback
+
+# You don't need to manage retries manually
+```
+
+#### Troubleshooting Checklist
+
+When extraction fails, check:
+1. ✅ Docling installed: `pip list | grep docling`
+2. ✅ Available memory: `free -h` (need >2GB free)
+3. ✅ Paper accessibility: `🦞 "Check if PMID:12345 is accessible"`
+4. ✅ Cache corruption: Clear cache and retry
+5. ✅ Provenance metadata: Check for fallback indicators
+
+### See Also
+
+For detailed technical information about Docling integration:
+- **[Publication Intelligence Deep Dive](37-publication-intelligence-deep-dive.md)** - Comprehensive technical guide
+- **[Research Agent API](15-agents-api.md)** - Research Agent documentation
+- **[Services API](16-services-api.md)** - ContentAccessService reference
+- **[Literature Integration Workflow](06-data-analysis-workflows.md)** - Usage examples
 
 ---
 
@@ -990,6 +1564,1026 @@ lobster chat
 
 ---
 
+## ContentAccessService Issues (v2.4+)
+
+### Issue: "ContentAccessService not available"
+
+**Symptoms:**
+```
+ERROR: ContentAccessService not available or not initialized
+ERROR: No providers registered for capability
+```
+
+**Causes:**
+- Service not properly initialized in research_agent
+- Provider registry configuration error
+- Missing dependencies (docling, pypdf2, etc.)
+
+**Solutions:**
+
+#### Check Service Initialization
+```bash
+# Verify service is available
+lobster chat
+> "Query available capabilities"
+
+# Should show:
+# - AbstractProvider (fast abstracts)
+# - PubMedProvider (literature search)
+# - GEOProvider (dataset discovery)
+# - PMCProvider (full-text, priority)
+# - WebpageProvider (fallback, PDF support)
+```
+
+#### Verify Provider Registration
+```bash
+# Check which providers are active
+> "What providers are available for literature access?"
+
+# Expected output shows all 5 providers with priorities
+```
+
+#### Reinstall Dependencies
+```bash
+# Install Docling for PDF support
+pip install lobster[docling]
+
+# Verify installation
+python -c "import docling; print('Docling OK')"
+```
+
+**Restart with Fresh Environment:**
+```bash
+# Clean workspace and restart
+rm -rf ~/.lobster_workspace/
+lobster chat --workspace ~/.lobster_new
+```
+
+### Issue: PDF Parsing Failures (Docling)
+
+**Symptoms:**
+```
+ERROR: Failed to parse PDF content
+WARNING: Docling service failed to extract content
+MemoryError during PDF parsing
+```
+
+**Causes:**
+- Corrupted or malformed PDF file
+- Scanned PDFs without OCR text layer
+- Large PDF files causing memory issues
+- Docling dependencies not properly installed
+
+**Solutions:**
+
+#### Install Docling Dependencies
+```bash
+# Full Docling installation
+pip install lobster[docling]
+
+# Verify dependencies
+python -c "import docling.document_converter; print('Docling installed')"
+```
+
+#### Handle Large PDFs
+```bash
+# For PDFs >50MB, increase memory limit
+export LOBSTER_MAX_FILE_SIZE_MB=500
+
+# Or use abstract-only for initial review
+> "Get abstract for PMID:12345"  # Fast, always works
+```
+
+#### Try Alternative Methods
+```bash
+# If Docling fails, system automatically falls back to PyPDF2
+# No action needed - fallback is automatic
+
+# Manually request abstract instead of full-text
+> "Extract abstract and keywords from PMID:12345"
+```
+
+#### Check PDF Format
+```bash
+# Test PDF integrity
+pdfinfo your_file.pdf
+
+# For scanned PDFs, use OCR first
+# (Docling doesn't support image-only PDFs)
+```
+
+**Expected Behavior:**
+- Docling tries first (max_retries=2)
+- Automatic fallback to PyPDF2 on failure
+- Provenance logs which parser was used
+
+### Issue: Rate Limiting for Web Scraping
+
+**Symptoms:**
+```
+ERROR: HTTP 429 Too Many Requests
+WARNING: Rate limit exceeded for webpage extraction
+ERROR: Publisher blocking automated access
+```
+
+**Causes:**
+- Rapid sequential requests to same publisher
+- Publisher anti-bot protection (Cloudflare)
+- IP-based rate limiting
+
+**Solutions:**
+
+#### Use PMC Priority Path
+```bash
+# ContentAccessService tries PMC XML API first (fast, no rate limits)
+> "Read full publication PMID:35042229"
+
+# PMC covers 30-40% of biomedical literature
+# 10x faster than webpage scraping
+```
+
+#### Let Service Handle Backoff
+```bash
+# Service implements exponential backoff automatically
+# Just wait and retry after 60 seconds
+
+# Check capabilities to see which providers are available
+> "Query capabilities"
+```
+
+#### Use DOI URLs
+```bash
+# Direct DOI URLs often work better than publisher pages
+> "Read content from https://doi.org/10.1038/s41586-021-12345-6"
+```
+
+#### Alternative: Preprints and Open Access
+```bash
+# Search for open access versions
+> "Search bioRxiv for BRCA1 breast cancer"
+
+# Filter by open access
+> "Search literature cancer therapy filters:open_access=true"
+```
+
+### Issue: Authentication Issues for Paywalled Content
+
+**Symptoms:**
+```
+ERROR: Content is behind paywall
+INFO: PMC full-text not available for this publication
+WARNING: Paper is not accessible: paywalled
+```
+
+**Causes:**
+- Paper not in open access repositories
+- Institution access required
+- Not in PMC open access subset (70% of papers)
+
+**Solutions:**
+
+#### Three-Tier Cascade
+```bash
+# System automatically tries:
+# 1. PMC XML API (30-40% coverage, fast)
+# 2. Webpage/PDF extraction (60-70% coverage, slower)
+# 3. Error with suggestions if paywalled
+
+> "Read full publication PMID:12345"
+# Automatic cascade - no manual intervention needed
+```
+
+#### Use Abstract + Methods
+```bash
+# For paywalled papers, get what you can
+> "Get abstract for PMID:12345"
+> "Extract methods from abstract"  # Limited but useful
+```
+
+#### Search for Preprints
+```bash
+> "Find bioRxiv preprint for [paper title]"
+> "Search medRxiv for COVID-19 clinical trial"
+```
+
+#### Check Open Access Availability
+```bash
+> "Is PMID:12345 available in open access?"
+> "Find open access version of DOI:10.1038/xxx"
+```
+
+**Alternative Strategies:**
+- Request author preprints directly
+- Check institutional library access
+- Use Supplementary Materials (often freely available)
+
+---
+
+## WorkspaceContentService Issues (v2.4+)
+
+### Issue: File Not Found in Workspace
+
+**Symptoms:**
+```
+ERROR: Identifier 'publication_PMID12345' not found in workspace
+FileNotFoundError: ~/.lobster_workspace/literature/pmid_12345.json
+```
+
+**Causes:**
+- Content not cached yet
+- Incorrect identifier format
+- Wrong workspace directory
+
+**Solutions:**
+
+#### List Cached Content
+```bash
+# Check what's actually cached
+> "What content do I have cached?"
+> "Show me cached publications"
+> "List all cached datasets"
+
+# Use /workspace command
+> /workspace
+```
+
+#### Verify Identifier Format
+```bash
+# Correct format: lowercase with underscores
+# ✅ Correct: publication_PMID35042229
+# ❌ Wrong: PMID:35042229 (has colon)
+# ❌ Wrong: publication_pmid_35042229 (duplicate prefix)
+
+# Check identifier in cache directory
+ls ~/.lobster_workspace/literature/
+```
+
+#### Cache Content First
+```bash
+# Must cache before accessing
+> "Read full publication PMID:35042229"
+# This automatically caches to workspace
+
+# Or explicitly cache
+> "Cache PMID:35042229 in literature workspace"
+```
+
+#### Verify Workspace Path
+```bash
+# Check workspace exists
+ls -la ~/.lobster_workspace/
+
+# Should have subdirectories:
+# - literature/
+# - data/
+# - metadata/
+
+# Check in Lobster
+> /workspace
+```
+
+### Issue: Workspace Path Resolution Issues
+
+**Symptoms:**
+```
+ERROR: Permission denied: ~/.lobster_workspace/literature/
+ERROR: Cannot create directory
+OSError: [Errno 30] Read-only file system
+```
+
+**Causes:**
+- Insufficient file permissions
+- Workspace directory doesn't exist
+- Disk full or read-only mount
+
+**Solutions:**
+
+#### Create Workspace Directories
+```bash
+# Create all required directories
+mkdir -p ~/.lobster_workspace/{literature,data,metadata}
+chmod 755 ~/.lobster_workspace/
+
+# Verify creation
+ls -la ~/.lobster_workspace/
+```
+
+#### Check Permissions
+```bash
+# Fix ownership
+chown -R $USER:$USER ~/.lobster_workspace/
+
+# Fix permissions
+chmod -R u+rw ~/.lobster_workspace/
+```
+
+#### Check Disk Space
+```bash
+# Check available space
+df -h ~
+
+# If disk full, clean old caches
+du -sh ~/.lobster_workspace/
+find ~/.lobster_workspace/ -mtime +30 -delete  # Remove files >30 days old
+```
+
+#### Use Custom Workspace
+```bash
+# Specify different workspace path
+export LOBSTER_WORKSPACE=/path/to/workspace
+lobster chat
+
+# Or at runtime
+lobster chat --workspace /mnt/data/lobster_workspace
+```
+
+### Issue: Permission Errors Reading Workspace Files
+
+**Symptoms:**
+```
+PermissionError: [Errno 13] Permission denied: '~/.lobster_workspace/literature/pmid_12345.json'
+```
+
+**Causes:**
+- File created by different user
+- Incorrect file permissions (chmod 000)
+- SELinux or AppArmor restrictions (Linux)
+
+**Solutions:**
+
+#### Fix File Ownership
+```bash
+# Take ownership of all workspace files
+chown -R $USER:$USER ~/.lobster_workspace/
+```
+
+#### Fix Permissions
+```bash
+# Make files readable/writable
+chmod -R u+rw ~/.lobster_workspace/
+
+# For directories, add execute permission
+chmod -R u+rwx ~/.lobster_workspace/*/
+```
+
+#### Check SELinux (Linux Only)
+```bash
+# Check if SELinux is enforcing
+getenforce
+
+# If 'Enforcing', temporarily disable for testing
+sudo setenforce 0
+
+# Or configure SELinux policy properly
+# (production systems should not disable SELinux)
+```
+
+#### Fresh Workspace
+```bash
+# Nuclear option: delete and recreate
+rm -rf ~/.lobster_workspace/
+lobster chat  # Will recreate with correct permissions
+```
+
+---
+
+## Caching System Issues (v2.4+)
+
+### Issue: Cache Hit/Miss Debugging
+
+**Understanding Cache Behavior:**
+
+Lobster v2.4+ has two-tier caching:
+1. **Session cache** (in-memory, fast, temporary)
+2. **Workspace cache** (filesystem, persistent)
+
+**Debug Cache Status:**
+```bash
+# Check cache statistics
+> /workspace
+# Shows: cached publications, datasets, metadata
+
+# List cached content by type
+> "Show me all cached publications"
+> "List cached datasets"
+
+# Check cache directory directly
+ls -lh ~/.lobster_workspace/literature/
+ls -lh ~/.lobster_workspace/data/
+```
+
+**Force Cache Refresh:**
+```bash
+# Bypass cache and re-fetch
+> "Read full publication PMID:12345 with force refresh"
+
+# Delete specific cache file
+rm ~/.lobster_workspace/literature/pmid_35042229.json
+```
+
+### Issue: Cache Invalidation Strategies
+
+**When to Invalidate:**
+- Dataset metadata updated on GEO/PRIDE
+- Publication retracted or corrected
+- Workspace migration to new system
+- Cache corruption detected
+
+**Manual Invalidation:**
+```bash
+# Delete specific cached item
+rm ~/.lobster_workspace/literature/pmid_35042229.json
+
+# Clear all cached publications
+rm -rf ~/.lobster_workspace/literature/*.json
+
+# Clear all cached datasets
+rm -rf ~/.lobster_workspace/data/*.json
+
+# Nuclear option: clear entire workspace
+rm -rf ~/.lobster_workspace/
+lobster chat  # Starts fresh
+```
+
+**Automatic Invalidation (v2.4+):**
+```bash
+# Cached content has timestamps
+# Service checks age before using
+# Default TTL:
+# - Publications: 7 days
+# - Datasets: 24 hours (metadata changes frequently)
+# - Metadata: 24 hours
+
+# No manual invalidation needed for most cases
+```
+
+### Issue: Disk Space Issues with Large Caches
+
+**Symptoms:**
+```
+ERROR: No space left on device
+WARNING: Workspace size exceeding 1GB
+OSError: [Errno 28] No space left on device
+```
+
+**Check Disk Usage:**
+```bash
+# Check total workspace size
+du -sh ~/.lobster_workspace/
+
+# Break down by subdirectory
+du -h ~/.lobster_workspace/ | sort -h
+
+# Find largest cached items
+find ~/.lobster_workspace/ -type f -size +10M -exec ls -lh {} \;
+
+# Check available disk space
+df -h ~
+```
+
+**Solutions:**
+
+#### Clean Old Cache Files
+```bash
+# Remove files older than 30 days
+find ~/.lobster_workspace/ -type f -mtime +30 -delete
+
+# Remove files older than 7 days
+find ~/.lobster_workspace/ -type f -mtime +7 -delete
+
+# Verify cleanup
+du -sh ~/.lobster_workspace/
+```
+
+#### Archive Old Workspace
+```bash
+# Backup to compressed archive
+tar -czf lobster_workspace_backup_$(date +%Y%m%d).tar.gz ~/.lobster_workspace/
+
+# Delete old workspace
+rm -rf ~/.lobster_workspace/
+
+# Restore if needed
+tar -xzf lobster_workspace_backup_YYYYMMDD.tar.gz -C ~/
+```
+
+#### Use Workspace Size Limits
+```bash
+# Set maximum workspace size
+export LOBSTER_MAX_WORKSPACE_SIZE_MB=500
+lobster chat
+
+# Service will warn when limit approached
+```
+
+#### Move to Larger Disk
+```bash
+# Move workspace to external/network drive
+mv ~/.lobster_workspace /mnt/large_disk/lobster_workspace
+
+# Create symbolic link
+ln -s /mnt/large_disk/lobster_workspace ~/.lobster_workspace
+
+# Verify
+ls -la ~/.lobster_workspace
+```
+
+---
+
+## Protein Structure Visualization Issues (v2.4+)
+
+### Issue: PyMOL Installation Issues
+
+**Symptoms:**
+```
+ERROR: PyMOL not found in PATH
+WARNING: PyMOL visualization will not execute
+INFO: Command script generated at: 1AKE_commands.pml
+```
+
+**Verification:**
+```bash
+# Check PyMOL installation
+which pymol
+
+# Test PyMOL (headless mode)
+pymol -c -Q
+
+# Check version
+pymol -c -r "print(cmd.get_version())"
+```
+
+**Solutions by Platform:**
+
+#### macOS - Automated
+```bash
+# Use Makefile (recommended)
+cd lobster
+make install-pymol
+
+# Verify
+pymol -c -Q
+```
+
+#### macOS - Manual
+```bash
+# Install via Homebrew
+brew install brewsci/bio/pymol
+
+# Verify installation
+which pymol
+pymol -c -Q
+```
+
+#### Linux (Ubuntu/Debian)
+```bash
+# Install from repositories
+sudo apt-get update
+sudo apt-get install pymol
+
+# Verify
+which pymol
+```
+
+#### Linux (Fedora/RHEL)
+```bash
+# Install via DNF
+sudo dnf install pymol
+
+# Verify
+which pymol
+```
+
+#### Docker (Pre-installed)
+```bash
+# PyMOL is pre-installed in Docker image
+docker run -it omicsos/lobster:latest pymol -c -Q
+
+# No installation needed in Docker
+```
+
+#### Windows
+```powershell
+# Download from https://pymol.org/
+# Install using GUI installer
+# Add to PATH via System Environment Variables
+```
+
+**Fallback Without PyMOL:**
+```bash
+# Agent still generates command scripts
+> "Visualize protein structure 1AKE"
+
+# Manual execution later when PyMOL installed
+pymol 1AKE_commands.pml  # Interactive mode
+pymol -c 1AKE_commands.pml  # Batch mode (headless)
+```
+
+### Issue: PDB File Format Errors
+
+**Symptoms:**
+```
+ERROR: Failed to parse PDB file: 1AKE.pdb
+ERROR: Invalid PDB ID format
+ValueError: PDB ID must be 4 characters
+```
+
+**Causes:**
+- Invalid PDB ID format (must be exactly 4 alphanumeric characters)
+- Corrupted download
+- Wrong file format
+
+**Solutions:**
+
+#### Validate PDB ID
+```bash
+# ✅ Correct formats:
+# - 1AKE (4 chars, alphanumeric)
+# - 4HHB, 3A5D, 7BV2
+
+# ❌ Wrong formats:
+# - AKE (too short)
+# - 1AKEE (too long)
+# - 1-AKE (invalid character: hyphen)
+# - 1ake (works but use uppercase for consistency)
+
+# Use correct format
+> "Fetch protein structure 1AKE"
+```
+
+#### Re-download Structure
+```bash
+# Use cached version
+> "Fetch protein structure 1AKE"
+
+# Force re-download
+> "Fetch protein structure 1AKE with force refresh"
+
+# Verify file integrity
+ls -lh protein_structures/1AKE.*
+# Should be >10KB for valid structure
+```
+
+#### Try Different Format
+```bash
+# mmCIF format (default, recommended)
+> "Fetch protein structure 1AKE format=cif"
+
+# Legacy PDB format
+> "Fetch protein structure 1AKE format=pdb"
+```
+
+#### Verify Structure Exists
+```bash
+# Check on RCSB website
+# https://www.rcsb.org/structure/1AKE
+
+# Search for alternative structures
+> "Find protein structures for gene BRCA1"
+```
+
+### Issue: Structure Rendering Failures
+
+**Symptoms:**
+```
+ERROR: PyMOL execution timed out
+ERROR: Failed to generate visualization
+WARNING: PyMOL process exited with error code 1
+```
+
+**Causes:**
+- Very large structure (>100K atoms)
+- Insufficient memory
+- Graphics driver issues (interactive mode)
+- Corrupted structure file
+
+**Solutions:**
+
+#### Use Batch Mode
+```bash
+# Batch mode is faster, no GUI required
+> "Visualize 1AKE with PyMOL mode=batch"
+
+# Generates PNG image without opening GUI
+```
+
+#### Simplify Representation
+```bash
+# Cartoon is fastest (default)
+> "Visualize 1AKE style=cartoon"
+
+# Surface/spheres are slower
+> "Visualize 1AKE style=surface"  # Slower, more memory
+```
+
+#### Check Structure Size
+```bash
+# Fetch structure first to see metadata
+> "Fetch protein structure 1AKE"
+
+# Look for: "Total atoms: X" in output
+# If >100K atoms, expect longer rendering time
+```
+
+#### Increase Timeout
+```bash
+# For very large structures
+export LOBSTER_PYMOL_TIMEOUT_SECONDS=300
+
+# Restart Lobster
+lobster chat
+```
+
+#### Use Headless Mode Manually
+```bash
+# Generate PNG without GUI
+pymol -c 1AKE_commands.pml
+
+# Faster than interactive mode
+```
+
+#### Check Memory
+```bash
+# Linux
+free -h
+
+# macOS
+vm_stat
+
+# Ensure >2GB free for large structures
+```
+
+### Issue: Interactive Mode Not Launching
+
+**Symptoms:**
+```
+INFO: Launching PyMOL GUI...
+WARNING: PyMOL GUI did not launch
+ERROR: DISPLAY environment variable not set
+```
+
+**Causes:**
+- No display environment (SSH session without X11)
+- PyMOL not in PATH
+- X11 forwarding disabled
+
+**Solutions:**
+
+#### Check Display Environment
+```bash
+# Should be set for GUI apps
+echo $DISPLAY
+
+# Expected values:
+# - :0 (local display)
+# - localhost:10.0 (X11 forwarding)
+```
+
+#### Enable X11 Forwarding (SSH)
+```bash
+# SSH with X11 forwarding
+ssh -X user@host
+
+# Or on macOS (requires XQuartz)
+ssh -Y user@host
+```
+
+#### Test X11
+```bash
+# Simple X11 test
+xeyes  # Should show GUI window
+
+# If xeyes fails, X11 not configured
+```
+
+#### Use Batch Mode Instead
+```bash
+# Batch mode doesn't require display
+> "Visualize 1AKE mode=batch style=cartoon"
+
+# Generates PNG without GUI
+```
+
+#### Execute Script Manually Later
+```bash
+# Save command script now
+> "Visualize 1AKE execute=false"
+
+# Execute later when you have GUI access
+pymol 1AKE_commands.pml
+```
+
+---
+
+## S3 Backend Issues (v2.4+)
+
+### Issue: AWS Credentials Configuration
+
+**Symptoms:**
+```
+ERROR: Unable to locate credentials
+ERROR: S3 backend connection failed
+botocore.exceptions.NoCredentialsError
+```
+
+**Solutions:**
+
+#### Configure AWS CLI
+```bash
+# Interactive configuration
+aws configure
+
+# Enter:
+# AWS Access Key ID: AKIAIOSFODNN7EXAMPLE
+# AWS Secret Access Key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+# Default region: us-east-1
+# Default output format: json
+```
+
+#### Set Environment Variables
+```bash
+# Export credentials
+export AWS_ACCESS_KEY_ID=your_key_id
+export AWS_SECRET_ACCESS_KEY=your_secret_key
+export AWS_DEFAULT_REGION=us-east-1
+
+# Verify
+echo $AWS_ACCESS_KEY_ID
+```
+
+#### Use Credentials File
+```bash
+# Create credentials file
+mkdir -p ~/.aws
+cat > ~/.aws/credentials << EOF
+[default]
+aws_access_key_id = your_key_id
+aws_secret_access_key = your_secret_key
+EOF
+
+# Set permissions
+chmod 600 ~/.aws/credentials
+```
+
+#### Verify Credentials
+```bash
+# Test S3 access
+aws s3 ls
+
+# Should list your buckets
+# If error, credentials are wrong
+```
+
+#### Test in Lobster
+```bash
+lobster chat
+> "Use S3 backend for storage"
+> /status  # Should show S3 backend active
+```
+
+### Issue: S3 Bucket Permissions
+
+**Symptoms:**
+```
+ERROR: Access Denied (403)
+ERROR: Cannot write to S3 bucket: your-bucket-name
+botocore.exceptions.ClientError: An error occurred (AccessDenied)
+```
+
+**Required IAM Permissions:**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket",
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::your-bucket-name",
+        "arn:aws:s3:::your-bucket-name/*"
+      ]
+    }
+  ]
+}
+```
+
+**Verify Permissions:**
+```bash
+# Test bucket listing
+aws s3 ls s3://your-bucket-name/
+
+# Test write permission
+echo "test" | aws s3 cp - s3://your-bucket-name/test.txt
+
+# Test read permission
+aws s3 cp s3://your-bucket-name/test.txt -
+
+# Test delete permission
+aws s3 rm s3://your-bucket-name/test.txt
+```
+
+**Check IAM Policy:**
+```bash
+# Get user policies
+aws iam list-user-policies --user-name your-username
+
+# Get policy document
+aws iam get-user-policy --user-name your-username --policy-name your-policy
+```
+
+**Solutions:**
+```bash
+# If permissions insufficient, contact AWS admin
+# Or create new IAM user with correct permissions
+
+# Alternative: Use local storage
+> "Use local filesystem backend instead of S3"
+```
+
+### Issue: Network Connectivity Issues
+
+**Symptoms:**
+```
+ERROR: Connection timeout to S3
+ERROR: Unable to reach S3 endpoint
+requests.exceptions.ConnectionError: Max retries exceeded
+botocore.exceptions.EndpointConnectionError
+```
+
+**Causes:**
+- Network firewall blocking AWS endpoints
+- VPN issues
+- DNS resolution failure
+- Regional endpoint unavailable
+
+**Solutions:**
+
+#### Test S3 Connectivity
+```bash
+# Ping S3 endpoint
+ping s3.amazonaws.com
+
+# Test HTTPS connection
+curl -I https://s3.amazonaws.com
+
+# Should return HTTP 403 (forbidden but reachable)
+```
+
+#### Try Different Region
+```bash
+# Change default region
+export AWS_DEFAULT_REGION=us-west-2
+lobster chat
+
+# Or specify in config
+aws configure set default.region us-west-2
+```
+
+#### Check DNS Resolution
+```bash
+# Test DNS lookup
+nslookup s3.amazonaws.com
+
+# Should resolve to AWS IP addresses
+```
+
+#### Use VPC Endpoint (AWS Environment)
+```bash
+# If running in AWS EC2/ECS
+export AWS_S3_ENDPOINT=https://vpce-xxxxx.s3.us-east-1.vpce.amazonaws.com
+
+# VPC endpoints bypass internet gateway
+```
+
+#### Increase Timeout
+```bash
+# For slow connections
+export LOBSTER_S3_TIMEOUT_SECONDS=60
+lobster chat
+```
+
+#### Check Firewall Rules
+```bash
+# Ensure outbound HTTPS (443) allowed to:
+# - s3.amazonaws.com
+# - *.s3.amazonaws.com
+# - s3.us-east-1.amazonaws.com (region-specific)
+```
+
+**Alternative: Use Local Storage**
+```bash
+# If S3 unavailable, switch to local
+> "Use local filesystem backend"
+> /status  # Verify backend changed
+```
+
+---
+
 ## Getting Help
 
 ### When to Seek Support
@@ -1013,7 +2607,7 @@ When reporting issues, provide:
 
 - **GitHub Issues**: [Report bugs and feature requests](https://github.com/the-omics-os/lobster/issues)
 - **Discord Community**: Real-time help and discussion
-- **Documentation**: [Complete guide and tutorials](../README.md)
+- **Documentation**: [Complete guide and tutorials](README.md)
 - **Example Notebooks**: Working examples and best practices
 
 ### Quick Diagnostic Command

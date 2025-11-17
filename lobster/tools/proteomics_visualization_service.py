@@ -6,9 +6,7 @@ proteomics data analysis, generating interactive and publication-quality plots u
 Handles missing value patterns, intensity distributions, and platform-specific requirements.
 """
 
-import time
-import warnings
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import anndata
 import networkx as nx
@@ -18,12 +16,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotly.io as pio
 from plotly.subplots import make_subplots
-from scipy import stats
 from scipy.cluster.hierarchy import dendrogram, linkage
 from scipy.sparse import issparse
-from scipy.spatial.distance import pdist, squareform
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
+from scipy.spatial.distance import pdist
 
 from lobster.utils.logger import get_logger
 
@@ -46,8 +41,14 @@ class ProteomicsVisualizationService:
     All plots are interactive using Plotly for publication-quality figures.
     """
 
-    def __init__(self):
-        """Initialize the proteomics visualization service."""
+    def __init__(self, config=None, **kwargs):
+        """
+        Initialize the proteomics visualization service.
+
+        Args:
+            config: Optional configuration dict (ignored, for backward compatibility)
+            **kwargs: Additional arguments (ignored, for backward compatibility)
+        """
         logger.debug("Initializing ProteomicsVisualizationService")
 
         # Color palettes optimized for proteomics data
@@ -88,7 +89,7 @@ class ProteomicsVisualizationService:
         cluster_samples: bool = True,
         cluster_proteins: bool = True,
         title: Optional[str] = None,
-    ) -> go.Figure:
+    ) -> Tuple[go.Figure, Dict[str, Any]]:
         """
         Create a heatmap showing missing value patterns across samples and proteins.
 
@@ -101,7 +102,7 @@ class ProteomicsVisualizationService:
             title: Plot title
 
         Returns:
-            go.Figure: Interactive missing value heatmap
+            Tuple[go.Figure, Dict[str, Any]]: Interactive missing value heatmap and statistics
 
         Raises:
             ProteomicsVisualizationError: If visualization fails
@@ -189,7 +190,19 @@ class ProteomicsVisualizationService:
                 yaxis=dict(tickfont=dict(size=8)),
             )
 
-            return fig
+            # Generate statistics
+            stats = {
+                "plot_type": "missing_value_heatmap",
+                "total_missing_percentage": float(missing_percentage),
+                "samples_plotted": len(sample_names),
+                "proteins_plotted": len(protein_names),
+                "total_samples": adata.n_obs,
+                "total_proteins": adata.n_vars,
+                "clustered_samples": cluster_samples and missing_matrix.shape[0] > 1,
+                "clustered_proteins": cluster_proteins and missing_matrix.shape[1] > 1,
+            }
+
+            return fig, stats
 
         except Exception as e:
             logger.error(f"Error creating missing value heatmap: {e}")
@@ -205,7 +218,7 @@ class ProteomicsVisualizationService:
         show_outliers: bool = True,
         max_samples: int = 50,
         title: Optional[str] = None,
-    ) -> go.Figure:
+    ) -> Tuple[go.Figure, Dict[str, Any]]:
         """
         Create intensity distribution plots across samples.
 
@@ -218,7 +231,7 @@ class ProteomicsVisualizationService:
             title: Plot title
 
         Returns:
-            go.Figure: Interactive intensity distribution plot
+            Tuple[go.Figure, Dict[str, Any]]: Interactive intensity distribution plot and statistics
         """
         try:
             logger.info("Creating intensity distribution plot")
@@ -318,7 +331,36 @@ class ProteomicsVisualizationService:
                 plot_bgcolor="white",
             )
 
-            return fig
+            # Add plot type and group information to stats
+            stats_dict["plot_type"] = "intensity_distribution"
+            stats_dict["log_transformed"] = log_transform
+            if group_by and group_by in adata.obs.columns:
+                stats_dict["grouped_by"] = group_by
+                stats_dict["n_groups"] = len(adata.obs[group_by].unique())
+                # Group-wise statistics
+                group_stats = {}
+                for group in adata.obs[group_by].unique():
+                    group_mask = adata.obs[group_by] == group
+                    group_data = X[group_mask, :]
+                    if log_transform:
+                        group_data = np.log10(group_data + 1)
+                    group_clean = group_data[~np.isnan(group_data)]
+                    group_stats[str(group)] = {
+                        "mean": float(np.mean(group_clean)),
+                        "median": float(np.median(group_clean)),
+                        "std": float(np.std(group_clean)),
+                        "n_values": len(group_clean),
+                    }
+                stats_dict["group_stats"] = group_stats
+            else:
+                stats_dict["distribution_stats"] = {
+                    "mean": stats_dict["mean"],
+                    "median": stats_dict["median"],
+                    "std": stats_dict["std"],
+                    "range": [stats_dict["min"], stats_dict["max"]],
+                }
+
+            return fig, stats_dict
 
         except Exception as e:
             logger.error(f"Error creating intensity distribution plot: {e}")
@@ -332,7 +374,7 @@ class ProteomicsVisualizationService:
         group_by: Optional[str] = None,
         cv_threshold: float = 30.0,
         title: Optional[str] = None,
-    ) -> go.Figure:
+    ) -> Tuple[go.Figure, Dict[str, Any]]:
         """
         Create coefficient of variation (CV) analysis plot.
 
@@ -343,7 +385,7 @@ class ProteomicsVisualizationService:
             title: Plot title
 
         Returns:
-            go.Figure: Interactive CV analysis plot
+            Tuple[go.Figure, Dict[str, Any]]: Interactive CV analysis plot and statistics
         """
         try:
             logger.info("Creating CV analysis plot")
@@ -455,7 +497,47 @@ class ProteomicsVisualizationService:
                 plot_bgcolor="white",
             )
 
-            return fig
+            # Generate statistics
+            stats = {
+                "plot_type": "cv_analysis",
+                "cv_threshold": cv_threshold,
+            }
+
+            if group_by and group_by in adata.obs.columns:
+                stats["grouped_by"] = group_by
+                stats["n_groups"] = len(adata.obs[group_by].unique())
+                # Calculate group-wise CV statistics
+                replicate_cv_stats = {}
+                for group in adata.obs[group_by].unique():
+                    group_mask = adata.obs[group_by] == group
+                    group_data = X[group_mask, :]
+                    group_means = np.nanmean(group_data, axis=0)
+                    group_stds = np.nanstd(group_data, axis=0)
+                    group_cvs = (group_stds / group_means) * 100
+                    valid_cvs = group_cvs[~np.isnan(group_cvs) & ~np.isinf(group_cvs)]
+                    replicate_cv_stats[str(group)] = {
+                        "median_cv": float(np.median(valid_cvs)),
+                        "mean_cv": float(np.mean(valid_cvs)),
+                        "high_cv_proteins": int(np.sum(group_cvs > cv_threshold)),
+                        "n_proteins": len(valid_cvs),
+                    }
+                stats["replicate_cv_stats"] = replicate_cv_stats
+            else:
+                means = np.nanmean(X, axis=0)
+                stds = np.nanstd(X, axis=0)
+                cvs = (stds / means) * 100
+                valid_cvs = cvs[~np.isnan(cvs) & ~np.isinf(cvs)]
+                high_cv_proteins = np.sum(cvs > cv_threshold)
+                stats["cv_statistics"] = {
+                    "median_cv": float(np.median(valid_cvs)),
+                    "mean_cv": float(np.mean(valid_cvs)),
+                    "min_cv": float(np.min(valid_cvs)),
+                    "max_cv": float(np.max(valid_cvs)),
+                    "high_cv_proteins": int(high_cv_proteins),
+                    "total_proteins": len(valid_cvs),
+                }
+
+            return fig, stats
 
         except Exception as e:
             logger.error(f"Error creating CV analysis plot: {e}")
@@ -474,7 +556,7 @@ class ProteomicsVisualizationService:
         pvalue_threshold: float = 0.05,
         highlight_proteins: Optional[List[str]] = None,
         title: Optional[str] = None,
-    ) -> go.Figure:
+    ) -> Tuple[go.Figure, Dict[str, Any]]:
         """
         Create a volcano plot for differential protein expression.
 
@@ -490,7 +572,7 @@ class ProteomicsVisualizationService:
             title: Plot title
 
         Returns:
-            go.Figure: Interactive volcano plot
+            Tuple[go.Figure, Dict[str, Any]]: Interactive volcano plot and statistics
         """
         try:
             logger.info("Creating volcano plot")
@@ -566,7 +648,7 @@ class ProteomicsVisualizationService:
             significant_down = (df[fold_change_col] < -fc_threshold) & (
                 df[pvalue_col] < pvalue_threshold
             )
-            not_significant = ~(significant_up | significant_down)
+            ~(significant_up | significant_down)
 
             # Create colors
             colors = []
@@ -651,7 +733,23 @@ class ProteomicsVisualizationService:
                 hovermode="closest",
             )
 
-            return fig
+            # Generate statistics
+            stats = {
+                "plot_type": "volcano_plot",
+                "n_significant_up": int(n_up),
+                "n_significant_down": int(n_down),
+                "n_non_significant": int(n_total - n_up - n_down),
+                "n_total_proteins": int(n_total),
+                "fc_threshold": fc_threshold,
+                "pvalue_threshold": pvalue_threshold,
+                "fold_change_col": fold_change_col,
+                "pvalue_col": pvalue_col,
+            }
+
+            if highlight_proteins:
+                stats["n_highlighted"] = len(highlight_proteins)
+
+            return fig, stats
 
         except Exception as e:
             logger.error(f"Error creating volcano plot: {e}")
@@ -667,7 +765,7 @@ class ProteomicsVisualizationService:
         layout_algorithm: str = "spring",
         color_by: Optional[str] = None,
         title: Optional[str] = None,
-    ) -> go.Figure:
+    ) -> Tuple[go.Figure, Dict[str, Any]]:
         """
         Create a protein correlation network visualization.
 
@@ -680,7 +778,7 @@ class ProteomicsVisualizationService:
             title: Plot title
 
         Returns:
-            go.Figure: Interactive network plot
+            Tuple[go.Figure, Dict[str, Any]]: Interactive network plot and statistics
         """
         try:
             logger.info("Creating protein correlation network")
@@ -824,7 +922,7 @@ class ProteomicsVisualizationService:
             fig.update_layout(
                 title=title
                 or f"Protein Correlation Network (r ≥ {correlation_threshold})",
-                titlefont_size=16,
+                title_font_size=16,
                 showlegend=False,
                 hovermode="closest",
                 margin=dict(b=20, l=5, r=5, t=40),
@@ -848,7 +946,31 @@ class ProteomicsVisualizationService:
                 plot_bgcolor="white",
             )
 
-            return fig
+            # Generate statistics
+            stats = {
+                "plot_type": "correlation_network",
+                "n_nodes": G.number_of_nodes(),
+                "n_edges": G.number_of_edges(),
+                "correlation_threshold": correlation_threshold,
+                "layout_algorithm": layout_algorithm,
+                "max_proteins": max_proteins,
+                "total_proteins": adata.n_vars,
+            }
+
+            if color_by:
+                stats["colored_by"] = color_by
+
+            # Calculate network metrics if not empty
+            if G.number_of_nodes() > 0:
+                stats["avg_degree"] = float(
+                    sum(dict(G.degree()).values()) / G.number_of_nodes()
+                )
+                if G.number_of_edges() > 0:
+                    stats["network_density"] = float(
+                        nx.density(G)
+                    )  # Ratio of actual edges to possible edges
+
+            return fig, stats
 
         except Exception as e:
             logger.error(f"Error creating protein correlation network: {e}")
@@ -863,7 +985,7 @@ class ProteomicsVisualizationService:
         top_n: int = 20,
         plot_type: str = "bubble",
         title: Optional[str] = None,
-    ) -> go.Figure:
+    ) -> Tuple[go.Figure, Dict[str, Any]]:
         """
         Create pathway enrichment visualization.
 
@@ -875,7 +997,7 @@ class ProteomicsVisualizationService:
             title: Plot title
 
         Returns:
-            go.Figure: Interactive pathway enrichment plot
+            Tuple[go.Figure, Dict[str, Any]]: Interactive pathway enrichment plot and statistics
         """
         try:
             logger.info("Creating pathway enrichment plot")
@@ -970,7 +1092,22 @@ class ProteomicsVisualizationService:
                 yaxis=dict(tickfont=dict(size=10)),
             )
 
-            return fig
+            # Generate statistics
+            stats = {
+                "plot_type": "pathway_enrichment",
+                "n_pathways_plotted": len(df),
+                "plot_style": plot_type,
+                "top_n": top_n,
+            }
+
+            if len(df) > 0:
+                stats["most_significant_pathway"] = {
+                    "name": df.iloc[0]["pathway_name"],
+                    "p_value": float(df.iloc[0]["p_value"]),
+                    "enrichment_ratio": float(df.iloc[0]["enrichment_ratio"]),
+                }
+
+            return fig, stats
 
         except Exception as e:
             logger.error(f"Error creating pathway enrichment plot: {e}")
@@ -983,7 +1120,7 @@ class ProteomicsVisualizationService:
         adata: anndata.AnnData,
         platform_type: str = "mass_spectrometry",
         title: Optional[str] = None,
-    ) -> go.Figure:
+    ) -> Tuple[go.Figure, Dict[str, Any]]:
         """
         Create comprehensive quality control dashboard for proteomics data.
 
@@ -993,7 +1130,7 @@ class ProteomicsVisualizationService:
             title: Plot title
 
         Returns:
-            go.Figure: Comprehensive QC dashboard
+            Tuple[go.Figure, Dict[str, Any]]: Comprehensive QC dashboard and statistics
         """
         try:
             logger.info(f"Creating proteomics QC dashboard for {platform_type}")
@@ -1270,7 +1407,34 @@ class ProteomicsVisualizationService:
             fig.update_xaxes(title_text="Protein Index", row=2, col=2)
             fig.update_yaxes(title_text="Detection Rate (%)", row=2, col=2)
 
-            return fig
+            # Generate comprehensive statistics
+            stats = {
+                "plot_type": "qc_dashboard",
+                "platform_type": platform_type,
+                "dashboard_components": [
+                    "missing_value_pattern",
+                    "intensity_distribution",
+                    "cv_distribution",
+                    "sample_correlation",
+                    "protein_detection",
+                    "batch_effects" if "batch" in adata.obs.columns else "sample_stats",
+                    "data_quality_metrics",
+                    "platform_specific_qc",
+                    "summary_statistics",
+                ],
+                "summary": {
+                    "total_samples": adata.n_obs,
+                    "total_proteins": adata.n_vars,
+                    "mean_proteins_per_sample": float(
+                        np.mean(np.sum(~np.isnan(X), axis=1))
+                    ),
+                    "overall_missing_percentage": float(np.mean(missing_per_sample)),
+                    "median_cv": float(np.median(valid_cvs)),
+                    "high_quality_proteins": int(np.sum(valid_cvs < 30)),
+                },
+            }
+
+            return fig, stats
 
         except Exception as e:
             logger.error(f"Error creating proteomics QC dashboard: {e}")
@@ -1292,7 +1456,6 @@ class ProteomicsVisualizationService:
         Returns:
             List[str]: Paths to saved files
         """
-        import os
         from pathlib import Path
 
         saved_files = []

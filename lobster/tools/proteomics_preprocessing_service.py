@@ -6,16 +6,14 @@ proteomics data including MNAR imputation, proteomics-specific normalization met
 and batch correction techniques suitable for mass spectrometry data.
 """
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple
 
 import anndata
 import numpy as np
 import pandas as pd
-from scipy import stats
 from scipy.stats import rankdata
 from sklearn.decomposition import PCA
 from sklearn.impute import KNNImputer, SimpleImputer
-from sklearn.preprocessing import QuantileTransformer, StandardScaler
 
 from lobster.utils.logger import get_logger
 
@@ -89,7 +87,7 @@ class ProteomicsPreprocessingService:
 
             # Check for missing values
             X = adata_imputed.X.copy()
-            if not hasattr(X, "isnan") or not np.isnan(X).any():
+            if not np.isnan(X).any():
                 logger.info("No missing values detected, skipping imputation")
                 return adata_imputed, {
                     "method": method,
@@ -650,11 +648,11 @@ class ProteomicsPreprocessingService:
             pca = PCA(n_components=min(n_pcs, X_before_pca.shape[1]))
 
             # PCA before correction
-            pca_before = pca.fit_transform(X_before_pca)
+            pca.fit_transform(X_before_pca)
             var_explained_before = pca.explained_variance_ratio_[:3].sum()
 
             # PCA after correction
-            pca_after = pca.fit_transform(X_after_pca)
+            pca.fit_transform(X_after_pca)
             var_explained_after = pca.explained_variance_ratio_[:3].sum()
 
             stats = {

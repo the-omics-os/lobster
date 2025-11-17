@@ -762,7 +762,7 @@ The multi-agent system includes:
 1. **Supervisor Agent** - Coordinates other agents and routing
 2. **Data Expert** - Data loading, preprocessing, quality control
 3. **Transcriptomics Expert** - RNA-seq analysis, single-cell analysis
-4. **Method Expert** - Statistical methods, clustering, visualization
+4. **Research Agent** - Literature mining, dataset discovery, method extraction (Phase 1)
 
 **Agent Communication Examples:**
 - "Load the GSE123456 dataset and perform quality control"

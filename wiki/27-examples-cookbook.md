@@ -5,15 +5,16 @@ This comprehensive cookbook provides practical code snippets, analysis recipes, 
 ## Table of Contents
 
 1. [Quick Start Recipes](#quick-start-recipes)
-2. [Data Loading & Management](#data-loading--management)
-3. [Single-Cell Analysis Recipes](#single-cell-analysis-recipes)
-4. [Bulk RNA-seq Workflows](#bulk-rna-seq-workflows)
-5. [Proteomics Analysis Patterns](#proteomics-analysis-patterns)
-6. [Multi-Omics Integration](#multi-omics-integration)
-7. [Visualization Recipes](#visualization-recipes)
-8. [Advanced Analysis Techniques](#advanced-analysis-techniques)
-9. [Automation & Scripting](#automation--scripting)
-10. [Performance Optimization](#performance-optimization)
+2. [Data Loading & Management](#data-loading-management)
+3. [Example Datasets Reference](#example-datasets-reference)
+4. [Single-Cell Analysis Recipes](#single-cell-analysis-recipes)
+5. [Bulk RNA-seq Workflows](#bulk-rna-seq-workflows)
+6. [Proteomics Analysis Patterns](#proteomics-analysis-patterns)
+7. [Multi-Omics Integration](#multi-omics-integration)
+8. [Visualization Recipes](#visualization-recipes)
+9. [Advanced Analysis Techniques](#advanced-analysis-techniques)
+10. [Automation & Scripting](#automation-scripting)
+11. [Performance Optimization](#performance-optimization)
 
 ---
 
@@ -65,6 +66,86 @@ This comprehensive cookbook provides practical code snippets, analysis recipes, 
 🦞 You: "Search GEO for single-cell datasets related to cancer immunotherapy"
 ```
 
+#### Pre-Download Metadata Validation (v2.2+)
+
+**Recommended Practice**: Validate dataset metadata before downloading to save time and ensure datasets contain required fields.
+
+##### Basic Validation - Check Required Fields
+```bash
+# Validate that a dataset has required metadata fields
+🦞 You: "Validate GSE200997 for required fields: cell_type, tissue"
+
+# Expected output:
+## Metadata Validation Report for GSE200997
+**Recommendation:** ✅ **PROCEED**
+**Confidence Score:** 1.00/1.00
+**Total Samples:** 23
+
+### Field Analysis:
+- **cell_type**: ✅ 100.0% coverage (values: 'Colon,Right,Cecum', 'Colon,Left,Sigmoid', ...)
+- **tissue**: ✅ 100.0% coverage (values: 'Colorectal cancer')
+
+### 💡 Recommendation Rationale:
+All required fields are present with sufficient coverage. Dataset is suitable for analysis.
+```
+
+##### Validation with Specific Values - Drug Discovery
+```bash
+# Check if dataset has treatment response field with specific values
+🦞 You: "Check if GSE179994 has treatment_response field with responder and non-responder values"
+
+# This validates both field presence AND value content
+# Useful for drug discovery and biomarker studies
+```
+
+##### Comparing Multiple Datasets
+```bash
+# Real-world scenario: Find best dataset for smoking study
+🦞 You: "Search GEO for lung cancer single-cell datasets"
+# Returns: GSE131907, GSE139555, GSE148071
+
+# Validate each dataset for required metadata
+🦞 You: "Validate GSE131907 for required fields: smoking_status, cancer_stage, treatment_history"
+# Result: ⚠️ MANUAL_CHECK - Only 60% samples have smoking_status
+
+🦞 You: "Validate GSE139555 for required fields: smoking_status, cancer_stage, treatment_history"
+# Result: ✅ PROCEED - 100% coverage for all fields
+
+🦞 You: "Validate GSE148071 for required fields: smoking_status, cancer_stage, treatment_history"
+# Result: ❌ SKIP - Missing smoking_status field entirely
+
+# Decision: Download GSE139555 based on metadata validation
+🦞 You: "Download GSE139555 and prepare for analysis"
+```
+
+##### Time-Series Study Example
+```bash
+# Validate dataset has required time point information
+🦞 You: "Validate GSE145281 for required fields: time_point, treatment, replicate"
+
+# Check specific time point values are present
+🦞 You: "Check if GSE145281 has time_point field with values: 0h, 6h, 12h, 24h"
+```
+
+##### Understanding Validation Results
+
+**Recommendation Types:**
+- **✅ PROCEED** (Confidence ≥0.8): All required fields present with ≥80% coverage
+- **⚠️ MANUAL_CHECK** (Confidence 0.5-0.8): Partial coverage between 50-80%
+- **❌ SKIP** (Confidence <0.5): Missing critical fields or <50% coverage
+
+**Benefits:**
+- ⏱️ **Save time**: 2-5 seconds validation vs 5-30 minutes full download
+- 💾 **Save storage**: Avoid downloading datasets missing critical metadata
+- 🎯 **Better selection**: Compare metadata across multiple candidates
+- 📊 **Field coverage**: See actual sample-level completeness
+
+**Common Use Cases:**
+- Drug discovery: Validate treatment response fields
+- Biomarker studies: Check clinical outcome metadata
+- Multi-dataset analysis: Filter by metadata completeness
+- Time series: Verify timepoint field exists
+
 #### Local Files
 ```bash
 # Load various file formats
@@ -96,6 +177,236 @@ This comprehensive cookbook provides practical code snippets, analysis recipes, 
 🦞 You: "/plots"                    # List generated visualizations
 🦞 You: "/export results"           # Export analysis results
 ```
+
+---
+
+## Example Datasets Reference
+
+This section provides curated, publicly accessible datasets for learning Lobster AI. Each dataset includes quickstart commands, suggested analyses, and cross-references to detailed tutorials. All datasets are hosted on GEO and can be downloaded directly through Lobster.
+
+### Single-Cell RNA-seq Datasets
+
+#### GSE109564 - Peripheral Blood Mononuclear Cells (PBMC)
+
+**Details:**
+- **Organism:** Human
+- **Technology:** 10X Chromium (3' v2)
+- **Cells:** ~15,000 cells across 8 samples
+- **Samples:** Healthy donors, replicate experiments
+- **Description:** High-quality PBMC dataset ideal for learning cell type annotation and clustering
+
+**Quickstart:**
+```bash
+🦞 You: "Download GSE109564 from GEO"
+🦞 You: "Assess quality and filter low-quality cells"
+🦞 You: "Normalize, find variable genes, and cluster cells"
+🦞 You: "Find marker genes and annotate cell types"
+```
+
+**Suggested Analyses:**
+- Cell type annotation (T cells, B cells, monocytes, NK cells)
+- Quality control and filtering
+- Batch effect assessment across replicates
+- UMAP visualization with cell type labels
+
+**Tutorial Reference:** [Single-Cell Tutorial](23-tutorial-single-cell.md)
+
+---
+
+#### GSE131907 - Lung Cancer with Smoking Status
+
+**Details:**
+- **Organism:** Human
+- **Technology:** 10X Chromium
+- **Cells:** ~52,000 cells
+- **Samples:** 44 patients (lung cancer vs normal)
+- **Description:** Comprehensive lung cancer dataset with smoking status metadata
+
+**Quickstart:**
+```bash
+🦞 You: "Validate GSE131907 for required fields: smoking_status, cancer_stage"
+🦞 You: "Download GSE131907 from GEO"
+🦞 You: "Compare cell type composition between cancer and normal samples"
+🦞 You: "Find differentially expressed genes in tumor-infiltrating immune cells"
+```
+
+**Suggested Analyses:**
+- Cell type annotation (epithelial, immune, stromal)
+- Differential composition analysis (cancer vs normal)
+- Smoking-associated gene expression changes
+- Tumor microenvironment characterization
+
+**Tutorial Reference:** [Single-Cell Tutorial](23-tutorial-single-cell.md)
+
+---
+
+#### GSE139555 - Colorectal Cancer Organoids
+
+**Details:**
+- **Organism:** Human
+- **Technology:** 10X Chromium
+- **Cells:** ~23,000 cells
+- **Samples:** Patient-derived organoids
+- **Description:** Cancer organoid model with treatment response metadata
+
+**Quickstart:**
+```bash
+🦞 You: "Validate GSE139555 for required fields: cell_type, tissue"
+🦞 You: "Download GSE139555 from GEO"
+🦞 You: "Identify stem cell populations in organoids"
+🦞 You: "Analyze differentiation trajectories using pseudotime"
+```
+
+**Suggested Analyses:**
+- Trajectory analysis (stem cell → differentiated)
+- Cell cycle analysis
+- Treatment response biomarkers
+- Organoid vs primary tissue comparison
+
+**Tutorial Reference:** [Single-Cell Tutorial](23-tutorial-single-cell.md), Section on Trajectory Analysis
+
+---
+
+### Bulk RNA-seq Datasets
+
+#### GSE180759 - Time Series Treatment Response
+
+**Details:**
+- **Organism:** Human
+- **Technology:** Illumina HiSeq
+- **Samples:** 32 samples (4 timepoints × 2 conditions × 4 replicates)
+- **Description:** Drug treatment time series with matched controls
+
+**Quickstart:**
+```bash
+🦞 You: "Download GSE180759 from GEO"
+🦞 You: "Design matrix for time series: ~treatment + time + treatment:time"
+🦞 You: "Run pyDESeq2 differential expression analysis"
+🦞 You: "Identify genes with different temporal patterns between treatment and control"
+```
+
+**Suggested Analyses:**
+- Time series differential expression
+- Treatment × time interaction effects
+- Temporal gene clustering
+- Pathway enrichment analysis
+
+**Tutorial Reference:** [Bulk RNA-seq Tutorial](24-tutorial-bulk-rnaseq.md), Section on Time Series Analysis
+
+---
+
+#### GSE165595 - Multi-Factor Experimental Design
+
+**Details:**
+- **Organism:** Mouse
+- **Technology:** Illumina NovaSeq
+- **Samples:** 48 samples (3 genotypes × 2 treatments × 8 replicates)
+- **Description:** Complex factorial design with genotype and treatment factors
+
+**Quickstart:**
+```bash
+🦞 You: "Download GSE165595 from GEO"
+🦞 You: "Create design matrix: ~genotype + treatment + genotype:treatment"
+🦞 You: "Test genotype×treatment interaction effects"
+🦞 You: "Generate volcano plots for each contrast"
+```
+
+**Suggested Analyses:**
+- Factorial design analysis
+- Interaction effect testing
+- Genotype-specific treatment responses
+- Multi-contrast comparisons
+
+**Tutorial Reference:** [Bulk RNA-seq Tutorial](24-tutorial-bulk-rnaseq.md), Section on Complex Designs
+
+---
+
+### Mass Spectrometry Proteomics Datasets
+
+#### PXD020394 - DIA Plasma Proteomics
+
+**Details:**
+- **Organism:** Human
+- **Technology:** DIA (Orbitrap)
+- **Samples:** 40 samples (disease vs control)
+- **Description:** Data-independent acquisition workflow with moderate missing values
+
+**Quickstart:**
+```bash
+🦞 You: "Load Spectronaut output from PXD020394 processed files"
+🦞 You: "Analyze missing value patterns and apply MNAR imputation"
+🦞 You: "Perform TMM normalization"
+🦞 You: "Run limma differential expression disease vs control"
+```
+
+**Suggested Analyses:**
+- Missing value analysis and imputation
+- Batch effect correction
+- Differential protein expression
+- Pathway enrichment analysis
+
+**Tutorial Reference:** [Proteomics Tutorial](25-tutorial-proteomics.md), Section on MS Proteomics
+
+---
+
+### Affinity Proteomics Datasets
+
+#### Olink Explore Panel - Inflammation Study
+
+**Details:**
+- **Organism:** Human
+- **Technology:** Olink Explore 3072
+- **Samples:** 100 samples (multiple inflammatory conditions)
+- **Description:** High-throughput targeted proteomics with low missing values
+
+**Quickstart:**
+```bash
+🦞 You: "Load Olink NPX data from inflammation_study.xlsx"
+🦞 You: "Calculate coefficient of variation for all proteins"
+🦞 You: "Run ANOVA across multiple conditions"
+🦞 You: "Create heatmap of significant proteins"
+```
+
+**Suggested Analyses:**
+- Quality assessment (CV, detection frequency)
+- Multi-group comparison (ANOVA)
+- Protein correlation networks
+- Inflammation pathway analysis
+
+**Tutorial Reference:** [Proteomics Tutorial](25-tutorial-proteomics.md), Section on Affinity Proteomics
+
+---
+
+### Dataset Selection Tips
+
+**For Learning Basics:**
+- Start with GSE109564 (PBMC) for single-cell analysis
+- Use GSE180759 for bulk RNA-seq time series
+- Try Olink data for proteomics (low missing values, easier QC)
+
+**For Advanced Workflows:**
+- GSE131907 (lung cancer) for complex metadata validation
+- GSE165595 (multi-factor) for interaction effects
+- PXD020394 (DIA) for missing value handling
+
+**For Multi-Omics Integration:**
+- Look for paired datasets with matching samples
+- Search GEO for studies with both transcriptomics and proteomics
+- Use `/search` command: `🦞 You: "Search GEO for paired RNA-seq and proteomics data"`
+
+**Validation Before Download:**
+```bash
+# Always validate metadata first (v2.2+)
+🦞 You: "Validate GSE##### for required fields: field1, field2"
+
+# Expected output shows:
+# - Recommendation: ✅ PROCEED, ⚠️ MANUAL_CHECK, or ❌ SKIP
+# - Confidence score (0-1)
+# - Field coverage percentages
+# - Sample unique values
+```
+
+This saves time by ensuring datasets have required metadata before downloading (5-30 minutes saved per validation).
 
 ---
 

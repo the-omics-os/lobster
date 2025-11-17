@@ -162,7 +162,7 @@ class TestConcatenationService:
             )
             mock_concat.return_value = mock_result
 
-            result_adata, statistics = service.concatenate_samples(
+            result_adata, statistics, _ = service.concatenate_samples(
                 sample_anndata_objects, strategy=ConcatenationStrategy.SMART_SPARSE
             )
 
@@ -208,7 +208,7 @@ class TestConcatenationService:
                 {"n_samples": 2, "strategy_used": "smart_sparse"},
             )
 
-            result_adata, statistics = service.concatenate_from_modalities(
+            result_adata, statistics, _ = service.concatenate_from_modalities(
                 modality_names=["test_sample1", "test_sample2"],
                 output_name="test_output",
                 use_intersecting_genes_only=True,
@@ -526,7 +526,7 @@ class TestErrorHandling:
             mock_concat.return_value = mock_result
 
             # This should log a warning and fallback to SMART_SPARSE
-            result_adata, statistics = service.concatenate_samples(
+            result_adata, statistics, _ = service.concatenate_samples(
                 sample_anndata_objects, strategy=invalid_strategy
             )
 
@@ -609,7 +609,9 @@ class TestIntegration:
         assert memory_info.required_gb > 0
 
         # Test concatenation
-        result_adata, statistics = service.concatenate_samples(sample_anndata_objects)
+        result_adata, statistics, _ = service.concatenate_samples(
+            sample_anndata_objects
+        )
         assert result_adata is not None
         assert statistics["strategy_used"] == "smart_sparse"
 

@@ -1,13 +1,121 @@
+# Docker Compose configuration for Lobster AI
+# Supports both CLI and FastAPI server modes with persistent storage
+
 version: '3.8'
 
 services:
-
-  streamlit:
-    image: streamlit/sl:1
+  # ============================================================================
+  # Lobster CLI Service (Interactive Mode)
+  # ============================================================================
+  # Usage: docker-compose run --rm lobster-cli
+  lobster-cli:
     build:
       context: .
-    ports:
-      - "8080:8501"
-    entrypoint: streamlit run app.py
-    
+      dockerfile: Dockerfile
+    container_name: lobster-cli
+    stdin_open: true  # Enable interactive terminal
+    tty: true         # Allocate pseudo-TTY
+    env_file: .env
+    environment:
+      - REDIS_HOST=redis  # Connect to Redis service
+      - REDIS_PORT=6379
+    volumes:
+      # Mount local data directory for input files
+      - ./data:/app/data
+      # Persistent workspace across container restarts
+      - lobster-workspace:/app/.lobster_workspace
+      # GEO cache for faster repeated downloads
+      - lobster-cache:/app/.geo_cache
+    networks:
+      - lobster-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    # Override default CMD for custom commands
+    # Example: docker-compose run lobster-cli query "download GSE12345"
+    command: chat
 
+  # ============================================================================
+  # Lobster FastAPI Server (Web Service Mode)
+  # ============================================================================
+  # Usage: docker-compose up lobster-server
+  lobster-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: lobster-api
+    ports:
+      - "8000:8000"  # Map host:container ports
+    env_file: .env
+    environment:
+      - REDIS_HOST=redis  # Connect to Redis service
+      - REDIS_PORT=6379
+    volumes:
+      - ./data:/app/data
+      - lobster-workspace:/app/.lobster_workspace
+      - lobster-cache:/app/.geo_cache
+    networks:
+      - lobster-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped  # Auto-restart on failure
+    # Resource limits (adjust based on your workload)
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+
+  # ============================================================================
+  # Redis (Rate Limiting & Caching)
+  # ============================================================================
+  # Used for distributed rate limiting of NCBI API calls
+  redis:
+    image: redis:7-alpine
+    container_name: lobster-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - lobster-network
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+# ==============================================================================
+# Named Volumes for Data Persistence
+# ==============================================================================
+volumes:
+  # Workspace: Analysis sessions, plots, exported notebooks
+  lobster-workspace:
+    driver: local
+
+  # Cache: GEO datasets, PubMed articles, downloaded data
+  lobster-cache:
+    driver: local
+
+  # Redis data for rate limiting
+  redis-data:
+    driver: local
+
+# ==============================================================================
+# Networks
+# ==============================================================================
+networks:
+  lobster-network:
+    driver: bridge
+    name: lobster-network

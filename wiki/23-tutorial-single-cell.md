@@ -14,7 +14,7 @@ In this tutorial, you will learn to:
 
 ## Prerequisites
 
-- Lobster AI installed and configured (see [Installation Guide](../INSTALLATION.md))
+- Lobster AI installed and configured (see [Installation Guide](02-installation.md))
 - API keys set up in your `.env` file
 - Basic understanding of single-cell RNA-seq concepts
 
@@ -210,7 +210,44 @@ Top Marker Genes by Cluster:
 
 ## Step 7: Cell Type Annotation
 
-Annotate clusters with biological cell types:
+### ⚠️ Important: Marker Validation Required
+
+**CRITICAL: Built-in marker gene templates are preliminary and not scientifically validated.**
+
+Before using automatic annotation, you will be prompted to:
+1. **Provide custom validated markers** for your specific tissue/context, OR
+2. **Explicitly acknowledge** the limitations of built-in preliminary markers
+
+**Recommended workflow for production analysis:**
+
+```bash
+# Option A: Provide custom markers (RECOMMENDED)
+🦞 You: "I want to annotate cell types using custom markers. Here are my validated markers for PBMC:
+- CD8+ T cells: CD3D, CD3E, CD8A, CD8B, GZMK
+- CD4+ T cells: CD3D, CD3E, CD4, IL7R, CCR7
+- B cells: CD19, MS4A1, CD79A, CD79B
+- NK cells: GNLY, NKG7, KLRD1, NCR1, PRF1
+- Monocytes: CD14, LYZ, S100A8, S100A9
+Please annotate the clusters using these markers."
+
+# Option B: Use reference-based tools (RECOMMENDED)
+🦞 You: "Use Azimuth reference-based annotation for PBMC cell types"
+
+# Option C: Acknowledge limitations and use built-in (NOT RECOMMENDED for production)
+# The agent will warn you and ask for explicit confirmation
+```
+
+**Why custom markers matter:**
+- Built-in templates lack evidence scoring (AUC, logFC, specificity)
+- Not validated against reference atlases (Azimuth, CellTypist, HCA)
+- May contain mouse genes or activation/injury markers
+- SASP/senescence and tumor detection are not reliable
+
+**See [Manual Annotation Guide](35-manual-annotation-service.md) for details on providing custom markers.**
+
+### Example: Using Built-in Markers (After Acknowledgment)
+
+If you proceed with built-in markers after acknowledging limitations:
 
 ```bash
 🦞 You: "Based on the marker genes, annotate the clusters with immune cell types. Use standard immune cell markers for annotation."

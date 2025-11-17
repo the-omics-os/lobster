@@ -8,7 +8,29 @@ validation rules and peptide-to-protein mapping support.
 
 from typing import Any, Dict, List, Optional
 
+from pydantic import BaseModel, Field, field_validator
+
+from lobster.core.interfaces.validator import ValidationResult
 from .validation import FlexibleValidator
+
+# =============================================================================
+# ONTOLOGY FIELDS REMOVED - HANDLED BY EMBEDDING SERVICE
+# =============================================================================
+# The following fields have been removed from this schema and are now handled
+# by the embedding-based ontology matching service:
+#
+# - organism      → NCBI Taxonomy ID (e.g., 9606 for Homo sapiens)
+# - tissue        → UBERON term (e.g., UBERON:0000955 for brain)
+#
+# Users provide these as free-text strings during data upload.
+# The metadata_assistant agent calls the embedding service to map
+# strings to canonical ontology terms.
+#
+# Results are stored in adata.uns["ontology_mappings"], NOT in obs/var.
+#
+# See: docs/embedding-ontology-service.md
+# Integration point: metadata_assistant.standardize_ontology_terms() tool
+# =============================================================================
 
 
 class ProteomicsSchema:
@@ -41,14 +63,18 @@ class ProteomicsSchema:
                     "replicate",  # Biological replicate
                     "instrument",  # MS instrument used
                     "acquisition_method",  # DDA, DIA, SRM, etc.
-                    "tissue",  # Tissue type
-                    "organism",  # Organism
+                    # NOTE: organism and tissue removed - handled by embedding service
                     "n_proteins",  # Number of proteins detected
                     "total_intensity",  # Total protein intensity
                     "missing_values",  # Number of missing values
                     "pct_missing",  # Percentage of missing values
                     "median_intensity",  # Median protein intensity
                     "median_cv",  # Median coefficient of variation
+                    # Mass spectrometry quality metrics
+                    "total_spectra",  # Total number of MS/MS spectra
+                    "identified_spectra_pct",  # Percentage of spectra identified
+                    "median_precursor_intensity",  # Median precursor ion intensity
+                    "mass_accuracy_ppm",  # Mass accuracy in ppm
                 ],
                 "types": {
                     "sample_id": "string",
@@ -58,14 +84,16 @@ class ProteomicsSchema:
                     "replicate": "string",
                     "instrument": "categorical",
                     "acquisition_method": "categorical",
-                    "tissue": "categorical",
-                    "organism": "string",
                     "n_proteins": "numeric",
                     "total_intensity": "numeric",
                     "missing_values": "numeric",
                     "pct_missing": "numeric",
                     "median_intensity": "numeric",
                     "median_cv": "numeric",
+                    "total_spectra": "numeric",
+                    "identified_spectra_pct": "numeric",
+                    "median_precursor_intensity": "numeric",
+                    "mass_accuracy_ppm": "numeric",
                 },
             },
             "var": {
@@ -76,7 +104,6 @@ class ProteomicsSchema:
                     "gene_symbol",  # Gene symbol
                     "gene_name",  # Full gene name
                     "protein_name",  # Full protein name
-                    "organism",  # Species
                     "sequence_length",  # Protein sequence length
                     "molecular_weight",  # Molecular weight (Da)
                     "n_peptides",  # Number of peptides identified
@@ -100,7 +127,6 @@ class ProteomicsSchema:
                     "gene_symbol": "string",
                     "gene_name": "string",
                     "protein_name": "string",
-                    "organism": "string",
                     "sequence_length": "numeric",
                     "molecular_weight": "numeric",
                     "n_peptides": "numeric",
@@ -151,6 +177,14 @@ class ProteomicsSchema:
                     "differential_expression",  # DE analysis results
                     "pathway_analysis",  # Pathway enrichment results
                     "provenance",  # Provenance tracking
+                    # Cross-database accessions
+                    "pride_accession",  # ProteomExchange/PRIDE (PXD123456)
+                    "massive_accession",  # MassIVE (MSV000012345)
+                    "bioproject_accession",  # NCBI BioProject (PRJNA123456)
+                    "biosample_accession",  # NCBI BioSample (SAMN12345678)
+                    "publication_doi",  # Publication DOI (10.1038/nature12345)
+                    # Ontology mappings (embedding service results)
+                    "ontology_mappings",  # Organism/tissue ontology IDs
                 ],
             },
         }
@@ -175,8 +209,7 @@ class ProteomicsSchema:
                     "batch",  # Array batch
                     "replicate",  # Biological replicate
                     "array_type",  # Type of protein array
-                    "tissue",  # Tissue type
-                    "organism",  # Organism
+                    # NOTE: organism and tissue removed - handled by embedding service
                     "n_proteins",  # Number of proteins detected
                     "total_signal",  # Total signal intensity
                     "median_signal",  # Median signal intensity
@@ -189,8 +222,6 @@ class ProteomicsSchema:
                     "batch": "string",
                     "replicate": "string",
                     "array_type": "categorical",
-                    "tissue": "categorical",
-                    "organism": "string",
                     "n_proteins": "numeric",
                     "total_signal": "numeric",
                     "median_signal": "numeric",
@@ -206,7 +237,6 @@ class ProteomicsSchema:
                     "protein_name",  # Full protein name
                     "antibody_id",  # Antibody identifier
                     "antibody_clone",  # Antibody clone information
-                    "organism",  # Species
                     "mean_signal",  # Mean signal across samples
                     "median_signal",  # Median signal across samples
                     "cv",  # Coefficient of variation
@@ -219,7 +249,6 @@ class ProteomicsSchema:
                     "protein_name": "string",
                     "antibody_id": "string",
                     "antibody_clone": "string",
-                    "organism": "string",
                     "mean_signal": "numeric",
                     "median_signal": "numeric",
                     "cv": "numeric",
@@ -252,6 +281,14 @@ class ProteomicsSchema:
                     "differential_expression",  # DE analysis results
                     "pathway_analysis",  # Pathway enrichment results
                     "provenance",  # Provenance tracking
+                    # Cross-database accessions
+                    "pride_accession",  # ProteomExchange/PRIDE (PXD123456)
+                    "massive_accession",  # MassIVE (MSV000012345)
+                    "bioproject_accession",  # NCBI BioProject (PRJNA123456)
+                    "biosample_accession",  # NCBI BioSample (SAMN12345678)
+                    "publication_doi",  # Publication DOI (10.1038/nature12345)
+                    # Ontology mappings (embedding service results)
+                    "ontology_mappings",  # Organism/tissue ontology IDs
                 ],
             },
         }
@@ -305,6 +342,14 @@ class ProteomicsSchema:
         validator.add_custom_rule("check_protein_ids", _validate_protein_ids)
         validator.add_custom_rule("check_missing_values", _validate_missing_values)
         validator.add_custom_rule("check_intensity_data", _validate_intensity_data)
+
+        # Add cross-database accession validation (all schema types)
+        validator.add_custom_rule(
+            "check_cross_database_accessions",
+            lambda adata: _validate_cross_database_accessions(
+                adata, modality="proteomics"
+            ),
+        )
 
         if schema_type == "mass_spectrometry":
             validator.add_custom_rule("check_ms_metrics", _validate_ms_metrics)
@@ -378,8 +423,6 @@ class ProteomicsSchema:
 
 def _validate_protein_ids(adata) -> "ValidationResult":
     """Validate protein identifier format and uniqueness."""
-    from lobster.core.interfaces.validator import ValidationResult
-
     result = ValidationResult()
 
     # Check for protein IDs in var
@@ -405,8 +448,6 @@ def _validate_protein_ids(adata) -> "ValidationResult":
 def _validate_missing_values(adata) -> "ValidationResult":
     """Validate missing values in proteomics data."""
     import numpy as np
-
-    from lobster.core.interfaces.validator import ValidationResult
 
     result = ValidationResult()
 
@@ -448,8 +489,6 @@ def _validate_intensity_data(adata) -> "ValidationResult":
     """Validate intensity data characteristics."""
     import numpy as np
 
-    from lobster.core.interfaces.validator import ValidationResult
-
     result = ValidationResult()
 
     # Check for negative values (unusual in proteomics)
@@ -484,8 +523,6 @@ def _validate_intensity_data(adata) -> "ValidationResult":
 
 def _validate_ms_metrics(adata) -> "ValidationResult":
     """Validate mass spectrometry specific metrics."""
-    from lobster.core.interfaces.validator import ValidationResult
-
     result = ValidationResult()
 
     # Check peptide counts if available
@@ -518,8 +555,6 @@ def _validate_ms_metrics(adata) -> "ValidationResult":
 
 def _validate_affinity_metrics(adata) -> "ValidationResult":
     """Validate affinity proteomics specific metrics."""
-    from lobster.core.interfaces.validator import ValidationResult
-
     result = ValidationResult()
 
     # Check signal-to-background ratio if available
@@ -539,3 +574,250 @@ def _validate_affinity_metrics(adata) -> "ValidationResult":
             )
 
     return result
+
+
+def _validate_cross_database_accessions(
+    adata, modality: str = "proteomics"
+) -> "ValidationResult":
+    """
+    Validate cross-database accession format and structure.
+
+    Checks database accession fields in adata.uns against expected formats
+    using the database_mappings registry.
+
+    Args:
+        adata: AnnData object to validate
+        modality: Data modality (transcriptomics, proteomics, metabolomics, metagenomics)
+
+    Returns:
+        ValidationResult: Validation results with accession format errors/warnings
+    """
+    from lobster.core.schemas.database_mappings import (
+        get_accession_url,
+        get_accessions_for_modality,
+        validate_accession,
+    )
+
+    result = ValidationResult()
+
+    # Get expected accessions for this modality
+    expected_accessions = get_accessions_for_modality(modality)
+
+    # Check each accession field in uns
+    for field_name, accession_spec in expected_accessions.items():
+        if field_name in adata.uns:
+            value = adata.uns[field_name]
+
+            # Skip empty/None values
+            if value is None or (isinstance(value, str) and not value.strip()):
+                continue
+
+            # Validate accession format
+            if not validate_accession(field_name, value):
+                result.add_warning(
+                    f"Invalid {accession_spec.database_name} accession format: '{value}' "
+                    f"(expected pattern: {accession_spec.example})"
+                )
+            else:
+                # Successful validation - add info with URL
+                url = get_accession_url(field_name, value)
+                if url:
+                    result.add_info(
+                        f"Valid {accession_spec.database_name} accession: {value} ({url})"
+                    )
+
+    return result
+
+
+# =============================================================================
+# Pydantic Metadata Schemas for Sample-Level Metadata Standardization
+# =============================================================================
+# These schemas are used by the metadata_assistant agent for cross-dataset
+# metadata harmonization, standardization, and validation.
+# Phase 3 addition for metadata operations.
+# =============================================================================
+
+
+class ProteomicsMetadataSchema(BaseModel):
+    """
+    Pydantic schema for proteomics sample-level metadata standardization.
+
+    This schema defines the expected structure for sample metadata across both
+    mass spectrometry and affinity-based proteomics experiments. It enforces
+    controlled vocabularies and data types for consistent metadata representation.
+
+    Used by metadata_assistant agent for:
+    - Cross-dataset sample ID mapping
+    - Metadata standardization and harmonization
+    - Dataset completeness validation
+    - Multi-omics integration preparation
+
+    NOTE: organism and tissue fields have been removed. These are now handled
+    by the embedding-based ontology matching service. See module header for details.
+
+    Attributes:
+        sample_id: Unique sample identifier (required)
+        subject_id: Subject/patient identifier for biological replicates
+        timepoint: Timepoint or developmental stage
+        condition: Experimental condition (e.g., "Control", "Treatment")
+        platform: Proteomics platform (e.g., "DDA", "DIA", "Olink", "SOMAscan")
+        quantification: Quantification method (e.g., "intensity", "iBAQ", "TMT", "NPX")
+        batch: Batch identifier for technical replicates
+        additional_metadata: Flexible dict for custom fields
+    """
+
+    # Required fields
+    sample_id: str = Field(..., description="Unique sample identifier", min_length=1)
+
+    # Optional core fields
+    subject_id: Optional[str] = Field(None, description="Subject/patient identifier")
+    timepoint: Optional[str] = Field(
+        None, description="Timepoint or developmental stage"
+    )
+    condition: str = Field(
+        ..., description="Experimental condition (e.g., Control, Treatment)"
+    )
+
+    # NOTE: organism and tissue fields removed - handled by embedding service
+    # See module header for details
+
+    platform: str = Field(
+        ..., description="Proteomics platform (DDA, DIA, Olink, SOMAscan, etc.)"
+    )
+    quantification: str = Field(
+        ..., description="Quantification method (intensity, iBAQ, TMT, NPX, etc.)"
+    )
+    batch: Optional[str] = Field(None, description="Batch identifier")
+
+    # Flexible additional metadata
+    additional_metadata: Optional[Dict[str, Any]] = Field(
+        default_factory=dict, description="Additional custom metadata fields"
+    )
+
+    class Config:
+        """Pydantic configuration."""
+
+        json_schema_extra = {
+            "example": {
+                "sample_id": "Sample_A_Rep1",
+                "subject_id": "Subject_001",
+                "timepoint": "Day0",
+                "condition": "Control",
+                # organism and tissue removed - handled by embedding service
+                "platform": "DDA",
+                "quantification": "iBAQ",
+                "batch": "Batch1",
+                "additional_metadata": {
+                    "instrument": "Orbitrap Fusion",
+                    "replicate": "Rep1",
+                },
+            }
+        }
+
+    @field_validator("platform")
+    @classmethod
+    def validate_platform(cls, v: str) -> str:
+        """Validate platform is a known proteomics platform."""
+        allowed = {
+            # Mass spectrometry
+            "dda",
+            "dia",
+            "swath",
+            "srm",
+            "mrm",
+            "prm",
+            "tmt",
+            "itraq",
+            "silac",
+            # Affinity-based
+            "olink",
+            "somascan",
+            "luminex",
+            "antibody_array",
+            "rppa",
+            # General
+            "mass_spectrometry",
+            "affinity",
+            "label_free",
+        }
+        v_lower = v.lower().replace("-", "_").replace(" ", "_")
+        if v_lower not in allowed:
+            # Allow unknown platforms with warning in logs
+            return v
+        # Normalize to uppercase for consistency
+        return v.upper()
+
+    @field_validator("quantification")
+    @classmethod
+    def validate_quantification(cls, v: str) -> str:
+        """Validate quantification method is a known method."""
+        allowed = {
+            # Mass spec quantification
+            "intensity",
+            "ibaq",
+            "tmt",
+            "itraq",
+            "silac",
+            "lfq",
+            "spectral_count",
+            # Affinity quantification
+            "npx",
+            "rfu",
+            "signal_intensity",
+            "fluorescence",
+        }
+        v_lower = v.lower().replace("-", "_").replace(" ", "_")
+        if v_lower not in allowed:
+            # Allow unknown quantification methods
+            return v
+        return v_lower
+
+    @field_validator("condition")
+    @classmethod
+    def validate_condition(cls, v: str) -> str:
+        """Ensure condition is not empty."""
+        if not v or not v.strip():
+            raise ValueError("condition cannot be empty")
+        return v.strip()
+
+    @field_validator("sample_id")
+    @classmethod
+    def validate_sample_id(cls, v: str) -> str:
+        """Ensure sample_id is not empty and has no leading/trailing whitespace."""
+        if not v or not v.strip():
+            raise ValueError("sample_id cannot be empty")
+        return v.strip()
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert to dictionary representation.
+
+        Returns:
+            Dict[str, Any]: Dictionary with all fields including additional_metadata
+        """
+        base_dict = self.model_dump(exclude={"additional_metadata"}, exclude_none=True)
+        if self.additional_metadata:
+            base_dict.update(self.additional_metadata)
+        return base_dict
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ProteomicsMetadataSchema":
+        """
+        Create schema from dictionary, automatically handling unknown fields.
+
+        Args:
+            data: Dictionary with metadata fields
+
+        Returns:
+            ProteomicsMetadataSchema: Validated schema instance
+        """
+        # Extract known fields
+        known_fields = set(cls.model_fields.keys()) - {"additional_metadata"}
+        schema_data = {k: v for k, v in data.items() if k in known_fields}
+
+        # Put remaining fields in additional_metadata
+        additional = {k: v for k, v in data.items() if k not in known_fields}
+        if additional:
+            schema_data["additional_metadata"] = additional
+
+        return cls(**schema_data)

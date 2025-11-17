@@ -1,10 +1,14 @@
-# Multi-stage Dockerfile for Lobster AI Streamlit App
-# Optimized for AWS App Runner deployment
+# Multi-stage Dockerfile for Lobster AI CLI
+# Optimized for bioinformatics workloads with CLI-first design
+# Supports both interactive chat and automation (query mode)
 
+# ==============================================================================
 # Stage 1: Base image with system dependencies
-FROM --platform=linux/amd64 python:3.13 AS base
+# ==============================================================================
+FROM --platform=linux/amd64 python:3.11-slim AS base
 
 # Install system dependencies required for bioinformatics packages
+# Includes compilers, HDF5, XML parsers, BLAS/LAPACK for numerical computing
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
@@ -23,34 +27,40 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     liblapack-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# ==============================================================================
 # Stage 2: Builder stage for Python dependencies
+# ==============================================================================
 FROM base AS builder
 
-# Set working directory
 WORKDIR /app
 
 # Copy dependency definitions
-COPY ../pyproject.toml ./
+COPY pyproject.toml ./
+COPY README.md ./
 
 # Create virtual environment
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Upgrade pip and install build tools *inside the venv*
+# Upgrade pip and install build tools inside the venv
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel packaging build
 
-# Install app + dependencies inside venv
+# Install PyTorch CPU-only FIRST (avoids 3GB CUDA packages)
+# This must happen before installing the main package to avoid pulling CUDA version
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# Install application + dependencies inside venv
 COPY . .
 RUN pip install --no-cache-dir .
 
+# ==============================================================================
 # Stage 3: Final runtime image
+# ==============================================================================
 FROM base AS runtime
 
 # Create non-root user for security
-RUN useradd -m -u 1000 -s /bin/bash lobsteruser && \
-    mkdir -p /home/lobsteruser/.streamlit
+RUN useradd -m -u 1000 -s /bin/bash lobsteruser
 
-# Set working directory
 WORKDIR /app
 
 # Copy virtual environment from builder
@@ -61,49 +71,34 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY --chown=lobsteruser:lobsteruser . .
 
 # Create necessary directories and set permissions
-RUN mkdir -p /app/.lobster_workspace/data \
-             /app/.lobster_workspace/plots \
-             /app/.lobster_workspace/exports \
-             /app/data/cache \
-    && chown -R lobsteruser:lobsteruser /app /home/lobsteruser
-
-# Create Streamlit config
-RUN echo '[server]\n\
-headless = true\n\
-port = 8501\n\
-address = "0.0.0.0"\n\
-enableCORS = false\n\
-enableXsrfProtection = false\n\
-\n\
-[browser]\n\
-gatherUsageStats = false\n\
-\n\
-[theme]\n\
-base = "light"\n\
-primaryColor = "#ff4b4b"\n\
-backgroundColor = "#ffffff"\n\
-secondaryBackgroundColor = "#f0f2f6"\n\
-textColor = "#262730"' > /home/lobsteruser/.streamlit/config.toml \
-    && chown lobsteruser:lobsteruser /home/lobsteruser/.streamlit/config.toml
+# - .lobster_workspace: Persistent workspace for analysis sessions
+# - data/cache: GEO cache and other downloaded data
+# - .geo_cache: Legacy cache location (for backward compatibility)
+RUN mkdir -p \
+    /app/.lobster_workspace/data \
+    /app/.lobster_workspace/plots \
+    /app/.lobster_workspace/exports \
+    /app/data/cache \
+    /app/.geo_cache \
+    && chown -R lobsteruser:lobsteruser /app
 
 # Switch to non-root user
 USER lobsteruser
 
 # Environment variables
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app
-
-# Expose port for App Runner
-EXPOSE 8501
-
-# Health check (modern Streamlit uses /healthz)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:8501/healthz || exit 1
-
-# Default command to run Streamlit
-CMD ["streamlit", "run", "lobster/streamlit_app.py"]
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    LOBSTER_WORKSPACE_DIR=/app/.lobster_workspace \
+    LOBSTER_CACHE_DIR=/app/data/cache
 
 # Labels for metadata
-LABEL maintainer="Omics-OS <info@omics-os.com>"
-LABEL description="Lobster AI - Multi-Agent Bioinformatics Streamlit App"
-LABEL version="2.0.0"
+LABEL maintainer="Omics-OS <info@omics-os.com>" \
+      description="Lobster AI - Multi-Agent Bioinformatics CLI" \
+      version="2.5.0" \
+      org.opencontainers.image.source="https://github.com/the-omics-os/lobster-local" \
+      org.opencontainers.image.documentation="https://github.com/the-omics-os/lobster-local/wiki"
+
+# Default: Interactive CLI mode
+# Can be overridden with: docker run ... lobster query "..."
+ENTRYPOINT ["lobster"]
+CMD ["chat --reasoning"]

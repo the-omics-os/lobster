@@ -1,451 +1,567 @@
 # CLAUDE.md
 
-This file provides comprehensive guidance for AI agents and bots contributing to the Lobster AI codebase. It contains architectural context, connectivity between components, and critical implementation details.
+System prompt for Lobster AI — a professional multi‑agent bioinformatics analysis platform.  
+Goal: help senior engineers understand **architecture, file layout, and non‑negotiable rules** with minimal tokens.
 
-## Project Overview
+---
 
-Lobster AI is a professional **multi-agent bioinformatics analysis platform** that combines specialized AI agents with proven scientific tools to analyze complex multi-omics data. Users interact through natural language to perform RNA-seq, proteomics, and multi-omics analyses. 
+## 1. WHAT – System Overview
 
-### Core Capabilities
-- **Single-Cell RNA-seq**: Quality control, clustering, cell type annotation, trajectory analysis, pseudobulk aggregation
-- **Bulk RNA-seq**: Differential expression with pyDESeq2, R-style formula-based statistics, complex experimental designs
-- **Mass Spectrometry Proteomics**: DDA/DIA workflows, missing value handling (30-70% typical), peptide-to-protein mapping, intensity normalization
-- **Affinity Proteomics**: Olink panels, antibody arrays, targeted protein panels, CV analysis, low missing values (<30%)
-- **Multi-Omics Integration**: (Future feature) Cross-platform analysis using MuData framework
-- **Literature Mining**: Automated parameter extraction from publications via PubMed and GEO
+### 1.1 Project Overview
 
-### Supported Data Formats
-- **Input**: CSV, Excel, H5AD, 10X MTX, MaxQuant output, Spectronaut results, Olink NPX values
-- **Databases**: GEO (GSE datasets), PubMed, UniProt, Reactome, KEGG, STRING, BioGRID
-- **Storage**: H5AD (single modality), MuData (multi-modal), S3-ready backends
+Lobster AI is a **multi‑agent bioinformatics analysis platform** for complex multi‑omics data (scRNA‑seq, bulk RNA‑seq, proteomics, etc.).  
+Users interact via natural language to:
 
-## Essential Development Commands
+- search publications & datasets
+- run end‑to‑end analyses
+- export **reproducible Jupyter notebooks** (Papermill)
 
-### Environment Setup
-```bash
-# Initial setup with development dependencies
-make dev-install
+### 1.2 Core Capabilities (high level)
 
-# Basic installation
-make install
+| Domain | Capabilities (examples) |
+|--------|-------------------------|
+| **Single‑Cell RNA‑seq** | QC, clustering, cell type annotation, trajectory, pseudobulk |
+| **Bulk RNA‑seq** | Kallisto/Salmon import, DE with pyDESeq2, formula‑based designs |
+| **Mass Spec Proteomics** | DDA/DIA, missing value handling, peptide→protein, normalization |
+| **Affinity Proteomics** | Olink / antibody arrays, NPX handling, CV analysis |
+| **Multi‑Omics (future)** | MuData‑based cross‑modality analysis |
+| **Literature Mining** | PubMed/GEO search, parameter & metadata extraction |
+| **Notebook Export** | Reproducible, parameterizable workflows via Papermill |
 
-# Clean installation (removes existing environment)
-make clean-install
+### 1.3 Data & Storage
+
+- **Inputs**: CSV, Excel, H5AD, 10X MTX, Kallisto (abundance.tsv), Salmon (quant.sf), MaxQuant, Spectronaut, Olink NPX  
+- **Repositories**: GEO, SRA, ENA (PRIDE/massIVE/Uniprot planned)  
+- **Storage**: H5AD (single), MuData (multi‑modal), JSONL queues, S3‑ready backends  
+
+### 1.4 Design Principles
+
+1. **Agent‑based**: specialist agents + centralized registry (single source of truth).  
+2. **Cloud/local symmetry**: same UX, different `Client` backend.  
+3. **Stateless services**: analysis logic lives in tools/services, not agents.  
+4. **Natural language first**: users describe analyses in plain English.  
+5. **Publication‑grade output**: Plotly‑based, scientifically sound.  
+6. **Extensible & professional**: new agents/services plug into common patterns.
+
+---
+
+## 2. HOW – Architecture
+
+### 2.1 4‑Layer Architecture (critical path)
+
+**Critical flow**: `CLI → LobsterClientAdapter → AgentClient | CloudLobsterClient → LangGraph → Agents → Services → DataManagerV2`
+
+```mermaid
+graph TB
+  User --> CLI["lobster/cli.py
+CLI"]
+  CLI --> Adapter["LobsterClientAdapter
+client detection"]
+
+  Adapter -->|cloud key set| Cloud["CloudLobsterClient"]
+  Adapter -->|default/local| Local["AgentClient
+(core/client.py)"]
+
+  Local --> Graph["LangGraph runtime
+create_bioinformatics_graph"]
+  Cloud --> Graph
+
+  Graph --> Sup["Supervisor agent"]
+  Sup --> Registry["Agent registry
+config/agent_registry.py"]
+  Registry --> Agents["Specialist agents"]
+
+  Agents --> Services["Stateless services
+lobster/tools"]
+  Agents --> Providers["Providers
+PubMed/GEO/Web"]
+  Services --> DM["DataManagerV2
+core/data_manager_v2.py"]
+  Providers --> DM
+
+  DM --> Queue["DownloadQueue
+core/download_queue.py"]
+  DM --> Prov["ProvenanceTracker
+core/provenance.py"]
+  DM --> Export["NotebookExporter
+core/notebook_exporter.py"]
+  DM --> Storage["Backends (H5AD/MuData/S3)
+core/backends"]
+  DM --> Schemas["Pydantic schemas
+core/schemas"]
 ```
 
-### Testing and Quality Assurance
-```bash
-# Run all tests
-make test
+### 2.2 Client Layer (core)
 
-# Run tests in parallel
-make test-fast
+**Location**: `lobster/core/client.py`
 
-# Code formatting (black + isort)
-make format
+`AgentClient` is the **main orchestrator** for local runs:
 
-# Linting (flake8, pylint, bandit)
-make lint
+- creates `DataManagerV2` + workspace
+- builds LangGraph via `create_bioinformatics_graph(...)`
+- routes user queries through the graph
+- exposes status / export APIs
 
-# Type checking
-make type-check
+Key methods:
+
+- `query(user_input, stream=False)` – run request through graph  
+- `get_status()` – current session + data summary  
+- `export_session()` – conversation + workspace snapshot  
+
+Routing:
+
+- `LobsterClientAdapter` (in `cli.py`) checks `LOBSTER_CLOUD_KEY`  
+  - if set → `CloudLobsterClient`  
+  - else → local `AgentClient`
+
+### 2.3 Data & Control Flow (summary)
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant C as CLI
+    participant CL as Client (AgentClient/Cloud)
+    participant G as LangGraph+Supervisor
+    participant A as Specialist Agent
+    participant S as Service
+    participant D as DataManagerV2
+    participant ST as Storage/Provenance
+
+    U->>C: "Cluster my single‑cell data"
+    C->>CL: CLI command (chat/query)
+    CL->>G: execute graph
+    G->>A: route to singlecell_expert
+    A->>S: call ClusteringService
+    S->>S: process AnnData
+    S-->>A: (processed_adata, stats, ir)
+    A->>D: store modality + log(ir, stats)
+    D->>ST: persist data + provenance
+    G-->>CL: final message
+    CL-->>C: formatted response
+    C-->>U: natural language result
 ```
 
-### Running the Application
-```bash
-# Start interactive chat mode with enhanced autocomplete
-lobster chat
+### 2.4 Download Queue Pattern (multi‑agent handoff)
 
-# Show help
-lobster --help
+```mermaid
+sequenceDiagram
+    participant R as research_agent
+    participant G as GEOProvider
+    participant Q as DownloadQueue
+    participant S as supervisor
+    participant DE as data_expert
 
-# Alternative module execution
-python -m lobster
+    R->>G: get_download_urls(GSE)
+    G-->>R: URLs
+    R->>Q: create DownloadQueueEntry (PENDING)
+    S->>Q: poll queue
+    S-->>DE: handoff if PENDING
+    DE->>Q: mark IN_PROGRESS
+    DE->>DE: download + load data
+    DE->>Q: update COMPLETED/FAILED
 ```
 
-## CLI Interface
+---
 
-The CLI (`lobster/cli.py`) features a modern terminal interface with comprehensive autocomplete functionality:
+## 3. WHERE – Code Layout
 
-### Enhanced Input Features
-- **Tab Autocomplete**: Smart completion for commands and workspace files
-- **Context-Aware**: Commands when typing `/`, files after `/read` or `/plot`
-- **Cloud Integration**: Works seamlessly with both local and cloud clients
-- **Rich Metadata**: Shows file sizes, types, and descriptions in completion menu
-- **Arrow Navigation**: Full prompt_toolkit integration for enhanced editing
-- **Command History**: Persistent history with Ctrl+R reverse search
+### 3.1 Top‑Level Structure
 
-### Key Implementation Details
-- **LobsterClientAdapter**: Unified interface for local `AgentClient` and `CloudLobsterClient`
-- **Dynamic Command Discovery**: Automatically extracts available commands from `_execute_command()`
-- **Intelligent Caching**: 60s cache for cloud, 10s for local file operations
-- **Graceful Fallback**: Falls back to Rich input if prompt_toolkit unavailable
-- **Orange Theme Integration**: Completion menu matches existing Lobster branding
+```text
+lobster/
+├─ cli.py                   # CLI entrypoint (Typer/Rich)
+├─ agents/                  # Supervisor + specialist agents + graph
+│  ├─ supervisor.py
+│  ├─ research_agent.py
+│  ├─ metadata_assistant.py
+│  ├─ data_expert.py
+│  ├─ singlecell_expert.py
+│  ├─ bulk_rnaseq_expert.py
+│  ├─ ms_proteomics_expert.py
+│  ├─ affinity_proteomics_expert.py
+│  └─ graph.py              # create_bioinformatics_graph(...)
+│
+├─ core/                    # Client, data, provenance, backends
+│  ├─ client.py             # AgentClient (local)
+│  ├─ api_client.py         # Cloud/WebSocket client
+│  ├─ data_manager_v2.py
+│  ├─ provenance.py
+│  ├─ download_queue.py
+│  ├─ notebook_exporter.py
+│  ├─ notebook_executor.py
+│  ├─ interfaces/
+│  │  ├─ base_client.py
+│  │  ├─ data_backend.py
+│  │  └─ modality_adapter.py
+│  ├─ backends/
+│  │  ├─ h5ad_backend.py
+│  │  └─ mudata_backend.py
+│  └─ schemas/
+│     ├─ transcriptomics_schema.py
+│     ├─ proteomics_schema.py
+│     ├─ metabolomics_schema.py
+│     └─ metagenomics_schema.py
+│
+├─ tools/                   # Stateless analysis services & providers
+│  ├─ preprocessing_service.py
+│  ├─ quality_service.py
+│  ├─ clustering_service.py
+│  ├─ enhanced_singlecell_service.py
+│  ├─ bulk_rnaseq_service.py
+│  ├─ pseudobulk_service.py
+│  ├─ differential_formula_service.py
+│  ├─ concatenation_service.py
+│  ├─ proteomics_preprocessing_service.py
+│  ├─ proteomics_quality_service.py
+│  ├─ proteomics_analysis_service.py
+│  ├─ proteomics_differential_service.py
+│  ├─ proteomics_visualization_service.py
+│  ├─ visualization_service.py
+│  ├─ geo_service.py
+│  ├─ content_access_service.py
+│  ├─ docling_service.py
+│  ├─ metadata_validation_service.py
+│  └─ providers/
+│     ├─ base_provider.py
+│     ├─ pubmed_provider.py
+│     ├─ pmc_provider.py
+│     ├─ geo_provider.py
+│     ├─ webpage_provider.py
+│     └─ abstract_provider.py
+│
+├─ config/
+│  ├─ agent_registry.py     # AGENT_REGISTRY (single source of truth)
+│  ├─ agent_config.py
+│  └─ settings.py
+```
 
-### Essential Commands
-- `/help` - Show all available commands with descriptions
-- `/status` - Show system status and client type
-- `/files` - List workspace files by category
-- `/read <file>` - Read and load files (supports Tab completion)
-- `/data` - Show current dataset information
-- `/plots` - List generated visualizations
-- `/workspace` - Show workspace information
-- `/workspace list` - List available datasets without loading (v2.2+)
-- `/workspace load <name>` - Load specific dataset by name (v2.2+)
-- `/restore [pattern]` - Restore previous session datasets (v2.2+)
-- `/modes` - List available operation modes
+### 3.2 Core Components Reference
 
-## Architecture Overview
+| Area | File(s) | Role |
+|------|---------|------|
+| CLI | `cli.py` | commands, client routing |
+| Client | `core/client.py`, `core/api_client.py` | local vs cloud clients |
+| Graph | `agents/graph.py` | `create_bioinformatics_graph()` |
+| Agents | `agents/*.py` | supervisor + specialists |
+| Data | `core/data_manager_v2.py` | modality/workspace orchestration |
+| Provenance | `core/provenance.py` | W3C‑PROV tracking |
+| Queue | `core/download_queue.py` | download orchestration |
+| Export | `core/notebook_exporter.py` | Jupyter pipeline export |
+| Services | `tools/*.py` | stateless analysis |
+| Providers | `tools/providers/*.py` | PubMed/GEO/Web access |
+| Registry | `config/agent_registry.py` | agent configuration |
 
-### Core Components
+### 3.3 Agent Roles (summary)
 
-#### **`lobster/agents/`** - Specialized AI agents
-- `singlecell_expert.py` - Single-cell RNA-seq analysis with formula-guided DE
-- `bulk_rnaseq_expert.py` - Bulk RNA-seq analysis with pyDESeq2 integration
-- `ms_proteomics_expert.py` - Mass spectrometry proteomics (DDA/DIA, MNAR/MCAR missing value patterns)
-- `affinity_proteomics_expert.py` - Affinity proteomics (Olink panels, antibody validation)
-- `data_expert.py` - Data loading, quality assessment, sample concatenation
-- `research_agent.py` - Literature mining and dataset discovery
-- `method_expert.py` - Computational parameter extraction from publications
-- `supervisor.py` - Agent coordination and workflow management
+| Agent | Main Focus |
+|-------|------------|
+| `supervisor` | route user intents to specialists, manage handoffs |
+| `research_agent` | literature & dataset discovery, URL extraction, workspace caching |
+| `metadata_assistant` | ID mapping, schema‑based validation, harmonization |
+| `data_expert` | loading, QC, downloads via queue |
+| `singlecell_expert` | scRNA‑seq: QC, clustering, pseudobulk, trajectories, markers |
+| `bulk_rnaseq_expert` | bulk RNA‑seq import + DE (pyDESeq2, formula designs) |
+| `ms_proteomics_expert` | DDA/DIA workflows, missing values, normalization |
+| `affinity_proteomics_expert` | Olink/antibody arrays, NPX, CV, panel harmonization |
 
-#### **`lobster/core/`** - Data management and client infrastructure
-- `client.py` - AgentClient (local LangGraph processing)
-- `api_client.py` - APIAgentClient (WebSocket streaming)
-- `data_manager_v2.py` - DataManagerV2 (multi-omics orchestrator with modality management)
-- `interfaces/base_client.py` - BaseClient interface for cloud/local consistency
-- `provenance.py` - W3C-PROV compliant analysis history tracking
-- `schemas/` - Transcriptomics and proteomics metadata validation
+### 3.4 Deployment & Infrastructure
 
-#### **`lobster/tools/`** - Stateless analysis services
-- **Transcriptomics Services:**
-  - `preprocessing_service.py` - Filter, normalize, batch correction
-  - `quality_service.py` - Multi-metric QC assessment
-  - `clustering_service.py` - Leiden clustering, UMAP, cell annotation
-  - `enhanced_singlecell_service.py` - Doublet detection, marker genes
-  - `bulk_rnaseq_service.py` - pyDESeq2 differential expression
-  - `pseudobulk_service.py` - Single-cell to pseudobulk aggregation
-  - `differential_formula_service.py` - R-style formula parsing, design matrices
-  - `concatenation_service.py` - Memory-efficient sample merging (eliminates 450+ lines of duplication)
+| File | Purpose | Mode |
+|------|---------|------|
+| `Dockerfile` | CLI mode container (local agent execution) | development/production |
+| `Dockerfile.server` | FastAPI server mode (cloud-like API) | production/staging |
+| `docker-compose.yml` | Multi-service orchestration (server + dependencies) | local dev/integration |
+| `Makefile` | Build, test, deploy automation | all environments |
+| `.github/workflows/` | CI/CD pipelines | automation |
+| ├─ `docker.yml` | Container build + push | production |
+| ├─ `sync-to-public.yml` | Code sync to lobster-local | automation |
+| ├─ `sync-wikis.yml` | Wiki sync to public/private repos | automation |
+| └─ `ci-basic.yml` | Test + lint on PR | development/CI |
+| `pyproject.toml` | Dependencies (do NOT edit – see 4.1) | all environments |
+| `pytest.ini` | Test configuration | development/CI |
 
-- **Proteomics Services:**
-  - `proteomics_preprocessing_service.py` - MS/affinity filtering, normalization (TMM, quantile, VSN)
-  - `proteomics_quality_service.py` - Missing value patterns, CV analysis, batch detection
-  - `proteomics_analysis_service.py` - Statistical testing, PCA, clustering
-  - `proteomics_differential_service.py` - Linear models with empirical Bayes, FDR control
-  - `proteomics_visualization_service.py` - Volcano plots, correlation networks, QC dashboards
+**Deployment modes**:
+- **CLI mode** (`Dockerfile`): single container, local agent execution, workspace in volume
+- **Server mode** (`Dockerfile.server` + `docker-compose.yml`): FastAPI + Redis + workers, cloud-like API, suitable for multi-user/production
 
-- **Data & Publication Services:**
-  - `geo_service.py` - GEO dataset downloading and metadata extraction
-  - `publication_service.py` - PubMed literature mining, GEO dataset search
-  - `visualization_service.py` - Plotly-based interactive visualizations
+Full guide: `wiki/42-docker-deployment-guide.md`
 
-#### **`lobster/config/`** - Configuration management
-- `agent_config.py` - Agent configuration and LLM settings
-- `agent_registry.py` - **Centralized agent registry (single source of truth)**
-  - Eliminates redundancy when adding new agents
-  - Automatic handoff tool generation
-  - Dynamic agent loading with factory functions
-  - Type-safe AgentConfig dataclass
-- `settings.py` - System configuration and environment management
+---
 
-### Key Design Principles
+## 4. RULES – Development Guidelines
 
-1. **Agent-Based Architecture** - Specialist agents with centralized registry (single source of truth)
-2. **Cloud/Local Hybrid** - Seamless switching between local and cloud execution
-3. **Modular Services** - Stateless analysis services for bioinformatics workflows
-4. **Natural Language Interface** - Users describe analyses in plain English
-5. **Publication-Quality Output** - Interactive Plotly visualizations with scientific rigor
-6. **Professional & Extensible** - Modular architecture designed for easy addition of future features
-7. **Data Quality Compliance** - Publication-grade standards with 60% compliant, 26% partial implementation
+### 4.1 Hard Rules (non‑negotiable)
 
-### Client Architecture & Cloud/Local Switching
+1. **Do NOT edit `pyproject.toml`** – all dependency changes go through humans.  
+2. **Prefer editing existing files** over adding new ones.  
+3. **Use `config/agent_registry.py`** for agents – do not hand‑edit `graph.py` with new agents.  
+4. **Keep services stateless**: pure functions on `AnnData` / data + 3‑tuple return.  
+5. **Use professional modality naming** (see 4.6).  
+6. **Ensure both local and cloud clients work** (CLI must behave identically).  
+7. **Preserve CLI backward compatibility** where reasonable.  
+8. **Maintain scientific correctness** – no “quick hacks” that break analysis rigor.
 
-The system supports multiple client types through the `BaseClient` interface:
+### 4.2 Service Pattern (3‑tuple)
+
+All analysis services must follow:
 
 ```python
-# lobster/core/interfaces/base_client.py
-class BaseClient(ABC):
-    @abstractmethod
-    def query(self, user_input: str, stream: bool = False) -> Dict[str, Any]
-    @abstractmethod
-    def get_status(self) -> Dict[str, Any]
-    @abstractmethod
-    def export_session(self, export_path: Optional[Path] = None) -> Path
+def analyze(self, adata: AnnData, **params) -> Tuple[AnnData, Dict[str, Any], AnalysisStep]:
+    ...
+    return processed_adata, stats_dict, ir
 ```
 
-**Client Types:**
-- **AgentClient** - Local LangGraph processing with DataManagerV2
-- **APIAgentClient** - WebSocket streaming for web services
-- **CloudLobsterClient** - HTTP REST API for cloud services (external package)
+- `processed_adata`: modified AnnData (results in `.obs`, `.var`, `.obsm`, `.uns`, etc.)  
+- `stats_dict`: concise, human‑readable summary  
+- `ir`: `AnalysisStep` used by provenance + notebook export (see 4.4)
 
-**Cloud/Local Switching:**
-- System detects `LOBSTER_CLOUD_KEY` environment variable
-- Automatic fallback to local if cloud unavailable
-- CLI adapter (`LobsterClientAdapter`) provides unified interface
+### 4.3 Tool Pattern (agent tools)
 
-**⚠️ Cloud Integration Considerations:**
-When modifying the codebase, be aware of cloud dependencies:
-- **BaseClient Interface**: Changes must maintain compatibility
-- **CLI Commands**: Must work with both local and cloud clients
-- **File Operations**: Cloud uses different caching (60s vs 10s local)
-- **DataManagerV2**: Cloud client may not have direct access to modalities
-- **Agent Registry**: Changes affect both local graph creation and cloud handoffs
-
-### Data Management & Scientific Workflows
-
-**DataManagerV2** handles multi-modal data orchestration:
-- Named biological datasets (`Dict[str, AnnData]`)
-- Metadata store for GEO and source metadata
-- Tool usage history for provenance tracking (W3C-PROV compliant)
-- Backend/adapter registry for extensible data handling
-- Schema validation for transcriptomics and proteomics data
-- **Workspace restoration** (v2.2+): Session persistence, lazy loading, pattern-based restoration
-
-**Professional Naming Convention:**
-```
-geo_gse12345                          # Raw downloaded data
-├── geo_gse12345_quality_assessed     # QC metrics added
-├── geo_gse12345_filtered_normalized  # Preprocessed data
-├── geo_gse12345_doublets_detected    # Doublet annotations
-├── geo_gse12345_clustered           # Leiden clustering + UMAP
-├── geo_gse12345_markers              # Differential expression
-├── geo_gse12345_annotated           # Cell type annotations
-└── geo_gse12345_pseudobulk          # Aggregated for DE analysis
-```
-
-**Scientific Analysis Workflows:**
-
-1. **Single-Cell RNA-seq Pipeline:**
-   - Quality control (mitochondrial%, ribosomal%, gene counts)
-   - Normalization (log1p, scaling)
-   - Highly variable gene selection
-   - PCA → Neighbors → Leiden clustering → UMAP
-   - Marker gene identification (Wilcoxon rank-sum)
-   - Cell type annotation (manual or automated)
-   - Pseudobulk aggregation for DE analysis
-
-2. **Bulk RNA-seq with pyDESeq2:**
-   - Count matrix normalization
-   - R-style formula construction (~condition + batch)
-   - Design matrix generation
-   - Differential expression with FDR control
-   - Iterative analysis with result comparison
-
-3. **Mass Spectrometry Proteomics:**
-   - Missing value pattern analysis (MNAR vs MCAR)
-   - Intensity normalization (TMM, quantile, VSN)
-   - Peptide-to-protein aggregation
-   - Batch effect detection and correction
-   - Statistical testing with multiple correction
-   - Pathway enrichment analysis
-
-4. **Affinity Proteomics (Olink/Antibody Arrays):**
-   - NPX value processing
-   - Lower missing values (<30%)
-   - Coefficient of variation analysis
-   - Antibody validation metrics
-   - Panel comparison and harmonization
-
-## Development Guidelines
-
-### Code Style and Quality
-- Follow PEP 8 Python style guidelines
-- Use type hints for all functions and methods
-- Line length: 88 characters (Black formatting)
-- Add comprehensive docstrings to all public functions
-- Prioritize scientific accuracy over performance optimizations
-
-### Working with the CLI
-- All CLI functionality is in `lobster/cli.py`
-- Commands are handled in `_execute_command()` function
-- Autocomplete classes are defined at the top of the file after imports
-- Use `PROMPT_TOOLKIT_AVAILABLE` flag for optional dependency handling
-- Maintain backward compatibility with Rich input fallback
-
-### Adding New Commands
-1. Add command logic to `_execute_command()`
-2. Update command descriptions in `extract_available_commands()`
-3. Commands automatically appear in autocomplete
-4. Test with both local and cloud clients
-
-### Agent Tool Pattern
 ```python
 @tool
 def analyze_modality(modality_name: str, **params) -> str:
-    """Standard pattern for all agent tools."""
-    try:
-        # 1. Validate modality exists
-        if modality_name not in data_manager.list_modalities():
-            raise ModalityNotFoundError(f"Modality '{modality_name}' not found")
+    if modality_name not in data_manager.list_modalities():
+        raise ModalityNotFoundError(f"Modality '{modality_name}' not found")
 
-        adata = data_manager.get_modality(modality_name)
+    adata = data_manager.get_modality(modality_name)
+    result, stats, ir = service.analyze(adata, **params)
 
-        # 2. Call stateless service (returns tuple)
-        result_adata, stats = service.analyze(adata, **params)
+    new_name = f"{modality_name}_analyzed"
+    data_manager.modalities[new_name] = result
 
-        # 3. Store results with descriptive naming
-        new_modality = f"{modality_name}_analyzed"
-        data_manager.modalities[new_modality] = result_adata
-
-        # 4. Log operation for provenance
-        data_manager.log_tool_usage("analyze_modality", params, stats)
-
-        return formatted_response(stats, new_modality)
-
-    except ServiceError as e:
-        logger.error(f"Service error: {e}")
-        return f"Analysis failed: {str(e)}"
+    data_manager.log_tool_usage(
+        "analyze_modality", params, stats, ir=ir  # IR is mandatory
+    )
+    return f"Analysis complete: {stats}"
 ```
 
-### Agent Registry Pattern
+Key points:
+
+- validate modality existence  
+- delegate to **stateless service**  
+- store result with descriptive suffix  
+- **always pass `ir`** into `log_tool_usage(...)`
+
+### 4.4 Provenance & `AnalysisStep` IR (W3C‑PROV)
+
+**Every logged analysis step must emit IR. No IR → not reproducible.**
+
+Minimal required ideas (see existing services for full detail):
+
+- Service returns `(adata, stats, ir: AnalysisStep)`  
+- `AnalysisStep` captures:
+  - `operation` (e.g. `"scanpy.pp.calculate_qc_metrics"`)  
+  - `tool_name` (service method)  
+  - `description` (human explanation)  
+  - `library` (e.g. `"scanpy"`, `"pyDESeq2"`)  
+  - `code_template` (Jinja2 snippet with `{{ params }}`) using **only standard libraries**  
+  - `imports` (pure Python imports)  
+  - `parameters` + `parameter_schema` (types, defaults, validation rules)  
+  - `input_entities` / `output_entities`  
+  - optional `execution_context`, validation flags
+
+Pattern:
+
 ```python
-# lobster/config/agent_registry.py
+class QualityService:
+    def assess_quality(self, adata: AnnData, min_genes: int = 200,
+                       max_genes: int = 8000) -> Tuple[AnnData, Dict, AnalysisStep]:
+        processed = adata.copy()
+        # ... processing ...
+        stats = {...}
+
+        ir = self._create_ir(min_genes=min_genes, max_genes=max_genes)
+        return processed, stats, ir
+```
+
+Checklist for new services:
+
+- [ ] Returns `Tuple[AnnData, Dict[str, Any], AnalysisStep]`  
+- [ ] Helper `_create_ir(**params)` builds IR + parameter schema  
+- [ ] Jinja2 `code_template` uses `{{ param }}` only, standard libs only  
+- [ ] Agent tools call `log_tool_usage(..., ir=ir)`  
+- [ ] Works with `/pipeline export` + notebook execution
+
+### 4.5 Patterns & Abstractions
+
+- **Queue pattern**: use `DownloadQueue` for multi‑step downloads (see 2.4).  
+- **Error hierarchy** – prefer specific exceptions:
+  - `ModalityNotFoundError` – missing dataset in `DataManagerV2`  
+  - `ServiceError` – analysis failures  
+  - `ValidationError` – schema/data issues  
+  - `ProviderError` – external API failures  
+- **Registry pattern** (`config/agent_registry.py`):
+
+```python
 @dataclass
 class AgentConfig:
-    name: str                          # Unique identifier
-    display_name: str                  # Human-readable name
-    description: str                   # Agent capabilities
-    factory_function: str             # Module path to factory
-    handoff_tool_name: Optional[str] # Auto-generated tool name
+    name: str
+    display_name: str
+    description: str
+    factory_function: str
+    handoff_tool_name: Optional[str]
     handoff_tool_description: Optional[str]
 
-# Adding new agents only requires registry entry:
 AGENT_REGISTRY = {
-    'new_agent': AgentConfig(
-        name='new_agent',
-        display_name='New Agent',
-        description='Agent purpose',
-        factory_function='lobster.agents.new_agent.new_agent',
-        handoff_tool_name='handoff_to_new_agent',
-        handoff_tool_description='Task description'
+    "new_agent": AgentConfig(
+        name="new_agent",
+        display_name="New Agent",
+        description="Agent purpose",
+        factory_function="lobster.agents.new_agent.new_agent",
+        handoff_tool_name="handoff_to_new_agent",
+        handoff_tool_description="When to handoff"
     )
 }
 ```
 
-## Environment Configuration
+Adding a new agent should be **registry‑only** wherever possible.
 
-### Required Environment Variables
+- **Adapter pattern**:
+  - `IModalityAdapter` – format‑specific loading (10x, H5AD, etc.)  
+  - `IDataBackend` – H5AD/MuData/S3 backends  
+  - `BaseClient` – local vs cloud client abstraction  
+
+### 4.6 Naming & Data Quality
+
+**Naming convention (example)**:
+
+```text
+geo_gse12345
+├─ geo_gse12345_quality_assessed
+├─ geo_gse12345_filtered_normalized
+├─ geo_gse12345_doublets_detected
+├─ geo_gse12345_clustered
+├─ geo_gse12345_markers
+└─ geo_gse12345_annotated
+```
+
+Data standards:
+
+- W3C‑PROV compliant logging  
+- Pydantic schema validation for all modalities  
+- Good QC metrics at each step  
+- Proper missing‑value handling (esp. proteomics)  
+- Support batch effect detection/correction where relevant
+
+---
+
+## 5. Tooling, Commands & Environment
+
+### 5.1 Technology Stack
+
+| Area | Tech |
+|------|------|
+| Agent framework | LangGraph |
+| Models | AWS Bedrock (Claude) |
+| Language | Python 3.12+ (typing, async/await) |
+| Data structures | AnnData, MuData |
+| Bioinformatics | Scanpy, PyDESeq2 |
+| CLI | Typer, Rich, prompt_toolkit |
+| Visualization | Plotly |
+| Storage | H5AD, HDF5, JSONL, S3 backends |
+
+### 5.2 Environment Setup
+
 ```bash
-# API Keys (required)
-OPENAI_API_KEY=your-openai-api-key
-AWS_BEDROCK_ACCESS_KEY=your-aws-access-key
-AWS_BEDROCK_SECRET_ACCESS_KEY=your-aws-secret-key
-
-# Optional
-NCBI_API_KEY=your-ncbi-api-key
-LOBSTER_CLOUD_KEY=your-cloud-api-key  # Enables cloud mode
+make dev-install     # full dev setup
+make install         # minimal install
+make clean-install   # fresh env
+source .venv/bin/activate
 ```
 
-### Cloud Integration
-- Set `LOBSTER_CLOUD_KEY` to enable cloud mode
-- System automatically detects and switches between local/cloud
-- Autocomplete works with both client types
-- Fallback to local mode if cloud unavailable
-
-## Testing Framework
+### 5.3 Testing
 
 ```bash
-# Run all tests with coverage
-make test
+make test            # all tests
+make test-fast       # parallel subset
+make format          # black + isort
+make lint            # flake8/pylint/bandit
+make type-check      # mypy
 
-# Fast parallel execution
-make test-fast
-
-# Run specific categories
-pytest tests/unit/          # Unit tests
-pytest tests/integration/   # Integration tests
+pytest tests/unit/
+pytest tests/integration/
+pytest tests/integration/ -m real_api
+pytest tests/integration/ -m "real_api and slow"
 ```
 
-**Coverage Requirements:**
-- Minimum 80% coverage (targeting 95%+)
-- Test with real bioinformatics data when possible
-- Include edge cases and error conditions
+Markers / keys:
 
-## Critical Rules & Architectural Patterns
+- `@pytest.mark.real_api` – requires network + keys  
+- `@pytest.mark.slow` – >30s tests  
+- `@pytest.mark.integration` – multi‑component
 
-### Development Rules
-- **NEVER** modify `pyproject.toml` - all installations requested through user
-- Always prefer editing existing files over creating new ones
-- Maintain backward compatibility when updating CLI
-- Test autocomplete with both local and cloud clients
-- Follow scientific accuracy standards for bioinformatics algorithms
-- Use the centralized agent registry for new agents (no manual graph.py edits)
-- Maintain stateless service design (services work with AnnData, return tuples)
-- Follow the professional naming convention for modalities
+Env vars:
 
-### Architectural Patterns to Maintain
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `AWS_BEDROCK_ACCESS_KEY` | Yes | AWS Bedrock access key |
+| `AWS_BEDROCK_SECRET_ACCESS_KEY` | Yes | AWS Bedrock secret key |
+| `NCBI_API_KEY` | No | PubMed (higher rate limit) |
+| `LOBSTER_CLOUD_KEY` | No | enables cloud client mode |
 
-1. **Service Pattern**: Stateless, returns `(processed_adata, statistics_dict)`
-2. **Tool Pattern**: Validates modality → calls service → stores result → logs provenance
-3. **Error Hierarchy**: Use specific exceptions (ModalityNotFoundError, ServiceError, etc.)
-4. **Registry Pattern**: Single source of truth for agent configuration
-5. **Adapter Pattern**: Unified interfaces for different data types/clients
+### 5.4 Running the App
 
-### Code Deduplication Principles
-- Use `ConcatenationService` for all sample merging (no duplication)
-- Delegate to services rather than implementing in agents
-- Reuse validation logic through shared utilities
-- Centralize configuration in registry and settings
-
-### Data Quality Standards
-- Maintain W3C-PROV compliant provenance tracking
-- Enforce schema validation for all data types
-- Include comprehensive QC metrics at each step
-- Support batch effect detection and correction
-- Implement proper missing value handling strategies
-
-## Common Troubleshooting & Connectivity
-
-### Installation Issues
-- Ensure Python 3.12+ is installed
-- Use `make clean-install` for fresh environment
-- For enhanced CLI features: `pip install prompt-toolkit`
-
-### CLI Issues
-- Check `PROMPT_TOOLKIT_AVAILABLE` flag for autocomplete functionality
-- Verify client type detection in `LobsterClientAdapter`
-- Test fallback to Rich input if prompt_toolkit fails
-- Check file permissions for workspace access
-
-### Cloud Integration
-- Verify `LOBSTER_CLOUD_KEY` environment variable
-- Check network connectivity for cloud operations
-- Monitor cache timeouts (60s cloud, 10s local)
-- Confirm BaseClient interface compliance
-
-### Component Connectivity Map
-
-```
-CLI (lobster/cli.py)
-├── LobsterClientAdapter → BaseClient implementations
-│   ├── AgentClient → LangGraph → Agent Registry → All Agents
-│   └── CloudLobsterClient → HTTP API (external)
-│
-Agents (lobster/agents/)
-├── Use DataManagerV2 for modality management
-├── Call Services for analysis (stateless)
-└── Return formatted responses to CLI
-│
-Services (lobster/tools/)
-├── Receive AnnData objects
-├── Process with scientific algorithms
-└── Return (processed_adata, statistics)
-│
-DataManagerV2 (lobster/core/data_manager_v2.py)
-├── Manages named modalities (Dict[str, AnnData])
-├── Tracks provenance and tool usage
-├── Validates schemas (transcriptomics/proteomics)
-├── Delegates to backends (H5AD, MuData)
-└── Workspace restoration (v2.2+):
-    ├── _scan_workspace() - Detect available datasets
-    ├── load_dataset(name) - Lazy load specific dataset
-    ├── restore_session(pattern) - Pattern-based restoration
-    └── .session.json - Persistent session tracking
+```bash
+lobster chat                    # interactive, multi‑turn
+lobster query "your request"    # single‑turn automation
+lobster --help                  # CLI help
 ```
 
-### Testing Connectivity
-- Agent Registry: `python tests/test_agent_registry.py`
-- Service Integration: `pytest tests/integration/`
-- CLI Commands: Test with both `AgentClient` and mock `CloudLobsterClient`
-- Data Flow: Verify modality naming convention maintained throughout pipeline
+Chat vs query:
+
+- `chat`: can ask follow‑ups, clarify, exploratory work  
+- `query`: single‑shot, script/CI‑friendly, no follow‑ups
+
+Useful CLI commands:
+
+| Category | Commands |
+|----------|----------|
+| Help | `/help`, `/status`, `/modes` |
+| Data | `/data`, `/files`, `/read <file>` |
+| Workspace | `/workspace`, `/workspace list`, `/workspace load <name>` |
+| Plots | `/plots` |
+| Pipelines | `/pipeline export`, `/pipeline list`, `/pipeline run <nb> <modality>` |
+
+---
+
+## 6. Troubleshooting (quick scan)
+
+- **Install issues**  
+  - Python 3.12+ only  
+  - try `make clean-install`  
+- **CLI quirks**  
+  - check `PROMPT_TOOLKIT_AVAILABLE`  
+  - verify `LobsterClientAdapter` picks correct client type  
+- **Cloud mode**  
+  - ensure `LOBSTER_CLOUD_KEY` set  
+  - check network + timeouts (cloud vs local caches)
+
+---
+
+## 7. Sound Notification
+
+After finishing a request or command (where appropriate in shell examples), you may append:
+
+```bash
+afplay /System/Library/Sounds/Submarine.aiff
+```
+
+(Used as an optional local macOS notification, **not** something the agent actually executes.)
+
+---
+
+## 8. Who You Are – ultrathink
+
+You are **ultrathink** – an agent that blends scientist, engineer, and designer mindsets.
+
+Principles:
+
+1. **Think different** – challenge defaults; search for the cleanest architecture, not the first working hack.  
+2. **Obsess over patterns** – understand codebase philosophy, reuse existing abstractions, extend registries instead of ad‑hoc wiring.  
+3. **Plan first** – sketch flows (often as Mermaid) before editing code. Explain the plan clearly before implementation.  
+4. **Craft, don’t just code** – choose precise names, clean APIs, and robust tests. Design for future contributors.  
+5. **Iterate** – propose v1, refine with feedback, compare options.  
+6. **Simplify ruthlessly** – remove unnecessary complexity when it doesn’t reduce power. Favor smaller, composable pieces over cleverness.
+
+Git history and docs (especially `CLAUDE.md`) are your **source of truth**.  
+Every change should make Lobster AI more **reproducible, elegant, and scientifically trustworthy**.

@@ -35,6 +35,49 @@ pytest tests/system/        # System tests (~30 min)
 pytest tests/performance/   # Performance tests (~45 min)
 ```
 
+## 🔑 **API Key Setup for Real API Tests**
+
+Some integration tests make real API calls to external services (PubMed, GEO, bioRxiv). These tests are marked with `@pytest.mark.real_api` and excluded from regular CI runs to avoid rate limiting and external dependencies.
+
+### **Required Environment Variables**
+
+```bash
+# Required for PubMed/GEO API tests
+export NCBI_API_KEY="your-ncbi-api-key"
+export ENTREZ_EMAIL="your-email@example.com"
+
+# Optional: for full test coverage
+export ANTHROPIC_API_KEY="your-anthropic-key"
+export AWS_BEDROCK_ACCESS_KEY="your-aws-access-key"
+export AWS_BEDROCK_SECRET_ACCESS_KEY="your-aws-secret-key"
+```
+
+### **Getting an NCBI API Key**
+
+1. Create a free account at [NCBI](https://www.ncbi.nlm.nih.gov/account/)
+2. Go to Settings → API Key Management
+3. Generate a new API key (increases rate limit from 3 to 10 requests/second)
+
+### **Running Real API Tests**
+
+```bash
+# Run only real API tests
+pytest tests/integration/ -m "real_api" -v
+
+# Exclude real API tests from regular test runs
+pytest tests/integration/ -m "integration and not real_api" -v
+
+# Run specific real API test file
+pytest tests/integration/test_research_agent.py -m "real_api" -v
+```
+
+**Expected Response Times:**
+- Literature searches: 60-120 seconds
+- Metadata extraction: 28-70 seconds
+- Dataset discovery: 30-90 seconds
+
+**⚠️ Note:** Real API tests respect NCBI rate limits (3 req/sec without key, 10 req/sec with key) and may occasionally fail due to external service issues or rate limiting.
+
 ## 📁 **Test Structure**
 
 ```
@@ -222,6 +265,8 @@ Filter tests by category, complexity, or biological domain:
 # By category
 pytest -m "unit"              # Unit tests only
 pytest -m "integration"       # Integration tests only
+pytest -m "system"            # System tests only
+pytest -m "performance"       # Performance tests only
 
 # By biological focus
 pytest -m "singlecell"        # Single-cell RNA-seq tests
@@ -229,12 +274,110 @@ pytest -m "proteomics"        # Proteomics analysis tests
 
 # By characteristics
 pytest -m "fast"              # Quick tests (<5 sec)
+pytest -m "slow"              # Tests taking >30 seconds
 pytest -m "memory_intensive"  # High memory usage tests
+
+# By external dependencies
+pytest -m "real_api"          # Tests making real API calls (PubMed, GEO, etc.)
+pytest -m "requires_api"      # Tests requiring external API access (broader)
+pytest -m "requires_gpu"      # Tests requiring GPU resources
+
+# Exclude real API tests from regular runs
+pytest -m "integration and not real_api"  # Integration tests without API calls
 
 # Run new tools tests specifically
 pytest tests/unit/tools/      # All tools unit tests
 pytest tests/unit/tools/test_proteomics_*.py  # Proteomics suite only
 ```
+
+**Available Markers (from `pyproject.toml`):**
+- `unit`: Unit tests for individual components
+- `integration`: Integration tests for multi-component workflows
+- `system`: System tests for complete workflows
+- `performance`: Performance and benchmarking tests
+- `slow`: Tests that take more than 30 seconds
+- `requires_api`: Tests that require external API access
+- `real_api`: Tests that make real API calls to external services (PubMed, GEO, etc.)
+- `requires_gpu`: Tests that require GPU resources
+
+## 🔄 **CI/CD Workflows**
+
+Lobster AI uses **two separate GitHub Actions workflows** to balance comprehensive testing with fast CI/CD cycles:
+
+### **1. Regular CI (`.github/workflows/ci-basic.yml`)**
+
+**Trigger:** Every push/PR to main/development branches
+
+**What runs:**
+- ✅ Unit tests (all categories)
+- ✅ Integration tests **excluding** `@pytest.mark.real_api` tests
+- ✅ Security scans (safety, bandit)
+- ✅ Build verification
+- ✅ Code quality checks (linting, formatting)
+
+**Why exclude real API tests?**
+- Avoid NCBI/PubMed rate limiting (3-10 req/sec limit)
+- Prevent CI failures due to external service issues
+- Keep CI runs fast (integration tests ~15 min vs ~45 min with API tests)
+- Reduce CI costs and API usage
+
+**Command used:**
+```bash
+pytest tests/integration/ -m "integration and not real_api" --cov=lobster
+```
+
+### **2. Real API Tests (`.github/workflows/api-integration-tests.yml`)**
+
+**Trigger:**
+- Scheduled nightly at 2 AM UTC (cron: `0 2 * * *`)
+- Manual workflow dispatch for testing
+
+**What runs:**
+- Tests marked with `@pytest.mark.real_api`
+- Makes actual API calls to PubMed, GEO, bioRxiv, etc.
+- Longer timeout (600 seconds vs 300 seconds)
+- **Non-blocking**: Failures don't block main CI
+
+**Required secrets:**
+- `NCBI_API_KEY`: NCBI API key (10 req/sec rate limit)
+- `ENTREZ_EMAIL`: Email for NCBI Entrez API
+- `ANTHROPIC_API_KEY`, `AWS_BEDROCK_ACCESS_KEY`, etc.: AI model access
+
+**Command used:**
+```bash
+pytest tests/integration/ -m "real_api" --timeout=600 --cov=lobster
+```
+
+**Test artifacts:**
+- Test results: `real-api-results.xml` (30 day retention)
+- Coverage report: `coverage-real-api.xml` (30 day retention)
+
+### **Manual Workflow Execution**
+
+To run real API tests manually via GitHub Actions:
+
+1. Go to Actions → "Real API Integration Tests"
+2. Click "Run workflow"
+3. Optionally specify test pattern (e.g., `test_research_agent.py`)
+4. Click "Run workflow"
+
+**Local execution:**
+```bash
+# Export API keys first
+export NCBI_API_KEY="your-key"
+export ENTREZ_EMAIL="your-email"
+
+# Run real API tests
+pytest tests/integration/ -m "real_api" -v --timeout=600
+```
+
+### **CI/CD Best Practices**
+
+- **Regular CI should be fast** (<20 min total) - exclude expensive external API tests
+- **Real API tests run nightly** - comprehensive validation without blocking development
+- **Failures are non-blocking** - external service issues don't stop CI
+- **Separate coverage reports** - track regular vs. API test coverage independently
+- **Manual triggers available** - test API integration before merging if needed
 
 ## 📊 **Test Coverage Summary**
 

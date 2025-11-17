@@ -301,7 +301,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install -e ".[dev]"
     
-    - name: Run integration tests
+    - name: Run integration tests (excluding real API tests)
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         AWS_BEDROCK_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_ACCESS_KEY }}
@@ -311,9 +311,14 @@ jobs:
       run: |
         if [ -d "tests/integration" ]; then
           python -m pytest tests/integration/ \
+            -m "integration and not real_api" \
             --maxfail=5 \
             --timeout=300 \
+            --cov=lobster \
+            --cov-report=xml:coverage-integration.xml \
+            --cov-report=term \
             --junit-xml=integration-results.xml \
+            --durations=10 \
             -v
         else
           echo "No integration tests found, skipping"
