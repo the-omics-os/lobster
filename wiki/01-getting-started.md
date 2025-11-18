@@ -15,7 +15,7 @@ Welcome to Lobster AI! This quick start guide will have you analyzing bioinforma
 ### 2. One-Command Installation
 
 ```bash
-git clone https://github.com/the-omics-os/lobster.git
+git clone https://github.com/the-omics-os/lobster-local.git
 cd lobster
 make install
 ```

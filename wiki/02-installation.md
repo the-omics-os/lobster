@@ -37,9 +37,11 @@ This guide covers all installation methods for Lobster AI, from quick setup to a
 
 Lobster AI automatically detects and uses the best available package manager:
 
-1. **uv** (fastest, recommended): `pip install uv`
+1. **uv** (fastest, recommended): [Install uv](https://docs.astral.sh/uv/getting-started/installation/)
 2. **pip3** (macOS default)
 3. **pip** (fallback)
+
+We recommend installing `uv` for significantly faster package installation and dependency resolution.
 
 ### Required API Keys
 
@@ -149,11 +151,13 @@ cd lobster-local
 python3 -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# Upgrade pip and install build tools
-pip install --upgrade pip build wheel
+# Install uv (recommended for faster installation)
+# https://docs.astral.sh/uv/getting-started/installation/
 
-# Install Lobster AI
-pip install -e .
+# Install Lobster AI with uv (recommended)
+uv pip install -e .
+
+# Alternative: pip install -e .
 ```
 
 ### Method 4: Global Installation
@@ -175,20 +179,28 @@ This creates a symlink in `/usr/local/bin/lobster` allowing you to run `lobster`
 The `lobster-ai` package is now available on PyPI and is the **recommended installation method** for most users.
 
 ```bash
+# Recommended: Install with uv (faster)
+# Install uv: https://docs.astral.sh/uv/getting-started/installation/
+
 # Standard installation
-pip install lobster-ai
+uv pip install lobster-ai
 
 # Development installation (includes testing and linting tools)
-pip install lobster-ai[dev]
+uv pip install lobster-ai[dev]
 
 # All extras (includes all optional dependencies)
-pip install lobster-ai[all]
+uv pip install lobster-ai[all]
+
+# Alternative: Use pip if uv is not available
+# pip install lobster-ai
+# pip install lobster-ai[dev]
+# pip install lobster-ai[all]
 ```
 
 **Benefits of PyPI installation:**
 - ✅ Simple one-command installation
 - ✅ Automatic dependency management
-- ✅ Easy updates with `pip install --upgrade lobster-ai`
+- ✅ Easy updates with `uv pip install --upgrade lobster-ai` (or `pip install --upgrade lobster-ai`)
 - ✅ Works on all platforms (macOS, Linux, Windows)
 
 **Note:** For development or contributing to Lobster AI, use Method 1 (Quick Install) or Method 3 (Manual Installation) to install from source.
@@ -216,7 +228,10 @@ If using system Python causes issues:
 # Use Homebrew Python explicitly
 /opt/homebrew/bin/python3.12 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+
+# Install with uv (recommended) or pip
+uv pip install -e .
+# Alternative: pip install -e .
 ```
 
 ### Linux (Ubuntu/Debian)
