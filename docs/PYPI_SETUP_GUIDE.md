@@ -28,36 +28,116 @@ This guide explains how to set up PyPI publishing for the first time and how to 
 
 ### 2. Reserve Package Name on PyPI
 
-Before your first release, you need to reserve the `lobster-ai` name on PyPI:
+Before your first release, you need to reserve the `lobster-ai` name on PyPI.
 
+**The first upload to PyPI automatically reserves the package name.** You have two options:
+
+#### Option 1: Let the workflow handle it (Recommended)
+Just create the tag and push. The workflow will attempt to publish. If the name isn't reserved yet, the first successful publish claims it.
+
+#### Option 2: Manual first upload
 ```bash
-# Build the package locally first
-cd /path/to/lobster
+# Build from public repository (CRITICAL - not private repo!)
+cd /tmp
+git clone https://github.com/the-omics-os/lobster-local.git
+cd lobster-local
 python -m build
 
 # Upload to PyPI manually (first time only)
 python -m twine upload dist/*
 ```
 
-You'll be prompted for PyPI username and password. After this first manual upload, the automated workflow will handle future releases.
+You'll be prompted for:
+- **Username**: `__token__` (exactly this, with underscores)
+- **Password**: Your PyPI API token starting with `pypi-...`
 
-### 3. Generate API Tokens
+After this first upload, the package name is yours and the automated workflow will handle future releases.
+
+---
+
+## Authentication Methods
+
+PyPI supports two authentication methods for automated publishing. Choose based on your security requirements and setup preferences.
+
+### Option A: Trusted Publishing (Recommended - Secure & Modern) ⭐
+
+**Why Trusted Publishing?**
+- ✅ No long-lived secrets in GitHub (OIDC-based)
+- ✅ PyPI mints short-lived tokens automatically
+- ✅ Official PyPA recommendation for CI/CD
+- ✅ Zero maintenance (no token rotation needed)
+- ✅ More secure (tokens expire in minutes)
+
+**Setup Steps:**
+
+1. **Configure on PyPI** (one-time):
+   - Log in to https://pypi.org (or https://test.pypi.org)
+   - Navigate to your project: `lobster-ai`
+   - Go to **Manage** → **Publishing**
+   - Click **Add a new publisher**
+   - Fill in GitHub details:
+     - **Owner**: `the-omics-os`
+     - **Repository name**: `lobster`
+     - **Workflow name**: `publish-pypi.yml`
+     - **Environment name**: Leave blank (or `pypi` if using GitHub Environments)
+   - Click **Add**
+
+2. **Repeat for TestPyPI**:
+   - Log in to https://test.pypi.org
+   - Same steps, but use environment name `testpypi`
+
+3. **Verify workflow configuration** (already done):
+   ```yaml
+   permissions:
+     id-token: write  # Required for OIDC
+     contents: read
+   ```
+
+4. **No GitHub secrets needed!** The workflow will authenticate automatically.
+
+**How it works:**
+- GitHub Actions requests short-lived token from PyPI via OIDC
+- PyPI verifies workflow identity (repo, workflow name, environment)
+- PyPI mints token valid for ~15 minutes
+- Workflow uses token to publish
+- Token expires automatically
+
+**Official Docs:**
+- https://docs.pypi.org/trusted-publishers/
+- https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect
+
+---
+
+### Option B: API Tokens (Legacy/Fallback Method)
+
+**When to use:**
+- You can't configure Trusted Publishers (e.g., no project access yet)
+- You need to test locally with `twine upload`
+- Temporary setup before migrating to Trusted Publishing
+
+**Important:** As of January 1, 2024, **PyPI requires 2FA (Two-Factor Authentication) for all uploads**, whether using tokens or interactive login.
+
+#### Generate API Tokens
+
+### 3. Generate API Tokens (Option B Only)
 
 #### For Production PyPI
 1. Log in to https://pypi.org
-2. Go to Account Settings → API tokens
-3. Click "Add API token"
+2. Ensure 2FA is enabled (required since Jan 1, 2024)
+3. Go to Account Settings → API tokens
+4. Click "Add API token"
    - **Token name**: `GitHub Actions - lobster-ai`
    - **Scope**: `Project: lobster-ai` (after first upload) or `Entire account` (for first upload)
-4. **Copy the token** (starts with `pypi-`)
-5. Store it securely - you won't see it again!
+5. **Copy the token** (starts with `pypi-`)
+6. Store it securely - you won't see it again!
 
 #### For TestPyPI
 1. Log in to https://test.pypi.org
-2. Follow same steps as above
-3. Token name: `GitHub Actions - lobster-ai-test`
+2. Ensure 2FA is enabled
+3. Follow same steps as above
+4. Token name: `GitHub Actions - lobster-ai-test`
 
-### 4. Add Tokens to GitHub Secrets
+### 4. Add Tokens to GitHub Secrets (Option B Only)
 
 **Private Repository**: `the-omics-os/lobster`
 
@@ -69,6 +149,44 @@ You'll be prompted for PyPI username and password. After this first manual uploa
 |-------------|-------|-------------|
 | `PYPI_API_TOKEN` | `pypi-...` | Production PyPI token |
 | `TEST_PYPI_API_TOKEN` | `pypi-...` | TestPyPI token |
+
+**Note:** The workflow supports both authentication methods:
+- If Trusted Publishing is configured on PyPI, tokens are ignored (OIDC used)
+- If Trusted Publishing is NOT configured, workflow falls back to tokens
+- This provides zero-downtime migration path
+
+#### Local Testing with .pypirc (Optional)
+
+For manual `twine upload` testing, create `~/.pypirc`:
+
+```ini
+[distutils]
+index-servers =
+    pypi
+    testpypi
+
+[pypi]
+username = __token__
+password = pypi-your-production-token-here
+
+[testpypi]
+repository = https://test.pypi.org/legacy/
+username = __token__
+password = pypi-your-test-token-here
+```
+
+**Security:** Ensure this file has restricted permissions:
+```bash
+chmod 600 ~/.pypirc
+```
+
+Then upload with:
+```bash
+twine upload --repository testpypi dist/*  # TestPyPI
+twine upload dist/*                        # Production PyPI
+```
+
+---
 
 ### 5. Set Up GitHub Environments (Optional but Recommended)
 
@@ -90,12 +208,19 @@ For manual approval before production releases:
 - No additional rules needed
 - Deployment happens after approval
 
-### 6. Verify GitHub Secrets Are Set
+### 6. Verify Setup
 
-Check that these secrets exist in your private repo:
-- ✅ `PYPI_API_TOKEN`
-- ✅ `TEST_PYPI_API_TOKEN`
-- ✅ `PUBLIC_REPO_DEPLOY_KEY` (for syncing to lobster-local)
+**For Trusted Publishing (Option A):**
+- ✅ Trusted Publisher configured on PyPI for `lobster-ai`
+- ✅ Trusted Publisher configured on TestPyPI for `lobster-ai`
+- ✅ Workflow has `id-token: write` permission (already set)
+
+**For API Tokens (Option B):**
+- ✅ `PYPI_API_TOKEN` secret exists in GitHub
+- ✅ `TEST_PYPI_API_TOKEN` secret exists in GitHub
+
+**Both methods:**
+- ✅ `PUBLIC_REPO_DEPLOY_KEY` secret exists (for syncing to lobster-local)
 
 ---
 
@@ -239,14 +364,21 @@ python -c "from lobster.agents import singlecell_expert; print('OK')"
 ### Verify Package Metadata
 
 ```bash
-# Check package info
+# Check package for PyPI compliance
 python -m twine check dist/*
 
-# View metadata
+# View metadata (modern approach - no setup.py commands)
+pip show lobster-ai                           # After installation
+unzip -p dist/*.whl */METADATA | head -50    # Inspect wheel metadata
+cat pyproject.toml | grep -E "^(name|version|description)"  # Source of truth
+```
+
+**Deprecated commands (do NOT use):**
+```bash
+# ❌ LEGACY - these invoke setup.py and are no longer recommended
 python setup.py --name
 python setup.py --version
 python setup.py --author
-python setup.py --classifiers
 ```
 
 ---
@@ -358,11 +490,23 @@ Before creating a release:
 
 ## Links
 
+### Project Links
 - **Production PyPI**: https://pypi.org/project/lobster-ai/
 - **TestPyPI**: https://test.pypi.org/project/lobster-ai/
 - **Public Repo**: https://github.com/the-omics-os/lobster-local
-- **PyPI Guide**: https://packaging.python.org/tutorials/packaging-projects/
-- **Twine Docs**: https://twine.readthedocs.io/
+
+### Official PyPA Resources
+- **Trusted Publishing Guide**: https://docs.pypi.org/trusted-publishers/
+- **GitHub Actions Publishing**: https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/
+- **Packaging Tutorial**: https://packaging.python.org/tutorials/packaging-projects/
+- **PyPI Classifiers List**: https://pypi.org/classifiers/
+- **Core Metadata Spec**: https://packaging.python.org/specifications/core-metadata/
+- **Twine Documentation**: https://twine.readthedocs.io/
+
+### Recommended Tools
+- **Build**: `python -m build` (PEP 517 compliant)
+- **Upload**: `python -m twine upload` (secure upload)
+- **Check**: `python -m twine check` (validate before upload)
 
 ---
 
