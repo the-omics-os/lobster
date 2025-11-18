@@ -52,6 +52,8 @@ lobster/lobster_cloud/*
 !lobster/agents/affinity_proteomics_expert.py
 !lobster/core/adapters/proteomics_adapter.py
 !lobster/core/schemas/proteomics.py
+!lobster/core/schemas/metabolomics.py
+!lobster/core/schemas/metagenomics.py
 
 !lobster/tools/proteomics_analysis_service.py
 !lobster/tools/proteomics_differential_service.py
@@ -84,6 +86,7 @@ examples/**
 !docs/
 LICENSE
 !wiki/
+!wiki.backup*
 !wiki/*
 
 # Package files
