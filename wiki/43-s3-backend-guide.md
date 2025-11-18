@@ -58,7 +58,7 @@ graph TB
     class S3_STANDARD,S3_IA,S3_GLACIER s3tier
 ```
 
-## Current Status (v2.4+)
+## Current Status (v0.2+)
 
 **Implementation Status**: The S3 backend is currently in **planning/partial implementation** phase. The architecture is designed to support S3, but full functionality is not yet available.
 
@@ -91,7 +91,7 @@ print(backend.s3_config)
 
 ### What's Coming Soon
 
-🚧 **Full S3 Implementation** (Roadmap for v2.5+)
+🚧 **Full S3 Implementation** (Roadmap for future versions)
 - S3 read/write operations via `boto3`
 - Multipart upload for large files (>100MB)
 - S3 caching with local fallback
@@ -304,7 +304,7 @@ dm.default_backend = "s3"
 
 ### Pattern 1: Direct S3 Paths (Planned Feature)
 
-**Future API (v2.5+):**
+**Future API (future versions):**
 ```python
 # Load from S3 (when fully implemented)
 adata = data_manager.load_modality(
@@ -321,7 +321,7 @@ data_manager.save_modality(
 
 ### Pattern 2: Workspace with S3 Backend
 
-**Current Workaround (v2.4):**
+**Current Workaround (v0.2):**
 ```python
 import boto3
 from pathlib import Path
@@ -453,7 +453,7 @@ s3_client.download_file(
 
 **Benchmark Metadata:**
 - **Date**: 2025-01-16
-- **Lobster Version**: v2.4.0
+- **Lobster Version**: v0.2.0
 - **boto3 Version**: 1.34.0
 - **Network**: AWS Direct Connect (simulated 100 Mbps)
 
@@ -889,8 +889,8 @@ The S3 Backend for Lobster AI provides:
 ✅ **Security** - Encryption at rest/transit, IAM-based access control
 ✅ **Versioning** - Automatic backup and rollback capabilities
 
-**Current Status (v2.4)**: S3 backend is in planning phase. Use manual boto3 upload/download as workaround.
+**Current Status (v0.2)**: S3 backend is in planning phase. Use manual boto3 upload/download as workaround.
 
-**Coming Soon (v2.5+)**: Native S3 support with seamless `s3://` URI handling, multipart uploads, and caching.
+**Coming Soon (future versions)**: Native S3 support with seamless `s3://` URI handling, multipart uploads, and caching.
 
 **Best Practice**: Use local storage for active analysis (fast), S3 for archival and sharing (durable, collaborative).

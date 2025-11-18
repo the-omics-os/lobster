@@ -518,11 +518,11 @@ Validate antibody performance using CV analysis.
 
 ## Research Agent
 
-Handles literature discovery, dataset identification, and **automatic PMID/DOI → PDF resolution** for computational method extraction with **structure-aware Docling parsing** (v2.3+).
+Handles literature discovery, dataset identification, and **automatic PMID/DOI → PDF resolution** for computational method extraction with **structure-aware Docling parsing** (v0.2+).
 
-**Phase 1 Enhancement (v2.2+)**: Automatic resolution of PMIDs and DOIs to accessible PDF URLs using tiered waterfall strategy (PMC → bioRxiv/medRxiv → Publisher → Suggestions). Achieves 70-80% automatic resolution success rate with graceful fallback to alternative access strategies for paywalled papers.
+**Phase 1 Enhancement (v0.2+)**: Automatic resolution of PMIDs and DOIs to accessible PDF URLs using tiered waterfall strategy (PMC → bioRxiv/medRxiv → Publisher → Suggestions). Achieves 70-80% automatic resolution success rate with graceful fallback to alternative access strategies for paywalled papers.
 
-**Phase 2 & 3 Enhancement (v2.3+)**: Structure-aware PDF parsing with Docling replaces naive PyPDF2 truncation. Intelligent Methods section detection achieves >90% hit rate (vs ~30% previously), extracts parameter tables and formulas, and includes comprehensive retry logic with automatic fallback. See [37-publication-intelligence-deep-dive.md](37-publication-intelligence-deep-dive.md) for technical details.
+**Phase 2 & 3 Enhancement (v0.2+)**: Structure-aware PDF parsing with Docling replaces naive PyPDF2 truncation. Intelligent Methods section detection achieves >90% hit rate (vs ~30% previously), extracts parameter tables and formulas, and includes comprehensive retry logic with automatic fallback. See [37-publication-intelligence-deep-dive.md](37-publication-intelligence-deep-dive.md) for technical details.
 
 ### Factory Function
 
@@ -541,7 +541,7 @@ def research_agent(
 
 ### Tools
 
-#### get_quick_abstract ✨ (v2.3+ Two-Tier Access - Tier 1)
+#### get_quick_abstract ✨ (v0.2+ Two-Tier Access - Tier 1)
 
 ```python
 @tool
@@ -576,7 +576,7 @@ abstract = get_quick_abstract("PMID:38448586")
 
 **See also**: [37-publication-intelligence-deep-dive.md](37-publication-intelligence-deep-dive.md) for two-tier access architecture.
 
-#### get_publication_overview ✨ (v2.3+ Two-Tier Access - Tier 2)
+#### get_publication_overview ✨ (v0.2+ Two-Tier Access - Tier 2)
 
 ```python
 @tool
@@ -586,7 +586,7 @@ def get_publication_overview(
 ) -> str
 ```
 
-**Extract full publication content** with webpage-first strategy (v2.3+). This is the **DEEP PATH** for two-tier access strategy.
+**Extract full publication content** with webpage-first strategy (v0.2+). This is the **DEEP PATH** for two-tier access strategy.
 
 **Parameters**:
 - `identifier` (str): PMID, DOI, URL, or PMCID
@@ -626,7 +626,7 @@ full_content = get_publication_overview("PMID:38448586")
 
 **See also**: [37-publication-intelligence-deep-dive.md](37-publication-intelligence-deep-dive.md) for Docling integration and extraction strategies.
 
-#### get_research_capabilities ✨ (v2.3+ Diagnostic)
+#### get_research_capabilities ✨ (v0.2+ Diagnostic)
 
 ```python
 @tool
@@ -752,20 +752,20 @@ validation_report = validate_dataset_metadata(
 
 **See also**: [Services API Documentation](16-services-api.md) for implementation details.
 
-#### extract_paper_methods ✨ (v2.3+ Enhanced with Docling)
+#### extract_paper_methods ✨ (v0.2+ Enhanced with Docling)
 
 ```python
 @tool
 def extract_paper_methods(url_or_pmid: str) -> str
 ```
 
-Extract computational analysis methods from a research paper using **structure-aware Docling PDF parsing** (v2.3+). **Automatically resolves PMIDs and DOIs to PDF URLs** using tiered waterfall strategy:
+Extract computational analysis methods from a research paper using **structure-aware Docling PDF parsing** (v0.2+). **Automatically resolves PMIDs and DOIs to PDF URLs** using tiered waterfall strategy:
 1. PubMed Central (PMC) - Free full text
 2. bioRxiv/medRxiv - Preprint servers
 3. Publisher Direct - Open access detection
 4. Generate alternative access suggestions if paywalled
 
-**Input formats (v2.3+ Enhanced)**: All identifier types auto-detected and resolved:
+**Input formats (v0.2+ Enhanced)**: All identifier types auto-detected and resolved:
 - **Bare DOI:** `"10.1101/2024.08.29.610467"` (NEW - auto-detected)
 - **DOI with prefix:** `"DOI:10.1038/s41586-021-12345-6"`
 - **PMID:** `"PMID:39370688"` or `"39370688"` (both formats supported)
@@ -774,9 +774,9 @@ Extract computational analysis methods from a research paper using **structure-a
 
 **Returns**: Structured JSON with:
 - Software packages, parameters, quality control steps, and analysis workflows
-- **v2.3+ enhancements**: Parameter tables (pandas DataFrames), mathematical formulas (LaTeX), auto-detected tools, extraction metadata
+- **v0.2+ enhancements**: Parameter tables (pandas DataFrames), mathematical formulas (LaTeX), auto-detected tools, extraction metadata
 
-**Extraction Quality (v2.3+ Enhanced)**:
+**Extraction Quality (v0.2+ Enhanced)**:
 - Methods section detection: >90% hit rate (vs ~30% with PyPDF2)
 - Complete section extraction (no arbitrary truncation)
 - Table and formula preservation
@@ -937,7 +937,7 @@ Validate that dataset contains required metadata fields and sufficient samples.
 - Duplicate ID detection
 - Platform consistency
 
-## ~~Method Expert Agent~~ (DEPRECATED v2.2+)
+## ~~Method Expert Agent~~ (DEPRECATED v0.2+)
 
 **Deprecated:** Method Expert functionality has been merged into Research Agent with Phase 1 enhancements. The Research Agent now handles all method extraction with automatic PMID/DOI → PDF resolution (70-80% success rate).
 
@@ -1439,7 +1439,7 @@ All agents seamlessly integrate with DataManagerV2:
 - **Plot Management**: Visualization tools automatically store plots in DataManagerV2
 - **Quality Metrics**: Agents can access quality metrics from the data manager
 
-## Supervisor Configuration API (v2.3+)
+## Supervisor Configuration API (v0.2+)
 
 The supervisor agent now features dynamic configuration and automatic agent discovery.
 
@@ -1569,4 +1569,4 @@ result = tools['assess_data_quality'].invoke({
 })
 ```
 
-This agents API provides a comprehensive set of specialized tools for bioinformatics analysis, with each agent focusing on its domain expertise while maintaining consistency through the standard tool pattern and integration with the core DataManagerV2 system. The v2.3+ supervisor configuration system enables dynamic agent discovery and customizable interaction modes.
+This agents API provides a comprehensive set of specialized tools for bioinformatics analysis, with each agent focusing on its domain expertise while maintaining consistency through the standard tool pattern and integration with the core DataManagerV2 system. The v0.2+ supervisor configuration system enables dynamic agent discovery and customizable interaction modes.

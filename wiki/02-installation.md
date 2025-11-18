@@ -170,24 +170,28 @@ make install-global
 
 This creates a symlink in `/usr/local/bin/lobster` allowing you to run `lobster` from anywhere.
 
-### Method 5: Package Manager Installation (Future)
+### Method 5: PyPI Installation (Recommended)
 
-The `lobster` package is not yet available on PyPI. Once it is published, you will be able to install it using pip.
-
-**For now, please install the package directly from the repository by following Method 1 (Quick Install) or Method 3 (Manual Installation).**
-
-When available on PyPI, the commands will be:
+The `lobster-ai` package is now available on PyPI and is the **recommended installation method** for most users.
 
 ```bash
 # Standard installation
-pip install lobster
+pip install lobster-ai
 
-# Development installation
-pip install lobster[dev]
+# Development installation (includes testing and linting tools)
+pip install lobster-ai[dev]
 
-# All extras
-pip install lobster[all]
+# All extras (includes all optional dependencies)
+pip install lobster-ai[all]
 ```
+
+**Benefits of PyPI installation:**
+- ✅ Simple one-command installation
+- ✅ Automatic dependency management
+- ✅ Easy updates with `pip install --upgrade lobster-ai`
+- ✅ Works on all platforms (macOS, Linux, Windows)
+
+**Note:** For development or contributing to Lobster AI, use Method 1 (Quick Install) or Method 3 (Manual Installation) to install from source.
 
 ## Platform-Specific Instructions
 
@@ -296,8 +300,6 @@ make install
 
 **⚠️ Native Windows installation is experimental. Docker Desktop is strongly recommended for Windows users.**
 
-For comprehensive Windows instructions, see: [Windows Installation Guide](../docs/WINDOWS_INSTALLATION.md)
-
 **Option 1: Docker Desktop (Recommended)**
 
 Docker provides the most reliable experience on Windows:
@@ -370,8 +372,6 @@ cd lobster-local
 - **Permission denied**: Run PowerShell as Administrator or use Docker
 - **Python not found**: Reinstall Python with "Add to PATH" checked
 - **Long path errors**: Enable long path support in Windows Registry or use Docker
-
-See [Windows Installation Guide](../docs/WINDOWS_INSTALLATION.md) for detailed troubleshooting.
 
 ### Python Version Considerations
 
@@ -499,7 +499,7 @@ These optional components enhance Lobster AI with advanced features. Install bas
 
 ### PyMOL (Protein Structure Visualization)
 
-PyMOL enables 3D protein structure visualization and analysis (v2.4+).
+PyMOL enables 3D protein structure visualization and analysis (v0.2+).
 
 **Automated Installation (macOS):**
 ```bash
@@ -560,7 +560,7 @@ See [Protein Structure Visualization Guide](40-protein-structure-visualization.m
 
 ### Docling (Advanced PDF Parsing)
 
-Docling provides professional-grade PDF parsing for extracting methods from scientific publications (v2.4+).
+Docling provides professional-grade PDF parsing for extracting methods from scientific publications (v0.2+).
 
 **Installation:**
 ```bash
@@ -708,7 +708,7 @@ See [AWS Bedrock Regions](https://docs.aws.amazon.com/bedrock/latest/userguide/b
 
 ### Cloud Mode Configuration
 
-Enable cloud processing for large-scale analyses (v2.4+).
+Enable cloud processing for large-scale analyses (v0.2+).
 
 **Setup:**
 ```bash

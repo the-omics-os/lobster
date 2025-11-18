@@ -17,9 +17,9 @@ Lobster AI is a **multi-agent bioinformatics analysis platform** that combines s
 - **Bulk RNA-seq Expert**: Performs differential expression with pyDESeq2
 - **MS Proteomics Expert**: Analyzes mass spectrometry data with database search
 - **Affinity Proteomics Expert**: Processes Olink and antibody array data
-- **Protein Structure Expert** (v2.4+): Fetches and visualizes 3D protein structures with PyMOL
+- **Protein Structure Expert** (v0.2+): Fetches and visualizes 3D protein structures with PyMOL
 - **Data Expert**: Manages file loading, format conversion, and GEO downloads
-- **Research Agent**: Mines literature and identifies relevant datasets with Docling parsing (v2.3+)
+- **Research Agent**: Mines literature and identifies relevant datasets with Docling parsing (v0.2+)
 
 ### How It Works
 
@@ -46,14 +46,14 @@ Lobster AI is a **multi-agent bioinformatics analysis platform** that combines s
 - **Reproducibility**: Complete analysis provenance tracking
 
 #### Advanced Capabilities
-- **Literature Integration**: Automatic parameter extraction from publications (v2.3+ with Docling parsing)
-- **GEO Database Access**: Download and analyze public datasets with robust queue system (v2.4+)
+- **Literature Integration**: Automatic parameter extraction from publications (v0.2+ with Docling parsing)
+- **GEO Database Access**: Download and analyze public datasets with robust queue system (v0.2+)
 - **Cloud/Local Flexibility**: Seamless switching between execution modes
-- **Formula-Guided Analysis**: R-style statistical formulas for complex designs (v2.3+)
-- **Protein Structure Visualization**: 3D structure analysis with PyMOL integration (v2.4+)
-- **Two-Tier Caching**: 30-50x speedup on repeat content access (v2.4+)
+- **Formula-Guided Analysis**: R-style statistical formulas for complex designs (v0.2+)
+- **Protein Structure Visualization**: 3D structure analysis with PyMOL integration (v0.2+)
+- **Two-Tier Caching**: 30-50x speedup on repeat content access (v0.2+)
 
-> **What's New in v2.4:** ContentAccessService with provider infrastructure, protein structure visualization, download queue system, and enhanced caching. See [Migration Guide](41-migration-guides.md) for details.
+> **What's New in v0.2:** ContentAccessService with provider infrastructure, protein structure visualization, download queue system, and enhanced caching. See [Migration Guide](41-migration-guides.md) for details.
 
 ## Understanding Agent Responses
 

@@ -314,6 +314,89 @@ python -m twine upload dist/*
 
 ---
 
+## Post-Release: User Experience
+
+### For Users Installing via pip
+
+When users run `pip install lobster-ai`, they will need to configure environment variables manually.
+
+**What's included in the package:**
+- ✅ `.env.example` template file
+- ✅ README.md with configuration instructions
+
+**User workflow:**
+```bash
+# 1. Install
+pip install lobster-ai
+
+# 2. Create config file (two options)
+
+# Option A: Download template
+curl -O https://raw.githubusercontent.com/the-omics-os/lobster-local/main/.env.example
+mv .env.example .env
+
+# Option B: Create manually
+cat > .env << 'EOF'
+# Required: Choose ONE LLM provider
+ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+# OR
+AWS_BEDROCK_ACCESS_KEY=your-access-key
+AWS_BEDROCK_SECRET_ACCESS_KEY=your-secret-key
+
+# Optional: Enhanced literature search
+NCBI_API_KEY=your-ncbi-key
+NCBI_EMAIL=your.email@example.com
+
+# Optional: Performance tuning
+LOBSTER_PROFILE=production
+LOBSTER_MAX_FILE_SIZE_MB=500
+EOF
+
+# 3. Edit config
+nano .env
+
+# 4. Run
+lobster chat
+```
+
+**Error handling:**
+If users forget to configure, they'll see:
+```
+❌ No LLM provider configured
+
+Lobster AI requires API credentials to function.
+
+Quick Setup:
+1. Create a .env file in your current directory
+2. Add ONE of the following:
+
+   Option A - Claude API (Recommended for testing):
+   ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+
+   Option B - AWS Bedrock (Recommended for production):
+   AWS_BEDROCK_ACCESS_KEY=your-access-key
+   AWS_BEDROCK_SECRET_ACCESS_KEY=your-secret-key
+
+Get API Keys:
+  • Claude API: https://console.anthropic.com/
+  • AWS Bedrock: https://aws.amazon.com/bedrock/
+
+For detailed setup instructions, see:
+  https://github.com/the-omics-os/lobster-local/wiki/03-configuration
+
+Tip: If you installed via pip, make sure to create a .env file in your current directory.
+Tip: See README for installation instructions: https://github.com/the-omics-os/lobster-local
+```
+
+**Design rationale:**
+- Manual configuration keeps package simple and maintainable
+- No interactive CLI wizard reduces complexity
+- Users can version-control their .env files
+- Follows standard Python package patterns (e.g., Flask, Django)
+- Clear error messages guide users to correct configuration
+
+---
+
 ## Testing Locally
 
 ### Test Package Build

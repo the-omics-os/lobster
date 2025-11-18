@@ -1,6 +1,6 @@
 # Protein Structure Visualization Expert Agent
 
-**Since v2.4** - Protein structure analysis with PyMOL visualization and BioPython integration
+**Since v0.2** - Protein structure analysis with PyMOL visualization and BioPython integration
 
 **Agent Name**: `protein_structure_visualization_expert_agent`
 **Display Name**: Protein Structure Visualization Expert
@@ -10,7 +10,7 @@
 
 The Protein Structure Visualization Expert is a specialized agent for fetching, visualizing, and analyzing 3D protein structures from the RCSB Protein Data Bank (PDB). It integrates PyMOL (open-source) for high-quality molecular visualizations and BioPython for structural analysis, enabling seamless linking between protein structures and omics datasets.
 
-**Version Note**: This agent requires Lobster v2.4+ and is fully supported in both local and cloud modes (with limited interactive visualization in cloud).
+**Version Note**: This agent requires Lobster v0.2+ and is fully supported in both local and cloud modes (with limited interactive visualization in cloud).
 
 ### Key Features
 

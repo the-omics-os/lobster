@@ -129,7 +129,7 @@ jobs:
 | `40-protein-structure-visualization.md` | Protein Structure Viz | PyMOL integration |
 | `41-migration-guides.md` | Migration Guides | Version upgrade paths |
 | `43-docker-deployment-guide.md` | Docker Deployment | Production containers |
-| `44-s3-backend-guide.md` | S3 Backend | Cloud storage |
+| `43-s3-backend-guide.md` | S3 Backend | Cloud storage |
 | `44-maintaining-documentation.md` | Maintaining Documentation | Documentation workflows |
 | `45-agent-customization-advanced.md` | Advanced Customization | Advanced agent patterns |
 | `46-multiomics-integration.md` | Multi-Omics Integration | Cross-platform analysis |
@@ -215,8 +215,8 @@ def example():
 
 ## 📄 License
 
-This documentation is part of the Lobster AI project and is licensed under the Apache 2.0 License.
+This documentation is part of the Lobster AI project and is licensed under the AGPL-3.0-or-later License.
 
 ---
 
-*Documentation created for Lobster AI v2.2+*
+*Documentation created for Lobster AI v0.2+*

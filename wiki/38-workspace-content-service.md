@@ -2,7 +2,7 @@
 
 ## Overview
 
-The **WorkspaceContentService** provides structured, type-safe caching of research content (publications, datasets, metadata) in the DataManagerV2 workspace. Introduced in Lobster v2.3+, it replaces manual JSON file operations with a centralized service using Pydantic schemas for validation and enum-based type safety.
+The **WorkspaceContentService** provides structured, type-safe caching of research content (publications, datasets, metadata) in the DataManagerV2 workspace. Introduced in Lobster v0.2+, it replaces manual JSON file operations with a centralized service using Pydantic schemas for validation and enum-based type safety.
 
 **Key Benefits:**
 - **Type Safety**: Pydantic models validate all cached content
@@ -827,7 +827,7 @@ cached_list = workspace_service.list_content(ContentType.PUBLICATION)
 
 | Version | Changes |
 |---------|---------|
-| **v2.3+** | Initial implementation with Pydantic schemas, enum-based validation, two-tier architecture |
+| **v0.2+** | Initial implementation with Pydantic schemas, enum-based validation, two-tier architecture |
 
 ## Related Documentation
 

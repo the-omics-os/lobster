@@ -111,7 +111,7 @@ quantification_directory/
 
 **Loading Kallisto Data**:
 
-**⚠️ NEW in v2.3+**: Use CLI `/read` command directly for quantification files.
+**⚠️ NEW in v0.2+**: Use CLI `/read` command directly for quantification files.
 
 ```bash
 /read /path/to/kallisto_output
@@ -127,7 +127,7 @@ ENST00000488147	1351	1191.000	15.432	125.800
 
 **Loading Salmon Data**:
 
-**⚠️ NEW in v2.3+**: Use CLI `/read` command directly for quantification files.
+**⚠️ NEW in v0.2+**: Use CLI `/read` command directly for quantification files.
 
 ```bash
 /read /path/to/salmon_output

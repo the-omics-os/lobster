@@ -1,6 +1,6 @@
 # 🦞 Lobster AI
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL%203.0--or--later-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Documentation: CC BY 4.0](https://img.shields.io/badge/Documentation-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
@@ -550,8 +550,11 @@ Need custom integrations or dedicated support? [Contact us](mailto:info@omics-os
 
 ## 📄 License
 
-Lobster AI is open source under the Apache License 2.0 (see `LICENSE`). Documentation is licensed CC-BY-4.0.
-Contributions are accepted under a Contributor License Agreement to preserve future licensing flexibility.
+Lobster AI is open source under the GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later). This license ensures that all users, including those accessing the software over a network, receive the freedoms to use, study, share, and modify the software. The AGPL-3.0 license is compatible with GPL-licensed dependencies used in our bioinformatics toolchain.
+
+For commercial licensing options or questions about license compatibility, please contact us at info@omics-os.com.
+
+Documentation is licensed CC-BY-4.0. Contributions are accepted under a Contributor License Agreement to preserve future licensing flexibility.
 
 ---
 

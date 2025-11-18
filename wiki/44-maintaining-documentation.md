@@ -103,7 +103,7 @@ python scripts/check_wiki_links.py --output report.md
 - Bare URLs (should use [text](url) format)
 - Trailing whitespace
 - List consistency (same marker throughout list)
-- Version tag formatting (v2.3+, not V2.3)
+- Version tag formatting (v0.2+, not V2.3)
 - Table formatting
 - File path validity
 
@@ -133,7 +133,7 @@ python scripts/lint_wiki_markdown.py --output report.md
 | bare-url | URL not formatted | Use [text](url) format |
 | trailing-whitespace | Spaces at line end | Remove trailing spaces |
 | list-consistency | Mixed list markers | Use same marker (-, *, +) |
-| version-format | Inconsistent version | Use v2.3+ format |
+| version-format | Inconsistent version | Use v0.2+ format |
 
 ### 4. Wiki Health Dashboard
 
@@ -366,9 +366,9 @@ Use consistent version formatting:
 
 ```markdown
 <!-- Good -->
-Available in v2.3+
-New in v2.4
-Introduced in v2.2
+Available in v0.2+
+New in v0.2
+Introduced in v0.2
 
 <!-- Bad -->
 Available in V2.3 (uppercase V)
@@ -441,7 +441,7 @@ def example():
 **Target**: 80%+ (excellent), 60-79% (good), <60% (needs work)
 
 **How to Improve**:
-- Add version tags to new features (v2.4+)
+- Add version tags to new features (v0.2+)
 - Tag breaking changes
 - Document migration requirements
 

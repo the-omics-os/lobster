@@ -386,7 +386,7 @@ jobs:
         - **Package Name**: lobster-ai
         - **Version**: ${{ steps.version.outputs.version_number }}
         - **Python**: 3.11+
-        - **License**: Apache 2.0
+        - **License**: AGPL-3.0-or-later
         - **Repository**: [lobster-local](https://github.com/the-omics-os/lobster-local)
 
         ## 🔗 Links

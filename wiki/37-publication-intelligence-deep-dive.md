@@ -689,7 +689,7 @@ content = service.get_full_content("PMID:35042229")
 
 **Benchmark Metadata:**
 - **Date Measured:** 2025-01-15
-- **Lobster Version:** v2.4.0
+- **Lobster Version:** v0.2.0
 - **Network:** Residential broadband (100 Mbps)
 - **Sample Size:** 100 operations per provider
 - **Test Conditions:** Mixed cache hit/miss scenarios
@@ -886,7 +886,7 @@ print(capabilities)
 
 ## Version History
 
-**v2.4.0 (January 2025) - Phase 1-6 Complete:**
+**v0.2.0 (January 2025) - Phase 1-6 Complete:**
 - ✅ Phase 1: Provider infrastructure (5 providers)
 - ✅ Phase 2: ContentAccessService consolidation (10 methods)
 - ✅ Phase 3: metadata_assistant agent (4 tools)
@@ -900,13 +900,13 @@ print(capabilities)
 - Deprecated: UnifiedContentService (archived)
 - Deprecated: PublicationService (replaced)
 
-**v2.3.0 (January 2025) - Phase 3:**
+**v0.2.0 (January 2025) - Phase 3:**
 - ✅ UnifiedContentService (coordination layer)
 - ✅ PMC-first access strategy
 - ✅ DoclingService integration
 - ✅ PublicationIntelligenceService deletion
 
-**v2.2.0 (November 2024):**
+**v0.2.0 (November 2024):**
 - Initial: PublicationIntelligenceService with Docling
 
 ---

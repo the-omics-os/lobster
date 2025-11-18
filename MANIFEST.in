@@ -3,6 +3,7 @@ include README.md
 include LICENSE
 include pyproject.toml
 include setup.py
+include .env.example
 
 # Include all configuration files
 recursive-include lobster *.json

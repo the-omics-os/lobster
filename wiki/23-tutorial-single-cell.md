@@ -42,7 +42,7 @@ You'll see the welcome screen with orange branding:
 
 ┌─ Welcome ────────────────────────────────────────────────────────────┐
 │  🦞 LOBSTER by Omics-OS                                             │
-│  Multi-Agent Bioinformatics Analysis System v2.0                    │
+│  Multi-Agent Bioinformatics Analysis System v0.2                    │
 │                                                                      │
 │  🧬 Key Tasks:                                                       │
 │  • Analyze RNA-seq data                                  │

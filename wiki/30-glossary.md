@@ -46,7 +46,7 @@ RNA sequencing of entire tissue samples or cell populations, providing average e
 ## C
 
 **Capability-Based Routing**
-Architecture pattern in ContentAccessService (v2.4+) where providers register their capabilities and are selected based on query requirements. Enables flexible provider selection with priority-based fallback.
+Architecture pattern in ContentAccessService (v0.2+) where providers register their capabilities and are selected based on query requirements. Enables flexible provider selection with priority-based fallback.
 
 **Cell Type Annotation**
 Process of identifying and labeling cell populations in single-cell data based on marker gene expression patterns and biological knowledge. Can be automated (CellTypist) or manual (expert curation).
@@ -55,10 +55,10 @@ Process of identifying and labeling cell populations in single-cell data based o
 Computational method to group similar observations (cells, samples, genes) based on expression patterns. Common algorithms include Leiden, Louvain, and k-means.
 
 **Content Caching**
-Two-tier caching system in Lobster AI (v2.4+) with session cache (in-memory, temporary) and workspace cache (filesystem, persistent). Provides 30-50x speedup for repeated access to publications and datasets.
+Two-tier caching system in Lobster AI (v0.2+) with session cache (in-memory, temporary) and workspace cache (filesystem, persistent). Provides 30-50x speedup for repeated access to publications and datasets.
 
 **ContentAccessService**
-Unified service in Lobster AI (v2.4+) for accessing scientific content through five specialized providers: AbstractProvider, PubMedProvider, GEOProvider, PMCProvider, and WebpageProvider. Implements three-tier cascade (PMC XML → Webpage → PDF) with automatic fallback.
+Unified service in Lobster AI (v0.2+) for accessing scientific content through five specialized providers: AbstractProvider, PubMedProvider, GEOProvider, PMCProvider, and WebpageProvider. Implements three-tier cascade (PMC XML → Webpage → PDF) with automatic fallback.
 
 **Coefficient of Variation (CV)**
 Statistical measure of relative variability, calculated as standard deviation divided by mean. Used to assess technical reproducibility in proteomics.
@@ -89,7 +89,7 @@ Statistical analysis to identify genes or proteins with significantly different 
 Mathematical representation of experimental design used in statistical models. Encodes relationships between samples and experimental factors.
 
 **Docling**
-Advanced PDF parsing library in Lobster AI (v2.4+) for extracting scientific content from publications. Achieves >90% Methods section detection rate, handles tables and formulas. Falls back to PyPDF2 (30% detection) when unavailable. Install: `pip install lobster[docling]`.
+Advanced PDF parsing library in Lobster AI (v0.2+) for extracting scientific content from publications. Achieves >90% Methods section detection rate, handles tables and formulas. Falls back to PyPDF2 (30% detection) when unavailable. Install: `pip install lobster[docling]`.
 
 **Doublet**
 Artifact in single-cell RNA-seq where two cells are captured and sequenced together, appearing as a single cell with unusually high gene counts.
@@ -231,22 +231,22 @@ Structured vocabulary defining relationships between biological concepts. Gene O
 Dimensionality reduction technique that identifies the directions of maximum variance in data. Used for visualization and quality control.
 
 **PDB (Protein Data Bank)**
-Public repository of 3D structural data for proteins and nucleic acids. Lobster AI (v2.4+) fetches structures using 4-character PDB IDs (e.g., "1AKE") and links them to gene expression data. Supports both PDB and mmCIF formats.
+Public repository of 3D structural data for proteins and nucleic acids. Lobster AI (v0.2+) fetches structures using 4-character PDB IDs (e.g., "1AKE") and links them to gene expression data. Supports both PDB and mmCIF formats.
 
 **PMC (PubMed Central)**
-Free full-text archive of biomedical literature. Lobster AI (v2.4+) uses PMC XML API as priority source for publication content (500ms-2s response time, 30-40% coverage). Part of ContentAccessService three-tier cascade.
+Free full-text archive of biomedical literature. Lobster AI (v0.2+) uses PMC XML API as priority source for publication content (500ms-2s response time, 30-40% coverage). Part of ContentAccessService three-tier cascade.
 
 **Protein Structure Visualization**
-Feature in Lobster AI (v2.4+) for visualizing protein 3D structures using PyMOL. Supports interactive mode (GUI) and batch mode (PNG generation), residue highlighting, and automatic structure-to-gene linking. Install: `make install-pymol`.
+Feature in Lobster AI (v0.2+) for visualizing protein 3D structures using PyMOL. Supports interactive mode (GUI) and batch mode (PNG generation), residue highlighting, and automatic structure-to-gene linking. Install: `make install-pymol`.
 
 **Provider**
-Component in ContentAccessService (v2.4+) that implements access to specific content sources. Five providers: AbstractProvider (abstracts, fast), PubMedProvider (literature search), GEOProvider (dataset discovery), PMCProvider (full-text, priority), WebpageProvider (fallback, PDF support).
+Component in ContentAccessService (v0.2+) that implements access to specific content sources. Five providers: AbstractProvider (abstracts, fast), PubMedProvider (literature search), GEOProvider (dataset discovery), PMCProvider (full-text, priority), WebpageProvider (fallback, PDF support).
 
 **Pseudobulk**
 Method to aggregate single-cell data to sample-level summaries, enabling population-level statistical analysis with established bulk RNA-seq methods. Recommended for differential expression testing across conditions.
 
 **Publication Intelligence**
-Automated system in Lobster AI (v2.4+) for extracting scientific methods and parameters from publications. Uses Docling for PDF parsing, ContentAccessService for content access, and structured schemas for metadata extraction.
+Automated system in Lobster AI (v0.2+) for extracting scientific methods and parameters from publications. Uses Docling for PDF parsing, ContentAccessService for content access, and structured schemas for metadata extraction.
 
 **Pseudotime**
 Computational measure of cell progression along a biological process, such as differentiation or cell cycle, based on expression similarity.
@@ -255,7 +255,7 @@ Computational measure of cell progression along a biological process, such as di
 Pure Python implementation of the DESeq2 algorithm for differential expression analysis of RNA-seq data.
 
 **PyMOL**
-Professional molecular visualization system for protein structures. Integrated into Lobster AI (v2.4+) for 3D structure visualization. Supports both interactive GUI mode and headless batch mode (PNG generation). Install: `make install-pymol` or `brew install brewsci/bio/pymol`.
+Professional molecular visualization system for protein structures. Integrated into Lobster AI (v0.2+) for 3D structure visualization. Supports both interactive GUI mode and headless batch mode (PNG generation). Install: `make install-pymol` or `brew install brewsci/bio/pymol`.
 
 ---
 
@@ -279,7 +279,7 @@ Method to predict future cell states by analyzing spliced and unspliced mRNA rat
 ## S
 
 **S3 Backend**
-Cloud storage integration in Lobster AI (v2.4+) for storing analysis data and results in AWS S3. Provides scalable storage for large datasets with seamless switching between local and cloud storage. Requires AWS credentials configuration.
+Cloud storage integration in Lobster AI (v0.2+) for storing analysis data and results in AWS S3. Provides scalable storage for large datasets with seamless switching between local and cloud storage. Requires AWS credentials configuration.
 
 **scanpy**
 Python package for analyzing single-cell gene expression data. Provides comprehensive tools for preprocessing, visualization, and analysis.
@@ -310,7 +310,7 @@ Analysis of molecular data with preserved spatial context, such as Visium spatia
 Non-linear dimensionality reduction method that preserves local structure. Often used for visualizing high-dimensional single-cell data.
 
 **Three-Tier Cascade**
-Content access strategy in ContentAccessService (v2.4+) that attempts multiple access methods with automatic fallback: (1) PMC XML API (priority, 500ms-2s, 30-40% coverage), (2) Webpage/PDF extraction (fallback, 2-8s, 60-70% coverage), (3) Error with alternative suggestions. Maximizes content accessibility.
+Content access strategy in ContentAccessService (v0.2+) that attempts multiple access methods with automatic fallback: (1) PMC XML API (priority, 500ms-2s, 30-40% coverage), (2) Webpage/PDF extraction (fallback, 2-8s, 60-70% coverage), (3) Error with alternative suggestions. Maximizes content accessibility.
 
 **TMM (Trimmed Mean of M-values)**
 Normalization method commonly used in proteomics that assumes most proteins are not differentially expressed.
@@ -386,7 +386,7 @@ Function available to agents for performing specific tasks. Tools follow standar
 Directory structure used by Lobster AI to organize data, results, and analysis history. Default location is `.lobster_workspace/`. Contains three subdirectories: `literature/` (publications), `data/` (datasets), `metadata/` (custom content).
 
 **WorkspaceContentService**
-Type-safe caching system in Lobster AI (v2.4+) for persistent storage of research content. Uses Pydantic schemas (PublicationContent, DatasetContent, MetadataContent) with enum-based validation (ContentType, RetrievalLevel). Provides identifier-based access to cached publications and datasets across sessions.
+Type-safe caching system in Lobster AI (v0.2+) for persistent storage of research content. Uses Pydantic schemas (PublicationContent, DatasetContent, MetadataContent) with enum-based validation (ContentType, RetrievalLevel). Provides identifier-based access to cached publications and datasets across sessions.
 
 ---
 

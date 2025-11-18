@@ -928,7 +928,7 @@ Tier 2 Read (FULL): 2.87 ms/op
 
 **Benchmark Metadata:**
 - **Date Measured:** 2025-01-15
-- **Lobster Version:** v2.4.0
+- **Lobster Version:** v0.2.0
 - **Hardware:** M1 MacBook Pro, 16GB RAM, SSD
 - **Test Conditions:** Local filesystem, no network latency
 - **Sample Size:** Tier 1 (10,000 ops), Tier 2 (100 ops)

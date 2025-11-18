@@ -1,6 +1,6 @@
 # 46. Multi-Omics Integration
 
-> **Version**: v2.4+
+> **Version**: v0.2+
 > **Prerequisites**: [Data Analysis Workflows](06-data-analysis-workflows.md), [Data Management](20-data-management.md)
 > **Related**: [Architecture Overview](18-architecture-overview.md), [Custom Providers Guide](44-custom-providers-guide.md)
 

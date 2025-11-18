@@ -300,7 +300,7 @@ The refactored research system (Phases 1-6) provides comprehensive literature di
 - Session caching with W3C-PROV provenance tracking
 - Workspace persistence for handoff between agents
 
-### Provider Architecture (Phase 1-2, v2.4.0+)
+### Provider Architecture (Phase 1-2, v0.2.0+)
 
 **ContentAccessService** (introduced Phase 2) provides unified publication and dataset access through a capability-based provider infrastructure. This replaces the legacy PublicationService and UnifiedContentService with a modular, extensible architecture.
 

@@ -56,7 +56,7 @@ AGENT_REGISTRY = {
 }
 ```
 
-### 3. Automatic Supervisor Discovery (v2.3+)
+### 3. Automatic Supervisor Discovery (v0.2+)
 
 Once registered in `agent_registry.py`, your agent is **automatically discovered** by the supervisor:
 

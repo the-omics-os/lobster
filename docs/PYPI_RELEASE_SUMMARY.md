@@ -232,7 +232,7 @@ Private Repo (lobster)
 | **Current Version** | `0.2.0` |
 | **Package Size** | ~1.3 MB (tar.gz), ~978 KB (wheel) |
 | **Python Requirement** | 3.11+ |
-| **License** | Apache 2.0 |
+| **License** | AGPL-3.0-or-later |
 | **Public Repo** | github.com/the-omics-os/lobster-local |
 
 ### Installation Commands

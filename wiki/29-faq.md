@@ -44,11 +44,11 @@ This comprehensive FAQ addresses common questions about Lobster AI, covering eve
 
 ### Q: Is Lobster AI free to use?
 
-**A:** Yes, Lobster AI is open source under the Apache 2.0 License. You can use it freely for academic and commercial projects. Cloud services may require a subscription for enhanced computing resources.
+**A:** Yes, Lobster AI is open source under the AGPL-3.0-or-later License. You can use it freely for academic and commercial projects. Cloud services may require a subscription for enhanced computing resources.
 
 ### Q: Can I use Lobster AI for commercial research?
 
-**A:** Yes, the Apache 2.0 License allows commercial use. For enterprise deployments, custom integrations, or dedicated support, contact the enterprise team.
+**A:** Yes, the AGPL-3.0-or-later License allows commercial use. For enterprise deployments, custom integrations, or dedicated support, contact the enterprise team.
 
 ---
 
@@ -581,7 +581,7 @@ See the [Custom Agent Tutorial](26-tutorial-custom-agent.md) for details.
 
 ---
 
-## General Questions (v2.4+)
+## General Questions (v0.2+)
 
 ### Q: What's the difference between local and cloud mode?
 
@@ -666,11 +666,11 @@ export OPENAI_API_KEY=sk-xxx
 
 ---
 
-## Data Management Questions (v2.4+)
+## Data Management Questions (v0.2+)
 
 ### Q: How do I access files from my workspace?
 
-**A:** Workspace file access (v2.4+ WorkspaceContentService):
+**A:** Workspace file access (v0.2+ WorkspaceContentService):
 
 ```bash
 # List all workspace content
@@ -775,7 +775,7 @@ export OPENAI_API_KEY=sk-xxx
 
 ---
 
-## Services & Features Questions (v2.4+)
+## Services & Features Questions (v0.2+)
 
 ### Q: When should I use ContentAccessService vs providers?
 
@@ -811,7 +811,7 @@ provider = PMCProvider()
 
 ### Q: How do I visualize protein structures?
 
-**A:** Protein visualization with PyMOL (v2.4+):
+**A:** Protein visualization with PyMOL (v0.2+):
 
 **Step 1: Install PyMOL**
 ```bash
@@ -885,7 +885,7 @@ See [Creating Agents Guide](09-creating-agents.md) and [Custom Agent Tutorial](2
 
 ---
 
-## Performance Questions (v2.4+)
+## Performance Questions (v0.2+)
 
 ### Q: How do I speed up large dataset analysis?
 
@@ -1008,7 +1008,7 @@ export LOBSTER_CLOUD_KEY="your-key"
 
 ---
 
-## Troubleshooting Questions (v2.4+)
+## Troubleshooting Questions (v0.2+)
 
 ### Q: Why is my analysis taking so long?
 
@@ -1150,7 +1150,7 @@ ln -s /mnt/external/lobster_workspace ~/.lobster_workspace
 
 **Use S3 Backend:**
 ```bash
-# Store data in cloud (v2.4+)
+# Store data in cloud (v0.2+)
 export AWS_ACCESS_KEY_ID=your_key
 export AWS_SECRET_ACCESS_KEY=your_secret
 > "Use S3 backend for data storage"

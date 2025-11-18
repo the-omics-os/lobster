@@ -1,8 +1,8 @@
-# Data Expert Agent Enhancements v2.2+
+# Data Expert Agent Enhancements v0.2+
 
 ## Overview
 
-The Data Expert Agent has been significantly enhanced to provide comprehensive workspace management capabilities alongside its core data acquisition and processing functions. This document outlines the new features, resolved duplications, and improved workflows available in v2.2+.
+The Data Expert Agent has been significantly enhanced to provide comprehensive workspace management capabilities alongside its core data acquisition and processing functions. This document outlines the new features, resolved duplications, and improved workflows available in v0.2+.
 
 ## Key Enhancements
 
@@ -210,19 +210,19 @@ Available datasets: 5 total
 
 ### For Users
 ```bash
-# v2.1 and earlier
+# v0.2 and earlier
 /workspace load my_dataset
 
-# v2.2+
+# v0.2+
 /restore my_dataset
 ```
 
 ### For Developers
 ```python
-# v2.1 and earlier - manual restoration
+# v0.2 and earlier - manual restoration
 client.data_manager.restore_session("my_dataset")
 
-# v2.2+ - agent-mediated restoration
+# v0.2+ - agent-mediated restoration
 data_expert_agent.invoke({
     "messages": [{"role": "user", "content": "Load my_dataset for analysis"}]
 })
@@ -270,7 +270,7 @@ Solution: Verify workspace directory permissions and path configuration
 
 ## Future Enhancements
 
-### Planned Features (v2.3+)
+### Planned Features (v0.2+)
 - **Selective Loading**: Load only specific components of large datasets
 - **Smart Caching**: Intelligent memory management with LRU eviction
 - **Cross-Session Analytics**: Track usage patterns for better defaults
@@ -283,7 +283,7 @@ Solution: Verify workspace directory permissions and path configuration
 
 ## Summary
 
-The Data Expert Agent enhancements in v2.2+ provide:
+The Data Expert Agent enhancements in v0.2+ provide:
 
 ✅ **New Capabilities**: Flexible workspace restoration with pattern matching
 ✅ **Resolved Confusion**: Eliminated duplicate CLI commands

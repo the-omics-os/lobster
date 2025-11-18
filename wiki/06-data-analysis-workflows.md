@@ -199,7 +199,7 @@ and find marker genes for each cluster"
 
 #### Option A: Load Kallisto/Salmon Quantification Files (Recommended)
 
-**⚠️ NEW in v2.3+**: Use CLI `/read` command directly for quantification files.
+**⚠️ NEW in v0.2+**: Use CLI `/read` command directly for quantification files.
 
 ```bash
 # Load Kallisto quantification files
@@ -528,11 +528,11 @@ coordinated changes across molecular layers"
 
 **Goal**: Integrate literature knowledge with experimental data analysis.
 
-**Agent**: Research Agent with **automatic PMID/DOI → PDF resolution** (v2.2+) and **structure-aware Docling parsing** (v2.3+).
+**Agent**: Research Agent with **automatic PMID/DOI → PDF resolution** (v0.2+) and **structure-aware Docling parsing** (v0.2+).
 
 **Key Capabilities**:
-- **v2.2+**: Automatic resolution of PMIDs and DOIs to accessible PDFs (70-80% success rate) using tiered waterfall strategy: PMC → bioRxiv/medRxiv → Publisher → Alternative suggestions
-- **v2.3+**: Structure-aware PDF parsing with Docling for intelligent Methods section detection (>90% hit rate vs ~30% previously), complete section extraction, table and formula preservation, and document caching
+- **v0.2+**: Automatic resolution of PMIDs and DOIs to accessible PDFs (70-80% success rate) using tiered waterfall strategy: PMC → bioRxiv/medRxiv → Publisher → Alternative suggestions
+- **v0.2+**: Structure-aware PDF parsing with Docling for intelligent Methods section detection (>90% hit rate vs ~30% previously), complete section extraction, table and formula preservation, and document caching
 
 ### Step 1: Literature Search
 
@@ -540,11 +540,11 @@ coordinated changes across molecular layers"
 "Find papers about single-cell RNA-seq analysis of liver fibrosis"
 ```
 
-### Step 2: Method Extraction (Enhanced with v2.3+ DOI Resolution)
+### Step 2: Method Extraction (Enhanced with v0.2+ DOI Resolution)
 
-**Enhanced (v2.2+)**: Directly provide PMIDs or DOIs - automatic resolution to PDFs happens internally.
+**Enhanced (v0.2+)**: Directly provide PMIDs or DOIs - automatic resolution to PDFs happens internally.
 
-**Enhanced (v2.3+)**: Robust DOI/PMID auto-detection and resolution with Docling format auto-detection.
+**Enhanced (v0.2+)**: Robust DOI/PMID auto-detection and resolution with Docling format auto-detection.
 
 **All these formats now work seamlessly:**
 ```bash
@@ -577,17 +577,17 @@ coordinated changes across molecular layers"
 - ✅ Results cached for fast repeat access
 - ❌ Paywalled papers → 5 alternative access strategies provided (PMC accepted manuscripts, preprints, institutional access, author contact, Unpaywall)
 
-**Quality Improvement (v2.3+)**:
+**Quality Improvement (v0.2+)**:
 - Methods section detection: >90% success rate (vs ~30% with naive truncation)
 - Complete section extraction (no 10K character limit)
 - Table extraction: 80%+ of parameter tables detected
 - Smart image filtering: 40-60% context size reduction
 - Document caching: 30-50x faster on repeat access
 
-### v2.3+ Enhancement: Robust DOI Resolution
+### v0.2+ Enhancement: Robust DOI Resolution
 
 **What Changed:**
-The v2.3+ release fixed critical DOI/PMID resolution bugs and enhanced format detection:
+The v0.2+ release fixed critical DOI/PMID resolution bugs and enhanced format detection:
 
 **✅ Fixed Issues:**
 - DOIs and PMIDs are now automatically detected and resolved
@@ -712,7 +712,7 @@ Once validation confirms the dataset is suitable:
 
 ### Overview
 
-Lobster AI v2.2+ includes powerful workspace management capabilities that allow you to save your analysis progress and seamlessly continue work across sessions. This is particularly useful for long-running analyses or when working with multiple datasets.
+Lobster AI v0.2+ includes powerful workspace management capabilities that allow you to save your analysis progress and seamlessly continue work across sessions. This is particularly useful for long-running analyses or when working with multiple datasets.
 
 ### Workspace Restoration Workflow
 
@@ -951,7 +951,7 @@ Solution: Check workspace location with /workspace
 
 ## Advanced Workspace Management
 
-> **Version**: v2.2+
+> **Version**: v0.2+
 > **Prerequisites**: Basic workspace usage (see [Session Continuation and Workspace Management](#session-continuation-and-workspace-management))
 
 While the basic workspace restoration features enable session continuation, advanced workspace management provides enterprise-grade capabilities for backup, migration, templating, analytics, cleanup, and multi-workspace orchestration. These features are critical for:

@@ -66,7 +66,7 @@ This comprehensive cookbook provides practical code snippets, analysis recipes, 
 🦞 You: "Search GEO for single-cell datasets related to cancer immunotherapy"
 ```
 
-#### Pre-Download Metadata Validation (v2.2+)
+#### Pre-Download Metadata Validation (v0.2+)
 
 **Recommended Practice**: Validate dataset metadata before downloading to save time and ensure datasets contain required fields.
 
@@ -396,7 +396,7 @@ This section provides curated, publicly accessible datasets for learning Lobster
 
 **Validation Before Download:**
 ```bash
-# Always validate metadata first (v2.2+)
+# Always validate metadata first (v0.2+)
 🦞 You: "Validate GSE##### for required fields: field1, field2"
 
 # Expected output shows:

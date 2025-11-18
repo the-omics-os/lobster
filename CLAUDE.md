@@ -266,25 +266,22 @@ lobster/
 
 ### 3.4 Deployment & Infrastructure
 
-| File | Purpose | Mode |
-|------|---------|------|
-| `Dockerfile` | CLI mode container (local agent execution) | development/production |
-| `Dockerfile.server` | FastAPI server mode (cloud-like API) | production/staging |
-| `docker-compose.yml` | Multi-service orchestration (server + dependencies) | local dev/integration |
-| `Makefile` | Build, test, deploy automation | all environments |
-| `.github/workflows/` | CI/CD pipelines | automation |
-| ├─ `docker.yml` | Container build + push | production |
-| ├─ `sync-to-public.yml` | Code sync to lobster-local | automation |
-| ├─ `sync-wikis.yml` | Wiki sync to public/private repos | automation |
-| └─ `ci-basic.yml` | Test + lint on PR | development/CI |
-| `pyproject.toml` | Dependencies (do NOT edit – see 4.1) | all environments |
-| `pytest.ini` | Test configuration | development/CI |
+| File | Visibility | Purpose |
+|------|------------|---------|
+| `Dockerfile` | **PUBLIC** | CLI container (synced to lobster-local) |
+| `Dockerfile.server` | **PRIVATE** | FastAPI server (uses `ARG CLI_BASE_IMAGE` for local builds) |
+| `docker-compose.yml` | **PRIVATE** | Multi-service orchestration (server + Redis) |
+| `Makefile` | PUBLIC | Build/test automation |
+| `.github/workflows/docker.yml` | PUBLIC | CI builds **CLI only** (no server) |
+| `.github/workflows/sync-to-public.yml` | PRIVATE | Syncs to lobster-local |
+| `pyproject.toml` | PUBLIC | Dependencies (do NOT edit – see 4.1) |
 
-**Deployment modes**:
-- **CLI mode** (`Dockerfile`): single container, local agent execution, workspace in volume
-- **Server mode** (`Dockerfile.server` + `docker-compose.yml`): FastAPI + Redis + workers, cloud-like API, suitable for multi-user/production
+**Build strategy**:
+- `Dockerfile` → public CLI image → published to Docker Hub as `omicsos/lobster:latest`
+- `Dockerfile.server` → private server image → builds from local CLI (not Docker Hub)
+- CI/CD tests CLI only; server builds are local-only via `make docker-build`
 
-Full guide: `wiki/42-docker-deployment-guide.md`
+**Exclusions**: `scripts/public_allowlist.txt` ensures `Dockerfile.server` and `docker-compose.yml` never sync to lobster-local
 
 ---
 
@@ -521,6 +518,31 @@ Useful CLI commands:
 | Workspace | `/workspace`, `/workspace list`, `/workspace load <name>` |
 | Plots | `/plots` |
 | Pipelines | `/pipeline export`, `/pipeline list`, `/pipeline run <nb> <modality>` |
+
+### 5.5 Package Publishing (PyPI)
+
+**Package Name**: `lobster-ai` (PyPI) / `lobster` (import name)
+**Version Source**: `lobster/version.py` (single source of truth)
+**Publishing**: Automated via GitHub Actions on git tags (`v*.*.*`)
+
+**Critical Security Rule**: Only `lobster-local` (public repo) is published to PyPI. The private `lobster/` repo contains premium features that must NOT be published.
+
+**Release Process**:
+```bash
+# 1. Update version in lobster/version.py
+# 2. Commit and push to main
+# 3. Create and push tag
+git tag -a v0.2.0 -m "Release 0.2.0"
+git push origin v0.2.0
+# 4. GitHub Actions workflow handles the rest
+```
+
+**Documentation**:
+- **Setup Guide**: `docs/PYPI_SETUP_GUIDE.md` (first-time setup, authentication methods)
+- **Release Summary**: `docs/PYPI_RELEASE_SUMMARY.md` (quick reference, workflow details)
+- **Workflow**: `.github/workflows/publish-pypi.yml` (7-stage automated pipeline)
+
+**Authentication**: Supports Trusted Publishing (OIDC) and API tokens. See setup guide for details.
 
 ---
 

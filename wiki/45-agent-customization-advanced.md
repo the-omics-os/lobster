@@ -1,6 +1,6 @@
 # 45. Advanced Agent Customization
 
-> **Version**: v2.3+
+> **Version**: v0.2+
 > **Prerequisites**: [Creating Agents](09-creating-agents.md), [Architecture Overview](18-architecture-overview.md)
 > **Related**: [Agent System](19-agent-system.md), [Creating Services](10-creating-services.md)
 

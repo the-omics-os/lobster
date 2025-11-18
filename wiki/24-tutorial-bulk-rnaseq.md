@@ -40,7 +40,7 @@ lobster chat
 Welcome screen with professional interface:
 ```
 🦞 LOBSTER by Omics-OS
-Multi-Agent Bioinformatics Analysis System v2.0
+Multi-Agent Bioinformatics Analysis System v0.2
 
 Ready for bulk RNA-seq differential expression analysis!
 ```
@@ -49,7 +49,7 @@ Ready for bulk RNA-seq differential expression analysis!
 
 ### Option A: Loading Kallisto/Salmon Quantification Files (Recommended)
 
-**⚠️ NEW in v2.3+**: Quantification files are now loaded directly via CLI `/read` command (no longer requires agent interaction).
+**⚠️ NEW in v0.2+**: Quantification files are now loaded directly via CLI `/read` command (no longer requires agent interaction).
 
 Load per-sample quantification files using the CLI:
 

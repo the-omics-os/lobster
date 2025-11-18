@@ -212,6 +212,133 @@ class TestH5ADSerializationFix:
             pytest.fail(f"Real GEO download and save failed: {e}")
 
 
+class TestArrowExtensionArrayFix:
+    """Tests for ArrowExtensionArray serialization fix."""
+
+    def test_arrow_extension_array_in_obs(self, temp_workspace):
+        """Test that ArrowExtensionArray in obs is converted to standard string dtype."""
+        # Create AnnData with ArrowExtensionArray columns (pandas >=2.2.0 default)
+        adata = anndata.AnnData(X=np.array([[1, 2], [3, 4]]))
+
+        # Simulate ArrowExtensionArray by explicitly creating string[pyarrow] dtype
+        try:
+            adata.obs["cell_type"] = pd.Series(
+                ["T-cell", "B-cell"],
+                dtype=pd.StringDtype("pyarrow")
+            )
+            adata.obs["sample_id"] = pd.Series(
+                ["sample1", "sample2"],
+                dtype=pd.StringDtype("pyarrow")
+            )
+        except Exception:
+            # If pyarrow is not available, skip this part but still test the fix
+            pytest.skip("PyArrow not available for ArrowExtensionArray test")
+
+        backend = H5ADBackend()
+        output_path = temp_workspace / "test_arrow_obs.h5ad"
+
+        # Should succeed without IORegistryError
+        backend.save(adata, output_path)
+        assert output_path.exists()
+
+        # Load back and verify conversion worked
+        loaded = backend.load(output_path)
+        assert "cell_type" in loaded.obs.columns
+        assert "sample_id" in loaded.obs.columns
+        # Values should be preserved
+        assert list(loaded.obs["cell_type"]) == ["T-cell", "B-cell"]
+
+    def test_arrow_extension_array_in_var(self, temp_workspace):
+        """Test that ArrowExtensionArray in var is converted to standard string dtype."""
+        adata = anndata.AnnData(X=np.array([[1, 2], [3, 4]]))
+
+        try:
+            adata.var["gene_name"] = pd.Series(
+                ["GENE1", "GENE2"],
+                dtype=pd.StringDtype("pyarrow")
+            )
+            adata.var["biotype"] = pd.Series(
+                ["protein_coding", "lncRNA"],
+                dtype=pd.StringDtype("pyarrow")
+            )
+        except Exception:
+            pytest.skip("PyArrow not available for ArrowExtensionArray test")
+
+        backend = H5ADBackend()
+        output_path = temp_workspace / "test_arrow_var.h5ad"
+
+        # Should succeed
+        backend.save(adata, output_path)
+        assert output_path.exists()
+
+        loaded = backend.load(output_path)
+        assert "gene_name" in loaded.var.columns
+        assert list(loaded.var["gene_name"]) == ["GENE1", "GENE2"]
+
+    def test_arrow_extension_array_in_index(self, temp_workspace):
+        """Test that ArrowExtensionArray in indices is converted."""
+        adata = anndata.AnnData(X=np.array([[1, 2], [3, 4]]))
+
+        try:
+            # Set index to ArrowExtensionArray
+            adata.obs.index = pd.Index(
+                ["cell_001", "cell_002"],
+                dtype=pd.StringDtype("pyarrow")
+            )
+            adata.var.index = pd.Index(
+                ["gene_001", "gene_002"],
+                dtype=pd.StringDtype("pyarrow")
+            )
+        except Exception:
+            pytest.skip("PyArrow not available for ArrowExtensionArray test")
+
+        backend = H5ADBackend()
+        output_path = temp_workspace / "test_arrow_index.h5ad"
+
+        # Should succeed
+        backend.save(adata, output_path)
+        assert output_path.exists()
+
+        loaded = backend.load(output_path)
+        assert list(loaded.obs.index) == ["cell_001", "cell_002"]
+        assert list(loaded.var.index) == ["gene_001", "gene_002"]
+
+    def test_geoparse_with_arrow_strings(self, temp_workspace):
+        """Test that datasets from GEOparse (which uses ArrowExtensionArray) can be saved."""
+        # Simulate GEOparse output with ArrowExtensionArray
+        adata = anndata.AnnData(X=np.array([[1, 2, 3], [4, 5, 6]]))
+
+        try:
+            # GEOparse typically returns DataFrames with string[pyarrow] dtype
+            adata.obs["geo_accession"] = pd.Series(
+                ["GSM1234", "GSM5678"],
+                dtype=pd.StringDtype("pyarrow")
+            )
+            adata.obs["source_name"] = pd.Series(
+                ["tissue_A", "tissue_B"],
+                dtype=pd.StringDtype("pyarrow")
+            )
+            adata.var.index = pd.Index(
+                ["gene_A", "gene_B", "gene_C"],
+                dtype=pd.StringDtype("pyarrow")
+            )
+        except Exception:
+            pytest.skip("PyArrow not available for ArrowExtensionArray test")
+
+        backend = H5ADBackend()
+        output_path = temp_workspace / "test_geoparse_arrow.h5ad"
+
+        # This was the original bug - should now succeed
+        backend.save(adata, output_path)
+        assert output_path.exists()
+
+        # Verify data integrity
+        loaded = backend.load(output_path)
+        assert loaded.shape == (2, 3)
+        assert list(loaded.obs["geo_accession"]) == ["GSM1234", "GSM5678"]
+        assert list(loaded.var.index) == ["gene_A", "gene_B", "gene_C"]
+
+
 class TestAdapterSanitization:
     """Tests for adapter-level sanitization."""
 

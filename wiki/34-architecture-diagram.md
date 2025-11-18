@@ -215,8 +215,8 @@ graph TB
         HDTOOLS[Handoff Tools<br/>🔄 Dynamic Tool Generation]
     end
 
-    %% NEW: Supervisor Configuration System (v2.3+)
-    subgraph "Supervisor Configuration (v2.3+)"
+    %% NEW: Supervisor Configuration System (v0.2+)
+    subgraph "Supervisor Configuration (v0.2+)"
         SCONF[SupervisorConfig<br/>⚙️ Dynamic Configuration]
         CAPEXT[AgentCapabilityExtractor<br/>🔍 Auto-Discovery]
         MODES[Operation Modes<br/>🎯 Research/Production/Dev]
@@ -264,7 +264,7 @@ graph TB
         end
     end
 
-    %% Publication Services Layer (v2.4.0+ Three-Tier Architecture)
+    %% Publication Services Layer (v0.2.0+ Three-Tier Architecture)
     subgraph "Publication & Literature Services"
         CONTENT_SVC[ContentAccessService<br/>🎯 Capability-Based Coordinator]:::coordinator
         PROVIDER_REG[ProviderRegistry<br/>🔀 Priority Routing]:::service
@@ -337,7 +337,7 @@ graph TB
     DE --> GEO_SVC
     RA --> GEOPROV
 
-    %% Three-tier publication access flow (v2.4.0+ with capability-based routing)
+    %% Three-tier publication access flow (v0.2.0+ with capability-based routing)
     RA --> CONTENT_SVC
     CONTENT_SVC --> PROVIDER_REG
     PROVIDER_REG --> ABSTRACT_PROV
@@ -1276,7 +1276,7 @@ graph LR
 - ✅ **Step 12**: Iterative Workflows → Natural iteration and comparison
 - 🎯 **Result**: 92% workflow coverage (11/12 steps complete)
 
-## 🔄 **Workspace Restoration System (New in v2.2)**
+## 🔄 **Workspace Restoration System (New in v0.2)**
 
 ### Seamless Session Continuity
 
@@ -1323,7 +1323,7 @@ All file opening operations run on the **CLI side** regardless of cloud vs local
 - **GPU Detection**: Apple Silicon detection in `gpu_detector.py`
 - **Future Extensions**: Natural extension point for additional system utilities
 
-## 🎛️ **Supervisor Configuration System (v2.3+)**
+## 🎛️ **Supervisor Configuration System (v0.2+)**
 
 ### Dynamic Agent Discovery & Configuration
 

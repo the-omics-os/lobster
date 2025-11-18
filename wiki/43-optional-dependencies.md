@@ -556,7 +556,7 @@ If you encounter issues installing optional dependencies:
 1. **Check platform-specific installation guide**:
    - macOS: See Installation Guide section on macOS
    - Ubuntu/Linux: Run `./install-ubuntu.sh`
-   - Windows: See [Windows Installation Guide](../docs/WINDOWS_INSTALLATION.md)
+   - Windows: Use Docker Desktop (recommended) or see [Installation Guide](02-installation.md)
 
 2. **Consider Docker**:
    - All optional dependencies pre-installed
@@ -593,7 +593,6 @@ If you encounter issues installing optional dependencies:
 
 **Related Documentation:**
 - [Installation Guide](02-installation.md) - Main installation instructions
-- [Windows Installation Guide](../docs/WINDOWS_INSTALLATION.md) - Windows-specific details
 - [Protein Structure Visualization](40-protein-structure-visualization.md) - Using PyMOL
 - [Publication Intelligence](37-publication-intelligence-deep-dive.md) - Using Docling
 - [Troubleshooting](28-troubleshooting.md) - Common issues

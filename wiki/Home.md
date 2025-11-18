@@ -1,6 +1,6 @@
 # 🦞 Lobster AI Documentation
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL%203.0--or--later-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Documentation: CC BY 4.0](https://img.shields.io/badge/Documentation-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
@@ -46,7 +46,7 @@ Deep dive into system design
 - [**22 - Performance Optimization**](22-performance-optimization.md) - Memory and speed optimizations
 
 ### 🔬 **Advanced Features & Internals**
-Deep dives into specialized capabilities and system internals (v2.3+)
+Deep dives into specialized capabilities and system internals (v0.2+)
 
 **Agent Enhancements:**
 - [**31 - Data Expert Agent Enhancements**](31-data-expert-agent-enhancements.md) - Workspace restoration and session continuity
@@ -62,10 +62,11 @@ Deep dives into specialized capabilities and system internals (v2.3+)
 - [**35 - Download Queue System**](35-download-queue-system.md) 🆕 - Robust multi-step data acquisition with JSONL persistence ✨
 - [**39 - Two-Tier Caching Architecture**](39-two-tier-caching-architecture.md) - 30-50x speedup on repeat content access
 - [**43 - Docker Deployment Guide**](43-docker-deployment-guide.md) - Production containerization strategies
+- [**47 - Fix #7: HTTPS GEO Download**](47-fix7-https-geo-download.md) 🆕 - 20x reliability improvement (91% → <5% corruption) ✨
 
 **Specialized Features:**
 - [**40 - Protein Structure Visualization**](40-protein-structure-visualization.md) 🆕 - PyMOL integration for 3D protein analysis ✨
-- [**44 - S3 Backend Guide**](44-s3-backend-guide.md) - Cloud storage integration
+- [**43 - S3 Backend Guide**](43-s3-backend-guide.md) - Cloud storage integration
 - [**46 - Multi-Omics Integration**](46-multiomics-integration.md) - Cross-platform analysis workflows
 
 **Migration & Maintenance:**
@@ -76,7 +77,6 @@ Deep dives into specialized capabilities and system internals (v2.3+)
 Learn by doing with practical tutorials
 - [**23 - Single-Cell RNA-seq Tutorial**](23-tutorial-single-cell.md) - Complete workflow with real data
 - [**24 - Bulk RNA-seq Tutorial**](24-tutorial-bulk-rnaseq.md) - Differential expression analysis
-- [**25 - Proteomics Tutorial**](25-tutorial-proteomics.md) - MS and affinity proteomics
 - [**26 - Custom Agent Tutorial**](26-tutorial-custom-agent.md) - Create your own agent
 - [**27 - Examples Cookbook**](27-examples-cookbook.md) - Code recipes and patterns
 
@@ -98,7 +98,6 @@ Help and additional resources
 #### **Analyze My Data**
 - [Analyze single-cell RNA-seq data](23-tutorial-single-cell.md)
 - [Perform bulk RNA-seq differential expression](24-tutorial-bulk-rnaseq.md)
-- [Process proteomics data](25-tutorial-proteomics.md)
 - [Download and analyze GEO datasets](06-data-analysis-workflows.md)
 
 #### **Understand the System**
@@ -134,7 +133,6 @@ Help and additional resources
 ### **🧬 Scientific Capabilities**
 - **Single-Cell RNA-seq**: QC, clustering, annotation, trajectory analysis
 - **Bulk RNA-seq**: pyDESeq2 differential expression with complex designs
-- **Proteomics**: MS/affinity analysis with missing value handling
 - **Multi-Omics**: Integrated cross-platform analysis
 
 ### **☁️ Deployment Flexibility**
@@ -150,73 +148,71 @@ Help and additional resources
 
 ## 📈 Version Highlights
 
-> **Migration Guide**: Upgrading from v2.3 or earlier? See the [comprehensive migration guide](41-migration-guides.md) for breaking changes, new features, and upgrade steps.
+> **Current Release**: v0.2 is the first public release of Lobster AI. See the [comprehensive documentation](41-migration-guides.md) for features and upgrade information.
 
-### **v2.4+ Features** 🆕✨
+### **Current Features (v0.2)** ✨
+
+**Content Intelligence & Publications:**
 - 🧬 **Protein Structure Visualization** - PyMOL integration for 3D protein visualization and analysis ([Details](40-protein-structure-visualization.md))
 - 🔌 **ContentAccessService** - Unified publication/dataset access with 5 specialized providers ([Details](37-publication-intelligence-deep-dive.md))
-- 📥 **Download Queue System** - Robust multi-step data acquisition with JSONL persistence ([Details](35-download-queue-system.md))
-- ⚡ **Enhanced Two-Tier Caching** - 30-50x speedup on repeat content access (0.2-0.5s cached)
-- 🏗️ **Provider Infrastructure** - Modular, extensible architecture for content retrieval
-
-### **v2.3+ Features** 🆕
-- 📄 **Docling PDF Parsing** - Structure-aware Methods section extraction ([Details](37-publication-intelligence-deep-dive.md))
-- 🎯 **Intelligent Detection** - >90% Methods section hit rate (vs ~30% previously)
+- 📄 **Docling PDF Parsing** - Structure-aware Methods section extraction with >90% hit rate ([Details](37-publication-intelligence-deep-dive.md))
 - 📊 **Table Extraction** - Parameter tables from scientific publications
 - 🧮 **Formula Preservation** - Mathematical formulas in LaTeX format
-- 🧪 **Formula-Based Differential Expression** - Complex experimental designs with R-style formulas ([Details](32-agent-guided-formula-construction.md))
-- 🏗️ **Agent Registry Auto-Discovery** - Dynamic agent configuration ([Details](36-supervisor-configuration.md))
-- 💾 **WorkspaceContentService** - Type-safe caching for research content ([Details](38-workspace-content-service.md))
 
-### **v2.2+ Features**
+**Data Management:**
+- 📥 **Download Queue System** - Robust multi-step data acquisition with JSONL persistence ([Details](35-download-queue-system.md))
+- ⚡ **Enhanced Two-Tier Caching** - 30-50x speedup on repeat content access (0.2-0.5s cached)
 - 🔄 **Workspace Restoration** - Seamless session continuity ([Details](31-data-expert-agent-enhancements.md))
 - 📂 **Pattern-based Dataset Loading** - Smart memory management
 - 💾 **Session Persistence** - Automatic state tracking
+- 💾 **WorkspaceContentService** - Type-safe caching for research content ([Details](38-workspace-content-service.md))
+
+**Analysis & Workflows:**
+- 🧪 **Formula-Based Differential Expression** - Complex experimental designs with R-style formulas ([Details](32-agent-guided-formula-construction.md))
 - 🤖 **Enhanced Data Expert Agent** - New restoration tools and workflows
 
-### **v2.1+ Features**
+**Infrastructure:**
+- 🏗️ **Provider Infrastructure** - Modular, extensible architecture for content retrieval
+- 🏗️ **Agent Registry Auto-Discovery** - Dynamic agent configuration ([Details](36-supervisor-configuration.md))
 - ⌨️ **Enhanced CLI** - Arrow navigation and command history
 - 🎨 **Rich Interface** - Professional orange branding
 - ⚡ **Performance** - Optimized startup and processing
 
 ## 🗂️ Feature Availability Matrix
 
-Quick reference for feature availability across versions and deployment modes.
+Quick reference for feature availability across deployment modes.
 
-### Core Features by Version
+### Core Features by Deployment Mode
 
-| Feature | v2.2 | v2.3 | v2.4 | Local | Cloud |
-|---------|:----:|:----:|:----:|:-----:|:-----:|
+| Feature | Local | Cloud |
+|---------|:-----:|:-----:|
 | **Content Intelligence** |
-| PyPDF2 parsing | ✅ | ⚠️ | ❌ | - | - |
-| Docling structure-aware parsing | ❌ | ✅ | ✅ | ✅ | ✅ |
-| Two-tier publication access | ❌ | ✅ | ✅ | ✅ | ✅ |
-| ContentAccessService | ❌ | ❌ | ✅ | ✅ | ✅ |
-| Provider infrastructure (5 providers) | ❌ | ⚠️ | ✅ | ✅ | ✅ |
+| Docling structure-aware parsing | ✅ | ✅ |
+| Two-tier publication access | ✅ | ✅ |
+| ContentAccessService | ✅ | ✅ |
+| Provider infrastructure (5 providers) | ✅ | ✅ |
 | **Analysis Capabilities** |
-| Simple DE (two-group) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Formula-based DE | ❌ | ✅ | ✅ | ✅ | ✅ |
-| Agent-guided formulas | ❌ | ✅ | ✅ | ✅ | ✅ |
-| Protein visualization (batch) | ❌ | ❌ | ✅ | ✅ | ✅ |
-| Protein visualization (interactive) | ❌ | ❌ | ✅ | ✅ | ⚠️ |
+| Simple DE (two-group) | ✅ | ✅ |
+| Formula-based DE | ✅ | ✅ |
+| Agent-guided formulas | ✅ | ✅ |
+| Protein visualization (batch) | ✅ | ✅ |
+| Protein visualization (interactive) | ✅ | ⚠️ |
 | **Data Management** |
-| Basic workspace | ✅ | ✅ | ✅ | ✅ | ✅ |
-| WorkspaceContentService | ❌ | ✅ | ✅ | ✅ | ✅ |
-| Download queue (JSONL) | ❌ | ❌ | ✅ | ✅ | ✅ |
-| Two-tier caching | ❌ | ⚠️ | ✅ | ✅ | ✅ |
+| Basic workspace | ✅ | ✅ |
+| WorkspaceContentService | ✅ | ✅ |
+| Download queue (JSONL) | ✅ | ✅ |
+| Two-tier caching | ✅ | ✅ |
 | **Infrastructure** |
-| Manual agent registry | ✅ | ⚠️ | ❌ | - | - |
-| Auto agent discovery | ❌ | ✅ | ✅ | ✅ | ✅ |
-| FTP retry logic | ❌ | ✅ | ✅ | ✅ | ✅ |
+| Auto agent discovery | ✅ | ✅ |
+| FTP retry logic | ✅ | ✅ |
 
 **Legend:**
 - ✅ Full support
-- ⚠️ Partial support / Deprecated
-- ❌ Not available
+- ⚠️ Partial support (see notes below)
 
 > **Note:** Interactive PyMOL visualization requires local GUI support. Cloud mode supports batch image generation only.
 
-For detailed version-specific information, see the [Migration Guide](41-migration-guides.md#version-feature-matrix).
+For detailed feature documentation, see the [Migration Guide](41-migration-guides.md).
 
 ## 🔗 Quick Links
 
@@ -243,6 +239,6 @@ Found an issue or want to improve the documentation?
 
 ---
 
-*Documentation for Lobster AI v2.2+ | Last updated: 2025*
+*Documentation for Lobster AI v0.2+ | Last updated: 2025*
 
 *Made with ❤️ by [Omics-OS](https://omics-os.com)*

@@ -147,7 +147,7 @@ Each specialist agent focuses on a specific domain of bioinformatics analysis:
 - **Antibody Validation** - Quality control metrics for targeted assays
 - **Panel Harmonization** - Cross-platform data integration
 
-#### ~~Method Expert Agent~~ (DEPRECATED v2.2+)
+#### ~~Method Expert Agent~~ (DEPRECATED v0.2+)
 **Merged into Research Agent** - All method extraction capabilities now in Research Agent with Phase 1 auto-resolution.
 
 #### ML Expert Agent

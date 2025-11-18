@@ -140,7 +140,7 @@ Shows datasets with:
 - **Shape** - Observations × variables
 - **Modified** - Last modification date
 
-**Features** (v2.3+):
+**Features** (v0.2+):
 - Numbered index for each dataset (1, 2, 3...) enables index-based loading
 - Smart truncation preserves start and end of long dataset names
 - Example: `geo_gse155698_quality_assess...ted_clustered_markers`
@@ -148,7 +148,7 @@ Shows datasets with:
 - Fixed column widths for professional table formatting
 
 #### `/workspace info <#|pattern>`
-Show detailed information for specific dataset(s) (v2.3+).
+Show detailed information for specific dataset(s) (v0.2+).
 
 ```
 /workspace info 1                      # Show details for first dataset (index)
@@ -194,7 +194,7 @@ Stages:      quality → filter → normal → doublet → cluster → marker
 ```
 
 #### `/workspace load <#|pattern>`
-Load specific dataset(s) from workspace by index or pattern (v2.3+).
+Load specific dataset(s) from workspace by index or pattern (v0.2+).
 
 ```
 /workspace load 1                     # Load first dataset (index-based)
@@ -209,7 +209,7 @@ Load specific dataset(s) from workspace by index or pattern (v2.3+).
 - **Glob pattern**: Wildcards for loading multiple related datasets
 
 **Features**:
-- **Index-based loading** (v2.3+): No need to type long dataset names
+- **Index-based loading** (v0.2+): No need to type long dataset names
 - **Pattern matching**: Load multiple datasets matching criteria
 - **Progress tracking**: Shows loading progress for each dataset
 - **Automatic validation**: Data quality checks during load
@@ -245,7 +245,7 @@ Restore datasets from workspace based on pattern matching.
 - `<dataset_name>` - Load specific dataset by exact name
 - `<partial_name>*` - Load datasets matching partial name pattern
 
-> **Note**: Use `/restore` for session continuation and bulk loading workflows. Use `/workspace load` (v2.3+) for targeted single-dataset loading by index or specific pattern.
+> **Note**: Use `/restore` for session continuation and bulk loading workflows. Use `/workspace load` (v0.2+) for targeted single-dataset loading by index or specific pattern.
 
 **Parameters**:
 - `recent`: Datasets from last session (default)
@@ -622,7 +622,7 @@ lobster chat
 # Check existing workspace
 /workspace list
 
-# Load previous work by index (v2.3+)
+# Load previous work by index (v0.2+)
 /workspace load 1
 
 # Or restore recent session
@@ -638,7 +638,7 @@ lobster chat
 "Analyze this single-cell RNA-seq data and identify cell types"
 ```
 
-#### Dataset Browsing and Selection (v2.3+)
+#### Dataset Browsing and Selection (v0.2+)
 
 ```bash
 # List all datasets with numbered index

@@ -494,7 +494,7 @@ def download_and_process(
 
 Download and process GEO dataset with guided concatenation.
 
-### ContentAccessService ✨ (v2.4.0+ Phase 1-6 Complete)
+### ContentAccessService ✨ (v0.2.0+ Phase 1-6 Complete)
 
 **Unified publication access service** with capability-based provider routing, three-tier cascade logic, and comprehensive literature mining. Replaces PublicationService and UnifiedContentService with a modular provider architecture.
 
@@ -517,7 +517,7 @@ class ContentAccessService:
     """
 ```
 
-**New in v2.4.0:**
+**New in v0.2.0:**
 - ✅ **Provider Architecture**: 5 providers (Abstract, PubMed, GEO, PMC, Webpage) with capability-based routing
 - ✅ **ProviderRegistry**: Priority-based provider selection (Priority 10 = high, 50 = low)
 - ✅ **Three-Tier Cascade**: PMC (500ms) → Webpage (2-5s) → PDF (3-8s) with automatic fallback
@@ -1067,9 +1067,9 @@ The research_agent uses ContentAccessService through 10 tools:
 - **Architecture:** [18-architecture-overview.md](18-architecture-overview.md) - System design
 - **Troubleshooting:** [28-troubleshooting.md](28-troubleshooting.md) - Common issues
 
-### PublicationResolver ✨ (v2.3+ Enhanced)
+### PublicationResolver ✨ (v0.2+ Enhanced)
 
-Utility class for automatic PMID/DOI → PDF URL resolution using tiered waterfall strategy. **v2.4+ enhancement:** Integrated with ContentAccessService for seamless DOI/PMID auto-detection.
+Utility class for automatic PMID/DOI → PDF URL resolution using tiered waterfall strategy. **v0.2+ enhancement:** Integrated with ContentAccessService for seamless DOI/PMID auto-detection.
 
 ```python
 class PublicationResolver:
@@ -1083,7 +1083,7 @@ class PublicationResolver:
         """
 ```
 
-#### Auto-Detection Logic (v2.3+ Enhancement)
+#### Auto-Detection Logic (v0.2+ Enhancement)
 
 The resolver automatically detects identifier types without requiring format specification:
 
