@@ -5,13 +5,14 @@ Tests the centralized organism name mapping for NCBI database queries.
 """
 
 import pytest
+
 from lobster.tools.providers.organism_enum import (
     OrganismEnum,
-    to_sci_name,
-    validate_organism,
     get_scientific_name,
     list_organisms,
     list_organisms_with_scientific,
+    to_sci_name,
+    validate_organism,
 )
 
 
@@ -38,7 +39,10 @@ class TestOrganismEnum:
         assert OrganismEnum.HUMAN.value == "Homo sapiens"
         assert OrganismEnum.MOUSE.value == "Mus musculus"
         assert OrganismEnum.E_COLI.value == "Escherichia coli"
-        assert OrganismEnum.SARS_COV_2.value == "Severe acute respiratory syndrome coronavirus 2"
+        assert (
+            OrganismEnum.SARS_COV_2.value
+            == "Severe acute respiratory syndrome coronavirus 2"
+        )
 
     def test_enum_has_minimum_45_organisms(self):
         """Test that enum has at least 45 organisms (from SRAgent research)."""
@@ -102,7 +106,10 @@ class TestToSciName:
 
     def test_virus_conversion(self):
         """Test conversion of viral organisms."""
-        assert to_sci_name("sars cov 2") == '"Severe acute respiratory syndrome coronavirus 2"'
+        assert (
+            to_sci_name("sars cov 2")
+            == '"Severe acute respiratory syndrome coronavirus 2"'
+        )
         assert to_sci_name("hiv") == '"Human immunodeficiency virus 1"'
 
     def test_plant_conversion(self):

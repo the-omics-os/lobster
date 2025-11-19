@@ -27,11 +27,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from lobster.core.utils.h5ad_utils import sanitize_value, sanitize_dict
+from lobster.core.utils.h5ad_utils import sanitize_dict, sanitize_value
 
 # Optional pandas import
 try:
     import pandas as pd
+
     HAS_PANDAS = True
 except ImportError:
     HAS_PANDAS = False
@@ -130,24 +131,24 @@ class TestNumpyScalarTypes:
     def test_numpy_scalar_in_nested_dict(self):
         """Test numpy scalars in nested dictionaries (critical bug scenario)."""
         data = {
-            'metadata': {
-                'sample_count': np.int64(13),
-                'contact_zip': np.int64(12345),
-                'score': np.float64(3.14159),
-                'is_valid': np.bool_(True),
+            "metadata": {
+                "sample_count": np.int64(13),
+                "contact_zip": np.int64(12345),
+                "score": np.float64(3.14159),
+                "is_valid": np.bool_(True),
             }
         }
         result = sanitize_value(data)
 
         # All numpy scalars should be strings
-        assert isinstance(result['metadata']['sample_count'], str)
-        assert result['metadata']['sample_count'] == "13"
-        assert isinstance(result['metadata']['contact_zip'], str)
-        assert result['metadata']['contact_zip'] == "12345"
-        assert isinstance(result['metadata']['score'], str)
-        assert result['metadata']['score'] == "3.14159"
-        assert isinstance(result['metadata']['is_valid'], str)
-        assert result['metadata']['is_valid'] == "True"
+        assert isinstance(result["metadata"]["sample_count"], str)
+        assert result["metadata"]["sample_count"] == "13"
+        assert isinstance(result["metadata"]["contact_zip"], str)
+        assert result["metadata"]["contact_zip"] == "12345"
+        assert isinstance(result["metadata"]["score"], str)
+        assert result["metadata"]["score"] == "3.14159"
+        assert isinstance(result["metadata"]["is_valid"], str)
+        assert result["metadata"]["is_valid"] == "True"
 
 
 @pytest.mark.skipif(not HAS_PANDAS, reason="Pandas not available")
@@ -267,7 +268,7 @@ class TestCollectionTypes:
         """Test set → numpy string array conversion."""
         result = sanitize_value({1, 2, 3, "a", "b"})
         assert isinstance(result, np.ndarray)
-        assert result.dtype.kind in ('U', 'S', 'O')  # String types
+        assert result.dtype.kind in ("U", "S", "O")  # String types
         # Sets are unordered, but we sort them for consistency
         assert len(result) == 5
 
@@ -275,7 +276,7 @@ class TestCollectionTypes:
         """Test frozenset → numpy string array conversion."""
         result = sanitize_value(frozenset([1, 2, 3]))
         assert isinstance(result, np.ndarray)
-        assert result.dtype.kind in ('U', 'S', 'O')
+        assert result.dtype.kind in ("U", "S", "O")
         assert len(result) == 3
 
     def test_empty_set_sanitization(self):
@@ -301,17 +302,9 @@ class TestNestedStructures:
 
     def test_deeply_nested_dict_4_levels(self):
         """Test 4-level nested dictionary."""
-        data = {
-            'level1': {
-                'level2': {
-                    'level3': {
-                        'level4': np.int64(42)
-                    }
-                }
-            }
-        }
+        data = {"level1": {"level2": {"level3": {"level4": np.int64(42)}}}}
         result = sanitize_value(data)
-        assert result['level1']['level2']['level3']['level4'] == "42"
+        assert result["level1"]["level2"]["level3"]["level4"] == "42"
 
     def test_list_of_numpy_scalars(self):
         """Test list containing numpy scalars."""
@@ -324,8 +317,8 @@ class TestNestedStructures:
     def test_list_of_dicts_with_numpy_scalars(self):
         """Test list of dicts containing numpy scalars."""
         data = [
-            {'count': np.int64(1), 'value': np.float64(1.1)},
-            {'count': np.int64(2), 'value': np.float64(2.2)},
+            {"count": np.int64(1), "value": np.float64(1.1)},
+            {"count": np.int64(2), "value": np.float64(2.2)},
         ]
         result = sanitize_value(data)
         assert isinstance(result, np.ndarray)
@@ -337,17 +330,17 @@ class TestNestedStructures:
         data = (np.int64(1), np.int64(2), np.int64(3))
         result = sanitize_value(data)
         assert isinstance(result, np.ndarray)
-        assert result.dtype.kind in ('U', 'S', 'O')
+        assert result.dtype.kind in ("U", "S", "O")
 
     def test_dict_with_mixed_numpy_python_types(self):
         """Test dict with both numpy and Python types."""
         data = {
-            'numpy_int': np.int64(42),
-            'python_int': 42,
-            'numpy_float': np.float64(3.14),
-            'python_float': 3.14,
-            'numpy_bool': np.bool_(True),
-            'python_bool': True,
+            "numpy_int": np.int64(42),
+            "python_int": 42,
+            "numpy_float": np.float64(3.14),
+            "python_float": 3.14,
+            "numpy_bool": np.bool_(True),
+            "python_bool": True,
         }
         result = sanitize_value(data)
 
@@ -356,16 +349,18 @@ class TestNestedStructures:
 
     def test_ordered_dict_with_numpy_scalars(self):
         """Test OrderedDict containing numpy scalars."""
-        data = collections.OrderedDict([
-            ('first', np.int64(1)),
-            ('second', np.int64(2)),
-        ])
+        data = collections.OrderedDict(
+            [
+                ("first", np.int64(1)),
+                ("second", np.int64(2)),
+            ]
+        )
         result = sanitize_value(data)
 
         assert isinstance(result, dict)
         assert not isinstance(result, collections.OrderedDict)
-        assert result['first'] == "1"
-        assert result['second'] == "2"
+        assert result["first"] == "1"
+        assert result["second"] == "2"
 
     def test_empty_structures(self):
         """Test empty collections."""
@@ -377,16 +372,12 @@ class TestNestedStructures:
 
     def test_none_in_nested_structures(self):
         """Test None values in nested structures."""
-        data = {
-            'value': None,
-            'list': [1, None, 3],
-            'nested': {'inner': None}
-        }
+        data = {"value": None, "list": [1, None, 3], "nested": {"inner": None}}
         result = sanitize_value(data)
 
-        assert result['value'] == ""
-        assert "" in result['list']
-        assert result['nested']['inner'] == ""
+        assert result["value"] == ""
+        assert "" in result["list"]
+        assert result["nested"]["inner"] == ""
 
     def test_path_objects_in_lists(self):
         """Test Path objects in lists."""
@@ -399,20 +390,20 @@ class TestNestedStructures:
     def test_mixed_type_list(self):
         """Test list with many different types."""
         data = [
-            42,                      # Python int
-            np.int64(42),           # Numpy int
-            3.14,                   # Python float
-            np.float64(3.14),       # Numpy float
-            True,                   # Python bool
-            np.bool_(True),         # Numpy bool
-            "string",               # String
-            None,                   # None
-            Path("/tmp/test"),      # Path
+            42,  # Python int
+            np.int64(42),  # Numpy int
+            3.14,  # Python float
+            np.float64(3.14),  # Numpy float
+            True,  # Python bool
+            np.bool_(True),  # Numpy bool
+            "string",  # String
+            None,  # None
+            Path("/tmp/test"),  # Path
         ]
         result = sanitize_value(data)
 
         assert isinstance(result, np.ndarray)
-        assert result.dtype.kind in ('U', 'S', 'O')
+        assert result.dtype.kind in ("U", "S", "O")
 
 
 class TestGEOMetadataStructures:
@@ -421,51 +412,51 @@ class TestGEOMetadataStructures:
     def test_gse267814_metadata_structure(self):
         """Test exact GSE267814 metadata structure that was failing."""
         metadata = {
-            'contact_zip/postal_code': np.int64(12345),  # Numpy scalar with '/' in key
-            'sample_count': np.int64(13),
-            'is_processed': np.bool_(True),
-            'submission_date': None,
-            'platforms': ['GPL20795', 'GPL24676'],
-            'nested_data': {
-                'value': np.int64(42),
-                'list': [np.int64(1), np.int64(2)],
-            }
+            "contact_zip/postal_code": np.int64(12345),  # Numpy scalar with '/' in key
+            "sample_count": np.int64(13),
+            "is_processed": np.bool_(True),
+            "submission_date": None,
+            "platforms": ["GPL20795", "GPL24676"],
+            "nested_data": {
+                "value": np.int64(42),
+                "list": [np.int64(1), np.int64(2)],
+            },
         }
         result = sanitize_value(metadata)
 
         # Keys with '/' should be replaced
-        assert 'contact_zip__postal_code' in result
-        assert 'contact_zip/postal_code' not in result
+        assert "contact_zip__postal_code" in result
+        assert "contact_zip/postal_code" not in result
 
         # All numpy scalars should be strings
-        assert isinstance(result['contact_zip__postal_code'], str)
-        assert result['contact_zip__postal_code'] == "12345"
-        assert isinstance(result['sample_count'], str)
-        assert result['sample_count'] == "13"
-        assert isinstance(result['is_processed'], str)
-        assert result['is_processed'] == "True"
+        assert isinstance(result["contact_zip__postal_code"], str)
+        assert result["contact_zip__postal_code"] == "12345"
+        assert isinstance(result["sample_count"], str)
+        assert result["sample_count"] == "13"
+        assert isinstance(result["is_processed"], str)
+        assert result["is_processed"] == "True"
 
         # None should be empty string
-        assert result['submission_date'] == ""
+        assert result["submission_date"] == ""
 
         # Lists should be numpy arrays
-        assert isinstance(result['platforms'], np.ndarray)
+        assert isinstance(result["platforms"], np.ndarray)
 
         # Nested structures should work
-        assert isinstance(result['nested_data']['value'], str)
-        assert result['nested_data']['value'] == "42"
+        assert isinstance(result["nested_data"]["value"], str)
+        assert result["nested_data"]["value"] == "42"
 
     def test_geo_provenance_structure(self):
         """Test GEO provenance structure in .uns."""
         provenance = {
-            'activities': [
+            "activities": [
                 {
-                    'parameters': {
-                        'sample_metadata': {
-                            'contact_zip/postal_code': np.int64(12345),
-                            'sample_count': np.int64(13),
-                            'is_processed': np.bool_(True),
-                            'platforms': ['GPL20795'],
+                    "parameters": {
+                        "sample_metadata": {
+                            "contact_zip/postal_code": np.int64(12345),
+                            "sample_count": np.int64(13),
+                            "is_processed": np.bool_(True),
+                            "platforms": ["GPL20795"],
                         }
                     }
                 }
@@ -474,70 +465,76 @@ class TestGEOMetadataStructures:
         result = sanitize_value(provenance)
 
         # Lists of dicts should be stringified
-        assert isinstance(result['activities'], np.ndarray)
+        assert isinstance(result["activities"], np.ndarray)
 
     def test_quantification_metadata(self):
         """Test Kallisto/Salmon quantification metadata."""
         metadata = {
-            'tool': 'kallisto',
-            'version': '0.46.1',
-            'bootstrap': np.int64(100),
-            'threads': np.int64(8),
-            'index_size': np.int64(123456789),
+            "tool": "kallisto",
+            "version": "0.46.1",
+            "bootstrap": np.int64(100),
+            "threads": np.int64(8),
+            "index_size": np.int64(123456789),
         }
         result = sanitize_value(metadata)
 
-        assert all(isinstance(v, str) for k, v in result.items() if k != 'tool' and k != 'version')
+        assert all(
+            isinstance(v, str)
+            for k, v in result.items()
+            if k != "tool" and k != "version"
+        )
 
     def test_transpose_info_structure(self):
         """Test transpose_info metadata structure."""
         transpose_info = {
-            'transpose_applied': np.bool_(True),
-            'original_shape': (60000, 4),
-            'final_shape': (4, 60000),
-            'reason': 'Quantification format',
+            "transpose_applied": np.bool_(True),
+            "original_shape": (60000, 4),
+            "final_shape": (4, 60000),
+            "reason": "Quantification format",
         }
         result = sanitize_value(transpose_info)
 
-        assert result['transpose_applied'] == "True"
-        assert isinstance(result['original_shape'], np.ndarray)
-        assert isinstance(result['final_shape'], np.ndarray)
+        assert result["transpose_applied"] == "True"
+        assert isinstance(result["original_shape"], np.ndarray)
+        assert isinstance(result["final_shape"], np.ndarray)
 
     def test_complex_geo_metadata_full(self):
         """Test complete complex GEO metadata structure."""
         metadata = {
-            'dataset_id': 'GSE267814',
-            'dataset_type': 'GEO',
-            'processing_date': datetime.datetime(2024, 11, 17, 3, 59, 36),
-            'cache_path': Path('/tmp/geo_cache/GSE267814'),
-            'file_paths': [
-                Path('/tmp/file1.csv'),
-                Path('/tmp/file2.csv'),
+            "dataset_id": "GSE267814",
+            "dataset_type": "GEO",
+            "processing_date": datetime.datetime(2024, 11, 17, 3, 59, 36),
+            "cache_path": Path("/tmp/geo_cache/GSE267814"),
+            "file_paths": [
+                Path("/tmp/file1.csv"),
+                Path("/tmp/file2.csv"),
             ],
-            'shape': (1000, 2000),
-            'metadata': collections.OrderedDict([
-                ('sample/type', 'single_cell'),
-                ('version', np.int64(1)),
-                ('scores', [np.float64(1.1), np.float64(2.2), np.float64(3.3)]),
-            ]),
-            'sample_counts': np.array([np.int64(100), np.int64(200), np.int64(300)]),
+            "shape": (1000, 2000),
+            "metadata": collections.OrderedDict(
+                [
+                    ("sample/type", "single_cell"),
+                    ("version", np.int64(1)),
+                    ("scores", [np.float64(1.1), np.float64(2.2), np.float64(3.3)]),
+                ]
+            ),
+            "sample_counts": np.array([np.int64(100), np.int64(200), np.int64(300)]),
         }
         result = sanitize_value(metadata)
 
         # All Path objects should be strings
-        assert isinstance(result['cache_path'], str)
-        assert all(isinstance(x, (str, np.str_)) for x in result['file_paths'])
+        assert isinstance(result["cache_path"], str)
+        assert all(isinstance(x, (str, np.str_)) for x in result["file_paths"])
 
         # Datetime should be ISO string
-        assert isinstance(result['processing_date'], str)
-        assert "2024-11-17" in result['processing_date']
+        assert isinstance(result["processing_date"], str)
+        assert "2024-11-17" in result["processing_date"]
 
         # Tuples should be numpy arrays
-        assert isinstance(result['shape'], np.ndarray)
+        assert isinstance(result["shape"], np.ndarray)
 
         # OrderedDict should be regular dict
-        assert isinstance(result['metadata'], dict)
-        assert not isinstance(result['metadata'], collections.OrderedDict)
+        assert isinstance(result["metadata"], dict)
+        assert not isinstance(result["metadata"], collections.OrderedDict)
 
 
 class TestRegressionPrevious:
@@ -545,44 +542,44 @@ class TestRegressionPrevious:
 
     def test_bug_fix_3_python_ints_in_dicts(self):
         """Ensure Bug Fix #3 still works: Python int → string."""
-        data = {'count': 42, 'nested': {'value': 100}}
+        data = {"count": 42, "nested": {"value": 100}}
         result = sanitize_value(data)
 
-        assert result['count'] == "42"
-        assert result['nested']['value'] == "100"
+        assert result["count"] == "42"
+        assert result["nested"]["value"] == "100"
 
     def test_bug_fix_3_python_floats_in_dicts(self):
         """Ensure Bug Fix #3 still works: Python float → string."""
-        data = {'score': 3.14, 'nested': {'value': 2.71}}
+        data = {"score": 3.14, "nested": {"value": 2.71}}
         result = sanitize_value(data)
 
-        assert result['score'] == "3.14"
-        assert result['nested']['value'] == "2.71"
+        assert result["score"] == "3.14"
+        assert result["nested"]["value"] == "2.71"
 
     def test_bug_fix_3_lists_to_numpy_arrays(self):
         """Ensure Bug Fix #3 still works: Lists → numpy arrays."""
-        data = {'items': [1, 2, 3]}
+        data = {"items": [1, 2, 3]}
         result = sanitize_value(data)
 
-        assert isinstance(result['items'], np.ndarray)
+        assert isinstance(result["items"], np.ndarray)
 
     def test_bug_fix_3_lists_of_dicts(self):
         """Ensure Bug Fix #3 still works: Lists of dicts → stringified."""
-        data = {'activities': [{'id': 1, 'value': 'a'}, {'id': 2, 'value': 'b'}]}
+        data = {"activities": [{"id": 1, "value": "a"}, {"id": 2, "value": "b"}]}
         result = sanitize_value(data)
 
-        assert isinstance(result['activities'], np.ndarray)
+        assert isinstance(result["activities"], np.ndarray)
         # Elements should be stringified
-        assert all(isinstance(x, (str, np.str_)) for x in result['activities'])
+        assert all(isinstance(x, (str, np.str_)) for x in result["activities"])
 
     def test_bug_fix_3_keys_with_slashes(self):
         """Ensure Bug Fix #3 still works: Keys with '/' replaced."""
-        data = {'path/to/data': 42, 'normal_key': 100}
+        data = {"path/to/data": 42, "normal_key": 100}
         result = sanitize_value(data)
 
-        assert 'path__to__data' in result
-        assert 'path/to/data' not in result
-        assert result['path__to__data'] == "42"
+        assert "path__to__data" in result
+        assert "path/to/data" not in result
+        assert result["path__to__data"] == "42"
 
 
 class TestEdgeCasesAndBoundaries:
@@ -590,42 +587,52 @@ class TestEdgeCasesAndBoundaries:
 
     def test_very_large_nested_structure(self):
         """Test very deeply nested structure (10 levels)."""
-        data = {'l0': {'l1': {'l2': {'l3': {'l4': {'l5': {'l6': {'l7': {'l8': {'l9': np.int64(42)}}}}}}}}}}
+        data = {
+            "l0": {
+                "l1": {
+                    "l2": {
+                        "l3": {
+                            "l4": {"l5": {"l6": {"l7": {"l8": {"l9": np.int64(42)}}}}}
+                        }
+                    }
+                }
+            }
+        }
         result = sanitize_value(data)
 
         # Should handle deep nesting
         value = result
         for i in range(10):
-            value = value[f'l{i}']
+            value = value[f"l{i}"]
         assert value == "42"
 
     def test_unicode_strings_preserved(self):
         """Test Unicode strings are preserved."""
-        data = {'text': '你好世界', 'emoji': '🔬🧬'}
+        data = {"text": "你好世界", "emoji": "🔬🧬"}
         result = sanitize_value(data)
 
-        assert result['text'] == '你好世界'
-        assert result['emoji'] == '🔬🧬'
+        assert result["text"] == "你好世界"
+        assert result["emoji"] == "🔬🧬"
 
     def test_special_float_values(self):
         """Test special float values (inf, -inf, nan)."""
         data = {
-            'inf': float('inf'),
-            'neg_inf': float('-inf'),
-            'nan': float('nan'),
-            'np_inf': np.float64('inf'),
-            'np_nan': np.float64('nan'),
+            "inf": float("inf"),
+            "neg_inf": float("-inf"),
+            "nan": float("nan"),
+            "np_inf": np.float64("inf"),
+            "np_nan": np.float64("nan"),
         }
         result = sanitize_value(data)
 
         # All should be strings
         assert all(isinstance(v, str) for v in result.values())
-        assert result['inf'] == "inf"
-        assert result['neg_inf'] == "-inf"
+        assert result["inf"] == "inf"
+        assert result["neg_inf"] == "-inf"
         # NaN values are caught by pd.isna() and converted to empty string
         # This is correct behavior for HDF5 compatibility
-        assert result['nan'] == ""  # pd.isna() catches float('nan')
-        assert result['np_nan'] == ""  # pd.isna() catches np.float64('nan')
+        assert result["nan"] == ""  # pd.isna() catches float('nan')
+        assert result["np_nan"] == ""  # pd.isna() catches np.float64('nan')
 
     def test_very_long_strings(self):
         """Test very long strings are preserved."""
@@ -641,20 +648,20 @@ class TestEdgeCasesAndBoundaries:
 
     def test_whitespace_preserved(self):
         """Test whitespace is preserved."""
-        data = {'spaces': '   ', 'tabs': '\t\t', 'newlines': '\n\n'}
+        data = {"spaces": "   ", "tabs": "\t\t", "newlines": "\n\n"}
         result = sanitize_value(data)
 
-        assert result['spaces'] == '   '
-        assert result['tabs'] == '\t\t'
-        assert result['newlines'] == '\n\n'
+        assert result["spaces"] == "   "
+        assert result["tabs"] == "\t\t"
+        assert result["newlines"] == "\n\n"
 
     def test_numeric_string_not_converted(self):
         """Test numeric strings stay as strings."""
-        data = {'str_num': '42', 'str_float': '3.14'}
+        data = {"str_num": "42", "str_float": "3.14"}
         result = sanitize_value(data)
 
-        assert result['str_num'] == '42'
-        assert result['str_float'] == '3.14'
+        assert result["str_num"] == "42"
+        assert result["str_float"] == "3.14"
 
 
 class TestValidationIntegration:
@@ -663,38 +670,38 @@ class TestValidationIntegration:
     def test_sanitize_dict_with_comprehensive_data(self):
         """Test sanitize_dict with all problematic types."""
         data = {
-            'numpy_int': np.int64(42),
-            'numpy_float': np.float64(3.14),
-            'numpy_bool': np.bool_(True),
-            'python_int': 42,
-            'python_float': 3.14,
-            'python_bool': True,
-            'none_value': None,
-            'path': Path('/tmp/test'),
-            'tuple': (1, 2, 3),
-            'set': {1, 2, 3},
-            'list': [1, 2, 3],
-            'key/with/slash': np.int64(100),
+            "numpy_int": np.int64(42),
+            "numpy_float": np.float64(3.14),
+            "numpy_bool": np.bool_(True),
+            "python_int": 42,
+            "python_float": 3.14,
+            "python_bool": True,
+            "none_value": None,
+            "path": Path("/tmp/test"),
+            "tuple": (1, 2, 3),
+            "set": {1, 2, 3},
+            "list": [1, 2, 3],
+            "key/with/slash": np.int64(100),
         }
         result = sanitize_dict(data)
 
         # All values should be safe for H5AD
-        assert isinstance(result['numpy_int'], str)
-        assert isinstance(result['numpy_float'], str)
-        assert isinstance(result['numpy_bool'], str)
-        assert isinstance(result['python_int'], str)
-        assert isinstance(result['python_float'], str)
-        assert isinstance(result['python_bool'], str)
-        assert result['none_value'] == ""
-        assert isinstance(result['path'], str)
-        assert isinstance(result['tuple'], np.ndarray)
-        assert isinstance(result['set'], np.ndarray)
-        assert isinstance(result['list'], np.ndarray)
+        assert isinstance(result["numpy_int"], str)
+        assert isinstance(result["numpy_float"], str)
+        assert isinstance(result["numpy_bool"], str)
+        assert isinstance(result["python_int"], str)
+        assert isinstance(result["python_float"], str)
+        assert isinstance(result["python_bool"], str)
+        assert result["none_value"] == ""
+        assert isinstance(result["path"], str)
+        assert isinstance(result["tuple"], np.ndarray)
+        assert isinstance(result["set"], np.ndarray)
+        assert isinstance(result["list"], np.ndarray)
 
         # Key with slash should be sanitized
-        assert 'key__with__slash' in result
-        assert 'key/with/slash' not in result
+        assert "key__with__slash" in result
+        assert "key/with/slash" not in result
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v', '--tb=short'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "--tb=short"])

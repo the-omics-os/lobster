@@ -87,6 +87,7 @@ dependencies = [
     "polars>=1.32.3",
     "psutil>=7.0.0",
     "scanpy>=1.11.4",
+    "scry>=0.3.0",  # Deviance-based feature selection for single-cell
     "pydeseq2>=0.5.2",
     "prompt-toolkit>=3.0.52",
     "scvi-tools>=1.4.0",

@@ -193,26 +193,25 @@ def _get_agent_delegation_rules(agent_name: str, agent_config) -> str:
     """
     # Define delegation rules for each agent based on their purpose
     delegation_rules = {
-        "research_agent": """       - Searching scientific literature (PubMed, PMC, publishers).
-       - Fast DataSets search (GEO, SRA).
-       - Understanding dataset metadata.       
-       - Finding related entries (dataset to publication, sample to dataset, publication to publication).
-       - Extracting publication metadata and bibliographic information.
-       - Validating datasets to add them to the download queue for the data expert to download      
-       - Applying filters to GEO searches (organism, date range, platform, supplementary file types).""",
-       
-        "data_expert_agent": """       - Use the list_available_modalities tool to check loaded data before proceeding to inform the data expert.
-       - Questions about data structures like AnnData, Seurat, or Scanpy objects.
-       - Fetching GEO metadata to preview datasets (always before any download).
-       - Downloading datasets from the download queue (ONLY after research_agent has validated and queued the dataset).
-       - CRITICAL: For GEO downloads, ensure research_agent validates first, then extract entry_id from queue before delegating.
-       - Loading raw count matrices (e.g., CSV, H5AD).
-       - Managing or listing datasets already loaded.
-       - Providing summaries of available data.""",
+        "research_agent": """       - ALL ONLINE ACCESS: Handles all external queries (literature, datasets, metadata, URLs) - provides validated information to data_expert for offline processing.
+       - Search scientific literature (PubMed, PMC, publishers) with automatic PMID/DOI resolution and PDF extraction.
+       - Fast dataset discovery (GEO, SRA) with advanced filtering (organism, date range, platform, supplementary file types).
+       - Extract computational methods and parameters from publications via automatic PDF resolution and parsing.
+       - Fetch and validate dataset metadata including URLs, sample information, and availability for download operations.
+       - CRITICAL QUEUE WORKFLOW: Validate dataset → create queue entry (status: PENDING) → supervisor extracts entry_id → data_expert executes download via execute_download_from_queue(entry_id).
+       - Find related entries across resources (dataset ↔ publication, sample ↔ dataset, publication ↔ publication).
+       - Extract publication metadata and bibliographic information for literature management and citation.""",
+        "data_expert_agent": """       - ZERO ONLINE ACCESS: Cannot fetch metadata, query external databases (GEO/SRA/PRIDE), or extract URLs - all online operations delegated to research_agent.
+       - Execute downloads from download queue ONLY after research_agent has validated and created queue entry (status: PENDING).
+       - CRITICAL QUEUE WORKFLOW: research_agent validates → creates queue entry → supervisor extracts entry_id from response → data_expert executes via execute_download_from_queue(entry_id).
+       - Monitor queue status with get_queue_status() and retry failed downloads with strategy overrides (MATRIX_FIRST, H5_FIRST, SUPPLEMENTARY_FIRST).
+       - Load local data files using adapter system (transcriptomics_single_cell, transcriptomics_bulk, proteomics_ms, proteomics_affinity).
+       - Manage modalities with 5 tools: list_available_modalities (check loaded data), inspect_modality (examine structure), remove_modality (cleanup), validate_modality_compatibility (integration checks), concatenate_samples (merge datasets).
+       - Questions about data structures (AnnData, Seurat, Scanpy objects) and workspace management.
+       - Provide summaries of available data, download status, and troubleshooting guidance for failed operations.""",
         # "method_expert_agent": DEPRECATED v2.2+ - merged into research_agent
-        
         "singlecell_expert_agent": """       - Questions about single-cell data analysis.
-       - Performing QC on single-cell datasets (cell/gene filtering, mitochondrial/ribosomal content checks).
+       - Performing QC on single-cell datasets (cell/gene filtering with adaptive thresholds, mitochondrial/ribosomal content checks, doublet detection via upper bounds).
        - Detecting/removing doublets in single-cell data.
        - Normalizing single-cell counts (UMI normalization).
        - Running dimensionality reduction (PCA, UMAP, t-SNE) for single-cell data.
@@ -221,14 +220,12 @@ def _get_agent_delegation_rules(agent_name: str, agent_config) -> str:
        - Integrating single-cell datasets with batch correction methods.
        - Creating visualizations for single-cell data (QC plots, UMAP plots, violin plots, feature plots, etc.).
        - Any analysis involving individual cells and cellular heterogeneity.""",
-       
         "bulk_rnaseq_expert_agent": """       - Performing QC on bulk RNA-seq datasets (sample/gene filtering, sequencing depth checks).
        - Normalizing bulk RNA-seq counts (CPM, TPM normalization).
        - Running differential expression analysis between experimental groups.
        - Performing pathway enrichment analysis (GO, KEGG).
        - Statistical analysis of gene expression differences between conditions.
        - Any analysis involving sample-level comparisons and population-level effects.""",
-       
         "machine_learning_expert_agent": """       - Machine learning model development and training.
        - Feature engineering and selection.
        - Data transformation for downstream ML tasks.
@@ -236,8 +233,7 @@ def _get_agent_delegation_rules(agent_name: str, agent_config) -> str:
        - Cross-validation and hyperparameter tuning.
        - scVI embedding training for single-cell data.
        - Predictive modeling and classification.
-       - Dimensionality reduction for ML applications.""", 
-       
+       - Dimensionality reduction for ML applications.""",
         "visualization_expert_agent": """       - Creating publication-quality interactive visualizations for any omics data type.
        - UMAP, PCA, or t-SNE dimensionality reduction plots (colored by clusters, cell types, QC metrics, genes).
        - Quality control plots (n_genes, total_counts, mitochondrial %, ribosomal %).
@@ -245,22 +241,22 @@ def _get_agent_delegation_rules(agent_name: str, agent_config) -> str:
        - Elbow plots for determining optimal number of PCs for clustering.
        - Cluster composition plots showing sample/batch distribution across clusters.
        - Any request involving "plot", "visualize", "show", "UMAP", "heatmap", "violin", or similar visualization terms.
-       - Note: Some analysis agents (singlecell_expert, bulk_rnaseq_expert) can create basic plots as part of their workflows, but delegate to visualization_expert for custom or publication-quality visualizations.""",        
-#        "ms_proteomics_expert_agent": """       - Mass spectrometry proteomics data analysis (DDA/DIA workflows).
-#       - Database search artifact removal and protein inference.
-#       - Missing value pattern analysis (MNAR vs MCAR).
-#       - Intensity normalization (TMM, quantile, VSN).
-#       - Peptide-to-protein aggregation.
-#       - Batch effect detection and correction in proteomics data.
-#       - Statistical testing with multiple correction.
-#       - Pathway enrichment analysis for proteomics.""",
-#        "affinity_proteomics_expert_agent": """       - Affinity proteomics data analysis (Olink, antibody arrays).
-#       - NPX value processing and normalization.
-#       - Targeted protein panel analysis.
-#       - Antibody validation metrics.
-#       - Coefficient of variation analysis.
-#       - Panel comparison and harmonization.
-#       - Lower missing value handling (<30%).""",       
+       - Note: Some analysis agents (singlecell_expert, bulk_rnaseq_expert) can create basic plots as part of their workflows, but delegate to visualization_expert for custom or publication-quality visualizations.""",
+        #        "ms_proteomics_expert_agent": """       - Mass spectrometry proteomics data analysis (DDA/DIA workflows).
+        #       - Database search artifact removal and protein inference.
+        #       - Missing value pattern analysis (MNAR vs MCAR).
+        #       - Intensity normalization (TMM, quantile, VSN).
+        #       - Peptide-to-protein aggregation.
+        #       - Batch effect detection and correction in proteomics data.
+        #       - Statistical testing with multiple correction.
+        #       - Pathway enrichment analysis for proteomics.""",
+        #        "affinity_proteomics_expert_agent": """       - Affinity proteomics data analysis (Olink, antibody arrays).
+        #       - NPX value processing and normalization.
+        #       - Targeted protein panel analysis.
+        #       - Antibody validation metrics.
+        #       - Coefficient of variation analysis.
+        #       - Panel comparison and harmonization.
+        #       - Lower missing value handling (<30%).""",
     }
 
     # Return the specific rules for this agent, or a generic description if not found

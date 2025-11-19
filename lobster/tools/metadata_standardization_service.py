@@ -29,27 +29,36 @@ logger = logging.getLogger(__name__)
 
 try:
     from lobster.core.schemas.metabolomics import MetabolomicsMetadataSchema
+
     METABOLOMICS_AVAILABLE = True
 except ImportError:
     MetabolomicsMetadataSchema = None  # type: ignore
     METABOLOMICS_AVAILABLE = False
-    logger.warning("Metabolomics schema not available - metabolomics metadata operations disabled")
+    logger.warning(
+        "Metabolomics schema not available - metabolomics metadata operations disabled"
+    )
 
 try:
     from lobster.core.schemas.metagenomics import MetagenomicsMetadataSchema
+
     METAGENOMICS_AVAILABLE = True
 except ImportError:
     MetagenomicsMetadataSchema = None  # type: ignore
     METAGENOMICS_AVAILABLE = False
-    logger.warning("Metagenomics schema not available - metagenomics metadata operations disabled")
+    logger.warning(
+        "Metagenomics schema not available - metagenomics metadata operations disabled"
+    )
 
 try:
     from lobster.core.schemas.proteomics import ProteomicsMetadataSchema
+
     PROTEOMICS_AVAILABLE = True
 except ImportError:
     ProteomicsMetadataSchema = None  # type: ignore
     PROTEOMICS_AVAILABLE = False
-    logger.warning("Proteomics schema not available - proteomics metadata operations disabled")
+    logger.warning(
+        "Proteomics schema not available - proteomics metadata operations disabled"
+    )
 
 
 # =============================================================================
@@ -75,7 +84,7 @@ class StandardizationResult(BaseModel):
 
     standardized_metadata: List[BaseModel] = Field(
         default_factory=list,
-        description="Standardized metadata schemas (any available schema type)"
+        description="Standardized metadata schemas (any available schema type)",
     )
     validation_errors: Dict[str, str] = Field(
         default_factory=dict, description="Sample ID -> validation error message"
@@ -165,15 +174,19 @@ class MetadataStandardizationService:
             logger.debug("Metagenomics schema registered")
 
         if PROTEOMICS_AVAILABLE:
-            self.schema_registry.update({
-                "proteomics": ProteomicsMetadataSchema,
-                "mass_spectrometry": ProteomicsMetadataSchema,
-                "affinity": ProteomicsMetadataSchema,
-            })
+            self.schema_registry.update(
+                {
+                    "proteomics": ProteomicsMetadataSchema,
+                    "mass_spectrometry": ProteomicsMetadataSchema,
+                    "affinity": ProteomicsMetadataSchema,
+                }
+            )
             logger.debug("Proteomics schemas registered")
 
         available_modalities = ", ".join(sorted(self.schema_registry.keys()))
-        logger.info(f"MetadataStandardizationService initialized with modalities: {available_modalities}")
+        logger.info(
+            f"MetadataStandardizationService initialized with modalities: {available_modalities}"
+        )
 
     def _create_metadata_ir(
         self,
@@ -279,9 +292,15 @@ class MetadataStandardizationService:
             # Check which premium schemas are unavailable
             if target_schema in ["metabolomics"] and not METABOLOMICS_AVAILABLE:
                 premium_schemas.append("metabolomics")
-            if target_schema in ["metagenomics", "microbiome"] and not METAGENOMICS_AVAILABLE:
+            if (
+                target_schema in ["metagenomics", "microbiome"]
+                and not METAGENOMICS_AVAILABLE
+            ):
                 premium_schemas.append("metagenomics/microbiome")
-            if target_schema in ["proteomics", "mass_spectrometry", "affinity"] and not PROTEOMICS_AVAILABLE:
+            if (
+                target_schema in ["proteomics", "mass_spectrometry", "affinity"]
+                and not PROTEOMICS_AVAILABLE
+            ):
                 premium_schemas.append("proteomics")
 
             if premium_schemas:

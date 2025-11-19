@@ -6,7 +6,7 @@ including tool execution, error handling, and integration with services.
 """
 
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import anndata as ad
 import numpy as np
@@ -14,13 +14,12 @@ import pytest
 from langgraph.graph import StateGraph
 
 from lobster.agents.protein_structure_visualization_expert import (
-    protein_structure_visualization_expert,
     ProteinStructureVisualizationError,
+    protein_structure_visualization_expert,
 )
 from lobster.agents.state import ProteinStructureVisualizationExpertState
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.providers.pdb_provider import PDBStructureMetadata
-
 
 # ===============================================================================
 # Fixtures
@@ -99,6 +98,7 @@ class TestProteinStructureVisualizationExpertFactory:
 
     def test_agent_factory_with_handoff_tools(self, mock_data_manager):
         """Test factory with handoff tools."""
+
         # Create a proper mock tool function instead of Mock object
         def mock_handoff_tool():
             """Mock handoff tool."""
@@ -270,9 +270,7 @@ class TestAnalyzeProteinStructureTool:
         """Test successful structure analysis."""
         mock_service = Mock()
         analysis_results = {
-            "chain_properties": [
-                {"chain_id": "A", "n_residues": 214, "n_atoms": 1656}
-            ],
+            "chain_properties": [{"chain_id": "A", "n_residues": 214, "n_atoms": 1656}],
             "overall_radius_of_gyration": 18.5,
             "summary_stats": {"n_chains": 1, "total_atoms": 1656},
         }
@@ -396,9 +394,7 @@ class TestProteinStructureVisualizationExpertIntegration:
             {"style": "cartoon"},
             Mock(),
         )
-        mock_viz_service.check_pymol_installation.return_value = {
-            "installed": False
-        }
+        mock_viz_service.check_pymol_installation.return_value = {"installed": False}
         mock_viz_service_class.return_value = mock_viz_service
 
         mock_analysis_service = Mock()
@@ -499,7 +495,9 @@ class TestRegistryIntegration:
             import_agent_factory,
         )
 
-        config = get_agent_registry_config("protein_structure_visualization_expert_agent")
+        config = get_agent_registry_config(
+            "protein_structure_visualization_expert_agent"
+        )
         assert config is not None
 
         factory = import_agent_factory(config.factory_function)

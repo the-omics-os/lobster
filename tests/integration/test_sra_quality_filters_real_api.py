@@ -7,8 +7,9 @@ Tests quality filters against real NCBI SRA database to verify:
 - Modality-specific filters work as expected
 """
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.providers.sra_provider import SRAProvider, SRAProviderConfig
@@ -32,7 +33,9 @@ class TestQualityFiltersRealAPI:
         config = SRAProviderConfig(enable_quality_filters=False, max_results=5)
         return SRAProvider(data_manager=dm, config=config)
 
-    def test_quality_filters_reduce_results(self, provider_with_filters, provider_no_filters):
+    def test_quality_filters_reduce_results(
+        self, provider_with_filters, provider_no_filters
+    ):
         """
         Test that quality filters reduce result count compared to no filters.
 
@@ -52,8 +55,14 @@ class TestQualityFiltersRealAPI:
         )
 
         # Both should return results
-        assert "Total Results:" in result_with_filters or "🧬 SRA Database Search Results" in result_with_filters
-        assert "Total Results:" in result_no_filters or "🧬 SRA Database Search Results" in result_no_filters
+        assert (
+            "Total Results:" in result_with_filters
+            or "🧬 SRA Database Search Results" in result_with_filters
+        )
+        assert (
+            "Total Results:" in result_no_filters
+            or "🧬 SRA Database Search Results" in result_no_filters
+        )
 
         print("\n=== With Quality Filters ===")
         print(result_with_filters[:500])
@@ -69,9 +78,7 @@ class TestQualityFiltersRealAPI:
         appropriate datasets for 16S rRNA studies.
         """
         result = provider_with_filters.search_publications(
-            query="gut microbiome",
-            max_results=5,
-            modality_hint="amplicon"
+            query="gut microbiome", max_results=5, modality_hint="amplicon"
         )
 
         # Should return results
@@ -89,9 +96,7 @@ class TestQualityFiltersRealAPI:
         and return appropriate single-cell datasets.
         """
         result = provider_with_filters.search_publications(
-            query="single cell immune",
-            max_results=5,
-            modality_hint="scrna-seq"
+            query="single cell immune", max_results=5, modality_hint="scrna-seq"
         )
 
         # Should return results
@@ -107,9 +112,7 @@ class TestQualityFiltersRealAPI:
         Validates that bulk RNA-seq filters (base only) work correctly.
         """
         result = provider_with_filters.search_publications(
-            query="liver RNA-seq",
-            max_results=5,
-            modality_hint="bulk-rna-seq"
+            query="liver RNA-seq", max_results=5, modality_hint="bulk-rna-seq"
         )
 
         # Should return results
@@ -129,14 +132,18 @@ class TestQualityFiltersRealAPI:
             query="gut microbiome",
             max_results=5,
             filters={"organism": "Homo sapiens"},
-            modality_hint="amplicon"
+            modality_hint="amplicon",
         )
 
         # Should return results
         assert "🧬 SRA Database Search Results" in result or "Total Results:" in result
 
         # Should mention human organism
-        assert "sapiens" in result.lower() or "human" in result.lower() or "homo" in result.lower()
+        assert (
+            "sapiens" in result.lower()
+            or "human" in result.lower()
+            or "homo" in result.lower()
+        )
 
         print("\n=== Quality + Organism Filters Result ===")
         print(result[:800])
@@ -152,7 +159,7 @@ class TestQualityFiltersRealAPI:
             amplicon_region="16S",
             body_site="gut",
             host_organism="Homo sapiens",
-            max_results=5
+            max_results=5,
         )
 
         # Should return results with microbiome tips
@@ -171,12 +178,15 @@ class TestQualityFiltersRealAPI:
         direct metadata retrieval.
         """
         result = provider_with_filters.search_publications(
-            query="SRP033351",  # Known SRA study
-            max_results=20
+            query="SRP033351", max_results=20  # Known SRA study
         )
 
         # Should return results (accession lookup bypasses quality filters)
-        assert "🧬 SRA Database Search Results" in result or "No SRA Results Found" in result or "Total Results:" in result
+        assert (
+            "🧬 SRA Database Search Results" in result
+            or "No SRA Results Found" in result
+            or "Total Results:" in result
+        )
 
         print("\n=== Accession Lookup (bypasses quality filters) ===")
         print(result[:800])

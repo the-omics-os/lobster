@@ -19,7 +19,7 @@ class TestLLMProvider:
         """Test that provider enum has expected values."""
         assert LLMProvider.ANTHROPIC_DIRECT.value == "anthropic"
         assert LLMProvider.BEDROCK_ANTHROPIC.value == "bedrock"
-        assert LLMProvider.OPENAI.value == "openai" #future support
+        assert LLMProvider.OPENAI.value == "openai"  # future support
         assert LLMProvider.AZURE_OPENAI.value == "azure_openai"
 
 

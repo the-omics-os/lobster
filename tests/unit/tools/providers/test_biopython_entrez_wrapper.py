@@ -5,8 +5,9 @@ Tests the wrapper utility that provides standardized NCBI API access
 across all providers (SRA, PubMed, GEO).
 """
 
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 
 from lobster.tools.providers.biopython_entrez_wrapper import (
     BioPythonEntrezWrapper,
@@ -52,8 +53,7 @@ class TestBioPythonEntrezWrapperInit:
 
         # Create wrapper with explicit params
         wrapper = BioPythonEntrezWrapper(
-            email="custom@example.com",
-            api_key="custom-key"
+            email="custom@example.com", api_key="custom-key"
         )
 
         # Verify Bio.Entrez configured with explicit values
@@ -95,7 +95,7 @@ class TestBioPythonEntrezWrapperEsearch:
             "Count": "100",
             "IdList": ["12345", "67890"],
             "QueryKey": "1",
-            "WebEnv": "test-webenv"
+            "WebEnv": "test-webenv",
         }
         mock_entrez.esearch.return_value = mock_handle
         mock_entrez.read.return_value = mock_handle.read.return_value
@@ -112,11 +112,7 @@ class TestBioPythonEntrezWrapperEsearch:
 
         # Verify esearch called with correct params
         mock_entrez.esearch.assert_called_once_with(
-            db="sra",
-            term="microbiome",
-            retmax=20,
-            retstart=0,
-            usehistory="n"
+            db="sra", term="microbiome", retmax=20, retstart=0, usehistory="n"
         )
 
         # Verify result
@@ -197,7 +193,7 @@ class TestBioPythonEntrezWrapperEsummary:
         mock_handle = Mock()
         mock_summaries = [
             {"Id": "12345", "Title": "Dataset 1"},
-            {"Id": "67890", "Title": "Dataset 2"}
+            {"Id": "67890", "Title": "Dataset 2"},
         ]
         mock_handle.read.return_value = mock_summaries
         mock_entrez.esummary.return_value = mock_handle
@@ -247,10 +243,7 @@ class TestBioPythonEntrezWrapperEfetch:
 
         # Verify efetch called
         mock_entrez.efetch.assert_called_once_with(
-            db="sra",
-            id="12345",
-            rettype="xml",
-            retmode="xml"
+            db="sra", id="12345", rettype="xml", retmode="xml"
         )
 
         # Verify result
@@ -272,11 +265,8 @@ class TestBioPythonEntrezWrapperElink:
             {
                 "DbFrom": "gds",
                 "LinkSetDb": [
-                    {
-                        "DbTo": "pubmed",
-                        "Link": [{"Id": "111"}, {"Id": "222"}]
-                    }
-                ]
+                    {"DbTo": "pubmed", "Link": [{"Id": "111"}, {"Id": "222"}]}
+                ],
             }
         ]
         mock_handle.read.return_value = mock_links
@@ -294,11 +284,7 @@ class TestBioPythonEntrezWrapperElink:
         result = wrapper.elink(dbfrom="gds", db="pubmed", id="12345")
 
         # Verify elink called
-        mock_entrez.elink.assert_called_once_with(
-            dbfrom="gds",
-            db="pubmed",
-            id="12345"
-        )
+        mock_entrez.elink.assert_called_once_with(dbfrom="gds", db="pubmed", id="12345")
 
         # Verify result
         assert isinstance(result, list)
@@ -313,6 +299,7 @@ class TestDefaultWrapper:
         """Test that get_default_wrapper returns singleton instance."""
         # Reset singleton
         import lobster.tools.providers.biopython_entrez_wrapper as wrapper_module
+
         wrapper_module._default_wrapper = None
 
         # Create mock wrapper
@@ -364,10 +351,13 @@ class TestLazyImport:
         """Test that Bio.Entrez is imported lazily."""
         # Reset global
         import lobster.tools.providers.biopython_entrez_wrapper as wrapper_module
+
         wrapper_module._Bio_Entrez = None
 
         # Import should happen on first _get_bio_entrez call
-        with patch("lobster.tools.providers.biopython_entrez_wrapper.Entrez", create=True) as mock_entrez_import:
+        with patch(
+            "lobster.tools.providers.biopython_entrez_wrapper.Entrez", create=True
+        ) as mock_entrez_import:
             from lobster.tools.providers.biopython_entrez_wrapper import _get_bio_entrez
 
             # Reset again for clean test

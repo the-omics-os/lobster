@@ -8,19 +8,17 @@ for proteomics data analysis.
 Test coverage target: 95%+ with meaningful tests for proteomics preprocessing operations.
 """
 
-from typing import Any, Dict, List, Optional, Tuple, Union
-
-import pytest
-
 # Proteomics services tests (skip marker removed - tests now active)
 import os
 import tempfile
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
 from unittest.mock import MagicMock, Mock, mock_open, patch
 
 import anndata as ad
 import numpy as np
 import pandas as pd
+import pytest
 
 from lobster.tools.proteomics_preprocessing_service import (
     ProteomicsPreprocessingError,

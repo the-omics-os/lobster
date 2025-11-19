@@ -28,10 +28,10 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
     "data_expert_agent": AgentRegistryConfig(
         name="data_expert_agent",
         display_name="Data Expert",
-        description="Handles data acquisition, storage, and retrieval operations",
+        description="Executes queue-based downloads (ZERO online access), manages modalities with CRUD operations, loads local files via adapter system, retry mechanism with strategy overrides, and workspace orchestration",
         factory_function="lobster.agents.data_expert.data_expert",
         handoff_tool_name="handoff_to_data_expert_agent",
-        handoff_tool_description="Assign data related tasks to the data expert agent",
+        handoff_tool_description="Assign LOCAL data operations: execute downloads from validated queue entries, load local files via adapters, manage modalities (list/inspect/remove/validate), retry failed downloads. DO NOT delegate online operations (metadata/URL extraction) - those go to research_agent",
     ),
     "research_agent": AgentRegistryConfig(
         name="research_agent",
@@ -88,7 +88,7 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
         factory_function="lobster.agents.protein_structure_visualization_expert.protein_structure_visualization_expert",
         handoff_tool_name="handoff_to_protein_structure_visualization_expert_agent",
         handoff_tool_description="Assign protein structure visualization tasks to the protein structure visualization expert agent",
-    ),    
+    ),
     # 'ms_proteomics_expert_agent': AgentRegistryConfig(
     #     name='ms_proteomics_expert_agent',
     #     display_name='MS Proteomics Expert',
@@ -151,7 +151,6 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
     #     DO NOT delegate for standard analysis (clustering, DE, QC, visualization, literature search).
     #     """
     # ),
-
 }
 
 

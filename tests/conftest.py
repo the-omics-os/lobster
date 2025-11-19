@@ -183,7 +183,9 @@ def temp_workspace(test_config: Dict[str, Any]) -> Generator[Path, None, None]:
 
 
 @pytest.fixture(scope="function")
-def isolated_environment(temp_workspace: Path, monkeypatch) -> Generator[Path, None, None]:
+def isolated_environment(
+    temp_workspace: Path, monkeypatch
+) -> Generator[Path, None, None]:
     """Create completely isolated environment for testing.
 
     Provides full environment isolation by:
@@ -229,7 +231,9 @@ def isolated_environment(temp_workspace: Path, monkeypatch) -> Generator[Path, N
 
 
 @pytest.fixture(scope="function")
-def mock_agent_environment(isolated_environment: Path, mocker: MockerFixture) -> Dict[str, Any]:
+def mock_agent_environment(
+    isolated_environment: Path, mocker: MockerFixture
+) -> Dict[str, Any]:
     """Complete agent testing environment with mocked LLMs and settings.
 
     This fixture provides a unified environment for testing all agents with:

@@ -11,7 +11,7 @@ Test coverage target: 85%+ with meaningful tests for structure operations.
 
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch, mock_open
+from unittest.mock import MagicMock, Mock, mock_open, patch
 
 import anndata as ad
 import numpy as np
@@ -24,15 +24,15 @@ from lobster.tools.chimerax_visualization_service_ALPHA import (
     ChimeraXVisualizationError,
     ChimeraXVisualizationService,
 )
-from lobster.tools.pymol_visualization_service import (
-    PyMOLVisualizationService,
-    PyMOLVisualizationError,
-)
 from lobster.tools.protein_structure_fetch_service import (
     ProteinStructureFetchError,
     ProteinStructureFetchService,
 )
 from lobster.tools.providers.pdb_provider import PDBStructureMetadata
+from lobster.tools.pymol_visualization_service import (
+    PyMOLVisualizationError,
+    PyMOLVisualizationService,
+)
 from lobster.tools.structure_analysis_service import (
     StructureAnalysisError,
     StructureAnalysisService,
@@ -142,7 +142,12 @@ class TestProteinStructureFetchService:
 
     @patch("lobster.tools.protein_structure_fetch_service.PDBProvider")
     def test_fetch_structure_success(
-        self, mock_provider_class, fetch_service, mock_pdb_metadata, mock_structure_file, tmp_path
+        self,
+        mock_provider_class,
+        fetch_service,
+        mock_pdb_metadata,
+        mock_structure_file,
+        tmp_path,
     ):
         """Test successful structure fetch."""
         # Setup mock
@@ -171,7 +176,12 @@ class TestProteinStructureFetchService:
 
     @patch("lobster.tools.protein_structure_fetch_service.PDBProvider")
     def test_fetch_structure_cached(
-        self, mock_provider_class, fetch_service, mock_pdb_metadata, mock_structure_file, tmp_path
+        self,
+        mock_provider_class,
+        fetch_service,
+        mock_pdb_metadata,
+        mock_structure_file,
+        tmp_path,
     ):
         """Test fetch with cached structure."""
         # Create cached file
@@ -290,7 +300,9 @@ class TestChimeraXVisualizationService:
         """Test visualization with non-existent structure file."""
         fake_file = tmp_path / "nonexistent.pdb"
 
-        with pytest.raises(ChimeraXVisualizationError, match="Structure file not found"):
+        with pytest.raises(
+            ChimeraXVisualizationError, match="Structure file not found"
+        ):
             viz_service.visualize_structure(
                 structure_file=fake_file, execute_commands=False
             )
@@ -464,7 +476,9 @@ class TestPyMOLVisualizationService:
         )
 
         # Check highlight commands are present
-        assert any("select highlight_residues, resi 15+42+89" in cmd for cmd in commands)
+        assert any(
+            "select highlight_residues, resi 15+42+89" in cmd for cmd in commands
+        )
         assert any("show sticks, highlight_residues" in cmd for cmd in commands)
         assert any("color red, highlight_residues" in cmd for cmd in commands)
 
@@ -549,7 +563,9 @@ class TestPyMOLVisualizationService:
 
         # Check IR includes highlight_groups parameter
         assert "highlight_groups" in ir.parameters
-        assert ir.parameters["highlight_groups"] == "15,42|red|sticks;100-120|blue|surface"
+        assert (
+            ir.parameters["highlight_groups"] == "15,42|red|sticks;100-120|blue|surface"
+        )
 
         # Read script file and verify commands
         script_file = Path(viz_data["script_file"])
@@ -709,14 +725,18 @@ class TestStructureAnalysisService:
         assert stats["analysis_type"] == "residue_contacts"
         assert isinstance(ir, AnalysisStep)
 
-    def test_analyze_structure_invalid_type(self, analysis_service, mock_structure_file):
+    def test_analyze_structure_invalid_type(
+        self, analysis_service, mock_structure_file
+    ):
         """Test analysis with invalid analysis type."""
         with pytest.raises(StructureAnalysisError, match="Unknown analysis type"):
             analysis_service.analyze_structure(
                 structure_file=mock_structure_file, analysis_type="invalid"
             )
 
-    def test_calculate_rmsd_aligned(self, analysis_service, mock_structure_file, tmp_path):
+    def test_calculate_rmsd_aligned(
+        self, analysis_service, mock_structure_file, tmp_path
+    ):
         """Test RMSD calculation with alignment."""
         # Create second structure file (copy of first for testing)
         structure_file2 = tmp_path / "1AKE_copy.pdb"

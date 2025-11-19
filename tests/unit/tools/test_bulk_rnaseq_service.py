@@ -423,7 +423,9 @@ class TestSalmonQuantification:
 class TestDifferentialExpression:
     """Test differential expression analysis."""
 
-    def test_run_differential_expression_basic(self, bulk_service, bulk_adata_with_groups):
+    def test_run_differential_expression_basic(
+        self, bulk_service, bulk_adata_with_groups
+    ):
         """Test basic differential expression analysis (NEW API)."""
         # New API: returns tuple (adata_de, de_stats) instead of string
         adata_de, de_stats = bulk_service.run_differential_expression_analysis(
@@ -816,9 +818,7 @@ class TestBulkRNASeqErrorHandling:
             with pytest.raises(PermissionError):
                 BulkRNASeqService(results_dir=Path("/invalid/path"))
 
-    def test_concurrent_analysis_safety(
-        self, bulk_service, bulk_adata_with_groups
-    ):
+    def test_concurrent_analysis_safety(self, bulk_service, bulk_adata_with_groups):
         """Test thread safety for concurrent analyses."""
         import threading
         import time
@@ -833,13 +833,15 @@ class TestBulkRNASeqErrorHandling:
                     bulk_service, "_run_deseq2_like_analysis"
                 ) as mock_analysis:
                     # Mock return must include all expected columns
-                    mock_analysis.return_value = pd.DataFrame({
-                        "gene_id": [f"GENE_{worker_id}"],
-                        "log2FoldChange": [1.5],
-                        "pvalue": [0.01],
-                        "padj": [0.05],  # Required column
-                        "baseMean": [100.0],
-                    })
+                    mock_analysis.return_value = pd.DataFrame(
+                        {
+                            "gene_id": [f"GENE_{worker_id}"],
+                            "log2FoldChange": [1.5],
+                            "pvalue": [0.01],
+                            "padj": [0.05],  # Required column
+                            "baseMean": [100.0],
+                        }
+                    )
 
                     result = bulk_service.run_differential_expression_analysis(
                         adata=bulk_adata_with_groups.copy(),

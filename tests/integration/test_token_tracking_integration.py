@@ -109,10 +109,10 @@ class TestTokenTrackingIntegration:
         assert len(usage2["by_agent"]) > 0
 
         # Verify session total matches sum of invocations
-        invocation_cost_sum = sum(
-            inv["cost_usd"] for inv in usage2["invocations"]
-        )
-        assert abs(invocation_cost_sum - total_cost_2) < 0.0001  # Allow small floating point difference
+        invocation_cost_sum = sum(inv["cost_usd"] for inv in usage2["invocations"])
+        assert (
+            abs(invocation_cost_sum - total_cost_2) < 0.0001
+        )  # Allow small floating point difference
 
     def test_token_tracking_per_agent_breakdown(self, temp_workspace):
         """Test that per-agent token tracking works correctly."""
@@ -170,6 +170,7 @@ class TestTokenTrackingIntegration:
 
         # Verify content
         import json
+
         with open(token_file, "r") as f:
             saved_usage = json.load(f)
 
@@ -232,8 +233,9 @@ class TestTokenTrackingIntegration:
         if total_tokens > 0:
             cost_per_1k_tokens = (total_cost / total_tokens) * 1000
             # Should be between $0.001 (cheapest input) and $0.0225 (most expensive output - long context)
-            assert 0.0005 < cost_per_1k_tokens < 0.025, \
-                f"Cost per 1k tokens ({cost_per_1k_tokens}) seems unreasonable"
+            assert (
+                0.0005 < cost_per_1k_tokens < 0.025
+            ), f"Cost per 1k tokens ({cost_per_1k_tokens}) seems unreasonable"
 
     def test_token_tracking_model_identification(self, temp_workspace):
         """Test that models are correctly identified in token tracking."""
@@ -259,10 +261,10 @@ class TestTokenTrackingIntegration:
             # Model should be one of our configured models
             # (either Claude variants or at least a recognized format)
             assert (
-                "claude" in model.lower() or
-                "anthropic" in model.lower() or
-                "bedrock" in model.lower() or
-                "us.anthropic" in model
+                "claude" in model.lower()
+                or "anthropic" in model.lower()
+                or "bedrock" in model.lower()
+                or "us.anthropic" in model
             ), f"Unexpected model identifier: {model}"
 
 

@@ -248,6 +248,10 @@ lobster/
 | Queue | `core/download_queue.py` | download orchestration |
 | Export | `core/notebook_exporter.py` | Jupyter pipeline export |
 | Services | `tools/*.py` | stateless analysis |
+| Services | `tools/modality_management_service.py` | Modality CRUD with provenance (5 methods) |
+| Download | `tools/download_orchestrator.py` | Central router for database-specific downloads (9-step execution) |
+| Download | `tools/geo_download_service.py` | GEO database download service (IDownloadService impl) |
+| Interfaces | `core/interfaces/download_service.py` | IDownloadService abstract base class |
 | Providers | `tools/providers/*.py` | PubMed/GEO/Web access |
 | Registry | `config/agent_registry.py` | agent configuration |
 
@@ -258,7 +262,7 @@ lobster/
 | `supervisor` | route user intents to specialists, manage handoffs |
 | `research_agent` | literature & dataset discovery, URL extraction, workspace caching |
 | `metadata_assistant` | ID mapping, schema‑based validation, harmonization |
-| `data_expert` | loading, QC, downloads via queue |
+| `data_expert` | **ZERO ONLINE ACCESS**: execute downloads from pre-validated queue entries (research_agent creates), load local files via adapter system, manage modalities with ModalityManagementService (5 CRUD tools), retry failed downloads with strategy overrides, queue monitoring & troubleshooting |
 | `singlecell_expert` | scRNA‑seq: QC, clustering, pseudobulk, trajectories, markers |
 | `bulk_rnaseq_expert` | bulk RNA‑seq import + DE (pyDESeq2, formula designs) |
 | `ms_proteomics_expert` | DDA/DIA workflows, missing values, normalization |
@@ -381,11 +385,13 @@ class QualityService:
 
 Checklist for new services:
 
-- [ ] Returns `Tuple[AnnData, Dict[str, Any], AnalysisStep]`  
-- [ ] Helper `_create_ir(**params)` builds IR + parameter schema  
-- [ ] Jinja2 `code_template` uses `{{ param }}` only, standard libs only  
-- [ ] Agent tools call `log_tool_usage(..., ir=ir)`  
+- [ ] Returns `Tuple[AnnData, Dict[str, Any], AnalysisStep]`
+- [ ] Helper `_create_ir(**params)` builds IR + parameter schema
+- [ ] Jinja2 `code_template` uses `{{ param }}` only, standard libs only
+- [ ] Agent tools call `log_tool_usage(..., ir=ir)`
 - [ ] Works with `/pipeline export` + notebook execution
+
+**Recent Enhancement (v2.4+)**: All ModalityManagementService methods and DownloadOrchestrator operations emit AnalysisStep IR, ensuring complete provenance tracking for data loading, downloads, and modality operations.
 
 ### 4.5 Patterns & Abstractions
 
@@ -422,11 +428,99 @@ AGENT_REGISTRY = {
 Adding a new agent should be **registry‑only** wherever possible.
 
 - **Adapter pattern**:
-  - `IModalityAdapter` – format‑specific loading (10x, H5AD, etc.)  
-  - `IDataBackend` – H5AD/MuData/S3 backends  
-  - `BaseClient` – local vs cloud client abstraction  
+  - `IModalityAdapter` – format‑specific loading (10x, H5AD, etc.)
+  - `IDataBackend` – H5AD/MuData/S3 backends
+  - `BaseClient` – local vs cloud client abstraction
 
-### 4.6 Naming & Data Quality
+### 4.6 Download Architecture (Queue-Based Pattern)
+
+**Problem**: data_expert had online access, could fetch metadata/URLs directly, breaking single-responsibility principle.
+
+**Solution**: Established ZERO online access boundary with queue-based coordination:
+
+1. **research_agent** (online): Validates metadata, extracts URLs, creates DownloadQueueEntry (status: PENDING)
+2. **supervisor**: Extracts entry_id from research_agent response, delegates to data_expert
+3. **data_expert** (offline): Executes download via execute_download_from_queue(entry_id), updates status
+
+**Key Components**:
+
+- **IDownloadService** (`core/interfaces/download_service.py`): Abstract base class for database-specific services
+  - `supports_database(database: str) -> bool`
+  - `download_dataset(queue_entry, strategy_override) -> (adata, stats, ir)`
+  - `validate_strategy_params(params) -> (bool, Optional[str])`
+  - `get_supported_strategies() -> List[str]`
+
+- **DownloadOrchestrator** (`tools/download_orchestrator.py`): Central router with 9-step execution logic
+  - Service registration: `register_service(service: IDownloadService)`
+  - Execution: `execute_download(entry_id, strategy_override) -> (modality_name, stats)`
+  - Automatic service detection by database type
+  - Comprehensive error handling with queue status updates
+
+- **GEODownloadService** (`tools/geo_download_service.py`): Adapter wrapping GEOService
+  - Composition pattern (uses GEOService internally)
+  - Adapts string return to (AnnData, stats, ir) tuple
+  - Retrieves stored modality from DataManagerV2
+
+**Usage Pattern**:
+```python
+# research_agent creates queue entry
+entry_id = research_agent.validate_and_queue("GSE12345")
+
+# data_expert executes
+orchestrator = DownloadOrchestrator(data_manager)
+orchestrator.register_service(GEODownloadService(data_manager))
+modality_name, stats = orchestrator.execute_download(entry_id)
+```
+
+**Benefits**:
+- Clear separation of concerns (online vs offline operations)
+- Extensible to new databases (SRA, PRIDE, etc.) via IDownloadService
+- Provenance tracking at every step
+- Retry mechanism with strategy overrides
+- Comprehensive error handling and status tracking
+
+### 4.7 ModalityManagementService Pattern
+
+**Problem**: Modality CRUD operations scattered across data_expert tools, inconsistent provenance tracking.
+
+**Solution**: Centralized service with 5 standardized methods, all returning (result, stats, ir) tuples.
+
+**Location**: `lobster/tools/modality_management_service.py`
+
+**Methods**:
+```python
+class ModalityManagementService:
+    def list_modalities(filter_pattern: Optional[str]) -> (List[Dict], Dict, AnalysisStep):
+        """List modalities with optional glob filtering."""
+
+    def get_modality_info(modality_name: str) -> (Dict, Dict, AnalysisStep):
+        """Get detailed info (shape, layers, obsm/varm/uns keys, quality metrics)."""
+
+    def remove_modality(modality_name: str) -> (bool, Dict, AnalysisStep):
+        """Remove modality from DataManagerV2."""
+
+    def validate_compatibility(modality_names: List[str]) -> (Dict, Dict, AnalysisStep):
+        """Validate obs/var overlap, batch effects, recommend integration strategy."""
+
+    def load_modality(
+        modality_name: str,
+        file_path: str,
+        adapter: str,
+        dataset_type: str = "custom",
+        validate: bool = True
+    ) -> (AnnData, Dict, AnalysisStep):
+        """Load data file via adapter system with schema validation."""
+```
+
+**Integration**: data_expert agent creates service instance and exposes tools wrapping each method.
+
+**Benefits**:
+- Consistent 3-tuple pattern (result, stats, ir)
+- W3C-PROV compliance via AnalysisStep IR
+- Centralized error handling
+- Reusable across multiple agents
+
+### 4.8 Naming & Data Quality
 
 **Naming convention (example)**:
 

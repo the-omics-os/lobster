@@ -110,7 +110,7 @@ class TestH5ADSerializationFix:
             "parameters": {
                 "bootstrap": 100,
                 "original_shape": (60000, 4),
-            }
+            },
         }
 
         backend = H5ADBackend()
@@ -127,7 +127,7 @@ class TestH5ADSerializationFix:
         assert isinstance(loaded.uns["shape"], (list, np.ndarray))
         assert isinstance(
             loaded.uns["quantification_metadata"]["parameters"]["original_shape"],
-            (list, np.ndarray)
+            (list, np.ndarray),
         )
 
     def test_transcriptomics_adapter_sanitization(self, temp_workspace):
@@ -175,7 +175,9 @@ class TestH5ADSerializationFix:
 
     @pytest.mark.real_api
     @pytest.mark.slow
-    def test_real_geo_download_and_save(self, data_manager, geo_service, temp_workspace):
+    def test_real_geo_download_and_save(
+        self, data_manager, geo_service, temp_workspace
+    ):
         """
         Integration test with real GEO download.
 
@@ -190,7 +192,7 @@ class TestH5ADSerializationFix:
             result = geo_service.download_dataset(
                 geo_id=geo_id,
                 data_manager=data_manager,
-                force=False  # Use cache if available
+                force=False,  # Use cache if available
             )
 
             # Verify dataset was loaded
@@ -223,12 +225,10 @@ class TestArrowExtensionArrayFix:
         # Simulate ArrowExtensionArray by explicitly creating string[pyarrow] dtype
         try:
             adata.obs["cell_type"] = pd.Series(
-                ["T-cell", "B-cell"],
-                dtype=pd.StringDtype("pyarrow")
+                ["T-cell", "B-cell"], dtype=pd.StringDtype("pyarrow")
             )
             adata.obs["sample_id"] = pd.Series(
-                ["sample1", "sample2"],
-                dtype=pd.StringDtype("pyarrow")
+                ["sample1", "sample2"], dtype=pd.StringDtype("pyarrow")
             )
         except Exception:
             # If pyarrow is not available, skip this part but still test the fix
@@ -254,12 +254,10 @@ class TestArrowExtensionArrayFix:
 
         try:
             adata.var["gene_name"] = pd.Series(
-                ["GENE1", "GENE2"],
-                dtype=pd.StringDtype("pyarrow")
+                ["GENE1", "GENE2"], dtype=pd.StringDtype("pyarrow")
             )
             adata.var["biotype"] = pd.Series(
-                ["protein_coding", "lncRNA"],
-                dtype=pd.StringDtype("pyarrow")
+                ["protein_coding", "lncRNA"], dtype=pd.StringDtype("pyarrow")
             )
         except Exception:
             pytest.skip("PyArrow not available for ArrowExtensionArray test")
@@ -282,12 +280,10 @@ class TestArrowExtensionArrayFix:
         try:
             # Set index to ArrowExtensionArray
             adata.obs.index = pd.Index(
-                ["cell_001", "cell_002"],
-                dtype=pd.StringDtype("pyarrow")
+                ["cell_001", "cell_002"], dtype=pd.StringDtype("pyarrow")
             )
             adata.var.index = pd.Index(
-                ["gene_001", "gene_002"],
-                dtype=pd.StringDtype("pyarrow")
+                ["gene_001", "gene_002"], dtype=pd.StringDtype("pyarrow")
             )
         except Exception:
             pytest.skip("PyArrow not available for ArrowExtensionArray test")
@@ -311,16 +307,13 @@ class TestArrowExtensionArrayFix:
         try:
             # GEOparse typically returns DataFrames with string[pyarrow] dtype
             adata.obs["geo_accession"] = pd.Series(
-                ["GSM1234", "GSM5678"],
-                dtype=pd.StringDtype("pyarrow")
+                ["GSM1234", "GSM5678"], dtype=pd.StringDtype("pyarrow")
             )
             adata.obs["source_name"] = pd.Series(
-                ["tissue_A", "tissue_B"],
-                dtype=pd.StringDtype("pyarrow")
+                ["tissue_A", "tissue_B"], dtype=pd.StringDtype("pyarrow")
             )
             adata.var.index = pd.Index(
-                ["gene_A", "gene_B", "gene_C"],
-                dtype=pd.StringDtype("pyarrow")
+                ["gene_A", "gene_B", "gene_C"], dtype=pd.StringDtype("pyarrow")
             )
         except Exception:
             pytest.skip("PyArrow not available for ArrowExtensionArray test")
@@ -348,9 +341,7 @@ class TestAdapterSanitization:
 
         # Create test quantification data
         df = pd.DataFrame(
-            [[1, 2], [3, 4]],
-            index=["gene1", "gene2"],
-            columns=["sample1", "sample2"]
+            [[1, 2], [3, 4]], index=["gene1", "gene2"], columns=["sample1", "sample2"]
         )
 
         # Metadata with problematic types
@@ -363,9 +354,7 @@ class TestAdapterSanitization:
 
         # Create AnnData
         adata = adapter.from_quantification_dataframe(
-            df=df,
-            data_type="bulk_rnaseq",
-            metadata=metadata
+            df=df, data_type="bulk_rnaseq", metadata=metadata
         )
 
         # Verify sanitization happened

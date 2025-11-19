@@ -273,9 +273,7 @@ class TestPhase1PubMedPatternCompliance:
         """Test that agent's query is NOT split or modified."""
         # Agent sends: "microbiome OR 16S"
         # Provider should use it AS-IS, only add filters
-        result = sra_provider.search_publications(
-            "microbiome OR 16S", max_results=3
-        )
+        result = sra_provider.search_publications("microbiome OR 16S", max_results=3)
 
         # Should work (OR logic should be preserved)
         assert "SRA Database Search Results" in result or "No" in result

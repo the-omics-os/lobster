@@ -27,16 +27,19 @@ logger = get_logger(__name__)
 
 class CustomFeatureError(Exception):
     """Base exception for custom feature operations."""
+
     pass
 
 
 class FeatureCreationError(CustomFeatureError):
     """Raised when feature creation fails."""
+
     pass
 
 
 class ValidationError(CustomFeatureError):
     """Raised when feature validation fails."""
+
     pass
 
 
@@ -91,14 +94,17 @@ def custom_feature_agent(
         if not name:
             return False, "Feature name cannot be empty"
 
-        if not re.match(r'^[a-z][a-z0-9_]*$', name):
-            return False, "Feature name must start with lowercase letter and contain only lowercase letters, numbers, and underscores"
+        if not re.match(r"^[a-z][a-z0-9_]*$", name):
+            return (
+                False,
+                "Feature name must start with lowercase letter and contain only lowercase letters, numbers, and underscores",
+            )
 
-        if name.endswith('_'):
+        if name.endswith("_"):
             return False, "Feature name cannot end with underscore"
 
         # Check for reserved names
-        reserved = ['supervisor', 'data', 'base', 'core', 'config']
+        reserved = ["supervisor", "data", "base", "core", "config"]
         if name in reserved:
             return False, f"Feature name '{name}' is reserved"
 
@@ -127,16 +133,28 @@ def custom_feature_agent(
             existing.append(str(service_file))
 
         # Check test files
-        test_agent = lobster_root / "tests" / "unit" / "agents" / f"test_{feature_name}_expert.py"
+        test_agent = (
+            lobster_root
+            / "tests"
+            / "unit"
+            / "agents"
+            / f"test_{feature_name}_expert.py"
+        )
         if test_agent.exists():
             existing.append(str(test_agent))
 
-        test_service = lobster_root / "tests" / "unit" / "tools" / f"test_{feature_name}_service.py"
+        test_service = (
+            lobster_root
+            / "tests"
+            / "unit"
+            / "tools"
+            / f"test_{feature_name}_service.py"
+        )
         if test_service.exists():
             existing.append(str(test_service))
 
         # Check wiki (using lowercase kebab-case convention)
-        wiki_name = feature_name.replace('_', '-').lower()
+        wiki_name = feature_name.replace("_", "-").lower()
         wiki_file = lobster_root / "lobster" / "wiki" / f"{wiki_name}.md"
         if wiki_file.exists():
             existing.append(str(wiki_file))
@@ -162,7 +180,7 @@ def custom_feature_agent(
         from datetime import date
 
         # Generate branch name with date
-        date_str = date.today().strftime('%y%m%d')
+        date_str = date.today().strftime("%y%m%d")
         branch_name = f"feature/{feature_name}_{date_str}"
 
         try:
@@ -172,14 +190,14 @@ def custom_feature_agent(
                 capture_output=True,
                 text=True,
                 check=False,
-                cwd=str(lobster_root)
+                cwd=str(lobster_root),
             )
 
             if result.returncode == 0:
                 logger.warning(f"Branch {branch_name} already exists")
                 return {
                     "success": False,
-                    "error": f"Branch '{branch_name}' already exists. Use a different feature name or delete the existing branch."
+                    "error": f"Branch '{branch_name}' already exists. Use a different feature name or delete the existing branch.",
                 }
 
             # Check for uncommitted changes
@@ -188,14 +206,14 @@ def custom_feature_agent(
                 capture_output=True,
                 text=True,
                 check=True,
-                cwd=str(lobster_root)
+                cwd=str(lobster_root),
             )
 
             if status_result.stdout.strip():
                 logger.warning("Uncommitted changes detected")
                 return {
                     "success": False,
-                    "error": "Working directory has uncommitted changes. Please commit or stash them before creating a new feature branch."
+                    "error": "Working directory has uncommitted changes. Please commit or stash them before creating a new feature branch.",
                 }
 
             # Create and switch to branch
@@ -204,30 +222,24 @@ def custom_feature_agent(
                 capture_output=True,
                 text=True,
                 check=True,
-                cwd=str(lobster_root)
+                cwd=str(lobster_root),
             )
 
             logger.info(f"Created feature branch: {branch_name}")
             return {
                 "success": True,
                 "branch_name": branch_name,
-                "message": f"Successfully created and switched to branch: {branch_name}"
+                "message": f"Successfully created and switched to branch: {branch_name}",
             }
 
         except subprocess.CalledProcessError as e:
             error_msg = f"Git operation failed: {e.stderr if e.stderr else str(e)}"
             logger.error(error_msg)
-            return {
-                "success": False,
-                "error": error_msg
-            }
+            return {"success": False, "error": error_msg}
         except Exception as e:
             error_msg = f"Unexpected error during branch creation: {str(e)}"
             logger.error(error_msg)
-            return {
-                "success": False,
-                "error": error_msg
-            }
+            return {"success": False, "error": error_msg}
 
     def detect_packages_in_files(file_paths: List[str]) -> Dict[str, List[str]]:
         """
@@ -252,9 +264,20 @@ def custom_feature_agent(
 
         # Common system tools that might be imported or used
         system_tools = {
-            'samtools', 'bcftools', 'bedtools', 'bwa', 'bowtie2',
-            'kallisto', 'salmon', 'star', 'hisat2', 'featurecounts',
-            'blastn', 'blastp', 'blastx', 'makeblastdb'
+            "samtools",
+            "bcftools",
+            "bedtools",
+            "bwa",
+            "bowtie2",
+            "kallisto",
+            "salmon",
+            "star",
+            "hisat2",
+            "featurecounts",
+            "blastn",
+            "blastp",
+            "blastx",
+            "makeblastdb",
         }
 
         python_packages = set()
@@ -263,20 +286,20 @@ def custom_feature_agent(
         unknown = set()
 
         for file_path in file_paths:
-            if not file_path.endswith('.py'):
+            if not file_path.endswith(".py"):
                 continue
 
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, "r", encoding="utf-8") as f:
                     content = f.read()
 
                 # Extract import statements
-                import_pattern = r'^(?:import|from)\s+(\w+)'
+                import_pattern = r"^(?:import|from)\s+(\w+)"
                 matches = re.findall(import_pattern, content, re.MULTILINE)
 
                 for module_name in matches:
                     # Skip local imports
-                    if module_name.startswith('lobster'):
+                    if module_name.startswith("lobster"):
                         continue
 
                     # Categorize
@@ -284,7 +307,7 @@ def custom_feature_agent(
                         standard_lib.add(module_name)
                     elif module_name.lower() in system_tools:
                         system_packages.add(module_name.lower())
-                    elif module_name in ['os', 'sys', 'pathlib']:  # Explicit stdlib
+                    elif module_name in ["os", "sys", "pathlib"]:  # Explicit stdlib
                         standard_lib.add(module_name)
                     else:
                         # Assume third-party Python package
@@ -298,10 +321,12 @@ def custom_feature_agent(
             "python_packages": sorted(list(python_packages)),
             "system_packages": sorted(list(system_packages)),
             "standard_lib": sorted(list(standard_lib)),
-            "unknown": sorted(list(unknown))
+            "unknown": sorted(list(unknown)),
         }
 
-    def check_package_installation(packages: Dict[str, List[str]]) -> Dict[str, Dict[str, bool]]:
+    def check_package_installation(
+        packages: Dict[str, List[str]],
+    ) -> Dict[str, Dict[str, bool]]:
         """
         Check if packages are installed using importlib (pip) and subprocess (brew).
 
@@ -340,13 +365,12 @@ def custom_feature_agent(
                 logger.warning(f"Error checking system tool {sys_tool}: {e}")
                 system_status[sys_tool] = False
 
-        return {
-            "python_packages": python_status,
-            "system_packages": system_status
-        }
+        return {"python_packages": python_status, "system_packages": system_status}
 
-    def format_package_warnings(package_status: Dict[str, Dict[str, bool]],
-                               detected_packages: Dict[str, List[str]]) -> str:
+    def format_package_warnings(
+        package_status: Dict[str, Dict[str, bool]],
+        detected_packages: Dict[str, List[str]],
+    ) -> str:
         """
         Format missing package warnings for user response.
 
@@ -357,8 +381,16 @@ def custom_feature_agent(
         Returns:
             Markdown-formatted warning section with installation instructions
         """
-        missing_python = [pkg for pkg, installed in package_status.get("python_packages", {}).items() if not installed]
-        missing_system = [pkg for pkg, installed in package_status.get("system_packages", {}).items() if not installed]
+        missing_python = [
+            pkg
+            for pkg, installed in package_status.get("python_packages", {}).items()
+            if not installed
+        ]
+        missing_system = [
+            pkg
+            for pkg, installed in package_status.get("system_packages", {}).items()
+            if not installed
+        ]
 
         if not missing_python and not missing_system:
             return ""
@@ -384,7 +416,7 @@ def custom_feature_agent(
 
     def research_with_linkup(
         feature_description: str,
-        search_focus: str = "GitHub repositories, packages, best practices"
+        search_focus: str = "GitHub repositories, packages, best practices",
     ) -> Dict[str, Any]:
         """
         Research feature requirements using Linkup SDK (synchronous).
@@ -420,30 +452,30 @@ def custom_feature_agent(
                     "packages": [],
                     "best_practices": [],
                     "summary": "Research skipped (no API key configured)",
-                    "error": "LINKUP_API_KEY not configured in settings"
+                    "error": "LINKUP_API_KEY not configured in settings",
                 }
 
             client = LinkupClient(api_key=api_key)
             logger.info(f"[RESEARCH] Starting research for: {feature_description}")
 
             # Query 1: Search for GitHub repositories
-            github_query = f"{feature_description} bioinformatics Python site:github.com"
+            github_query = (
+                f"{feature_description} bioinformatics Python site:github.com"
+            )
             logger.info(f"[RESEARCH] Query 1: {github_query}")
 
             github_response = client.search(
-                query=github_query,
-                depth="deep",
-                output_type="sourcedAnswer"
+                query=github_query, depth="deep", output_type="sourcedAnswer"
             )
 
             # Query 2: Search for Python packages and libraries
-            package_query = f"{feature_description} Python library package bioinformatics"
+            package_query = (
+                f"{feature_description} Python library package bioinformatics"
+            )
             logger.info(f"[RESEARCH] Query 2: {package_query}")
 
             package_response = client.search(
-                query=package_query,
-                depth="deep",
-                output_type="sourcedAnswer"
+                query=package_query, depth="deep", output_type="sourcedAnswer"
             )
 
             # Query 3: Search for best practices and tutorials
@@ -451,35 +483,52 @@ def custom_feature_agent(
             logger.info(f"[RESEARCH] Query 3: {practices_query}")
 
             practices_response = client.search(
-                query=practices_query,
-                depth="deep",
-                output_type="sourcedAnswer"
+                query=practices_query, depth="deep", output_type="sourcedAnswer"
             )
 
             # Parse responses
             github_repos = []
-            if hasattr(github_response, 'sources') and github_response.sources:
+            if hasattr(github_response, "sources") and github_response.sources:
                 for source in github_response.sources[:5]:  # Top 5 repos
-                    github_repos.append({
-                        "name": getattr(source, "name", "Unknown"),
-                        "url": getattr(source, "url", ""),
-                        "snippet": getattr(source, "snippet", "")[:200]  # Truncate
-                    })
+                    github_repos.append(
+                        {
+                            "name": getattr(source, "name", "Unknown"),
+                            "url": getattr(source, "url", ""),
+                            "snippet": getattr(source, "snippet", "")[:200],  # Truncate
+                        }
+                    )
 
             packages = []
-            if hasattr(package_response, 'answer'):
+            if hasattr(package_response, "answer"):
                 # Extract package names from answer (simple regex)
                 import re
-                package_matches = re.findall(r'\b([a-z][a-z0-9_-]*)\b', package_response.answer.lower())
+
+                package_matches = re.findall(
+                    r"\b([a-z][a-z0-9_-]*)\b", package_response.answer.lower()
+                )
                 # Filter to known bioinformatics packages
-                known_packages = ['biopython', 'scanpy', 'anndata', 'scipy', 'numpy',
-                                'pandas', 'matplotlib', 'seaborn', 'squidpy', 'pydeseq2',
-                                'plotly', 'scikit-learn', 'sklearn', 'pytorch', 'tensorflow']
+                known_packages = [
+                    "biopython",
+                    "scanpy",
+                    "anndata",
+                    "scipy",
+                    "numpy",
+                    "pandas",
+                    "matplotlib",
+                    "seaborn",
+                    "squidpy",
+                    "pydeseq2",
+                    "plotly",
+                    "scikit-learn",
+                    "sklearn",
+                    "pytorch",
+                    "tensorflow",
+                ]
                 packages = [p for p in package_matches if p in known_packages]
                 packages = list(set(packages))[:10]  # Unique, top 10
 
             best_practices = []
-            if hasattr(practices_response, 'answer'):
+            if hasattr(practices_response, "answer"):
                 best_practices.append(practices_response.answer[:500])  # Truncate
 
             # Summary
@@ -491,7 +540,9 @@ Relevant Packages: {', '.join(packages) if packages else 'None identified'}
 Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositories found'}
 """
 
-            logger.info(f"[RESEARCH] Completed. Found {len(github_repos)} repos, {len(packages)} packages")
+            logger.info(
+                f"[RESEARCH] Completed. Found {len(github_repos)} repos, {len(packages)} packages"
+            )
 
             return {
                 "github_repos": github_repos,
@@ -499,10 +550,22 @@ Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositori
                 "best_practices": best_practices,
                 "summary": summary.strip(),
                 "raw_responses": {
-                    "github": github_response.answer if hasattr(github_response, 'answer') else "",
-                    "packages": package_response.answer if hasattr(package_response, 'answer') else "",
-                    "practices": practices_response.answer if hasattr(practices_response, 'answer') else ""
-                }
+                    "github": (
+                        github_response.answer
+                        if hasattr(github_response, "answer")
+                        else ""
+                    ),
+                    "packages": (
+                        package_response.answer
+                        if hasattr(package_response, "answer")
+                        else ""
+                    ),
+                    "practices": (
+                        practices_response.answer
+                        if hasattr(practices_response, "answer")
+                        else ""
+                    ),
+                },
             }
 
         except ImportError:
@@ -512,7 +575,7 @@ Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositori
                 "packages": [],
                 "best_practices": [],
                 "summary": "Research failed: Linkup SDK not installed",
-                "error": "Import error: linkup package not found. Install with: pip install linkup-sdk"
+                "error": "Import error: linkup package not found. Install with: pip install linkup-sdk",
             }
         except Exception as e:
             logger.error(f"Research error: {e}", exc_info=True)
@@ -521,7 +584,7 @@ Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositori
                 "packages": [],
                 "best_practices": [],
                 "summary": f"Research failed: {str(e)}",
-                "error": str(e)
+                "error": str(e),
             }
 
     def display_sdk_message(msg):
@@ -542,7 +605,9 @@ Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositori
                     if isinstance(block, TextBlock):
                         logger.info(f"[SDK User] {block.text}")
                     elif isinstance(block, ToolResultBlock):
-                        content_preview = block.content[:100] if block.content else 'None'
+                        content_preview = (
+                            block.content[:100] if block.content else "None"
+                        )
                         logger.info(f"[SDK Tool Result] {content_preview}...")
             elif isinstance(msg, AssistantMessage):
                 for block in msg.content:
@@ -557,16 +622,13 @@ Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositori
                 logger.debug(f"[SDK System] {msg}")
             elif isinstance(msg, ResultMessage):
                 logger.info("[SDK Result] Generation completed")
-                if hasattr(msg, 'total_cost_usd') and msg.total_cost_usd:
+                if hasattr(msg, "total_cost_usd") and msg.total_cost_usd:
                     logger.info(f"[SDK Cost] ${msg.total_cost_usd:.6f}")
         except Exception as e:
             logger.debug(f"Error displaying SDK message: {e}")
 
     async def create_with_claude_sdk(
-        feature_type: str,
-        feature_name: str,
-        requirements: str,
-        debug: bool = True
+        feature_type: str, feature_name: str, requirements: str, debug: bool = True
     ) -> Dict[str, Any]:
         """
         Use Claude Code SDK to create new feature files.
@@ -591,11 +653,13 @@ Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositori
             "lobster_root": str(lobster_root),
             "steps": [],
             "errors": [],
-            "sdk_messages": []
+            "sdk_messages": [],
         }
 
         try:
-            logger.info(f"[DEBUG] Starting feature creation: {feature_type} - {feature_name}")
+            logger.info(
+                f"[DEBUG] Starting feature creation: {feature_type} - {feature_name}"
+            )
             debug_info["steps"].append("Starting feature creation")
 
             # STEP 0: Create feature branch BEFORE any code generation
@@ -604,15 +668,19 @@ Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositori
 
             branch_result = create_feature_branch(feature_name)
             if not branch_result["success"]:
-                logger.error(f"[DEBUG] Branch creation failed: {branch_result['error']}")
-                debug_info["errors"].append(f"Branch creation failed: {branch_result['error']}")
+                logger.error(
+                    f"[DEBUG] Branch creation failed: {branch_result['error']}"
+                )
+                debug_info["errors"].append(
+                    f"Branch creation failed: {branch_result['error']}"
+                )
                 debug_info["steps"].append("Branch creation failed")
                 return {
                     "success": False,
                     "created_files": [],
                     "error": f"Failed to create feature branch: {branch_result['error']}",
                     "sdk_output": "",
-                    "debug_info": debug_info
+                    "debug_info": debug_info,
                 }
 
             branch_name = branch_result["branch_name"]
@@ -623,12 +691,16 @@ Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositori
             # Set environment variables for Claude Code SDK with AWS Bedrock
             logger.info("[DEBUG] Setting AWS Bedrock environment variables...")
             settings = get_settings()
-            os.environ['CLAUDE_CODE_USE_BEDROCK'] = '1'
-            os.environ['AWS_REGION'] = getattr(settings, 'AWS_REGION', 'us-east-1')
-            os.environ['ANTHROPIC_MODEL'] = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'
-            os.environ['ANTHROPIC_SMALL_FAST_MODEL'] = 'us.anthropic.claude-sonnet-4-20250514-v1:0'
-            os.environ['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] = '60024'
-            os.environ['MAX_THINKING_TOKENS'] = '2024'
+            os.environ["CLAUDE_CODE_USE_BEDROCK"] = "1"
+            os.environ["AWS_REGION"] = getattr(settings, "AWS_REGION", "us-east-1")
+            os.environ["ANTHROPIC_MODEL"] = (
+                "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+            )
+            os.environ["ANTHROPIC_SMALL_FAST_MODEL"] = (
+                "us.anthropic.claude-sonnet-4-20250514-v1:0"
+            )
+            os.environ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = "60024"
+            os.environ["MAX_THINKING_TOKENS"] = "2024"
             debug_info["steps"].append("Environment variables configured")
             logger.info("[DEBUG] AWS Bedrock environment variables set successfully")
 
@@ -637,16 +709,17 @@ Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositori
                 logger.debug("[DEBUG] Importing Claude Agent SDK...")
                 debug_info["steps"].append("Importing Claude Agent SDK")
                 from claude_agent_sdk import (
-                    ClaudeSDKClient,
-                    ClaudeAgentOptions,
                     AssistantMessage,
-                    TextBlock,
-                    ResultMessage,
+                    ClaudeAgentOptions,
+                    ClaudeSDKClient,
+                    CLIConnectionError,
+                    CLIJSONDecodeError,
                     CLINotFoundError,
                     ProcessError,
-                    CLIConnectionError,
-                    CLIJSONDecodeError
+                    ResultMessage,
+                    TextBlock,
                 )
+
                 logger.debug("[DEBUG] Claude Agent SDK imported successfully")
                 debug_info["steps"].append("SDK imported successfully")
             except ImportError as e:
@@ -659,7 +732,7 @@ Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositori
                     "created_files": [],
                     "error": "Claude Agent SDK not installed. Please install with: pip install claude-agent-sdk",
                     "sdk_output": "",
-                    "debug_info": debug_info
+                    "debug_info": debug_info,
                 }
 
             # Configure SDK options
@@ -674,7 +747,7 @@ Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositori
                     "setting_sources": ["project"],
                     "allowed_tools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
                     "permission_mode": "bypassPermissions",
-                    "max_turns": 50
+                    "max_turns": 50,
                 }
 
                 options = ClaudeAgentOptions(
@@ -691,12 +764,12 @@ CRITICAL RULES:
 4. Include comprehensive docstrings
 5. Follow Lobster naming conventions
 6. Report ALL files you create with their full paths
-7. You have FULL PERMISSIONS to create all necessary files"""
+7. You have FULL PERMISSIONS to create all necessary files""",
                     },
                     cwd=str(lobster_root),
                     allowed_tools=["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
                     permission_mode="bypassPermissions",
-                    max_turns=50
+                    max_turns=50,
                 )
                 logger.debug("[DEBUG] SDK options configured successfully")
                 debug_info["steps"].append("SDK options configured")
@@ -710,11 +783,11 @@ CRITICAL RULES:
                     "created_files": [],
                     "error": error_msg,
                     "sdk_output": "",
-                    "debug_info": debug_info
+                    "debug_info": debug_info,
                 }
 
             # Construct detailed prompt
-            wiki_filename = feature_name.replace('_', '-').lower()
+            wiki_filename = feature_name.replace("_", "-").lower()
             if feature_type == "agent":
                 files_to_create = f"""1. Agent: lobster/agents/{feature_name}_expert.py
 2. State: Add {feature_name.title().replace('_', '')}ExpertState to lobster/agents/state.py
@@ -739,7 +812,7 @@ CRITICAL RULES:
                     "success": False,
                     "created_files": [],
                     "error": f"Unknown feature type: {feature_type}",
-                    "sdk_output": ""
+                    "sdk_output": "",
                 }
 
             prompt = f"""Create a new Lobster {feature_type} following the patterns in CLAUDE.md.
@@ -790,10 +863,14 @@ Begin implementation now."""
                     # Send prompt
                     try:
                         logger.info("=" * 80)
-                        logger.info(f"[SDK START] Creating {feature_type}: {feature_name}")
+                        logger.info(
+                            f"[SDK START] Creating {feature_type}: {feature_name}"
+                        )
                         logger.info("=" * 80)
                         logger.info(f"\n[SDK Prompt]\n{prompt}\n")
-                        logger.info(f"[DEBUG] Sending prompt to SDK (length: {len(prompt)} characters)...")
+                        logger.info(
+                            f"[DEBUG] Sending prompt to SDK (length: {len(prompt)} characters)..."
+                        )
                         debug_info["steps"].append("Sending prompt to SDK")
                         debug_info["prompt_length"] = len(prompt)
 
@@ -814,7 +891,9 @@ Begin implementation now."""
 
                         async for message in client.receive_response():
                             message_count += 1
-                            logger.debug(f"[DEBUG] Received message {message_count}: {type(message).__name__}")
+                            logger.debug(
+                                f"[DEBUG] Received message {message_count}: {type(message).__name__}"
+                            )
 
                             # Display message in real-time to terminal
                             display_sdk_message(message)
@@ -822,11 +901,17 @@ Begin implementation now."""
                             # Capture message content for logging
                             message_str = str(message)
                             sdk_output_lines.append(message_str)
-                            debug_info["sdk_messages"].append({
-                                "index": message_count,
-                                "type": type(message).__name__,
-                                "content_preview": message_str[:200] if len(message_str) > 200 else message_str
-                            })
+                            debug_info["sdk_messages"].append(
+                                {
+                                    "index": message_count,
+                                    "type": type(message).__name__,
+                                    "content_preview": (
+                                        message_str[:200]
+                                        if len(message_str) > 200
+                                        else message_str
+                                    ),
+                                }
+                            )
 
                             # Parse SDK messages correctly to extract created file paths
                             if isinstance(message, AssistantMessage):
@@ -837,30 +922,44 @@ Begin implementation now."""
 
                                         # Look for file path patterns (more robust regex)
                                         patterns = [
-                                            r'lobster/agents/[a-z0-9_]+_expert\.py',
-                                            r'lobster/tools/[a-z0-9_]+_service\.py',
-                                            r'lobster/agents/state\.py',
-                                            r'tests/unit/agents/test_[a-z0-9_]+_expert\.py',
-                                            r'tests/unit/tools/test_[a-z0-9_]+_service\.py',
-                                            r'lobster/wiki/[a-z0-9\-]+\.md'
+                                            r"lobster/agents/[a-z0-9_]+_expert\.py",
+                                            r"lobster/tools/[a-z0-9_]+_service\.py",
+                                            r"lobster/agents/state\.py",
+                                            r"tests/unit/agents/test_[a-z0-9_]+_expert\.py",
+                                            r"tests/unit/tools/test_[a-z0-9_]+_service\.py",
+                                            r"lobster/wiki/[a-z0-9\-]+\.md",
                                         ]
 
                                         for pattern in patterns:
                                             matches = re.findall(pattern, text)
                                             for match in matches:
                                                 full_path = lobster_root / match
-                                                if full_path.exists() and str(full_path) not in created_files:
+                                                if (
+                                                    full_path.exists()
+                                                    and str(full_path)
+                                                    not in created_files
+                                                ):
                                                     created_files.append(str(full_path))
-                                                    logger.info(f"[DEBUG] Detected created file: {full_path}")
+                                                    logger.info(
+                                                        f"[DEBUG] Detected created file: {full_path}"
+                                                    )
                             elif isinstance(message, ResultMessage):
                                 # Optionally use message.result if SDK summarizes file list
-                                logger.debug(f"[DEBUG] Result message received: {message.result if hasattr(message, 'result') else 'N/A'}")
+                                logger.debug(
+                                    f"[DEBUG] Result message received: {message.result if hasattr(message, 'result') else 'N/A'}"
+                                )
 
                         logger.info("=" * 80)
-                        logger.info(f"[SDK END] Completed. Received {message_count} messages")
-                        logger.info(f"[SDK END] Detected {len(created_files)} created files from messages")
+                        logger.info(
+                            f"[SDK END] Completed. Received {message_count} messages"
+                        )
+                        logger.info(
+                            f"[SDK END] Detected {len(created_files)} created files from messages"
+                        )
                         logger.info("=" * 80)
-                        debug_info["steps"].append(f"SDK completed ({message_count} messages)")
+                        debug_info["steps"].append(
+                            f"SDK completed ({message_count} messages)"
+                        )
                         debug_info["total_messages"] = message_count
                         debug_info["detected_files_count"] = len(created_files)
                     except Exception as e:
@@ -879,8 +978,10 @@ Begin implementation now."""
                     "success": False,
                     "created_files": [],
                     "error": "Claude Code not found. Install CLI: npm i -g @anthropic-ai/claude-code",
-                    "sdk_output": "\n".join(sdk_output_lines) if sdk_output_lines else "",
-                    "debug_info": debug_info
+                    "sdk_output": (
+                        "\n".join(sdk_output_lines) if sdk_output_lines else ""
+                    ),
+                    "debug_info": debug_info,
                 }
             except CLIConnectionError as e:
                 error_msg = f"Failed to connect to Claude Code CLI: {e}"
@@ -891,8 +992,10 @@ Begin implementation now."""
                     "success": False,
                     "created_files": [],
                     "error": error_msg,
-                    "sdk_output": "\n".join(sdk_output_lines) if sdk_output_lines else "",
-                    "debug_info": debug_info
+                    "sdk_output": (
+                        "\n".join(sdk_output_lines) if sdk_output_lines else ""
+                    ),
+                    "debug_info": debug_info,
                 }
             except ProcessError as e:
                 error_msg = f"Claude Code process error: {e}"
@@ -903,8 +1006,10 @@ Begin implementation now."""
                     "success": False,
                     "created_files": [],
                     "error": error_msg,
-                    "sdk_output": "\n".join(sdk_output_lines) if sdk_output_lines else "",
-                    "debug_info": debug_info
+                    "sdk_output": (
+                        "\n".join(sdk_output_lines) if sdk_output_lines else ""
+                    ),
+                    "debug_info": debug_info,
                 }
             except CLIJSONDecodeError as e:
                 error_msg = f"Failed to parse CLI response: {e}"
@@ -915,8 +1020,10 @@ Begin implementation now."""
                     "success": False,
                     "created_files": [],
                     "error": error_msg,
-                    "sdk_output": "\n".join(sdk_output_lines) if sdk_output_lines else "",
-                    "debug_info": debug_info
+                    "sdk_output": (
+                        "\n".join(sdk_output_lines) if sdk_output_lines else ""
+                    ),
+                    "debug_info": debug_info,
                 }
             except Exception as e:
                 error_msg = f"SDK client error: {e}"
@@ -927,8 +1034,12 @@ Begin implementation now."""
                     "success": False,
                     "created_files": [],
                     "error": error_msg,
-                    "sdk_output": "\n".join(sdk_output_lines) if 'sdk_output_lines' in locals() else "",
-                    "debug_info": debug_info
+                    "sdk_output": (
+                        "\n".join(sdk_output_lines)
+                        if "sdk_output_lines" in locals()
+                        else ""
+                    ),
+                    "debug_info": debug_info,
                 }
 
             # Verify files were created
@@ -938,16 +1049,45 @@ Begin implementation now."""
 
                 expected_files = []
                 if feature_type in ["agent", "agent_with_service"]:
-                    expected_files.append(lobster_root / "lobster" / "agents" / f"{feature_name}_expert.py")
-                    expected_files.append(lobster_root / "tests" / "unit" / "agents" / f"test_{feature_name}_expert.py")
+                    expected_files.append(
+                        lobster_root
+                        / "lobster"
+                        / "agents"
+                        / f"{feature_name}_expert.py"
+                    )
+                    expected_files.append(
+                        lobster_root
+                        / "tests"
+                        / "unit"
+                        / "agents"
+                        / f"test_{feature_name}_expert.py"
+                    )
                     # Add state.py to expected files for state updates
-                    expected_files.append(lobster_root / "lobster" / "agents" / "state.py")
+                    expected_files.append(
+                        lobster_root / "lobster" / "agents" / "state.py"
+                    )
 
                 if feature_type in ["service", "agent_with_service"]:
-                    expected_files.append(lobster_root / "lobster" / "tools" / f"{feature_name}_service.py")
-                    expected_files.append(lobster_root / "tests" / "unit" / "tools" / f"test_{feature_name}_service.py")
+                    expected_files.append(
+                        lobster_root
+                        / "lobster"
+                        / "tools"
+                        / f"{feature_name}_service.py"
+                    )
+                    expected_files.append(
+                        lobster_root
+                        / "tests"
+                        / "unit"
+                        / "tools"
+                        / f"test_{feature_name}_service.py"
+                    )
 
-                wiki_file = lobster_root / "lobster" / "wiki" / f"{feature_name.replace('_', '-').lower()}.md"
+                wiki_file = (
+                    lobster_root
+                    / "lobster"
+                    / "wiki"
+                    / f"{feature_name.replace('_', '-').lower()}.md"
+                )
                 expected_files.append(wiki_file)
 
                 logger.info(f"[DEBUG] Expected {len(expected_files)} files:")
@@ -969,34 +1109,57 @@ Begin implementation now."""
 
                 debug_info["verified_files"] = verified_files
                 debug_info["missing_files"] = missing_files
-                debug_info["steps"].append(f"Verification complete: {len(verified_files)}/{len(expected_files)} files")
+                debug_info["steps"].append(
+                    f"Verification complete: {len(verified_files)}/{len(expected_files)} files"
+                )
 
-                logger.info(f"[DEBUG] Verification complete: {len(verified_files)}/{len(expected_files)} files created")
+                logger.info(
+                    f"[DEBUG] Verification complete: {len(verified_files)}/{len(expected_files)} files created"
+                )
 
                 # STEP: Detect required packages from created files
-                detected_packages = {"python_packages": [], "system_packages": [], "standard_lib": [], "unknown": []}
+                detected_packages = {
+                    "python_packages": [],
+                    "system_packages": [],
+                    "standard_lib": [],
+                    "unknown": [],
+                }
                 package_status = {"python_packages": {}, "system_packages": {}}
                 missing_python = []
                 missing_system = []
 
                 try:
-                    logger.info("[DEBUG] Detecting required packages from created files...")
+                    logger.info(
+                        "[DEBUG] Detecting required packages from created files..."
+                    )
                     debug_info["steps"].append("Detecting required packages")
 
                     detected_packages = detect_packages_in_files(verified_files)
                     package_status = check_package_installation(detected_packages)
 
                     # Separate installed vs missing
-                    missing_python = [pkg for pkg, installed in package_status["python_packages"].items() if not installed]
-                    missing_system = [pkg for pkg, installed in package_status["system_packages"].items() if not installed]
+                    missing_python = [
+                        pkg
+                        for pkg, installed in package_status["python_packages"].items()
+                        if not installed
+                    ]
+                    missing_system = [
+                        pkg
+                        for pkg, installed in package_status["system_packages"].items()
+                        if not installed
+                    ]
 
                     debug_info["detected_packages"] = detected_packages
                     debug_info["package_status"] = package_status
                     debug_info["missing_python_packages"] = missing_python
                     debug_info["missing_system_packages"] = missing_system
-                    debug_info["steps"].append(f"Package detection complete: {len(missing_python)} pip, {len(missing_system)} brew missing")
+                    debug_info["steps"].append(
+                        f"Package detection complete: {len(missing_python)} pip, {len(missing_system)} brew missing"
+                    )
 
-                    logger.info(f"[DEBUG] Package detection complete: {len(missing_python)} pip packages missing, {len(missing_system)} brew packages missing")
+                    logger.info(
+                        f"[DEBUG] Package detection complete: {len(missing_python)} pip packages missing, {len(missing_system)} brew packages missing"
+                    )
 
                 except Exception as e:
                     logger.warning(f"[DEBUG] Package detection failed: {e}")
@@ -1005,7 +1168,11 @@ Begin implementation now."""
 
                 # Require ALL expected files to be present for success
                 all_present = len(verified_files) == len(expected_files)
-                error_msg = None if all_present else f"Missing files: {', '.join(missing_files)}"
+                error_msg = (
+                    None
+                    if all_present
+                    else f"Missing files: {', '.join(missing_files)}"
+                )
 
                 return {
                     "success": all_present,
@@ -1017,7 +1184,7 @@ Begin implementation now."""
                     "missing_system_packages": missing_system,
                     "error": error_msg,
                     "sdk_output": "\n".join(sdk_output_lines),
-                    "debug_info": debug_info
+                    "debug_info": debug_info,
                 }
             except Exception as e:
                 error_msg = f"Error during file verification: {e}"
@@ -1026,10 +1193,12 @@ Begin implementation now."""
                 debug_info["steps"].append("File verification failed")
                 return {
                     "success": False,
-                    "created_files": verified_files if 'verified_files' in locals() else [],
+                    "created_files": (
+                        verified_files if "verified_files" in locals() else []
+                    ),
                     "error": error_msg,
                     "sdk_output": "\n".join(sdk_output_lines),
-                    "debug_info": debug_info
+                    "debug_info": debug_info,
                 }
 
         except Exception as e:
@@ -1042,10 +1211,12 @@ Begin implementation now."""
                 "created_files": [],
                 "error": str(e),
                 "sdk_output": "",
-                "debug_info": debug_info
+                "debug_info": debug_info,
             }
 
-    def generate_integration_instructions(feature_name: str, feature_type: str, branch_name: str) -> str:
+    def generate_integration_instructions(
+        feature_name: str, feature_type: str, branch_name: str
+    ) -> str:
         """
         Generate comprehensive integration instructions for registry AND configuration.
 
@@ -1072,7 +1243,9 @@ Begin implementation now."""
     ),"""
 
             # Configuration code snippets
-            default_agents_code = f"""        "{agent_config_name}",  # Add to the DEFAULT_AGENTS list"""
+            default_agents_code = (
+                f"""        "{agent_config_name}",  # Add to the DEFAULT_AGENTS list"""
+            )
 
             profile_config_code = f"""            "{agent_config_name}": "claude-4-sonnet",  # Add to each profile"""
 
@@ -1187,9 +1360,7 @@ The service follows the stateless pattern and can be used by any agent.
 
     @tool
     def create_new_feature(
-        feature_type: str,
-        feature_name: str,
-        requirements: str
+        feature_type: str, feature_name: str, requirements: str
     ) -> str:
         """
         Create a new Lobster feature using Claude Code SDK.
@@ -1286,7 +1457,9 @@ Minimum 20 characters required."""
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                 result = executor.submit(
                     _run_coro,
-                    create_with_claude_sdk(feature_type, feature_name, requirements, debug=True)
+                    create_with_claude_sdk(
+                        feature_type, feature_name, requirements, debug=True
+                    ),
                 ).result()
 
             # 6. Check results
@@ -1341,7 +1514,9 @@ Minimum 20 characters required."""
                 # Show SDK output if available (limited)
                 sdk_output_section = ""
                 if sdk_output:
-                    output_preview = sdk_output[:500] if len(sdk_output) > 500 else sdk_output
+                    output_preview = (
+                        sdk_output[:500] if len(sdk_output) > 500 else sdk_output
+                    )
                     sdk_output_section = f"\n\n**SDK Output (preview):**\n```\n{output_preview}\n{'...' if len(sdk_output) > 500 else ''}\n```"
 
                 return f"""❌ Feature creation failed
@@ -1368,8 +1543,18 @@ If the error persists, please report it to the Lobster team with the debug infor
                 return dirname in Path(path_str).parts
 
             # Group files by type using Path.parts for robustness
-            agents = [f for f in created_files if in_dir(f, "agents") and "test_" not in Path(f).name and "state.py" not in f]
-            services = [f for f in created_files if in_dir(f, "tools") and "test_" not in Path(f).name]
+            agents = [
+                f
+                for f in created_files
+                if in_dir(f, "agents")
+                and "test_" not in Path(f).name
+                and "state.py" not in f
+            ]
+            services = [
+                f
+                for f in created_files
+                if in_dir(f, "tools") and "test_" not in Path(f).name
+            ]
             tests = [f for f in created_files if in_dir(f, "tests")]
             wiki = [f for f in created_files if in_dir(f, "wiki")]
             state = [f for f in created_files if Path(f).name == "state.py"]
@@ -1425,7 +1610,9 @@ If the error persists, please report it to the Lobster team with the debug infor
                     response += f"\n\n{warnings}"
 
             # 8. Add integration instructions (registry + configuration)
-            integration_instructions = generate_integration_instructions(feature_name, feature_type, branch_name)
+            integration_instructions = generate_integration_instructions(
+                feature_name, feature_type, branch_name
+            )
             response += f"\n\n{integration_instructions}"
 
             # 9. Add next steps
@@ -1502,9 +1689,9 @@ If the error persists, please report it to the Lobster team with the debug infor
                 parameters={
                     "feature_type": feature_type,
                     "feature_name": feature_name,
-                    "files_created": len(created_files)
+                    "files_created": len(created_files),
                 },
-                description=f"Created new {feature_type}: {feature_name} with {len(created_files)} files"
+                description=f"Created new {feature_type}: {feature_name} with {len(created_files)} files",
             )
 
             return response
@@ -1548,12 +1735,12 @@ These agents and services can serve as templates for new features:
 **Agents:**
 """
             for agent in sorted(agent_files):
-                agent_name = agent.replace('_expert', '')
+                agent_name = agent.replace("_expert", "")
                 response += f"  • {agent_name} - lobster/agents/{agent}.py\n"
 
             response += "\n**Services:**\n"
             for service in sorted(service_files):
-                service_name = service.replace('_service', '')
+                service_name = service.replace("_service", "")
                 response += f"  • {service_name} - lobster/tools/{service}.py\n"
 
             response += """
@@ -1596,7 +1783,9 @@ For new services, use as template:
             existing = check_existing_files(feature_name)
 
             if existing:
-                files_list = "\n".join(f"  - {Path(f).relative_to(lobster_root)}" for f in existing)
+                files_list = "\n".join(
+                    f"  - {Path(f).relative_to(lobster_root)}" for f in existing
+                )
                 return f"""⚠️ Feature name '{feature_name}' is valid but has existing files:
 
 {files_list}
@@ -1638,7 +1827,7 @@ Suggested feature types:
     @tool
     def research_feature_requirements(
         feature_description: str,
-        search_focus: str = "GitHub repositories, packages, best practices"
+        search_focus: str = "GitHub repositories, packages, best practices",
     ) -> str:
         """
         Research feature requirements using internet search (Linkup SDK).
@@ -1695,8 +1884,8 @@ Proceeding without research..."""
 
 """
 
-            if result['github_repos']:
-                for i, repo in enumerate(result['github_repos'], 1):
+            if result["github_repos"]:
+                for i, repo in enumerate(result["github_repos"], 1):
                     response += f"{i}. **{repo['name']}**\n"
                     response += f"   - URL: {repo['url']}\n"
                     response += f"   - Description: {repo['snippet']}\n\n"
@@ -1707,17 +1896,17 @@ Proceeding without research..."""
 
 """
 
-            if result['packages']:
+            if result["packages"]:
                 response += "Packages that can be reused:\n"
-                for pkg in result['packages']:
+                for pkg in result["packages"]:
                     response += f"  • {pkg}\n"
             else:
                 response += "*No specific packages identified*\n"
 
             response += "\n## 💡 Best Practices\n\n"
 
-            if result['best_practices']:
-                for practice in result['best_practices']:
+            if result["best_practices"]:
+                for practice in result["best_practices"]:
                     response += f"{practice}\n\n"
             else:
                 response += "*No specific best practices found*\n\n"
@@ -1741,10 +1930,10 @@ Proceeding without research..."""
                 parameters={
                     "feature_description": feature_description,
                     "search_focus": search_focus,
-                    "repos_found": len(result['github_repos']),
-                    "packages_found": len(result['packages'])
+                    "repos_found": len(result["github_repos"]),
+                    "packages_found": len(result["packages"]),
                 },
-                description=f"Researched requirements for: {feature_description}"
+                description=f"Researched requirements for: {feature_description}",
             )
 
             return response
@@ -1787,7 +1976,9 @@ Need help? Use `list_existing_patterns()` to see examples."""
             summary += f"**Overall:** {creation_results['summary']}\n\n"
 
         if creation_results["created_files"]:
-            summary += f"**Files Created ({len(creation_results['created_files'])}):**\n"
+            summary += (
+                f"**Files Created ({len(creation_results['created_files'])}):**\n"
+            )
             for f in creation_results["created_files"]:
                 rel_path = Path(f).relative_to(lobster_root)
                 summary += f"  ✓ {rel_path}\n"

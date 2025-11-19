@@ -8,8 +8,9 @@ Tests quality filter application for different modalities:
 - Amplicon/16S (strategy filter)
 """
 
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.providers.sra_provider import SRAProvider, SRAProviderConfig
@@ -133,7 +134,9 @@ class TestQualityFilters:
         """Test quality filters with unknown modality hint (base only)."""
         query = "data"
 
-        result = provider._apply_quality_filters(query, modality_hint="unknown-modality")
+        result = provider._apply_quality_filters(
+            query, modality_hint="unknown-modality"
+        )
 
         # Base filters
         assert 'AND "public"[Access]' in result
@@ -145,7 +148,7 @@ class TestQualityFilters:
 
     def test_quality_filters_with_existing_filters(self, provider):
         """Test quality filters applied to query that already has filters."""
-        query = '(gut microbiome) AND (Homo sapiens[ORGN])'
+        query = "(gut microbiome) AND (Homo sapiens[ORGN])"
 
         result = provider._apply_quality_filters(query, modality_hint="amplicon")
 
@@ -171,28 +174,30 @@ class TestQualityFiltersIntegration:
 
     @patch("lobster.tools.providers.sra_provider.SRAProvider._ncbi_esearch")
     @patch("lobster.tools.providers.sra_provider.SRAProvider._ncbi_esummary")
-    def test_quality_filters_applied_in_search(self, mock_esummary, mock_esearch, provider):
+    def test_quality_filters_applied_in_search(
+        self, mock_esummary, mock_esearch, provider
+    ):
         """Test that quality filters are applied during search_publications."""
         import pandas as pd
 
         # Mock NCBI responses
         mock_esearch.return_value = ["12345"]
-        mock_esummary.return_value = pd.DataFrame({
-            "study_accession": ["SRP123"],
-            "study_title": ["Test Study"],
-            "organism": ["Homo sapiens"],
-            "library_strategy": ["AMPLICON"],
-            "library_layout": ["PAIRED"],
-            "instrument_platform": ["ILLUMINA"],
-            "total_runs": ["10"],
-            "total_size": ["1000000"]
-        })
+        mock_esummary.return_value = pd.DataFrame(
+            {
+                "study_accession": ["SRP123"],
+                "study_title": ["Test Study"],
+                "organism": ["Homo sapiens"],
+                "library_strategy": ["AMPLICON"],
+                "library_layout": ["PAIRED"],
+                "instrument_platform": ["ILLUMINA"],
+                "total_runs": ["10"],
+                "total_size": ["1000000"],
+            }
+        )
 
         # Call search_publications with modality_hint
         result = provider.search_publications(
-            query="gut microbiome",
-            max_results=5,
-            modality_hint="amplicon"
+            query="gut microbiome", max_results=5, modality_hint="amplicon"
         )
 
         # Verify esearch was called with quality filters
@@ -207,28 +212,30 @@ class TestQualityFiltersIntegration:
 
     @patch("lobster.tools.providers.sra_provider.SRAProvider._ncbi_esearch")
     @patch("lobster.tools.providers.sra_provider.SRAProvider._ncbi_esummary")
-    def test_scrna_quality_filters_in_search(self, mock_esummary, mock_esearch, provider):
+    def test_scrna_quality_filters_in_search(
+        self, mock_esummary, mock_esearch, provider
+    ):
         """Test scRNA-seq quality filters in search_publications."""
         import pandas as pd
 
         # Mock NCBI responses
         mock_esearch.return_value = ["12345"]
-        mock_esummary.return_value = pd.DataFrame({
-            "study_accession": ["SRP123"],
-            "study_title": ["Test Study"],
-            "organism": ["Mus musculus"],
-            "library_strategy": ["RNA-Seq"],
-            "library_layout": ["PAIRED"],
-            "instrument_platform": ["ILLUMINA"],
-            "total_runs": ["5"],
-            "total_size": ["500000"]
-        })
+        mock_esummary.return_value = pd.DataFrame(
+            {
+                "study_accession": ["SRP123"],
+                "study_title": ["Test Study"],
+                "organism": ["Mus musculus"],
+                "library_strategy": ["RNA-Seq"],
+                "library_layout": ["PAIRED"],
+                "instrument_platform": ["ILLUMINA"],
+                "total_runs": ["5"],
+                "total_size": ["500000"],
+            }
+        )
 
         # Call search_publications with scRNA-seq modality
         result = provider.search_publications(
-            query="brain cells",
-            max_results=5,
-            modality_hint="scrna-seq"
+            query="brain cells", max_results=5, modality_hint="scrna-seq"
         )
 
         # Verify esearch was called with scRNA-seq quality filters
@@ -244,14 +251,12 @@ class TestQualityFiltersIntegration:
 
     def test_search_microbiome_datasets_uses_modality_hint(self, provider):
         """Test that search_microbiome_datasets passes modality_hint correctly."""
-        with patch.object(provider, 'search_publications') as mock_search:
+        with patch.object(provider, "search_publications") as mock_search:
             mock_search.return_value = "## Mock Results"
 
             # Call with amplicon_region
             provider.search_microbiome_datasets(
-                query="gut health",
-                amplicon_region="16S",
-                max_results=10
+                query="gut health", amplicon_region="16S", max_results=10
             )
 
             # Verify modality_hint="amplicon" was passed
@@ -261,14 +266,12 @@ class TestQualityFiltersIntegration:
 
     def test_search_microbiome_datasets_no_modality_hint_for_shotgun(self, provider):
         """Test search_microbiome_datasets passes None for shotgun metagenomics."""
-        with patch.object(provider, 'search_publications') as mock_search:
+        with patch.object(provider, "search_publications") as mock_search:
             mock_search.return_value = "## Mock Results"
 
             # Call without amplicon_region (shotgun)
             provider.search_microbiome_datasets(
-                query="gut microbiome",
-                amplicon_region=None,
-                max_results=10
+                query="gut microbiome", amplicon_region=None, max_results=10
             )
 
             # Verify modality_hint=None was passed

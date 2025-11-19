@@ -39,11 +39,14 @@ import pytest
 
 from lobster.agents.data_expert import data_expert
 from lobster.agents.research_agent import research_agent
+
 # from lobster.agents.supervisor import supervisor  # FIXME: supervisor no longer exported this way
 from lobster.core.data_manager_v2 import DataManagerV2
 
 # Mark entire file as skipped due to obsolete supervisor import pattern
-pytestmark = pytest.mark.skip(reason="Obsolete test file - supervisor import no longer valid, needs refactor to use graph-based approach")
+pytestmark = pytest.mark.skip(
+    reason="Obsolete test file - supervisor import no longer valid, needs refactor to use graph-based approach"
+)
 from lobster.core.schemas.download_queue import DownloadStatus
 from lobster.tools.workspace_tool import create_get_content_from_workspace_tool
 from lobster.utils.logger import get_logger

@@ -143,13 +143,19 @@ class ChimeraXVisualizationService:
                                 script_file, chimerax_installed["path"]
                             )
                             executed = True
-                            execution_message = "Successfully executed with ChimeraX (batch mode)"
-                            logger.info(f"ChimeraX visualization created: {output_image}")
+                            execution_message = (
+                                "Successfully executed with ChimeraX (batch mode)"
+                            )
+                            logger.info(
+                                f"ChimeraX visualization created: {output_image}"
+                            )
                     except Exception as e:
                         logger.error(f"ChimeraX execution failed: {e}")
                         execution_message = f"Execution failed: {e}"
                 else:
-                    execution_message = f"ChimeraX not installed: {chimerax_installed['message']}"
+                    execution_message = (
+                        f"ChimeraX not installed: {chimerax_installed['message']}"
+                    )
                     logger.warning(execution_message)
 
             # Prepare visualization data
@@ -384,7 +390,9 @@ class ChimeraXVisualizationService:
         except subprocess.TimeoutExpired:
             raise ChimeraXVisualizationError("ChimeraX batch execution timed out (60s)")
         except Exception as e:
-            raise ChimeraXVisualizationError(f"Failed to execute ChimeraX in batch mode: {e}")
+            raise ChimeraXVisualizationError(
+                f"Failed to execute ChimeraX in batch mode: {e}"
+            )
 
     def _launch_chimerax_interactive(
         self, script_file: Path, chimerax_path: str
@@ -440,9 +448,7 @@ class ChimeraXVisualizationService:
 
         except Exception as e:
             logger.error(f"Failed to launch ChimeraX interactive mode: {e}")
-            raise ChimeraXVisualizationError(
-                f"Failed to launch ChimeraX GUI: {e}"
-            )
+            raise ChimeraXVisualizationError(f"Failed to launch ChimeraX GUI: {e}")
 
     def _create_visualization_ir(
         self,

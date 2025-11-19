@@ -9,9 +9,9 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from langchain_core.outputs import LLMResult, Generation
+from langchain_core.outputs import Generation, LLMResult
 
-from lobster.utils.callbacks import TokenTrackingCallback, TokenInvocation
+from lobster.utils.callbacks import TokenInvocation, TokenTrackingCallback
 
 
 @pytest.fixture
@@ -21,25 +21,27 @@ def pricing_config():
         "us.anthropic.claude-haiku-4-5-20251001-v1:0": {
             "input_per_million": 1.00,  # Corrected from 0.80
             "output_per_million": 5.00,  # Corrected from 4.00
-            "display_name": "Claude 4.5 Haiku"
+            "display_name": "Claude 4.5 Haiku",
         },
         "us.anthropic.claude-sonnet-4-20250514-v1:0": {
             "input_per_million": 3.00,
             "output_per_million": 15.00,
-            "display_name": "Claude 4 Sonnet"
+            "display_name": "Claude 4 Sonnet",
         },
         "claude-4-5-haiku": {
             "input_per_million": 1.00,  # Corrected from 0.80
             "output_per_million": 5.00,  # Corrected from 4.00
-            "display_name": "Claude 4.5 Haiku"
-        }
+            "display_name": "Claude 4.5 Haiku",
+        },
     }
 
 
 @pytest.fixture
 def token_tracker(pricing_config):
     """Create a TokenTrackingCallback instance for testing."""
-    return TokenTrackingCallback(session_id="test_session", pricing_config=pricing_config)
+    return TokenTrackingCallback(
+        session_id="test_session", pricing_config=pricing_config
+    )
 
 
 class TestTokenExtraction:
@@ -50,12 +52,9 @@ class TestTokenExtraction:
         result = LLMResult(
             generations=[[Generation(text="test response")]],
             llm_output={
-                "usage": {
-                    "input_tokens": 1000,
-                    "output_tokens": 500
-                },
-                "model_name": "claude-4-5-haiku"
-            }
+                "usage": {"input_tokens": 1000, "output_tokens": 500},
+                "model_name": "claude-4-5-haiku",
+            },
         )
 
         usage = token_tracker._extract_token_usage(result)
@@ -70,12 +69,9 @@ class TestTokenExtraction:
         result = LLMResult(
             generations=[[Generation(text="test response")]],
             llm_output={
-                "usage": {
-                    "input_tokens": 2000,
-                    "output_tokens": 800
-                },
-                "model_id": "us.anthropic.claude-sonnet-4-20250514-v1:0"
-            }
+                "usage": {"input_tokens": 2000, "output_tokens": 800},
+                "model_id": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+            },
         )
 
         usage = token_tracker._extract_token_usage(result)
@@ -93,10 +89,10 @@ class TestTokenExtraction:
                 "token_usage": {
                     "prompt_tokens": 1500,
                     "completion_tokens": 600,
-                    "total_tokens": 2100
+                    "total_tokens": 2100,
                 },
-                "model_name": "test-model"
-            }
+                "model_name": "test-model",
+            },
         )
 
         usage = token_tracker._extract_token_usage(result)
@@ -110,13 +106,12 @@ class TestTokenExtraction:
         """Test extraction from response_metadata (Bedrock alternative)."""
         # Mock an LLMResult with response_metadata using MagicMock
         result = MagicMock(spec=LLMResult)
-        result.generations = []  # Empty generations, will check response_metadata instead
+        result.generations = (
+            []
+        )  # Empty generations, will check response_metadata instead
         result.llm_output = {}
         result.response_metadata = {
-            "usage": {
-                "input_tokens": 3000,
-                "output_tokens": 1200
-            }
+            "usage": {"input_tokens": 3000, "output_tokens": 1200}
         }
 
         usage = token_tracker._extract_token_usage(result)
@@ -129,8 +124,7 @@ class TestTokenExtraction:
     def test_extract_no_token_data(self, token_tracker):
         """Test extraction when no token data is available."""
         result = LLMResult(
-            generations=[[Generation(text="test response")]],
-            llm_output={}
+            generations=[[Generation(text="test response")]], llm_output={}
         )
 
         usage = token_tracker._extract_token_usage(result)
@@ -145,7 +139,7 @@ class TestModelNameExtraction:
         """Test extraction from llm_output['model_name']."""
         result = LLMResult(
             generations=[[Generation(text="test")]],
-            llm_output={"model_name": "claude-4-5-haiku"}
+            llm_output={"model_name": "claude-4-5-haiku"},
         )
 
         model = token_tracker._extract_model_name(result)
@@ -155,7 +149,7 @@ class TestModelNameExtraction:
         """Test extraction from llm_output['model_id']."""
         result = LLMResult(
             generations=[[Generation(text="test")]],
-            llm_output={"model_id": "us.anthropic.claude-sonnet-4-20250514-v1:0"}
+            llm_output={"model_id": "us.anthropic.claude-sonnet-4-20250514-v1:0"},
         )
 
         model = token_tracker._extract_model_name(result)
@@ -165,7 +159,9 @@ class TestModelNameExtraction:
         """Test extraction from response_metadata."""
         # Mock an LLMResult with response_metadata using MagicMock
         result = MagicMock(spec=LLMResult)
-        result.generations = []  # Empty generations, will check response_metadata instead
+        result.generations = (
+            []
+        )  # Empty generations, will check response_metadata instead
         result.llm_output = {}
         result.response_metadata = {"model_id": "bedrock-model"}
 
@@ -174,10 +170,7 @@ class TestModelNameExtraction:
 
     def test_extract_unknown_model(self, token_tracker):
         """Test extraction when model name is not found."""
-        result = LLMResult(
-            generations=[[Generation(text="test")]],
-            llm_output={}
-        )
+        result = LLMResult(generations=[[Generation(text="test")]], llm_output={})
 
         model = token_tracker._extract_model_name(result)
         assert model == "unknown"
@@ -235,7 +228,7 @@ class TestTokenTracking:
         token_tracker.on_llm_start(
             serialized={"name": "test_agent"},
             prompts=["test prompt"],
-            name="test_agent"
+            name="test_agent",
         )
 
         assert token_tracker.current_agent == "test_agent"
@@ -243,8 +236,7 @@ class TestTokenTracking:
     def test_on_tool_start_sets_current_tool(self, token_tracker):
         """Test that on_tool_start sets current tool context."""
         token_tracker.on_tool_start(
-            serialized={"name": "test_tool"},
-            input_str="test input"
+            serialized={"name": "test_tool"}, input_str="test input"
         )
 
         assert token_tracker.current_tool == "test_tool"
@@ -265,8 +257,8 @@ class TestTokenTracking:
             generations=[[Generation(text="test")]],
             llm_output={
                 "usage": {"input_tokens": 1000, "output_tokens": 500},
-                "model_name": "claude-4-5-haiku"
-            }
+                "model_name": "claude-4-5-haiku",
+            },
         )
 
         token_tracker.on_llm_end(result)
@@ -289,8 +281,8 @@ class TestTokenTracking:
             generations=[[Generation(text="test")]],
             llm_output={
                 "usage": {"input_tokens": 1000, "output_tokens": 500},
-                "model_name": "claude-4-5-haiku"
-            }
+                "model_name": "claude-4-5-haiku",
+            },
         )
         token_tracker.on_llm_end(result1)
 
@@ -298,8 +290,8 @@ class TestTokenTracking:
             generations=[[Generation(text="test")]],
             llm_output={
                 "usage": {"input_tokens": 2000, "output_tokens": 800},
-                "model_name": "claude-4-5-haiku"
-            }
+                "model_name": "claude-4-5-haiku",
+            },
         )
         token_tracker.on_llm_end(result2)
 
@@ -311,8 +303,7 @@ class TestTokenTracking:
     def test_on_llm_end_no_token_data_skips_tracking(self, token_tracker):
         """Test that LLM calls without token data are skipped silently."""
         result = LLMResult(
-            generations=[[Generation(text="test")]],
-            llm_output={}  # No usage data
+            generations=[[Generation(text="test")]], llm_output={}  # No usage data
         )
 
         token_tracker.on_llm_end(result)
@@ -332,8 +323,8 @@ class TestPerAgentTracking:
             generations=[[Generation(text="test")]],
             llm_output={
                 "usage": {"input_tokens": 1000, "output_tokens": 500},
-                "model_name": "claude-4-5-haiku"
-            }
+                "model_name": "claude-4-5-haiku",
+            },
         )
         token_tracker.on_llm_end(result)
 
@@ -353,8 +344,8 @@ class TestPerAgentTracking:
             generations=[[Generation(text="test")]],
             llm_output={
                 "usage": {"input_tokens": 1000, "output_tokens": 500},
-                "model_name": "claude-4-5-haiku"
-            }
+                "model_name": "claude-4-5-haiku",
+            },
         )
         token_tracker.on_llm_end(result1)
 
@@ -364,8 +355,8 @@ class TestPerAgentTracking:
             generations=[[Generation(text="test")]],
             llm_output={
                 "usage": {"input_tokens": 2000, "output_tokens": 800},
-                "model_name": "claude-4-5-haiku"
-            }
+                "model_name": "claude-4-5-haiku",
+            },
         )
         token_tracker.on_llm_end(result2)
 
@@ -381,8 +372,8 @@ class TestPerAgentTracking:
             generations=[[Generation(text="test")]],
             llm_output={
                 "usage": {"input_tokens": 1000, "output_tokens": 500},
-                "model_name": "claude-4-5-haiku"
-            }
+                "model_name": "claude-4-5-haiku",
+            },
         )
         token_tracker.on_llm_end(result1)
 
@@ -390,8 +381,8 @@ class TestPerAgentTracking:
             generations=[[Generation(text="test")]],
             llm_output={
                 "usage": {"input_tokens": 1500, "output_tokens": 700},
-                "model_name": "claude-4-5-haiku"
-            }
+                "model_name": "claude-4-5-haiku",
+            },
         )
         token_tracker.on_llm_end(result2)
 
@@ -425,8 +416,8 @@ class TestUsageSummary:
             generations=[[Generation(text="test")]],
             llm_output={
                 "usage": {"input_tokens": 1000, "output_tokens": 500},
-                "model_name": "claude-4-5-haiku"
-            }
+                "model_name": "claude-4-5-haiku",
+            },
         )
         token_tracker.on_llm_end(result)
 
@@ -448,8 +439,8 @@ class TestUsageSummary:
             generations=[[Generation(text="test")]],
             llm_output={
                 "usage": {"input_tokens": 1000, "output_tokens": 500},
-                "model_name": "claude-4-5-haiku"
-            }
+                "model_name": "claude-4-5-haiku",
+            },
         )
         token_tracker.on_llm_end(result)
 
@@ -474,8 +465,8 @@ class TestWorkspacePersistence:
             generations=[[Generation(text="test")]],
             llm_output={
                 "usage": {"input_tokens": 1000, "output_tokens": 500},
-                "model_name": "claude-4-5-haiku"
-            }
+                "model_name": "claude-4-5-haiku",
+            },
         )
         token_tracker.on_llm_end(result)
 
@@ -522,8 +513,8 @@ class TestReset:
             generations=[[Generation(text="test")]],
             llm_output={
                 "usage": {"input_tokens": 1000, "output_tokens": 500},
-                "model_name": "claude-4-5-haiku"
-            }
+                "model_name": "claude-4-5-haiku",
+            },
         )
         token_tracker.on_llm_end(result)
 

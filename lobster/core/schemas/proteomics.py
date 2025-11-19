@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, field_validator
 
 from lobster.core.interfaces.validator import ValidationResult
+
 from .validation import FlexibleValidator
 
 # =============================================================================

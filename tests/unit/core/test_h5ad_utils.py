@@ -65,8 +65,8 @@ class TestSanitizeValue:
         """Test that tuples are converted to numpy string arrays."""
         result = sanitize_value((1, 2, 3))
         assert isinstance(result, np.ndarray)
-        assert result.dtype.kind in ('U', 'S', 'O')  # String types
-        np.testing.assert_array_equal(result, np.array(['1', '2', '3']))
+        assert result.dtype.kind in ("U", "S", "O")  # String types
+        np.testing.assert_array_equal(result, np.array(["1", "2", "3"]))
 
     def test_sanitize_nested_tuple(self):
         """Test that nested tuples are recursively converted."""
@@ -106,7 +106,7 @@ class TestSanitizeValue:
         arr = np.array([Path("/tmp/a"), Path("/tmp/b"), "text"])
         result = sanitize_value(arr)
         assert isinstance(result, np.ndarray)
-        assert result.dtype.kind in ('U', 'O')  # Unicode or object
+        assert result.dtype.kind in ("U", "O")  # Unicode or object
         expected = np.array([str(Path("/tmp/a")), str(Path("/tmp/b")), "text"])
         np.testing.assert_array_equal(result, expected)
 
@@ -139,7 +139,7 @@ class TestSanitizeValue:
 
         # Lists become numpy string arrays
         assert isinstance(result, np.ndarray)
-        assert result.dtype.kind in ('U', 'S', 'O')
+        assert result.dtype.kind in ("U", "S", "O")
         # All elements should be strings or string-like
         assert len(result) == 5
 
@@ -168,6 +168,7 @@ class TestSanitizeValue:
 
     def test_sanitize_custom_object_to_string(self):
         """Test that non-serializable objects are converted to strings."""
+
         class CustomObject:
             def __str__(self):
                 return "CustomObject()"
@@ -179,6 +180,7 @@ class TestSanitizeValue:
 
     def test_sanitize_strict_mode_raises(self):
         """Test that strict mode raises ValueError for non-serializable objects."""
+
         class CustomObject:
             pass
 
@@ -278,6 +280,7 @@ class TestValidateForH5ad:
 
     def test_validate_custom_objects(self):
         """Test that custom non-serializable objects are detected."""
+
         class CustomObject:
             pass
 
@@ -289,13 +292,7 @@ class TestValidateForH5ad:
 
     def test_validate_provides_paths(self):
         """Test that validation issues include path information."""
-        data = {
-            "level1": {
-                "level2": {
-                    "problematic": Path("/tmp/test")
-                }
-            }
-        }
+        data = {"level1": {"level2": {"problematic": Path("/tmp/test")}}}
         issues = validate_for_h5ad(data)
 
         assert len(issues) > 0
@@ -317,10 +314,12 @@ class TestRealWorldScenarios:
                 Path("/tmp/file2.csv"),
             ],
             "shape": (1000, 2000),  # tuple from adata.shape
-            "metadata": collections.OrderedDict([
-                ("sample/type", "single_cell"),
-                ("version", np.int64(1)),
-            ]),
+            "metadata": collections.OrderedDict(
+                [
+                    ("sample/type", "single_cell"),
+                    ("version", np.int64(1)),
+                ]
+            ),
         }
 
         result = sanitize_value(geo_metadata)
@@ -344,10 +343,12 @@ class TestRealWorldScenarios:
             "version": "0.46.1",
             "index_path": Path("/data/index"),
             "files": [Path("/data/sample1"), Path("/data/sample2")],
-            "parameters": collections.OrderedDict([
-                ("bootstrap", np.int64(100)),
-                ("threads", np.int64(8)),
-            ]),
+            "parameters": collections.OrderedDict(
+                [
+                    ("bootstrap", np.int64(100)),
+                    ("threads", np.int64(8)),
+                ]
+            ),
         }
 
         result = sanitize_value(quant_metadata)
@@ -366,7 +367,7 @@ class TestRealWorldScenarios:
             "transpose_applied": True,
             "transpose_reason": "Quantification format",
             "original_shape": (60000, 4),  # tuple!
-            "final_shape": (4, 60000),     # tuple!
+            "final_shape": (4, 60000),  # tuple!
             "data_type": "bulk_rnaseq",
             "format_specific": True,
         }
@@ -378,5 +379,7 @@ class TestRealWorldScenarios:
         assert isinstance(result["original_shape"], np.ndarray)
         assert isinstance(result["final_shape"], np.ndarray)
         # Verify content
-        np.testing.assert_array_equal(result["original_shape"], np.array(['60000', '4']))
-        np.testing.assert_array_equal(result["final_shape"], np.array(['4', '60000']))
+        np.testing.assert_array_equal(
+            result["original_shape"], np.array(["60000", "4"])
+        )
+        np.testing.assert_array_equal(result["final_shape"], np.array(["4", "60000"]))

@@ -170,11 +170,21 @@ def singlecell_expert(
     def assess_data_quality(
         modality_name: str,
         min_genes: int = 200,
+        max_genes: int = 5000,
         max_mt_pct: float = 20.0,
         max_ribo_pct: float = 50.0,
         min_housekeeping_score: float = 1.0,
     ) -> str:
-        """Run comprehensive quality control assessment on single-cell RNA-seq data."""
+        """Run comprehensive quality control assessment on single-cell RNA-seq data.
+
+        Args:
+            modality_name: Name of the modality to assess
+            min_genes: Minimum genes per cell (lower bound, default: 200)
+            max_genes: Maximum genes per cell to filter potential doublets (upper bound, default: 5000)
+            max_mt_pct: Maximum mitochondrial percentage (default: 20.0%)
+            max_ribo_pct: Maximum ribosomal percentage (default: 50.0%)
+            min_housekeeping_score: Minimum housekeeping gene score (default: 1.0)
+        """
         try:
             if modality_name == "":
                 return "Please specify modality_name for single-cell quality assessment. Use check_data_status() to see available modalities."
@@ -190,6 +200,7 @@ def singlecell_expert(
             adata_qc, assessment_stats, ir = quality_service.assess_quality(
                 adata=adata,
                 min_genes=min_genes,
+                max_genes=max_genes,
                 max_mt_pct=max_mt_pct,
                 max_ribo_pct=max_ribo_pct,
                 min_housekeeping_score=min_housekeeping_score,
@@ -205,6 +216,7 @@ def singlecell_expert(
                 parameters={
                     "modality_name": modality_name,
                     "min_genes": min_genes,
+                    "max_genes": max_genes,
                     "max_mt_pct": max_mt_pct,
                     "max_ribo_pct": max_ribo_pct,
                 },
@@ -3590,16 +3602,17 @@ create_analysis_summary()
 <Single-cell Parameter Guidelines>
 
 **Quality Control:**
-- min_genes: 200-500 (filter low-quality cells)
-- max_genes_per_cell: 5000-8000 (filter potential doublets)
+- min_genes: 200-500 (filter low-quality cells, lower bound)
+- max_genes: 5000-8000 (filter potential doublets, upper bound - CRITICAL for QC phase)
 - min_cells_per_gene: 3-10 (remove rarely expressed genes)
 - max_mt_pct: 15-25% (remove dying/stressed cells)
 - max_ribo_pct: 40-60% (control for ribosomal contamination)
+- NOTE: For heterogeneous datasets (mixed tissue types, varying sequencing depths), consider using MAD-based adaptive thresholds via QualityService.suggest_adaptive_thresholds() before applying fixed cutoffs
 
 **Preprocessing & Normalization:**
 - target_sum: 10,000 (standard CPM normalization for single-cell)
 - normalization_method: 'log1p' (log(x+1) transformation, standard for single-cell)
-- max_genes_per_cell: 5000 (doublet filtering threshold)
+- max_genes_per_cell: 5000 (additional filtering during preprocessing, applied after QC)
 
 **Clustering & Visualization:**
 - resolution: 0.4-1.2 (start with 0.5, adjust based on biological expectations)
