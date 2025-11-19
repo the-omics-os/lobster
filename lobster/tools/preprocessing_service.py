@@ -11,11 +11,11 @@ import anndata
 import numpy as np
 import plotly.graph_objects as go
 import scanpy as sc
-import scry
 import scipy.sparse as spr
 from plotly.subplots import make_subplots
 
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.utils.deviance import calculate_deviance
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -447,9 +447,9 @@ print(f"Normalization complete (target_sum={{ target_sum }}, log1p transformed)"
                     "Consider using adata.raw if available."
                 )
 
-            # Calculate deviance using scry
+            # Calculate deviance using shared utility
             logger.info("Calculating binomial deviance from multinomial null model")
-            deviance_scores = scry.stats.deviance(count_data)
+            deviance_scores = calculate_deviance(count_data)
 
             # Select top n_top_genes by deviance
             n_features_to_select = min(n_top_genes, len(deviance_scores))
@@ -536,12 +536,40 @@ print(f"Normalization complete (target_sum={{ target_sum }}, log1p transformed)"
         }
 
         # Jinja2 template with parameter placeholders
-        code_template = """# Deviance-based feature selection (scry package)
+        code_template = """# Deviance-based feature selection
 # Works on raw counts without normalization bias
-import scry
+# Implementation based on Townes et al. (2019)
+
+import numpy as np
+import scipy.sparse as spr
+
+# Helper function to calculate deviance
+def calculate_deviance(count_matrix):
+    if spr.issparse(count_matrix):
+        X = count_matrix.toarray()
+    else:
+        X = count_matrix.copy()
+
+    X = np.maximum(X, 1e-10)
+    cell_totals = X.sum(axis=1, keepdims=True)
+    gene_totals = X.sum(axis=0)
+    total_counts = X.sum()
+
+    p_null = gene_totals / total_counts
+    p_null = np.maximum(p_null, 1e-10)
+
+    expected = cell_totals @ p_null.reshape(1, -1)
+    expected = np.maximum(expected, 1e-10)
+
+    mask = X > 0
+    deviance_terms = np.zeros_like(X)
+    deviance_terms[mask] = 2 * X[mask] * np.log(X[mask] / expected[mask])
+
+    return deviance_terms.sum(axis=0)
 
 # Calculate binomial deviance from multinomial null model
-deviance_scores = scry.stats.deviance(adata.raw.X if adata.raw is not None else adata.X)
+count_data = adata.raw.X if adata.raw is not None else adata.X
+deviance_scores = calculate_deviance(count_data)
 
 # Select top {{ n_top_genes }} genes by deviance
 n_features_to_select = min({{ n_top_genes }}, len(deviance_scores))
@@ -564,12 +592,12 @@ print(f"Top 10 genes: {adata.var_names[adata.var['highly_deviant']].tolist()[:10
 
         # Create AnalysisStep
         ir = AnalysisStep(
-            operation="scry.stats.deviance",
+            operation="deviance_feature_selection",
             tool_name="select_features_deviance",
             description=f"Select top {n_top_genes} highly deviant genes using binomial deviance from multinomial null model",
-            library="scry",
+            library="numpy",
             code_template=code_template,
-            imports=["import scry", "import numpy as np"],
+            imports=["import numpy as np", "import scipy.sparse as spr"],
             parameters={
                 "n_top_genes": n_top_genes,
             },
