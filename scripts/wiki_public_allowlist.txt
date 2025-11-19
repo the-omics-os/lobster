@@ -71,6 +71,7 @@
 # General files
 Home.md
 README.md
+.readthedocs.yaml
 
 # =============================================================================
 # EXPLICITLY EXCLUDED - Private/Cloud/Premium

@@ -273,7 +273,12 @@ lobster/
 | `docker-compose.yml` | **PRIVATE** | Multi-service orchestration (server + Redis) |
 | `Makefile` | PUBLIC | Build/test automation |
 | `.github/workflows/docker.yml` | PUBLIC | CI builds **CLI only** (no server) |
-| `.github/workflows/sync-to-public.yml` | PRIVATE | Syncs to lobster-local |
+| `.github/workflows/sync-to-public.yml` | PRIVATE | Auto-syncs code to lobster-local/main on push |
+| `.github/workflows/sync-wikis.yml` | PRIVATE | Auto-syncs wiki to both wikis |
+| `scripts/sync_to_public.py` | PRIVATE | Code sync script (supports manual dev syncs) |
+| `scripts/sync_wikis.py` | PRIVATE | Wiki sync script |
+| `scripts/public_allowlist.txt` | PRIVATE | Code sync allowlist (gitignore-style patterns) |
+| `scripts/wiki_public_allowlist.txt` | PRIVATE | Wiki sync allowlist (filename matching) |
 | `pyproject.toml` | PUBLIC | Dependencies (do NOT edit – see 4.1) |
 
 **Build strategy**:
@@ -281,7 +286,10 @@ lobster/
 - `Dockerfile.server` → private server image → builds from local CLI (not Docker Hub)
 - CI/CD tests CLI only; server builds are local-only via `make docker-build`
 
-**Exclusions**: `scripts/public_allowlist.txt` ensures `Dockerfile.server` and `docker-compose.yml` never sync to lobster-local
+**Sync strategy**:
+- Automated: pushes to `main` → sync to lobster-local/main + both wikis (filtered for public)
+- Manual: `python scripts/sync_to_public.py --repo <url> --branch <branch>` (e.g., dev)
+- Exclusions: `scripts/public_allowlist.txt` ensures server code, premium features stay private
 
 ---
 

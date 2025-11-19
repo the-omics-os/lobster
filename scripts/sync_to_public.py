@@ -418,8 +418,8 @@ class PublicRepoSync:
         print("\nDEBUG: Recent commits:")
         subprocess.run(['git', 'log', '--oneline', '-n', '3'], env=env)
 
-        # Build push command - simplified since branch is already tracking remote
-        push_cmd = ['git', 'push']
+        # Build push command with upstream setup for new branches
+        push_cmd = ['git', 'push', '--set-upstream', 'origin', self.branch]
         if force:
             push_cmd.append('--force')
             print(f"\nDEBUG: Force flag is True, adding --force")

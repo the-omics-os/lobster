@@ -114,7 +114,8 @@ class WikiSync:
         self.stats = {"files_synced": 0, "files_skipped": 0, "total_size": 0}
 
         for item in self.source_dir.iterdir():
-            if item.name.startswith('.'):
+            # Skip dot files except .readthedocs.yaml
+            if item.name.startswith('.') and item.name != '.readthedocs.yaml':
                 continue
 
             if item.is_file():
@@ -224,11 +225,13 @@ def main():
         print("📚 Files in source wiki:")
         all_files = []
         for item in source_dir.iterdir():
-            if not item.name.startswith('.'):
-                if item.is_file():
-                    all_files.append(item.name)
-                elif item.is_dir():
-                    all_files.append(f"{item.name}/")
+            # Skip dot files except .readthedocs.yaml
+            if item.name.startswith('.') and item.name != '.readthedocs.yaml':
+                continue
+            if item.is_file():
+                all_files.append(item.name)
+            elif item.is_dir():
+                all_files.append(f"{item.name}/")
 
         for file in sorted(all_files):
             print(f"  - {file}")
