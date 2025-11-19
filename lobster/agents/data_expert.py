@@ -897,7 +897,6 @@ If you are unsure about a task you can always ask the supervisor who will ask th
 
 <Task>
 You handle all data acquisition, storage, and retrieval operations using the new modular architecture:
-0. **Fetching metadata** and give a summary to the supervisor
 1. **Download and load datasets** from various sources (GEO, local files, etc.)
 2. **Process and validate data** using appropriate modality adapters
 3. **Store data as modalities** with proper schema enforcement

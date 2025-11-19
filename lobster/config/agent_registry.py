@@ -28,34 +28,34 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
     "data_expert_agent": AgentRegistryConfig(
         name="data_expert_agent",
         display_name="Data Expert",
-        description="Handles data fetching and download tasks",
+        description="Handles data acquisition, storage, and retrieval operations",
         factory_function="lobster.agents.data_expert.data_expert",
         handoff_tool_name="handoff_to_data_expert_agent",
-        handoff_tool_description="Assign data related tasks (download, fetch, concat, clean) to the data expert agent",
-    ),
-    "singlecell_expert_agent": AgentRegistryConfig(
-        name="singlecell_expert_agent",
-        display_name="Single-Cell Expert",
-        description="Handles single-cell RNA-seq analysis tasks",
-        factory_function="lobster.agents.singlecell_expert.singlecell_expert",
-        handoff_tool_name="handoff_to_singlecell_expert_agent",
-        handoff_tool_description="Assign single-cell RNA-seq analysis (cluster, QC, filter/normalize, automatic and manual cell annotation, differential expression etc) tasks to the single-cell expert agent",
-    ),
-    "bulk_rnaseq_expert_agent": AgentRegistryConfig(
-        name="bulk_rnaseq_expert_agent",
-        display_name="Bulk RNA-seq Expert",
-        description="Handles bulk RNA-seq analysis tasks",
-        factory_function="lobster.agents.bulk_rnaseq_expert.bulk_rnaseq_expert",
-        handoff_tool_name="handoff_to_bulk_rnaseq_expert_agent",
-        handoff_tool_description="Assign bulk RNA-seq analysis tasks to the bulk RNA-seq expert agent",
+        handoff_tool_description="Assign data related tasks to the data expert agent",
     ),
     "research_agent": AgentRegistryConfig(
         name="research_agent",
         display_name="Research Agent",
-        description="Handles literature discovery, dataset identification, PDF extraction with AUTOMATIC PMID/DOI resolution, batch method extraction (5 papers), computational method analysis, and parameter extraction from publications. Replaces deprecated method_expert_agent.",
+        description="Handles literature discovery, dataset identification, PDF extraction with AUTOMATIC PMID/DOI resolution, computational method analysis, and parameter extraction from publications and queuing datasets for download.",
         factory_function="lobster.agents.research_agent.research_agent",
         handoff_tool_name="handoff_to_research_agent",
-        handoff_tool_description="Assign literature search, dataset discovery, PDF extraction with auto-resolution (PMC/bioRxiv/preprints), batch method extraction, method analysis, parameter extraction, and supplementary downloads to the research agent",
+        handoff_tool_description="Assign literature search, dataset discovery, method analysis, parameter extraction, and download queue creation to the research agent",
+    ),
+    "singlecell_expert_agent": AgentRegistryConfig(
+        name="singlecell_expert_agent",
+        display_name="Single-Cell Expert",
+        description="Handles single-cell RNA-seq analysis (cluster, QC, filter/normalize, automatic and manual cell annotation, differential expression etc) tasks (excluding visualization)",
+        factory_function="lobster.agents.singlecell_expert.singlecell_expert",
+        handoff_tool_name="handoff_to_singlecell_expert_agent",
+        handoff_tool_description="Assign single-cell RNA-seq analysis tasks to the single-cell expert agent",
+    ),
+    "bulk_rnaseq_expert_agent": AgentRegistryConfig(
+        name="bulk_rnaseq_expert_agent",
+        display_name="Bulk RNA-seq Expert",
+        description="Handles bulk RNA-seq analysis tasks (excluding visualization)",
+        factory_function="lobster.agents.bulk_rnaseq_expert.bulk_rnaseq_expert",
+        handoff_tool_name="handoff_to_bulk_rnaseq_expert_agent",
+        handoff_tool_description="Assign bulk RNA-seq analysis tasks to the bulk RNA-seq expert agent",
     ),
     "metadata_assistant": AgentRegistryConfig(
         name="metadata_assistant",
@@ -65,22 +65,6 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
         handoff_tool_name="handoff_to_metadata_assistant",
         handoff_tool_description="Assign metadata operations (cross-dataset sample mapping, metadata standardization to Pydantic schemas, dataset validation before download, metadata reading/formatting) to the metadata assistant",
     ),
-    # 'ms_proteomics_expert_agent': AgentRegistryConfig(
-    #     name='ms_proteomics_expert_agent',
-    #     display_name='MS Proteomics Expert',
-    #     description='Handles mass spectrometry proteomics data analysis including DDA/DIA workflows with database search artifact removal',
-    #     factory_function='lobster.agents.ms_proteomics_expert.ms_proteomics_expert',
-    #     handoff_tool_name='handoff_to_ms_proteomics_expert_agent',
-    #     handoff_tool_description='Assign mass spectrometry proteomics analysis tasks to the MS proteomics expert agent'
-    # ),
-    # 'affinity_proteomics_expert_agent': AgentRegistryConfig(
-    #     name='affinity_proteomics_expert_agent',
-    #     display_name='Affinity Proteomics Expert',
-    #     description='Handles affinity proteomics data analysis including Olink and targeted protein panels with antibody validation',
-    #     factory_function='lobster.agents.affinity_proteomics_expert.affinity_proteomics_expert',
-    #     handoff_tool_name='handoff_to_affinity_proteomics_expert_agent',
-    #     handoff_tool_description='Assign affinity proteomics and targeted panel analysis tasks to the affinity proteomics expert agent'
-    # ),
     "machine_learning_expert_agent": AgentRegistryConfig(
         name="machine_learning_expert_agent",
         display_name="ML Expert",
@@ -97,6 +81,30 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
         handoff_tool_name="handoff_to_visualization_expert_agent",
         handoff_tool_description="Delegate visualization tasks to the visualization expert agent",
     ),
+    "protein_structure_visualization_expert_agent": AgentRegistryConfig(
+        name="protein_structure_visualization_expert_agent",
+        display_name="Protein Structure Visualization Expert",
+        description="Handles 3D protein structure visualization (PDB structure fetching, ChimeraX visualization, RMSD calculation, secondary structure analysis) and structural analysis using PDB and pymol",
+        factory_function="lobster.agents.protein_structure_visualization_expert.protein_structure_visualization_expert",
+        handoff_tool_name="handoff_to_protein_structure_visualization_expert_agent",
+        handoff_tool_description="Assign protein structure visualization tasks to the protein structure visualization expert agent",
+    ),    
+    # 'ms_proteomics_expert_agent': AgentRegistryConfig(
+    #     name='ms_proteomics_expert_agent',
+    #     display_name='MS Proteomics Expert',
+    #     description='Handles mass spectrometry proteomics data analysis including DDA/DIA workflows with database search artifact removal',
+    #     factory_function='lobster.agents.ms_proteomics_expert.ms_proteomics_expert',
+    #     handoff_tool_name='handoff_to_ms_proteomics_expert_agent',
+    #     handoff_tool_description='Assign mass spectrometry proteomics analysis tasks to the MS proteomics expert agent'
+    # ),
+    # 'affinity_proteomics_expert_agent': AgentRegistryConfig(
+    #     name='affinity_proteomics_expert_agent',
+    #     display_name='Affinity Proteomics Expert',
+    #     description='Handles affinity proteomics data analysis including Olink and targeted protein panels with antibody validation',
+    #     factory_function='lobster.agents.affinity_proteomics_expert.affinity_proteomics_expert',
+    #     handoff_tool_name='handoff_to_affinity_proteomics_expert_agent',
+    #     handoff_tool_description='Assign affinity proteomics and targeted panel analysis tasks to the affinity proteomics expert agent'
+    # ),
     # 'custom_feature_agent': AgentRegistryConfig(
     #     name='custom_feature_agent',
     #     display_name='Custom Feature Agent',
@@ -143,14 +151,7 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
     #     DO NOT delegate for standard analysis (clustering, DE, QC, visualization, literature search).
     #     """
     # ),
-    "protein_structure_visualization_expert_agent": AgentRegistryConfig(
-        name="protein_structure_visualization_expert_agent",
-        display_name="Protein Structure Visualization Expert",
-        description="Handles 3D protein structure visualization, structural analysis, and integration with omics data using PDB and ChimeraX",
-        factory_function="lobster.agents.protein_structure_visualization_expert.protein_structure_visualization_expert",
-        handoff_tool_name="handoff_to_protein_structure_visualization_expert_agent",
-        handoff_tool_description="Assign protein structure visualization tasks (PDB structure fetching, ChimeraX visualization, RMSD calculation, secondary structure analysis, linking structures to gene expression data) to the protein structure visualization expert agent",
-    ),
+
 }
 
 

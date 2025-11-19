@@ -18,22 +18,27 @@ jobs:
     name: Code Quality & Unit Tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Set up Python 3.12
       uses: actions/setup-python@v4
       with:
         python-version: 3.12
         cache: 'pip'
-    
+
+    - name: Free up disk space
+      run: |
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        df -h
+
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install -e ".[dev]"
-    
+        python -m pip install --no-cache-dir --upgrade pip
+        pip install --no-cache-dir -e ".[dev]"
+
     - name: Run linting and formatting checks
       run: |
         # Basic linting with ruff if available
@@ -61,10 +66,7 @@ jobs:
       run: |
         python -m pytest tests/unit/config \
           --maxfail=10 \
-          --cov=lobster \
-          --cov-report=xml \
-          --cov-report=term \
-          --junit-xml=test-results.xml \
+          --junit-xml=test-results-config.xml \
           --durations=10 \
           -v
     
@@ -72,10 +74,7 @@ jobs:
       run: |
         python -m pytest tests/unit/core/backends \
           --maxfail=10 \
-          --cov=lobster \
-          --cov-report=xml \
-          --cov-report=term \
-          --junit-xml=test-results.xml \
+          --junit-xml=test-results-backends.xml \
           --durations=10 \
           -v
     
@@ -83,10 +82,7 @@ jobs:
       run: |
         python -m pytest tests/unit/core/test_client.py \
           --maxfail=10 \
-          --cov=lobster \
-          --cov-report=xml \
-          --cov-report=term \
-          --junit-xml=test-results.xml \
+          --junit-xml=test-results-client.xml \
           --durations=10 \
           -v
     
@@ -94,10 +90,7 @@ jobs:
       run: |
         python -m pytest tests/unit/core/test_schemas.py \
           --maxfail=10 \
-          --cov=lobster \
-          --cov-report=xml \
-          --cov-report=term \
-          --junit-xml=test-results.xml \
+          --junit-xml=test-results-schemas.xml \
           --durations=10 \
           -v
     
@@ -105,10 +98,7 @@ jobs:
       run: |
         python -m pytest tests/unit/core/test_data_manager_v2.py \
           --maxfail=10 \
-          --cov=lobster \
-          --cov-report=xml \
-          --cov-report=term \
-          --junit-xml=test-results.xml \
+          --junit-xml=test-results-data-manager.xml \
           --durations=10 \
           -v
     
@@ -116,10 +106,7 @@ jobs:
       run: |
         python -m pytest tests/unit/agents/test_agent_registry.py \
           --maxfail=10 \
-          --cov=lobster \
-          --cov-report=xml \
-          --cov-report=term \
-          --junit-xml=test-results.xml \
+          --junit-xml=test-results-agent-registry.xml \
           --durations=10 \
           -v
     
@@ -132,10 +119,7 @@ jobs:
       run: |
         python -m pytest tests/unit/agents/test_supervisor.py \
           --maxfail=10 \
-          --cov=lobster \
-          --cov-report=xml \
-          --cov-report=term \
-          --junit-xml=test-results.xml \
+          --junit-xml=test-results-supervisor.xml \
           --durations=10 \
           -v
     
@@ -149,10 +133,7 @@ jobs:
       run: |
         python -m pytest tests/unit/agents/test_singlecell_expert.py \
           --maxfail=10 \
-          --cov=lobster \
-          --cov-report=xml \
-          --cov-report=term \
-          --junit-xml=test-results.xml \
+          --junit-xml=test-results-singlecell.xml \
           --durations=10 \
           -v
     
@@ -166,10 +147,7 @@ jobs:
       run: |
         python -m pytest tests/unit/agents/test_research_agent.py \
           --maxfail=10 \
-          --cov=lobster \
-          --cov-report=xml \
-          --cov-report=term \
-          --junit-xml=test-results.xml \
+          --junit-xml=test-results-research.xml \
           --durations=10 \
           -v
     
@@ -186,24 +164,7 @@ jobs:
           --cov=lobster \
           --cov-report=xml \
           --cov-report=term \
-          --junit-xml=test-results.xml \
-          --durations=10 \
-          -v
-    
-    - name: Run tests/unit/agents/test_method_expert tests
-      env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        AWS_BEDROCK_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_ACCESS_KEY }}
-        AWS_BEDROCK_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_SECRET_ACCESS_KEY }}
-        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
-      run: |
-        python -m pytest tests/unit/agents/test_method_expert.py \
-          --maxfail=10 \
-          --cov=lobster \
-          --cov-report=xml \
-          --cov-report=term \
-          --junit-xml=test-results.xml \
+          --junit-xml=test-results-data-expert.xml \
           --durations=10 \
           -v
 
@@ -214,24 +175,29 @@ jobs:
     name: Basic Security Scan
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Set up Python 3.12
       uses: actions/setup-python@v4
       with:
         python-version: 3.12
-    
+
+    - name: Free up disk space
+      run: |
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android
+        df -h
+
     - name: Install security tools
       run: |
-        python -m pip install --upgrade pip
-        pip install safety bandit
-    
+        python -m pip install --no-cache-dir --upgrade pip
+        pip install --no-cache-dir safety bandit
+
     - name: Run safety check
       run: |
-        pip install -e .
+        pip install --no-cache-dir -e .
         safety check || echo "Safety check completed with warnings"
     
     - name: Run bandit security scan
@@ -245,30 +211,40 @@ jobs:
     name: Build Verification
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Set up Python 3.12
       uses: actions/setup-python@v4
       with:
         python-version: 3.12
-    
+
+    - name: Free up disk space
+      run: |
+        sudo rm -rf /usr/share/dotnet
+        df -h
+
     - name: Install build tools
       run: |
-        python -m pip install --upgrade pip
-        pip install build twine
-    
+        python -m pip install --no-cache-dir --upgrade pip
+        pip install --no-cache-dir build twine
+
     - name: Build package
       run: python -m build
-    
+
     - name: Verify package
       run: |
         twine check dist/*
-        pip install dist/*.whl
+        pip install --no-cache-dir dist/*.whl
         python -c "import lobster; print(f'✅ Package installed successfully')"
-    
+
+    - name: Clean up build artifacts
+      run: |
+        rm -rf build/ *.egg-info/
+        df -h
+
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -295,12 +271,12 @@ jobs:
       with:
         python-version: 3.12
         cache: 'pip'
-    
+
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install -e ".[dev]"
-    
+        python -m pip install --no-cache-dir --upgrade pip
+        pip install --no-cache-dir -e ".[dev]"
+
     - name: Run integration tests (excluding real API tests)
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
