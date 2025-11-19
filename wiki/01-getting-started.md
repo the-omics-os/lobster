@@ -12,28 +12,42 @@ Welcome to Lobster AI! This quick start guide will have you analyzing bioinforma
   - [AWS Bedrock Access](https://console.aws.amazon.com/) (For AWS users)
 - **NCBI API Key** (optional, for enhanced literature search)
 
-### 2. One-Command Installation
+### 2. Choose Installation Method
+
+**Quick Decision:**
+- Want `lobster` command everywhere? → **Global Installation**
+- Working on specific project? → **Local Installation**
+
+#### Global Installation (Recommended for Most Users)
 
 ```bash
-git clone https://github.com/the-omics-os/lobster-local.git
-cd lobster
-make install
+# Install uv if needed
+# macOS/Linux: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install Lobster globally
+uv tool install lobster-ai
 ```
 
-This command will:
-- ✅ Verify your Python installation
-- ✅ Create a virtual environment
-- ✅ Install all dependencies
-- ✅ Set up configuration files
-- ✅ Display next steps
+This makes `lobster` command available system-wide.
+
+#### Local Installation (Project-Specific)
+
+```bash
+# In your project directory
+python3 -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install lobster-ai
+```
+
+This installs Lobster in your project's virtual environment only.
 
 ### 3. Configure API Keys
 
 Run the interactive configuration wizard:
 
 ```bash
-# Activate the virtual environment first
-source .venv/bin/activate
+# For local installation, activate virtual environment first
+source .venv/bin/activate  # Skip if using global installation
 
 # Launch configuration wizard
 lobster init
@@ -71,16 +85,22 @@ AWS_BEDROCK_SECRET_ACCESS_KEY=your-aws-secret-key
 NCBI_API_KEY=your-ncbi-api-key-here
 ```
 
-### 4. Activate & Test
+### 4. Test Installation
 
+**Global installation:**
 ```bash
-# Activate the virtual environment
-source .venv/bin/activate
-
-# Test installation
+# Command works from anywhere
 lobster --help
+lobster chat
+```
 
-# Start interactive mode
+**Local installation:**
+```bash
+# Activate virtual environment first
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# Then use Lobster
+lobster --help
 lobster chat
 ```
 
@@ -176,6 +196,8 @@ Once in the chat interface (`lobster chat`), try these commands:
 
 ## Next Steps
 
+Regardless of installation method (global or local), these guides work the same:
+
 1. **[Installation Guide](02-installation.md)** - Detailed installation options
 2. **[Configuration Guide](03-configuration.md)** - Advanced configuration
 3. **[Main Documentation](README.md)** - Complete feature overview
@@ -202,6 +224,33 @@ export LOBSTER_PROFILE=development  # Use lighter resource profile
 ```bash
 lobster chat  # Then type /help
 ```
+
+## Uninstalling
+
+### Remove Lobster
+
+**Global installation:**
+```bash
+uv tool uninstall lobster-ai
+```
+
+**Local installation:**
+```bash
+source .venv/bin/activate
+pip uninstall lobster-ai
+deactivate
+rm -rf .venv  # Optional: remove virtual environment
+```
+
+### Remove User Data (Optional)
+
+⚠️ Deletes all analysis history!
+
+```bash
+rm -rf ~/.lobster ~/.lobster_workspace
+```
+
+For more details, see the [Installation Guide](02-installation.md#uninstalling-lobster-ai).
 
 ---
 

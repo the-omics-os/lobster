@@ -8,6 +8,7 @@ This guide covers all installation methods for Lobster AI, from quick setup to a
 - [Installation Methods](#installation-methods)
 - [Platform-Specific Instructions](#platform-specific-instructions)
 - [Verification](#verification)
+- [Uninstalling Lobster AI](#uninstalling-lobster-ai)
 - [Development Installation](#development-installation)
 - [Optional Dependencies](#optional-dependencies)
   - [PyMOL (Protein Structure Visualization)](#pymol-protein-structure-visualization)
@@ -107,6 +108,28 @@ The checker will:
 
 ## Installation Methods
 
+Lobster AI can be installed in two ways:
+
+1. **Global Installation** - Command available system-wide
+2. **Local Installation** - Command available in virtual environment only
+
+### Comparison: Global vs Local
+
+| Aspect | Global Installation | Local Installation |
+|--------|-------------------|-------------------|
+| **Access** | From anywhere in terminal | Only in activated venv |
+| **Command** | `uv tool install lobster-ai` | `pip install lobster-ai` |
+| **Isolation** | Separate per tool | Separate per project |
+| **Best For** | CLI usage, quick analysis | Development, project-specific |
+| **Uninstall** | `uv tool uninstall lobster-ai` | `pip uninstall lobster-ai` |
+
+Choose based on your workflow:
+- **CLI power user?** → Global installation
+- **Multiple projects with different versions?** → Local installation
+- **Developer contributing to Lobster?** → Local from source
+
+---
+
 ### Method 1: Quick Install (Recommended)
 
 The easiest and most reliable installation method:
@@ -181,35 +204,104 @@ This creates a symlink in `/usr/local/bin/lobster` allowing you to run `lobster`
 
 ### Method 5: PyPI Installation (Recommended)
 
-The `lobster-ai` package is now available on PyPI and is the **recommended installation method** for most users.
+The `lobster-ai` package is available on PyPI with two installation modes:
+
+#### 5A. Global Installation with uv tool (Recommended for CLI Use)
+
+**Best for**: System-wide access, quick analysis, CLI usage
 
 ```bash
-# Recommended: Install with uv (faster)
-# Install uv: https://docs.astral.sh/uv/getting-started/installation/
+# Install uv if not already installed
+# https://docs.astral.sh/uv/getting-started/installation/
 
-# Standard installation
-uv pip install lobster-ai
+# Install Lobster globally
+uv tool install lobster-ai
 
-# Development installation (includes testing and linting tools)
-uv pip install lobster-ai[dev]
+# Verify installation
+lobster --version
+which lobster  # Should show: ~/.local/bin/lobster
 
-# All extras (includes all optional dependencies)
-uv pip install lobster-ai[all]
+# Configure
+lobster init
 
-# Alternative: Use pip if uv is not available
-# pip install lobster-ai
-# pip install lobster-ai[dev]
-# pip install lobster-ai[all]
+# Start using
+lobster chat
 ```
 
-**Benefits of PyPI installation:**
-- ✅ Simple one-command installation
-- ✅ Automatic dependency management
-- ✅ **Interactive configuration wizard** - no manual `.env` editing required
-- ✅ Easy updates with `uv pip install --upgrade lobster-ai` (or `pip install --upgrade lobster-ai`)
-- ✅ Works on all platforms (macOS, Linux, Windows)
+**Benefits:**
+- ✅ Accessible from any directory
+- ✅ Clean uninstall (one command)
+- ✅ Isolated environment per tool
+- ✅ Automatic PATH management
+- ✅ No virtual environment needed
 
-**Configuration:**
+**Note**: Ensure `~/.local/bin` is in your PATH:
+```bash
+# Check PATH
+echo $PATH | grep -q ".local/bin" && echo "✅ In PATH" || echo "❌ Not in PATH"
+
+# Add to PATH if needed (add to ~/.zshrc or ~/.bashrc)
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+#### 5B. Local Installation with Virtual Environment
+
+**Best for**: Project-specific installation, multiple versions, development
+
+```bash
+# Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# Install with uv (faster)
+uv pip install lobster-ai
+
+# Or use pip
+pip install lobster-ai
+
+# Verify installation (only works when venv activated)
+lobster --version
+
+# Configure
+lobster init
+
+# Start using
+lobster chat
+```
+
+**Benefits:**
+- ✅ Project-specific versions
+- ✅ Doesn't affect system Python
+- ✅ Easy to remove (delete directory)
+- ✅ Standard Python workflow
+
+**To use later:**
+```bash
+# Always activate virtual environment first
+source .venv/bin/activate
+lobster chat
+```
+
+#### 5C. Alternative: pipx (Similar to uv tool)
+
+**For users who already use pipx:**
+
+```bash
+# Install pipx if not already installed
+# https://pipx.pypa.io/stable/installation/
+
+# Install Lobster globally with pipx
+pipx install lobster-ai
+
+# Uninstall
+pipx uninstall lobster-ai
+```
+
+**Note**: `pipx` and `uv tool` are similar - choose whichever you prefer.
+
+---
+
+**Configuration (All Methods):**
 
 After installation, run the configuration wizard to set up your API keys:
 
@@ -271,6 +363,12 @@ source .venv/bin/activate
 uv pip install -e .
 # Alternative: pip install -e .
 ```
+
+**Installation Choice:**
+- **Global**: Use `uv tool install lobster-ai` (accessible anywhere)
+- **Local**: Use virtual environment method (project-specific)
+
+See [Installation Methods](#installation-methods) for detailed comparison.
 
 ### Linux (Ubuntu/Debian)
 
@@ -349,6 +447,12 @@ cd lobster-local
 make install
 ```
 
+**Installation Choice:**
+- **Global**: Use `uv tool install lobster-ai` (accessible anywhere)
+- **Local**: Use virtual environment method (project-specific)
+
+See [Installation Methods](#installation-methods) for detailed comparison.
+
 ### Windows
 
 **⚠️ Native Windows installation is experimental. Docker Desktop is strongly recommended for Windows users.**
@@ -425,6 +529,12 @@ cd lobster-local
 - **Permission denied**: Run PowerShell as Administrator or use Docker
 - **Python not found**: Reinstall Python with "Add to PATH" checked
 - **Long path errors**: Enable long path support in Windows Registry or use Docker
+
+**Installation Choice:**
+- **Global**: Use `uv tool install lobster-ai` (accessible anywhere)
+- **Local**: Use virtual environment method (project-specific)
+
+See [Installation Methods](#installation-methods) for detailed comparison.
 
 ### Python Version Considerations
 
@@ -555,6 +665,144 @@ This command will:
 - Test LLM provider (Claude API or AWS Bedrock) connectivity
 - Test NCBI API if configured
 - Display detailed test results with ✅/❌ status for each service
+
+## Uninstalling Lobster AI
+
+### Remove Package
+
+The uninstall process depends on how you installed Lobster:
+
+#### Global Installation (uv tool)
+
+```bash
+# One command to remove everything
+uv tool uninstall lobster-ai
+
+# Verify removal
+uv tool list | grep lobster  # Should output nothing
+which lobster  # Should output nothing
+```
+
+✅ **Clean**: No leftover files, no manual cleanup needed.
+
+#### Global Installation (pipx)
+
+```bash
+# One command to remove everything
+pipx uninstall lobster-ai
+
+# Verify removal
+pipx list | grep lobster  # Should output nothing
+which lobster  # Should output nothing
+```
+
+#### Local Installation (Virtual Environment)
+
+```bash
+# Activate virtual environment first
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# Uninstall package
+pip uninstall lobster-ai
+
+# Deactivate virtual environment
+deactivate
+
+# Optional: Remove entire virtual environment
+rm -rf .venv
+```
+
+#### Source Installation (make install-global)
+
+```bash
+cd /path/to/lobster
+
+# Remove global symlink
+make uninstall-global
+
+# Optional: Remove virtual environment
+make uninstall
+```
+
+### Remove User Data (Optional)
+
+⚠️ **Warning**: This permanently deletes all your analysis data!
+
+Lobster stores user data separately from the package:
+
+```bash
+# View what will be removed
+du -sh ~/.lobster ~/.lobster_workspace
+
+# Remove command history, notebooks, workspaces
+rm -rf ~/.lobster
+
+# Remove cache, data, exports
+rm -rf ~/.lobster_workspace
+
+# Remove project configurations (in your project directories)
+cd /path/to/your/project
+rm .env  # API key configuration
+```
+
+**What gets removed:**
+- `~/.lobster/`: Command history, exported notebooks, saved workspaces
+- `~/.lobster_workspace/`: Download cache, intermediate data, exports
+- `.env` files: API key configurations (project-specific)
+
+**Keep user data if:**
+- You plan to reinstall Lobster later
+- You want to preserve analysis history
+- You have important exported notebooks
+
+### Verify Complete Removal
+
+```bash
+# Check command removed
+which lobster  # Should output: lobster not found
+
+# Check package removed
+pip list | grep lobster  # Should output nothing
+uv tool list | grep lobster  # Should output nothing (if using uv tool)
+
+# Check user data removed
+ls ~/.lobster 2>/dev/null || echo "✅ Removed"
+ls ~/.lobster_workspace 2>/dev/null || echo "✅ Removed"
+```
+
+### Troubleshooting Uninstall
+
+**Problem**: `which lobster` still shows a command after uninstall
+
+**Solution**:
+```bash
+# Find the leftover executable
+which lobster
+ls -la $(which lobster)
+
+# Remove manually (location varies by installation)
+# For uv tool (shouldn't happen, but just in case)
+rm ~/.local/bin/lobster
+
+# For Homebrew Python
+sudo rm /opt/homebrew/bin/lobster
+
+# For system Python
+sudo rm /usr/local/bin/lobster
+# or
+rm ~/Library/Python/3.x/bin/lobster
+```
+
+**Problem**: Package still shows in `pip list` after uninstall
+
+**Solution**:
+```bash
+# Force remove
+pip uninstall -y lobster-ai
+
+# Or use uv
+uv pip uninstall lobster-ai
+```
 
 ## Development Installation
 
