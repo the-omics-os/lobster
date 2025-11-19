@@ -45,7 +45,9 @@ We recommend installing `uv` for significantly faster package installation and d
 
 ### Required API Keys
 
-Choose ONE of the following LLM providers:
+**Easy Setup:** On your first run, Lobster will launch an **interactive setup wizard** that guides you through API key configuration. No manual file editing required!
+
+Choose ONE of the following LLM providers (the wizard will prompt you):
 
 1. **Claude API Key** (Recommended for most users)
 
@@ -53,7 +55,7 @@ Choose ONE of the following LLM providers:
 
    - Visit [Anthropic Console](https://console.anthropic.com/)
    - Create account and generate API key
-   - Add to `.env`: `ANTHROPIC_API_KEY=sk-ant-...`
+   - The wizard will prompt you to enter: `ANTHROPIC_API_KEY=sk-ant-...`
    - **Recommended for**: Quick testing, development with small datasets
    - **Not recommended for**: Production deployments, large-scale analysis
 
@@ -63,7 +65,7 @@ Choose ONE of the following LLM providers:
 
    - AWS account with Bedrock access
    - Create IAM user with Bedrock permissions
-   - Add to `.env`:
+   - The wizard will prompt you to enter:
      ```
      AWS_BEDROCK_ACCESS_KEY=...
      AWS_BEDROCK_SECRET_ACCESS_KEY=...
@@ -74,6 +76,9 @@ Choose ONE of the following LLM providers:
 3. **NCBI API Key** (Optional)
    - Visit [NCBI E-utilities](https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/)
    - Enhances literature search capabilities
+   - The wizard offers to add this optionally
+
+**Advanced Users:** You can skip the wizard by manually creating a `.env` file in your working directory before first run.
 
 ## Pre-Installation Check
 
@@ -200,8 +205,26 @@ uv pip install lobster-ai[all]
 **Benefits of PyPI installation:**
 - ✅ Simple one-command installation
 - ✅ Automatic dependency management
+- ✅ **Interactive first-run setup wizard** - no manual `.env` editing required
 - ✅ Easy updates with `uv pip install --upgrade lobster-ai` (or `pip install --upgrade lobster-ai`)
 - ✅ Works on all platforms (macOS, Linux, Windows)
+
+**First-Run Configuration:**
+
+After installation, simply run `lobster chat` and you'll be greeted with an interactive setup wizard:
+
+```bash
+# Run Lobster for the first time
+lobster chat
+
+# The wizard will guide you through:
+# 1. Choose LLM provider (Claude API or AWS Bedrock)
+# 2. Enter your API keys securely (input is masked)
+# 3. Optionally add NCBI API key for enhanced literature search
+# 4. Configuration saved automatically to .env file
+```
+
+The wizard creates a `.env` file in your current working directory with your credentials. No manual file editing required!
 
 **Note:** For development or contributing to Lobster AI, use Method 1 (Quick Install) or Method 3 (Manual Installation) to install from source.
 
@@ -428,10 +451,58 @@ python -c "import lobster; print('✅ Lobster imported successfully')"
 python verify_installation.py
 ```
 
+### First-Run Configuration Wizard
+
+On your first run, if no `.env` file is detected, Lobster will launch an interactive setup wizard:
+
+```bash
+# Start Lobster for the first time
+lobster chat
+```
+
+**Expected first-run output:**
+
+```
+╭────────────────────────────────────────────────────────────╮
+│  🦞 Welcome to Lobster AI!                                 │
+│                                                            │
+│  No configuration file detected. Let's set up your API    │
+│  keys.                                                     │
+│  This wizard will create a .env file in your current      │
+│  directory.                                               │
+╰────────────────────────────────────────────────────────────╯
+
+Select your LLM provider:
+  1 - Claude API (Anthropic) - Quick testing, development
+  2 - AWS Bedrock - Production, enterprise use
+
+Choose provider [1]: 1
+
+🔑 Claude API Configuration
+Get your API key from: https://console.anthropic.com/
+
+Enter your Claude API key: ********************************
+
+📚 NCBI API Key (Optional)
+Enhances literature search capabilities.
+Get key from: https://ncbiinsights.ncbi.nlm.nih.gov/...
+
+Add NCBI API key? [y/N]: n
+
+╭────────────────────────────────────────────────────────────╮
+│  ✅ Configuration saved!                                   │
+│                                                            │
+│  File created: /path/to/your/.env                         │
+│  You can edit this file anytime to update your API keys.  │
+╰────────────────────────────────────────────────────────────╯
+```
+
+The wizard will then continue to the normal Lobster chat interface.
+
 ### Check System Status
 
 ```bash
-# Start Lobster and check status
+# After configuration, check status in chat
 lobster chat
 
 # In the chat interface, type:
@@ -444,7 +515,7 @@ Expected output:
 ✅ Environment: Virtual environment active
 ✅ Dependencies: All packages installed
 ✅ Configuration: .env file present
-⚠️  API Keys: Configure in .env file
+✅ API Keys: Configured
 ```
 
 ### Verify API Connectivity
