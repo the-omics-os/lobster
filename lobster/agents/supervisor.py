@@ -214,8 +214,9 @@ def _get_agent_delegation_rules(agent_name: str, agent_config) -> str:
        - Performing QC on single-cell datasets (cell/gene filtering with adaptive thresholds, mitochondrial/ribosomal content checks, doublet detection via upper bounds).
        - Detecting/removing doublets in single-cell data.
        - Normalizing single-cell counts (UMI normalization).
+       - Feature selection for single-cell data: supports 'deviance' (recommended default - works on raw counts, no normalization bias) and 'hvg' (traditional highly variable genes).
        - Running dimensionality reduction (PCA, UMAP, t-SNE) for single-cell data.
-       - Clustering cells (Leiden/Louvain) - testing multiple resolutions.
+       - Clustering cells with Leiden algorithm - supports BOTH single resolution (resolution=0.5) and multi-resolution testing (resolutions=[0.25, 0.5, 1.0]) to explore clustering granularity. Uses 30 PCs and deviance-based feature selection by default. Multi-resolution mode creates separate clustering results (leiden_res0_25, leiden_res0_5, leiden_res1_0) for side-by-side comparison.
        - Annotating cell types and finding marker genes for single-cell clusters.
        - Integrating single-cell datasets with batch correction methods.
        - Creating visualizations for single-cell data (QC plots, UMAP plots, violin plots, feature plots, etc.).
@@ -283,9 +284,13 @@ def _build_workflow_section(active_agents: List[str], config: SupervisorConfig) 
     - If user has single-cell datasets:
       1. data_expert_agent loads and summarizes them.
       2. singlecell_expert_agent runs QC -> normalization -> doublet detection.
-      3. singlecell_expert_agent performs clustering, UMAP visualization, and marker gene detection.
-      4. singlecell_expert_agent annotates cell types.
-      5. research_agent consulted for parameter extraction if needed.\n\n"""
+      3. singlecell_expert_agent performs clustering and UMAP visualization:
+         - For exploration: Use multi-resolution testing (resolutions=[0.25, 0.5, 1.0]) to explore granularity
+         - For production: Use single resolution (resolution=0.5 or 1.0) after determining optimal granularity
+         - Results in leiden_res0_XX columns for each resolution tested
+      4. singlecell_expert_agent finds marker genes for optimal clustering resolution.
+      5. singlecell_expert_agent annotates cell types.
+      6. research_agent consulted for parameter extraction if needed.\n\n"""
 
     if "bulk_rnaseq_expert_agent" in active_agents:
         section += """    **Bulk RNA-seq Workflow:**
@@ -491,6 +496,25 @@ def _build_examples_section() -> str:
 
     **Analysis Workflows:**
     - For single-cell: data loading -> QC -> normalization -> clustering -> annotation
+
+      **Multi-Resolution Clustering Example:**
+      User: "Cluster my single-cell data at multiple resolutions to explore granularity"
+      You delegate: singlecell_expert_agent.cluster_modality(
+          modality_name="geo_gse12345_filtered",
+          resolutions=[0.25, 0.5, 1.0],
+          batch_correction=True
+      )
+      Result: Creates leiden_res0_25, leiden_res0_5, leiden_res1_0 columns
+      Next: User visualizes UMAP colored by each resolution to compare
+
+      **Single Resolution Clustering Example:**
+      User: "Cluster my data with resolution 0.5"
+      You delegate: singlecell_expert_agent.cluster_modality(
+          modality_name="geo_gse12345_filtered",
+          resolution=0.5
+      )
+      Result: Creates leiden column with clustering at resolution 0.5
+
     - For bulk RNA-seq: data loading -> QC -> normalization -> DE analysis -> enrichment
     - For proteomics: data loading -> QC -> normalization -> statistical testing -> visualization
 
