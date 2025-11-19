@@ -29,25 +29,45 @@ This command will:
 
 ### 3. Configure API Keys
 
-Edit the `.env` file created during installation:
+Run the interactive configuration wizard:
 
 ```bash
-nano .env
+# Activate the virtual environment first
+source .venv/bin/activate
+
+# Launch configuration wizard
+lobster init
 ```
 
-Add your API keys (choose ONE provider):
+The wizard will guide you through:
+- ✅ Choosing your LLM provider (Claude API or AWS Bedrock)
+- ✅ Entering your API keys securely (input is masked)
+- ✅ Optionally configuring NCBI API key for enhanced literature search
+- ✅ Saving configuration to .env file
+
+**Configuration management:**
+```bash
+# Test your configuration
+lobster config test
+
+# View current configuration (secrets masked)
+lobster config show
+
+# Reconfigure (creates backup)
+lobster init --force
+```
+
+**Manual configuration** (advanced users only):
+If you prefer, you can manually edit the `.env` file:
 ```env
-# Option 1: Claude API (Recommended for simplicity)
+# Option 1: Claude API
 ANTHROPIC_API_KEY=sk-ant-api03-xxxxx
 
-# Option 2: AWS Bedrock (For AWS users)
+# Option 2: AWS Bedrock
 AWS_BEDROCK_ACCESS_KEY=your-aws-access-key
 AWS_BEDROCK_SECRET_ACCESS_KEY=your-aws-secret-key
 
-# Optional: Force a specific provider (auto-detected by default)
-# LOBSTER_LLM_PROVIDER=anthropic  # or "bedrock"
-
-# Optional (enhances literature search)
+# Optional: NCBI API key
 NCBI_API_KEY=your-ncbi-api-key-here
 ```
 

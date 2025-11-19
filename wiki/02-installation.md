@@ -205,23 +205,38 @@ uv pip install lobster-ai[all]
 **Benefits of PyPI installation:**
 - ✅ Simple one-command installation
 - ✅ Automatic dependency management
-- ✅ **Interactive first-run setup wizard** - no manual `.env` editing required
+- ✅ **Interactive configuration wizard** - no manual `.env` editing required
 - ✅ Easy updates with `uv pip install --upgrade lobster-ai` (or `pip install --upgrade lobster-ai`)
 - ✅ Works on all platforms (macOS, Linux, Windows)
 
-**First-Run Configuration:**
+**Configuration:**
 
-After installation, simply run `lobster chat` and you'll be greeted with an interactive setup wizard:
+After installation, run the configuration wizard to set up your API keys:
 
 ```bash
-# Run Lobster for the first time
-lobster chat
+# Launch interactive configuration wizard
+lobster init
 
 # The wizard will guide you through:
 # 1. Choose LLM provider (Claude API or AWS Bedrock)
 # 2. Enter your API keys securely (input is masked)
 # 3. Optionally add NCBI API key for enhanced literature search
 # 4. Configuration saved automatically to .env file
+```
+
+**Additional configuration commands:**
+```bash
+# Test API connectivity
+lobster config test
+
+# View current configuration (secrets masked)
+lobster config show
+
+# Reconfigure (creates backup of existing .env)
+lobster init --force
+
+# Non-interactive mode (for CI/CD)
+lobster init --non-interactive --anthropic-key=sk-ant-xxx
 ```
 
 The wizard creates a `.env` file in your current working directory with your credentials. No manual file editing required!
@@ -451,25 +466,22 @@ python -c "import lobster; print('✅ Lobster imported successfully')"
 python verify_installation.py
 ```
 
-### First-Run Configuration Wizard
+### Configuration Wizard
 
-On your first run, if no `.env` file is detected, Lobster will launch an interactive setup wizard:
+After installation, run the configuration wizard to set up your API keys:
 
 ```bash
-# Start Lobster for the first time
-lobster chat
+# Launch interactive configuration wizard
+lobster init
 ```
 
-**Expected first-run output:**
+**Expected wizard output:**
 
 ```
 ╭────────────────────────────────────────────────────────────╮
 │  🦞 Welcome to Lobster AI!                                 │
 │                                                            │
-│  No configuration file detected. Let's set up your API    │
-│  keys.                                                     │
-│  This wizard will create a .env file in your current      │
-│  directory.                                               │
+│  This wizard will create a .env file with your API keys.  │
 ╰────────────────────────────────────────────────────────────╯
 
 Select your LLM provider:
@@ -494,10 +506,23 @@ Add NCBI API key? [y/N]: n
 │                                                            │
 │  File created: /path/to/your/.env                         │
 │  You can edit this file anytime to update your API keys.  │
+│                                                            │
+│  Next step: Run lobster chat                              │
 ╰────────────────────────────────────────────────────────────╯
 ```
 
-The wizard will then continue to the normal Lobster chat interface.
+**Configuration management commands:**
+
+```bash
+# Test API connectivity
+lobster config test
+
+# View current configuration (secrets masked)
+lobster config show
+
+# Reconfigure (creates timestamped backup of existing .env)
+lobster init --force
+```
 
 ### Check System Status
 
@@ -521,9 +546,15 @@ Expected output:
 ### Verify API Connectivity
 
 ```bash
-# Test API keys (after configuration)
+# Test API connectivity and validate configuration
 lobster config test
 ```
+
+This command will:
+- Check for .env file existence
+- Test LLM provider (Claude API or AWS Bedrock) connectivity
+- Test NCBI API if configured
+- Display detailed test results with ✅/❌ status for each service
 
 ## Development Installation
 

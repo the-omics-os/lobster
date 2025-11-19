@@ -2,8 +2,26 @@
 
 This guide covers all aspects of configuring Lobster AI, from basic API key setup to advanced model customization and cloud integration.
 
+## Quick Start
+
+The easiest way to configure Lobster AI is using the interactive wizard:
+
+```bash
+# Launch interactive configuration wizard
+lobster init
+
+# Test your configuration
+lobster config test
+
+# View your configuration (secrets masked)
+lobster config show
+```
+
+For advanced configuration options, continue reading below.
+
 ## Table of Contents
 
+- [Quick Start](#quick-start)
 - [Environment Variables](#environment-variables)
 - [API Key Management](#api-key-management)
 - [Model Profiles](#model-profiles)
@@ -224,21 +242,57 @@ LOBSTER_SSL_CERT_PATH=
 
 ## Configuration Management
 
-Use the `lobster config` commands to manage your configuration.
+### Interactive Setup
+
+The recommended way to configure Lobster AI:
 
 ```bash
-# Show current configuration
-lobster config show-config
+# Launch interactive configuration wizard
+lobster init
 
-# Test API connectivity
+# The wizard will:
+# 1. Prompt you to choose LLM provider (Claude API or AWS Bedrock)
+# 2. Securely collect your API keys (input is masked)
+# 3. Optionally configure NCBI API key
+# 4. Save configuration to .env file in current directory
+```
+
+### Configuration Commands
+
+Use the `lobster config` commands to manage and verify your configuration:
+
+```bash
+# Test API connectivity and validate configuration
 lobster config test
 
-# List available model presets
-lobster config list-models
-
-# Generate a .env file template
-lobster config generate-env
+# Display current configuration with masked secrets
+lobster config show
 ```
+
+### Advanced Options
+
+```bash
+# Reconfigure (creates timestamped backup of existing .env)
+lobster init --force
+
+# Non-interactive mode for CI/CD and automation
+lobster init --non-interactive \
+  --anthropic-key=sk-ant-xxx
+
+# Non-interactive with AWS Bedrock
+lobster init --non-interactive \
+  --bedrock-access-key=AKIA... \
+  --bedrock-secret-key=xxx
+
+# Add NCBI API key in non-interactive mode
+lobster init --non-interactive \
+  --anthropic-key=sk-ant-xxx \
+  --ncbi-key=your-ncbi-key
+```
+
+### Manual Configuration
+
+For advanced users, you can manually edit the `.env` file in your working directory. See the [Environment Variables](#environment-variables) and [API Key Management](#api-key-management) sections for details on available settings.
 
 ## Security Best Practices
 
@@ -248,6 +302,8 @@ lobster config generate-env
 
 ## Troubleshooting Configuration
 
--   Use `lobster config show-config` to see the loaded configuration.
--   Use `lobster config test` to validate API key connectivity.
+-   Use `lobster config show` to see your current configuration with masked secrets.
+-   Use `lobster config test` to validate API connectivity and test your configuration.
+-   Use `lobster init --force` to reconfigure (creates a backup of your existing .env file).
 -   Run `lobster chat --debug` for verbose configuration loading information.
+-   If you see "No configuration found" errors, run `lobster init` to create your .env file.
