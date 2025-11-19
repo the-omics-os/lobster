@@ -1,4 +1,4 @@
-name: Sync to Public Repository
+name: Sync to Public Repository via Github
 
 on:
   push:
