@@ -38,6 +38,7 @@ class ContentType(str, Enum):
     DATASET = "dataset"
     METADATA = "metadata"
     DOWNLOAD_QUEUE = "download_queue"
+    PUBLICATION_QUEUE = "publication_queue"
 
 
 class RetrievalLevel(str, Enum):
@@ -303,12 +304,14 @@ class WorkspaceContentService:
         self.datasets_dir = self.workspace_base / "data"
         self.metadata_dir = self.workspace_base / "metadata"
         self.download_queue_dir = self.workspace_base / "download_queue"
+        self.publication_queue_dir = self.workspace_base / "publication_queue"
 
         # Create directories if they don't exist
         self.publications_dir.mkdir(parents=True, exist_ok=True)
         self.datasets_dir.mkdir(parents=True, exist_ok=True)
         self.metadata_dir.mkdir(parents=True, exist_ok=True)
         self.download_queue_dir.mkdir(parents=True, exist_ok=True)
+        self.publication_queue_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(
             f"WorkspaceContentService initialized with workspace at {self.workspace_base}"
@@ -332,6 +335,8 @@ class WorkspaceContentService:
             return self.metadata_dir
         elif content_type == ContentType.DOWNLOAD_QUEUE:
             return self.download_queue_dir
+        elif content_type == ContentType.PUBLICATION_QUEUE:
+            return self.publication_queue_dir
         else:
             raise ValueError(f"Unknown content type: {content_type}")
 
@@ -807,3 +812,88 @@ class WorkspaceContentService:
         stats["total_size_mb"] = round(stats["total_size_mb"], 2)
 
         return stats
+
+    def read_publication_queue_entry(self, entry_id: str) -> Dict[str, Any]:
+        """
+        Read a specific publication queue entry.
+
+        Args:
+            entry_id: Queue entry identifier
+
+        Returns:
+            Dict[str, Any]: Entry details
+
+        Raises:
+            FileNotFoundError: If entry not found in queue
+            AttributeError: If DataManager publication_queue not available
+
+        Examples:
+            >>> entry = service.read_publication_queue_entry("pub_queue_123")
+            >>> print(entry['title'])
+            Single-cell RNA-seq reveals...
+        """
+        if not self.data_manager or not hasattr(self.data_manager, "publication_queue"):
+            raise AttributeError("DataManager publication_queue not available")
+
+        if self.data_manager.publication_queue is None:
+            raise AttributeError("DataManager publication_queue not available")
+
+        try:
+            entry = self.data_manager.publication_queue.get_entry(entry_id)
+            return entry.to_dict()  # PublicationQueueEntry has to_dict method
+        except Exception as e:
+            raise FileNotFoundError(
+                f"Publication queue entry '{entry_id}' not found"
+            ) from e
+
+    def list_publication_queue_entries(
+        self, status_filter: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        List all publication queue entries with optional status filtering.
+
+        Args:
+            status_filter: Optional status to filter by (pending, extracting,
+                          metadata_extracted, completed, failed)
+
+        Returns:
+            List[Dict[str, Any]]: List of entry dictionaries
+
+        Examples:
+            >>> # List all entries
+            >>> entries = service.list_publication_queue_entries()
+            >>> print(len(entries))
+            5
+            >>>
+            >>> # Filter by status
+            >>> pending = service.list_publication_queue_entries(status_filter="pending")
+            >>> print(len(pending))
+            2
+        """
+        if not self.data_manager or not hasattr(self.data_manager, "publication_queue"):
+            return []
+
+        if self.data_manager.publication_queue is None:
+            return []
+
+        try:
+            from lobster.core.schemas.publication_queue import PublicationStatus
+        except ImportError:
+            logger.warning("Publication queue schema not available (premium feature)")
+            return []
+
+        # Convert string to enum if provided
+        status_enum = None
+        if status_filter:
+            try:
+                # PublicationStatus enum values are lowercase ("pending", "completed", etc.)
+                status_enum = PublicationStatus(status_filter.lower())
+            except ValueError:
+                # Invalid status, return empty list
+                logger.warning(
+                    f"Invalid status filter '{status_filter}', returning empty list"
+                )
+                return []
+
+        entries = self.data_manager.publication_queue.list_entries(status=status_enum)
+        return [entry.to_dict() for entry in entries]

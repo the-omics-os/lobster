@@ -902,6 +902,1004 @@ data_manager.download_queue.add_entry(entry)
 
 ---
 
-**Last Updated**: 2024-11-14 (Phase 2 completion)
+## Publication Queue System
+
+### Overview
+
+The Publication Queue System is a structured workflow for managing publication extraction with multi-agent coordination. Introduced alongside the Download Queue System in Phase 2, it enables efficient batch processing of scientific publications with automated content extraction, dataset identifier discovery, and workspace caching.
+
+**Key Benefits**:
+- **Batch RIS import**: Load multiple publications from reference managers (Zotero, Mendeley, EndNote)
+- **Automated extraction**: Extract metadata, methods sections, and dataset identifiers
+- **Status tracking**: Monitor extraction progress with detailed status workflow
+- **Workspace persistence**: Queue persists across sessions via JSON Lines format
+- **Multi-agent coordination**: research_agent processes publications, supervisor monitors progress
+
+**Introduced**: Phase 2 (November 2024)
+
+---
+
+### Publication Queue Architecture
+
+#### System Components
+
+```mermaid
+graph LR
+    subgraph "CLI /load command"
+        RIS[RISParser]
+        CLI["/load publications.ris"]
+    end
+
+    subgraph "Publication Queue"
+        Q[(publication_queue.jsonl)]
+        QM[PublicationQueue Manager]
+    end
+
+    subgraph "research_agent"
+        PE[process_publication_entry]
+        UP[update_publication_status]
+    end
+
+    subgraph "supervisor"
+        WS[get_content_from_workspace]
+    end
+
+    CLI --> RIS
+    RIS --> QM
+    QM --> Q
+    WS -.reads.-> Q
+    WS --> |entry_id| PE
+    PE --> UP
+    UP --> QM
+
+    classDef agent fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef queue fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+
+    class CLI,RIS,PE,UP,WS agent
+    class Q,QM queue
+```
+
+#### Queue Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING: /load command<br/>creates entry
+
+    PENDING --> EXTRACTING: research_agent<br/>starts processing
+
+    EXTRACTING --> METADATA_EXTRACTED: Content<br/>extracted
+    EXTRACTING --> FAILED: Extraction<br/>fails
+
+    METADATA_EXTRACTED --> COMPLETED: Identifiers<br/>extracted
+    METADATA_EXTRACTED --> FAILED: Identifier<br/>extraction fails
+
+    COMPLETED --> [*]: Content<br/>cached
+    FAILED --> PENDING: Retry<br/>(manual)
+    FAILED --> [*]: Abandon
+
+    note right of PENDING
+        Queue entry created with:
+        - PMID, DOI, PMC ID
+        - Title, authors, journal
+        - Status: PENDING
+    end note
+
+    note right of EXTRACTING
+        Prevents concurrent processing
+        - Processed_by: agent name
+        - Updated_at: timestamp
+    end note
+
+    note right of METADATA_EXTRACTED
+        Content extraction complete:
+        - Extracted_metadata populated
+        - Methods section stored
+        - Ready for identifier extraction
+    end note
+
+    note right of COMPLETED
+        Success metadata:
+        - Cached_content_path
+        - Extracted_identifiers (GEO, SRA, etc.)
+        - Completion timestamp
+    end note
+
+    note right of FAILED
+        Error tracking:
+        - Error_log: [errors]
+        - Retry count
+        - Failure reason
+    end note
+```
+
+---
+
+### Publication Queue Entry Structure
+
+#### PublicationQueueEntry Schema
+
+```python
+from lobster.core.schemas.publication_queue import PublicationQueueEntry, PublicationStatus
+
+entry = PublicationQueueEntry(
+    # Unique identifier
+    entry_id="pub_queue_35042229_5c1fb112",
+
+    # Publication identification
+    pmid="35042229",
+    doi="10.1038/s41586-022-04426-0",
+    pmc_id="PMC8891176",
+    title="Single-cell RNA sequencing reveals novel cell types in human brain",
+    authors=["Smith J", "Jones A", "Williams B"],
+    year=2022,
+    journal="Nature",
+
+    # Queue management
+    priority=5,  # 1-10 (10 = highest)
+    status=PublicationStatus.PENDING,  # PENDING, EXTRACTING, METADATA_EXTRACTED, COMPLETED, FAILED
+
+    # Extraction configuration
+    extraction_level=ExtractionLevel.METHODS,  # ABSTRACT, METHODS, FULL_TEXT, IDENTIFIERS
+    schema_type="single_cell",  # Auto-inferred from keywords
+
+    # Extraction results (filled by research_agent)
+    extracted_metadata={
+        "abstract": "This study uses single-cell RNA sequencing...",
+        "methods": "Cells were processed using 10x Genomics...",
+        "keywords": ["single-cell", "RNA-seq", "brain"]
+    },
+    extracted_identifiers={
+        "geo": ["GSE180759", "GSE180760"],
+        "sra": ["SRP12345"],
+        "bioproject": ["PRJNA12345"]
+    },
+
+    # Timestamps
+    created_at=datetime(2024, 11, 14, 19, 30, 0),
+    updated_at=datetime(2024, 11, 14, 19, 30, 0),
+
+    # Execution metadata (filled by research_agent)
+    processed_by=None,  # Agent name
+    cached_content_path=None,  # Workspace path to cached content
+    error_log=[]  # Error messages if FAILED
+)
+```
+
+#### Field Descriptions
+
+| Field | Type | Description | Set By | When |
+|-------|------|-------------|--------|------|
+| `entry_id` | str | Unique identifier (`pub_queue_{pmid}_{uuid}`) | /load command | Creation |
+| `pmid` | str | PubMed ID (optional if DOI provided) | /load command | Creation |
+| `doi` | str | Digital Object Identifier | /load command | Creation |
+| `pmc_id` | str | PubMed Central ID (optional) | /load command | Creation |
+| `title` | str | Publication title | /load command | Creation |
+| `authors` | List[str] | Author list | /load command | Creation |
+| `year` | int | Publication year | /load command | Creation |
+| `journal` | str | Journal name | /load command | Creation |
+| `priority` | int | Processing priority (1-10, 10=highest) | /load command | Creation |
+| `status` | PublicationStatus | Queue status (PENDING/EXTRACTING/etc.) | /load → research_agent | Lifecycle |
+| `extraction_level` | ExtractionLevel | Target extraction depth | /load command | Creation |
+| `schema_type` | str | Inferred data type (single_cell, microbiome, proteomics) | RISParser | Creation |
+| `extracted_metadata` | dict | Abstract, methods, keywords | research_agent | Extraction |
+| `extracted_identifiers` | dict | Dataset IDs (GEO, SRA, etc.) | research_agent | Identifier extraction |
+| `created_at` | datetime | Queue entry creation timestamp | /load command | Creation |
+| `updated_at` | datetime | Last update timestamp | /load → research_agent | Updates |
+| `processed_by` | str | Agent name that processed entry | research_agent | Processing |
+| `cached_content_path` | str | Workspace path to cached content | research_agent | Completion |
+| `error_log` | List[str] | Error messages if processing failed | research_agent | Failure |
+
+---
+
+### Workflow Patterns
+
+#### Pattern 1: Batch Publication Import
+
+**Scenario**: User imports multiple publications from reference manager
+
+```python
+# Step 1: Export RIS file from Zotero/Mendeley/EndNote
+# File: my_papers.ris (contains 10 publications)
+
+# Step 2: Load via CLI
+lobster chat
+> /load my_papers.ris
+
+# Output: "✅ Imported 10 publications to queue"
+
+# Step 3: supervisor/research_agent queries queue
+result = supervisor.get_content_from_workspace(
+    workspace="publication_queue",
+    level="summary"
+)
+# Output: "10 pending entries: 3 single_cell, 4 microbiome, 3 proteomics"
+
+# Step 4: research_agent processes entries
+for entry in pending_entries:
+    result = research_agent.process_publication_entry(
+        entry_id=entry.entry_id,
+        extraction_tasks="metadata,methods,identifiers"
+    )
+# Output: "✅ Processed pub_queue_35042229_abc: Found 2 GEO datasets"
+```
+
+#### Pattern 2: Single Publication Processing
+
+**Scenario**: User adds single publication for immediate processing
+
+```python
+# Step 1: Create entry manually or via /load with single entry
+entry = PublicationQueueEntry(
+    entry_id="pub_queue_35042229",
+    pmid="35042229",
+    doi="10.1038/s41586-022-04426-0",
+    title="Single-cell RNA sequencing reveals novel cell types",
+    priority=10  # High priority for immediate processing
+)
+data_manager.publication_queue.add_entry(entry)
+
+# Step 2: research_agent processes immediately
+result = research_agent.process_publication_entry(
+    entry_id="pub_queue_35042229",
+    extraction_tasks="identifiers"  # Only extract dataset IDs
+)
+# Output: "✅ Found 2 GEO datasets: GSE180759, GSE180760"
+
+# Step 3: Extracted identifiers available for downstream workflow
+identifiers = entry.extracted_identifiers
+for geo_id in identifiers.get("geo", []):
+    research_agent.validate_dataset_metadata(geo_id, add_to_queue=True)
+```
+
+#### Pattern 3: Status Filtering and Monitoring
+
+**Scenario**: User monitors extraction progress across multiple publications
+
+```python
+# Step 1: Query all pending publications
+result = supervisor.get_content_from_workspace(
+    workspace="publication_queue",
+    status_filter="PENDING"
+)
+# Output: "5 pending entries"
+
+# Step 2: Query extraction in progress
+result = supervisor.get_content_from_workspace(
+    workspace="publication_queue",
+    status_filter="EXTRACTING"
+)
+# Output: "2 entries currently being processed"
+
+# Step 3: Query completed extractions
+result = supervisor.get_content_from_workspace(
+    workspace="publication_queue",
+    status_filter="COMPLETED"
+)
+# Output: "3 completed entries with 12 total dataset identifiers"
+
+# Step 4: Query failed extractions
+result = supervisor.get_content_from_workspace(
+    workspace="publication_queue",
+    status_filter="FAILED"
+)
+# Output: "1 failed entry: pub_queue_12345678 (Paywalled content)"
+```
+
+#### Pattern 4: Multi-Agent Coordination
+
+**Scenario**: supervisor coordinates publication processing and dataset downloads
+
+```python
+# Step 1: supervisor reviews publication queue
+publications = supervisor.get_content_from_workspace(
+    workspace="publication_queue",
+    status_filter="PENDING"
+)
+
+# Step 2: supervisor delegates to research_agent for processing
+for pub_id in publication_ids:
+    research_agent.process_publication_entry(
+        entry_id=pub_id,
+        extraction_tasks="metadata,methods,identifiers"
+    )
+
+# Step 3: supervisor retrieves extracted identifiers
+completed = supervisor.get_content_from_workspace(
+    workspace="publication_queue",
+    status_filter="COMPLETED"
+)
+
+# Step 4: supervisor extracts dataset IDs and delegates to research_agent for validation
+for entry in completed_entries:
+    for geo_id in entry.extracted_identifiers.get("geo", []):
+        research_agent.validate_dataset_metadata(geo_id, add_to_queue=True)
+
+# Step 5: supervisor delegates download to data_expert
+supervisor.handoff_to_data_expert(
+    instructions="Download all validated datasets from download queue"
+)
+```
+
+---
+
+### Error Handling
+
+#### Error Recovery Pattern
+
+```python
+# Query failed publications
+failed_entries = data_manager.publication_queue.list_entries(status=PublicationStatus.FAILED)
+
+for entry in failed_entries:
+    print(f"Failed: {entry.title}")
+    print(f"Errors: {entry.error_log}")
+
+    # Option 1: Retry (reset to PENDING)
+    data_manager.publication_queue.update_status(
+        entry_id=entry.entry_id,
+        status=PublicationStatus.PENDING
+    )
+
+    # Option 2: Remove from queue (abandon)
+    data_manager.publication_queue.remove_entry(entry.entry_id)
+```
+
+#### Common Errors & Solutions
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `EntryNotFoundError` | Invalid entry_id | Query publication_queue to get valid entry_ids |
+| `Paywalled content` | Publication not openly accessible | Use fast_abstract_search for abstract-only |
+| `No identifiers found` | Publication doesn't mention datasets | Manual identifier extraction or skip |
+| `Invalid PMID/DOI` | Malformed identifier | Verify identifier format (PMID:12345678, 10.1038/...) |
+| `Already completed` | Duplicate processing attempt | Entry already has cached_content_path set |
+| `RIS parse error` | Malformed RIS file | Check RIS file format, try re-exporting from reference manager |
+| `Extraction timeout` | Network/API latency | Retry with increased timeout |
+
+#### Error Log Structure
+
+```python
+# Example error log after failed extraction
+entry.error_log = [
+    "2024-11-14 19:35:00: PMC access denied: 403 Forbidden",
+    "2024-11-14 19:40:00: Retry attempt 1 failed: PDF unavailable",
+    "2024-11-14 19:45:00: Fallback to abstract only: Success"
+]
+```
+
+---
+
+### Performance Considerations
+
+#### Queue Operations Performance
+
+| Operation | Target | Actual | Notes |
+|-----------|--------|--------|-------|
+| `add_entry()` | <100ms | ~50ms | Atomic write to JSONL |
+| `get_entry()` | <50ms | ~20ms | Read from in-memory cache |
+| `update_status()` | <100ms | ~60ms | Update + backup |
+| `list_entries()` | <200ms | ~100ms | Filter 1000 entries |
+| `remove_entry()` | <100ms | ~70ms | Rewrite JSONL file |
+| `clear_queue()` | <500ms | ~200ms | Delete + recreate file |
+
+#### Processing Workflow Performance
+
+**Publication Extraction**:
+- Abstract extraction: 200-500ms (NCBI API)
+- Full text extraction (PMC XML): 500ms-2s
+- Full text extraction (webpage): 2-5s
+- Full text extraction (PDF): 3-8s
+- Methods extraction: 2-8s (LLM-based)
+- Identifier extraction: 1-3s (regex patterns)
+
+**Batch Processing**:
+- 10 publications (abstract only): ~5 seconds
+- 10 publications (full text): ~30-60 seconds
+- 100 publications (abstract only): ~50 seconds
+
+#### Memory Usage
+
+| Queue Size | Memory Usage | Notes |
+|------------|--------------|-------|
+| 10 entries | ~50 KB | Minimal impact |
+| 100 entries | ~500 KB | In-memory cache |
+| 1000 entries | ~5 MB | Recommended max |
+
+**Best Practice**: Clear completed entries periodically to maintain performance.
+
+---
+
+### API Reference
+
+#### DataManagerV2.publication_queue
+
+```python
+from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.schemas.publication_queue import PublicationStatus
+
+data_manager = DataManagerV2(workspace_path="./workspace")
+
+# Access publication queue
+queue = data_manager.publication_queue
+
+# Add entry
+queue.add_entry(entry)
+
+# Get entry
+entry = queue.get_entry("pub_queue_35042229_abc123")
+
+# Update status
+queue.update_status(
+    entry_id="pub_queue_35042229_abc123",
+    status=PublicationStatus.COMPLETED,
+    cached_content_path="/workspace/literature/pub_35042229.json"
+)
+
+# List entries (with optional filter)
+pending = queue.list_entries(status=PublicationStatus.PENDING)
+extracting = queue.list_entries(status=PublicationStatus.EXTRACTING)
+completed = queue.list_entries(status=PublicationStatus.COMPLETED)
+failed = queue.list_entries(status=PublicationStatus.FAILED)
+all_entries = queue.list_entries()  # All statuses
+
+# Remove entry
+queue.remove_entry("pub_queue_35042229_abc123")
+
+# Clear all entries
+queue.clear_queue()
+```
+
+#### get_content_from_workspace (Supervisor/Research Agent)
+
+```python
+# Query all entries
+result = get_content_from_workspace(workspace="publication_queue")
+
+# Query specific entry
+result = get_content_from_workspace(
+    identifier="pub_queue_35042229_abc123",
+    workspace="publication_queue",
+    level="summary"  # summary | metadata
+)
+
+# Filter by status
+result = get_content_from_workspace(
+    workspace="publication_queue",
+    status_filter="PENDING"  # PENDING | EXTRACTING | METADATA_EXTRACTED | COMPLETED | FAILED
+)
+
+# Get detailed entry information
+result = get_content_from_workspace(
+    identifier="pub_queue_35042229_abc123",
+    workspace="publication_queue",
+    level="metadata"  # Returns JSON with all fields
+)
+```
+
+#### process_publication_entry (Research Agent)
+
+```python
+# Process publication entry (extract metadata, methods, identifiers)
+result = research_agent.process_publication_entry(
+    entry_id="pub_queue_35042229_abc123",
+    extraction_tasks="metadata,methods,identifiers"  # Comma-separated
+)
+# Returns: "✅ Processed entry: Found 2 GEO datasets (GSE180759, GSE180760)"
+
+# Status automatically updated:
+# - PENDING → EXTRACTING (at start)
+# - EXTRACTING → METADATA_EXTRACTED (metadata/methods done)
+# - METADATA_EXTRACTED → COMPLETED (identifiers extracted)
+# - EXTRACTING → FAILED (on error)
+
+# Extraction tasks options:
+# - "metadata": Extract abstract, keywords
+# - "methods": Extract methods section
+# - "identifiers": Extract dataset IDs (GEO, SRA, BioProject, BioSample, ENA)
+# - "full_text": Extract all content
+# - Default: "metadata,methods,identifiers"
+```
+
+#### update_publication_status (Research Agent)
+
+```python
+# Update publication entry status
+result = research_agent.update_publication_status(
+    entry_id="pub_queue_35042229_abc123",
+    status="completed",  # pending | extracting | metadata_extracted | completed | failed
+    error_message=None  # Optional error message for failed status
+)
+# Returns: "✅ Publication status updated: pub_queue_35042229_abc123 → COMPLETED"
+
+# On completion, entry populated with:
+# - processed_by: "research_agent"
+# - cached_content_path: workspace path
+# - updated_at: current timestamp
+
+# On failure, entry populated with:
+# - error_log: ["Error message 1", "Error message 2"]
+# - status: FAILED
+```
+
+---
+
+### CLI Integration
+
+#### /load Command
+
+```bash
+# Interactive mode
+lobster chat
+> /load my_papers.ris
+
+# Command-line mode
+lobster load --file my_papers.ris --priority 5
+
+# With schema type override
+lobster load --file my_papers.ris --schema-type single_cell
+
+# With extraction level
+lobster load --file my_papers.ris --extraction-level full_text
+```
+
+#### RIS File Format
+
+```text
+TY  - JOUR
+TI  - Single-cell RNA sequencing reveals novel cell types in human brain
+AU  - Smith, John
+AU  - Jones, Alice
+PY  - 2022
+JO  - Nature
+AB  - This study uses single-cell RNA sequencing...
+DO  - 10.1038/s41586-022-04426-0
+PMID- 35042229
+PMC - PMC8891176
+KW  - single-cell
+KW  - RNA-seq
+ER  -
+
+TY  - JOUR
+TI  - Microbiome analysis of gut bacteria
+AU  - Brown, Charlie
+PY  - 2023
+JO  - Cell
+AB  - Comprehensive 16S rRNA sequencing...
+DO  - 10.1016/j.cell.2023.01.001
+PMID- 36789012
+KW  - microbiome
+KW  - 16S rRNA
+ER  -
+```
+
+**Supported Reference Managers**:
+- Zotero: File → Export Library → Format: RIS
+- Mendeley: File → Export → RIS Format
+- EndNote: File → Export → Output Style: RefMan (RIS)
+- Papers: File → Export → RIS
+
+---
+
+### Integration with Other Systems
+
+#### Workspace Persistence
+
+The publication queue persists across sessions via `publication_queue.jsonl` in the workspace directory.
+
+```python
+# Session 1: Load publications
+lobster chat
+> /load my_papers.ris
+# Output: "✅ Imported 10 publications"
+
+# Exit session
+
+# Session 2: Resume processing
+data_manager = DataManagerV2(workspace_path="./workspace")
+pending = data_manager.publication_queue.list_entries(status=PublicationStatus.PENDING)
+# Output: 10 pending entries (persisted from Session 1)
+
+for entry in pending:
+    research_agent.process_publication_entry(entry_id=entry.entry_id)
+```
+
+#### Provenance Tracking
+
+All publication queue operations are logged in the W3C-PROV provenance system.
+
+```python
+# Queue entry creation logged as:
+activity = prov.Activity(
+    identifier="load_publications_my_papers.ris",
+    attributes={
+        "tool": "/load",
+        "file": "my_papers.ris",
+        "entries_created": 10,
+        "schema_types": ["single_cell", "microbiome", "proteomics"]
+    }
+)
+
+# Publication processing logged as:
+activity = prov.Activity(
+    identifier="process_publication_entry_35042229",
+    attributes={
+        "tool": "process_publication_entry",
+        "entry_id": "pub_queue_35042229_abc123",
+        "extraction_tasks": ["metadata", "methods", "identifiers"],
+        "final_status": "completed",
+        "extracted_identifiers": ["GSE180759", "GSE180760"]
+    }
+)
+
+# Status update logged as:
+activity = prov.Activity(
+    identifier="update_publication_status_35042229",
+    attributes={
+        "tool": "update_publication_status",
+        "entry_id": "pub_queue_35042229_abc123",
+        "old_status": "extracting",
+        "new_status": "completed"
+    }
+)
+```
+
+#### Download Queue Integration
+
+Publication queue feeds into download queue for dataset acquisition:
+
+```python
+# Step 1: Process publication to extract dataset IDs
+research_agent.process_publication_entry(
+    entry_id="pub_queue_35042229",
+    extraction_tasks="identifiers"
+)
+
+# Step 2: Extracted identifiers stored in entry
+entry = data_manager.publication_queue.get_entry("pub_queue_35042229")
+geo_ids = entry.extracted_identifiers.get("geo", [])
+# Output: ["GSE180759", "GSE180760"]
+
+# Step 3: Validate and queue datasets for download
+for geo_id in geo_ids:
+    research_agent.validate_dataset_metadata(geo_id, add_to_queue=True)
+
+# Step 4: Download queue now contains validated datasets
+download_queue = data_manager.download_queue.list_entries(status=DownloadStatus.PENDING)
+# Output: 2 pending entries (GSE180759, GSE180760)
+
+# Step 5: data_expert downloads from download queue
+for entry in download_queue:
+    data_expert.execute_download_from_queue(entry_id=entry.entry_id)
+```
+
+---
+
+### Testing
+
+#### Unit Tests
+
+**File**: `tests/unit/core/test_publication_queue.py` (48 tests, 2 skipped)
+
+**Coverage**:
+- Queue initialization and file creation
+- Entry addition, retrieval, update, removal
+- Status transitions (PENDING → EXTRACTING → COMPLETED/FAILED)
+- Error log management
+- Priority sorting
+- Concurrent operation safety
+- RIS file parsing (with rispy dependency)
+- Schema type inference (single_cell, microbiome, proteomics)
+
+**Key Test Cases**:
+```python
+def test_add_entry_creates_queue_file()
+def test_get_entry_returns_correct_entry()
+def test_update_status_transitions_correctly()
+def test_list_entries_filters_by_status()
+def test_remove_entry_deletes_correctly()
+def test_clear_queue_removes_all_entries()
+def test_ris_parser_imports_multiple_publications()
+def test_schema_type_inference_from_keywords()
+```
+
+#### Integration Tests
+
+**File**: `tests/integration/test_publication_queue_workspace.py` (11 tests)
+
+**Coverage**:
+- Complete workflow (/load → process → workspace access)
+- Status filtering and entry retrieval
+- Multi-publication batch processing
+- Error handling and retry logic
+- Workspace persistence across sessions
+- Provenance tracking integration
+- Multi-agent coordination
+
+**Key Test Scenarios**:
+```python
+def test_complete_publication_workflow()
+def test_batch_publication_import()
+def test_status_filtering_by_queue_state()
+def test_workspace_persistence_across_sessions()
+def test_extracted_identifiers_retrieval()
+def test_publication_queue_error_recovery()
+```
+
+---
+
+### Troubleshooting
+
+#### Issue: RIS file not importing
+
+**Symptoms**: `/load my_papers.ris` returns "Error: File not found or invalid format"
+
+**Causes**:
+- File path incorrect
+- File extension not .ris or .txt
+- RIS file malformed
+
+**Solutions**:
+```bash
+# Verify file exists
+ls -la my_papers.ris
+
+# Check file format (should show RIS entries with TY, TI, AU, etc.)
+cat my_papers.ris
+
+# Try with absolute path
+lobster chat
+> /load /Users/username/Downloads/my_papers.ris
+```
+
+#### Issue: Schema type inference incorrect
+
+**Symptoms**: Publications categorized as wrong schema type (e.g., microbiome as single_cell)
+
+**Causes**:
+- Insufficient keywords in RIS file
+- Ambiguous keywords (e.g., "RNA-seq" applies to multiple types)
+
+**Solutions**:
+```python
+# Manual schema type override during processing
+research_agent.process_publication_entry(
+    entry_id="pub_queue_12345678",
+    schema_type="microbiome"  # Force correct type
+)
+
+# Or update entry before processing
+entry = data_manager.publication_queue.get_entry("pub_queue_12345678")
+entry.schema_type = "microbiome"
+data_manager.publication_queue.update_status(
+    entry_id=entry.entry_id,
+    status=entry.status  # No change, just persist schema_type
+)
+```
+
+#### Issue: Publication extraction stuck
+
+**Symptoms**: Entry status remains EXTRACTING for extended period
+
+**Causes**:
+- Network timeout
+- Paywalled content
+- Agent crash during processing
+
+**Solutions**:
+```python
+# Query stuck entries
+extracting = data_manager.publication_queue.list_entries(status=PublicationStatus.EXTRACTING)
+
+# Reset to PENDING for retry
+for entry in extracting:
+    if (datetime.now() - entry.updated_at).seconds > 600:  # 10 minutes
+        data_manager.publication_queue.update_status(
+            entry_id=entry.entry_id,
+            status=PublicationStatus.PENDING,
+            processed_by=None
+        )
+```
+
+#### Issue: No dataset identifiers found
+
+**Symptoms**: process_publication_entry completes but extracted_identifiers is empty
+
+**Causes**:
+- Publication doesn't mention datasets
+- Identifiers in non-standard format (e.g., GEO: GSE12345 instead of GSE12345)
+- Paywalled content (only abstract available)
+
+**Solutions**:
+```python
+# Check extracted metadata
+entry = data_manager.publication_queue.get_entry("pub_queue_12345678")
+print(entry.extracted_metadata.get("methods", "No methods extracted"))
+
+# Manual identifier extraction
+# - Read full text using research_agent tools
+# - Add identifiers manually
+entry.extracted_identifiers = {
+    "geo": ["GSE180759"],
+    "sra": ["SRP12345"]
+}
+data_manager.publication_queue.update_status(
+    entry_id=entry.entry_id,
+    status=PublicationStatus.COMPLETED,
+    extracted_identifiers=entry.extracted_identifiers
+)
+```
+
+---
+
+### Best Practices
+
+#### 1. Use Batch Import for Efficiency
+
+```python
+# Good: Batch import from reference manager
+lobster chat
+> /load literature_review.ris  # 50 publications
+
+# Bad: Add publications one at a time
+for pmid in pmid_list:
+    # Manual entry creation (tedious, error-prone)
+```
+
+#### 2. Set Appropriate Extraction Levels
+
+```python
+# For quick identifier extraction only (fastest)
+entry.extraction_level = ExtractionLevel.IDENTIFIERS
+
+# For comprehensive review (slower, more content)
+entry.extraction_level = ExtractionLevel.FULL_TEXT
+
+# For most use cases (balanced)
+entry.extraction_level = ExtractionLevel.METHODS  # Default
+```
+
+#### 3. Monitor Failed Extractions
+
+```python
+# Regular monitoring of failures
+failed = data_manager.publication_queue.list_entries(status=PublicationStatus.FAILED)
+
+if len(failed) > 0:
+    print(f"⚠️ {len(failed)} failed extractions")
+    for entry in failed:
+        print(f"  - {entry.title}: {entry.error_log[-1]}")  # Last error
+```
+
+#### 4. Clean Up Completed Entries
+
+```python
+# Periodically remove old completed entries
+completed = data_manager.publication_queue.list_entries(status=PublicationStatus.COMPLETED)
+
+for entry in completed:
+    # Keep entries for 30 days
+    if (datetime.now() - entry.updated_at).days > 30:
+        data_manager.publication_queue.remove_entry(entry.entry_id)
+```
+
+#### 5. Leverage Workspace Caching
+
+```python
+# After processing, content cached in workspace
+entry = data_manager.publication_queue.get_entry("pub_queue_35042229")
+cached_path = entry.cached_content_path
+# Example: "/workspace/literature/pub_35042229.json"
+
+# Retrieve cached content later
+result = get_content_from_workspace(
+    identifier="publication_PMID35042229",
+    workspace="literature"
+)
+```
+
+---
+
+### Future Enhancements
+
+#### Planned Features
+
+1. **Enhanced Identifier Extraction**
+   - Machine learning-based pattern recognition
+   - Support for more databases (PRIDE, MetaboLights, GEO Datasets)
+   - Contextual identifier validation
+
+2. **Batch Processing Optimization**
+   - Parallel publication processing
+   - Smart scheduling based on extraction level
+   - Progress bars for large batches
+
+3. **Content Enrichment**
+   - Automatic citation graph construction
+   - Related paper discovery
+   - Dataset-publication linkage mapping
+
+4. **Export Capabilities**
+   - Export processed queue to CSV/JSON
+   - Generate summary reports
+   - Integration with bibliographic software
+
+5. **Advanced Error Recovery**
+   - Automatic retry with exponential backoff
+   - Fallback extraction strategies
+   - Paywalled content detection
+
+---
+
+### Migration Notes
+
+#### Adding New Schema Types
+
+**Example: Adding spatial transcriptomics**:
+
+```python
+# 1. Update RISParser inference logic
+class RISParser:
+    def _infer_schema_type(self, ris_entry: dict) -> str:
+        keywords = self._extract_keywords(ris_entry)
+
+        # New pattern for spatial transcriptomics
+        if any(kw in ["spatial", "visium", "slide-seq"] for kw in keywords):
+            return "spatial_transcriptomics"
+
+        # ... existing patterns ...
+
+# 2. Add to schema type enum (if needed)
+class SchemaType(str, Enum):
+    SINGLE_CELL = "single_cell"
+    MICROBIOME = "microbiome"
+    PROTEOMICS = "proteomics"
+    SPATIAL_TRANSCRIPTOMICS = "spatial_transcriptomics"  # New
+```
+
+---
+
+## See Also (Updated)
+
+### Wiki Pages
+- [Architecture Overview (Wiki 18)](18-architecture-overview.md) - System-wide architecture
+- [Two-Tier Caching Architecture (Wiki 39)](39-two-tier-caching-architecture.md) - Metadata caching strategy
+- [Data Management (Wiki 20)](20-data-management.md) - Data management patterns
+- [Publication Intelligence Deep Dive (Wiki 37)](37-publication-intelligence-deep-dive.md) - Publication extraction details
+
+### Developer Documentation
+- Data Expert Agent - See agent implementation in `lobster/agents/data_expert.py`
+- Research Agent - See agent implementation in `lobster/agents/research_agent.py`
+- Pydantic Schemas - See schema definitions in `lobster/core/schemas/`
+
+### Code References
+
+**Download Queue**:
+- `lobster/core/download_queue.py` - Queue implementation (342 lines)
+- `lobster/core/schemas/download_queue.py` - Schema definitions
+- `lobster/agents/data_expert.py` - Queue consumer
+- `lobster/agents/research_agent.py` - Queue producer
+- `lobster/tools/workspace_content_service.py` - Queue access tool
+
+**Publication Queue**:
+- `lobster/core/publication_queue.py` - Queue implementation (308 lines)
+- `lobster/core/ris_parser.py` - RIS file parser (287 lines)
+- `lobster/core/schemas/publication_queue.py` - Schema definitions
+- `lobster/agents/research_agent.py` - process_publication_entry, update_publication_status tools (lines 1417-1679)
+- `lobster/tools/workspace_tool.py` - publication_queue workspace support
+
+### Test Files
+
+**Download Queue**:
+- `tests/unit/core/test_download_queue.py` - Unit tests (25 tests)
+- `tests/integration/test_download_queue_workspace.py` - Integration tests (15 tests)
+- `tests/unit/tools/test_workspace_content_service.py` - Tool tests
+
+**Publication Queue**:
+- `tests/unit/core/test_publication_queue.py` - Unit tests (48 tests, 2 skipped)
+- `tests/integration/test_publication_queue_workspace.py` - Integration tests (11 tests)
+
+---
+
+**Last Updated**: 2024-11-19 (Phase 2 completion + Publication Queue integration)
 **Authors**: Lobster AI Development Team
-**Version**: 1.0.0
+**Version**: 1.1.0

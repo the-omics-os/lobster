@@ -552,7 +552,7 @@ Data standards:
 |------|------|
 | Agent framework | LangGraph |
 | Models | AWS Bedrock (Claude) |
-| Language | Python 3.12+ (typing, async/await) |
+| Language | Python 3.11+ (typing, async/await) |
 | Data structures | AnnData, MuData |
 | Bioinformatics | Scanpy, PyDESeq2 |
 | CLI | Typer, Rich, prompt_toolkit |
@@ -650,14 +650,14 @@ git push origin v0.2.0
 
 ## 6. Troubleshooting (quick scan)
 
-- **Install issues**  
-  - Python 3.12+ only  
-  - try `make clean-install`  
-- **CLI quirks**  
-  - check `PROMPT_TOOLKIT_AVAILABLE`  
-  - verify `LobsterClientAdapter` picks correct client type  
-- **Cloud mode**  
-  - ensure `LOBSTER_CLOUD_KEY` set  
+- **Install issues**
+  - Python 3.11+ required
+  - try `make clean-install`
+- **CLI quirks**
+  - check `PROMPT_TOOLKIT_AVAILABLE`
+  - verify `LobsterClientAdapter` picks correct client type
+- **Cloud mode**
+  - ensure `LOBSTER_CLOUD_KEY` set
   - check network + timeouts (cloud vs local caches)
 
 ---

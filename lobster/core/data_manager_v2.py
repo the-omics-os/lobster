@@ -166,9 +166,23 @@ class DataManagerV2:
         # Download queue for dataset downloads (research_agent → data_expert handoff)
         from lobster.core.download_queue import DownloadQueue
 
-        queue_file = self.workspace_path / ".lobster" / "download_queue.jsonl"
-        queue_file.parent.mkdir(parents=True, exist_ok=True)
+        # Create queues directory with organized structure
+        queues_dir = self.workspace_path / ".lobster" / "queues"
+        queues_dir.mkdir(parents=True, exist_ok=True)
+
+        queue_file = queues_dir / "download_queue.jsonl"
         self.download_queue: DownloadQueue = DownloadQueue(queue_file=queue_file)
+
+        # Publication queue for publication extraction (research_agent manages)
+        # Optional feature - gracefully degrade if not available
+        try:
+            from lobster.core.publication_queue import PublicationQueue
+
+            pub_queue_file = queues_dir / "publication_queue.jsonl"
+            self.publication_queue = PublicationQueue(queue_file=pub_queue_file)
+        except ImportError:
+            logger.debug("Publication queue feature not available (premium feature)")
+            self.publication_queue = None
 
         # Processing log for user-facing messages
         self.processing_log: List[str] = []

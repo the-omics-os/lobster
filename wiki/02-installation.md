@@ -23,7 +23,7 @@ This guide covers all installation methods for Lobster AI, from quick setup to a
 ### System Requirements
 
 **Minimum Requirements:**
-- **Python**: 3.12+
+- **Python**: 3.11+ (3.12+ recommended)
 - **Memory**: 4GB RAM (8GB+ recommended for large datasets)
 - **Storage**: 2GB free space (more for data analysis)
 - **Network**: Internet connection for API access and data downloads
@@ -95,7 +95,7 @@ python3 check-system.py
 ```
 
 The checker will:
-- ✅ Verify Python 3.12+ is installed
+- ✅ Verify Python 3.11+ is installed
 - ✅ Detect missing system dependencies (Linux)
 - ✅ Check for Docker availability
 - ✅ Recommend best installation method for your platform
@@ -144,7 +144,7 @@ make install
 ```
 
 **What this does:**
-1. Verifies Python 3.12+ installation
+1. Verifies Python 3.11+ installation
 2. Creates virtual environment at `.venv`
 3. Installs all dependencies automatically
 4. Sets up configuration files

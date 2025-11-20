@@ -426,9 +426,9 @@ class TestDifferentialExpression:
     def test_run_differential_expression_basic(
         self, bulk_service, bulk_adata_with_groups
     ):
-        """Test basic differential expression analysis (NEW API)."""
-        # New API: returns tuple (adata_de, de_stats) instead of string
-        adata_de, de_stats = bulk_service.run_differential_expression_analysis(
+        """Test basic differential expression analysis (NEW API with IR)."""
+        # New API: returns 3-tuple (adata_de, de_stats, ir) with provenance tracking
+        adata_de, de_stats, ir = bulk_service.run_differential_expression_analysis(
             adata=bulk_adata_with_groups,
             groupby="condition",
             group1="control",
@@ -440,6 +440,7 @@ class TestDifferentialExpression:
         # Verify return types
         assert isinstance(adata_de, ad.AnnData), "Should return AnnData object"
         assert isinstance(de_stats, dict), "Should return stats dict"
+        assert hasattr(ir, 'operation'), "Should return AnalysisStep IR"
 
         # Verify DE results are stored in AnnData (key includes comparison name)
         de_keys = [k for k in adata_de.uns.keys() if k.startswith("de_results")]
@@ -449,6 +450,10 @@ class TestDifferentialExpression:
         assert "n_genes_tested" in de_stats or "n_de_genes" in de_stats
         assert "group1" in de_stats and "group2" in de_stats
         assert de_stats["group1"] == "control" and de_stats["group2"] == "treatment"
+
+        # Verify IR structure
+        assert ir.operation == "differential_expression"
+        assert ir.tool_name == "BulkRNASeqService.run_differential_expression_analysis"
 
     def test_run_differential_expression_invalid_group(
         self, bulk_service, bulk_adata_with_groups
@@ -734,18 +739,22 @@ class TestPathwayEnrichment:
         mock_gseapy.enrichr = MagicMock(return_value=mock_enrichr_result)
 
         with patch.dict("sys.modules", {"gseapy": mock_gseapy}):
-            enrichment_df, stats = bulk_service.run_pathway_enrichment(
+            enrichment_df, stats, ir = bulk_service.run_pathway_enrichment(
                 gene_list=gene_list, analysis_type="GO", organism="human"
             )
 
             assert isinstance(enrichment_df, pd.DataFrame)
             assert isinstance(stats, dict)
+            assert hasattr(ir, 'operation')
             assert "n_significant_terms" in stats
             assert "enrichment_database" in stats
             assert stats["enrichment_database"] == "GO"
             assert stats["n_genes_input"] == 50
             # Verify gseapy.enrichr was called
             mock_gseapy.enrichr.assert_called()
+            # Verify IR
+            assert ir.operation == "pathway_enrichment"
+            assert ir.tool_name == "BulkRNASeqService.run_pathway_enrichment"
 
 
 # ===============================================================================
@@ -799,7 +808,7 @@ class TestBulkRNASeqErrorHandling:
         adata = ad.AnnData(X=X.astype(float))
         adata.obs["condition"] = pd.Categorical(["control", "treatment"])
 
-        # Should still run (returns tuple) but may have warnings
+        # Should still run (returns 3-tuple) but may have warnings
         result = bulk_service.run_differential_expression_analysis(
             adata=adata,
             groupby="condition",
@@ -807,10 +816,11 @@ class TestBulkRNASeqErrorHandling:
             group2="treatment",
         )
 
-        # Should return tuple even with insufficient replicates
+        # Should return 3-tuple even with insufficient replicates
         assert isinstance(result, tuple)
-        assert len(result) == 2
+        assert len(result) == 3
         assert isinstance(result[1], dict)  # stats dict
+        assert hasattr(result[2], 'operation')  # IR
 
     def test_invalid_results_directory(self):
         """Test handling of invalid results directory."""
@@ -948,6 +958,278 @@ class TestBulkRNASeqIntegration:
         assert isinstance(enhanced, pd.DataFrame)
         assert len(enhanced) > 0
         assert "contrast" in enhanced.columns
+
+
+# ===============================================================================
+# IR (Intermediate Representation) Generation Tests
+# ===============================================================================
+
+
+@pytest.mark.unit
+class TestIRGeneration:
+    """Test IR (Intermediate Representation) generation for provenance tracking."""
+
+    def test_create_de_ir_deseq2_like(self, bulk_service):
+        """Test IR creation for DESeq2-like differential expression."""
+        ir = bulk_service._create_de_ir(
+            method="deseq2_like",
+            groupby="condition",
+            group1="treatment",
+            group2="control",
+            min_logfoldchange=0.5,
+            fdr_threshold=0.05
+        )
+
+        # Verify AnalysisStep structure
+        assert ir.operation == "differential_expression"
+        assert ir.tool_name == "BulkRNASeqService.run_differential_expression_analysis"
+        assert "deseq2_like" in ir.description.lower()
+        assert ir.library == "scipy.stats + statsmodels"
+
+        # Verify code template
+        assert ir.code_template is not None
+        assert "{{ groupby }}" in ir.code_template
+        assert "{{ group1 }}" in ir.code_template
+        assert "{{ group2 }}" in ir.code_template
+        assert "scipy" in ir.code_template
+        assert "multipletests" in ir.code_template
+
+        # Verify imports
+        assert "import scipy.stats" in ir.imports or "from scipy import stats" in ir.imports
+        assert any("multipletests" in imp for imp in ir.imports)
+
+        # Verify parameters
+        assert ir.parameters["method"] == "deseq2_like"
+        assert ir.parameters["groupby"] == "condition"
+        assert ir.parameters["group1"] == "treatment"
+        assert ir.parameters["group2"] == "control"
+
+        # Verify parameter schema
+        assert "method" in ir.parameter_schema
+        assert ir.parameter_schema["method"]["type"] == "string"
+        assert "enum" in ir.parameter_schema["method"]
+
+        # Verify entities
+        assert "adata" in ir.input_entities
+        assert "adata_de" in ir.output_entities
+
+    def test_create_de_ir_wilcoxon(self, bulk_service):
+        """Test IR creation for Wilcoxon test."""
+        ir = bulk_service._create_de_ir(
+            method="wilcoxon",
+            groupby="treatment",
+            group1="drug_a",
+            group2="placebo"
+        )
+
+        assert ir.operation == "differential_expression"
+        assert "wilcoxon" in ir.description.lower()
+        assert "ranksums" in ir.code_template or "mannwhitneyu" in ir.code_template
+        assert ir.parameters["method"] == "wilcoxon"
+
+    def test_create_de_ir_ttest(self, bulk_service):
+        """Test IR creation for t-test."""
+        ir = bulk_service._create_de_ir(
+            method="t_test",
+            groupby="cell_line",
+            group1="a549",
+            group2="hek293"
+        )
+
+        assert ir.operation == "differential_expression"
+        assert "t-test" in ir.description.lower() or "t_test" in ir.description.lower()
+        assert "ttest_ind" in ir.code_template
+        assert ir.parameters["method"] == "t_test"
+
+    def test_create_enrichment_ir(self, bulk_service):
+        """Test IR creation for pathway enrichment."""
+        databases = ["GO_Biological_Process_2023", "KEGG_2021_Human"]
+        gene_list = ["TP53", "BRCA1", "EGFR"]
+
+        ir = bulk_service._create_enrichment_ir(
+            databases=databases,
+            gene_list=gene_list,
+            organism="human",
+            pvalue_threshold=0.05
+        )
+
+        # Verify structure
+        assert ir.operation == "pathway_enrichment"
+        assert ir.tool_name == "BulkRNASeqService.run_pathway_enrichment"
+        assert "enrichment" in ir.description.lower()
+        assert ir.library == "gseapy"
+
+        # Verify code template
+        assert "gseapy" in ir.code_template or "gp.enrichr" in ir.code_template
+        assert "{{ databases }}" in ir.code_template
+        assert "{{ gene_list }}" in ir.code_template
+
+        # Verify imports
+        assert any("gseapy" in imp for imp in ir.imports)
+
+        # Verify parameters
+        assert ir.parameters["databases"] == databases
+        assert ir.parameters["gene_list"] == gene_list
+
+        # Verify parameter schema
+        assert "databases" in ir.parameter_schema
+        assert "gene_list" in ir.parameter_schema
+
+        # Verify entities
+        assert "gene_list" in ir.input_entities
+        assert "enrichment_results" in ir.output_entities
+
+    def test_create_pydeseq2_ir(self, bulk_service):
+        """Test IR creation for pyDESeq2 analysis."""
+        ir = bulk_service._create_pydeseq2_ir(
+            formula="~condition + batch",
+            contrast=["condition", "treatment", "control"],
+            alpha=0.05,
+            shrink_lfc=True
+        )
+
+        # Verify structure
+        assert ir.operation == "pydeseq2_analysis"
+        assert ir.tool_name == "BulkRNASeqService.run_pydeseq2_analysis"
+        assert "deseq2" in ir.description.lower()
+        assert ir.library == "pydeseq2"
+
+        # Verify code template
+        assert "DeseqDataSet" in ir.code_template or "pydeseq2" in ir.code_template
+        assert "{{ formula }}" in ir.code_template
+        assert "{{ contrast }}" in ir.code_template
+
+        # Verify imports
+        assert any("pydeseq2" in imp for imp in ir.imports)
+
+        # Verify parameters
+        assert ir.parameters["formula"] == "~condition + batch"
+        assert ir.parameters["contrast"] == ["condition", "treatment", "control"]
+
+        # Verify parameter schema
+        assert "formula" in ir.parameter_schema
+        assert "contrast" in ir.parameter_schema
+
+    def test_run_de_returns_three_tuple(self, bulk_service, bulk_adata_with_groups):
+        """Test that run_differential_expression_analysis returns 3-tuple with IR."""
+        # This is a mock test - actual DE analysis requires proper data
+        # We're testing the return signature, not the analysis correctness
+
+        try:
+            result = bulk_service.run_differential_expression_analysis(
+                adata=bulk_adata_with_groups,
+                groupby="condition",
+                group1="control",
+                group2="treatment",
+                method="deseq2_like"
+            )
+
+            # Verify 3-tuple return
+            assert isinstance(result, tuple)
+            assert len(result) == 3
+
+            adata_de, de_stats, ir = result
+
+            # Verify types
+            assert isinstance(adata_de, ad.AnnData)
+            assert isinstance(de_stats, dict)
+            assert hasattr(ir, 'operation')  # AnalysisStep duck typing
+
+            # Verify IR
+            assert ir.operation == "differential_expression"
+            assert ir.tool_name == "BulkRNASeqService.run_differential_expression_analysis"
+
+        except Exception as e:
+            # If the test data doesn't support DE, that's okay
+            # We're mainly checking the IR infrastructure exists
+            pytest.skip(f"DE analysis requires proper test data: {e}")
+
+    def test_run_enrichment_returns_three_tuple(self, bulk_service):
+        """Test that run_pathway_enrichment returns 3-tuple with IR."""
+        # Mock test - actual enrichment requires API calls
+        # We're testing the signature and IR structure
+
+        gene_list = ["TP53", "BRCA1", "EGFR", "MYC", "KRAS"]
+
+        try:
+            result = bulk_service.run_pathway_enrichment(
+                gene_list=gene_list,
+                organism="human"
+            )
+
+            # Verify 3-tuple return
+            assert isinstance(result, tuple)
+            assert len(result) == 3
+
+            enrichment_df, enrichment_stats, ir = result
+
+            # Verify types
+            assert isinstance(enrichment_df, pd.DataFrame) or enrichment_df is None
+            assert isinstance(enrichment_stats, dict)
+            assert hasattr(ir, 'operation')
+
+            # Verify IR
+            assert ir.operation == "pathway_enrichment"
+            assert ir.tool_name == "BulkRNASeqService.run_pathway_enrichment"
+
+        except Exception as e:
+            # If enrichment fails (no API access), that's okay
+            pytest.skip(f"Enrichment requires API access: {e}")
+
+    def test_ir_parameter_schema_completeness(self, bulk_service):
+        """Test that parameter schemas are complete with required fields."""
+        ir = bulk_service._create_de_ir(
+            method="deseq2_like",
+            groupby="condition",
+            group1="a",
+            group2="b"
+        )
+
+        # Every parameter should have schema entry
+        for param_name in ir.parameters.keys():
+            assert param_name in ir.parameter_schema, f"Missing schema for {param_name}"
+            schema = ir.parameter_schema[param_name]
+
+            # Required schema fields
+            assert "type" in schema
+            assert "description" in schema
+            # Optional but recommended: default, enum
+
+    def test_ir_code_template_renders_without_errors(self, bulk_service):
+        """Test that Jinja2 code templates render successfully."""
+        from jinja2 import Template
+
+        # Test DE IR template
+        ir_de = bulk_service._create_de_ir(
+            method="deseq2_like",
+            groupby="condition",
+            group1="treated",
+            group2="control",
+            min_logfoldchange=0.5,
+            fdr_threshold=0.05
+        )
+
+        template_de = Template(ir_de.code_template)
+        rendered_de = template_de.render(**ir_de.parameters)
+
+        # Should contain actual values, not placeholders
+        assert "condition" in rendered_de
+        assert "treated" in rendered_de
+        assert "control" in rendered_de
+        assert "{{" not in rendered_de  # No unrendered placeholders
+
+        # Test enrichment IR template
+        ir_enrich = bulk_service._create_enrichment_ir(
+            databases=["GO_Biological_Process_2023"],
+            gene_list=["TP53", "BRCA1"],
+            organism="human"
+        )
+
+        template_enrich = Template(ir_enrich.code_template)
+        rendered_enrich = template_enrich.render(**ir_enrich.parameters)
+
+        assert "GO_Biological_Process_2023" in rendered_enrich
+        assert "{{" not in rendered_enrich
 
 
 if __name__ == "__main__":

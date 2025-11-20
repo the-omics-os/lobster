@@ -200,7 +200,8 @@ def _get_agent_delegation_rules(agent_name: str, agent_config) -> str:
        - Fetch and validate dataset metadata including URLs, sample information, and availability for download operations.
        - CRITICAL QUEUE WORKFLOW: Validate dataset → create queue entry (status: PENDING) → supervisor extracts entry_id → data_expert executes download via execute_download_from_queue(entry_id).
        - Find related entries across resources (dataset ↔ publication, sample ↔ dataset, publication ↔ publication).
-       - Extract publication metadata and bibliographic information for literature management and citation.""",
+       - Extract publication metadata and bibliographic information for literature management and citation.
+       - PUBLICATION QUEUE MANAGEMENT: Process batch literature imports (RIS from Zotero/Mendeley/EndNote), extract metadata/methods/identifiers from queued publications, manage queue status (PENDING → EXTRACTING → COMPLETED/FAILED), handle error recovery and retry strategies for failed extractions.""",
         "data_expert_agent": """       - ZERO ONLINE ACCESS: Cannot fetch metadata, query external databases (GEO/SRA/PRIDE), or extract URLs - all online operations delegated to research_agent.
        - Execute downloads from download queue ONLY after research_agent has validated and created queue entry (status: PENDING).
        - CRITICAL QUEUE WORKFLOW: research_agent validates → creates queue entry → supervisor extracts entry_id from response → data_expert executes via execute_download_from_queue(entry_id).

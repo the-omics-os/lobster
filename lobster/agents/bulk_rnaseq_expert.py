@@ -156,7 +156,7 @@ def bulk_rnaseq_expert(
             adata = data_manager.get_modality(modality_name)
 
             # Run quality assessment using service with bulk RNA-seq specific parameters
-            adata_qc, assessment_stats = quality_service.assess_quality(
+            adata_qc, assessment_stats, ir = quality_service.assess_quality(
                 adata=adata,
                 min_genes=min_genes,
                 max_mt_pct=max_mt_pct,
@@ -179,6 +179,7 @@ def bulk_rnaseq_expert(
                     "check_batch_effects": check_batch_effects,
                 },
                 description=f"Bulk RNA-seq quality assessment for {modality_name}",
+                ir=ir,
             )
 
             # Format professional response with bulk RNA-seq context
@@ -381,7 +382,7 @@ Proceed with filtering and normalization for differential expression analysis.""
                 return f"Group '{group2}' not found in column '{groupby}'. Available groups: {available_groups}"
 
             # Use bulk service for differential expression
-            adata_de, de_stats = bulk_service.run_differential_expression_analysis(
+            adata_de, de_stats, ir = bulk_service.run_differential_expression_analysis(
                 adata=adata,
                 groupby=groupby,
                 group1=group1,
@@ -399,7 +400,7 @@ Proceed with filtering and normalization for differential expression analysis.""
                 save_path = f"{modality_name}_de_{group1}_vs_{group2}.h5ad"
                 data_manager.save_modality(de_modality_name, save_path)
 
-            # Log the operation
+            # Log the operation with IR for provenance tracking
             data_manager.log_tool_usage(
                 tool_name="run_differential_expression_analysis",
                 parameters={
@@ -411,6 +412,7 @@ Proceed with filtering and normalization for differential expression analysis.""
                     "min_expression_threshold": min_expression_threshold,
                 },
                 description=f"Bulk RNA-seq DE analysis: {de_stats['n_significant_genes']} significant genes found",
+                ir=ir,
             )
 
             # Format professional response
@@ -505,11 +507,11 @@ Proceed with filtering and normalization for differential expression analysis.""
             )
 
             # Use bulk service for pathway enrichment
-            enrichment_df, enrichment_stats = bulk_service.run_pathway_enrichment(
+            enrichment_df, enrichment_stats, ir = bulk_service.run_pathway_enrichment(
                 gene_list=gene_list, analysis_type=analysis_type
             )
 
-            # Log the operation
+            # Log the operation with IR for provenance tracking
             data_manager.log_tool_usage(
                 tool_name="run_pathway_enrichment_analysis",
                 parameters={
@@ -518,6 +520,7 @@ Proceed with filtering and normalization for differential expression analysis.""
                     "modality_name": modality_name,
                 },
                 description=f"Bulk RNA-seq {analysis_type} enrichment: {enrichment_stats['n_significant_terms']} significant terms",
+                ir=ir,
             )
 
             # Format professional response

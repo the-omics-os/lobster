@@ -36,13 +36,17 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-22.04, ubuntu-24.04, macos-13, macos-14, windows-2022]
-        python-version: ['3.12', '3.13']
+        python-version: ['3.11', '3.12', '3.13']
         exclude:
-          # Reduce matrix size - test Python 3.13 only on latest OS versions
+          # Reduce matrix size - test Python 3.13 and 3.11 only on selected OS versions
           - os: ubuntu-22.04
             python-version: '3.13'
           - os: macos-13
             python-version: '3.13'
+          - os: ubuntu-22.04
+            python-version: '3.11'
+          - os: macos-13
+            python-version: '3.11'
 
     steps:
       - name: Checkout code

@@ -82,6 +82,22 @@ class AgentClient(BaseClient):
         else:
             self.data_manager = data_manager
 
+        # Initialize PublicationQueue (optional feature)
+        try:
+            from lobster.core.publication_queue import PublicationQueue
+
+            # Use consistent path with DataManagerV2: .lobster/queues/
+            queues_dir = self.workspace_path / ".lobster" / "queues"
+            queues_dir.mkdir(parents=True, exist_ok=True)
+
+            self.publication_queue = PublicationQueue(
+                queue_file=queues_dir / "publication_queue.jsonl"
+            )
+            logger.debug("Initialized PublicationQueue")
+        except ImportError:
+            self.publication_queue = None
+            logger.debug("PublicationQueue not available (premium feature)")
+
         # Set up callbacks
         self.callbacks = []
 
@@ -1832,6 +1848,112 @@ class AgentClient(BaseClient):
         """Reset the conversation state."""
         self.messages = []
         self.metadata["reset_at"] = datetime.now().isoformat()
+
+    def load_publication_list(
+        self,
+        file_path: str,
+        priority: int = 5,
+        schema_type: str = "general",
+        extraction_level: str = "methods",
+    ) -> Dict[str, Any]:
+        """
+        Load .ris publication list and create queue entries.
+
+        Args:
+            file_path: Path to .ris file
+            priority: Processing priority (1-10, default: 5)
+            schema_type: Schema type for validation (default: "general")
+            extraction_level: Target extraction depth (default: "methods")
+
+        Returns:
+            Dict with added_count, entry_ids, skipped_count, and errors
+
+        Raises:
+            FileNotFoundError: If file does not exist
+            ValueError: If file is not .ris format
+            ImportError: If publication queue feature is not available
+        """
+        if self.publication_queue is None:
+            raise ImportError(
+                "Publication queue feature is not available. "
+                "This is a premium feature not included in the open-source distribution."
+            )
+
+        try:
+            from lobster.core.ris_parser import RISParser
+        except ImportError:
+            raise ImportError(
+                "RIS parser not available. "
+                "This is a premium feature not included in the open-source distribution."
+            )
+
+        file_path_obj = Path(file_path)
+
+        # Validate file exists
+        if not file_path_obj.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        # Validate file extension
+        if file_path_obj.suffix.lower() not in [".ris", ".txt"]:
+            raise ValueError(
+                f"File must have .ris or .txt extension, got {file_path_obj.suffix}"
+            )
+
+        # Parse RIS file
+        parser = RISParser()
+        try:
+            entries = parser.parse_file(
+                file_path_obj, encoding="utf-8"
+            )
+        except Exception as e:
+            logger.error(f"Failed to parse RIS file: {e}")
+            return {
+                "added_count": 0,
+                "entry_ids": [],
+                "skipped_count": 0,
+                "errors": [str(e)],
+            }
+
+        # Add entries to queue
+        added_ids = []
+        failed_entries = []
+
+        for entry in entries:
+            try:
+                # Override priority, schema_type, extraction_level if provided
+                if priority != 5:
+                    entry.priority = priority
+                if schema_type != "general":
+                    entry.schema_type = schema_type
+                if extraction_level != "methods":
+                    try:
+                        from lobster.core.schemas.publication_queue import ExtractionLevel
+                        entry.extraction_level = ExtractionLevel(extraction_level.lower())
+                    except ImportError:
+                        logger.warning("ExtractionLevel not available, using default")
+
+                entry_id = self.publication_queue.add_entry(entry)
+                added_ids.append(entry_id)
+            except Exception as e:
+                failed_entries.append(str(e))
+                logger.warning(f"Failed to add entry to queue: {e}")
+
+        # Get parser statistics
+        stats = parser.get_statistics()
+
+        result = {
+            "added_count": len(added_ids),
+            "entry_ids": added_ids,
+            "skipped_count": stats.get("skipped", 0),
+            "errors": stats.get("errors", []) + failed_entries,
+        }
+
+        logger.info(
+            f"Loaded {result['added_count']} publications from {file_path}, "
+            f"skipped {result['skipped_count']}"
+        )
+
+        return result
 
     def export_session(self, export_path: Optional[Path] = None) -> Path:
         """Export the current session data."""

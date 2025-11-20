@@ -14,6 +14,7 @@ from typing import List
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 
+from lobster.agents.state import ResearchAgentState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
@@ -1411,6 +1412,275 @@ Could not extract content for: {identifier}
 """
 
     # ============================================================
+    # Publication Queue Management (2 tools)
+    # ============================================================
+
+    @tool
+    def process_publication_entry(
+        entry_id: str,
+        extraction_tasks: str = "metadata,methods,identifiers",
+    ) -> str:
+        """
+        Process a publication queue entry to extract content and identifiers.
+
+        Extracts metadata, methods sections, and dataset identifiers (GEO, SRA,
+        BioProject, BioSample) from publications in the queue. Updates entry
+        status and caches extracted content to workspace.
+
+        Args:
+            entry_id: Publication queue entry identifier (e.g., "pub_queue_abc123")
+            extraction_tasks: Comma-separated tasks (default: "metadata,methods,identifiers")
+                            Options: "metadata", "methods", "identifiers", "full_text"
+
+        Returns:
+            Processing report with extracted content summary and updated status
+
+        Examples:
+            # Extract metadata and methods
+            process_publication_entry("pub_queue_abc123", "metadata,methods")
+
+            # Extract dataset identifiers
+            process_publication_entry("pub_queue_abc123", "identifiers")
+
+            # Full extraction (metadata + methods + identifiers)
+            process_publication_entry("pub_queue_abc123")
+        """
+        try:
+            # Get publication queue entry
+            try:
+                entry = data_manager.publication_queue.get_entry(entry_id)
+            except Exception as e:
+                return f"""## Error: Publication Queue Entry Not Found
+
+Entry ID '{entry_id}' not found in publication queue.
+
+**Error**: {str(e)}
+
+**Tip**: Use get_content_from_workspace(workspace='publication_queue') to list available entries.
+"""
+
+            # Parse extraction tasks
+            tasks = [task.strip().lower() for task in extraction_tasks.split(",")]
+
+            # Update status to EXTRACTING
+            data_manager.publication_queue.update_status(
+                entry_id=entry_id,
+                status="extracting" if isinstance(entry.status, str) else entry.status.__class__("extracting"),
+                processed_by="research_agent"
+            )
+
+            response_parts = [
+                f"## Processing Publication: {entry.title or entry.entry_id}",
+                "",
+                f"**Entry ID**: {entry_id}",
+                f"**Status**: EXTRACTING → Processing",
+                "",
+            ]
+
+            extracted_data = {}
+            identifiers_found = None  # Initialize to avoid UnboundLocalError if identifiers task is skipped
+
+            # Task 1: Extract metadata (abstract, keywords, etc.)
+            if "metadata" in tasks or "full_text" in tasks:
+                try:
+                    # Use read_full_publication to get content
+                    identifier = entry.pmid or entry.doi or entry.pmc_id
+                    if identifier:
+                        content = read_full_publication(identifier=identifier)
+                        extracted_data["metadata_extracted"] = True
+                        response_parts.append("✓ Metadata extracted successfully")
+                    else:
+                        response_parts.append("⚠ No identifier available for metadata extraction")
+                except Exception as e:
+                    response_parts.append(f"✗ Metadata extraction failed: {str(e)}")
+
+            # Task 2: Extract methods section
+            if "methods" in tasks or "full_text" in tasks:
+                try:
+                    identifier = entry.pmid or entry.doi or entry.pmc_id
+                    if identifier:
+                        methods_content = extract_methods(identifier=identifier)
+                        extracted_data["methods_extracted"] = True
+                        response_parts.append("✓ Methods section extracted successfully")
+                    else:
+                        response_parts.append("⚠ No identifier available for methods extraction")
+                except Exception as e:
+                    response_parts.append(f"✗ Methods extraction failed: {str(e)}")
+
+            # Task 3: Extract dataset identifiers
+            if "identifiers" in tasks or "full_text" in tasks:
+                try:
+                    # Use content_access_service to extract identifiers
+                    identifier = entry.pmid or entry.doi or entry.pmc_id
+                    if identifier:
+                        # Get full publication content
+                        full_content = read_full_publication(identifier=identifier)
+
+                        # Extract dataset identifiers using basic pattern matching
+                        import re
+                        identifiers_found = {
+                            "geo": re.findall(r"GSE\d+", full_content),
+                            "sra": re.findall(r"SRP\d+|SRX\d+|SRR\d+", full_content),
+                            "bioproject": re.findall(r"PRJNA\d+", full_content),
+                            "biosample": re.findall(r"SAMN\d+", full_content),
+                            "ena": re.findall(r"E-[A-Z]+-\d+", full_content),
+                        }
+
+                        # Remove duplicates
+                        for key in identifiers_found:
+                            identifiers_found[key] = list(set(identifiers_found[key]))
+
+                        # Update entry with extracted identifiers
+                        data_manager.publication_queue.update_status(
+                            entry_id=entry_id,
+                            status="metadata_extracted" if isinstance(entry.status, str) else entry.status.__class__("metadata_extracted"),
+                            extracted_identifiers=identifiers_found,
+                            processed_by="research_agent"
+                        )
+
+                        extracted_data["identifiers"] = identifiers_found
+
+                        # Report findings
+                        total_ids = sum(len(v) for v in identifiers_found.values())
+                        if total_ids > 0:
+                            response_parts.append(f"✓ Found {total_ids} dataset identifiers:")
+                            for id_type, id_list in identifiers_found.items():
+                                if id_list:
+                                    response_parts.append(f"  - {id_type.upper()}: {', '.join(id_list[:5])}")
+                                    if len(id_list) > 5:
+                                        response_parts.append(f"    (+{len(id_list) - 5} more)")
+                        else:
+                            response_parts.append("⚠ No dataset identifiers found in publication")
+
+                    else:
+                        response_parts.append("⚠ No identifier available for identifier extraction")
+                except Exception as e:
+                    response_parts.append(f"✗ Identifier extraction failed: {str(e)}")
+
+            # Update final status
+            final_status = "completed" if extracted_data else "failed"
+            data_manager.publication_queue.update_status(
+                entry_id=entry_id,
+                status=final_status if isinstance(entry.status, str) else entry.status.__class__(final_status),
+                processed_by="research_agent"
+            )
+
+            # Log to W3C-PROV for reproducibility (orchestration operation - no IR)
+            data_manager.log_tool_usage(
+                tool_name="process_publication_entry",
+                parameters={
+                    "entry_id": entry_id,
+                    "extraction_tasks": extraction_tasks,
+                    "tasks": tasks,
+                    "final_status": final_status,
+                    "extracted_identifiers": identifiers_found if "identifiers" in tasks else None,
+                    "title": entry.title or "N/A",
+                    "pmid": entry.pmid,
+                    "doi": entry.doi,
+                },
+                description=f"Processed publication entry {entry_id}: {entry.title or 'N/A'} [{final_status}]",
+            )
+
+            response_parts.extend([
+                "",
+                f"**Final Status**: {final_status.upper()}",
+                "",
+                "**Next Steps**:",
+                "- View extracted content: get_content_from_workspace(identifier='" + entry_id + "', workspace='publication_queue')",
+                "- Process more entries: process_publication_entry('next_entry_id')",
+            ])
+
+            return "\n".join(response_parts)
+
+        except Exception as e:
+            logger.error(f"Failed to process publication entry {entry_id}: {e}")
+            return f"""## Error Processing Publication Entry
+
+Entry ID: {entry_id}
+
+**Error**: {str(e)}
+
+**Tip**: Ensure the entry exists in the publication queue and try again.
+"""
+
+    @tool
+    def update_publication_status(
+        entry_id: str,
+        status: str,
+        error_message: str = None,
+    ) -> str:
+        """
+        Update publication queue entry status.
+
+        Args:
+            entry_id: Publication queue entry identifier
+            status: New status (pending/extracting/metadata_extracted/completed/failed)
+            error_message: Optional error message for failed status
+
+        Returns:
+            Status update confirmation
+
+        Examples:
+            # Mark as completed
+            update_publication_status("pub_queue_abc123", "completed")
+
+            # Mark as failed with error
+            update_publication_status("pub_queue_abc123", "failed", "Content not accessible")
+        """
+        try:
+            # Validate status
+            valid_statuses = ["pending", "extracting", "metadata_extracted", "completed", "failed"]
+            if status.lower() not in valid_statuses:
+                return f"Error: Invalid status '{status}'. Valid options: {', '.join(valid_statuses)}"
+
+            # Get current entry
+            try:
+                entry = data_manager.publication_queue.get_entry(entry_id)
+            except Exception as e:
+                return f"Error: Entry '{entry_id}' not found in publication queue: {str(e)}"
+
+            # Update status
+            old_status = str(entry.status)
+            data_manager.publication_queue.update_status(
+                entry_id=entry_id,
+                status=status.lower() if isinstance(entry.status, str) else entry.status.__class__(status.lower()),
+                error=error_message if status.lower() == "failed" else None,
+                processed_by="research_agent"
+            )
+
+            # Log to W3C-PROV for reproducibility (orchestration operation - no IR)
+            data_manager.log_tool_usage(
+                tool_name="update_publication_status",
+                parameters={
+                    "entry_id": entry_id,
+                    "old_status": old_status,
+                    "new_status": status.lower(),
+                    "error_message": error_message if status.lower() == "failed" else None,
+                    "title": entry.title or "N/A",
+                    "pmid": entry.pmid,
+                    "doi": entry.doi,
+                },
+                description=f"Updated publication status {entry_id}: {old_status} → {status.lower()}",
+            )
+
+            response = f"""## Publication Status Updated
+
+**Entry ID**: {entry_id}
+**Title**: {entry.title or 'N/A'}
+**Old Status**: {entry.status}
+**New Status**: {status.upper()}
+"""
+
+            if error_message:
+                response += f"\n**Error Message**: {error_message}\n"
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Failed to update publication status: {e}")
+            return f"Error updating publication status: {str(e)}"
+
+    # ============================================================
     # Phase 4 NEW TOOLS: Workspace Management (2 tools)
     # ============================================================
 
@@ -1731,6 +2001,10 @@ Could not extract content for: {identifier}
         read_full_publication,
         extract_methods,
         # --------------------------------
+        # Publication Queue Management (2 tools)
+        process_publication_entry,
+        update_publication_status,
+        # --------------------------------
         # Workspace management tools (2 tools)
         write_to_workspace,
         get_content_from_workspace,
@@ -1738,8 +2012,9 @@ Could not extract content for: {identifier}
         # System tools (1 tool)
         validate_dataset_metadata,
         # --------------------------------
-        # Total: 10 tools (3 discovery + 4 content + 2 workspace + 1 system)
+        # Total: 12 tools (3 discovery + 4 content + 2 pub queue + 2 workspace + 1 system)
         # Phase 4 complete: Removed 6 tools, renamed 6, enhanced 4, added 2 workspace
+        # Phase 7 complete: Added 2 publication queue management tools
     ]
 
     # Combine base tools with handoff tools if provided
@@ -1749,7 +2024,7 @@ Could not extract content for: {identifier}
 <Identity_And_Expertise>
 Research Agent: Literature discovery and dataset metadata specialist.
 
-**Core Capabilities**: Search PubMed/bioRxiv/medRxiv, extract publication content (abstracts, methods, parameters), find related datasets/papers, search omics databases (GEO/SRA/PRIDE/ArrayExpress/dbGaP), read dataset metadata, workspace caching, validating datasets (which adds them to the download queue) & handoff to metadata_assistant.
+**Core Capabilities**: Search PubMed/bioRxiv/medRxiv, extract publication content (abstracts, methods, parameters), find related datasets/papers, search omics databases (GEO/SRA/PRIDE/ArrayExpress/dbGaP), read dataset metadata, process publication queue entries (extract metadata/methods/identifiers), workspace caching, validating datasets (which adds them to the download queue) & handoff to metadata_assistant.
 
 **Download Strategy Recommendation:**
 - Analyzes GEO dataset metadata using AI to recommend optimal download strategies
@@ -1860,9 +2135,9 @@ Always show attempt counter to user:
    - Field tags where applicable: human[orgn], GSE[ETYP]
 </Query_Optimization_Strategy>
 
-<Your_10_Research_Tools>
+<Your_12_Research_Tools>
 
-You have **10 specialized tools** organized into 4 categories:
+You have **12 specialized tools** organized into 5 categories:
 
 ## 🔍 Discovery Tools (3 tools)
 
@@ -1925,7 +2200,22 @@ You have **10 specialized tools** organized into 4 categories:
     - Returns entry_id for supervisor to hand off to data_expert
     - Never blocks on missing optional fields (only CRITICAL failures prevent queueing)
 
-</Your_10_Research_Tools>
+## 📋 Publication Queue Management (2 tools)
+
+11. **`process_publication_entry`** - Process queued publications for batch extraction
+    - Extracts metadata, methods sections, and dataset identifiers from publications in queue
+    - Supports selective extraction: "metadata", "methods", "identifiers", or "full_text"
+    - Updates entry status through workflow: PENDING → EXTRACTING → COMPLETED/FAILED
+    - USE FOR: Batch literature review, RIS file imports, systematic dataset discovery
+    - DO NOT USE FOR: Single ad-hoc queries (use read_full_publication instead)
+
+12. **`update_publication_status`** - Manual status management for queue entries
+    - Updates entry status: pending/extracting/metadata_extracted/completed/failed
+    - Supports error messages for failed extractions
+    - USE FOR: Error recovery, manual overrides, batch cleanup, external processing
+    - DO NOT USE FOR: Normal processing flow (process_publication_entry handles this automatically)
+
+</Your_12_Research_Tools>
 
 <Tool_Selection_Decision_Trees>
 
@@ -1956,7 +2246,7 @@ You have **10 specialized tools** organized into 4 categories:
 | Task | Triggers | Handoff To |
 |------|----------|-----------|
 | Sample ID mapping/standardization/validation/reading | "map samples", "standardize metadata", "validate dataset", "read sample metadata" | metadata_assistant (cache first, include identifiers/workspace locations/expected output/special requirements) |
-| Download/load datasets | "download GSE", "load dataset", "fetch from GEO" | data_expert |
+| Download/load datasets | "download GSE", "load dataset", "fetch from GEO" | tell supervisor to ask the data_expert |
 | Complex multi-agent workflows | 3+ agents, multi-domain requests, ambiguous requirements | supervisor |
 
 </Handoff_Triggers>
@@ -2518,6 +2808,156 @@ Report: ✓ Attempted extraction + keyword search + related papers → Possible 
 
 **Note**: For method extraction tool usage, refer to the `extract_methods` tool documentation in the "Available Research Tools - Detailed Reference" section above. The tool supports single paper or batch processing (comma-separated identifiers) with optional `focus` parameter for targeted extraction.
 
+## Publication Queue Management Tools
+
+### When to Use `process_publication_entry`
+
+**Primary Use Cases:**
+
+1. **After User Imports Publications via `/load` Command**
+   - **Trigger**: User uploads RIS file from Zotero/Mendeley/EndNote or adds publications via CLI
+   - **Timing**: IMMEDIATELY after successful import (entries are in PENDING status)
+   - **Purpose**: Batch extraction of metadata, methods sections, and dataset identifiers (GSE, SRA, BioProject, etc.)
+   - **Example scenario**: User: "I imported 20 papers from my Zotero library, can you extract all the datasets mentioned?"
+   - **Action**: Query publication queue → Process each PENDING entry → Extract identifiers → Report results
+
+2. **Batch Literature Review for Dataset Discovery**
+   - **Trigger**: User wants to find ALL datasets associated with a set of related publications
+   - **Timing**: After using `search_literature` to find relevant papers and adding them to queue
+   - **Purpose**: Systematic extraction of dataset accessions across multiple papers
+   - **Example scenario**: User: "Find all GEO datasets from papers about lung cancer immunotherapy published in 2023"
+   - **Workflow**: `search_literature` → Add results to publication queue → `process_publication_entry` for each → Aggregate dataset list
+   - **Why not just use `find_related_entries`?** Publication queue handles BATCH processing, error recovery, and persistent state across sessions
+
+3. **Methods Extraction for Reproducibility Analysis**
+   - **Trigger**: User needs computational methods from multiple papers for protocol standardization
+   - **Timing**: When user explicitly requests "methods" or "parameters" extraction from queued publications
+   - **Purpose**: Extract software, parameters, statistical methods for comparison or replication
+   - **Example scenario**: User: "Compare the QC parameters used across all these single-cell papers"
+   - **Action**: `process_publication_entry(entry_id, extraction_tasks="methods")` → Parse methods → Compare
+
+4. **Recovery from Failed Publication Processing**
+   - **Trigger**: Publication processing failed previously (status=FAILED or EXTRACTING with stale timestamp)
+   - **Timing**: When user requests retry or you detect stale entries during queue status checks
+   - **Purpose**: Retry extraction with different strategies (PMC → Webpage → PDF cascade)
+   - **Example scenario**: Queue status shows 3 FAILED entries from paywalled papers
+   - **Action**: Check if preprint versions available → Update entry URLs → `process_publication_entry` with new sources
+
+**When NOT to Use `process_publication_entry`:**
+
+- **Single publication, immediate need**: Use `read_full_publication` or `fast_abstract_search` directly (no queue overhead)
+- **Just checking paper relevance**: Use `fast_abstract_search` (200-500ms vs 2-8s full processing)
+- **Publication already processed**: Check entry status first (`get_content_from_workspace(workspace='publication_queue')`) to avoid redundant work
+- **User wants quick summary**: Queue processing is for EXTRACTION, not browsing; use direct tools for ad-hoc queries
+
+---
+
+### When to Use `update_publication_status`
+
+**Primary Use Cases:**
+
+1. **Manual Error Recovery After Extraction Failures**
+   - **Trigger**: `process_publication_entry` failed but you've resolved the issue externally
+   - **Timing**: AFTER fixing the underlying problem (e.g., obtained preprint URL, paper became open access)
+   - **Purpose**: Reset status from FAILED → PENDING to enable retry, or mark as COMPLETED if fixed manually
+   - **Example scenario**: Entry failed due to paywall → User provides preprint link → You update metadata → Reset status to retry
+   - **Code pattern**:
+     ```python
+     # After updating entry metadata with new URL
+     update_publication_status(entry_id, status="pending")
+     # Then retry
+     process_publication_entry(entry_id)
+     ```
+
+2. **Mark Publications as FAILED with Explanatory Errors**
+   - **Trigger**: You've exhausted all extraction strategies (PMC → Webpage → PDF → Preprint) and cannot proceed
+   - **Timing**: After 3+ failed extraction attempts with different strategies
+   - **Purpose**: Permanently mark as FAILED with actionable error message for user review
+   - **Example scenario**: High-impact paper behind strict paywall, no open access version exists
+   - **Code pattern**:
+     ```python
+     update_publication_status(
+         entry_id="pub_queue_12345",
+         status="failed",
+         error_message="Paywalled (Nature, no preprint). Tried PMC (404), bioRxiv (not found), direct PDF (403). Recommend: institutional access or author contact."
+     )
+     ```
+
+3. **Batch Status Management for Queue Cleanup**
+   - **Trigger**: User requests "clean up old failed entries" or "reset stale processing"
+   - **Timing**: Periodic maintenance or when queue has >10 stale entries
+   - **Purpose**: Bulk status updates to reset EXTRACTING → PENDING (stale) or archive COMPLETED entries
+   - **Example scenario**: Queue has 5 entries stuck in EXTRACTING for >1 hour (processing crashed)
+   - **Workflow**: List stale entries → Determine if retryable → `update_publication_status` to reset or mark failed
+
+4. **Override Status for External Processing**
+   - **Trigger**: User manually extracted content outside Lobster and wants to mark entry as COMPLETED
+   - **Timing**: When user uploads externally-extracted data and references existing queue entry
+   - **Purpose**: Prevent redundant processing and maintain queue integrity
+   - **Example scenario**: User: "I already extracted the methods from PMID:12345 in my notebook, just mark it done"
+   - **Action**: Verify external content quality → `update_publication_status(entry_id, status="completed")`
+
+**When NOT to Use `update_publication_status`:**
+
+- **During normal processing flow**: `process_publication_entry` handles status updates automatically (PENDING → EXTRACTING → COMPLETED/FAILED)
+- **To force success on failed extraction**: Don't mark as COMPLETED if extraction genuinely failed; preserve error state for debugging
+- **For status queries**: Use `get_content_from_workspace(workspace='publication_queue')` to CHECK status, not update it
+
+---
+
+### Integration with Download Queue Workflow
+
+**Critical Pattern**: Publication Queue → Dataset Identifiers → Download Queue → Data Expert
+
+**Scenario**: User wants to analyze data from papers in a specific domain
+
+**Full Workflow:**
+1. **Discovery**: `search_literature("lung cancer single-cell RNA-seq")` → Identify 10 relevant papers
+2. **Queue Import**: Add papers to publication queue (via `/load` or programmatic import)
+3. **Extract Identifiers**: `process_publication_entry(entry_id, extraction_tasks="identifiers")` → Find GSE accessions
+4. **Validate Datasets**: For each GSE → `validate_dataset_metadata(gse_id, required_fields=...)` → Creates download queue entries
+5. **Handoff to Data Expert**: Supervisor delegates download queue processing
+6. **Analysis**: Data expert downloads → QC → clustering → DE
+
+**Key Decision Points:**
+
+| User Request | Tool Sequence | Rationale |
+|--------------|---------------|-----------|
+| "Find datasets from this paper" | `find_related_entries(PMID)` | Single paper, immediate need, NO queue |
+| "Find datasets from these 20 papers" | Add to queue → `process_publication_entry` | Batch processing, error recovery, persistent state |
+| "Extract methods from papers I uploaded" | `process_publication_entry(extraction_tasks="methods")` | Queued papers, structured extraction |
+| "Just read this paper's abstract" | `fast_abstract_search(PMID)` | Ad-hoc query, NO queue needed |
+
+**Anti-Pattern to Avoid:**
+```python
+# ❌ BAD: Using publication queue for single ad-hoc query
+add_to_queue(PMID) → process_publication_entry(entry_id) → parse results
+# ✅ GOOD: Direct tool for single query
+read_full_publication(PMID) → parse content directly
+```
+
+---
+
+### Performance and Timing Considerations
+
+**Processing Times:**
+- `process_publication_entry` (full extraction): 2-8 seconds per publication
+- `update_publication_status`: <100ms (metadata-only operation)
+- Batch processing 20 publications: 40-160 seconds (parallelization planned)
+
+**When to Show Progress:**
+- Processing >5 publications: Show progress after each completion
+- Long-running batch (>10 publications): Report every 5 completions
+- Failures: Immediately report with actionable error messages
+
+**Queue Status Monitoring:**
+```python
+# Check queue state before starting batch operations
+queue_summary = get_content_from_workspace(workspace='publication_queue')
+# If >50% entries are FAILED → Alert user to review failures before adding more
+# If >10 EXTRACTING entries → Potential stalled processes, investigate before proceeding
+```
+
 </Critical_Tool_Usage_Workflows>
 
 <Pharmaceutical_Research_Examples>
@@ -2612,5 +3052,9 @@ Dataset Discovery Results for [Drug Target/Indication]
 
 """
     return create_react_agent(
-        model=llm, tools=tools, prompt=system_prompt, name=agent_name
+        model=llm,
+        tools=tools,
+        prompt=system_prompt,
+        name=agent_name,
+        state_schema=ResearchAgentState,
     )

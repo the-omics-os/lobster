@@ -1,7 +1,7 @@
 """
-Download queue management with JSON Lines persistence.
+Publication queue management with JSON Lines persistence.
 
-This module provides the DownloadQueue class for managing dataset download
+This module provides the PublicationQueue class for managing publication extraction
 requests with atomic operations, automatic backups, and thread-safe access.
 """
 
@@ -13,28 +13,28 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from lobster.core.schemas.download_queue import DownloadQueueEntry, DownloadStatus
+from lobster.core.schemas.publication_queue import PublicationQueueEntry, PublicationStatus
 
 logger = logging.getLogger(__name__)
 
 
-class DownloadQueueError(Exception):
-    """Base exception for download queue operations."""
+class PublicationQueueError(Exception):
+    """Base exception for publication queue operations."""
 
     pass
 
 
-class EntryNotFoundError(DownloadQueueError):
+class EntryNotFoundError(PublicationQueueError):
     """Raised when a queue entry is not found."""
 
     pass
 
 
-class DownloadQueue:
+class PublicationQueue:
     """
-    Thread-safe download queue with JSON Lines persistence.
+    Thread-safe publication queue with JSON Lines persistence.
 
-    This class manages a queue of dataset download requests with automatic
+    This class manages a queue of publication extraction requests with automatic
     persistence to disk, atomic operations, backup functionality, and
     thread-safe access for concurrent operations.
 
@@ -53,7 +53,7 @@ class DownloadQueue:
 
     def __init__(self, queue_file: Path):
         """
-        Initialize download queue with JSON Lines file.
+        Initialize publication queue with JSON Lines file.
 
         Args:
             queue_file: Path to queue file (will be created if doesn't exist)
@@ -71,26 +71,26 @@ class DownloadQueue:
         if not self.queue_file.exists():
             self.queue_file.touch()
 
-        logger.debug(f"Initialized DownloadQueue at {self.queue_file}")
+        logger.debug(f"Initialized PublicationQueue at {self.queue_file}")
 
-    def add_entry(self, entry: DownloadQueueEntry) -> str:
+    def add_entry(self, entry: PublicationQueueEntry) -> str:
         """
         Add entry to queue with atomic write.
 
         Args:
-            entry: DownloadQueueEntry to add
+            entry: PublicationQueueEntry to add
 
         Returns:
             str: Entry ID of added entry
 
         Raises:
-            DownloadQueueError: If entry already exists or write fails
+            PublicationQueueError: If entry already exists or write fails
         """
         with self._lock:
             # Check if entry already exists
             existing_entries = self._load_entries()
             if any(e.entry_id == entry.entry_id for e in existing_entries):
-                raise DownloadQueueError(
+                raise PublicationQueueError(
                     f"Entry with ID '{entry.entry_id}' already exists"
                 )
 
@@ -103,14 +103,14 @@ class DownloadQueue:
                     json.dump(entry.to_dict(), f, default=str)
                     f.write("\n")
 
-                logger.info(f"Added entry {entry.entry_id} to queue")
+                logger.info(f"Added entry {entry.entry_id} to publication queue")
                 return entry.entry_id
 
             except Exception as e:
-                logger.error(f"Failed to add entry to queue: {e}")
-                raise DownloadQueueError(f"Failed to add entry: {e}") from e
+                logger.error(f"Failed to add entry to publication queue: {e}")
+                raise PublicationQueueError(f"Failed to add entry: {e}") from e
 
-    def get_entry(self, entry_id: str) -> DownloadQueueEntry:
+    def get_entry(self, entry_id: str) -> PublicationQueueEntry:
         """
         Retrieve specific entry by ID.
 
@@ -118,7 +118,7 @@ class DownloadQueue:
             entry_id: Unique entry identifier
 
         Returns:
-            DownloadQueueEntry: Retrieved entry
+            PublicationQueueEntry: Retrieved entry
 
         Raises:
             EntryNotFoundError: If entry not found
@@ -129,32 +129,34 @@ class DownloadQueue:
                 if entry.entry_id == entry_id:
                     return entry
 
-            raise EntryNotFoundError(f"Entry '{entry_id}' not found in queue")
+            raise EntryNotFoundError(f"Entry '{entry_id}' not found in publication queue")
 
     def update_status(
         self,
         entry_id: str,
-        status: DownloadStatus,
-        modality_name: Optional[str] = None,
+        status: PublicationStatus,
+        cached_content_path: Optional[str] = None,
         error: Optional[str] = None,
-        downloaded_by: Optional[str] = None,
-    ) -> DownloadQueueEntry:
+        processed_by: Optional[str] = None,
+        extracted_identifiers: Optional[dict] = None,
+    ) -> PublicationQueueEntry:
         """
         Update entry status and optional fields.
 
         Args:
             entry_id: Entry to update
             status: New status
-            modality_name: Optional modality name
+            cached_content_path: Optional path to cached content
             error: Optional error message
-            downloaded_by: Optional agent/user identifier
+            processed_by: Optional agent/user identifier
+            extracted_identifiers: Optional extracted dataset identifiers
 
         Returns:
-            DownloadQueueEntry: Updated entry
+            PublicationQueueEntry: Updated entry
 
         Raises:
             EntryNotFoundError: If entry not found
-            DownloadQueueError: If update fails
+            PublicationQueueError: If update fails
         """
         with self._lock:
             # Load all entries
@@ -168,15 +170,16 @@ class DownloadQueue:
                     entry_found = True
                     entry.update_status(
                         status=status,
-                        modality_name=modality_name,
+                        cached_content_path=cached_content_path,
                         error=error,
-                        downloaded_by=downloaded_by,
+                        processed_by=processed_by,
+                        extracted_identifiers=extracted_identifiers,
                     )
                     updated_entry = entry
                     break
 
             if not entry_found:
-                raise EntryNotFoundError(f"Entry '{entry_id}' not found in queue")
+                raise EntryNotFoundError(f"Entry '{entry_id}' not found in publication queue")
 
             # Backup before modification
             self._backup_queue()
@@ -188,8 +191,8 @@ class DownloadQueue:
             return updated_entry
 
     def list_entries(
-        self, status: Optional[DownloadStatus] = None
-    ) -> List[DownloadQueueEntry]:
+        self, status: Optional[PublicationStatus] = None
+    ) -> List[PublicationQueueEntry]:
         """
         List all entries, optionally filtered by status.
 
@@ -197,7 +200,7 @@ class DownloadQueue:
             status: Optional status filter
 
         Returns:
-            List[DownloadQueueEntry]: List of entries
+            List[PublicationQueueEntry]: List of entries
         """
         with self._lock:
             entries = self._load_entries()
@@ -216,7 +219,7 @@ class DownloadQueue:
 
         Raises:
             EntryNotFoundError: If entry not found
-            DownloadQueueError: If removal fails
+            PublicationQueueError: If removal fails
         """
         with self._lock:
             entries = self._load_entries()
@@ -226,7 +229,7 @@ class DownloadQueue:
             entries = [e for e in entries if e.entry_id != entry_id]
 
             if len(entries) == original_count:
-                raise EntryNotFoundError(f"Entry '{entry_id}' not found in queue")
+                raise EntryNotFoundError(f"Entry '{entry_id}' not found in publication queue")
 
             # Backup before modification
             self._backup_queue()
@@ -234,7 +237,7 @@ class DownloadQueue:
             # Write remaining entries atomically
             self._write_entries_atomic(entries)
 
-            logger.info(f"Removed entry {entry_id} from queue")
+            logger.info(f"Removed entry {entry_id} from publication queue")
 
     def clear_queue(self) -> int:
         """
@@ -244,7 +247,7 @@ class DownloadQueue:
             int: Number of entries cleared
 
         Raises:
-            DownloadQueueError: If clear operation fails
+            PublicationQueueError: If clear operation fails
         """
         with self._lock:
             entries = self._load_entries()
@@ -257,22 +260,22 @@ class DownloadQueue:
                 # Clear queue file
                 try:
                     self.queue_file.write_text("", encoding="utf-8")
-                    logger.info(f"Cleared {entry_count} entries from queue")
+                    logger.info(f"Cleared {entry_count} entries from publication queue")
                 except Exception as e:
-                    logger.error(f"Failed to clear queue: {e}")
-                    raise DownloadQueueError(f"Failed to clear queue: {e}") from e
+                    logger.error(f"Failed to clear publication queue: {e}")
+                    raise PublicationQueueError(f"Failed to clear queue: {e}") from e
 
             return entry_count
 
-    def _load_entries(self) -> List[DownloadQueueEntry]:
+    def _load_entries(self) -> List[PublicationQueueEntry]:
         """
         Load all entries from queue file.
 
         Returns:
-            List[DownloadQueueEntry]: List of entries
+            List[PublicationQueueEntry]: List of entries
 
         Raises:
-            DownloadQueueError: If loading fails
+            PublicationQueueError: If loading fails
         """
         entries = []
 
@@ -288,7 +291,7 @@ class DownloadQueue:
 
                     try:
                         data = json.loads(line)
-                        entry = DownloadQueueEntry.from_dict(data)
+                        entry = PublicationQueueEntry.from_dict(data)
                         entries.append(entry)
                     except Exception as e:
                         logger.warning(
@@ -299,10 +302,10 @@ class DownloadQueue:
             return entries
 
         except Exception as e:
-            logger.error(f"Failed to load queue: {e}")
-            raise DownloadQueueError(f"Failed to load queue: {e}") from e
+            logger.error(f"Failed to load publication queue: {e}")
+            raise PublicationQueueError(f"Failed to load queue: {e}") from e
 
-    def _write_entries_atomic(self, entries: List[DownloadQueueEntry]) -> None:
+    def _write_entries_atomic(self, entries: List[PublicationQueueEntry]) -> None:
         """
         Write entries atomically using temp file + rename.
 
@@ -310,7 +313,7 @@ class DownloadQueue:
             entries: List of entries to write
 
         Raises:
-            DownloadQueueError: If write fails
+            PublicationQueueError: If write fails
         """
         temp_file = self.queue_file.with_suffix(".tmp")
 
@@ -328,29 +331,29 @@ class DownloadQueue:
             # Clean up temp file on error
             if temp_file.exists():
                 temp_file.unlink()
-            logger.error(f"Failed to write queue atomically: {e}")
-            raise DownloadQueueError(f"Failed to write queue: {e}") from e
+            logger.error(f"Failed to write publication queue atomically: {e}")
+            raise PublicationQueueError(f"Failed to write queue: {e}") from e
 
     def _backup_queue(self) -> Path:
         """
         Create timestamped backup of queue file.
 
         Returns:
-            Path: Path to backup file
+            Path: Path to backup file (or None if backup skipped)
 
         Raises:
-            DownloadQueueError: If backup fails
+            PublicationQueueError: If backup fails (non-fatal, logged as warning)
         """
         if not self.queue_file.exists() or self.queue_file.stat().st_size == 0:
             # No need to backup empty file
             return None
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        backup_file = self.backup_dir / f"queue_backup_{timestamp}.jsonl"
+        backup_file = self.backup_dir / f"publication_queue_backup_{timestamp}.jsonl"
 
         try:
             shutil.copy2(self.queue_file, backup_file)
-            logger.debug(f"Created queue backup: {backup_file}")
+            logger.debug(f"Created publication queue backup: {backup_file}")
             return backup_file
 
         except Exception as e:
@@ -363,7 +366,7 @@ class DownloadQueue:
         Get queue statistics.
 
         Returns:
-            dict: Statistics including counts by status
+            dict: Statistics including counts by status and schema_type
         """
         with self._lock:
             entries = self._load_entries()
@@ -372,27 +375,33 @@ class DownloadQueue:
                 "total_entries": len(entries),
                 "by_status": {
                     "pending": 0,
-                    "in_progress": 0,
+                    "extracting": 0,
+                    "metadata_extracted": 0,
                     "completed": 0,
                     "failed": 0,
                 },
-                "by_database": {},
-                "by_priority": {},
+                "by_schema_type": {},
+                "by_extraction_level": {},
+                "identifiers_extracted": 0,
             }
 
             for entry in entries:
                 # Count by status
                 stats["by_status"][entry.status] += 1
 
-                # Count by database
-                if entry.database not in stats["by_database"]:
-                    stats["by_database"][entry.database] = 0
-                stats["by_database"][entry.database] += 1
+                # Count by schema_type
+                if entry.schema_type not in stats["by_schema_type"]:
+                    stats["by_schema_type"][entry.schema_type] = 0
+                stats["by_schema_type"][entry.schema_type] += 1
 
-                # Count by priority
-                priority_str = str(entry.priority)
-                if priority_str not in stats["by_priority"]:
-                    stats["by_priority"][priority_str] = 0
-                stats["by_priority"][priority_str] += 1
+                # Count by extraction_level
+                level_str = str(entry.extraction_level)
+                if level_str not in stats["by_extraction_level"]:
+                    stats["by_extraction_level"][level_str] = 0
+                stats["by_extraction_level"][level_str] += 1
+
+                # Count entries with extracted identifiers
+                if entry.has_identifier_data():
+                    stats["identifiers_extracted"] += 1
 
             return stats

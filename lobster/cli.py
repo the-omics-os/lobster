@@ -93,6 +93,10 @@ class NoOpProgress:
         """No-op update."""
         pass
 
+    def remove_task(self, *args, **kwargs):
+        """No-op task removal."""
+        pass
+
 
 def should_show_progress(client_arg: Optional["AgentClient"] = None) -> bool:
     """
@@ -355,6 +359,7 @@ def extract_available_commands() -> Dict[str, str]:
         "/tree": "Show directory tree view",
         "/data": "Show current data summary",
         "/metadata": "Show detailed metadata information",
+        "/load": "Load .ris publication list into queue",
         "/workspace": "Show workspace status and information",
         "/workspace list": "List available datasets in workspace",
         "/workspace load": "Load specific dataset from workspace",
@@ -2714,6 +2719,7 @@ def _execute_command(cmd: str, client: AgentClient) -> Optional[str]:
 [{LobsterTheme.PRIMARY_ORANGE}]/open[/{LobsterTheme.PRIMARY_ORANGE}] <file>  [grey50]-[/grey50] Open file or folder in system default application
 [{LobsterTheme.PRIMARY_ORANGE}]/save[/{LobsterTheme.PRIMARY_ORANGE}]         [grey50]-[/grey50] Save current state to workspace
 [{LobsterTheme.PRIMARY_ORANGE}]/read[/{LobsterTheme.PRIMARY_ORANGE}] <file>  [grey50]-[/grey50] Read a file from workspace (supports glob patterns like *.h5ad)
+[{LobsterTheme.PRIMARY_ORANGE}]/load[/{LobsterTheme.PRIMARY_ORANGE}] <file>  [grey50]-[/grey50] Load .ris publication list into queue for processing
 [{LobsterTheme.PRIMARY_ORANGE}]/export[/{LobsterTheme.PRIMARY_ORANGE}]       [grey50]-[/grey50] Export session data
 [{LobsterTheme.PRIMARY_ORANGE}]/pipeline export[/{LobsterTheme.PRIMARY_ORANGE}] [grey50]-[/grey50] Export session as Jupyter notebook
 [{LobsterTheme.PRIMARY_ORANGE}]/pipeline list[/{LobsterTheme.PRIMARY_ORANGE}] [grey50]-[/grey50] List available notebooks
@@ -3670,6 +3676,106 @@ when they are started by agents or analysis workflows.
             # Return summary for conversation history (for non-archive unsupported files)
             if file_category != "archive":
                 return f"Identified file '{filename}' as {file_description} ({file_category}) - not supported for loading or display"
+
+    elif cmd.startswith("/load "):
+        # Load publication list from .ris file
+        filename = cmd[6:].strip()
+
+        # Convert to Path object for directory checking
+        file_path = (
+            Path(filename)
+            if Path(filename).is_absolute()
+            else current_directory / filename
+        )
+
+        # Validate file extension
+        if not file_path.suffix.lower() in [".ris", ".txt"]:
+            console_manager.print_error_panel(
+                f"Invalid file type: {file_path.suffix}",
+                "Only .ris or .txt files are supported for /load command",
+            )
+            return None
+
+        # Check if file exists
+        if not file_path.exists():
+            console_manager.print_error_panel(
+                f"File not found: {file_path}",
+                f"Searched in: {current_directory}",
+            )
+            return None
+
+        console.print(f"[cyan]📚 Loading publication list from: {file_path.name}[/cyan]\n")
+
+        try:
+            with create_progress(client_arg=client) as progress:
+                task = progress.add_task(
+                    "[cyan]Parsing .ris file and creating queue entries...",
+                    total=None,
+                )
+
+                # Load publications into queue
+                result = client.load_publication_list(
+                    file_path=str(file_path),
+                    priority=5,  # Default priority
+                    schema_type="general",  # Default schema
+                    extraction_level="methods",  # Default extraction level
+                )
+
+                progress.remove_task(task)
+
+            # Display results
+            if result["added_count"] > 0:
+                console.print(f"[green]✅ Successfully loaded {result['added_count']} publications[/green]\n")
+
+                console.print("[cyan]📊 Load Summary:[/cyan]")
+                console.print(f"  • Added to queue: [bold]{result['added_count']}[/bold] publications")
+                if result["skipped_count"] > 0:
+                    console.print(f"  • Skipped: [yellow]{result['skipped_count']}[/yellow] entries (malformed or invalid)")
+                console.print(f"  • Status: [bold]PENDING[/bold] (ready for processing)")
+                console.print(f"  • Queue file: publication_queue.jsonl\n")
+
+                console.print("[cyan]💡 Next steps:[/cyan]")
+                console.print("  • View queue: [white]get_content_from_workspace(workspace='publication_queue')[/white]")
+                console.print("  • Process queue: Ask the research agent to process pending publications\n")
+
+                if result.get("errors") and len(result["errors"]) > 0:
+                    console.print(f"[yellow]⚠️  {len(result['errors'])} error(s) occurred during parsing:[/yellow]")
+                    for i, error in enumerate(result["errors"][:3], 1):  # Show first 3 errors
+                        console.print(f"  {i}. {error}")
+                    if len(result["errors"]) > 3:
+                        console.print(f"  ... and {len(result['errors']) - 3} more")
+
+                # Return summary for conversation history
+                return f"Loaded {result['added_count']} publications from {file_path.name} into publication queue (skipped {result['skipped_count']})"
+            else:
+                console.print(
+                    f"[bold red on white] ⚠️  Error [/bold red on white] "
+                    f"[red]No publications could be loaded from file[/red]"
+                )
+                if result.get("errors"):
+                    console.print(f"\n[yellow]Errors:[/yellow]")
+                    for error in result["errors"][:5]:
+                        console.print(f"  • {error}")
+                return None
+
+        except FileNotFoundError as e:
+            console_manager.print_error_panel(
+                f"File not found: {str(e)}",
+                "Check the file path and try again",
+            )
+            return None
+        except ValueError as e:
+            console_manager.print_error_panel(
+                f"Invalid file format: {str(e)}",
+                "Ensure the file is a valid .ris format",
+            )
+            return None
+        except Exception as e:
+            console_manager.print_error_panel(
+                f"Failed to load publication list: {str(e)}",
+                "Check the file format and try again",
+            )
+            return None
 
     elif cmd.startswith("/archive"):
         # Handle nested archive commands

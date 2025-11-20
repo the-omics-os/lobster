@@ -50,6 +50,7 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
         - "data": Dataset metadata, GEO records
         - "metadata": Validation results, sample mappings
         - "download_queue": Pending/completed download tasks
+        - "publication_queue": Pending/completed publication extraction tasks
 
         Detail Levels:
         - "summary": Key-value pairs, high-level overview (default)
@@ -65,6 +66,12 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
         - identifier=None: List all entries (filtered by status_filter if provided)
         - identifier=<entry_id>: Retrieve specific entry
         - status_filter: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED"
+        - level: "summary" (basic info) | "metadata" (full entry details)
+
+        For publication_queue workspace:
+        - identifier=None: List all entries (filtered by status_filter if provided)
+        - identifier=<entry_id>: Retrieve specific entry
+        - status_filter: "pending" | "extracting" | "metadata_extracted" | "completed" | "failed"
         - level: "summary" (basic info) | "metadata" (full entry details)
 
         Args:
@@ -116,6 +123,19 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                 workspace="download_queue",
                 level="metadata"
             )
+
+            # List pending publication extractions
+            get_content_from_workspace(
+                workspace="publication_queue",
+                status_filter="pending"
+            )
+
+            # Get publication queue entry details
+            get_content_from_workspace(
+                identifier="pub_queue_456",
+                workspace="publication_queue",
+                level="metadata"
+            )
         """
         try:
             # Initialize workspace service
@@ -127,6 +147,7 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                 "data": ContentType.DATASET,
                 "metadata": ContentType.METADATA,
                 "download_queue": ContentType.DOWNLOAD_QUEUE,
+                "publication_queue": ContentType.PUBLICATION_QUEUE,
             }
 
             # Map level strings to RetrievalLevel enum
@@ -187,6 +208,40 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                             response += _format_queue_entry_full(entry) + "\n\n"
                         return response
 
+                # Special handling for publication_queue workspace
+                if workspace == "publication_queue":
+                    entries = workspace_service.list_publication_queue_entries(
+                        status_filter=status_filter
+                    )
+
+                    if not entries:
+                        if status_filter:
+                            return f"No publication queue entries found with status '{status_filter}'."
+                        return "Publication queue is empty."
+
+                    # Format response based on level
+                    if level == "summary":
+                        response = f"## Publication Queue ({len(entries)} entries)\n\n"
+                        for entry in entries:
+                            response += (
+                                f"- **{entry['entry_id']}**: {entry.get('title', 'Untitled')} "
+                            )
+                            response += (
+                                f"({entry['status']}, priority {entry['priority']})\n"
+                            )
+                            if entry.get("pmid"):
+                                response += f"  └─> PMID: {entry['pmid']}\n"
+                            elif entry.get("doi"):
+                                response += f"  └─> DOI: {entry['doi']}\n"
+                        return response
+
+                    elif level == "metadata":
+                        # Full details for all entries
+                        response = f"## Publication Queue Entries ({len(entries)})\n\n"
+                        for entry in entries:
+                            response += _format_pub_queue_entry_full(entry) + "\n\n"
+                        return response
+
                 logger.info("Listing all cached workspace content")
 
                 # Determine content type filter
@@ -233,6 +288,18 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                     if entry.get("recommended_strategy"):
                         return json.dumps(entry["recommended_strategy"], indent=2)
                     return "No recommended strategy available for this entry."
+
+            # Handle publication_queue retrieval mode
+            if workspace == "publication_queue":
+                try:
+                    entry = workspace_service.read_publication_queue_entry(identifier)
+                except FileNotFoundError as e:
+                    return f"Error: {str(e)}"
+
+                if level == "summary":
+                    return _format_pub_queue_entry_summary(entry)
+                elif level == "metadata":
+                    return json.dumps(entry, indent=2, default=str)
 
             # Retrieve mode: Handle "github" level specially (not in RetrievalLevel enum)
             if level == "github":
@@ -412,6 +479,85 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
 
         if urls:
             full += "\n**URLs**:\n" + "\n".join(urls) + "\n"
+
+        return full
+
+    def _format_pub_queue_entry_summary(entry: dict) -> str:
+        """Format publication queue entry as summary."""
+
+        summary = f"## Publication Queue Entry: {entry['entry_id']}\n\n"
+
+        if entry.get("title"):
+            summary += f"**Title**: {entry['title']}\n"
+
+        if entry.get("authors"):
+            authors = entry["authors"]
+            if len(authors) > 3:
+                author_str = ", ".join(authors[:3]) + f" et al. ({len(authors)} total)"
+            else:
+                author_str = ", ".join(authors)
+            summary += f"**Authors**: {author_str}\n"
+
+        if entry.get("journal"):
+            summary += f"**Journal**: {entry['journal']}\n"
+
+        if entry.get("year"):
+            summary += f"**Year**: {entry['year']}\n"
+
+        # Identifiers
+        identifiers = []
+        if entry.get("pmid"):
+            identifiers.append(f"PMID: {entry['pmid']}")
+        if entry.get("doi"):
+            identifiers.append(f"DOI: {entry['doi']}")
+        if entry.get("pmc_id"):
+            identifiers.append(f"PMC: {entry['pmc_id']}")
+        if identifiers:
+            summary += f"**Identifiers**: {', '.join(identifiers)}\n"
+
+        summary += f"\n**Status**: {entry['status']}\n"
+        summary += f"**Priority**: {entry['priority']}/10\n"
+        summary += f"**Schema Type**: {entry.get('schema_type', 'general')}\n"
+        summary += f"**Extraction Level**: {entry.get('extraction_level', 'methods')}\n"
+        summary += f"**Created**: {entry.get('created_at', 'unknown')}\n"
+
+        if entry.get("cached_content_path"):
+            summary += f"\n**Cached Content**: {entry['cached_content_path']}\n"
+
+        if entry.get("extracted_identifiers"):
+            ids = entry["extracted_identifiers"]
+            if any(ids.values()):
+                summary += "\n**Extracted Identifiers**:\n"
+                for id_type, id_list in ids.items():
+                    if id_list:
+                        summary += f"  - {id_type}: {', '.join(id_list[:5])}"
+                        if len(id_list) > 5:
+                            summary += f" (+{len(id_list) - 5} more)"
+                        summary += "\n"
+
+        if entry.get("error"):
+            summary += f"\n**Error**: {entry['error']}\n"
+
+        return summary
+
+    def _format_pub_queue_entry_full(entry: dict) -> str:
+        """Format publication queue entry with full details."""
+        full = _format_pub_queue_entry_summary(entry)
+
+        # Add URLs if present
+        if entry.get("metadata_url"):
+            full += f"\n**Metadata URL**: {entry['metadata_url']}\n"
+
+        if entry.get("supplementary_files"):
+            files = entry["supplementary_files"]
+            full += f"\n**Supplementary Files**: {len(files)} file(s)\n"
+            for file_url in files[:3]:
+                full += f"  - {file_url}\n"
+            if len(files) > 3:
+                full += f"  - ... and {len(files) - 3} more\n"
+
+        if entry.get("github_url"):
+            full += f"\n**GitHub URL**: {entry['github_url']}\n"
 
         return full
 

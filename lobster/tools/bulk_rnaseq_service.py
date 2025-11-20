@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from lobster.core import FormulaError
+from lobster.core.analysis_ir import AnalysisStep
 from lobster.tools.differential_formula_service import DifferentialFormulaService
 from lobster.utils.logger import get_logger
 
@@ -390,7 +391,7 @@ Next suggested step: Import quantification data with tximport for differential e
         group2: str,
         method: str = "deseq2_like",
         min_expression_threshold: float = 1.0,
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Run differential expression analysis on bulk RNA-seq data.
 
@@ -403,7 +404,8 @@ Next suggested step: Import quantification data with tximport for differential e
             min_expression_threshold: Minimum expression threshold for filtering
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: AnnData with results and DE stats
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
+                AnnData with results, DE stats, and provenance IR
 
         Raises:
             BulkRNASeqError: If differential expression analysis fails
@@ -517,7 +519,16 @@ Next suggested step: Import quantification data with tximport for differential e
                 f"Differential expression completed: {len(significant_genes)} significant genes found"
             )
 
-            return adata_de, de_stats
+            # Create provenance IR
+            ir = self._create_de_ir(
+                method=method,
+                groupby=groupby,
+                group1=group1,
+                group2=group2,
+                min_expression_threshold=min_expression_threshold,
+            )
+
+            return adata_de, de_stats, ir
 
         except Exception as e:
             logger.exception(f"Error in differential expression analysis: {e}")
@@ -529,7 +540,7 @@ Next suggested step: Import quantification data with tximport for differential e
         analysis_type: str = "GO",
         background_genes: Optional[List[str]] = None,
         organism: Optional[str] = None,
-    ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    ) -> Tuple[pd.DataFrame, Dict[str, Any], AnalysisStep]:
         """
         Run pathway enrichment analysis on a gene list using GSEApy.
 
@@ -546,9 +557,11 @@ Next suggested step: Import quantification data with tximport for differential e
             organism: Organism name (default: "human", supports "mouse", "rat", etc.)
 
         Returns:
-            Tuple[pd.DataFrame, Dict[str, Any]]: Enrichment results and stats
+            Tuple[pd.DataFrame, Dict[str, Any], AnalysisStep]:
+                Enrichment results DataFrame, summary stats, and provenance IR
                 - DataFrame contains: Term, Overlap, P-value, Adjusted P-value, Genes
                 - Dict contains summary statistics
+                - AnalysisStep contains provenance tracking
 
         Raises:
             BulkRNASeqError: If enrichment analysis fails
@@ -672,7 +685,16 @@ Next suggested step: Import quantification data with tximport for differential e
                 f"Pathway enrichment completed: {len(significant_terms)} significant terms found"
             )
 
-            return enrichment_df, enrichment_stats
+            # Create provenance IR
+            ir = self._create_enrichment_ir(
+                databases=gene_sets,
+                gene_list=gene_list,
+                organism=organism,
+                analysis_type=analysis_type,
+                background_genes=background_genes,
+            )
+
+            return enrichment_df, enrichment_stats, ir
 
         except Exception as e:
             if isinstance(e, BulkRNASeqError):
@@ -1655,3 +1677,401 @@ Next suggested step: Import quantification data with tximport for differential e
         results_df["rank"] = results_df["padj"].rank(method="min", na_option="bottom")
 
         return results_df
+
+    def _create_de_ir(
+        self,
+        method: str,
+        groupby: str,
+        group1: str,
+        group2: str,
+        min_expression_threshold: float = 1.0,
+    ) -> AnalysisStep:
+        """Create AnalysisStep IR for differential expression analysis."""
+
+        # Build code template based on method
+        if method == "deseq2_like":
+            code_template = """
+# DESeq2-like differential expression analysis
+import numpy as np
+import pandas as pd
+from scipy import stats
+from statsmodels.stats.multitest import multipletests
+
+# Filter genes by expression threshold
+if {{ min_expression_threshold }} > 0:
+    gene_filter = (adata.X > {{ min_expression_threshold }}).sum(axis=0) >= 2
+    if hasattr(gene_filter, "A1"):
+        gene_filter = gene_filter.A1
+    adata_de = adata[:, gene_filter].copy()
+else:
+    adata_de = adata.copy()
+
+# Subset groups
+group1_data = adata_de[adata_de.obs['{{ groupby }}'] == '{{ group1 }}']
+group2_data = adata_de[adata_de.obs['{{ groupby }}'] == '{{ group2 }}']
+
+# Extract expression matrices
+group1_expr = group1_data.X.toarray() if hasattr(group1_data.X, 'toarray') else group1_data.X
+group2_expr = group2_data.X.toarray() if hasattr(group2_data.X, 'toarray') else group2_data.X
+
+# Calculate statistics
+group1_mean = np.mean(group1_expr, axis=0)
+group2_mean = np.mean(group2_expr, axis=0)
+
+# Log2 fold change (with pseudocount)
+log2_fold_change = np.log2((group2_mean + 1) / (group1_mean + 1))
+
+# Statistical test (t-test)
+p_values = []
+for i in range(adata_de.n_vars):
+    _, p_val = stats.ttest_ind(group1_expr[:, i], group2_expr[:, i])
+    p_values.append(p_val)
+
+# Multiple testing correction (Benjamini-Hochberg FDR)
+_, p_adjusted, _, _ = multipletests(p_values, method='fdr_bh')
+
+# Create results DataFrame
+results_df = pd.DataFrame({
+    'baseMean': (group1_mean + group2_mean) / 2,
+    'log2FoldChange': log2_fold_change,
+    'pvalue': p_values,
+    'padj': p_adjusted
+}, index=adata_de.var_names)
+
+# Store results in AnnData
+adata_de.uns[f'de_results_{{ group1 }}_vs_{{ group2 }}'] = results_df.to_dict()
+"""
+            library = "scipy"
+            imports = [
+                "import numpy as np",
+                "import pandas as pd",
+                "from scipy import stats",
+                "from statsmodels.stats.multitest import multipletests",
+            ]
+        elif method == "wilcoxon":
+            code_template = """
+# Wilcoxon rank-sum test for differential expression
+import numpy as np
+import pandas as pd
+from scipy import stats
+from statsmodels.stats.multitest import multipletests
+
+# Filter and subset groups
+group1_data = adata[adata.obs['{{ groupby }}'] == '{{ group1 }}']
+group2_data = adata[adata.obs['{{ groupby }}'] == '{{ group2 }}']
+
+group1_expr = group1_data.X.toarray() if hasattr(group1_data.X, 'toarray') else group1_data.X
+group2_expr = group2_data.X.toarray() if hasattr(group2_data.X, 'toarray') else group2_data.X
+
+# Calculate log fold change
+group1_mean = np.mean(group1_expr, axis=0)
+group2_mean = np.mean(group2_expr, axis=0)
+log2_fold_change = np.log2((group2_mean + 1) / (group1_mean + 1))
+
+# Wilcoxon rank-sum test
+p_values = []
+for i in range(adata.n_vars):
+    _, p_val = stats.ranksums(group1_expr[:, i], group2_expr[:, i])
+    p_values.append(p_val)
+
+# FDR correction
+_, p_adjusted, _, _ = multipletests(p_values, method='fdr_bh')
+
+# Results DataFrame
+results_df = pd.DataFrame({
+    'baseMean': (group1_mean + group2_mean) / 2,
+    'log2FoldChange': log2_fold_change,
+    'pvalue': p_values,
+    'padj': p_adjusted
+}, index=adata.var_names)
+"""
+            library = "scipy"
+            imports = [
+                "import numpy as np",
+                "import pandas as pd",
+                "from scipy import stats",
+                "from statsmodels.stats.multitest import multipletests",
+            ]
+        else:  # t-test
+            code_template = """
+# Student's t-test for differential expression
+import numpy as np
+import pandas as pd
+from scipy import stats
+from statsmodels.stats.multitest import multipletests
+
+# Subset groups
+group1_data = adata[adata.obs['{{ groupby }}'] == '{{ group1 }}']
+group2_data = adata[adata.obs['{{ groupby }}'] == '{{ group2 }}']
+
+group1_expr = group1_data.X.toarray() if hasattr(group1_data.X, 'toarray') else group1_data.X
+group2_expr = group2_data.X.toarray() if hasattr(group2_data.X, 'toarray') else group2_data.X
+
+# Calculate statistics
+group1_mean = np.mean(group1_expr, axis=0)
+group2_mean = np.mean(group2_expr, axis=0)
+log2_fold_change = np.log2((group2_mean + 1) / (group1_mean + 1))
+
+# T-test
+t_stats = []
+p_values = []
+for i in range(adata.n_vars):
+    t_stat, p_val = stats.ttest_ind(group1_expr[:, i], group2_expr[:, i])
+    t_stats.append(t_stat)
+    p_values.append(p_val)
+
+# FDR correction
+_, p_adjusted, _, _ = multipletests(p_values, method='fdr_bh')
+
+results_df = pd.DataFrame({
+    'baseMean': (group1_mean + group2_mean) / 2,
+    'log2FoldChange': log2_fold_change,
+    'stat': t_stats,
+    'pvalue': p_values,
+    'padj': p_adjusted
+}, index=adata.var_names)
+"""
+            library = "scipy"
+            imports = [
+                "import numpy as np",
+                "import pandas as pd",
+                "from scipy import stats",
+                "from statsmodels.stats.multitest import multipletests",
+            ]
+
+        return AnalysisStep(
+            operation="differential_expression",
+            tool_name="BulkRNASeqService.run_differential_expression_analysis",
+            description=f"Differential expression analysis comparing {group1} vs {group2} using {method}",
+            library=library,
+            code_template=code_template,
+            imports=imports,
+            parameters={
+                "method": method,
+                "groupby": groupby,
+                "group1": group1,
+                "group2": group2,
+                "min_expression_threshold": min_expression_threshold,
+            },
+            parameter_schema={
+                "method": {
+                    "type": "string",
+                    "description": "Statistical test method for DE analysis",
+                    "default": "deseq2_like",
+                    "enum": ["deseq2_like", "wilcoxon", "t_test"],
+                },
+                "groupby": {
+                    "type": "string",
+                    "description": "Column in .obs for grouping samples",
+                },
+                "group1": {
+                    "type": "string",
+                    "description": "First group for comparison (e.g., control)",
+                },
+                "group2": {
+                    "type": "string",
+                    "description": "Second group for comparison (e.g., treatment)",
+                },
+                "min_expression_threshold": {
+                    "type": "number",
+                    "description": "Minimum expression threshold for gene filtering",
+                    "default": 1.0,
+                },
+            },
+            input_entities=["adata"],
+            output_entities=["adata_de"],
+        )
+
+    def _create_enrichment_ir(
+        self,
+        databases: List[str],
+        gene_list: List[str],
+        organism: str = "human",
+        analysis_type: str = "GO",
+        background_genes: Optional[List[str]] = None,
+    ) -> AnalysisStep:
+        """Create AnalysisStep IR for pathway enrichment analysis."""
+
+        code_template = """
+# Over-representation analysis (ORA) using GSEApy
+import gseapy as gp
+
+# Define gene set libraries
+gene_sets = {{ databases }}
+
+# Run enrichment analysis
+enr_result = gp.enrichr(
+    gene_list={{ gene_list }},
+    gene_sets=gene_sets,
+    organism='{{ organism }}',
+    background={{ background_genes }},
+    cutoff=0.05  # Adjusted p-value cutoff
+)
+
+# Extract results
+enrichment_df = enr_result.results
+
+# Results contain:
+# - Term: Pathway/GO term name
+# - Overlap: Genes overlapping with term
+# - P-value: Unadjusted p-value
+# - Adjusted P-value: FDR-corrected p-value
+# - Genes: List of overlapping gene symbols
+
+# Filter significant terms
+significant_terms = enrichment_df[enrichment_df['Adjusted P-value'] < 0.05]
+"""
+
+        return AnalysisStep(
+            operation="pathway_enrichment",
+            tool_name="BulkRNASeqService.run_pathway_enrichment",
+            description=f"Over-representation analysis (ORA) using {analysis_type} database for {len(gene_list)} genes",
+            library="gseapy",
+            code_template=code_template,
+            imports=["import gseapy as gp", "import pandas as pd"],
+            parameters={
+                "databases": databases,
+                "gene_list": gene_list,
+                "organism": organism,
+                "analysis_type": analysis_type,
+                "background_genes": background_genes,
+            },
+            parameter_schema={
+                "databases": {
+                    "type": "array",
+                    "description": "List of gene set libraries to query",
+                    "items": {"type": "string"},
+                },
+                "gene_list": {
+                    "type": "array",
+                    "description": "List of gene symbols for enrichment analysis",
+                    "items": {"type": "string"},
+                },
+                "organism": {
+                    "type": "string",
+                    "description": "Organism name",
+                    "default": "human",
+                    "enum": ["human", "mouse", "rat"],
+                },
+                "analysis_type": {
+                    "type": "string",
+                    "description": "Type of enrichment database",
+                    "default": "GO",
+                    "enum": ["GO", "KEGG", "Reactome", "WikiPathways"],
+                },
+                "background_genes": {
+                    "type": "array",
+                    "description": "Background gene set (null for all detected genes)",
+                    "items": {"type": "string"},
+                    "nullable": True,
+                },
+            },
+            input_entities=["gene_list"],
+            output_entities=["enrichment_results"],
+        )
+
+    def _create_pydeseq2_ir(
+        self,
+        formula: str,
+        contrast: List[str],
+        alpha: float = 0.05,
+        shrink_lfc: bool = True,
+        n_cpus: int = 1,
+    ) -> AnalysisStep:
+        """Create AnalysisStep IR for pyDESeq2 analysis (for future use)."""
+
+        code_template = """
+# pyDESeq2 differential expression analysis
+from pydeseq2.dds import DeseqDataSet
+from pydeseq2.ds import DeseqStats
+from pydeseq2.default_inference import DefaultInference
+
+# Prepare count matrix (samples x genes) and metadata
+# count_matrix and metadata must be aligned by sample IDs
+
+# Initialize inference
+inference = DefaultInference(n_cpus={{ n_cpus }})
+
+# Create DESeq2 dataset
+dds = DeseqDataSet(
+    counts=count_matrix,  # samples x genes
+    metadata=metadata,
+    design='{{ formula }}',
+    inference=inference
+)
+
+# Fit dispersion and log fold changes
+dds.deseq2()
+
+# Run statistical tests
+contrast = {{ contrast }}  # [factor, level1, level2]
+ds = DeseqStats(dds, contrast=contrast, alpha={{ alpha }}, inference=inference)
+ds.summary()
+
+# Optional: LFC shrinkage for more accurate estimates
+{% if shrink_lfc %}
+coeff_name = f"{contrast[0]}_{contrast[1]}_vs_{contrast[2]}"
+ds.lfc_shrink(coeff=coeff_name)
+{% endif %}
+
+# Extract results
+results_df = ds.results_df
+
+# Results contain:
+# - baseMean: Mean normalized counts
+# - log2FoldChange: Log2 fold change
+# - lfcSE: Standard error of log2FC
+# - stat: Wald statistic
+# - pvalue: Unadjusted p-value
+# - padj: FDR-adjusted p-value
+"""
+
+        return AnalysisStep(
+            operation="pydeseq2_analysis",
+            tool_name="BulkRNASeqService.run_pydeseq2_analysis",
+            description=f"DESeq2-style analysis using negative binomial GLM with formula: {formula}",
+            library="pydeseq2",
+            code_template=code_template,
+            imports=[
+                "from pydeseq2.dds import DeseqDataSet",
+                "from pydeseq2.ds import DeseqStats",
+                "from pydeseq2.default_inference import DefaultInference",
+            ],
+            parameters={
+                "formula": formula,
+                "contrast": contrast,
+                "alpha": alpha,
+                "shrink_lfc": shrink_lfc,
+                "n_cpus": n_cpus,
+            },
+            parameter_schema={
+                "formula": {
+                    "type": "string",
+                    "description": "R-style design formula (e.g., '~condition + batch')",
+                },
+                "contrast": {
+                    "type": "array",
+                    "description": "Contrast specification [factor, level1, level2]",
+                    "items": {"type": "string"},
+                    "minItems": 3,
+                    "maxItems": 3,
+                },
+                "alpha": {
+                    "type": "number",
+                    "description": "Significance threshold for multiple testing",
+                    "default": 0.05,
+                },
+                "shrink_lfc": {
+                    "type": "boolean",
+                    "description": "Apply log fold change shrinkage",
+                    "default": True,
+                },
+                "n_cpus": {
+                    "type": "integer",
+                    "description": "Number of CPUs for parallel processing",
+                    "default": 1,
+                },
+            },
+            input_entities=["count_matrix", "metadata"],
+            output_entities=["results_df"],
+        )

@@ -87,7 +87,7 @@ help:
 	@echo "🦞 Lobster - Available Commands"
 	@echo ""
 	@echo "Installation:"
-	@echo "  make install        Install Lobster AI in virtual environment (default: Python 3.13)"
+	@echo "  make install        Install Lobster AI in virtual environment (minimum: Python 3.11, prefers 3.13)"
 	@echo "  make dev-install    Install with development dependencies"
 	@echo "  make install-global Install lobster command globally (macOS/Linux)"
 	@echo "  make clean-install  Clean install (remove existing installation)"
@@ -357,6 +357,43 @@ $(VENV_PATH): check-python
 	@if [ ! -f "$(VENV_PATH)/bin/pip" ] && [ ! -f "$(VENV_PATH)/bin/pip3" ]; then \
 		echo "$(RED)❌ Virtual environment created but pip is not available.$(NC)"; \
 		echo "$(YELLOW)📋 This usually indicates a Python installation issue.$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)🔍 Validating virtual environment Python installation...$(NC)"
+	@if ! $(VENV_PATH)/bin/python -c "import sys, encodings" 2>/dev/null; then \
+		echo "$(RED)❌ Virtual environment Python is corrupted or misconfigured$(NC)"; \
+		echo ""; \
+		echo "$(YELLOW)🔍 Diagnostic Information:$(NC)"; \
+		echo "   Detected Python: $(PYTHON)"; \
+		echo "   Package Manager: $(PKG_MGR)"; \
+		echo ""; \
+		echo "$(YELLOW)📋 Common Causes & Fixes:$(NC)"; \
+		if [ "$(USE_UV)" = "true" ]; then \
+			echo "$(BLUE)1. Corrupted uv Python cache (most likely):$(NC)"; \
+			echo "   $(YELLOW)rm -rf ~/.local/share/uv/python$(NC)"; \
+			echo "   $(YELLOW)rm -rf $(VENV_PATH)$(NC)"; \
+			echo "   $(YELLOW)make dev-install$(NC)"; \
+			echo ""; \
+			echo "$(BLUE)2. Force use of Homebrew Python instead:$(NC)"; \
+			echo "   $(YELLOW)rm -rf $(VENV_PATH)$(NC)"; \
+			echo "   $(YELLOW)PYTHON=/opt/homebrew/bin/python3.12 make dev-install$(NC)"; \
+			echo ""; \
+			echo "$(BLUE)3. Disable uv and use pip:$(NC)"; \
+			echo "   $(YELLOW)brew uninstall uv$(NC)  $(BLUE)# Temporarily$(NC)"; \
+			echo "   $(YELLOW)rm -rf $(VENV_PATH)$(NC)"; \
+			echo "   $(YELLOW)make dev-install$(NC)"; \
+		else \
+			echo "$(BLUE)1. Reinstall Python with Homebrew:$(NC)"; \
+			echo "   $(YELLOW)brew reinstall python@3.12$(NC)"; \
+			echo "   $(YELLOW)rm -rf $(VENV_PATH)$(NC)"; \
+			echo "   $(YELLOW)make dev-install$(NC)"; \
+			echo ""; \
+			echo "$(BLUE)2. Try a different Python version:$(NC)"; \
+			echo "   $(YELLOW)PYTHON=/opt/homebrew/bin/python3.13 make dev-install$(NC)"; \
+		fi; \
+		echo ""; \
+		echo "$(YELLOW)💡 For immediate troubleshooting, run:$(NC)"; \
+		echo "   $(YELLOW)$(VENV_PATH)/bin/python -c 'import sys; print(sys.prefix, sys.base_prefix)'$(NC)"; \
 		exit 1; \
 	fi
 	@echo "$(GREEN)✅ Virtual environment created successfully at $(VENV_PATH)$(NC)"
