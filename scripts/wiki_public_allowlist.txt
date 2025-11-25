@@ -86,6 +86,9 @@ README.md
 # Premium features (proteomics)
 !25-tutorial-proteomics.md
 
+# Microbiome harmonization (premium feature - DataBioMix)
+!47-microbiome-harmonization-workflow.md
+
 # Internal documentation
 !CLAUDE.md
 !WIKI_HEALTH_DASHBOARD.md

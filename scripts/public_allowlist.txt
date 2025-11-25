@@ -64,6 +64,10 @@ lobster/lobster_cloud/*
 !lobster/tools/proteomics_quality_service.py
 !lobster/tools/proteomics_preprocessing_service.py
 
+# Microbiome Harmonization (Premium - DataBioMix)
+!lobster/tools/microbiome_*.py
+!lobster/tools/disease_*.py
+
 # Custom/Template Agents (Premium/Internal)
 !lobster/agents/custom_feature_agent.py
 !lobster/agents/unified_agent_creation_template.md

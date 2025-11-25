@@ -74,8 +74,8 @@ MOCK_API_BASE_URL = "https://api.mock-lobster.test"
 # Configure pytest plugins
 pytest_plugins = [
     "pytest_mock",
-    "pytest_benchmark",
-    "pytest_html",
+    # "pytest_benchmark",  # Optional: uncomment if pytest-benchmark is installed
+    # "pytest_html",  # Optional: uncomment if pytest-html is installed
 ]
 
 

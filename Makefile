@@ -20,13 +20,14 @@ PYENV_VERSION := $(shell pyenv version-name 2>/dev/null || echo "")
 # Prioritize Homebrew installations to avoid broken system Python
 ifndef PYTHON
 	PYTHON_CANDIDATES := /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3.11 python3.13 python3.12 python3.11 python3 python
+	# Only accept 3.11 ≤ version < 3.14
 	PYTHON := $(shell for p in $(PYTHON_CANDIDATES); do \
-		if command -v $$p >/dev/null 2>&1; then \
-			if $$p -c "import sys; exit(0 if sys.version_info >= (3,11) else 1)" 2>/dev/null; then \
-				echo $$p; \
-				break; \
-			fi; \
+	if command -v $$p >/dev/null 2>&1; then \
+		if $$p -c "import sys; exit(0 if (3,11) <= sys.version_info < (3,14) else 1)" 2>/dev/null; then \
+		echo $$p; \
+		break; \
 		fi; \
+	fi; \
 	done)
 
 	# If no suitable Python found, default to python3 for error messages
