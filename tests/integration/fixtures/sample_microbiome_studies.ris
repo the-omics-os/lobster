@@ -1,0 +1,59 @@
+TY  - JOUR
+AU  - Smith, John
+AU  - Johnson, Mary
+AU  - Chen, Wei
+TI  - Gut microbiome analysis in IBD patients using 16S rRNA sequencing
+JO  - Nature Microbiology
+PY  - 2023
+VL  - 8
+IS  - 3
+SP  - 456
+EP  - 470
+DO  - 10.1038/nmicrobiol.2023.001
+AB  - We performed comprehensive 16S rRNA amplicon sequencing on gut samples from 100 IBD patients and 50 healthy controls. Samples were sequenced using Illumina MiSeq platform. Data deposited to SRA under accessions SRP123456.
+KW  - microbiome
+KW  - IBD
+KW  - 16S rRNA
+KW  - SRP123456
+KW  - PRJNA789012
+ER  -
+
+TY  - JOUR
+AU  - Garcia, Maria
+AU  - Brown, David
+TI  - Metagenomic analysis of soil bacterial communities in agricultural settings
+JO  - Environmental Microbiology
+PY  - 2024
+VL  - 26
+IS  - 1
+SP  - 112
+EP  - 128
+DO  - 10.1111/1462-2920.16234
+AB  - Shotgun metagenomic sequencing was performed on soil samples from 50 agricultural sites across three continents. Sequencing data available at SRA (SRP234567) and includes both bacterial and fungal communities.
+KW  - metagenomics
+KW  - soil microbiome
+KW  - bacteria
+KW  - SRP234567
+KW  - PRJNA890123
+ER  -
+
+TY  - JOUR
+AU  - Lee, Sung-Ho
+AU  - Kim, Ji-Yeon
+AU  - Park, Min-Jung
+TI  - Human oral microbiome diversity across different ethnicities
+JO  - Cell Host & Microbe
+PY  - 2023
+VL  - 31
+IS  - 12
+SP  - 2034
+EP  - 2048
+DO  - 10.1016/j.chom.2023.11.012
+AB  - We characterized oral microbiome composition in 200 individuals from 10 ethnic groups using 16S rRNA V4 region sequencing. Raw sequencing data deposited under SRA study SRP345678. Study includes metadata on diet, oral health status, and ethnicity.
+KW  - oral microbiome
+KW  - 16S rRNA
+KW  - diversity
+KW  - ethnicity
+KW  - SRP345678
+KW  - PRJNA901234
+ER  -

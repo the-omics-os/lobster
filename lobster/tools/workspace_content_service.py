@@ -854,7 +854,8 @@ class WorkspaceContentService:
 
         Args:
             status_filter: Optional status to filter by (pending, extracting,
-                          metadata_extracted, completed, failed)
+                          metadata_extracted, metadata_enriched, handoff_ready,
+                          completed, failed)
 
         Returns:
             List[Dict[str, Any]]: List of entry dictionaries
