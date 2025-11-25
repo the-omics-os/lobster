@@ -21,12 +21,31 @@ Usage:
     # Test single entry by index
     python tests/manual/test_publication_processing.py --entry 0
 
+    # Production-like pipeline with custom tasks
+    python tests/manual/test_publication_processing.py --production --tasks resolve_identifiers,ncbi_enrich
+
+    # Production pipeline with full extraction
+    python tests/manual/test_publication_processing.py --production --tasks resolve_identifiers,ncbi_enrich,metadata,methods,identifiers --max-entries 3
+
+    # Test only identifier resolution
+    python tests/manual/test_publication_processing.py --resolve-only --max-entries 5
+
+    # Test only NCBI enrichment
+    python tests/manual/test_publication_processing.py --enrich-only --max-entries 5
+
 Strategies:
     - default: No special handling
     - polite: Longer delays between requests (5-10s)
     - browser: Full browser headers + randomized User-Agent
     - stealth: Browser headers + random delays + referrer spoofing
     - auto: Use publisher-specific optimal strategies (default)
+
+Tasks (for --production mode):
+    - resolve_identifiers: DOI → PMID via NCBI ID Converter
+    - ncbi_enrich: PMID → GEO/SRA/BioProject via E-Link
+    - metadata: Full content extraction from publication
+    - methods: Methods section extraction
+    - identifiers: Regex identifier extraction from text
 """
 
 import argparse
@@ -47,7 +66,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.ris_parser import RISParser
 from lobster.core.schemas.publication_queue import PublicationQueueEntry
-from lobster.services.publication_processing_service import PublicationProcessingService
+from lobster.services.orchestration.publication_processing_service import PublicationProcessingService
 from lobster.services.data_access.content_access_service import ContentAccessService
 
 
@@ -1424,6 +1443,22 @@ def main():
             if results:
                 success_rate = sum(1 for r in results if r.success) / len(results)
                 sys.exit(0 if success_rate >= 0.5 else 1)
+
+        # Run production-like pipeline test
+        elif args.production:
+            results = test_production_pipeline(
+                ris_file=ris_path,
+                extraction_tasks=args.tasks,
+                max_entries=args.max_entries,
+                entry_index=args.entry,
+            )
+
+            # Exit code based on completion rate
+            if results:
+                completed = sum(1 for r in results if "COMPLETED" in r["result"])
+                success_rate = completed / len(results)
+                sys.exit(0 if success_rate >= 0.5 else 1)
+
         else:
             # Full publication processing test
             results = run_publication_tests(

@@ -37,7 +37,7 @@ from lobster.tools.providers.abstract_provider import AbstractProvider
 from lobster.tools.providers.base_provider import DatasetType
 from lobster.tools.providers.webpage_provider import WebpageProvider
 from lobster.tools.workspace_tool import create_get_content_from_workspace_tool
-from lobster.services.publication_processing_service import (
+from lobster.services.orchestration.publication_processing_service import (
     PublicationProcessingService,
 )
 from lobster.utils.logger import get_logger
