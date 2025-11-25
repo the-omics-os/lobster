@@ -71,6 +71,22 @@ except ImportError:
 # Module logger
 logger = logging.getLogger(__name__)
 
+
+# ============================================================================
+# Queue Command Exceptions
+# ============================================================================
+
+
+class QueueFileTypeNotSupported(NotImplementedError):
+    """Raised when /queue load encounters an unsupported file type.
+
+    This exception provides helpful messaging for users about which file types
+    are currently supported and which are planned for future releases.
+    """
+
+    pass
+
+
 # ============================================================================
 # Progress Management
 # ============================================================================
@@ -359,10 +375,18 @@ def extract_available_commands() -> Dict[str, str]:
         "/tree": "Show directory tree view",
         "/data": "Show current data summary",
         "/metadata": "Show detailed metadata information",
-        "/load": "Load .ris publication list into queue",
+        # Queue commands (temporary, intent-driven)
+        "/queue": "Show queue status",
+        "/queue load": "Load file into queue (supports .ris, more coming)",
+        "/queue list": "List queued items",
+        "/queue clear": "Clear queue",
+        "/queue export": "Export queue to workspace for persistence",
+        # Workspace commands (persistent)
         "/workspace": "Show workspace status and information",
         "/workspace list": "List available datasets in workspace",
-        "/workspace load": "Load specific dataset from workspace",
+        "/workspace load": "Load dataset or file into workspace",
+        "/workspace save": "Save modality to workspace",
+        "/workspace info": "Show dataset information",
         "/restore": "Restore previous session datasets",
         "/modalities": "Show detailed modality information",
         "/describe": "Show detailed information about a specific modality",
@@ -370,13 +394,15 @@ def extract_available_commands() -> Dict[str, str]:
         "/plot": "Open plots directory or specific plot",
         "/open": "Open file or folder in system default application",
         "/save": "Save current state to workspace",
-        "/read": "Read a file from workspace (supports glob patterns)",
+        "/read": "View file contents (inspection only)",
         "/export": "Export session data",
         "/reset": "Reset conversation",
         "/mode": "Change operation mode",
         "/modes": "List available modes",
         "/clear": "Clear screen",
         "/exit": "Exit the chat",
+        # Deprecated commands
+        "/load": "[DEPRECATED] Use /queue load instead",
     }
 
     # Try to extract dynamically as fallback, but use static definitions as primary
@@ -2630,6 +2656,270 @@ def handle_command(command: str, client: AgentClient):
         )
 
 
+# ============================================================================
+# Queue Command Helpers
+# ============================================================================
+
+
+def _show_queue_status(client: AgentClient, console: Console) -> Optional[str]:
+    """Display status of the publication queue.
+
+    Returns:
+        Summary string for conversation history, or None.
+    """
+    if client.publication_queue is None:
+        console.print("[yellow]Publication queue not initialized[/yellow]")
+        return None
+
+    stats = client.publication_queue.get_statistics()
+
+    console.print("\n[bold cyan]📋 Queue Status[/bold cyan]\n")
+
+    # Create status table
+    table = Table(box=box.ROUNDED)
+    table.add_column("Status", style="cyan")
+    table.add_column("Count", style="white", justify="right")
+
+    table.add_row("Pending", str(stats.get("pending", 0)))
+    table.add_row("Processing", str(stats.get("processing", 0)))
+    table.add_row("Completed", str(stats.get("completed", 0)))
+    table.add_row("Failed", str(stats.get("failed", 0)))
+    table.add_row("[bold]Total[/bold]", f"[bold]{stats.get('total', 0)}[/bold]")
+
+    console.print(table)
+
+    console.print("\n[cyan]💡 Commands:[/cyan]")
+    console.print("  • [white]/queue load <file>[/white] - Load file into queue")
+    console.print("  • [white]/queue list[/white] - List queued items")
+    console.print("  • [white]/queue clear[/white] - Clear the queue")
+
+    return f"Queue status: {stats.get('total', 0)} total items"
+
+
+def _queue_load_file(
+    client: AgentClient,
+    filename: str,
+    console: Console,
+    current_directory: Path,
+) -> Optional[str]:
+    """Load file into queue - type determines handler, user determines intent.
+
+    Args:
+        client: The AgentClient instance
+        filename: File path to load
+        console: Rich console for output
+        current_directory: Current working directory
+
+    Returns:
+        Summary string for conversation history, or None
+
+    Raises:
+        QueueFileTypeNotSupported: For unsupported file types
+    """
+    if not filename:
+        console.print("[yellow]Usage: /queue load <file>[/yellow]")
+        return None
+
+    # Resolve file path
+    file_path = (
+        Path(filename) if Path(filename).is_absolute() else current_directory / filename
+    )
+
+    if not file_path.exists():
+        console.print(f"[red]❌ File not found: {filename}[/red]")
+        return None
+
+    ext = file_path.suffix.lower()
+
+    # Supported: .ris files
+    if ext in [".ris", ".txt"]:
+        console.print(f"[cyan]📚 Loading into queue: {file_path.name}[/cyan]\n")
+
+        try:
+            result = client.load_publication_list(
+                file_path=str(file_path),
+                priority=5,
+                schema_type="general",
+                extraction_level="methods",
+            )
+
+            if result["added_count"] > 0:
+                console.print(
+                    f"[green]✅ Loaded {result['added_count']} items into queue[/green]\n"
+                )
+
+                if result["skipped_count"] > 0:
+                    console.print(
+                        f"[yellow]⚠️  Skipped {result['skipped_count']} malformed entries[/yellow]"
+                    )
+
+                console.print("\n[bold cyan]What would you like to do with these publications?[/bold cyan]")
+                console.print("  • Extract methods and parameters")
+                console.print("  • Search for related datasets (GEO)")
+                console.print("  • Build citation network")
+                console.print("  • Custom analysis (describe your intent)\n")
+
+                return f"Loaded {result['added_count']} publications into queue from {file_path.name}. Awaiting user intent."
+            else:
+                console.print("[red]❌ No items could be loaded from file[/red]")
+                if result.get("errors"):
+                    for error in result["errors"][:3]:
+                        console.print(f"  • {error}")
+                return None
+
+        except Exception as e:
+            console.print(f"[red]❌ Failed to load file: {str(e)}[/red]")
+            return None
+
+    # Placeholder: .bib files (BibTeX)
+    elif ext == ".bib":
+        raise QueueFileTypeNotSupported(
+            "BibTeX (.bib) support coming soon. "
+            "Convert to .ris format or wait for future release."
+        )
+
+    # Placeholder: .csv files (custom lists)
+    elif ext == ".csv":
+        raise QueueFileTypeNotSupported(
+            "CSV queue loading coming soon. "
+            "Expected format: columns for DOI, PMID, or title."
+        )
+
+    # Placeholder: .json files (API exports)
+    elif ext == ".json":
+        raise QueueFileTypeNotSupported(
+            "JSON queue loading coming soon. "
+            "Planned support for PubMed API exports."
+        )
+
+    # Unknown type
+    else:
+        raise QueueFileTypeNotSupported(
+            f"Unsupported file type: {ext}. "
+            f"Currently supported: .ris. Coming soon: .bib, .csv, .json"
+        )
+
+
+def _queue_list(client: AgentClient, console: Console) -> Optional[str]:
+    """List items in the publication queue.
+
+    Returns:
+        Summary string for conversation history, or None.
+    """
+    if client.publication_queue is None:
+        console.print("[yellow]Publication queue not initialized[/yellow]")
+        return None
+
+    entries = client.publication_queue.list_entries()
+
+    if not entries:
+        console.print("[yellow]Queue is empty[/yellow]")
+        return "Queue is empty"
+
+    # Limit display to first 20 entries
+    display_entries = entries[:20]
+    total_count = len(entries)
+
+    console.print(f"\n[bold cyan]📋 Queue Items ({len(display_entries)} of {total_count} shown)[/bold cyan]\n")
+
+    table = Table(box=box.ROUNDED, show_lines=True)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("Title", style="white", max_width=50, overflow="ellipsis")
+    table.add_column("Year", style="cyan", width=6)
+    table.add_column("Status", style="yellow", width=12)
+    table.add_column("PMID/DOI", style="dim", width=20)
+
+    for i, entry in enumerate(display_entries, 1):
+        title = entry.title[:47] + "..." if entry.title and len(entry.title) > 50 else (entry.title or "N/A")
+        year = str(entry.year) if entry.year else "N/A"
+        status = entry.status.value if hasattr(entry.status, "value") else str(entry.status)
+        identifier = entry.pmid or entry.doi or "N/A"
+
+        table.add_row(str(i), title, year, status, identifier)
+
+    console.print(table)
+
+    if total_count > 20:
+        console.print(f"\n[dim]... and {total_count - 20} more items[/dim]")
+
+    return f"Listed {len(display_entries)} of {total_count} items from queue"
+
+
+def _queue_clear(client: AgentClient, console: Console) -> Optional[str]:
+    """Clear all items from the publication queue.
+
+    Returns:
+        Summary string for conversation history, or None.
+    """
+    if client.publication_queue is None:
+        console.print("[yellow]Publication queue not initialized[/yellow]")
+        return None
+
+    # Get count before clearing
+    stats = client.publication_queue.get_statistics()
+    total = stats.get("total", 0)
+
+    if total == 0:
+        console.print("[yellow]Queue is already empty[/yellow]")
+        return "Queue was already empty"
+
+    # Confirm with user
+    confirm = Confirm.ask(f"[yellow]Clear all {total} items from queue?[/yellow]")
+
+    if confirm:
+        client.publication_queue.clear_queue()
+        console.print(f"[green]✅ Cleared {total} items from queue[/green]")
+        return f"Cleared {total} items from queue"
+    else:
+        console.print("[cyan]Operation cancelled[/cyan]")
+        return None
+
+
+def _queue_export(
+    client: AgentClient, name: Optional[str], console: Console
+) -> Optional[str]:
+    """Export queue to workspace for persistence.
+
+    Args:
+        client: The AgentClient instance
+        name: Optional name for the exported dataset
+        console: Rich console for output
+
+    Returns:
+        Summary string for conversation history, or None.
+    """
+    if client.publication_queue is None:
+        console.print("[yellow]Publication queue not initialized[/yellow]")
+        return None
+
+    stats = client.publication_queue.get_statistics()
+    if stats.get("total", 0) == 0:
+        console.print("[yellow]Queue is empty, nothing to export[/yellow]")
+        return None
+
+    # Generate export name if not provided
+    if not name:
+        from datetime import datetime
+
+        name = f"queue_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+    console.print(f"[cyan]📦 Exporting queue to workspace as '{name}'...[/cyan]")
+
+    try:
+        # Export queue data by copying the queue file to workspace
+        source_path = client.publication_queue.queue_file
+        export_path = client.data_manager.workspace_path / f"{name}.jsonl"
+
+        # Copy the queue file
+        shutil.copy2(source_path, export_path)
+
+        console.print(f"[green]✅ Exported {stats.get('total', 0)} items to: {export_path}[/green]")
+        return f"Exported {stats.get('total', 0)} queue items to workspace as '{name}'"
+    except Exception as e:
+        console.print(f"[red]❌ Export failed: {str(e)}[/red]")
+        return None
+
+
 def _execute_command(cmd: str, client: AgentClient) -> Optional[str]:
     """Execute individual slash commands.
 
@@ -3101,66 +3391,24 @@ when they are started by agents or analysis workflows.
                 "Check directory permissions and try again",
             )
 
+    # =========================================================================
+    # /read - File Inspection Only (no state change, view-only)
+    # =========================================================================
     elif cmd.startswith("/read "):
         filename = cmd[6:].strip()
 
-        # Convert to Path object for directory checking
+        if not filename:
+            console.print("[yellow]Usage: /read <file|pattern>[/yellow]")
+            console.print("[grey50]  View file contents (text files only)[/grey50]")
+            console.print("[grey50]  Use /workspace load <file> to load data files[/grey50]")
+            return None
+
+        # Convert to Path object
         file_path = (
             Path(filename)
             if Path(filename).is_absolute()
             else current_directory / filename
         )
-
-        # Check if this is a quantification directory BEFORE checking glob patterns
-        tool_type = _is_quantification_directory(file_path)
-        if tool_type:
-            # This is a Kallisto or Salmon quantification directory
-            console.print(
-                f"[cyan]🧬 Detected {tool_type.title()} quantification directory[/cyan]"
-            )
-            console.print(
-                f"[dim]Loading quantification files from: {file_path}[/dim]\n"
-            )
-
-            try:
-                with create_progress(client_arg=client) as progress:
-                    task = progress.add_task(
-                        f"[cyan]Loading {tool_type.title()} quantification files...",
-                        total=None,
-                    )
-
-                    # Route to client method for quantification loading
-                    load_result = client.load_quantification_directory(
-                        directory_path=str(file_path), tool_type=tool_type
-                    )
-
-                    progress.remove_task(task)
-
-                # Display results
-                if load_result["success"]:
-                    console.print(f"[green]✅ {load_result['message']}[/green]\n")
-                    console.print("[cyan]📊 Data Summary:[/cyan]")
-                    console.print(
-                        f"  • Modality: [bold]{load_result['modality_name']}[/bold]"
-                    )
-                    console.print(f"  • Tool: {load_result['tool_type'].title()}")
-                    console.print(
-                        f"  • Shape: {load_result['n_samples']} samples × {load_result['n_genes']:,} genes"
-                    )
-                    console.print(f"  • Source: {load_result['file_path']}\n")
-                else:
-                    console.print(
-                        f"[bold red on white] ⚠️  Error [/bold red on white] "
-                        f"[red]{load_result['error']}[/red]"
-                    )
-
-            except Exception as e:
-                console.print(
-                    f"[bold red on white] ⚠️  Error [/bold red on white] "
-                    f"[red]Failed to load quantification directory: {str(e)}[/red]"
-                )
-
-            return None  # Skip the rest of the /read logic (quantification handled)
 
         # Check if filename contains glob patterns
         import glob as glob_module
@@ -3168,16 +3416,13 @@ when they are started by agents or analysis workflows.
         is_glob_pattern = any(char in filename for char in ["*", "?", "[", "]"])
 
         if is_glob_pattern:
-            # Handle glob patterns for multiple files
-
-            # Use current directory as base for relative patterns
+            # Handle glob patterns - show contents of matching text files
             if not Path(filename).is_absolute():
                 base_path = current_directory
                 search_pattern = str(base_path / filename)
             else:
                 search_pattern = filename
 
-            # Find matching files
             matching_files = glob_module.glob(search_pattern)
 
             if not matching_files:
@@ -3185,499 +3430,215 @@ when they are started by agents or analysis workflows.
                     f"No files found matching pattern: {filename}",
                     f"Searched in: {current_directory}",
                 )
-                return
+                return None
 
-            # Sort files for consistent output
             matching_files.sort()
-
             console.print(
-                f"[cyan]📁 Found {len(matching_files)} files matching pattern '[white]{filename}[/white]'[/cyan]"
+                f"[cyan]📁 Found {len(matching_files)} files matching '[white]{filename}[/white]'[/cyan]\n"
             )
 
-            loaded_files = []
-            failed_files = []
+            displayed_count = 0
+            for match_path in matching_files[:10]:  # Limit to 10 files
+                match_file = Path(match_path)
+                file_info = client.detect_file_type(match_file)
 
-            for file_path in matching_files:
-                file_name = Path(file_path).name
-                console.print(
-                    f"\n[cyan]📄 Processing: [white]{file_name}[/white][/cyan]"
-                )
-
-                # Use existing file processing logic
-                file_info = client.locate_file(file_name)
-
-                if not file_info["found"]:
-                    # Try with full path if locate_file fails with just filename
+                # Only display text files
+                if not file_info.get("binary", True):
                     try:
-                        file_info = {
-                            "found": True,
-                            "path": Path(file_path),
-                            "type": "unknown",
-                            "category": "bioinformatics",
-                            "description": "File from glob pattern",
+                        content = match_file.read_text(encoding="utf-8")
+                        lines = content.splitlines()
+
+                        # Language detection
+                        ext = match_file.suffix.lower()
+                        language_map = {
+                            ".py": "python", ".js": "javascript", ".ts": "typescript",
+                            ".html": "html", ".css": "css", ".json": "json",
+                            ".xml": "xml", ".yaml": "yaml", ".yml": "yaml",
+                            ".sh": "bash", ".bash": "bash", ".md": "markdown",
+                            ".txt": "text", ".log": "text", ".r": "r",
+                            ".csv": "csv", ".tsv": "csv", ".ris": "text",
                         }
-                        # Detect format based on extension
-                        ext = Path(file_path).suffix.lower()
-                        if ext in [".h5ad"]:
-                            file_info["type"] = "h5ad_data"
-                        elif ext in [".csv", ".tsv", ".txt"]:
-                            file_info["type"] = "delimited_data"
-                        elif ext in [".xlsx", ".xls"]:
-                            file_info["type"] = "spreadsheet_data"
-                    except Exception:
-                        failed_files.append(file_name)
+                        language = language_map.get(ext, "text")
+
+                        syntax = Syntax(
+                            content, language, theme="monokai", line_numbers=True
+                        )
                         console.print(
-                            f"[red]   ❌ Failed to process: {file_name}[/red]"
+                            Panel(
+                                syntax,
+                                title=f"[bold white] 📄 {match_file.name} [/bold white]",
+                                subtitle=f"[grey50]{len(lines)} lines[/grey50]",
+                                border_style="cyan",
+                                box=box.ROUNDED,
+                            )
                         )
-                        continue
-
-                # Process based on file type (reusing existing logic)
-                file_type = file_info["type"]
-                file_category = file_info["category"]
-                file_description = file_info["description"]
-
-                console.print(f"[grey50]   Type: {file_description}[/grey50]")
-
-                try:
-                    if file_category == "bioinformatics" or (
-                        file_category == "tabular"
-                        and file_type
-                        in ["delimited_data", "spreadsheet_data", "h5ad_data"]
-                    ):
-                        # Load data file using existing logic
-                        with create_progress(client_arg=client) as progress:
-                            progress.add_task(f"Loading {file_name}...", total=None)
-                            load_result = client.load_data_file(file_name)
-
-                        if load_result["success"]:
-                            loaded_files.append(
-                                {
-                                    "name": file_name,
-                                    "modality_name": load_result["modality_name"],
-                                    "shape": load_result["data_shape"],
-                                    "size_bytes": load_result["size_bytes"],
-                                }
-                            )
-                            console_manager.print(
-                                f"[green]   ✅ Loaded as: {load_result['modality_name']}[/green]"
-                            )
-                        else:
-                            failed_files.append(file_name)
-                            console_manager.print(
-                                f"[red]   ❌ Loading failed: {load_result.get('error', 'Unknown error')}[/red]"
-                            )
-
-                    else:
-                        # For non-data files, just acknowledge them
-                        console_manager.print(
-                            f"[yellow]   ⚠️  Skipped: {file_description} (not a data file)[/yellow]"
-                        )
-
-                except Exception as e:
-                    failed_files.append(file_name)
-                    console_manager.print(
-                        f"[red]   ❌ Error processing {file_name}: {e}[/red]"
-                    )
-
-            # Show summary
-            console_manager.print(
-                f"\n[bold {LobsterTheme.PRIMARY_ORANGE}]📊 Bulk Loading Summary[/bold {LobsterTheme.PRIMARY_ORANGE}]"
-            )
-
-            if loaded_files:
-                summary_table = Table(
-                    title="✅ Successfully Loaded Files",
-                    **LobsterTheme.get_table_style(),
-                    title_style="bold green",
-                )
-                summary_table.add_column("File", style="white")
-                summary_table.add_column("Modality Name", style="cyan")
-                summary_table.add_column("Shape", style="grey74")
-                summary_table.add_column("Size", style="grey50")
-
-                for loaded in loaded_files:
-                    # Format file size
-                    size_bytes = loaded["size_bytes"]
-                    if size_bytes < 1024:
-                        size_str = f"{size_bytes} bytes"
-                    elif size_bytes < 1024**2:
-                        size_str = f"{size_bytes/1024:.1f} KB"
-                    elif size_bytes < 1024**3:
-                        size_str = f"{size_bytes/1024**2:.1f} MB"
-                    else:
-                        size_str = f"{size_bytes/1024**3:.1f} GB"
-
-                    summary_table.add_row(
-                        loaded["name"],
-                        loaded["modality_name"],
-                        f"{loaded['shape'][0]:,} × {loaded['shape'][1]:,}",
-                        size_str,
-                    )
-
-                console.print(summary_table)
-
-                # Show next steps
-                console.print("\n[bold white]🎯 Ready for Analysis![/bold white]")
-                console.print(
-                    "[white]Use these commands to work with your data:[/white]"
-                )
-                console.print(
-                    "  • [yellow]/data[/yellow] - View data summary for all loaded datasets"
-                )
-                console.print(
-                    "  • [yellow]/modalities[/yellow] - View detailed information for each modality"
-                )
-                console.print(
-                    f"  • [yellow]Compare the {loaded_files[0]['modality_name']} and {loaded_files[-1]['modality_name']} datasets[/yellow] - Start comparative analysis"
-                )
-
-            if failed_files:
-                console.print(
-                    f"\n[red]❌ Failed to load {len(failed_files)} files:[/red]"
-                )
-                for failed in failed_files:
-                    console.print(f"  • [red]{failed}[/red]")
-
-            # Return summary for conversation history
-            if loaded_files:
-                modality_names = [f["modality_name"] for f in loaded_files]
-                if len(loaded_files) == 1:
-                    return f"Loaded 1 file '{loaded_files[0]['name']}' as modality '{loaded_files[0]['modality_name']}' - Shape: {loaded_files[0]['shape'][0]}×{loaded_files[0]['shape'][1]}"
+                        displayed_count += 1
+                    except Exception as e:
+                        console.print(f"[yellow]⚠️  Could not read {match_file.name}: {e}[/yellow]")
                 else:
-                    return f"Bulk loaded {len(loaded_files)} files as modalities: {', '.join(modality_names[:3])}{'...' if len(modality_names) > 3 else ''}"
-            elif failed_files:
-                return f"Failed to load {len(failed_files)} files matching pattern '{filename}'"
-            else:
-                return f"No files found matching pattern '{filename}'"
+                    console.print(f"[grey50]  • {match_file.name} (binary file - skipped)[/grey50]")
 
-        # Single file processing (existing logic)
-        # First, locate and identify the file
-        file_info = client.locate_file(filename)
+            if len(matching_files) > 10:
+                console.print(f"\n[grey50]... and {len(matching_files) - 10} more files[/grey50]")
 
-        if not file_info["found"]:
-            console.print(
-                f"[bold red on white] ⚠️  Error [/bold red on white] [red]{file_info['error']}[/red]"
-            )
-            if "searched_paths" in file_info:
-                console.print("[grey50]Searched in:[/grey50]")
-                for path in file_info["searched_paths"][:5]:  # Show first 5 paths
-                    console.print(f"  • [grey50]{path}[/grey50]")
-                if len(file_info["searched_paths"]) > 5:
-                    console.print(
-                        f"  • [grey50]... and {len(file_info['searched_paths'])-5} more[/grey50]"
-                    )
-            return f"File '{filename}' not found"
+            return f"Displayed {displayed_count} text files matching '{filename}'"
 
-        # Show file location info
-        file_path = file_info["path"]
-        file_type = file_info["type"]
-        file_category = file_info["category"]
-        file_description = file_info["description"]
+        # Single file processing
+        if not file_path.exists():
+            # Try to locate via client (searches workspace directories)
+            file_info = client.locate_file(filename)
+            if not file_info["found"]:
+                console.print(
+                    f"[bold red on white] ⚠️  Error [/bold red on white] [red]{file_info['error']}[/red]"
+                )
+                if "searched_paths" in file_info:
+                    console.print("[grey50]Searched in:[/grey50]")
+                    for path in file_info["searched_paths"][:5]:
+                        console.print(f"  • [grey50]{path}[/grey50]")
+                return f"File '{filename}' not found"
+            file_path = file_info["path"]
 
-        console.print(f"[cyan]📄 Located file:[/cyan] [white]{file_path.name}[/white]")
+        # Get file info
+        file_info = client.detect_file_type(file_path)
+        file_description = file_info.get("description", "Unknown")
+        file_category = file_info.get("category", "unknown")
+        is_binary = file_info.get("binary", True)
+
+        # Show file location
+        console.print(f"[cyan]📄 File:[/cyan] [white]{file_path.name}[/white]")
         console.print(f"[grey50]   Path: {file_path}[/grey50]")
         console.print(f"[grey50]   Type: {file_description}[/grey50]")
 
-        # Handle different file types
-        if file_category == "bioinformatics" or (
-            file_category == "tabular"
-            and file_type in ["delimited_data", "spreadsheet_data"]
-        ):
-            # This is a data file - load it into DataManager
-            console.print("[cyan]🧬 Loading data into workspace...[/cyan]")
-
-            with create_progress(client_arg=client) as progress:
-                progress.add_task("Loading data...", total=None)
-                load_result = client.load_data_file(filename)
-
-            if load_result["success"]:
-                console.print(f"[bold green]✅ {load_result['message']}[/bold green]")
-
-                # Create info table
-                info_table = Table(
-                    title=f"🧬 Data Summary: {load_result['modality_name']}",
-                    box=box.ROUNDED,
-                    border_style="green",
-                    title_style="bold green on white",
-                )
-                info_table.add_column("Property", style="bold grey93")
-                info_table.add_column("Value", style="white")
-
-                info_table.add_row("Modality Name", load_result["modality_name"])
-                info_table.add_row("File Type", load_result["file_type"])
-                info_table.add_row(
-                    "Data Shape",
-                    f"{load_result['data_shape'][0]:,} × {load_result['data_shape'][1]:,}",
-                )
-
-                # Format file size
-                size_bytes = load_result["size_bytes"]
-                if size_bytes < 1024:
-                    size_str = f"{size_bytes} bytes"
-                elif size_bytes < 1024**2:
-                    size_str = f"{size_bytes/1024:.1f} KB"
-                elif size_bytes < 1024**3:
-                    size_str = f"{size_bytes/1024**2:.1f} MB"
-                else:
-                    size_str = f"{size_bytes/1024**3:.1f} GB"
-
-                info_table.add_row("File Size", size_str)
-
-                console.print(info_table)
-
-                # Provide next step suggestions
-                console.print("\n[bold white]🎯 Ready for Analysis![/bold white]")
-                console.print("[white]Use these commands to analyze your data:[/white]")
-                console.print("  • [yellow]/data[/yellow] - View data summary")
-                console.print(
-                    f"  • [yellow]Analyze the {load_result['modality_name']} dataset[/yellow] - Start analysis"
-                )
-                console.print(
-                    f"  • [yellow]Generate a quality control report for {load_result['modality_name']}[/yellow] - QC analysis"
-                )
-                console.print(
-                    f"  • [yellow]Show me the first few rows of {load_result['modality_name']}[/yellow] - Data preview"
-                )
-
-                # Return summary for conversation history
-                return f"Loaded file '{filename}' as modality '{load_result['modality_name']}' - Shape: {load_result['data_shape'][0]:,}×{load_result['data_shape'][1]:,}, Size: {size_str}"
-            else:
-                console.print(
-                    f"[bold red on white] ⚠️  Loading Failed [/bold red on white] [red]{load_result['error']}[/red]"
-                )
-                if "suggestion" in load_result:
-                    console.print(
-                        f"[yellow]💡 Suggestion: {load_result['suggestion']}[/yellow]"
-                    )
-
-                # Return summary for conversation history
-                return f"Failed to load file '{filename}': {load_result['error']}"
-
-        elif file_category in [
-            "code",
-            "documentation",
-            "metadata",
-        ] or not file_info.get("binary", True):
-            # This is a text file - display content
+        # Handle text files - display content
+        if not is_binary:
             try:
-                content = client.read_file(filename)
-                if content and not content.startswith("Error reading file"):
-                    # Try to guess syntax from extension, fallback to plain text
-                    import mimetypes
+                content = file_path.read_text(encoding="utf-8")
+                lines = content.splitlines()
 
-                    ext = file_path.suffix
-                    mime, _ = mimetypes.guess_type(str(file_path))
+                # Language detection
+                ext = file_path.suffix.lower()
+                language_map = {
+                    ".py": "python", ".js": "javascript", ".ts": "typescript",
+                    ".html": "html", ".css": "css", ".json": "json",
+                    ".xml": "xml", ".yaml": "yaml", ".yml": "yaml",
+                    ".sh": "bash", ".bash": "bash", ".md": "markdown",
+                    ".txt": "text", ".log": "text", ".r": "r",
+                    ".csv": "csv", ".tsv": "csv", ".ris": "text",
+                }
+                language = language_map.get(ext, "text")
 
-                    # Enhanced language detection
-                    language_map = {
-                        ".py": "python",
-                        ".js": "javascript",
-                        ".ts": "typescript",
-                        ".html": "html",
-                        ".css": "css",
-                        ".json": "json",
-                        ".xml": "xml",
-                        ".yaml": "yaml",
-                        ".yml": "yaml",
-                        ".sh": "bash",
-                        ".bash": "bash",
-                        ".zsh": "bash",
-                        ".sql": "sql",
-                        ".md": "markdown",
-                        ".txt": "text",
-                        ".log": "text",
-                        ".conf": "text",
-                        ".cfg": "text",
-                        ".r": "r",
-                        ".csv": "csv",
-                        ".tsv": "csv",
-                    }
-
-                    language = language_map.get(ext.lower(), "text")
-                    if language == "text" and mime and "/" in mime:
-                        language = mime.split("/")[1]
-
-                    syntax = Syntax(
-                        content, language, theme="monokai", line_numbers=True
-                    )
-                    console.print(
-                        Panel(
-                            syntax,
-                            title=f"[bold white on red] 📄 {file_path.name} [/bold white on red]",
-                            border_style="red",
-                            box=box.DOUBLE,
-                        )
-                    )
-
-                    # Return summary for conversation history
-                    return f"Displayed text file '{filename}' ({file_description}, {len(content.splitlines())} lines)"
-                else:
-                    console.print(
-                        "[bold red on white] ⚠️  Error [/bold red on white] [red]Could not read file content[/red]"
-                    )
-                    return f"Failed to read text file '{filename}'"
-            except Exception as e:
-                console.print(
-                    f"[bold red on white] ⚠️  Error [/bold red on white] [red]Could not read file: {e}[/red]"
+                syntax = Syntax(
+                    content, language, theme="monokai", line_numbers=True
                 )
-                return f"Error reading text file '{filename}': {str(e)}"
+                console.print(
+                    Panel(
+                        syntax,
+                        title=f"[bold white on red] 📄 {file_path.name} [/bold white on red]",
+                        border_style="red",
+                        box=box.DOUBLE,
+                    )
+                )
 
-        else:
-            # Binary file or unsupported type
-            console.print("[bold yellow on black] ℹ️  File Info [/bold yellow on black]")
-            console.print(
-                f"[white]File type '[yellow]{file_description}[/yellow]' is not supported for reading or loading.[/white]"
-            )
-            console.print(
-                "[grey50]This appears to be a binary file or unsupported format.[/grey50]"
-            )
+                return f"Displayed text file '{filename}' ({file_description}, {len(lines)} lines)"
 
-            if file_category == "image":
+            except UnicodeDecodeError:
+                console.print("[yellow]⚠️  File appears to be binary despite extension[/yellow]")
+                is_binary = True
+            except Exception as e:
+                console.print(f"[red]Error reading file: {e}[/red]")
+                return f"Error reading file '{filename}': {str(e)}"
+
+        # Handle binary/data files - show info only, suggest /workspace load
+        if is_binary:
+            console.print("\n[bold yellow on black] ℹ️  File Info [/bold yellow on black]")
+
+            # Format file size
+            size_bytes = file_path.stat().st_size
+            if size_bytes < 1024:
+                size_str = f"{size_bytes} bytes"
+            elif size_bytes < 1024**2:
+                size_str = f"{size_bytes/1024:.1f} KB"
+            elif size_bytes < 1024**3:
+                size_str = f"{size_bytes/1024**2:.1f} MB"
+            else:
+                size_str = f"{size_bytes/1024**3:.1f} GB"
+
+            console.print(f"[white]Size: [yellow]{size_str}[/yellow][/white]")
+
+            # Provide guidance based on file type
+            if file_category == "bioinformatics":
+                console.print(
+                    f"\n[cyan]💡 This is a bioinformatics data file ({file_description}).[/cyan]"
+                )
+                console.print(f"[cyan]   To load into workspace: [yellow]/workspace load {filename}[/yellow][/cyan]")
+            elif file_category == "tabular":
+                console.print(
+                    f"\n[cyan]💡 This is a tabular data file ({file_description}).[/cyan]"
+                )
+                console.print(f"[cyan]   To load into workspace: [yellow]/workspace load {filename}[/yellow][/cyan]")
+            elif file_category == "archive":
+                console.print(
+                    f"\n[cyan]💡 This is an archive file ({file_description}).[/cyan]"
+                )
+                console.print(f"[cyan]   To extract and load: [yellow]/workspace load {filename}[/yellow][/cyan]")
+            elif file_category == "image":
                 console.print(
                     "[cyan]💡 This is an image file. Use your system's image viewer to open it.[/cyan]"
                 )
-            elif file_category == "archive":
-                # Smart archive handling - inspect first for nested archives
-                console.print(
-                    "[bold cyan on black] 📦 Archive Detected [/bold cyan on black]"
-                )
-                console.print(
-                    f"[white]Archive type: [yellow]{file_description}[/yellow][/white]"
-                )
-                console.print(
-                    f"[white]Size: [yellow]{file_info['size_bytes'] / 1024 / 1024:.2f} MB[/yellow][/white]"
-                )
-                console.print("\n[cyan]🔍 Inspecting archive structure...[/cyan]")
-
-                # Inspect archive to detect nested structures
-                with console.status("[cyan]Analyzing archive contents...[/cyan]"):
-                    inspection = client.inspect_archive(filename)
-
-                if not inspection["success"]:
-                    console.print("\n[red]✗ Archive inspection failed[/red]")
-                    console.print(f"[red]{inspection['error']}[/red]")
-                    return (
-                        f"Failed to inspect archive '{filename}': {inspection['error']}"
-                    )
-
-                # Handle nested archives with inspection workflow
-                if inspection["type"] == "nested_archive":
-                    nested_info = inspection["nested_info"]
-
-                    # Display inspection report
-                    console.print(
-                        "\n[bold green]✓ Detected Nested Archive Structure[/bold green]"
-                    )
-                    console.print(
-                        f"[white]Total nested archives: [yellow]{nested_info.total_count}[/yellow][/white]"
-                    )
-                    console.print(
-                        f"[white]Estimated memory: [yellow]{nested_info.estimated_memory / (1024**3):.1f} GB[/yellow][/white]"
-                    )
-
-                    # Show condition groups
-                    if nested_info.groups:
-                        console.print("\n[bold white]📂 Condition Groups:[/bold white]")
-                        groups_table = Table(box=box.ROUNDED, border_style="cyan")
-                        groups_table.add_column("Condition", style="bold orange1")
-                        groups_table.add_column("Samples", style="white")
-                        groups_table.add_column("GSM Range", style="grey70")
-
-                        for condition, samples in nested_info.groups.items():
-                            gsm_ids = [s["gsm_id"] for s in samples]
-                            groups_table.add_row(
-                                condition,
-                                str(len(samples)),
-                                f"{min(gsm_ids)}-{max(gsm_ids)}" if gsm_ids else "N/A",
-                            )
-
-                        console.print(groups_table)
-
-                    # Memory warning
-                    if nested_info.estimated_memory > 5 * 1024**3:
-                        console.print(
-                            f"\n[yellow]⚠️  Loading all samples requires ~{nested_info.estimated_memory / (1024**3):.1f} GB memory[/yellow]"
-                        )
-
-                    # Recommended actions
-                    console.print("\n[bold white]🎯 Next Steps:[/bold white]")
-                    console.print(
-                        "[orange1]  • /archive list[/orange1]           - Show detailed sample list"
-                    )
-                    console.print(
-                        "[orange1]  • /archive load <pattern>[/orange1] - Load specific samples"
-                    )
-                    console.print("[dim]    Examples:[/dim]")
-                    console.print("[dim]      /archive load GSM4710689[/dim]")
-                    console.print("[dim]      /archive load TISSUE[/dim]")
-                    console.print("[dim]      /archive load PDAC_* --limit 3[/dim]")
-
-                    # Store cache ID for subsequent commands
-                    client._last_archive_cache = inspection["cache_id"]
-                    client._last_archive_info = nested_info
-
-                    return f"Inspected nested archive: {nested_info.total_count} samples found. Use /archive commands to load selectively."
-
-                # Handle regular archives with auto-load
-                else:
-                    console.print("[cyan]🔄 Extracting and loading archive...[/cyan]")
-
-                    with console.status("[cyan]Extracting archive...[/cyan]"):
-                        extract_result = client.extract_and_load_archive(filename)
-
-                    if extract_result["success"]:
-                        console.print(
-                            "\n[green]✓ Successfully loaded archive contents[/green]"
-                        )
-                        console.print(
-                            f"[white]Modality: [bold cyan]{extract_result['modality_name']}[/bold cyan][/white]"
-                        )
-                        console.print(
-                            f"[white]Shape: [yellow]{extract_result['data_shape']}[/yellow][/white]"
-                        )
-
-                        if "n_samples" in extract_result:
-                            console.print(
-                                f"[white]Samples: [yellow]{extract_result['n_samples']}[/yellow][/white]"
-                            )
-
-                        console.print(
-                            f"\n[dim]{extract_result.get('message', '')}[/dim]"
-                        )
-
-                        return f"Successfully loaded archive '{filename}' as modality '{extract_result['modality_name']}' with shape {extract_result['data_shape']}"
-
-                    else:
-                        console.print("\n[red]✗ Archive extraction failed[/red]")
-                        console.print(f"[red]{extract_result['error']}[/red]")
-
-                        if "suggestion" in extract_result:
-                            console.print(
-                                f"\n[yellow]💡 Suggestion: {extract_result['suggestion']}[/yellow]"
-                            )
-
-                        if "manifest" in extract_result:
-                            manifest = extract_result["manifest"]
-                            console.print("\n[dim]Archive contents:[/dim]")
-                            console.print(
-                                f"[dim]  Files: {manifest['file_count']}[/dim]"
-                            )
-                            console.print(
-                                f"[dim]  Extensions: {dict(manifest['extensions'])}[/dim]"
-                            )
-
-                        return f"Failed to extract archive '{filename}': {extract_result['error']}"
-
             else:
                 console.print(
-                    "[cyan]💡 Consider converting to a supported format or use external tools to view this file.[/cyan]"
+                    "[cyan]💡 Binary file - use external tools to view.[/cyan]"
                 )
 
-            # Return summary for conversation history (for non-archive unsupported files)
-            if file_category != "archive":
-                return f"Identified file '{filename}' as {file_description} ({file_category}) - not supported for loading or display"
+            return f"Inspected file '{filename}' ({file_description}, {size_str}) - use /workspace load to load data files"
+
+    # =========================================================================
+    # /queue - Flexible Queue Operations (session-based, user determines intent)
+    # =========================================================================
+    elif cmd.startswith("/queue"):
+        parts = cmd.split()
+
+        if len(parts) == 1:
+            # Show queue status
+            return _show_queue_status(client, console)
+
+        subcommand = parts[1] if len(parts) > 1 else None
+
+        if subcommand == "load":
+            filename = parts[2] if len(parts) > 2 else None
+            try:
+                return _queue_load_file(client, filename, console, current_directory)
+            except QueueFileTypeNotSupported as e:
+                console.print(f"[yellow]⚠️  {str(e)}[/yellow]")
+                return None
+
+        elif subcommand == "list":
+            return _queue_list(client, console)
+
+        elif subcommand == "clear":
+            return _queue_clear(client, console)
+
+        elif subcommand == "export":
+            name = parts[2] if len(parts) > 2 else None
+            return _queue_export(client, name, console)
+
+        else:
+            console.print(f"[yellow]Unknown queue subcommand: {subcommand}[/yellow]")
+            console.print("[cyan]Available: load, list, clear, export[/cyan]")
+            return None
 
     elif cmd.startswith("/load "):
+        # DEPRECATED: Use /queue load instead
+        console.print(
+            "[yellow]⚠️  Deprecation Warning: /load is deprecated.[/yellow]"
+        )
+        console.print(
+            "[yellow]   Use /queue load <file> for queue operations[/yellow]"
+        )
+        console.print(
+            "[yellow]   Use /workspace load <file> for data files[/yellow]\n"
+        )
+
         # Load publication list from .ris file
         filename = cmd[6:].strip()
 
@@ -4852,15 +4813,45 @@ when they are started by agents or analysis workflows.
             return f"Displayed details for {len(matched_datasets)} dataset(s)"
 
         elif subcommand == "load":
-            # Load specific datasets by index or pattern
+            # Load specific datasets by index, pattern, or file path
             if len(parts) < 3:
-                console.print("[red]Usage: /workspace load <#|pattern>[/red]")
+                console.print("[red]Usage: /workspace load <#|pattern|file>[/red]")
                 console.print(
-                    "[dim]Examples: /workspace load 1, /workspace load recent, /workspace load *clustered*[/dim]"
+                    "[dim]Examples: /workspace load 1, /workspace load recent, /workspace load data.h5ad[/dim]"
                 )
                 return None
 
             selector = parts[2]
+
+            # Check if selector is a file path first
+            file_path = (
+                Path(selector)
+                if Path(selector).is_absolute()
+                else current_directory / selector
+            )
+
+            if file_path.exists() and file_path.is_file():
+                # Load file directly into workspace
+                console.print(f"[cyan]📂 Loading file into workspace: {file_path.name}[/cyan]\n")
+
+                try:
+                    result = client.load_data_file(str(file_path))
+
+                    if result.get("success"):
+                        console.print(
+                            f"[green]✅ Loaded '{result['modality_name']}' "
+                            f"({result['data_shape'][0]:,} × {result['data_shape'][1]:,})[/green]"
+                        )
+                        return f"Loaded file '{file_path.name}' as modality '{result['modality_name']}'"
+                    else:
+                        console.print(f"[red]❌ {result.get('error', 'Unknown error')}[/red]")
+                        if result.get("suggestion"):
+                            console.print(f"[cyan]💡 {result['suggestion']}[/cyan]")
+                        return None
+
+                except Exception as e:
+                    console.print(f"[red]❌ Failed to load file: {str(e)}[/red]")
+                    return None
 
             # Re-scan workspace to ensure we have latest files
             if hasattr(client.data_manager, "_scan_workspace"):
@@ -4870,6 +4861,7 @@ when they are started by agents or analysis workflows.
 
             if not available:
                 console.print("[yellow]No datasets found in workspace[/yellow]")
+                console.print(f"[dim]Tip: If '{selector}' is a file, ensure the path is correct[/dim]")
                 return None
 
             # Determine if selector is an index or pattern

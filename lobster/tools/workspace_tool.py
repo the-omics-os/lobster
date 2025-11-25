@@ -1,15 +1,19 @@
 """
 Workspace content retrieval tool for accessing cached research content.
 
-This module provides a factory function for creating get_content_from_workspace tool
-that can be shared between multiple agents (research_agent, supervisor).
+This module provides factory functions for creating shared tools that can be used
+by multiple agents (research_agent, data_expert, supervisor):
+- get_content_from_workspace: Access cached research content
+- list_available_modalities: List loaded modalities with optional filtering
 """
 
 import json
+from typing import Optional
 
 from langchain_core.tools import tool
 
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.tools.modality_management_service import ModalityManagementService
 from lobster.tools.workspace_content_service import (
     ContentType,
     RetrievalLevel,
@@ -71,7 +75,7 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
         For publication_queue workspace:
         - identifier=None: List all entries (filtered by status_filter if provided)
         - identifier=<entry_id>: Retrieve specific entry
-        - status_filter: "pending" | "extracting" | "metadata_extracted" | "completed" | "failed"
+        - status_filter: "pending" | "extracting" | "metadata_extracted" | "metadata_enriched" | "handoff_ready" | "completed" | "failed"
         - level: "summary" (basic info) | "metadata" (full entry details)
 
         Args:
@@ -562,3 +566,77 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
         return full
 
     return get_content_from_workspace
+
+
+def create_list_modalities_tool(data_manager: DataManagerV2):
+    """
+    Factory function to create list_available_modalities tool with data_manager closure.
+
+    Shared between supervisor and data_expert agents for consistent modality listing
+    with provenance tracking and optional filtering.
+
+    Args:
+        data_manager: DataManagerV2 instance for modality access
+
+    Returns:
+        LangChain tool for listing modalities with optional filtering
+    """
+
+    # Initialize service once (closure captures this)
+    modality_service = ModalityManagementService(data_manager)
+
+    @tool
+    def list_available_modalities(filter_pattern: Optional[str] = None) -> str:
+        """
+        List all available modalities with optional filtering.
+
+        Args:
+            filter_pattern: Optional glob-style pattern to filter modality names
+                          (e.g., "geo_gse*", "*clustered", "bulk_*")
+                          If None, lists all modalities.
+
+        Returns:
+            str: Formatted list of modalities with details
+        """
+        try:
+            modality_info, stats, ir = modality_service.list_modalities(
+                filter_pattern=filter_pattern
+            )
+
+            # Log to provenance (W3C-PROV compliant)
+            data_manager.log_tool_usage(
+                tool_name="list_available_modalities",
+                parameters={"filter_pattern": filter_pattern},
+                description=stats,
+                ir=ir,
+            )
+
+            # Format response
+            if not modality_info:
+                return "No modalities found matching the criteria."
+
+            response = f"## Available Modalities ({stats['matched_modalities']}/{stats['total_modalities']})\n\n"
+            if filter_pattern:
+                response += f"**Filter**: `{filter_pattern}`\n\n"
+
+            for info in modality_info:
+                if "error" in info:
+                    response += f"- **{info['name']}**: Error - {info['error']}\n"
+                else:
+                    response += f"- **{info['name']}**: {info['n_obs']} obs × {info['n_vars']} vars\n"
+                    if info["obs_columns"]:
+                        response += f"  - Obs: {', '.join(info['obs_columns'][:3])}\n"
+                    if info["var_columns"]:
+                        response += f"  - Var: {', '.join(info['var_columns'][:3])}\n"
+
+            # Add workspace info (useful for supervisor context)
+            workspace_status = data_manager.get_workspace_status()
+            response += f"\n**Workspace**: {workspace_status['workspace_path']}\n"
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error listing modalities: {e}")
+            return f"Error listing modalities: {str(e)}"
+
+    return list_available_modalities

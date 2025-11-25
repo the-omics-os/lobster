@@ -22,7 +22,10 @@ from lobster.config.settings import get_settings
 from lobster.config.supervisor_config import SupervisorConfig
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.handoff_tool import create_custom_handoff_tool
-from lobster.tools.workspace_tool import create_get_content_from_workspace_tool
+from lobster.tools.workspace_tool import (
+    create_get_content_from_workspace_tool,
+    create_list_modalities_tool,
+)
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -93,50 +96,8 @@ def create_bioinformatics_graph(
             f"Created agent: {agent_config.display_name} ({agent_config.name})"
         )
 
-    # Supervisor only tools
-    @tool
-    def list_available_modalities() -> str:
-        """
-        List all currently loaded modalities and their details.
-
-        Returns:
-            str: Formatted list of available modalities
-        """
-        try:
-            modalities = data_manager.list_modalities()
-
-            if not modalities:
-                return "No modalities currently loaded. Use download_geo_dataset or upload_data_file to load data."
-
-            response = f"Currently loaded modalities ({len(modalities)}):\n\n"
-
-            for mod_name in modalities:
-                adata = data_manager.get_modality(mod_name)
-                response += f"**{mod_name}**:\n"
-                response += f"  - Shape: {adata.n_obs} obs × {adata.n_vars} vars\n"
-                response += f"  - Obs columns: {len(adata.obs.columns)} ({', '.join(list(adata.obs.columns)[:3])}...)\n"
-                response += f"  - Var columns: {len(adata.var.columns)} ({', '.join(list(adata.var.columns)[:3])}...)\n"
-                if adata.layers:
-                    response += f"  - Layers: {', '.join(list(adata.layers.keys()))}\n"
-                response += "\n"
-
-            # Add workspace information
-            workspace_status = data_manager.get_workspace_status()
-            response += f"Workspace: {workspace_status['workspace_path']}\n"
-            response += (
-                f"Available adapters: {len(workspace_status['registered_adapters'])}\n"
-            )
-            response += (
-                f"Available backends: {len(workspace_status['registered_backends'])}"
-            )
-
-            return response
-
-        except Exception as e:
-            logger.error(f"Error listing available data: {e}")
-            return f"Error listing available data: {str(e)}"
-
-    # Create workspace content retrieval tool with data_manager access
+    # Create shared tools with data_manager access
+    list_available_modalities = create_list_modalities_tool(data_manager)
     get_content_from_workspace = create_get_content_from_workspace_tool(data_manager)
 
     # Get list of active agents that were successfully created

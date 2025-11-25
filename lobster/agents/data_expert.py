@@ -22,6 +22,7 @@ from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.schemas.download_queue import DownloadStatus, ValidationStatus
 from lobster.tools.download_orchestrator import DownloadOrchestrator
 from lobster.tools.geo_download_service import GEODownloadService
+from lobster.tools.workspace_tool import create_list_modalities_tool
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -557,54 +558,8 @@ You can now analyze this dataset using the single-cell or bulk RNA-seq tools.
             logger.error(f"Error in get_modality_overview: {e}")
             return f"Error retrieving modality overview: {str(e)}"
 
-    @tool
-    def list_available_modalities(filter_pattern: str = None) -> str:
-        """
-        List all available modalities with optional filtering.
-
-        Args:
-            filter_pattern: Optional glob-style pattern to filter modality names
-                          (e.g., "geo_gse*", "*clustered", "bulk_*")
-
-        Returns:
-            str: Formatted list of modalities with details
-        """
-        try:
-            modality_info, stats, ir = modality_service.list_modalities(
-                filter_pattern=filter_pattern
-            )
-
-            # Log to provenance
-            data_manager.log_tool_usage(
-                tool_name="list_available_modalities",
-                parameters={"filter_pattern": filter_pattern},
-                description=stats,
-                ir=ir,
-            )
-
-            # Format response
-            if not modality_info:
-                return "No modalities found matching the criteria."
-
-            response = f"## Available Modalities ({stats['matched_modalities']}/{stats['total_modalities']})\n\n"
-            if filter_pattern:
-                response += f"**Filter**: `{filter_pattern}`\n\n"
-
-            for info in modality_info:
-                if "error" in info:
-                    response += f"- **{info['name']}**: Error - {info['error']}\n"
-                else:
-                    response += f"- **{info['name']}**: {info['n_obs']} obs × {info['n_vars']} vars\n"
-                    if info["obs_columns"]:
-                        response += f"  - Obs: {', '.join(info['obs_columns'][:3])}\n"
-                    if info["var_columns"]:
-                        response += f"  - Var: {', '.join(info['var_columns'][:3])}\n"
-
-            return response
-
-        except Exception as e:
-            logger.error(f"Error listing modalities: {e}")
-            return f"Error listing modalities: {str(e)}"
+    # Use shared tool from workspace_tool.py (shared with supervisor)
+    list_available_modalities = create_list_modalities_tool(data_manager)
 
     @tool
     def get_modality_details(modality_name: str) -> str:
