@@ -10,6 +10,12 @@ from typing import Any, Dict, List, Optional
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.schemas.publication_queue import PublicationQueueEntry, PublicationStatus
 from lobster.services.data_access.content_access_service import ContentAccessService
+from lobster.services.data_access.workspace_content_service import (
+    WorkspaceContentService,
+    ContentType,
+    MetadataContent,
+)
+from lobster.tools.providers.sra_provider import SRAProvider
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -21,59 +27,67 @@ class PublicationProcessingService:
     def __init__(self, data_manager: DataManagerV2) -> None:
         self.data_manager = data_manager
         self.content_service = ContentAccessService(data_manager=data_manager)
+        self.workspace_service = WorkspaceContentService(data_manager=data_manager)
+        self.sra_provider = SRAProvider(data_manager=data_manager)
 
     def _get_best_source_for_extraction(self, entry: PublicationQueueEntry) -> Optional[str]:
         """
-        Get best URL source for content extraction, in priority order.
+        Get best source for content extraction with PMC-first strategy.
 
-        Priority:
-        1. Fulltext URL (transformed from abstract - best structured content)
-        2. PDF URL (direct PDF for Docling extraction)
-        3. Metadata URL (webpage scraping)
-        4. PubMed URL (extract PMID for PMC lookup)
-        5. DOI resolution (last resort - often returns TDM URLs)
-        6. Identifiers (PMID, PMC ID)
+        Priority (identifiers first for PMC Open Access, URLs as fallback):
+        1. PMC ID (from NCBI enrichment - guaranteed free open access XML)
+        2. PMID (triggers PMC lookup in content_access_service)
+        3. PubMed URL (extract PMID for PMC lookup)
+        4. DOI (can resolve to PMC via content_access_service)
+        5. Fulltext URL (publisher page - often paywalled, fallback only)
+        6. PDF URL (direct PDF for Docling extraction)
+        7. Metadata URL (webpage scraping - last resort)
+
+        This ordering ensures PMC Open Access is tried BEFORE publisher URLs,
+        avoiding 403 Forbidden errors from paywalled publishers (Cell, Elsevier, etc.).
 
         Args:
             entry: PublicationQueueEntry with URL fields populated from RIS
 
         Returns:
-            Best source URL/identifier for content extraction, or None
+            Best source identifier/URL for content extraction, or None
         """
-        # Priority 1: Fulltext URL (transformed from abstract - best structured content)
-        if entry.fulltext_url:
-            logger.info(f"Using fulltext URL (priority 1): {entry.fulltext_url}")
-            return entry.fulltext_url
+        # Priority 1: PMC ID (from NCBI enrichment - guaranteed free open access)
+        if entry.pmc_id:
+            logger.info(f"Using PMC ID (priority 1, open access): {entry.pmc_id}")
+            return entry.pmc_id
 
-        # Priority 2: Direct PDF (reliable for Docling extraction)
-        if entry.pdf_url:
-            logger.info(f"Using PDF URL (priority 2): {entry.pdf_url}")
-            return entry.pdf_url
+        # Priority 2: PMID (triggers automatic PMC lookup in content_access_service)
+        if entry.pmid:
+            logger.info(f"Using PMID (priority 2, may resolve to PMC): PMID:{entry.pmid}")
+            return f"PMID:{entry.pmid}"
 
-        # Priority 3: Article/metadata URL (webpage scraping)
-        if entry.metadata_url:
-            logger.info(f"Using metadata URL (priority 3): {entry.metadata_url}")
-            return entry.metadata_url
-
-        # Priority 4: PubMed URL → extract PMID for PMC lookup
+        # Priority 3: PubMed URL → extract PMID for PMC lookup
         if entry.pubmed_url:
             pmid = self._extract_pmid_from_url(entry.pubmed_url)
             if pmid:
-                logger.info(f"Using PubMed URL (priority 4), extracted PMID:{pmid}")
+                logger.info(f"Using PubMed URL (priority 3), extracted PMID:{pmid}")
                 return f"PMID:{pmid}"
 
-        # Priority 5: DOI resolution (last resort)
+        # Priority 4: DOI (can resolve to PMC via content_access_service)
         if entry.doi:
-            logger.info(f"Using DOI (priority 5): {entry.doi}")
+            logger.info(f"Using DOI (priority 4): {entry.doi}")
             return entry.doi
 
-        # Priority 6: Identifiers
-        if entry.pmid:
-            logger.info(f"Using PMID (priority 6): {entry.pmid}")
-            return f"PMID:{entry.pmid}"
-        if entry.pmc_id:
-            logger.info(f"Using PMC ID (priority 6): {entry.pmc_id}")
-            return entry.pmc_id
+        # Priority 5: Fulltext URL (fallback - may be paywalled)
+        if entry.fulltext_url:
+            logger.info(f"Using fulltext URL (priority 5, fallback): {entry.fulltext_url}")
+            return entry.fulltext_url
+
+        # Priority 6: Direct PDF (fallback for Docling extraction)
+        if entry.pdf_url:
+            logger.info(f"Using PDF URL (priority 6, fallback): {entry.pdf_url}")
+            return entry.pdf_url
+
+        # Priority 7: Article/metadata URL (last resort - webpage scraping)
+        if entry.metadata_url:
+            logger.info(f"Using metadata URL (priority 7, last resort): {entry.metadata_url}")
+            return entry.metadata_url
 
         return None
 
@@ -344,7 +358,7 @@ class PublicationProcessingService:
 
     def process_entry(
         self, entry_id: str,
-        extraction_tasks: str = "resolve_identifiers,ncbi_enrich,metadata,methods,identifiers",
+        extraction_tasks: str = "resolve_identifiers,ncbi_enrich,fetch_sra_metadata,metadata,methods,identifiers",
     ) -> str:
         """Process a single publication queue entry."""
 
@@ -470,6 +484,89 @@ class PublicationProcessingService:
 
                 except Exception as e:
                     response_parts.append(f"✗ NCBI E-Link enrichment failed: {str(e)}")
+
+                response_parts.append("")
+
+            # SRA metadata fetching (runs after NCBI enrichment)
+            # Fetches detailed sample metadata for BioProject IDs found via E-Link
+            # Note: E-Link returns internal SRA link IDs (SRA12345678) which pysradb cannot use
+            # Instead, we use BioProject IDs (PRJNA*) which pysradb can resolve to samples
+            if "fetch_sra_metadata" in tasks or "full_text" in tasks:
+                try:
+                    # Get BioProject IDs from NCBI enrichment (these are proper accessions)
+                    bioproject_ids = extracted_data.get("ncbi_enrichment", {}).get("bioproject", [])
+
+                    if bioproject_ids:
+                        response_parts.append(f"✓ Fetching SRA metadata for {len(bioproject_ids)} BioProject(s):")
+
+                        sra_fetch_success = 0
+                        sra_fetch_failed = 0
+
+                        for bioproject_id in bioproject_ids:
+                            try:
+                                # Get SRAweb instance from provider
+                                sraweb = self.sra_provider._get_sraweb()
+
+                                # Fetch metadata using pysradb with BioProject ID
+                                df = sraweb.sra_metadata(bioproject_id, detailed=True)
+
+                                if df is not None and not df.empty:
+                                    # Convert DataFrame to dict for storage
+                                    metadata_dict = df.to_dict(orient="records")
+
+                                    # Create MetadataContent for workspace storage
+                                    metadata_content = MetadataContent(
+                                        identifier=f"sra_{bioproject_id}_samples",
+                                        content_type="sra_samples",
+                                        description=f"SRA sample metadata for BioProject {bioproject_id}",
+                                        data={"samples": metadata_dict, "sample_count": len(df)},
+                                        related_datasets=[bioproject_id],
+                                        source="SRAProvider",
+                                        cached_at=datetime.now().isoformat(),
+                                    )
+
+                                    # Write to workspace
+                                    workspace_path = self.workspace_service.write_content(
+                                        metadata_content, ContentType.METADATA
+                                    )
+
+                                    sra_fetch_success += 1
+                                    response_parts.append(
+                                        f"  - {bioproject_id}: {len(df)} sample(s) → {workspace_path}"
+                                    )
+
+                                    logger.info(
+                                        f"Fetched {len(df)} samples for BioProject {bioproject_id}"
+                                    )
+                                else:
+                                    response_parts.append(
+                                        f"  - {bioproject_id}: No metadata found (may be restricted or invalid)"
+                                    )
+                                    sra_fetch_failed += 1
+
+                            except Exception as e:
+                                logger.warning(f"Failed to fetch SRA metadata for {bioproject_id}: {e}")
+                                response_parts.append(f"  - {bioproject_id}: ✗ Failed ({str(e)})")
+                                sra_fetch_failed += 1
+
+                        # Summary
+                        if sra_fetch_success > 0:
+                            response_parts.append(
+                                f"✓ SRA metadata fetch complete: {sra_fetch_success} succeeded, {sra_fetch_failed} failed"
+                            )
+                        else:
+                            response_parts.append(
+                                f"⚠ SRA metadata fetch: All {sra_fetch_failed} ID(s) failed"
+                            )
+
+                    else:
+                        response_parts.append(
+                            "⚠ SRA metadata fetch skipped: No BioProject IDs from NCBI enrichment"
+                        )
+
+                except Exception as e:
+                    response_parts.append(f"✗ SRA metadata fetch failed: {str(e)}")
+                    logger.error(f"SRA metadata fetch error: {e}")
 
                 response_parts.append("")
 

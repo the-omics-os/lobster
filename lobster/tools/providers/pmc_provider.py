@@ -237,10 +237,10 @@ class PMCProvider:
 
     def get_pmc_id(self, identifier: str) -> Optional[str]:
         """
-        Get PMC ID from PMID or DOI using NCBI elink.
+        Get PMC ID from PMID, DOI, or return directly if already a PMC ID.
 
         Args:
-            identifier: PMID (with or without "PMID:" prefix) or DOI
+            identifier: PMID (with or without "PMID:" prefix), DOI, or PMC ID
 
         Returns:
             PMC ID (without "PMC" prefix) if available, None otherwise
@@ -253,8 +253,24 @@ class PMCProvider:
             >>> # Check availability
             >>> if provider.get_pmc_id("PMID:35042229"):
             >>>     print("PMC full text available!")
+            >>>
+            >>> # Direct PMC ID
+            >>> pmc_id = provider.get_pmc_id("PMC10425240")
+            >>> print(pmc_id)  # "10425240"
         """
         try:
+            identifier = identifier.strip()
+
+            # If already a PMC ID, extract the numeric portion and return
+            if identifier.upper().startswith("PMC"):
+                pmc_num = identifier[3:].strip()  # Remove "PMC" prefix
+                if pmc_num.isdigit():
+                    logger.debug(f"Identifier is already a PMC ID: {identifier}")
+                    return pmc_num
+                else:
+                    logger.warning(f"Invalid PMC ID format: {identifier} (non-numeric after 'PMC')")
+                    return None
+
             # Normalize identifier to PMID
             pmid = self._normalize_to_pmid(identifier)
             if not pmid:

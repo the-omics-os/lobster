@@ -471,3 +471,431 @@ class TestEdgeCases:
 
         usage = rate_limiter.get_current_usage("ncbi:esearch", "user@example.com")
         assert usage == 1
+
+
+# ============================================================================
+# MULTI-DOMAIN RATE LIMITER TESTS
+# ============================================================================
+
+
+class TestDomainStrategy:
+    """Tests for DomainStrategy dataclass."""
+
+    def test_default_values(self):
+        """Test default strategy values."""
+        from lobster.tools.rate_limiter import DomainStrategy
+
+        strategy = DomainStrategy(name="test", requests_per_second=1.0)
+        assert strategy.window_seconds == 1.0
+        assert strategy.max_retries == 3
+        assert strategy.backoff_base == 1.0
+        assert strategy.backoff_factor == 3.0
+        assert strategy.backoff_max == 30.0
+        assert 429 in strategy.retry_on
+        assert 503 in strategy.retry_on
+        assert 502 in strategy.retry_on
+
+    def test_custom_values(self):
+        """Test custom strategy values."""
+        from lobster.tools.rate_limiter import DomainStrategy
+
+        strategy = DomainStrategy(
+            name="custom",
+            requests_per_second=5.0,
+            window_seconds=2.0,
+            max_retries=5,
+            backoff_base=2.0,
+            backoff_factor=2.0,
+            backoff_max=60.0,
+            retry_on=[500, 502, 503]
+        )
+        assert strategy.window_seconds == 2.0
+        assert strategy.max_retries == 5
+        assert strategy.backoff_base == 2.0
+        assert strategy.backoff_factor == 2.0
+        assert strategy.backoff_max == 60.0
+        assert strategy.retry_on == [500, 502, 503]
+
+
+class TestMultiDomainRateLimiter:
+    """Tests for MultiDomainRateLimiter."""
+
+    @pytest.fixture
+    def multi_limiter(self, fake_redis):
+        """Provide multi-domain rate limiter with fake Redis."""
+        from lobster.tools.rate_limiter import MultiDomainRateLimiter
+
+        return MultiDomainRateLimiter(redis_client=fake_redis)
+
+    def test_init_with_redis(self, fake_redis):
+        """Test initialization with Redis client."""
+        from lobster.tools.rate_limiter import MultiDomainRateLimiter
+
+        limiter = MultiDomainRateLimiter(redis_client=fake_redis)
+        assert limiter.redis_client is not None
+        assert limiter._strategies is not None
+        assert "eutils.ncbi.nlm.nih.gov" in limiter._strategies
+        assert "default" in limiter._strategies
+
+    def test_init_without_redis(self):
+        """Test initialization without Redis (graceful degradation)."""
+        from lobster.tools.rate_limiter import MultiDomainRateLimiter
+
+        with patch("lobster.tools.rate_limiter.get_redis_client", return_value=None):
+            limiter = MultiDomainRateLimiter(redis_client=None)
+            assert limiter.redis_client is None
+
+    def test_detect_domain_ncbi(self, multi_limiter):
+        """Test NCBI domain detection."""
+        assert (
+            multi_limiter.detect_domain("https://eutils.ncbi.nlm.nih.gov/entrez/")
+            == "eutils.ncbi.nlm.nih.gov"
+        )
+
+    def test_detect_domain_pmc(self, multi_limiter):
+        """Test PMC domain detection."""
+        assert (
+            multi_limiter.detect_domain("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC123/")
+            == "www.ncbi.nlm.nih.gov"
+        )
+        assert multi_limiter.detect_domain("PMC12345") == "pmc.ncbi.nlm.nih.gov"
+        assert multi_limiter.detect_domain("PMID:12345") == "pmc.ncbi.nlm.nih.gov"
+
+    def test_detect_domain_publishers(self, multi_limiter):
+        """Test publisher domain detection."""
+        assert (
+            multi_limiter.detect_domain("https://www.nature.com/articles/s41586")
+            == "nature.com"
+        )
+        assert (
+            multi_limiter.detect_domain("https://www.cell.com/cell/fulltext/S0092")
+            == "cell.com"
+        )
+        assert (
+            multi_limiter.detect_domain("https://www.sciencedirect.com/science/article/")
+            == "sciencedirect.com"
+        )
+        assert (
+            multi_limiter.detect_domain("https://www.frontiersin.org/articles/")
+            == "frontiersin.org"
+        )
+
+    def test_detect_domain_default(self, multi_limiter):
+        """Test default domain for unknown URLs."""
+        assert multi_limiter.detect_domain("https://unknown-site.com/article") == "default"
+        assert multi_limiter.detect_domain("invalid-url") == "default"
+
+    def test_get_rate_limit(self, multi_limiter):
+        """Test rate limit retrieval."""
+        assert multi_limiter.get_rate_limit("eutils.ncbi.nlm.nih.gov") == 10.0
+        assert multi_limiter.get_rate_limit("pmc.ncbi.nlm.nih.gov") == 3.0
+        assert multi_limiter.get_rate_limit("nature.com") == 0.5
+        assert multi_limiter.get_rate_limit("default") == 0.3
+
+    def test_check_rate_limit_allows_within_limit(self, multi_limiter):
+        """Test rate limit allows requests within limit."""
+        url = "https://www.frontiersin.org/articles/test"  # 1 req/s
+        assert multi_limiter.check_rate_limit(url) is True
+
+    def test_check_rate_limit_blocks_over_limit(self, multi_limiter):
+        """Test rate limit blocks requests over limit."""
+        url = "https://www.frontiersin.org/articles/test"  # 1 req/s
+        # First request allowed
+        assert multi_limiter.check_rate_limit(url) is True
+        # Second request blocked (1 req/s limit)
+        assert multi_limiter.check_rate_limit(url) is False
+
+    def test_different_domains_independent(self, multi_limiter):
+        """Test different domains have independent limits."""
+        url1 = "https://www.frontiersin.org/articles/test"  # 1 req/s
+        url2 = "https://www.mdpi.com/articles/test"  # 1 req/s
+
+        # Fill frontiers limit
+        assert multi_limiter.check_rate_limit(url1) is True
+        assert multi_limiter.check_rate_limit(url1) is False
+
+        # MDPI should still work (different domain)
+        assert multi_limiter.check_rate_limit(url2) is True
+
+    def test_different_users_independent(self, multi_limiter):
+        """Test different users have independent limits."""
+        url = "https://www.frontiersin.org/articles/test"
+
+        # Fill user1 limit
+        assert multi_limiter.check_rate_limit(url, user_id="user1") is True
+        assert multi_limiter.check_rate_limit(url, user_id="user1") is False
+
+        # user2 should still work
+        assert multi_limiter.check_rate_limit(url, user_id="user2") is True
+
+    def test_graceful_degradation_no_redis(self):
+        """Test fail-open when Redis unavailable."""
+        from lobster.tools.rate_limiter import MultiDomainRateLimiter
+
+        with patch("lobster.tools.rate_limiter.get_redis_client", return_value=None):
+            limiter = MultiDomainRateLimiter(redis_client=None)
+            # Should allow all requests (fail-open)
+            assert limiter.check_rate_limit("https://www.nature.com/test") is True
+            assert limiter.check_rate_limit("https://www.nature.com/test") is True
+
+    def test_redis_error_handling(self, multi_limiter, fake_redis):
+        """Test graceful handling of Redis errors."""
+        # Mock Redis to raise error
+        fake_redis.get = Mock(side_effect=RedisError("Connection lost"))
+
+        # Should fail open (return True) with error
+        allowed = multi_limiter.check_rate_limit("https://www.nature.com/test")
+        assert allowed is True
+
+    def test_calculate_backoff(self, multi_limiter):
+        """Test exponential backoff calculation."""
+        domain = "nature.com"
+        # 1s -> 3s -> 9s -> 27s -> 30s (capped)
+        assert multi_limiter.calculate_backoff(domain, 0) == 1.0
+        assert multi_limiter.calculate_backoff(domain, 1) == 3.0
+        assert multi_limiter.calculate_backoff(domain, 2) == 9.0
+        assert multi_limiter.calculate_backoff(domain, 3) == 27.0
+        assert multi_limiter.calculate_backoff(domain, 4) == 30.0  # Capped
+
+    def test_should_retry(self, multi_limiter):
+        """Test retryable status codes."""
+        domain = "nature.com"
+        assert multi_limiter.should_retry(domain, 429) is True
+        assert multi_limiter.should_retry(domain, 503) is True
+        assert multi_limiter.should_retry(domain, 502) is True
+        assert multi_limiter.should_retry(domain, 200) is False
+        assert multi_limiter.should_retry(domain, 404) is False
+
+    def test_get_max_retries(self, multi_limiter):
+        """Test max retries per domain."""
+        # High rate domains (>=1.0 req/s) get 3 retries
+        assert multi_limiter.get_max_retries("frontiersin.org") == 3
+        assert multi_limiter.get_max_retries("eutils.ncbi.nlm.nih.gov") == 3
+        # Low rate domains (<1.0 req/s) get 2 retries
+        assert multi_limiter.get_max_retries("nature.com") == 2
+        assert multi_limiter.get_max_retries("default") == 2
+
+    def test_wait_for_slot_immediate(self, multi_limiter):
+        """Test wait_for_slot returns immediately when slot available."""
+        start = time.time()
+        success = multi_limiter.wait_for_slot("https://www.frontiersin.org/test")
+        elapsed = time.time() - start
+
+        assert success is True
+        assert elapsed < 0.2  # Should be nearly instant
+
+    def test_wait_for_slot_timeout(self, multi_limiter, fake_redis):
+        """Test wait_for_slot returns False when max_wait exceeded."""
+        url = "https://www.frontiersin.org/test"
+
+        # Fill rate limit
+        multi_limiter.check_rate_limit(url)
+
+        # Prevent key from expiring during test by mocking the check to always fail
+        original_check = multi_limiter.check_rate_limit
+        multi_limiter.check_rate_limit = Mock(return_value=False)
+
+        start = time.time()
+        success = multi_limiter.wait_for_slot(url, max_wait=0.3)
+        elapsed = time.time() - start
+
+        # Restore original method
+        multi_limiter.check_rate_limit = original_check
+
+        assert success is False
+        assert 0.25 <= elapsed <= 0.6  # Should timeout around 0.3-0.5s
+
+    def test_wait_for_slot_no_redis(self):
+        """Test wait_for_slot works without Redis (fail-open)."""
+        from lobster.tools.rate_limiter import MultiDomainRateLimiter
+
+        with patch("lobster.tools.rate_limiter.get_redis_client", return_value=None):
+            limiter = MultiDomainRateLimiter(redis_client=None)
+            start = time.time()
+            success = limiter.wait_for_slot("https://www.nature.com/test")
+            elapsed = time.time() - start
+
+            assert success is True
+            assert elapsed < 0.2  # Should be instant
+
+
+class TestRateLimitedRequest:
+    """Tests for rate_limited_request function."""
+
+    def test_successful_request(self, mocker):
+        """Test successful request passes through."""
+        from lobster.tools.rate_limiter import rate_limited_request
+
+        # Mock response
+        mock_response = mocker.Mock(status_code=200)
+        mock_request = mocker.Mock(return_value=mock_response)
+
+        # Mock the limiter
+        mock_limiter = mocker.Mock()
+        mock_limiter.detect_domain.return_value = "nature.com"
+        mock_limiter.get_max_retries.return_value = 3
+        mock_limiter.wait_for_slot.return_value = True
+        mock_limiter.should_retry.return_value = False
+
+        with patch(
+            "lobster.tools.rate_limiter.MultiDomainRateLimiter",
+            return_value=mock_limiter
+        ):
+            result = rate_limited_request("https://www.nature.com/test", mock_request)
+
+        assert result.status_code == 200
+        mock_request.assert_called_once()
+        mock_limiter.wait_for_slot.assert_called_once()
+
+    def test_request_with_retry_on_429(self, mocker):
+        """Test request retries on HTTP 429."""
+        from lobster.tools.rate_limiter import rate_limited_request
+
+        # First response: 429, second: 200
+        mock_response_429 = mocker.Mock(status_code=429)
+        mock_response_200 = mocker.Mock(status_code=200)
+        mock_request = mocker.Mock(side_effect=[mock_response_429, mock_response_200])
+
+        # Mock limiter
+        mock_limiter = mocker.Mock()
+        mock_limiter.detect_domain.return_value = "nature.com"
+        mock_limiter.get_max_retries.return_value = 3
+        mock_limiter.wait_for_slot.return_value = True
+        mock_limiter.should_retry.side_effect = [True, False]  # Retry first, not second
+        mock_limiter.calculate_backoff.return_value = 0.01  # Fast backoff for testing
+
+        with patch(
+            "lobster.tools.rate_limiter.MultiDomainRateLimiter",
+            return_value=mock_limiter
+        ):
+            result = rate_limited_request("https://www.nature.com/test", mock_request)
+
+        assert result.status_code == 200
+        assert mock_request.call_count == 2
+
+    def test_request_timeout(self, mocker):
+        """Test request raises TimeoutError when rate limit slot unavailable."""
+        from lobster.tools.rate_limiter import rate_limited_request
+
+        mock_request = mocker.Mock()
+
+        # Mock limiter that never gets a slot
+        mock_limiter = mocker.Mock()
+        mock_limiter.detect_domain.return_value = "nature.com"
+        mock_limiter.get_max_retries.return_value = 3
+        mock_limiter.wait_for_slot.return_value = False
+
+        with patch(
+            "lobster.tools.rate_limiter.MultiDomainRateLimiter",
+            return_value=mock_limiter
+        ):
+            with pytest.raises(TimeoutError, match="Rate limit timeout"):
+                rate_limited_request("https://www.nature.com/test", mock_request)
+
+    def test_request_with_args_kwargs(self, mocker):
+        """Test request passes args and kwargs to request function."""
+        from lobster.tools.rate_limiter import rate_limited_request
+
+        mock_response = mocker.Mock(status_code=200)
+        mock_request = mocker.Mock(return_value=mock_response)
+
+        # Mock limiter
+        mock_limiter = mocker.Mock()
+        mock_limiter.detect_domain.return_value = "nature.com"
+        mock_limiter.get_max_retries.return_value = 3
+        mock_limiter.wait_for_slot.return_value = True
+        mock_limiter.should_retry.return_value = False
+
+        with patch(
+            "lobster.tools.rate_limiter.MultiDomainRateLimiter",
+            return_value=mock_limiter
+        ):
+            result = rate_limited_request(
+                "https://www.nature.com/test",
+                mock_request,
+                timeout=30,
+                headers={"User-Agent": "test"}
+            )
+
+        assert result.status_code == 200
+        mock_request.assert_called_once_with(
+            "https://www.nature.com/test",
+            timeout=30,
+            headers={"User-Agent": "test"}
+        )
+
+    def test_request_max_retries_override(self, mocker):
+        """Test max_retries parameter overrides domain default."""
+        from lobster.tools.rate_limiter import rate_limited_request
+
+        # All responses: 429
+        mock_response = mocker.Mock(status_code=429)
+        mock_request = mocker.Mock(return_value=mock_response)
+
+        # Mock limiter
+        mock_limiter = mocker.Mock()
+        mock_limiter.detect_domain.return_value = "nature.com"
+        mock_limiter.get_max_retries.return_value = 3  # Default
+        mock_limiter.wait_for_slot.return_value = True
+        mock_limiter.should_retry.return_value = True
+        mock_limiter.calculate_backoff.return_value = 0.01
+
+        with patch(
+            "lobster.tools.rate_limiter.MultiDomainRateLimiter",
+            return_value=mock_limiter
+        ):
+            result = rate_limited_request(
+                "https://www.nature.com/test",
+                mock_request,
+                max_retries=1  # Override to 1
+            )
+
+        # Should try 2 times total (1 initial + 1 retry)
+        assert mock_request.call_count == 2
+        assert result.status_code == 429
+
+    def test_request_exception_handling(self, mocker):
+        """Test request handles exceptions with retry."""
+        from lobster.tools.rate_limiter import rate_limited_request
+
+        # First call raises exception, second succeeds
+        mock_response = mocker.Mock(status_code=200)
+        mock_request = mocker.Mock(side_effect=[ConnectionError("Network error"), mock_response])
+
+        # Mock limiter
+        mock_limiter = mocker.Mock()
+        mock_limiter.detect_domain.return_value = "nature.com"
+        mock_limiter.get_max_retries.return_value = 3
+        mock_limiter.wait_for_slot.return_value = True
+        mock_limiter.calculate_backoff.return_value = 0.01
+        mock_limiter.should_retry.return_value = False  # Don't retry on success
+
+        with patch(
+            "lobster.tools.rate_limiter.MultiDomainRateLimiter",
+            return_value=mock_limiter
+        ):
+            result = rate_limited_request("https://www.nature.com/test", mock_request)
+
+        assert result.status_code == 200
+        assert mock_request.call_count == 2
+
+    def test_request_exception_exhausted_retries(self, mocker):
+        """Test request raises exception when all retries exhausted."""
+        from lobster.tools.rate_limiter import rate_limited_request
+
+        # Always raise exception
+        mock_request = mocker.Mock(side_effect=ConnectionError("Network error"))
+
+        # Mock limiter
+        mock_limiter = mocker.Mock()
+        mock_limiter.detect_domain.return_value = "nature.com"
+        mock_limiter.get_max_retries.return_value = 2
+        mock_limiter.wait_for_slot.return_value = True
+        mock_limiter.calculate_backoff.return_value = 0.01
+
+        with patch(
+            "lobster.tools.rate_limiter.MultiDomainRateLimiter",
+            return_value=mock_limiter
+        ):
+            with pytest.raises(ConnectionError, match="Network error"):
+                rate_limited_request("https://www.nature.com/test", mock_request)
