@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import anndata
 import numpy as np
 import pandas as pd
+from scipy import sparse
 
 from lobster.core import FormulaError
 from lobster.core.analysis_ir import AnalysisStep
@@ -391,6 +392,9 @@ Next suggested step: Import quantification data with tximport for differential e
         group2: str,
         method: str = "deseq2_like",
         min_expression_threshold: float = 1.0,
+        min_fold_change: float = 1.5,
+        min_pct_expressed: float = 0.1,
+        max_out_pct_expressed: float = 0.5,
     ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Run differential expression analysis on bulk RNA-seq data.
@@ -402,6 +406,9 @@ Next suggested step: Import quantification data with tximport for differential e
             group2: Second group for comparison (e.g., 'treatment')
             method: Analysis method ('deseq2_like', 'wilcoxon', 't_test')
             min_expression_threshold: Minimum expression threshold for filtering
+            min_fold_change: Minimum fold-change threshold for biological significance (default: 1.5)
+            min_pct_expressed: Minimum fraction expressing in group1 (default: 0.1)
+            max_out_pct_expressed: Maximum fraction expressing in group2 (default: 0.5)
 
         Returns:
             Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
@@ -485,6 +492,92 @@ Next suggested step: Import quantification data with tximport for differential e
             # Add results to AnnData
             adata_de.uns[f"de_results_{group1}_vs_{group2}"] = results_df.to_dict()
 
+            # Add results columns to adata_de.var for filtering
+            for col in results_df.columns:
+                adata_de.var[col] = results_df[col]
+
+            # Store pre-filter count
+            pre_filter_gene_count = len(adata_de.var)
+
+            # Apply post-hoc filtering for biological significance
+            logger.info("Applying DEG filtering for biological significance...")
+
+            # Get expression data (convert sparse to dense if needed)
+            X_normalized = adata_de.X if not sparse.issparse(adata_de.X) else adata_de.X.toarray()
+
+            # Get group indices
+            group1_mask = adata_de.obs[groupby] == group1
+            group2_mask = adata_de.obs[groupby] == group2
+
+            group1_data_expr = X_normalized[group1_mask, :]
+            group2_data_expr = X_normalized[group2_mask, :]
+
+            # Calculate fractions expressing (expression > 1 in normalized counts)
+            group1_expressing = (group1_data_expr > 1).mean(axis=0)
+            group2_expressing = (group2_data_expr > 1).mean(axis=0)
+
+            # Get fold-change values
+            if 'log2FoldChange' in adata_de.var.columns:
+                fold_changes = np.abs(adata_de.var['log2FoldChange'].values)
+            else:
+                # Calculate from mean expression
+                group1_mean = group1_data_expr.mean(axis=0)
+                group2_mean = group2_data_expr.mean(axis=0)
+                fold_changes = np.abs(np.log2((group1_mean + 1) / (group2_mean + 1)))
+
+            # Create filter mask
+            filter_mask = (
+                (fold_changes >= np.log2(min_fold_change)) &  # Fold-change threshold
+                (group1_expressing >= min_pct_expressed) &    # Min expression in target
+                (group2_expressing <= max_out_pct_expressed)  # Max expression in comparison
+            )
+
+            # Apply filter
+            adata_de = adata_de[:, filter_mask].copy()
+            post_filter_gene_count = len(adata_de.var)
+            filtered_gene_count = pre_filter_gene_count - post_filter_gene_count
+
+            logger.info(
+                f"Filtered {filtered_gene_count} genes: {pre_filter_gene_count} -> {post_filter_gene_count} genes"
+            )
+
+            # Update results_df to match filtered genes
+            results_df = results_df.loc[adata_de.var_names]
+
+            # Calculate gene confidence scores
+            logger.info("Calculating gene confidence scores...")
+            confidence_scores, quality_categories = self._calculate_gene_confidence(
+                adata_de, method
+            )
+
+            # Handle empty confidence arrays (when all genes filtered out)
+            if len(confidence_scores) == 0:
+                logger.warning("No genes passed filtering criteria. Cannot calculate confidence scores.")
+                quality_dist = {'high': 0, 'medium': 0, 'low': 0}
+                mean_conf = 0.0
+                median_conf = 0.0
+                std_conf = 0.0
+            else:
+                # Add confidence columns to adata_de.var
+                adata_de.var['gene_confidence'] = confidence_scores
+                adata_de.var['gene_quality'] = quality_categories
+
+                # Calculate confidence distribution
+                quality_dist = {
+                    'high': int((quality_categories == 'high').sum()),
+                    'medium': int((quality_categories == 'medium').sum()),
+                    'low': int((quality_categories == 'low').sum()),
+                }
+
+                mean_conf = float(np.mean(confidence_scores))
+                median_conf = float(np.median(confidence_scores))
+                std_conf = float(np.std(confidence_scores))
+
+                logger.info(
+                    f"Confidence scores calculated: mean={mean_conf:.3f}, "
+                    f"quality distribution: {quality_dist}"
+                )
+
             # Count significant genes
             significant_genes = results_df[results_df["padj"] < 0.05]
             upregulated = significant_genes[significant_genes["log2FoldChange"] > 0]
@@ -513,6 +606,22 @@ Next suggested step: Import quantification data with tximport for differential e
                     10, "log2FoldChange"
                 ).index.tolist(),
                 "de_results_key": f"de_results_{group1}_vs_{group2}",
+                # Filtering statistics
+                "filtering_applied": True,
+                "filtering_params": {
+                    "min_fold_change": min_fold_change,
+                    "min_pct_expressed": min_pct_expressed,
+                    "max_out_pct_expressed": max_out_pct_expressed,
+                },
+                "pre_filter_gene_count": pre_filter_gene_count,
+                "post_filter_gene_count": post_filter_gene_count,
+                "filtered_gene_count": filtered_gene_count,
+                # Confidence statistics
+                "confidence_scoring": True,
+                "mean_confidence": mean_conf,
+                "median_confidence": median_conf,
+                "std_confidence": std_conf,
+                "quality_distribution": quality_dist,
             }
 
             logger.info(
@@ -526,6 +635,9 @@ Next suggested step: Import quantification data with tximport for differential e
                 group1=group1,
                 group2=group2,
                 min_expression_threshold=min_expression_threshold,
+                min_fold_change=min_fold_change,
+                min_pct_expressed=min_pct_expressed,
+                max_out_pct_expressed=max_out_pct_expressed,
             )
 
             return adata_de, de_stats, ir
@@ -1279,7 +1391,7 @@ Next suggested step: Import quantification data with tximport for differential e
         alpha: float = 0.05,
         shrink_lfc: bool = True,
         n_cpus: int = 1,
-    ) -> pd.DataFrame:
+    ) -> Tuple[pd.DataFrame, Dict[str, Any], AnalysisStep]:
         """
         Run pyDESeq2 differential expression analysis.
 
@@ -1293,7 +1405,10 @@ Next suggested step: Import quantification data with tximport for differential e
             n_cpus: Number of CPUs for parallel processing
 
         Returns:
-            pd.DataFrame: Differential expression results
+            Tuple[pd.DataFrame, Dict[str, Any], AnalysisStep]:
+                - Differential expression results DataFrame
+                - Analysis statistics dictionary
+                - Provenance tracking AnalysisStep
 
         Raises:
             PyDESeq2Error: If pyDESeq2 analysis fails
@@ -1369,7 +1484,42 @@ Next suggested step: Import quantification data with tximport for differential e
 
             logger.info(f"pyDESeq2 analysis completed: {len(results_df)} genes tested")
 
-            return results_df
+            # Extract statistics from results
+            n_significant = len(results_df[results_df["padj"] < alpha])
+            n_up = len(
+                results_df[
+                    (results_df["padj"] < alpha) & (results_df["log2FoldChange"] > 0)
+                ]
+            )
+            n_down = len(
+                results_df[
+                    (results_df["padj"] < alpha) & (results_df["log2FoldChange"] < 0)
+                ]
+            )
+
+            pydeseq2_stats = {
+                "method": "pydeseq2",
+                "formula": formula,
+                "contrast": contrast,
+                "alpha": alpha,
+                "shrink_lfc": shrink_lfc,
+                "total_genes_tested": len(results_df),
+                "n_significant_genes": n_significant,
+                "up_regulated": n_up,
+                "down_regulated": n_down,
+                "lfc_shrinkage_applied": shrink_lfc,
+            }
+
+            # Create provenance IR
+            ir = self._create_pydeseq2_ir(
+                formula=formula,
+                contrast=contrast,
+                alpha=alpha,
+                shrink_lfc=shrink_lfc,
+                n_cpus=n_cpus,
+            )
+
+            return results_df, pydeseq2_stats, ir
 
         except Exception as e:
             if isinstance(e, PyDESeq2Error):
@@ -1423,7 +1573,7 @@ Next suggested step: Import quantification data with tximport for differential e
             metadata = pseudobulk_adata.obs.copy()
 
             # Run pyDESeq2 analysis
-            results_df = self.run_pydeseq2_analysis(
+            results_df, pydeseq2_stats, ir = self.run_pydeseq2_analysis(
                 count_matrix, metadata, formula, contrast, **kwargs
             )
 
@@ -1678,6 +1828,99 @@ Next suggested step: Import quantification data with tximport for differential e
 
         return results_df
 
+    def _calculate_gene_confidence(
+        self,
+        adata_de: anndata.AnnData,
+        method: str
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Calculate per-gene confidence scores for differential expression results.
+
+        Confidence is based on:
+        1. FDR (adjusted p-value) - statistical significance
+        2. Log2 fold-change - biological significance
+        3. Expression level - data quality
+
+        Args:
+            adata_de: AnnData with DE results
+            method: DE method used
+
+        Returns:
+            Tuple of (confidence_scores, quality_categories)
+            - confidence_scores: Array of scores 0-1 (higher = more confident)
+            - quality_categories: Array of 'high', 'medium', 'low' categories
+        """
+        n_genes = adata_de.n_vars
+
+        # Handle empty case (all genes filtered out)
+        if n_genes == 0:
+            return np.array([]), np.array([])
+
+        confidence_scores = np.zeros(n_genes)
+        quality_categories = np.array(['low'] * n_genes, dtype=object)
+
+        # Get FDR values
+        if 'padj' in adata_de.var.columns:
+            fdr_values = adata_de.var['padj'].values
+        elif 'FDR' in adata_de.var.columns:
+            fdr_values = adata_de.var['FDR'].values
+        else:
+            # No FDR column, return low confidence for all
+            return confidence_scores, quality_categories
+
+        # Get fold-changes
+        if 'log2FoldChange' in adata_de.var.columns:
+            log2fc_values = np.abs(adata_de.var['log2FoldChange'].values)
+        elif 'logFC' in adata_de.var.columns:
+            log2fc_values = np.abs(adata_de.var['logFC'].values)
+        else:
+            # No FC column, use default
+            log2fc_values = np.ones(n_genes)
+
+        # Get mean expression (proxy for data quality)
+        if 'baseMean' in adata_de.var.columns:
+            mean_expr = adata_de.var['baseMean'].values
+        else:
+            # Calculate from data
+            mean_expr = np.array(adata_de.X.mean(axis=0)).flatten()
+
+        # Normalize mean expression to 0-1 scale
+        mean_expr_normalized = (mean_expr - mean_expr.min()) / (mean_expr.max() - mean_expr.min() + 1e-10)
+
+        # Calculate confidence score (0-1 scale)
+        for i in range(n_genes):
+            fdr = fdr_values[i]
+            log2fc = log2fc_values[i]
+            expr = mean_expr_normalized[i]
+
+            # Handle NaN values
+            if np.isnan(fdr) or np.isnan(log2fc):
+                confidence_scores[i] = 0.0
+                quality_categories[i] = 'low'
+                continue
+
+            # Confidence formula (0-1 scale):
+            # - FDR component: 1 - min(fdr, 1)
+            # - FC component: min(log2fc / 3, 1) (normalized to 0-1)
+            # - Expression component: expr (already 0-1)
+            fdr_score = 1.0 - min(fdr, 1.0)
+            fc_score = min(log2fc / 3.0, 1.0)  # log2FC of 3 = max score
+            expr_score = expr
+
+            # Weighted average (FDR most important)
+            confidence = (0.5 * fdr_score) + (0.3 * fc_score) + (0.2 * expr_score)
+            confidence_scores[i] = confidence
+
+            # Categorize quality
+            if fdr < 0.01 and log2fc > 1.5 and expr > 0.3:
+                quality_categories[i] = 'high'
+            elif fdr < 0.05 and log2fc > 1.0 and expr > 0.1:
+                quality_categories[i] = 'medium'
+            else:
+                quality_categories[i] = 'low'
+
+        return confidence_scores, quality_categories
+
     def _create_de_ir(
         self,
         method: str,
@@ -1685,6 +1928,9 @@ Next suggested step: Import quantification data with tximport for differential e
         group1: str,
         group2: str,
         min_expression_threshold: float = 1.0,
+        min_fold_change: float = 1.5,
+        min_pct_expressed: float = 0.1,
+        max_out_pct_expressed: float = 0.5,
     ) -> AnalysisStep:
         """Create AnalysisStep IR for differential expression analysis."""
 
@@ -1852,6 +2098,9 @@ results_df = pd.DataFrame({
                 "group1": group1,
                 "group2": group2,
                 "min_expression_threshold": min_expression_threshold,
+                "min_fold_change": min_fold_change,
+                "min_pct_expressed": min_pct_expressed,
+                "max_out_pct_expressed": max_out_pct_expressed,
             },
             parameter_schema={
                 "method": {
@@ -1876,6 +2125,21 @@ results_df = pd.DataFrame({
                     "type": "number",
                     "description": "Minimum expression threshold for gene filtering",
                     "default": 1.0,
+                },
+                "min_fold_change": {
+                    "type": "number",
+                    "description": "Minimum fold-change threshold for biological significance",
+                    "default": 1.5,
+                },
+                "min_pct_expressed": {
+                    "type": "number",
+                    "description": "Minimum fraction expressing in group1",
+                    "default": 0.1,
+                },
+                "max_out_pct_expressed": {
+                    "type": "number",
+                    "description": "Maximum fraction expressing in group2",
+                    "default": 0.5,
                 },
             },
             input_entities=["adata"],

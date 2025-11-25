@@ -976,15 +976,14 @@ class TestIRGeneration:
             groupby="condition",
             group1="treatment",
             group2="control",
-            min_logfoldchange=0.5,
-            fdr_threshold=0.05
+            min_expression_threshold=1.0
         )
 
         # Verify AnalysisStep structure
         assert ir.operation == "differential_expression"
         assert ir.tool_name == "BulkRNASeqService.run_differential_expression_analysis"
         assert "deseq2_like" in ir.description.lower()
-        assert ir.library == "scipy.stats + statsmodels"
+        assert ir.library == "scipy"
 
         # Verify code template
         assert ir.code_template is not None
@@ -1050,13 +1049,13 @@ class TestIRGeneration:
             databases=databases,
             gene_list=gene_list,
             organism="human",
-            pvalue_threshold=0.05
+            analysis_type="GO"
         )
 
         # Verify structure
         assert ir.operation == "pathway_enrichment"
         assert ir.tool_name == "BulkRNASeqService.run_pathway_enrichment"
-        assert "enrichment" in ir.description.lower()
+        assert "over-representation" in ir.description.lower() or "ora" in ir.description.lower()
         assert ir.library == "gseapy"
 
         # Verify code template
@@ -1205,8 +1204,7 @@ class TestIRGeneration:
             groupby="condition",
             group1="treated",
             group2="control",
-            min_logfoldchange=0.5,
-            fdr_threshold=0.05
+            min_expression_threshold=1.0
         )
 
         template_de = Template(ir_de.code_template)
