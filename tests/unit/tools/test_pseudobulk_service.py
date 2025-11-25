@@ -207,18 +207,22 @@ class TestPseudobulkServiceAggregation:
             )
             mock_from_source.return_value = pseudobulk_result
 
-            result = pseudobulk_service.aggregate_to_pseudobulk(
+            result_adata, result_stats, result_ir = pseudobulk_service.aggregate_to_pseudobulk(
                 mock_single_cell_data,
                 sample_col="sample_id",
                 celltype_col="cell_type",
                 min_cells=20,
             )
 
-            assert isinstance(result, ad.AnnData)
+            # Verify 3-tuple return
+            assert isinstance(result_adata, ad.AnnData)
+            assert isinstance(result_stats, dict)
+            assert hasattr(result_ir, 'operation')
+
             # Should have fewer observations than original (aggregated)
-            assert result.n_obs < mock_single_cell_data.n_obs
+            assert result_adata.n_obs < mock_single_cell_data.n_obs
             # Should have same number of genes
-            assert result.n_vars == mock_single_cell_data.n_vars
+            assert result_adata.n_vars == mock_single_cell_data.n_vars
 
     def test_aggregate_methods(self, pseudobulk_service):
         """Test different aggregation methods."""
@@ -719,3 +723,747 @@ class TestPseudobulkServiceErrorHandling:
         self, pseudobulk_service, mock_single_cell_data
     ):
         """Test that specific errors are not wrapped."""
+        # AggregationError should propagate without wrapping
+        with pytest.raises(AggregationError):
+            pseudobulk_service.aggregate_to_pseudobulk(
+                mock_single_cell_data, "nonexistent_col", "cell_type"
+            )
+
+
+@pytest.mark.unit
+class TestPseudobulkAggregation:
+    """Comprehensive tests for pseudobulk aggregation logic."""
+
+    def test_aggregate_basic_sum(self, pseudobulk_service):
+        """Test basic sum aggregation."""
+        np.random.seed(42)
+        n_cells = 100
+        n_genes = 50
+
+        X = np.random.negative_binomial(n=5, p=0.5, size=(n_cells, n_genes))
+        obs = pd.DataFrame({
+            'sample': ['sample1'] * 30 + ['sample2'] * 30 + ['sample3'] * 40,
+            'celltype': (['T_cell'] * 15 + ['B_cell'] * 15) * 2 + ['T_cell'] * 20 + ['B_cell'] * 20
+        })
+
+        adata = ad.AnnData(
+            X=X,
+            obs=obs,
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(n_genes)])
+        )
+
+        with patch.object(pseudobulk_service.adapter, 'from_source') as mock_from_source:
+            # Mock returns the input as-is
+            mock_from_source.side_effect = lambda x, **kwargs: x
+
+            adata_pb, stats, ir = pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype',
+                aggregation_method='sum',
+                min_genes=0  # Disable filtering for test
+            )
+
+        # Verify basic structure
+        assert isinstance(adata_pb, ad.AnnData)
+        assert adata_pb.n_obs > 0
+        assert adata_pb.n_vars == n_genes
+
+    def test_aggregate_basic_mean(self, pseudobulk_service):
+        """Test mean aggregation."""
+        np.random.seed(42)
+        X = np.array([[10, 20], [30, 40], [50, 60]])
+        obs = pd.DataFrame({
+            'sample': ['s1', 's1', 's1'],
+            'celltype': ['T', 'T', 'T']
+        })
+
+        adata = ad.AnnData(
+            X=X,
+            obs=obs,
+            var=pd.DataFrame(index=['gene1', 'gene2'])
+        )
+
+        with patch.object(pseudobulk_service.adapter, 'from_source') as mock_from_source:
+            mock_from_source.side_effect = lambda x, **kwargs: x
+
+            adata_pb, stats, ir = pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype',
+                aggregation_method='mean',
+                min_cells=1,
+                min_genes=0  # Disable filtering for test
+            )
+
+        # Mean should be [30, 40] for the single group
+        expected_mean = np.array([30, 40])
+        np.testing.assert_array_almost_equal(adata_pb.X[0], expected_mean)
+
+    def test_aggregate_basic_median(self, pseudobulk_service):
+        """Test median aggregation."""
+        np.random.seed(42)
+        X = np.array([[10, 20], [30, 40], [50, 60]])
+        obs = pd.DataFrame({
+            'sample': ['s1', 's1', 's1'],
+            'celltype': ['T', 'T', 'T']
+        })
+
+        adata = ad.AnnData(
+            X=X,
+            obs=obs,
+            var=pd.DataFrame(index=['gene1', 'gene2'])
+        )
+
+        with patch.object(pseudobulk_service.adapter, 'from_source') as mock_from_source:
+            mock_from_source.side_effect = lambda x, **kwargs: x
+
+            adata_pb, stats, ir = pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype',
+                aggregation_method='median',
+                min_cells=1,
+                min_genes=0  # Disable filtering for test
+            )
+
+        # Median should be [30, 40] for the single group
+        expected_median = np.array([30, 40])
+        np.testing.assert_array_almost_equal(adata_pb.X[0], expected_median)
+
+    def test_aggregate_returns_three_tuple(self, pseudobulk_service):
+        """Verify 3-tuple return (adata, stats, ir)."""
+        np.random.seed(42)
+        X = np.random.negative_binomial(5, 0.5, (50, 30))
+        obs = pd.DataFrame({
+            'sample': ['s1'] * 25 + ['s2'] * 25,
+            'celltype': ['T'] * 12 + ['B'] * 13 + ['T'] * 13 + ['B'] * 12
+        })
+
+        adata = ad.AnnData(
+            X=X,
+            obs=obs,
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(30)])
+        )
+
+        with patch.object(pseudobulk_service.adapter, 'from_source') as mock_from_source:
+            mock_from_source.side_effect = lambda x, **kwargs: x
+
+            result = pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype'
+            )
+
+        # Verify 3-tuple
+        assert isinstance(result, tuple)
+        assert len(result) == 3
+
+        adata_pb, stats, ir = result
+
+        # Verify types
+        assert isinstance(adata_pb, ad.AnnData)
+        assert isinstance(stats, dict)
+        assert hasattr(ir, 'operation')  # AnalysisStep
+
+    def test_aggregate_min_cells_filter(self, pseudobulk_service):
+        """Test min_cells threshold filtering."""
+        np.random.seed(42)
+        # Create data with variable cell counts per group
+        X = np.random.negative_binomial(5, 0.5, (100, 50))
+        obs = pd.DataFrame({
+            'sample': ['s1'] * 5 + ['s2'] * 25 + ['s3'] * 70,  # s1 has only 5 cells
+            'celltype': ['T'] * 100
+        })
+
+        adata = ad.AnnData(
+            X=X,
+            obs=obs,
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(50)])
+        )
+
+        with patch.object(pseudobulk_service.adapter, 'from_source') as mock_from_source:
+            mock_from_source.side_effect = lambda x, **kwargs: x
+
+            adata_pb, stats, ir = pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype',
+                min_cells=20,
+                min_genes=0  # Disable filtering for test
+            )
+
+        # s1_T should be filtered out (only 5 cells < 20 threshold)
+        assert adata_pb.n_obs == 2  # Only s2_T and s3_T remain
+        assert all(adata_pb.obs['n_cells_aggregated'] >= 20)
+
+    def test_aggregate_creates_correct_obs(self, pseudobulk_service):
+        """Verify obs columns (sample_id, cell_type, n_cells_aggregated)."""
+        np.random.seed(42)
+        X = np.random.negative_binomial(5, 0.5, (60, 30))
+        obs = pd.DataFrame({
+            'sample': ['s1'] * 30 + ['s2'] * 30,
+            'celltype': ['T'] * 15 + ['B'] * 15 + ['T'] * 15 + ['B'] * 15
+        })
+
+        adata = ad.AnnData(
+            X=X,
+            obs=obs,
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(30)])
+        )
+
+        with patch.object(pseudobulk_service.adapter, 'from_source') as mock_from_source:
+            mock_from_source.side_effect = lambda x, **kwargs: x
+
+            adata_pb, stats, ir = pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype',
+                min_cells=10
+            )
+
+        # Verify required columns
+        assert 'sample_id' in adata_pb.obs.columns
+        assert 'cell_type' in adata_pb.obs.columns
+        assert 'n_cells_aggregated' in adata_pb.obs.columns
+
+        # Verify values
+        assert adata_pb.obs['sample_id'].nunique() <= 2
+        assert adata_pb.obs['cell_type'].nunique() <= 2
+        assert all(adata_pb.obs['n_cells_aggregated'] >= 10)
+
+    def test_aggregate_preserves_var(self, pseudobulk_service):
+        """Test that var/var_names are preserved."""
+        np.random.seed(42)
+        gene_names = [f"GENE_{i}" for i in range(50)]
+        X = np.random.negative_binomial(5, 0.5, (60, 50))
+        obs = pd.DataFrame({
+            'sample': ['s1'] * 30 + ['s2'] * 30,
+            'celltype': ['T'] * 30 + ['B'] * 30
+        })
+
+        var = pd.DataFrame({
+            'gene_symbol': gene_names,
+            'feature_type': ['Gene'] * 50
+        }, index=gene_names)
+
+        adata = ad.AnnData(X=X, obs=obs, var=var)
+
+        with patch.object(pseudobulk_service.adapter, 'from_source') as mock_from_source:
+            mock_from_source.side_effect = lambda x, **kwargs: x
+
+            adata_pb, stats, ir = pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype'
+            )
+
+        # Var should be preserved (or filtered but not altered)
+        assert 'gene_symbol' in adata_pb.var.columns
+        assert 'feature_type' in adata_pb.var.columns
+
+    def test_aggregate_handles_sparse_matrix(self, pseudobulk_service):
+        """Test with scipy sparse matrices."""
+        np.random.seed(42)
+        X_dense = np.random.negative_binomial(5, 0.5, (100, 50))
+        X_sparse = sparse.csr_matrix(X_dense)
+
+        obs = pd.DataFrame({
+            'sample': ['s1'] * 50 + ['s2'] * 50,
+            'celltype': ['T'] * 25 + ['B'] * 25 + ['T'] * 25 + ['B'] * 25
+        })
+
+        adata = ad.AnnData(
+            X=X_sparse,
+            obs=obs,
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(50)])
+        )
+
+        with patch.object(pseudobulk_service.adapter, 'from_source') as mock_from_source:
+            mock_from_source.side_effect = lambda x, **kwargs: x
+
+            adata_pb, stats, ir = pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype',
+                min_genes=0  # Disable filtering for test
+            )
+
+        # Should work with sparse input
+        assert adata_pb.n_obs > 0
+        assert adata_pb.n_vars == 50
+
+    def test_aggregate_with_normalization(self, pseudobulk_service):
+        """Test normalization before aggregation (using mean method)."""
+        np.random.seed(42)
+        X = np.random.negative_binomial(5, 0.5, (60, 30))
+        obs = pd.DataFrame({
+            'sample': ['s1'] * 30 + ['s2'] * 30,
+            'celltype': ['T'] * 30 + ['B'] * 30
+        })
+
+        adata = ad.AnnData(
+            X=X,
+            obs=obs,
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(30)])
+        )
+
+        with patch.object(pseudobulk_service.adapter, 'from_source') as mock_from_source:
+            mock_from_source.side_effect = lambda x, **kwargs: x
+
+            adata_pb, stats, ir = pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype',
+                aggregation_method='mean'  # Normalized aggregation
+            )
+
+        assert stats['aggregation_method'] == 'mean'
+
+    def test_aggregate_handles_missing_columns(self, pseudobulk_service):
+        """Error handling for missing obs columns."""
+        X = np.random.negative_binomial(5, 0.5, (50, 30))
+        obs = pd.DataFrame({
+            'sample': ['s1'] * 25 + ['s2'] * 25,
+            'celltype': ['T'] * 25 + ['B'] * 25
+        })
+
+        adata = ad.AnnData(
+            X=X,
+            obs=obs,
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(30)])
+        )
+
+        with pytest.raises(AggregationError, match="not found"):
+            pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='nonexistent',
+                celltype_col='celltype'
+            )
+
+
+@pytest.mark.unit
+class TestPseudobulkIR:
+    """Test AnalysisStep IR generation and structure."""
+
+    def test_create_pseudobulk_ir_structure(self, pseudobulk_service):
+        """Validate IR completeness."""
+        ir = pseudobulk_service._create_pseudobulk_ir(
+            sample_col='sample',
+            celltype_col='celltype',
+            aggregation_method='sum',
+            min_cells=10
+        )
+
+        # Required fields
+        assert hasattr(ir, 'operation')
+        assert hasattr(ir, 'tool_name')
+        assert hasattr(ir, 'description')
+        assert hasattr(ir, 'library')
+        assert hasattr(ir, 'code_template')
+        assert hasattr(ir, 'imports')
+        assert hasattr(ir, 'parameters')
+        assert hasattr(ir, 'parameter_schema')
+        assert hasattr(ir, 'input_entities')
+        assert hasattr(ir, 'output_entities')
+
+        # Verify values
+        assert ir.operation == "pseudobulk_aggregation"
+        assert ir.tool_name == "PseudobulkService.aggregate_to_pseudobulk"
+        assert ir.library == "scanpy + numpy"
+
+    def test_pseudobulk_ir_parameter_schema(self, pseudobulk_service):
+        """Validate parameter schema."""
+        ir = pseudobulk_service._create_pseudobulk_ir(
+            sample_col='sample',
+            celltype_col='celltype',
+            aggregation_method='mean',
+            min_cells=20
+        )
+
+        schema = ir.parameter_schema
+
+        # Check required parameters
+        assert 'sample_col' in schema
+        assert 'celltype_col' in schema
+        assert 'aggregation_method' in schema
+        assert 'min_cells' in schema
+
+        # Check schema structure
+        assert schema['sample_col']['type'] == 'string'
+        assert schema['celltype_col']['type'] == 'string'
+        assert schema['aggregation_method']['type'] == 'string'
+        assert schema['aggregation_method']['enum'] == ['sum', 'mean', 'median']
+        assert schema['min_cells']['type'] == 'integer'
+
+    def test_pseudobulk_ir_code_template_renders(self, pseudobulk_service):
+        """Test Jinja2 code template rendering."""
+        from jinja2 import Template
+
+        ir = pseudobulk_service._create_pseudobulk_ir(
+            sample_col='sample_id',
+            celltype_col='cell_type',
+            aggregation_method='sum',
+            min_cells=10
+        )
+
+        template = Template(ir.code_template)
+        rendered = template.render(**ir.parameters)
+
+        # Verify rendering works
+        assert isinstance(rendered, str)
+        assert 'sample_id' in rendered
+        assert 'cell_type' in rendered
+        assert '10' in rendered  # min_cells value
+
+    def test_pseudobulk_ir_imports(self, pseudobulk_service):
+        """Validate imports list."""
+        ir = pseudobulk_service._create_pseudobulk_ir(
+            sample_col='sample',
+            celltype_col='celltype',
+            aggregation_method='sum',
+            min_cells=10
+        )
+
+        assert isinstance(ir.imports, list)
+        assert len(ir.imports) > 0
+
+        # Check for standard imports
+        import_str = ' '.join(ir.imports)
+        assert 'scanpy' in import_str
+        assert 'pandas' in import_str
+        assert 'numpy' in import_str
+
+    def test_pseudobulk_ir_entities(self, pseudobulk_service):
+        """Verify input/output entities."""
+        ir = pseudobulk_service._create_pseudobulk_ir(
+            sample_col='sample',
+            celltype_col='celltype',
+            aggregation_method='sum',
+            min_cells=10
+        )
+
+        assert isinstance(ir.input_entities, list)
+        assert isinstance(ir.output_entities, list)
+        assert len(ir.input_entities) > 0
+        assert len(ir.output_entities) > 0
+        assert 'singlecell_adata' in ir.input_entities
+        assert 'pseudobulk_adata' in ir.output_entities
+
+
+@pytest.mark.unit
+class TestPseudobulkStatistics:
+    """Test statistics tracking and reporting."""
+
+    def test_stats_include_all_metrics(self, pseudobulk_service):
+        """Verify stats dict completeness."""
+        np.random.seed(42)
+        X = np.random.negative_binomial(5, 0.5, (100, 50))
+        obs = pd.DataFrame({
+            'sample': ['s1'] * 30 + ['s2'] * 30 + ['s3'] * 40,
+            'celltype': ['T'] * 50 + ['B'] * 50
+        })
+
+        adata = ad.AnnData(
+            X=X,
+            obs=obs,
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(50)])
+        )
+
+        with patch.object(pseudobulk_service.adapter, 'from_source') as mock_from_source:
+            mock_from_source.side_effect = lambda x, **kwargs: x
+
+            adata_pb, stats, ir = pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype'
+            )
+
+        required_keys = [
+            'n_pseudobulk_samples',
+            'n_genes',
+            'n_unique_samples',
+            'n_cell_types',
+            'total_cells_processed',
+            'total_cells_aggregated',
+            'aggregation_method'
+        ]
+
+        for key in required_keys:
+            assert key in stats, f"Missing key: {key}"
+
+    def test_stats_cell_counts(self, pseudobulk_service):
+        """Check n_cells_per_pseudobulk tracking."""
+        np.random.seed(42)
+        X = np.random.negative_binomial(5, 0.5, (90, 30))
+        obs = pd.DataFrame({
+            'sample': ['s1'] * 30 + ['s2'] * 30 + ['s3'] * 30,
+            'celltype': ['T'] * 30 + ['B'] * 30 + ['T'] * 30
+        })
+
+        adata = ad.AnnData(
+            X=X,
+            obs=obs,
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(30)])
+        )
+
+        with patch.object(pseudobulk_service.adapter, 'from_source') as mock_from_source:
+            mock_from_source.side_effect = lambda x, **kwargs: x
+
+            adata_pb, stats, ir = pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype',
+                min_cells=10
+            )
+
+        # Each pseudobulk should have cell count tracked
+        assert 'n_cells_aggregated' in adata_pb.obs.columns
+        assert all(adata_pb.obs['n_cells_aggregated'] >= 10)
+
+    def test_stats_sample_counts(self, pseudobulk_service):
+        """Verify n_samples and n_celltypes."""
+        np.random.seed(42)
+        X = np.random.negative_binomial(5, 0.5, (120, 40))
+        obs = pd.DataFrame({
+            'sample': ['s1'] * 40 + ['s2'] * 40 + ['s3'] * 40,
+            'celltype': (['T'] * 20 + ['B'] * 20) * 3
+        })
+
+        adata = ad.AnnData(
+            X=X,
+            obs=obs,
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(40)])
+        )
+
+        with patch.object(pseudobulk_service.adapter, 'from_source') as mock_from_source:
+            mock_from_source.side_effect = lambda x, **kwargs: x
+
+            adata_pb, stats, ir = pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype',
+                min_genes=0  # Disable filtering for test
+            )
+
+        assert stats['n_unique_samples'] == 3
+        assert stats['n_cell_types'] == 2
+
+    def test_stats_min_max_cells(self, pseudobulk_service):
+        """Check min/max cells per pseudobulk (via uns)."""
+        np.random.seed(42)
+        # Create uneven groups
+        X = np.random.negative_binomial(5, 0.5, (100, 30))
+        obs = pd.DataFrame({
+            'sample': ['s1'] * 20 + ['s2'] * 80,  # Uneven
+            'celltype': ['T'] * 20 + ['T'] * 80
+        })
+
+        adata = ad.AnnData(
+            X=X,
+            obs=obs,
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(30)])
+        )
+
+        with patch.object(pseudobulk_service.adapter, 'from_source') as mock_from_source:
+            mock_from_source.side_effect = lambda x, **kwargs: x
+
+            adata_pb, stats, ir = pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype',
+                min_cells=10
+            )
+
+        # Check that uns contains aggregation stats
+        assert 'aggregation_stats' in adata_pb.uns
+        agg_stats = adata_pb.uns['aggregation_stats']
+        assert 'mean_cells_per_pseudobulk' in agg_stats
+
+    def test_stats_filtered_counts(self, pseudobulk_service):
+        """Verify filtered pseudobulk counts."""
+        np.random.seed(42)
+        X = np.random.negative_binomial(5, 0.5, (100, 30))
+        obs = pd.DataFrame({
+            'sample': ['s1'] * 5 + ['s2'] * 25 + ['s3'] * 70,  # s1 has too few
+            'celltype': ['T'] * 100
+        })
+
+        adata = ad.AnnData(
+            X=X,
+            obs=obs,
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(30)])
+        )
+
+        with patch.object(pseudobulk_service.adapter, 'from_source') as mock_from_source:
+            mock_from_source.side_effect = lambda x, **kwargs: x
+
+            adata_pb, stats, ir = pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype',
+                min_cells=20
+            )
+
+        # Check filtering happened
+        assert 'aggregation_stats' in adata_pb.uns
+        agg_stats = adata_pb.uns['aggregation_stats']
+        assert 'excluded_groups' in agg_stats
+
+
+@pytest.mark.unit
+class TestPseudobulkEdgeCases:
+    """Test edge cases and error conditions."""
+
+    def test_single_sample(self, pseudobulk_service):
+        """Handle single sample edge case."""
+        np.random.seed(42)
+        X = np.random.negative_binomial(5, 0.5, (50, 30))
+        obs = pd.DataFrame({
+            'sample': ['s1'] * 50,  # Only one sample
+            'celltype': ['T'] * 25 + ['B'] * 25
+        })
+
+        adata = ad.AnnData(
+            X=X,
+            obs=obs,
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(30)])
+        )
+
+        with patch.object(pseudobulk_service.adapter, 'from_source') as mock_from_source:
+            mock_from_source.side_effect = lambda x, **kwargs: x
+
+            adata_pb, stats, ir = pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype',
+                min_genes=0  # Disable filtering for test
+            )
+
+        assert adata_pb.n_obs == 2  # s1_T and s1_B
+        assert stats['n_unique_samples'] == 1
+
+    def test_single_celltype(self, pseudobulk_service):
+        """Handle single cell type."""
+        np.random.seed(42)
+        X = np.random.negative_binomial(5, 0.5, (60, 30))
+        obs = pd.DataFrame({
+            'sample': ['s1'] * 30 + ['s2'] * 30,
+            'celltype': ['T'] * 60  # Only one cell type
+        })
+
+        adata = ad.AnnData(
+            X=X,
+            obs=obs,
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(30)])
+        )
+
+        with patch.object(pseudobulk_service.adapter, 'from_source') as mock_from_source:
+            mock_from_source.side_effect = lambda x, **kwargs: x
+
+            adata_pb, stats, ir = pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype',
+                min_genes=0  # Disable filtering for test
+            )
+
+        assert adata_pb.n_obs == 2  # s1_T and s2_T
+        assert stats['n_cell_types'] == 1
+
+    def test_no_pseudobulks_above_threshold(self, pseudobulk_service):
+        """All groups below min_cells."""
+        np.random.seed(42)
+        X = np.random.negative_binomial(5, 0.5, (30, 20))
+        obs = pd.DataFrame({
+            'sample': ['s1'] * 5 + ['s2'] * 10 + ['s3'] * 15,
+            'celltype': ['T'] * 30
+        })
+
+        adata = ad.AnnData(
+            X=X,
+            obs=obs,
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(20)])
+        )
+
+        with pytest.raises(InsufficientCellsError):
+            pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype',
+                min_cells=50  # Too high
+            )
+
+    def test_uneven_cell_counts(self, pseudobulk_service):
+        """Highly variable cell counts per group."""
+        np.random.seed(42)
+        X = np.random.negative_binomial(5, 0.5, (150, 30))
+        obs = pd.DataFrame({
+            'sample': ['s1'] * 10 + ['s2'] * 140,  # Very uneven
+            'celltype': ['T'] * 10 + ['T'] * 70 + ['B'] * 70
+        })
+
+        adata = ad.AnnData(
+            X=X,
+            obs=obs,
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(30)])
+        )
+
+        with patch.object(pseudobulk_service.adapter, 'from_source') as mock_from_source:
+            mock_from_source.side_effect = lambda x, **kwargs: x
+
+            adata_pb, stats, ir = pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype',
+                min_cells=10,
+                min_genes=0  # Disable filtering for test
+            )
+
+        # Should handle uneven distribution
+        assert adata_pb.n_obs >= 1
+        cell_counts = adata_pb.obs['n_cells_aggregated'].values
+        assert max(cell_counts) > min(cell_counts)
+
+    def test_empty_anndata(self, pseudobulk_service):
+        """Error handling for empty AnnData."""
+        adata = ad.AnnData(
+            X=np.array([]).reshape(0, 10),
+            obs=pd.DataFrame({'sample': [], 'celltype': []}),
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(10)])
+        )
+
+        with pytest.raises((InsufficientCellsError, AggregationError)):
+            pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype'
+            )
+
+    def test_duplicate_sample_celltype_pairs(self, pseudobulk_service):
+        """Handles duplicates gracefully (shouldn't happen but test anyway)."""
+        np.random.seed(42)
+        X = np.random.negative_binomial(5, 0.5, (60, 30))
+        obs = pd.DataFrame({
+            'sample': ['s1'] * 60,
+            'celltype': ['T'] * 60  # All same group
+        })
+
+        adata = ad.AnnData(
+            X=X,
+            obs=obs,
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(30)])
+        )
+
+        with patch.object(pseudobulk_service.adapter, 'from_source') as mock_from_source:
+            mock_from_source.side_effect = lambda x, **kwargs: x
+
+            adata_pb, stats, ir = pseudobulk_service.aggregate_to_pseudobulk(
+                adata,
+                sample_col='sample',
+                celltype_col='celltype',
+                min_genes=0  # Disable filtering for test
+            )
+
+        # Should create single pseudobulk sample
+        assert adata_pb.n_obs == 1

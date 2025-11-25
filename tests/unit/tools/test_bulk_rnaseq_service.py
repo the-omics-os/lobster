@@ -542,6 +542,26 @@ class TestDifferentialExpression:
 # ===============================================================================
 
 
+@pytest.fixture
+def pydeseq2_count_matrix():
+    """Count matrix for pyDESeq2 tests (integers)."""
+    np.random.seed(42)
+    return pd.DataFrame(
+        np.random.negative_binomial(n=10, p=0.5, size=(100, 6)),
+        index=[f"gene_{i}" for i in range(100)],
+        columns=[f"sample_{i}" for i in range(6)]
+    )
+
+
+@pytest.fixture
+def pydeseq2_metadata():
+    """Metadata for pyDESeq2 tests."""
+    return pd.DataFrame({
+        'condition': ['control', 'control', 'control', 'treated', 'treated', 'treated'],
+        'batch': ['batch1', 'batch1', 'batch2', 'batch1', 'batch2', 'batch2']
+    }, index=[f"sample_{i}" for i in range(6)])
+
+
 @pytest.mark.unit
 class TestPyDESeq2Integration:
     """Test pyDESeq2 integration functionality."""
@@ -556,10 +576,10 @@ class TestPyDESeq2Integration:
             assert isinstance(result, dict)
             assert "pydeseq2_available" in result
 
-    def test_run_pydeseq2_analysis(
-        self, bulk_service, mock_salmon_results, mock_design_matrix
+    def test_run_pydeseq2_analysis_basic(
+        self, bulk_service, pydeseq2_count_matrix, pydeseq2_metadata
     ):
-        """Test running pyDESeq2 analysis."""
+        """Test basic pyDESeq2 workflow."""
         with patch.object(bulk_service, "validate_pydeseq2_setup") as mock_validate:
             mock_validate.return_value = {
                 "pydeseq2": True,
@@ -571,30 +591,264 @@ class TestPyDESeq2Integration:
             with patch("pydeseq2.dds.DeseqDataSet") as mock_dds_class:
                 with patch("pydeseq2.ds.DeseqStats") as mock_ds_class:
                     with patch("pydeseq2.default_inference.DefaultInference"):
+                        # Mock the DDS object
+                        mock_dds = Mock()
+                        mock_dds_class.return_value = mock_dds
+
                         # Mock the results
                         mock_ds = Mock()
                         mock_ds.results_df = pd.DataFrame(
                             {
-                                "baseMean": [100, 200],
-                                "log2FoldChange": [1.5, -0.8],
-                                "pvalue": [0.01, 0.05],
-                                "padj": [0.05, 0.15],
-                            }
+                                "baseMean": [100, 200, 50],
+                                "log2FoldChange": [1.5, -0.8, 2.1],
+                                "lfcSE": [0.3, 0.2, 0.4],
+                                "stat": [5.0, -4.0, 5.25],
+                                "pvalue": [0.001, 0.01, 0.0005],
+                                "padj": [0.01, 0.05, 0.005],
+                            },
+                            index=['gene_0', 'gene_1', 'gene_2']
                         )
                         mock_ds_class.return_value = mock_ds
 
-                        result = bulk_service.run_pydeseq2_analysis(
-                            count_matrix=mock_salmon_results["count_matrix"],
-                            metadata=mock_design_matrix,
-                            formula="~ condition",
-                            contrast=["condition", "treatment", "control"],
+                        results_df, stats, ir = bulk_service.run_pydeseq2_analysis(
+                            count_matrix=pydeseq2_count_matrix,
+                            metadata=pydeseq2_metadata,
+                            formula="~condition",
+                            contrast=["condition", "treated", "control"],
                         )
 
-                        # The method returns a DataFrame, not a string
-                        assert isinstance(result, pd.DataFrame)
-                        assert len(result) == 2
-                        assert "baseMean" in result.columns
-                        assert "log2FoldChange" in result.columns
+                        # Verify 3-tuple return
+                        assert isinstance(results_df, pd.DataFrame)
+                        assert isinstance(stats, dict)
+                        assert hasattr(ir, 'operation')
+
+                        # Verify DataFrame structure
+                        assert "baseMean" in results_df.columns
+                        assert "log2FoldChange" in results_df.columns
+                        assert "padj" in results_df.columns
+
+                        # Verify stats
+                        assert "method" in stats
+                        assert stats["method"] == "pydeseq2"
+                        assert "total_genes_tested" in stats
+
+    def test_run_pydeseq2_analysis_with_shrinkage(
+        self, bulk_service, pydeseq2_count_matrix, pydeseq2_metadata
+    ):
+        """Test pyDESeq2 with LFC shrinkage."""
+        with patch.object(bulk_service, "validate_pydeseq2_setup") as mock_validate:
+            mock_validate.return_value = {
+                "pydeseq2": True,
+                "pydeseq2_inference": True,
+                "numba": True,
+                "statsmodels": True,
+            }
+
+            with patch("pydeseq2.dds.DeseqDataSet"):
+                with patch("pydeseq2.ds.DeseqStats") as mock_ds_class:
+                    with patch("pydeseq2.default_inference.DefaultInference"):
+                        mock_ds = Mock()
+                        mock_ds.results_df = pd.DataFrame({
+                            "baseMean": [100],
+                            "log2FoldChange": [1.2],  # Shrunk value
+                            "pvalue": [0.01],
+                            "padj": [0.05],
+                        })
+                        mock_ds.lfc_shrink = Mock()  # Mock shrinkage method
+                        mock_ds_class.return_value = mock_ds
+
+                        results_df, stats, ir = bulk_service.run_pydeseq2_analysis(
+                            count_matrix=pydeseq2_count_matrix,
+                            metadata=pydeseq2_metadata,
+                            formula="~condition",
+                            contrast=["condition", "treated", "control"],
+                            shrink_lfc=True,
+                        )
+
+                        # Verify shrinkage was called
+                        mock_ds.lfc_shrink.assert_called_once()
+
+                        # Verify stats indicate shrinkage
+                        assert stats["shrink_lfc"] == True
+                        assert stats["lfc_shrinkage_applied"] == True
+
+    def test_run_pydeseq2_analysis_returns_three_tuple(
+        self, bulk_service, pydeseq2_count_matrix, pydeseq2_metadata
+    ):
+        """Test that pyDESeq2 returns 3-tuple (results, stats, IR)."""
+        with patch.object(bulk_service, "validate_pydeseq2_setup") as mock_validate:
+            mock_validate.return_value = {"pydeseq2": True, "pydeseq2_inference": True}
+
+            with patch("pydeseq2.dds.DeseqDataSet"):
+                with patch("pydeseq2.ds.DeseqStats") as mock_ds_class:
+                    with patch("pydeseq2.default_inference.DefaultInference"):
+                        mock_ds = Mock()
+                        mock_ds.results_df = pd.DataFrame({
+                            "baseMean": [100],
+                            "log2FoldChange": [1.5],
+                            "pvalue": [0.01],
+                            "padj": [0.05],
+                        })
+                        mock_ds_class.return_value = mock_ds
+
+                        result = bulk_service.run_pydeseq2_analysis(
+                            count_matrix=pydeseq2_count_matrix,
+                            metadata=pydeseq2_metadata,
+                            formula="~condition",
+                            contrast=["condition", "treated", "control"],
+                        )
+
+                        # Verify 3-tuple
+                        assert isinstance(result, tuple)
+                        assert len(result) == 3
+
+                        results_df, stats, ir = result
+                        assert isinstance(results_df, pd.DataFrame)
+                        assert isinstance(stats, dict)
+                        assert hasattr(ir, 'operation')
+
+    def test_pydeseq2_ir_structure(
+        self, bulk_service, pydeseq2_count_matrix, pydeseq2_metadata
+    ):
+        """Test that pyDESeq2 IR is complete and correct."""
+        with patch.object(bulk_service, "validate_pydeseq2_setup") as mock_validate:
+            mock_validate.return_value = {"pydeseq2": True, "pydeseq2_inference": True}
+
+            with patch("pydeseq2.dds.DeseqDataSet"):
+                with patch("pydeseq2.ds.DeseqStats") as mock_ds_class:
+                    with patch("pydeseq2.default_inference.DefaultInference"):
+                        mock_ds = Mock()
+                        mock_ds.results_df = pd.DataFrame({
+                            "baseMean": [100],
+                            "log2FoldChange": [1.5],
+                            "pvalue": [0.01],
+                            "padj": [0.05],
+                        })
+                        mock_ds_class.return_value = mock_ds
+
+                        _, _, ir = bulk_service.run_pydeseq2_analysis(
+                            count_matrix=pydeseq2_count_matrix,
+                            metadata=pydeseq2_metadata,
+                            formula="~condition + batch",
+                            contrast=["condition", "treated", "control"],
+                        )
+
+                        # Verify IR completeness
+                        assert ir.operation == "pydeseq2_analysis"
+                        assert ir.tool_name == "BulkRNASeqService.run_pydeseq2_analysis"
+                        assert ir.library == "pydeseq2"
+                        assert ir.code_template is not None
+                        assert len(ir.imports) > 0
+                        assert "pydeseq2" in str(ir.imports).lower()
+
+                        # Verify parameters
+                        assert ir.parameters["formula"] == "~condition + batch"
+                        assert ir.parameters["contrast"] == ["condition", "treated", "control"]
+
+                        # Verify parameter schema
+                        assert "formula" in ir.parameter_schema
+                        assert "contrast" in ir.parameter_schema
+                        assert ir.parameter_schema["formula"]["type"] == "string"
+                        assert ir.parameter_schema["contrast"]["type"] == "array"
+
+    def test_pydeseq2_ir_code_template_renders(
+        self, bulk_service, pydeseq2_count_matrix, pydeseq2_metadata
+    ):
+        """Test that pyDESeq2 IR code template renders correctly."""
+        from jinja2 import Template
+
+        with patch.object(bulk_service, "validate_pydeseq2_setup") as mock_validate:
+            mock_validate.return_value = {"pydeseq2": True, "pydeseq2_inference": True}
+
+            with patch("pydeseq2.dds.DeseqDataSet"):
+                with patch("pydeseq2.ds.DeseqStats") as mock_ds_class:
+                    with patch("pydeseq2.default_inference.DefaultInference"):
+                        mock_ds = Mock()
+                        mock_ds.results_df = pd.DataFrame({
+                            "baseMean": [100],
+                            "log2FoldChange": [1.5],
+                            "pvalue": [0.01],
+                            "padj": [0.05],
+                        })
+                        mock_ds_class.return_value = mock_ds
+
+                        _, _, ir = bulk_service.run_pydeseq2_analysis(
+                            count_matrix=pydeseq2_count_matrix,
+                            metadata=pydeseq2_metadata,
+                            formula="~condition",
+                            contrast=["condition", "treated", "control"],
+                            shrink_lfc=True,
+                        )
+
+                        # Test Jinja2 rendering
+                        template = Template(ir.code_template)
+                        rendered = template.render(**ir.parameters)
+
+                        # Verify rendered code
+                        assert "~condition" in rendered
+                        assert "DeseqDataSet" in rendered or "pydeseq2" in rendered
+                        assert "{{" not in rendered  # No unrendered placeholders
+
+                        # Verify shrinkage block is included
+                        if ir.parameters.get("shrink_lfc"):
+                            assert "lfc_shrink" in rendered
+
+    def test_pydeseq2_handles_missing_metadata(
+        self, bulk_service, pydeseq2_count_matrix, pydeseq2_metadata
+    ):
+        """Test error handling for missing metadata columns."""
+        # Formula references non-existent column
+        with pytest.raises((PyDESeq2Error, FormulaError)):
+            bulk_service.run_pydeseq2_analysis(
+                count_matrix=pydeseq2_count_matrix,
+                metadata=pydeseq2_metadata,
+                formula="~nonexistent_column",
+                contrast=["nonexistent_column", "a", "b"],
+            )
+
+    def test_pydeseq2_handles_invalid_contrast(
+        self, bulk_service, pydeseq2_count_matrix, pydeseq2_metadata
+    ):
+        """Test error handling for invalid contrasts."""
+        # Contrast references non-existent levels
+        with pytest.raises(PyDESeq2Error):
+            bulk_service._validate_deseq2_inputs(
+                count_matrix=pydeseq2_count_matrix,
+                metadata=pydeseq2_metadata,
+                formula="~condition",
+                contrast=["condition", "invalid_level", "control"],
+            )
+
+    def test_pydeseq2_formula_with_interaction(
+        self, bulk_service, pydeseq2_count_matrix, pydeseq2_metadata
+    ):
+        """Test pyDESeq2 with interaction terms."""
+        with patch.object(bulk_service, "validate_pydeseq2_setup") as mock_validate:
+            mock_validate.return_value = {"pydeseq2": True, "pydeseq2_inference": True}
+
+            with patch("pydeseq2.dds.DeseqDataSet"):
+                with patch("pydeseq2.ds.DeseqStats") as mock_ds_class:
+                    with patch("pydeseq2.default_inference.DefaultInference"):
+                        mock_ds = Mock()
+                        mock_ds.results_df = pd.DataFrame({
+                            "baseMean": [100],
+                            "log2FoldChange": [1.5],
+                            "pvalue": [0.01],
+                            "padj": [0.05],
+                        })
+                        mock_ds_class.return_value = mock_ds
+
+                        # Test interaction formula
+                        results_df, stats, ir = bulk_service.run_pydeseq2_analysis(
+                            count_matrix=pydeseq2_count_matrix,
+                            metadata=pydeseq2_metadata,
+                            formula="~condition * batch",  # Interaction term
+                            contrast=["condition", "treated", "control"],
+                        )
+
+                        # Verify formula is preserved
+                        assert ir.parameters["formula"] == "~condition * batch"
+                        assert "*" in ir.parameters["formula"]
 
     def test_run_pydeseq2_from_pseudobulk(self, bulk_service):
         """Test running pyDESeq2 from pseudobulk data."""
@@ -621,7 +875,9 @@ class TestPyDESeq2Integration:
                     "padj": [0.05, 0.15],
                 }
             )
-            mock_pydeseq2.return_value = mock_results_df
+            mock_ir = Mock()
+            mock_ir.operation = "pydeseq2_analysis"
+            mock_pydeseq2.return_value = (mock_results_df, {"n_significant_genes": 1}, mock_ir)
 
             result_df, stats = bulk_service.run_pydeseq2_from_pseudobulk(
                 pseudobulk_adata=pseudobulk_data,
@@ -633,18 +889,18 @@ class TestPyDESeq2Integration:
             assert isinstance(stats, dict)
 
     def test_pydeseq2_unavailable_handling(
-        self, bulk_service, mock_salmon_results, mock_design_matrix
+        self, bulk_service, pydeseq2_count_matrix, pydeseq2_metadata
     ):
         """Test handling when pyDESeq2 is not available."""
-        with patch(
-            "importlib.import_module", side_effect=ImportError("pyDESeq2 not found")
-        ):
+        with patch.object(bulk_service, "validate_pydeseq2_setup") as mock_validate:
+            mock_validate.return_value = {"pydeseq2": False}
 
-            with pytest.raises(PyDESeq2Error):
+            with pytest.raises(PyDESeq2Error, match="Missing pyDESeq2 dependencies"):
                 bulk_service.run_pydeseq2_analysis(
-                    count_matrix=mock_salmon_results["count_matrix"],
-                    metadata=mock_design_matrix,
+                    count_matrix=pydeseq2_count_matrix,
+                    metadata=pydeseq2_metadata,
                     formula="~ condition",
+                    contrast=["condition", "treated", "control"],
                 )
 
 

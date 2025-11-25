@@ -49,14 +49,14 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
         handoff_tool_name="handoff_to_singlecell_expert_agent",
         handoff_tool_description="Assign single-cell RNA-seq analysis tasks to the single-cell expert agent",
     ),
-    "bulk_rnaseq_expert_agent": AgentRegistryConfig(
-        name="bulk_rnaseq_expert_agent",
-        display_name="Bulk RNA-seq Expert",
-        description="Handles bulk RNA-seq analysis tasks (excluding visualization)",
-        factory_function="lobster.agents.bulk_rnaseq_expert.bulk_rnaseq_expert",
-        handoff_tool_name="handoff_to_bulk_rnaseq_expert_agent",
-        handoff_tool_description="Assign bulk RNA-seq analysis tasks to the bulk RNA-seq expert agent",
-    ),
+    # "bulk_rnaseq_expert_agent": AgentRegistryConfig(
+    #     name="bulk_rnaseq_expert_agent",
+    #     display_name="Bulk RNA-seq Expert",
+    #     description="Handles bulk RNA-seq analysis tasks (excluding visualization)",
+    #     factory_function="lobster.agents.bulk_rnaseq_expert.bulk_rnaseq_expert",
+    #     handoff_tool_name="handoff_to_bulk_rnaseq_expert_agent",
+    #     handoff_tool_description="Assign bulk RNA-seq analysis tasks to the bulk RNA-seq expert agent",
+    # ),
     "metadata_assistant": AgentRegistryConfig(
         name="metadata_assistant",
         display_name="Metadata Assistant",

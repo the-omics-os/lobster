@@ -21,6 +21,7 @@ from lobster.core import (
     PseudobulkError,
 )
 from lobster.core.adapters.pseudobulk_adapter import PseudobulkAdapter
+from lobster.core.analysis_ir import AnalysisStep
 from lobster.core.provenance import ProvenanceTracker
 from lobster.utils.logger import get_logger
 
@@ -67,7 +68,7 @@ class PseudobulkService:
         min_genes: int = 200,
         filter_zeros: bool = True,
         gene_subset: Optional[List[str]] = None,
-    ) -> anndata.AnnData:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Aggregate single-cell counts to pseudobulk matrix.
 
@@ -83,7 +84,10 @@ class PseudobulkService:
             gene_subset: Optional subset of genes to include
 
         Returns:
-            anndata.AnnData: Pseudobulk aggregated data
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
+                - Pseudobulk aggregated data
+                - Statistics dictionary with aggregation summary
+                - AnalysisStep IR for notebook export
 
         Raises:
             PseudobulkError: If aggregation fails
@@ -218,12 +222,32 @@ class PseudobulkService:
             # Add provenance to AnnData
             pseudobulk_adata = self.provenance_tracker.add_to_anndata(pseudobulk_adata)
 
+            # Create IR for notebook export
+            ir = self._create_pseudobulk_ir(
+                sample_col=sample_col,
+                celltype_col=celltype_col,
+                aggregation_method=aggregation_method,
+                min_cells=min_cells,
+            )
+
+            # Create statistics dictionary
+            stats = {
+                "n_pseudobulk_samples": pseudobulk_adata.n_obs,
+                "n_genes": pseudobulk_adata.n_vars,
+                "n_unique_samples": pseudobulk_adata.obs["sample_id"].nunique(),
+                "n_cell_types": pseudobulk_adata.obs["cell_type"].nunique(),
+                "total_cells_processed": adata.n_obs,
+                "total_cells_aggregated": int(pseudobulk_adata.uns.get("aggregation_stats", {}).get("total_cells_aggregated", 0)),
+                "aggregation_method": aggregation_method,
+                "cell_type_summary": pseudobulk_adata.obs["cell_type"].value_counts().to_dict(),
+            }
+
             self.logger.info(
                 f"Pseudobulk aggregation completed: "
                 f"{pseudobulk_adata.n_obs} pseudobulk samples × {pseudobulk_adata.n_vars} genes"
             )
 
-            return pseudobulk_adata
+            return pseudobulk_adata, stats, ir
 
         except Exception as e:
             if isinstance(
@@ -636,6 +660,96 @@ class PseudobulkService:
                     break
         except Exception as e:
             self.logger.warning(f"Failed to complete provenance activity: {e}")
+
+    def _create_pseudobulk_ir(
+        self,
+        sample_col: str,
+        celltype_col: str,
+        aggregation_method: str,
+        min_cells: int,
+        **kwargs
+    ) -> AnalysisStep:
+        """Create AnalysisStep IR for pseudobulk aggregation."""
+
+        code_template = """
+# Pseudobulk aggregation from single-cell data
+import scanpy as sc
+import pandas as pd
+import numpy as np
+
+# Group cells by sample and cell type
+groups = adata.obs.groupby(['{{ sample_col }}', '{{ celltype_col }}']).groups
+
+# Aggregate expression for each group
+pseudobulk_data = []
+pseudobulk_obs = []
+
+for (sample, celltype), indices in groups.items():
+    if len(indices) >= {{ min_cells }}:
+        # Get cells for this group
+        group_adata = adata[indices]
+
+        # Aggregate expression
+        {% if aggregation_method == 'sum' %}
+        aggregated = group_adata.X.sum(axis=0)
+        {% elif aggregation_method == 'mean' %}
+        aggregated = group_adata.X.mean(axis=0)
+        {% elif aggregation_method == 'median' %}
+        aggregated = np.median(group_adata.X, axis=0)
+        {% endif %}
+
+        pseudobulk_data.append(aggregated)
+        pseudobulk_obs.append({
+            'sample_id': sample,
+            'cell_type': celltype,
+            'n_cells_aggregated': len(indices)
+        })
+
+# Create pseudobulk AnnData
+pseudobulk_adata = sc.AnnData(
+    X=np.array(pseudobulk_data),
+    obs=pd.DataFrame(pseudobulk_obs),
+    var=adata.var.copy()
+)
+"""
+
+        return AnalysisStep(
+            operation="pseudobulk_aggregation",
+            tool_name="PseudobulkService.aggregate_to_pseudobulk",
+            description=f"Aggregate single-cell data to pseudobulk using {aggregation_method} method",
+            library="scanpy + numpy",
+            code_template=code_template,
+            imports=["import scanpy as sc", "import pandas as pd", "import numpy as np"],
+            parameters={
+                "sample_col": sample_col,
+                "celltype_col": celltype_col,
+                "aggregation_method": aggregation_method,
+                "min_cells": min_cells,
+            },
+            parameter_schema={
+                "sample_col": {
+                    "type": "string",
+                    "description": "Column in obs containing sample IDs",
+                },
+                "celltype_col": {
+                    "type": "string",
+                    "description": "Column in obs containing cell type annotations",
+                },
+                "aggregation_method": {
+                    "type": "string",
+                    "description": "Aggregation method",
+                    "default": "sum",
+                    "enum": ["sum", "mean", "median"],
+                },
+                "min_cells": {
+                    "type": "integer",
+                    "description": "Minimum cells required per pseudobulk sample",
+                    "default": 10,
+                },
+            },
+            input_entities=["singlecell_adata"],
+            output_entities=["pseudobulk_adata"],
+        )
 
     def get_aggregation_summary(self, adata: anndata.AnnData) -> Dict[str, Any]:
         """

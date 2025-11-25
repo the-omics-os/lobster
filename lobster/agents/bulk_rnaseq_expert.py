@@ -6,7 +6,7 @@ system with proper modality handling and schema enforcement.
 """
 
 from datetime import date
-from typing import List
+from typing import List, Optional
 
 import pandas as pd
 from langchain_core.tools import tool
@@ -1149,6 +1149,522 @@ Proceed with filtering and normalization for differential expression analysis.""
             logger.error(f"Error validating experimental design: {e}")
             return f"Error: {str(e)}"
 
+    @tool
+    def create_pseudobulk_from_singlecell(
+        singlecell_modality: str,
+        sample_col: str,
+        celltype_col: str,
+        min_cells: int = 10,
+        aggregation_method: str = "sum",
+        filter_cell_types: Optional[str] = None,
+    ) -> str:
+        """
+        Aggregate single-cell RNA-seq data to pseudobulk for differential expression.
+
+        Pseudobulk analysis aggregates cells from the same sample and cell type into a
+        single "bulk-like" expression profile. This enables:
+        1. Sample-level statistical testing (vs. cell-level pseudo-replication)
+        2. Use of standard bulk DE tools (DESeq2, edgeR)
+        3. Proper control of donor/sample variation
+
+        Workflow:
+        1. Group cells by sample_id + cell_type
+        2. Aggregate expression using specified method (sum recommended)
+        3. Filter groups with < min_cells (removes unreliable estimates)
+        4. Create pseudobulk AnnData with one row per sample/celltype combination
+
+        The resulting pseudobulk data can then be analyzed with pyDESeq2 for:
+        - Comparing conditions across samples (treatment vs control)
+        - Cell-type-specific differential expression
+        - Longitudinal studies (time-series)
+
+        Args:
+            singlecell_modality: Name of single-cell modality to aggregate
+            sample_col: Column in .obs with sample IDs (e.g., "donor_id", "patient_id")
+            celltype_col: Column in .obs with cell type annotations (e.g., "cell_type")
+            min_cells: Minimum cells required per pseudobulk sample (default: 10)
+            aggregation_method: How to aggregate (default: "sum" for count data)
+                - "sum": Sum counts (recommended for DE analysis)
+                - "mean": Average counts (normalized data)
+                - "median": Median counts (robust to outliers)
+            filter_cell_types: Optional comma-separated list of cell types to include
+                (e.g., "T cells,NK cells,B cells")
+
+        Returns:
+            str: Formatted string with pseudobulk statistics and next steps
+
+        Example:
+            # Aggregate all cell types
+            create_pseudobulk_from_singlecell(
+                "geo_gse12345_annotated",
+                sample_col="donor_id",
+                celltype_col="cell_type_annotation",
+                min_cells=10
+            )
+
+            # Aggregate only specific cell types
+            create_pseudobulk_from_singlecell(
+                "geo_gse12345_annotated",
+                sample_col="patient_id",
+                celltype_col="cell_type",
+                min_cells=20,
+                filter_cell_types="T cells,B cells,Monocytes"
+            )
+        """
+        from lobster.tools.pseudobulk_service import PseudobulkService
+
+        # Validate modality exists
+        if singlecell_modality not in data_manager.list_modalities():
+            raise ModalityNotFoundError(
+                f"Modality '{singlecell_modality}' not found. "
+                f"Available modalities: {data_manager.list_modalities()}"
+            )
+
+        # Get single-cell modality
+        sc_adata = data_manager.get_modality(singlecell_modality)
+
+        # Validate required columns
+        if sample_col not in sc_adata.obs.columns:
+            raise BulkRNASeqError(
+                f"Sample column '{sample_col}' not found in modality. "
+                f"Available columns: {sc_adata.obs.columns.tolist()}"
+            )
+
+        if celltype_col not in sc_adata.obs.columns:
+            raise BulkRNASeqError(
+                f"Cell type column '{celltype_col}' not found in modality. "
+                f"Available columns: {sc_adata.obs.columns.tolist()}"
+            )
+
+        # Filter cell types if specified
+        if filter_cell_types:
+            cell_types = [ct.strip() for ct in filter_cell_types.split(",")]
+            mask = sc_adata.obs[celltype_col].isin(cell_types)
+            sc_adata = sc_adata[mask].copy()
+
+            if len(sc_adata) == 0:
+                raise BulkRNASeqError(
+                    f"No cells found for specified cell types: {cell_types}"
+                )
+
+        # Aggregate to pseudobulk
+        pseudobulk_service = PseudobulkService()
+        try:
+            pseudobulk_adata, pb_stats, ir = pseudobulk_service.aggregate_to_pseudobulk(
+                adata=sc_adata,
+                sample_col=sample_col,
+                celltype_col=celltype_col,
+                min_cells=min_cells,
+                aggregation_method=aggregation_method,
+            )
+        except Exception as e:
+            raise BulkRNASeqError(f"Pseudobulk aggregation failed: {e}")
+
+        # Create result modality name
+        pseudobulk_modality_name = f"{singlecell_modality}_pseudobulk"
+
+        # Store result
+        data_manager.modalities[pseudobulk_modality_name] = pseudobulk_adata
+
+        # Log the operation with IR
+        data_manager.log_tool_usage(
+            tool_name="create_pseudobulk_from_singlecell",
+            parameters={
+                "singlecell_modality": singlecell_modality,
+                "sample_col": sample_col,
+                "celltype_col": celltype_col,
+                "min_cells": min_cells,
+                "aggregation_method": aggregation_method,
+                "filter_cell_types": filter_cell_types,
+            },
+            description=f"Pseudobulk aggregation: {pb_stats['n_pseudobulk_samples']} samples created",
+            ir=ir,
+        )
+
+        # Format response
+        response = f"## Pseudobulk Aggregation Complete\n\n"
+        response += f"**Source**: `{singlecell_modality}` (single-cell)\n"
+        response += f"**Result**: `{pseudobulk_modality_name}` (pseudobulk)\n\n"
+
+        response += f"### Aggregation Statistics\n"
+        response += f"- Single cells processed: {pb_stats['total_cells_processed']:,}\n"
+        response += f"- Cells aggregated: {pb_stats['total_cells_aggregated']:,}\n"
+        response += f"- Cells filtered (< {min_cells}): {pb_stats.get('cells_filtered', 0):,}\n"
+        response += f"- Pseudobulk samples created: {pb_stats['n_pseudobulk_samples']}\n"
+        response += f"- Unique samples: {pb_stats['n_unique_samples']}\n"
+        response += f"- Unique cell types: {pb_stats['n_cell_types']}\n"
+        response += f"- Aggregation method: {aggregation_method}\n\n"
+
+        if 'cell_type_summary' in pb_stats:
+            response += f"### Pseudobulk Samples per Cell Type\n"
+            for ct, count in pb_stats['cell_type_summary'].items():
+                response += f"- {ct}: {count} samples\n"
+            response += "\n"
+
+        response += f"### Next Steps\n"
+        response += f"✅ Use pyDESeq2 for differential expression:\n"
+        response += f"```\n"
+        response += f"run_deseq2_formula_analysis(\n"
+        response += f"    '{pseudobulk_modality_name}',\n"
+        response += f"    formula='~condition',  # Adjust based on your design\n"
+        response += f"    contrast='condition,treatment,control'\n"
+        response += f")\n"
+        response += f"```\n\n"
+
+        response += f"💡 **Tip**: Pseudobulk enables proper sample-level statistics by avoiding\n"
+        response += f"cell-level pseudo-replication. Each pseudobulk sample represents one\n"
+        response += f"biological replicate (donor/patient).\n"
+
+        return response
+
+    # -------------------------
+    # BULK RNA-SEQ VISUALIZATION TOOLS
+    # -------------------------
+    @tool
+    def create_volcano_plot(
+        de_modality_name: str,
+        fdr_threshold: float = 0.05,
+        fc_threshold: float = 1.0,
+        top_n_genes: int = 10,
+    ) -> str:
+        """
+        Create a volcano plot for differential expression results.
+
+        Volcano plots visualize the relationship between statistical significance
+        (-log10 FDR) and biological significance (log2 fold-change), helping
+        identify the most interesting differentially expressed genes.
+
+        Args:
+            de_modality_name: Name of modality with DE results (must have log2FoldChange and padj columns)
+            fdr_threshold: FDR significance threshold (default: 0.05)
+            fc_threshold: Log2 fold-change threshold (default: 1.0)
+            top_n_genes: Number of top genes to label (default: 10)
+
+        Returns:
+            str: Formatted string with plot statistics and storage location
+
+        Example:
+            create_volcano_plot(
+                "bulk_gse12345_de_treatment_vs_control",
+                fdr_threshold=0.01,
+                fc_threshold=1.5,
+                top_n_genes=15
+            )
+        """
+        try:
+            from lobster.tools.bulk_visualization_service import (
+                BulkVisualizationService,
+            )
+
+            # Validate modality exists
+            if de_modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{de_modality_name}' not found. "
+                    f"Available modalities: {data_manager.list_modalities()}"
+                )
+
+            # Get modality
+            adata = data_manager.get_modality(de_modality_name)
+
+            # Validate required columns
+            required_cols = ["log2FoldChange", "padj"]
+            missing_cols = [col for col in required_cols if col not in adata.var.columns]
+            if missing_cols:
+                return (
+                    f"Error: Modality '{de_modality_name}' is missing required DE result columns: {missing_cols}. "
+                    f"Available columns: {list(adata.var.columns)}. "
+                    f"Please run differential expression analysis first."
+                )
+
+            # Create volcano plot
+            viz_service = BulkVisualizationService()
+            fig, stats, ir = viz_service.create_volcano_plot(
+                adata=adata,
+                fdr_threshold=fdr_threshold,
+                fc_threshold=fc_threshold,
+                top_n_genes=top_n_genes,
+            )
+
+            # Store plot in data manager
+            plot_name = f"{de_modality_name}_volcano"
+            data_manager.plots[plot_name] = fig
+
+            # Log the operation with IR
+            data_manager.log_tool_usage(
+                tool_name="create_volcano_plot",
+                parameters={
+                    "de_modality_name": de_modality_name,
+                    "fdr_threshold": fdr_threshold,
+                    "fc_threshold": fc_threshold,
+                    "top_n_genes": top_n_genes,
+                },
+                description=f"Volcano plot: {stats['n_genes_up']} up, {stats['n_genes_down']} down genes",
+                ir=ir,
+            )
+
+            # Format response
+            response = f"## Volcano Plot Created for '{de_modality_name}'\n\n"
+            response += f"**Plot stored as**: `{plot_name}`\n\n"
+            response += f"### Visualization Statistics\n"
+            response += f"- Total genes: {stats['n_genes_total']:,}\n"
+            response += f"- Upregulated: {stats['n_genes_up']} (FDR < {fdr_threshold}, log2FC > {fc_threshold})\n"
+            response += f"- Downregulated: {stats['n_genes_down']} (FDR < {fdr_threshold}, log2FC < -{fc_threshold})\n"
+            response += f"- Not significant: {stats['n_genes_not_significant']:,}\n"
+            response += f"- Top genes labeled: {stats['top_n_genes_labeled']}\n\n"
+
+            response += f"### Plot Features\n"
+            response += f"- X-axis: log2 fold-change (effect size)\n"
+            response += f"- Y-axis: -log10(FDR) (statistical significance)\n"
+            response += f"- Red points: Upregulated genes\n"
+            response += f"- Blue points: Downregulated genes\n"
+            response += f"- Gray points: Not significant\n"
+            response += f"- Dashed lines: Significance thresholds\n\n"
+
+            response += f"💡 **Interpretation**: Genes in the upper corners (high -log10(FDR) and high |log2FC|) are both statistically and biologically significant.\n\n"
+            response += f"📊 **Access plot**: Use `/plots` command to view or `data_manager.plots['{plot_name}']` in code\n"
+
+            return response
+
+        except ModalityNotFoundError as e:
+            logger.error(f"Modality not found error: {e}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Error creating volcano plot: {e}")
+            return f"Error creating volcano plot: {str(e)}"
+
+    @tool
+    def create_ma_plot(
+        de_modality_name: str,
+        fdr_threshold: float = 0.05,
+    ) -> str:
+        """
+        Create an MA plot for differential expression results.
+
+        MA plots show the relationship between mean expression level and
+        fold-change, helping identify expression-dependent biases and
+        assess the overall distribution of DE genes.
+
+        Args:
+            de_modality_name: Name of modality with DE results (must have log2FoldChange, padj, baseMean columns)
+            fdr_threshold: FDR significance threshold (default: 0.05)
+
+        Returns:
+            str: Formatted string with plot statistics and storage location
+
+        Example:
+            create_ma_plot(
+                "bulk_gse12345_de_treatment_vs_control",
+                fdr_threshold=0.01
+            )
+        """
+        try:
+            from lobster.tools.bulk_visualization_service import (
+                BulkVisualizationService,
+            )
+
+            # Validate modality exists
+            if de_modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{de_modality_name}' not found. "
+                    f"Available modalities: {data_manager.list_modalities()}"
+                )
+
+            # Get modality
+            adata = data_manager.get_modality(de_modality_name)
+
+            # Validate required columns
+            required_cols = ["log2FoldChange", "padj", "baseMean"]
+            missing_cols = [col for col in required_cols if col not in adata.var.columns]
+            if missing_cols:
+                return (
+                    f"Error: Modality '{de_modality_name}' is missing required DE result columns: {missing_cols}. "
+                    f"Available columns: {list(adata.var.columns)}. "
+                    f"Please run differential expression analysis first."
+                )
+
+            # Create MA plot
+            viz_service = BulkVisualizationService()
+            fig, stats, ir = viz_service.create_ma_plot(
+                adata=adata,
+                fdr_threshold=fdr_threshold,
+            )
+
+            # Store plot in data manager
+            plot_name = f"{de_modality_name}_ma"
+            data_manager.plots[plot_name] = fig
+
+            # Log the operation with IR
+            data_manager.log_tool_usage(
+                tool_name="create_ma_plot",
+                parameters={
+                    "de_modality_name": de_modality_name,
+                    "fdr_threshold": fdr_threshold,
+                },
+                description=f"MA plot: {stats['n_genes_significant']} significant genes",
+                ir=ir,
+            )
+
+            # Format response
+            response = f"## MA Plot Created for '{de_modality_name}'\n\n"
+            response += f"**Plot stored as**: `{plot_name}`\n\n"
+            response += f"### Visualization Statistics\n"
+            response += f"- Total genes: {stats['n_genes_total']:,}\n"
+            response += f"- Significant genes (FDR < {fdr_threshold}): {stats['n_genes_significant']}\n"
+            response += f"- Mean expression: {stats['mean_base_mean']:.1f}\n"
+            response += f"- Median expression: {stats['median_base_mean']:.1f}\n\n"
+
+            response += f"### Plot Features\n"
+            response += f"- X-axis: log10(mean expression) (expression level)\n"
+            response += f"- Y-axis: log2 fold-change (effect size)\n"
+            response += f"- Red/Blue points: Significant genes (up/down)\n"
+            response += f"- Gray points: Not significant\n"
+            response += f"- Dashed line at y=0: No change\n\n"
+
+            response += f"💡 **Interpretation**: MA plots help identify expression-dependent biases. Genes should be evenly distributed above and below y=0 for well-normalized data.\n\n"
+            response += f"📊 **Access plot**: Use `/plots` command to view or `data_manager.plots['{plot_name}']` in code\n"
+
+            return response
+
+        except ModalityNotFoundError as e:
+            logger.error(f"Modality not found error: {e}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Error creating MA plot: {e}")
+            return f"Error creating MA plot: {str(e)}"
+
+    @tool
+    def create_expression_heatmap(
+        modality_name: str,
+        gene_list: Optional[str] = None,
+        cluster_samples: bool = True,
+        cluster_genes: bool = True,
+        z_score: bool = True,
+    ) -> str:
+        """
+        Create a hierarchical clustered heatmap of gene expression.
+
+        Expression heatmaps visualize gene expression patterns across samples,
+        revealing sample relationships and gene co-expression patterns through
+        hierarchical clustering.
+
+        Args:
+            modality_name: Name of modality with expression data
+            gene_list: Comma-separated list of genes to include (uses top 50 variable genes if None)
+            cluster_samples: Whether to cluster samples hierarchically (default: True)
+            cluster_genes: Whether to cluster genes hierarchically (default: True)
+            z_score: Whether to z-score normalize expression (default: True)
+
+        Returns:
+            str: Formatted string with plot statistics and storage location
+
+        Example:
+            # Heatmap of top variable genes
+            create_expression_heatmap(
+                "bulk_gse12345_filtered_normalized",
+                cluster_samples=True,
+                cluster_genes=True,
+                z_score=True
+            )
+
+            # Heatmap of specific genes
+            create_expression_heatmap(
+                "bulk_gse12345_filtered_normalized",
+                gene_list="TP53,MYC,BRCA1,EGFR,KRAS",
+                cluster_samples=True,
+                cluster_genes=False,
+                z_score=True
+            )
+        """
+        try:
+            from lobster.tools.bulk_visualization_service import (
+                BulkVisualizationService,
+            )
+
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. "
+                    f"Available modalities: {data_manager.list_modalities()}"
+                )
+
+            # Get modality
+            adata = data_manager.get_modality(modality_name)
+
+            # Parse gene list
+            genes = None
+            if gene_list is not None and gene_list.strip():
+                genes = [g.strip() for g in gene_list.split(",")]
+
+            # Create expression heatmap
+            viz_service = BulkVisualizationService()
+            fig, stats, ir = viz_service.create_expression_heatmap(
+                adata=adata,
+                gene_list=genes,
+                cluster_samples=cluster_samples,
+                cluster_genes=cluster_genes,
+                z_score=z_score,
+            )
+
+            # Store plot in data manager
+            plot_name = f"{modality_name}_heatmap"
+            data_manager.plots[plot_name] = fig
+
+            # Log the operation with IR
+            data_manager.log_tool_usage(
+                tool_name="create_expression_heatmap",
+                parameters={
+                    "modality_name": modality_name,
+                    "n_genes": stats["n_genes"],
+                    "cluster_samples": cluster_samples,
+                    "cluster_genes": cluster_genes,
+                    "z_score": z_score,
+                },
+                description=f"Expression heatmap: {stats['n_genes']} genes × {stats['n_samples']} samples",
+                ir=ir,
+            )
+
+            # Format response
+            response = f"## Expression Heatmap Created for '{modality_name}'\n\n"
+            response += f"**Plot stored as**: `{plot_name}`\n\n"
+            response += f"### Visualization Statistics\n"
+            response += f"- Genes plotted: {stats['n_genes']}\n"
+            response += f"- Samples plotted: {stats['n_samples']}\n"
+            response += f"- Samples clustered: {'Yes' if stats['clustered_samples'] else 'No'}\n"
+            response += f"- Genes clustered: {'Yes' if stats['clustered_genes'] else 'No'}\n"
+            response += f"- Z-score normalized: {'Yes' if stats['z_score_normalized'] else 'No'}\n\n"
+
+            response += f"### Plot Features\n"
+            response += f"- Rows: Genes ({stats['n_genes']})\n"
+            response += f"- Columns: Samples ({stats['n_samples']})\n"
+            if stats["z_score_normalized"]:
+                response += f"- Color scale: Blue (low) → White (mean) → Red (high) [z-scores]\n"
+            else:
+                response += f"- Color scale: Low (dark) → High (bright) expression\n"
+            if stats["clustered_samples"] or stats["clustered_genes"]:
+                response += f"- Hierarchical clustering: Ward linkage method\n\n"
+            else:
+                response += "\n"
+
+            response += f"💡 **Interpretation**:\n"
+            if stats["clustered_samples"]:
+                response += f"- Samples with similar expression patterns cluster together\n"
+            if stats["clustered_genes"]:
+                response += f"- Co-expressed genes cluster together\n"
+            if stats["z_score_normalized"]:
+                response += f"- Z-scores show relative expression (deviations from mean)\n"
+            response += f"\n"
+
+            response += f"📊 **Access plot**: Use `/plots` command to view or `data_manager.plots['{plot_name}']` in code\n"
+
+            return response
+
+        except ModalityNotFoundError as e:
+            logger.error(f"Modality not found error: {e}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Error creating expression heatmap: {e}")
+            return f"Error creating expression heatmap: {str(e)}"
+
     # -------------------------
     # TOOL REGISTRY
     # -------------------------
@@ -1163,6 +1679,10 @@ Proceed with filtering and normalization for differential expression analysis.""
         suggest_experimental_designs,
         preview_design_matrix,
         validate_experimental_design,
+        create_pseudobulk_from_singlecell,  # Pseudobulk aggregation for single-cell to bulk analysis
+        create_volcano_plot,  # Visualization: Volcano plot for DE results
+        create_ma_plot,  # Visualization: MA plot for DE results
+        create_expression_heatmap,  # Visualization: Hierarchical clustered heatmap
     ]
 
     tools = base_tools + (handoff_tools or [])
@@ -1647,6 +2167,237 @@ run_differential_expression_analysis("bulk_gse12345_filtered_normalized",
 # Step 3: Report results specific to requested comparison
 # WAIT for further instructions about pathway analysis
 
+
+## 4. VISUALIZATION TOOLS FOR DIFFERENTIAL EXPRESSION RESULTS
+
+You have access to three publication-quality visualization tools for bulk RNA-seq differential expression results. All visualizations are created using Plotly and stored in `data_manager.plots` for later retrieval.
+
+### Volcano Plot - `create_volcano_plot()`
+
+**Purpose:** Visualize statistical significance vs. biological magnitude of differential expression.
+
+**When to Use:**
+- After any differential expression analysis (standard DE or pyDESeq2)
+- To identify the most significant and biologically meaningful genes
+- To assess overall distribution of fold-changes and significance levels
+- Required for publication figures and exploratory analysis
+
+**Parameters:**
+- `de_modality_name` (str, required): Name of modality with DE results (must have log2FoldChange, padj columns)
+- `fdr_threshold` (float, optional): FDR significance threshold (default: 0.05)
+- `fc_threshold` (float, optional): Fold-change threshold in log2 scale (default: 1.0 = 2-fold)
+- `top_n_genes` (int, optional): Number of top genes to label by combined score (default: 10)
+
+**Output:**
+- Plot stored as `{{de_modality_name}}_volcano` in data_manager.plots
+- Returns: Formatted string with statistics and interpretation guidelines
+
+**Plot Features:**
+- X-axis: log2 Fold Change
+- Y-axis: -log10(FDR)
+- Colors:
+  - Red: Upregulated significant genes (FC > threshold, FDR < threshold)
+  - Blue: Downregulated significant genes (FC < -threshold, FDR < threshold)
+  - Gray: Not significant
+- Threshold lines: Horizontal (FDR) + vertical (fold-change)
+- Gene labels: Top N genes by combined score (FDR + FC)
+- Interactive hover: Gene names and statistics
+
+**Interpretation:**
+- Genes in upper-left/right corners: Most significant
+- Genes far from x=0: Large biological effect
+- Use both FDR and FC thresholds to define "interesting" genes
+- Symmetric distribution suggests no systematic bias
+
+**Example Usage:**
+```
+User: "Create a volcano plot for my differential expression results"
+Agent:
+1. Identify DE modality (e.g., "geo_gse12345_de")
+2. Call: create_volcano_plot(
+     de_modality_name="geo_gse12345_de",
+     fdr_threshold=0.05,
+     fc_threshold=1.5,  # 3-fold change
+     top_n_genes=20
+   )
+3. Interpret results: "Volcano plot shows 250 upregulated and 180 downregulated genes..."
+```
+
+### MA Plot - `create_ma_plot()`
+
+**Purpose:** Detect expression-dependent biases in differential expression analysis (e.g., low-count bias).
+
+**When to Use:**
+- After differential expression to check for systematic biases
+- To validate normalization quality
+- To identify if fold-changes correlate with expression level (should not)
+- Quality control before trusting DE results
+
+**Parameters:**
+- `de_modality_name` (str, required): Name of modality with DE results (must have log2FoldChange, padj, baseMean)
+- `fdr_threshold` (float, optional): FDR significance threshold for coloring (default: 0.05)
+
+**Output:**
+- Plot stored as `{{de_modality_name}}_ma` in data_manager.plots
+- Returns: Formatted string with statistics and bias assessment
+
+**Plot Features:**
+- X-axis: log10(baseMean) - average expression level
+- Y-axis: log2 Fold Change
+- Colors:
+  - Red: Upregulated significant (FDR < threshold)
+  - Blue: Downregulated significant (FDR < threshold)
+  - Gray: Not significant
+- Horizontal line at y=0 (no change baseline)
+- Interactive hover: Gene names and statistics
+
+**Interpretation:**
+- Flat horizontal band: Good (no expression-dependent bias)
+- Funnel shape: Expected (low-count genes have higher variance)
+- Systematic tilt: Bad (normalization issue or batch effect)
+- More significant genes at high expression: Expected (better statistical power)
+
+**Red Flags:**
+- Asymmetric distribution (more up than down or vice versa)
+- Strong correlation between expression and fold-change
+- Very few significant genes at high expression (power issue)
+
+**Example Usage:**
+```
+User: "Check if my DE results have any biases"
+Agent:
+1. Call: create_ma_plot(
+     de_modality_name="geo_gse12345_de",
+     fdr_threshold=0.05
+   )
+2. Assess: "MA plot shows no systematic bias. Fold-changes are evenly distributed across expression levels..."
+```
+
+### Expression Heatmap - `create_expression_heatmap()`
+
+**Purpose:** Visualize gene expression patterns across samples with hierarchical clustering.
+
+**When to Use:**
+- To visualize expression of top differentially expressed genes
+- To check if samples cluster by condition (validates DE analysis)
+- To identify gene co-expression patterns
+- To create publication-ready figures
+- To validate batch effects or confounders
+
+**Parameters:**
+- `modality_name` (str, required): Name of modality with expression data
+- `gene_list` (str, optional): Comma-separated gene names (default: top 50 most variable genes)
+- `cluster_samples` (bool, optional): Hierarchical clustering of samples (default: True)
+- `cluster_genes` (bool, optional): Hierarchical clustering of genes (default: True)
+- `z_score` (bool, optional): Z-score normalization across samples (default: True)
+
+**Output:**
+- Plot stored as `{{modality_name}}_heatmap` in data_manager.plots
+- Returns: Formatted string with statistics and clustering details
+
+**Plot Features:**
+- Rows: Genes (clustered if enabled)
+- Columns: Samples (clustered if enabled)
+- Color scale:
+  - With z-score: RdBu_r diverging scale (blue=low, red=high)
+  - Without z-score: Viridis sequential scale
+- Dendrograms: Ward linkage hierarchical clustering
+- Interactive hover: Gene name, sample name, expression value
+
+**Interpretation:**
+- Sample clustering: Should match experimental design (e.g., control vs treated groups)
+- Gene clustering: Identifies co-expressed gene modules
+- Blocks of high/low expression: Biological signatures
+- Mixed clusters: Possible batch effects or confounders
+
+**Gene Selection Strategies:**
+1. **Top DE genes:** Use genes from create_volcano_plot top list
+2. **Custom genes:** Provide comma-separated list of gene names
+3. **Pathway genes:** Use genes from specific biological pathway
+4. **Auto selection:** Leave gene_list empty for top 50 variable genes
+
+**Example Usage:**
+```
+User: "Show me a heatmap of my top differentially expressed genes"
+Agent:
+1. Extract top 50 genes from DE results (by combined FDR + FC score)
+2. Call: create_expression_heatmap(
+     modality_name="geo_gse12345_normalized",  # Use normalized data, not DE results
+     gene_list="GENE1,GENE2,GENE3,...,GENE50",
+     cluster_samples=True,
+     cluster_genes=True,
+     z_score=True
+   )
+3. Interpret: "Heatmap shows clear separation between control and treated samples..."
+```
+
+**Important:** Use the **normalized expression modality** (not DE results modality) for heatmaps. DE results have statistics, not expression values.
+
+---
+
+## VISUALIZATION WORKFLOW RECOMMENDATIONS
+
+### Standard Publication Figure Set:
+```
+1. Run differential expression
+2. Create volcano plot → Identify significant genes
+3. Create MA plot → Validate no biases
+4. Create heatmap with top 50 genes → Show expression patterns
+```
+
+### Quality Control Workflow:
+```
+1. Create MA plot BEFORE interpreting DE results
+2. If bias detected → Re-normalize or adjust for batch
+3. Create heatmap to check sample clustering
+4. If samples don't cluster by condition → Investigate confounders
+```
+
+### Interactive Exploration:
+```
+1. Create volcano plot with default thresholds
+2. If too many/few genes → Adjust fc_threshold and re-plot
+3. Extract top genes from volcano plot
+4. Create heatmap with those specific genes
+5. Investigate expression patterns
+```
+
+### Plot Storage and Retrieval:
+- All plots are stored in `data_manager.plots` dictionary
+- Keys format: `{{modality_name}}_volcano`, `{{modality_name}}_ma`, `{{modality_name}}_heatmap`
+- Plots can be retrieved later for export or re-display
+- Plots are included in notebook export for reproducibility
+
+---
+
+## TROUBLESHOOTING VISUALIZATIONS
+
+**"Missing required columns" error:**
+- Volcano/MA plots require DE results modality (with log2FoldChange, padj, baseMean)
+- Heatmaps require expression modality (with actual counts/TPM, not DE statistics)
+- Check modality type: `check_data_status()` or use list_modalities() tool
+
+**"Genes not found" warning:**
+- Some genes in gene_list don't exist in adata.var_names
+- Service automatically filters missing genes
+- Check exact gene names with modality info tools
+
+**Empty or all-gray volcano plot:**
+- Adjust fdr_threshold (try 0.1 instead of 0.05)
+- Adjust fc_threshold (try 0.5 instead of 1.0)
+- Check if DE analysis actually found differences
+
+**Heatmap clustering fails:**
+- Set cluster_samples=False and cluster_genes=False
+- Increase n_genes (more genes → better clustering)
+- Check for constant expression genes (zero variance)
+
+**MA plot shows strong bias:**
+- Consider additional normalization (TMM, RLE)
+- Check for batch effects with experimental design validation tools
+- May need to use pyDESeq2 instead of standard DE
+
+---
 
 <Bulk RNA-seq Parameter Guidelines>
 

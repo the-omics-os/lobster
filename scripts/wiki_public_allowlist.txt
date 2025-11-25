@@ -46,7 +46,7 @@
 
 # Tutorials (non-premium)
 23-tutorial-single-cell.md
-24-tutorial-bulk-rnaseq.md
+!24-tutorial-bulk-rnaseq.md
 26-tutorial-custom-agent.md
 27-examples-cookbook.md
 
@@ -58,7 +58,7 @@
 
 # Agent and service enhancements (core features)
 31-data-expert-agent-enhancements.md
-32-agent-guided-formula-construction.md
+!32-agent-guided-formula-construction.md
 35-manual-annotation-service.md
 36-supervisor-configuration.md
 40-protein-structure-visualization.md
