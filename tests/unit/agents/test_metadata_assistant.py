@@ -123,7 +123,7 @@ class TestMetadataAssistantInit:
         mock_create_agent.assert_called_once()
         call_kwargs = mock_create_agent.call_args[1]
         assert call_kwargs["model"] == mock_llm
-        assert len(call_kwargs["tools"]) == 4  # 4 base tools
+        assert len(call_kwargs["tools"]) == 5  # 5 base tools (includes filter_samples_by)
         assert call_kwargs["name"] == "metadata_assistant"
         assert "metadata assistant" in call_kwargs["prompt"].lower()
 
@@ -2330,3 +2330,302 @@ class TestHandoffCoordination:
         call_args = mock_data_manager.log_tool_usage.call_args
         assert call_args[1]["tool_name"] == "validate_dataset_content"
         assert "result_summary" in call_args[1]
+
+
+class TestFilterSamplesBy:
+    """Test filter_samples_by tool (multi-criteria microbiome filtering)."""
+
+    @patch("lobster.agents.metadata_assistant.create_react_agent")
+    @patch("lobster.agents.metadata_assistant.create_llm")
+    @patch("lobster.agents.metadata_assistant.get_settings")
+    @patch("lobster.agents.metadata_assistant.MetadataStandardizationService")
+    @patch("lobster.agents.metadata_assistant.SampleMappingService")
+    @patch("lobster.agents.metadata_assistant.MicrobiomeFilteringService")
+    @patch("lobster.agents.metadata_assistant.DiseaseStandardizationService")
+    def test_filter_samples_by_basic(
+        self,
+        mock_disease_service_class,
+        mock_microbiome_service_class,
+        mock_mapping_class,
+        mock_standardization_class,
+        mock_settings,
+        mock_create_llm,
+        mock_create_agent,
+        mock_data_manager,
+        mock_llm,
+        mock_agent,
+    ):
+        """Test basic filtering with single criterion (16S amplicon)."""
+        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.core.analysis_ir import AnalysisStep
+
+        # Setup mocks
+        mock_settings_instance = Mock()
+        mock_settings_instance.get_agent_llm_params.return_value = {}
+        mock_settings.return_value = mock_settings_instance
+        mock_create_llm.return_value = mock_llm
+        mock_create_agent.return_value = mock_agent
+
+        # Mock microbiome filtering service
+        mock_microbiome_service = Mock()
+        mock_microbiome_service_class.return_value = mock_microbiome_service
+
+        # Mock 16S validation (2 out of 3 samples pass)
+        def validate_16s_side_effect(metadata, strict=True):
+            platform = metadata.get("platform", "").lower()
+            if "illumina" in platform or "miseq" in platform:
+                return (
+                    metadata,  # Non-empty dict = valid
+                    {"is_valid": True, "reason": "16S detected", "matched_field": "platform"},
+                    AnalysisStep(
+                        operation="validate_16s",
+                        tool_name="test",
+                        description="test",
+                        library="test",
+                        code_template="",
+                        imports=[],
+                        parameters={},
+                        parameter_schema={},
+                        input_entities=[],
+                        output_entities=[]
+                    )
+                )
+            else:
+                return (
+                    {},  # Empty dict = invalid
+                    {"is_valid": False, "reason": "No 16S indicators"},
+                    AnalysisStep(
+                        operation="validate_16s",
+                        tool_name="test",
+                        description="test",
+                        library="test",
+                        code_template="",
+                        imports=[],
+                        parameters={},
+                        parameter_schema={},
+                        input_entities=[],
+                        output_entities=[]
+                    )
+                )
+
+        mock_microbiome_service.validate_16s_amplicon.side_effect = validate_16s_side_effect
+
+        # Mock workspace data
+        workspace_data = {
+            "metadata": {
+                "samples": {
+                    "sample1": {"platform": "Illumina MiSeq", "organism": "Homo sapiens"},
+                    "sample2": {"platform": "Illumina HiSeq", "organism": "Homo sapiens"},
+                    "sample3": {"platform": "PacBio", "organism": "Homo sapiens"}  # Should be filtered out
+                }
+            }
+        }
+        mock_data_manager.workspace.read_content.return_value = workspace_data
+
+        # Create agent
+        metadata_assistant(data_manager=mock_data_manager)
+
+        # Extract tool
+        tools = mock_create_agent.call_args[1]["tools"]
+        filter_tool = next(t for t in tools if t.name == "filter_samples_by")
+
+        # Run filtering
+        result = filter_tool.func(
+            workspace_key="test_workspace",
+            filter_criteria="16S",
+            strict=False
+        )
+
+        # Verify results
+        assert "✅" in result or "⚠️" in result  # Success/warning icon
+        assert "Original Samples: 3" in result
+        assert "Filtered Samples: 2" in result
+        assert "Retention Rate" in result
+        assert "16S amplicon detection" in result
+        assert "Recommendation" in result
+
+        # Verify provenance logged
+        mock_data_manager.log_tool_usage.assert_called()
+        call_args = mock_data_manager.log_tool_usage.call_args
+        assert call_args[1]["tool_name"] == "filter_samples_by"
+
+    @patch("lobster.agents.metadata_assistant.create_react_agent")
+    @patch("lobster.agents.metadata_assistant.create_llm")
+    @patch("lobster.agents.metadata_assistant.get_settings")
+    @patch("lobster.agents.metadata_assistant.MetadataStandardizationService")
+    @patch("lobster.agents.metadata_assistant.SampleMappingService")
+    @patch("lobster.agents.metadata_assistant.MicrobiomeFilteringService")
+    @patch("lobster.agents.metadata_assistant.DiseaseStandardizationService")
+    def test_filter_samples_by_multi_criteria(
+        self,
+        mock_disease_service_class,
+        mock_microbiome_service_class,
+        mock_mapping_class,
+        mock_standardization_class,
+        mock_settings,
+        mock_create_llm,
+        mock_create_agent,
+        mock_data_manager,
+        mock_llm,
+        mock_agent,
+    ):
+        """Test multi-criteria filtering (16S + human + fecal)."""
+        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.core.analysis_ir import AnalysisStep
+
+        # Setup mocks
+        mock_settings_instance = Mock()
+        mock_settings_instance.get_agent_llm_params.return_value = {}
+        mock_settings.return_value = mock_settings_instance
+        mock_create_llm.return_value = mock_llm
+        mock_create_agent.return_value = mock_agent
+
+        # Mock services
+        mock_microbiome_service = Mock()
+        mock_microbiome_service_class.return_value = mock_microbiome_service
+        mock_disease_service = Mock()
+        mock_disease_service_class.return_value = mock_disease_service
+
+        # Mock 16S validation (all pass)
+        mock_microbiome_service.validate_16s_amplicon.return_value = (
+            {"platform": "test"},
+            {"is_valid": True, "reason": "16S detected"},
+            AnalysisStep(
+                operation="validate_16s", tool_name="test", description="test",
+                library="test", code_template="", imports=[], parameters={},
+                parameter_schema={}, input_entities=[], output_entities=[]
+            )
+        )
+
+        # Mock host organism validation (all pass)
+        mock_microbiome_service.validate_host_organism.return_value = (
+            {"organism": "Homo sapiens"},
+            {"is_valid": True, "reason": "Host matched", "matched_host": "Human"},
+            AnalysisStep(
+                operation="validate_host", tool_name="test", description="test",
+                library="test", code_template="", imports=[], parameters={},
+                parameter_schema={}, input_entities=[], output_entities=[]
+            )
+        )
+
+        # Mock sample type filtering (2 out of 3 pass)
+        def filter_by_sample_type_side_effect(metadata_df, sample_types):
+            # Keep samples with fecal in sample_type
+            filtered = metadata_df[metadata_df["sample_type"].str.lower().str.contains("fecal")]
+            return (
+                filtered,
+                {
+                    "original_samples": len(metadata_df),
+                    "filtered_samples": len(filtered),
+                    "retention_rate": len(filtered) / len(metadata_df) * 100
+                },
+                AnalysisStep(
+                    operation="filter_sample_type", tool_name="test", description="test",
+                    library="test", code_template="", imports=[], parameters={},
+                    parameter_schema={}, input_entities=[], output_entities=[]
+                )
+            )
+
+        mock_disease_service.filter_by_sample_type.side_effect = filter_by_sample_type_side_effect
+
+        # Mock workspace data
+        workspace_data = {
+            "metadata": {
+                "samples": {
+                    "sample1": {"platform": "Illumina MiSeq", "organism": "Homo sapiens", "sample_type": "fecal"},
+                    "sample2": {"platform": "Illumina HiSeq", "organism": "Homo sapiens", "sample_type": "fecal"},
+                    "sample3": {"platform": "Illumina NextSeq", "organism": "Homo sapiens", "sample_type": "biopsy"}
+                }
+            }
+        }
+        mock_data_manager.workspace.read_content.return_value = workspace_data
+
+        # Create agent
+        metadata_assistant(data_manager=mock_data_manager)
+
+        # Extract tool
+        tools = mock_create_agent.call_args[1]["tools"]
+        filter_tool = next(t for t in tools if t.name == "filter_samples_by")
+
+        # Run filtering
+        result = filter_tool.func(
+            workspace_key="test_workspace",
+            filter_criteria="16S human fecal",
+            strict=False
+        )
+
+        # Verify results
+        assert "✅" in result or "⚠️" in result
+        assert "Original Samples: 3" in result
+        assert "Filtered Samples: 2" in result
+        assert "16S amplicon detection" in result
+        assert "Host organism: Human" in result
+        assert "Sample type: fecal" in result
+
+    @patch("lobster.agents.metadata_assistant.create_react_agent")
+    @patch("lobster.agents.metadata_assistant.create_llm")
+    @patch("lobster.agents.metadata_assistant.get_settings")
+    @patch("lobster.agents.metadata_assistant.MetadataStandardizationService")
+    @patch("lobster.agents.metadata_assistant.SampleMappingService")
+    @patch("lobster.agents.metadata_assistant.MicrobiomeFilteringService")
+    @patch("lobster.agents.metadata_assistant.DiseaseStandardizationService")
+    def test_filter_samples_by_natural_language(
+        self,
+        mock_disease_service_class,
+        mock_microbiome_service_class,
+        mock_mapping_class,
+        mock_standardization_class,
+        mock_settings,
+        mock_create_llm,
+        mock_create_agent,
+        mock_data_manager,
+        mock_llm,
+        mock_agent,
+    ):
+        """Test natural language criteria parsing."""
+        from lobster.agents.metadata_assistant import metadata_assistant
+
+        # Setup mocks
+        mock_settings_instance = Mock()
+        mock_settings_instance.get_agent_llm_params.return_value = {}
+        mock_settings.return_value = mock_settings_instance
+        mock_create_llm.return_value = mock_llm
+        mock_create_agent.return_value = mock_agent
+
+        # Mock empty workspace to test parsing only
+        workspace_data = {"metadata": {"samples": {}}}
+        mock_data_manager.workspace.read_content.return_value = workspace_data
+
+        # Create agent
+        metadata_assistant(data_manager=mock_data_manager)
+
+        # Extract tool
+        tools = mock_create_agent.call_args[1]["tools"]
+        filter_tool = next(t for t in tools if t.name == "filter_samples_by")
+
+        # Test various natural language criteria
+        test_cases = [
+            ("16S human fecal", True, ["Human"], ["fecal"], False),
+            ("mouse gut CRC", False, ["Mouse"], ["gut"], True),
+            ("amplicon human stool healthy", True, ["Human"], ["fecal"], True),
+            ("16S Homo sapiens tissue", True, ["Human"], ["gut"], False),
+        ]
+
+        for criteria, expect_16s, expect_hosts, expect_types, expect_disease in test_cases:
+            result = filter_tool.func(
+                workspace_key="test_workspace",
+                filter_criteria=criteria,
+                strict=False
+            )
+
+            # Verify criteria was parsed (even if no samples, should show filters applied)
+            if expect_16s:
+                assert "16S amplicon detection" in result
+            if expect_hosts:
+                for host in expect_hosts:
+                    assert host in result
+            if expect_types:
+                for sample_type in expect_types:
+                    assert sample_type in result
+            if expect_disease:
+                assert "Disease standardization" in result
