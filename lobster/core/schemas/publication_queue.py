@@ -19,6 +19,8 @@ class PublicationStatus(str, Enum):
     PENDING = "pending"
     EXTRACTING = "extracting"
     METADATA_EXTRACTED = "metadata_extracted"
+    METADATA_ENRICHED = "metadata_enriched"
+    HANDOFF_READY = "handoff_ready"
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -32,12 +34,37 @@ class ExtractionLevel(str, Enum):
     IDENTIFIERS = "identifiers"  # Extract dataset identifiers only
 
 
+class HandoffStatus(str, Enum):
+    """Granular status for agent-to-agent handoffs."""
+
+    NOT_READY = "not_ready"
+    READY_FOR_METADATA = "ready_for_metadata"
+    METADATA_IN_PROGRESS = "metadata_in_progress"
+    METADATA_COMPLETE = "metadata_complete"
+
+
 class PublicationQueueEntry(BaseModel):
     """
     Queue entry for publication extraction with full metadata.
 
     This schema represents a complete publication extraction request prepared
     by the research_agent with identifiers, extraction parameters, and results.
+
+    **Multi-Agent Handoff Contract:**
+    1. research_agent: Extracts SRA identifiers from publication, fetches metadata,
+       saves to workspace/metadata/, populates workspace_metadata_keys with basenames
+    2. metadata_assistant: Reads workspace_metadata_keys, loads full paths via
+       get_workspace_metadata_paths(), performs filtering/validation, populates
+       harmonization_metadata
+    3. research_agent: Reads harmonization_metadata for final CSV export
+
+    **Workspace Integration Fields:**
+    - workspace_metadata_keys: List of metadata file basenames (e.g., ['SRR123_metadata.json'])
+      - Set by: research_agent after SRA metadata fetch
+      - Read by: metadata_assistant for filtering
+    - harmonization_metadata: Filtered/validated metadata ready for export
+      - Set by: metadata_assistant after processing
+      - Read by: research_agent for CSV generation
 
     Attributes:
         entry_id: Unique identifier for this queue entry
@@ -57,6 +84,8 @@ class PublicationQueueEntry(BaseModel):
         github_url: GitHub repository URL (if mentioned)
         extracted_identifiers: Dataset identifiers extracted from publication
         extracted_metadata: Full extracted metadata content
+        workspace_metadata_keys: List of workspace metadata file basenames
+        harmonization_metadata: Harmonized metadata from metadata_assistant
         error_log: List of error messages if extraction failed
         created_at: Timestamp when entry was created
         updated_at: Timestamp when entry was last updated
@@ -116,6 +145,30 @@ class PublicationQueueEntry(BaseModel):
         default_factory=dict, description="Full extracted metadata content"
     )
 
+    # Workspace integration (multi-agent handoff)
+    dataset_ids: List[str] = Field(
+        default_factory=list,
+        description="List of dataset accessions associated with this publication (GSE, SRP, etc.)",
+    )
+    workspace_metadata_keys: List[str] = Field(
+        default_factory=list,
+        description="List of workspace metadata file basenames (e.g., ['SRR123_metadata.json']). "
+        "Populated by research_agent after SRA metadata fetch, consumed by metadata_assistant.",
+    )
+    filtered_workspace_key: Optional[str] = Field(
+        None,
+        description="Workspace key pointing to filtered/curated sample metadata produced by metadata_assistant",
+    )
+    harmonization_metadata: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Harmonized metadata from metadata_assistant. Contains filtered/validated data "
+                    "ready for final CSV export by research_agent.",
+    )
+    handoff_status: HandoffStatus = Field(
+        default=HandoffStatus.NOT_READY,
+        description="Fine-grained status tracking cross-agent handoff progress",
+    )
+
     # Execution metadata
     created_at: datetime = Field(
         default_factory=datetime.now, description="Timestamp when entry was created"
@@ -163,6 +216,20 @@ class PublicationQueueEntry(BaseModel):
                     "BioProject": ["PRJNA720345"],
                 },
                 "extracted_metadata": {"methods": "scRNA-seq analysis using..."},
+                "dataset_ids": ["GSE180759"],
+                "workspace_metadata_keys": [
+                    "SRR14567890_metadata.json",
+                    "SRR14567891_metadata.json",
+                ],
+                "filtered_workspace_key": "publication_pub_queue_1234567890_filtered_samples.json",
+                "harmonization_metadata": {
+                    "samples": [
+                        {"run_accession": "SRR14567890", "tissue": "brain", "cell_type": "neuron"},
+                        {"run_accession": "SRR14567891", "tissue": "brain", "cell_type": "astrocyte"},
+                    ],
+                    "validation_status": "passed",
+                },
+                "handoff_status": "not_ready",
                 "created_at": "2024-01-15T10:30:00",
                 "updated_at": "2024-01-15T10:30:00",
                 "processed_by": None,
@@ -190,12 +257,15 @@ class PublicationQueueEntry(BaseModel):
 
         # Validate format based on field name
         if info.field_name == "pmid":
-            # PMID should be numeric or prefixed with PMID:
-            if v.startswith("PMID:"):
-                v = v[5:]
-            if not v.isdigit():
-                raise ValueError(f"PMID must be numeric, got '{v}'")
-            return v
+            # Strip common prefixes/symbols (PMID, PMID:, PMID-)
+            v_upper = v.upper().strip()
+            if v_upper.startswith("PMID"):
+                v = v_upper[4:]
+            # Remove punctuation/whitespace commonly inserted by RIS exports
+            digits = "".join(ch for ch in str(v) if ch.isdigit())
+            if not digits:
+                raise ValueError(f"PMID must contain digits, got '{v}'")
+            return digits
 
         elif info.field_name == "doi":
             # DOI should contain a slash (e.g., 10.1234/journal.2024.123)
@@ -205,11 +275,15 @@ class PublicationQueueEntry(BaseModel):
 
         elif info.field_name == "pmc_id":
             # PMC ID should be numeric or prefixed with PMC
-            if v.startswith("PMC"):
-                v = v[3:]
-            if not v.isdigit():
-                raise ValueError(f"PMC ID must be numeric after PMC prefix, got '{v}'")
-            return f"PMC{v}"
+            v_upper = v.upper().strip()
+            if v_upper.startswith("PMC"):
+                v_upper = v_upper[3:]
+            digits = "".join(ch for ch in v_upper if ch.isdigit())
+            if not digits:
+                raise ValueError(
+                    f"PMC ID must contain digits after PMC prefix, got '{v}'"
+                )
+            return f"PMC{digits}"
 
         return v
 
@@ -263,6 +337,23 @@ class PublicationQueueEntry(BaseModel):
 
         return v
 
+    @field_validator("workspace_metadata_keys")
+    @classmethod
+    def validate_workspace_metadata_keys(cls, v: List[str]) -> List[str]:
+        """Validate workspace_metadata_keys has no duplicates and all are strings."""
+        if not isinstance(v, list):
+            raise ValueError("workspace_metadata_keys must be a list")
+
+        if not all(isinstance(key, str) for key in v):
+            raise ValueError("All workspace_metadata_keys must be strings")
+
+        # Check for duplicates
+        if len(v) != len(set(v)):
+            duplicates = [key for key in set(v) if v.count(key) > 1]
+            raise ValueError(f"Duplicate workspace_metadata_keys found: {duplicates}")
+
+        return v
+
     @field_validator("updated_at", mode="before")
     @classmethod
     def ensure_updated_at_is_datetime(cls, v):
@@ -286,6 +377,11 @@ class PublicationQueueEntry(BaseModel):
         error: Optional[str] = None,
         processed_by: Optional[str] = None,
         extracted_identifiers: Optional[Dict[str, List[str]]] = None,
+        workspace_metadata_keys: Optional[List[str]] = None,
+        dataset_ids: Optional[List[str]] = None,
+        filtered_workspace_key: Optional[str] = None,
+        handoff_status: Optional[HandoffStatus] = None,
+        harmonization_metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Update entry status and related fields.
@@ -296,7 +392,15 @@ class PublicationQueueEntry(BaseModel):
             error: Optional error message if failed
             processed_by: Optional agent/user who executed extraction
             extracted_identifiers: Optional extracted dataset identifiers
+            workspace_metadata_keys: Optional list of workspace metadata file basenames
+            dataset_ids: Optional list of dataset accessions
+            filtered_workspace_key: Optional workspace key for filtered metadata artifacts
+            handoff_status: Optional override for handoff progress
+            harmonization_metadata: Optional harmonized metadata payload
         """
+        if isinstance(status, str):
+            status = PublicationStatus(status)
+
         self.status = status
         self.updated_at = datetime.now()
 
@@ -311,6 +415,24 @@ class PublicationQueueEntry(BaseModel):
 
         if extracted_identifiers:
             self.extracted_identifiers.update(extracted_identifiers)
+
+        if workspace_metadata_keys is not None:
+            self.workspace_metadata_keys = workspace_metadata_keys
+
+        if dataset_ids is not None:
+            self.dataset_ids = dataset_ids
+
+        if filtered_workspace_key is not None:
+            self.filtered_workspace_key = filtered_workspace_key
+
+        if handoff_status is not None:
+            if isinstance(handoff_status, str):
+                self.handoff_status = HandoffStatus(handoff_status)
+            else:
+                self.handoff_status = handoff_status
+
+        if harmonization_metadata is not None:
+            self.harmonization_metadata = harmonization_metadata
 
     def get_primary_identifier(self) -> Optional[str]:
         """
@@ -336,6 +458,28 @@ class PublicationQueueEntry(BaseModel):
             bool: True if identifiers exist, False otherwise
         """
         return bool(self.extracted_identifiers and any(self.extracted_identifiers.values()))
+
+    def get_workspace_metadata_paths(self, workspace_dir: str) -> List[str]:
+        """
+        Get full paths to workspace metadata files.
+
+        Args:
+            workspace_dir: Base workspace directory path
+
+        Returns:
+            List[str]: Full paths to metadata files (e.g., ['/workspace/metadata/SRR123_metadata.json'])
+
+        Example:
+            >>> entry.workspace_metadata_keys = ['SRR123_metadata.json', 'SRR456_metadata.json']
+            >>> paths = entry.get_workspace_metadata_paths('/workspace')
+            >>> # Returns: ['/workspace/metadata/SRR123_metadata.json', '/workspace/metadata/SRR456_metadata.json']
+        """
+        from pathlib import Path
+
+        workspace_path = Path(workspace_dir)
+        metadata_dir = workspace_path / "metadata"
+
+        return [str(metadata_dir / key) for key in self.workspace_metadata_keys]
 
     def to_dict(self) -> Dict[str, Any]:
         """

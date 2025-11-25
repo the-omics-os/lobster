@@ -9,6 +9,7 @@ for RIS format parsing, while pybtex is designed for BibTeX format.
 """
 
 import logging
+import re
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -140,7 +141,7 @@ class RISParser:
 
         # Extract identifiers
         pmid = self._extract_pmid(ris_entry)
-        doi = ris_entry.get("doi") or ris_entry.get("DO")
+        doi = self._extract_doi(ris_entry)
         pmc_id = self._extract_pmc_id(ris_entry)
 
         # Extract metadata
@@ -191,6 +192,22 @@ class RISParser:
 
         return entry
 
+    def _extract_doi(self, ris_entry: Dict[str, Any]) -> Optional[str]:
+        """Extract and sanitize DOI values."""
+        doi = ris_entry.get("doi") or ris_entry.get("DO")
+
+        if isinstance(doi, list):
+            doi = doi[0] if doi else None
+
+        if isinstance(doi, str):
+            doi = doi.strip()
+            match = re.search(r"(10\.\S+?\/\S+)", doi)
+            if match:
+                return match.group(1)
+            return doi
+
+        return doi
+
     def _extract_pmid(self, ris_entry: Dict[str, Any]) -> Optional[str]:
         """Extract PMID from various RIS field locations."""
         # Check standard fields
@@ -198,17 +215,23 @@ class RISParser:
 
         # Check notes field for PMID
         notes = ris_entry.get("notes") or ris_entry.get("N1") or ""
-        if isinstance(notes, str) and "PMID:" in notes:
-            # Extract PMID from notes
-            import re
-
-            match = re.search(r"PMID:\s*(\d+)", notes)
+        if isinstance(notes, str):
+            match = re.search(r"PMID[:\-\s]*(\d+)", notes, re.IGNORECASE)
             if match:
                 pmid = match.group(1)
 
+        # Fallback: search all string fields for embedded PMID (non-standard RIS exports)
+        if not pmid:
+            for value in ris_entry.values():
+                if isinstance(value, str):
+                    match = re.search(r"PMID[:\-\s]*(\d+)", value, re.IGNORECASE)
+                    if match:
+                        pmid = match.group(1)
+                        break
+
         # Clean PMID format
         if pmid:
-            pmid = str(pmid).replace("PMID:", "").strip()
+            pmid = re.sub(r"[^0-9]", "", str(pmid))
 
         return pmid
 
@@ -218,13 +241,19 @@ class RISParser:
 
         # Check notes field for PMC
         notes = ris_entry.get("notes") or ris_entry.get("N1") or ""
-        if isinstance(notes, str) and "PMC" in notes:
-            # Extract PMC from notes
-            import re
-
-            match = re.search(r"PMC(\d+)", notes)
+        if isinstance(notes, str):
+            match = re.search(r"PMC\s*-?\s*(\d+)", notes, re.IGNORECASE)
             if match:
                 pmc_id = f"PMC{match.group(1)}"
+
+        # Fallback: search in string fields when PMC is embedded elsewhere
+        if not pmc_id:
+            for value in ris_entry.values():
+                if isinstance(value, str):
+                    match = re.search(r"PMC\s*-?\s*(\d+)", value, re.IGNORECASE)
+                    if match:
+                        pmc_id = f"PMC{match.group(1)}"
+                        break
 
         return pmc_id
 

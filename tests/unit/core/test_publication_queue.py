@@ -336,6 +336,36 @@ class TestCRUDOperations:
         assert updated.extracted_identifiers == extracted_ids
         assert "GSE180759" in updated.extracted_identifiers["geo"]
 
+    def test_update_with_workspace_metadata_keys(self, publication_queue, sample_entry):
+        """Test updating entry with workspace_metadata_keys for multi-agent handoff."""
+        publication_queue.add_entry(sample_entry)
+
+        # Simulate research_agent saving files and updating workspace_metadata_keys
+        workspace_keys = [
+            f"{sample_entry.entry_id}_metadata.json",
+            f"{sample_entry.entry_id}_methods.json",
+            f"{sample_entry.entry_id}_identifiers.json",
+        ]
+
+        updated = publication_queue.update_status(
+            entry_id=sample_entry.entry_id,
+            status=PublicationStatus.METADATA_EXTRACTED,
+            workspace_metadata_keys=workspace_keys,
+            processed_by="research_agent",
+        )
+
+        assert updated.status == PublicationStatus.METADATA_EXTRACTED
+        assert updated.workspace_metadata_keys == workspace_keys
+        assert len(updated.workspace_metadata_keys) == 3
+        assert f"{sample_entry.entry_id}_metadata.json" in updated.workspace_metadata_keys
+
+        # Test get_workspace_metadata_paths helper method
+        workspace_dir = "/test/workspace"
+        paths = updated.get_workspace_metadata_paths(workspace_dir)
+        assert len(paths) == 3
+        assert all("/test/workspace/metadata/" in path for path in paths)
+        assert f"/test/workspace/metadata/{sample_entry.entry_id}_metadata.json" in paths
+
     def test_list_entries_all(self, publication_queue):
         """Test listing all entries."""
         # Add multiple entries
@@ -957,3 +987,199 @@ class TestEdgeCases:
         # Verify they can be parsed back
         created_at = datetime.fromisoformat(data["created_at"])
         assert isinstance(created_at, datetime)
+
+
+# =============================================================================
+# Workspace Integration Tests
+# =============================================================================
+
+
+class TestWorkspaceIntegration:
+    """Test workspace integration fields for multi-agent handoff."""
+
+    def test_workspace_metadata_keys_valid(self):
+        """Test valid workspace_metadata_keys."""
+        entry = PublicationQueueEntry(
+            entry_id="test_entry",
+            pmid="12345678",
+            workspace_metadata_keys=["SRR123_metadata.json", "SRR456_metadata.json"],
+        )
+
+        assert len(entry.workspace_metadata_keys) == 2
+        assert "SRR123_metadata.json" in entry.workspace_metadata_keys
+        assert "SRR456_metadata.json" in entry.workspace_metadata_keys
+
+    def test_workspace_metadata_keys_empty_list(self):
+        """Test empty workspace_metadata_keys list is valid."""
+        entry = PublicationQueueEntry(
+            entry_id="test_entry",
+            pmid="12345678",
+            workspace_metadata_keys=[],
+        )
+
+        assert entry.workspace_metadata_keys == []
+
+    def test_workspace_metadata_keys_duplicates_rejected(self):
+        """Test duplicate workspace_metadata_keys are rejected."""
+        with pytest.raises(ValueError, match="Duplicate workspace_metadata_keys"):
+            PublicationQueueEntry(
+                entry_id="test_entry",
+                pmid="12345678",
+                workspace_metadata_keys=[
+                    "SRR123_metadata.json",
+                    "SRR456_metadata.json",
+                    "SRR123_metadata.json",  # Duplicate
+                ],
+            )
+
+    def test_workspace_metadata_keys_non_string_rejected(self):
+        """Test non-string workspace_metadata_keys are rejected."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError, match="Input should be a valid string"):
+            PublicationQueueEntry(
+                entry_id="test_entry",
+                pmid="12345678",
+                workspace_metadata_keys=["SRR123_metadata.json", 123, "SRR456_metadata.json"],
+            )
+
+    def test_workspace_metadata_keys_non_list_rejected(self):
+        """Test non-list workspace_metadata_keys are rejected."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError, match="Input should be a valid list"):
+            PublicationQueueEntry(
+                entry_id="test_entry",
+                pmid="12345678",
+                workspace_metadata_keys="not_a_list",
+            )
+
+    def test_harmonization_metadata_valid(self):
+        """Test valid harmonization_metadata."""
+        harmonization = {
+            "samples": [
+                {"run_accession": "SRR123", "tissue": "brain"},
+                {"run_accession": "SRR456", "tissue": "heart"},
+            ],
+            "validation_status": "passed",
+        }
+
+        entry = PublicationQueueEntry(
+            entry_id="test_entry",
+            pmid="12345678",
+            harmonization_metadata=harmonization,
+        )
+
+        assert entry.harmonization_metadata == harmonization
+        assert entry.harmonization_metadata["validation_status"] == "passed"
+        assert len(entry.harmonization_metadata["samples"]) == 2
+
+    def test_harmonization_metadata_none_valid(self):
+        """Test harmonization_metadata can be None."""
+        entry = PublicationQueueEntry(
+            entry_id="test_entry",
+            pmid="12345678",
+            harmonization_metadata=None,
+        )
+
+        assert entry.harmonization_metadata is None
+
+    def test_get_workspace_metadata_paths_basic(self, tmp_path):
+        """Test get_workspace_metadata_paths with basic usage."""
+        entry = PublicationQueueEntry(
+            entry_id="test_entry",
+            pmid="12345678",
+            workspace_metadata_keys=["SRR123_metadata.json", "SRR456_metadata.json"],
+        )
+
+        workspace_dir = str(tmp_path)
+        paths = entry.get_workspace_metadata_paths(workspace_dir)
+
+        assert len(paths) == 2
+        assert paths[0].endswith("metadata/SRR123_metadata.json")
+        assert paths[1].endswith("metadata/SRR456_metadata.json")
+
+        # Verify paths are strings
+        assert all(isinstance(p, str) for p in paths)
+
+    def test_get_workspace_metadata_paths_empty_keys(self, tmp_path):
+        """Test get_workspace_metadata_paths with no keys."""
+        entry = PublicationQueueEntry(
+            entry_id="test_entry",
+            pmid="12345678",
+            workspace_metadata_keys=[],
+        )
+
+        workspace_dir = str(tmp_path)
+        paths = entry.get_workspace_metadata_paths(workspace_dir)
+
+        assert paths == []
+
+    def test_multi_agent_handoff_workflow(self, tmp_path):
+        """Test complete multi-agent handoff workflow."""
+        # Step 1: research_agent creates entry with SRA identifiers
+        entry = PublicationQueueEntry(
+            entry_id="workflow_test",
+            pmid="12345678",
+            extracted_identifiers={"SRA": ["SRR123", "SRR456"]},
+        )
+
+        # Step 2: research_agent saves metadata and populates workspace_metadata_keys
+        entry.workspace_metadata_keys = [
+            "SRR123_metadata.json",
+            "SRR456_metadata.json",
+        ]
+
+        # Verify keys are set
+        assert len(entry.workspace_metadata_keys) == 2
+
+        # Step 3: metadata_assistant reads workspace_metadata_keys
+        workspace_dir = str(tmp_path)
+        paths = entry.get_workspace_metadata_paths(workspace_dir)
+
+        # Verify paths are generated correctly
+        assert len(paths) == 2
+        assert all("metadata" in p for p in paths)
+
+        # Step 4: metadata_assistant populates harmonization_metadata
+        entry.harmonization_metadata = {
+            "samples": [
+                {"run_accession": "SRR123", "tissue": "brain", "cell_type": "neuron"},
+                {"run_accession": "SRR456", "tissue": "heart", "cell_type": "cardiomyocyte"},
+            ],
+            "validation_status": "passed",
+            "filtered_count": 2,
+        }
+
+        # Step 5: research_agent reads harmonization_metadata for export
+        assert entry.harmonization_metadata is not None
+        assert entry.harmonization_metadata["validation_status"] == "passed"
+        assert len(entry.harmonization_metadata["samples"]) == 2
+
+    def test_serialization_with_workspace_fields(self):
+        """Test serialization/deserialization with workspace fields."""
+        entry = PublicationQueueEntry(
+            entry_id="serialization_test",
+            pmid="12345678",
+            workspace_metadata_keys=["SRR123_metadata.json"],
+            harmonization_metadata={"status": "completed"},
+        )
+
+        # Serialize
+        data = entry.to_dict()
+        assert "workspace_metadata_keys" in data
+        assert "harmonization_metadata" in data
+        assert data["workspace_metadata_keys"] == ["SRR123_metadata.json"]
+        assert data["harmonization_metadata"]["status"] == "completed"
+
+        # Deserialize
+        restored = PublicationQueueEntry.from_dict(data)
+        assert restored.workspace_metadata_keys == entry.workspace_metadata_keys
+        assert restored.harmonization_metadata == entry.harmonization_metadata
+
+    def test_config_example_has_workspace_fields(self):
+        """Test that Config example includes workspace fields."""
+        example = PublicationQueueEntry.Config.json_schema_extra["example"]
+
+        assert "workspace_metadata_keys" in example
+        assert "harmonization_metadata" in example
+        assert isinstance(example["workspace_metadata_keys"], list)
+        assert isinstance(example["harmonization_metadata"], dict)

@@ -13,7 +13,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from lobster.core.schemas.publication_queue import PublicationQueueEntry, PublicationStatus
+from lobster.core.schemas.publication_queue import (
+    PublicationQueueEntry,
+    PublicationStatus,
+    HandoffStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +143,11 @@ class PublicationQueue:
         error: Optional[str] = None,
         processed_by: Optional[str] = None,
         extracted_identifiers: Optional[dict] = None,
+        workspace_metadata_keys: Optional[List[str]] = None,
+        dataset_ids: Optional[List[str]] = None,
+        filtered_workspace_key: Optional[str] = None,
+        handoff_status: Optional["HandoffStatus"] = None,
+        harmonization_metadata: Optional[dict] = None,
     ) -> PublicationQueueEntry:
         """
         Update entry status and optional fields.
@@ -150,6 +159,7 @@ class PublicationQueue:
             error: Optional error message
             processed_by: Optional agent/user identifier
             extracted_identifiers: Optional extracted dataset identifiers
+            workspace_metadata_keys: Optional list of workspace metadata file basenames
 
         Returns:
             PublicationQueueEntry: Updated entry
@@ -158,6 +168,9 @@ class PublicationQueue:
             EntryNotFoundError: If entry not found
             PublicationQueueError: If update fails
         """
+        if isinstance(status, str):
+            status = PublicationStatus(status)
+
         with self._lock:
             # Load all entries
             entries = self._load_entries()
@@ -174,6 +187,11 @@ class PublicationQueue:
                         error=error,
                         processed_by=processed_by,
                         extracted_identifiers=extracted_identifiers,
+                        workspace_metadata_keys=workspace_metadata_keys,
+                        dataset_ids=dataset_ids,
+                        filtered_workspace_key=filtered_workspace_key,
+                        handoff_status=handoff_status,
+                        harmonization_metadata=harmonization_metadata,
                     )
                     updated_entry = entry
                     break
