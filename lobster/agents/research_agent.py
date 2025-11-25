@@ -96,7 +96,7 @@ def research_agent(
     data_manager: DataManagerV2,
     callback_handler=None,
     agent_name: str = "research_agent",
-    handoff_tools: List = None,
+    delegation_tools: list = None,
 ):
     """Create research agent using DataManagerV2 and modular publication service."""
 
@@ -1908,8 +1908,7 @@ Could not extract content for: {identifier}
         # Phase 7 complete: Added 2 publication queue management tools
     ]
 
-    # Combine base tools with handoff tools if provided
-    tools = base_tools + (handoff_tools or [])
+    tools = base_tools
 
     system_prompt = """
 Research Agent System Prompt
@@ -2321,6 +2320,10 @@ todays date: {current_date}
     """
 
     formatted_prompt = system_prompt.format(current_date=datetime.today().isoformat())
+
+    # Add delegation tools if provided
+    if delegation_tools:
+        tools = tools + delegation_tools
 
     return create_react_agent(
         model=llm,

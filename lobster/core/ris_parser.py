@@ -8,6 +8,7 @@ Note: This parser uses rispy (not pybtex) since rispy is the standard library
 for RIS format parsing, while pybtex is designed for BibTeX format.
 """
 
+import hashlib
 import logging
 import re
 import uuid
@@ -46,9 +47,47 @@ class RISParser:
         DO - DOI
         PMID - PubMed ID
         PMC - PubMed Central ID
-        UR - URL
+        UR - URL (maps to 'urls' in rispy)
+        L1 - Link 1 (maps to 'file_attachments1' in rispy, often PDF)
+        L2 - Link 2 (maps to 'file_attachments2' in rispy, often PubMed)
         KW - Keywords (repeatable)
     """
+
+    # Publisher URL transformation patterns for abstract → fulltext conversion
+    PUBLISHER_URL_TRANSFORMS = {
+        "cell.com": {
+            "pattern": r"/abstract/",
+            "replacement": "/fulltext/",
+        },
+        "wiley.com": {
+            "pattern": r"/doi/abs/",
+            "replacement": "/doi/full/",
+        },
+        "onlinelibrary.wiley.com": {
+            "pattern": r"/doi/abs/",
+            "replacement": "/doi/full/",
+        },
+        "springer.com": {
+            # Springer /article/ URLs are already full text
+            "pattern": None,
+        },
+        "nature.com": {
+            # Nature /articles/ URLs are already full text
+            "pattern": None,
+        },
+        "frontiersin.org": {
+            # Frontiers often provides /full in UR, /pdf in L1
+            "pattern": None,
+        },
+        "sciencedirect.com": {
+            "pattern": r"/article/abs/",
+            "replacement": "/article/",
+        },
+        "tandfonline.com": {
+            "pattern": r"/doi/abs/",
+            "replacement": "/doi/full/",
+        },
+    }
 
     def __init__(self):
         """Initialize RIS parser."""
@@ -136,16 +175,31 @@ class RISParser:
         Raises:
             ValueError: If required fields are missing
         """
-        # Generate unique entry ID
-        entry_id = f"pub_queue_{uuid.uuid4().hex[:10]}"
-
-        # Extract identifiers
+        # Extract identifiers first (needed for deterministic entry_id)
         pmid = self._extract_pmid(ris_entry)
         doi = self._extract_doi(ris_entry)
         pmc_id = self._extract_pmc_id(ris_entry)
 
-        # Extract metadata
+        # Extract title early (needed for deterministic entry_id fallback)
         title = ris_entry.get("title") or ris_entry.get("primary_title") or ris_entry.get("TI")
+
+        # Generate DETERMINISTIC entry ID to prevent duplicates on re-import
+        # Priority: DOI > PMID > title hash > random UUID
+        if doi:
+            # Normalize DOI for use in ID (replace special chars)
+            doi_normalized = doi.replace("/", "_").replace(".", "_").lower()
+            entry_id = f"pub_queue_doi_{doi_normalized}"
+        elif pmid:
+            entry_id = f"pub_queue_pmid_{pmid}"
+        elif title:
+            # Use MD5 hash of title for deterministic ID
+            title_hash = hashlib.md5(title.encode()).hexdigest()[:12]
+            entry_id = f"pub_queue_title_{title_hash}"
+        else:
+            # Fallback to random UUID (should be rare)
+            entry_id = f"pub_queue_{uuid.uuid4().hex[:10]}"
+
+        # Extract metadata (title already extracted above for entry_id)
         authors = self._extract_authors(ris_entry)
         year = self._extract_year(ris_entry)
         journal = (
@@ -155,8 +209,15 @@ class RISParser:
             or ris_entry.get("T2")
         )
 
-        # Extract URLs and supplementary info
-        url = ris_entry.get("url") or ris_entry.get("UR")
+        # Extract ALL URL fields from RIS (UR, L1, L2)
+        primary_url = self._extract_primary_url(ris_entry)
+        pdf_url = self._extract_pdf_url(ris_entry)
+        pubmed_url = self._extract_pubmed_url(ris_entry)
+
+        # Transform abstract URL to fulltext URL for known publishers
+        fulltext_url = self._transform_to_fulltext(primary_url)
+
+        # Extract supplementary info
         abstract = ris_entry.get("abstract") or ris_entry.get("AB")
         keywords = ris_entry.get("keywords") or ris_entry.get("KW", [])
 
@@ -172,7 +233,7 @@ class RISParser:
             "type": ris_entry.get("type_of_reference") or ris_entry.get("TY"),
         }
 
-        # Create queue entry
+        # Create queue entry with all URL fields
         entry = PublicationQueueEntry(
             entry_id=entry_id,
             pmid=pmid,
@@ -186,7 +247,10 @@ class RISParser:
             status=PublicationStatus.PENDING,
             extraction_level=extraction_level,
             schema_type=schema_type,
-            metadata_url=url,
+            metadata_url=primary_url,
+            pdf_url=pdf_url,
+            pubmed_url=pubmed_url,
+            fulltext_url=fulltext_url,
             extracted_metadata=extracted_metadata,
         )
 
@@ -348,6 +412,122 @@ class RISParser:
                 return schema_type
 
         return None  # Use default "general"
+
+    def _transform_to_fulltext(self, url: Optional[str]) -> Optional[str]:
+        """
+        Transform abstract URL to fulltext URL for known publishers.
+
+        Args:
+            url: Primary article URL (often abstract page)
+
+        Returns:
+            Transformed fulltext URL if transformation is available, None otherwise
+        """
+        if not url:
+            return None
+
+        url_lower = url.lower()
+
+        for domain, transform in self.PUBLISHER_URL_TRANSFORMS.items():
+            if domain in url_lower and transform.get("pattern"):
+                transformed = re.sub(
+                    transform["pattern"], transform["replacement"], url
+                )
+                if transformed != url:
+                    logger.debug(f"Transformed URL: {url} → {transformed}")
+                    return transformed
+
+        return None  # No transformation available
+
+    def _extract_pdf_url(self, ris_entry: Dict[str, Any]) -> Optional[str]:
+        """
+        Extract PDF URL from RIS L1 field.
+
+        L1 (file_attachments1 in rispy) often contains direct PDF link.
+
+        Args:
+            ris_entry: Parsed RIS entry dictionary
+
+        Returns:
+            PDF URL if available, None otherwise
+        """
+        # rispy maps L1 to 'file_attachments1'
+        link1 = ris_entry.get("file_attachments1") or ris_entry.get("L1")
+
+        if not link1:
+            return None
+
+        # Handle list (some RIS files have multiple L1 entries)
+        if isinstance(link1, list):
+            link1 = link1[0] if link1 else None
+
+        if not link1:
+            return None
+
+        link1_lower = link1.lower()
+
+        # Check if URL looks like a PDF link
+        if ".pdf" in link1_lower or "/pdf" in link1_lower:
+            return link1
+
+        return None
+
+    def _extract_pubmed_url(self, ris_entry: Dict[str, Any]) -> Optional[str]:
+        """
+        Extract PubMed URL from RIS L2 field.
+
+        L2 (file_attachments2 in rispy) often contains PubMed link.
+
+        Args:
+            ris_entry: Parsed RIS entry dictionary
+
+        Returns:
+            PubMed URL if available, None otherwise
+        """
+        # rispy maps L2 to 'file_attachments2'
+        link2 = ris_entry.get("file_attachments2") or ris_entry.get("L2")
+
+        if not link2:
+            return None
+
+        # Handle list
+        if isinstance(link2, list):
+            link2 = link2[0] if link2 else None
+
+        if not link2:
+            return None
+
+        link2_lower = link2.lower()
+
+        # Check if URL is PubMed
+        if "ncbi.nlm.nih.gov/pubmed" in link2_lower or "pubmed.ncbi.nlm.nih.gov" in link2_lower:
+            return link2
+
+        return None
+
+    def _extract_primary_url(self, ris_entry: Dict[str, Any]) -> Optional[str]:
+        """
+        Extract primary URL from RIS UR field.
+
+        rispy maps UR to 'urls' (list) or 'url' (string).
+
+        Args:
+            ris_entry: Parsed RIS entry dictionary
+
+        Returns:
+            Primary article URL if available, None otherwise
+        """
+        # rispy maps UR to 'urls' (as list) or sometimes 'url'
+        urls = ris_entry.get("urls") or ris_entry.get("url") or ris_entry.get("UR")
+
+        if not urls:
+            return None
+
+        # Handle list
+        if isinstance(urls, list):
+            return urls[0] if urls else None
+
+        return urls
 
     def get_statistics(self) -> Dict[str, Any]:
         """

@@ -18,6 +18,7 @@ Features three-tier cascade logic (PMC → Webpage → PDF), session caching
 via DataManager, and W3C-PROV provenance tracking.
 """
 
+import re
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -1078,12 +1079,38 @@ class ContentAccessService:
                 webpage_provider = webpage_providers[0]
                 logger.info("Using WebpageProvider for URL extraction")
 
-                # Extract content (handles both webpage and PDF internally)
-                content_result = webpage_provider.extract_content(
-                    url_to_fetch,
-                    keywords=keywords,
-                    max_paragraphs=max_paragraphs,
-                )
+                # Extract content with full metadata (handles both webpage and PDF internally)
+                try:
+                    content_result = webpage_provider.extract_with_full_metadata(
+                        url_to_fetch,
+                        keywords=keywords,
+                        max_paragraphs=max_paragraphs,
+                    )
+                except Exception as extraction_error:
+                    # Check for HTTP errors indicating paywall/access issues
+                    error_str = str(extraction_error).lower()
+                    error_code = None
+
+                    # Extract HTTP status code if present
+                    code_match = re.search(r"(\d{3})\s*(client|server)?\s*error", error_str)
+                    if code_match:
+                        error_code = int(code_match.group(1))
+
+                    # HTTP 400, 401, 403 typically indicate paywall/auth issues
+                    # TDM API errors (like Wiley) return 400 without token
+                    if error_code in (400, 401, 403) or "tdm" in error_str or "token" in error_str:
+                        logger.warning(
+                            f"Paywall/access error for {url_to_fetch}: {extraction_error}"
+                        )
+                        return {
+                            "error": f"Paper is paywalled or requires authentication: {source}",
+                            "suggestions": "Try institutional access, preprint servers, or add content manually",
+                            "original_error": str(extraction_error),
+                            "url_attempted": url_to_fetch,
+                        }
+                    else:
+                        # Re-raise other errors to be caught by outer handler
+                        raise
 
                 content_result["extraction_time"] = time.time() - start_time
                 content_result["tier_used"] = (

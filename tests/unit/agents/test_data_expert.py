@@ -225,19 +225,19 @@ class TestAgentConfiguration:
 
         assert agent is not None
 
-    def test_agent_with_handoff_tools(self, mock_data_manager):
-        """Test agent creation with handoff tools."""
+    def test_agent_with_delegation_tools(self, mock_data_manager):
+        """Test agent creation with delegation tools."""
 
         # Create a proper mock tool function instead of Mock object
-        def mock_handoff_tool():
-            """Mock handoff tool."""
-            return "Mock handoff executed"
+        def mock_delegation_tool():
+            """Mock delegation tool."""
+            return "Mock delegation executed"
 
-        mock_handoff_tool.__name__ = "mock_handoff_tool"
-        mock_handoff_tools = [mock_handoff_tool]
+        mock_delegation_tool.__name__ = "mock_delegation_tool"
+        mock_delegation_tools = [mock_delegation_tool]
 
         agent = data_expert(
-            data_manager=mock_data_manager, handoff_tools=mock_handoff_tools
+            data_manager=mock_data_manager, delegation_tools=mock_delegation_tools
         )
 
         assert agent is not None
@@ -256,7 +256,7 @@ class TestAgentConfiguration:
             data_manager=mock_data_manager,
             callback_handler=mock_callback,
             agent_name="test_data_expert",
-            handoff_tools=[mock_tool],
+            delegation_tools=[mock_tool],
         )
 
         assert agent is not None

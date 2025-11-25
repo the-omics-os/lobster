@@ -255,7 +255,8 @@ class TestAgentRegistryManagement:
         assert config is not None
         assert config.name == "data_expert_agent"
         assert config.display_name == "Data Expert"
-        assert "data" in config.description.lower()
+        # Updated: description focuses on download execution and modality management
+        assert "download" in config.description.lower() or "modalities" in config.description.lower()
 
     def test_get_agent_config_nonexistent(self):
         """Test retrieving non-existent agent config."""
@@ -659,15 +660,17 @@ class TestRegistryPersistenceLoading:
         """Test that default agents are properly registered."""
         agent_names = get_all_agent_names()
 
-        # Check for expected default agents (method_expert_agent deprecated v2.2+)
+        # Check for expected default agents
         expected_agents = [
             "data_expert_agent",
             "singlecell_expert_agent",
             "research_agent",
             # "method_expert_agent",  # DEPRECATED v2.2+: merged into research_agent
-            "bulk_rnaseq_expert_agent",
+            # "bulk_rnaseq_expert_agent",  # DISABLED: commented out in agent_registry.py
             "machine_learning_expert_agent",
             "visualization_expert_agent",
+            "metadata_assistant",
+            "protein_structure_visualization_expert_agent",
         ]
 
         for expected_agent in expected_agents:

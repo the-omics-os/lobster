@@ -32,7 +32,7 @@ def data_expert(
     data_manager: DataManagerV2,
     callback_handler=None,
     agent_name: str = "data_expert_agent",
-    handoff_tools: List = None,
+    delegation_tools: list = None,
 ):
     """
     Create a multi-omics data acquisition, processing, and workspace management specialist agent.
@@ -53,7 +53,6 @@ def data_expert(
         data_manager: DataManagerV2 instance for modular data operations
         callback_handler: Optional callback handler for LLM interactions
         agent_name: Name identifier for the agent instance
-        handoff_tools: Additional tools for inter-agent communication
 
     Returns:
         Configured ReAct agent with comprehensive data management capabilities
@@ -1124,8 +1123,7 @@ To save, run again with save_to_file=True"""
     ]
     # create_mudata_from_modalities: Combine modalities into MuData for integrated analysis
 
-    # Combine base tools with handoff tools if provided
-    tools = base_tools + (handoff_tools or [])
+    tools = base_tools
 
     system_prompt = """
 <Identity_And_Expertise>
@@ -1452,6 +1450,10 @@ Today's date is {date}.
 """.format(
         date=date.today()
     )
+
+    # Add delegation tools if provided
+    if delegation_tools:
+        tools = tools + delegation_tools
 
     return create_react_agent(
         model=llm,

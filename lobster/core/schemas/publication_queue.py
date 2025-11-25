@@ -23,6 +23,7 @@ class PublicationStatus(str, Enum):
     HANDOFF_READY = "handoff_ready"
     COMPLETED = "completed"
     FAILED = "failed"
+    PAYWALLED = "paywalled"  # Paper behind paywall, awaiting manual input
 
 
 class ExtractionLevel(str, Enum):
@@ -125,9 +126,18 @@ class PublicationQueueEntry(BaseModel):
         description="Schema to use for validation (microbiome, single_cell, proteomics, general)",
     )
 
-    # URLs and resources
+    # URLs and resources (multiple sources from RIS)
     metadata_url: Optional[str] = Field(
-        None, description="URL to publication metadata page"
+        None, description="Primary article URL (from RIS UR field)"
+    )
+    pdf_url: Optional[str] = Field(
+        None, description="Direct PDF URL (from RIS L1 field)"
+    )
+    pubmed_url: Optional[str] = Field(
+        None, description="PubMed URL (from RIS L2 field if ncbi.nlm.nih.gov)"
+    )
+    fulltext_url: Optional[str] = Field(
+        None, description="Full text URL (transformed from abstract URL)"
     )
     supplementary_files: List[str] = Field(
         default_factory=list, description="List of supplementary file URLs"

@@ -482,7 +482,7 @@ class TestContentMethods:
         # Mock WebpageProvider that succeeds
         mock_webpage_provider = Mock()
         mock_webpage_provider.__class__.__name__ = "WebpageProvider"
-        mock_webpage_provider.extract_content.return_value = {
+        mock_webpage_provider.extract_with_full_metadata.return_value = {
             "content": "Full text from webpage..." * 100,
             "source_type": "webpage",
             "methods_text": "Methods from webpage",

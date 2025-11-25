@@ -303,15 +303,15 @@ class WorkspaceContentService:
         self.publications_dir = self.workspace_base / "literature"
         self.datasets_dir = self.workspace_base / "data"
         self.metadata_dir = self.workspace_base / "metadata"
-        self.download_queue_dir = self.workspace_base / "download_queue"
-        self.publication_queue_dir = self.workspace_base / "publication_queue"
 
-        # Create directories if they don't exist
+        # Queue directories are managed by DataManagerV2 at .lobster/queues/
+        # Actual files: download_queue.jsonl, publication_queue.jsonl
+        self.queues_dir = self.workspace_base / ".lobster" / "queues"
+
+        # Create directories if they don't exist (queues_dir is created by DataManagerV2)
         self.publications_dir.mkdir(parents=True, exist_ok=True)
         self.datasets_dir.mkdir(parents=True, exist_ok=True)
         self.metadata_dir.mkdir(parents=True, exist_ok=True)
-        self.download_queue_dir.mkdir(parents=True, exist_ok=True)
-        self.publication_queue_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(
             f"WorkspaceContentService initialized with workspace at {self.workspace_base}"
@@ -333,10 +333,9 @@ class WorkspaceContentService:
             return self.datasets_dir
         elif content_type == ContentType.METADATA:
             return self.metadata_dir
-        elif content_type == ContentType.DOWNLOAD_QUEUE:
-            return self.download_queue_dir
-        elif content_type == ContentType.PUBLICATION_QUEUE:
-            return self.publication_queue_dir
+        elif content_type in (ContentType.DOWNLOAD_QUEUE, ContentType.PUBLICATION_QUEUE):
+            # Queue files are JSONL files in .lobster/queues/ managed by DataManagerV2
+            return self.queues_dir
         else:
             raise ValueError(f"Unknown content type: {content_type}")
 

@@ -45,7 +45,7 @@ def metadata_assistant(
     data_manager: DataManagerV2,
     callback_handler=None,
     agent_name: str = "metadata_assistant",
-    handoff_tools: List = None,
+    delegation_tools: list = None,
 ):
     """Create metadata assistant agent for metadata operations.
 
@@ -61,7 +61,7 @@ def metadata_assistant(
         data_manager: DataManagerV2 instance
         callback_handler: Optional callback handler for LLM
         agent_name: Agent name for identification
-        handoff_tools: Optional list of handoff tools for coordination
+        delegation_tools: Optional list of delegation tools for sub-agent access
 
     Returns:
         Compiled LangGraph agent with metadata tools
@@ -761,8 +761,10 @@ def metadata_assistant(
 
             logger.debug(f"Parsed criteria: {parsed_criteria}")
 
-            # Read workspace metadata
-            workspace_data = data_manager.workspace.read_content(workspace_key)
+            # Read workspace metadata via WorkspaceContentService
+            from lobster.tools.workspace_content_service import WorkspaceContentService
+            workspace_service = WorkspaceContentService(data_manager)
+            workspace_data = workspace_service.read_content(workspace_key)
             if not workspace_data:
                 return f"❌ Error: Workspace key '{workspace_key}' not found or empty"
 
@@ -1366,10 +1368,18 @@ todays date: {current_date}
 
     formatted_prompt = system_prompt.format(current_date=datetime.today().isoformat())
 
+    # Import AgentState for state_schema
+    from lobster.agents.state import AgentState
+
+    # Add delegation tools if provided
+    if delegation_tools:
+        tools = tools + delegation_tools
+
     # Create LangGraph agent
     return create_react_agent(
-        model=llm, 
-        tools=tools, 
-        prompt=formatted_prompt, 
-        name=agent_name
+        model=llm,
+        tools=tools,
+        prompt=formatted_prompt,
+        name=agent_name,
+        state_schema=AgentState,
     )

@@ -120,19 +120,19 @@ class TestResearchAgentCore:
         # Just verify the graph is properly structured
         assert len(graph.nodes) > 0
 
-    def test_agent_with_handoff_tools(
+    def test_agent_with_delegation_tools(
         self, mock_data_manager, mock_content_access_service
     ):
-        """Test agent creation with handoff tools."""
+        """Test agent creation with delegation tools."""
 
         # Create a simple mock tool function instead of Mock object
-        def mock_handoff_tool():
-            """Mock handoff tool."""
-            return "Handed off to supervisor"
+        def mock_delegation_tool():
+            """Mock delegation tool."""
+            return "Delegated to sub-agent"
 
-        mock_handoff_tool.name = "handoff_to_supervisor"
+        mock_delegation_tool.name = "delegate_to_metadata_assistant"
 
-        agent = research_agent(mock_data_manager, handoff_tools=[mock_handoff_tool])
+        agent = research_agent(mock_data_manager, delegation_tools=[mock_delegation_tool])
 
         assert agent is not None
         assert hasattr(agent, "get_graph")
@@ -605,6 +605,7 @@ class TestContentAccessRealAPI:
     Rate Limiting: 0.5-1s sleeps between consecutive API calls
     """
 
+    @pytest.mark.skip(reason="Requires real API access - run with pytest -m real_api")
     @patch("lobster.agents.research_agent.create_react_agent")
     @patch("lobster.agents.research_agent.create_llm")
     def test_real_literature_search(
@@ -654,6 +655,7 @@ class TestContentAccessRealAPI:
         # Rate limiting
         time.sleep(0.5)
 
+    @pytest.mark.skip(reason="Requires real API access - run with pytest -m real_api")
     @patch("lobster.agents.research_agent.create_react_agent")
     @patch("lobster.agents.research_agent.create_llm")
     def test_real_abstract_retrieval(
@@ -733,41 +735,41 @@ class TestMetadataAssistantHandoff:
         mock_agent_instance = Mock()
         mock_create_agent.return_value = mock_agent_instance
 
-        # Create mock handoff tool
-        def mock_handoff_to_metadata_assistant():
-            """Mock handoff tool to metadata_assistant."""
+        # Create mock delegation tool
+        def mock_delegate_to_metadata_assistant():
+            """Mock delegation tool to metadata_assistant."""
             return "✅ Sample Mapping Complete\n\nMapping Rate: 100% (36/36 samples mapped)"
 
-        mock_handoff_to_metadata_assistant.name = "handoff_to_metadata_assistant"
+        mock_delegate_to_metadata_assistant.name = "delegate_to_metadata_assistant"
 
-        # Create agent with handoff tool
+        # Create agent with delegation tool
         agent = research_agent(
-            mock_data_manager, handoff_tools=[mock_handoff_to_metadata_assistant]
+            mock_data_manager, delegation_tools=[mock_delegate_to_metadata_assistant]
         )
 
         # Verify agent created
         assert agent is not None
 
-        # Verify handoff tool available
+        # Verify delegation tool available
         tools = mock_create_agent.call_args[1]["tools"]
         tool_names = {t.name for t in tools}
-        assert "handoff_to_metadata_assistant" in tool_names
+        assert "delegate_to_metadata_assistant" in tool_names
 
     @patch("lobster.agents.research_agent.create_react_agent")
     @patch("lobster.agents.research_agent.create_llm")
     @patch("lobster.agents.research_agent.ContentAccessService")
-    def test_handoff_for_metadata_standardization(
+    def test_delegation_for_metadata_standardization(
         self,
         mock_content_service_class,
         mock_create_llm,
         mock_create_agent,
         mock_data_manager,
     ):
-        """Test handoff for metadata standardization task.
+        """Test delegation for metadata standardization task.
 
         Workflow:
         1. User: "Standardize metadata for geo_gse12345 to transcriptomics schema"
-        2. research_agent hands off to metadata_assistant
+        2. research_agent delegates to metadata_assistant
         3. Expects report with field coverage, validation errors
         """
         mock_llm = Mock()
@@ -775,9 +777,9 @@ class TestMetadataAssistantHandoff:
         mock_agent_instance = Mock()
         mock_create_agent.return_value = mock_agent_instance
 
-        # Create mock handoff tool
-        def mock_handoff_to_metadata_assistant():
-            """Mock handoff tool to metadata_assistant."""
+        # Create mock delegation tool
+        def mock_delegate_to_metadata_assistant():
+            """Mock delegation tool to metadata_assistant."""
             return """
 # Metadata Standardization Report
 
@@ -792,29 +794,29 @@ class TestMetadataAssistantHandoff:
 **Recommendation**: Standardization successful. 96% valid.
 """
 
-        mock_handoff_to_metadata_assistant.name = "handoff_to_metadata_assistant"
+        mock_delegate_to_metadata_assistant.name = "delegate_to_metadata_assistant"
 
-        # Create agent with handoff tool
+        # Create agent with delegation tool
         agent = research_agent(
-            mock_data_manager, handoff_tools=[mock_handoff_to_metadata_assistant]
+            mock_data_manager, delegation_tools=[mock_delegate_to_metadata_assistant]
         )
 
-        # Verify agent created with handoff capability
+        # Verify agent created with delegation capability
         assert agent is not None
 
     @patch("lobster.agents.research_agent.create_react_agent")
     @patch("lobster.agents.research_agent.create_llm")
     @patch("lobster.agents.research_agent.ContentAccessService")
-    def test_handoff_message_format(
+    def test_delegation_message_format(
         self,
         mock_content_service_class,
         mock_create_llm,
         mock_create_agent,
         mock_data_manager,
     ):
-        """Test handoff message format compliance.
+        """Test delegation message format compliance.
 
-        Handoff message must include:
+        Delegation message must include:
         1. Dataset identifiers (source, target)
         2. Expected operation (map, standardize, validate)
         3. Special requirements (strategies, schema)
@@ -825,29 +827,29 @@ class TestMetadataAssistantHandoff:
         mock_agent_instance = Mock()
         mock_create_agent.return_value = mock_agent_instance
 
-        # Create mock handoff tool with expected message format
-        handoff_instruction = """Map samples between geo_gse180759 (RNA-seq, 48 samples) and pxd034567
+        # Create mock delegation tool with expected message format
+        delegation_instruction = """Map samples between geo_gse180759 (RNA-seq, 48 samples) and pxd034567
 (proteomics, 36 samples). Both datasets cached in metadata workspace.
 Use exact and pattern matching strategies. Return mapping report with:
 (1) mapping rate, (2) confidence scores, (3) unmapped samples, (4) integration recommendation."""
 
-        def mock_handoff_to_metadata_assistant(instruction: str = handoff_instruction):
-            """Mock handoff tool that expects structured instruction."""
+        def mock_delegate_to_metadata_assistant(instruction: str = delegation_instruction):
+            """Mock delegation tool that expects structured instruction."""
             # Verify instruction format
             assert "geo_gse180759" in instruction
             assert "pxd034567" in instruction
             assert "mapping report" in instruction
             return "✅ Sample Mapping Complete"
 
-        mock_handoff_to_metadata_assistant.name = "handoff_to_metadata_assistant"
+        mock_delegate_to_metadata_assistant.name = "delegate_to_metadata_assistant"
 
         # Create agent
         agent = research_agent(
-            mock_data_manager, handoff_tools=[mock_handoff_to_metadata_assistant]
+            mock_data_manager, delegation_tools=[mock_delegate_to_metadata_assistant]
         )
 
-        # Simulate handoff
-        result = mock_handoff_to_metadata_assistant()
+        # Simulate delegation
+        result = mock_delegate_to_metadata_assistant()
         assert "✅" in result
 
 

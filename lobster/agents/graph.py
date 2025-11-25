@@ -4,7 +4,7 @@ LangGraph multi-agent graph for bioinformatics analysis.
 Implementation using langgraph_supervisor package for hierarchical multi-agent coordination.
 """
 
-from typing import Optional
+from typing import Dict, Optional
 
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import InMemorySaver
@@ -29,6 +29,28 @@ from lobster.tools.workspace_tool import (
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _create_delegation_tool(agent_name: str, agent, description: str):
+    """Create a tool that delegates to a sub-agent.
+
+    This follows the official LangGraph supervisor pattern where
+    sub-agents are wrapped as tools rather than passed as agents.
+    """
+    @tool
+    def delegate(request: str) -> str:
+        """Delegate task to a sub-agent."""
+        result = agent.invoke({
+            "messages": [{"role": "user", "content": request}]
+        })
+        # Return only the final message content
+        final_msg = result["messages"][-1]
+        return final_msg.content if hasattr(final_msg, 'content') else str(final_msg)
+
+    # Set proper name and docstring
+    delegate.__name__ = f"delegate_to_{agent_name}"
+    delegate.__doc__ = f"Delegate task to {agent_name}. {description}"
+    return delegate
 
 
 def create_bioinformatics_graph(
@@ -63,24 +85,23 @@ def create_bioinformatics_graph(
     if callback_handler and hasattr(supervisor_model, "with_config"):
         supervisor_model = supervisor_model.with_config(callbacks=[callback_handler])
 
-    # Create worker agents dynamically from registry
+    # Phase 1: Create all agents (no ordering needed for tool-wrapping)
     agents = []
     handoff_tools = []
+    created_agents = {}
 
-    # Get all worker agents from the registry
     worker_agents = get_worker_agents()
 
     for agent_name, agent_config in worker_agents.items():
-        # Import the factory function dynamically
         factory_function = import_agent_factory(agent_config.factory_function)
 
-        # Create the agent
+        # Create agent WITHOUT delegation tools first
         agent = factory_function(
             data_manager=data_manager,
             callback_handler=callback_handler,
             agent_name=agent_config.name,
-            handoff_tools=None,
         )
+        created_agents[agent_name] = agent
         agents.append(agent)
 
         # Create handoff tool if configured
@@ -92,9 +113,40 @@ def create_bioinformatics_graph(
             )
             handoff_tools.append(handoff_tool)
 
-        logger.debug(
-            f"Created agent: {agent_config.display_name} ({agent_config.name})"
-        )
+        logger.debug(f"Created agent: {agent_config.display_name} ({agent_config.name})")
+
+    # Phase 2: Re-create parent agents WITH delegation tools
+    for agent_name, agent_config in worker_agents.items():
+        if agent_config.child_agents:
+            # Create delegation tools for this parent agent
+            delegation_tools = []
+            for child_name in agent_config.child_agents:
+                if child_name in created_agents:
+                    child_agent = created_agents[child_name]
+                    child_config = worker_agents.get(child_name)
+                    if child_config:
+                        delegation_tool = _create_delegation_tool(
+                            child_name,
+                            child_agent,
+                            child_config.description
+                        )
+                        delegation_tools.append(delegation_tool)
+
+            # Re-create the parent agent WITH delegation tools
+            factory_function = import_agent_factory(agent_config.factory_function)
+            new_agent = factory_function(
+                data_manager=data_manager,
+                callback_handler=callback_handler,
+                agent_name=agent_config.name,
+                delegation_tools=delegation_tools,
+            )
+
+            # Replace in our tracking
+            idx = agents.index(created_agents[agent_name])
+            agents[idx] = new_agent
+            created_agents[agent_name] = new_agent
+
+            logger.debug(f"Re-created {agent_name} with {len(delegation_tools)} delegation tool(s)")
 
     # Create shared tools with data_manager access
     list_available_modalities = create_list_modalities_tool(data_manager)

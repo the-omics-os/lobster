@@ -76,40 +76,8 @@ class TestQuantificationLoadingCommunication:
         """Test that successful loading produces professional, informative message."""
         kallisto_dir, samples, genes = mock_kallisto_dataset
 
-        # Create agent with tools
-        agent_graph = bulk_rnaseq_expert(
-            data_manager=mock_data_manager,
-            callback_handler=None,
-        )
-
-        # Extract the load_quantification_files tool
-        tools = [node for node in agent_graph.nodes if hasattr(node, "__name__")]
-        load_tool = None
-        for tool in tools:
-            if hasattr(tool, "name") and "load_quantification_files" in tool.name:
-                load_tool = tool
-                break
-
-        # If we can't find the tool in nodes, get it from the agent's tools
-        if load_tool is None:
-            # The tools are bound to the agent, let's access them directly
-            from lobster.agents import bulk_rnaseq_expert as module
-
-            # Get the tool function directly
-            pass  # We'll test via direct function call
-
-        # Test via direct tool function call
-        from lobster.agents.bulk_rnaseq_expert import (
-            bulk_rnaseq_expert as agent_factory,
-        )
-
-        # Create agent to get access to the tool
-        agent = agent_factory(mock_data_manager)
-
-        # The tool is created inside the agent factory, so we test via execution
-        # Instead, let's test the response format by checking what gets stored
-
-        # Call the tool indirectly by loading data
+        # Fix: Test the service directly instead of trying to extract tools from agent
+        # This is the correct approach since we're testing the underlying functionality
         from lobster.core.adapters.transcriptomics_adapter import TranscriptomicsAdapter
         from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
 
@@ -142,8 +110,9 @@ class TestQuantificationLoadingCommunication:
             stored_adata.uns["quantification_metadata"]["quantification_tool"]
             == "Kallisto"
         )
-        assert stored_adata.uns["quantification_metadata"]["n_samples"] == len(samples)
-        assert stored_adata.uns["quantification_metadata"]["n_genes"] == genes
+        # Fix: Values are sanitized to strings for HDF5 compatibility
+        assert stored_adata.uns["quantification_metadata"]["n_samples"] == str(len(samples))
+        assert stored_adata.uns["quantification_metadata"]["n_genes"] == str(genes)
 
         # Check orientation metadata for user guidance
         assert "transpose_info" in stored_adata.uns
@@ -206,7 +175,8 @@ class TestQuantificationLoadingCommunication:
             ), f"Missing required metadata field: {field}"
 
         # Verify sample information is accurate
-        assert adata.uns["quantification_metadata"]["n_samples"] == len(samples)
+        # Fix: Values are sanitized to strings for HDF5 compatibility
+        assert adata.uns["quantification_metadata"]["n_samples"] == str(len(samples))
         assert len(adata.uns["quantification_metadata"]["successful_samples"]) == len(
             samples
         )

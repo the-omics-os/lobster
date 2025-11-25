@@ -89,6 +89,7 @@ class TestContentTypeEnum:
             "dataset",
             "metadata",
             "download_queue",
+            "publication_queue",
         }
         actual_values = {ct.value for ct in ContentType}
         assert actual_values == expected_values
@@ -100,21 +101,17 @@ class TestContentTypeEnum:
 
 
 class TestWorkspaceServiceInitialization:
-    """Test WorkspaceContentService initialization with download_queue."""
-
-    def test_initialization_creates_download_queue_directory(
-        self, workspace_service, temp_workspace
-    ):
-        """Test download_queue directory is created during initialization."""
-        download_queue_dir = temp_workspace / "download_queue"
-        assert download_queue_dir.exists()
-        assert download_queue_dir.is_dir()
+    """Test WorkspaceContentService initialization."""
 
     def test_initialization_creates_all_directories(
         self, workspace_service, temp_workspace
     ):
-        """Test all workspace directories are created."""
-        expected_dirs = ["literature", "data", "metadata", "download_queue"]
+        """Test all workspace directories are created.
+
+        Note: Queue directories (download_queue, publication_queue) are managed
+        by DataManagerV2 at .lobster/queues/ as JSONL files, not by this service.
+        """
+        expected_dirs = ["literature", "data", "metadata"]
         for dir_name in expected_dirs:
             dir_path = temp_workspace / dir_name
             assert dir_path.exists(), f"{dir_name} directory not created"

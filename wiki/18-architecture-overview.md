@@ -231,6 +231,63 @@ The heart of Lobster AI is its multi-agent architecture, where specialized AI ag
 - **Research Agent** - Discovery & content analysis with 10 tools, workspace caching (Phase 1-4 complete)
 - **Metadata Assistant** - Cross-dataset harmonization with 4 tools for sample mapping and validation (Phase 3)
 
+#### Hierarchical Agent Delegation (Tool-Wrapping Pattern)
+
+As of v2.5+, Lobster supports hierarchical agent delegation using the **tool-wrapping pattern** recommended by LangGraph. Sub-agents are wrapped as `@tool` functions rather than passed as supervisor child agents.
+
+**Architecture:**
+```
+Main Supervisor
+├─ research_agent (create_react_agent)
+│   └─ tools include: delegate_to_metadata_assistant
+├─ data_expert (create_react_agent)
+│   └─ tools include: delegate_to_metadata_assistant
+├─ metadata_assistant (shared leaf agent)
+├─ singlecell_expert (leaf agent)
+├─ bulk_rnaseq_expert (leaf agent)
+└─ ...other leaf agents
+```
+
+**Key Features:**
+- **Tool-based delegation**: Sub-agents wrapped as `@tool` functions, invoked via `agent.invoke()`
+- **Single instance, multiple parents**: `metadata_assistant` is created once and shared by both `research_agent` and `data_expert`
+- **Registry-based configuration**: Child relationships are defined in `agent_registry.py` via the `child_agents` field
+- **Two-phase creation**: All agents created first, then parent agents re-created with delegation tools
+- **Standard agents**: All agents use `create_react_agent` - parent agents get additional delegation tools
+
+**Implementation** (in `graph.py`):
+```python
+def _create_delegation_tool(agent_name: str, agent, description: str):
+    """Create a tool that delegates to a sub-agent."""
+    @tool
+    def delegate(request: str) -> str:
+        result = agent.invoke({"messages": [{"role": "user", "content": request}]})
+        return result["messages"][-1].content
+
+    delegate.__name__ = f"delegate_to_{agent_name}"
+    return delegate
+```
+
+**Configuration** (in `agent_registry.py`):
+```python
+AGENT_REGISTRY = {
+    "research_agent": AgentRegistryConfig(
+        ...
+        child_agents=["metadata_assistant"],  # Creates delegate_to_metadata_assistant tool
+    ),
+    "metadata_assistant": AgentRegistryConfig(
+        ...
+        child_agents=None,  # Leaf agent - no delegation tools
+    ),
+}
+```
+
+**Benefits over create_supervisor pattern:**
+- **Simpler**: No complex supervisor nesting
+- **Standard**: Follows official LangGraph patterns
+- **Explicit**: Clear control over what sub-agent sees
+- **Debuggable**: Easier to trace tool calls in LangSmith
+
 ### 2. Service Layer
 
 Stateless analysis services provide the computational backbone:
