@@ -13,8 +13,8 @@ from typing import Optional
 from langchain_core.tools import tool
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.modality_management_service import ModalityManagementService
-from lobster.tools.workspace_content_service import (
+from lobster.services.data_management.modality_management_service import ModalityManagementService
+from lobster.services.data_access.workspace_content_service import (
     ContentType,
     RetrievalLevel,
     WorkspaceContentService,

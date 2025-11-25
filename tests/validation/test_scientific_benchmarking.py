@@ -42,11 +42,11 @@ from scipy.sparse import csr_matrix
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
-from lobster.tools.clustering_service import ClusteringService
-from lobster.tools.differential_formula_service import DifferentialFormulaService
-from lobster.tools.preprocessing_service import PreprocessingService
-from lobster.tools.quality_service import QualityService
+from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
+from lobster.services.analysis.clustering_service import ClusteringService
+from lobster.services.analysis.differential_formula_service import DifferentialFormulaService
+from lobster.services.quality.preprocessing_service import PreprocessingService
+from lobster.services.quality.quality_service import QualityService
 
 # Suppress warnings for cleaner test output
 warnings.filterwarnings("ignore", category=FutureWarning)

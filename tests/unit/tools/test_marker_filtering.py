@@ -14,7 +14,7 @@ import pandas as pd
 import scanpy as sc
 from scipy.sparse import csr_matrix
 
-from lobster.tools.enhanced_singlecell_service import EnhancedSingleCellService
+from lobster.services.analysis.enhanced_singlecell_service import EnhancedSingleCellService
 from lobster.core.analysis_ir import AnalysisStep
 
 

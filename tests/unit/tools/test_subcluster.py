@@ -16,7 +16,7 @@ import pytest
 import scanpy as sc
 from anndata import AnnData
 
-from lobster.tools.clustering_service import ClusteringError, ClusteringService
+from lobster.services.analysis.clustering_service import ClusteringError, ClusteringService
 
 
 @pytest.fixture

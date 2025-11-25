@@ -16,15 +16,15 @@ from lobster.agents.state import ProteinStructureVisualizationExpertState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.protein_structure_fetch_service import (
+from lobster.services.data_access.protein_structure_fetch_service import (
     ProteinStructureFetchError,
     ProteinStructureFetchService,
 )
-from lobster.tools.pymol_visualization_service import (
+from lobster.services.visualization.pymol_visualization_service import (
     PyMOLVisualizationError,
     PyMOLVisualizationService,
 )
-from lobster.tools.structure_analysis_service import (
+from lobster.services.analysis.structure_analysis_service import (
     StructureAnalysisError,
     StructureAnalysisService,
 )

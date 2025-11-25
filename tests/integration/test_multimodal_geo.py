@@ -8,7 +8,7 @@ by automatically detecting sample types and filtering to RNA samples.
 import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.geo_service import GEOService
+from lobster.services.data_access.geo_service import GEOService
 
 
 @pytest.fixture

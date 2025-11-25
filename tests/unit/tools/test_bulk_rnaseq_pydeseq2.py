@@ -13,8 +13,8 @@ import pandas as pd
 import pytest
 
 from lobster.core import DesignMatrixError, FormulaError
-from lobster.tools.bulk_rnaseq_service import BulkRNASeqService, PyDESeq2Error
-from lobster.tools.differential_formula_service import DifferentialFormulaService
+from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService, PyDESeq2Error
+from lobster.services.analysis.differential_formula_service import DifferentialFormulaService
 
 
 @pytest.fixture

@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.docling_service import DoclingError, DoclingService
+from lobster.services.data_access.docling_service import DoclingError, DoclingService
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)

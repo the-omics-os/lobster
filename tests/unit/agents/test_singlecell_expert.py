@@ -18,10 +18,10 @@ import scanpy as sc
 
 from lobster.agents.singlecell_expert import singlecell_expert
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.clustering_service import ClusteringService
-from lobster.tools.enhanced_singlecell_service import EnhancedSingleCellService
-from lobster.tools.preprocessing_service import PreprocessingService
-from lobster.tools.quality_service import QualityService
+from lobster.services.analysis.clustering_service import ClusteringService
+from lobster.services.analysis.enhanced_singlecell_service import EnhancedSingleCellService
+from lobster.services.quality.preprocessing_service import PreprocessingService
+from lobster.services.quality.quality_service import QualityService
 from tests.mock_data.base import SMALL_DATASET_CONFIG
 from tests.mock_data.factories import SingleCellDataFactory
 

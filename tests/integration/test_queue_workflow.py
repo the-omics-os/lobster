@@ -59,7 +59,7 @@ from lobster.tools.download_orchestrator import (
     DownloadOrchestrator,
     ServiceNotFoundError,
 )
-from lobster.tools.geo_download_service import GEODownloadService
+from lobster.services.data_access.geo_download_service import GEODownloadService
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)

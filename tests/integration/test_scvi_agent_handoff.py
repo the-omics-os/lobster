@@ -189,7 +189,7 @@ class TestScviHandoffWorkflow:
 
     def test_clustering_service_use_rep_parameter(self):
         """Test clustering service accepts use_rep parameter."""
-        from lobster.tools.clustering_service import ClusteringService
+        from lobster.services.analysis.clustering_service import ClusteringService
 
         # Create clustering service
         clustering_service = ClusteringService()
@@ -334,7 +334,7 @@ class TestEndToEndWorkflow:
 
     def test_clustering_service_custom_embeddings_integration(self):
         """Test clustering service integrates properly with custom embeddings."""
-        from lobster.tools.clustering_service import ClusteringService
+        from lobster.services.analysis.clustering_service import ClusteringService
 
         service = ClusteringService()
 

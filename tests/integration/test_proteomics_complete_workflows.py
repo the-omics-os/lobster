@@ -16,12 +16,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lobster.tools.proteomics_analysis_service import ProteomicsAnalysisService
-from lobster.tools.proteomics_differential_service import ProteomicsDifferentialService
-from lobster.tools.proteomics_preprocessing_service import (
+from lobster.services.analysis.proteomics_analysis_service import ProteomicsAnalysisService
+from lobster.services.analysis.proteomics_differential_service import ProteomicsDifferentialService
+from lobster.services.quality.proteomics_preprocessing_service import (
     ProteomicsPreprocessingService,
 )
-from lobster.tools.proteomics_quality_service import ProteomicsQualityService
+from lobster.services.quality.proteomics_quality_service import ProteomicsQualityService
 
 # ==============================================================================
 # FIXTURES: Realistic Synthetic Data Generation

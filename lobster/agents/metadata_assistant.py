@@ -21,17 +21,17 @@ from langgraph.prebuilt import create_react_agent
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.metadata_standardization_service import (
+from lobster.services.metadata.metadata_standardization_service import (
     MetadataStandardizationService,
 )
-from lobster.tools.sample_mapping_service import SampleMappingService
+from lobster.services.metadata.sample_mapping_service import SampleMappingService
 from lobster.core.analysis_ir import AnalysisStep
 from lobster.utils.logger import get_logger
 
 # Optional microbiome features (not in public lobster-local)
 try:
-    from lobster.tools.microbiome_filtering_service import MicrobiomeFilteringService
-    from lobster.tools.disease_standardization_service import DiseaseStandardizationService
+    from lobster.services.metadata.microbiome_filtering_service import MicrobiomeFilteringService
+    from lobster.services.metadata.disease_standardization_service import DiseaseStandardizationService
     MICROBIOME_FEATURES_AVAILABLE = True
 except ImportError:
     MicrobiomeFilteringService = None
@@ -588,7 +588,7 @@ def metadata_assistant(
 
                 # Perform validation using MetadataValidationService
                 # Note: We need to import and use the validation service directly here
-                from lobster.tools.metadata_validation_service import (
+                from lobster.services.metadata.metadata_validation_service import (
                     MetadataValidationService,
                 )
 
@@ -762,7 +762,7 @@ def metadata_assistant(
             logger.debug(f"Parsed criteria: {parsed_criteria}")
 
             # Read workspace metadata via WorkspaceContentService
-            from lobster.tools.workspace_content_service import WorkspaceContentService
+            from lobster.services.data_access.workspace_content_service import WorkspaceContentService
             workspace_service = WorkspaceContentService(data_manager)
             workspace_data = workspace_service.read_content(workspace_key)
             if not workspace_data:

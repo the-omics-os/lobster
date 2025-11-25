@@ -15,7 +15,7 @@ import pytest
 
 from lobster.agents.singlecell_expert import singlecell_expert
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.differential_formula_service import DifferentialFormulaService
+from lobster.services.analysis.differential_formula_service import DifferentialFormulaService
 from lobster.tools.workflow_tracker import WorkflowTracker
 
 

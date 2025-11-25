@@ -58,23 +58,23 @@ lobster/lobster_cloud/*
 !lobster/core/schemas/metagenomics.py
 !lobster/core/schemas/publication_queue.py
 
-!lobster/tools/proteomics_analysis_service.py
-!lobster/tools/proteomics_differential_service.py
-!lobster/tools/proteomics_visualization_service.py
-!lobster/tools/proteomics_quality_service.py
-!lobster/tools/proteomics_preprocessing_service.py
+!lobster/services/analysis/proteomics_analysis_service.py
+!lobster/services/analysis/proteomics_differential_service.py
+!lobster/services/visualization/proteomics_visualization_service.py
+!lobster/services/quality/proteomics_quality_service.py
+!lobster/services/quality/proteomics_preprocessing_service.py
 
 # Bulk RNA-seq Expert (Premium)
 !lobster/agents/bulk_rnaseq_expert.py
-!lobster/tools/bulk_rnaseq_service.py
-!lobster/tools/bulk_visualization_service.py
-!lobster/tools/pseudobulk_service.py
-!lobster/tools/differential_formula_service.py
+!lobster/services/analysis/bulk_rnaseq_service.py
+!lobster/services/visualization/bulk_visualization_service.py
+!lobster/services/analysis/pseudobulk_service.py
+!lobster/services/analysis/differential_formula_service.py
 !lobster/core/adapters/pseudobulk_adapter.py
 
 # Microbiome Harmonization (Premium - DataBioMix)
-!lobster/tools/microbiome_*.py
-!lobster/tools/disease_*.py
+!lobster/services/metadata/microbiome_*.py
+!lobster/services/metadata/disease_*.py
 
 # Custom/Template Agents (Premium/Internal)
 !lobster/agents/custom_feature_agent.py
@@ -94,13 +94,13 @@ lobster/config/**
 !tests/unit/core/test_publication_queue.py
 !tests/unit/core/test_pseudobulk_schema.py
 !tests/unit/agents/test_bulk_quantification_communication.py
-!tests/unit/tools/test_bulk_rnaseq_service.py
+!tests/unit/services/analysis/test_bulk_rnaseq_service.py
 !tests/unit/tools/test_bulk_rnaseq_filtering.py
 !tests/unit/tools/test_bulk_rnaseq_pydeseq2.py
-!tests/unit/tools/test_bulk_visualization_service.py
-!tests/unit/tools/test_pseudobulk_service.py
-!tests/unit/tools/test_differential_formula_service.py
-!tests/unit/tools/test_formula_design_service.py
+!tests/unit/services/visualization/test_bulk_visualization_service.py
+!tests/unit/services/analysis/test_pseudobulk_service.py
+!tests/unit/services/analysis/test_differential_formula_service.py
+!tests/unit/services/analysis/test_formula_design_service.py
 examples/**
 !integration-results.xml
 

@@ -29,7 +29,7 @@ def test_imports():
         return False
 
     try:
-        from lobster.tools.scvi_embedding_service import ScviEmbeddingService
+        from lobster.services.analysis.scvi_embedding_service import ScviEmbeddingService
 
         print("✅ scVI embedding service imports successfully")
     except ImportError as e:
@@ -111,7 +111,7 @@ def test_clustering_service():
     print("\n🔍 Testing clustering service modifications...")
 
     try:
-        from lobster.tools.clustering_service import ClusteringService
+        from lobster.services.analysis.clustering_service import ClusteringService
 
         # Create service
         service = ClusteringService()

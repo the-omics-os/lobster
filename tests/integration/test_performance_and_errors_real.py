@@ -40,7 +40,7 @@ import pytest
 
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.content_access_service import ContentAccessService
+from lobster.services.data_access.content_access_service import ContentAccessService
 from lobster.tools.providers.geo_provider import GEOProvider
 from lobster.tools.providers.pubmed_provider import PubMedProvider
 from lobster.utils.logger import get_logger

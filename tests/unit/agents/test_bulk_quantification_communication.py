@@ -79,7 +79,7 @@ class TestQuantificationLoadingCommunication:
         # Fix: Test the service directly instead of trying to extract tools from agent
         # This is the correct approach since we're testing the underlying functionality
         from lobster.core.adapters.transcriptomics_adapter import TranscriptomicsAdapter
-        from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
+        from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
 
         service = BulkRNASeqService()
         adapter = TranscriptomicsAdapter(data_type="bulk")
@@ -121,7 +121,7 @@ class TestQuantificationLoadingCommunication:
 
     def test_error_message_format(self, mock_data_manager):
         """Test that error messages are clear and actionable."""
-        from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
+        from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
 
         service = BulkRNASeqService()
 
@@ -144,7 +144,7 @@ class TestQuantificationLoadingCommunication:
         kallisto_dir, samples, genes = mock_kallisto_dataset
 
         from lobster.core.adapters.transcriptomics_adapter import TranscriptomicsAdapter
-        from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
+        from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
 
         service = BulkRNASeqService()
         adapter = TranscriptomicsAdapter(data_type="bulk")
@@ -188,7 +188,7 @@ class TestQuantificationLoadingCommunication:
         """Test that response structure supports next step guidance."""
         kallisto_dir, samples, genes = mock_kallisto_dataset
 
-        from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
+        from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
 
         service = BulkRNASeqService()
         df, metadata = service.load_from_quantification_files(
@@ -209,7 +209,7 @@ class TestQuantificationLoadingCommunication:
         """Test that tool type is accurately detected and reported."""
         kallisto_dir, _, _ = mock_kallisto_dataset
 
-        from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
+        from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
 
         service = BulkRNASeqService()
 
@@ -247,7 +247,7 @@ class TestMessageContent:
         """Test that reported sample counts are accurate."""
         kallisto_dir, expected_samples, _ = mock_kallisto_dataset
 
-        from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
+        from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
 
         service = BulkRNASeqService()
         _, metadata = service.load_from_quantification_files(
@@ -265,7 +265,7 @@ class TestMessageContent:
         """Test that reported gene counts are accurate."""
         kallisto_dir, _, expected_genes = mock_kallisto_dataset
 
-        from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
+        from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
 
         service = BulkRNASeqService()
         df, metadata = service.load_from_quantification_files(
@@ -280,7 +280,7 @@ class TestMessageContent:
         kallisto_dir, _, _ = mock_kallisto_dataset
 
         from lobster.core.adapters.transcriptomics_adapter import TranscriptomicsAdapter
-        from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
+        from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
 
         service = BulkRNASeqService()
         adapter = TranscriptomicsAdapter(data_type="bulk")

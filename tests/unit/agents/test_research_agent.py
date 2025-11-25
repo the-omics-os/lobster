@@ -16,7 +16,7 @@ import pytest
 
 from lobster.agents.research_agent import research_agent
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.content_access_service import ContentAccessService
+from lobster.services.data_access.content_access_service import ContentAccessService
 from lobster.tools.providers.base_provider import PublicationMetadata
 from tests.mock_data.base import SMALL_DATASET_CONFIG
 from tests.mock_data.factories import SingleCellDataFactory
@@ -621,7 +621,7 @@ class TestContentAccessRealAPI:
         """
         import time
 
-        from lobster.tools.content_access_service import ContentAccessService
+        from lobster.services.data_access.content_access_service import ContentAccessService
 
         # Rate limiting
         time.sleep(1.0)
@@ -668,7 +668,7 @@ class TestContentAccessRealAPI:
         """
         import time
 
-        from lobster.tools.content_access_service import ContentAccessService
+        from lobster.services.data_access.content_access_service import ContentAccessService
 
         # Rate limiting
         time.sleep(1.0)

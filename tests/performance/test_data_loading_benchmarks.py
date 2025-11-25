@@ -38,7 +38,7 @@ from lobster.core.adapters.proteomics_adapter import ProteomicsAdapter
 from lobster.core.adapters.transcriptomics_adapter import TranscriptomicsAdapter
 from lobster.core.backends.h5ad_backend import H5ADBackend
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.geo_service import GEOService
+from lobster.services.data_access.geo_service import GEOService
 from tests.mock_data.base import LARGE_DATASET_CONFIG, SMALL_DATASET_CONFIG
 from tests.mock_data.factories import (  # Note: SpatialDataFactory not yet implemented
     BulkRNASeqDataFactory,

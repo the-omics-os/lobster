@@ -22,10 +22,10 @@ import pytest
 
 from lobster.agents.metadata_assistant import metadata_assistant
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.metadata_standardization_service import (
+from lobster.services.metadata.metadata_standardization_service import (
     MetadataStandardizationService,
 )
-from lobster.tools.sample_mapping_service import SampleMappingService
+from lobster.services.metadata.sample_mapping_service import SampleMappingService
 
 # ===============================================================================
 # Test Fixtures

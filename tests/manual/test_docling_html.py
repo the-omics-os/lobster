@@ -27,7 +27,7 @@ def test_1_simple_html():
     print("TEST 1: Simple Static HTML (Baseline)")
     print("=" * 80)
 
-    from lobster.tools.docling_service import DoclingService
+    from lobster.services.data_access.docling_service import DoclingService
 
     # Create simple HTML with clear structure
     simple_html = """
@@ -270,7 +270,7 @@ def test_4_enhanced_headers():
 
     import requests
 
-    from lobster.tools.docling_service import DoclingService
+    from lobster.services.data_access.docling_service import DoclingService
 
     url = "https://link.springer.com/article/10.1007/s43657-024-00165-x"
 

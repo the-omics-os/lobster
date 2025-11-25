@@ -16,9 +16,9 @@ from lobster.agents.state import BulkRNASeqExpertState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.bulk_rnaseq_service import BulkRNASeqError, BulkRNASeqService
-from lobster.tools.preprocessing_service import PreprocessingError, PreprocessingService
-from lobster.tools.quality_service import QualityError, QualityService
+from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqError, BulkRNASeqService
+from lobster.services.quality.preprocessing_service import PreprocessingError, PreprocessingService
+from lobster.services.quality.quality_service import QualityError, QualityService
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -910,7 +910,7 @@ Proceed with filtering and normalization for differential expression analysis.""
             suggest_experimental_designs("bulk_gse12345_filtered_normalized")
         """
         try:
-            from lobster.tools.differential_formula_service import (
+            from lobster.services.analysis.differential_formula_service import (
                 DifferentialFormulaService,
             )
 
@@ -1013,7 +1013,7 @@ Proceed with filtering and normalization for differential expression analysis.""
             preview_design_matrix("bulk_gse12345_filtered_normalized", "~condition + batch")
         """
         try:
-            from lobster.tools.differential_formula_service import (
+            from lobster.services.analysis.differential_formula_service import (
                 DifferentialFormulaService,
             )
 
@@ -1078,7 +1078,7 @@ Proceed with filtering and normalization for differential expression analysis.""
             validate_experimental_design("bulk_gse12345_filtered_normalized", "~condition + batch")
         """
         try:
-            from lobster.tools.differential_formula_service import (
+            from lobster.services.analysis.differential_formula_service import (
                 DifferentialFormulaService,
             )
 
@@ -1211,7 +1211,7 @@ Proceed with filtering and normalization for differential expression analysis.""
                 filter_cell_types="T cells,B cells,Monocytes"
             )
         """
-        from lobster.tools.pseudobulk_service import PseudobulkService
+        from lobster.services.analysis.pseudobulk_service import PseudobulkService
 
         # Validate modality exists
         if singlecell_modality not in data_manager.list_modalities():
@@ -1352,7 +1352,7 @@ Proceed with filtering and normalization for differential expression analysis.""
             )
         """
         try:
-            from lobster.tools.bulk_visualization_service import (
+            from lobster.services.visualization.bulk_visualization_service import (
                 BulkVisualizationService,
             )
 
@@ -1458,7 +1458,7 @@ Proceed with filtering and normalization for differential expression analysis.""
             )
         """
         try:
-            from lobster.tools.bulk_visualization_service import (
+            from lobster.services.visualization.bulk_visualization_service import (
                 BulkVisualizationService,
             )
 
@@ -1576,7 +1576,7 @@ Proceed with filtering and normalization for differential expression analysis.""
             )
         """
         try:
-            from lobster.tools.bulk_visualization_service import (
+            from lobster.services.visualization.bulk_visualization_service import (
                 BulkVisualizationService,
             )
 

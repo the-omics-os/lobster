@@ -837,7 +837,7 @@ class AgentClient(BaseClient):
                     counter += 1
 
             # Step 1: Merge quantification files using BulkRNASeqService
-            from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
+            from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
 
             bulk_service = BulkRNASeqService()
 
@@ -990,7 +990,7 @@ class AgentClient(BaseClient):
         self, directory: Path, modality_base: str
     ) -> Dict[str, Any]:
         """Load GEO RAW files (GSM*.txt.gz) from extracted directory."""
-        from lobster.tools.concatenation_service import ConcatenationService
+        from lobster.services.data_management.concatenation_service import ConcatenationService
 
         # Find GEO sample files
         geo_files = []
@@ -1587,7 +1587,7 @@ class AgentClient(BaseClient):
             merged_modality = None
             if len(results) > 1:
                 try:
-                    from lobster.tools.concatenation_service import ConcatenationService
+                    from lobster.services.data_management.concatenation_service import ConcatenationService
 
                     concat_service = ConcatenationService(self.data_manager)
 

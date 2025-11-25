@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.docling_service import DoclingService
+from lobster.services.data_access.docling_service import DoclingService
 from lobster.tools.providers.abstract_provider import AbstractProvider
 from lobster.tools.providers.pmc_provider import PMCNotAvailableError, PMCProvider
 from lobster.tools.providers.webpage_provider import WebpageProvider

@@ -15,12 +15,12 @@ from langgraph.prebuilt import create_react_agent
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.proteomics_analysis_service import ProteomicsAnalysisService
-from lobster.tools.proteomics_differential_service import ProteomicsDifferentialService
-from lobster.tools.proteomics_preprocessing_service import (
+from lobster.services.analysis.proteomics_analysis_service import ProteomicsAnalysisService
+from lobster.services.analysis.proteomics_differential_service import ProteomicsDifferentialService
+from lobster.services.quality.proteomics_preprocessing_service import (
     ProteomicsPreprocessingService,
 )
-from lobster.tools.proteomics_quality_service import ProteomicsQualityService
+from lobster.services.quality.proteomics_quality_service import ProteomicsQualityService
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)

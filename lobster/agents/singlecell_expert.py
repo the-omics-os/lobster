@@ -24,21 +24,21 @@ from lobster.core import (
     PseudobulkError,
 )
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.annotation_templates import AnnotationTemplateService, TissueType
-from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
-from lobster.tools.clustering_service import ClusteringError, ClusteringService
-from lobster.tools.differential_formula_service import DifferentialFormulaService
-from lobster.tools.enhanced_singlecell_service import (
+from lobster.services.templates.annotation_templates import AnnotationTemplateService, TissueType
+from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
+from lobster.services.analysis.clustering_service import ClusteringError, ClusteringService
+from lobster.services.analysis.differential_formula_service import DifferentialFormulaService
+from lobster.services.analysis.enhanced_singlecell_service import (
     EnhancedSingleCellService,
 )
-from lobster.tools.enhanced_singlecell_service import (
+from lobster.services.analysis.enhanced_singlecell_service import (
     SingleCellError as ServiceSingleCellError,
 )
-from lobster.tools.manual_annotation_service import ManualAnnotationService
-from lobster.tools.preprocessing_service import PreprocessingError, PreprocessingService
-from lobster.tools.pseudobulk_service import PseudobulkService
-from lobster.tools.quality_service import QualityError, QualityService
-from lobster.tools.visualization_service import (
+from lobster.services.metadata.manual_annotation_service import ManualAnnotationService
+from lobster.services.quality.preprocessing_service import PreprocessingError, PreprocessingService
+from lobster.services.analysis.pseudobulk_service import PseudobulkService
+from lobster.services.quality.quality_service import QualityError, QualityService
+from lobster.services.visualization.visualization_service import (
     SingleCellVisualizationService,
 )
 

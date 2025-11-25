@@ -20,8 +20,8 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from lobster.tools.enhanced_singlecell_service import EnhancedSingleCellService
-from lobster.tools.geo_service import GEOService
+from lobster.services.analysis.enhanced_singlecell_service import EnhancedSingleCellService
+from lobster.services.data_access.geo_service import GEOService
 from lobster.core.data_manager_v2 import DataManagerV2
 
 console = Console()

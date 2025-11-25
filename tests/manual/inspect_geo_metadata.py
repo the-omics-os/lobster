@@ -14,7 +14,7 @@ lobster_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(lobster_root))
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.geo_service import GEOService
+from lobster.services.data_access.geo_service import GEOService
 
 
 def inspect_dataset(geo_id: str, expected_modality: str):

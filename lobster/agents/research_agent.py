@@ -24,9 +24,9 @@ from lobster.core.schemas.download_queue import (
     StrategyConfig,
     ValidationStatus,
 )
-from lobster.tools.content_access_service import ContentAccessService
+from lobster.services.data_access.content_access_service import ContentAccessService
 from lobster.agents.data_expert_assistant import DataExpertAssistant
-from lobster.tools.metadata_validation_service import (
+from lobster.services.metadata.metadata_validation_service import (
     MetadataValidationConfig,
     MetadataValidationService,
     ValidationSeverity,
@@ -466,7 +466,7 @@ def research_agent(
 
                 # Use GEOService for GEO datasets (most common case)
                 if database.lower() == "geo":
-                    from lobster.tools.geo_service import GEOService
+                    from lobster.services.data_access.geo_service import GEOService
 
                     console = getattr(data_manager, "console", None)
                     geo_service = GEOService(data_manager, console=console)
@@ -619,7 +619,7 @@ def research_agent(
                     return f"Error: Invalid JSON for required_values: {required_values}"
 
             # Use GEOService to fetch metadata only
-            from lobster.tools.geo_service import GEOService
+            from lobster.services.data_access.geo_service import GEOService
 
             console = getattr(data_manager, "console", None)
             geo_service = GEOService(data_manager, console=console)
@@ -1004,7 +1004,7 @@ def research_agent(
         """
         try:
             # Initialize UnifiedContentService (Phase 3 migration)
-            from lobster.tools.content_access_service import ContentAccessService
+            from lobster.services.data_access.content_access_service import ContentAccessService
 
             content_service = ContentAccessService(data_manager=data_manager)
 
@@ -1621,7 +1621,7 @@ Could not extract content for: {identifier}
         try:
             from datetime import datetime
 
-            from lobster.tools.workspace_content_service import (
+            from lobster.services.data_access.workspace_content_service import (
                 ContentType,
                 MetadataContent,
                 WorkspaceContentService,

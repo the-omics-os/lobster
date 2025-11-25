@@ -22,7 +22,7 @@ from scipy import sparse
 
 from lobster.core.adapters.transcriptomics_adapter import TranscriptomicsAdapter
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
+from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
 
 # ===============================================================================
 # Fixtures

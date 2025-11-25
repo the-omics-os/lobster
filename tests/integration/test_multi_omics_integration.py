@@ -30,10 +30,10 @@ from sklearn.metrics import adjusted_rand_score
 
 # Commented out imports due to proteomics agents in development
 # from lobster.core.data_manager_v2 import DataManagerV2
-# from lobster.tools.preprocessing_service import PreprocessingService
-# from lobster.tools.clustering_service import ClusteringService
-# from lobster.tools.quality_service import QualityService
-# from lobster.tools.visualization_service import SingleCellVisualizationService
+# from lobster.services.quality.preprocessing_service import PreprocessingService
+# from lobster.services.analysis.clustering_service import ClusteringService
+# from lobster.services.quality.quality_service import QualityService
+# from lobster.services.visualization.visualization_service import SingleCellVisualizationService
 
 # from tests.mock_data.factories import (
 #     SingleCellDataFactory,

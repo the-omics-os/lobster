@@ -26,7 +26,7 @@ sys.path.insert(0, str(lobster_root))
 
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.exceptions import FeatureNotImplementedError, UnsupportedPlatformError
-from lobster.tools.geo_service import GEOService
+from lobster.services.data_access.geo_service import GEOService
 
 
 def test_dataset(geo_id: str, expected_outcome: str, description: str):

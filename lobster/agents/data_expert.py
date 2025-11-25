@@ -21,7 +21,7 @@ from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.schemas.download_queue import DownloadStatus, ValidationStatus
 from lobster.tools.download_orchestrator import DownloadOrchestrator
-from lobster.tools.geo_download_service import GEODownloadService
+from lobster.services.data_access.geo_download_service import GEODownloadService
 from lobster.tools.workspace_tool import create_list_modalities_tool
 from lobster.utils.logger import get_logger
 
@@ -69,7 +69,7 @@ def data_expert(
     assistant = DataExpertAssistant()
 
     # Initialize modality management service
-    from lobster.tools.modality_management_service import ModalityManagementService
+    from lobster.services.data_management.modality_management_service import ModalityManagementService
 
     modality_service = ModalityManagementService(data_manager)
 
@@ -197,7 +197,7 @@ Dataset: {entry.dataset_id}
 
             # 4. EXECUTE DOWNLOAD USING GEO SERVICE
             # Import GEO service
-            from lobster.tools.geo_service import GEOService
+            from lobster.services.data_access.geo_service import GEOService
 
             geo_service = GEOService(data_manager=data_manager)
 
@@ -866,7 +866,7 @@ The MuData object contains all selected modalities and is ready for cross-modal 
         """
         try:
             # Import the ConcatenationService
-            from lobster.tools.concatenation_service import ConcatenationService
+            from lobster.services.data_management.concatenation_service import ConcatenationService
 
             # Initialize the concatenation service
             concat_service = ConcatenationService(data_manager)

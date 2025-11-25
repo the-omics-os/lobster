@@ -874,7 +874,7 @@ def machine_learning_expert(
             str: Status message with availability and installation guidance
         """
         try:
-            from lobster.tools.scvi_embedding_service import ScviEmbeddingService
+            from lobster.services.analysis.scvi_embedding_service import ScviEmbeddingService
 
             service = ScviEmbeddingService()
             availability_info = service.check_availability()
@@ -987,7 +987,7 @@ After installation, restart your session and run this tool again."""
         """
         try:
             # Check scVI availability first
-            from lobster.tools.scvi_embedding_service import ScviEmbeddingService
+            from lobster.services.analysis.scvi_embedding_service import ScviEmbeddingService
 
             service = ScviEmbeddingService()
             if not service.check_availability()["ready_for_scvi"]:

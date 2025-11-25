@@ -26,9 +26,9 @@ import pytest
 import requests
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.geo_service import GEOService
-from lobster.tools.preprocessing_service import PreprocessingService
-from lobster.tools.quality_service import QualityService
+from lobster.services.data_access.geo_service import GEOService
+from lobster.services.quality.preprocessing_service import PreprocessingService
+from lobster.services.quality.quality_service import QualityService
 from tests.mock_data.base import LARGE_DATASET_CONFIG, SMALL_DATASET_CONFIG
 from tests.mock_data.factories import BulkRNASeqDataFactory, SingleCellDataFactory
 

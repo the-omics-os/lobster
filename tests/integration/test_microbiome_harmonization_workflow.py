@@ -39,8 +39,8 @@ from lobster.core.schemas.publication_queue import (
     PublicationQueueEntry,
     PublicationStatus,
 )
-from lobster.tools.disease_standardization_service import DiseaseStandardizationService
-from lobster.tools.microbiome_filtering_service import MicrobiomeFilteringService
+from lobster.services.metadata.disease_standardization_service import DiseaseStandardizationService
+from lobster.services.metadata.microbiome_filtering_service import MicrobiomeFilteringService
 
 # Import fixtures
 from tests.integration.fixtures.microbiome_data import (

@@ -22,7 +22,7 @@ import pytest
 
 from lobster.agents.bulk_rnaseq_expert import bulk_rnaseq_expert
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.bulk_rnaseq_service import BulkRNASeqService
+from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
 
 # ===============================================================================
 # Fixtures

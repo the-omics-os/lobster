@@ -48,7 +48,7 @@ from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.ris_parser import RISParser
 from lobster.core.schemas.publication_queue import PublicationQueueEntry
 from lobster.services.publication_processing_service import PublicationProcessingService
-from lobster.tools.content_access_service import ContentAccessService
+from lobster.services.data_access.content_access_service import ContentAccessService
 
 
 # =============================================================================
@@ -1034,6 +1034,143 @@ class IdentifierResolutionResult:
     request_time: float = 0.0
 
 
+def test_production_pipeline(
+    ris_file: Path,
+    extraction_tasks: str = "resolve_identifiers,ncbi_enrich,metadata,methods,identifiers",
+    max_entries: Optional[int] = None,
+    entry_index: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Run production-like publication processing pipeline.
+
+    This mirrors exactly what happens in the production service, showing
+    the real output from PublicationProcessingService.process_entry().
+
+    Args:
+        ris_file: Path to RIS file
+        extraction_tasks: Comma-separated list of tasks to run:
+            - resolve_identifiers: DOI → PMID via NCBI ID Converter
+            - ncbi_enrich: PMID → GEO/SRA/BioProject via E-Link
+            - metadata: Full content extraction
+            - methods: Methods section extraction
+            - identifiers: Regex identifier extraction from text
+        max_entries: Maximum entries to test
+        entry_index: Test only this entry (by index)
+
+    Returns:
+        List of processing results
+    """
+    print_header("PRODUCTION PIPELINE TEST")
+    print(f"\nRIS File: {ris_file}")
+    print(f"Extraction Tasks: {extraction_tasks}")
+
+    # Parse RIS file
+    print("\n--- Loading RIS File ---")
+    parser = RISParser()
+    entries = parser.parse_file(ris_file)
+    print(f"Entries loaded: {len(entries)}")
+
+    # Filter entries if specified
+    if entry_index is not None:
+        if 0 <= entry_index < len(entries):
+            entries = [entries[entry_index]]
+            print(f"Testing single entry at index {entry_index}")
+        else:
+            print(f"Error: Entry index {entry_index} out of range (0-{len(entries)-1})")
+            return []
+    elif max_entries:
+        entries = entries[:max_entries]
+        print(f"Limited to first {max_entries} entries")
+
+    # Create temporary DataManager and service
+    data_manager = create_test_data_manager()
+    print(f"Workspace: {data_manager.workspace_path}")
+
+    # Add entries to publication queue
+    print("\n--- Adding entries to publication queue ---")
+    for i, entry in enumerate(entries):
+        data_manager.publication_queue.add_entry(entry)
+        title_short = (entry.title or "No title")[:55]
+        has_pmid = "YES" if (entry.pmid or entry.pubmed_url) else "NO"
+        print(f"  [{i}] {title_short}...")
+        print(f"      DOI: {entry.doi or '(none)'}")
+        print(f"      Has PMID: {has_pmid}")
+
+    # Import and create service
+    from lobster.services.publication_processing_service import PublicationProcessingService
+
+    service = PublicationProcessingService(data_manager)
+
+    # Process each entry
+    print("\n")
+    print("=" * 70)
+    print("  PROCESSING ENTRIES")
+    print("=" * 70)
+
+    results: List[Dict[str, Any]] = []
+
+    for i, entry in enumerate(entries, 1):
+        title_short = (entry.title or "No title")[:50]
+        if len(entry.title or "") > 50:
+            title_short += "..."
+
+        print(f"\n{'=' * 70}")
+        print(f"  Entry {i}/{len(entries)}: {title_short}")
+        print("=" * 70)
+
+        start_time = time.time()
+
+        # Run production pipeline
+        result_text = service.process_entry(
+            entry_id=entry.entry_id,
+            extraction_tasks=extraction_tasks,
+        )
+
+        elapsed = time.time() - start_time
+
+        # Print the production output
+        print(result_text)
+        print(f"\n[Processing time: {elapsed:.1f}s]")
+
+        results.append({
+            "entry_id": entry.entry_id,
+            "title": entry.title,
+            "doi": entry.doi,
+            "result": result_text,
+            "elapsed": elapsed,
+        })
+
+        # Small delay between entries
+        if i < len(entries):
+            time.sleep(0.5)
+
+    # Generate summary
+    print("\n")
+    print("=" * 70)
+    print("  PROCESSING SUMMARY")
+    print("=" * 70)
+
+    total = len(results)
+    completed = sum(1 for r in results if "COMPLETED" in r["result"])
+    failed = sum(1 for r in results if "FAILED" in r["result"])
+    paywalled = sum(1 for r in results if "PAYWALLED" in r["result"])
+
+    print(f"\nTotal Entries: {total}")
+    print(f"Completed:     {completed} ({completed/total*100:.0f}%)")
+    print(f"Failed:        {failed}")
+    print(f"Paywalled:     {paywalled}")
+    print(f"\nTasks executed: {extraction_tasks}")
+
+    # Show per-entry summary
+    print("\n--- Per-Entry Results ---")
+    for i, r in enumerate(results, 1):
+        status = "COMPLETED" if "COMPLETED" in r["result"] else "FAILED" if "FAILED" in r["result"] else "PAYWALLED"
+        title_short = (r["title"] or "Unknown")[:45]
+        print(f"  [{i}] {status:10} {r['elapsed']:.1f}s  {title_short}...")
+
+    return results
+
+
 def test_identifier_resolution(
     ris_file: Path,
     max_entries: Optional[int] = None,
@@ -1226,6 +1363,22 @@ def main():
         "--resolve-only",
         action="store_true",
         help="Test only identifier resolution (DOI → PMID via NCBI ID Converter)",
+    )
+    parser.add_argument(
+        "--tasks",
+        type=str,
+        default="resolve_identifiers,ncbi_enrich",
+        help=(
+            "Comma-separated extraction tasks to run. "
+            "Options: resolve_identifiers, ncbi_enrich, metadata, methods, identifiers. "
+            "Default: 'resolve_identifiers,ncbi_enrich'. "
+            "Example: --tasks 'resolve_identifiers,ncbi_enrich,metadata'"
+        ),
+    )
+    parser.add_argument(
+        "--production",
+        action="store_true",
+        help="Run production-like pipeline test with specified --tasks",
     )
 
     args = parser.parse_args()

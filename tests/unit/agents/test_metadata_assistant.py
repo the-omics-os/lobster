@@ -28,11 +28,11 @@ import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.schemas.transcriptomics import TranscriptomicsMetadataSchema
-from lobster.tools.metadata_standardization_service import (
+from lobster.services.metadata.metadata_standardization_service import (
     DatasetValidationResult,
     StandardizationResult,
 )
-from lobster.tools.sample_mapping_service import (
+from lobster.services.metadata.sample_mapping_service import (
     SampleMappingResult,
     SampleMatch,
     UnmappedSample,

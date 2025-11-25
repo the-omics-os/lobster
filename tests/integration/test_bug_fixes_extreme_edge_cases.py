@@ -18,7 +18,7 @@ import pytest
 
 from lobster.core.backends.h5ad_backend import H5ADBackend
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.geo_service import GEOService
+from lobster.services.data_access.geo_service import GEOService
 
 
 @pytest.fixture

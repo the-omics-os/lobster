@@ -23,9 +23,9 @@ from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.notebook_exporter import NotebookExporter
 from lobster.core.notebook_validator import NotebookValidator
 from lobster.core.provenance import ProvenanceTracker
-from lobster.tools.clustering_service import ClusteringService
-from lobster.tools.preprocessing_service import PreprocessingService
-from lobster.tools.quality_service import QualityService
+from lobster.services.analysis.clustering_service import ClusteringService
+from lobster.services.quality.preprocessing_service import PreprocessingService
+from lobster.services.quality.quality_service import QualityService
 
 
 @pytest.fixture

@@ -15,7 +15,7 @@ import anndata
 from unittest.mock import Mock, patch, MagicMock
 from scipy import sparse
 
-from lobster.tools.bulk_rnaseq_service import BulkRNASeqService, BulkRNASeqError
+from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService, BulkRNASeqError
 
 
 @pytest.fixture
