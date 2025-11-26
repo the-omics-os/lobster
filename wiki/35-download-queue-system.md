@@ -98,6 +98,50 @@ stateDiagram-v2
 
 ---
 
+## Concurrency Infrastructure
+
+Multiple Lobster instances (CLI sessions) can operate on the same workspace concurrently. To prevent data corruption, all shared JSON/JSONL files use multi-process safe locking and atomic writes.
+
+### Core Module: `lobster/core/queue_storage.py`
+
+**Utilities**:
+
+| Function | Purpose |
+|----------|---------|
+| `InterProcessFileLock` | File-based lock using `fcntl.flock` (POSIX) / `msvcrt.locking` (Windows) |
+| `queue_file_lock(thread_lock, lock_path)` | Context manager combining `threading.Lock` + file lock |
+| `atomic_write_json(path, data)` | Temp file + fsync + `os.replace` for crash-safe JSON writes |
+| `atomic_write_jsonl(path, entries, serializer)` | Same pattern for JSONL files |
+
+**Protected Files**:
+
+| File | Location | Protected By |
+|------|----------|--------------|
+| `download_queue.jsonl` | `workspace/queues/` | `DownloadQueue` class |
+| `publication_queue.jsonl` | `workspace/queues/` | `PublicationQueue` class |
+| `.session.json` | `workspace/` | `DataManagerV2._update_session_file()` |
+| `cache_metadata.json` | `workspace/.archive_cache/` | `ExtractionCacheManager` |
+
+**Usage Pattern**:
+
+```python
+from lobster.core.queue_storage import queue_file_lock, atomic_write_json
+
+# Each class maintains its own locks
+self._lock = threading.Lock()  # Thread safety
+self._lock_path = file_path.with_suffix(".lock")  # Process safety
+
+# Read-modify-write with full protection
+with queue_file_lock(self._lock, self._lock_path):
+    data = json.load(open(file_path))
+    data["key"] = new_value
+    atomic_write_json(file_path, data)
+```
+
+**Rule**: Future features persisting shared workspace state should use these utilities to ensure multi-session safety.
+
+---
+
 ## Queue Entry Structure
 
 ### DownloadQueueEntry Schema

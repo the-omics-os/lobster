@@ -622,6 +622,16 @@ Automatic session restoration and workspace scanning:
 }
 ```
 
+### Concurrent Access Protection
+
+Multiple Lobster instances can operate on the same workspace simultaneously. Session metadata and other shared files are protected with multi-process safe locking:
+
+- **Thread lock** (`threading.Lock`) - Intra-process safety
+- **File lock** (`InterProcessFileLock` via `fcntl.flock`) - Inter-process safety
+- **Atomic writes** - Temp file + fsync + `os.replace` for crash safety
+
+See [Download Queue System - Concurrency Infrastructure](./35-download-queue-system.md#concurrency-infrastructure) for implementation details.
+
 ### File Operations
 
 Comprehensive file management capabilities:

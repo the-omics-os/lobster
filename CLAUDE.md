@@ -228,7 +228,13 @@ lobster/
 │  │  ├─ pymol_visualization_service.py
 │  │  └─ chimerax_visualization_service_ALPHA.py
 │  ├─ data_access/          # Data access & retrieval
-│  │  ├─ geo_service.py
+│  │  ├─ geo_service.py     # Main GEO service (imports from geo/ subpackage)
+│  │  ├─ geo/               # Modular GEO package (refactored Nov 2024)
+│  │  │  ├─ __init__.py     # Re-exports with lazy GEOService import
+│  │  │  ├─ constants.py    # Enums, dataclasses, platform registry
+│  │  │  ├─ downloader.py   # GEODownloadManager (moved from tools/)
+│  │  │  ├─ parser.py       # GEOParser (moved from tools/)
+│  │  │  └─ strategy.py     # PipelineStrategyEngine (moved from tools/)
 │  │  ├─ geo_download_service.py
 │  │  ├─ geo_fallback_service.py
 │  │  ├─ content_access_service.py
@@ -283,14 +289,17 @@ lobster/
 | Data | `core/data_manager_v2.py` | modality/workspace orchestration |
 | Provenance | `core/provenance.py` | W3C‑PROV tracking |
 | Queue | `core/download_queue.py` | download orchestration |
+| Concurrency | `core/queue_storage.py` | multi-process safe file locking & atomic writes |
 | Export | `core/notebook_exporter.py` | Jupyter pipeline export |
 | Services | `services/*/*.py` | stateless analysis (organized by function) |
 | Services | `services/data_management/modality_management_service.py` | Modality CRUD with provenance (5 methods) |
 | Download | `tools/download_orchestrator.py` | Central router for database-specific downloads (9-step execution) |
 | Download | `services/data_access/geo_download_service.py` | GEO database download service (IDownloadService impl) |
+| GEO | `services/data_access/geo/` | Modular GEO package (downloader, parser, strategy, constants) |
 | Interfaces | `core/interfaces/download_service.py` | IDownloadService abstract base class |
 | Providers | `tools/providers/*.py` | PubMed/GEO/Web access |
 | Utilities | `tools/*.py` | orchestrators, helpers, workspace tools |
+| Deprecated | `tools/geo_*.py`, `tools/pipeline_strategy.py` | Backward compat aliases → `services/data_access/geo/` |
 | Registry | `config/agent_registry.py` | agent configuration |
 
 ### 3.3 Agent Roles (summary)
@@ -433,7 +442,14 @@ Checklist for new services:
 
 ### 4.5 Patterns & Abstractions
 
-- **Queue pattern**: use `DownloadQueue` for multi‑step downloads (see 2.4).  
+- **Queue pattern**: use `DownloadQueue` for multi‑step downloads (see 2.4).
+- **Concurrency pattern** (`core/queue_storage.py`): multi-process safe file access for shared JSON/JSONL files.
+  - `InterProcessFileLock` – file-based lock using `fcntl.flock` (POSIX) / `msvcrt.locking` (Windows)
+  - `queue_file_lock(thread_lock, lock_path)` – combines threading.Lock + file lock
+  - `atomic_write_json(path, data)` – temp file + fsync + `os.replace` for crash-safe writes
+  - `atomic_write_jsonl(path, entries, serializer)` – same for JSONL files
+  - **Protected files**: download_queue.jsonl, publication_queue.jsonl, .session.json, cache_metadata.json
+  - **Rule**: Future features persisting shared state should use these utilities
 - **Error hierarchy** – prefer specific exceptions:
   - `ModalityNotFoundError` – missing dataset in `DataManagerV2`  
   - `ServiceError` – analysis failures  
