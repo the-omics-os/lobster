@@ -92,6 +92,15 @@ def create_bioinformatics_graph(
 
     worker_agents = get_worker_agents()
 
+    # Pre-compute child agents for supervisor_accessible inference
+    # Agents that appear in ANY parent's child_agents are NOT supervisor-accessible by default
+    child_agent_names = set()
+    for agent_config in worker_agents.values():
+        if agent_config.child_agents:
+            child_agent_names.update(agent_config.child_agents)
+    if child_agent_names:
+        logger.debug(f"Child agents (not supervisor-accessible by default): {child_agent_names}")
+
     for agent_name, agent_config in worker_agents.items():
         factory_function = import_agent_factory(agent_config.factory_function)
 
@@ -104,14 +113,26 @@ def create_bioinformatics_graph(
         created_agents[agent_name] = agent
         agents.append(agent)
 
-        # Create handoff tool if configured
+        # Create handoff tool if configured AND supervisor-accessible
         if agent_config.handoff_tool_name and agent_config.handoff_tool_description:
-            handoff_tool = create_custom_handoff_tool(
-                agent_name=agent_config.name,
-                name=agent_config.handoff_tool_name,
-                description=agent_config.handoff_tool_description,
-            )
-            handoff_tools.append(handoff_tool)
+            # Determine supervisor accessibility (inference or explicit override)
+            if agent_config.supervisor_accessible is None:
+                # Infer: child agents are NOT supervisor-accessible by default
+                is_supervisor_accessible = agent_name not in child_agent_names
+            else:
+                # Explicit override from registry
+                is_supervisor_accessible = agent_config.supervisor_accessible
+
+            if is_supervisor_accessible:
+                handoff_tool = create_custom_handoff_tool(
+                    agent_name=agent_config.name,
+                    name=agent_config.handoff_tool_name,
+                    description=agent_config.handoff_tool_description,
+                )
+                handoff_tools.append(handoff_tool)
+                logger.debug(f"Created supervisor handoff tool for: {agent_config.display_name}")
+            else:
+                logger.debug(f"Skipped supervisor handoff for child agent: {agent_config.display_name}")
 
         logger.debug(f"Created agent: {agent_config.display_name} ({agent_config.name})")
 

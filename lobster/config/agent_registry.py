@@ -11,7 +11,15 @@ from typing import Callable, Dict, List, Optional
 
 @dataclass
 class AgentRegistryConfig:
-    """Configuration for an agent in the system."""
+    """Configuration for an agent in the system.
+
+    Attributes:
+        supervisor_accessible: Controls whether supervisor can directly handoff to this agent.
+            - None (default): Inferred from child_agents relationships. If this agent
+              appears in ANY parent's child_agents list, it's NOT supervisor-accessible.
+            - True: Explicitly allow supervisor access (override inference).
+            - False: Explicitly deny supervisor access (override inference).
+    """
 
     name: str
     display_name: str
@@ -20,6 +28,7 @@ class AgentRegistryConfig:
     handoff_tool_name: Optional[str] = None
     handoff_tool_description: Optional[str] = None
     child_agents: Optional[List[str]] = None  # List of agent names this agent can delegate to
+    supervisor_accessible: Optional[bool] = None  # None=infer, True/False=override
 
 
 # Central registry of all agents in the system
