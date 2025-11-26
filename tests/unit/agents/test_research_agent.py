@@ -44,11 +44,13 @@ class MockState:
 
 
 @pytest.fixture
-def mock_data_manager(mock_agent_environment):
+def mock_data_manager(mock_agent_environment, tmp_path):
     """Mock DataManagerV2 instance."""
     mock_dm = Mock(spec=DataManagerV2)
     mock_dm.metadata_store = {}
     mock_dm.list_modalities.return_value = []
+    mock_dm.workspace_path = str(tmp_path / "workspace")
+    mock_dm.log_tool_usage = Mock()
     return mock_dm
 
 

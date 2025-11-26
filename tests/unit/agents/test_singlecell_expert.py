@@ -48,10 +48,11 @@ class MockState:
 
 
 @pytest.fixture
-def mock_data_manager(mock_agent_environment):
+def mock_data_manager(mock_agent_environment, tmp_path):
     """Create mock data manager with single-cell data."""
     mock_dm = Mock(spec=DataManagerV2)
     mock_dm.list_modalities.return_value = ["sc_data", "sc_data_filtered"]
+    mock_dm.workspace_path = str(tmp_path / "workspace")
 
     # Create mock single-cell data
     sc_data = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)

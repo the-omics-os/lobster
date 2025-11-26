@@ -46,10 +46,11 @@ class MockState:
 
 
 @pytest.fixture
-def mock_data_manager(mock_agent_environment):
+def mock_data_manager(mock_agent_environment, tmp_path):
     """Create mock data manager with modality operations."""
     mock_dm = Mock(spec=DataManagerV2)
     mock_dm.list_modalities.return_value = ["geo_gse12345", "custom_dataset"]
+    mock_dm.workspace_path = str(tmp_path / "workspace")
 
     # Create mock data
     mock_adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
@@ -63,7 +64,7 @@ def mock_data_manager(mock_agent_environment):
         "mean_counts_per_obs": 1500,
     }
     mock_dm.get_workspace_status.return_value = {
-        "workspace_path": "/workspace",
+        "workspace_path": str(tmp_path / "workspace"),
         "registered_adapters": ["transcriptomics_single_cell", "transcriptomics_bulk"],
         "registered_backends": ["h5ad"],
     }

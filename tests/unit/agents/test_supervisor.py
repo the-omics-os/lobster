@@ -46,7 +46,7 @@ class MockState:
 
 
 @pytest.fixture
-def mock_data_manager(mock_agent_environment):
+def mock_data_manager(mock_agent_environment, tmp_path):
     """Create mock data manager."""
     with patch("lobster.core.data_manager_v2.DataManagerV2") as MockDataManager:
         mock_dm = MockDataManager.return_value
@@ -55,6 +55,8 @@ def mock_data_manager(mock_agent_environment):
             config=SMALL_DATASET_CONFIG
         )
         mock_dm.get_summary.return_value = "Test dataset with 100 cells and 500 genes"
+        mock_dm.workspace_path = str(tmp_path / "workspace")
+        mock_dm.log_tool_usage = Mock()
         yield mock_dm
 
 
