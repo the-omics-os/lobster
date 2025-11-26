@@ -405,7 +405,7 @@ Proceed with filtering and normalization, then doublet detection before clusteri
             )
 
             # Use singlecell service for doublet detection
-            adata_doublets, detection_stats = singlecell_service.detect_doublets(
+            adata_doublets, detection_stats, ir = singlecell_service.detect_doublets(
                 adata=adata,
                 expected_doublet_rate=expected_doublet_rate,
                 threshold=threshold,
@@ -420,7 +420,7 @@ Proceed with filtering and normalization, then doublet detection before clusteri
                 save_path = f"{modality_name}_doublets_detected.h5ad"
                 data_manager.save_modality(doublet_modality_name, save_path)
 
-            # Log the operation
+            # Log the operation with IR for provenance
             data_manager.log_tool_usage(
                 tool_name="detect_doublets_in_modality",
                 parameters={
@@ -429,6 +429,7 @@ Proceed with filtering and normalization, then doublet detection before clusteri
                     "threshold": threshold,
                 },
                 description=f"Detected {detection_stats['n_doublets_detected']} doublets in single-cell data {modality_name}",
+                ir=ir,
             )
 
             # Format professional response

@@ -255,7 +255,7 @@ def test_marker_database_completeness(service):
 
 def test_detect_doublets_basic(service, simple_adata):
     """Test basic doublet detection with default parameters."""
-    result_adata, stats = service.detect_doublets(simple_adata)
+    result_adata, stats, _ = service.detect_doublets(simple_adata)
 
     assert result_adata is not None
     assert "doublet_score" in result_adata.obs.columns
@@ -272,7 +272,7 @@ def test_detect_doublets_basic(service, simple_adata):
 def test_detect_doublets_with_custom_rate(service, simple_adata):
     """Test doublet detection with custom expected rate."""
     expected_rate = 0.05
-    result_adata, stats = service.detect_doublets(
+    result_adata, stats, _ = service.detect_doublets(
         simple_adata, expected_doublet_rate=expected_rate
     )
 
@@ -283,7 +283,7 @@ def test_detect_doublets_with_custom_rate(service, simple_adata):
 def test_detect_doublets_with_custom_threshold(service, simple_adata):
     """Test doublet detection with custom threshold."""
     threshold = 0.3
-    result_adata, stats = service.detect_doublets(simple_adata, threshold=threshold)
+    result_adata, stats, _ = service.detect_doublets(simple_adata, threshold=threshold)
 
     assert stats["threshold"] == threshold
     assert "predicted_doublet" in result_adata.obs.columns
@@ -291,7 +291,7 @@ def test_detect_doublets_with_custom_threshold(service, simple_adata):
 
 def test_detect_doublets_score_distribution(service, simple_adata):
     """Test that doublet scores are properly distributed."""
-    result_adata, stats = service.detect_doublets(simple_adata)
+    result_adata, stats, _ = service.detect_doublets(simple_adata)
 
     doublet_scores = result_adata.obs["doublet_score"]
     assert doublet_scores.min() >= 0
@@ -301,7 +301,7 @@ def test_detect_doublets_score_distribution(service, simple_adata):
 
 def test_detect_doublets_returns_statistics(service, simple_adata):
     """Test that doublet detection returns comprehensive statistics."""
-    result_adata, stats = service.detect_doublets(simple_adata)
+    result_adata, stats, _ = service.detect_doublets(simple_adata)
 
     required_keys = [
         "analysis_type",
@@ -349,7 +349,7 @@ def test_detect_doublets_single_cell(service):
         var=pd.DataFrame(index=[f"Gene_{i}" for i in range(5)]),
     )
 
-    result_adata, stats = service.detect_doublets(adata)
+    result_adata, stats, _ = service.detect_doublets(adata)
     assert stats["n_cells_analyzed"] == 1
     assert "doublet_score" in result_adata.obs.columns
 
@@ -370,7 +370,7 @@ def test_detect_doublets_with_sparse_matrix(service):
         var=pd.DataFrame(index=[f"Gene_{i}" for i in range(n_vars)]),
     )
 
-    result_adata, stats = service.detect_doublets(adata)
+    result_adata, stats, _ = service.detect_doublets(adata)
     assert "doublet_score" in result_adata.obs.columns
     assert stats["n_cells_analyzed"] == n_obs
 
@@ -379,13 +379,13 @@ def test_detect_doublets_with_raw_data(service, simple_adata):
     """Test doublet detection uses raw data when available."""
     simple_adata.raw = simple_adata.copy()
 
-    result_adata, stats = service.detect_doublets(simple_adata)
+    result_adata, stats, _ = service.detect_doublets(simple_adata)
     assert "doublet_score" in result_adata.obs.columns
 
 
 def test_detect_doublets_extreme_expected_rate_low(service, simple_adata):
     """Test doublet detection with very low expected rate."""
-    result_adata, stats = service.detect_doublets(
+    result_adata, stats, _ = service.detect_doublets(
         simple_adata, expected_doublet_rate=0.001
     )
 
@@ -395,7 +395,7 @@ def test_detect_doublets_extreme_expected_rate_low(service, simple_adata):
 
 def test_detect_doublets_extreme_expected_rate_high(service, simple_adata):
     """Test doublet detection with high expected rate."""
-    result_adata, stats = service.detect_doublets(
+    result_adata, stats, _ = service.detect_doublets(
         simple_adata, expected_doublet_rate=0.5
     )
 
@@ -487,7 +487,7 @@ def test_detect_doublets_with_scrublet(service):
         var=pd.DataFrame(index=[f"Gene_{i}" for i in range(n_vars)]),
     )
 
-    result_adata, stats = service.detect_doublets(adata)
+    result_adata, stats, _ = service.detect_doublets(adata)
 
     # When Scrublet is available and data is sufficient, it should be used
     # Note: May still fallback if Scrublet fails for other reasons
@@ -500,7 +500,7 @@ def test_scrublet_failure_fallback(service, simple_adata):
     with patch("scrublet.Scrublet") as mock_scrublet:
         mock_scrublet.side_effect = Exception("Scrublet failed")
 
-        result_adata, stats = service.detect_doublets(simple_adata)
+        result_adata, stats, _ = service.detect_doublets(simple_adata)
 
         # Should fallback to alternative method
         assert stats["detection_method"] == "fallback_outlier_detection"
@@ -514,7 +514,7 @@ def test_scrublet_failure_fallback(service, simple_adata):
 
 def test_annotate_cell_types_basic(service, clustered_adata):
     """Test basic cell type annotation."""
-    result_adata, stats = service.annotate_cell_types(clustered_adata)
+    result_adata, stats, _ = service.annotate_cell_types(clustered_adata)
 
     assert "cell_type" in result_adata.obs.columns
     assert len(result_adata.obs) == len(clustered_adata.obs)
@@ -538,7 +538,7 @@ def test_annotate_with_custom_markers(service, clustered_adata):
         "Custom Type B": ["CD19", "MS4A1"],
     }
 
-    result_adata, stats = service.annotate_cell_types(
+    result_adata, stats, _ = service.annotate_cell_types(
         clustered_adata, reference_markers=custom_markers
     )
 
@@ -548,7 +548,7 @@ def test_annotate_with_custom_markers(service, clustered_adata):
 
 def test_annotate_all_clusters_assigned(service, clustered_adata):
     """Test that all clusters get cell type assignments."""
-    result_adata, stats = service.annotate_cell_types(clustered_adata)
+    result_adata, stats, _ = service.annotate_cell_types(clustered_adata)
 
     n_clusters = len(clustered_adata.obs["leiden"].unique())
     n_assigned = len(stats["cluster_to_celltype"])
@@ -558,7 +558,7 @@ def test_annotate_all_clusters_assigned(service, clustered_adata):
 
 def test_annotate_marker_scores_calculated(service, clustered_adata):
     """Test that marker scores are calculated for all clusters."""
-    result_adata, stats = service.annotate_cell_types(clustered_adata)
+    result_adata, stats, _ = service.annotate_cell_types(clustered_adata)
 
     assert "marker_scores" in stats
     marker_scores = stats["marker_scores"]
@@ -571,7 +571,7 @@ def test_annotate_marker_scores_calculated(service, clustered_adata):
 
 def test_annotate_cell_type_counts(service, clustered_adata):
     """Test cell type count statistics."""
-    result_adata, stats = service.annotate_cell_types(clustered_adata)
+    result_adata, stats, _ = service.annotate_cell_types(clustered_adata)
 
     assert "cell_type_counts" in stats
     cell_type_counts = stats["cell_type_counts"]
@@ -600,7 +600,7 @@ def test_annotate_single_cluster(service):
     )
     adata.obs["leiden"] = "0"
 
-    result_adata, stats = service.annotate_cell_types(adata)
+    result_adata, stats, _ = service.annotate_cell_types(adata)
 
     assert stats["n_clusters"] == 1
     assert len(stats["cluster_to_celltype"]) == 1
@@ -622,7 +622,7 @@ def test_annotate_no_marker_overlap(service):
     )
     adata.obs["leiden"] = np.random.choice([0, 1, 2], size=n_obs).astype(str)
 
-    result_adata, stats = service.annotate_cell_types(adata)
+    result_adata, stats, _ = service.annotate_cell_types(adata)
 
     # Should still complete, all cells might be "Unknown"
     assert "cell_type" in result_adata.obs.columns
@@ -645,7 +645,7 @@ def test_annotate_with_non_unique_obs_names(service):
     adata.obs["leiden"] = np.random.choice([0, 1], size=n_obs).astype(str)
 
     # Should handle gracefully
-    result_adata, stats = service.annotate_cell_types(adata)
+    result_adata, stats, _ = service.annotate_cell_types(adata)
     assert "cell_type" in result_adata.obs.columns
 
 
@@ -666,13 +666,13 @@ def test_annotate_with_non_unique_var_names(service):
     adata.obs["leiden"] = np.random.choice([0, 1], size=n_obs).astype(str)
 
     # Should handle gracefully
-    result_adata, stats = service.annotate_cell_types(adata)
+    result_adata, stats, _ = service.annotate_cell_types(adata)
     assert "cell_type" in result_adata.obs.columns
 
 
 def test_annotate_comprehensive_marker_coverage(service, adata_with_all_markers):
     """Test annotation with comprehensive marker coverage."""
-    result_adata, stats = service.annotate_cell_types(adata_with_all_markers)
+    result_adata, stats, _ = service.annotate_cell_types(adata_with_all_markers)
 
     # Should identify multiple cell types
     assert stats["n_cell_types_identified"] >= 3
@@ -693,7 +693,7 @@ def test_annotate_comprehensive_marker_coverage(service, adata_with_all_markers)
 
 def test_find_marker_genes_basic(service, clustered_adata):
     """Test basic marker gene detection."""
-    result_adata, stats = service.find_marker_genes(clustered_adata, groups="all")
+    result_adata, stats, _ = service.find_marker_genes(clustered_adata, groups="all")
 
     assert "rank_genes_groups" in result_adata.uns
     assert stats["analysis_type"] == "marker_gene_analysis"
@@ -711,7 +711,7 @@ def test_find_markers_with_custom_method(service, clustered_adata):
     methods = ["wilcoxon", "t-test"]  # logreg requires more samples
 
     for method in methods:
-        result_adata, stats = service.find_marker_genes(
+        result_adata, stats, _ = service.find_marker_genes(
             clustered_adata, method=method, groups="all"
         )
         assert stats["method"] == method
@@ -721,7 +721,7 @@ def test_find_markers_with_custom_method(service, clustered_adata):
 def test_find_markers_with_custom_n_genes(service, clustered_adata):
     """Test marker detection with custom number of genes."""
     n_genes = 10
-    result_adata, stats = service.find_marker_genes(
+    result_adata, stats, _ = service.find_marker_genes(
         clustered_adata, n_genes=n_genes, groups="all"
     )
 
@@ -731,7 +731,7 @@ def test_find_markers_with_custom_n_genes(service, clustered_adata):
 def test_find_markers_with_specific_groups(service, clustered_adata):
     """Test marker detection for specific groups."""
     groups = ["0", "1"]
-    result_adata, stats = service.find_marker_genes(clustered_adata, groups=groups)
+    result_adata, stats, _ = service.find_marker_genes(clustered_adata, groups=groups)
 
     # Should only analyze specified groups
     assert "rank_genes_groups" in result_adata.uns
@@ -739,7 +739,7 @@ def test_find_markers_with_specific_groups(service, clustered_adata):
 
 def test_find_markers_returns_statistics(service, clustered_adata):
     """Test that marker detection returns comprehensive statistics."""
-    result_adata, stats = service.find_marker_genes(clustered_adata, groups="all")
+    result_adata, stats, _ = service.find_marker_genes(clustered_adata, groups="all")
 
     required_keys = [
         "analysis_type",
@@ -757,7 +757,7 @@ def test_find_markers_returns_statistics(service, clustered_adata):
 
 def test_find_markers_top_markers_per_group(service, clustered_adata):
     """Test that top markers are extracted per group."""
-    result_adata, stats = service.find_marker_genes(clustered_adata, groups="all")
+    result_adata, stats, _ = service.find_marker_genes(clustered_adata, groups="all")
 
     if "top_markers_per_group" in stats:
         top_markers = stats["top_markers_per_group"]
@@ -792,7 +792,7 @@ def test_find_markers_single_group(service):
     adata.raw = adata.copy()
 
     # Should handle single group gracefully
-    result_adata, stats = service.find_marker_genes(adata, groups="all")
+    result_adata, stats, _ = service.find_marker_genes(adata, groups="all")
     assert stats["n_groups"] == 1
 
 
@@ -814,7 +814,7 @@ def test_find_markers_two_groups_only(service):
     adata.obs["leiden"] = np.array([0] * 50 + [1] * 50).astype(str)
     adata.raw = adata.copy()
 
-    result_adata, stats = service.find_marker_genes(adata, groups="all")
+    result_adata, stats, _ = service.find_marker_genes(adata, groups="all")
     assert stats["n_groups"] == 2
 
 
@@ -835,14 +835,14 @@ def test_find_markers_with_low_expression(service):
     adata.obs["leiden"] = np.random.choice([0, 1, 2], size=n_obs).astype(str)
     adata.raw = adata.copy()
 
-    result_adata, stats = service.find_marker_genes(adata, groups="all")
+    result_adata, stats, _ = service.find_marker_genes(adata, groups="all")
     assert "rank_genes_groups" in result_adata.uns
 
 
 def test_find_markers_large_n_genes(service, clustered_adata):
     """Test marker detection with more genes than available."""
     n_genes = 1000  # More than available
-    result_adata, stats = service.find_marker_genes(
+    result_adata, stats, _ = service.find_marker_genes(
         clustered_adata, n_genes=n_genes, groups="all"
     )
 
@@ -866,7 +866,7 @@ def test_find_markers_minimal_genes(service):
     adata.obs["leiden"] = np.random.choice([0, 1], size=n_obs).astype(str)
     adata.raw = adata.copy()
 
-    result_adata, stats = service.find_marker_genes(adata, n_genes=10, groups="all")
+    result_adata, stats, _ = service.find_marker_genes(adata, n_genes=10, groups="all")
     assert "rank_genes_groups" in result_adata.uns
 
 
@@ -892,7 +892,7 @@ def test_calculate_marker_scores_from_adata(service, clustered_adata):
 def test_extract_marker_genes(service, clustered_adata):
     """Test marker gene extraction helper function."""
     # First run marker detection
-    result_adata, _ = service.find_marker_genes(clustered_adata, groups="all")
+    result_adata, _, _ = service.find_marker_genes(clustered_adata, groups="all")
 
     # Extract markers
     marker_df = service._extract_marker_genes(result_adata, "leiden")
@@ -946,7 +946,7 @@ def test_marker_detection_error_handling(service):
 
 def test_doublet_scores_are_continuous(service, simple_adata):
     """Test that doublet scores are continuous values."""
-    result_adata, _ = service.detect_doublets(simple_adata)
+    result_adata, _, _ = service.detect_doublets(simple_adata)
 
     doublet_scores = result_adata.obs["doublet_score"]
     assert doublet_scores.dtype in [np.float32, np.float64]
@@ -954,7 +954,7 @@ def test_doublet_scores_are_continuous(service, simple_adata):
 
 def test_doublet_prediction_is_binary(service, simple_adata):
     """Test that doublet predictions are binary."""
-    result_adata, _ = service.detect_doublets(simple_adata)
+    result_adata, _, _ = service.detect_doublets(simple_adata)
 
     predicted_doublets = result_adata.obs["predicted_doublet"]
     unique_values = predicted_doublets.unique()
@@ -964,7 +964,7 @@ def test_doublet_prediction_is_binary(service, simple_adata):
 
 def test_marker_scores_are_numeric(service, clustered_adata):
     """Test that marker scores are numeric."""
-    result_adata, stats = service.annotate_cell_types(clustered_adata)
+    result_adata, stats, _ = service.annotate_cell_types(clustered_adata)
 
     marker_scores = stats["marker_scores"]
     for cluster_scores in marker_scores.values():
@@ -981,7 +981,7 @@ def test_marker_scores_are_numeric(service, clustered_adata):
 def test_full_workflow_detect_and_annotate(service, simple_adata):
     """Test full workflow: doublets -> cluster -> annotate."""
     # 1. Detect doublets
-    adata_doublets, doublet_stats = service.detect_doublets(simple_adata)
+    adata_doublets, doublet_stats, _ = service.detect_doublets(simple_adata)
     assert "doublet_score" in adata_doublets.obs.columns
 
     # 2. Add clustering (simulated)
@@ -1001,7 +1001,7 @@ def test_full_workflow_detect_and_annotate(service, simple_adata):
     adata_doublets.var_names = current_genes
 
     # 3. Annotate
-    adata_final, annotation_stats = service.annotate_cell_types(adata_doublets)
+    adata_final, annotation_stats, _ = service.annotate_cell_types(adata_doublets)
     assert "cell_type" in adata_final.obs.columns
     assert "doublet_score" in adata_final.obs.columns
 
@@ -1009,13 +1009,13 @@ def test_full_workflow_detect_and_annotate(service, simple_adata):
 def test_full_workflow_marker_detection(service, clustered_adata):
     """Test full workflow with marker detection."""
     # 1. Find markers
-    adata_markers, marker_stats = service.find_marker_genes(
+    adata_markers, marker_stats, _ = service.find_marker_genes(
         clustered_adata, groups="all"
     )
     assert "rank_genes_groups" in adata_markers.uns
 
     # 2. Annotate based on markers
-    adata_annotated, annotation_stats = service.annotate_cell_types(adata_markers)
+    adata_annotated, annotation_stats, _ = service.annotate_cell_types(adata_markers)
     assert "cell_type" in adata_annotated.obs.columns
 
 
@@ -1041,7 +1041,7 @@ def test_doublet_detection_performance_small(service):
     import time
 
     start = time.time()
-    result_adata, stats = service.detect_doublets(adata)
+    result_adata, stats, _ = service.detect_doublets(adata)
     duration = time.time() - start
 
     assert duration < 10  # Should complete in reasonable time
@@ -1053,7 +1053,7 @@ def test_marker_detection_performance(service, clustered_adata):
     import time
 
     start = time.time()
-    result_adata, stats = service.find_marker_genes(clustered_adata, groups="all")
+    result_adata, stats, _ = service.find_marker_genes(clustered_adata, groups="all")
     duration = time.time() - start
 
     assert duration < 30  # Should complete in reasonable time
@@ -1064,7 +1064,7 @@ def test_annotation_performance(service, clustered_adata):
     import time
 
     start = time.time()
-    result_adata, stats = service.annotate_cell_types(clustered_adata)
+    result_adata, stats, _ = service.annotate_cell_types(clustered_adata)
     duration = time.time() - start
 
     assert duration < 10  # Should be fast
@@ -1080,7 +1080,7 @@ def test_doublet_detection_preserves_original(service, simple_adata):
     original_shape = simple_adata.shape
     original_obs_cols = set(simple_adata.obs.columns)
 
-    result_adata, _ = service.detect_doublets(simple_adata)
+    result_adata, _, _ = service.detect_doublets(simple_adata)
 
     # Original should be unchanged
     assert simple_adata.shape == original_shape
@@ -1091,7 +1091,7 @@ def test_annotation_preserves_clustering(service, clustered_adata):
     """Test that annotation preserves clustering results."""
     original_leiden = clustered_adata.obs["leiden"].copy()
 
-    result_adata, _ = service.annotate_cell_types(clustered_adata)
+    result_adata, _, _ = service.annotate_cell_types(clustered_adata)
 
     # Leiden should be preserved
     assert "leiden" in result_adata.obs.columns
@@ -1104,7 +1104,7 @@ def test_marker_detection_preserves_data(service, clustered_adata):
     """Test that marker detection preserves original data."""
     original_shape = clustered_adata.shape
 
-    result_adata, _ = service.find_marker_genes(clustered_adata, groups="all")
+    result_adata, _, _ = service.find_marker_genes(clustered_adata, groups="all")
 
     # Shape should be unchanged
     assert result_adata.shape == original_shape
@@ -1117,8 +1117,8 @@ def test_marker_detection_preserves_data(service, clustered_adata):
 
 def test_doublet_detection_reproducibility(service, simple_adata):
     """Test that doublet detection is reproducible with same seed."""
-    result1_adata, stats1 = service.detect_doublets(simple_adata)
-    result2_adata, stats2 = service.detect_doublets(simple_adata)
+    result1_adata, stats1, _ = service.detect_doublets(simple_adata)
+    result2_adata, stats2, _ = service.detect_doublets(simple_adata)
 
     # Results should be similar (may not be identical due to random components)
     assert stats1["n_cells_analyzed"] == stats2["n_cells_analyzed"]
@@ -1126,8 +1126,8 @@ def test_doublet_detection_reproducibility(service, simple_adata):
 
 def test_annotation_reproducibility(service, clustered_adata):
     """Test that annotation is reproducible."""
-    result1_adata, stats1 = service.annotate_cell_types(clustered_adata)
-    result2_adata, stats2 = service.annotate_cell_types(clustered_adata)
+    result1_adata, stats1, _ = service.annotate_cell_types(clustered_adata)
+    result2_adata, stats2, _ = service.annotate_cell_types(clustered_adata)
 
     # Should be deterministic
     pd.testing.assert_series_equal(

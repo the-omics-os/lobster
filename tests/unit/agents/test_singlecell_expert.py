@@ -89,7 +89,7 @@ def singlecell_agent(mock_data_manager, mock_agent_environment):
 class TestSingleCellExpertCore:
     """Test single-cell expert core functionality."""
 
-    @patch("lobster.tools.preprocessing_service.PreprocessingService")
+    @patch("lobster.services.quality.preprocessing_service.PreprocessingService")
     def test_filter_and_normalize_data(
         self, mock_preprocessing_service, mock_data_manager
     ):
@@ -113,7 +113,7 @@ class TestSingleCellExpertCore:
         # Test that the service would be called correctly
         mock_service.filter_and_normalize_cells.assert_not_called()  # Not called until tool is used
 
-    @patch("lobster.tools.quality_service.QualityService")
+    @patch("lobster.services.quality.quality_service.QualityService")
     def test_assess_data_quality(self, mock_quality_service, mock_data_manager):
         """Test QC metrics calculation via service."""
         # Setup mock service
@@ -140,7 +140,7 @@ class TestSingleCellExpertCore:
         # Test that the service would be called correctly
         mock_service.assess_quality.assert_not_called()  # Not called until tool is used
 
-    @patch("lobster.tools.enhanced_singlecell_service.EnhancedSingleCellService")
+    @patch("lobster.services.analysis.enhanced_singlecell_service.EnhancedSingleCellService")
     def test_detect_doublets(self, mock_singlecell_service, mock_data_manager):
         """Test doublet detection via service."""
         # Setup mock service
@@ -164,7 +164,7 @@ class TestSingleCellExpertCore:
         # Test that the service would be called correctly
         mock_service.detect_doublets.assert_not_called()  # Not called until tool is used
 
-    @patch("lobster.tools.clustering_service.ClusteringService")
+    @patch("lobster.services.analysis.clustering_service.ClusteringService")
     def test_perform_clustering(self, mock_clustering_service, mock_data_manager):
         """Test clustering analysis via service."""
         # Setup mock service
@@ -191,7 +191,7 @@ class TestSingleCellExpertCore:
         # Test that the service would be called correctly
         mock_service.cluster_and_visualize.assert_not_called()  # Not called until tool is used
 
-    @patch("lobster.tools.enhanced_singlecell_service.EnhancedSingleCellService")
+    @patch("lobster.services.analysis.enhanced_singlecell_service.EnhancedSingleCellService")
     def test_find_marker_genes(self, mock_singlecell_service, mock_data_manager):
         """Test marker gene identification via service."""
         # Setup mock service
@@ -229,7 +229,7 @@ class TestSingleCellExpertCore:
         # Test that the service would be called correctly
         mock_service.find_marker_genes.assert_not_called()  # Not called until tool is used
 
-    @patch("lobster.tools.enhanced_singlecell_service.EnhancedSingleCellService")
+    @patch("lobster.services.analysis.enhanced_singlecell_service.EnhancedSingleCellService")
     def test_annotate_cell_types(self, mock_singlecell_service, mock_data_manager):
         """Test cell type annotation via service."""
         # Setup mock service

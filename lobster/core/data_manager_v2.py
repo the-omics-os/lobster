@@ -35,6 +35,7 @@ from lobster.core.interfaces.adapter import IModalityAdapter
 from lobster.core.interfaces.backend import IDataBackend
 from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.provenance import ProvenanceTracker
+from lobster.core.queue_storage import atomic_write_json, queue_file_lock
 from lobster.core.utils.h5ad_utils import validate_for_h5ad
 
 # Import for IR support (TYPE_CHECKING to avoid circular import)
@@ -203,6 +204,10 @@ class DataManagerV2:
         self._save_in_progress = False  # Track if save is currently running
         self._last_save_time = 0  # Track last save timestamp for rate limiting
         self._min_save_interval = 2.0  # Minimum seconds between saves
+
+        # Multi-process safe session file access
+        self._session_lock = threading.Lock()
+        self._session_lock_path = self.session_file.with_suffix(".lock")
 
         # Visualization state management for Visualization Expert Agent
         self.visualization_state = {
@@ -3394,17 +3399,18 @@ https://github.com/OmicsOS/lobster
         logger.debug("Workspace scan cache invalidated - next access will trigger fresh scan")
 
     def _load_session_metadata(self) -> None:
-        """Load session metadata from file."""
+        """Load session metadata from file (multi-process safe)."""
         try:
-            with open(self.session_file, "r") as f:
-                self.session_data = json.load(f)
+            with queue_file_lock(self._session_lock, self._session_lock_path):
+                with open(self.session_file, "r") as f:
+                    self.session_data = json.load(f)
             logger.debug(f"Loaded session metadata from {self.session_file}")
         except Exception as e:
             logger.warning(f"Could not load session metadata: {e}")
             self.session_data = None
 
     def _update_session_file(self, action: str = "update") -> None:
-        """Update session file with current state."""
+        """Update session file with current state (multi-process safe)."""
         try:
             # Get Lobster version if available
             try:
@@ -3457,11 +3463,9 @@ https://github.com/OmicsOS/lobster
                     for act in recent_activities
                 ]
 
-            # Write atomically
-            temp_file = self.session_file.with_suffix(".tmp")
-            with open(temp_file, "w") as f:
-                json.dump(session_data, f, indent=2)
-            temp_file.replace(self.session_file)
+            # Write atomically with inter-process lock
+            with queue_file_lock(self._session_lock, self._session_lock_path):
+                atomic_write_json(self.session_file, session_data)
 
             logger.debug(f"Updated session file: {self.session_file}")
         except Exception as e:

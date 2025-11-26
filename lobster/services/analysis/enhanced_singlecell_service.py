@@ -79,7 +79,7 @@ class EnhancedSingleCellService:
         adata: anndata.AnnData,
         expected_doublet_rate: float = 0.025,
         threshold: Optional[float] = None,
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Detect doublets using Scrublet or fallback method.
 
@@ -89,7 +89,7 @@ class EnhancedSingleCellService:
             threshold: Custom threshold for doublet calling
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: AnnData with doublet scores and detection stats
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]: AnnData with doublet scores, detection stats, and IR
 
         Raises:
             SingleCellError: If doublet detection fails
@@ -186,7 +186,14 @@ class EnhancedSingleCellService:
                 f"Doublet detection completed: {n_doublets} doublets detected ({doublet_rate:.1%})"
             )
 
-            return adata_doublets, detection_stats
+            # Create IR for provenance tracking
+            ir = self._create_doublet_detection_ir(
+                expected_doublet_rate=expected_doublet_rate,
+                threshold=threshold,
+                detection_method=detection_method,
+            )
+
+            return adata_doublets, detection_stats, ir
 
         except Exception as e:
             logger.exception(f"Error in doublet detection: {e}")
@@ -233,6 +240,77 @@ class EnhancedSingleCellService:
         )
 
         return doublet_scores, predicted_doublets, "fallback_outlier_detection"
+
+    def _create_doublet_detection_ir(
+        self,
+        expected_doublet_rate: float,
+        threshold: Optional[float],
+        detection_method: str,
+    ) -> AnalysisStep:
+        """Create AnalysisStep IR for doublet detection."""
+
+        code_template = """
+# Doublet detection using Scrublet (or fallback)
+import scrublet as scr
+import numpy as np
+
+# Get count matrix (use raw if available)
+counts_matrix = adata.raw.X if adata.raw is not None else adata.X
+if hasattr(counts_matrix, 'toarray'):
+    counts_matrix = counts_matrix.toarray()
+
+# Run Scrublet
+scrub = scr.Scrublet(counts_matrix, expected_doublet_rate={{ expected_doublet_rate }})
+doublet_scores, predicted_doublets = scrub.scrub_doublets(
+    min_counts=2,
+    min_cells=3,
+    min_gene_variability_pctl=85,
+    n_prin_comps=30,
+)
+{% if threshold %}
+# Apply custom threshold
+predicted_doublets = scrub.call_doublets(threshold={{ threshold }})
+{% endif %}
+
+# Add results to AnnData
+adata.obs['doublet_score'] = doublet_scores
+adata.obs['predicted_doublet'] = predicted_doublets
+
+# Results stored in:
+# - adata.obs['doublet_score']: Continuous doublet likelihood (0-1)
+# - adata.obs['predicted_doublet']: Boolean classification
+"""
+
+        return AnalysisStep(
+            operation="detect_doublets",
+            tool_name="EnhancedSingleCellService.detect_doublets",
+            description=f"Doublet detection using {detection_method}",
+            library="scrublet" if detection_method == "scrublet" else "numpy",
+            code_template=code_template,
+            imports=[
+                "import scrublet as scr",
+                "import numpy as np",
+            ],
+            parameters={
+                "expected_doublet_rate": expected_doublet_rate,
+                "threshold": threshold,
+                "detection_method": detection_method,
+            },
+            parameter_schema={
+                "expected_doublet_rate": {
+                    "type": "number",
+                    "description": "Expected doublet rate (typically 0.025-0.1)",
+                    "default": 0.025,
+                },
+                "threshold": {
+                    "type": "number",
+                    "description": "Custom threshold for doublet calling (None for automatic)",
+                    "required": False,
+                },
+            },
+            input_entities=["adata"],
+            output_entities=["adata_doublets"],
+        )
 
     def annotate_cell_types(
         self,
@@ -1012,31 +1090,6 @@ sc.tl.filter_rank_genes_groups(
             yaxis_title="Cell Types",
             height=500,
         )
-
-        return fig
-
-    def _create_annotated_umap(self) -> go.Figure:
-        """Create UMAP plot with cell type annotations."""
-        adata = self.data_manager.adata
-
-        if "X_umap" not in adata.obsm:
-            return go.Figure().add_annotation(text="UMAP coordinates not available")
-
-        umap_coords = adata.obsm["X_umap"]
-        cell_types = adata.obs["cell_type"]
-
-        fig = px.scatter(
-            x=umap_coords[:, 0],
-            y=umap_coords[:, 1],
-            color=cell_types,
-            title="UMAP with Cell Type Annotations",
-            labels={"x": "UMAP_1", "y": "UMAP_2", "color": "Cell Type"},
-            width=700,
-            height=600,
-        )
-
-        fig.update_traces(marker=dict(size=4, opacity=0.7))
-        fig.update_layout(legend_title="Cell Type", font=dict(size=12))
 
         return fig
 

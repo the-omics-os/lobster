@@ -37,12 +37,14 @@ Technical Details:
 import json
 import logging
 import shutil
+import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from lobster.core.archive_utils import NestedArchiveInfo
+from lobster.core.queue_storage import atomic_write_json, queue_file_lock
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +71,10 @@ class ExtractionCacheManager:
         self.cache_dir = workspace_dir / ".archive_cache"
         self.metadata_file = self.cache_dir / "cache_metadata.json"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # Multi-process safe metadata file access
+        self._lock = threading.Lock()
+        self._lock_path = self.cache_dir / "cache_metadata.lock"
 
     def cache_extraction(
         self,
@@ -214,7 +220,7 @@ class ExtractionCacheManager:
 
     def list_all_caches(self) -> List[Dict[str, Any]]:
         """
-        List all cached extractions.
+        List all cached extractions (multi-process safe).
 
         Returns:
             List of cache metadata dictionaries
@@ -223,16 +229,17 @@ class ExtractionCacheManager:
             return []
 
         try:
-            with open(self.metadata_file, "r") as f:
-                all_metadata = json.load(f)
-            return list(all_metadata.values())
+            with queue_file_lock(self._lock, self._lock_path):
+                with open(self.metadata_file, "r") as f:
+                    all_metadata = json.load(f)
+                return list(all_metadata.values())
         except Exception as e:
             logger.error(f"Failed to list caches: {e}")
             return []
 
     def cleanup_old_caches(self, max_age_days: int = 7) -> int:
         """
-        Remove cached extractions older than specified days.
+        Remove cached extractions older than specified days (multi-process safe).
 
         Args:
             max_age_days: Maximum age in days (default: 7)
@@ -244,27 +251,27 @@ class ExtractionCacheManager:
             return 0
 
         try:
-            with open(self.metadata_file, "r") as f:
-                all_metadata = json.load(f)
+            with queue_file_lock(self._lock, self._lock_path):
+                with open(self.metadata_file, "r") as f:
+                    all_metadata = json.load(f)
 
-            cutoff_time = datetime.now() - timedelta(days=max_age_days)
-            removed_count = 0
+                cutoff_time = datetime.now() - timedelta(days=max_age_days)
+                removed_count = 0
 
-            for cache_id, metadata in list(all_metadata.items()):
-                extracted_at = datetime.fromisoformat(metadata["extracted_at"])
+                for cache_id, metadata in list(all_metadata.items()):
+                    extracted_at = datetime.fromisoformat(metadata["extracted_at"])
 
-                if extracted_at < cutoff_time:
-                    cache_path = Path(metadata["cache_path"])
-                    if cache_path.exists():
-                        shutil.rmtree(cache_path, ignore_errors=True)
-                        logger.info(f"Removed old cache: {cache_id}")
+                    if extracted_at < cutoff_time:
+                        cache_path = Path(metadata["cache_path"])
+                        if cache_path.exists():
+                            shutil.rmtree(cache_path, ignore_errors=True)
+                            logger.info(f"Removed old cache: {cache_id}")
 
-                    del all_metadata[cache_id]
-                    removed_count += 1
+                        del all_metadata[cache_id]
+                        removed_count += 1
 
-            # Save updated metadata
-            with open(self.metadata_file, "w") as f:
-                json.dump(all_metadata, f, indent=2)
+                # Save updated metadata atomically
+                atomic_write_json(self.metadata_file, all_metadata)
 
             logger.info(f"Cleaned up {removed_count} old caches")
             return removed_count
@@ -275,7 +282,7 @@ class ExtractionCacheManager:
 
     def delete_cache(self, cache_id: str) -> bool:
         """
-        Delete specific cached extraction.
+        Delete specific cached extraction (multi-process safe).
 
         Args:
             cache_id: Cache identifier
@@ -283,25 +290,28 @@ class ExtractionCacheManager:
         Returns:
             True if successfully deleted, False otherwise
         """
-        metadata = self._load_metadata(cache_id)
-        if not metadata:
-            return False
-
         try:
-            cache_path = Path(metadata["cache_path"])
-            if cache_path.exists():
-                shutil.rmtree(cache_path, ignore_errors=True)
+            with queue_file_lock(self._lock, self._lock_path):
+                # Load and check metadata exists
+                if not self.metadata_file.exists():
+                    return False
 
-            # Remove from metadata
-            if self.metadata_file.exists():
                 with open(self.metadata_file, "r") as f:
                     all_metadata = json.load(f)
 
-                if cache_id in all_metadata:
-                    del all_metadata[cache_id]
+                if cache_id not in all_metadata:
+                    return False
 
-                    with open(self.metadata_file, "w") as f:
-                        json.dump(all_metadata, f, indent=2)
+                metadata = all_metadata[cache_id]
+
+                # Delete the cache directory
+                cache_path = Path(metadata["cache_path"])
+                if cache_path.exists():
+                    shutil.rmtree(cache_path, ignore_errors=True)
+
+                # Remove from metadata and save atomically
+                del all_metadata[cache_id]
+                atomic_write_json(self.metadata_file, all_metadata)
 
             logger.info(f"Deleted cache: {cache_id}")
             return True
@@ -311,34 +321,35 @@ class ExtractionCacheManager:
             return False
 
     def _save_metadata(self, cache_id: str, metadata: Dict[str, Any]):
-        """Save cache metadata to JSON file."""
+        """Save cache metadata to JSON file (multi-process safe)."""
         try:
-            # Load existing metadata
-            all_metadata = {}
-            if self.metadata_file.exists():
-                with open(self.metadata_file, "r") as f:
-                    all_metadata = json.load(f)
+            with queue_file_lock(self._lock, self._lock_path):
+                # Load existing metadata
+                all_metadata = {}
+                if self.metadata_file.exists():
+                    with open(self.metadata_file, "r") as f:
+                        all_metadata = json.load(f)
 
-            # Add new entry
-            all_metadata[cache_id] = metadata
+                # Add new entry
+                all_metadata[cache_id] = metadata
 
-            # Save updated metadata
-            with open(self.metadata_file, "w") as f:
-                json.dump(all_metadata, f, indent=2)
+                # Save updated metadata atomically
+                atomic_write_json(self.metadata_file, all_metadata)
 
         except Exception as e:
             logger.error(f"Failed to save metadata for {cache_id}: {e}")
             raise
 
     def _load_metadata(self, cache_id: str) -> Optional[Dict[str, Any]]:
-        """Load cache metadata from JSON file."""
+        """Load cache metadata from JSON file (multi-process safe)."""
         if not self.metadata_file.exists():
             return None
 
         try:
-            with open(self.metadata_file, "r") as f:
-                all_metadata = json.load(f)
-            return all_metadata.get(cache_id)
+            with queue_file_lock(self._lock, self._lock_path):
+                with open(self.metadata_file, "r") as f:
+                    all_metadata = json.load(f)
+                return all_metadata.get(cache_id)
         except Exception as e:
             logger.error(f"Failed to load metadata for {cache_id}: {e}")
             return None
