@@ -18,6 +18,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+import pandas as pd
 from pydantic import BaseModel, Field, field_validator
 
 from lobster.core.data_manager_v2 import DataManagerV2
@@ -380,6 +381,7 @@ class WorkspaceContentService:
         self,
         content: Union[PublicationContent, DatasetContent, MetadataContent],
         content_type: ContentType,
+        output_format: str = "json",
     ) -> str:
         """
         Write content to workspace with schema validation.
@@ -387,12 +389,13 @@ class WorkspaceContentService:
         Args:
             content: Content model (PublicationContent, DatasetContent, or MetadataContent)
             content_type: Content type enum
+            output_format: Output format ("json" or "csv"). Default: "json"
 
         Returns:
             str: Path to cached content file
 
         Raises:
-            ValueError: If content type doesn't match content model
+            ValueError: If content type doesn't match content model or format is invalid
             ValidationError: If content fails schema validation
 
         Examples:
@@ -405,7 +408,23 @@ class WorkspaceContentService:
             >>> path = service.write_content(pub, ContentType.PUBLICATION)
             >>> print(path)
             "/workspace/cache/content/publications/pmid_35042229.json"
+            >>>
+            >>> # Export metadata as CSV
+            >>> meta = MetadataContent(
+            ...     identifier="sample_mapping",
+            ...     content_type="mapping",
+            ...     data={"sample_id": ["S1", "S2"], "condition": ["ctrl", "treated"]},
+            ...     source="MappingService",
+            ...     cached_at=datetime.now().isoformat()
+            ... )
+            >>> path = service.write_content(meta, ContentType.METADATA, output_format="csv")
+            >>> print(path)
+            "/workspace/metadata/sample_mapping.csv"
         """
+        # Validate output format
+        if output_format not in ["json", "csv"]:
+            raise ValueError(f"Invalid output format '{output_format}'. Must be 'json' or 'csv'")
+
         # Validate content type matches model
         if content_type == ContentType.PUBLICATION and not isinstance(
             content, PublicationContent
@@ -427,19 +446,90 @@ class WorkspaceContentService:
 
         # Sanitize filename
         filename = self._sanitize_filename(content.identifier)
-        file_path = content_dir / f"{filename}.json"
 
-        # Convert content to dict and write to file
+        # Convert content to dict
         content_dict = content.model_dump()
 
-        with open(file_path, "w") as f:
-            json.dump(content_dict, f, indent=2, default=str)
+        # Handle different output formats
+        if output_format == "csv":
+            file_path = content_dir / f"{filename}.csv"
+            self._write_csv(content, content_dict, file_path)
+        else:  # json (default)
+            file_path = content_dir / f"{filename}.json"
+            with open(file_path, "w") as f:
+                json.dump(content_dict, f, indent=2, default=str)
 
         logger.info(
-            f"Cached {content_type.value} '{content.identifier}' to {file_path}"
+            f"Cached {content_type.value} '{content.identifier}' to {file_path} ({output_format})"
         )
 
         return str(file_path)
+
+    def _write_csv(
+        self,
+        content: Union[PublicationContent, DatasetContent, MetadataContent],
+        content_dict: Dict[str, Any],
+        file_path: Path,
+    ) -> None:
+        """
+        Write content as CSV file.
+
+        For MetadataContent with a 'data' attribute, exports the data field.
+        For other content types, exports the entire model as a single-row DataFrame.
+
+        Args:
+            content: Content model
+            content_dict: Content dictionary from model_dump()
+            file_path: Output file path
+
+        Raises:
+            ValueError: If data cannot be converted to DataFrame
+        """
+        # Check if content has 'data' attribute (MetadataContent)
+        if hasattr(content, "data") and content.data:
+            data_content = content.data
+
+            # Case 1: data is a dict with list values (column-oriented)
+            # Example: {"col1": [1, 2, 3], "col2": [4, 5, 6]}
+            if isinstance(data_content, dict) and all(
+                isinstance(v, list) for v in data_content.values()
+            ):
+                df = pd.DataFrame.from_dict(data_content)
+
+            # Case 2: data is a list of dicts (row-oriented)
+            # Example: [{"col1": 1, "col2": 4}, {"col1": 2, "col2": 5}]
+            elif isinstance(data_content, list) and all(
+                isinstance(item, dict) for item in data_content
+            ):
+                df = pd.DataFrame(data_content)
+
+            # Case 3: data is a dict but values are not lists
+            # Convert to single-row DataFrame
+            elif isinstance(data_content, dict):
+                df = pd.DataFrame([data_content])
+
+            else:
+                raise ValueError(
+                    f"Cannot convert 'data' attribute to CSV. "
+                    f"Expected dict with list values or list of dicts, "
+                    f"got {type(data_content).__name__}"
+                )
+        else:
+            # No 'data' attribute - export entire model as single-row DataFrame
+            # Flatten nested structures to strings for CSV compatibility
+            flattened_dict = {}
+            for key, value in content_dict.items():
+                if isinstance(value, (list, dict)):
+                    flattened_dict[key] = json.dumps(value)
+                else:
+                    flattened_dict[key] = value
+
+            df = pd.DataFrame([flattened_dict])
+
+        # Write CSV with proper formatting
+        df.to_csv(file_path, index=False, encoding="utf-8")
+
+        logger.debug(f"Wrote DataFrame with shape {df.shape} to {file_path}")
 
     def read_content(
         self,
@@ -791,21 +881,23 @@ class WorkspaceContentService:
             "datasets": 0,
             "metadata": 0,
             "total_size_mb": 0.0,
-            "cache_dir": str(self.cache_dir),
+            "cache_dir": str(self.workspace_base),
         }
 
         # Count items by type and calculate total size
         for content_type in ContentType:
             content_dir = self._get_content_dir(content_type)
             json_files = list(content_dir.glob("*.json"))
+            csv_files = list(content_dir.glob("*.csv"))
+            all_files = json_files + csv_files
 
-            count = len(json_files)
+            count = len(all_files)
             stats[content_type.value + "s"] = count  # pluralize
             stats["total_items"] += count
 
             # Calculate size
-            for json_file in json_files:
-                stats["total_size_mb"] += json_file.stat().st_size / (1024 * 1024)
+            for file in all_files:
+                stats["total_size_mb"] += file.stat().st_size / (1024 * 1024)
 
         # Round size to 2 decimals
         stats["total_size_mb"] = round(stats["total_size_mb"], 2)

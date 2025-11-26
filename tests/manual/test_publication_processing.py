@@ -27,11 +27,17 @@ Usage:
     # Production pipeline with full extraction
     python tests/manual/test_publication_processing.py --production --tasks resolve_identifiers,ncbi_enrich,metadata,methods,identifiers --max-entries 3
 
+    # Production pipeline with JSON output (saves progress)
+    python tests/manual/test_publication_processing.py --production --tasks resolve_identifiers,ncbi_enrich --output-file results/test_run.json
+
+    # Resume processing (skip already processed entries)
+    python tests/manual/test_publication_processing.py --production --tasks resolve_identifiers,ncbi_enrich --output-file results/test_run.json --skip-processed
+
     # Test only identifier resolution
     python tests/manual/test_publication_processing.py --resolve-only --max-entries 5
 
-    # Test only NCBI enrichment
-    python tests/manual/test_publication_processing.py --enrich-only --max-entries 5
+    # Test only NCBI enrichment with JSON output
+    python tests/manual/test_publication_processing.py --enrich-only --max-entries 5 --output-file results/enrich_results.json
 
 Strategies:
     - default: No special handling
@@ -49,6 +55,7 @@ Tasks (for --production mode):
 """
 
 import argparse
+import json
 import random
 import re
 import sys
@@ -57,7 +64,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Set
 from urllib.parse import urlparse
 
 # Add project root to path
@@ -454,6 +461,89 @@ def extract_identifiers_from_content(content: str) -> Dict[str, List[str]]:
 
     # Remove empty lists
     return {k: v for k, v in identifiers.items() if v}
+
+
+def save_results_to_json(
+    results: List[Dict[str, Any]],
+    output_file: Path,
+    test_mode: str,
+    ris_file: Path,
+    extraction_tasks: Optional[str] = None,
+) -> None:
+    """
+    Save processing results to JSON file with metadata.
+
+    Args:
+        results: List of processing results
+        output_file: Path to output JSON file
+        test_mode: Type of test (production, resolve, enrich, etc.)
+        ris_file: Path to source RIS file
+        extraction_tasks: Comma-separated tasks that were run
+    """
+    metadata = {
+        "timestamp": datetime.now().isoformat(),
+        "test_mode": test_mode,
+        "ris_file": str(ris_file),
+        "total_entries": len(results),
+        "extraction_tasks": extraction_tasks or "N/A",
+    }
+
+    # Add mode-specific statistics
+    if test_mode == "production":
+        completed = sum(1 for r in results if "COMPLETED" in r.get("result", ""))
+        failed = sum(1 for r in results if "FAILED" in r.get("result", ""))
+        paywalled = sum(1 for r in results if "PAYWALLED" in r.get("result", ""))
+
+        metadata["statistics"] = {
+            "completed": completed,
+            "failed": failed,
+            "paywalled": paywalled,
+            "success_rate": f"{completed / len(results) * 100:.1f}%" if results else "0%",
+        }
+
+    output_data = {
+        "metadata": metadata,
+        "results": results,
+    }
+
+    # Ensure output directory exists
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_file, "w") as f:
+        json.dump(output_data, f, indent=2, default=str)
+
+    print(f"\n✓ Results saved to: {output_file}")
+    print(f"  Total entries: {len(results)}")
+
+
+def load_processed_entries(json_file: Path) -> Set[str]:
+    """
+    Load previously processed entry IDs from JSON file.
+
+    Args:
+        json_file: Path to existing JSON results file
+
+    Returns:
+        Set of entry IDs that have been processed
+    """
+    if not json_file.exists():
+        return set()
+
+    try:
+        with open(json_file, "r") as f:
+            data = json.load(f)
+
+        processed_ids = set()
+        for result in data.get("results", []):
+            if "entry_id" in result:
+                processed_ids.add(result["entry_id"])
+
+        print(f"\n✓ Loaded {len(processed_ids)} previously processed entries from {json_file}")
+        return processed_ids
+
+    except Exception as e:
+        print(f"\n⚠ Warning: Could not load previous results from {json_file}: {e}")
+        return set()
 
 
 # =============================================================================
@@ -923,7 +1013,7 @@ def test_ncbi_enrichment(
     print(f"Workspace: {data_manager.workspace_path}")
 
     # Import PublicationProcessingService
-    from lobster.services.publication_processing_service import PublicationProcessingService
+    from lobster.services.orchestration.publication_processing_service import PublicationProcessingService
 
     service = PublicationProcessingService(data_manager)
 
@@ -1058,6 +1148,7 @@ def test_production_pipeline(
     extraction_tasks: str = "resolve_identifiers,ncbi_enrich,metadata,methods,identifiers",
     max_entries: Optional[int] = None,
     entry_index: Optional[int] = None,
+    skip_processed_ids: Optional[Set[str]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Run production-like publication processing pipeline.
@@ -1075,6 +1166,7 @@ def test_production_pipeline(
             - identifiers: Regex identifier extraction from text
         max_entries: Maximum entries to test
         entry_index: Test only this entry (by index)
+        skip_processed_ids: Set of entry IDs to skip (already processed)
 
     Returns:
         List of processing results
@@ -1088,6 +1180,15 @@ def test_production_pipeline(
     parser = RISParser()
     entries = parser.parse_file(ris_file)
     print(f"Entries loaded: {len(entries)}")
+
+    # Filter out already processed entries
+    if skip_processed_ids:
+        original_count = len(entries)
+        entries = [e for e in entries if e.entry_id not in skip_processed_ids]
+        skipped_count = original_count - len(entries)
+        if skipped_count > 0:
+            print(f"Skipped {skipped_count} already processed entries")
+            print(f"Remaining entries: {len(entries)}")
 
     # Filter entries if specified
     if entry_index is not None:
@@ -1116,7 +1217,7 @@ def test_production_pipeline(
         print(f"      Has PMID: {has_pmid}")
 
     # Import and create service
-    from lobster.services.publication_processing_service import PublicationProcessingService
+    from lobster.services.orchestration.publication_processing_service import PublicationProcessingService
 
     service = PublicationProcessingService(data_manager)
 
@@ -1235,7 +1336,7 @@ def test_identifier_resolution(
     print(f"Workspace: {data_manager.workspace_path}")
 
     # Import PublicationProcessingService
-    from lobster.services.publication_processing_service import PublicationProcessingService
+    from lobster.services.orchestration.publication_processing_service import PublicationProcessingService
 
     service = PublicationProcessingService(data_manager)
 
@@ -1399,6 +1500,17 @@ def main():
         action="store_true",
         help="Run production-like pipeline test with specified --tasks",
     )
+    parser.add_argument(
+        "--output-file",
+        type=Path,
+        default=None,
+        help="Save results to JSON file (e.g., results/test_results.json)",
+    )
+    parser.add_argument(
+        "--skip-processed",
+        action="store_true",
+        help="Skip entries already present in --output-file (requires --output-file)",
+    )
 
     args = parser.parse_args()
 
@@ -1418,6 +1530,14 @@ def main():
         sys.exit(1)
 
     try:
+        # Load previously processed entries if skip-processed flag is set
+        skip_processed_ids: Optional[Set[str]] = None
+        if args.skip_processed:
+            if not args.output_file:
+                print("Error: --skip-processed requires --output-file to be specified")
+                sys.exit(1)
+            skip_processed_ids = load_processed_entries(args.output_file)
+
         # Run identifier resolution test if flag is set
         if args.resolve_only:
             results = test_identifier_resolution(
@@ -1425,6 +1545,15 @@ def main():
                 max_entries=args.max_entries,
                 entry_index=args.entry,
             )
+
+            # Save results if output file specified
+            if args.output_file and results:
+                save_results_to_json(
+                    results=[vars(r) for r in results],
+                    output_file=args.output_file,
+                    test_mode="identifier_resolution",
+                    ris_file=ris_path,
+                )
 
             # Exit code based on success rate
             if results:
@@ -1439,6 +1568,15 @@ def main():
                 entry_index=args.entry,
             )
 
+            # Save results if output file specified
+            if args.output_file and results:
+                save_results_to_json(
+                    results=[vars(r) for r in results],
+                    output_file=args.output_file,
+                    test_mode="ncbi_enrichment",
+                    ris_file=ris_path,
+                )
+
             # Exit code based on success rate
             if results:
                 success_rate = sum(1 for r in results if r.success) / len(results)
@@ -1451,7 +1589,18 @@ def main():
                 extraction_tasks=args.tasks,
                 max_entries=args.max_entries,
                 entry_index=args.entry,
+                skip_processed_ids=skip_processed_ids,
             )
+
+            # Save results if output file specified
+            if args.output_file and results:
+                save_results_to_json(
+                    results=results,
+                    output_file=args.output_file,
+                    test_mode="production",
+                    ris_file=ris_path,
+                    extraction_tasks=args.tasks,
+                )
 
             # Exit code based on completion rate
             if results:

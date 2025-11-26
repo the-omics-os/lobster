@@ -1576,7 +1576,7 @@ Could not extract content for: {identifier}
 
     @tool
     def write_to_workspace(
-        identifier: str, workspace: str, content_type: str = None
+        identifier: str, workspace: str, content_type: str = None, output_format: str = "json"
     ) -> str:
         """
         Cache research content to workspace for later retrieval and specialist handoff.
@@ -1595,6 +1595,10 @@ Could not extract content for: {identifier}
         - "dataset": Dataset accessions (GSE, SRA)
         - "metadata": Sample metadata, experimental design
 
+        Output Formats:
+        - "json": Structured JSON format (default, recommended for most cases)
+        - "csv": Tabular CSV format (best for sample metadata tables and spreadsheet export)
+
         Naming Conventions:
         - Publications: `publication_PMID12345` or `publication_DOI...`
         - Datasets: `dataset_GSE12345`
@@ -1604,19 +1608,36 @@ Could not extract content for: {identifier}
             identifier: Content identifier to cache (must exist in current session)
             workspace: Target workspace category ("literature", "data", "metadata")
             content_type: Type of content ("publication", "dataset", "metadata")
+            output_format: Output format ("json" or "csv"). Default: "json"
 
         Returns:
             Confirmation message with storage location and next steps
 
         Examples:
-            # Cache publication after reading
+            # Cache publication after reading (JSON format)
             write_to_workspace("publication_PMID12345", workspace="literature", content_type="publication")
 
-            # Cache dataset metadata for validation
+            # Cache dataset metadata for validation (JSON format)
             write_to_workspace("dataset_GSE12345", workspace="data", content_type="dataset")
 
-            # Cache sample metadata before handoff
-            write_to_workspace("metadata_GSE12345_samples", workspace="metadata", content_type="metadata")
+            # Export sample metadata as CSV for spreadsheet analysis
+            write_to_workspace("metadata_GSE12345_samples", workspace="metadata",
+                             content_type="metadata", output_format="csv")
+
+            # Export multiple datasets as CSV for comparison
+            write_to_workspace("dataset_GSE12345", workspace="data",
+                             content_type="dataset", output_format="csv")
+
+        When to use CSV:
+        - Sample metadata tables (easy import into Excel, R, Python pandas)
+        - Dataset comparison across multiple accessions
+        - Handoff to non-technical collaborators
+        - Integration with existing spreadsheet workflows
+
+        When to use JSON:
+        - Publications with nested metadata
+        - Complex hierarchical data structures
+        - Programmatic access and parsing
         """
         try:
             from datetime import datetime
@@ -1647,6 +1668,11 @@ Could not extract content for: {identifier}
                 valid_types = {"publication", "dataset", "metadata"}
                 if content_type not in valid_types:
                     return f"Error: Invalid content_type '{content_type}'. Valid options: {', '.join(valid_types)}"
+
+            # Validate output format
+            valid_formats = {"json", "csv"}
+            if output_format not in valid_formats:
+                return f"Error: Invalid output_format '{output_format}'. Valid options: {', '.join(valid_formats)}"
 
             # Validate naming convention
             if content_type == "publication":
@@ -1718,6 +1744,7 @@ Could not extract content for: {identifier}
             cache_file_path = workspace_service.write_content(
                 content=content_model,
                 content_type=workspace_to_content_type[workspace],
+                output_format=output_format,
             )
 
             # Return confirmation with location
@@ -1726,6 +1753,7 @@ Could not extract content for: {identifier}
 **Identifier**: {identifier}
 **Workspace**: {workspace}
 **Content Type**: {content_type or 'not specified'}
+**Output Format**: {output_format.upper()}
 **Location**: {cache_file_path}
 **Cached At**: {datetime.now().date()}
 
@@ -1734,6 +1762,9 @@ Could not extract content for: {identifier}
 - Hand off to specialists with workspace context
 - Content persists across sessions for reproducibility
 """
+            if output_format == "csv":
+                response += "\n**Note**: CSV format is ideal for spreadsheet import (Excel, Google Sheets) and pandas/R analysis.\n"
+
             return response
 
         except Exception as e:

@@ -2680,11 +2680,14 @@ def _show_queue_status(client: AgentClient, console: Console) -> Optional[str]:
     table.add_column("Status", style="cyan")
     table.add_column("Count", style="white", justify="right")
 
-    table.add_row("Pending", str(stats.get("pending", 0)))
-    table.add_row("Processing", str(stats.get("processing", 0)))
-    table.add_row("Completed", str(stats.get("completed", 0)))
-    table.add_row("Failed", str(stats.get("failed", 0)))
-    table.add_row("[bold]Total[/bold]", f"[bold]{stats.get('total', 0)}[/bold]")
+    by_status = stats.get("by_status", {})
+    total_entries = stats.get("total_entries", 0)
+
+    table.add_row("Pending", str(by_status.get("pending", 0)))
+    table.add_row("Extracting", str(by_status.get("extracting", 0)))
+    table.add_row("Completed", str(by_status.get("completed", 0)))
+    table.add_row("Failed", str(by_status.get("failed", 0)))
+    table.add_row("[bold]Total[/bold]", f"[bold]{total_entries}[/bold]")
 
     console.print(table)
 
@@ -2693,7 +2696,7 @@ def _show_queue_status(client: AgentClient, console: Console) -> Optional[str]:
     console.print("  • [white]/queue list[/white] - List queued items")
     console.print("  • [white]/queue clear[/white] - Clear the queue")
 
-    return f"Queue status: {stats.get('total', 0)} total items"
+    return f"Queue status: {total_entries} total items"
 
 
 def _queue_load_file(
@@ -2857,7 +2860,7 @@ def _queue_clear(client: AgentClient, console: Console) -> Optional[str]:
 
     # Get count before clearing
     stats = client.publication_queue.get_statistics()
-    total = stats.get("total", 0)
+    total = stats.get("total_entries", 0)
 
     if total == 0:
         console.print("[yellow]Queue is already empty[/yellow]")
@@ -2893,7 +2896,7 @@ def _queue_export(
         return None
 
     stats = client.publication_queue.get_statistics()
-    if stats.get("total", 0) == 0:
+    if stats.get("total_entries", 0) == 0:
         console.print("[yellow]Queue is empty, nothing to export[/yellow]")
         return None
 
