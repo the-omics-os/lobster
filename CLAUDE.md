@@ -36,11 +36,11 @@ Users interact via natural language to:
 
 ### 1.4 Design Principles
 
-1. **Agent‑based**: specialist agents + centralized registry (single source of truth).  
-2. **Cloud/local symmetry**: same UX, different `Client` backend.  
-3. **Stateless services**: analysis logic lives in tools/services, not agents.  
-4. **Natural language first**: users describe analyses in plain English.  
-5. **Publication‑grade output**: Plotly‑based, scientifically sound.  
+1. **Agent‑based**: specialist agents + centralized registry (single source of truth).
+2. **Cloud/local symmetry**: same UX, different `Client` backend.
+3. **Stateless services**: analysis logic lives in services/, organized by function.
+4. **Natural language first**: users describe analyses in plain English.
+5. **Publication‑grade output**: Plotly‑based, scientifically sound.
 6. **Extensible & professional**: new agents/services plug into common patterns.
 
 ---
@@ -72,11 +72,14 @@ config/agent_registry.py"]
   Registry --> Agents["Specialist agents"]
 
   Agents --> Services["Stateless services
+lobster/services"]
+  Agents --> Tools["Utilities
 lobster/tools"]
   Agents --> Providers["Providers
-PubMed/GEO/Web"]
+tools/providers"]
   Services --> DM["DataManagerV2
 core/data_manager_v2.py"]
+  Tools --> DM
   Providers --> DM
 
   DM --> Queue["DownloadQueue
@@ -202,25 +205,59 @@ lobster/
 │     ├─ metabolomics_schema.py
 │     └─ metagenomics_schema.py
 │
-├─ tools/                   # Stateless analysis services & providers
-│  ├─ preprocessing_service.py
-│  ├─ quality_service.py
-│  ├─ clustering_service.py
-│  ├─ enhanced_singlecell_service.py
-│  ├─ bulk_rnaseq_service.py
-│  ├─ pseudobulk_service.py
-│  ├─ differential_formula_service.py
-│  ├─ concatenation_service.py
-│  ├─ proteomics_preprocessing_service.py
-│  ├─ proteomics_quality_service.py
-│  ├─ proteomics_analysis_service.py
-│  ├─ proteomics_differential_service.py
-│  ├─ proteomics_visualization_service.py
-│  ├─ visualization_service.py
-│  ├─ geo_service.py
-│  ├─ content_access_service.py
-│  ├─ docling_service.py
-│  ├─ metadata_validation_service.py
+├─ services/                # Stateless analysis services (organized by function)
+│  ├─ analysis/             # Analysis services
+│  │  ├─ clustering_service.py
+│  │  ├─ enhanced_singlecell_service.py
+│  │  ├─ bulk_rnaseq_service.py
+│  │  ├─ differential_formula_service.py
+│  │  ├─ pseudobulk_service.py
+│  │  ├─ scvi_embedding_service.py
+│  │  ├─ proteomics_analysis_service.py
+│  │  ├─ proteomics_differential_service.py
+│  │  └─ structure_analysis_service.py
+│  ├─ quality/              # Quality control & preprocessing
+│  │  ├─ quality_service.py
+│  │  ├─ preprocessing_service.py
+│  │  ├─ proteomics_quality_service.py
+│  │  └─ proteomics_preprocessing_service.py
+│  ├─ visualization/        # Visualization services
+│  │  ├─ visualization_service.py
+│  │  ├─ bulk_visualization_service.py
+│  │  ├─ proteomics_visualization_service.py
+│  │  ├─ pymol_visualization_service.py
+│  │  └─ chimerax_visualization_service_ALPHA.py
+│  ├─ data_access/          # Data access & retrieval
+│  │  ├─ geo_service.py
+│  │  ├─ geo_download_service.py
+│  │  ├─ geo_fallback_service.py
+│  │  ├─ content_access_service.py
+│  │  ├─ workspace_content_service.py
+│  │  ├─ protein_structure_fetch_service.py
+│  │  └─ docling_service.py
+│  ├─ data_management/      # Data management & organization
+│  │  ├─ modality_management_service.py
+│  │  └─ concatenation_service.py
+│  ├─ metadata/             # Metadata operations
+│  │  ├─ metadata_standardization_service.py
+│  │  ├─ metadata_validation_service.py
+│  │  ├─ disease_standardization_service.py
+│  │  ├─ sample_mapping_service.py
+│  │  ├─ microbiome_filtering_service.py
+│  │  └─ manual_annotation_service.py
+│  ├─ ml/                   # Machine learning services
+│  │  ├─ ml_transcriptomics_service_ALPHA.py
+│  │  └─ ml_proteomics_service_ALPHA.py
+│  ├─ orchestration/        # Orchestration & workflow
+│  │  └─ publication_processing_service.py
+│  └─ templates/            # Templates & configurations
+│     └─ annotation_templates.py
+│
+├─ tools/                   # Utilities & orchestrators
+│  ├─ download_orchestrator.py
+│  ├─ handoff_tools.py
+│  ├─ workspace_tool.py
+│  ├─ gpu_detector.py
 │  └─ providers/
 │     ├─ base_provider.py
 │     ├─ pubmed_provider.py
@@ -247,12 +284,13 @@ lobster/
 | Provenance | `core/provenance.py` | W3C‑PROV tracking |
 | Queue | `core/download_queue.py` | download orchestration |
 | Export | `core/notebook_exporter.py` | Jupyter pipeline export |
-| Services | `tools/*.py` | stateless analysis |
-| Services | `tools/modality_management_service.py` | Modality CRUD with provenance (5 methods) |
+| Services | `services/*/*.py` | stateless analysis (organized by function) |
+| Services | `services/data_management/modality_management_service.py` | Modality CRUD with provenance (5 methods) |
 | Download | `tools/download_orchestrator.py` | Central router for database-specific downloads (9-step execution) |
-| Download | `tools/geo_download_service.py` | GEO database download service (IDownloadService impl) |
+| Download | `services/data_access/geo_download_service.py` | GEO database download service (IDownloadService impl) |
 | Interfaces | `core/interfaces/download_service.py` | IDownloadService abstract base class |
 | Providers | `tools/providers/*.py` | PubMed/GEO/Web access |
+| Utilities | `tools/*.py` | orchestrators, helpers, workspace tools |
 | Registry | `config/agent_registry.py` | agent configuration |
 
 ### 3.3 Agent Roles (summary)
@@ -431,6 +469,11 @@ Adding a new agent should be **registry‑only** wherever possible.
   - `IModalityAdapter` – format‑specific loading (10x, H5AD, etc.)
   - `IDataBackend` – H5AD/MuData/S3 backends
   - `BaseClient` – local vs cloud client abstraction
+- **Delegation tool pattern** (`agents/graph.py`):
+  - `_create_delegation_tool(agent_name, agent, description)` wraps sub-agents as `@tool` functions
+  - Agent factories accept `delegation_tools` parameter (list of pre-wrapped tools)
+  - Parent agents in registry specify `child_agents` → graph.py auto-creates delegation tools
+  - **Critical**: inner function must have a proper docstring (f-strings do NOT work as docstrings)
 
 ### 4.6 Download Architecture (Queue-Based Pattern)
 
@@ -456,7 +499,7 @@ Adding a new agent should be **registry‑only** wherever possible.
   - Automatic service detection by database type
   - Comprehensive error handling with queue status updates
 
-- **GEODownloadService** (`tools/geo_download_service.py`): Adapter wrapping GEOService
+- **GEODownloadService** (`services/data_access/geo_download_service.py`): Adapter wrapping GEOService
   - Composition pattern (uses GEOService internally)
   - Adapts string return to (AnnData, stats, ir) tuple
   - Retrieves stored modality from DataManagerV2
@@ -485,7 +528,7 @@ modality_name, stats = orchestrator.execute_download(entry_id)
 
 **Solution**: Centralized service with 5 standardized methods, all returning (result, stats, ir) tuples.
 
-**Location**: `lobster/tools/modality_management_service.py`
+**Location**: `lobster/services/data_management/modality_management_service.py`
 
 **Methods**:
 ```python
