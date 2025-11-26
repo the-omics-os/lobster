@@ -81,6 +81,9 @@ class PublicationQueue:
         """
         Add entry to queue with atomic write.
 
+        BUG FIX #5: Use atomic write pattern (temp file + rename) instead of direct append.
+        This prevents queue corruption if process is interrupted (Ctrl+C, crash, kill).
+
         Args:
             entry: PublicationQueueEntry to add
 
@@ -101,11 +104,11 @@ class PublicationQueue:
             # Backup before modification
             self._backup_queue()
 
-            # Append to queue file
+            # BUG FIX #5: Atomic write - add entry to list and write all atomically
+            # Old code used direct append which could leave partial JSON on interruption
             try:
-                with open(self.queue_file, "a", encoding="utf-8") as f:
-                    json.dump(entry.to_dict(), f, default=str)
-                    f.write("\n")
+                existing_entries.append(entry)
+                self._write_entries_atomic(existing_entries)
 
                 logger.info(f"Added entry {entry.entry_id} to publication queue")
                 return entry.entry_id
@@ -287,15 +290,20 @@ class PublicationQueue:
 
     def _load_entries(self) -> List[PublicationQueueEntry]:
         """
-        Load all entries from queue file.
+        Load all entries from queue file with corruption detection.
+
+        BUG FIX #5: Enhanced corruption detection and recovery.
+        Detects partial JSON writes from interrupted operations and continues
+        parsing rest of file. Provides detailed logging for debugging.
 
         Returns:
-            List[PublicationQueueEntry]: List of entries
+            List[PublicationQueueEntry]: List of valid entries (corrupted entries skipped)
 
         Raises:
-            PublicationQueueError: If loading fails
+            PublicationQueueError: If loading fails completely
         """
         entries = []
+        corrupted_count = 0
 
         if not self.queue_file.exists():
             return entries
@@ -311,11 +319,30 @@ class PublicationQueue:
                         data = json.loads(line)
                         entry = PublicationQueueEntry.from_dict(data)
                         entries.append(entry)
-                    except Exception as e:
-                        logger.warning(
-                            f"Skipping invalid entry at line {line_num}: {e}"
+                    except json.JSONDecodeError as e:
+                        # BUG FIX #5: Detailed corruption logging for JSON parse errors
+                        corrupted_count += 1
+                        line_preview = line[:100] + "..." if len(line) > 100 else line
+                        logger.error(
+                            f"Corrupted JSON at line {line_num} (likely interrupted write): {e}. "
+                            f"Content preview: {line_preview}"
                         )
                         continue
+                    except Exception as e:
+                        # BUG FIX #5: Catch schema validation errors separately
+                        corrupted_count += 1
+                        logger.error(
+                            f"Invalid entry schema at line {line_num}: {e}. "
+                            f"Entry may be from old version or corrupted."
+                        )
+                        continue
+
+            # BUG FIX #5: Log corruption summary if any entries were skipped
+            if corrupted_count > 0:
+                logger.warning(
+                    f"Loaded {len(entries)} valid entries, skipped {corrupted_count} corrupted entries. "
+                    f"Queue may have been interrupted during previous write operation."
+                )
 
             return entries
 

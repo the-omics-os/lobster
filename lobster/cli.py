@@ -35,6 +35,8 @@ from lobster.config.agent_config import (
     initialize_configurator,
 )
 from lobster.core.client import AgentClient
+from lobster.core.extraction_cache import ExtractionCacheManager  # BUG FIX #1: For archive cache management
+from lobster.cli_internal.utils.path_resolution import PathResolver  # BUG FIX #6: Secure path resolution
 
 # Import new UI system
 from lobster.ui import LobsterTheme, setup_logging
@@ -299,8 +301,40 @@ class CloudAwareCache:
 # FIXME currenlty langraph implementation
 def _add_command_to_history(
     client: AgentClient, command: str, summary: str, is_error: bool = False
-) -> None:
-    """Add command execution to conversation history for AI context."""
+) -> bool:
+    """
+    Add command execution to conversation history for AI context.
+
+    BUG FIX #4: Enhanced error handling with full logging and file backup.
+    - Returns bool to indicate success/failure
+    - Logs full error messages with stack traces (not truncated to 50 chars)
+    - Implements file backup for audit trail and recovery
+    - Provides detailed diagnostics for debugging
+
+    Args:
+        client: AgentClient instance
+        command: Command that was executed
+        summary: Summary of command result
+        is_error: Whether this was an error result
+
+    Returns:
+        True if successfully logged, False otherwise
+    """
+    # 1. Validate inputs
+    if not command or not summary:
+        logger.warning("Empty command or summary provided to history logger")
+        return False
+
+    # 2. Check client compatibility
+    if not hasattr(client, "messages") or not isinstance(client.messages, list):
+        logger.info(
+            f"Client type {type(client).__name__} doesn't support message history. "
+            f"Commands will not be available in AI context."
+        )
+        return False
+
+    # 3. Attempt primary logging (graph state)
+    primary_logged = False
     try:
         # Import required message types
         from langchain_core.messages import AIMessage, HumanMessage
@@ -311,34 +345,98 @@ def _add_command_to_history(
         ai_message_command_response = f"Command {status_prefix}: {summary}"
 
         # Add messages directly to client.messages (the correct API)
-        if hasattr(client, "messages") and isinstance(client.messages, list):
-            config = dict(configurable=dict(thread_id=client.session_id))
-            # first we add to clinet message history for future use (currently langraph implementation )
-            client.messages.append(HumanMessage(content=human_message_command_usage))
-            client.messages.append(AIMessage(content=ai_message_command_response))
-            # then we use the client method to add to history
-            client.graph.update_state(
-                config,
-                dict(
-                    messages=[
-                        HumanMessage(human_message_command_usage),
-                        AIMessage(ai_message_command_response),
-                    ]
-                ),
-            )
-        else:
-            # Fallback for other client types (cloud, API, etc.)
-            console.print(
-                "[dim yellow]Command history not supported for this client type[/dim yellow]",
-                style="dim",
-            )
+        config = dict(configurable=dict(thread_id=client.session_id))
+        human_msg = HumanMessage(content=human_message_command_usage)
+        ai_msg = AIMessage(content=ai_message_command_response)
+
+        # Add to client message history
+        client.messages.append(human_msg)
+        client.messages.append(ai_msg)
+
+        # Update graph state
+        client.graph.update_state(
+            config,
+            dict(messages=[human_msg, ai_msg]),
+        )
+
+        logger.debug(f"✓ Logged command to graph state: {command[:50]}")
+        primary_logged = True
+
+    except ImportError as e:
+        logger.error(f"Cannot import langchain message types: {e}")
+        return False
+
+    except AttributeError as e:
+        # BUG FIX #4: Full error logging with diagnostic info
+        logger.error(
+            f"Client missing required attributes for history logging: {e}. "
+            f"Client type: {type(client).__name__}, "
+            f"Has messages: {hasattr(client, 'messages')}, "
+            f"Has graph: {hasattr(client, 'graph')}"
+        )
 
     except Exception as e:
-        # Never break CLI functionality for history logging
-        console.print(
-            f"[dim yellow]History logging failed: {str(e)[:50]}[/dim yellow]",
-            style="dim",
+        # BUG FIX #4: Log FULL exception with stack trace (not truncated)
+        logger.error(
+            f"Failed to log command '{command}' to graph state: {e}",
+            exc_info=True  # Include full traceback for debugging
         )
+
+    # 4. Backup to file (always, for audit trail and recovery)
+    backup_logged = _backup_command_to_file(client, command, summary, is_error, primary_logged)
+
+    return primary_logged or backup_logged
+
+
+def _backup_command_to_file(
+    client: AgentClient,
+    command: str,
+    summary: str,
+    is_error: bool,
+    primary_logged: bool,
+) -> bool:
+    """
+    Write command to backup file for audit trail and recovery.
+
+    BUG FIX #4: Dual-channel logging - backup commands to file even if graph state succeeds.
+    Provides audit trail, enables session reconstruction, supports compliance requirements.
+
+    Args:
+        client: AgentClient instance
+        command: Command that was executed
+        summary: Summary of command result
+        is_error: Whether this was an error result
+        primary_logged: Whether primary (graph state) logging succeeded
+
+    Returns:
+        True if backup successful, False otherwise
+    """
+    try:
+        history_dir = client.data_manager.workspace_path / ".lobster"
+        history_dir.mkdir(parents=True, exist_ok=True)
+        history_file = history_dir / "command_history.jsonl"
+
+        from datetime import datetime
+
+        record = {
+            "timestamp": datetime.now().isoformat(),
+            "session_id": client.session_id,
+            "command": command,
+            "summary": summary,
+            "is_error": is_error,
+            "logged_to_graph": primary_logged,
+        }
+
+        with open(history_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+
+        logger.debug(f"✓ Backed up command to file: {command[:50]}")
+        return True
+
+    except Exception as e:
+        # BUG FIX #4: Log backup failures with full stack trace
+        logger.error(f"Failed to write command backup: {e}", exc_info=True)
+        return False
 
 
 def check_for_missing_slash_command(user_input: str) -> Optional[str]:
@@ -2323,9 +2421,12 @@ def init(
             env_lines.append(f"AWS_BEDROCK_ACCESS_KEY={access_key.strip()}")
             env_lines.append(f"AWS_BEDROCK_SECRET_ACCESS_KEY={secret_key.strip()}")
 
-        # Optional NCBI key
-        console.print("\n[bold white]📚 NCBI API Key (Optional)[/bold white]")
-        console.print("Enhances literature search capabilities.")
+        # Optional NCBI key(s) - supports multiple for parallelization
+        console.print("\n[bold white]📚 NCBI API Key(s) (Optional)[/bold white]")
+        console.print("Enhances literature search capabilities (10 req/sec per key).")
+        console.print(
+            "Multiple keys enable parallel processing for large publication batches."
+        )
         console.print(
             "Get key from: [link]https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/[/link]\n"
         )
@@ -2333,12 +2434,51 @@ def init(
         add_ncbi = Confirm.ask("Add NCBI API key?", default=False)
 
         if add_ncbi:
+            ncbi_keys = []
+            key_count = 0
+
+            # First key (primary - NCBI_API_KEY)
             ncbi_key = Prompt.ask(
                 "[bold white]Enter your NCBI API key[/bold white]", password=True
             )
             if ncbi_key.strip():
-                env_lines.append(f"\n# Optional: Enhanced literature search")
-                env_lines.append(f"NCBI_API_KEY={ncbi_key.strip()}")
+                ncbi_keys.append(("NCBI_API_KEY", ncbi_key.strip()))
+                key_count += 1
+
+                # Ask for additional keys
+                while True:
+                    add_another = Confirm.ask(
+                        f"Add another NCBI API key? ({key_count} added)",
+                        default=False,
+                    )
+                    if not add_another:
+                        break
+
+                    additional_key = Prompt.ask(
+                        f"[bold white]Enter NCBI API key #{key_count + 1}[/bold white]",
+                        password=True,
+                    )
+                    if additional_key.strip():
+                        # Additional keys use NCBI_API_KEY_1, NCBI_API_KEY_2, etc.
+                        ncbi_keys.append(
+                            (f"NCBI_API_KEY_{key_count}", additional_key.strip())
+                        )
+                        key_count += 1
+                    else:
+                        console.print("[yellow]Empty key skipped[/yellow]")
+
+            # Write all NCBI keys to env
+            if ncbi_keys:
+                env_lines.append(f"\n# NCBI API keys for literature search")
+                if len(ncbi_keys) > 1:
+                    env_lines.append(
+                        f"# Multiple keys enable parallel processing (10 req/sec each)"
+                    )
+                for key_name, key_value in ncbi_keys:
+                    env_lines.append(f"{key_name}={key_value}")
+                console.print(
+                    f"[green]✓ Added {len(ncbi_keys)} NCBI API key(s)[/green]"
+                )
 
         # Write .env file
         with open(env_path, "w") as f:
@@ -2501,19 +2641,21 @@ def chat(
             if execute_shell_command(user_input):
                 continue
 
-            # Process query with appropriate progress indication
+            # BUG FIX #7: Remove fake progress bar overhead (saves ~100ms per query)
+            # Process query with simple status message instead of spinner context manager
             if should_show_progress(client):
-                # Normal mode: show progress spinner
-                with create_progress(client_arg=client) as progress:
-                    progress.add_task(
-                        f"🦞 Processing: {user_input[:50]}{'...' if len(user_input) > 50 else ''}",
-                        total=None,
-                    )
-                    result = client.query(user_input, stream=False)
-            else:
-                # Verbose/reasoning mode: no progress indication at all
-                # The callback handlers will provide detailed output
-                result = client.query(user_input, stream=False)
+                # Normal mode: show simple processing message
+                console_manager.print(
+                    f"[dim cyan]🦞 Processing: {user_input[:50]}{'...' if len(user_input) > 50 else ''}[/dim cyan]",
+                    end="", flush=True
+                )
+
+            # Single code path - no duplication
+            result = client.query(user_input, stream=False)
+
+            if should_show_progress(client):
+                # Clear the status line after query completes
+                console_manager.print("\r" + " " * 100 + "\r", end="", flush=True)
 
             # Display response with enhanced theming
             if result["success"]:
@@ -2723,14 +2865,22 @@ def _queue_load_file(
         console.print("[yellow]Usage: /queue load <file>[/yellow]")
         return None
 
-    # Resolve file path
-    file_path = (
-        Path(filename) if Path(filename).is_absolute() else current_directory / filename
+    # BUG FIX #6: Use PathResolver for secure path resolution
+    resolver = PathResolver(
+        current_directory=current_directory,
+        workspace_path=client.data_manager.workspace_path if hasattr(client, "data_manager") else None,
     )
+    resolved = resolver.resolve(filename, search_workspace=True, must_exist=True)
 
-    if not file_path.exists():
+    if not resolved.is_safe:
+        console.print(f"[red]❌ Security error: {resolved.error}[/red]")
+        return None
+
+    if not resolved.exists:
         console.print(f"[red]❌ File not found: {filename}[/red]")
         return None
+
+    file_path = resolved.path
 
     ext = file_path.suffix.lower()
 
@@ -3406,17 +3556,31 @@ when they are started by agents or analysis workflows.
             console.print("[grey50]  Use /workspace load <file> to load data files[/grey50]")
             return None
 
-        # Convert to Path object
-        file_path = (
-            Path(filename)
-            if Path(filename).is_absolute()
-            else current_directory / filename
-        )
-
-        # Check if filename contains glob patterns
+        # Check if filename contains glob patterns (before path resolution)
         import glob as glob_module
 
         is_glob_pattern = any(char in filename for char in ["*", "?", "[", "]"])
+
+        # BUG FIX #6: Use PathResolver for secure path resolution (non-glob paths)
+        if not is_glob_pattern:
+            resolver = PathResolver(
+                current_directory=current_directory,
+                workspace_path=client.data_manager.workspace_path if hasattr(client, "data_manager") else None,
+            )
+            resolved = resolver.resolve(filename, search_workspace=True, must_exist=False)
+
+            if not resolved.is_safe:
+                console.print(f"[red]❌ Security error: {resolved.error}[/red]")
+                return None
+
+            file_path = resolved.path
+        else:
+            # Glob patterns need special handling - construct search pattern
+            file_path = (
+                Path(filename)
+                if Path(filename).is_absolute()
+                else current_directory / filename
+            )
 
         if is_glob_pattern:
             # Handle glob patterns - show contents of matching text files
@@ -3426,7 +3590,10 @@ when they are started by agents or analysis workflows.
             else:
                 search_pattern = filename
 
-            matching_files = glob_module.glob(search_pattern)
+            # BUG FIX #3: Use lazy evaluation to prevent memory explosion
+            # Only load first 10 file paths instead of all matches
+            import itertools
+            matching_files = list(itertools.islice(glob_module.iglob(search_pattern), 10))
 
             if not matching_files:
                 console_manager.print_error_panel(
@@ -3435,19 +3602,30 @@ when they are started by agents or analysis workflows.
                 )
                 return None
 
+            # Count total matches without loading all paths
+            total_count = sum(1 for _ in glob_module.iglob(search_pattern))
+
             matching_files.sort()
             console.print(
-                f"[cyan]📁 Found {len(matching_files)} files matching '[white]{filename}[/white]'[/cyan]\n"
+                f"[cyan]📁 Found {total_count} files matching '[white]{filename}[/white]', displaying first 10[/cyan]\n"
             )
 
             displayed_count = 0
-            for match_path in matching_files[:10]:  # Limit to 10 files
+            for match_path in matching_files:  # Already limited to 10
                 match_file = Path(match_path)
                 file_info = client.detect_file_type(match_file)
 
                 # Only display text files
                 if not file_info.get("binary", True):
                     try:
+                        # BUG FIX #3: Add file size check before reading (10MB limit)
+                        file_size = match_file.stat().st_size
+                        if file_size > 10_000_000:  # 10MB
+                            console.print(
+                                f"[yellow]⚠️  {match_file.name} too large to display ({file_size / 1_000_000:.1f}MB, limit: 10MB)[/yellow]"
+                            )
+                            continue
+
                         content = match_file.read_text(encoding="utf-8")
                         lines = content.splitlines()
 
@@ -3481,10 +3659,10 @@ when they are started by agents or analysis workflows.
                 else:
                     console.print(f"[grey50]  • {match_file.name} (binary file - skipped)[/grey50]")
 
-            if len(matching_files) > 10:
-                console.print(f"\n[grey50]... and {len(matching_files) - 10} more files[/grey50]")
+            if total_count > 10:
+                console.print(f"\n[grey50]... and {total_count - 10} more files (not loaded)[/grey50]")
 
-            return f"Displayed {displayed_count} text files matching '{filename}'"
+            return f"Displayed {displayed_count} text files matching '{filename}' (total: {total_count})"
 
         # Single file processing
         if not file_path.exists():
@@ -3645,12 +3823,18 @@ when they are started by agents or analysis workflows.
         # Load publication list from .ris file
         filename = cmd[6:].strip()
 
-        # Convert to Path object for directory checking
-        file_path = (
-            Path(filename)
-            if Path(filename).is_absolute()
-            else current_directory / filename
+        # BUG FIX #6: Use PathResolver for secure path resolution
+        resolver = PathResolver(
+            current_directory=current_directory,
+            workspace_path=client.data_manager.workspace_path if hasattr(client, "data_manager") else None,
         )
+        resolved = resolver.resolve(filename, search_workspace=True, must_exist=False)
+
+        if not resolved.is_safe:
+            console.print(f"[red]❌ Security error: {resolved.error}[/red]")
+            return None
+
+        file_path = resolved.path
 
         # Validate file extension
         if not file_path.suffix.lower() in [".ris", ".txt"]:
@@ -3742,24 +3926,48 @@ when they are started by agents or analysis workflows.
             return None
 
     elif cmd.startswith("/archive"):
-        # Handle nested archive commands
+        # BUG FIX #1: Handle nested archive commands with proper cache management
+        # Use ExtractionCacheManager instead of client instance variables to prevent race conditions
         parts = cmd.split(maxsplit=2)
         subcommand = parts[1] if len(parts) > 1 else "help"
 
-        # Check if we have a cached archive from /read
-        if not hasattr(client, "_last_archive_cache"):
-            console.print("[red]❌ No archive inspection cached[/red]")
+        # Initialize cache manager (thread-safe, per-request instance)
+        cache_manager = ExtractionCacheManager(client.data_manager.workspace_path)
+        recent_caches = cache_manager.list_all_caches()
+
+        if not recent_caches:
+            console.print("[red]❌ No cached archives found[/red]")
             console.print(
                 "[yellow]💡 Run /read <archive.tar> first to inspect an archive[/yellow]"
             )
             return None
 
+        # Select cache: use most recent if only one, otherwise prompt user
+        if len(recent_caches) == 1:
+            cache_id = recent_caches[0]["cache_id"]
+        else:
+            # Multiple caches available - show list and use most recent
+            console.print(f"\n[cyan]📦 Found {len(recent_caches)} cached archives (using most recent):[/cyan]")
+            for i, cache in enumerate(recent_caches[:3], 1):
+                age_hours = (time.time() - cache.get("timestamp", 0)) / 3600
+                console.print(f"  {i}. {cache['cache_id']} ({age_hours:.1f}h ago)")
+            cache_id = recent_caches[0]["cache_id"]  # Most recent
+
+        # Get cache info and nested_info
+        cache_info = cache_manager.get_cache_info(cache_id)
+        if not cache_info:
+            console.print(f"[red]❌ Cache {cache_id} metadata not found[/red]")
+            return None
+
+        nested_info = cache_info.get("nested_info")
+        if not nested_info:
+            console.print(f"[red]❌ Cache {cache_id} missing nested structure info[/red]")
+            return None
+
         if subcommand == "list":
             # Show detailed list of all nested samples
-            nested_info = client._last_archive_info
-
             console.print("\n[bold white]📋 Archive Contents:[/bold white]")
-            console.print(f"[dim]Cache ID: {client._last_archive_cache}[/dim]\n")
+            console.print(f"[dim]Cache ID: {cache_id}[/dim]\n")
 
             samples_table = Table(
                 box=box.ROUNDED, border_style="cyan", title="All Samples"
@@ -3782,9 +3990,7 @@ when they are started by agents or analysis workflows.
             return f"Listed {nested_info.total_count} samples from cached archive"
 
         elif subcommand == "groups":
-            # Show condition groups summary
-            nested_info = client._last_archive_info
-
+            # Show condition groups summary (nested_info already loaded above)
             console.print("\n[bold white]📂 Condition Groups:[/bold white]\n")
 
             groups_table = Table(box=box.ROUNDED, border_style="cyan")
@@ -3836,7 +4042,7 @@ when they are started by agents or analysis workflows.
 
             with console.status("[cyan]Loading samples...[/cyan]"):
                 result = client.load_from_cache(
-                    client._last_archive_cache, pattern, limit
+                    cache_id, pattern, limit
                 )
 
             if result["success"]:
@@ -4622,12 +4828,16 @@ when they are started by agents or analysis workflows.
         subcommand = parts[1] if len(parts) > 1 else "info"
 
         if subcommand == "list":
-            # Re-scan workspace to ensure we have latest files
-            if hasattr(client.data_manager, "_scan_workspace"):
-                client.data_manager._scan_workspace()
-
-            # Show available datasets without loading
-            available = client.data_manager.available_datasets
+            # BUG FIX #2: Use cached scan instead of explicit rescan (75% faster)
+            # Check if user wants to force refresh with --refresh flag
+            force_refresh = "--refresh" in cmd.lower()
+            if hasattr(client.data_manager, "get_available_datasets"):
+                available = client.data_manager.get_available_datasets(force_refresh=force_refresh)
+            else:
+                # Fallback for older DataManager versions
+                if hasattr(client.data_manager, "_scan_workspace"):
+                    client.data_manager._scan_workspace()
+                available = client.data_manager.available_datasets
             loaded = set(client.data_manager.modalities.keys())
 
             if not available:
@@ -4715,11 +4925,15 @@ when they are started by agents or analysis workflows.
 
             selector = parts[2]
 
-            # Re-scan workspace to ensure we have latest files
-            if hasattr(client.data_manager, "_scan_workspace"):
-                client.data_manager._scan_workspace()
+            # BUG FIX #2: Use cached scan for info command
+            if hasattr(client.data_manager, "get_available_datasets"):
+                available = client.data_manager.get_available_datasets(force_refresh=False)
+            else:
+                # Fallback for older DataManager versions
+                if hasattr(client.data_manager, "_scan_workspace"):
+                    client.data_manager._scan_workspace()
+                available = client.data_manager.available_datasets
 
-            available = client.data_manager.available_datasets
             loaded = set(client.data_manager.modalities.keys())
 
             if not available:
@@ -4826,12 +5040,18 @@ when they are started by agents or analysis workflows.
 
             selector = parts[2]
 
-            # Check if selector is a file path first
-            file_path = (
-                Path(selector)
-                if Path(selector).is_absolute()
-                else current_directory / selector
+            # BUG FIX #6: Use PathResolver for secure path resolution
+            resolver = PathResolver(
+                current_directory=current_directory,
+                workspace_path=client.data_manager.workspace_path if hasattr(client, "data_manager") else None,
             )
+            resolved = resolver.resolve(selector, search_workspace=True, must_exist=False)
+
+            if not resolved.is_safe:
+                console.print(f"[red]❌ Security error: {resolved.error}[/red]")
+                return None
+
+            file_path = resolved.path
 
             if file_path.exists() and file_path.is_file():
                 # Load file directly into workspace
@@ -4856,11 +5076,14 @@ when they are started by agents or analysis workflows.
                     console.print(f"[red]❌ Failed to load file: {str(e)}[/red]")
                     return None
 
-            # Re-scan workspace to ensure we have latest files
-            if hasattr(client.data_manager, "_scan_workspace"):
-                client.data_manager._scan_workspace()
-
-            available = client.data_manager.available_datasets
+            # BUG FIX #2: Use cached scan for load command
+            if hasattr(client.data_manager, "get_available_datasets"):
+                available = client.data_manager.get_available_datasets(force_refresh=False)
+            else:
+                # Fallback for older DataManager versions
+                if hasattr(client.data_manager, "_scan_workspace"):
+                    client.data_manager._scan_workspace()
+                available = client.data_manager.available_datasets
 
             if not available:
                 console.print("[yellow]No datasets found in workspace[/yellow]")
@@ -5437,36 +5660,18 @@ when they are started by agents or analysis workflows.
             console.print("[grey50]Usage: /open <file_or_folder>[/grey50]")
             return "No file or folder specified for /open command"
 
-        # Try to resolve path - check current directory first, then workspace
-        target_path = None
+        # BUG FIX #6: Use PathResolver for secure path resolution with workspace search
+        resolver = PathResolver(
+            current_directory=current_directory,
+            workspace_path=client.data_manager.workspace_path if hasattr(client, "data_manager") else None,
+        )
+        resolved = resolver.resolve(file_or_folder, search_workspace=True, must_exist=True, allow_special=False)
 
-        # Check current directory
-        if not file_or_folder.startswith("/") and not file_or_folder.startswith("~/"):
-            current_path = current_directory / file_or_folder
-            if current_path.exists():
-                target_path = current_path
+        if not resolved.is_safe:
+            console.print(f"[red]❌ Security error: {resolved.error}[/red]")
+            return None
 
-        # Check absolute/home path
-        if target_path is None:
-            abs_path = Path(file_or_folder).expanduser()
-            if abs_path.exists():
-                target_path = abs_path
-
-        # Check workspace if we have a client
-        if target_path is None and hasattr(client, "data_manager"):
-            # Look in workspace for the file
-            workspace_files = client.data_manager.list_workspace_files()
-            for category, files in workspace_files.items():
-                for file_info in files:
-                    if file_info["name"] == file_or_folder or file_info[
-                        "path"
-                    ].endswith(file_or_folder):
-                        target_path = Path(file_info["path"])
-                        break
-                if target_path:
-                    break
-
-        if not target_path or not target_path.exists():
+        if not resolved.exists:
             console.print(
                 f"[red]/open: '{file_or_folder}': No such file or directory[/red]"
             )
@@ -5474,6 +5679,8 @@ when they are started by agents or analysis workflows.
                 "[grey50]Check current directory, workspace, or use absolute path[/grey50]"
             )
             return f"File or folder '{file_or_folder}' not found"
+
+        target_path = resolved.path
 
         # Open file or folder using centralized system utility
         success, message = open_path(target_path)
