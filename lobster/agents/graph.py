@@ -89,6 +89,7 @@ def create_bioinformatics_graph(
     agents = []
     handoff_tools = []
     created_agents = {}
+    supervisor_accessible_agents = []  # Track which agents should be passed to supervisor
 
     worker_agents = get_worker_agents()
 
@@ -111,7 +112,6 @@ def create_bioinformatics_graph(
             agent_name=agent_config.name,
         )
         created_agents[agent_name] = agent
-        agents.append(agent)
 
         # Create handoff tool if configured AND supervisor-accessible
         if agent_config.handoff_tool_name and agent_config.handoff_tool_description:
@@ -130,9 +130,12 @@ def create_bioinformatics_graph(
                     description=agent_config.handoff_tool_description,
                 )
                 handoff_tools.append(handoff_tool)
+                supervisor_accessible_agents.append(agent)  # Only add to supervisor list if accessible
                 logger.debug(f"Created supervisor handoff tool for: {agent_config.display_name}")
             else:
                 logger.debug(f"Skipped supervisor handoff for child agent: {agent_config.display_name}")
+        else:
+            logger.warning(f"Agent {agent_config.display_name} has no handoff tool configured")
 
         logger.debug(f"Created agent: {agent_config.display_name} ({agent_config.name})")
 
@@ -163,9 +166,13 @@ def create_bioinformatics_graph(
             )
 
             # Replace in our tracking
-            idx = agents.index(created_agents[agent_name])
-            agents[idx] = new_agent
+            old_agent = created_agents[agent_name]
             created_agents[agent_name] = new_agent
+
+            # Also update in supervisor_accessible_agents if present
+            if old_agent in supervisor_accessible_agents:
+                idx = supervisor_accessible_agents.index(old_agent)
+                supervisor_accessible_agents[idx] = new_agent
 
             logger.debug(f"Re-created {agent_name} with {len(delegation_tools)} delegation tool(s)")
 
@@ -173,8 +180,10 @@ def create_bioinformatics_graph(
     list_available_modalities = create_list_modalities_tool(data_manager)
     get_content_from_workspace = create_get_content_from_workspace_tool(data_manager)
 
-    # Get list of active agents that were successfully created
-    active_agent_names = [agent.name for agent in agents]
+    # Get list of supervisor-accessible agents (for prompt generation)
+    active_agent_names = [agent.name for agent in supervisor_accessible_agents]
+    logger.debug(f"Supervisor-accessible agents: {active_agent_names}")
+    logger.debug(f"Total agents created: {len(created_agents)}, Supervisor-accessible: {len(supervisor_accessible_agents)}")
 
     # Create supervisor prompt with configuration and active agents
     system_prompt = create_supervisor_prompt(
@@ -187,8 +196,9 @@ def create_bioinformatics_graph(
     create_forward_message_tool("supervisor")
 
     # UPDATED CONFIGURATION - Changed output_mode
+    # Only pass supervisor-accessible agents (those with handoff tools)
     workflow = create_supervisor(
-        agents=agents,
+        agents=supervisor_accessible_agents,  # Only agents the supervisor can directly access
         model=supervisor_model,
         prompt=system_prompt,
         supervisor_name="supervisor",

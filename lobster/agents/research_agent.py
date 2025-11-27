@@ -661,6 +661,45 @@ def research_agent(
                                 f"URL extraction warning for {accession}: {url_data['error']}"
                             )
 
+                        # Extract strategy config for cached datasets
+                        from lobster.agents.data_expert_assistant import DataExpertAssistant
+                        assistant = DataExpertAssistant()
+
+                        # Check if strategy_config already exists in cached data
+                        cached_strategy_config = cached_data.get("strategy_config")
+                        if not cached_strategy_config:
+                            # Extract it now and persist
+                            try:
+                                logger.info(f"Extracting strategy for cached dataset {accession}")
+                                cached_strategy_config = assistant.extract_strategy_config(metadata, accession)
+
+                                if cached_strategy_config:
+                                    # Persist to metadata_store
+                                    data_manager._store_geo_metadata(
+                                        geo_id=accession,
+                                        metadata=metadata,
+                                        stored_by="research_agent_cached",
+                                        strategy_config=cached_strategy_config.model_dump() if hasattr(cached_strategy_config, 'model_dump') else cached_strategy_config
+                                    )
+
+                                    # Analyze and create recommended strategy
+                                    analysis = assistant.analyze_download_strategy(cached_strategy_config, metadata)
+                                    recommended_strategy = _create_recommended_strategy(
+                                        cached_strategy_config, analysis, metadata, url_data
+                                    )
+                                else:
+                                    # Fallback strategy
+                                    recommended_strategy = _create_fallback_strategy(url_data, metadata)
+                            except Exception as e:
+                                logger.warning(f"Strategy extraction failed for cached {accession}: {e}")
+                                recommended_strategy = _create_fallback_strategy(url_data, metadata)
+                        else:
+                            # Use existing strategy config
+                            analysis = assistant.analyze_download_strategy(cached_strategy_config, metadata)
+                            recommended_strategy = _create_recommended_strategy(
+                                cached_strategy_config, analysis, metadata, url_data
+                            )
+
                         # Create DownloadQueueEntry
                         entry_id = f"queue_{accession}_{uuid.uuid4().hex[:8]}"
 
@@ -694,7 +733,7 @@ def research_agent(
                             h5_url=url_data.get("h5_url"),
                             created_at=datetime.now(),
                             updated_at=datetime.now(),
-                            recommended_strategy=None,
+                            recommended_strategy=recommended_strategy,  # Use actual strategy
                             downloaded_by=None,
                             modality_name=None,
                             error_log=[],
@@ -839,6 +878,7 @@ def research_agent(
 
                                 # NEW: Extract strategy using data_expert_assistant
                                 logger.info(f"Extracting download strategy for {accession}")
+                                from lobster.agents.data_expert_assistant import DataExpertAssistant
                                 assistant = DataExpertAssistant()
 
                                 # Extract file config using LLM (~2-5s)
@@ -846,6 +886,16 @@ def research_agent(
                                     strategy_config = assistant.extract_strategy_config(metadata, accession)
 
                                     if strategy_config:
+                                        # CRITICAL FIX: Persist strategy_config to metadata_store
+                                        # This enables geo_service.py to find file-level details
+                                        logger.info(f"Persisting strategy_config to metadata_store for {accession}")
+                                        data_manager._store_geo_metadata(
+                                            geo_id=accession,
+                                            metadata=metadata,
+                                            stored_by="research_agent_validate",
+                                            strategy_config=strategy_config.model_dump() if hasattr(strategy_config, 'model_dump') else strategy_config
+                                        )
+
                                         # Analyze and generate recommendations
                                         analysis = assistant.analyze_download_strategy(strategy_config, metadata)
 
@@ -1856,37 +1906,114 @@ Could not extract content for: {identifier}
             },
         )
 
+    def _is_single_cell_dataset(metadata: dict) -> bool:
+        """
+        Detect if dataset is single-cell based on metadata.
+
+        Args:
+            metadata: GEO metadata dictionary
+
+        Returns:
+            bool: True if dataset appears to be single-cell
+        """
+        # Check various metadata fields for single-cell indicators
+        single_cell_keywords = [
+            "single-cell", "single cell", "scRNA-seq", "10x", "10X",
+            "droplet", "Drop-seq", "Smart-seq", "CEL-seq", "inDrop",
+            "single nuclei", "snRNA-seq", "scATAC-seq", "Chromium"
+        ]
+
+        # Check title, summary, overall_design, and type fields
+        text_fields = [
+            metadata.get("title", ""),
+            metadata.get("summary", ""),
+            metadata.get("overall_design", ""),
+            metadata.get("type", ""),
+            metadata.get("description", "")
+        ]
+
+        for field in text_fields:
+            if any(keyword.lower() in field.lower() for keyword in single_cell_keywords):
+                return True
+
+        # Check platform for single-cell platforms
+        platform = metadata.get("platform", "")
+        if any(kw in platform for kw in ["10X", "Chromium", "GPL24676", "GPL24247"]):
+            return True
+
+        # Check for specific single-cell library strategies
+        library_strategy = metadata.get("library_strategy", "")
+        if "single" in library_strategy.lower() or "10x" in library_strategy.lower():
+            return True
+
+        return False
+
     def _create_fallback_strategy(
         url_data: dict, metadata: dict
     ) -> StrategyConfig:
         """
         Create fallback strategy when LLM extraction fails.
-        Uses URL-based heuristics for strategy recommendation.
+        Uses data-type aware URL-based heuristics for strategy recommendation.
 
         Args:
             url_data: URLs from GEOProvider.get_download_urls()
             metadata: GEO metadata dictionary
 
         Returns:
-            StrategyConfig with URL-based strategy
+            StrategyConfig with data-type aware strategy
         """
-        # URL-based strategy detection
+        # Detect if dataset is single-cell
+        is_single_cell = _is_single_cell_dataset(metadata)
+
+        # URL-based strategy detection with data-type awareness
         if url_data.get("h5_url"):
+            # H5AD files are typically single-cell optimized
             strategy_name = "H5_FIRST"
             confidence = 0.90
-            rationale = "H5AD file URL found (LLM extraction unavailable, using URL-based strategy)"
+            rationale = "H5AD file URL found (single-cell optimized format)"
+
+        elif is_single_cell and url_data.get("raw_urls") and len(url_data["raw_urls"]) > 0:
+            # For single-cell with raw files, check if they're MTX files
+            raw_urls = url_data.get("raw_urls", [])
+            has_mtx = any("mtx" in url.lower() or "matrix" in url.lower() for url in raw_urls)
+
+            if has_mtx:
+                # MTX files at series level should use RAW_FIRST
+                strategy_name = "RAW_FIRST"
+                confidence = 0.80
+                rationale = f"Single-cell dataset with MTX files detected ({len(raw_urls)} raw files)"
+            else:
+                # Other raw files for single-cell might still need SAMPLES_FIRST
+                strategy_name = "SAMPLES_FIRST"
+                confidence = 0.70
+                rationale = f"Single-cell dataset with raw data files ({len(raw_urls)} files)"
+
         elif url_data.get("matrix_url"):
-            strategy_name = "MATRIX_FIRST"
-            confidence = 0.75
-            rationale = "Matrix file URL found (LLM extraction unavailable, using URL-based strategy)"
+            # Matrix files could be bulk or single-cell
+            if is_single_cell:
+                strategy_name = "MATRIX_FIRST"
+                confidence = 0.70
+                rationale = "Single-cell dataset with matrix file (may be processed data)"
+            else:
+                strategy_name = "MATRIX_FIRST"
+                confidence = 0.75
+                rationale = "Matrix file URL found (bulk RNA-seq or processed data)"
+
         elif url_data.get("raw_urls") and len(url_data["raw_urls"]) > 0:
+            # Non-single-cell datasets with raw URLs
             strategy_name = "SAMPLES_FIRST"
             confidence = 0.65
-            rationale = f"Raw data URLs found ({len(url_data['raw_urls'])} files, LLM extraction unavailable)"
+            rationale = f"Raw data URLs found ({len(url_data['raw_urls'])} files, bulk RNA-seq likely)"
+
         else:
+            # No clear pattern detected
             strategy_name = "AUTO"
             confidence = 0.50
-            rationale = "No clear file pattern detected, using auto-detection (LLM extraction unavailable)"
+            rationale = "No clear file pattern detected, using auto-detection"
+
+        # Add data type info to rationale
+        data_type_info = " (single-cell dataset)" if is_single_cell else " (bulk/unknown dataset)"
+        rationale += data_type_info
 
         # Simple concatenation strategy
         n_samples = metadata.get("n_samples", metadata.get("sample_count", 0))

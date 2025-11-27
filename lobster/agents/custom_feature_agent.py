@@ -127,12 +127,24 @@ def custom_feature_agent(
         if agent_file.exists():
             existing.append(str(agent_file))
 
-        # Check service file
-        service_file = lobster_root / "lobster" / "tools" / f"{feature_name}_service.py"
-        if service_file.exists():
-            existing.append(str(service_file))
+        # Check service file in all services/ subdirectories
+        service_categories = [
+            "analysis", "data_access", "data_management", "metadata",
+            "ml", "orchestration", "quality", "visualization"
+        ]
+        for category in service_categories:
+            service_file = (
+                lobster_root / "lobster" / "services" / category / f"{feature_name}_service.py"
+            )
+            if service_file.exists():
+                existing.append(str(service_file))
 
-        # Check test files
+        # Also check legacy tools/ location for backwards compatibility
+        legacy_service = lobster_root / "lobster" / "tools" / f"{feature_name}_service.py"
+        if legacy_service.exists():
+            existing.append(str(legacy_service))
+
+        # Check test files - agent tests
         test_agent = (
             lobster_root
             / "tests"
@@ -143,15 +155,29 @@ def custom_feature_agent(
         if test_agent.exists():
             existing.append(str(test_agent))
 
-        test_service = (
+        # Check test files in all services/ test subdirectories
+        for category in service_categories:
+            test_service = (
+                lobster_root
+                / "tests"
+                / "unit"
+                / "services"
+                / category
+                / f"test_{feature_name}_service.py"
+            )
+            if test_service.exists():
+                existing.append(str(test_service))
+
+        # Also check legacy test location
+        legacy_test_service = (
             lobster_root
             / "tests"
             / "unit"
             / "tools"
             / f"test_{feature_name}_service.py"
         )
-        if test_service.exists():
-            existing.append(str(test_service))
+        if legacy_test_service.exists():
+            existing.append(str(legacy_test_service))
 
         # Check wiki (using lowercase kebab-case convention)
         wiki_name = feature_name.replace("_", "-").lower()
@@ -795,16 +821,24 @@ CRITICAL RULES:
 4. Wiki: lobster/wiki/{wiki_filename}.md"""
 
             elif feature_type == "service":
-                files_to_create = f"""1. Service: lobster/tools/{feature_name}_service.py
-2. Tests: tests/unit/tools/test_{feature_name}_service.py
+                files_to_create = f"""1. Service: lobster/services/{{CATEGORY}}/{feature_name}_service.py
+   - Choose CATEGORY from: analysis, data_access, data_management, metadata, ml, orchestration, quality, visualization
+   - Base decision on feature purpose: clustering/DE/statistical→analysis, QC/preprocess/filter→quality, API/fetch/download→data_access,
+     modality/CRUD→data_management, standardize/validate/mapping→metadata, ML/embedding/prediction→ml,
+     plot/visualize/chart→visualization, workflow/pipeline→orchestration
+2. Tests: tests/unit/services/{{CATEGORY}}/test_{feature_name}_service.py (mirror the service category)
 3. Wiki: lobster/wiki/{wiki_filename}.md"""
 
             elif feature_type == "agent_with_service":
                 files_to_create = f"""1. Agent: lobster/agents/{feature_name}_expert.py
-2. Service: lobster/tools/{feature_name}_service.py
+2. Service: lobster/services/{{CATEGORY}}/{feature_name}_service.py
+   - Choose CATEGORY from: analysis, data_access, data_management, metadata, ml, orchestration, quality, visualization
+   - Base decision on feature purpose: clustering/DE/statistical→analysis, QC/preprocess/filter→quality, API/fetch/download→data_access,
+     modality/CRUD→data_management, standardize/validate/mapping→metadata, ML/embedding/prediction→ml,
+     plot/visualize/chart→visualization, workflow/pipeline→orchestration
 3. State: Add {feature_name.title().replace('_', '')}ExpertState to lobster/agents/state.py
 4. Tests (Agent): tests/unit/agents/test_{feature_name}_expert.py
-5. Tests (Service): tests/unit/tools/test_{feature_name}_service.py
+5. Tests (Service): tests/unit/services/{{CATEGORY}}/test_{feature_name}_service.py (mirror the service category)
 6. Wiki: lobster/wiki/{wiki_filename}.md"""
 
             else:
@@ -833,15 +867,22 @@ Files to Create:
 
 Instructions:
 1. Read CLAUDE.md at project root to understand all patterns
-2. Look at existing examples (machine_learning_expert.py, preprocessing_service.py)
+2. Look at existing examples:
+   - Agents: lobster/agents/machine_learning_expert.py, singlecell_expert.py
+   - Services: lobster/services/analysis/clustering_service.py, lobster/services/quality/preprocessing_service.py
 3. Create ALL required files following the exact patterns
 4. Use proper naming conventions
 5. Include comprehensive docstrings and type hints
 6. Follow the agent pattern (factory function, tools, system prompt)
-7. Follow the service pattern (stateless, returns tuple)
-8. Follow the tool pattern (validate → service → store → log → response)
-9. Create complete test files with fixtures and multiple test cases
-10. Create comprehensive wiki documentation
+7. Follow the service pattern (stateless, returns 3-tuple: AnnData, stats_dict, AnalysisStep)
+8. Follow the tool pattern (validate → service → store → log with IR → response)
+9. Create test directory structure if it doesn't exist:
+   - For services: Create tests/unit/services/{category}/ with __init__.py
+   - For agents: Create tests/unit/agents/ with __init__.py (if needed)
+   - Use `mkdir -p` equivalent or create parent directories first
+10. Create complete test files with fixtures and multiple test cases
+11. Create comprehensive wiki documentation
+12. IMPORTANT: Services go in lobster/services/{category}/ NOT lobster/tools/
 
 After creating all files, provide a summary listing EVERY file you created with its full path.
 
@@ -921,12 +962,15 @@ Begin implementation now."""
                                         text = block.text
 
                                         # Look for file path patterns (more robust regex)
+                                        # Updated to include new services/ directory structure
                                         patterns = [
                                             r"lobster/agents/[a-z0-9_]+_expert\.py",
-                                            r"lobster/tools/[a-z0-9_]+_service\.py",
+                                            r"lobster/services/[a-z_]+/[a-z0-9_]+_service\.py",  # New services/ structure
+                                            r"lobster/tools/[a-z0-9_]+_service\.py",  # Legacy tools/ location
                                             r"lobster/agents/state\.py",
                                             r"tests/unit/agents/test_[a-z0-9_]+_expert\.py",
-                                            r"tests/unit/tools/test_[a-z0-9_]+_service\.py",
+                                            r"tests/unit/services/[a-z_]+/test_[a-z0-9_]+_service\.py",  # New test structure
+                                            r"tests/unit/tools/test_[a-z0-9_]+_service\.py",  # Legacy test location
                                             r"lobster/wiki/[a-z0-9\-]+\.md",
                                         ]
 
@@ -1068,19 +1112,43 @@ Begin implementation now."""
                     )
 
                 if feature_type in ["service", "agent_with_service"]:
-                    expected_files.append(
-                        lobster_root
-                        / "lobster"
-                        / "tools"
-                        / f"{feature_name}_service.py"
-                    )
-                    expected_files.append(
-                        lobster_root
-                        / "tests"
-                        / "unit"
-                        / "tools"
-                        / f"test_{feature_name}_service.py"
-                    )
+                    # SDK decides the category - we need to discover where it placed the files
+                    # Scan all service categories to find the created service
+                    service_categories = [
+                        "analysis", "data_access", "data_management", "metadata",
+                        "ml", "orchestration", "quality", "visualization"
+                    ]
+                    service_found = False
+                    for category in service_categories:
+                        service_path = (
+                            lobster_root / "lobster" / "services" / category
+                            / f"{feature_name}_service.py"
+                        )
+                        if service_path.exists():
+                            expected_files.append(service_path)
+                            service_found = True
+                            # Also check for corresponding test file
+                            test_path = (
+                                lobster_root / "tests" / "unit" / "services" / category
+                                / f"test_{feature_name}_service.py"
+                            )
+                            if test_path.exists():
+                                expected_files.append(test_path)
+                            break
+
+                    # If no service found in services/, check legacy tools/ location
+                    if not service_found:
+                        legacy_service = (
+                            lobster_root / "lobster" / "tools" / f"{feature_name}_service.py"
+                        )
+                        if legacy_service.exists():
+                            expected_files.append(legacy_service)
+                            legacy_test = (
+                                lobster_root / "tests" / "unit" / "tools"
+                                / f"test_{feature_name}_service.py"
+                            )
+                            if legacy_test.exists():
+                                expected_files.append(legacy_test)
 
                 wiki_file = (
                     lobster_root
@@ -2069,11 +2137,25 @@ You create new Lobster features following these steps:
 
 ## COMPONENT DECISION TREE
 
-| Scenario | Schema | Adapter | Provider | Services | Tools | Registry |
-|----------|--------|---------|----------|----------|-------|----------|
-| New modality | ✅ | ✅ | Optional | ✅ | ✅ | ✅ |
-| Existing modality + new analysis | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
-| New data source | Optional | ✅ | ✅ | Optional | ✅ | ✅ |
+| Scenario | Schema | Adapter | Provider | Services | Service Category | Tools | Registry |
+|----------|--------|---------|----------|----------|------------------|-------|----------|
+| New modality | ✅ | ✅ | Optional | ✅ | analysis/ or quality/ | ✅ | ✅ |
+| Existing modality + new analysis | ❌ | ❌ | ❌ | ✅ | analysis/ | ✅ | ✅ |
+| New data source | Optional | ✅ | ✅ | ✅ | data_access/ | ✅ | ✅ |
+| QC/preprocessing pipeline | ❌ | ❌ | ❌ | ✅ | quality/ | ✅ | ✅ |
+| Visualization feature | ❌ | ❌ | ❌ | ✅ | visualization/ | ✅ | ✅ |
+| ML/embedding feature | ❌ | ❌ | ❌ | ✅ | ml/ | ✅ | ✅ |
+| Metadata operations | ❌ | ❌ | ❌ | ✅ | metadata/ | ✅ | Optional |
+
+## SERVICE CATEGORIES EXPLAINED
+- **analysis/** - Statistical analysis, clustering, DE, enrichment (most common)
+- **quality/** - QC metrics, preprocessing, filtering, normalization
+- **data_access/** - External APIs, downloads, file retrieval
+- **data_management/** - Modality CRUD, concatenation, workspace ops
+- **metadata/** - Standardization, validation, ID mapping
+- **ml/** - Machine learning, embeddings, predictions
+- **visualization/** - Plotting, charts, figures
+- **orchestration/** - Multi-step workflows, coordination
 
 ## EXECUTION ORDER (CRITICAL)
 1. Schema Definition (if new modality)
@@ -2101,7 +2183,17 @@ def analyze(self, adata: AnnData, **params) -> Tuple[AnnData, Dict[str, Any], An
 - `stats_dict`: Concise, human-readable summary
 - `ir`: AnalysisStep for provenance + notebook export (MANDATORY)
 
-**Template Location:** `lobster/tools/{{{{SERVICE_MODULE}}}}.py`
+**Template Location:** `lobster/services/{{CATEGORY}}/{{{{SERVICE_MODULE}}}}.py`
+
+**Service Categories** (choose based on feature purpose):
+- `analysis/` - clustering, differential expression, statistical analysis, enrichment
+- `data_access/` - external APIs, databases, file retrieval, downloads
+- `data_management/` - modality CRUD, concatenation, workspace operations
+- `metadata/` - standardization, validation, mapping, harmonization
+- `ml/` - machine learning, embeddings, predictions, classification
+- `orchestration/` - workflow coordination, multi-step processes
+- `quality/` - QC, preprocessing, filtering, normalization
+- `visualization/` - plots, charts, figures, visualizations
 
 Key methods:
 - `def analyze(self, adata, **params) -> Tuple[AnnData, Dict, AnalysisStep]`
@@ -2251,6 +2343,160 @@ class NewProvider(BasePublicationProvider):
             logger.error(f"Search failed: {{{{e}}}}")
             raise ProviderError(f"Search failed: {{{{str(e)}}}}")
 ```
+
+## IDOWNLOADSERVICE PATTERN (Queue-Based Downloads)
+
+**File:** `lobster/services/data_access/{{{{SERVICE_MODULE}}}}.py`
+
+For providers that support dataset downloads, implement the IDownloadService interface:
+
+```python
+from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional, Tuple
+import anndata as ad
+from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.download_queue import DownloadQueueEntry
+
+class IDownloadService(ABC):
+    @abstractmethod
+    def supports_database(self, database: str) -> bool:
+        \"\"\"Check if this service handles the given database type.\"\"\"
+        pass
+
+    @abstractmethod
+    def download_dataset(
+        self,
+        queue_entry: DownloadQueueEntry,
+        strategy_override: Optional[str] = None
+    ) -> Tuple[ad.AnnData, Dict[str, Any], AnalysisStep]:
+        \"\"\"Download and return (adata, stats, ir) tuple.\"\"\"
+        pass
+
+    @abstractmethod
+    def validate_strategy_params(self, params: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+        \"\"\"Validate download strategy parameters.\"\"\"
+        pass
+
+    @abstractmethod
+    def get_supported_strategies(self) -> List[str]:
+        \"\"\"Return list of supported download strategies.\"\"\"
+        pass
+
+# Example implementation:
+class GEODownloadService(IDownloadService):
+    def __init__(self, data_manager: DataManagerV2):
+        self.data_manager = data_manager
+        self.geo_service = GEOService(data_manager)  # Composition pattern
+
+    def supports_database(self, database: str) -> bool:
+        return database.lower() in ["geo", "gse", "gds"]
+
+    def download_dataset(self, queue_entry, strategy_override=None) -> Tuple[ad.AnnData, Dict, AnalysisStep]:
+        # Download via GEOService, return 3-tuple
+        result = self.geo_service.download(queue_entry.accession, strategy=strategy_override)
+        adata = self.data_manager.get_modality(result["modality_name"])
+        stats = {{"accession": queue_entry.accession, "n_obs": adata.n_obs, "n_vars": adata.n_vars}}
+        ir = self._create_ir(queue_entry.accession, strategy_override)
+        return adata, stats, ir
+```
+
+**Usage with DownloadOrchestrator:**
+```python
+orchestrator = DownloadOrchestrator(data_manager)
+orchestrator.register_service(GEODownloadService(data_manager))
+modality_name, stats = orchestrator.execute_download(queue_entry_id)
+```
+
+## MODALITYMANAGEMENTSERVICE PATTERN (Centralized CRUD)
+
+**File:** `lobster/services/data_management/modality_management_service.py`
+
+Centralized service for modality CRUD operations with W3C-PROV compliant provenance tracking:
+
+```python
+from typing import Any, Dict, List, Optional, Tuple
+import anndata as ad
+from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.data_manager_v2 import DataManagerV2
+
+class ModalityManagementService:
+    \"\"\"Service for centralized modality CRUD operations with provenance tracking.\"\"\"
+
+    def __init__(self, data_manager: DataManagerV2):
+        self.data_manager = data_manager
+
+    def list_modalities(
+        self, filter_pattern: Optional[str] = None
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any], AnalysisStep]:
+        \"\"\"List all available modalities with optional glob filtering.\"\"\"
+        # Returns: (modality_info_list, stats, ir)
+        pass
+
+    def get_modality_info(
+        self, modality_name: str
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], AnalysisStep]:
+        \"\"\"Get detailed info (shape, layers, obsm/varm/uns keys, quality metrics).\"\"\"
+        # Returns: (info_dict, stats, ir)
+        pass
+
+    def remove_modality(
+        self, modality_name: str
+    ) -> Tuple[bool, Dict[str, Any], AnalysisStep]:
+        \"\"\"Remove modality from DataManagerV2.\"\"\"
+        # Returns: (success, stats, ir)
+        pass
+
+    def validate_compatibility(
+        self, modality_names: List[str]
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], AnalysisStep]:
+        \"\"\"Validate obs/var overlap, batch effects, recommend integration strategy.\"\"\"
+        # Returns: (validation_result, stats, ir)
+        pass
+
+    def load_modality(
+        self,
+        modality_name: str,
+        file_path: str,
+        adapter: str,
+        dataset_type: str = "custom",
+        validate: bool = True,
+        **kwargs
+    ) -> Tuple[ad.AnnData, Dict[str, Any], AnalysisStep]:
+        \"\"\"Load data file via adapter system with schema validation.\"\"\"
+        # Returns: (adata, stats, ir)
+        pass
+
+    # Each method includes _create_*_ir() helper for provenance
+    def _create_list_ir(self, filter_pattern: Optional[str]) -> AnalysisStep: ...
+    def _create_get_info_ir(self, modality_name: str) -> AnalysisStep: ...
+    def _create_remove_ir(self, modality_name: str) -> AnalysisStep: ...
+    def _create_validate_ir(self, modality_names: List[str]) -> AnalysisStep: ...
+    def _create_load_ir(self, modality_name, file_path, adapter, dataset_type) -> AnalysisStep: ...
+```
+
+**Usage in Agent Tools:**
+```python
+# In data_expert agent
+service = ModalityManagementService(data_manager)
+
+@tool
+def list_modalities(filter_pattern: Optional[str] = None) -> str:
+    modality_info, stats, ir = service.list_modalities(filter_pattern)
+    data_manager.log_tool_usage("list_modalities", {{"filter": filter_pattern}}, f"Listed {{len(modality_info)}} modalities", ir=ir)
+    return format_modality_list(modality_info, stats)
+
+@tool
+def load_local_file(modality_name: str, file_path: str, adapter: str) -> str:
+    adata, stats, ir = service.load_modality(modality_name, file_path, adapter)
+    data_manager.log_tool_usage("load_local_file", {{"name": modality_name, "path": file_path}}, f"Loaded {{adata.n_obs}}x{{adata.n_vars}}", ir=ir)
+    return f"Loaded modality '{{modality_name}}' with {{adata.n_obs}} samples, {{adata.n_vars}} features"
+```
+
+**Key Benefits:**
+- Consistent 3-tuple return pattern (result, stats, ir)
+- W3C-PROV compliance via AnalysisStep IR
+- Centralized error handling
+- Reusable across multiple agents (data_expert, research_agent, etc.)
 
 ## ADAPTER PATTERN (Format Loading)
 
