@@ -5,6 +5,7 @@ Installable via pip or curl, with rich terminal interface.
 """
 
 import os
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -35,7 +36,9 @@ from lobster.config.agent_config import (
     initialize_configurator,
 )
 from lobster.core.client import AgentClient
+from lobster.core.queue_storage import queue_file_lock
 from lobster.core.extraction_cache import ExtractionCacheManager  # BUG FIX #1: For archive cache management
+from lobster.core.workspace import resolve_workspace
 from lobster.cli_internal.utils.path_resolution import PathResolver  # BUG FIX #6: Secure path resolution
 
 # Import new UI system
@@ -72,6 +75,8 @@ except ImportError:
 
 # Module logger
 logger = logging.getLogger(__name__)
+
+_COMMAND_HISTORY_LOCK = threading.Lock()
 
 
 # ============================================================================
@@ -415,6 +420,7 @@ def _backup_command_to_file(
         history_dir = client.data_manager.workspace_path / ".lobster"
         history_dir.mkdir(parents=True, exist_ok=True)
         history_file = history_dir / "command_history.jsonl"
+        lock_path = history_file.with_suffix(".lock")
 
         from datetime import datetime
 
@@ -427,8 +433,9 @@ def _backup_command_to_file(
             "logged_to_graph": primary_logged,
         }
 
-        with open(history_file, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record) + "\n")
+        with queue_file_lock(_COMMAND_HISTORY_LOCK, lock_path):
+            with open(history_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record) + "\n")
 
         logger.debug(f"✓ Backed up command to file: {command[:50]}")
         return True
@@ -975,11 +982,9 @@ def init_client(
     else:
         setup_logging(logging.WARNING)  # Suppress INFO logs
 
-    # Set workspace
-    if workspace is None:
-        workspace = Path.cwd() / ".lobster_workspace"
-
-    workspace.mkdir(parents=True, exist_ok=True)
+    # Set workspace using centralized resolver
+    # Resolution order: explicit --workspace > LOBSTER_WORKSPACE env var > cwd/.lobster_workspace
+    workspace = resolve_workspace(explicit_path=workspace, create=True)
 
     # Initialize DataManagerV2 with workspace support and console for progress tracking
     from lobster.core.data_manager_v2 import DataManagerV2
@@ -2508,7 +2513,8 @@ def init(
 @app.command()
 def chat(
     workspace: Optional[Path] = typer.Option(
-        None, "--workspace", "-w", help="Workspace directory"
+        None, "--workspace", "-w",
+        help="Workspace directory. Can also be set via LOBSTER_WORKSPACE env var. Default: ./.lobster_workspace"
     ),
     reasoning: Optional[bool] = typer.Option(
         None,
@@ -5841,7 +5847,10 @@ Your feedback matters! Please take 1 minute to share your experience:
 @app.command()
 def query(
     question: str,
-    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w"),
+    workspace: Optional[Path] = typer.Option(
+        None, "--workspace", "-w",
+        help="Workspace directory. Can also be set via LOBSTER_WORKSPACE env var. Default: ./.lobster_workspace"
+    ),
     reasoning: Optional[bool] = typer.Option(
         None,
         "--reasoning",
