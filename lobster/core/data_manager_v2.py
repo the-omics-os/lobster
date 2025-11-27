@@ -37,6 +37,7 @@ from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.provenance import ProvenanceTracker
 from lobster.core.queue_storage import atomic_write_json, queue_file_lock
 from lobster.core.utils.h5ad_utils import validate_for_h5ad
+from lobster.core.workspace import resolve_workspace
 
 # Import for IR support (TYPE_CHECKING to avoid circular import)
 if TYPE_CHECKING:
@@ -136,17 +137,14 @@ class DataManagerV2:
 
         Args:
             default_backend: Default storage backend to use
-            workspace_path: Optional workspace directory for data storage
+            workspace_path: Optional workspace directory for data storage.
+                Resolution order: explicit path > LOBSTER_WORKSPACE env var > cwd/.lobster_workspace
             enable_provenance: Whether to enable provenance tracking
             console: Optional Rich console instance for progress tracking
             auto_scan: Whether to automatically scan workspace for available datasets
         """
         self.default_backend = default_backend
-        self.workspace_path = (
-            Path(workspace_path)
-            if workspace_path
-            else Path.cwd() / ".lobster_workspace"
-        )
+        self.workspace_path = resolve_workspace(explicit_path=workspace_path, create=True)
         self.enable_provenance = enable_provenance
         self.console = console  # Store console for progress tracking in tools
 

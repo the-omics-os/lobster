@@ -9,11 +9,13 @@ import json
 import logging
 import shutil
 import threading
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
 from lobster.core.schemas.download_queue import DownloadQueueEntry, DownloadStatus
+from lobster.core.queue_storage import backups_enabled, atomic_write_jsonl, queue_file_lock
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +64,7 @@ class DownloadQueue:
         # Use shared backup directory in queues folder
         self.backup_dir = self.queue_file.parent / "backups"
         self._lock = threading.Lock()
+        self._file_lock_path = self.queue_file.with_suffix(".lock")
 
         # Create directories if they don't exist
         self.queue_file.parent.mkdir(parents=True, exist_ok=True)
@@ -72,6 +75,11 @@ class DownloadQueue:
             self.queue_file.touch()
 
         logger.debug(f"Initialized DownloadQueue at {self.queue_file}")
+
+    @contextmanager
+    def _locked(self):
+        with queue_file_lock(self._lock, self._file_lock_path):
+            yield
 
     def add_entry(self, entry: DownloadQueueEntry) -> str:
         """
@@ -86,7 +94,7 @@ class DownloadQueue:
         Raises:
             DownloadQueueError: If entry already exists or write fails
         """
-        with self._lock:
+        with self._locked():
             # Check if entry already exists
             existing_entries = self._load_entries()
             if any(e.entry_id == entry.entry_id for e in existing_entries):
@@ -97,12 +105,10 @@ class DownloadQueue:
             # Backup before modification
             self._backup_queue()
 
-            # Append to queue file
+            # Atomic rewrite ensures consistent file state across processes
             try:
-                with open(self.queue_file, "a", encoding="utf-8") as f:
-                    json.dump(entry.to_dict(), f, default=str)
-                    f.write("\n")
-
+                existing_entries.append(entry)
+                self._write_entries_atomic(existing_entries)
                 logger.info(f"Added entry {entry.entry_id} to queue")
                 return entry.entry_id
 
@@ -156,7 +162,7 @@ class DownloadQueue:
             EntryNotFoundError: If entry not found
             DownloadQueueError: If update fails
         """
-        with self._lock:
+        with self._locked():
             # Load all entries
             entries = self._load_entries()
             entry_found = False
@@ -218,7 +224,7 @@ class DownloadQueue:
             EntryNotFoundError: If entry not found
             DownloadQueueError: If removal fails
         """
-        with self._lock:
+        with self._locked():
             entries = self._load_entries()
             original_count = len(entries)
 
@@ -246,7 +252,7 @@ class DownloadQueue:
         Raises:
             DownloadQueueError: If clear operation fails
         """
-        with self._lock:
+        with self._locked():
             entries = self._load_entries()
             entry_count = len(entries)
 
@@ -312,22 +318,9 @@ class DownloadQueue:
         Raises:
             DownloadQueueError: If write fails
         """
-        temp_file = self.queue_file.with_suffix(".tmp")
-
         try:
-            # Write to temp file
-            with open(temp_file, "w", encoding="utf-8") as f:
-                for entry in entries:
-                    json.dump(entry.to_dict(), f, default=str)
-                    f.write("\n")
-
-            # Atomic rename
-            temp_file.replace(self.queue_file)
-
+            atomic_write_jsonl(self.queue_file, entries, lambda e: e.to_dict())
         except Exception as e:
-            # Clean up temp file on error
-            if temp_file.exists():
-                temp_file.unlink()
             logger.error(f"Failed to write queue atomically: {e}")
             raise DownloadQueueError(f"Failed to write queue: {e}") from e
 
@@ -341,6 +334,9 @@ class DownloadQueue:
         Raises:
             DownloadQueueError: If backup fails
         """
+        if not backups_enabled():
+            return None
+
         if not self.queue_file.exists() or self.queue_file.stat().st_size == 0:
             # No need to backup empty file
             return None

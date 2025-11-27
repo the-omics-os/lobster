@@ -9,6 +9,7 @@ import json
 import logging
 import shutil
 import threading
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -18,6 +19,7 @@ from lobster.core.schemas.publication_queue import (
     PublicationStatus,
     HandoffStatus,
 )
+from lobster.core.queue_storage import backups_enabled, atomic_write_jsonl, queue_file_lock
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +68,7 @@ class PublicationQueue:
         # Use shared backup directory in queues folder
         self.backup_dir = self.queue_file.parent / "backups"
         self._lock = threading.Lock()
+        self._file_lock_path = self.queue_file.with_suffix(".lock")
 
         # Create directories if they don't exist
         self.queue_file.parent.mkdir(parents=True, exist_ok=True)
@@ -76,6 +79,11 @@ class PublicationQueue:
             self.queue_file.touch()
 
         logger.debug(f"Initialized PublicationQueue at {self.queue_file}")
+
+    @contextmanager
+    def _locked(self):
+        with queue_file_lock(self._lock, self._file_lock_path):
+            yield
 
     def add_entry(self, entry: PublicationQueueEntry) -> str:
         """
@@ -93,7 +101,7 @@ class PublicationQueue:
         Raises:
             PublicationQueueError: If entry already exists or write fails
         """
-        with self._lock:
+        with self._locked():
             # Check if entry already exists
             existing_entries = self._load_entries()
             if any(e.entry_id == entry.entry_id for e in existing_entries):
@@ -174,7 +182,7 @@ class PublicationQueue:
         if isinstance(status, str):
             status = PublicationStatus(status)
 
-        with self._lock:
+        with self._locked():
             # Load all entries
             entries = self._load_entries()
             entry_found = False
@@ -242,7 +250,7 @@ class PublicationQueue:
             EntryNotFoundError: If entry not found
             PublicationQueueError: If removal fails
         """
-        with self._lock:
+        with self._locked():
             entries = self._load_entries()
             original_count = len(entries)
 
@@ -270,7 +278,7 @@ class PublicationQueue:
         Raises:
             PublicationQueueError: If clear operation fails
         """
-        with self._lock:
+        with self._locked():
             entries = self._load_entries()
             entry_count = len(entries)
 
@@ -360,22 +368,14 @@ class PublicationQueue:
         Raises:
             PublicationQueueError: If write fails
         """
-        temp_file = self.queue_file.with_suffix(".tmp")
+        logger.debug(f"Writing {len(entries)} entries atomically to {self.queue_file}")
 
         try:
-            # Write to temp file
-            with open(temp_file, "w", encoding="utf-8") as f:
-                for entry in entries:
-                    json.dump(entry.to_dict(), f, default=str)
-                    f.write("\n")
-
-            # Atomic rename
-            temp_file.replace(self.queue_file)
+            atomic_write_jsonl(self.queue_file, entries, lambda e: e.to_dict())
+            file_size = self.queue_file.stat().st_size
+            logger.debug(f"Successfully wrote {len(entries)} entries ({file_size} bytes)")
 
         except Exception as e:
-            # Clean up temp file on error
-            if temp_file.exists():
-                temp_file.unlink()
             logger.error(f"Failed to write publication queue atomically: {e}")
             raise PublicationQueueError(f"Failed to write queue: {e}") from e
 
@@ -383,12 +383,19 @@ class PublicationQueue:
         """
         Create timestamped backup of queue file.
 
+        NOTE: Backups disabled for performance. The atomic write pattern
+        (temp file + rename) provides sufficient protection against corruption.
+        Re-enable by removing the early return below.
+
         Returns:
-            Path: Path to backup file (or None if backup skipped)
+            Path: Path to backup file (or None if backup skipped/disabled)
 
         Raises:
             PublicationQueueError: If backup fails (non-fatal, logged as warning)
         """
+        if not backups_enabled():
+            return None
+
         if not self.queue_file.exists() or self.queue_file.stat().st_size == 0:
             # No need to backup empty file
             return None
