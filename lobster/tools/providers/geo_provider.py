@@ -837,6 +837,9 @@ class GEOProvider(BasePublicationProvider):
                         ".sam",
                         ".sra",
                         ".srf",
+                        ".tar",  # Added: RAW.tar files common in GEO
+                        ".tar.gz",  # Added: compressed tar archives
+                        ".tgz",  # Added: alternative tar.gz extension
                     ]
                 ):
                     raw_urls.append(file_url)
