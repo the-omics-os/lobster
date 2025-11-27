@@ -5,10 +5,25 @@ This module provides production-grade distributed rate limiting with graceful
 degradation for NCBI E-utilities API calls. It ensures compliance with NCBI
 rate limits (3 req/s without key, 10 req/s with key) across multiple users
 and processes.
+
+Architecture:
+    Uses a shared ConnectionPool (thread-safe, auto-recovers stale connections)
+    that works correctly across all usage scenarios:
+    - Interactive sessions (single/multiple)
+    - Non-interactive CLI invocations (single/multiple instances)
+    - Programmatic usage (import lobster)
+
+    The pool is lazily initialized on first use with double-checked locking
+    for thread safety. Each process gets its own pool; cross-process
+    coordination is handled by Redis itself.
+
+    See: lobster/wiki/48-redis-rate-limiter-architecture.md for details.
 """
 
 import os
+import threading
 import time
+from enum import Enum
 from functools import wraps
 from typing import Optional
 
@@ -19,39 +34,51 @@ from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Global flag to ensure we only warn about Redis unavailability once
+# =============================================================================
+# CONNECTION POOL MANAGEMENT (Thread-safe, Process-local)
+# =============================================================================
+# Each process maintains its own connection pool. Cross-process rate limiting
+# is coordinated by Redis itself (shared keys with TTL).
+
+_REDIS_POOL: Optional[redis.ConnectionPool] = None
+_POOL_LOCK = threading.Lock()
+_POOL_INITIALIZED = False
 _REDIS_WARNING_SHOWN = False
 
 
-def get_redis_client() -> Optional[redis.Redis]:
+def _create_connection_pool() -> Optional[redis.ConnectionPool]:
     """
-    Get Redis client with health check and graceful degradation.
+    Create Redis connection pool with health check.
 
-    Returns None if Redis is unavailable - allows system to continue
-    operating (with warning) rather than failing completely.
+    The pool manages multiple connections efficiently:
+    - Thread-safe by design
+    - health_check_interval validates connections before use
+    - Automatic reconnection on stale connections
 
     Returns:
-        Redis client if available, None otherwise
+        ConnectionPool if Redis is available, None otherwise
     """
     global _REDIS_WARNING_SHOWN
 
     try:
-        client = redis.Redis(
+        pool = redis.ConnectionPool(
             host=os.getenv("REDIS_HOST", "localhost"),
             port=int(os.getenv("REDIS_PORT", "6379")),
             db=0,
             decode_responses=True,
             socket_connect_timeout=5,
             socket_timeout=5,
+            max_connections=10,
+            health_check_interval=30,  # Validate connections every 30s
         )
 
-        # Health check
-        client.ping()
-        logger.info("✓ Redis connection established for rate limiting")
-        return client
+        # Verify connectivity with a test client
+        test_client = redis.Redis(connection_pool=pool)
+        test_client.ping()
+        logger.info("✓ Redis connection pool established for rate limiting")
+        return pool
 
-    except ConnectionError as e:
-        # Only show warning once during application startup
+    except ConnectionError:
         if not _REDIS_WARNING_SHOWN:
             logger.warning(
                 "⚠️  Redis unavailable - rate limiting disabled. "
@@ -61,9 +88,63 @@ def get_redis_client() -> Optional[redis.Redis]:
         return None
     except Exception as e:
         if not _REDIS_WARNING_SHOWN:
-            logger.error(f"Unexpected error connecting to Redis: {e}")
+            logger.error(f"Unexpected error creating Redis pool: {e}")
             _REDIS_WARNING_SHOWN = True
         return None
+
+
+def get_redis_client() -> Optional[redis.Redis]:
+    """
+    Get Redis client from shared connection pool.
+
+    Thread-safe with double-checked locking. The pool handles stale
+    connection recovery automatically via health_check_interval.
+
+    Works correctly in all scenarios:
+    - lobster chat (interactive, single/multiple sessions)
+    - lobster query (non-interactive, single/multiple instances)
+    - import lobster (programmatic usage)
+
+    Returns:
+        Redis client backed by shared pool, or None if unavailable
+    """
+    global _REDIS_POOL, _POOL_INITIALIZED
+
+    # Double-checked locking for thread safety
+    if not _POOL_INITIALIZED:
+        with _POOL_LOCK:
+            if not _POOL_INITIALIZED:
+                _REDIS_POOL = _create_connection_pool()
+                _POOL_INITIALIZED = True
+
+    if _REDIS_POOL is None:
+        return None
+
+    # Return new client backed by shared pool (fast, no new TCP connection)
+    return redis.Redis(connection_pool=_REDIS_POOL)
+
+
+def reset_redis_pool() -> None:
+    """
+    Reset connection pool. For testing only - NOT for production use.
+
+    Call this in test fixtures to ensure clean state between tests:
+
+        def test_something():
+            reset_redis_pool()  # Clean state
+            # ... test code ...
+            reset_redis_pool()  # Cleanup
+    """
+    global _REDIS_POOL, _POOL_INITIALIZED, _REDIS_WARNING_SHOWN
+    with _POOL_LOCK:
+        if _REDIS_POOL is not None:
+            try:
+                _REDIS_POOL.disconnect()
+            except Exception:
+                pass  # Best effort cleanup
+        _REDIS_POOL = None
+        _POOL_INITIALIZED = False
+        _REDIS_WARNING_SHOWN = False
 
 
 class NCBIRateLimiter:
@@ -550,3 +631,149 @@ def rate_limited_request(
 
     if last_error:
         raise last_error
+
+
+# =============================================================================
+# BROWSER HEADER SPOOFING (v2.1)
+# =============================================================================
+
+class HeaderStrategy(str, Enum):
+    """Header strategies for different publisher types."""
+    POLITE = "polite"        # Standard headers, identify as bot
+    BROWSER = "browser"      # Full browser headers, Chrome UA
+    STEALTH = "stealth"      # Browser + Sec-Fetch-* headers
+    DEFAULT = "default"      # Minimal headers (requests default)
+
+
+# Chrome on macOS User-Agent
+CHROME_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/120.0.0.0 Safari/537.36"
+)
+
+# Standard browser Accept headers
+BROWSER_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+}
+
+# Stealth headers (browser + Sec-Fetch-*)
+STEALTH_HEADERS = {
+    **BROWSER_HEADERS,
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+}
+
+# Domain-specific header strategies
+DOMAIN_HEADER_STRATEGIES: Dict[str, HeaderStrategy] = {
+    # Aggressive bot detection
+    "cell.com": HeaderStrategy.STEALTH,
+    "sciencedirect.com": HeaderStrategy.STEALTH,
+    "wiley.com": HeaderStrategy.STEALTH,
+    "onlinelibrary.wiley.com": HeaderStrategy.STEALTH,
+    "elsevier.com": HeaderStrategy.STEALTH,
+
+    # Moderate protection
+    "nature.com": HeaderStrategy.BROWSER,
+    "springer.com": HeaderStrategy.BROWSER,
+    "link.springer.com": HeaderStrategy.BROWSER,
+    "tandfonline.com": HeaderStrategy.BROWSER,
+
+    # Open access / friendly
+    "frontiersin.org": HeaderStrategy.POLITE,
+    "mdpi.com": HeaderStrategy.POLITE,
+    "plos.org": HeaderStrategy.POLITE,
+    "journals.plos.org": HeaderStrategy.POLITE,
+    "peerj.com": HeaderStrategy.POLITE,
+    "biorxiv.org": HeaderStrategy.POLITE,
+    "medrxiv.org": HeaderStrategy.POLITE,
+    "europepmc.org": HeaderStrategy.POLITE,
+
+    # NCBI (respect API key)
+    "eutils.ncbi.nlm.nih.gov": HeaderStrategy.DEFAULT,
+    "www.ncbi.nlm.nih.gov": HeaderStrategy.DEFAULT,
+    "pmc.ncbi.nlm.nih.gov": HeaderStrategy.DEFAULT,
+
+    # Fallback
+    "default": HeaderStrategy.BROWSER,
+}
+
+
+@dataclass
+class DomainRequestConfig:
+    """Complete request configuration for a domain."""
+    domain: str
+    rate_limit: float
+    header_strategy: HeaderStrategy
+    headers: Dict[str, str]
+    user_agent: Optional[str] = None
+
+
+class DomainHeaderProvider:
+    """
+    Provides domain-specific HTTP headers for publisher access.
+
+    Integrates with MultiDomainRateLimiter to provide unified domain
+    configuration (rate limits + headers).
+
+    Example:
+        >>> provider = DomainHeaderProvider()
+        >>> config = provider.get_request_config("https://www.cell.com/...")
+        >>> print(config.header_strategy)  # HeaderStrategy.STEALTH
+        >>> requests.get(url, headers=config.headers)
+    """
+
+    def __init__(self):
+        self.header_strategies = DOMAIN_HEADER_STRATEGIES.copy()
+        self._rate_limiter = None
+
+    @property
+    def rate_limiter(self) -> MultiDomainRateLimiter:
+        """Lazy initialization of rate limiter."""
+        if self._rate_limiter is None:
+            self._rate_limiter = MultiDomainRateLimiter()
+        return self._rate_limiter
+
+    def get_header_strategy(self, url: str) -> HeaderStrategy:
+        """Get header strategy for a URL."""
+        domain = self.rate_limiter.detect_domain(url)
+        return self.header_strategies.get(domain, HeaderStrategy.BROWSER)
+
+    def get_headers(self, url: str) -> Dict[str, str]:
+        """Get headers for a URL based on its domain."""
+        strategy = self.get_header_strategy(url)
+
+        if strategy == HeaderStrategy.STEALTH:
+            return {**STEALTH_HEADERS, "User-Agent": CHROME_USER_AGENT}
+        elif strategy == HeaderStrategy.BROWSER:
+            return {**BROWSER_HEADERS, "User-Agent": CHROME_USER_AGENT}
+        elif strategy == HeaderStrategy.POLITE:
+            return {
+                "User-Agent": "LobsterAI/1.0 (Bioinformatics Research; +https://github.com/the-omics-os/lobster)",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            }
+        else:  # DEFAULT
+            return {}
+
+    def get_request_config(self, url: str) -> DomainRequestConfig:
+        """Get complete request configuration for a URL."""
+        domain = self.rate_limiter.detect_domain(url)
+        strategy = self.get_header_strategy(url)
+        headers = self.get_headers(url)
+        rate_limit = self.rate_limiter.get_rate_limit(domain)
+
+        return DomainRequestConfig(
+            domain=domain,
+            rate_limit=rate_limit,
+            header_strategy=strategy,
+            headers=headers,
+            user_agent=headers.get("User-Agent"),
+        )

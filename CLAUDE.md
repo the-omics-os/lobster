@@ -290,6 +290,7 @@ lobster/
 | Provenance | `core/provenance.py` | W3C‑PROV tracking |
 | Queue | `core/download_queue.py` | download orchestration |
 | Concurrency | `core/queue_storage.py` | multi-process safe file locking & atomic writes |
+| Rate Limiting | `tools/rate_limiter.py` | Redis connection pool for NCBI API rate limiting |
 | Export | `core/notebook_exporter.py` | Jupyter pipeline export |
 | Services | `services/*/*.py` | stateless analysis (organized by function) |
 | Services | `services/data_management/modality_management_service.py` | Modality CRUD with provenance (5 methods) |
@@ -450,6 +451,13 @@ Checklist for new services:
   - `atomic_write_jsonl(path, entries, serializer)` – same for JSONL files
   - **Protected files**: download_queue.jsonl, publication_queue.jsonl, .session.json, cache_metadata.json
   - **Rule**: Future features persisting shared state should use these utilities
+- **Redis rate limiting pattern** (`tools/rate_limiter.py`): thread-safe connection pool for NCBI API rate limiting
+  - Uses `redis.ConnectionPool` with `health_check_interval=30` for auto-recovery from stale connections
+  - Double-checked locking for thread-safe lazy initialization
+  - Works across all usage scenarios: interactive (`lobster chat`), non-interactive (`lobster query`), programmatic
+  - Each process gets its own pool; cross-process coordination is handled by Redis keys with TTL
+  - `reset_redis_pool()` for test isolation
+  - **Rule**: When creating providers that use rate limiting, reuse provider instances via lazy properties (see `PublicationProcessingService.pubmed_provider`)
 - **Error hierarchy** – prefer specific exceptions:
   - `ModalityNotFoundError` – missing dataset in `DataManagerV2`  
   - `ServiceError` – analysis failures  

@@ -29,6 +29,22 @@ class PublicationProcessingService:
         self.content_service = ContentAccessService(data_manager=data_manager)
         self.workspace_service = WorkspaceContentService(data_manager=data_manager)
         self.sra_provider = SRAProvider(data_manager=data_manager)
+        # Lazy-initialized to avoid creating new provider (and Redis connection) per entry
+        self._pubmed_provider = None
+
+    @property
+    def pubmed_provider(self):
+        """
+        Lazy-initialized PubMedProvider singleton for this service.
+
+        Avoids creating a new provider (and triggering Redis connection pool
+        initialization) for every entry processed. The provider is created
+        once and reused for the lifetime of the service.
+        """
+        if self._pubmed_provider is None:
+            from lobster.tools.providers.pubmed_provider import PubMedProvider
+            self._pubmed_provider = PubMedProvider(data_manager=self.data_manager)
+        return self._pubmed_provider
 
     def _get_best_source_for_extraction(self, entry: PublicationQueueEntry) -> Optional[str]:
         """
@@ -299,10 +315,8 @@ class PublicationProcessingService:
         logger.info(f"Enriching publication from NCBI E-Link: PMID {pmid}")
 
         try:
-            # Lazy import to avoid circular dependencies
-            from lobster.tools.providers.pubmed_provider import PubMedProvider
-
-            provider = PubMedProvider(data_manager=self.data_manager)
+            # Use lazy-initialized provider to avoid repeated Redis pool initialization
+            provider = self.pubmed_provider
 
             # Get linked datasets via E-Link
             linked_datasets = provider._find_linked_datasets(pmid)
@@ -378,11 +392,13 @@ class PublicationProcessingService:
 
             tasks = [task.strip().lower() for task in extraction_tasks.split(",")]
 
-            data_manager.publication_queue.update_status(
-                entry_id=entry_id,
-                status=PublicationStatus.EXTRACTING,
-                processed_by="research_agent",
-            )
+            # FIX: Removed intermediate update_status call to prevent O(n²) file rewrites
+            # All updates are now collected in-memory and written once at the end
+
+            # In-memory collection for all extracted identifiers (merged at end)
+            all_extracted_identifiers = {}
+            is_paywalled = False
+            paywall_error = None
 
             response_parts = [
                 f"## Processing Publication: {entry.title or entry.entry_id}",
@@ -468,13 +484,14 @@ class PublicationProcessingService:
                                 "biosample": linked.get("BioSample", []),
                             }
 
-                            # Update queue entry with NCBI-linked identifiers
-                            data_manager.publication_queue.update_status(
-                                entry_id=entry_id,
-                                status=PublicationStatus.EXTRACTING,
-                                extracted_identifiers=ncbi_identifiers,
-                                processed_by="research_agent",
-                            )
+                            # FIX: Collect in-memory instead of writing to disk
+                            # Will be merged and written once at the end
+                            for key, values in ncbi_identifiers.items():
+                                if values:
+                                    if key in all_extracted_identifiers:
+                                        all_extracted_identifiers[key].extend(values)
+                                    else:
+                                        all_extracted_identifiers[key] = list(values)
                             extracted_data["ncbi_enrichment"] = ncbi_identifiers
                         else:
                             response_parts.append("  - No linked datasets found in NCBI")
@@ -587,13 +604,9 @@ class PublicationProcessingService:
                         if content_result and content_result.get("error"):
                             error_msg = content_result.get("error", "")
                             if "paywalled" in error_msg.lower():
-                                # Mark as paywalled for manual input later
-                                data_manager.publication_queue.update_status(
-                                    entry_id=entry_id,
-                                    status=PublicationStatus.PAYWALLED,
-                                    error=error_msg,
-                                    processed_by="research_agent",
-                                )
+                                # FIX: Track paywall status in-memory, write at end
+                                is_paywalled = True
+                                paywall_error = error_msg
                                 response_parts.append(f"⚠ Publication is paywalled: {error_msg}")
                                 response_parts.append("User can manually add content later.")
                                 # Continue with partial extraction
@@ -659,23 +672,68 @@ class PublicationProcessingService:
 
                         import re
 
+                        # Expanded identifier patterns based on manual inspection
+                        # Categories:
+                        # 1. NCBI databases (GEO, SRA, BioProject, BioSample)
+                        # 2. European databases (ENA/EBI, ArrayExpress, EGA)
+                        # 3. Japanese database (DDBJ)
+                        # 4. Chinese database (CNGB/NGDC)
+                        # 5. Controlled access (dbGaP)
+                        # 6. General repositories (Zenodo, Figshare)
                         identifiers_found = {
-                            "geo": re.findall(r"GSE\d+", full_content),
-                            "sra": re.findall(r"SRP\d+|SRX\d+|SRR\d+", full_content),
-                            "bioproject": re.findall(r"PRJNA\d+", full_content),
-                            "biosample": re.findall(r"SAMN\d+", full_content),
-                            "ena": re.findall(r"E-[A-Z]+-\d+", full_content),
+                            # GEO: Gene Expression Omnibus (NCBI)
+                            "geo": re.findall(r"GSE\d{4,}|GDS\d{4,}", full_content),
+                            # SRA: Sequence Read Archive (NCBI + ENA + DDBJ)
+                            # S=NCBI SRA, E=ENA, D=DDBJ
+                            "sra": re.findall(
+                                r"[SED]RP\d{6,}|[SED]RX\d{6,}|[SED]RR\d{6,}",
+                                full_content,
+                            ),
+                            # BioProject: NCBI, EBI, DDBJ, CNGB
+                            # PRJNA=NCBI, PRJEB=EBI, PRJDA/PRJDB=DDBJ, PRJCA=CNGB
+                            "bioproject": re.findall(
+                                r"PRJ[A-Z]{2}\d+", full_content
+                            ),
+                            # BioSample: NCBI (SAMN), EBI (SAME), DDBJ (SAMD)
+                            "biosample": re.findall(r"SAM[A-Z]+\d+", full_content),
+                            # ArrayExpress (EBI) - microarray/RNA-seq
+                            "arrayexpress": re.findall(
+                                r"E-[A-Z]+-\d+", full_content
+                            ),
+                            # CNGB/NGDC: Chinese National GeneBank Database
+                            # CRA=raw reads, CNP=project, CRX=experiment, CRR=run
+                            "cngb": re.findall(
+                                r"CRA\d{6,}|CNP\d{7,}|CRX\d{6,}|CRR\d{6,}",
+                                full_content,
+                            ),
+                            # EGA: European Genome-phenome Archive (controlled access)
+                            "ega": re.findall(r"EGAS\d{11}", full_content),
+                            # dbGaP: Database of Genotypes and Phenotypes (controlled)
+                            "dbgap": re.findall(r"phs\d{6}", full_content, re.I),
+                            # Zenodo: General-purpose repository
+                            "zenodo": re.findall(
+                                r"10\.5281/zenodo\.\d+", full_content
+                            ),
+                            # Figshare: General-purpose repository
+                            "figshare": re.findall(
+                                r"10\.6084/m9\.figshare\.\d+", full_content
+                            ),
                         }
 
                         for key in identifiers_found:
                             identifiers_found[key] = list(set(identifiers_found[key]))
 
-                        data_manager.publication_queue.update_status(
-                            entry_id=entry_id,
-                            status=PublicationStatus.METADATA_EXTRACTED,
-                            extracted_identifiers=identifiers_found,
-                            processed_by="research_agent",
-                        )
+                        # FIX: Collect identifiers in-memory, merge with NCBI identifiers
+                        # Will be written once at the end
+                        for key, values in identifiers_found.items():
+                            if values:
+                                if key in all_extracted_identifiers:
+                                    # Merge and deduplicate
+                                    all_extracted_identifiers[key] = list(
+                                        set(all_extracted_identifiers[key] + values)
+                                    )
+                                else:
+                                    all_extracted_identifiers[key] = list(values)
 
                         extracted_data["identifiers"] = identifiers_found
 
@@ -767,16 +825,23 @@ class PublicationProcessingService:
                     f"⚠ Warning: Workspace persistence failed: {str(e)}"
                 )
 
-            final_status = (
-                PublicationStatus.COMPLETED.value
-                if extracted_data
-                else PublicationStatus.FAILED.value
-            )
+            # FIX: Determine final status including paywall check
+            if is_paywalled:
+                final_status = PublicationStatus.PAYWALLED.value
+            elif extracted_data:
+                final_status = PublicationStatus.COMPLETED.value
+            else:
+                final_status = PublicationStatus.FAILED.value
+
+            # FIX: SINGLE update_status call with ALL collected data
+            # This replaces 4 intermediate calls that caused O(n²) file rewrites
             data_manager.publication_queue.update_status(
                 entry_id=entry_id,
                 status=final_status,
                 processed_by="research_agent",
-                workspace_metadata_keys=workspace_keys,
+                workspace_metadata_keys=workspace_keys if workspace_keys else None,
+                extracted_identifiers=all_extracted_identifiers if all_extracted_identifiers else None,
+                error=paywall_error,
             )
 
             data_manager.log_tool_usage(
