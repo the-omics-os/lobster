@@ -653,6 +653,52 @@ Expected output:
 ✅ API Keys: Configured
 ```
 
+### Workspace Location
+
+Lobster stores downloaded datasets, analysis results, plots, and exports in a **workspace directory**. By default, this is `.lobster_workspace/` in your current working directory.
+
+**Default behavior:**
+```bash
+# Running lobster creates workspace in current directory
+cd /path/to/my/project
+lobster chat
+# Creates: /path/to/my/project/.lobster_workspace/
+```
+
+**Override options:**
+
+1. **CLI flag** (highest priority):
+```bash
+lobster chat --workspace /custom/path/to/workspace
+lobster query "analyze my data" --workspace ~/my_lobster_workspace
+```
+
+2. **Environment variable**:
+```bash
+# Add to ~/.bashrc or ~/.zshrc for persistence
+export LOBSTER_WORKSPACE=/path/to/shared/workspace
+
+# Or set per-session
+LOBSTER_WORKSPACE=/tmp/test_workspace lobster chat
+```
+
+**Resolution order**: CLI `--workspace` flag > `LOBSTER_WORKSPACE` env var > current directory default
+
+**Workspace structure:**
+```
+.lobster_workspace/
+├── data/           # Downloaded and processed datasets (.h5ad files)
+├── exports/        # Exported notebooks and reports
+├── plots/          # Generated visualizations
+├── cache/          # Temporary cache files
+└── .session.json   # Session state
+```
+
+**Best practices:**
+- Use the same workspace directory across related analyses for data sharing
+- Set `LOBSTER_WORKSPACE` for team environments or CI/CD pipelines
+- Keep workspaces in version-controlled project directories for reproducibility
+
 ### Verify API Connectivity
 
 ```bash

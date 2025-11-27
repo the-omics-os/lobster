@@ -89,6 +89,9 @@ README.md
 # Microbiome harmonization (premium feature - DataBioMix)
 !47-microbiome-harmonization-workflow.md
 
+# Custom Feature Agent (premium feature - AI-powered generation)
+!49-custom-feature-agent-automated-generation.md
+
 # Internal documentation
 !CLAUDE.md
 !WIKI_HEALTH_DASHBOARD.md

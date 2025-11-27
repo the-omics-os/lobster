@@ -164,9 +164,9 @@ graph TD
 
 **Layer Details**:
 - **Layer 1** (research_agent): Fetch basic GEO metadata via GEOProvider
-- **Layer 2** (research_agent): Extract download URLs via `GEOProvider.get_download_urls()`
-- **Layer 3** (research_agent): Create `DownloadQueueEntry` with metadata + URLs
-- **Layer 4** (data_expert): Execute download using queue entry
+- **Layer 2** (research_agent): Extract download URLs via `GEOProvider.get_download_urls()` and strategy config via DataExpertAssistant
+- **Layer 3** (research_agent): Create `DownloadQueueEntry` with metadata + URLs + persisted strategy_config (v0.3.2.4)
+- **Layer 4** (data_expert): Execute download using queue entry with strategy-aware processing
 
 ### Download Queue Workflow
 
@@ -307,7 +307,7 @@ Stateless analysis services provide the computational backbone:
 - **ProteomicsDifferentialService** - Linear models, FDR control
 
 #### Supporting Services
-- **GEOService** - Dataset downloading and metadata extraction
+- **GEOService** - Dataset downloading with metadata-based adapter selection. Refactored (Nov 2024) into modular `services/data_access/geo/` package with separate downloader, parser, strategy, and constants modules. ([v0.3.2.4 improvements](./40-geo-download-improvements-2024-11.md))
 - **ContentAccessService** - Unified literature access with 5 providers (Phase 2 complete)
 - **VisualizationService** - Interactive plot generation
 - **ConcatenationService** - Memory-efficient sample merging

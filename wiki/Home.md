@@ -28,6 +28,7 @@ Extend and contribute to Lobster AI
 - [**10 - Creating Services**](10-creating-services) - Implement analysis services
 - [**11 - Creating Adapters**](11-creating-adapters) - Add support for new data formats
 - [**12 - Testing Guide**](12-testing-guide) - Writing and running tests
+- [**49 - Custom Feature Agent**](49-custom-feature-agent-automated-generation) 🆕 - AI-powered automated feature generation with Claude Code SDK ✨
 
 ### 📖 **API Reference**
 Complete API documentation
