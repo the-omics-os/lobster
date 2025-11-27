@@ -27,6 +27,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import anndata
 import numpy as np
 import pandas as pd
+import scanpy as sc
 
 try:
     import GEOparse
@@ -44,10 +45,22 @@ from lobster.core.exceptions import (
 # Import bulk RNA-seq and adapter support for quantification files
 from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
 
-# Import helper modules for fallback functionality
-from lobster.tools.geo_downloader import GEODownloadManager
-from lobster.tools.geo_parser import GEOParser
-from lobster.tools.pipeline_strategy import (
+# Import helper modules for fallback functionality (from refactored geo/ package)
+from lobster.services.data_access.geo.constants import (
+    DownloadStrategy,
+    GEODataSource,
+    GEODataType,
+    GEOFallbackError,
+    GEOResult,
+    GEOServiceError,
+    PLATFORM_REGISTRY,
+    PlatformCompatibility,
+    SUPPORTED_KEYWORDS,
+    UNSUPPORTED_KEYWORDS,
+)
+from lobster.services.data_access.geo.downloader import GEODownloadManager
+from lobster.services.data_access.geo.parser import GEOParser
+from lobster.services.data_access.geo.strategy import (
     PipelineStrategyEngine,
     PipelineType,
     create_pipeline_context,
@@ -62,162 +75,6 @@ logger = get_logger(__name__)
 # only appear when explicitly debugging
 geoparse_logger = logging.getLogger("GEOparse")
 geoparse_logger.setLevel(logging.WARNING)
-
-
-# ████████████████████████████████████████████████████████████████████████████████
-# ██                                                                            ██
-# ██                        DATA STRUCTURES AND ENUMS                          ██
-# ██                                                                            ██
-# ████████████████████████████████████████████████████████████████████████████████
-
-
-class GEODataSource(Enum):
-    """Enumeration of data source types for GEO downloads."""
-
-    GEOPARSE = "geoparse"
-    SOFT_FILE = "soft_file"
-    SUPPLEMENTARY = "supplementary"
-    TAR_ARCHIVE = "tar_archive"
-    SAMPLE_MATRICES = "sample_matrices"
-
-
-class GEODataType(Enum):
-    """Enumeration of data types for GEO datasets."""
-
-    SINGLE_CELL = "single_cell"
-    BULK = "bulk"
-    MIXED = "mixed"
-
-
-@dataclass
-class DownloadStrategy:
-    """Configuration for GEO download preferences and fallback options."""
-
-    prefer_geoparse: bool = True
-    allow_fallback: bool = True
-    max_retries: int = 3
-    timeout_seconds: int = 300
-    prefer_supplementary: bool = False
-    force_tar_extraction: bool = False
-
-
-@dataclass
-class GEOResult:
-    """Result wrapper containing data, metadata, and processing information."""
-
-    data: Optional[pd.DataFrame] = None
-    metadata: Dict[str, Any] = None
-    source: GEODataSource = GEODataSource.GEOPARSE
-    processing_info: Dict[str, Any] = None
-    success: bool = False
-    error_message: Optional[str] = None
-
-
-class GEOServiceError(Exception):
-    """Custom exception for GEO service errors."""
-
-    pass
-
-
-class GEOFallbackError(Exception):
-    """Custom exception for fallback mechanism failures."""
-
-    pass
-
-
-class PlatformCompatibility(Enum):
-    """Platform support status for early validation."""
-
-    SUPPORTED = "supported"  # RNA-seq, fully supported
-    UNSUPPORTED = "unsupported"  # Microarrays, clear rejection
-    EXPERIMENTAL = "experimental"  # Partial support, warning only
-    UNKNOWN = "unknown"  # Not in registry, conservative approach
-
-
-# Comprehensive Platform Registry for Early Validation
-# This registry enables rejecting unsupported platforms BEFORE downloading files
-PLATFORM_REGISTRY: Dict[str, PlatformCompatibility] = {
-    # === SUPPORTED RNA-SEQ PLATFORMS ===
-    # Illumina RNA-seq platforms
-    "GPL16791": PlatformCompatibility.SUPPORTED,  # Illumina HiSeq 2500
-    "GPL18573": PlatformCompatibility.SUPPORTED,  # Illumina NextSeq 500
-    "GPL20301": PlatformCompatibility.SUPPORTED,  # Illumina HiSeq 4000
-    "GPL21290": PlatformCompatibility.SUPPORTED,  # Illumina HiSeq 3000
-    "GPL24676": PlatformCompatibility.SUPPORTED,  # Illumina NovaSeq 6000
-    "GPL13112": PlatformCompatibility.SUPPORTED,  # Illumina HiSeq 2000 (mouse)
-    "GPL11154": PlatformCompatibility.SUPPORTED,  # Illumina HiSeq 2000 (humanb)
-    "GPL10999": PlatformCompatibility.SUPPORTED,  # Illumina Genome Analyzer IIx
-    "GPL9115": PlatformCompatibility.SUPPORTED,  # Illumina Genome Analyzer II
-    "GPL9052": PlatformCompatibility.SUPPORTED,  # Illumina Genome Analyzer
-    # Single-cell platforms
-    "GPL24247": PlatformCompatibility.SUPPORTED,  # 10X Chromium (NovaSeq)
-    "GPL26966": PlatformCompatibility.SUPPORTED,  # 10X Chromium (HiSeq X)
-    "GPL21103": PlatformCompatibility.SUPPORTED,  # Illumina HiSeq 2500 (single-cell)
-    "GPL19057": PlatformCompatibility.SUPPORTED,  # Illumina NextSeq 500 (single-cell)
-    # === UNSUPPORTED MICROARRAY PLATFORMS ===
-    # Affymetrix arrays
-    "GPL570": PlatformCompatibility.UNSUPPORTED,  # Affymetrix U133 Plus 2.0
-    "GPL96": PlatformCompatibility.UNSUPPORTED,  # Affymetrix U133A
-    "GPL97": PlatformCompatibility.UNSUPPORTED,  # Affymetrix U133B
-    "GPL571": PlatformCompatibility.UNSUPPORTED,  # Affymetrix U133 A 2.0
-    "GPL1352": PlatformCompatibility.UNSUPPORTED,  # Affymetrix U133 A2
-    "GPL6244": PlatformCompatibility.UNSUPPORTED,  # Affymetrix Gene 1.0 ST
-    "GPL6246": PlatformCompatibility.UNSUPPORTED,  # Affymetrix Mouse Gene 1.0 ST
-    "GPL6247": PlatformCompatibility.UNSUPPORTED,  # Affymetrix Rat Gene 1.0 ST
-    "GPL91": PlatformCompatibility.UNSUPPORTED,  # Affymetrix Mu11KsubA
-    "GPL92": PlatformCompatibility.UNSUPPORTED,  # Affymetrix Mu11KsubB
-    "GPL339": PlatformCompatibility.UNSUPPORTED,  # Affymetrix MOE430A
-    "GPL340": PlatformCompatibility.UNSUPPORTED,  # Affymetrix MOE430B
-    "GPL8321": PlatformCompatibility.UNSUPPORTED,  # Affymetrix Mouse Genome 430A 2.0
-    "GPL1261": PlatformCompatibility.UNSUPPORTED,  # Affymetrix Mouse Genome 430 2.0
-    # Illumina BeadArray (microarray, NOT RNA-seq)
-    "GPL10558": PlatformCompatibility.UNSUPPORTED,  # Illumina HumanHT-12 V4.0
-    "GPL6947": PlatformCompatibility.UNSUPPORTED,  # Illumina HumanHT-12 V3.0
-    "GPL6883": PlatformCompatibility.UNSUPPORTED,  # Illumina HumanRef-8 V3.0
-    "GPL6887": PlatformCompatibility.UNSUPPORTED,  # Illumina MouseRef-8 V2.0
-    "GPL6885": PlatformCompatibility.UNSUPPORTED,  # Illumina MouseRef-8 V1.1
-    "GPL6102": PlatformCompatibility.UNSUPPORTED,  # Illumina human-6 V2.0
-    "GPL6104": PlatformCompatibility.UNSUPPORTED,  # Illumina mouse Ref-8 V2.0
-    # Agilent microarrays
-    "GPL6480": PlatformCompatibility.UNSUPPORTED,  # Agilent-014850
-    "GPL13497": PlatformCompatibility.UNSUPPORTED,  # Agilent-026652
-    "GPL17077": PlatformCompatibility.UNSUPPORTED,  # Agilent-039494
-    "GPL4133": PlatformCompatibility.UNSUPPORTED,  # Agilent-014850 Whole Human Genome
-    "GPL1708": PlatformCompatibility.UNSUPPORTED,  # Agilent-012391 Whole Human Genome
-    "GPL7202": PlatformCompatibility.UNSUPPORTED,  # Agilent-014868 Whole Mouse Genome
-    # Other microarray platforms
-    "GPL341": PlatformCompatibility.UNSUPPORTED,  # Affymetrix RG_U34A
-    "GPL85": PlatformCompatibility.UNSUPPORTED,  # Affymetrix RG_U34B
-    "GPL1355": PlatformCompatibility.UNSUPPORTED,  # Affymetrix Rat Genome 230 2.0
-}
-
-# Keyword patterns for unknown platform detection
-UNSUPPORTED_KEYWORDS = [
-    "affymetrix",
-    "agilent",
-    "beadarray",
-    "beadchip",
-    "genechip",
-    "microarray",
-    "array",
-    "snp chip",
-    "exon array",
-    "gene chip",
-]
-
-SUPPORTED_KEYWORDS = [
-    "rna-seq",
-    "rnaseq",
-    "rna seq",
-    "illumina hiseq",
-    "illumina nextseq",
-    "illumina novaseq",
-    "10x",
-    "chromium",
-    "single cell",
-    "single-cell",
-    "sequencing",
-]
 
 
 # ████████████████████████████████████████████████████████████████████████████████
@@ -1216,19 +1073,78 @@ class GEOService:
 
             # if no adapter name is given find out from data downloading step
             if not adapter:
-                if enhanced_metadata.get("data_type") == "single_cell_rna_seq":
-                    adapter_name = "transcriptomics_single_cell"
-                elif enhanced_metadata.get("data_type") == "bulk_rna_seq":
-                    adapter_name = "transcriptomics_bulk"
-                else:
-                    # Default to single-cell for GEO datasets (more common)
-                    adapter_name = "transcriptomics_single_cell"
+                # FIXED Bug #3: Use metadata-based modality detection for TAR archives
+                try:
+                    from lobster.agents.data_expert_assistant import DataExpertAssistant
+                    assistant = DataExpertAssistant()
+
+                    # Get metadata for detection
+                    # First try metadata from the GEO result, then fallback to cached metadata
+                    metadata_for_detection = geo_result.metadata if geo_result.metadata else {}
+                    if not metadata_for_detection and clean_geo_id in self.data_manager.metadata_store:
+                        metadata_for_detection = self.data_manager.metadata_store[clean_geo_id].get("metadata", {})
+
+                    # Use LLM-based modality detection
+                    modality_result = assistant.detect_modality(metadata_for_detection, clean_geo_id)
+
+                    if modality_result and modality_result.modality == "bulk_rna":
+                        adapter_name = "transcriptomics_bulk"
+                        logger.info(f"{clean_geo_id}: Detected bulk RNA-seq via metadata analysis (confidence: {modality_result.confidence:.2f})")
+                        enhanced_metadata["data_type"] = "bulk_rna_seq"
+                    elif modality_result and modality_result.modality in ["scrna_10x", "scrna_smartseq"]:
+                        adapter_name = "transcriptomics_single_cell"
+                        logger.info(f"{clean_geo_id}: Detected single-cell RNA-seq via metadata analysis (confidence: {modality_result.confidence:.2f})")
+                        enhanced_metadata["data_type"] = "single_cell_rna_seq"
+                    else:
+                        # Fallback: Use sample count heuristic
+                        n_samples = len(metadata_for_detection.get("samples", {}))
+                        if n_samples == 0 and geo_result.data is not None:
+                            # If no sample metadata, use data shape as hint
+                            n_samples = n_obs if n_obs < n_vars else 1000  # Conservative estimate
+
+                        if n_samples < 500:
+                            adapter_name = "transcriptomics_bulk"
+                            logger.warning(f"{clean_geo_id}: Using sample count heuristic - {n_samples} samples suggests bulk RNA-seq")
+                            enhanced_metadata["data_type"] = "bulk_rna_seq"
+                        else:
+                            adapter_name = "transcriptomics_single_cell"
+                            logger.warning(f"{clean_geo_id}: Using sample count heuristic - {n_samples} samples suggests single-cell")
+                            enhanced_metadata["data_type"] = "single_cell_rna_seq"
+                except Exception as e:
+                    # Ultimate fallback if modality detection fails completely
+                    logger.error(f"Modality detection failed for {clean_geo_id}: {e}")
+                    # Conservative default: Use the old logic
+                    if enhanced_metadata.get("data_type") == "single_cell_rna_seq":
+                        adapter_name = "transcriptomics_single_cell"
+                    elif enhanced_metadata.get("data_type") == "bulk_rna_seq":
+                        adapter_name = "transcriptomics_bulk"
+                    else:
+                        # Default to single-cell for GEO datasets (more common)
+                        adapter_name = "transcriptomics_single_cell"
             else:
                 adapter_name = adapter
 
             logger.debug(
                 f"Using adapter '{adapter_name}' based on predicted type '{enhanced_metadata.get('data_type', None)}' and data shape {geo_result.data.shape}"
             )
+
+            # Add transpose tracking for bulk RNA-seq data
+            # TAR archives typically contain raw data in samples × genes format (correct orientation)
+            # But some bulk RNA-seq data might still need transposition based on the source
+            if adapter_name == "transcriptomics_bulk" and geo_result.source == GEODataSource.TAR_ARCHIVE:
+                # TAR archives usually have correct orientation already (samples × genes)
+                enhanced_metadata["transpose_info"] = {
+                    "transpose_applied": False,
+                    "transpose_reason": "TAR archive data typically in correct orientation (samples × genes)",
+                    "format_specific": False
+                }
+            elif adapter_name == "transcriptomics_bulk":
+                # Other sources might need transpose (e.g., SOFT format)
+                enhanced_metadata["transpose_info"] = {
+                    "transpose_applied": True,
+                    "transpose_reason": "Source format may store as genes × samples",
+                    "format_specific": True
+                }
 
             # Construct modality name with correct adapter
             modality_name = f"geo_{clean_geo_id.lower()}_{adapter_name}"
@@ -1239,11 +1155,22 @@ class GEOService:
                 return f"Dataset {clean_geo_id} already loaded as modality '{modality_name}'. Use data_manager.get_modality('{modality_name}') to access it."
 
             # Load as modality in DataManagerV2
+            # Determine if transpose is needed based on adapter and source
+            should_transpose = False
+            if adapter_name == "transcriptomics_bulk":
+                # Check transpose_info if set, otherwise use source-based logic
+                if "transpose_info" in enhanced_metadata:
+                    should_transpose = enhanced_metadata["transpose_info"].get("transpose_applied", False)
+                else:
+                    # SOFT format and some supplementary files need transpose for bulk
+                    should_transpose = geo_result.source not in [GEODataSource.TAR_ARCHIVE]
+
             adata = self.data_manager.load_modality(
                 name=modality_name,
                 source=geo_result.data,
                 adapter=adapter_name,
                 validate=True,
+                transpose=should_transpose,
                 **enhanced_metadata,
             )
 
@@ -1746,7 +1673,18 @@ class GEOService:
 
             # Use existing supplementary file processing
             data = self._process_supplementary_files(gse, geo_id)
-            if data is not None and not data.empty:
+
+            # Check if data is valid (handle both DataFrame and AnnData)
+            data_is_valid = False
+            if data is not None:
+                if isinstance(data, pd.DataFrame):
+                    data_is_valid = not data.empty
+                elif isinstance(data, anndata.AnnData):
+                    data_is_valid = data.n_obs > 0 and data.n_vars > 0
+                else:
+                    data_is_valid = True  # Assume other types are valid if not None
+
+            if data_is_valid:
                 return GEOResult(
                     data=data,
                     metadata=metadata,
@@ -2149,6 +2087,50 @@ class GEOService:
             # Try supplementary files as fallback
             data = self._process_supplementary_files(gse, geo_id)
             if data is not None and not data.empty:
+                # FIXED Bug #3: Add metadata-based modality detection for supplementary files
+                # FIXED Bug #2: Persist strategy config for supplementary files
+                data_type = "unknown"
+                strategy_config = None
+
+                try:
+                    from lobster.agents.data_expert_assistant import DataExpertAssistant
+                    assistant = DataExpertAssistant()
+
+                    # Detect modality type from metadata
+                    modality_result = assistant.detect_modality(metadata, geo_id)
+                    if modality_result and modality_result.modality == "bulk_rna":
+                        data_type = "bulk_rna_seq"
+                        logger.info(f"Detected bulk RNA-seq for {geo_id} in supplementary path")
+                    elif modality_result and modality_result.modality in ["scrna_10x", "scrna_smartseq"]:
+                        data_type = "single_cell_rna_seq"
+                        logger.info(f"Detected single-cell RNA-seq for {geo_id} in supplementary path")
+                    else:
+                        # Fallback heuristic based on sample count
+                        n_samples = len(gse.gsms) if hasattr(gse, "gsms") else 0
+                        if n_samples < 500:
+                            data_type = "bulk_rna_seq"
+                        else:
+                            data_type = "single_cell_rna_seq"
+                        logger.warning(f"Using sample count heuristic for {geo_id}: {n_samples} samples -> {data_type}")
+
+                    # Extract strategy config for Bug #2 fix
+                    strategy_config = assistant.extract_strategy_config(metadata, geo_id)
+                    if strategy_config:
+                        # Persist strategy config to metadata_store
+                        logger.info(f"Persisting strategy_config to metadata_store for {geo_id} (supplementary path)")
+                        self.data_manager._store_geo_metadata(
+                            geo_id=geo_id,
+                            metadata=metadata,
+                            stored_by="geo_service_supplementary",
+                            strategy_config=strategy_config.model_dump() if hasattr(strategy_config, 'model_dump') else strategy_config
+                        )
+
+                except Exception as e:
+                    logger.warning(f"Metadata detection failed for {geo_id} in supplementary path: {e}")
+                    # Conservative fallback
+                    n_samples = len(gse.gsms) if hasattr(gse, "gsms") else 0
+                    data_type = "bulk_rna_seq" if n_samples < 500 else "single_cell_rna_seq"
+
                 return GEOResult(
                     data=data,
                     metadata=metadata,
@@ -2156,6 +2138,7 @@ class GEOService:
                     processing_info={
                         "method": "geoparse_supplementary",
                         "n_samples": len(gse.gsms) if hasattr(gse, "gsms") else 0,
+                        "data_type": data_type,  # CRITICAL: Include data_type for adapter selection
                     },
                     success=True,
                 )
@@ -3257,11 +3240,14 @@ The actual expression data download will be much faster now that metadata is pre
             logger.exception("Full traceback for quantification loading error:")
             return None
 
-    def _process_supplementary_files(self, gse, gse_id: str) -> Optional[pd.DataFrame]:
+    def _process_supplementary_files(
+        self, gse, gse_id: str
+    ) -> Optional[Union[pd.DataFrame, anndata.AnnData]]:
         """
         Process supplementary files (TAR archives, etc.) to extract expression data.
 
         This method now supports:
+        - Series-level 10x trio files (new: for multi-modal datasets like GSE150825)
         - Kallisto/Salmon quantification files (new in Phase 3)
         - TAR archives
         - Direct expression files
@@ -3271,7 +3257,7 @@ The actual expression data download will be much faster now that metadata is pre
             gse_id: GEO series ID
 
         Returns:
-            DataFrame: Combined expression matrix from supplementary files or None
+            DataFrame or AnnData: Combined expression matrix from supplementary files or None
         """
         try:
             if not hasattr(gse, "metadata") or "supplementary_file" not in gse.metadata:
@@ -3344,6 +3330,14 @@ The actual expression data download will be much faster now that metadata is pre
                         f"Proceeding with TAR file processing."
                     )
                     # Fall through to TAR processing
+
+            # STEP 2: Check for series-level 10x trio files (matrix.mtx.gz, barcodes.tsv.gz, features.tsv.gz)
+            # These are common for single-cell datasets where the combined matrix is provided at series level
+            # Must check BEFORE TAR processing (TAR may contain VDJ data, not RNA data)
+            series_10x_result = self._try_series_level_10x_trio(suppl_files, gse_id)
+            if series_10x_result is not None:
+                logger.info(f"{gse_id}: Successfully loaded series-level 10x trio files")
+                return series_10x_result
 
             # Look for TAR files first (most common for expression data)
             tar_files = [f for f in suppl_files if f.lower().endswith(".tar")]
@@ -3799,11 +3793,30 @@ The actual expression data download will be much faster now that metadata is pre
                 )
                 return df
 
-        except Exception:
-            # Fallback to expression table
-            if hasattr(gsm, "table") and gsm.table is not None:
-                matrix = gsm.table
-                return self._store_single_sample_as_modality(gsm_id, matrix, gsm)
+        except Exception as e:
+            logger.warning(f"Single-cell download attempt failed for {gsm_id}: {e}")
+
+            # Check if this is single-cell data before falling back to expression table
+            # Get the data type from stored metadata if available
+            is_single_cell = False
+            if gse_id in self.data_manager.metadata_store:
+                metadata = self.data_manager.metadata_store[gse_id]
+                data_type = metadata.get("data_type", "")
+                is_single_cell = "single_cell" in data_type.lower()
+
+            # Only fall back to expression table for non-single-cell data
+            if not is_single_cell:
+                if hasattr(gsm, "table") and gsm.table is not None:
+                    logger.info(f"Using expression table for non-single-cell sample {gsm_id}")
+                    matrix = gsm.table
+                    return self._store_single_sample_as_modality(gsm_id, matrix, gsm)
+            else:
+                logger.error(
+                    f"Single-cell sample {gsm_id} failed to download 10X/H5 files. "
+                    f"Expression table (series matrix) not suitable for single-cell data. "
+                    f"Consider using SUPPLEMENTARY_FIRST or H5_FIRST strategies."
+                )
+                return None
 
             logger.warning(f"No expression data found for {gsm_id}")
             return None
@@ -4177,6 +4190,141 @@ The actual expression data download will be much faster now that metadata is pre
 
         except Exception as e:
             logger.error(f"Error downloading and combining files for {gsm_id}: {e}")
+            return None
+
+    def _try_series_level_10x_trio(
+        self, suppl_files: List[str], gse_id: str
+    ) -> Optional[anndata.AnnData]:
+        """
+        Check for and process series-level 10x trio files.
+
+        Many single-cell datasets provide the combined matrix at series level:
+        - GSE*_matrix.mtx.gz (or GSE*_*_matrix.mtx.gz)
+        - GSE*_barcodes.tsv.gz (or GSE*_*_barcodes.tsv.gz)
+        - GSE*_features.tsv.gz (or GSE*_*_features.tsv.gz, or GSE*_genes.tsv.gz)
+
+        This is different from sample-level 10x files which are per-GSM.
+        Must be checked BEFORE TAR processing since TAR may contain VDJ/other data.
+
+        Args:
+            suppl_files: List of supplementary file URLs
+            gse_id: GEO series ID
+
+        Returns:
+            AnnData: Loaded 10x data or None if not found/failed
+        """
+        try:
+            # Pattern matching for series-level 10x files
+            matrix_files = [
+                f for f in suppl_files
+                if "matrix.mtx" in f.lower() and gse_id.lower() in f.lower()
+            ]
+            barcodes_files = [
+                f for f in suppl_files
+                if "barcodes.tsv" in f.lower() and gse_id.lower() in f.lower()
+            ]
+            # Features can be named "features" or "genes"
+            features_files = [
+                f for f in suppl_files
+                if ("features.tsv" in f.lower() or "genes.tsv" in f.lower())
+                and gse_id.lower() in f.lower()
+            ]
+
+            # Check if we have the complete trio
+            if not (matrix_files and barcodes_files and features_files):
+                logger.debug(
+                    f"{gse_id}: No series-level 10x trio found. "
+                    f"Matrix: {len(matrix_files)}, Barcodes: {len(barcodes_files)}, Features: {len(features_files)}"
+                )
+                return None
+
+            logger.info(
+                f"{gse_id}: Found series-level 10x trio files. "
+                f"Matrix: {matrix_files[0].split('/')[-1]}, "
+                f"Barcodes: {barcodes_files[0].split('/')[-1]}, "
+                f"Features: {features_files[0].split('/')[-1]}"
+            )
+
+            # Create a temporary directory for 10x files (scanpy expects specific structure)
+            import tempfile
+            import shutil
+
+            temp_dir = Path(tempfile.mkdtemp(prefix=f"{gse_id}_10x_"))
+            logger.debug(f"Created temp directory for 10x loading: {temp_dir}")
+
+            try:
+                # Download the three files with expected names
+                file_mapping = {
+                    "matrix.mtx.gz": matrix_files[0],
+                    "barcodes.tsv.gz": barcodes_files[0],
+                    "features.tsv.gz": features_files[0],
+                }
+
+                for target_name, url in file_mapping.items():
+                    local_path = temp_dir / target_name
+
+                    # Convert FTP to HTTPS
+                    if url.startswith("ftp://"):
+                        url = url.replace("ftp://", "https://", 1)
+
+                    logger.debug(f"Downloading {target_name} from {url}")
+                    if not self.geo_downloader.download_file(url, local_path):
+                        logger.error(f"Failed to download {target_name}")
+                        return None
+
+                    # Handle uncompressed versions if download name doesn't match
+                    source_name = url.split("/")[-1]
+                    if not source_name.endswith(".gz") and target_name.endswith(".gz"):
+                        # File was downloaded without .gz, need to handle
+                        actual_path = temp_dir / source_name
+                        if actual_path.exists() and not local_path.exists():
+                            # Rename to expected name without .gz
+                            target_uncompressed = temp_dir / target_name.replace(".gz", "")
+                            shutil.move(str(actual_path), str(target_uncompressed))
+                            local_path = target_uncompressed
+
+                logger.debug(f"All 10x files downloaded to {temp_dir}")
+
+                # Load using scanpy's read_10x_mtx
+                try:
+                    adata = sc.read_10x_mtx(
+                        temp_dir,
+                        var_names="gene_symbols",  # Use gene symbols if available
+                        cache=False,  # Don't cache since we're using temp dir
+                    )
+                except Exception as e:
+                    # Try with gene_ids if gene_symbols fails
+                    logger.warning(f"Failed with gene_symbols, trying gene_ids: {e}")
+                    adata = sc.read_10x_mtx(
+                        temp_dir,
+                        var_names="gene_ids",
+                        cache=False,
+                    )
+
+                # Ensure unique variable names
+                adata.var_names_make_unique()
+
+                logger.info(
+                    f"{gse_id}: Successfully loaded series-level 10x data: "
+                    f"{adata.n_obs} cells × {adata.n_vars} genes"
+                )
+
+                # Add metadata
+                adata.uns["source"] = "series_level_10x"
+                adata.uns["geo_id"] = gse_id
+
+                return adata
+
+            finally:
+                # Clean up temp directory
+                try:
+                    shutil.rmtree(temp_dir)
+                    logger.debug(f"Cleaned up temp directory: {temp_dir}")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up temp directory: {e}")
+
+        except Exception as e:
+            logger.error(f"Error processing series-level 10x trio for {gse_id}: {e}")
             return None
 
     def _download_10x_trio(
@@ -4894,12 +5042,48 @@ The actual expression data download will be much faster now that metadata is pre
                         "needs_concatenation": True,
                     }
 
-                    # Determine adapter based on data characteristics
-                    n_obs, n_vars = matrix.shape
-                    if n_vars > 5000:  # High gene count suggests single-cell
-                        adapter_name = "transcriptomics_single_cell"
-                    else:
-                        adapter_name = "transcriptomics_bulk"
+                    # FIXED: Use metadata-based modality detection instead of flawed heuristic
+                    # The old logic (n_vars > 5000 = single-cell) was wrong because:
+                    # - Most bulk RNA-seq has 15,000-25,000 genes
+                    # - Single-cell can have <5000 genes after filtering
+                    try:
+                        from lobster.agents.data_expert_assistant import DataExpertAssistant
+                        assistant = DataExpertAssistant()
+
+                        # Use LLM-based modality detection with full metadata context
+                        modality_result = assistant.detect_modality(metadata, gse_id)
+
+                        if modality_result and modality_result.modality == "bulk_rna":
+                            adapter_name = "transcriptomics_bulk"
+                            logger.info(f"{gse_id}: Detected bulk RNA-seq (confidence: {modality_result.confidence:.2f})")
+                        elif modality_result and modality_result.modality in ["scrna_10x", "scrna_smartseq"]:
+                            adapter_name = "transcriptomics_single_cell"
+                            logger.info(f"{gse_id}: Detected single-cell RNA-seq (confidence: {modality_result.confidence:.2f})")
+                        else:
+                            # Fallback: Use sample count heuristic (bulk typically has <500 samples)
+                            n_samples = len(metadata.get("samples", {}))
+                            if n_samples < 500:
+                                adapter_name = "transcriptomics_bulk"
+                                logger.warning(f"{gse_id}: Using sample count heuristic - {n_samples} samples suggests bulk RNA-seq")
+                            else:
+                                adapter_name = "transcriptomics_single_cell"
+                                logger.warning(f"{gse_id}: Using sample count heuristic - {n_samples} samples suggests single-cell")
+                    except Exception as e:
+                        # Ultimate fallback if modality detection fails
+                        logger.error(f"Modality detection failed for {gse_id}: {e}")
+                        n_samples = len(metadata.get("samples", {}))
+                        adapter_name = "transcriptomics_bulk" if n_samples < 500 else "transcriptomics_single_cell"
+                        logger.warning(f"Falling back to sample count: {n_samples} samples → {adapter_name}")
+
+                    # Add transpose tracking for bulk RNA-seq SOFT format
+                    # GEO SOFT format stores data as genes × samples (format specification)
+                    # Must transpose to samples × genes for downstream compatibility
+                    if adapter_name == "transcriptomics_bulk":
+                        enhanced_metadata["transpose_info"] = {
+                            "transpose_applied": True,
+                            "transpose_reason": "GEO SOFT format specification (genes × samples)",
+                            "format_specific": True
+                        }
 
                     # Load as modality in DataManagerV2
                     adata = self.data_manager.load_modality(
@@ -4907,6 +5091,7 @@ The actual expression data download will be much faster now that metadata is pre
                         source=matrix,
                         adapter=adapter_name,
                         validate=False,  # Skip validation for individual samples
+                        transpose=True if adapter_name == "transcriptomics_bulk" else False,  # SOFT format requires transpose for bulk
                         **enhanced_metadata,
                     )
 
@@ -5235,18 +5420,58 @@ The actual expression data download will be much faster now that metadata is pre
                 "data_source": "single_sample",
             }
 
-            # Determine adapter based on data characteristics
+            # Determine adapter based on metadata (not matrix shape)
+            # FIXED: Use metadata-based modality detection instead of flawed heuristic
             n_obs, n_vars = matrix.shape
-            if n_vars > 5000:  # High gene count suggests single-cell
-                adapter_name = "transcriptomics_single_cell"
-            else:
-                adapter_name = "transcriptomics_bulk"
+            try:
+                from lobster.agents.data_expert_assistant import DataExpertAssistant
+                assistant = DataExpertAssistant()
+
+                # Get metadata for modality detection
+                if geo_id:
+                    # Use series metadata if available
+                    metadata_for_detection = self.data_manager.metadata_store.get(geo_id, {})
+                else:
+                    # Use sample metadata
+                    metadata_for_detection = self.data_manager.metadata_store.get(gsm_id, {})
+
+                modality_result = assistant.detect_modality(metadata_for_detection, gsm_id)
+
+                if modality_result and modality_result.modality == "bulk_rna":
+                    adapter_name = "transcriptomics_bulk"
+                    logger.info(f"Detected bulk RNA-seq for {gsm_id} using metadata analysis")
+                elif modality_result and modality_result.modality in ["scrna_10x", "scrna_smartseq"]:
+                    adapter_name = "transcriptomics_single_cell"
+                    logger.info(f"Detected single-cell RNA-seq for {gsm_id} using metadata analysis")
+                else:
+                    # Fallback: Use sample count heuristic from series metadata
+                    n_samples = len(metadata_for_detection.get("samples", {}))
+                    adapter_name = "transcriptomics_bulk" if n_samples < 500 else "transcriptomics_single_cell"
+                    logger.warning(f"Using sample count heuristic for {gsm_id}: {n_samples} samples -> {adapter_name}")
+            except Exception as e:
+                # If metadata detection fails, use conservative fallback
+                logger.warning(f"Metadata-based detection failed for {gsm_id}: {e}")
+                # Conservative fallback: bulk RNA-seq for small sample counts
+                n_samples = n_obs if n_obs < 1000 else n_vars
+                adapter_name = "transcriptomics_bulk" if n_samples < 500 else "transcriptomics_single_cell"
+                logger.warning(f"Using conservative fallback: {adapter_name}")
+
+            # Add transpose tracking for bulk RNA-seq SOFT format
+            # GEO SOFT format stores data as genes × samples (format specification)
+            # Must transpose to samples × genes for downstream compatibility
+            if adapter_name == "transcriptomics_bulk":
+                enhanced_metadata["transpose_info"] = {
+                    "transpose_applied": True,
+                    "transpose_reason": "GEO SOFT format specification (genes × samples)",
+                    "format_specific": True
+                }
 
             adata = self.data_manager.load_modality(
                 name=modality_name,
                 source=matrix,
                 adapter=adapter_name,
                 validate=True,
+                transpose=True if adapter_name == "transcriptomics_bulk" else False,  # SOFT format requires transpose for bulk
                 **enhanced_metadata,
             )
 
@@ -5264,274 +5489,3 @@ The actual expression data download will be much faster now that metadata is pre
         except Exception as e:
             logger.error(f"Error storing sample {gsm_id}: {e}")
             return f"Error storing sample {gsm_id}: {str(e)}"
-
-    def _download_supplementary_file(  # FIXME
-        self, url: str, gsm_id: str, geo_id: Optional[str] = None
-    ) -> Optional[pd.DataFrame]:
-        """
-        Professional download and parse of supplementary files with FTP support.
-
-        Args:
-            url: URL to supplementary file (supports HTTP/HTTPS/FTP)
-            gsm_id: GEO sample ID
-            geo_id: Optional GEO dataset ID for transpose logic context
-
-        Returns:
-            DataFrame: Parsed matrix or None
-        """
-        try:
-            logger.info(f"Downloading supplementary file for {gsm_id}: {url}")
-
-            # Extract filename and create local path
-            filename = url.split("/")[-1]
-            local_file = self.cache_dir / f"{gsm_id}_suppl_{filename}"
-
-            # Use helper downloader for better FTP/HTTP support and progress tracking
-            if not local_file.exists():
-                if not self.geo_downloader.download_file(
-                    url, local_file, f"Downloading {filename}"
-                ):
-                    logger.error(f"Failed to download supplementary file: {url}")
-                    return None
-            else:
-                logger.info(f"Using cached supplementary file: {local_file}")
-
-            # Use geo_parser for enhanced format detection and parsing
-            matrix = self.geo_parser.parse_supplementary_file(local_file)
-
-            if matrix is not None and not matrix.empty:
-                # Use biology-aware transpose logic instead of naive shape comparison
-                should_transpose, reason = self._determine_transpose_biologically(
-                    matrix=matrix, gsm_id=gsm_id, geo_id=geo_id
-                )
-
-                logger.info(f"Transpose decision for {gsm_id}: {reason}")
-
-                if should_transpose:
-                    matrix = matrix.T
-                    logger.debug(f"Matrix transposed: {matrix.shape}")
-
-                # Add sample prefix to row names for proper identification
-                matrix.index = [f"{gsm_id}_{idx}" for idx in matrix.index]
-
-                logger.info(
-                    f"Successfully parsed supplementary file for {gsm_id}: {matrix.shape}"
-                )
-                return matrix
-            else:
-                logger.warning(
-                    f"Could not parse supplementary file or file is empty: {local_file}"
-                )
-                return None
-
-        except Exception as e:
-            logger.error(
-                f"Error downloading supplementary file {url} for {gsm_id}: {e}"
-            )
-            return None
-
-    def _create_placeholder_matrix(  # FIXME
-        self, stored_samples: List[str], gse_id: str
-    ) -> pd.DataFrame:
-        """
-        Create a placeholder matrix for immediate compatibility.
-        This will contain summary information about the stored samples.
-
-        Args:
-            stored_samples: List of modality names that were stored
-            gse_id: GEO series ID
-
-        Returns:
-            DataFrame: Placeholder matrix with sample information
-        """
-        try:
-            # Collect information about stored samples
-            sample_info_list = []
-            total_cells = 0
-            all_genes = set()
-
-            for modality_name in stored_samples:
-                adata = self.data_manager.get_modality(modality_name)
-                sample_id = modality_name.split("_")[-1].upper()
-
-                sample_info_list.append(
-                    {
-                        "sample_id": sample_id,
-                        "modality_name": modality_name,
-                        "n_cells": adata.n_obs,
-                        "n_genes": adata.n_vars,
-                        "stored": True,
-                    }
-                )
-
-                total_cells += adata.n_obs
-                all_genes.update(adata.var_names)
-
-            # Create a summary DataFrame
-            summary_df = pd.DataFrame(sample_info_list)
-
-            # Create a minimal placeholder matrix with metadata
-            # This matrix will have one row per sample with summary statistics
-            placeholder_matrix = pd.DataFrame(
-                index=summary_df["sample_id"],
-                columns=["n_cells", "n_genes", "modality_name", "status"],
-            )
-
-            for _, row in summary_df.iterrows():
-                placeholder_matrix.loc[row["sample_id"]] = [
-                    row["n_cells"],
-                    row["n_genes"],
-                    row["modality_name"],
-                    "stored_for_preprocessing",
-                ]
-
-            # Add metadata as attributes
-            placeholder_matrix.attrs = {
-                "dataset_id": gse_id,
-                "total_samples": len(stored_samples),
-                "total_cells": total_cells,
-                "total_unique_genes": len(all_genes),
-                "stored_modalities": stored_samples,
-                "note": "Individual samples stored as AnnData objects for preprocessing",
-                "concatenation_pending": True,
-            }
-
-            logger.info(
-                f"Created placeholder matrix with {len(stored_samples)} samples"
-            )
-            return placeholder_matrix
-
-        except Exception as e:
-            logger.error(f"Error creating placeholder matrix: {e}")
-            # Return a minimal placeholder
-            return pd.DataFrame({"status": ["error"]}, index=[gse_id])
-
-    def _check_workspace_for_processed_data(  # FIXME
-        self, gse_id: str
-    ) -> Optional[Tuple[pd.DataFrame, Dict[str, Any]]]:
-        """
-        Check if processed data for a GSE ID already exists in workspace.
-        Uses professional naming patterns with backward compatibility.
-
-        Args:
-            gse_id: GEO series ID
-
-        Returns:
-            Tuple of (DataFrame, metadata) if found, None otherwise
-        """
-        try:
-            from lobster.utils.file_naming import BioinformaticsFileNaming
-
-            # First, try professional naming pattern
-            data_dir = self.data_manager.data_dir
-            existing_file = BioinformaticsFileNaming.find_latest_file(
-                directory=data_dir,
-                data_source="GEO",
-                dataset_id=gse_id,
-                processing_step="raw_matrix",
-            )
-
-            if existing_file and existing_file.exists():
-                logger.info(
-                    f"Found existing file with professional naming: {existing_file.name}"
-                )
-
-                # Load the data
-                combined_matrix = pd.read_csv(existing_file, index_col=0)
-
-                # Load associated metadata
-                metadata_file = (
-                    existing_file.parent
-                    / BioinformaticsFileNaming.generate_metadata_filename(
-                        existing_file.name
-                    )
-                )
-                metadata = {}
-                if metadata_file.exists():
-                    with open(metadata_file, "r") as f:
-                        metadata = json.load(f)
-
-                logger.info(
-                    f"Successfully loaded existing data: {combined_matrix.shape}"
-                )
-                return combined_matrix, metadata
-
-            # Backward compatibility: check for legacy naming patterns
-            data_files = self.data_manager.list_workspace_files()["data"]
-            for file_info in data_files:
-                if f"{gse_id}_processed" in file_info["name"] and file_info[
-                    "name"
-                ].endswith(".csv"):
-                    logger.info(f"Found existing legacy file: {file_info['name']}")
-
-                    # Load the data
-                    data_path = Path(file_info["path"])
-                    combined_matrix = pd.read_csv(data_path, index_col=0)
-
-                    # Load associated metadata
-                    metadata_path = data_path.parent / f"{data_path.stem}_metadata.json"
-                    metadata = {}
-                    if metadata_path.exists():
-                        with open(metadata_path, "r") as f:
-                            metadata = json.load(f)
-
-                    logger.info(
-                        f"Successfully loaded legacy data: {combined_matrix.shape}"
-                    )
-                    return combined_matrix, metadata
-
-            return None
-
-        except Exception as e:
-            logger.warning(f"Error checking workspace for existing data: {e}")
-            return None
-
-    def _format_download_response(  # FIXME
-        self,
-        gse_id: str,
-        combined_matrix: pd.DataFrame,
-        metadata: Dict[str, Any],
-        sample_count: int,
-        saved_file: str = None,
-    ) -> str:
-        """
-        Format download response message.
-
-        Args:
-            gse_id: GEO series ID
-            combined_matrix: Combined expression matrix
-            metadata: Metadata dictionary
-            sample_count: Number of samples processed
-            saved_file: Path to saved workspace file
-
-        Returns:
-            str: Formatted response message
-        """
-        study_title = (
-            metadata.get("title", ["N/A"])[0]
-            if isinstance(metadata.get("title"), list)
-            else metadata.get("title", "N/A")
-        )
-        organism = (
-            metadata.get("organism", ["N/A"])[0]
-            if isinstance(metadata.get("organism"), list)
-            else metadata.get("organism", "N/A")
-        )
-
-        workspace_info = ""
-        if saved_file and "Error" not in saved_file:
-            workspace_info = f"\n💾 Saved to workspace: {Path(saved_file).name}\n⚡ Future loads will be instant (no re-downloading needed)"
-
-        return f"""Successfully downloaded and processed {gse_id} using GEOparse!
-
-📊 Combined expression matrix: {combined_matrix.shape[0]} cells × {combined_matrix.shape[1]} genes
-📋 Study: {study_title}
-🧬 Organism: {organism}
-🔬 Successfully processed {sample_count} samples{workspace_info}
-📈 Ready for downstream analysis (quality control, clustering, ML)
-
-The data has been professionally concatenated and is ready for:
-- Quality assessment and filtering
-- Clustering and cell type annotation
-- Machine learning model preparation
-- Differential expression analysis"""
