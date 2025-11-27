@@ -30,6 +30,7 @@ from lobster.core.data_manager_v2 import DataManagerV2
 
 # Import extraction cache manager
 from lobster.core.extraction_cache import ExtractionCacheManager
+from lobster.core.workspace import resolve_workspace
 from lobster.core.interfaces.base_client import BaseClient
 from lobster.utils.callbacks import TokenTrackingCallback
 
@@ -56,7 +57,8 @@ class AgentClient(BaseClient):
             session_id: Unique session identifier
             enable_reasoning: Show agent reasoning/thinking process
             enable_langfuse: Enable Langfuse debugging callback
-            workspace_path: Path to workspace for file operations
+            workspace_path: Path to workspace for file operations.
+                Resolution order: explicit path > LOBSTER_WORKSPACE env var > cwd/.lobster_workspace
             custom_callbacks: Additional callback handlers
             manual_model_params: Manual model parameter overrides
         """
@@ -66,9 +68,8 @@ class AgentClient(BaseClient):
         )
         self.enable_reasoning = enable_reasoning
 
-        # Set up workspace
-        self.workspace_path = workspace_path or Path.cwd()
-        self.workspace_path.mkdir(parents=True, exist_ok=True)
+        # Set up workspace using centralized resolver
+        self.workspace_path = resolve_workspace(explicit_path=workspace_path, create=True)
 
         # Initialize DataManagerV2
         if data_manager is None:
