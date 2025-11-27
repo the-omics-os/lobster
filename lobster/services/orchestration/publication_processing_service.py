@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import json
 import re
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+import time
 
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.schemas.publication_queue import PublicationQueueEntry, PublicationStatus
@@ -31,6 +34,8 @@ class PublicationProcessingService:
         self.sra_provider = SRAProvider(data_manager=data_manager)
         # Lazy-initialized to avoid creating new provider (and Redis connection) per entry
         self._pubmed_provider = None
+        self._timing_enabled = False
+        self._latest_timings: Dict[str, float] = {}
 
     @property
     def pubmed_provider(self):
@@ -200,6 +205,38 @@ class PublicationProcessingService:
             logger.warning(f"NCBI ID Converter failed for DOI {doi}: {e}")
             return {"pmid": "", "pmc": "", "doi": doi}
 
+    # ------------------------------------------------------------------
+    # Timing helpers
+    # ------------------------------------------------------------------
+
+    @contextmanager
+    def _measure_step(self, name: str):
+        """Context manager to capture elapsed time for a processing step."""
+
+        if not self._timing_enabled:
+            yield
+            return
+
+        start = time.time()
+        try:
+            yield
+        finally:
+            elapsed = time.time() - start
+            self._latest_timings[name] = elapsed
+            logger.debug("%s completed in %.2fs", name, elapsed)
+
+    def enable_timing(self, enabled: bool = True) -> None:
+        """Enable or disable per-step timing instrumentation."""
+
+        self._timing_enabled = enabled
+        if not enabled:
+            self._latest_timings = {}
+
+    def get_latest_timings(self) -> Dict[str, float]:
+        """Return the most recent per-step timing measurements."""
+
+        return dict(self._latest_timings)
+
     def _resolve_identifiers(self, entry: PublicationQueueEntry) -> Dict[str, Any]:
         """
         Resolve missing identifiers from DOI before NCBI enrichment.
@@ -319,37 +356,41 @@ class PublicationProcessingService:
             provider = self.pubmed_provider
 
             # Get linked datasets via E-Link
-            linked_datasets = provider._find_linked_datasets(pmid)
+            with self._measure_step("ncbi_enrich:linked_datasets"):
+                linked_datasets = provider._find_linked_datasets(pmid)
             result["linked_datasets"] = linked_datasets
 
             # Also try to get PMC ID for better full text access via E-Link
             try:
                 import urllib.request
 
-                elink_url = provider.build_ncbi_url(
-                    "elink",
-                    {
-                        "dbfrom": "pubmed",
-                        "db": "pmc",
-                        "id": pmid,
-                        "linkname": "pubmed_pmc",
-                        "retmode": "json",
-                    },
-                )
-                content = provider._make_ncbi_request(elink_url, f"get PMC ID for {pmid}")
-                text = content.decode("utf-8")
-                pmc_data = json.loads(text)
+                with self._measure_step("ncbi_enrich:pmc_lookup"):
+                    elink_url = provider.build_ncbi_url(
+                        "elink",
+                        {
+                            "dbfrom": "pubmed",
+                            "db": "pmc",
+                            "id": pmid,
+                            "linkname": "pubmed_pmc",
+                            "retmode": "json",
+                        },
+                    )
+                    content = provider._make_ncbi_request(
+                        elink_url, f"get PMC ID for {pmid}"
+                    )
+                    text = content.decode("utf-8")
+                    pmc_data = json.loads(text)
 
-                # Extract PMC ID from response
-                linksets = pmc_data.get("linksets", [])
-                if linksets:
-                    linksetdbs = linksets[0].get("linksetdbs", [])
-                    if linksetdbs:
-                        links = linksetdbs[0].get("links", [])
-                        if links:
-                            pmc_id = f"PMC{links[0]}"
-                            result["pmc_id"] = pmc_id
-                            logger.info(f"Found PMC ID: {pmc_id}")
+                    # Extract PMC ID from response
+                    linksets = pmc_data.get("linksets", [])
+                    if linksets:
+                        linksetdbs = linksets[0].get("linksetdbs", [])
+                        if linksetdbs:
+                            links = linksetdbs[0].get("links", [])
+                            if links:
+                                pmc_id = f"PMC{links[0]}"
+                                result["pmc_id"] = pmc_id
+                                logger.info(f"Found PMC ID: {pmc_id}")
             except Exception as e:
                 logger.debug(f"Could not get PMC ID: {e}")
 
@@ -391,6 +432,8 @@ class PublicationProcessingService:
                 )
 
             tasks = [task.strip().lower() for task in extraction_tasks.split(",")]
+            if self._timing_enabled:
+                self._latest_timings = {}
 
             # FIX: Removed intermediate update_status call to prevent O(n²) file rewrites
             # All updates are now collected in-memory and written once at the end
@@ -413,94 +456,97 @@ class PublicationProcessingService:
             content_result = None
             ncbi_enrichment_result = None
             identifier_resolution_result = None
+            workspace_keys: List[str] = []
 
             # Identifier Resolution (runs FIRST - DOI → PMID before E-Link enrichment)
             # This enables E-Link for RIS files that only have DOIs (Crossref, publishers)
             if "resolve_identifiers" in tasks or "full_text" in tasks:
-                try:
-                    identifier_resolution_result = self._resolve_identifiers(entry)
+                with self._measure_step("resolve_identifiers"):
+                    try:
+                        identifier_resolution_result = self._resolve_identifiers(entry)
 
-                    if identifier_resolution_result["success"]:
-                        response_parts.append("✓ Identifier resolution complete:")
-                        response_parts.append(
-                            f"  - DOI: {entry.doi} → PMID:{identifier_resolution_result['resolved_pmid']}"
-                        )
-                        if identifier_resolution_result["resolved_pmc"]:
+                        if identifier_resolution_result["success"]:
+                            response_parts.append("✓ Identifier resolution complete:")
                             response_parts.append(
-                                f"  - PMC ID: {identifier_resolution_result['resolved_pmc']}"
+                                f"  - DOI: {entry.doi} → PMID:{identifier_resolution_result['resolved_pmid']}"
                             )
-                        extracted_data["identifier_resolution"] = {
-                            "pmid": identifier_resolution_result["resolved_pmid"],
-                            "pmc": identifier_resolution_result["resolved_pmc"],
-                        }
-                    elif identifier_resolution_result["skipped"]:
-                        response_parts.append(
-                            f"⚠ Identifier resolution skipped: PMID already present ({identifier_resolution_result['resolved_pmid']})"
-                        )
-                    else:
-                        error = identifier_resolution_result.get("error", "Unknown error")
-                        response_parts.append(f"⚠ Identifier resolution: {error}")
+                            if identifier_resolution_result["resolved_pmc"]:
+                                response_parts.append(
+                                    f"  - PMC ID: {identifier_resolution_result['resolved_pmc']}"
+                                )
+                            extracted_data["identifier_resolution"] = {
+                                "pmid": identifier_resolution_result["resolved_pmid"],
+                                "pmc": identifier_resolution_result["resolved_pmc"],
+                            }
+                        elif identifier_resolution_result["skipped"]:
+                            response_parts.append(
+                                f"⚠ Identifier resolution skipped: PMID already present ({identifier_resolution_result['resolved_pmid']})"
+                            )
+                        else:
+                            error = identifier_resolution_result.get("error", "Unknown error")
+                            response_parts.append(f"⚠ Identifier resolution: {error}")
 
-                except Exception as e:
-                    response_parts.append(f"✗ Identifier resolution failed: {str(e)}")
+                    except Exception as e:
+                        response_parts.append(f"✗ Identifier resolution failed: {str(e)}")
 
                 response_parts.append("")
 
             # NCBI E-Link enrichment (runs after identifier resolution)
             # This is fast and reliable - uses official NCBI database links
             if "ncbi_enrich" in tasks or "full_text" in tasks:
-                try:
-                    ncbi_enrichment_result = self._enrich_from_ncbi(entry)
+                with self._measure_step("ncbi_enrich"):
+                    try:
+                        ncbi_enrichment_result = self._enrich_from_ncbi(entry)
 
-                    if ncbi_enrichment_result["success"]:
-                        linked = ncbi_enrichment_result["linked_datasets"]
-                        total_linked = sum(len(v) for v in linked.values())
+                        if ncbi_enrichment_result["success"]:
+                            linked = ncbi_enrichment_result["linked_datasets"]
+                            total_linked = sum(len(v) for v in linked.values())
 
-                        response_parts.append("✓ NCBI E-Link enrichment complete:")
-                        response_parts.append(f"  - PMID: {ncbi_enrichment_result['pmid']}")
+                            response_parts.append("✓ NCBI E-Link enrichment complete:")
+                            response_parts.append(f"  - PMID: {ncbi_enrichment_result['pmid']}")
 
-                        if ncbi_enrichment_result["pmc_id"]:
-                            response_parts.append(
-                                f"  - PMC ID: {ncbi_enrichment_result['pmc_id']}"
-                            )
-                            # Update entry with PMC ID for better full text access
-                            if not entry.pmc_id:
-                                entry.pmc_id = ncbi_enrichment_result["pmc_id"]
+                            if ncbi_enrichment_result["pmc_id"]:
+                                response_parts.append(
+                                    f"  - PMC ID: {ncbi_enrichment_result['pmc_id']}"
+                                )
+                                # Update entry with PMC ID for better full text access
+                                if not entry.pmc_id:
+                                    entry.pmc_id = ncbi_enrichment_result["pmc_id"]
 
-                        if total_linked > 0:
-                            response_parts.append(f"  - Linked datasets: {total_linked}")
-                            for db, ids in linked.items():
-                                if ids:
-                                    response_parts.append(f"    - {db}: {', '.join(ids[:5])}")
-                                    if len(ids) > 5:
-                                        response_parts.append(f"      (+{len(ids) - 5} more)")
+                            if total_linked > 0:
+                                response_parts.append(f"  - Linked datasets: {total_linked}")
+                                for db, ids in linked.items():
+                                    if ids:
+                                        response_parts.append(f"    - {db}: {', '.join(ids[:5])}")
+                                        if len(ids) > 5:
+                                            response_parts.append(f"      (+{len(ids) - 5} more)")
 
-                            # Merge NCBI-linked datasets with existing identifiers
-                            # Convert to lowercase keys to match existing schema
-                            ncbi_identifiers = {
-                                "geo": linked.get("GEO", []),
-                                "sra": linked.get("SRA", []),
-                                "bioproject": linked.get("BioProject", []),
-                                "biosample": linked.get("BioSample", []),
-                            }
+                                # Merge NCBI-linked datasets with existing identifiers
+                                # Convert to lowercase keys to match existing schema
+                                ncbi_identifiers = {
+                                    "geo": linked.get("GEO", []),
+                                    "sra": linked.get("SRA", []),
+                                    "bioproject": linked.get("BioProject", []),
+                                    "biosample": linked.get("BioSample", []),
+                                }
 
-                            # FIX: Collect in-memory instead of writing to disk
-                            # Will be merged and written once at the end
-                            for key, values in ncbi_identifiers.items():
-                                if values:
-                                    if key in all_extracted_identifiers:
-                                        all_extracted_identifiers[key].extend(values)
-                                    else:
-                                        all_extracted_identifiers[key] = list(values)
-                            extracted_data["ncbi_enrichment"] = ncbi_identifiers
+                                # FIX: Collect in-memory instead of writing to disk
+                                # Will be merged and written once at the end
+                                for key, values in ncbi_identifiers.items():
+                                    if values:
+                                        if key in all_extracted_identifiers:
+                                            all_extracted_identifiers[key].extend(values)
+                                        else:
+                                            all_extracted_identifiers[key] = list(values)
+                                extracted_data["ncbi_enrichment"] = ncbi_identifiers
+                            else:
+                                response_parts.append("  - No linked datasets found in NCBI")
                         else:
-                            response_parts.append("  - No linked datasets found in NCBI")
-                    else:
-                        error = ncbi_enrichment_result.get("error", "Unknown error")
-                        response_parts.append(f"⚠ NCBI E-Link enrichment skipped: {error}")
+                            error = ncbi_enrichment_result.get("error", "Unknown error")
+                            response_parts.append(f"⚠ NCBI E-Link enrichment skipped: {error}")
 
-                except Exception as e:
-                    response_parts.append(f"✗ NCBI E-Link enrichment failed: {str(e)}")
+                    except Exception as e:
+                        response_parts.append(f"✗ NCBI E-Link enrichment failed: {str(e)}")
 
                 response_parts.append("")
 
@@ -509,269 +555,277 @@ class PublicationProcessingService:
             # Note: E-Link returns internal SRA link IDs (SRA12345678) which pysradb cannot use
             # Instead, we use BioProject IDs (PRJNA*) which pysradb can resolve to samples
             if "fetch_sra_metadata" in tasks or "full_text" in tasks:
-                try:
-                    # Get BioProject IDs from NCBI enrichment (these are proper accessions)
-                    bioproject_ids = extracted_data.get("ncbi_enrichment", {}).get("bioproject", [])
+                with self._measure_step("fetch_sra_metadata"):
+                    try:
+                        # Get BioProject IDs from NCBI enrichment (these are proper accessions)
+                        bioproject_ids = extracted_data.get("ncbi_enrichment", {}).get("bioproject", [])
 
-                    if bioproject_ids:
-                        response_parts.append(f"✓ Fetching SRA metadata for {len(bioproject_ids)} BioProject(s):")
+                        if bioproject_ids:
+                            response_parts.append(f"✓ Fetching SRA metadata for {len(bioproject_ids)} BioProject(s):")
 
-                        sra_fetch_success = 0
-                        sra_fetch_failed = 0
-                        sra_workspace_keys = []  # Track SRA workspace keys for handoff
+                            sra_fetch_success = 0
+                            sra_fetch_failed = 0
+                            sra_workspace_keys = []  # Track SRA workspace keys for handoff
 
-                        for bioproject_id in bioproject_ids:
-                            try:
-                                # Get SRAweb instance from provider
-                                sraweb = self.sra_provider._get_sraweb()
+                            for bioproject_id in bioproject_ids:
+                                try:
+                                    # Get SRAweb instance from provider
+                                    sraweb = self.sra_provider._get_sraweb()
 
-                                # Fetch metadata using pysradb with BioProject ID
-                                df = sraweb.sra_metadata(bioproject_id, detailed=True)
+                                    # Fetch metadata using pysradb with BioProject ID
+                                    df = sraweb.sra_metadata(bioproject_id, detailed=True)
 
-                                if df is not None and not df.empty:
-                                    # Convert DataFrame to dict for storage
-                                    metadata_dict = df.to_dict(orient="records")
+                                    if df is not None and not df.empty:
+                                        # Convert DataFrame to dict for storage
+                                        metadata_dict = df.to_dict(orient="records")
 
-                                    # Create MetadataContent for workspace storage
-                                    metadata_content = MetadataContent(
-                                        identifier=f"sra_{bioproject_id}_samples",
-                                        content_type="sra_samples",
-                                        description=f"SRA sample metadata for BioProject {bioproject_id}",
-                                        data={"samples": metadata_dict, "sample_count": len(df)},
-                                        related_datasets=[bioproject_id],
-                                        source="SRAProvider",
-                                        cached_at=datetime.now().isoformat(),
-                                    )
+                                        # Create MetadataContent for workspace storage
+                                        metadata_content = MetadataContent(
+                                            identifier=f"sra_{bioproject_id}_samples",
+                                            content_type="sra_samples",
+                                            description=f"SRA sample metadata for BioProject {bioproject_id}",
+                                            data={"samples": metadata_dict, "sample_count": len(df)},
+                                            related_datasets=[bioproject_id],
+                                            source="SRAProvider",
+                                            cached_at=datetime.now().isoformat(),
+                                        )
 
-                                    # Write to workspace
-                                    workspace_path = self.workspace_service.write_content(
-                                        metadata_content, ContentType.METADATA
-                                    )
+                                        # Write to workspace
+                                        workspace_path = self.workspace_service.write_content(
+                                            metadata_content, ContentType.METADATA
+                                        )
 
-                                    # Track workspace key for handoff
-                                    sra_workspace_keys.append(f"sra_{bioproject_id}_samples")
+                                        # Track workspace key for handoff
+                                        sra_workspace_keys.append(f"sra_{bioproject_id}_samples")
 
-                                    sra_fetch_success += 1
-                                    response_parts.append(
-                                        f"  - {bioproject_id}: {len(df)} sample(s) → {workspace_path}"
-                                    )
+                                        sra_fetch_success += 1
+                                        response_parts.append(
+                                            f"  - {bioproject_id}: {len(df)} sample(s) → {workspace_path}"
+                                        )
 
-                                    logger.info(
-                                        f"Fetched {len(df)} samples for BioProject {bioproject_id}"
-                                    )
-                                else:
-                                    response_parts.append(
-                                        f"  - {bioproject_id}: No metadata found (may be restricted or invalid)"
-                                    )
+                                        logger.info(
+                                            f"Fetched {len(df)} samples for BioProject {bioproject_id}"
+                                        )
+                                    else:
+                                        response_parts.append(
+                                            f"  - {bioproject_id}: No metadata found (may be restricted or invalid)"
+                                        )
+                                        sra_fetch_failed += 1
+
+                                except Exception as e:
+                                    logger.warning(f"Failed to fetch SRA metadata for {bioproject_id}: {e}")
+                                    response_parts.append(f"  - {bioproject_id}: ✗ Failed ({str(e)})")
                                     sra_fetch_failed += 1
 
-                            except Exception as e:
-                                logger.warning(f"Failed to fetch SRA metadata for {bioproject_id}: {e}")
-                                response_parts.append(f"  - {bioproject_id}: ✗ Failed ({str(e)})")
-                                sra_fetch_failed += 1
+                            # Summary
+                            if sra_fetch_success > 0:
+                                response_parts.append(
+                                    f"✓ SRA metadata fetch complete: {sra_fetch_success} succeeded, {sra_fetch_failed} failed"
+                                )
+                            else:
+                                response_parts.append(
+                                    f"⚠ SRA metadata fetch: All {sra_fetch_failed} ID(s) failed"
+                                )
 
-                        # Summary
-                        if sra_fetch_success > 0:
-                            response_parts.append(
-                                f"✓ SRA metadata fetch complete: {sra_fetch_success} succeeded, {sra_fetch_failed} failed"
-                            )
+                            # Extend workspace_keys with SRA workspace keys for handoff
+                            if sra_workspace_keys:
+                                workspace_keys.extend(sra_workspace_keys)
+
                         else:
                             response_parts.append(
-                                f"⚠ SRA metadata fetch: All {sra_fetch_failed} ID(s) failed"
+                                "⚠ SRA metadata fetch skipped: No BioProject IDs from NCBI enrichment"
                             )
 
-                        # Extend workspace_keys with SRA workspace keys for handoff
-                        if sra_workspace_keys:
-                            workspace_keys.extend(sra_workspace_keys)
-
-                    else:
-                        response_parts.append(
-                            "⚠ SRA metadata fetch skipped: No BioProject IDs from NCBI enrichment"
-                        )
-
-                except Exception as e:
-                    response_parts.append(f"✗ SRA metadata fetch failed: {str(e)}")
-                    logger.error(f"SRA metadata fetch error: {e}")
+                    except Exception as e:
+                        response_parts.append(f"✗ SRA metadata fetch failed: {str(e)}")
+                        logger.error(f"SRA metadata fetch error: {e}")
 
                 response_parts.append("")
 
             # Metadata extraction
             if "metadata" in tasks or "full_text" in tasks:
-                try:
-                    # Use priority-based URL selection (fulltext > pdf > metadata > pubmed > doi)
-                    source = self._get_best_source_for_extraction(entry)
-                    if source:
-                        content_result = self.content_service.get_full_content(
-                            source=source,
-                            prefer_webpage=True,
-                            keywords=["abstract", "introduction", "methods"],
-                            max_paragraphs=100,
-                        )
+                with self._measure_step("metadata"):
+                    try:
+                        # Use priority-based URL selection (fulltext > pdf > metadata > pubmed > doi)
+                        source = self._get_best_source_for_extraction(entry)
+                        if source:
+                            with self._measure_step("metadata:get_content"):
+                                content_result = self.content_service.get_full_content(
+                                    source=source,
+                                    prefer_webpage=True,
+                                    keywords=["abstract", "introduction", "methods"],
+                                    max_paragraphs=100,
+                                )
 
-                        # Check for paywall error
-                        if content_result and content_result.get("error"):
-                            error_msg = content_result.get("error", "")
-                            if "paywalled" in error_msg.lower():
-                                # FIX: Track paywall status in-memory, write at end
-                                is_paywalled = True
-                                paywall_error = error_msg
-                                response_parts.append(f"⚠ Publication is paywalled: {error_msg}")
-                                response_parts.append("User can manually add content later.")
-                                # Continue with partial extraction
+                            # Check for paywall error
+                            if content_result and content_result.get("error"):
+                                error_msg = content_result.get("error", "")
+                                if "paywalled" in error_msg.lower():
+                                    # FIX: Track paywall status in-memory, write at end
+                                    is_paywalled = True
+                                    paywall_error = error_msg
+                                    response_parts.append(f"⚠ Publication is paywalled: {error_msg}")
+                                    response_parts.append("User can manually add content later.")
+                                    # Continue with partial extraction
+                                else:
+                                    response_parts.append(f"✗ Metadata extraction failed: {error_msg}")
                             else:
-                                response_parts.append(f"✗ Metadata extraction failed: {error_msg}")
+                                content = content_result.get("content", "") if content_result else ""
+                                extracted_data["metadata_extracted"] = bool(content)
+                                response_parts.append("✓ Metadata extracted successfully")
                         else:
-                            content = content_result.get("content", "") if content_result else ""
-                            extracted_data["metadata_extracted"] = bool(content)
-                            response_parts.append("✓ Metadata extracted successfully")
-                    else:
-                        response_parts.append(
-                            "⚠ No identifier or URL available for metadata extraction"
-                        )
-                except Exception as e:  # pragma: no cover - provider errors
-                    response_parts.append(f"✗ Metadata extraction failed: {str(e)}")
+                            response_parts.append(
+                                "⚠ No identifier or URL available for metadata extraction"
+                            )
+                    except Exception as e:  # pragma: no cover - provider errors
+                        response_parts.append(f"✗ Metadata extraction failed: {str(e)}")
 
             # Methods extraction
             if "methods" in tasks or "full_text" in tasks:
-                try:
-                    # Use priority-based URL selection (fulltext > pdf > metadata > pubmed > doi)
-                    source = self._get_best_source_for_extraction(entry)
-                    if source:
-                        if not content_result or content_result.get("error"):
-                            content_result = self.content_service.get_full_content(
-                                source=source
-                            )
+                with self._measure_step("methods"):
+                    try:
+                        # Use priority-based URL selection (fulltext > pdf > metadata > pubmed > doi)
+                        source = self._get_best_source_for_extraction(entry)
+                        if source:
+                            if not content_result or content_result.get("error"):
+                                with self._measure_step("methods:get_content"):
+                                    content_result = self.content_service.get_full_content(
+                                        source=source
+                                    )
 
-                        if content_result and content_result.get("content"):
-                            methods_dict = self.content_service.extract_methods(
-                                content_result
-                            )
-                            methods_content = methods_dict.get("methods_text", "")
-                        else:
-                            methods_content = ""
+                            if content_result and content_result.get("content"):
+                                with self._measure_step("methods:extract"):
+                                    methods_dict = self.content_service.extract_methods(
+                                        content_result
+                                    )
+                                methods_content = methods_dict.get("methods_text", "")
+                            else:
+                                methods_content = ""
 
-                        extracted_data["methods_extracted"] = bool(methods_content)
-                        if methods_content:
-                            response_parts.append("✓ Methods section extracted successfully")
+                            extracted_data["methods_extracted"] = bool(methods_content)
+                            if methods_content:
+                                response_parts.append("✓ Methods section extracted successfully")
+                            else:
+                                response_parts.append("⚠ Methods section not found in content")
                         else:
-                            response_parts.append("⚠ Methods section not found in content")
-                    else:
-                        response_parts.append(
-                            "⚠ No identifier or URL available for methods extraction"
-                        )
-                except Exception as e:  # pragma: no cover - provider errors
-                    response_parts.append(f"✗ Methods extraction failed: {str(e)}")
+                            response_parts.append(
+                                "⚠ No identifier or URL available for methods extraction"
+                            )
+                    except Exception as e:  # pragma: no cover - provider errors
+                        response_parts.append(f"✗ Methods extraction failed: {str(e)}")
 
             # Identifier extraction
             if "identifiers" in tasks or "full_text" in tasks:
-                try:
-                    # Use priority-based URL selection (fulltext > pdf > metadata > pubmed > doi)
-                    source = self._get_best_source_for_extraction(entry)
-                    if source:
-                        if not content_result or content_result.get("error"):
-                            content_result = self.content_service.get_full_content(
-                                source=source
-                            )
-
-                        full_content = (
-                            content_result.get("content", "") if content_result else ""
-                        )
-                        extracted_data["identifiers_extracted"] = bool(full_content)
-
-                        import re
-
-                        # Expanded identifier patterns based on manual inspection
-                        # Categories:
-                        # 1. NCBI databases (GEO, SRA, BioProject, BioSample)
-                        # 2. European databases (ENA/EBI, ArrayExpress, EGA)
-                        # 3. Japanese database (DDBJ)
-                        # 4. Chinese database (CNGB/NGDC)
-                        # 5. Controlled access (dbGaP)
-                        # 6. General repositories (Zenodo, Figshare)
-                        identifiers_found = {
-                            # GEO: Gene Expression Omnibus (NCBI)
-                            "geo": re.findall(r"GSE\d{4,}|GDS\d{4,}", full_content),
-                            # SRA: Sequence Read Archive (NCBI + ENA + DDBJ)
-                            # S=NCBI SRA, E=ENA, D=DDBJ
-                            "sra": re.findall(
-                                r"[SED]RP\d{6,}|[SED]RX\d{6,}|[SED]RR\d{6,}",
-                                full_content,
-                            ),
-                            # BioProject: NCBI, EBI, DDBJ, CNGB
-                            # PRJNA=NCBI, PRJEB=EBI, PRJDA/PRJDB=DDBJ, PRJCA=CNGB
-                            "bioproject": re.findall(
-                                r"PRJ[A-Z]{2}\d+", full_content
-                            ),
-                            # BioSample: NCBI (SAMN), EBI (SAME), DDBJ (SAMD)
-                            "biosample": re.findall(r"SAM[A-Z]+\d+", full_content),
-                            # ArrayExpress (EBI) - microarray/RNA-seq
-                            "arrayexpress": re.findall(
-                                r"E-[A-Z]+-\d+", full_content
-                            ),
-                            # CNGB/NGDC: Chinese National GeneBank Database
-                            # CRA=raw reads, CNP=project, CRX=experiment, CRR=run
-                            "cngb": re.findall(
-                                r"CRA\d{6,}|CNP\d{7,}|CRX\d{6,}|CRR\d{6,}",
-                                full_content,
-                            ),
-                            # EGA: European Genome-phenome Archive (controlled access)
-                            "ega": re.findall(r"EGAS\d{11}", full_content),
-                            # dbGaP: Database of Genotypes and Phenotypes (controlled)
-                            "dbgap": re.findall(r"phs\d{6}", full_content, re.I),
-                            # Zenodo: General-purpose repository
-                            "zenodo": re.findall(
-                                r"10\.5281/zenodo\.\d+", full_content
-                            ),
-                            # Figshare: General-purpose repository
-                            "figshare": re.findall(
-                                r"10\.6084/m9\.figshare\.\d+", full_content
-                            ),
-                        }
-
-                        for key in identifiers_found:
-                            identifiers_found[key] = list(set(identifiers_found[key]))
-
-                        # FIX: Collect identifiers in-memory, merge with NCBI identifiers
-                        # Will be written once at the end
-                        for key, values in identifiers_found.items():
-                            if values:
-                                if key in all_extracted_identifiers:
-                                    # Merge and deduplicate
-                                    all_extracted_identifiers[key] = list(
-                                        set(all_extracted_identifiers[key] + values)
+                with self._measure_step("identifiers"):
+                    try:
+                        # Use priority-based URL selection (fulltext > pdf > metadata > pubmed > doi)
+                        source = self._get_best_source_for_extraction(entry)
+                        if source:
+                            if not content_result or content_result.get("error"):
+                                with self._measure_step("identifiers:get_content"):
+                                    content_result = self.content_service.get_full_content(
+                                        source=source
                                     )
-                                else:
-                                    all_extracted_identifiers[key] = list(values)
 
-                        extracted_data["identifiers"] = identifiers_found
-
-                        total_ids = sum(len(v) for v in identifiers_found.values())
-                        if total_ids > 0:
-                            response_parts.append(
-                                f"✓ Found {total_ids} dataset identifiers:"
+                            full_content = (
+                                content_result.get("content", "") if content_result else ""
                             )
-                            for id_type, id_list in identifiers_found.items():
-                                if id_list:
-                                    response_parts.append(
-                                        f"  - {id_type.upper()}: {', '.join(id_list[:5])}"
-                                    )
-                                    if len(id_list) > 5:
-                                        response_parts.append(
-                                            f"    (+{len(id_list) - 5} more)"
+                            extracted_data["identifiers_extracted"] = bool(full_content)
+
+                            import re
+
+                            with self._measure_step("identifiers:regex"):
+                                # Expanded identifier patterns based on manual inspection
+                                # Categories:
+                                # 1. NCBI databases (GEO, SRA, BioProject, BioSample)
+                                # 2. European databases (ENA/EBI, ArrayExpress, EGA)
+                                # 3. Japanese database (DDBJ)
+                                # 4. Chinese database (CNGB/NGDC)
+                                # 5. Controlled access (dbGaP)
+                                # 6. General repositories (Zenodo, Figshare)
+                                identifiers_found = {
+                                    # GEO: Gene Expression Omnibus (NCBI)
+                                    "geo": re.findall(r"GSE\d{4,}|GDS\d{4,}", full_content),
+                                    # SRA: Sequence Read Archive (NCBI + ENA + DDBJ)
+                                    # S=NCBI SRA, E=ENA, D=DDBJ
+                                    "sra": re.findall(
+                                        r"[SED]RP\d{6,}|[SED]RX\d{6,}|[SED]RR\d{6,}",
+                                        full_content,
+                                    ),
+                                    # BioProject: NCBI, EBI, DDBJ, CNGB
+                                    # PRJNA=NCBI, PRJEB=EBI, PRJDA/PRJDB=DDBJ, PRJCA=CNGB
+                                    "bioproject": re.findall(
+                                        r"PRJ[A-Z]{2}\d+", full_content
+                                    ),
+                                    # BioSample: NCBI (SAMN), EBI (SAME), DDBJ (SAMD)
+                                    "biosample": re.findall(r"SAM[A-Z]+\d+", full_content),
+                                    # ArrayExpress (EBI) - microarray/RNA-seq
+                                    "arrayexpress": re.findall(
+                                        r"E-[A-Z]+-\d+", full_content
+                                    ),
+                                    # CNGB/NGDC: Chinese National GeneBank Database
+                                    # CRA=raw reads, CNP=project, CRX=experiment, CRR=run
+                                    "cngb": re.findall(
+                                        r"CRA\d{6,}|CNP\d{7,}|CRX\d{6,}|CRR\d{6,}",
+                                        full_content,
+                                    ),
+                                    # EGA: European Genome-phenome Archive (controlled access)
+                                    "ega": re.findall(r"EGAS\d{11}", full_content),
+                                    # dbGaP: Database of Genotypes and Phenotypes (controlled)
+                                    "dbgap": re.findall(r"phs\d{6}", full_content, re.I),
+                                    # Zenodo: General-purpose repository
+                                    "zenodo": re.findall(
+                                        r"10\.5281/zenodo\.\d+", full_content
+                                    ),
+                                    # Figshare: General-purpose repository
+                                    "figshare": re.findall(
+                                        r"10\.6084/m9\.figshare\.\d+", full_content
+                                    ),
+                                }
+
+                            for key in identifiers_found:
+                                identifiers_found[key] = list(set(identifiers_found[key]))
+
+                            # FIX: Collect identifiers in-memory, merge with NCBI identifiers
+                            # Will be written once at the end
+                            for key, values in identifiers_found.items():
+                                if values:
+                                    if key in all_extracted_identifiers:
+                                        # Merge and deduplicate
+                                        all_extracted_identifiers[key] = list(
+                                            set(all_extracted_identifiers[key] + values)
                                         )
+                                    else:
+                                        all_extracted_identifiers[key] = list(values)
+
+                            extracted_data["identifiers"] = identifiers_found
+
+                            total_ids = sum(len(v) for v in identifiers_found.values())
+                            if total_ids > 0:
+                                response_parts.append(
+                                    f"✓ Found {total_ids} dataset identifiers:"
+                                )
+                                for id_type, id_list in identifiers_found.items():
+                                    if id_list:
+                                        response_parts.append(
+                                            f"  - {id_type.upper()}: {', '.join(id_list[:5])}"
+                                        )
+                                        if len(id_list) > 5:
+                                            response_parts.append(
+                                                f"    (+{len(id_list) - 5} more)"
+                                            )
+                            else:
+                                response_parts.append(
+                                    "⚠ No dataset identifiers found in publication"
+                                )
                         else:
                             response_parts.append(
-                                "⚠ No dataset identifiers found in publication"
+                                "⚠ No identifier or URL available for identifier extraction"
                             )
-                    else:
-                        response_parts.append(
-                            "⚠ No identifier or URL available for identifier extraction"
-                        )
-                except Exception as e:  # pragma: no cover - provider errors
-                    response_parts.append(f"✗ Identifier extraction failed: {str(e)}")
+                    except Exception as e:  # pragma: no cover - provider errors
+                        response_parts.append(f"✗ Identifier extraction failed: {str(e)}")
 
             # Persist extracted data to workspace
-            workspace_keys: List[str] = []
             try:
                 from pathlib import Path
 

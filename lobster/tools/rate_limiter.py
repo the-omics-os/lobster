@@ -356,11 +356,11 @@ import urllib.parse
 # Domain-specific rate limits (requests per second)
 DOMAIN_RATE_LIMITS = {
     "eutils.ncbi.nlm.nih.gov": 10.0,  # NCBI with API key
-    "www.ncbi.nlm.nih.gov": 3.0,       # PMC web
-    "pmc.ncbi.nlm.nih.gov": 3.0,
+    "www.ncbi.nlm.nih.gov": 10.0,       # PMC web
+    "pmc.ncbi.nlm.nih.gov": 10.0,
     "europepmc.org": 2.0,
     "frontiersin.org": 1.0,
-    "mdpi.com": 1.0,
+    "mdpi.com": 10.0,
     "peerj.com": 1.0,
     "nature.com": 0.5,
     "cell.com": 0.5,

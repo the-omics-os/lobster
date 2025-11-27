@@ -228,8 +228,8 @@ The heart of Lobster AI is its multi-agent architecture, where specialized AI ag
 - **Bulk RNA-seq Expert** - Handles bulk transcriptomics
 - **MS Proteomics Expert** - Mass spectrometry proteomics analysis
 - **Affinity Proteomics Expert** - Targeted protein analysis
-- **Research Agent** - Discovery & content analysis with 10 tools, workspace caching (Phase 1-4 complete)
-- **Metadata Assistant** - Cross-dataset harmonization with 4 tools for sample mapping and validation (Phase 3)
+- **Research Agent** - Discovery & content analysis with 10 tools, workspace caching, publication queue processing (Phase 1-4 complete)
+- **Metadata Assistant** - Cross-dataset harmonization with 4 tools for sample mapping and validation, **publication queue filtering** with 3 tools for batch processing (Phase 3-4 complete)
 
 #### Hierarchical Agent Delegation (Tool-Wrapping Pattern)
 
@@ -484,16 +484,16 @@ The research_agent provides 10 specialized tools organized into 4 categories:
 - `read_full_publication` - Full-text access with 3-tier cascade
 - `extract_methods` - Software and parameter extraction from methods sections
 
-**Workspace Tools (2):**
-- `write_to_workspace` - Cache content for persistence and handoffs
+**Workspace Tools (2):** (Shared factories in `tools/workspace_tool.py`, v2.5+)
+- `write_to_workspace` - Cache content for persistence and handoffs with CSV/JSON export
 - `get_content_from_workspace` - Retrieve cached content with detail levels
 
 **System Tools (1):**
 - `validate_dataset_metadata` - Pre-download validation of dataset completeness
 
-#### metadata_assistant - Metadata Harmonization Specialist (Phase 3)
+#### metadata_assistant - Metadata Harmonization Specialist (Phase 3-4)
 
-The metadata_assistant provides 4 tools for cross-dataset operations:
+The metadata_assistant provides 7 tools for cross-dataset operations and publication queue processing:
 
 - `map_samples_by_id` - Sample ID mapping with 4 strategies:
   - Exact matching (case-insensitive)
@@ -518,6 +518,15 @@ The metadata_assistant provides 4 tools for cross-dataset operations:
   - Duplicate ID identification
   - Platform consistency validation
 
+**Publication Queue Processing Tools (Phase 4, v2.5+):**
+- `process_metadata_entry` - Process single queue entry with filter criteria
+- `process_metadata_queue` - Batch process HANDOFF_READY entries, aggregate samples
+- `update_metadata_status` - Manual status updates for queue entries
+
+**Shared Workspace Tools:**
+- `get_content_from_workspace` - Read workspace content (shared with research_agent)
+- `write_to_workspace` - Export to workspace with CSV/JSON formats (shared with research_agent)
+
 #### Agent Handoff Patterns
 
 The agents collaborate through structured handoffs:
@@ -537,6 +546,50 @@ research_agent reports to supervisor
     ↓
 Supervisor hands off to data_expert for downloads
 ```
+
+#### Publication Queue → Metadata Filtering Workflow (v2.5+)
+
+**Use Case**: Process large publication collections (.ris files), extract dataset identifiers, filter sample metadata by criteria (e.g., "16S human fecal CRC"), export unified CSV.
+
+**Workflow**:
+```mermaid
+graph TB
+    USER[User: Load .ris and filter<br/>16S human fecal samples] --> SUP[Supervisor]
+    SUP --> RA[research_agent]
+
+    RA --> LOAD[load_ris_to_queue<br/>Parse .ris file]
+    LOAD --> PROC[process_publication_queue<br/>Extract identifiers + SRA metadata]
+
+    PROC --> STATUS{Auto-Status<br/>Detection}
+    STATUS -->|Has identifiers +<br/>datasets + metadata| READY[HANDOFF_READY]
+    STATUS -->|Missing conditions| COMP[COMPLETED]
+
+    READY --> HANDOFF[handoff_to_metadata_assistant<br/>Context: filter criteria]
+
+    HANDOFF --> MA[metadata_assistant]
+    MA --> BATCH[process_metadata_queue<br/>status_filter=handoff_ready<br/>filter_criteria=16S human fecal]
+
+    BATCH --> FILTER[Apply filters:<br/>- 16S amplicon detection<br/>- Host organism validation<br/>- Sample type filtering]
+
+    FILTER --> AGG[Aggregate samples<br/>Add publication context]
+    AGG --> EXPORT[write_to_workspace<br/>output_format=csv]
+
+    EXPORT --> CSV[Unified CSV:<br/>publication + sample + download URLs]
+
+    CSV --> USER_OUT[User receives CSV]
+
+    style USER fill:#e3f2fd
+    style READY fill:#c8e6c9
+    style HANDOFF fill:#fff3e0
+    style CSV fill:#c8e6c9
+    style USER_OUT fill:#e3f2fd
+```
+
+**Key Features**:
+- **Auto-Status Detection**: Entries automatically transition to `HANDOFF_READY` when conditions met
+- **Batch Processing**: Process multiple publications in single operation
+- **Filter Composition**: Microbiome-aware filtering (16S, host, sample type, disease)
+- **Full Schema Export**: All SRA metadata fields preserved in CSV
 
 ### Research Input Flow
 

@@ -300,7 +300,7 @@ lobster/
 | GEO | `services/data_access/geo/` | Modular GEO package (downloader, parser, strategy, constants) |
 | Interfaces | `core/interfaces/download_service.py` | IDownloadService abstract base class |
 | Providers | `tools/providers/*.py` | PubMed/GEO/Web access |
-| Utilities | `tools/*.py` | orchestrators, helpers, workspace tools |
+| Utilities | `tools/*.py` | orchestrators, helpers, workspace tools (write_to_workspace, get_content_from_workspace shared across agents) |
 | Deprecated | `tools/geo_*.py`, `tools/pipeline_strategy.py` | Backward compat aliases → `services/data_access/geo/` |
 | Registry | `config/agent_registry.py` | agent configuration |
 
@@ -309,8 +309,8 @@ lobster/
 | Agent | Main Focus |
 |-------|------------|
 | `supervisor` | route user intents to specialists, manage handoffs |
-| `research_agent` | literature & dataset discovery, URL extraction, workspace caching |
-| `metadata_assistant` | ID mapping, schema‑based validation, harmonization |
+| `research_agent` | literature & dataset discovery, URL extraction, workspace caching, publication queue processing |
+| `metadata_assistant` | ID mapping, schema‑based validation, harmonization, **publication queue filtering** (3 tools: process_metadata_entry, process_metadata_queue, update_metadata_status) |
 | `data_expert` | **ZERO ONLINE ACCESS**: execute downloads from pre-validated queue entries (research_agent creates), load local files via adapter system, manage modalities with ModalityManagementService (5 CRUD tools), retry failed downloads with strategy overrides, queue monitoring & troubleshooting |
 | `singlecell_expert` | scRNA‑seq: QC, clustering, pseudobulk, trajectories, markers |
 | `bulk_rnaseq_expert` | bulk RNA‑seq import + DE (pyDESeq2, formula designs) |
@@ -553,7 +553,35 @@ modality_name, stats = orchestrator.execute_download(entry_id)
 - Retry mechanism with strategy overrides
 - Comprehensive error handling and status tracking
 
-### 4.7 ModalityManagementService Pattern
+### 4.7 Publication Queue → Metadata Filtering Workflow (v2.5+)
+
+**Problem**: Customers need to process large publication collections (.ris files), extract dataset identifiers, fetch sample metadata, and filter by criteria (e.g., "16S human fecal CRC").
+
+**Solution**: Multi-agent workflow with automatic handoff readiness detection and batch metadata processing.
+
+**Workflow**:
+1. **research_agent**: Processes publication queue, extracts identifiers via NCBI E-Link, fetches SRA metadata
+2. **Auto-status**: Entries with identifiers + datasets + metadata → `HANDOFF_READY` status
+3. **metadata_assistant**: Batch processes HANDOFF_READY entries, applies filter criteria, aggregates samples
+4. **Export**: Unified CSV with publication context + sample metadata + download URLs
+
+**Key Files**:
+- `services/orchestration/publication_processing_service.py` - Queue processing with auto-status
+- `agents/metadata_assistant.py` - 3 new tools (process_metadata_entry, process_metadata_queue, update_metadata_status)
+- `tools/workspace_tool.py` - Shared write_to_workspace factory (CSV export)
+- `core/schemas/publication_queue.py` - PublicationQueueEntry with handoff fields
+
+**Auto-Status Logic**:
+```python
+is_ready_for_handoff = (
+    bool(extracted_identifiers) and  # Has identifiers
+    bool(dataset_ids) and            # Has dataset IDs
+    bool(workspace_metadata_keys)     # Has workspace metadata files
+)
+# → Status transitions to HANDOFF_READY
+```
+
+### 4.8 ModalityManagementService Pattern
 
 **Problem**: Modality CRUD operations scattered across data_expert tools, inconsistent provenance tracking.
 
@@ -594,7 +622,7 @@ class ModalityManagementService:
 - Centralized error handling
 - Reusable across multiple agents
 
-### 4.8 Naming & Data Quality
+### 4.9 Naming & Data Quality
 
 **Naming convention (example)**:
 

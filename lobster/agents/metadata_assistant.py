@@ -26,6 +26,7 @@ from lobster.services.metadata.metadata_standardization_service import (
 )
 from lobster.services.metadata.sample_mapping_service import SampleMappingService
 from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.schemas.publication_queue import PublicationStatus, HandoffStatus
 from lobster.utils.logger import get_logger
 
 # Optional microbiome features (not in public lobster-local)
@@ -914,6 +915,274 @@ def metadata_assistant(
             return f"❌ Unexpected error during filtering: {str(e)}"
 
     # =========================================================================
+    # Phase 4c NEW TOOLS: Publication Queue Processing (3 tools)
+    # =========================================================================
+
+    # Import shared workspace tools and services
+    from lobster.tools.workspace_tool import (
+        create_get_content_from_workspace_tool,
+        create_write_to_workspace_tool,
+    )
+    from lobster.services.data_access.workspace_content_service import WorkspaceContentService
+
+    workspace_service = WorkspaceContentService(data_manager=data_manager)
+
+    # Create shared workspace tools
+    get_content_from_workspace = create_get_content_from_workspace_tool(data_manager)
+    write_to_workspace = create_write_to_workspace_tool(data_manager)
+
+    @tool
+    def process_metadata_entry(
+        entry_id: str,
+        filter_criteria: str = None,
+        standardize_schema: str = None,
+    ) -> str:
+        """
+        Process a single publication queue entry for metadata filtering/standardization.
+
+        Reads workspace_metadata_keys from the entry, applies filters if specified,
+        and stores results back to harmonization_metadata.
+
+        Args:
+            entry_id: Publication queue entry ID
+            filter_criteria: Optional natural language filter (e.g., "16S human fecal")
+            standardize_schema: Optional schema to standardize to (e.g., "microbiome")
+
+        Returns:
+            Processing summary with sample counts and filtered metadata location
+        """
+        try:
+            queue = data_manager.publication_queue
+            entry = queue.get_entry(entry_id)
+
+            if not entry.workspace_metadata_keys:
+                return f"❌ Error: Entry {entry_id} has no workspace_metadata_keys"
+
+            # Update status to in_progress
+            queue.update_status(entry_id, entry.status, handoff_status=HandoffStatus.METADATA_IN_PROGRESS)
+
+            # Read and aggregate samples from all workspace keys
+            all_samples = []
+            for ws_key in entry.workspace_metadata_keys:
+                from lobster.services.data_access.workspace_content_service import ContentType
+                ws_data = workspace_service.read_content(ws_key, content_type=ContentType.METADATA)
+                if ws_data:
+                    samples = _extract_samples_from_workspace(ws_data)
+                    all_samples.extend(samples)
+
+            samples_before = len(all_samples)
+
+            # Apply filters if specified
+            if filter_criteria and all_samples:
+                all_samples = _apply_metadata_filters(all_samples, filter_criteria)
+
+            samples_after = len(all_samples)
+
+            # Add publication context
+            for sample in all_samples:
+                sample["publication_entry_id"] = entry_id
+                sample["publication_title"] = entry.title
+                sample["publication_doi"] = entry.doi
+                sample["publication_pmid"] = entry.pmid
+
+            # Store in harmonization_metadata
+            harmonization_data = {
+                "samples": all_samples,
+                "filter_criteria": filter_criteria,
+                "standardize_schema": standardize_schema,
+                "stats": {"before": samples_before, "after": samples_after},
+            }
+
+            queue.update_status(
+                entry_id=entry_id,
+                status=entry.status,
+                handoff_status=HandoffStatus.METADATA_COMPLETE,
+                harmonization_metadata=harmonization_data,
+            )
+
+            retention = (samples_after / samples_before * 100) if samples_before > 0 else 0
+            return f"""## Entry Processed: {entry_id}
+**Samples Before**: {samples_before}
+**Samples After**: {samples_after}
+**Retention**: {retention:.1f}%
+**Filter**: {filter_criteria or 'None'}
+"""
+        except Exception as e:
+            logger.error(f"Error processing entry {entry_id}: {e}")
+            return f"❌ Error processing entry: {str(e)}"
+
+    @tool
+    def process_metadata_queue(
+        status_filter: str = "handoff_ready",
+        filter_criteria: str = None,
+        max_entries: int = None,
+        output_key: str = "aggregated_filtered_samples",
+    ) -> str:
+        """
+        Process multiple publication queue entries and aggregate results.
+
+        Iterates through entries matching status_filter, processes each,
+        and aggregates all filtered samples into a single workspace artifact.
+
+        Args:
+            status_filter: Queue status to filter (default: "handoff_ready")
+            filter_criteria: Natural language filter (e.g., "16S human fecal CRC")
+            max_entries: Maximum entries to process (None = all)
+            output_key: Workspace key for aggregated output
+
+        Returns:
+            Processing summary with total counts and output location
+        """
+        try:
+            from lobster.services.data_access.workspace_content_service import MetadataContent, ContentType
+
+            queue = data_manager.publication_queue
+            entries = queue.list_entries(status=PublicationStatus(status_filter.lower()))
+
+            if max_entries:
+                entries = entries[:max_entries]
+
+            if not entries:
+                return f"No entries found with status '{status_filter}'"
+
+            all_samples = []
+            stats = {"processed": 0, "with_samples": 0, "total_before": 0, "total_after": 0}
+
+            for entry in entries:
+                if not entry.workspace_metadata_keys:
+                    continue
+
+                entry_samples = []
+                for ws_key in entry.workspace_metadata_keys:
+                    from lobster.services.data_access.workspace_content_service import ContentType
+                    ws_data = workspace_service.read_content(ws_key, content_type=ContentType.METADATA)
+                    if ws_data:
+                        samples = _extract_samples_from_workspace(ws_data)
+                        entry_samples.extend(samples)
+
+                stats["total_before"] += len(entry_samples)
+
+                if filter_criteria and entry_samples:
+                    entry_samples = _apply_metadata_filters(entry_samples, filter_criteria)
+
+                stats["total_after"] += len(entry_samples)
+
+                # Add publication context
+                for sample in entry_samples:
+                    sample["publication_entry_id"] = entry.entry_id
+                    sample["publication_title"] = entry.title
+                    sample["publication_doi"] = entry.doi
+                    sample["publication_pmid"] = entry.pmid
+
+                all_samples.extend(entry_samples)
+                stats["processed"] += 1
+                if entry_samples:
+                    stats["with_samples"] += 1
+
+                # Update entry status
+                queue.update_status(entry.entry_id, entry.status, handoff_status=HandoffStatus.METADATA_COMPLETE)
+
+            # Store aggregated results to workspace
+            if all_samples:
+                content = MetadataContent(
+                    identifier=output_key,
+                    content_type="filtered_samples",
+                    description=f"Batch filtered samples: {filter_criteria or 'no filter'}",
+                    data={"samples": all_samples, "filter_criteria": filter_criteria, "stats": stats},
+                    source="metadata_assistant",
+                )
+                workspace_service.write_content(content, ContentType.METADATA)
+
+                # Also store in metadata_store for write_to_workspace access
+                data_manager.metadata_store[output_key] = {
+                    "samples": all_samples,
+                    "filter_criteria": filter_criteria,
+                    "stats": stats,
+                }
+
+            retention = (stats["total_after"] / stats["total_before"] * 100) if stats["total_before"] > 0 else 0
+            return f"""## Queue Processing Complete
+**Entries Processed**: {stats['processed']}
+**Entries With Samples**: {stats['with_samples']}
+**Total Samples Before**: {stats['total_before']}
+**Total Samples After**: {stats['total_after']}
+**Retention Rate**: {retention:.1f}%
+**Output Key**: {output_key}
+
+Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_format="csv")` to export as CSV.
+"""
+        except Exception as e:
+            logger.error(f"Error processing queue: {e}")
+            return f"❌ Error processing queue: {str(e)}"
+
+    @tool
+    def update_metadata_status(
+        entry_id: str,
+        handoff_status: str = None,
+        error_message: str = None,
+    ) -> str:
+        """
+        Manually update metadata processing status for a queue entry.
+
+        Use this to mark entries as complete, reset failed entries, or add error notes.
+
+        Args:
+            entry_id: Publication queue entry ID
+            handoff_status: New handoff status (not_ready, ready_for_metadata, metadata_in_progress, metadata_complete)
+            error_message: Optional error message to log
+
+        Returns:
+            Confirmation of status update
+        """
+        try:
+            queue = data_manager.publication_queue
+            entry = queue.get_entry(entry_id)
+
+            update_kwargs = {"entry_id": entry_id, "status": entry.status}
+
+            if handoff_status:
+                update_kwargs["handoff_status"] = HandoffStatus(handoff_status)
+            if error_message:
+                update_kwargs["error"] = error_message
+
+            queue.update_status(**update_kwargs)
+
+            return f"✓ Updated {entry_id}: handoff_status={handoff_status or 'unchanged'}"
+        except Exception as e:
+            logger.error(f"Error updating status: {e}")
+            return f"❌ Error updating status: {str(e)}"
+
+    # Helper functions for queue processing
+    def _extract_samples_from_workspace(ws_data) -> list:
+        """Extract sample records from workspace data structure."""
+        if isinstance(ws_data, dict):
+            if "samples" in ws_data:
+                samples = ws_data["samples"]
+                if isinstance(samples, list):
+                    return samples
+                elif isinstance(samples, dict):
+                    return [{"sample_id": k, **v} for k, v in samples.items()]
+            if "data" in ws_data and isinstance(ws_data["data"], dict):
+                return _extract_samples_from_workspace(ws_data["data"])
+        return []
+
+    def _apply_metadata_filters(samples: list, filter_criteria: str) -> list:
+        """Apply natural language filters using microbiome services."""
+        if not MICROBIOME_FEATURES_AVAILABLE:
+            logger.warning("Microbiome services not available, returning unfiltered samples")
+            return samples
+
+        parsed = _parse_filter_criteria(filter_criteria)
+        filtered = samples.copy()
+
+        if parsed["check_16s"]:
+            filtered = [s for s in filtered if microbiome_filtering_service.validate_16s_amplicon(s, strict=False)[0]]
+        if parsed["host_organisms"]:
+            filtered = [s for s in filtered if microbiome_filtering_service.validate_host_organism(s, allowed_hosts=parsed["host_organisms"])[0]]
+
+        return filtered
+
+    # =========================================================================
     # Tool Registry
     # =========================================================================
 
@@ -922,6 +1191,13 @@ def metadata_assistant(
         read_sample_metadata,
         standardize_sample_metadata,
         validate_dataset_content,
+        # NEW: Publication queue processing tools
+        process_metadata_entry,
+        process_metadata_queue,
+        update_metadata_status,
+        # Shared workspace tools
+        get_content_from_workspace,
+        write_to_workspace,
     ]
 
     if MICROBIOME_FEATURES_AVAILABLE:
