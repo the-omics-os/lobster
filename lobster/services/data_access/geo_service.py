@@ -1194,6 +1194,19 @@ class GEOService:
                     # SOFT format and some supplementary files need transpose for bulk
                     should_transpose = geo_result.source not in [GEODataSource.TAR_ARCHIVE]
 
+            # DEFENSIVE VALIDATION: Check if data appears to be metadata file, not expression matrix
+            # This prevents loading barcode/gene files as expression data
+            if isinstance(geo_result.data, pd.DataFrame) and geo_result.data.shape[1] <= 3:
+                logger.error(
+                    f"Data appears to be metadata (only {geo_result.data.shape[1]} columns), "
+                    f"not expression matrix. Shape: {geo_result.data.shape}"
+                )
+                raise ValueError(
+                    f"Detected metadata file instead of expression matrix for {clean_geo_id}. "
+                    f"Data has only {geo_result.data.shape[1]} columns (likely barcode/gene file). "
+                    f"This suggests incorrect file selection during download."
+                )
+
             adata = self.data_manager.load_modality(
                 name=modality_name,
                 source=geo_result.data,
@@ -3376,6 +3389,10 @@ The actual expression data download will be much faster now that metadata is pre
                 return self._process_tar_file(tar_files[0], gse_id)
 
             # Look for other expression data files
+            # FIXED: Exclude metadata files and prioritize structured formats
+            # Files that are clearly metadata, not expression data
+            METADATA_KEYWORDS = ['barcode', 'feature', 'gene', 'annotation', 'metadata', 'sample']
+
             expression_files = [
                 f
                 for f in suppl_files
@@ -3383,10 +3400,22 @@ The actual expression data download will be much faster now that metadata is pre
                     ext in f.lower()
                     for ext in [".txt.gz", ".csv.gz", ".tsv.gz", ".h5", ".h5ad"]
                 )
+                and not any(keyword in f.lower() for keyword in METADATA_KEYWORDS)
             ]
 
+            # Prefer structured formats: H5AD > H5 > MTX > TXT/CSV
+            # This prevents accidental selection of metadata files
             if expression_files:
-                logger.debug(f"Processing expression file: {expression_files[0]}")
+                expression_files.sort(key=lambda f: (
+                    0 if '.h5ad' in f.lower() else
+                    1 if '.h5' in f.lower() else
+                    2 if '.mtx' in f.lower() else
+                    3
+                ))
+                logger.debug(
+                    f"Processing expression file: {expression_files[0]} "
+                    f"(selected from {len(expression_files)} candidates after metadata exclusion)"
+                )
                 return self._download_and_parse_file(expression_files[0], gse_id)
 
             logger.warning(
@@ -4221,6 +4250,167 @@ The actual expression data download will be much faster now that metadata is pre
             logger.error(f"Error downloading and combining files for {gsm_id}: {e}")
             return None
 
+    def _detect_features_format(self, features_path: Path) -> str:
+        """
+        Detect 10X features file format by inspecting column count.
+
+        Args:
+            features_path: Path to features/genes file (compressed or uncompressed)
+
+        Returns:
+            Format type: "standard_10x", "symbols_only", or "ids_only"
+        """
+        import gzip
+
+        try:
+            # Handle compressed and uncompressed files
+            if features_path.name.endswith('.gz'):
+                with gzip.open(features_path, 'rt') as f:
+                    first_line = f.readline().strip()
+            else:
+                with open(features_path, 'r') as f:
+                    first_line = f.readline().strip()
+
+            # Count tabs (columns = tabs + 1)
+            n_cols = first_line.count('\t') + 1
+
+            if n_cols >= 2:
+                logger.debug(f"Features file has {n_cols} columns - standard 10X format")
+                return "standard_10x"
+            elif n_cols == 1:
+                # Single column - determine if symbols or IDs
+                # Symbols typically have dashes, letters, mixed case
+                # IDs are typically pure numeric or ENSG* format
+                if first_line.startswith('ENSG') or first_line.startswith('ENS'):
+                    logger.debug("Features file has 1 column - Ensembl IDs format")
+                    return "ids_only"
+                else:
+                    logger.debug("Features file has 1 column - gene symbols format")
+                    return "symbols_only"
+            else:
+                logger.warning(f"Unexpected features file format: {n_cols} columns")
+                return "symbols_only"  # Conservative fallback
+
+        except Exception as e:
+            logger.error(f"Error detecting features format: {e}")
+            return "symbols_only"  # Safe fallback
+
+    def _load_10x_manual(
+        self,
+        temp_dir: Path,
+        features_format: str,
+        gse_id: str
+    ) -> anndata.AnnData:
+        """
+        Manually load 10X MTX when features file is non-standard.
+
+        Handles single-column features files that scanpy's read_10x_mtx() cannot process.
+        Uses scipy.sparse directly for robust loading.
+
+        Args:
+            temp_dir: Directory containing matrix.mtx.gz, barcodes.tsv.gz, features.tsv.gz
+            features_format: Format detected by _detect_features_format()
+            gse_id: GEO series ID for metadata
+
+        Returns:
+            AnnData object with properly loaded 10X data
+        """
+        from scipy.io import mmread
+        import gzip
+        import pandas as pd
+
+        logger.info(f"{gse_id}: Using manual 10X loader for non-standard format: {features_format}")
+
+        # Find files (handle various naming conventions)
+        matrix_files = list(temp_dir.glob("*matrix*.mtx*")) + list(temp_dir.glob("*.mtx*"))
+        barcodes_files = list(temp_dir.glob("*barcode*")) + list(temp_dir.glob("barcodes.*"))
+        features_files = list(temp_dir.glob("*features*")) + list(temp_dir.glob("*genes*"))
+
+        if not (matrix_files and barcodes_files and features_files):
+            raise FileNotFoundError(
+                f"Could not find complete 10X trio in {temp_dir}. "
+                f"Matrix: {len(matrix_files)}, Barcodes: {len(barcodes_files)}, Features: {len(features_files)}"
+            )
+
+        matrix_path = matrix_files[0]
+        barcodes_path = barcodes_files[0]
+        features_path = features_files[0]
+
+        # Load matrix (scipy handles MTX format natively)
+        logger.debug(f"Loading matrix from {matrix_path.name}")
+        if matrix_path.name.endswith('.gz'):
+            with gzip.open(matrix_path, 'rb') as f:
+                X = mmread(f).T.tocsr()  # Transpose: MTX is genes × cells, we need cells × genes
+        else:
+            X = mmread(matrix_path).T.tocsr()
+
+        # Load barcodes (cell IDs)
+        logger.debug(f"Loading barcodes from {barcodes_path.name}")
+        if barcodes_path.name.endswith('.gz'):
+            with gzip.open(barcodes_path, 'rt') as f:
+                barcodes = [line.strip().split('\t')[0] for line in f if line.strip()]
+        else:
+            with open(barcodes_path, 'r') as f:
+                barcodes = [line.strip().split('\t')[0] for line in f if line.strip()]
+
+        # Load features (handle 1 or 2+ columns adaptively)
+        logger.debug(f"Loading features from {features_path.name} (format: {features_format})")
+        if features_path.name.endswith('.gz'):
+            with gzip.open(features_path, 'rt') as f:
+                lines = [line.strip() for line in f if line.strip()]
+        else:
+            with open(features_path, 'r') as f:
+                lines = [line.strip() for line in f if line.strip()]
+
+        # Parse features based on format
+        if features_format in ["symbols_only", "ids_only"]:
+            # Single-column format: use same value for both ID and name
+            gene_ids = lines
+            gene_names = lines
+            logger.info(f"Loaded {len(gene_names)} genes from 1-column features file")
+        else:  # standard_10x
+            # Multi-column format: parse normally
+            gene_ids = [line.split('\t')[0] for line in lines]
+            gene_names = [line.split('\t')[1] if '\t' in line else line.split('\t')[0] for line in lines]
+            logger.info(f"Loaded {len(gene_names)} genes from standard 10X features file")
+
+        # Validate dimensions match
+        if X.shape[0] != len(barcodes):
+            raise ValueError(
+                f"Dimension mismatch: Matrix has {X.shape[0]} rows but {len(barcodes)} barcodes"
+            )
+        if X.shape[1] != len(gene_names):
+            raise ValueError(
+                f"Dimension mismatch: Matrix has {X.shape[1]} columns but {len(gene_names)} genes"
+            )
+
+        # Build var DataFrame
+        var_df = pd.DataFrame({
+            'gene_ids': gene_ids,
+            'feature_types': 'Gene Expression'  # Default for 10X RNA
+        }, index=gene_names)
+
+        # Build obs DataFrame
+        obs_df = pd.DataFrame(index=barcodes)
+
+        # Create AnnData
+        adata = anndata.AnnData(
+            X=X,
+            obs=obs_df,
+            var=var_df
+        )
+
+        # Ensure unique names
+        adata.var_names_make_unique()
+        adata.obs_names_make_unique()
+
+        logger.info(
+            f"{gse_id}: Manual loader successfully created AnnData: "
+            f"{adata.n_obs} cells × {adata.n_vars} genes"
+        )
+
+        return adata
+
     def _try_series_level_10x_trio(
         self, suppl_files: List[str], gse_id: str
     ) -> Optional[anndata.AnnData]:
@@ -4244,18 +4434,24 @@ The actual expression data download will be much faster now that metadata is pre
         """
         try:
             # Pattern matching for series-level 10x files
+            # FIXED: Use extension-based matching instead of requiring "matrix.mtx" substring
+            # This handles non-standard naming like "GSE182227_OPSCC.mtx.gz"
             matrix_files = [
                 f for f in suppl_files
-                if "matrix.mtx" in f.lower() and gse_id.lower() in f.lower()
+                if f.lower().endswith(('.mtx', '.mtx.gz', '.mtx.bz2'))
+                and gse_id.lower() in f.lower()
             ]
             barcodes_files = [
                 f for f in suppl_files
-                if "barcodes.tsv" in f.lower() and gse_id.lower() in f.lower()
+                if f.lower().endswith(('.tsv', '.tsv.gz', '.txt', '.txt.gz'))
+                and 'barcode' in f.lower()
+                and gse_id.lower() in f.lower()
             ]
             # Features can be named "features" or "genes"
             features_files = [
                 f for f in suppl_files
-                if ("features.tsv" in f.lower() or "genes.tsv" in f.lower())
+                if f.lower().endswith(('.tsv', '.tsv.gz', '.txt', '.txt.gz'))
+                and ('features' in f.lower() or 'genes' in f.lower())
                 and gse_id.lower() in f.lower()
             ]
 
@@ -4314,33 +4510,50 @@ The actual expression data download will be much faster now that metadata is pre
 
                 logger.debug(f"All 10x files downloaded to {temp_dir}")
 
-                # Load using scanpy's read_10x_mtx
-                try:
-                    adata = sc.read_10x_mtx(
-                        temp_dir,
-                        var_names="gene_symbols",  # Use gene symbols if available
-                        cache=False,  # Don't cache since we're using temp dir
-                    )
-                except Exception as e:
-                    # Try with gene_ids if gene_symbols fails
-                    logger.warning(f"Failed with gene_symbols, trying gene_ids: {e}")
-                    adata = sc.read_10x_mtx(
-                        temp_dir,
-                        var_names="gene_ids",
-                        cache=False,
-                    )
+                # ADAPTIVE LOADING: Detect features format first, then choose appropriate loader
+                # Find the features file in temp directory
+                features_paths = list(temp_dir.glob("*features*")) + list(temp_dir.glob("*genes*"))
+                if not features_paths:
+                    logger.error(f"{gse_id}: Features file not found in {temp_dir}")
+                    return None
 
-                # Ensure unique variable names
-                adata.var_names_make_unique()
+                features_path = features_paths[0]
+                features_format = self._detect_features_format(features_path)
+
+                # Choose loader based on format
+                if features_format == "standard_10x":
+                    # Use scanpy for standard format (fast, well-tested)
+                    logger.debug(f"{gse_id}: Using scanpy loader for standard 10X format")
+                    try:
+                        adata = sc.read_10x_mtx(
+                            temp_dir,
+                            var_names="gene_symbols",  # Use gene symbols if available
+                            cache=False,  # Don't cache since we're using temp dir
+                        )
+                    except Exception as e:
+                        # Try with gene_ids if gene_symbols fails
+                        logger.warning(f"Failed with gene_symbols, trying gene_ids: {e}")
+                        adata = sc.read_10x_mtx(
+                            temp_dir,
+                            var_names="gene_ids",
+                            cache=False,
+                        )
+                    adata.var_names_make_unique()
+                else:
+                    # Use manual loader for non-standard formats (robust fallback)
+                    logger.info(f"{gse_id}: Non-standard format detected, using manual loader")
+                    adata = self._load_10x_manual(temp_dir, features_format, gse_id)
+                    # Manual loader already makes names unique
 
                 logger.info(
                     f"{gse_id}: Successfully loaded series-level 10x data: "
-                    f"{adata.n_obs} cells × {adata.n_vars} genes"
+                    f"{adata.n_obs} cells × {adata.n_vars} genes (format: {features_format})"
                 )
 
                 # Add metadata
                 adata.uns["source"] = "series_level_10x"
                 adata.uns["geo_id"] = gse_id
+                adata.uns["features_format"] = features_format  # Track for provenance
 
                 return adata
 

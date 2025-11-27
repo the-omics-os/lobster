@@ -36,7 +36,10 @@ from lobster.services.metadata.metadata_validation_service import (
 from lobster.tools.providers.abstract_provider import AbstractProvider
 from lobster.tools.providers.base_provider import DatasetType
 from lobster.tools.providers.webpage_provider import WebpageProvider
-from lobster.tools.workspace_tool import create_get_content_from_workspace_tool
+from lobster.tools.workspace_tool import (
+    create_get_content_from_workspace_tool,
+    create_write_to_workspace_tool,
+)
 from lobster.services.orchestration.publication_processing_service import (
     PublicationProcessingService,
 )
@@ -1621,208 +1624,16 @@ Could not extract content for: {identifier}
             return f"Error updating publication status: {str(e)}"
 
     # ============================================================
-    # Phase 4 NEW TOOLS: Workspace Management (2 tools)
+    # Phase 4 TOOLS: Workspace Management (shared tools from workspace_tool.py)
     # ============================================================
 
-    @tool
-    def write_to_workspace(
-        identifier: str, workspace: str, content_type: str = None, output_format: str = "json"
-    ) -> str:
-        """
-        Cache research content to workspace for later retrieval and specialist handoff.
-
-        Stores publications, datasets, and metadata in organized workspace directories
-        for persistent access. Use this before handing off to specialists to ensure
-        they have context. Validates naming conventions and content standardization.
-
-        Workspace Categories:
-        - "literature": Publications, abstracts, methods sections
-        - "data": Dataset metadata, sample information
-        - "metadata": Standardized metadata schemas
-
-        Content Types:
-        - "publication": Research papers (PMID/DOI)
-        - "dataset": Dataset accessions (GSE, SRA)
-        - "metadata": Sample metadata, experimental design
-
-        Output Formats:
-        - "json": Structured JSON format (default, recommended for most cases)
-        - "csv": Tabular CSV format (best for sample metadata tables and spreadsheet export)
-
-        Naming Conventions:
-        - Publications: `publication_PMID12345` or `publication_DOI...`
-        - Datasets: `dataset_GSE12345`
-        - Metadata: `metadata_GSE12345_samples`
-
-        Args:
-            identifier: Content identifier to cache (must exist in current session)
-            workspace: Target workspace category ("literature", "data", "metadata")
-            content_type: Type of content ("publication", "dataset", "metadata")
-            output_format: Output format ("json" or "csv"). Default: "json"
-
-        Returns:
-            Confirmation message with storage location and next steps
-
-        Examples:
-            # Cache publication after reading (JSON format)
-            write_to_workspace("publication_PMID12345", workspace="literature", content_type="publication")
-
-            # Cache dataset metadata for validation (JSON format)
-            write_to_workspace("dataset_GSE12345", workspace="data", content_type="dataset")
-
-            # Export sample metadata as CSV for spreadsheet analysis
-            write_to_workspace("metadata_GSE12345_samples", workspace="metadata",
-                             content_type="metadata", output_format="csv")
-
-            # Export multiple datasets as CSV for comparison
-            write_to_workspace("dataset_GSE12345", workspace="data",
-                             content_type="dataset", output_format="csv")
-
-        When to use CSV:
-        - Sample metadata tables (easy import into Excel, R, Python pandas)
-        - Dataset comparison across multiple accessions
-        - Handoff to non-technical collaborators
-        - Integration with existing spreadsheet workflows
-
-        When to use JSON:
-        - Publications with nested metadata
-        - Complex hierarchical data structures
-        - Programmatic access and parsing
-        """
-        try:
-            from datetime import datetime
-
-            from lobster.services.data_access.workspace_content_service import (
-                ContentType,
-                MetadataContent,
-                WorkspaceContentService,
-            )
-
-            # Initialize workspace service
-            workspace_service = WorkspaceContentService(data_manager=data_manager)
-
-            # Map workspace categories to ContentType enum
-            workspace_to_content_type = {
-                "literature": ContentType.PUBLICATION,
-                "data": ContentType.DATASET,
-                "metadata": ContentType.METADATA,
-            }
-
-            # Validate workspace category
-            if workspace not in workspace_to_content_type:
-                valid_workspaces = list(workspace_to_content_type.keys())
-                return f"Error: Invalid workspace '{workspace}'. Valid options: {', '.join(valid_workspaces)}"
-
-            # Validate content type if provided
-            if content_type:
-                valid_types = {"publication", "dataset", "metadata"}
-                if content_type not in valid_types:
-                    return f"Error: Invalid content_type '{content_type}'. Valid options: {', '.join(valid_types)}"
-
-            # Validate output format
-            valid_formats = {"json", "csv"}
-            if output_format not in valid_formats:
-                return f"Error: Invalid output_format '{output_format}'. Valid options: {', '.join(valid_formats)}"
-
-            # Validate naming convention
-            if content_type == "publication":
-                if not (
-                    identifier.startswith("publication_PMID")
-                    or identifier.startswith("publication_DOI")
-                ):
-                    logger.warning(
-                        f"Identifier '{identifier}' doesn't follow naming convention for publications. "
-                        f"Expected: publication_PMID12345 or publication_DOI..."
-                    )
-
-            elif content_type == "dataset":
-                if not identifier.startswith("dataset_"):
-                    logger.warning(
-                        f"Identifier '{identifier}' doesn't follow naming convention for datasets. "
-                        f"Expected: dataset_GSE12345"
-                    )
-
-            elif content_type == "metadata":
-                if not identifier.startswith("metadata_"):
-                    logger.warning(
-                        f"Identifier '{identifier}' doesn't follow naming convention for metadata. "
-                        f"Expected: metadata_GSE12345_samples"
-                    )
-
-            # Check if identifier exists in session
-            exists = False
-            content_data = None
-            source_location = None
-
-            # Check metadata_store (for publications, datasets)
-            if identifier in data_manager.metadata_store:
-                exists = True
-                content_data = data_manager.metadata_store[identifier]
-                source_location = "metadata_store"
-                logger.info(f"Found '{identifier}' in metadata_store")
-
-            # Check modalities (for datasets loaded as AnnData)
-            elif identifier in data_manager.list_modalities():
-                exists = True
-                # For modalities, we'll store metadata only (not full AnnData)
-                adata = data_manager.get_modality(identifier)
-                content_data = {
-                    "n_obs": adata.n_obs,
-                    "n_vars": adata.n_vars,
-                    "obs_columns": list(adata.obs.columns),
-                    "var_columns": list(adata.var.columns),
-                }
-                source_location = "modalities"
-                logger.info(f"Found '{identifier}' in modalities")
-
-            if not exists:
-                return f"Error: Identifier '{identifier}' not found in current session. Cannot cache non-existent content."
-
-            # Create Pydantic model for validation and storage
-            # Use MetadataContent as flexible wrapper for all content types
-            content_model = MetadataContent(
-                identifier=identifier,
-                content_type=content_type or "unknown",
-                description=f"Cached from {source_location}",
-                data=content_data,
-                related_datasets=[],
-                source=f"DataManager.{source_location}",
-                cached_at=datetime.now().isoformat(),
-            )
-
-            # Write content using service (with Pydantic validation)
-            cache_file_path = workspace_service.write_content(
-                content=content_model,
-                content_type=workspace_to_content_type[workspace],
-                output_format=output_format,
-            )
-
-            # Return confirmation with location
-            response = f"""## Content Cached Successfully
-
-**Identifier**: {identifier}
-**Workspace**: {workspace}
-**Content Type**: {content_type or 'not specified'}
-**Output Format**: {output_format.upper()}
-**Location**: {cache_file_path}
-**Cached At**: {datetime.now().date()}
-
-**Next Steps**:
-- Use `get_content_from_workspace()` to retrieve cached content
-- Hand off to specialists with workspace context
-- Content persists across sessions for reproducibility
-"""
-            if output_format == "csv":
-                response += "\n**Note**: CSV format is ideal for spreadsheet import (Excel, Google Sheets) and pandas/R analysis.\n"
-
-            return response
-
-        except Exception as e:
-            logger.error(f"Error caching to workspace: {e}")
-            return f"Error caching content to workspace: {str(e)}"
-
-    # Create workspace content retrieval tool using shared factory (Phase 7+: deduplication)
+    # Create workspace tools using shared factories (Phase 7+: deduplication complete)
+    write_to_workspace = create_write_to_workspace_tool(data_manager)
     get_content_from_workspace = create_get_content_from_workspace_tool(data_manager)
+
+    # NOTE: The inline write_to_workspace definition has been moved to
+    # lobster/tools/workspace_tool.py as create_write_to_workspace_tool()
+    # for sharing between research_agent and metadata_assistant.
 
     # ============================================================
     # Helper Methods: Strategy Mapping

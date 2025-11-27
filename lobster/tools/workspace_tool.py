@@ -568,6 +568,136 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
     return get_content_from_workspace
 
 
+def create_write_to_workspace_tool(data_manager: DataManagerV2):
+    """
+    Factory function to create write_to_workspace tool with data_manager closure.
+
+    Shared between research_agent and metadata_assistant for workspace export
+    with JSON and CSV format support.
+
+    Args:
+        data_manager: DataManagerV2 instance for workspace access
+
+    Returns:
+        LangChain tool for writing content to workspace
+    """
+    from datetime import datetime
+
+    from lobster.services.data_access.workspace_content_service import (
+        ContentType,
+        MetadataContent,
+        WorkspaceContentService,
+    )
+
+    @tool
+    def write_to_workspace(
+        identifier: str, workspace: str, content_type: str = None, output_format: str = "json"
+    ) -> str:
+        """
+        Cache research content to workspace for later retrieval and specialist handoff.
+
+        Stores publications, datasets, and metadata in organized workspace directories
+        for persistent access. Validates naming conventions and content standardization.
+
+        Workspace Categories:
+        - "literature": Publications, abstracts, methods sections
+        - "data": Dataset metadata, sample information
+        - "metadata": Standardized metadata schemas
+
+        Output Formats:
+        - "json": Structured JSON format (default)
+        - "csv": Tabular CSV format (best for sample metadata tables)
+
+        Args:
+            identifier: Content identifier to cache (must exist in current session)
+            workspace: Target workspace category ("literature", "data", "metadata")
+            content_type: Type of content ("publication", "dataset", "metadata")
+            output_format: Output format ("json" or "csv"). Default: "json"
+
+        Returns:
+            Confirmation message with storage location and next steps
+        """
+        try:
+            workspace_service = WorkspaceContentService(data_manager=data_manager)
+
+            workspace_to_content_type = {
+                "literature": ContentType.PUBLICATION,
+                "data": ContentType.DATASET,
+                "metadata": ContentType.METADATA,
+            }
+
+            if workspace not in workspace_to_content_type:
+                return f"Error: Invalid workspace '{workspace}'. Valid: {', '.join(workspace_to_content_type.keys())}"
+
+            if content_type and content_type not in {"publication", "dataset", "metadata"}:
+                return f"Error: Invalid content_type '{content_type}'. Valid: publication, dataset, metadata"
+
+            if output_format not in {"json", "csv"}:
+                return f"Error: Invalid output_format '{output_format}'. Valid: json, csv"
+
+            # Check if identifier exists in session
+            exists = False
+            content_data = None
+            source_location = None
+
+            if identifier in data_manager.metadata_store:
+                exists = True
+                content_data = data_manager.metadata_store[identifier]
+                source_location = "metadata_store"
+                logger.info(f"Found '{identifier}' in metadata_store")
+            elif identifier in data_manager.list_modalities():
+                exists = True
+                adata = data_manager.get_modality(identifier)
+                content_data = {
+                    "n_obs": adata.n_obs,
+                    "n_vars": adata.n_vars,
+                    "obs_columns": list(adata.obs.columns),
+                    "var_columns": list(adata.var.columns),
+                }
+                source_location = "modalities"
+                logger.info(f"Found '{identifier}' in modalities")
+
+            if not exists:
+                return f"Error: Identifier '{identifier}' not found in current session."
+
+            content_model = MetadataContent(
+                identifier=identifier,
+                content_type=content_type or "unknown",
+                description=f"Cached from {source_location}",
+                data=content_data,
+                related_datasets=[],
+                source=f"DataManager.{source_location}",
+                cached_at=datetime.now().isoformat(),
+            )
+
+            cache_file_path = workspace_service.write_content(
+                content=content_model,
+                content_type=workspace_to_content_type[workspace],
+                output_format=output_format,
+            )
+
+            response = f"""## Content Cached Successfully
+
+**Identifier**: {identifier}
+**Workspace**: {workspace}
+**Output Format**: {output_format.upper()}
+**Location**: {cache_file_path}
+
+**Next Steps**:
+- Use `get_content_from_workspace()` to retrieve cached content
+"""
+            if output_format == "csv":
+                response += "**Note**: CSV format ideal for spreadsheet import.\n"
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error caching to workspace: {e}")
+            return f"Error caching content to workspace: {str(e)}"
+
+    return write_to_workspace
+
+
 def create_list_modalities_tool(data_manager: DataManagerV2):
     """
     Factory function to create list_available_modalities tool with data_manager closure.

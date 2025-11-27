@@ -518,6 +518,7 @@ class PublicationProcessingService:
 
                         sra_fetch_success = 0
                         sra_fetch_failed = 0
+                        sra_workspace_keys = []  # Track SRA workspace keys for handoff
 
                         for bioproject_id in bioproject_ids:
                             try:
@@ -547,6 +548,9 @@ class PublicationProcessingService:
                                         metadata_content, ContentType.METADATA
                                     )
 
+                                    # Track workspace key for handoff
+                                    sra_workspace_keys.append(f"sra_{bioproject_id}_samples")
+
                                     sra_fetch_success += 1
                                     response_parts.append(
                                         f"  - {bioproject_id}: {len(df)} sample(s) → {workspace_path}"
@@ -575,6 +579,10 @@ class PublicationProcessingService:
                             response_parts.append(
                                 f"⚠ SRA metadata fetch: All {sra_fetch_failed} ID(s) failed"
                             )
+
+                        # Extend workspace_keys with SRA workspace keys for handoff
+                        if sra_workspace_keys:
+                            workspace_keys.extend(sra_workspace_keys)
 
                     else:
                         response_parts.append(
@@ -825,13 +833,35 @@ class PublicationProcessingService:
                     f"⚠ Warning: Workspace persistence failed: {str(e)}"
                 )
 
-            # FIX: Determine final status including paywall check
+            # Aggregate all dataset IDs for easy access
+            all_dataset_ids = []
+            for db_type in ["geo", "sra", "bioproject", "biosample", "arrayexpress", "cngb"]:
+                if db_type in all_extracted_identifiers:
+                    all_dataset_ids.extend(all_extracted_identifiers[db_type])
+            all_dataset_ids = list(set(all_dataset_ids))  # Deduplicate
+
+            # Determine if entry is ready for metadata assistant handoff
+            # Conditions: has identifiers AND has datasets AND has workspace metadata
+            is_ready_for_handoff = (
+                bool(all_extracted_identifiers) and  # Has extracted identifiers
+                bool(all_dataset_ids) and            # Has dataset IDs
+                bool(workspace_keys)                  # Has workspace metadata files
+            )
+
+            # FIX: Determine final status including paywall and handoff readiness
             if is_paywalled:
                 final_status = PublicationStatus.PAYWALLED.value
+                handoff_status = None  # Don't set handoff for paywalled
+            elif is_ready_for_handoff:
+                final_status = PublicationStatus.HANDOFF_READY.value
+                from lobster.core.schemas.publication_queue import HandoffStatus
+                handoff_status = HandoffStatus.READY_FOR_METADATA
             elif extracted_data:
                 final_status = PublicationStatus.COMPLETED.value
+                handoff_status = None
             else:
                 final_status = PublicationStatus.FAILED.value
+                handoff_status = None
 
             # FIX: SINGLE update_status call with ALL collected data
             # This replaces 4 intermediate calls that caused O(n²) file rewrites
@@ -841,6 +871,8 @@ class PublicationProcessingService:
                 processed_by="research_agent",
                 workspace_metadata_keys=workspace_keys if workspace_keys else None,
                 extracted_identifiers=all_extracted_identifiers if all_extracted_identifiers else None,
+                dataset_ids=all_dataset_ids if all_dataset_ids else None,
+                handoff_status=handoff_status,
                 error=paywall_error,
             )
 
