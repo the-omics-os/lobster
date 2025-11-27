@@ -28,6 +28,8 @@ import hashlib
 import json
 import re
 from datetime import datetime
+
+import requests.exceptions
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -212,6 +214,7 @@ class DoclingService:
         keywords: Optional[List[str]] = None,
         max_paragraphs: int = 50,
         max_retries: int = 2,
+        headers: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """
         Extract Methods section with structure awareness using Docling.
@@ -289,7 +292,7 @@ class DoclingService:
 
                 # Attempt 2: Fresh Docling parse (cache miss)
                 logger.info("Parsing PDF with Docling (cache miss)")
-                result = self.converter.convert(source)
+                result = self.converter.convert(source, headers=headers)
                 ConversionStatus = self._docling_imports["ConversionStatus"]
 
                 # Handle conversion status
@@ -377,6 +380,31 @@ class DoclingService:
                     continue
                 else:
                     raise
+
+            except requests.exceptions.HTTPError as e:
+                # Expected HTTP errors from publishers (400, 403, 429) - log without traceback
+                status_code = e.response.status_code if e.response is not None else "unknown"
+                logger.warning(
+                    f"HTTP {status_code} on attempt {attempt + 1}/{max_retries}: {e}"
+                )
+                if attempt < max_retries - 1:
+                    continue
+                else:
+                    raise PDFExtractionError(
+                        f"HTTP error after {max_retries} attempts: {e}"
+                    )
+
+            except UnicodeDecodeError as e:
+                # Expected encoding errors from malformed PDFs/web content - log without traceback
+                logger.warning(
+                    f"Encoding error on attempt {attempt + 1}/{max_retries}: {e}"
+                )
+                if attempt < max_retries - 1:
+                    continue
+                else:
+                    raise PDFExtractionError(
+                        f"Encoding error after {max_retries} attempts: {e}"
+                    )
 
             except Exception as e:
                 logger.exception(

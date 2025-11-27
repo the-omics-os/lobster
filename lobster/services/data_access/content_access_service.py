@@ -32,7 +32,10 @@ from lobster.tools.providers.pmc_provider import PMCProvider
 from lobster.tools.providers.provider_registry import ProviderRegistry
 from lobster.tools.providers.pubmed_provider import PubMedProvider
 from lobster.tools.providers.sra_provider import SRAProvider
-from lobster.tools.providers.webpage_provider import WebpageProvider
+from lobster.tools.providers.webpage_provider import (
+    WebpageExtractionError,
+    WebpageProvider,
+)
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -1143,6 +1146,11 @@ class ContentAccessService:
 
             return {"error": "No providers available for content extraction"}
 
+        except WebpageExtractionError as e:
+            # Expected extraction errors (invalid PDF, paywalls, etc.) - log without traceback
+            logger.warning(f"Content extraction failed (expected): {e}")
+            return {"error": f"Content extraction error: {str(e)}"}
+
         except Exception as e:
             logger.error(f"Full content extraction error: {e}", exc_info=True)
             return {"error": f"Content extraction error: {str(e)}"}
@@ -1157,7 +1165,8 @@ class ContentAccessService:
         Extract structured methods information from full content.
 
         Extracts software tools, parameters, and statistical methods from
-        the methods section. Future: Add LLM-based structured extraction.
+        the methods section. Uses markdown fallback for Docling-parsed content.
+        Future: Add LLM-based structured extraction.
 
         Args:
             content_result: Result dict from get_full_content()
@@ -1182,8 +1191,17 @@ class ContentAccessService:
         logger.info("Extracting methods information")
 
         try:
-            # Extract methods text
+            # Extract methods text (try structured first, then markdown fallback)
             methods_text = content_result.get("methods_text", "")
+
+            # If no methods_text but we have full content, try markdown extraction
+            if not methods_text and content_result.get("content"):
+                methods_text = self._extract_methods_from_markdown(
+                    content_result["content"]
+                )
+                if methods_text:
+                    logger.info("Methods extracted via markdown fallback")
+
             metadata = content_result.get("metadata", {})
 
             # Extract software tools
@@ -1528,3 +1546,68 @@ class ContentAccessService:
         )
 
         return is_id and not is_url
+
+    def _extract_methods_from_markdown(self, content: str) -> Optional[str]:
+        """
+        Extract methods section from markdown content.
+
+        Simple regex-based extraction for Docling-parsed content. Tries common
+        methods section header patterns and extracts content until the next
+        major section header.
+
+        Args:
+            content: Full markdown content from publication
+
+        Returns:
+            Extracted methods text or None if not found
+        """
+        if not content:
+            return None
+
+        # Common methods section header patterns (case-insensitive)
+        # Matches markdown headers like: ## Methods, # Materials and Methods, etc.
+        patterns = [
+            # Standard methods headers
+            r"^#{1,3}\s*(?:Materials?\s+(?:and\s+)?)?Methods?\s*$",
+            r"^#{1,3}\s*Experimental\s+(?:Procedures?|Design|Section)\s*$",
+            r"^#{1,3}\s*Study\s+Design(?:\s+and\s+Methods?)?\s*$",
+            r"^#{1,3}\s*Patients?\s+and\s+Methods?\s*$",
+            r"^#{1,3}\s*Subjects?\s+and\s+Methods?\s*$",
+            # STAR Methods (Cell Press journals)
+            r"^#{1,3}\s*STAR\s+Methods?\s*$",
+            r"^#{1,3}\s*(?:Key\s+)?Resource(?:s)?\s+Table\s*$",
+            # Supplementary methods
+            r"^#{1,3}\s*(?:Supplementary\s+)?Methods?\s+(?:Summary|Details)?\s*$",
+        ]
+
+        # Try each pattern
+        for pattern in patterns:
+            # Find the header
+            header_match = re.search(pattern, content, re.IGNORECASE | re.MULTILINE)
+            if header_match:
+                start_pos = header_match.end()
+
+                # Find the next major section header (## or #)
+                next_section = re.search(
+                    r"^#{1,2}\s+(?!#)",  # Match # or ## but not ###
+                    content[start_pos:],
+                    re.MULTILINE,
+                )
+
+                if next_section:
+                    methods_text = content[start_pos : start_pos + next_section.start()]
+                else:
+                    # No next section found, take rest of content (with limit)
+                    methods_text = content[start_pos : start_pos + 50000]
+
+                # Clean up and validate
+                methods_text = methods_text.strip()
+                if len(methods_text) > 100:  # Minimum viable methods section
+                    logger.debug(
+                        f"Found methods section via pattern: {pattern[:30]}... "
+                        f"({len(methods_text)} chars)"
+                    )
+                    return methods_text
+
+        logger.debug("No methods section found in markdown content")
+        return None

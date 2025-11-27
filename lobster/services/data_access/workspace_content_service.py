@@ -314,7 +314,7 @@ class WorkspaceContentService:
         self.datasets_dir.mkdir(parents=True, exist_ok=True)
         self.metadata_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info(
+        logger.debug(
             f"WorkspaceContentService initialized with workspace at {self.workspace_base}"
         )
 
