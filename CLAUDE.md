@@ -291,6 +291,7 @@ lobster/
 | Queue | `core/download_queue.py` | download orchestration |
 | Concurrency | `core/queue_storage.py` | multi-process safe file locking & atomic writes |
 | Rate Limiting | `tools/rate_limiter.py` | Redis connection pool for NCBI API rate limiting |
+| Workspace | `core/workspace.py` | centralized workspace path resolution |
 | Export | `core/notebook_exporter.py` | Jupyter pipeline export |
 | Services | `services/*/*.py` | stateless analysis (organized by function) |
 | Services | `services/data_management/modality_management_service.py` | Modality CRUD with provenance (5 methods) |
@@ -458,6 +459,12 @@ Checklist for new services:
   - Each process gets its own pool; cross-process coordination is handled by Redis keys with TTL
   - `reset_redis_pool()` for test isolation
   - **Rule**: When creating providers that use rate limiting, reuse provider instances via lazy properties (see `PublicationProcessingService.pubmed_provider`)
+- **Workspace resolution pattern** (`core/workspace.py`): centralized workspace path resolution
+  - `resolve_workspace(explicit_path, create)` – single entry point for workspace path resolution
+  - Resolution order: explicit path > `LOBSTER_WORKSPACE` env var > `Path.cwd() / ".lobster_workspace"`
+  - Used by: CLI, AgentClient, DataManagerV2
+  - Always returns absolute path
+  - **Rule**: All code that needs workspace paths MUST use `resolve_workspace()` instead of hardcoding paths
 - **Error hierarchy** – prefer specific exceptions:
   - `ModalityNotFoundError` – missing dataset in `DataManagerV2`  
   - `ServiceError` – analysis failures  
@@ -675,8 +682,22 @@ lobster --help                  # CLI help
 
 Chat vs query:
 
-- `chat`: can ask follow‑ups, clarify, exploratory work  
+- `chat`: can ask follow‑ups, clarify, exploratory work
 - `query`: single‑shot, script/CI‑friendly, no follow‑ups
+
+**Workspace configuration** (applies to both `chat` and `query`):
+
+```bash
+# Use custom workspace directory
+lobster chat --workspace /path/to/workspace
+lobster query "analyze data" -w ~/my_workspace
+
+# Or set via environment variable
+export LOBSTER_WORKSPACE=/shared/workspace
+lobster chat  # Uses /shared/workspace
+
+# Resolution order: --workspace flag > LOBSTER_WORKSPACE env > cwd/.lobster_workspace
+```
 
 Useful CLI commands:
 
