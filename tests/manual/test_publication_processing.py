@@ -56,6 +56,7 @@ Tasks (for --production mode):
 
 import argparse
 import json
+import logging
 import random
 import re
 import sys
@@ -67,14 +68,49 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Set
 from urllib.parse import urlparse
 
+# Rich for professional progress display
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn, TaskProgressColumn
+from rich.panel import Panel
+from rich.table import Table
+from rich import box
+
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.ris_parser import RISParser
 from lobster.core.schemas.publication_queue import PublicationQueueEntry
+from lobster.core.publication_queue import PublicationQueueError
 from lobster.services.orchestration.publication_processing_service import PublicationProcessingService
 from lobster.services.data_access.content_access_service import ContentAccessService
+
+# =============================================================================
+# Suppress verbose logging for clean output (MUST be after lobster imports)
+# =============================================================================
+# These services log expected errors (paywalls, TDM tokens, etc.) that clutter output
+# Suppress AFTER imports so loggers are already created
+_noisy_loggers = [
+    "lobster.services.data_access.docling_service",
+    "lobster.services.data_access.content_access_service",
+    "lobster.tools.providers.webpage_provider",
+    "lobster.tools.providers.pmc_provider",
+    "lobster.tools.providers.pubmed_provider",
+    "lobster.tools.providers.publication_resolver",
+    "urllib3",
+    "requests",
+    "httpx",
+    "docling",
+    "docling_core",
+]
+for logger_name in _noisy_loggers:
+    logging.getLogger(logger_name).setLevel(logging.CRITICAL)
+
+# Keep publication_processing_service at WARNING (useful progress info)
+logging.getLogger("lobster.services.orchestration.publication_processing_service").setLevel(logging.WARNING)
+
+# Global console for status updates
+console = Console()
 
 
 # =============================================================================
@@ -444,6 +480,135 @@ def create_test_data_manager() -> DataManagerV2:
     """Create a temporary DataManagerV2 for testing."""
     temp_dir = tempfile.mkdtemp(prefix="lobster_test_")
     return DataManagerV2(workspace_path=temp_dir)
+
+
+def purge_workspace_caches(workspace_path: Optional[Path] = None, dry_run: bool = False) -> Dict[str, Any]:
+    """
+    Purge queues, backups, and caches from the workspace.
+
+    Cleans up:
+    - .lobster/queues/backups/* (queue backup files)
+    - .lobster/queues/*.jsonl (queue files)
+    - .lobster/queues/*.lock (lock files)
+
+    Args:
+        workspace_path: Path to workspace (default: .lobster_workspace in cwd)
+        dry_run: If True, only report what would be deleted
+
+    Returns:
+        Dict with purge statistics
+    """
+    if workspace_path is None:
+        workspace_path = Path.cwd() / ".lobster_workspace"
+
+    workspace_path = Path(workspace_path)
+
+    stats = {
+        "workspace": str(workspace_path),
+        "exists": workspace_path.exists(),
+        "queues_dir": None,
+        "backups_dir": None,
+        "files_found": [],
+        "files_deleted": [],
+        "bytes_freed": 0,
+        "errors": [],
+    }
+
+    if not workspace_path.exists():
+        console.print(f"[yellow]⚠ Workspace does not exist:[/yellow] {workspace_path}")
+        return stats
+
+    # Define paths
+    queues_dir = workspace_path / ".lobster" / "queues"
+    backups_dir = queues_dir / "backups"
+
+    stats["queues_dir"] = str(queues_dir) if queues_dir.exists() else None
+    stats["backups_dir"] = str(backups_dir) if backups_dir.exists() else None
+
+    console.print(Panel.fit(
+        f"[bold cyan]Workspace Purge[/bold cyan]\n"
+        f"Workspace: [white]{workspace_path}[/white]\n"
+        f"Dry Run: [white]{dry_run}[/white]",
+        border_style="blue"
+    ))
+
+    # Check if queues directory exists
+    if not queues_dir.exists():
+        console.print(f"[yellow]⚠ Queues directory does not exist:[/yellow] {queues_dir}")
+        console.print("[green]Nothing to purge.[/green]")
+        return stats
+
+    # Collect files to delete
+    files_to_delete = []
+
+    # 1. Backup files
+    if backups_dir.exists():
+        for f in backups_dir.glob("*.jsonl"):
+            files_to_delete.append(("backup", f))
+
+    # 2. Queue files
+    for f in queues_dir.glob("*.jsonl"):
+        files_to_delete.append(("queue", f))
+
+    # 3. Lock files
+    for f in queues_dir.glob("*.lock"):
+        files_to_delete.append(("lock", f))
+
+    if not files_to_delete:
+        console.print("[green]✓ No files to purge.[/green]")
+        return stats
+
+    # Display files
+    table = Table(title="Files to Purge", box=box.ROUNDED)
+    table.add_column("Type", style="cyan")
+    table.add_column("File", style="white")
+    table.add_column("Size", style="yellow")
+
+    total_bytes = 0
+    for file_type, file_path in files_to_delete:
+        try:
+            size = file_path.stat().st_size
+            total_bytes += size
+            size_str = f"{size:,} bytes" if size < 1024 else f"{size/1024:.1f} KB"
+            table.add_row(file_type, file_path.name, size_str)
+            stats["files_found"].append(str(file_path))
+        except Exception as e:
+            stats["errors"].append(f"Cannot stat {file_path}: {e}")
+
+    console.print(table)
+    console.print(f"\n[bold]Total:[/bold] {len(files_to_delete)} files, {total_bytes:,} bytes")
+
+    # Delete files (unless dry run)
+    if dry_run:
+        console.print("\n[yellow]Dry run - no files deleted.[/yellow]")
+    else:
+        deleted_count = 0
+        for file_type, file_path in files_to_delete:
+            try:
+                file_path.unlink()
+                deleted_count += 1
+                stats["files_deleted"].append(str(file_path))
+            except Exception as e:
+                stats["errors"].append(f"Cannot delete {file_path}: {e}")
+                console.print(f"[red]✗ Failed to delete {file_path.name}: {e}[/red]")
+
+        stats["bytes_freed"] = total_bytes
+        console.print(f"\n[green]✓ Deleted {deleted_count} files, freed {total_bytes:,} bytes[/green]")
+
+        # Remove empty backups directory
+        if backups_dir.exists() and not any(backups_dir.iterdir()):
+            try:
+                backups_dir.rmdir()
+                console.print(f"[green]✓ Removed empty backups directory[/green]")
+            except Exception as e:
+                stats["errors"].append(f"Cannot remove backups dir: {e}")
+
+    if stats["errors"]:
+        console.print(f"\n[yellow]⚠ {len(stats['errors'])} errors occurred[/yellow]")
+        for err in stats["errors"]:
+            console.print(f"  [dim]{err}[/dim]")
+
+    return stats
 
 
 def extract_identifiers_from_content(content: str) -> Dict[str, List[str]]:
@@ -1143,150 +1308,257 @@ class IdentifierResolutionResult:
     request_time: float = 0.0
 
 
+def _extract_result_metrics(result_text: str) -> Dict[str, Any]:
+    """Extract key metrics from result text for status display."""
+    metrics = {
+        "status": "UNKNOWN",
+        "pmid": None,
+        "datasets": 0,
+        "methods": False,
+        "identifiers": 0,
+        "highlights": [],
+    }
+
+    # Determine status
+    if "COMPLETED" in result_text:
+        metrics["status"] = "COMPLETED"
+    elif "PAYWALLED" in result_text:
+        metrics["status"] = "PAYWALLED"
+    elif "FAILED" in result_text or "Error" in result_text:
+        metrics["status"] = "FAILED"
+
+    # Extract PMID
+    pmid_match = re.search(r"PMID[:\s]+(\d+)", result_text)
+    if pmid_match:
+        metrics["pmid"] = pmid_match.group(1)
+
+    # Count datasets (GEO, SRA, BioProject)
+    geo_matches = re.findall(r"GSE\d+|GDS\d+|GPL\d+", result_text)
+    sra_matches = re.findall(r"SRP\d+|SRX\d+|SRR\d+|PRJNA\d+", result_text)
+    metrics["datasets"] = len(set(geo_matches + sra_matches))
+
+    # Check methods extraction
+    if "methods" in result_text.lower() and ("extracted" in result_text.lower() or "found" in result_text.lower()):
+        metrics["methods"] = True
+
+    # Count identifiers found
+    id_match = re.search(r"(\d+)\s+identifiers?\s+found", result_text.lower())
+    if id_match:
+        metrics["identifiers"] = int(id_match.group(1))
+
+    # Build highlights
+    if metrics["pmid"]:
+        metrics["highlights"].append(f"PMID:{metrics['pmid']}")
+    if metrics["datasets"] > 0:
+        metrics["highlights"].append(f"{metrics['datasets']} datasets")
+    if metrics["methods"]:
+        metrics["highlights"].append("methods✓")
+
+    return metrics
+
+
 def test_production_pipeline(
     ris_file: Path,
     extraction_tasks: str = "resolve_identifiers,ncbi_enrich,metadata,methods,identifiers",
     max_entries: Optional[int] = None,
     entry_index: Optional[int] = None,
     skip_processed_ids: Optional[Set[str]] = None,
+    verbose: bool = False,
 ) -> List[Dict[str, Any]]:
     """
-    Run production-like publication processing pipeline.
-
-    This mirrors exactly what happens in the production service, showing
-    the real output from PublicationProcessingService.process_entry().
+    Run production-like publication processing pipeline with professional progress display.
 
     Args:
         ris_file: Path to RIS file
-        extraction_tasks: Comma-separated list of tasks to run:
-            - resolve_identifiers: DOI → PMID via NCBI ID Converter
-            - ncbi_enrich: PMID → GEO/SRA/BioProject via E-Link
-            - metadata: Full content extraction
-            - methods: Methods section extraction
-            - identifiers: Regex identifier extraction from text
+        extraction_tasks: Comma-separated list of tasks to run
         max_entries: Maximum entries to test
         entry_index: Test only this entry (by index)
         skip_processed_ids: Set of entry IDs to skip (already processed)
+        verbose: Show full output for each entry (default: False)
 
     Returns:
         List of processing results
     """
-    print_header("PRODUCTION PIPELINE TEST")
-    print(f"\nRIS File: {ris_file}")
-    print(f"Extraction Tasks: {extraction_tasks}")
+    # Header
+    console.print(Panel.fit(
+        f"[bold cyan]Publication Processing Pipeline[/bold cyan]\n"
+        f"RIS: [white]{ris_file.name}[/white]  Tasks: [white]{extraction_tasks}[/white]",
+        border_style="blue"
+    ))
 
     # Parse RIS file
-    print("\n--- Loading RIS File ---")
     parser = RISParser()
     entries = parser.parse_file(ris_file)
-    print(f"Entries loaded: {len(entries)}")
+    original_count = len(entries)
 
     # Filter out already processed entries
     if skip_processed_ids:
-        original_count = len(entries)
         entries = [e for e in entries if e.entry_id not in skip_processed_ids]
-        skipped_count = original_count - len(entries)
-        if skipped_count > 0:
-            print(f"Skipped {skipped_count} already processed entries")
-            print(f"Remaining entries: {len(entries)}")
+        if original_count - len(entries) > 0:
+            console.print(f"[dim]Skipped {original_count - len(entries)} already processed[/dim]")
 
     # Filter entries if specified
     if entry_index is not None:
         if 0 <= entry_index < len(entries):
             entries = [entries[entry_index]]
-            print(f"Testing single entry at index {entry_index}")
         else:
-            print(f"Error: Entry index {entry_index} out of range (0-{len(entries)-1})")
+            console.print(f"[red]Error: Entry index {entry_index} out of range[/red]")
             return []
     elif max_entries:
         entries = entries[:max_entries]
-        print(f"Limited to first {max_entries} entries")
 
-    # Create temporary DataManager and service
+    # Create temporary DataManager
     data_manager = create_test_data_manager()
-    print(f"Workspace: {data_manager.workspace_path}")
 
-    # Add entries to publication queue
-    print("\n--- Adding entries to publication queue ---")
-    for i, entry in enumerate(entries):
-        data_manager.publication_queue.add_entry(entry)
-        title_short = (entry.title or "No title")[:55]
-        has_pmid = "YES" if (entry.pmid or entry.pubmed_url) else "NO"
-        print(f"  [{i}] {title_short}...")
-        print(f"      DOI: {entry.doi or '(none)'}")
-        print(f"      Has PMID: {has_pmid}")
+    # Add entries to publication queue (skip duplicates) - quiet mode
+    added_entries = []
+    dup_count = 0
+    for entry in entries:
+        try:
+            data_manager.publication_queue.add_entry(entry)
+            added_entries.append(entry)
+        except PublicationQueueError as e:
+            if "already exists" in str(e):
+                dup_count += 1
+            else:
+                raise
 
-    # Import and create service
+    entries = added_entries
+    total_entries = len(entries)
+
+    if dup_count > 0:
+        console.print(f"[yellow]⚠ Skipped {dup_count} duplicates[/yellow] | Processing {total_entries} unique entries")
+    else:
+        console.print(f"[green]✓[/green] Loaded {total_entries} entries")
+
+    # VERIFICATION: Ensure all added entries are actually in queue
+    # This catches queue truncation/corruption issues during add phase
+    queue_entry_ids = set(e.entry_id for e in data_manager.publication_queue.list_entries())
+    missing = [e.entry_id for e in entries if e.entry_id not in queue_entry_ids]
+    if missing:
+        console.print(f"[red]FATAL: {len(missing)} entries added but not in queue![/red]")
+        for eid in missing[:5]:
+            console.print(f"  Missing: {eid}")
+        if len(missing) > 5:
+            console.print(f"  ... and {len(missing) - 5} more")
+        console.print(f"Queue has {len(queue_entry_ids)} entries, expected {len(entries)}")
+        sys.exit(1)
+    console.print(f"[green]✓[/green] Verified {len(entries)} entries in queue")
+
+    # NOW suppress logging for clean Rich progress display (unless verbose)
+    # Moved here so queue errors during add phase are visible
+    import logging
+    if not verbose:
+        logging.disable(logging.CRITICAL)
+
+    # Create service
     from lobster.services.orchestration.publication_processing_service import PublicationProcessingService
-
     service = PublicationProcessingService(data_manager)
 
-    # Process each entry
-    print("\n")
-    print("=" * 70)
-    print("  PROCESSING ENTRIES")
-    print("=" * 70)
-
+    # Statistics tracking
+    stats = {"completed": 0, "failed": 0, "paywalled": 0, "datasets": 0, "methods": 0}
     results: List[Dict[str, Any]] = []
 
-    for i, entry in enumerate(entries, 1):
-        title_short = (entry.title or "No title")[:50]
-        if len(entry.title or "") > 50:
-            title_short += "..."
+    # Create rich progress display
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[bold blue]{task.description}[/bold blue]"),
+        BarColumn(bar_width=40),
+        TaskProgressColumn(),
+        TextColumn("•"),
+        TimeElapsedColumn(),
+        TextColumn("•"),
+        TimeRemainingColumn(),
+        console=console,
+        refresh_per_second=4,
+    ) as progress:
 
-        print(f"\n{'=' * 70}")
-        print(f"  Entry {i}/{len(entries)}: {title_short}")
-        print("=" * 70)
+        # Main progress bar
+        task = progress.add_task("Processing", total=total_entries)
 
-        start_time = time.time()
+        for i, entry in enumerate(entries):
+            title_short = (entry.title or "No title")[:40]
+            if len(entry.title or "") > 40:
+                title_short += "..."
 
-        # Run production pipeline
-        result_text = service.process_entry(
-            entry_id=entry.entry_id,
-            extraction_tasks=extraction_tasks,
-        )
+            # Update description with current entry
+            progress.update(task, description=f"[{i+1}/{total_entries}] {title_short}")
 
-        elapsed = time.time() - start_time
+            start_time = time.time()
 
-        # Print the production output
-        print(result_text)
-        print(f"\n[Processing time: {elapsed:.1f}s]")
+            # Run production pipeline
+            result_text = service.process_entry(
+                entry_id=entry.entry_id,
+                extraction_tasks=extraction_tasks,
+            )
 
-        results.append({
-            "entry_id": entry.entry_id,
-            "title": entry.title,
-            "doi": entry.doi,
-            "result": result_text,
-            "elapsed": elapsed,
-        })
+            elapsed = time.time() - start_time
 
-        # Small delay between entries
-        if i < len(entries):
-            time.sleep(0.5)
+            # Extract metrics
+            metrics = _extract_result_metrics(result_text)
 
-    # Generate summary
-    print("\n")
-    print("=" * 70)
-    print("  PROCESSING SUMMARY")
-    print("=" * 70)
+            # Update stats
+            if metrics["status"] == "COMPLETED":
+                stats["completed"] += 1
+            elif metrics["status"] == "PAYWALLED":
+                stats["paywalled"] += 1
+            else:
+                stats["failed"] += 1
+
+            stats["datasets"] += metrics["datasets"]
+            if metrics["methods"]:
+                stats["methods"] += 1
+
+            # Build status message for important events
+            status_parts = []
+            if metrics["status"] == "COMPLETED":
+                status_parts.append("[green]✓[/green]")
+            elif metrics["status"] == "PAYWALLED":
+                status_parts.append("[yellow]$[/yellow]")
+            else:
+                status_parts.append("[red]✗[/red]")
+
+            if metrics["highlights"]:
+                status_parts.append(" ".join(metrics["highlights"]))
+
+            # Show status line (only for notable events or verbose mode)
+            if verbose or metrics["datasets"] > 0 or metrics["status"] != "COMPLETED":
+                status_msg = " ".join(status_parts)
+                # Print above progress bar, will scroll up
+                progress.console.print(f"  {status_msg} [dim]{title_short[:30]}[/dim]", highlight=False)
+
+            results.append({
+                "entry_id": entry.entry_id,
+                "title": entry.title,
+                "doi": entry.doi,
+                "result": result_text,
+                "elapsed": elapsed,
+                "metrics": metrics,
+            })
+
+            # Advance progress
+            progress.advance(task)
+
+            # Small delay between entries
+            if i < len(entries) - 1:
+                time.sleep(0.3)
+
+    # Final summary table
+    console.print()
+    table = Table(title="Processing Summary", box=box.ROUNDED)
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", style="white")
+    table.add_column("Rate", style="green")
 
     total = len(results)
-    completed = sum(1 for r in results if "COMPLETED" in r["result"])
-    failed = sum(1 for r in results if "FAILED" in r["result"])
-    paywalled = sum(1 for r in results if "PAYWALLED" in r["result"])
+    table.add_row("Total Processed", str(total), "100%")
+    table.add_row("Completed", str(stats["completed"]), f"{stats['completed']/total*100:.1f}%")
+    table.add_row("Paywalled", str(stats["paywalled"]), f"{stats['paywalled']/total*100:.1f}%")
+    table.add_row("Failed", str(stats["failed"]), f"{stats['failed']/total*100:.1f}%")
+    table.add_row("Datasets Found", str(stats["datasets"]), f"{stats['datasets']/total:.1f} avg")
+    table.add_row("Methods Extracted", str(stats["methods"]), f"{stats['methods']/total*100:.1f}%")
 
-    print(f"\nTotal Entries: {total}")
-    print(f"Completed:     {completed} ({completed/total*100:.0f}%)")
-    print(f"Failed:        {failed}")
-    print(f"Paywalled:     {paywalled}")
-    print(f"\nTasks executed: {extraction_tasks}")
-
-    # Show per-entry summary
-    print("\n--- Per-Entry Results ---")
-    for i, r in enumerate(results, 1):
-        status = "COMPLETED" if "COMPLETED" in r["result"] else "FAILED" if "FAILED" in r["result"] else "PAYWALLED"
-        title_short = (r["title"] or "Unknown")[:45]
-        print(f"  [{i}] {status:10} {r['elapsed']:.1f}s  {title_short}...")
+    console.print(table)
 
     return results
 
@@ -1487,7 +1759,7 @@ def main():
     parser.add_argument(
         "--tasks",
         type=str,
-        default="resolve_identifiers,ncbi_enrich",
+        default="resolve_identifiers,ncbi_enrich,metadata,methods,identifiers",
         help=(
             "Comma-separated extraction tasks to run. "
             "Options: resolve_identifiers, ncbi_enrich, metadata, methods, identifiers. "
@@ -1511,8 +1783,36 @@ def main():
         action="store_true",
         help="Skip entries already present in --output-file (requires --output-file)",
     )
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Show detailed output for each entry (default: minimal progress display)",
+    )
+    parser.add_argument(
+        "--purge",
+        action="store_true",
+        help="Purge queues, backups, and lock files from workspace",
+    )
+    parser.add_argument(
+        "--workspace",
+        type=Path,
+        default=None,
+        help="Workspace path for --purge (default: .lobster_workspace in cwd)",
+    )
 
     args = parser.parse_args()
+
+    # Handle purge command first (doesn't need RIS file)
+    if args.purge:
+        try:
+            purge_workspace_caches(
+                workspace_path=args.workspace,
+                dry_run=args.dry_run,
+            )
+            sys.exit(0)
+        except Exception as e:
+            console.print(f"[red]Purge failed: {e}[/red]")
+            sys.exit(1)
 
     # Resolve RIS file path
     ris_path = args.ris_file
@@ -1590,6 +1890,7 @@ def main():
                 max_entries=args.max_entries,
                 entry_index=args.entry,
                 skip_processed_ids=skip_processed_ids,
+                verbose=args.verbose,
             )
 
             # Save results if output file specified
@@ -1630,6 +1931,55 @@ def main():
         traceback.print_exc()
         sys.exit(1)
 
+
+# =============================================================================
+# Quick Examples
+# =============================================================================
+"""
+QUICK START EXAMPLES
+====================
+
+1. FAST IDENTIFIER RESOLUTION (DOI → PMID, ~10 sec for 20 entries)
+   Tests NCBI ID Converter without full content extraction:
+
+   python tests/manual/test_publication_processing.py \
+     --production \
+     --tasks resolve_identifiers,ncbi_enrich \
+     --ris-file kevin_notes/databiomix/CRC_microbiome_2.ris \
+     --max-entries 20
+
+2. FULL PRODUCTION RUN WITH SAVED RESULTS (resumable)
+   Process all entries, save to JSON for analysis:
+
+   python tests/manual/test_publication_processing.py \
+     --production \
+     --tasks resolve_identifiers,ncbi_enrich,identifiers \
+     --ris-file kevin_notes/databiomix/CRC_microbiome_2.ris \
+     --output-file results/fix_validation/test_publication_processing_v1.json
+     --max-entries 100
+
+3. RESUME INTERRUPTED RUN (skip already processed)
+   Continue from where you left off:
+
+   python tests/manual/test_publication_processing.py \
+     --production \
+     --tasks resolve_identifiers,ncbi_enrich,identifiers \
+     --ris-file kevin_notes/databiomix/CRC_microbiome_2.ris \
+     --output-file results/fix_validation/test_publication_processing_v1.json \
+     --skip-processed
+
+4. PURGE WORKSPACE CACHES (clean up queues and backups)
+   Remove all queue files, backups, and lock files:
+
+   # Dry run (show what would be deleted)
+   python tests/manual/test_publication_processing.py --purge --dry-run
+
+   # Actually delete files from default workspace
+   python tests/manual/test_publication_processing.py --purge
+
+   # Delete from custom workspace
+   python tests/manual/test_publication_processing.py --purge --workspace /path/to/workspace
+"""
 
 if __name__ == "__main__":
     main()

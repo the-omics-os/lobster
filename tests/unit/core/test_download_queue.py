@@ -550,40 +550,41 @@ class TestPersistence:
 
 
 class TestBackup:
-    """Test backup functionality."""
+    """Test backup functionality when explicitly enabled."""
 
-    def test_backup_created_on_modification(self, download_queue, sample_entry):
-        """Test that backup is created before modification."""
-        # Add initial entry
+    def _create_queue(self, temp_queue_file, monkeypatch):
+        monkeypatch.setenv("LOBSTER_ENABLE_QUEUE_BACKUPS", "1")
+        return DownloadQueue(temp_queue_file)
+
+    def test_backup_created_on_modification(
+        self, temp_queue_file, sample_entry, monkeypatch
+    ):
+        download_queue = self._create_queue(temp_queue_file, monkeypatch)
         download_queue.add_entry(sample_entry)
 
-        # Modify queue (should trigger backup)
         download_queue.update_status(
             entry_id=sample_entry.entry_id,
             status=DownloadStatus.COMPLETED,
         )
 
-        # Check backup directory
         backup_files = list(download_queue.backup_dir.glob("queue_backup_*.jsonl"))
         assert len(backup_files) >= 1
 
-    def test_backup_preserves_content(self, download_queue, sample_entry):
-        """Test that backup contains correct content."""
+    def test_backup_preserves_content(
+        self, temp_queue_file, sample_entry, monkeypatch
+    ):
+        download_queue = self._create_queue(temp_queue_file, monkeypatch)
         download_queue.add_entry(sample_entry)
 
-        # Trigger backup by updating
         download_queue.update_status(
             entry_id=sample_entry.entry_id,
             status=DownloadStatus.IN_PROGRESS,
         )
 
-        # Get most recent backup
         backup_files = sorted(download_queue.backup_dir.glob("queue_backup_*.jsonl"))
-        assert len(backup_files) > 0
+        assert backup_files
 
         latest_backup = backup_files[-1]
-
-        # Verify backup content
         with open(latest_backup, "r") as f:
             lines = f.readlines()
 
@@ -591,22 +592,20 @@ class TestBackup:
         data = json.loads(lines[0])
         assert data["entry_id"] == sample_entry.entry_id
 
-    def test_multiple_backups(self, download_queue, sample_entry):
-        """Test that multiple operations create multiple backups."""
+    def test_multiple_backups(self, temp_queue_file, sample_entry, monkeypatch):
+        download_queue = self._create_queue(temp_queue_file, monkeypatch)
         download_queue.add_entry(sample_entry)
 
-        # Trigger multiple backups
         for status in [
             DownloadStatus.IN_PROGRESS,
             DownloadStatus.COMPLETED,
         ]:
-            time.sleep(0.01)  # Ensure different timestamps
+            time.sleep(0.01)
             download_queue.update_status(
                 entry_id=sample_entry.entry_id,
                 status=status,
             )
 
-        # Check multiple backups exist
         backup_files = list(download_queue.backup_dir.glob("queue_backup_*.jsonl"))
         assert len(backup_files) >= 2
 
@@ -721,6 +720,63 @@ class TestThreadSafety:
         entry = download_queue.get_entry(sample_entry.entry_id)
         assert entry.status == DownloadStatus.IN_PROGRESS
         assert len(entry.error_log) == num_threads
+
+    def test_cross_instance_concurrent_updates(self, temp_queue_file):
+        """Ensure multiple queue instances coordinate safely."""
+        queue_a = DownloadQueue(temp_queue_file)
+        queue_b = DownloadQueue(temp_queue_file)
+
+        total_entries = 30
+        for i in range(total_entries):
+            entry = DownloadQueueEntry(
+                entry_id=f"cross_dl_{i}",
+                dataset_id=f"GSE{i:05d}",
+                database="geo",
+            )
+            queue_a.add_entry(entry)
+
+        errors = []
+
+        def worker(queue, ids, status):
+            for idx in ids:
+                try:
+                    queue.update_status(
+                        entry_id=f"cross_dl_{idx}",
+                        status=status,
+                    )
+                except Exception as exc:  # pragma: no cover - diagnostic
+                    errors.append(exc)
+
+        even_ids = list(range(0, total_entries, 2))
+        odd_ids = list(range(1, total_entries, 2))
+
+        thread_even = threading.Thread(
+            target=worker,
+            args=(queue_a, even_ids, DownloadStatus.COMPLETED),
+        )
+        thread_odd = threading.Thread(
+            target=worker,
+            args=(queue_b, odd_ids, DownloadStatus.FAILED),
+        )
+
+        thread_even.start()
+        thread_odd.start()
+        thread_even.join()
+        thread_odd.join()
+
+        assert not errors
+
+        entries = queue_a.list_entries()
+        assert len(entries) == total_entries
+
+        for entry in entries:
+            idx = int(entry.entry_id.split("_")[-1])
+            expected = (
+                DownloadStatus.COMPLETED
+                if idx % 2 == 0
+                else DownloadStatus.FAILED
+            )
+            assert entry.status == expected
 
 
 # =============================================================================

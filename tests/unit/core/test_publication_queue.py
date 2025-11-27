@@ -551,40 +551,39 @@ class TestPersistence:
 
 
 class TestBackup:
-    """Test backup functionality."""
+    """Test backup functionality (only when enabled)."""
 
-    def test_backup_created_on_modification(self, publication_queue, sample_entry):
-        """Test that backup is created before modification."""
-        # Add initial entry
+    def test_backup_created_on_modification(self, temp_queue_file, sample_entry, monkeypatch):
+        monkeypatch.setenv("LOBSTER_ENABLE_QUEUE_BACKUPS", "1")
+        publication_queue = PublicationQueue(temp_queue_file)
+
         publication_queue.add_entry(sample_entry)
-
-        # Modify queue (should trigger backup)
         publication_queue.update_status(
             entry_id=sample_entry.entry_id,
             status=PublicationStatus.COMPLETED,
         )
 
-        # Check backup directory
-        backup_files = list(publication_queue.backup_dir.glob("publication_queue_backup_*.jsonl"))
+        backup_files = list(
+            publication_queue.backup_dir.glob("publication_queue_backup_*.jsonl")
+        )
         assert len(backup_files) >= 1
 
-    def test_backup_preserves_content(self, publication_queue, sample_entry):
-        """Test that backup contains correct content."""
-        publication_queue.add_entry(sample_entry)
+    def test_backup_preserves_content(self, temp_queue_file, sample_entry, monkeypatch):
+        monkeypatch.setenv("LOBSTER_ENABLE_QUEUE_BACKUPS", "1")
+        publication_queue = PublicationQueue(temp_queue_file)
 
-        # Trigger backup by updating
+        publication_queue.add_entry(sample_entry)
         publication_queue.update_status(
             entry_id=sample_entry.entry_id,
             status=PublicationStatus.EXTRACTING,
         )
 
-        # Get most recent backup
-        backup_files = sorted(publication_queue.backup_dir.glob("publication_queue_backup_*.jsonl"))
-        assert len(backup_files) > 0
+        backup_files = sorted(
+            publication_queue.backup_dir.glob("publication_queue_backup_*.jsonl")
+        )
+        assert backup_files
 
         latest_backup = backup_files[-1]
-
-        # Verify backup content
         with open(latest_backup, "r") as f:
             lines = f.readlines()
 
@@ -667,6 +666,63 @@ class TestThreadSafety:
 
         # Verify all reads got correct data
         assert all(r.entry_id == sample_entry.entry_id for r in results)
+
+    def test_cross_instance_concurrent_updates(self, temp_queue_file):
+        """Ensure inter-process style locking prevents corruption."""
+        queue_a = PublicationQueue(temp_queue_file)
+        queue_b = PublicationQueue(temp_queue_file)
+
+        total_entries = 20
+        for i in range(total_entries):
+            entry = PublicationQueueEntry(
+                entry_id=f"cross_entry_{i}",
+                pmid=f"90000{i:03d}",
+                title=f"Cross Entry {i}",
+            )
+            queue_a.add_entry(entry)
+
+        errors = []
+
+        def worker(queue, ids, status):
+            for idx in ids:
+                try:
+                    queue.update_status(
+                        entry_id=f"cross_entry_{idx}",
+                        status=status,
+                    )
+                except Exception as exc:  # pragma: no cover - diagnostic
+                    errors.append(exc)
+
+        even_ids = list(range(0, total_entries, 2))
+        odd_ids = list(range(1, total_entries, 2))
+
+        thread_even = threading.Thread(
+            target=worker,
+            args=(queue_a, even_ids, PublicationStatus.COMPLETED),
+        )
+        thread_odd = threading.Thread(
+            target=worker,
+            args=(queue_b, odd_ids, PublicationStatus.FAILED),
+        )
+
+        thread_even.start()
+        thread_odd.start()
+        thread_even.join()
+        thread_odd.join()
+
+        assert not errors
+
+        entries = queue_a.list_entries()
+        assert len(entries) == total_entries
+
+        for entry in entries:
+            idx = int(entry.entry_id.split("_")[-1])
+            expected = (
+                PublicationStatus.COMPLETED
+                if idx % 2 == 0
+                else PublicationStatus.FAILED
+            )
+            assert entry.status == expected
 
 
 # =============================================================================
