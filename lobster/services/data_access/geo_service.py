@@ -139,6 +139,35 @@ class GEOService:
 
     # ████████████████████████████████████████████████████████████████████████████████
     # ██                                                                            ██
+    # ██                      HELPER: DATA VALIDITY CHECK                          ██
+    # ██                                                                            ██
+    # ████████████████████████████████████████████████████████████████████████████████
+
+    def _is_data_valid(self, data: Optional[Union[pd.DataFrame, anndata.AnnData]]) -> bool:
+        """
+        Check if data is valid (non-None and non-empty).
+
+        Works for both DataFrame and AnnData objects, avoiding AttributeError
+        when checking .empty on AnnData which doesn't have that attribute.
+
+        Args:
+            data: DataFrame, AnnData, or None
+
+        Returns:
+            True if data is valid (non-None and has content), False otherwise
+        """
+        if data is None:
+            return False
+        if isinstance(data, pd.DataFrame):
+            return not data.empty
+        elif isinstance(data, anndata.AnnData):
+            return data.n_obs > 0 and data.n_vars > 0
+        else:
+            # Assume other types are valid if not None
+            return True
+
+    # ████████████████████████████████████████████████████████████████████████████████
+    # ██                                                                            ██
     # ██                      RETRY LOGIC WITH EXPONENTIAL BACKOFF                 ██
     # ██                                                                            ██
     # ████████████████████████████████████████████████████████████████████████████████
@@ -1814,7 +1843,7 @@ class GEOService:
             gse = GEOparse.get_GEO(geo=geo_id, destdir=str(self.cache_dir))
 
             data = self._process_supplementary_files(gse, geo_id)
-            if data is not None and not data.empty:
+            if self._is_data_valid(data):
                 return GEOResult(
                     data=data,
                     metadata=metadata,
@@ -2086,7 +2115,7 @@ class GEOService:
 
             # Try supplementary files as fallback
             data = self._process_supplementary_files(gse, geo_id)
-            if data is not None and not data.empty:
+            if self._is_data_valid(data):
                 # FIXED Bug #3: Add metadata-based modality detection for supplementary files
                 # FIXED Bug #2: Persist strategy config for supplementary files
                 data_type = "unknown"
