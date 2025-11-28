@@ -957,10 +957,24 @@ def metadata_assistant(
             entry = queue.get_entry(entry_id)
 
             if not entry.workspace_metadata_keys:
-                return f"❌ Error: Entry {entry_id} has no workspace_metadata_keys"
+                error_msg = (
+                    f"Entry {entry_id} has no workspace_metadata_keys. "
+                    f"Expected at least one 'sra_*_samples' key. "
+                    f"Run research_agent.process_publication_queue() to populate workspace keys."
+                )
+                logger.error(error_msg)
+                return f"❌ Error: {error_msg}"
+
+            # Log entry processing start
+            logger.info(
+                f"Processing entry {entry_id}: '{entry.title or 'No title'}' "
+                f"({len(entry.workspace_metadata_keys)} workspace keys)"
+            )
 
             # Update status to in_progress
-            queue.update_status(entry_id, entry.status, handoff_status=HandoffStatus.METADATA_IN_PROGRESS)
+            queue.update_status(
+                entry_id, entry.status, handoff_status=HandoffStatus.METADATA_IN_PROGRESS
+            )
 
             # Read and aggregate samples from all workspace keys
             all_samples = []
@@ -996,9 +1010,39 @@ def metadata_assistant(
                 vr.metadata.get("total_samples", 0) for vr in all_validation_results
             )
 
+            # Check for complete validation failure
+            if samples_before > 0 and len(all_samples) == 0:
+                # All samples failed validation
+                total_errors = sum(len(vr.errors) for vr in all_validation_results)
+                error_msg = (
+                    f"All {samples_before} samples failed validation ({total_errors} errors). "
+                    f"Check workspace files for data quality issues."
+                )
+                logger.error(f"Entry {entry_id}: {error_msg}")
+
+                # Log first few validation errors for debugging
+                logger.error(f"First validation errors for entry {entry_id}:")
+                for vr in all_validation_results[:3]:  # First 3 workspace keys
+                    for error in vr.errors[:3]:  # First 3 errors per key
+                        logger.error(f"  - {error}")
+
+                # Mark as METADATA_FAILED
+                queue.update_status(
+                    entry_id,
+                    entry.status,
+                    handoff_status=HandoffStatus.METADATA_FAILED,
+                    error=error_msg,
+                )
+
+                return f"❌ {error_msg}"
+
             # Apply filters if specified
             if filter_criteria and all_samples:
+                logger.info(
+                    f"Applying filter criteria to {len(all_samples)} samples: '{filter_criteria}'"
+                )
                 all_samples = _apply_metadata_filters(all_samples, filter_criteria)
+                logger.info(f"After filtering: {len(all_samples)} samples retained")
 
             samples_after = len(all_samples)
 
@@ -1010,11 +1054,17 @@ def metadata_assistant(
                 sample["publication_pmid"] = entry.pmid
 
             # Aggregate validation statistics
-            total_errors = sum(
-                len(vr.errors) for vr in all_validation_results
+            total_errors = sum(len(vr.errors) for vr in all_validation_results)
+            total_warnings = sum(len(vr.warnings) for vr in all_validation_results)
+
+            # Log overall validation summary
+            validation_rate = (
+                (len(all_samples) / samples_before * 100) if samples_before > 0 else 0
             )
-            total_warnings = sum(
-                len(vr.warnings) for vr in all_validation_results
+            logger.info(
+                f"Entry {entry_id} validation summary: "
+                f"{len(all_samples)}/{samples_before} samples valid ({validation_rate:.1f}%), "
+                f"{total_errors} errors, {total_warnings} warnings"
             )
 
             # Store in harmonization_metadata
@@ -1085,7 +1135,10 @@ def metadata_assistant(
             Processing summary with total counts and output location
         """
         try:
-            from lobster.services.data_access.workspace_content_service import MetadataContent, ContentType
+            from lobster.services.data_access.workspace_content_service import (
+                MetadataContent,
+                ContentType,
+            )
 
             queue = data_manager.publication_queue
             entries = queue.list_entries(status=PublicationStatus(status_filter.lower()))
@@ -1094,85 +1147,154 @@ def metadata_assistant(
                 entries = entries[:max_entries]
 
             if not entries:
+                logger.info(f"No entries found with status '{status_filter}'")
                 return f"No entries found with status '{status_filter}'"
+
+            # Log batch processing start
+            logger.info(
+                f"Starting batch processing: {len(entries)} entries "
+                f"(filter: '{filter_criteria or 'none'}')"
+            )
 
             all_samples = []
             stats = {
                 "processed": 0,
                 "with_samples": 0,
+                "failed": 0,
                 "total_extracted": 0,
                 "total_valid": 0,
                 "total_after_filter": 0,
                 "validation_errors": 0,
                 "validation_warnings": 0,
             }
+            failed_entries = []
 
             for entry in entries:
-                if not entry.workspace_metadata_keys:
-                    logger.debug(f"Skipping entry {entry.entry_id}: no workspace_metadata_keys")
-                    continue
-
-                entry_samples = []
-                entry_validation_results = []
-
-                for ws_key in entry.workspace_metadata_keys:
-                    # Only process SRA sample files (skip pub_queue_*_metadata/methods/identifiers.json)
-                    if not (ws_key.startswith("sra_") and ws_key.endswith("_samples")):
-                        logger.debug(f"Skipping non-SRA workspace key: {ws_key}")
+                try:
+                    if not entry.workspace_metadata_keys:
+                        logger.debug(
+                            f"Skipping entry {entry.entry_id}: no workspace_metadata_keys"
+                        )
                         continue
 
-                    logger.info(f"Processing SRA sample file: {ws_key} for entry {entry.entry_id}")
-
-                    from lobster.services.data_access.workspace_content_service import (
-                        ContentType,
+                    logger.info(
+                        f"Processing entry {entry.entry_id}: '{entry.title or 'No title'}'"
                     )
 
-                    ws_data = workspace_service.read_content(
-                        ws_key, content_type=ContentType.METADATA
+                    entry_samples = []
+                    entry_validation_results = []
+
+                    for ws_key in entry.workspace_metadata_keys:
+                        # Only process SRA sample files (skip pub_queue_*_metadata/methods/identifiers.json)
+                        if not (ws_key.startswith("sra_") and ws_key.endswith("_samples")):
+                            logger.debug(f"Skipping non-SRA workspace key: {ws_key}")
+                            continue
+
+                        logger.info(
+                            f"Processing SRA sample file: {ws_key} for entry {entry.entry_id}"
+                        )
+
+                        from lobster.services.data_access.workspace_content_service import (
+                            ContentType,
+                        )
+
+                        ws_data = workspace_service.read_content(
+                            ws_key, content_type=ContentType.METADATA
+                        )
+                        if ws_data:
+                            samples, validation_result = _extract_samples_from_workspace(
+                                ws_data
+                            )
+                            entry_samples.extend(samples)
+                            entry_validation_results.append(validation_result)
+
+                    # Update stats with validation info
+                    samples_extracted = sum(
+                        vr.metadata.get("total_samples", 0)
+                        for vr in entry_validation_results
                     )
-                    if ws_data:
-                        samples, validation_result = _extract_samples_from_workspace(ws_data)
-                        entry_samples.extend(samples)
-                        entry_validation_results.append(validation_result)
+                    samples_valid = len(entry_samples)
 
-                # Update stats with validation info
-                samples_extracted = sum(
-                    vr.metadata.get("total_samples", 0) for vr in entry_validation_results
-                )
-                samples_valid = len(entry_samples)
+                    # Check for complete validation failure
+                    if samples_extracted > 0 and samples_valid == 0:
+                        # All samples in this entry failed validation
+                        error_count = sum(
+                            len(vr.errors) for vr in entry_validation_results
+                        )
+                        error_msg = f"All {samples_extracted} samples failed validation ({error_count} errors)"
+                        logger.error(f"Entry {entry.entry_id}: {error_msg}")
 
-                stats["total_extracted"] += samples_extracted
-                stats["total_valid"] += samples_valid
-                stats["validation_errors"] += sum(
-                    len(vr.errors) for vr in entry_validation_results
-                )
-                stats["validation_warnings"] += sum(
-                    len(vr.warnings) for vr in entry_validation_results
-                )
+                        # Mark entry as failed
+                        queue.update_status(
+                            entry.entry_id,
+                            entry.status,
+                            handoff_status=HandoffStatus.METADATA_FAILED,
+                            error=error_msg,
+                        )
+                        failed_entries.append((entry.entry_id, error_msg))
+                        stats["failed"] += 1
+                        stats["processed"] += 1
+                        continue
 
-                logger.info(
-                    f"Entry {entry.entry_id}: {samples_valid}/{samples_extracted} samples valid"
-                )
+                    stats["total_extracted"] += samples_extracted
+                    stats["total_valid"] += samples_valid
+                    stats["validation_errors"] += sum(
+                        len(vr.errors) for vr in entry_validation_results
+                    )
+                    stats["validation_warnings"] += sum(
+                        len(vr.warnings) for vr in entry_validation_results
+                    )
 
-                if filter_criteria and entry_samples:
-                    entry_samples = _apply_metadata_filters(entry_samples, filter_criteria)
+                    logger.info(
+                        f"Entry {entry.entry_id}: {samples_valid}/{samples_extracted} samples valid"
+                    )
 
-                stats["total_after_filter"] += len(entry_samples)
+                    if filter_criteria and entry_samples:
+                        samples_before_filter = len(entry_samples)
+                        entry_samples = _apply_metadata_filters(
+                            entry_samples, filter_criteria
+                        )
+                        logger.info(
+                            f"Entry {entry.entry_id}: Filter applied - "
+                            f"{len(entry_samples)}/{samples_before_filter} samples retained"
+                        )
 
-                # Add publication context
-                for sample in entry_samples:
-                    sample["publication_entry_id"] = entry.entry_id
-                    sample["publication_title"] = entry.title
-                    sample["publication_doi"] = entry.doi
-                    sample["publication_pmid"] = entry.pmid
+                    stats["total_after_filter"] += len(entry_samples)
 
-                all_samples.extend(entry_samples)
-                stats["processed"] += 1
-                if entry_samples:
-                    stats["with_samples"] += 1
+                    # Add publication context
+                    for sample in entry_samples:
+                        sample["publication_entry_id"] = entry.entry_id
+                        sample["publication_title"] = entry.title
+                        sample["publication_doi"] = entry.doi
+                        sample["publication_pmid"] = entry.pmid
 
-                # Update entry status
-                queue.update_status(entry.entry_id, entry.status, handoff_status=HandoffStatus.METADATA_COMPLETE)
+                    all_samples.extend(entry_samples)
+                    stats["processed"] += 1
+                    if entry_samples:
+                        stats["with_samples"] += 1
+
+                    # Update entry status
+                    queue.update_status(
+                        entry.entry_id,
+                        entry.status,
+                        handoff_status=HandoffStatus.METADATA_COMPLETE,
+                    )
+
+                except Exception as e:
+                    # Graceful degradation: log error but continue with other entries
+                    error_msg = f"Failed to process entry {entry.entry_id}: {str(e)}"
+                    logger.error(error_msg, exc_info=True)
+
+                    # Mark entry as failed
+                    queue.update_status(
+                        entry.entry_id,
+                        entry.status,
+                        handoff_status=HandoffStatus.METADATA_FAILED,
+                        error=error_msg,
+                    )
+                    failed_entries.append((entry.entry_id, error_msg))
+                    stats["failed"] += 1
+                    stats["processed"] += 1
 
             # Store aggregated results to workspace
             if all_samples:
@@ -1210,8 +1332,29 @@ def metadata_assistant(
                 else 0
             )
 
-            return f"""## Queue Processing Complete
+            # Log comprehensive batch summary
+            logger.info("=" * 60)
+            logger.info(f"Batch processing complete for {len(entries)} entries")
+            logger.info(f"  Successful: {stats['processed'] - stats['failed']}")
+            logger.info(f"  Failed: {stats['failed']}")
+            logger.info(f"  Total samples extracted: {stats['total_extracted']}")
+            logger.info(f"  Total samples valid: {stats['total_valid']} ({validation_rate:.1f}%)")
+            logger.info(
+                f"  Total samples after filter: {stats['total_after_filter']} ({retention:.1f}%)"
+            )
+            logger.info(f"  Validation errors: {stats['validation_errors']}")
+            logger.info(f"  Validation warnings: {stats['validation_warnings']}")
+            if failed_entries:
+                logger.warning(f"Failed entries ({len(failed_entries)}):")
+                for entry_id, error in failed_entries:
+                    logger.warning(f"  - {entry_id}: {error}")
+            logger.info("=" * 60)
+
+            # Build response
+            response = f"""## Queue Processing Complete
 **Entries Processed**: {stats['processed']}
+**Successful**: {stats['processed'] - stats['failed']}
+**Failed**: {stats['failed']}
 **Entries With Samples**: {stats['with_samples']}
 **Samples Extracted**: {stats['total_extracted']}
 **Samples Valid**: {stats['total_valid']} ({validation_rate:.1f}%)
@@ -1219,9 +1362,17 @@ def metadata_assistant(
 **Retention Rate**: {retention:.1f}%
 **Validation**: {stats['validation_errors']} errors, {stats['validation_warnings']} warnings
 **Output Key**: {output_key}
-
-Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_format="csv")` to export as CSV.
 """
+
+            # Add failed entries section if any
+            if failed_entries:
+                response += "\n### Failed Entries\n"
+                for entry_id, error in failed_entries:
+                    response += f"- {entry_id}: {error}\n"
+
+            response += f"\nUse `write_to_workspace(identifier=\"{output_key}\", workspace=\"metadata\", output_format=\"csv\")` to export as CSV.\n"
+
+            return response
         except Exception as e:
             logger.error(f"Error processing queue: {e}")
             return f"❌ Error processing queue: {str(e)}"

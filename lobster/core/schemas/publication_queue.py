@@ -42,6 +42,7 @@ class HandoffStatus(str, Enum):
     READY_FOR_METADATA = "ready_for_metadata"
     METADATA_IN_PROGRESS = "metadata_in_progress"
     METADATA_COMPLETE = "metadata_complete"
+    METADATA_FAILED = "metadata_failed"  # All samples failed validation or processing error
 
 
 class PublicationQueueEntry(BaseModel):
