@@ -1018,3 +1018,80 @@ def cleanup_test_artifacts() -> Generator[None, None, None]:
     for path in temp_dir.glob(f"{TEST_WORKSPACE_PREFIX}*"):
         if path.is_dir():
             shutil.rmtree(path, ignore_errors=True)
+
+
+# ==============================================================================
+# SRA Sample Metadata Fixtures (for metadata_assistant testing)
+# ==============================================================================
+
+
+@pytest.fixture
+def production_sra_samples():
+    """
+    Load actual production SRA sample file (247 samples, 814KB).
+
+    This fixture provides real SRA metadata from PRJNA891765 for regression
+    testing of the metadata harmonization pipeline.
+
+    Returns:
+        Dict[str, Any]: Production SRA sample data structure
+
+    Example:
+        >>> def test_with_production_data(production_sra_samples):
+        ...     assert production_sra_samples['data']['sample_count'] == 247
+        ...     samples = production_sra_samples['data']['samples']
+        ...     assert len(samples) == 247
+    """
+    fixture_path = (
+        Path(__file__).parent / "fixtures" / "sra_prjna891765_samples.json"
+    )
+    with open(fixture_path) as f:
+        return json.load(f)
+
+
+@pytest.fixture
+def minimal_sra_samples():
+    """
+    Load minimal test fixture (5 samples).
+
+    This fixture provides a small representative subset of SRA samples
+    for fast unit tests that don't require the full 247-sample dataset.
+
+    Returns:
+        Dict[str, Any]: Minimal SRA sample data structure
+
+    Example:
+        >>> def test_basic_functionality(minimal_sra_samples):
+        ...     samples = minimal_sra_samples['data']['samples']
+        ...     assert len(samples) == 5
+    """
+    fixture_path = (
+        Path(__file__).parent / "fixtures" / "sra_prjna891765_samples_minimal.json"
+    )
+    with open(fixture_path) as f:
+        return json.load(f)
+
+
+@pytest.fixture
+def malformed_sra_samples():
+    """
+    Load malformed test data for edge case testing.
+
+    This fixture provides SRA samples with various validation issues:
+    - Missing required fields
+    - Invalid field types
+    - No download URLs
+    - Invalid library_layout values
+
+    Returns:
+        Dict[str, Any]: Malformed SRA sample data structure
+
+    Example:
+        >>> def test_error_handling(malformed_sra_samples):
+        ...     samples = malformed_sra_samples['data']['samples']
+        ...     # Samples include validation errors
+        ...     assert len(samples) > 0
+    """
+    fixture_path = Path(__file__).parent / "fixtures" / "sra_malformed_samples.json"
+    with open(fixture_path) as f:
+        return json.load(f)

@@ -963,14 +963,37 @@ def metadata_assistant(
 
             # Read and aggregate samples from all workspace keys
             all_samples = []
-            for ws_key in entry.workspace_metadata_keys:
-                from lobster.services.data_access.workspace_content_service import ContentType
-                ws_data = workspace_service.read_content(ws_key, content_type=ContentType.METADATA)
-                if ws_data:
-                    samples = _extract_samples_from_workspace(ws_data)
-                    all_samples.extend(samples)
+            all_validation_results = []
 
-            samples_before = len(all_samples)
+            for ws_key in entry.workspace_metadata_keys:
+                # Only process SRA sample files (skip pub_queue_*_metadata/methods/identifiers.json)
+                if not (ws_key.startswith("sra_") and ws_key.endswith("_samples")):
+                    logger.debug(f"Skipping non-SRA workspace key: {ws_key}")
+                    continue
+
+                logger.info(f"Processing SRA sample file: {ws_key}")
+
+                from lobster.services.data_access.workspace_content_service import (
+                    ContentType,
+                )
+
+                ws_data = workspace_service.read_content(
+                    ws_key, content_type=ContentType.METADATA
+                )
+                if ws_data:
+                    samples, validation_result = _extract_samples_from_workspace(ws_data)
+                    all_samples.extend(samples)
+                    all_validation_results.append(validation_result)
+
+                    # Log extraction results
+                    logger.info(
+                        f"Extracted {len(samples)} valid samples from {ws_key} "
+                        f"(validation_rate: {validation_result.metadata.get('validation_rate', 0):.1f}%)"
+                    )
+
+            samples_before = sum(
+                vr.metadata.get("total_samples", 0) for vr in all_validation_results
+            )
 
             # Apply filters if specified
             if filter_criteria and all_samples:
@@ -985,12 +1008,26 @@ def metadata_assistant(
                 sample["publication_doi"] = entry.doi
                 sample["publication_pmid"] = entry.pmid
 
+            # Aggregate validation statistics
+            total_errors = sum(
+                len(vr.errors) for vr in all_validation_results
+            )
+            total_warnings = sum(
+                len(vr.warnings) for vr in all_validation_results
+            )
+
             # Store in harmonization_metadata
             harmonization_data = {
                 "samples": all_samples,
                 "filter_criteria": filter_criteria,
                 "standardize_schema": standardize_schema,
-                "stats": {"before": samples_before, "after": samples_after},
+                "stats": {
+                    "samples_extracted": samples_before,
+                    "samples_valid": len(all_samples),
+                    "samples_after_filter": samples_after,
+                    "validation_errors": total_errors,
+                    "validation_warnings": total_warnings,
+                },
             }
 
             queue.update_status(
@@ -1001,12 +1038,25 @@ def metadata_assistant(
             )
 
             retention = (samples_after / samples_before * 100) if samples_before > 0 else 0
-            return f"""## Entry Processed: {entry_id}
-**Samples Before**: {samples_before}
-**Samples After**: {samples_after}
+
+            # Build response with validation info
+            response = f"""## Entry Processed: {entry_id}
+**Samples Extracted**: {samples_before}
+**Samples Valid**: {len(all_samples)}
+**Samples After Filter**: {samples_after}
 **Retention**: {retention:.1f}%
 **Filter**: {filter_criteria or 'None'}
+**Validation**: {total_errors} errors, {total_warnings} warnings
 """
+            # Include validation messages if there are issues
+            if total_errors > 0 or total_warnings > 0:
+                response += "\n### Validation Summary\n"
+                for idx, vr in enumerate(all_validation_results):
+                    if vr.has_errors or vr.has_warnings:
+                        response += f"\n**Workspace key {idx+1}**:\n"
+                        response += vr.format_messages(include_info=False) + "\n"
+
+            return response
         except Exception as e:
             logger.error(f"Error processing entry {entry_id}: {e}")
             return f"❌ Error processing entry: {str(e)}"
@@ -1046,26 +1096,67 @@ def metadata_assistant(
                 return f"No entries found with status '{status_filter}'"
 
             all_samples = []
-            stats = {"processed": 0, "with_samples": 0, "total_before": 0, "total_after": 0}
+            stats = {
+                "processed": 0,
+                "with_samples": 0,
+                "total_extracted": 0,
+                "total_valid": 0,
+                "total_after_filter": 0,
+                "validation_errors": 0,
+                "validation_warnings": 0,
+            }
 
             for entry in entries:
                 if not entry.workspace_metadata_keys:
+                    logger.debug(f"Skipping entry {entry.entry_id}: no workspace_metadata_keys")
                     continue
 
                 entry_samples = []
-                for ws_key in entry.workspace_metadata_keys:
-                    from lobster.services.data_access.workspace_content_service import ContentType
-                    ws_data = workspace_service.read_content(ws_key, content_type=ContentType.METADATA)
-                    if ws_data:
-                        samples = _extract_samples_from_workspace(ws_data)
-                        entry_samples.extend(samples)
+                entry_validation_results = []
 
-                stats["total_before"] += len(entry_samples)
+                for ws_key in entry.workspace_metadata_keys:
+                    # Only process SRA sample files (skip pub_queue_*_metadata/methods/identifiers.json)
+                    if not (ws_key.startswith("sra_") and ws_key.endswith("_samples")):
+                        logger.debug(f"Skipping non-SRA workspace key: {ws_key}")
+                        continue
+
+                    logger.info(f"Processing SRA sample file: {ws_key} for entry {entry.entry_id}")
+
+                    from lobster.services.data_access.workspace_content_service import (
+                        ContentType,
+                    )
+
+                    ws_data = workspace_service.read_content(
+                        ws_key, content_type=ContentType.METADATA
+                    )
+                    if ws_data:
+                        samples, validation_result = _extract_samples_from_workspace(ws_data)
+                        entry_samples.extend(samples)
+                        entry_validation_results.append(validation_result)
+
+                # Update stats with validation info
+                samples_extracted = sum(
+                    vr.metadata.get("total_samples", 0) for vr in entry_validation_results
+                )
+                samples_valid = len(entry_samples)
+
+                stats["total_extracted"] += samples_extracted
+                stats["total_valid"] += samples_valid
+                stats["validation_errors"] += sum(
+                    len(vr.errors) for vr in entry_validation_results
+                )
+                stats["validation_warnings"] += sum(
+                    len(vr.warnings) for vr in entry_validation_results
+                )
+
+                logger.info(
+                    f"Entry {entry.entry_id}: {samples_valid}/{samples_extracted} samples valid"
+                )
 
                 if filter_criteria and entry_samples:
                     entry_samples = _apply_metadata_filters(entry_samples, filter_criteria)
 
-                stats["total_after"] += len(entry_samples)
+                stats["total_after_filter"] += len(entry_samples)
 
                 # Add publication context
                 for sample in entry_samples:
@@ -1084,12 +1175,19 @@ def metadata_assistant(
 
             # Store aggregated results to workspace
             if all_samples:
+                from datetime import datetime
+
                 content = MetadataContent(
                     identifier=output_key,
                     content_type="filtered_samples",
                     description=f"Batch filtered samples: {filter_criteria or 'no filter'}",
-                    data={"samples": all_samples, "filter_criteria": filter_criteria, "stats": stats},
+                    data={
+                        "samples": all_samples,
+                        "filter_criteria": filter_criteria,
+                        "stats": stats,
+                    },
                     source="metadata_assistant",
+                    cached_at=datetime.now().isoformat(),
                 )
                 workspace_service.write_content(content, ContentType.METADATA)
 
@@ -1100,13 +1198,25 @@ def metadata_assistant(
                     "stats": stats,
                 }
 
-            retention = (stats["total_after"] / stats["total_before"] * 100) if stats["total_before"] > 0 else 0
+            retention = (
+                (stats["total_after_filter"] / stats["total_extracted"] * 100)
+                if stats["total_extracted"] > 0
+                else 0
+            )
+            validation_rate = (
+                (stats["total_valid"] / stats["total_extracted"] * 100)
+                if stats["total_extracted"] > 0
+                else 0
+            )
+
             return f"""## Queue Processing Complete
 **Entries Processed**: {stats['processed']}
 **Entries With Samples**: {stats['with_samples']}
-**Total Samples Before**: {stats['total_before']}
-**Total Samples After**: {stats['total_after']}
+**Samples Extracted**: {stats['total_extracted']}
+**Samples Valid**: {stats['total_valid']} ({validation_rate:.1f}%)
+**Samples After Filter**: {stats['total_after_filter']}
 **Retention Rate**: {retention:.1f}%
+**Validation**: {stats['validation_errors']} errors, {stats['validation_warnings']} warnings
 **Output Key**: {output_key}
 
 Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_format="csv")` to export as CSV.
@@ -1153,18 +1263,85 @@ Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_
             return f"❌ Error updating status: {str(e)}"
 
     # Helper functions for queue processing
-    def _extract_samples_from_workspace(ws_data) -> list:
-        """Extract sample records from workspace data structure."""
+    def _extract_samples_from_workspace(ws_data) -> tuple[list, "ValidationResult"]:
+        """
+        Extract sample records from workspace data structure with validation.
+
+        Uses SRASampleSchema for validation following existing pattern from
+        core/schemas/transcriptomics.py, proteomics.py, metagenomics.py.
+
+        Handles various data structures produced by WorkspaceContentService:
+        - Nested: {"data": {"samples": [...]}}
+        - Direct: {"samples": [...]}
+        - Dict-based: {"samples": {"id1": {...}, "id2": {...}}}
+
+        Args:
+            ws_data: Workspace data dictionary (from WorkspaceContentService)
+
+        Returns:
+            (valid_samples, validation_result): List of valid samples and ValidationResult
+
+        Examples:
+            >>> ws_data = {"data": {"samples": [{"run_accession": "SRR001", ...}]}}
+            >>> samples, result = _extract_samples_from_workspace(ws_data)
+            >>> len(samples)  # Only valid samples
+            1
+            >>> result.is_valid  # True if no critical errors
+            True
+        """
+        from lobster.core.schemas.sra import (
+            validate_sra_sample,
+            validate_sra_samples_batch,
+        )
+
+        # Extract raw samples from workspace structure
+        raw_samples = []
         if isinstance(ws_data, dict):
             if "samples" in ws_data:
                 samples = ws_data["samples"]
                 if isinstance(samples, list):
-                    return samples
+                    raw_samples = samples
                 elif isinstance(samples, dict):
-                    return [{"sample_id": k, **v} for k, v in samples.items()]
+                    # Convert dict to list of samples
+                    raw_samples = [{"sample_id": k, **v} for k, v in samples.items()]
             if "data" in ws_data and isinstance(ws_data["data"], dict):
-                return _extract_samples_from_workspace(ws_data["data"])
-        return []
+                # Recursive extraction for nested structure
+                nested_samples, nested_result = _extract_samples_from_workspace(
+                    ws_data["data"]
+                )
+                raw_samples.extend(nested_samples)
+
+        # If no samples extracted, return empty results
+        if not raw_samples:
+            empty_result = ValidationResult()
+            empty_result.metadata["total_samples"] = 0
+            empty_result.metadata["valid_samples"] = 0
+            empty_result.metadata["validation_rate"] = 0.0
+            return [], empty_result
+
+        # Validate extracted samples using unified schema system
+        validation_result = validate_sra_samples_batch(raw_samples)
+
+        # Filter to valid samples only (no critical errors)
+        valid_samples = []
+        for sample in raw_samples:
+            sample_result = validate_sra_sample(sample)
+            if sample_result.is_valid:  # No errors
+                valid_samples.append(sample)
+                # Log warnings but continue
+                for warning in sample_result.warnings:
+                    logger.warning(warning)
+            else:
+                # Log errors for invalid samples
+                for error in sample_result.errors:
+                    logger.error(error)
+
+        logger.info(
+            f"Sample extraction complete: {len(valid_samples)}/{len(raw_samples)} valid "
+            f"({validation_result.metadata.get('validation_rate', 0):.1f}%)"
+        )
+
+        return valid_samples, validation_result
 
     def _apply_metadata_filters(samples: list, filter_criteria: str) -> list:
         """Apply natural language filters using microbiome services."""
