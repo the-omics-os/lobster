@@ -30,6 +30,8 @@ import re
 import tempfile
 import time
 from datetime import datetime
+from io import BytesIO
+from urllib.parse import urlparse
 
 import requests
 import requests.exceptions
@@ -39,7 +41,38 @@ from typing import Any, Dict, List, Optional
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.utils.logger import get_logger
 
+# Cloudscraper for Cloudflare-protected publishers (OUP, Cell, Elsevier, etc.)
+try:
+    import cloudscraper
+    CLOUDSCRAPER_AVAILABLE = True
+except ImportError:
+    CLOUDSCRAPER_AVAILABLE = False
+
+# Import domain protection strategies from centralized rate limiter
+from lobster.tools.rate_limiter import DOMAIN_HEADER_STRATEGIES, HeaderStrategy
+
 logger = get_logger(__name__)
+
+
+def _get_protected_domains() -> List[str]:
+    """
+    Derive protected domains from STEALTH header strategy.
+
+    STEALTH strategy = Cloudflare-protected = requires cloudscraper.
+    This ensures single source of truth with rate_limiter.py.
+
+    Returns:
+        List of domains requiring cloudscraper for PDF downloads
+    """
+    return [
+        domain for domain, strategy in DOMAIN_HEADER_STRATEGIES.items()
+        if strategy == HeaderStrategy.STEALTH and domain != "default"
+    ]
+
+
+# Protected publisher domains requiring Cloudflare bypass
+# Derived from rate_limiter.py STEALTH strategy (single source of truth)
+PROTECTED_DOMAINS = _get_protected_domains()
 
 
 # ==================== CUSTOM EXCEPTIONS ====================
@@ -1116,15 +1149,130 @@ class DoclingService:
             return str(obj)
         return str(obj)
 
-    def _convert_with_fallback(self, source: str, headers: Optional[Dict[str, str]] = None):
-        """Convert source with Docling, retrying via local download on encoding errors."""
+    def _is_protected_domain(self, url: str) -> bool:
+        """
+        Check if URL is from a Cloudflare-protected publisher.
 
+        Returns True if the domain requires cloudscraper for PDF downloads.
+        """
+        try:
+            netloc = urlparse(url).netloc
+            return any(netloc.endswith(domain) for domain in PROTECTED_DOMAINS)
+        except Exception:
+            return False
+
+    def _infer_name_from_url(self, url: str) -> str:
+        """Extract filename from URL for DocumentStream naming."""
+        try:
+            path = urlparse(url).path
+            return path.rsplit("/", 1)[-1] or "document.pdf"
+        except Exception:
+            return "document.pdf"
+
+    def _download_with_cloudscraper(self, url: str) -> bytes:
+        """
+        Download content (PDF or HTML) from protected domain using cloudscraper.
+
+        Handles Cloudflare bot protection (JS challenges, TLS fingerprinting).
+
+        Args:
+            url: URL to download (PDF or HTML webpage)
+
+        Returns:
+            bytes: Downloaded content
+
+        Raises:
+            PDFExtractionError: If cloudscraper not installed or download fails
+        """
+        if not CLOUDSCRAPER_AVAILABLE:
+            raise PDFExtractionError(
+                f"cloudscraper required for {url} but not installed. "
+                "Install with: pip install cloudscraper"
+            )
+
+        logger.info(f"Downloading protected content with cloudscraper: {url[:80]}...")
+
+        try:
+            scraper = cloudscraper.create_scraper(
+                browser={"browser": "chrome", "platform": "darwin", "mobile": False},
+            )
+            response = scraper.get(url, timeout=30)
+            response.raise_for_status()
+
+            logger.info(f"Successfully downloaded {len(response.content):,} bytes from {urlparse(url).netloc}")
+            return response.content
+
+        except Exception as e:
+            logger.error(f"cloudscraper download failed for {url}: {e}")
+            raise PDFExtractionError(f"Failed to download protected content: {e}")
+
+    def _convert_with_fallback(self, source: str, headers: Optional[Dict[str, str]] = None):
+        """
+        Convert source with Docling, using cloudscraper for protected domains.
+
+        Strategy:
+        1. If source is from a protected domain (PDF or HTML) → pre-download with cloudscraper
+        2. Otherwise → let Docling handle the download with headers
+        3. On UnicodeDecodeError → retry with local download
+        """
+
+        # Strategy 1: Protected domain (PDF or HTML) → pre-download with cloudscraper
+        # Docling supports both PDF and HTML inputs, and protected domains require
+        # cloudscraper for both content types (not just PDFs)
+        if (
+            isinstance(source, str)
+            and self._is_remote_source(source)
+            and self._is_protected_domain(source)
+        ):
+            logger.debug(f"Protected domain detected: {urlparse(source).netloc}")
+
+            try:
+                # Download content (PDF or HTML) with cloudscraper
+                content_bytes = self._download_with_cloudscraper(source)
+
+                # Import DocumentStream here (lazy import to avoid dependency issues)
+                try:
+                    from docling.datamodel.base_models import DocumentStream
+                except ImportError:
+                    # Fallback: if DocumentStream not available, write to temp file
+                    logger.warning("DocumentStream not available, using temp file fallback")
+
+                    # Infer file extension from URL or default to .pdf
+                    suffix = ".html" if any(ext in source.lower() for ext in ["/doi/", "/articles/", ".htm"]) else ".pdf"
+
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+                        tmp_file.write(content_bytes)
+                        temp_path = Path(tmp_file.name)
+                    try:
+                        return self.converter.convert(str(temp_path))
+                    finally:
+                        temp_path.unlink(missing_ok=True)
+
+                # Wrap in DocumentStream for Docling
+                stream = BytesIO(content_bytes)
+                doc_stream = DocumentStream(
+                    name=self._infer_name_from_url(source),
+                    stream=stream,
+                )
+
+                # Convert from stream (headers no longer needed)
+                return self.converter.convert(doc_stream)
+
+            except PDFExtractionError:
+                # cloudscraper failed, re-raise
+                raise
+            except Exception as e:
+                logger.error(f"Unexpected error in cloudscraper path: {e}")
+                raise PDFExtractionError(f"Protected content download failed: {e}")
+
+        # Strategy 2: Standard Docling conversion with headers
         try:
             return self.converter.convert(source, headers=headers)
         except UnicodeDecodeError as primary_error:
             if not self._is_remote_source(source):
                 raise primary_error
 
+            # Strategy 3: Fallback for encoding errors
             logger.warning(
                 "Unicode decode error for %s; retrying with local download...",
                 source[:80],

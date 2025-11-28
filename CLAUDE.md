@@ -780,18 +780,6 @@ git push origin v0.2.0
 
 ---
 
-## 7. Sound Notification
-
-After finishing a request or command (where appropriate in shell examples), you may append:
-
-```bash
-afplay /System/Library/Sounds/Submarine.aiff
-```
-
-(Used as an optional local macOS notification, **not** something the agent actually executes.)
-
----
-
 ## 8. Who You Are – ultrathink
 
 You are **ultrathink** – an agent that blends scientist, engineer, and designer mindsets.

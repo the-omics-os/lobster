@@ -206,7 +206,8 @@ class TestPhase1RegressionSuite:
             assert result.is_accessible() is True
             assert result.source == "pmc"
             assert result.access_type == "open_access"
-            assert "PMC7891011" in result.pdf_url
+            assert result.html_url.endswith("PMC7891011/")
+            assert result.pdf_url.endswith("PMC7891011/pdf/")
 
     def test_biorxiv_papers_still_resolve_to_biorxiv(self):
         """Test bioRxiv papers still resolve via preprint strategy.
@@ -220,7 +221,8 @@ class TestPhase1RegressionSuite:
         assert result.is_accessible() is True
         assert result.source == "biorxiv"
         assert result.access_type == "preprint"
-        assert "biorxiv.org" in result.pdf_url
+        assert result.html_url.endswith(".full")
+        assert result.pdf_url.endswith(".full.pdf")
 
     def test_paywalled_papers_still_get_suggestions(self):
         """Test paywalled papers still receive helpful suggestions.
@@ -393,6 +395,7 @@ class TestPhase1RegressionSuite:
             mock_preprint.return_value = PublicationResolutionResult(
                 identifier="10.1101/2024.01.001",
                 pdf_url="https://biorxiv.org/content/10.1101/2024.01.001.full.pdf",
+                html_url="https://biorxiv.org/content/10.1101/2024.01.001.full",
                 source="biorxiv",
                 access_type="preprint",
             )
@@ -438,7 +441,7 @@ class TestPhase1RegressionSuite:
             assert result.is_accessible() is True
             assert result.source == "linkout"
             assert result.access_type == "publisher"
-            assert "cell.com" in result.pdf_url
+            assert "cell.com" in result.html_url
 
     def test_linkout_handles_missing_urls(self):
         """Test LinkOut handles cases where no provider URL exists."""

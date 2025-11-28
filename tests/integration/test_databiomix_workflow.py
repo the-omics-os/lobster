@@ -78,7 +78,10 @@ def workspace_service(data_manager):
 @pytest.fixture
 def publication_service(data_manager):
     """Create PublicationProcessingService instance."""
-    return PublicationProcessingService(data_manager=data_manager)
+    return PublicationProcessingService(
+        data_manager=data_manager,
+        suppress_provider_logs=False,
+    )
 
 
 # ============================================================================

@@ -273,13 +273,15 @@ class WebpageProvider:
             ... )
         """
         try:
-            logger.info(f"Extracting webpage content from: {url}")
+            logger.debug(f"Extracting webpage content from: {url}")
 
             # Get domain-specific headers if not provided
             if headers is None:
                 config = self.header_provider.get_request_config(url)
                 headers = config.headers
-                logger.info(f"Using {config.header_strategy.value} headers for {config.domain}")
+                logger.debug(
+                    f"Using {config.header_strategy.value} headers for {config.domain}"
+                )
 
             # Check if Docling is available
             if not self.docling_service.is_available():
@@ -326,7 +328,7 @@ class WebpageProvider:
                     f"{len(result.get('formulas', []))} formulas",
                 )
 
-            logger.info(
+            logger.debug(
                 f"Successfully extracted webpage: {len(markdown)} chars, "
                 f"{len(result.get('tables', []))} tables"
             )
@@ -388,13 +390,15 @@ class WebpageProvider:
             >>> print(f"Software: {', '.join(result['software_mentioned'])}")
         """
         try:
-            logger.info(f"Extracting webpage with metadata from: {url[:80]}...")
+            logger.debug(f"Extracting webpage with metadata from: {url[:80]}...")
 
             # Get domain-specific headers if not provided
             if headers is None:
                 config = self.header_provider.get_request_config(url)
                 headers = config.headers
-                logger.info(f"Using {config.header_strategy.value} headers for {config.domain}")
+                logger.debug(
+                    f"Using {config.header_strategy.value} headers for {config.domain}"
+                )
 
             # Check Docling availability
             if not self.docling_service.is_available():
@@ -419,7 +423,7 @@ class WebpageProvider:
                     description=f"Full webpage extraction: {len(result['methods_text'])} chars",
                 )
 
-            logger.info(
+            logger.debug(
                 f"Extracted webpage with metadata: "
                 f"{len(result['methods_text'])} chars, "
                 f"{len(result['tables'])} tables, "

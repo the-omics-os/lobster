@@ -46,7 +46,16 @@ from lobster.tools.providers.biorxiv_medrxiv_config import BioRxivMedRxivConfig
 from lobster.tools.providers.pmc_provider import PMCFullText, PMCProvider
 from lobster.tools.rate_limiter import STEALTH_HEADERS, CHROME_USER_AGENT
 from lobster.utils.logger import get_logger
+
 from lobster.utils.ssl_utils import create_ssl_context, handle_ssl_error
+
+# Cloudscraper for Cloudflare-protected content servers (www.biorxiv.org)
+# The API (api.biorxiv.org) is friendly, but content delivery requires JS challenge solving
+try:
+    import cloudscraper
+    CLOUDSCRAPER_AVAILABLE = True
+except ImportError:
+    CLOUDSCRAPER_AVAILABLE = False
 
 logger = get_logger(__name__)
 
@@ -153,14 +162,26 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
             "Accept": "application/xml,text/xml,application/json,*/*;q=0.1",
         })
 
-        # Content delivery session with stealth headers (for www.biorxiv.org)
-        # Content servers (JATS XML, PDFs) require browser-like headers + Sec-Fetch-*
-        # to avoid 403 errors from bot detection
-        self.content_session = requests.Session()
-        self.content_session.headers.update({
-            "User-Agent": CHROME_USER_AGENT,
-            **STEALTH_HEADERS,
-        })
+        # Content delivery session with Cloudflare bypass (for www.biorxiv.org)
+        # Content servers require JS challenge solving + TLS fingerprinting to avoid 403
+        # Note: api.biorxiv.org is friendly (uses self.session above), but
+        # www.biorxiv.org content delivery is Cloudflare-protected
+        if CLOUDSCRAPER_AVAILABLE:
+            self.content_session = cloudscraper.create_scraper(
+                browser={"browser": "chrome", "platform": "darwin", "mobile": False},
+            )
+            logger.debug("Using cloudscraper for bioRxiv/medRxiv content delivery")
+        else:
+            # Fallback to requests.Session with stealth headers (may fail on 403)
+            self.content_session = requests.Session()
+            self.content_session.headers.update({
+                "User-Agent": CHROME_USER_AGENT,
+                **STEALTH_HEADERS,
+            })
+            logger.warning(
+                "cloudscraper not available - bioRxiv content fetching may fail. "
+                "Install with: pip install cloudscraper"
+            )
 
         # Rate limiting state
         self._last_request_time = 0.0

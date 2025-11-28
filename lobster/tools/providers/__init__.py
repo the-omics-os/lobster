@@ -12,6 +12,8 @@ from lobster.tools.providers.base_provider import (
     PublicationMetadata,
     PublicationSource,
 )
+from lobster.tools.providers.biorxiv_medrxiv_config import BioRxivMedRxivConfig
+from lobster.tools.providers.biorxiv_medrxiv_provider import BioRxivMedRxivProvider
 from lobster.tools.providers.geo_provider import GEOProvider, GEOProviderConfig
 from lobster.tools.providers.pubmed_provider import PubMedProvider, PubMedProviderConfig
 
@@ -22,6 +24,9 @@ __all__ = [
     "DatasetType",
     "PublicationMetadata",
     "DatasetMetadata",
+    # BioRxiv/MedRxiv provider
+    "BioRxivMedRxivProvider",
+    "BioRxivMedRxivConfig",
     # GEO provider
     "GEOProvider",
     "GEOProviderConfig",

@@ -88,7 +88,7 @@ class DataBioMixPipeline:
         >>> csv_path = pipeline.export_to_csv(sra_data, "filtered_samples.csv")
     """
 
-    DEFAULT_TASKS = "resolve_identifiers,ncbi_enrich,fetch_sra_metadata"
+    DEFAULT_TASKS = "resolve_identifiers,ncbi_enrich,metadata,methods,identifiers,fetch_sra_metadata"
 
     def __init__(self, workspace_path: str = "results/databiomix_workspace"):
         """
@@ -393,8 +393,8 @@ def main():
     # Processing options
     parser.add_argument(
         "--tasks",
-        default="resolve_identifiers,ncbi_enrich,fetch_sra_metadata",
-        help="Comma-separated extraction tasks (default: resolve_identifiers,ncbi_enrich,fetch_sra_metadata)"
+        default="resolve_identifiers,ncbi_enrich,metadata,methods,identifiers,fetch_sra_metadata",
+        help="Comma-separated extraction tasks (default: resolve_identifiers,ncbi_enrich,metadata,methods,identifiers,fetch_sra_metadata)"
     )
     parser.add_argument(
         "--max-entries",

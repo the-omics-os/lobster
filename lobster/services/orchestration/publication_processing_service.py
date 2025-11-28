@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import logging
 import re
+import urllib.parse
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Callable
@@ -72,16 +73,19 @@ def _suppress_logs(min_level: int = logging.CRITICAL + 1):
 class PublicationProcessingService:
     """High-level orchestration for publication queue extraction."""
 
-    def __init__(self, data_manager: DataManagerV2) -> None:
+    def __init__(self, data_manager: DataManagerV2, suppress_provider_logs: bool = True) -> None:
         self.data_manager = data_manager
         self.content_service = ContentAccessService(data_manager=data_manager)
         self.workspace_service = WorkspaceContentService(data_manager=data_manager)
         self.sra_provider = SRAProvider(data_manager=data_manager)
         # Lazy-initialized to avoid creating new provider (and Redis connection) per entry
         self._pubmed_provider = None
+        self._suppress_provider_logs = suppress_provider_logs
         if getattr(self.data_manager, "profile_timings_enabled", False):
             self.enable_timing(True)
         self._timing_enabled = False
+        # Batch E-Link cache for 100x speedup (populated in process_entries_parallel)
+        self._batch_elink_cache = {}
         self._latest_timings: Dict[str, float] = {}
 
     @property
@@ -139,6 +143,16 @@ class PublicationProcessingService:
 
         # Priority 4: DOI (can resolve to PMC via content_access_service)
         if entry.doi:
+            doi_value = entry.doi.strip()
+            lower_doi = doi_value.lower()
+            if lower_doi.startswith("http://") or lower_doi.startswith("https://"):
+                parsed = urllib.parse.urlparse(doi_value)
+                host = (parsed.hostname or "").lower()
+                if host and host not in {"doi.org", "www.doi.org"}:
+                    logger.info(
+                        f"DOI field contains URL (treating as fulltext): {doi_value}"
+                    )
+                    return doi_value
             logger.info(f"Using DOI (priority 4): {entry.doi}")
             return entry.doi
 
@@ -405,9 +419,16 @@ class PublicationProcessingService:
             # Use lazy-initialized provider to avoid repeated Redis pool initialization
             provider = self.pubmed_provider
 
-            # Get linked datasets via E-Link
+            # Get linked datasets via E-Link (batch cache or fallback to sequential)
             with self._measure_step("ncbi_enrich:linked_datasets"):
-                linked_datasets = provider._find_linked_datasets(pmid)
+                # Check if batch cache is available (100x faster)
+                if hasattr(self, "_batch_elink_cache") and pmid in self._batch_elink_cache:
+                    linked_datasets = self._batch_elink_cache[pmid]
+                    logger.debug(f"Using batch E-Link cache for PMID {pmid}")
+                else:
+                    # Fallback to sequential E-Link (slower, but reliable)
+                    linked_datasets = provider._find_linked_datasets(pmid)
+                    logger.debug(f"Sequential E-Link for PMID {pmid} (cache miss)")
             result["linked_datasets"] = linked_datasets
 
             # Also try to get PMC ID for better full text access via E-Link
@@ -471,15 +492,29 @@ class PublicationProcessingService:
     PROCESSING_STEPS = {
         "resolve_identifiers": (1, 6),
         "ncbi_enrich": (2, 6),
-        "fetch_sra_metadata": (3, 6),
-        "metadata": (4, 6),
-        "methods": (5, 6),
-        "identifiers": (6, 6),
+        "metadata": (3, 6),
+        "methods": (4, 6),
+        "identifiers": (5, 6),
+        "fetch_sra_metadata": (6, 6),  # Moved to end to combine E-Link + text-extracted BioProjects
     }
 
     def process_entry(
+        self,
+        entry_id: str,
+        extraction_tasks: str = "resolve_identifiers,ncbi_enrich,metadata,methods,identifiers,fetch_sra_metadata",
+        progress_callback: Optional[Callable[[str, int, int], None]] = None,
+    ) -> str:
+        """Process a single publication queue entry with optional log suppression."""
+        with self._provider_log_context():
+            return self._process_entry_internal(
+                entry_id=entry_id,
+                extraction_tasks=extraction_tasks,
+                progress_callback=progress_callback,
+            )
+
+    def _process_entry_internal(
         self, entry_id: str,
-        extraction_tasks: str = "resolve_identifiers,ncbi_enrich,fetch_sra_metadata,metadata,methods,identifiers",
+        extraction_tasks: str = "resolve_identifiers,ncbi_enrich,metadata,methods,identifiers,fetch_sra_metadata",
         progress_callback: Optional[Callable[[str, int, int], None]] = None,
     ) -> str:
         """
@@ -630,99 +665,6 @@ class PublicationProcessingService:
 
                     except Exception as e:
                         response_parts.append(f"✗ NCBI E-Link enrichment failed: {str(e)}")
-
-                response_parts.append("")
-
-            # SRA metadata fetching (runs after NCBI enrichment)
-            # Fetches detailed sample metadata for BioProject IDs found via E-Link
-            # Note: E-Link returns internal SRA link IDs (SRA12345678) which pysradb cannot use
-            # Instead, we use BioProject IDs (PRJNA*) which pysradb can resolve to samples
-            if "fetch_sra_metadata" in tasks or "full_text" in tasks:
-                _report_progress("fetch_sra_metadata")
-                with self._measure_step("fetch_sra_metadata"):
-                    try:
-                        # Get BioProject IDs from NCBI enrichment (these are proper accessions)
-                        bioproject_ids = extracted_data.get("ncbi_enrichment", {}).get("bioproject", [])
-
-                        if bioproject_ids:
-                            response_parts.append(f"✓ Fetching SRA metadata for {len(bioproject_ids)} BioProject(s):")
-
-                            sra_fetch_success = 0
-                            sra_fetch_failed = 0
-                            sra_workspace_keys = []  # Track SRA workspace keys for handoff
-
-                            for bioproject_id in bioproject_ids:
-                                try:
-                                    # Get SRAweb instance from provider
-                                    sraweb = self.sra_provider._get_sraweb()
-
-                                    # Fetch metadata using pysradb with BioProject ID
-                                    df = sraweb.sra_metadata(bioproject_id, detailed=True)
-
-                                    if df is not None and not df.empty:
-                                        # Convert DataFrame to dict for storage
-                                        metadata_dict = df.to_dict(orient="records")
-
-                                        # Create MetadataContent for workspace storage
-                                        metadata_content = MetadataContent(
-                                            identifier=f"sra_{bioproject_id}_samples",
-                                            content_type="sra_samples",
-                                            description=f"SRA sample metadata for BioProject {bioproject_id}",
-                                            data={"samples": metadata_dict, "sample_count": len(df)},
-                                            related_datasets=[bioproject_id],
-                                            source="SRAProvider",
-                                            cached_at=datetime.now().isoformat(),
-                                        )
-
-                                        # Write to workspace
-                                        workspace_path = self.workspace_service.write_content(
-                                            metadata_content, ContentType.METADATA
-                                        )
-
-                                        # Track workspace key for handoff
-                                        sra_workspace_keys.append(f"sra_{bioproject_id}_samples")
-
-                                        sra_fetch_success += 1
-                                        response_parts.append(
-                                            f"  - {bioproject_id}: {len(df)} sample(s) → {workspace_path}"
-                                        )
-
-                                        logger.info(
-                                            f"Fetched {len(df)} samples for BioProject {bioproject_id}"
-                                        )
-                                    else:
-                                        response_parts.append(
-                                            f"  - {bioproject_id}: No metadata found (may be restricted or invalid)"
-                                        )
-                                        sra_fetch_failed += 1
-
-                                except Exception as e:
-                                    logger.warning(f"Failed to fetch SRA metadata for {bioproject_id}: {e}")
-                                    response_parts.append(f"  - {bioproject_id}: ✗ Failed ({str(e)})")
-                                    sra_fetch_failed += 1
-
-                            # Summary
-                            if sra_fetch_success > 0:
-                                response_parts.append(
-                                    f"✓ SRA metadata fetch complete: {sra_fetch_success} succeeded, {sra_fetch_failed} failed"
-                                )
-                            else:
-                                response_parts.append(
-                                    f"⚠ SRA metadata fetch: All {sra_fetch_failed} ID(s) failed"
-                                )
-
-                            # Extend workspace_keys with SRA workspace keys for handoff
-                            if sra_workspace_keys:
-                                workspace_keys.extend(sra_workspace_keys)
-
-                        else:
-                            response_parts.append(
-                                "⚠ SRA metadata fetch skipped: No BioProject IDs from NCBI enrichment"
-                            )
-
-                    except Exception as e:
-                        response_parts.append(f"✗ SRA metadata fetch failed: {str(e)}")
-                        logger.error(f"SRA metadata fetch error: {e}")
 
                 response_parts.append("")
 
@@ -918,6 +860,113 @@ class PublicationProcessingService:
                     except Exception as e:  # pragma: no cover - provider errors
                         response_parts.append(f"✗ Identifier extraction failed: {str(e)}")
 
+            # SRA metadata fetching (runs AFTER identifier extraction to combine all BioProject sources)
+            # Fetches detailed sample metadata for BioProject IDs from BOTH:
+            # 1. NCBI E-Link (official database links)
+            # 2. Text extraction (regex from publication content)
+            # Note: E-Link returns internal SRA link IDs (SRA12345678) which pysradb cannot use
+            # Instead, we use BioProject IDs (PRJNA*) which pysradb can resolve to samples
+            if "fetch_sra_metadata" in tasks or "full_text" in tasks:
+                _report_progress("fetch_sra_metadata")
+                with self._measure_step("fetch_sra_metadata"):
+                    try:
+                        # Combine BioProject IDs from BOTH sources
+                        ncbi_bioprojects = extracted_data.get("ncbi_enrichment", {}).get("bioproject", [])
+                        text_bioprojects = identifiers_found.get("bioproject", []) if identifiers_found else []
+
+                        # Deduplicate and combine (use list to preserve order for logging)
+                        all_bioprojects = list(set(ncbi_bioprojects) | set(text_bioprojects))
+
+                        # Track sources for logging
+                        ncbi_count = len(ncbi_bioprojects)
+                        text_count = len(text_bioprojects)
+                        unique_count = len(all_bioprojects)
+
+                        if all_bioprojects:
+                            response_parts.append(
+                                f"✓ Fetching SRA metadata for {unique_count} BioProject(s) "
+                                f"(E-Link: {ncbi_count}, text: {text_count}):"
+                            )
+
+                            sra_fetch_success = 0
+                            sra_fetch_failed = 0
+                            sra_workspace_keys = []  # Track SRA workspace keys for handoff
+
+                            for bioproject_id in all_bioprojects:
+                                try:
+                                    # Get SRAweb instance from provider
+                                    sraweb = self.sra_provider._get_sraweb()
+
+                                    # Fetch metadata using pysradb with BioProject ID
+                                    df = sraweb.sra_metadata(bioproject_id, detailed=True)
+
+                                    if df is not None and not df.empty:
+                                        # Convert DataFrame to dict for storage
+                                        metadata_dict = df.to_dict(orient="records")
+
+                                        # Create MetadataContent for workspace storage
+                                        metadata_content = MetadataContent(
+                                            identifier=f"sra_{bioproject_id}_samples",
+                                            content_type="sra_samples",
+                                            description=f"SRA sample metadata for BioProject {bioproject_id}",
+                                            data={"samples": metadata_dict, "sample_count": len(df)},
+                                            related_datasets=[bioproject_id],
+                                            source="SRAProvider",
+                                            cached_at=datetime.now().isoformat(),
+                                        )
+
+                                        # Write to workspace
+                                        workspace_path = self.workspace_service.write_content(
+                                            metadata_content, ContentType.METADATA
+                                        )
+
+                                        # Track workspace key for handoff
+                                        sra_workspace_keys.append(f"sra_{bioproject_id}_samples")
+
+                                        sra_fetch_success += 1
+                                        response_parts.append(
+                                            f"  - {bioproject_id}: {len(df)} sample(s) → {workspace_path}"
+                                        )
+
+                                        logger.info(
+                                            f"Fetched {len(df)} samples for BioProject {bioproject_id}"
+                                        )
+                                    else:
+                                        response_parts.append(
+                                            f"  - {bioproject_id}: No metadata found (may be restricted or invalid)"
+                                        )
+                                        sra_fetch_failed += 1
+
+                                except Exception as e:
+                                    logger.warning(f"Failed to fetch SRA metadata for {bioproject_id}: {e}")
+                                    response_parts.append(f"  - {bioproject_id}: ✗ Failed ({str(e)})")
+                                    sra_fetch_failed += 1
+
+                            # Summary
+                            if sra_fetch_success > 0:
+                                response_parts.append(
+                                    f"✓ SRA metadata fetch complete: {sra_fetch_success} succeeded, {sra_fetch_failed} failed"
+                                )
+                            else:
+                                response_parts.append(
+                                    f"⚠ SRA metadata fetch: All {sra_fetch_failed} ID(s) failed"
+                                )
+
+                            # Extend workspace_keys with SRA workspace keys for handoff
+                            if sra_workspace_keys:
+                                workspace_keys.extend(sra_workspace_keys)
+
+                        else:
+                            response_parts.append(
+                                "⚠ SRA metadata fetch skipped: No BioProject IDs found (E-Link or text extraction)"
+                            )
+
+                    except Exception as e:
+                        response_parts.append(f"✗ SRA metadata fetch failed: {str(e)}")
+                        logger.error(f"SRA metadata fetch error: {e}")
+
+                response_parts.append("")
+
             # Persist extracted data to workspace
             try:
                 from pathlib import Path
@@ -988,11 +1037,13 @@ class PublicationProcessingService:
             all_dataset_ids = list(set(all_dataset_ids))  # Deduplicate
 
             # Determine if entry is ready for metadata assistant handoff
-            # Conditions: has identifiers AND has datasets AND has workspace metadata
+            # Conditions: has identifiers AND has datasets AND has SRA SAMPLE metadata (filterable)
+            # Note: metadata_assistant requires sra_*_samples files for filtering, not just identifiers
+            has_sra_samples = any(key.startswith("sra_") and key.endswith("_samples") for key in workspace_keys)
             is_ready_for_handoff = (
                 bool(all_extracted_identifiers) and  # Has extracted identifiers
                 bool(all_dataset_ids) and            # Has dataset IDs
-                bool(workspace_keys)                  # Has workspace metadata files
+                has_sra_samples                       # Has filterable SRA sample metadata
             )
 
             # FIX: Determine final status including paywall and handoff readiness
@@ -1132,7 +1183,7 @@ class PublicationProcessingService:
         self,
         entry_ids: List[str],
         extraction_tasks: str = "all",
-        max_workers: int = 2,
+        max_workers: int = 8,
         show_progress: bool = True,
         debug: bool = False,
     ) -> "ParallelProcessingResult":
@@ -1163,7 +1214,7 @@ class PublicationProcessingService:
         Args:
             entry_ids: List of entry IDs to process
             extraction_tasks: Tasks to run ("all", "metadata", "methods", "identifiers")
-            max_workers: Maximum concurrent workers (default: 2, recommended: 2-3)
+            max_workers: Maximum concurrent workers (default: 8, safe with Redis coordination)
                         Higher values risk rate limit floods on slow networks
             show_progress: Show Rich progress bars during processing (default: True)
             debug: Show ERROR-level logs during progress (default: False, suppresses all logs)
@@ -1183,7 +1234,7 @@ class PublicationProcessingService:
             >>> print(f"Effective throughput: {result.entries_per_minute:.1f} entries/min")
 
         Notes:
-            - Set max_workers conservatively (2-3) to avoid flooding NCBI/PMC
+            - Redis coordinates rate limits across workers (safe to use 8+ workers)
             - Monitor for "Rate limit wait timeout" logs; reduce workers if they spike
             - Each worker holds provider contexts; monitor memory with many entries
             - Uses graceful shutdown; Ctrl+C will complete in-flight work then exit
@@ -1198,12 +1249,47 @@ class PublicationProcessingService:
                 entries_per_minute=0.0,
             )
 
-        # Bound concurrency conservatively
-        effective_workers = min(max_workers, len(entry_ids), 3)
+        # Bound concurrency (Redis coordinates rate limits across workers)
+        effective_workers = min(max_workers, len(entry_ids))
         logger.info(
             f"Starting parallel processing: {len(entry_ids)} entries, "
-            f"{effective_workers} workers"
+            f"{effective_workers} workers (Redis-coordinated rate limiting)"
         )
+
+        # Pre-fetch batch E-Link results (100x speedup: 1 API call vs N calls)
+        batch_elink_cache = {}
+        if "ncbi_enrich" in extraction_tasks:
+            pmids_to_batch = []
+            entry_pmid_map = {}  # entry_id → pmid
+
+            for entry_id in entry_ids:
+                try:
+                    entry = self.data_manager.publication_queue.get_entry(entry_id)
+                    if entry and entry.pmid:
+                        pmids_to_batch.append(entry.pmid)
+                        entry_pmid_map[entry_id] = entry.pmid
+                except Exception as e:
+                    logger.debug(f"Could not get entry {entry_id} for batch E-Link: {e}")
+                    continue
+
+            if pmids_to_batch:
+                logger.info(
+                    f"Pre-fetching batch E-Link results for {len(pmids_to_batch)} PMIDs "
+                    f"(100x speedup vs sequential)"
+                )
+                try:
+                    batch_elink_cache = self.pubmed_provider._find_linked_datasets_batch(
+                        pmids_to_batch
+                    )
+                    logger.info(
+                        f"Batch E-Link cache ready: {len(batch_elink_cache)} PMIDs cached"
+                    )
+                except Exception as e:
+                    logger.warning(f"Batch E-Link pre-fetch failed: {e}, falling back to sequential")
+                    batch_elink_cache = {}
+
+        # Store cache in service for workers to access
+        self._batch_elink_cache = batch_elink_cache
 
         # Use work-stealing queue pattern with Rich progress UI
         if show_progress:
@@ -1267,7 +1353,8 @@ class PublicationProcessingService:
                 timings=timings,
             )
 
-        with ThreadPoolExecutor(max_workers=effective_workers) as executor:
+        executor = ThreadPoolExecutor(max_workers=effective_workers)
+        try:
             future_to_entry = {
                 executor.submit(process_single_entry, entry_id): entry_id
                 for entry_id in entry_ids
@@ -1288,6 +1375,8 @@ class PublicationProcessingService:
                             elapsed_seconds=0.0,
                             timings={},
                         ))
+        finally:
+            executor.shutdown(wait=True, cancel_futures=True)
 
         total_time = time.time() - start_time
         successful = sum(1 for r in results if r.status in ("completed", "processed"))
@@ -1306,6 +1395,11 @@ class PublicationProcessingService:
             total_time=total_time,
             entries_per_minute=len(results) / total_time * 60 if total_time > 0 else 0,
         )
+
+    def _provider_log_context(self):
+        if self._suppress_provider_logs:
+            return _suppress_logs(logging.WARNING)
+        return nullcontext()
 
     def _process_parallel_with_progress(
         self,
@@ -1416,14 +1510,16 @@ class PublicationProcessingService:
                             results.append(result)
 
                 # Launch workers
-                with ThreadPoolExecutor(max_workers=effective_workers) as executor:
+                executor = ThreadPoolExecutor(max_workers=effective_workers)
+                try:
                     futures = [executor.submit(worker_func, i) for i in range(effective_workers)]
-                    # Wait for all workers to complete
                     for future in as_completed(futures):
                         try:
                             future.result()
                         except Exception as e:
                             logger.error(f"Worker error: {e}")
+                finally:
+                    executor.shutdown(wait=True, cancel_futures=True)
 
         total_time = time.time() - start_time
         successful = sum(1 for r in results if r.status in ("completed", "processed"))

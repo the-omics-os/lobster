@@ -395,6 +395,7 @@ DOMAIN_CONFIG: Dict[str, DomainConfig] = {
     "pubs.acs.org": DomainConfig(3, HeaderStrategy.STEALTH, "American Chemical Society"),
     "wiley.com": DomainConfig(3, HeaderStrategy.STEALTH, "Wiley"),
     "onlinelibrary.wiley.com": DomainConfig(3, HeaderStrategy.STEALTH, "Wiley Online Library"),
+    "api.wiley.com": DomainConfig(3, HeaderStrategy.DEFAULT, "Wiley TDM API (requires token)"),
 
     # Moderate protection (standard bot detection → BROWSER headers)
     "nature.com": DomainConfig(3.0, HeaderStrategy.BROWSER, "Nature Publishing Group"),

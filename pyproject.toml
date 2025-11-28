@@ -107,6 +107,7 @@ dependencies = [
     "claude-agent-sdk>=0.1.0", # Claude Code SDK for programmatic agent creation
     "linkup>=0.1.0", # Linkup SDK for web research (GitHub repos, packages, best practices)
     "rispy>=0.10.0",
+    "cloudscraper>=1.2.71",
 ]
 
 [project.optional-dependencies]
