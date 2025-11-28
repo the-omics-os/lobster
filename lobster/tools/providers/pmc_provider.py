@@ -410,13 +410,22 @@ class PMCProvider:
             # Parse XML to dictionary
             parsed = self.parse_xml(xml_text)
 
-            # Navigate XML structure
-            if "pmc-articleset" not in parsed:
-                raise ValueError("Invalid PMC XML: missing <pmc-articleset>")
+            # Navigate XML structure - support both PMC and bioRxiv/medRxiv formats
+            # PMC format: <pmc-articleset><article>...</article></pmc-articleset>
+            # bioRxiv/medRxiv format: <article>...</article> (direct root element)
+            if "pmc-articleset" in parsed:
+                # PMC format: unwrap from articleset
+                article = parsed["pmc-articleset"].get("article", {})
+            elif "article" in parsed:
+                # bioRxiv/medRxiv format: direct article element
+                article = parsed["article"]
+            else:
+                raise ValueError(
+                    "Invalid JATS XML: missing <pmc-articleset> or <article> root element"
+                )
 
-            article = parsed["pmc-articleset"].get("article", {})
             if not article:
-                raise ValueError("Invalid PMC XML: missing <article>")
+                raise ValueError("Invalid JATS XML: empty <article> element")
 
             # Extract metadata from <front>
             front = article.get("front", {})
