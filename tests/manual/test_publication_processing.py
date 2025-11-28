@@ -62,20 +62,20 @@ from lobster.services.orchestration.publication_processing_service import (
 
 console = Console()
 
-# Keep manual output focused on Rich status messages
-logging.basicConfig(level=logging.INFO)
-logging.getLogger("lobster.services.data_access.content_access_service").setLevel(
-    logging.WARNING
-)
-logging.getLogger("lobster.tools.providers").setLevel(logging.WARNING)
-logging.getLogger("urllib3").setLevel(logging.WARNING)
+# Keep manual output focused on Rich status messages - suppress logs that disrupt progress bars
+logging.basicConfig(level=logging.WARNING, force=True)
+# Suppress all lobster loggers to ERROR (avoids INFO/WARNING pollution during parallel progress)
+logging.getLogger("lobster").setLevel(logging.ERROR)
+logging.getLogger("lobster.services").setLevel(logging.ERROR)
+logging.getLogger("lobster.tools").setLevel(logging.ERROR)
+logging.getLogger("lobster.tools.providers").setLevel(logging.ERROR)
+logging.getLogger("lobster.tools.providers.pmc_provider").setLevel(logging.ERROR)
+logging.getLogger("lobster.tools.providers.pubmed_provider").setLevel(logging.ERROR)
 logging.getLogger("lobster.tools.rate_limiter").setLevel(logging.CRITICAL)
-logging.getLogger(
-    "lobster.services.orchestration.publication_processing_service"
-).setLevel(logging.WARNING)
-logging.getLogger("lobster.tools.providers.pubmed_provider").setLevel(
-    logging.ERROR
-)
+logging.getLogger("lobster.services.orchestration.publication_processing_service").setLevel(logging.ERROR)
+logging.getLogger("lobster.services.data_access.content_access_service").setLevel(logging.ERROR)
+logging.getLogger("urllib3").setLevel(logging.ERROR)
+logging.getLogger("httpx").setLevel(logging.ERROR)
 
 
 @dataclass
@@ -357,6 +357,18 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Collect per-step timings for each entry (adds light instrumentation).",
     )
+    parser.add_argument(
+        "--parallel",
+        type=int,
+        default=None,
+        metavar="WORKERS",
+        help="Process entries in parallel with N workers (default: sequential). Recommended: 2-3.",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Show ERROR-level logs during parallel processing (for debugging rate limits, etc.).",
+    )
     return parser.parse_args()
 
 
@@ -534,6 +546,80 @@ def process_entries(
 
             progress.advance(task)
             time.sleep(0.2)
+
+    return results
+
+
+def process_entries_parallel(
+    service: PublicationProcessingService,
+    entries: List,
+    extraction_tasks: str,
+    max_workers: int,
+    show_response: bool,
+    debug: bool = False,
+) -> List[EntryProcessingResult]:
+    """
+    Run extraction tasks in parallel - delegates to service layer.
+
+    This is a thin wrapper around PublicationProcessingService.process_entries_parallel()
+    that converts results to the test harness EntryProcessingResult format for summary tables.
+
+    The actual parallel processing with Rich progress bars is handled by the service layer,
+    ensuring a single implementation that's shared between the CLI agent tool and test harness.
+    """
+    results: List[EntryProcessingResult] = []
+    if not entries:
+        console.print("[yellow]No queue entries found for the selected filters.[/yellow]")
+        return results
+
+    entry_ids = [e.entry_id for e in entries]
+
+    # Delegate to service layer (handles Rich progress display internally)
+    parallel_result = service.process_entries_parallel(
+        entry_ids=entry_ids,
+        extraction_tasks=extraction_tasks,
+        max_workers=max_workers,
+        show_progress=True,
+        debug=debug,
+    )
+
+    console.print(f"\n[bold green]Parallel processing complete:[/bold green] "
+                  f"{parallel_result.successful}/{parallel_result.total_entries} successful "
+                  f"in {parallel_result.total_time:.1f}s "
+                  f"({parallel_result.entries_per_minute:.1f} entries/min)")
+
+    # Convert service results to test harness EntryProcessingResult format for summary tables
+    for pr in parallel_result.entry_results:
+        updated_entry = service.data_manager.publication_queue.get_entry(pr.entry_id)
+        status_value = (
+            updated_entry.status.value
+            if hasattr(updated_entry.status, "value")
+            else str(updated_entry.status)
+        )
+        handoff_value = (
+            updated_entry.handoff_status.value
+            if hasattr(updated_entry.handoff_status, "value")
+            else str(updated_entry.handoff_status)
+        )
+        publisher = detect_publisher(updated_entry)
+
+        result = EntryProcessingResult(
+            entry_id=updated_entry.entry_id,
+            title=updated_entry.title or updated_entry.entry_id,
+            publisher=publisher,
+            status=status_value,
+            handoff_status=handoff_value,
+            dataset_ids=list(updated_entry.dataset_ids or []),
+            workspace_keys=list(updated_entry.workspace_metadata_keys or []),
+            extracted_identifiers=dict(updated_entry.extracted_identifiers or {}),
+            elapsed_seconds=pr.elapsed_seconds,
+            response=pr.response,
+            timings=pr.timings,
+        )
+        results.append(result)
+
+        if show_response:
+            render_entry_detail(result)
 
     return results
 
@@ -828,12 +914,23 @@ def main() -> None:
         preview_entries(queue_entries)
         return
 
-    results = process_entries(
-        service=service,
-        entries=queue_entries,
-        extraction_tasks=args.tasks,
-        show_response=args.show_response,
-    )
+    # Choose sequential or parallel processing
+    if args.parallel:
+        results = process_entries_parallel(
+            service=service,
+            entries=queue_entries,
+            extraction_tasks=args.tasks,
+            max_workers=args.parallel,
+            show_response=args.show_response,
+            debug=args.debug,
+        )
+    else:
+        results = process_entries(
+            service=service,
+            entries=queue_entries,
+            extraction_tasks=args.tasks,
+            show_response=args.show_response,
+        )
 
     summary = summarize(results)
     render_summary(summary, results)
