@@ -27,6 +27,7 @@ from lobster.services.metadata.metadata_standardization_service import (
 from lobster.services.metadata.sample_mapping_service import SampleMappingService
 from lobster.core.analysis_ir import AnalysisStep
 from lobster.core.schemas.publication_queue import PublicationStatus, HandoffStatus
+from lobster.core.interfaces.validator import ValidationResult
 from lobster.utils.logger import get_logger
 
 # Optional microbiome features (not in public lobster-local)
