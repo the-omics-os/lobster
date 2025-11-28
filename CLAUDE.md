@@ -772,6 +772,8 @@ git push origin v0.2.0
 - **CLI quirks**
   - check `PROMPT_TOOLKIT_AVAILABLE`
   - verify `LobsterClientAdapter` picks correct client type
+- **Profiling**
+  - Global timings via `--profile-timings` or `LOBSTER_PROFILE_TIMINGS=1` (CLI). Toggles `DataManagerV2.enable_timing`/`get_latest_timings` and `PublicationProcessingService.enable_timing`; CLI prints tables via `_maybe_print_timings` (see `cli.py`, `data_manager_v2.py`, `publication_processing_service.py`).
 - **Cloud mode**
   - ensure `LOBSTER_CLOUD_KEY` set
   - check network + timeouts (cloud vs local caches)

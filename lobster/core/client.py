@@ -83,21 +83,11 @@ class AgentClient(BaseClient):
         else:
             self.data_manager = data_manager
 
-        # Initialize PublicationQueue (optional feature)
-        try:
-            from lobster.core.publication_queue import PublicationQueue
-
-            # Use consistent path with DataManagerV2: .lobster/queues/
-            queues_dir = self.workspace_path / ".lobster" / "queues"
-            queues_dir.mkdir(parents=True, exist_ok=True)
-
-            self.publication_queue = PublicationQueue(
-                queue_file=queues_dir / "publication_queue.jsonl"
-            )
-            logger.debug("Initialized PublicationQueue")
-        except ImportError:
-            self.publication_queue = None
-            logger.debug("PublicationQueue not available (premium feature)")
+        self.profile_timings_enabled = getattr(
+            self.data_manager, "profile_timings_enabled", False
+        )
+        self._publication_queue_ref = None
+        self._publication_queue_unavailable = False
 
         # Set up callbacks
         self.callbacks = []
@@ -159,6 +149,18 @@ class AgentClient(BaseClient):
             return self._stream_query(graph_input, config)
         else:
             return self._run_query(graph_input, config)
+
+    @property
+    def publication_queue(self):
+        if self._publication_queue_unavailable:
+            return None
+        if self._publication_queue_ref is None:
+            pq = getattr(self.data_manager, "publication_queue", None)
+            if pq is None:
+                self._publication_queue_unavailable = True
+                return None
+            self._publication_queue_ref = pq
+        return self._publication_queue_ref
 
     def _run_query(self, graph_input: Dict, config: Dict) -> Dict[str, Any]:
         """Run a query and return the complete response."""

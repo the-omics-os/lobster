@@ -829,12 +829,63 @@ client: Optional[AgentClient] = None
 # Global current directory tracking
 current_directory = Path.cwd()
 
+PROFILE_TIMINGS_ENV = "LOBSTER_PROFILE_TIMINGS"
+
+
+def _str_to_bool(value: Optional[str]) -> Optional[bool]:
+    if value is None:
+        return None
+    value = value.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
+def _resolve_profile_timings_flag(cli_flag: Optional[bool]) -> bool:
+    if cli_flag is not None:
+        return cli_flag
+    env_value = _str_to_bool(os.environ.get(PROFILE_TIMINGS_ENV))
+    return bool(env_value)
+
+
+def _collect_profile_timings(client: AgentClient, clear: bool = True) -> Dict[str, Dict[str, float]]:
+    timings: Dict[str, Dict[str, float]] = {}
+    data_manager = getattr(client, "data_manager", None)
+    if data_manager and hasattr(data_manager, "get_latest_timings"):
+        dm_timings = data_manager.get_latest_timings(clear=clear)
+        if dm_timings:
+            timings["DataManager"] = dm_timings
+    return timings
+
+
+def _maybe_print_timings(client: AgentClient, context: str) -> None:
+    if not getattr(client, "profile_timings_enabled", False):
+        return
+
+    timing_sources = _collect_profile_timings(client, clear=True)
+    if not timing_sources:
+        return
+
+    table = Table(title=f"{context} Timings", box=box.ROUNDED)
+    table.add_column("Component", style="cyan", no_wrap=True)
+    table.add_column("Step", style="white")
+    table.add_column("Seconds", justify="right")
+
+    for component, entries in timing_sources.items():
+        for step, value in sorted(entries.items(), key=lambda item: item[1], reverse=True):
+            table.add_row(component, step, f"{value:.2f}")
+
+    console.print(table)
+
 
 def init_client(
     workspace: Optional[Path] = None,
     reasoning: bool = False,
     verbose: bool = False,
     debug: bool = False,
+    profile_timings: Optional[bool] = None,
 ) -> AgentClient:
     """Initialize either local or cloud client based on environment."""
     global client
@@ -991,6 +1042,10 @@ def init_client(
 
     data_manager = DataManagerV2(workspace_path=workspace, console=console)
 
+    profile_timings_enabled = _resolve_profile_timings_flag(profile_timings)
+    if profile_timings_enabled and hasattr(data_manager, "enable_timing"):
+        data_manager.enable_timing(True)
+
     # Create callback using the appropriate terminal_callback_handler
     # Configure callbacks based on reasoning and verbose flags independently
     callbacks = []
@@ -1017,6 +1072,8 @@ def init_client(
         # enable_langfuse=debug,
         custom_callbacks=callbacks,  # Pass the proper callback
     )
+
+    client.profile_timings_enabled = profile_timings_enabled
 
     # Show graph visualization in debug mode
     if debug:
@@ -1881,6 +1938,7 @@ def init_client_with_animation(
     reasoning: bool = False,
     verbose: bool = False,
     debug: bool = False,
+    profile_timings: Optional[bool] = None,
 ) -> AgentClient:
     """Initialize client with simple agent loading animation."""
     import time
@@ -1918,7 +1976,7 @@ def init_client_with_animation(
     console.print(
         f"\n[{LobsterTheme.PRIMARY_ORANGE}]🔧 Starting multi-agent system...[/{LobsterTheme.PRIMARY_ORANGE}]"
     )
-    client = init_client(workspace, reasoning, verbose, debug)
+    client = init_client(workspace, reasoning, verbose, debug, profile_timings)
 
     console.print("[bold green]✅ Lobster is cooked and ready![/bold green]\n")
     return client
@@ -2534,6 +2592,11 @@ def chat(
     debug: bool = typer.Option(
         False, "--debug", "-d", help="Enable debug mode with enhanced error reporting"
     ),
+    profile_timings: Optional[bool] = typer.Option(
+        None,
+        "--profile-timings/--no-profile-timings",
+        help="Enable timing diagnostics for data manager operations",
+    ),
 ):
     """
     Start an interactive chat session with the multi-agent system.
@@ -2589,7 +2652,9 @@ def chat(
 
     # Initialize client with animated loading sequence
     try:
-        client = init_client_with_animation(workspace, not no_reasoning, verbose, debug)
+        client = init_client_with_animation(
+            workspace, not no_reasoning, verbose, debug, profile_timings
+        )
     except Exception as e:
         console_manager.print_error_panel(
             f"Failed to initialize Lobster: {str(e)}",
@@ -2702,6 +2767,8 @@ def chat(
             else:
                 console_manager.print_error_panel(result["error"])
 
+            _maybe_print_timings(client, "Chat Query")
+
         except KeyboardInterrupt:
             if Confirm.ask(
                 f"\n[{LobsterTheme.PRIMARY_ORANGE}]🦞 Exit Lobster?[/{LobsterTheme.PRIMARY_ORANGE}]"
@@ -2779,6 +2846,8 @@ def handle_command(command: str, client: AgentClient):
         # Add to conversation history if summary provided
         if command_summary:
             _add_command_to_history(client, command, command_summary)
+
+        _maybe_print_timings(client, f"Command {cmd}")
 
     except Exception as e:
         # Enhanced command error handling
@@ -5869,6 +5938,11 @@ def query(
         False, "--debug", "-d", help="Enable debug mode with detailed logging"
     ),
     output: Optional[Path] = typer.Option(None, "--output", "-o"),
+    profile_timings: Optional[bool] = typer.Option(
+        None,
+        "--profile-timings/--no-profile-timings",
+        help="Enable timing diagnostics for data manager operations",
+    ),
 ):
     """
     Send a single query to the agent system.
@@ -5884,7 +5958,7 @@ def query(
         raise typer.Exit(1)
 
     # Initialize client
-    client = init_client(workspace, not no_reasoning, verbose, debug)
+    client = init_client(workspace, not no_reasoning, verbose, debug, profile_timings)
 
     # Process query
     if should_show_progress(client):
@@ -5914,6 +5988,8 @@ def query(
         console.print(
             f"[bold red on white] ⚠️  Error [/bold red on white] [red]{result['error']}[/red]"
         )
+
+    _maybe_print_timings(client, "Query")
 
 
 @app.command()

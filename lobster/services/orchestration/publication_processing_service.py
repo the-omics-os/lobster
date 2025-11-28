@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable
 
 import time
 
@@ -24,6 +28,47 @@ from lobster.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+# Loggers to suppress during Rich progress display
+_LOGGERS_TO_SUPPRESS = [
+    "lobster",
+    "lobster.services",
+    "lobster.tools",
+    "lobster.tools.providers",
+    "lobster.tools.providers.pmc_provider",
+    "lobster.tools.providers.pubmed_provider",
+    "lobster.tools.rate_limiter",
+    "lobster.services.orchestration.publication_processing_service",
+    "lobster.services.data_access.content_access_service",
+    "urllib3",
+    "httpx",
+]
+
+
+@contextmanager
+def _suppress_logs(min_level: int = logging.CRITICAL + 1):
+    """
+    Temporarily suppress logs during Rich progress display.
+
+    This prevents log messages from interleaving with and disrupting the
+    Rich progress bars. By default, ALL logs are suppressed (CRITICAL+1).
+
+    Args:
+        min_level: Minimum log level to show (default: CRITICAL+1 = suppress all).
+                   Use logging.ERROR to show errors, logging.WARNING for warnings, etc.
+    """
+    original_levels = {}
+    for name in _LOGGERS_TO_SUPPRESS:
+        log = logging.getLogger(name)
+        original_levels[name] = log.level
+        log.setLevel(min_level)
+
+    try:
+        yield
+    finally:
+        for name, level in original_levels.items():
+            logging.getLogger(name).setLevel(level)
+
+
 class PublicationProcessingService:
     """High-level orchestration for publication queue extraction."""
 
@@ -34,6 +79,8 @@ class PublicationProcessingService:
         self.sra_provider = SRAProvider(data_manager=data_manager)
         # Lazy-initialized to avoid creating new provider (and Redis connection) per entry
         self._pubmed_provider = None
+        if getattr(self.data_manager, "profile_timings_enabled", False):
+            self.enable_timing(True)
         self._timing_enabled = False
         self._latest_timings: Dict[str, float] = {}
 
@@ -232,10 +279,13 @@ class PublicationProcessingService:
         if not enabled:
             self._latest_timings = {}
 
-    def get_latest_timings(self) -> Dict[str, float]:
+    def get_latest_timings(self, clear: bool = False) -> Dict[str, float]:
         """Return the most recent per-step timing measurements."""
 
-        return dict(self._latest_timings)
+        result = dict(self._latest_timings)
+        if clear:
+            self._latest_timings = {}
+        return result
 
     def _resolve_identifiers(self, entry: PublicationQueueEntry) -> Dict[str, Any]:
         """
@@ -365,13 +415,14 @@ class PublicationProcessingService:
                 import urllib.request
 
                 with self._measure_step("ncbi_enrich:pmc_lookup"):
+                    # Note: Don't use linkname parameter - it can miss some links
+                    # Match pmc_provider.get_pmc_id approach for consistency
                     elink_url = provider.build_ncbi_url(
                         "elink",
                         {
                             "dbfrom": "pubmed",
                             "db": "pmc",
                             "id": pmid,
-                            "linkname": "pubmed_pmc",
                             "retmode": "json",
                         },
                     )
@@ -382,15 +433,20 @@ class PublicationProcessingService:
                     pmc_data = json.loads(text)
 
                     # Extract PMC ID from response
+                    # Must iterate and check db["dbto"] == "pmc" (not assume linksetdbs[0])
                     linksets = pmc_data.get("linksets", [])
-                    if linksets:
-                        linksetdbs = linksets[0].get("linksetdbs", [])
-                        if linksetdbs:
-                            links = linksetdbs[0].get("links", [])
-                            if links:
-                                pmc_id = f"PMC{links[0]}"
-                                result["pmc_id"] = pmc_id
-                                logger.info(f"Found PMC ID: {pmc_id}")
+                    for linkset in linksets:
+                        linksetdbs = linkset.get("linksetdbs", [])
+                        for db in linksetdbs:
+                            if db.get("dbto") == "pmc":
+                                links = db.get("links", [])
+                                if links:
+                                    pmc_id = f"PMC{links[0]}"
+                                    result["pmc_id"] = pmc_id
+                                    logger.info(f"Found PMC ID: {pmc_id}")
+                                    break
+                        if result.get("pmc_id"):
+                            break
             except Exception as e:
                 logger.debug(f"Could not get PMC ID: {e}")
 
@@ -411,13 +467,38 @@ class PublicationProcessingService:
 
         return result
 
+    # Step definitions for progress callback (step_name -> (index, total_steps))
+    PROCESSING_STEPS = {
+        "resolve_identifiers": (1, 6),
+        "ncbi_enrich": (2, 6),
+        "fetch_sra_metadata": (3, 6),
+        "metadata": (4, 6),
+        "methods": (5, 6),
+        "identifiers": (6, 6),
+    }
+
     def process_entry(
         self, entry_id: str,
         extraction_tasks: str = "resolve_identifiers,ncbi_enrich,fetch_sra_metadata,metadata,methods,identifiers",
+        progress_callback: Optional[Callable[[str, int, int], None]] = None,
     ) -> str:
-        """Process a single publication queue entry."""
+        """
+        Process a single publication queue entry.
+
+        Args:
+            entry_id: Publication queue entry identifier
+            extraction_tasks: Comma-separated tasks to run
+            progress_callback: Optional callback(step_name, current_step, total_steps)
+                              Called after each major processing step for progress tracking.
+        """
 
         data_manager = self.data_manager
+
+        def _report_progress(step_name: str):
+            """Report progress if callback is provided."""
+            if progress_callback and step_name in self.PROCESSING_STEPS:
+                current, total = self.PROCESSING_STEPS[step_name]
+                progress_callback(step_name, current, total)
 
         try:
             try:
@@ -461,6 +542,7 @@ class PublicationProcessingService:
             # Identifier Resolution (runs FIRST - DOI → PMID before E-Link enrichment)
             # This enables E-Link for RIS files that only have DOIs (Crossref, publishers)
             if "resolve_identifiers" in tasks or "full_text" in tasks:
+                _report_progress("resolve_identifiers")
                 with self._measure_step("resolve_identifiers"):
                     try:
                         identifier_resolution_result = self._resolve_identifiers(entry)
@@ -494,6 +576,7 @@ class PublicationProcessingService:
             # NCBI E-Link enrichment (runs after identifier resolution)
             # This is fast and reliable - uses official NCBI database links
             if "ncbi_enrich" in tasks or "full_text" in tasks:
+                _report_progress("ncbi_enrich")
                 with self._measure_step("ncbi_enrich"):
                     try:
                         ncbi_enrichment_result = self._enrich_from_ncbi(entry)
@@ -555,6 +638,7 @@ class PublicationProcessingService:
             # Note: E-Link returns internal SRA link IDs (SRA12345678) which pysradb cannot use
             # Instead, we use BioProject IDs (PRJNA*) which pysradb can resolve to samples
             if "fetch_sra_metadata" in tasks or "full_text" in tasks:
+                _report_progress("fetch_sra_metadata")
                 with self._measure_step("fetch_sra_metadata"):
                     try:
                         # Get BioProject IDs from NCBI enrichment (these are proper accessions)
@@ -644,17 +728,20 @@ class PublicationProcessingService:
 
             # Metadata extraction
             if "metadata" in tasks or "full_text" in tasks:
+                _report_progress("metadata")
                 with self._measure_step("metadata"):
                     try:
                         # Use priority-based URL selection (fulltext > pdf > metadata > pubmed > doi)
                         source = self._get_best_source_for_extraction(entry)
                         if source:
                             with self._measure_step("metadata:get_content"):
+                                # Phase B2: Pass known PMC ID to skip redundant E-Link lookup
                                 content_result = self.content_service.get_full_content(
                                     source=source,
                                     prefer_webpage=True,
                                     keywords=["abstract", "introduction", "methods"],
                                     max_paragraphs=100,
+                                    known_pmc_id=entry.pmc_id,
                                 )
 
                             # Check for paywall error
@@ -682,6 +769,7 @@ class PublicationProcessingService:
 
             # Methods extraction
             if "methods" in tasks or "full_text" in tasks:
+                _report_progress("methods")
                 with self._measure_step("methods"):
                     try:
                         # Use priority-based URL selection (fulltext > pdf > metadata > pubmed > doi)
@@ -689,8 +777,10 @@ class PublicationProcessingService:
                         if source:
                             if not content_result or content_result.get("error"):
                                 with self._measure_step("methods:get_content"):
+                                    # Phase B2: Pass known PMC ID to skip redundant E-Link lookup
                                     content_result = self.content_service.get_full_content(
-                                        source=source
+                                        source=source,
+                                        known_pmc_id=entry.pmc_id,
                                     )
 
                             if content_result and content_result.get("content"):
@@ -716,6 +806,7 @@ class PublicationProcessingService:
 
             # Identifier extraction
             if "identifiers" in tasks or "full_text" in tasks:
+                _report_progress("identifiers")
                 with self._measure_step("identifiers"):
                     try:
                         # Use priority-based URL selection (fulltext > pdf > metadata > pubmed > doi)
@@ -723,8 +814,10 @@ class PublicationProcessingService:
                         if source:
                             if not content_result or content_result.get("error"):
                                 with self._measure_step("identifiers:get_content"):
+                                    # Phase B2: Pass known PMC ID to skip redundant E-Link lookup
                                     content_result = self.content_service.get_full_content(
-                                        source=source
+                                        source=source,
+                                        known_pmc_id=entry.pmc_id,
                                     )
 
                             full_content = (
@@ -919,6 +1012,7 @@ class PublicationProcessingService:
 
             # FIX: SINGLE update_status call with ALL collected data
             # This replaces 4 intermediate calls that caused O(n²) file rewrites
+            # Phase B1: Persist PMC ID discovered during enrichment for reuse in later phases
             data_manager.publication_queue.update_status(
                 entry_id=entry_id,
                 status=final_status,
@@ -928,6 +1022,7 @@ class PublicationProcessingService:
                 dataset_ids=all_dataset_ids if all_dataset_ids else None,
                 handoff_status=handoff_status,
                 error=paywall_error,
+                pmc_id=entry.pmc_id,  # Persist PMC ID for content access optimization
             )
 
             data_manager.log_tool_usage(
@@ -1028,3 +1123,415 @@ class PublicationProcessingService:
             f"Processed {len(entries)} publication entries from the queue successfully."
         )
         return "\n".join(summary)
+
+    # =========================================================================
+    # PARALLEL PROCESSING (Phase D optimization)
+    # =========================================================================
+
+    def process_entries_parallel(
+        self,
+        entry_ids: List[str],
+        extraction_tasks: str = "all",
+        max_workers: int = 2,
+        show_progress: bool = True,
+        debug: bool = False,
+    ) -> "ParallelProcessingResult":
+        """
+        Process multiple publication entries in parallel with Rich progress display.
+
+        This method processes entries concurrently using a ThreadPoolExecutor while
+        respecting NCBI rate limits through a shared rate limiter. All workers reuse
+        the same PubMedProvider/ContentAccessService instances to ensure coordinated
+        rate limiting.
+
+        When show_progress=True, displays stacked Rich progress bars:
+        - One bar per worker showing current entry
+        - Overall progress bar at bottom
+
+        **Thread Safety Guarantees:**
+        - Rate limiter: Redis-based, coordinates across threads via shared keys
+        - PublicationQueue: File-locked, atomic writes per operation
+        - Per-entry state: Local to each worker (no shared mutable state)
+        - Providers: Thread-safe (stateless request/response pattern)
+
+        **Rate Limiting Behavior:**
+        - Workers share the same NCBIRateLimiter instance
+        - Redis keys coordinate across all threads: `ratelimit:{api}:{user}`
+        - If a worker hits the limit, it blocks (backpressure) while others continue
+        - Without Redis: Falls back to in-memory limiting (less coordinated)
+
+        Args:
+            entry_ids: List of entry IDs to process
+            extraction_tasks: Tasks to run ("all", "metadata", "methods", "identifiers")
+            max_workers: Maximum concurrent workers (default: 2, recommended: 2-3)
+                        Higher values risk rate limit floods on slow networks
+            show_progress: Show Rich progress bars during processing (default: True)
+            debug: Show ERROR-level logs during progress (default: False, suppresses all logs)
+
+        Returns:
+            ParallelProcessingResult with per-entry results and aggregate statistics
+
+        Example:
+            >>> service = PublicationProcessingService(data_manager)
+            >>> entry_ids = ["pub_123", "pub_456", "pub_789"]
+            >>> result = service.process_entries_parallel(
+            ...     entry_ids,
+            ...     max_workers=2,
+            ...     show_progress=True,
+            ... )
+            >>> print(f"Processed {result.total_entries} entries in {result.total_time:.1f}s")
+            >>> print(f"Effective throughput: {result.entries_per_minute:.1f} entries/min")
+
+        Notes:
+            - Set max_workers conservatively (2-3) to avoid flooding NCBI/PMC
+            - Monitor for "Rate limit wait timeout" logs; reduce workers if they spike
+            - Each worker holds provider contexts; monitor memory with many entries
+            - Uses graceful shutdown; Ctrl+C will complete in-flight work then exit
+        """
+        if not entry_ids:
+            return ParallelProcessingResult(
+                entry_results=[],
+                total_entries=0,
+                successful=0,
+                failed=0,
+                total_time=0.0,
+                entries_per_minute=0.0,
+            )
+
+        # Bound concurrency conservatively
+        effective_workers = min(max_workers, len(entry_ids), 3)
+        logger.info(
+            f"Starting parallel processing: {len(entry_ids)} entries, "
+            f"{effective_workers} workers"
+        )
+
+        # Use work-stealing queue pattern with Rich progress UI
+        if show_progress:
+            return self._process_parallel_with_progress(
+                entry_ids=entry_ids,
+                extraction_tasks=extraction_tasks,
+                effective_workers=effective_workers,
+                debug=debug,
+            )
+        else:
+            return self._process_parallel_simple(
+                entry_ids=entry_ids,
+                extraction_tasks=extraction_tasks,
+                effective_workers=effective_workers,
+            )
+
+    def _process_parallel_simple(
+        self,
+        entry_ids: List[str],
+        extraction_tasks: str,
+        effective_workers: int,
+    ) -> "ParallelProcessingResult":
+        """Process entries in parallel without progress UI (for programmatic use)."""
+        results: List[EntryProcessingResult] = []
+        results_lock = threading.Lock()
+        start_time = time.time()
+
+        def process_single_entry(entry_id: str) -> EntryProcessingResult:
+            entry_start = time.time()
+            status = "unknown"
+            response = ""
+            timings: Dict[str, float] = {}
+
+            try:
+                response = self.process_entry(
+                    entry_id=entry_id,
+                    extraction_tasks=extraction_tasks,
+                )
+                if self._timing_enabled:
+                    timings = self._latest_timings.copy()
+
+                if "COMPLETED" in response.upper():
+                    status = "completed"
+                elif "FAILED" in response.upper():
+                    status = "failed"
+                elif "PAYWALLED" in response.upper():
+                    status = "paywalled"
+                else:
+                    status = "processed"
+            except Exception as e:
+                logger.error(f"Error processing {entry_id}: {e}")
+                status = "error"
+                response = f"Error: {str(e)}"
+
+            elapsed = time.time() - entry_start
+            return EntryProcessingResult(
+                entry_id=entry_id,
+                status=status,
+                response=response,
+                elapsed_seconds=elapsed,
+                timings=timings,
+            )
+
+        with ThreadPoolExecutor(max_workers=effective_workers) as executor:
+            future_to_entry = {
+                executor.submit(process_single_entry, entry_id): entry_id
+                for entry_id in entry_ids
+            }
+            for future in as_completed(future_to_entry):
+                entry_id = future_to_entry[future]
+                try:
+                    result = future.result()
+                    with results_lock:
+                        results.append(result)
+                except Exception as e:
+                    logger.error(f"Future failed for {entry_id}: {e}")
+                    with results_lock:
+                        results.append(EntryProcessingResult(
+                            entry_id=entry_id,
+                            status="error",
+                            response=f"Execution error: {str(e)}",
+                            elapsed_seconds=0.0,
+                            timings={},
+                        ))
+
+        total_time = time.time() - start_time
+        successful = sum(1 for r in results if r.status in ("completed", "processed"))
+        failed = sum(1 for r in results if r.status in ("failed", "error"))
+
+        logger.info(
+            f"Parallel processing complete: {successful}/{len(results)} successful "
+            f"in {total_time:.1f}s ({len(results) / total_time * 60:.1f} entries/min)"
+        )
+
+        return ParallelProcessingResult(
+            entry_results=results,
+            total_entries=len(results),
+            successful=successful,
+            failed=failed,
+            total_time=total_time,
+            entries_per_minute=len(results) / total_time * 60 if total_time > 0 else 0,
+        )
+
+    def _process_parallel_with_progress(
+        self,
+        entry_ids: List[str],
+        extraction_tasks: str,
+        effective_workers: int,
+        debug: bool = False,
+    ) -> "ParallelProcessingResult":
+        """Process entries in parallel with Rich progress bars (work-stealing pattern)."""
+        from lobster.ui.components.parallel_workers_progress import parallel_workers_progress
+
+        results: List[EntryProcessingResult] = []
+        results_lock = threading.Lock()
+
+        # Work-stealing queue: workers pull entries as they become available
+        entry_queue = list(enumerate(entry_ids))  # (index, entry_id) tuples
+        queue_lock = threading.Lock()
+
+        def get_next_entry():
+            """Thread-safe entry acquisition."""
+            with queue_lock:
+                if entry_queue:
+                    return entry_queue.pop(0)
+                return None
+
+        start_time = time.time()
+
+        # Suppress logs that would disrupt Rich progress display
+        # debug=True shows ERROR-level logs for troubleshooting
+        log_level = logging.ERROR if debug else logging.CRITICAL + 1
+        with _suppress_logs(min_level=log_level):
+            with parallel_workers_progress(effective_workers, len(entry_ids)) as progress:
+
+                def worker_func(worker_id: int):
+                    """Worker function that processes entries from queue."""
+                    while True:
+                        # Get next entry from queue
+                        next_item = get_next_entry()
+                        if next_item is None:
+                            # No more entries, worker done
+                            progress.worker_done(worker_id)
+                            break
+
+                        idx, entry_id = next_item
+
+                        # Get entry title for progress display
+                        try:
+                            entry = self.data_manager.publication_queue.get_entry(entry_id)
+                            title = (entry.title or entry_id)[:35]
+                        except Exception:
+                            title = entry_id[:35]
+
+                        # Update progress: worker starting
+                        progress.worker_start(worker_id, title)
+
+                        # Create step-level progress callback for this worker
+                        def make_step_callback(wid: int):
+                            """Create closure to capture worker_id."""
+                            def step_callback(step_name: str, current: int, total: int):
+                                # Convert step progress to percentage (0-100)
+                                percent = int((current / total) * 100) if total > 0 else 0
+                                progress.worker_update_step(wid, step_name, percent)
+                            return step_callback
+
+                        step_callback = make_step_callback(worker_id)
+
+                        # Process entry
+                        entry_start = time.time()
+                        status = "unknown"
+                        response = ""
+                        timings: Dict[str, float] = {}
+
+                        try:
+                            response = self.process_entry(
+                                entry_id=entry_id,
+                                extraction_tasks=extraction_tasks,
+                                progress_callback=step_callback,
+                            )
+                            if self._timing_enabled:
+                                timings = self._latest_timings.copy()
+
+                            if "COMPLETED" in response.upper():
+                                status = "completed"
+                            elif "FAILED" in response.upper():
+                                status = "failed"
+                            elif "PAYWALLED" in response.upper():
+                                status = "paywalled"
+                            else:
+                                status = "processed"
+                        except Exception as e:
+                            status = "error"
+                            response = f"Error: {str(e)}"
+
+                        elapsed = time.time() - entry_start
+
+                        # Update progress: worker completed entry
+                        progress.worker_complete(worker_id, status, elapsed)
+
+                        # Store result
+                        result = EntryProcessingResult(
+                            entry_id=entry_id,
+                            status=status,
+                            response=response,
+                            elapsed_seconds=elapsed,
+                            timings=timings,
+                        )
+                        with results_lock:
+                            results.append(result)
+
+                # Launch workers
+                with ThreadPoolExecutor(max_workers=effective_workers) as executor:
+                    futures = [executor.submit(worker_func, i) for i in range(effective_workers)]
+                    # Wait for all workers to complete
+                    for future in as_completed(futures):
+                        try:
+                            future.result()
+                        except Exception as e:
+                            logger.error(f"Worker error: {e}")
+
+        total_time = time.time() - start_time
+        successful = sum(1 for r in results if r.status in ("completed", "processed"))
+        failed = sum(1 for r in results if r.status in ("failed", "error"))
+
+        logger.info(
+            f"Parallel processing complete: {successful}/{len(results)} successful "
+            f"in {total_time:.1f}s ({len(results) / total_time * 60:.1f} entries/min)"
+        )
+
+        return ParallelProcessingResult(
+            entry_results=results,
+            total_entries=len(results),
+            successful=successful,
+            failed=failed,
+            total_time=total_time,
+            entries_per_minute=len(results) / total_time * 60 if total_time > 0 else 0,
+        )
+
+
+@dataclass
+class EntryProcessingResult:
+    """Result of processing a single publication entry."""
+    entry_id: str
+    status: str  # "completed", "failed", "paywalled", "error", "processed"
+    response: str
+    elapsed_seconds: float
+    timings: Dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
+class ParallelProcessingResult:
+    """Aggregate result of parallel publication processing."""
+    entry_results: List[EntryProcessingResult]
+    total_entries: int
+    successful: int
+    failed: int
+    total_time: float
+    entries_per_minute: float
+
+    def to_summary_string(self) -> str:
+        """
+        Format result as markdown for agent/LLM consumption.
+
+        Returns a human-readable summary suitable for the metadata_assistant
+        to process HANDOFF_READY entries.
+
+        Returns:
+            Markdown-formatted string with processing statistics and per-entry results.
+        """
+        lines = [
+            "## Publication Queue Processing (Parallel)",
+            "",
+            f"**Entries Processed**: {self.total_entries}",
+            f"**Successful**: {self.successful}",
+            f"**Failed**: {self.failed}",
+            f"**Total Time**: {self.total_time:.1f}s",
+            f"**Throughput**: {self.entries_per_minute:.1f} entries/min",
+            "",
+        ]
+
+        # Group entries by status
+        status_groups: Dict[str, List[EntryProcessingResult]] = {}
+        for result in self.entry_results:
+            status = result.status
+            if status not in status_groups:
+                status_groups[status] = []
+            status_groups[status].append(result)
+
+        # Show status summary
+        lines.append("### Status Summary")
+        for status, entries in sorted(status_groups.items()):
+            lines.append(f"- **{status.upper()}**: {len(entries)} entries")
+        lines.append("")
+
+        # Show per-entry details (abbreviated for large batches)
+        lines.append("### Entry Details")
+        for result in self.entry_results[:20]:  # Limit to first 20 for readability
+            lines.append(f"- **{result.entry_id}**: {result.status} ({result.elapsed_seconds:.1f}s)")
+
+        if len(self.entry_results) > 20:
+            lines.append(f"- ... and {len(self.entry_results) - 20} more entries")
+
+        lines.append("")
+
+        return "\n".join(lines)
+
+    def get_timing_summary(self) -> Dict[str, Dict[str, float]]:
+        """
+        Aggregate timing statistics across all entries.
+
+        Returns:
+            Dict mapping step names to {"avg": ..., "max": ..., "total": ...}
+        """
+        step_times: Dict[str, List[float]] = {}
+        for result in self.entry_results:
+            for step, duration in result.timings.items():
+                if step not in step_times:
+                    step_times[step] = []
+                step_times[step].append(duration)
+
+        summary = {}
+        for step, times in step_times.items():
+            summary[step] = {
+                "avg": sum(times) / len(times) if times else 0,
+                "max": max(times) if times else 0,
+                "total": sum(times),
+                "samples": len(times),
+            }
+
+        return summary

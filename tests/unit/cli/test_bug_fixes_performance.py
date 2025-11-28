@@ -220,7 +220,7 @@ class TestBug2WorkspaceScanCaching:
         dm = DataManagerV2(workspace_path=tmp_path, auto_scan=False)
 
         data_dir = tmp_path / "data"
-        data_dir.mkdir()
+        data_dir.mkdir(exist_ok=True)
 
         # First scan
         datasets1 = dm.get_available_datasets()
@@ -263,3 +263,22 @@ class TestBug2WorkspaceScanCaching:
         # Verify improvement
         assert second_time < first_time * 0.5, "Cache should be faster"
         assert second_time < 0.05, "Cache hit should be <50ms"
+
+    def test_timing_metrics_available(self, tmp_path):
+        """enable_timing should capture scan timings for diagnostics."""
+        dm = DataManagerV2(workspace_path=tmp_path, auto_scan=False)
+        dm.enable_timing(True)
+
+        test_file = dm.workspace_path / "data" / "timed_dataset.h5ad"
+        import anndata as ad
+        import numpy as np
+
+        test_file.parent.mkdir(exist_ok=True)
+        adata = ad.AnnData(X=np.array([[1, 2]]))
+        adata.write_h5ad(test_file)
+
+        dm.get_available_datasets(force_refresh=True)
+        timings = dm.get_latest_timings(clear=True)
+
+        assert "dm:scan_workspace" in timings
+        assert timings["dm:scan_workspace"] >= 0
