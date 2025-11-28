@@ -353,21 +353,85 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List
 import urllib.parse
 
-# Domain-specific rate limits (requests per second)
-DOMAIN_RATE_LIMITS = {
-    "eutils.ncbi.nlm.nih.gov": 10.0,  # NCBI with API key
-    "www.ncbi.nlm.nih.gov": 10.0,       # PMC web
-    "pmc.ncbi.nlm.nih.gov": 10.0,
-    "europepmc.org": 2.0,
-    "frontiersin.org": 1.0,
-    "mdpi.com": 10.0,
-    "peerj.com": 1.0,
-    "nature.com": 0.5,
-    "cell.com": 0.5,
-    "elsevier.com": 0.5,
-    "sciencedirect.com": 0.5,
-    "default": 0.3,
+
+# Header strategies (defined early for use in unified config)
+class HeaderStrategy(str, Enum):
+    """Header strategies for different publisher types."""
+    POLITE = "polite"        # Standard headers, identify as bot
+    BROWSER = "browser"      # Full browser headers, Chrome UA
+    STEALTH = "stealth"      # Browser + Sec-Fetch-* headers + cloudscraper
+    DEFAULT = "default"      # Minimal headers (requests default)
+
+
+@dataclass
+class DomainConfig:
+    """Unified domain configuration for rate limiting and header strategies."""
+    rate_limit: float  # requests per second
+    header_strategy: HeaderStrategy = HeaderStrategy.BROWSER
+    comment: str = ""  # Human-readable description
+
+
+# ============================================================================
+# UNIFIED DOMAIN CONFIGURATION (single source of truth)
+# ============================================================================
+DOMAIN_CONFIG: Dict[str, DomainConfig] = {
+    # NCBI (high rate with API key, minimal headers)
+    "eutils.ncbi.nlm.nih.gov": DomainConfig(10.0, HeaderStrategy.DEFAULT, "NCBI E-utilities"),
+    "www.ncbi.nlm.nih.gov": DomainConfig(10.0, HeaderStrategy.DEFAULT, "NCBI main site"),
+    "pmc.ncbi.nlm.nih.gov": DomainConfig(10.0, HeaderStrategy.DEFAULT, "PubMed Central"),
+
+    # High protection domains (Cloudflare + aggressive anti-scraping → STEALTH)
+    "academic.oup.com": DomainConfig(3, HeaderStrategy.STEALTH, "Oxford University Press"),
+    "cell.com": DomainConfig(3, HeaderStrategy.STEALTH, "Cell Press"),
+    "sciencedirect.com": DomainConfig(3, HeaderStrategy.STEALTH, "ScienceDirect (Elsevier)"),
+    "elsevier.com": DomainConfig(3, HeaderStrategy.STEALTH, "Elsevier"),
+    "science.org": DomainConfig(3, HeaderStrategy.STEALTH, "AAAS Science journals"),
+    "asm.org": DomainConfig(3, HeaderStrategy.STEALTH, "American Society for Microbiology"),
+    "ashpublications.org": DomainConfig(3, HeaderStrategy.STEALTH, "American Society of Hematology"),
+    "bmj.com": DomainConfig(3, HeaderStrategy.STEALTH, "British Medical Journal"),
+    "jamanetwork.com": DomainConfig(3, HeaderStrategy.STEALTH, "JAMA Network"),
+    "aacrjournals.org": DomainConfig(3, HeaderStrategy.STEALTH, "AACR Cancer Research"),
+    "nejm.org": DomainConfig(3, HeaderStrategy.STEALTH, "New England Journal of Medicine"),
+    "pubs.acs.org": DomainConfig(3, HeaderStrategy.STEALTH, "American Chemical Society"),
+    "wiley.com": DomainConfig(3, HeaderStrategy.STEALTH, "Wiley"),
+    "onlinelibrary.wiley.com": DomainConfig(3, HeaderStrategy.STEALTH, "Wiley Online Library"),
+
+    # Moderate protection (standard bot detection → BROWSER headers)
+    "nature.com": DomainConfig(3.0, HeaderStrategy.BROWSER, "Nature Publishing Group"),
+    "springer.com": DomainConfig(5.0, HeaderStrategy.BROWSER, "Springer"),
+    "link.springer.com": DomainConfig(5.0, HeaderStrategy.BROWSER, "SpringerLink"),
+    "tandfonline.com": DomainConfig(5.0, HeaderStrategy.BROWSER, "Taylor & Francis"),
+    "biomedcentral.com": DomainConfig(5.0, HeaderStrategy.BROWSER, "BMC journals"),
+    "journals.lww.com": DomainConfig(5.0, HeaderStrategy.BROWSER, "Wolters Kluwer"),
+    "journals.sagepub.com": DomainConfig(5.0, HeaderStrategy.BROWSER, "SAGE Publishing"),
+    "annualreviews.org": DomainConfig(5.0, HeaderStrategy.BROWSER, "Annual Reviews"),
+    "jstage.jst.go.jp": DomainConfig(5.0, HeaderStrategy.BROWSER, "J-STAGE (Japan)"),
+    "elifesciences.org": DomainConfig(5.0, HeaderStrategy.BROWSER, "eLife"),
+    "embopress.org": DomainConfig(5.0, HeaderStrategy.BROWSER, "EMBO Press"),
+    "liebertpub.com": DomainConfig(5.0, HeaderStrategy.BROWSER, "Mary Ann Liebert"),
+
+    # Open access (aggressive rates, bot-friendly → POLITE headers)
+    # 10x speedup: 2.0 → 20.0 req/s for preprint servers and open-access
+    "frontiersin.org": DomainConfig(20.0, HeaderStrategy.POLITE, "Frontiers (open-access)"),
+    "mdpi.com": DomainConfig(30.0, HeaderStrategy.POLITE, "MDPI (open-access publisher)"),
+    "peerj.com": DomainConfig(20.0, HeaderStrategy.POLITE, "PeerJ (open-access)"),
+    "biorxiv.org": DomainConfig(20.0, HeaderStrategy.POLITE, "bioRxiv (preprint server)"),
+    "medrxiv.org": DomainConfig(20.0, HeaderStrategy.POLITE, "medRxiv (preprint server)"),
+    "europepmc.org": DomainConfig(20.0, HeaderStrategy.POLITE, "Europe PMC (explicitly allows scraping)"),
+    "arxiv.org": DomainConfig(30.0, HeaderStrategy.POLITE, "arXiv (preprint server)"),
+    "microbiologyresearch.org": DomainConfig(20.0, HeaderStrategy.POLITE, "Microbiology Society (open-access)"),
+    "researchsquare.com": DomainConfig(20.0, HeaderStrategy.POLITE, "Research Square (preprints)"),
+    "ssrn.com": DomainConfig(20.0, HeaderStrategy.POLITE, "SSRN (preprints)"),
+    "plos.org": DomainConfig(20.0, HeaderStrategy.POLITE, "PLOS (open-access)"),
+    "journals.plos.org": DomainConfig(20.0, HeaderStrategy.POLITE, "PLOS Journals (open-access)"),
+
+    # Default fallback
+    "default": DomainConfig(3, HeaderStrategy.BROWSER, "Unknown domain (conservative)"),
 }
+
+# Backward compatibility: derive legacy dictionaries from unified config
+DOMAIN_RATE_LIMITS = {domain: config.rate_limit for domain, config in DOMAIN_CONFIG.items()}
+DOMAIN_HEADER_STRATEGIES = {domain: config.header_strategy for domain, config in DOMAIN_CONFIG.items()}
 
 
 @dataclass
@@ -636,14 +700,7 @@ def rate_limited_request(
 # =============================================================================
 # BROWSER HEADER SPOOFING (v2.1)
 # =============================================================================
-
-class HeaderStrategy(str, Enum):
-    """Header strategies for different publisher types."""
-    POLITE = "polite"        # Standard headers, identify as bot
-    BROWSER = "browser"      # Full browser headers, Chrome UA
-    STEALTH = "stealth"      # Browser + Sec-Fetch-* headers
-    DEFAULT = "default"      # Minimal headers (requests default)
-
+# Note: HeaderStrategy enum defined earlier at lines 358-363 for use in unified DOMAIN_CONFIG
 
 # Chrome on macOS User-Agent
 CHROME_USER_AGENT = (
@@ -672,39 +729,9 @@ STEALTH_HEADERS = {
     "Sec-Fetch-User": "?1",
 }
 
-# Domain-specific header strategies
-DOMAIN_HEADER_STRATEGIES: Dict[str, HeaderStrategy] = {
-    # Aggressive bot detection
-    "cell.com": HeaderStrategy.STEALTH,
-    "sciencedirect.com": HeaderStrategy.STEALTH,
-    "wiley.com": HeaderStrategy.STEALTH,
-    "onlinelibrary.wiley.com": HeaderStrategy.STEALTH,
-    "elsevier.com": HeaderStrategy.STEALTH,
-
-    # Moderate protection
-    "nature.com": HeaderStrategy.BROWSER,
-    "springer.com": HeaderStrategy.BROWSER,
-    "link.springer.com": HeaderStrategy.BROWSER,
-    "tandfonline.com": HeaderStrategy.BROWSER,
-
-    # Open access / friendly
-    "frontiersin.org": HeaderStrategy.POLITE,
-    "mdpi.com": HeaderStrategy.POLITE,
-    "plos.org": HeaderStrategy.POLITE,
-    "journals.plos.org": HeaderStrategy.POLITE,
-    "peerj.com": HeaderStrategy.POLITE,
-    "biorxiv.org": HeaderStrategy.POLITE,
-    "medrxiv.org": HeaderStrategy.POLITE,
-    "europepmc.org": HeaderStrategy.POLITE,
-
-    # NCBI (respect API key)
-    "eutils.ncbi.nlm.nih.gov": HeaderStrategy.DEFAULT,
-    "www.ncbi.nlm.nih.gov": HeaderStrategy.DEFAULT,
-    "pmc.ncbi.nlm.nih.gov": HeaderStrategy.DEFAULT,
-
-    # Fallback
-    "default": HeaderStrategy.BROWSER,
-}
+# Domain-specific header strategies (derived from unified DOMAIN_CONFIG at lines 377-430)
+# Note: DOMAIN_HEADER_STRATEGIES is auto-generated at line 434 for backward compatibility
+# To add/modify domains, edit DOMAIN_CONFIG above - do not edit this section
 
 
 @dataclass
