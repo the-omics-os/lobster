@@ -1130,51 +1130,90 @@ class PubMedProvider(BasePublicationProvider):
         return accessions
 
     def _find_linked_datasets(self, pmid: str) -> Dict[str, List[str]]:
-        """Find datasets linked to a PubMed article using E-link, including GSE series accessions."""
+        """
+        Find datasets linked to a PubMed article using a single combined E-Link call.
+
+        Optimized to issue ONE E-Link request instead of four sequential calls,
+        reducing network round trips from ~44s to ~3-5s.
+
+        The combined response contains multiple linksetdbs, one per target database.
+        We parse each linksetdb and map it back to the appropriate dataset type.
+
+        Args:
+            pmid: PubMed ID to find linked datasets for
+
+        Returns:
+            Dict with keys: GEO, SRA, BioProject, BioSample
+        """
         linked = {"GEO": [], "SRA": [], "BioProject": [], "BioSample": []}
 
-        # Database configs: GEO (GSE/GSM), SRA, BioProject, BioSample
-        # Note: GDS (legacy GEO DataSets) removed - deprecated by NCBI, causes malformed accessions
-        db_configs = [
-            {"db": "geo", "key": "GEO", "prefix": ""},  # Will fetch GSE/GSM
-            {"db": "sra", "key": "SRA", "prefix": "SRA"},
-            {"db": "bioproject", "key": "BioProject", "prefix": "PRJNA"},
-            {"db": "biosample", "key": "BioSample", "prefix": "SAMN"},
-        ]
+        # Database mapping: NCBI db name -> our key and prefix
+        # Note: "gds" is the NCBI database name for GEO DataSets/Series
+        # Note: "geo" also works for E-Link and returns the same UIDs
+        db_mapping = {
+            "gds": {"key": "GEO", "prefix": "", "needs_accession_lookup": True},
+            "geo": {"key": "GEO", "prefix": "", "needs_accession_lookup": True},
+            "sra": {"key": "SRA", "prefix": "SRA", "needs_accession_lookup": False},
+            "bioproject": {"key": "BioProject", "prefix": "PRJNA", "needs_accession_lookup": False},
+            "biosample": {"key": "BioSample", "prefix": "SAMN", "needs_accession_lookup": False},
+        }
 
-        for config in db_configs:
-            url = self.build_ncbi_url(
-                "elink",
-                {"dbfrom": "pubmed", "db": config["db"], "id": pmid, "retmode": "json"},
+        # Combined E-Link call: fetch all linked databases in one request
+        # NCBI E-Link supports comma-separated db values
+        # Using gds instead of geo for GEO datasets (gds is the official db name)
+        combined_dbs = "gds,sra,bioproject,biosample"
+        url = self.build_ncbi_url(
+            "elink",
+            {"dbfrom": "pubmed", "db": combined_dbs, "id": pmid, "retmode": "json"},
+        )
+
+        geo_uids = []  # Collect GEO UIDs for batch accession lookup
+
+        try:
+            # Single combined request instead of 4 sequential calls
+            content = self._make_ncbi_request(url, "find all linked datasets (combined)")
+            text = content.decode("utf-8")
+            json_response = json.loads(text)
+
+            if "linksets" in json_response:
+                for linkset in json_response["linksets"]:
+                    if "linksetdbs" not in linkset:
+                        continue
+
+                    for linksetdb in linkset["linksetdbs"]:
+                        dbto = linksetdb.get("dbto", "")
+                        links = linksetdb.get("links", [])
+
+                        if dbto not in db_mapping:
+                            logger.debug(f"Unknown linked database: {dbto}")
+                            continue
+
+                        config = db_mapping[dbto]
+                        key = config["key"]
+
+                        for link_id in links:
+                            if config["needs_accession_lookup"]:
+                                # GEO: collect UIDs for batch lookup
+                                geo_uids.append(str(link_id))
+                            else:
+                                # Non-GEO: construct accession directly
+                                linked[key].append(f"{config['prefix']}{link_id}")
+
+            logger.info(
+                f"Combined E-Link found: GEO UIDs={len(geo_uids)}, "
+                f"SRA={len(linked['SRA'])}, BioProject={len(linked['BioProject'])}, "
+                f"BioSample={len(linked['BioSample'])}"
             )
 
-            try:
-                # Use centralized request handler
-                content = self._make_ncbi_request(
-                    url, f"find linked {config['key']} datasets"
-                )
-                text = content.decode("utf-8")
-                json_response = json.loads(text)
+        except Exception as e:
+            logger.warning(f"Error in combined E-Link call: {e}")
+            # Fall back to empty results rather than crashing
+            return linked
 
-                if "linksets" in json_response:
-                    for linkset in json_response["linksets"]:
-                        if "linksetdbs" in linkset:
-                            for db in linkset["linksetdbs"]:
-                                if db["dbto"] == config["db"]:
-                                    for link_id in db.get("links", []):
-                                        # GEO accessions (geo db gives GSE/GSM IDs directly)
-                                        if config["db"] == "geo":
-                                            # Need to fetch summary to get proper accession string
-                                            acc = self._fetch_geo_accession(link_id)
-                                            if acc:
-                                                linked[config["key"]].append(acc)
-                                        else:
-                                            linked[config["key"]].append(
-                                                f"{config['prefix']}{link_id}"
-                                            )
-
-            except Exception as e:
-                logger.warning(f"Error finding linked {config['key']} datasets: {e}")
+        # Batch fetch GEO accessions (single esummary call instead of N calls)
+        if geo_uids:
+            geo_accessions = self._batch_fetch_geo_accessions(geo_uids)
+            linked["GEO"].extend(geo_accessions)
 
         # Deduplicate and prioritize GSE over GSM/GDS
         if linked["GEO"]:
@@ -1189,13 +1228,70 @@ class PubMedProvider(BasePublicationProvider):
 
         return linked
 
+    def _batch_fetch_geo_accessions(self, uids: List[str]) -> List[str]:
+        """
+        Batch fetch GEO accessions (GSE/GSM) from UIDs using a single esummary call.
+
+        NCBI esummary supports comma-separated IDs (up to ~100 per request).
+        This replaces N sequential calls with 1 batch call.
+
+        Args:
+            uids: List of GEO UIDs to resolve
+
+        Returns:
+            List of accession strings (GSE*, GSM*, GDS*)
+        """
+        if not uids:
+            return []
+
+        accessions = []
+
+        # NCBI allows up to ~200 IDs per request, but 100 is safer
+        batch_size = 100
+
+        for i in range(0, len(uids), batch_size):
+            batch_uids = uids[i : i + batch_size]
+            ids_param = ",".join(batch_uids)
+
+            url = self.build_ncbi_url(
+                "esummary", {"db": "gds", "id": ids_param, "retmode": "json"}
+            )
+
+            try:
+                content = self._make_ncbi_request(
+                    url, f"batch fetch {len(batch_uids)} GEO accessions"
+                )
+                text = content.decode("utf-8")
+                summary = json.loads(text)
+
+                result = summary.get("result", {})
+                # result contains "uids" list and individual uid entries
+                for uid in batch_uids:
+                    docsum = result.get(uid, {})
+                    acc = docsum.get("accession")
+                    if acc:
+                        accessions.append(acc)
+                    else:
+                        logger.debug(f"No accession found for GEO UID {uid}")
+
+                logger.info(f"Batch resolved {len(batch_uids)} GEO UIDs → {len(accessions)} accessions")
+
+            except Exception as e:
+                logger.warning(f"Batch GEO accession fetch failed: {e}")
+                # Fallback: try individual lookups for this batch
+                for uid in batch_uids:
+                    acc = self._fetch_geo_accession(uid)
+                    if acc:
+                        accessions.append(acc)
+
+        return accessions
+
     def _fetch_geo_accession(self, uid: str) -> Optional[str]:
-        """Fetch GEO accession (GSE/GSM) from a uid using esummary."""
+        """Fetch a single GEO accession (fallback for batch failures)."""
         try:
             url = self.build_ncbi_url(
-                "esummary", {"db": "geo", "id": uid, "retmode": "json"}
+                "esummary", {"db": "gds", "id": uid, "retmode": "json"}
             )
-            # Use centralized request handler
             content = self._make_ncbi_request(url, f"fetch GEO accession {uid}")
             text = content.decode("utf-8")
             summary = json.loads(text)

@@ -920,6 +920,7 @@ class ContentAccessService:
         keywords: Optional[list[str]] = None,
         max_paragraphs: int = 100,
         max_retries: int = 2,
+        known_pmc_id: Optional[str] = None,
     ) -> dict[str, any]:
         """
         Get full publication content (Tier 2) with PMC-first fallback cascade.
@@ -936,6 +937,8 @@ class ContentAccessService:
             keywords: Optional section keywords for targeted extraction
             max_paragraphs: Maximum paragraphs to extract
             max_retries: Retry count for transient errors
+            known_pmc_id: Optional pre-resolved PMC ID to skip E-Link lookup
+                         (Phase B2 optimization - saves ~10s network round trip)
 
         Returns:
             Dict with full content:
@@ -954,10 +957,13 @@ class ContentAccessService:
             >>> content = service.get_full_content("https://www.nature.com/articles/...")
             >>> # PDF fallback
             >>> content = service.get_full_content("https://biorxiv.org/.../file.pdf")
+            >>> # With known PMC ID (Phase B2 optimization)
+            >>> content = service.get_full_content("PMID:35042229", known_pmc_id="PMC8891176")
 
         Performance:
             - Cache hit: <100ms
             - PMC XML: 500ms (priority path)
+            - PMC XML with known_pmc_id: ~400ms (skips E-Link lookup)
             - Webpage: 2-5s (fallback)
             - PDF: 3-8s (last resort)
         """
@@ -995,7 +1001,10 @@ class ContentAccessService:
 
                     if pmc_provider:
                         # Extract full text from PMC XML
-                        pmc_result = pmc_provider.extract_full_text(source)
+                        # Phase B2 optimization: Pass known_pmc_id to skip E-Link lookup
+                        pmc_result = pmc_provider.extract_full_text(
+                            source, known_pmc_id=known_pmc_id
+                        )
 
                         # Format result
                         content_result = {

@@ -1513,30 +1513,68 @@ Could not extract content for: {identifier}
         status_filter: str = "pending",
         max_entries: int = 5,
         extraction_tasks: str = "metadata,methods,identifiers",
+        parallel_workers: int = 1,
     ) -> str:
         """
         Batch process multiple publication queue entries.
 
         Args:
-            status_filter: Queue status to target (default: "pending")
-            max_entries: Maximum number of entries to process (default: 5, 0 = all)
-            extraction_tasks: Tasks to run for each entry
+            status_filter: Queue status to target (default: "pending").
+                          Options: pending, extracting, completed, handoff_ready, etc.
+            max_entries: Maximum entries to process (default: 5, 0 = all matching).
+            extraction_tasks: Comma-separated tasks (default: "metadata,methods,identifiers").
+            parallel_workers: Number of parallel workers (default: 1 = sequential).
+                             Use 2-3 for faster processing of large queues.
+                             Higher values (>3) risk NCBI API rate limit issues.
 
         Returns:
-            Aggregated processing report across selected entries
+            Processing report with per-entry status, identifiers found, and workspace keys.
 
         Examples:
-            # Process first 3 pending entries
+            # Process first 3 pending entries (sequential)
             process_publication_queue(max_entries=3)
+
+            # Process 10 entries with 2 parallel workers
+            process_publication_queue(max_entries=10, parallel_workers=2)
 
             # Process all metadata_enriched entries (re-extraction)
             process_publication_queue(status_filter="metadata_enriched", max_entries=0)
         """
-        return publication_processing_service.process_queue_entries(
-            status_filter=status_filter,
-            max_entries=max_entries,
-            extraction_tasks=extraction_tasks,
-        )
+        if parallel_workers > 1:
+            # Use parallel processing with Rich progress display
+            from lobster.core.schemas.publication_queue import PublicationStatus
+
+            queue = data_manager.publication_queue
+            status_enum = None
+            if status_filter and status_filter.lower() not in {"any", "all"}:
+                try:
+                    status_enum = PublicationStatus(status_filter.lower())
+                except ValueError:
+                    return f"Error: Invalid status filter '{status_filter}'"
+
+            entries = sorted(queue.list_entries(status=status_enum), key=lambda e: e.created_at)
+            if max_entries and max_entries > 0:
+                entries = entries[:max_entries]
+
+            if not entries:
+                return f"No publication queue entries found with status '{status_filter}'."
+
+            entry_ids = [e.entry_id for e in entries]
+
+            result = publication_processing_service.process_entries_parallel(
+                entry_ids=entry_ids,
+                extraction_tasks=extraction_tasks,
+                max_workers=parallel_workers,
+                show_progress=True,
+            )
+            return result.to_summary_string()
+        else:
+            # Sequential processing
+            return publication_processing_service.process_queue_entries(
+                status_filter=status_filter,
+                max_entries=max_entries,
+                extraction_tasks=extraction_tasks,
+            )
 
     @tool
     def update_publication_status(
