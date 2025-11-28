@@ -27,8 +27,11 @@ import gc
 import hashlib
 import json
 import re
+import tempfile
+import time
 from datetime import datetime
 
+import requests
 import requests.exceptions
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -275,6 +278,7 @@ class DoclingService:
 
         # Import Docling types
         from docling_core.types.doc import DocItemLabel
+        ConversionStatus = self._docling_imports["ConversionStatus"]
 
         # Retry loop with comprehensive error handling
         for attempt in range(max_retries):
@@ -287,13 +291,19 @@ class DoclingService:
                 if cached_doc:
                     logger.info("Using cached parsed document (cache hit)")
                     return self._process_docling_document(
-                        cached_doc, source, keywords, max_paragraphs, DocItemLabel
+                        cached_doc,
+                        source,
+                        keywords,
+                        max_paragraphs,
+                        DocItemLabel,
+                        conversion_seconds=0.0,
                     )
 
                 # Attempt 2: Fresh Docling parse (cache miss)
                 logger.info("Parsing PDF with Docling (cache miss)")
-                result = self.converter.convert(source, headers=headers)
-                ConversionStatus = self._docling_imports["ConversionStatus"]
+                conversion_start = time.time()
+                result = self._convert_with_fallback(source, headers=headers)
+                conversion_seconds = time.time() - conversion_start
 
                 # Handle conversion status
                 if result.status == ConversionStatus.SUCCESS:
@@ -309,7 +319,12 @@ class DoclingService:
 
                     # Process document
                     return self._process_docling_document(
-                        doc, source, keywords, max_paragraphs, DocItemLabel
+                        doc,
+                        source,
+                        keywords,
+                        max_paragraphs,
+                        DocItemLabel,
+                        conversion_seconds=conversion_seconds,
                     )
 
                 elif result.status == ConversionStatus.PARTIAL_SUCCESS:
@@ -327,7 +342,12 @@ class DoclingService:
 
                     # Process what we have
                     return self._process_docling_document(
-                        doc, source, keywords, max_paragraphs, DocItemLabel
+                        doc,
+                        source,
+                        keywords,
+                        max_paragraphs,
+                        DocItemLabel,
+                        conversion_seconds=conversion_seconds,
                     )
 
                 else:
@@ -387,6 +407,14 @@ class DoclingService:
                 logger.warning(
                     f"HTTP {status_code} on attempt {attempt + 1}/{max_retries}: {e}"
                 )
+
+                # Cache 4xx client errors to prevent redundant retries
+                if isinstance(status_code, int) and 400 <= status_code < 500:
+                    if attempt == max_retries - 1:  # Last attempt, cache it
+                        self._cache_failure(
+                            source, f"HTTP_{status_code}", str(e), ttl_hours=24
+                        )
+
                 if attempt < max_retries - 1:
                     continue
                 else:
@@ -399,6 +427,13 @@ class DoclingService:
                 logger.warning(
                     f"Encoding error on attempt {attempt + 1}/{max_retries}: {e}"
                 )
+
+                # Cache encoding errors (unlikely to fix, long TTL)
+                if attempt == max_retries - 1:
+                    self._cache_failure(
+                        source, "UnicodeDecodeError", str(e), ttl_hours=168  # 7 days
+                    )
+
                 if attempt < max_retries - 1:
                     continue
                 else:
@@ -422,7 +457,13 @@ class DoclingService:
         raise PDFExtractionError(f"Extraction failed after {max_retries} attempts")
 
     def _process_docling_document(
-        self, doc, source: str, keywords: List[str], max_paragraphs: int, DocItemLabel
+        self,
+        doc,
+        source: str,
+        keywords: List[str],
+        max_paragraphs: int,
+        DocItemLabel,
+        conversion_seconds: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         Process an already-converted DoclingDocument to extract Methods section.
@@ -451,7 +492,12 @@ class DoclingService:
                 "No Methods section found with keywords, returning full document"
             )
             # Fallback: return full document with structure
-            return self._extract_full_document(doc, max_paragraphs, DocItemLabel)
+            return self._extract_full_document(
+                doc,
+                max_paragraphs,
+                DocItemLabel,
+                conversion_seconds=conversion_seconds,
+            )
 
         # Extract Methods content
         methods_text = self._extract_section_content(
@@ -493,6 +539,16 @@ class DoclingService:
             )
 
         # Build result dictionary
+        provenance = {
+            "source": source,
+            "parser": "docling",
+            "version": "2.60.0",
+            "timestamp": datetime.now().isoformat(),
+            "fallback_used": False,
+        }
+        if conversion_seconds is not None:
+            provenance["conversion_seconds"] = round(conversion_seconds, 3)
+
         return {
             "methods_text": methods_text,
             "methods_markdown": methods_markdown,
@@ -500,13 +556,7 @@ class DoclingService:
             "tables": [self._table_to_dataframe(t) for t in tables],
             "formulas": formulas,
             "software_mentioned": software,
-            "provenance": {
-                "source": source,
-                "parser": "docling",
-                "version": "2.60.0",
-                "timestamp": datetime.now().isoformat(),
-                "fallback_used": False,
-            },
+            "provenance": provenance,
         }
 
     # ==================== SECTION DETECTION & EXTRACTION ====================
@@ -733,7 +783,11 @@ class DoclingService:
         return hierarchy
 
     def _extract_full_document(
-        self, doc, max_paragraphs: int, DocItemLabel
+        self,
+        doc,
+        max_paragraphs: int,
+        DocItemLabel,
+        conversion_seconds: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         Extract full document when Methods section not found.
@@ -766,6 +820,16 @@ class DoclingService:
             f"Extracted full document: {len(full_text)} chars from {paragraph_count} text items"
         )
 
+        provenance = {
+            "source": "full_document",
+            "parser": "docling",
+            "timestamp": datetime.now().isoformat(),
+            "fallback_used": False,
+            "note": "Methods section not found, extracted full document",
+        }
+        if conversion_seconds is not None:
+            provenance["conversion_seconds"] = round(conversion_seconds, 3)
+
         return {
             "methods_text": full_text,
             "methods_markdown": full_text,
@@ -773,13 +837,7 @@ class DoclingService:
             "tables": [],
             "formulas": [],
             "software_mentioned": self._extract_software_names(full_text),
-            "provenance": {
-                "source": "full_document",
-                "parser": "docling",
-                "timestamp": datetime.now().isoformat(),
-                "fallback_used": False,
-                "note": "Methods section not found, extracted full document",
-            },
+            "provenance": provenance,
         }
 
     # ==================== UTILITIES ====================
@@ -891,26 +949,73 @@ class DoclingService:
             return None  # Docling not available
 
         try:
-            # Generate cache key from source URL
-            cache_key = hashlib.md5(source.encode()).hexdigest()
-            cache_file = self.cache_dir / f"{cache_key}.json"
+            cache_file = self._cache_path_for(source)
 
             if not cache_file.exists():
                 return None  # Cache miss
 
-            # Load JSON and reconstruct DoclingDocument
-            with open(cache_file, "r", encoding="utf-8") as f:
-                json_data = json.load(f)
+            try:
+                with open(cache_file, "r", encoding="utf-8") as f:
+                    json_data = json.load(f)
+            except (UnicodeDecodeError, json.JSONDecodeError) as decode_error:
+                logger.warning(
+                    "Cached document %s is corrupted (%s). Purging and re-parsing...",
+                    cache_file.name,
+                    decode_error,
+                )
+                self._purge_cached_document(source)
+                return None
 
-            # Import DoclingDocument for reconstruction
+            # Check for failure cache
+            if json_data.get("cache_type") == "failure":
+                # Check TTL expiration
+                cached_at_str = json_data.get("cached_at")
+                ttl_hours = json_data.get("ttl_hours", 24)
+
+                if cached_at_str:
+                    try:
+                        # Handle both ISO format and ISO with Z suffix
+                        if cached_at_str.endswith("Z"):
+                            cached_at_str = cached_at_str[:-1] + "+00:00"
+                        cached_at = datetime.fromisoformat(cached_at_str)
+
+                        # Make timezone-aware comparison
+                        if cached_at.tzinfo is None:
+                            import datetime as dt
+                            cached_at = cached_at.replace(tzinfo=dt.timezone.utc)
+
+                        now = datetime.now(cached_at.tzinfo)
+                        age_hours = (now - cached_at).total_seconds() / 3600
+
+                        if age_hours < ttl_hours:
+                            logger.info(
+                                f"Cache hit (failure, age: {age_hours:.1f}h): {json_data['error']}"
+                            )
+                            raise PDFExtractionError(
+                                f"Cached failure: {json_data['message']}"
+                            )
+                        else:
+                            logger.info(
+                                f"Failure cache expired (age: {age_hours:.1f}h), retrying..."
+                            )
+                            self._purge_cached_document(source)
+                            return None  # Retry the extraction
+
+                    except (ValueError, KeyError) as e:
+                        logger.warning(f"Invalid failure cache timestamp: {e}")
+                        self._purge_cached_document(source)
+                        return None
+
             from docling_core.types.doc import DoclingDocument
 
-            # Reconstruct document from JSON using Pydantic
             doc = DoclingDocument.model_validate(json_data)
 
             logger.info(f"Cache hit: Loaded parsed document from {cache_file.name}")
             return doc
 
+        except PDFExtractionError:
+            # Re-raise cached failures (don't suppress them)
+            raise
         except Exception as e:
             logger.warning(f"Failed to load cached document: {e}")
             return None  # Cache read error, will re-parse
@@ -932,16 +1037,12 @@ class DoclingService:
             return  # Nothing to cache
 
         try:
-            # Generate cache key
-            cache_key = hashlib.md5(source.encode()).hexdigest()
-            cache_file = self.cache_dir / f"{cache_key}.json"
+            cache_file = self._cache_path_for(source)
 
-            # Serialize document to JSON using Pydantic
             json_data = doc.model_dump()
 
-            # Write to cache file
             with open(cache_file, "w", encoding="utf-8") as f:
-                json.dump(json_data, f, indent=2)
+                json.dump(json_data, f, indent=2, default=self._json_default)
 
             logger.info(
                 f"Cached parsed document: {cache_file.name} ({len(json.dumps(json_data)):,} bytes)"
@@ -950,3 +1051,126 @@ class DoclingService:
         except Exception as e:
             logger.warning(f"Failed to cache document (non-fatal): {e}")
             # Don't raise - caching failure shouldn't block extraction
+
+    def _cache_failure(
+        self, source: str, error_type: str, error_msg: str, ttl_hours: int = 24
+    ) -> None:
+        """
+        Cache extraction failure to prevent retries within TTL window.
+
+        This prevents parallel workers from repeatedly attempting the same
+        failed URL (e.g., HTTP 403 paywalls, encoding errors, invalid PDFs).
+
+        Args:
+            source: PDF URL or path that failed
+            error_type: Error type (e.g., "HTTP_403", "UnicodeDecodeError")
+            error_msg: Error message (truncated to 500 chars)
+            ttl_hours: Time-to-live in hours (default: 24)
+
+        TTL Strategy:
+            - HTTP 4xx: 24 hours (semi-permanent, likely paywalled)
+            - HTTP 5xx: 1 hour (transient server errors)
+            - Encoding errors: 168 hours (7 days, unlikely to fix)
+        """
+        if not self.is_available():
+            return  # No cache directory available
+
+        try:
+            cache_file = self._cache_path_for(source)
+            failure_data = {
+                "cache_type": "failure",
+                "error": error_type,
+                "message": error_msg[:500],  # Truncate long error messages
+                "cached_at": datetime.now().isoformat(),
+                "ttl_hours": ttl_hours,
+            }
+
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump(failure_data, f, indent=2, default=self._json_default)
+
+            logger.debug(
+                f"Cached failure ({error_type}) for {source[:50]}... (TTL: {ttl_hours}h)"
+            )
+
+        except Exception as e:
+            logger.debug(f"Failed to cache failure (non-fatal): {e}")
+            # Don't raise - caching failure shouldn't block error propagation
+
+    def _cache_path_for(self, source: str) -> Path:
+        """Return cache file path for a source string."""
+        cache_key = hashlib.md5(source.encode()).hexdigest()
+        return self.cache_dir / f"{cache_key}.json"
+
+    def _purge_cached_document(self, source: str) -> None:
+        """Remove cached document if it exists."""
+        try:
+            cache_file = self._cache_path_for(source)
+            cache_file.unlink(missing_ok=True)
+            logger.info(f"Purged corrupted cache file: {cache_file.name}")
+        except Exception as e:
+            logger.debug(f"Failed to purge cache for {source}: {e}")
+
+    def _json_default(self, obj):
+        """Fallback serializer for non-JSON-compatible objects."""
+        if isinstance(obj, Path):
+            return str(obj)
+        return str(obj)
+
+    def _convert_with_fallback(self, source: str, headers: Optional[Dict[str, str]] = None):
+        """Convert source with Docling, retrying via local download on encoding errors."""
+
+        try:
+            return self.converter.convert(source, headers=headers)
+        except UnicodeDecodeError as primary_error:
+            if not self._is_remote_source(source):
+                raise primary_error
+
+            logger.warning(
+                "Unicode decode error for %s; retrying with local download...",
+                source[:80],
+            )
+
+            temp_path = self._download_source_to_tempfile(source, headers=headers)
+            try:
+                return self.converter.convert(str(temp_path))
+            finally:
+                temp_path.unlink(missing_ok=True)
+
+    def _download_source_to_tempfile(
+        self, source: str, headers: Optional[Dict[str, str]] = None
+    ) -> Path:
+        """Download remote source to a temporary file for Docling conversion."""
+
+        response = requests.get(source, headers=headers, timeout=30)
+        response.raise_for_status()
+
+        suffix = ".pdf" if self._looks_like_pdf(source, response.headers) else ".html"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+            tmp_file.write(response.content)
+            temp_path = Path(tmp_file.name)
+
+        logger.debug(f"Downloaded {source[:80]}... to {temp_path}")
+        return temp_path
+
+    def _looks_like_pdf(self, source: str, headers: Optional[Dict[str, Any]] = None) -> bool:
+        """Heuristic to decide if a source response is a PDF."""
+
+        if source.lower().endswith(".pdf"):
+            return True
+
+        if headers:
+            content_type = headers.get("Content-Type") or headers.get("content-type")
+            if content_type and "pdf" in content_type.lower():
+                return True
+
+        return False
+
+    def _is_remote_source(self, source: str) -> bool:
+        """Return True if source looks like a remote URL."""
+
+        if not isinstance(source, str):
+            return False
+        source_lower = source.lower()
+        return source_lower.startswith("http://") or source_lower.startswith(
+            "https://"
+        )

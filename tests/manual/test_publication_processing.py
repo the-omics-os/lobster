@@ -286,7 +286,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--ris-file",
         type=Path,
-        default=Path("kevin_notes/databiomix/CRC_microbiome.ris"),
+        default=Path("kevin_notes/databiomix/CRC_microbiome_2.ris"),
         help="Path to RIS file used to seed the publication queue",
     )
     parser.add_argument(
@@ -321,7 +321,7 @@ def parse_args() -> argparse.Namespace:
         "--tasks",
         type=str,
         default=(
-            "resolve_identifiers,ncbi_enrich,fetch_sra_metadata,metadata,methods,identifiers"
+            "resolve_identifiers,ncbi_enrich,metadata,methods,identifiers,fetch_sra_metadata"
         ),
         help="Comma-separated extraction tasks passed to PublicationProcessingService.",
     )
@@ -333,9 +333,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--entry",
-        type=int,
+        type=str,
         default=None,
-        help="Process a single entry by index after queue filtering (0-based).",
+        help="Process entry/entries by index after queue filtering (0-based). Supports single index (e.g., '60') or range (e.g., '60-120').",
     )
     parser.add_argument(
         "--dry-run",
@@ -368,6 +368,11 @@ def parse_args() -> argparse.Namespace:
         "--debug",
         action="store_true",
         help="Show ERROR-level logs during parallel processing (for debugging rate limits, etc.).",
+    )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress INFO logs from providers (keeps progress bars clean). Default: False (show logs for debugging).",
     )
     return parser.parse_args()
 
@@ -421,7 +426,7 @@ def select_queue_entries(
     data_manager: DataManagerV2,
     status_filter: str,
     max_entries: Optional[int],
-    entry_index: Optional[int],
+    entry_index: Optional[str],
 ) -> List:
     """Return queue entries to process based on CLI filters."""
 
@@ -439,11 +444,51 @@ def select_queue_entries(
     entries = sorted(queue.list_entries(status=status_enum), key=lambda e: e.created_at)
 
     if entry_index is not None:
-        if entry_index < 0 or entry_index >= len(entries):
-            raise SystemExit(
-                f"Entry index {entry_index} is out of range for {len(entries)} entries"
-            )
-        entries = [entries[entry_index]]
+        # Parse entry_index to support both single index and range notation
+        if '-' in entry_index:
+            # Range notation: e.g., "60-120"
+            try:
+                start_str, end_str = entry_index.split('-', 1)
+                start_idx = int(start_str.strip())
+                end_idx = int(end_str.strip())
+                
+                if start_idx < 0 or end_idx < 0:
+                    raise SystemExit(
+                        f"Entry indices must be non-negative. Got: {entry_index}"
+                    )
+                if start_idx >= len(entries):
+                    raise SystemExit(
+                        f"Start index {start_idx} is out of range for {len(entries)} entries"
+                    )
+                if end_idx > len(entries):
+                    console.print(
+                        f"[yellow]Warning: End index {end_idx} exceeds available entries ({len(entries)}). "
+                        f"Using {len(entries)} as end index.[/yellow]"
+                    )
+                    end_idx = len(entries)
+                if start_idx >= end_idx:
+                    raise SystemExit(
+                        f"Start index must be less than end index. Got: {entry_index}"
+                    )
+                
+                entries = entries[start_idx:end_idx]
+            except ValueError as e:
+                raise SystemExit(
+                    f"Invalid range format '{entry_index}'. Expected format: 'start-end' (e.g., '60-120'). Error: {e}"
+                )
+        else:
+            # Single index: e.g., "60"
+            try:
+                idx = int(entry_index.strip())
+                if idx < 0 or idx >= len(entries):
+                    raise SystemExit(
+                        f"Entry index {idx} is out of range for {len(entries)} entries"
+                    )
+                entries = [entries[idx]]
+            except ValueError:
+                raise SystemExit(
+                    f"Invalid entry index '{entry_index}'. Expected an integer or range (e.g., '60' or '60-120')"
+                )
 
     if max_entries and max_entries > 0:
         entries = entries[:max_entries]
@@ -887,7 +932,10 @@ def main() -> None:
         raise SystemExit(f"RIS file not found: {args.ris_file}")
 
     data_manager = init_data_manager(args.workspace)
-    service = PublicationProcessingService(data_manager)
+    service = PublicationProcessingService(
+        data_manager,
+        suppress_provider_logs=args.quiet,  # Use CLI flag (default: False for debugging)
+    )
     if args.profile and hasattr(service, "enable_timing"):
         service.enable_timing(True)
 

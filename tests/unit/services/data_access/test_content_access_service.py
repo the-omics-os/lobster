@@ -315,7 +315,7 @@ class TestMetadataMethods:
             return_value=mock_metadata,
         ):
             with patch(
-                "lobster.tools.metadata_validation_service.MetadataValidationService"
+                "lobster.services.metadata.metadata_validation_service.MetadataValidationService"
             ) as mock_validation_service_class:
                 # Mock the validation service instance and methods
                 mock_validation_service = Mock()
@@ -488,17 +488,21 @@ class TestContentMethods:
             "methods_text": "Methods from webpage",
         }
 
-        # Mock PublicationResolver
-        with patch(
-            "lobster.tools.providers.publication_resolver.PublicationResolver"
-        ) as MockResolver:
-            mock_resolver = Mock()
-            mock_resolution = Mock()
-            mock_resolution.is_accessible.return_value = True
-            mock_resolution.html_url = "https://example.com/paper"
-            mock_resolution.pdf_url = None
-            mock_resolver.resolve.return_value = mock_resolution
-            MockResolver.return_value = mock_resolver
+        mock_resolver = Mock()
+        mock_resolution = Mock()
+        mock_resolution.is_accessible.return_value = True
+        mock_resolution.html_url = "https://example.com/paper"
+        mock_resolution.pdf_url = None
+        mock_resolution.alternative_urls = []
+        mock_resolver.resolve.return_value = mock_resolution
+
+        with patch.object(
+            mock_content_access_service, "_get_preprint_provider", return_value=None
+        ), patch.object(
+            mock_content_access_service,
+            "_get_publication_resolver",
+            return_value=mock_resolver,
+        ):
 
             # Return PMC provider first, then webpage provider
             with patch.object(
@@ -520,6 +524,291 @@ class TestContentMethods:
                     assert result["tier_used"] == "full_webpage"
                     assert result["source_type"] == "webpage"
 
+    def test_resolver_prefers_html_when_requested(
+        self, mock_content_access_service
+    ):
+        """Ensure prefer_webpage selects html_url when resolver provides both."""
+
+        mock_content_access_service.data_manager.get_cached_publication = Mock(
+            return_value=None
+        )
+
+        from lobster.tools.providers.pmc_provider import PMCNotAvailableError
+
+        mock_pmc_provider = Mock()
+        mock_pmc_provider.__class__.__name__ = "PMCProvider"
+        mock_pmc_provider.extract_full_text.side_effect = PMCNotAvailableError(
+            "PMC not available"
+        )
+
+        mock_webpage_provider = Mock()
+        mock_webpage_provider.__class__.__name__ = "WebpageProvider"
+        mock_webpage_provider.extract_with_full_metadata.return_value = {
+            "content": "web",  # minimal payload
+            "source_type": "webpage",
+            "methods_text": "body",
+        }
+
+        mock_resolver = Mock()
+        mock_resolution = Mock()
+        mock_resolution.is_accessible.return_value = True
+        mock_resolution.html_url = "https://example.com/html"
+        mock_resolution.pdf_url = "https://example.com/paper.pdf"
+        mock_resolution.alternative_urls = []
+        mock_resolver.resolve.return_value = mock_resolution
+
+        with patch.object(
+            mock_content_access_service, "_get_preprint_provider", return_value=None
+        ), patch.object(
+            mock_content_access_service,
+            "_get_publication_resolver",
+            return_value=mock_resolver,
+        ):
+
+            with patch.object(
+                mock_content_access_service.registry,
+                "get_providers_for_capability",
+                side_effect=[
+                    [mock_pmc_provider],
+                    [mock_webpage_provider],
+                ],
+            ):
+                mock_content_access_service.get_full_content(
+                    "PMID:35042229", prefer_webpage=True
+                )
+
+                args, _ = mock_webpage_provider.extract_with_full_metadata.call_args
+                assert args[0] == "https://example.com/html"
+
+    def test_resolver_prefers_pdf_when_requested(
+        self, mock_content_access_service
+    ):
+        """Ensure prefer_webpage=False picks pdf_url."""
+
+        mock_content_access_service.data_manager.get_cached_publication = Mock(
+            return_value=None
+        )
+
+        from lobster.tools.providers.pmc_provider import PMCNotAvailableError
+
+        mock_pmc_provider = Mock()
+        mock_pmc_provider.__class__.__name__ = "PMCProvider"
+        mock_pmc_provider.extract_full_text.side_effect = PMCNotAvailableError(
+            "PMC not available"
+        )
+
+        mock_webpage_provider = Mock()
+        mock_webpage_provider.__class__.__name__ = "WebpageProvider"
+        mock_webpage_provider.extract_with_full_metadata.return_value = {
+            "content": "pdf",
+            "source_type": "webpage",
+            "methods_text": "body",
+        }
+
+        mock_resolver = Mock()
+        mock_resolution = Mock()
+        mock_resolution.is_accessible.return_value = True
+        mock_resolution.html_url = "https://example.com/html"
+        mock_resolution.pdf_url = "https://example.com/paper.pdf"
+        mock_resolution.alternative_urls = []
+        mock_resolver.resolve.return_value = mock_resolution
+
+        with patch.object(
+            mock_content_access_service, "_get_preprint_provider", return_value=None
+        ), patch.object(
+            mock_content_access_service,
+            "_get_publication_resolver",
+            return_value=mock_resolver,
+        ):
+
+            with patch.object(
+                mock_content_access_service.registry,
+                "get_providers_for_capability",
+                side_effect=[
+                    [mock_pmc_provider],
+                    [mock_webpage_provider],
+                ],
+            ):
+                mock_content_access_service.get_full_content(
+                    "PMID:35042229", prefer_webpage=False
+                )
+
+                args, _ = mock_webpage_provider.extract_with_full_metadata.call_args
+                assert args[0] == "https://example.com/paper.pdf"
+
+    def test_arxiv_pdf_normalized_to_abs_html(
+        self, mock_content_access_service
+    ):
+        """Direct arXiv PDF sources should be normalized to abs HTML when prefer_webpage."""
+
+        mock_content_access_service.data_manager.get_cached_publication = Mock(
+            return_value=None
+        )
+
+        mock_webpage_provider = Mock()
+        mock_webpage_provider.__class__.__name__ = "WebpageProvider"
+        mock_webpage_provider.extract_with_full_metadata.return_value = {
+            "content": "arxiv",
+            "source_type": "webpage",
+            "methods_text": "arxiv body",
+        }
+
+        with patch.object(
+            mock_content_access_service.registry,
+            "get_providers_for_capability",
+            return_value=[mock_webpage_provider],
+        ):
+            mock_content_access_service.get_full_content(
+                "https://arxiv.org/pdf/2406.12108.pdf", prefer_webpage=True
+            )
+
+            args, _ = mock_webpage_provider.extract_with_full_metadata.call_args
+            assert args[0] == "https://arxiv.org/abs/2406.12108"
+
+    def test_wiley_tdm_url_transformed_to_public_html(
+        self, mock_content_access_service
+    ):
+        """Wiley API URLs should be rewritten to the HTML DOI page."""
+
+        mock_content_access_service.data_manager.get_cached_publication = Mock(
+            return_value=None
+        )
+
+        mock_webpage_provider = Mock()
+        mock_webpage_provider.__class__.__name__ = "WebpageProvider"
+        mock_webpage_provider.extract_with_full_metadata.return_value = {
+            "content": "wiley",
+            "source_type": "webpage",
+            "methods_text": "body",
+        }
+
+        with patch.object(
+            mock_content_access_service.registry,
+            "get_providers_for_capability",
+            return_value=[mock_webpage_provider],
+        ):
+            source_url = (
+                "https://api.wiley.com/onlinelibrary/tdm/v1/articles/"
+                "10.1111/2041-210X.12628"
+            )
+
+            mock_content_access_service.get_full_content(
+                source_url,
+                prefer_webpage=True,
+            )
+
+            args, _ = mock_webpage_provider.extract_with_full_metadata.call_args
+            assert (
+                args[0]
+                == "https://onlinelibrary.wiley.com/doi/full/10.1111/2041-210X.12628"
+            )
+
+    def test_github_sources_marked_non_scientific(self, mock_content_access_service):
+        """GitHub URLs should bypass Docling and return non-scientific metadata."""
+
+        mock_content_access_service.data_manager.get_cached_publication = Mock(
+            return_value=None
+        )
+        with patch.object(
+            mock_content_access_service.data_manager, "cache_publication_content"
+        ) as cache_mock:
+            result = mock_content_access_service.get_full_content(
+                "https://github.com/omics-os/lobster", prefer_webpage=True
+            )
+
+        assert result["tier_used"] == "non_scientific_link"
+        assert result["source_type"] == "non_scientific"
+        assert result["metadata"]["domain"] == "github.com"
+        cache_mock.assert_called_once()
+
+    def test_statista_marked_non_scientific(self, mock_content_access_service):
+        mock_content_access_service.data_manager.get_cached_publication = Mock(
+            return_value=None
+        )
+
+        result = mock_content_access_service.get_full_content(
+            "https://www.statista.com/outlook/hmo/medical-technology/in-vitro-diagnostics/switzerland",
+            prefer_webpage=True,
+        )
+
+        assert result["tier_used"] == "non_scientific_link"
+        assert result["metadata"]["domain"] == "www.statista.com"
+
+    def test_html_paywall_falls_back_to_pdf(self, mock_content_access_service):
+        """HTML paywall errors should trigger PDF fallback extraction."""
+
+        mock_content_access_service.data_manager.get_cached_publication = Mock(
+            return_value=None
+        )
+
+        from lobster.tools.providers.pmc_provider import PMCNotAvailableError
+
+        mock_pmc_provider = Mock()
+        mock_pmc_provider.__class__.__name__ = "PMCProvider"
+        mock_pmc_provider.extract_full_text.side_effect = PMCNotAvailableError(
+            "PMC not available"
+        )
+
+        mock_webpage_provider = Mock()
+        mock_webpage_provider.__class__.__name__ = "WebpageProvider"
+        mock_webpage_provider.extract_with_full_metadata.side_effect = Exception(
+            "403 Client Error"
+        )
+
+        pdf_result = {
+            "methods_text": "pdf",
+            "methods_markdown": "pdf",
+            "provenance": {"conversion_seconds": 1.2},
+        }
+
+        docling_service_mock = Mock()
+        docling_service_mock.extract_methods_section.return_value = pdf_result
+
+        mock_resolver = Mock()
+        mock_resolution = Mock()
+        mock_resolution.is_accessible.return_value = True
+        mock_resolution.html_url = "https://example.com/html"
+        mock_resolution.pdf_url = "https://example.com/paper.pdf"
+        mock_resolution.alternative_urls = []
+        mock_resolver.resolve.return_value = mock_resolution
+
+        with patch.object(
+            mock_content_access_service, "_get_preprint_provider", return_value=None
+        ), patch.object(
+            mock_content_access_service,
+            "_get_publication_resolver",
+            return_value=mock_resolver,
+        ):
+
+            with patch.object(
+                mock_content_access_service,
+                "_get_docling_service",
+                return_value=docling_service_mock,
+            ), patch.object(
+                mock_content_access_service.data_manager,
+                "cache_publication_content",
+            ) as cache_mock:
+                with patch.object(
+                    mock_content_access_service.registry,
+                    "get_providers_for_capability",
+                    side_effect=[
+                        [mock_pmc_provider],
+                        [mock_webpage_provider],
+                    ],
+                ):
+                    result = mock_content_access_service.get_full_content(
+                        "PMID:35042229", prefer_webpage=True
+                    )
+
+        assert result["tier_used"] == "full_pdf"
+        assert result["source_type"] == "pdf"
+        docling_service_mock.extract_methods_section.assert_called_once_with(
+            source="https://example.com/paper.pdf",
+            keywords=None,
+            max_paragraphs=100,
+        )
+        cache_mock.assert_called()
+
     def test_get_full_content_all_tiers_fail_mock(self, mock_content_access_service):
         """Test full content retrieval - no providers available."""
         # Mock DataManager cache check (returns None)
@@ -536,6 +825,67 @@ class TestContentMethods:
             result = mock_content_access_service.get_full_content("PMID:99999999")
 
             assert "error" in result
+
+    def test_preprint_doi_uses_biorxiv_provider(
+        self, mock_content_access_service
+    ):
+        mock_content_access_service.data_manager.get_cached_publication = Mock(
+            return_value=None
+        )
+        mock_content_access_service.data_manager.cache_publication_content = Mock()
+
+        from lobster.tools.providers.pmc_provider import PMCFullText
+
+        pmc_result = PMCFullText(
+            pmc_id="",
+            pmid=None,
+            doi="10.1101/2024.01.01.123456",
+            title="Preprint",
+            abstract="Abstract",
+            full_text="Full text",
+            methods_section="Methods",
+            results_section="Results",
+            discussion_section="Discussion",
+            tables=[],
+            figures=[],
+            software_tools=[],
+            github_repos=[],
+        )
+
+        provider_mock = Mock()
+        provider_mock.get_full_text.return_value = pmc_result
+
+        with patch.object(
+            mock_content_access_service,
+            "_get_preprint_provider",
+            return_value=provider_mock,
+        ):
+            result = mock_content_access_service.get_full_content(
+                "10.1101/2024.01.01.123456", prefer_webpage=True
+            )
+
+        assert result["tier_used"].startswith("full_biorxiv")
+        provider_mock.get_full_text.assert_called()
+
+    def test_publication_resolver_singleton(self, mock_content_access_service):
+        mock_content_access_service.data_manager.get_cached_publication = Mock(
+            return_value=None
+        )
+
+        with patch(
+            "lobster.services.data_access.content_access_service.PublicationResolver"
+        ) as MockResolver:
+            instance = Mock()
+            instance.resolve.return_value = Mock(
+                is_accessible=lambda: False,
+            )
+            MockResolver.return_value = instance
+
+            # Force cache miss path
+            mock_content_access_service.get_full_content("PMID:1")
+            mock_content_access_service.get_full_content("PMID:2")
+
+            MockResolver.assert_called_once()
 
     def test_extract_methods_mock(self, mock_content_access_service):
         """Test methods extraction from content result."""
@@ -1248,3 +1598,142 @@ class TestErrorHandling:
                 or "rate limit" in str(result).lower()
                 or "error" in result
             )
+
+
+# ============================================================================
+# URL Normalization Tests (Bug Fix: Generic /pdf/ patterns)
+# ============================================================================
+
+
+class TestContentMethods:
+    """Test helper methods for content access (URL normalization, preprint detection, etc.)."""
+
+    def test_prefer_html_variant_generic_doi_pdf_pattern(self, mock_data_manager):
+        """Verify generic /doi/pdf/ → /doi/ transformation for multiple publishers."""
+        service = ContentAccessService(mock_data_manager)
+
+        # ACS pattern
+        result = service._prefer_html_variant(
+            "https://pubs.acs.org/doi/pdf/10.1021/acs.jafc.4c05616"
+        )
+        assert result == "https://pubs.acs.org/doi/10.1021/acs.jafc.4c05616"
+        assert "/pdf/" not in result
+
+        # Wiley pattern
+        result = service._prefer_html_variant(
+            "https://onlinelibrary.wiley.com/doi/pdf/10.1002/example"
+        )
+        assert result == "https://onlinelibrary.wiley.com/doi/10.1002/example"
+        assert "/pdf/" not in result
+
+        # Nature pattern (hypothetical)
+        result = service._prefer_html_variant(
+            "https://www.nature.com/articles/doi/pdf/s41586-023-12345-6"
+        )
+        assert result == "https://www.nature.com/articles/doi/s41586-023-12345-6"
+        assert "/pdf/" not in result
+
+    def test_prefer_html_variant_generic_pdf_suffix(self, mock_data_manager):
+        """Verify generic /pdf suffix removal."""
+        service = ContentAccessService(mock_data_manager)
+
+        result = service._prefer_html_variant(
+            "https://example.com/articles/12345/pdf"
+        )
+        assert result == "https://example.com/articles/12345"
+        assert not result.endswith("/pdf")
+
+        result = service._prefer_html_variant(
+            "https://publisher.com/journal/volume/article/pdf"
+        )
+        assert result == "https://publisher.com/journal/volume/article"
+        assert not result.endswith("/pdf")
+
+    def test_prefer_html_variant_preserves_query_params(self, mock_data_manager):
+        """Verify query parameters are preserved during transformation."""
+        service = ContentAccessService(mock_data_manager)
+
+        result = service._prefer_html_variant(
+            "https://pubs.acs.org/doi/pdf/10.1021/example?download=true&token=abc123"
+        )
+        assert result == "https://pubs.acs.org/doi/10.1021/example?download=true&token=abc123"
+        assert "/pdf/" not in result
+        assert "download=true" in result
+        assert "token=abc123" in result
+
+    def test_prefer_html_variant_existing_patterns_unchanged(self, mock_data_manager):
+        """Verify existing bioRxiv/medRxiv/arXiv patterns still work."""
+        service = ContentAccessService(mock_data_manager)
+
+        # bioRxiv pattern
+        result = service._prefer_html_variant(
+            "https://www.biorxiv.org/content/10.1101/2024.01.01.574440v1.full.pdf"
+        )
+        assert result == "https://www.biorxiv.org/content/10.1101/2024.01.01.574440v1.full"
+        assert not result.endswith(".pdf")
+
+        # medRxiv pattern
+        result = service._prefer_html_variant(
+            "https://www.medrxiv.org/content/10.1101/2024.01.01.574440v1.full.pdf"
+        )
+        assert result == "https://www.medrxiv.org/content/10.1101/2024.01.01.574440v1.full"
+        assert not result.endswith(".pdf")
+
+        # arXiv pattern
+        result = service._prefer_html_variant(
+            "https://arxiv.org/pdf/2408.09869.pdf"
+        )
+        assert result == "https://arxiv.org/abs/2408.09869"
+
+    def test_prefer_html_variant_nature_articles_pdf_extension(self, mock_data_manager):
+        """Verify Nature article .pdf extensions are removed (Bug Fix)."""
+        service = ContentAccessService(mock_data_manager)
+
+        # Nature article with .pdf extension (returns HTML, not PDF)
+        result = service._prefer_html_variant(
+            "https://www.nature.com/articles/s41575-025-01040-4.pdf"
+        )
+        assert result == "https://www.nature.com/articles/s41575-025-01040-4"
+        assert not result.endswith(".pdf")
+
+        # Nature article without .pdf (should be unchanged)
+        result = service._prefer_html_variant(
+            "https://www.nature.com/articles/s41575-025-01040-4"
+        )
+        assert result == "https://www.nature.com/articles/s41575-025-01040-4"
+
+    def test_prefer_html_variant_no_change_for_non_pdf_urls(self, mock_data_manager):
+        """Verify non-PDF URLs are returned unchanged."""
+        service = ContentAccessService(mock_data_manager)
+
+        # Already HTML URL
+        html_url = "https://www.nature.com/articles/s41586-023-12345-6"
+        result = service._prefer_html_variant(html_url)
+        assert result == html_url
+
+        # Plain DOI
+        doi = "10.1038/s41586-023-12345-6"
+        result = service._prefer_html_variant(doi)
+        assert result == doi
+
+    def test_preprint_doi_uses_biorxiv_provider(self, mock_data_manager):
+        """Verify preprint DOIs are detected and routed to BioRxiv provider."""
+        service = ContentAccessService(mock_data_manager)
+
+        # Test _extract_preprint_doi_from_source
+        doi, server = service._extract_preprint_doi_from_source("10.1101/2024.01.01.574440")
+        assert doi == "10.1101/2024.01.01.574440"
+        assert server is None  # No server hint from plain DOI
+
+        # Test with URL
+        doi, server = service._extract_preprint_doi_from_source(
+            "https://www.biorxiv.org/content/10.1101/2024.01.01.574440v1"
+        )
+        assert doi == "10.1101/2024.01.01.574440v1"
+        assert server == "biorxiv"
+
+        doi, server = service._extract_preprint_doi_from_source(
+            "https://www.medrxiv.org/content/10.1101/2024.01.01.574440v1"
+        )
+        assert doi == "10.1101/2024.01.01.574440v1"
+        assert server == "medrxiv"

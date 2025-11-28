@@ -20,13 +20,20 @@ via DataManager, and W3C-PROV provenance tracking.
 
 import re
 import time
+import urllib.parse
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.services.data_access.docling_service import DoclingService
 from lobster.tools.providers.abstract_provider import AbstractProvider
 from lobster.tools.providers.base_provider import DatasetType, PublicationMetadata
+from lobster.tools.providers.biorxiv_medrxiv_provider import (
+    BioRxivMedRxivError,
+    BioRxivMedRxivProvider,
+    BioRxivNotFoundError,
+)
 from lobster.tools.providers.geo_provider import GEOProvider
 from lobster.tools.providers.pmc_provider import PMCProvider
 from lobster.tools.providers.provider_registry import ProviderRegistry
@@ -36,6 +43,8 @@ from lobster.tools.providers.webpage_provider import (
     WebpageExtractionError,
     WebpageProvider,
 )
+from lobster.tools.providers.publication_resolver import PublicationResolver
+from lobster.tools.url_transforms import transform_publisher_url
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -68,12 +77,14 @@ class ContentAccessService:
     System (1):
     - query_capabilities: Query available providers and capabilities
 
-    **Providers Registered** (5 total):
+    **Providers Registered** (7 total):
     1. AbstractProvider - Fast abstract retrieval (priority 10)
     2. PubMedProvider - Literature search, dataset linking (priority 10)
     3. GEOProvider - Dataset discovery, validation (priority 10)
-    4. PMCProvider - Full-text from PMC XML (priority 10)
-    5. WebpageProvider - Webpage scraping, PDF via Docling (priority 50)
+    4. SRAProvider - SRA dataset discovery (priority 10)
+    5. PMCProvider - Full-text from PMC XML (priority 10)
+    6. BioRxivMedRxivProvider - Preprint full-text from bioRxiv/medRxiv (priority 10)
+    7. WebpageProvider - Webpage scraping, PDF via Docling (priority 50)
 
     Note: DoclingService is used internally by WebpageProvider via composition,
     not registered as a separate provider.
@@ -115,6 +126,9 @@ class ContentAccessService:
         """
         self.data_manager = data_manager
         self.registry = ProviderRegistry()
+        self._docling_service: Optional[DoclingService] = None
+        self._preprint_provider: Optional[BioRxivMedRxivProvider] = None
+        self._publication_resolver = None
 
         # Initialize and register all providers
         self._initialize_providers()
@@ -138,7 +152,8 @@ class ContentAccessService:
         3. GEOProvider (priority 10) - GEO dataset discovery
         4. SRAProvider (priority 10) - SRA dataset discovery
         5. PMCProvider (priority 10) - PMC full-text
-        6. WebpageProvider (priority 50) - Webpage scraping
+        6. BioRxivMedRxivProvider (priority 10) - BioRxiv/MedRxiv preprints
+        7. WebpageProvider (priority 50) - Webpage scraping
 
         Each provider is instantiated with the DataManagerV2 instance
         for provenance tracking.
@@ -188,7 +203,16 @@ class ContentAccessService:
         except Exception as e:
             logger.error(f"Failed to initialize PMCProvider: {e}")
 
-        # 6. WebpageProvider - Webpage scraping (includes PDF via Docling)
+        # 6. BioRxivMedRxivProvider - Preprint full-text extraction
+        try:
+            biorxiv_provider = BioRxivMedRxivProvider(data_manager=self.data_manager)
+            self.registry.register_provider(biorxiv_provider)
+            self._preprint_provider = biorxiv_provider
+            logger.debug("BioRxivMedRxivProvider registered successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize BioRxivMedRxivProvider: {e}")
+
+        # 7. WebpageProvider - Webpage scraping (includes PDF via Docling)
         try:
             webpage_provider = WebpageProvider(data_manager=self.data_manager)
             self.registry.register_provider(webpage_provider)
@@ -983,6 +1007,17 @@ class ContentAccessService:
                 cached["tier_used"] = "full_cached"
                 return cached
 
+            # Detect non-scientific sources (e.g., GitHub repos)
+            if self._is_non_scientific_source(source):
+                logger.info(f"Detected non-scientific source, short-circuiting: {source}")
+                result = self._build_non_scientific_result(source)
+                self.data_manager.cache_publication_content(
+                    identifier=source,
+                    content=result,
+                    format="json",
+                )
+                return result
+
             # 2. For PMID/DOI identifiers: Try PMC Full Text XML (priority)
             if self._is_identifier(source):
                 logger.info(
@@ -1007,28 +1042,10 @@ class ContentAccessService:
                         )
 
                         # Format result
-                        content_result = {
-                            "content": pmc_result.full_text,
-                            "methods_text": pmc_result.methods_section,
-                            "methods_markdown": pmc_result.methods_section,
-                            "results_text": pmc_result.results_section,
-                            "discussion_text": pmc_result.discussion_section,
-                            "tier_used": "full_pmc_xml",
-                            "source_type": "pmc_xml",
-                            "extraction_time": time.time() - start_time,
-                            "metadata": {
-                                "tables": len(pmc_result.tables),
-                                "figures": len(pmc_result.figures),
-                                "software": pmc_result.software_tools,
-                                "github_repos": pmc_result.github_repos,
-                                "sections": ["methods", "results", "discussion"],
-                            },
-                            "title": pmc_result.title,
-                            "abstract": pmc_result.abstract,
-                            "pmc_id": pmc_result.pmc_id,
-                            "pmid": pmc_result.pmid,
-                            "doi": pmc_result.doi,
-                        }
+                        content_result = self._build_content_from_pmc_result(
+                            pmc_result, tier_used="full_pmc_xml"
+                        )
+                        content_result["extraction_time"] = time.time() - start_time
 
                         # Cache result
                         self.data_manager.cache_publication_content(
@@ -1060,23 +1077,49 @@ class ContentAccessService:
                 except Exception as e:
                     logger.warning(f"PMC extraction failed: {e}, falling back...")
 
+                preprint_result = self._try_preprint_provider(
+                    source, cache_identifier=source
+                )
+                if preprint_result:
+                    return preprint_result
+
             # 3. Resolve identifiers to URLs (fallback from PMC)
             url_to_fetch = source
+            resolution_result = None
             if self._is_identifier(source):
                 logger.info(f"Resolving identifier to URL: {source}")
-                resolver = PublicationResolver()
+                resolver = self._get_publication_resolver()
                 resolution_result = resolver.resolve(source)
 
                 if resolution_result.is_accessible():
-                    url_to_fetch = (
-                        resolution_result.pdf_url or resolution_result.html_url
+                    selected_url = self._select_resolution_url(
+                        resolution_result, prefer_webpage
                     )
+                    if not selected_url:
+                        return {
+                            "error": f"No accessible URL found for {source}",
+                            "suggestions": "Resolver returned no usable URLs",
+                        }
+
+                    url_to_fetch = selected_url
                     logger.info(f"Resolved to: {url_to_fetch}")
                 else:
                     return {
                         "error": f"Paper is paywalled: {source}",
                         "suggestions": "Try institutional access or preprint servers",
                     }
+
+                preprint_result = self._try_preprint_provider(
+                    url_to_fetch,
+                    resolution_result=resolution_result,
+                    cache_identifier=source,
+                )
+                if preprint_result:
+                    return preprint_result
+
+            url_to_fetch = self._normalize_source_url(
+                url_to_fetch, prefer_webpage=prefer_webpage
+            )
 
             # 4. Extract from URL using Webpage or PDF providers
             webpage_providers = [
@@ -1095,7 +1138,7 @@ class ContentAccessService:
                 try:
                     content_result = webpage_provider.extract_with_full_metadata(
                         url_to_fetch,
-                        keywords=keywords,
+                        keywords=self._resolve_keywords_for_url(url_to_fetch, keywords),
                         max_paragraphs=max_paragraphs,
                     )
                 except Exception as extraction_error:
@@ -1114,6 +1157,14 @@ class ContentAccessService:
                         logger.warning(
                             f"Paywall/access error for {url_to_fetch}: {extraction_error}"
                         )
+                        fallback_result = self._try_pdf_fallback(
+                            source,
+                            resolution_result if self._is_identifier(source) else None,
+                            keywords,
+                            max_paragraphs,
+                        )
+                        if fallback_result is not None:
+                            return fallback_result
                         return {
                             "error": f"Paper is paywalled or requires authentication: {source}",
                             "suggestions": "Try institutional access, preprint servers, or add content manually",
@@ -1530,6 +1581,327 @@ class ContentAccessService:
     # ========================================================================
     # Helper Methods
     # ========================================================================
+
+    def _select_resolution_url(self, resolution_result, prefer_webpage: bool) -> Optional[str]:
+        """Choose the best URL from a PublicationResolutionResult."""
+
+        ordered_urls: list[str] = []
+
+        if prefer_webpage:
+            if resolution_result.html_url:
+                ordered_urls.append(resolution_result.html_url)
+            if resolution_result.pdf_url:
+                ordered_urls.append(resolution_result.pdf_url)
+        else:
+            if resolution_result.pdf_url:
+                ordered_urls.append(resolution_result.pdf_url)
+            if resolution_result.html_url:
+                ordered_urls.append(resolution_result.html_url)
+
+        alternative_urls = getattr(resolution_result, "alternative_urls", None)
+        if isinstance(alternative_urls, (list, tuple)):
+            ordered_urls.extend(alternative_urls)
+
+        for candidate in ordered_urls:
+            if candidate:
+                return candidate
+
+        return None
+
+    def _normalize_source_url(self, url: Optional[str], prefer_webpage: bool) -> Optional[str]:
+        """Normalize URLs by applying publisher transforms and HTML preferences."""
+
+        if not url or not isinstance(url, str):
+            return url
+
+        normalized = url.strip()
+        normalized = transform_publisher_url(normalized)
+
+        if prefer_webpage:
+            normalized = self._prefer_html_variant(normalized)
+
+        return normalized
+
+    def _prefer_html_variant(self, url: str) -> str:
+        """Convert known PDF endpoints to their HTML counterparts when possible."""
+
+        base_url, sep, query = url.partition("?")
+        lowered = base_url.lower()
+
+        def rebuild(new_base: str) -> str:
+            return new_base + (sep + query if sep else "")
+
+        if lowered.endswith(".full.pdf") and "biorxiv.org/content/" in lowered:
+            return rebuild(base_url[:-4])
+
+        if lowered.endswith(".full.pdf") and "medrxiv.org/content/" in lowered:
+            return rebuild(base_url[:-4])
+
+        arxiv_match = re.match(
+            r"https?://arxiv\.org/pdf/(?P<identifier>[^?#]+?)(?:\.pdf)?$",
+            base_url,
+            re.IGNORECASE,
+        )
+        if arxiv_match:
+            arxiv_id = arxiv_match.group("identifier")
+            return f"https://arxiv.org/abs/{arxiv_id}"
+
+        # Nature articles: /articles/xyz.pdf → /articles/xyz
+        # Nature often returns HTML for .pdf URLs, breaking Docling
+        if "nature.com/articles/" in lowered and lowered.endswith(".pdf"):
+            return rebuild(base_url[:-4])
+
+        # Generic pattern: /doi/pdf/ → /doi/ (ACS, Wiley, Cell, etc.)
+        if "/doi/pdf/" in lowered:
+            return rebuild(base_url.replace("/doi/pdf/", "/doi/"))
+
+        # Generic pattern: /pdf at end of path
+        if lowered.endswith("/pdf"):
+            return rebuild(base_url[:-4])
+
+        return url
+
+    def _is_non_scientific_source(self, url: str) -> bool:
+        if not url or not isinstance(url, str):
+            return False
+        try:
+            parsed = urllib.parse.urlparse(url)
+        except ValueError:
+            return False
+        domain = (parsed.hostname or "").lower()
+        return domain in {
+            "github.com",
+            "gitlab.com",
+            "bitbucket.org",
+            "sourceforge.net",
+            "statista.com",
+            "www.statista.com",
+            "giiresearch.com",
+            "www.giiresearch.com",
+            "marketsandmarkets.com",
+            "www.marketsandmarkets.com",
+        }
+
+    def _build_non_scientific_result(self, url: str) -> dict:
+        domain = urllib.parse.urlparse(url).hostname or "non_scientific"
+        return {
+            "content": "",
+            "methods_text": "",
+            "tier_used": "non_scientific_link",
+            "source_type": "non_scientific",
+            "extraction_time": 0.0,
+            "metadata": {
+                "non_scientific_url": url,
+                "domain": domain,
+            },
+        }
+
+    def _try_pdf_fallback(
+        self,
+        source_identifier: str,
+        resolution_result,
+        keywords,
+        max_paragraphs,
+    ) -> Optional[dict]:
+        """Attempt PDF fallback extraction when HTML access fails."""
+
+        pdf_candidates = []
+        if resolution_result:
+            if resolution_result.pdf_url:
+                pdf_candidates.append(resolution_result.pdf_url)
+            if resolution_result.alternative_urls:
+                pdf_candidates.extend(
+                    [
+                        alt
+                        for alt in resolution_result.alternative_urls
+                        if alt and alt.lower().endswith(".pdf")
+                    ]
+                )
+
+        # If source itself is a PDF URL
+        if self._looks_like_pdf(source_identifier):
+            pdf_candidates.insert(0, source_identifier)
+
+        if not pdf_candidates:
+            return None
+
+        pdf_url = pdf_candidates[0]
+        logger.info(f"Falling back to PDF extraction via Docling: {pdf_url}")
+
+        try:
+            docling_service = self._get_docling_service()
+            docling_result = docling_service.extract_methods_section(
+                source=pdf_url,
+                keywords=self._resolve_keywords_for_url(pdf_url, keywords),
+                max_paragraphs=max_paragraphs,
+            )
+
+            docling_result["tier_used"] = "full_pdf"
+            docling_result["source_type"] = "pdf"
+            docling_result["extraction_time"] = docling_result["provenance"].get(
+                "conversion_seconds", 0.0
+            )
+
+            self.data_manager.cache_publication_content(
+                identifier=source_identifier,
+                content=docling_result,
+                format="json",
+            )
+
+            return docling_result
+        except Exception as e:
+            logger.warning(f"PDF fallback failed: {e}")
+            return None
+
+    def _looks_like_pdf(self, url: str) -> bool:
+        if not url or not isinstance(url, str):
+            return False
+        parsed = urllib.parse.urlparse(url)
+        return (parsed.path or "").lower().endswith(".pdf")
+
+    def _get_docling_service(self) -> DoclingService:
+        if self._docling_service is None:
+            self._docling_service = DoclingService(data_manager=self.data_manager)
+        return self._docling_service
+
+    def _get_publication_resolver(self) -> PublicationResolver:
+        if self._publication_resolver is None:
+            self._publication_resolver = PublicationResolver()
+        return self._publication_resolver
+
+    def _get_preprint_provider(self) -> Optional[BioRxivMedRxivProvider]:
+        return self._preprint_provider
+
+    def _try_preprint_provider(
+        self,
+        source: str,
+        resolution_result=None,
+        cache_identifier: Optional[str] = None,
+    ) -> Optional[dict]:
+        provider = self._get_preprint_provider()
+        if provider is None:
+            return None
+
+        doi, server_hint = self._extract_preprint_doi_from_source(source)
+        cache_identifier = cache_identifier or source
+
+        if not doi and resolution_result is not None:
+            candidates = [
+                getattr(resolution_result, "identifier", None),
+                getattr(resolution_result, "html_url", None),
+                getattr(resolution_result, "pdf_url", None),
+            ]
+            for candidate in candidates:
+                doi, server_hint = self._extract_preprint_doi_from_source(candidate)
+                if doi:
+                    break
+
+            if (
+                not doi
+                and getattr(resolution_result, "source", "") in {"biorxiv", "medrxiv"}
+            ):
+                identifier = getattr(resolution_result, "identifier", "")
+                doi, server_hint = self._extract_preprint_doi_from_source(identifier)
+                if not server_hint:
+                    server_hint = getattr(resolution_result, "source", None)
+
+        if not doi:
+            return None
+
+        servers_to_try = []
+        if server_hint:
+            servers_to_try.append(server_hint)
+        else:
+            servers_to_try.extend(["biorxiv", "medrxiv"])
+
+        start_time = time.time()
+
+        for server in servers_to_try:
+            try:
+                pmc_result = provider.get_full_text(doi, server=server)
+                content = self._build_content_from_pmc_result(
+                    pmc_result,
+                    tier_used=f"full_{server}_jats",
+                )
+                content["extraction_time"] = time.time() - start_time
+
+                if self.data_manager:
+                    self.data_manager.cache_publication_content(
+                        identifier=cache_identifier,
+                        content=content,
+                        format="json",
+                    )
+
+                return content
+            except BioRxivNotFoundError:
+                continue
+            except BioRxivMedRxivError as err:
+                logger.warning(f"Preprint extraction failed for {doi}: {err}")
+                return None
+
+        return None
+
+    def _extract_preprint_doi_from_source(
+        self, source: Optional[str]
+    ) -> tuple[Optional[str], Optional[str]]:
+        if not source or not isinstance(source, str):
+            return (None, None)
+
+        decoded = urllib.parse.unquote(source.strip())
+
+        if decoded.lower().startswith("10.1101/"):
+            return decoded.strip(), None
+
+        parsed = urllib.parse.urlparse(decoded)
+        host = (parsed.hostname or "").lower()
+        path = parsed.path or ""
+
+        if "biorxiv.org" in host or "medrxiv.org" in host:
+            doi_match = re.search(
+                r"10\.1101/\d{4}\.\d{2}\.\d{2}\.\d+(?:v\d+)?",
+                decoded,
+            )
+            if doi_match:
+                server = "medrxiv" if "medrxiv.org" in host else "biorxiv"
+                return doi_match.group(0), server
+
+        return (None, None)
+
+    def _build_content_from_pmc_result(self, pmc_result, tier_used: str) -> dict:
+        result = {
+            "content": pmc_result.full_text,
+            "methods_text": pmc_result.methods_section,
+            "methods_markdown": pmc_result.methods_section,
+            "results_text": pmc_result.results_section,
+            "discussion_text": pmc_result.discussion_section,
+            "tier_used": tier_used,
+            "source_type": pmc_result.source_type,
+            "extraction_time": 0.0,
+            "metadata": {
+                "tables": len(pmc_result.tables),
+                "figures": len(pmc_result.figures),
+                "software": pmc_result.software_tools,
+                "github_repos": pmc_result.github_repos,
+                "sections": ["methods", "results", "discussion"],
+            },
+            "title": pmc_result.title,
+            "abstract": pmc_result.abstract,
+            "pmc_id": pmc_result.pmc_id,
+            "pmid": pmc_result.pmid,
+            "doi": pmc_result.doi,
+        }
+        return result
+
+    def _resolve_keywords_for_url(
+        self, url: str, default_keywords: Optional[list[str]]
+    ) -> Optional[list[str]]:
+        parsed = urllib.parse.urlparse(url)
+        domain = (parsed.hostname or "").lower()
+        overrides = {
+            "researchsquare.com": ["methods", "methodology", "experimental"],
+            "statista.com": ["analysis", "methodology", "approach"],
+        }
+        return overrides.get(domain, default_keywords)
 
     def _is_identifier(self, source: str) -> bool:
         """
