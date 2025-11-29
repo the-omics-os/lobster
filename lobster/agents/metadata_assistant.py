@@ -996,14 +996,16 @@ def metadata_assistant(
                     ws_key, content_type=ContentType.METADATA
                 )
                 if ws_data:
-                    samples, validation_result = _extract_samples_from_workspace(ws_data)
+                    samples, validation_result, quality_stats = _extract_samples_from_workspace(ws_data)
                     all_samples.extend(samples)
                     all_validation_results.append(validation_result)
 
-                    # Log extraction results
+                    # Log extraction results with quality info
                     logger.info(
                         f"Extracted {len(samples)} valid samples from {ws_key} "
-                        f"(validation_rate: {validation_result.metadata.get('validation_rate', 0):.1f}%)"
+                        f"(validation_rate: {validation_result.metadata.get('validation_rate', 0):.1f}%, "
+                        f"avg_completeness: {quality_stats.get('avg_completeness', 0):.1f}, "
+                        f"unique_individuals: {quality_stats.get('unique_individuals', 0)})"
                     )
 
             samples_before = sum(
@@ -1183,6 +1185,7 @@ def metadata_assistant(
 
                     entry_samples = []
                     entry_validation_results = []
+                    entry_quality_stats = []
 
                     for ws_key in entry.workspace_metadata_keys:
                         # Only process SRA sample files (skip pub_queue_*_metadata/methods/identifiers.json)
@@ -1202,11 +1205,12 @@ def metadata_assistant(
                             ws_key, content_type=ContentType.METADATA
                         )
                         if ws_data:
-                            samples, validation_result = _extract_samples_from_workspace(
+                            samples, validation_result, quality_stats = _extract_samples_from_workspace(
                                 ws_data
                             )
                             entry_samples.extend(samples)
                             entry_validation_results.append(validation_result)
+                            entry_quality_stats.append(quality_stats)
 
                     # Update stats with validation info
                     samples_extracted = sum(
@@ -1214,6 +1218,18 @@ def metadata_assistant(
                         for vr in entry_validation_results
                     )
                     samples_valid = len(entry_samples)
+
+                    # Aggregate quality stats for this entry
+                    entry_unique_individuals = set()
+                    entry_flag_counts = {}
+                    for qs in entry_quality_stats:
+                        # Extract individual_id strings (not the full sample dicts)
+                        for s in entry_samples:
+                            ind_id = s.get("_individual_id")
+                            if ind_id:
+                                entry_unique_individuals.add(ind_id)
+                        for flag, count in qs.get("flag_counts", {}).items():
+                            entry_flag_counts[flag] = entry_flag_counts.get(flag, 0) + count
 
                     # Check for complete validation failure
                     if samples_extracted > 0 and samples_valid == 0:
@@ -1415,33 +1431,48 @@ def metadata_assistant(
             return f"❌ Error updating status: {str(e)}"
 
     # Helper functions for queue processing
-    def _extract_samples_from_workspace(ws_data) -> tuple[list, "ValidationResult"]:
+    def _extract_samples_from_workspace(
+        ws_data,
+    ) -> tuple[list, "ValidationResult", dict]:
         """
-        Extract sample records from workspace data structure with validation.
+        Extract sample records from workspace data with validation and quality flagging.
 
-        Uses SRASampleSchema for validation following existing pattern from
-        core/schemas/transcriptomics.py, proteomics.py, metagenomics.py.
+        Uses SRASampleSchema for validation and compute_sample_completeness for
+        soft flagging. All valid samples are returned with quality flags attached
+        (soft filtering - user decides what to exclude).
 
         Handles various data structures produced by WorkspaceContentService:
         - Nested: {"data": {"samples": [...]}}
         - Direct: {"samples": [...]}
         - Dict-based: {"samples": {"id1": {...}, "id2": {...}}}
 
+        Quality Flagging:
+        - Each sample gets _quality_score (0-100) and _quality_flags fields
+        - Flags indicate potential concerns (missing individual_id, controls, etc.)
+        - Samples are NOT filtered out - user reviews flags and decides
+
         Args:
             ws_data: Workspace data dictionary (from WorkspaceContentService)
 
         Returns:
-            (valid_samples, validation_result): List of valid samples and ValidationResult
+            (valid_samples, validation_result, quality_stats): Tuple containing:
+            - valid_samples: List of valid samples with _quality_score and _quality_flags
+            - validation_result: ValidationResult with batch statistics
+            - quality_stats: Dict with completeness stats and flag counts
 
         Examples:
             >>> ws_data = {"data": {"samples": [{"run_accession": "SRR001", ...}]}}
-            >>> samples, result = _extract_samples_from_workspace(ws_data)
-            >>> len(samples)  # Only valid samples
+            >>> samples, result, stats = _extract_samples_from_workspace(ws_data)
+            >>> len(samples)  # All valid samples (not filtered)
             1
-            >>> result.is_valid  # True if no critical errors
-            True
+            >>> samples[0]["_quality_score"]  # Completeness score
+            80.0
+            >>> stats["unique_individuals"]
+            45
         """
         from lobster.core.schemas.sra import (
+            SRASampleSchema,
+            compute_sample_completeness,
             validate_sra_sample,
             validate_sra_samples_batch,
         )
@@ -1458,7 +1489,7 @@ def metadata_assistant(
                     raw_samples = [{"sample_id": k, **v} for k, v in samples.items()]
             if "data" in ws_data and isinstance(ws_data["data"], dict):
                 # Recursive extraction for nested structure
-                nested_samples, nested_result = _extract_samples_from_workspace(
+                nested_samples, nested_result, _ = _extract_samples_from_workspace(
                     ws_data["data"]
                 )
                 raw_samples.extend(nested_samples)
@@ -1469,31 +1500,120 @@ def metadata_assistant(
             empty_result.metadata["total_samples"] = 0
             empty_result.metadata["valid_samples"] = 0
             empty_result.metadata["validation_rate"] = 0.0
-            return [], empty_result
+            empty_stats = {
+                "total_samples": 0,
+                "avg_completeness": 0.0,
+                "unique_individuals": 0,
+                "completeness_distribution": {"high": [], "medium": [], "low": []},
+                "flag_counts": {},
+            }
+            return [], empty_result, empty_stats
 
         # Validate extracted samples using unified schema system
         validation_result = validate_sra_samples_batch(raw_samples)
 
-        # Filter to valid samples only (no critical errors)
+        # Process valid samples with quality flagging (soft filtering)
         valid_samples = []
+        quality_stats = {
+            "total_samples": 0,
+            "avg_completeness": 0.0,
+            "unique_individuals": 0,
+            "completeness_distribution": {"high": [], "medium": [], "low": []},
+            "flag_counts": {},
+            "flagged_sample_ids": {},
+            "individuals": set(),
+        }
+        scores = []
+
         for sample in raw_samples:
             sample_result = validate_sra_sample(sample)
-            if sample_result.is_valid:  # No errors
-                valid_samples.append(sample)
+            if sample_result.is_valid:  # No critical errors
+                # Validate and compute completeness
+                try:
+                    validated = SRASampleSchema.from_dict(sample)
+                    score, flags = compute_sample_completeness(validated)
+
+                    # Attach quality info to sample (soft flagging)
+                    sample["_quality_score"] = score
+                    sample["_quality_flags"] = [f.value for f in flags]
+
+                    # Also attach heuristically extracted fields for downstream use
+                    if validated.individual_id:
+                        sample["_individual_id"] = validated.individual_id
+                    if validated.timepoint:
+                        sample["_timepoint"] = validated.timepoint
+                    if validated.timepoint_numeric is not None:
+                        sample["_timepoint_numeric"] = validated.timepoint_numeric
+
+                    valid_samples.append(sample)
+                    scores.append(score)
+
+                    # Track statistics
+                    if validated.individual_id:
+                        quality_stats["individuals"].add(validated.individual_id)
+
+                    # Categorize by completeness
+                    run_acc = validated.run_accession
+                    if score >= 80:
+                        quality_stats["completeness_distribution"]["high"].append(
+                            run_acc
+                        )
+                    elif score >= 50:
+                        quality_stats["completeness_distribution"]["medium"].append(
+                            run_acc
+                        )
+                    else:
+                        quality_stats["completeness_distribution"]["low"].append(
+                            run_acc
+                        )
+
+                    # Track flag counts
+                    for flag in flags:
+                        flag_name = flag.value
+                        quality_stats["flag_counts"][flag_name] = (
+                            quality_stats["flag_counts"].get(flag_name, 0) + 1
+                        )
+                        if flag_name not in quality_stats["flagged_sample_ids"]:
+                            quality_stats["flagged_sample_ids"][flag_name] = []
+                        quality_stats["flagged_sample_ids"][flag_name].append(run_acc)
+
+                except Exception as e:
+                    logger.warning(f"Error computing completeness for sample: {e}")
+                    sample["_quality_score"] = 0.0
+                    sample["_quality_flags"] = ["validation_error"]
+                    valid_samples.append(sample)
+                    scores.append(0.0)
+
                 # Log warnings but continue
                 for warning in sample_result.warnings:
                     logger.warning(warning)
             else:
-                # Log errors for invalid samples
+                # Log errors for invalid samples (these are excluded)
                 for error in sample_result.errors:
                     logger.error(error)
+
+        # Finalize quality stats
+        quality_stats["total_samples"] = len(valid_samples)
+        quality_stats["avg_completeness"] = sum(scores) / len(scores) if scores else 0.0
+        quality_stats["unique_individuals"] = len(quality_stats["individuals"])
+        # Convert set to count (can't serialize set to JSON)
+        del quality_stats["individuals"]
 
         logger.info(
             f"Sample extraction complete: {len(valid_samples)}/{len(raw_samples)} valid "
             f"({validation_result.metadata.get('validation_rate', 0):.1f}%)"
         )
+        logger.info(
+            f"Quality summary: avg_completeness={quality_stats['avg_completeness']:.1f}, "
+            f"unique_individuals={quality_stats['unique_individuals']}, "
+            f"high/medium/low={len(quality_stats['completeness_distribution']['high'])}/"
+            f"{len(quality_stats['completeness_distribution']['medium'])}/"
+            f"{len(quality_stats['completeness_distribution']['low'])}"
+        )
+        if quality_stats["flag_counts"]:
+            logger.info(f"Flag counts: {quality_stats['flag_counts']}")
 
-        return valid_samples, validation_result
+        return valid_samples, validation_result, quality_stats
 
     def _apply_metadata_filters(samples: list, filter_criteria: str) -> list:
         """Apply natural language filters using microbiome services."""
@@ -1510,27 +1630,6 @@ def metadata_assistant(
             filtered = [s for s in filtered if microbiome_filtering_service.validate_host_organism(s, allowed_hosts=parsed["host_organisms"])[0]]
 
         return filtered
-
-    # =========================================================================
-    # Tool Registry
-    # =========================================================================
-
-    tools = [
-        map_samples_by_id,
-        read_sample_metadata,
-        standardize_sample_metadata,
-        validate_dataset_content,
-        # NEW: Publication queue processing tools
-        process_metadata_entry,
-        process_metadata_queue,
-        update_metadata_status,
-        # Shared workspace tools
-        get_content_from_workspace,
-        write_to_workspace,
-    ]
-
-    if MICROBIOME_FEATURES_AVAILABLE:
-        tools.append(filter_samples_by)
 
     # =========================================================================
     # Helper Functions for filter_samples_by
@@ -1723,6 +1822,28 @@ def metadata_assistant(
             )
 
         return "\n".join(report_lines)
+    
+    # =========================================================================
+    # Tool Registry
+    # =========================================================================
+
+    tools = [
+        map_samples_by_id,
+        read_sample_metadata,
+        standardize_sample_metadata,
+        validate_dataset_content,
+        # NEW: Publication queue processing tools
+        process_metadata_entry,
+        process_metadata_queue,
+        update_metadata_status,
+        # Shared workspace tools
+        get_content_from_workspace,
+        write_to_workspace,
+    ]
+
+    if MICROBIOME_FEATURES_AVAILABLE:
+        tools.append(filter_samples_by)
+
 
     # =========================================================================
     # System Prompt
