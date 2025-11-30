@@ -266,3 +266,185 @@ class TestCreateListModalitesTool:
         assert hasattr(list_tool, "func")
         assert list_tool.name == "list_available_modalities"
         assert callable(list_tool.func)
+
+
+# =============================================================================
+# Tests for publication_queue workspace handling (NEW)
+# =============================================================================
+
+
+class TestPublicationQueueSummary:
+    """Test publication queue summary aggregation."""
+
+    @patch("lobster.tools.workspace_tool.WorkspaceContentService")
+    def test_publication_queue_summary_aggregated(
+        self, mock_ws_service_class, mock_data_manager
+    ):
+        """Verify summary aggregates statistics instead of listing all entries."""
+        from lobster.tools.workspace_tool import create_get_content_from_workspace_tool
+
+        # Create 350 entries with various statuses
+        from datetime import datetime, timedelta
+
+        now = datetime.now()
+        entries = []
+
+        # Simulate large queue (350 entries)
+        status_distribution = {
+            "pending": 280,
+            "extracting": 15,
+            "metadata_extracted": 30,
+            "handoff_ready": 20,
+            "completed": 3,
+            "failed": 2,
+        }
+
+        entry_id = 1
+        for status, count in status_distribution.items():
+            for i in range(count):
+                entries.append(
+                    {
+                        "entry_id": f"pub_queue_{entry_id:05d}",
+                        "title": f"Test Publication {entry_id}",
+                        "pmid": f"{35000000 + entry_id}",
+                        "status": status,
+                        "priority": (entry_id % 10) + 1,  # 1-10
+                        "updated_at": (now - timedelta(hours=entry_id % 24)).isoformat(),
+                    }
+                )
+                entry_id += 1
+
+        # Mock workspace service
+        mock_ws_instance = Mock()
+        mock_ws_instance.list_publication_queue_entries = Mock(return_value=entries)
+        mock_ws_service_class.return_value = mock_ws_instance
+
+        # Create tool and call with level='summary'
+        get_tool = create_get_content_from_workspace_tool(mock_data_manager)
+        result = get_tool.func(workspace="publication_queue", level="summary")
+
+        # Verify token-efficient response structure
+        assert "Publication Queue Summary" in result
+        assert "Total Entries**: 350" in result
+
+        # Verify status breakdown present
+        assert "Status Breakdown" in result
+        assert "pending: 280" in result
+        assert "handoff_ready: 20" in result
+        assert "failed: 2" in result
+
+        # Verify priority distribution present
+        assert "Priority Distribution" in result
+        assert "High priority (1-3)" in result
+        assert "Medium priority (4-7)" in result
+        assert "Low priority (8-10)" in result
+
+        # Verify recent activity (limited to 5)
+        assert "Recent Activity" in result
+        assert "last 5 updates" in result
+
+        # Verify guidance present
+        assert "Tip" in result
+        assert "status_filter" in result
+        assert "level='metadata'" in result
+
+        # Verify we DON'T list all 350 entries (token efficiency)
+        # Should have at most 5 entries in recent activity
+        assert result.count("pub_queue_") <= 10  # Some slack for formatting
+
+    @patch("lobster.tools.workspace_tool.WorkspaceContentService")
+    def test_publication_queue_metadata_level_unchanged(
+        self, mock_ws_service_class, mock_data_manager
+    ):
+        """Verify level='metadata' still provides full details."""
+        from lobster.tools.workspace_tool import create_get_content_from_workspace_tool
+
+        # Create small set of entries
+        entries = [
+            {
+                "entry_id": "pub_queue_001",
+                "title": "Test Publication 1",
+                "pmid": "12345",
+                "status": "pending",
+                "priority": 5,
+                "updated_at": "2024-01-01T00:00:00",
+            },
+            {
+                "entry_id": "pub_queue_002",
+                "title": "Test Publication 2",
+                "doi": "10.1234/test",
+                "status": "handoff_ready",
+                "priority": 3,
+                "updated_at": "2024-01-02T00:00:00",
+            },
+        ]
+
+        # Mock workspace service
+        mock_ws_instance = Mock()
+        mock_ws_instance.list_publication_queue_entries = Mock(return_value=entries)
+        mock_ws_service_class.return_value = mock_ws_instance
+
+        # Create tool and call with level='metadata'
+        get_tool = create_get_content_from_workspace_tool(mock_data_manager)
+        result = get_tool.func(workspace="publication_queue", level="metadata")
+
+        # Verify full listing is still present for metadata level
+        assert "Publication Queue Entries (2)" in result
+        assert "pub_queue_001" in result
+        assert "pub_queue_002" in result
+
+    @patch("lobster.tools.workspace_tool.WorkspaceContentService")
+    def test_publication_queue_empty(
+        self, mock_ws_service_class, mock_data_manager
+    ):
+        """Verify empty queue message."""
+        from lobster.tools.workspace_tool import create_get_content_from_workspace_tool
+
+        # Mock empty queue
+        mock_ws_instance = Mock()
+        mock_ws_instance.list_publication_queue_entries = Mock(return_value=[])
+        mock_ws_service_class.return_value = mock_ws_instance
+
+        # Create tool and call
+        get_tool = create_get_content_from_workspace_tool(mock_data_manager)
+        result = get_tool.func(workspace="publication_queue", level="summary")
+
+        # Verify empty message
+        assert "Publication queue is empty" in result
+
+    @patch("lobster.tools.workspace_tool.WorkspaceContentService")
+    def test_publication_queue_status_filter(
+        self, mock_ws_service_class, mock_data_manager
+    ):
+        """Verify status_filter is passed to service correctly."""
+        from lobster.tools.workspace_tool import create_get_content_from_workspace_tool
+
+        # Mock filtered results
+        mock_ws_instance = Mock()
+        mock_ws_instance.list_publication_queue_entries = Mock(
+            return_value=[
+                {
+                    "entry_id": "pub_queue_001",
+                    "title": "Failed Publication",
+                    "status": "failed",
+                    "priority": 1,
+                    "updated_at": "2024-01-01T00:00:00",
+                }
+            ]
+        )
+        mock_ws_service_class.return_value = mock_ws_instance
+
+        # Create tool and call with status_filter
+        get_tool = create_get_content_from_workspace_tool(mock_data_manager)
+        result = get_tool.func(
+            workspace="publication_queue", level="summary", status_filter="failed"
+        )
+
+        # Verify service was called with filter
+        mock_ws_instance.list_publication_queue_entries.assert_called_once_with(
+            status_filter="failed"
+        )
+
+        # Verify result contains filtered data
+        assert "Total Entries**: 1" in result
+        assert "failed: 1" in result

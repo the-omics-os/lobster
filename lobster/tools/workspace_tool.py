@@ -225,18 +225,86 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
 
                     # Format response based on level
                     if level == "summary":
-                        response = f"## Publication Queue ({len(entries)} entries)\n\n"
-                        for entry in entries:
-                            response += (
-                                f"- **{entry['entry_id']}**: {entry.get('title', 'Untitled')} "
-                            )
-                            response += (
-                                f"({entry['status']}, priority {entry['priority']})\n"
-                            )
-                            if entry.get("pmid"):
-                                response += f"  └─> PMID: {entry['pmid']}\n"
-                            elif entry.get("doi"):
-                                response += f"  └─> DOI: {entry['doi']}\n"
+                        # Token-efficient aggregated summary (avoid listing all entries)
+                        from collections import Counter
+                        from datetime import datetime
+
+                        # Compute statistics
+                        status_counts = Counter(entry['status'] for entry in entries)
+
+                        # Priority distribution (1-3=high, 4-7=medium, 8-10=low)
+                        priority_high = sum(1 for e in entries if e['priority'] <= 3)
+                        priority_medium = sum(1 for e in entries if 4 <= e['priority'] <= 7)
+                        priority_low = sum(1 for e in entries if e['priority'] >= 8)
+
+                        # Failed entries count
+                        failed_count = status_counts.get('failed', 0)
+
+                        # Sort by updated_at (most recent first), show top 5
+                        sorted_entries = sorted(
+                            entries,
+                            key=lambda e: e.get('updated_at', ''),
+                            reverse=True
+                        )[:5]
+
+                        # Build response
+                        response = f"## Publication Queue Summary\n\n"
+                        response += f"**Total Entries**: {len(entries)}\n\n"
+
+                        # Status breakdown
+                        response += "**Status Breakdown**:\n"
+                        for status in ['pending', 'extracting', 'metadata_extracted', 'metadata_enriched', 'handoff_ready', 'completed', 'failed', 'paywalled']:
+                            count = status_counts.get(status, 0)
+                            if count > 0:
+                                response += f"- {status}: {count} entries\n"
+                        response += "\n"
+
+                        # Priority distribution
+                        response += "**Priority Distribution**:\n"
+                        response += f"- High priority (1-3): {priority_high} entries\n"
+                        response += f"- Medium priority (4-7): {priority_medium} entries\n"
+                        response += f"- Low priority (8-10): {priority_low} entries\n\n"
+
+                        # Recent activity
+                        response += "**Recent Activity** (last 5 updates):\n"
+                        for entry in sorted_entries:
+                            title = entry.get('title', 'Untitled')
+                            title_short = title[:50] + "..." if len(title) > 50 else title
+                            updated = entry.get('updated_at', 'unknown')
+
+                            # Format time ago if possible
+                            try:
+                                if isinstance(updated, str):
+                                    updated_dt = datetime.fromisoformat(updated.replace('Z', '+00:00'))
+                                else:
+                                    updated_dt = updated
+                                time_diff = datetime.now() - updated_dt.replace(tzinfo=None)
+
+                                if time_diff.days > 0:
+                                    time_ago = f"{time_diff.days}d ago"
+                                elif time_diff.seconds >= 3600:
+                                    time_ago = f"{time_diff.seconds // 3600}h ago"
+                                elif time_diff.seconds >= 60:
+                                    time_ago = f"{time_diff.seconds // 60}m ago"
+                                else:
+                                    time_ago = "just now"
+                            except:
+                                time_ago = "unknown"
+
+                            response += f"- **{entry['entry_id']}**: \"{title_short}\" ({entry['status']}) - Updated {time_ago}\n"
+                        response += "\n"
+
+                        # Problem indicators
+                        if failed_count > 0:
+                            response += f"**Failed Entries**: {failed_count} (use status_filter='failed' to inspect)\n\n"
+
+                        # Actionable guidance
+                        response += "**Tip**: Use `status_filter` parameter to focus on specific statuses:\n"
+                        response += "- `status_filter='handoff_ready'` - Ready for metadata processing\n"
+                        response += "- `status_filter='failed'` - Entries needing attention\n"
+                        response += "- `status_filter='pending'` - Not yet started\n"
+                        response += "\nUse `level='metadata'` for detailed inspection of all entries.\n"
+
                         return response
 
                     elif level == "metadata":
