@@ -333,12 +333,12 @@ class AgentCapabilityExtractor:
             for tool in caps.tools[:max_tools]:
                 # Truncate long descriptions
                 desc = tool.description
-                if len(desc) > 100:
-                    desc = desc[:97] + "..."
-                summary += f"\n    • {tool.tool_name}: {desc}"
+                if len(desc) > 120:
+                    desc = desc[:117] + "..."
+                summary += f"\n{tool.tool_name}: {desc}"
 
             if len(caps.tools) > max_tools:
-                summary += f"\n    • ...and {len(caps.tools) - max_tools} more tools"
+                summary += f"\n...and {len(caps.tools) - max_tools} more tools"
 
         return summary
 
