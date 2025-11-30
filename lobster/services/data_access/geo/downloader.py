@@ -27,11 +27,9 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 
-from lobster.config.settings import get_settings
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
-settings = get_settings()
 
 
 class GEODownloadError(Exception):
@@ -55,10 +53,18 @@ class GEODownloadManager:
         Initialize the download manager.
 
         Args:
-            cache_dir: Directory to cache downloaded files
+            cache_dir: Directory to cache downloaded files (REQUIRED)
             console: Rich console instance for display (creates new if None)
+
+        Raises:
+            ValueError: If cache_dir is not provided
         """
-        self.cache_dir = Path(cache_dir or settings.GEO_CACHE_DIR)
+        if cache_dir is None:
+            raise ValueError(
+                "cache_dir is required. Pass workspace_path/cache/geo from DataManagerV2. "
+                "Example: GEODownloadManager(cache_dir=data_manager.cache_dir / 'geo')"
+            )
+        self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.session = requests.Session()
         self.session.headers.update(

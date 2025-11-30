@@ -55,12 +55,6 @@ class Settings:
 
         # Base directories
         self.BASE_DIR = Path(__file__).resolve().parent.parent
-        self.CACHE_DIR = os.environ.get(
-            "LOBSTER_CACHE_DIR", str(self.BASE_DIR / "data" / "cache")
-        )
-
-        # Create cache directory if it doesn't exist
-        Path(self.CACHE_DIR).mkdir(parents=True, exist_ok=True)
 
         # API keys
         self.OPENAI_API_KEY = os.environ.get(
@@ -93,10 +87,6 @@ class Settings:
         self.DEFAULT_CLUSTER_RESOLUTION = float(
             os.environ.get("LOBSTER_CLUSTER_RESOLUTION", "0.5")
         )
-
-        # GEO database settings
-        self.GEO_CACHE_DIR = os.path.join(self.CACHE_DIR, "geo")
-        Path(self.GEO_CACHE_DIR).mkdir(parents=True, exist_ok=True)
 
         # SSL/HTTPS settings
         self.SSL_VERIFY = os.environ.get("LOBSTER_SSL_VERIFY", "true").lower() == "true"

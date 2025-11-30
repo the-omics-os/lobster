@@ -40,14 +40,22 @@ class TenXGenomicsLoader:
 
     def __init__(self, geo_downloader, cache_dir: Path = None):
         """
-        Initialize 10X loader.
+        Initialize 10X loader with workspace-aware caching.
 
         Args:
             geo_downloader: GEODownloadManager instance for file downloads
-            cache_dir: Optional cache directory (uses temp if not provided)
+            cache_dir: Cache directory for extracted archives (REQUIRED)
+
+        Raises:
+            ValueError: If cache_dir is not provided
         """
+        if cache_dir is None:
+            raise ValueError(
+                "cache_dir is required. Pass workspace-relative path from DataManagerV2. "
+                "Example: TenXGenomicsLoader(downloader, cache_dir=data_manager.cache_dir / 'extracted_archives')"
+            )
         self.geo_downloader = geo_downloader
-        self.cache_dir = cache_dir or Path(tempfile.gettempdir())
+        self.cache_dir = Path(cache_dir)
 
         logger.debug("TenXGenomicsLoader initialized")
 

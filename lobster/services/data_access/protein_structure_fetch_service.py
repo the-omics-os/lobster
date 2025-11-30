@@ -85,9 +85,14 @@ class ProteinStructureFetchService:
             # Initialize PDB provider
             provider = PDBProvider(data_manager=data_manager)
 
-            # Set cache directory
+            # Set cache directory from data_manager workspace
             if cache_dir is None:
-                cache_dir = Path.cwd() / "protein_structures"
+                if data_manager is None:
+                    raise ProteinStructureFetchError(
+                        "Either cache_dir or data_manager must be provided. "
+                        "Example: fetch_structure(pdb_id, data_manager=data_manager)"
+                    )
+                cache_dir = data_manager.cache_dir / "protein_structures"
             cache_dir = Path(cache_dir)
             cache_dir.mkdir(parents=True, exist_ok=True)
 

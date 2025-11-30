@@ -99,17 +99,10 @@ def protein_structure_visualization_expert(
         try:
             logger.info(f"Fetching structure {pdb_id} (format: {format})")
 
-            # Determine cache directory (workspace or current directory)
-            if data_manager.workspace_path:
-                cache_dir = Path(data_manager.workspace_path) / "protein_structures"
-            else:
-                cache_dir = Path.cwd() / "protein_structures"
-
-            # Fetch structure
+            # Fetch structure (service handles cache_dir from data_manager)
             structure_data, stats, ir = fetch_service.fetch_structure(
                 pdb_id=pdb_id,
                 format=format,
-                cache_dir=cache_dir,
                 extract_metadata=True,
                 data_manager=data_manager,
             )

@@ -3618,7 +3618,8 @@ when they are started by agents or analysis workflows.
             console_manager.print(tree_panel)
 
             # Also show workspace tree if it exists
-            workspace_path = Path(".lobster_workspace")
+            from lobster.core.workspace import resolve_workspace
+            workspace_path = resolve_workspace(explicit_path=workspace, create=False)
             if workspace_path.exists():
                 console_manager.print()  # Add spacing
                 workspace_tree = create_workspace_tree(workspace_path)

@@ -123,22 +123,29 @@ class DoclingService:
 
     def __init__(
         self,
+        data_manager: DataManagerV2,
         cache_dir: Optional[Path] = None,
-        data_manager: Optional[DataManagerV2] = None,
     ):
         """
-        Initialize DoclingService with optional caching and provenance.
+        Initialize DoclingService with workspace-aware caching and provenance.
 
         Args:
-            cache_dir: Cache directory for parsed documents
-                      (default: .lobster_workspace/literature_cache/parsed_docs)
-            data_manager: Optional DataManagerV2 for provenance logging
+            data_manager: DataManagerV2 instance for workspace context (REQUIRED)
+            cache_dir: Optional cache directory override (default: workspace/cache/literature_cache/parsed_docs)
+
+        Raises:
+            ValueError: If data_manager is not provided
         """
+        if data_manager is None:
+            raise ValueError(
+                "data_manager is required. Pass DataManagerV2 instance to access workspace paths. "
+                "Example: DoclingService(data_manager=data_manager)"
+            )
         self.data_manager = data_manager
 
-        # Setup cache directory
+        # Setup cache directory from workspace
         if cache_dir is None:
-            cache_dir = Path(".lobster_workspace") / "literature_cache" / "parsed_docs"
+            cache_dir = data_manager.cache_dir / "literature_cache" / "parsed_docs"
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 

@@ -139,8 +139,8 @@ class GEOProvider(BasePublicationProvider):
 
         self.query_builder = GEOQueryBuilder()
 
-        # Initialize cache directory for GEOparse
-        self.cache_dir = Path(settings.GEO_CACHE_DIR)
+        # Initialize cache directory from workspace
+        self.cache_dir = self.data_manager.cache_dir / "geo"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize XML parser

@@ -43,24 +43,33 @@ class BulkRNASeqService:
     and differential expression analysis of bulk RNA-seq data.
     """
 
-    def __init__(self, results_dir: Optional[Path] = None):
+    def __init__(
+        self, data_manager=None, results_dir: Optional[Path] = None
+    ):
         """
-        Initialize the bulk RNA-seq service.
+        Initialize the bulk RNA-seq service with workspace-aware results storage.
 
         Args:
+            data_manager: Optional DataManagerV2 instance for workspace context (REQUIRED if results_dir not provided)
             results_dir: Optional directory for storing analysis results
+
+        Raises:
+            ValueError: If neither results_dir nor data_manager is provided
         """
         logger.debug("Initializing stateless BulkRNASeqService")
 
-        # Set up results directory
+        # Set up results directory from workspace
         if results_dir is None:
-            data_dir = Path("data")
-            data_dir.mkdir(exist_ok=True)
-            self.results_dir = data_dir / "bulk_results"
+            if data_manager is None:
+                raise ValueError(
+                    "Either results_dir or data_manager is required. "
+                    "Example: BulkRNASeqService(data_manager=data_manager)"
+                )
+            self.results_dir = data_manager.workspace_path / "bulk_results"
         else:
             self.results_dir = Path(results_dir)
 
-        self.results_dir.mkdir(exist_ok=True)
+        self.results_dir.mkdir(exist_ok=True, parents=True)
 
         # Initialize formula service
         self.formula_service = DifferentialFormulaService()
