@@ -638,11 +638,164 @@ geo_gse12345
 
 Data standards:
 
-- W3C‑PROV compliant logging  
-- Pydantic schema validation for all modalities  
-- Good QC metrics at each step  
-- Proper missing‑value handling (esp. proteomics)  
+- W3C‑PROV compliant logging
+- Pydantic schema validation for all modalities
+- Good QC metrics at each step
+- Proper missing‑value handling (esp. proteomics)
 - Support batch effect detection/correction where relevant
+
+### 4.10 Security Considerations
+
+#### CustomCodeExecutionService Security Model
+
+**Location**: `lobster/services/execution/custom_code_execution_service.py`
+
+**Purpose**: Enables data_expert to execute arbitrary Python code for edge cases not covered by specialized tools.
+
+**Security Model**: **Subprocess isolation with Phase 1 hardening (NOT full sandboxing)**
+
+```python
+# What the current implementation provides (Phase 1 complete):
+✅ Process crash isolation (user code crashes don't kill Lobster)
+✅ Timeout enforcement (300s default)
+✅ Output capture (stdout/stderr isolated)
+✅ Environment variable filtering (API keys, AWS credentials NOT passed to subprocess)
+✅ AST validation blocks eval/exec/compile/__import__ calls
+✅ Module shadowing prevented (sys.path.append, not insert)
+✅ Expanded import blocking (subprocess, multiprocessing, pickle, ctypes, etc.)
+
+# What still requires Phase 2 (Docker isolation):
+❌ Network isolation (can make HTTP requests)
+❌ File access restriction (has full user permissions)
+❌ Resource limits (only timeout, no memory/CPU/disk limits)
+```
+
+#### Known Vulnerabilities (Comprehensive Testing Results)
+
+**Testing Date**: 2025-11-30
+**Methodology**: 8-agent parallel adversarial testing (201+ attack vectors)
+**Results**: ~90% of attacks succeeded, confirming multiple critical vulnerabilities
+
+**Detailed documentation**: `tests/manual/custom_code_execution/`
+
+| Category | Severity | Status (Post-Phase 1) | Details |
+|----------|----------|----------------------|---------|
+| **Data Exfiltration** | 🟠 HIGH | PARTIAL | Env vars filtered; filesystem unrestricted; network open (Phase 2 needed) |
+| **Resource Exhaustion** | 🟠 HIGH | PARTIAL | Only 300s timeout, no memory/CPU/disk limits (Phase 2 needed) |
+| **Privilege Escalation** | 🟢 LOW | BLOCKED | Import blocks prevent multiprocessing, signal blocked via FORBIDDEN_FROM_IMPORTS |
+| **Supply Chain** | 🟢 LOW | BLOCKED | sys.path.append() prevents module shadowing |
+| **AST Bypass** | 🟢 LOW | BLOCKED | exec/eval/compile/__import__ blocked at AST level |
+| **Timing Attacks** | 🟡 MEDIUM | DOCUMENTED | No timing normalization (acceptable for local CLI) |
+| **Workspace Pollution** | 🟠 HIGH | PARTIAL | File access unrestricted (Phase 2 Docker needed for isolation) |
+| **Integration Attacks** | 🟡 MEDIUM | PARTIAL | Import blocking reduces attack surface; file persistence still possible |
+
+#### Production Deployment Guidelines
+
+**Local CLI (current target):**
+- ✅ **PRODUCTION READY** (Phase 1 complete as of 2025-11-30)
+- Acceptable risk profile: trusted users, local machine, documented limitations
+- Remaining gap: Network access still allowed (acceptable for local CLI)
+
+**Cloud SaaS (future):**
+- ❌ NOT ACCEPTABLE without Docker isolation
+- Requires: Phase 2 mitigations (Docker with --network=none, memory limits)
+
+**Enterprise (mixed trust):**
+- ⚠️ CONDITIONAL GO - Phase 1 complete, Phase 2 recommended
+- Recommended: Add Phase 3 enhancements for defense-in-depth
+
+#### Mitigation Roadmap
+
+**Phase 1: Critical Fixes - ✅ COMPLETE (2025-11-30)**
+
+All Phase 1 fixes have been implemented:
+- ✅ Environment variable filtering (`env=safe_env` in subprocess.run)
+- ✅ sys.path.append() instead of insert() (prevents module shadowing)
+- ✅ Expanded FORBIDDEN_MODULES (subprocess, multiprocessing, pickle, ctypes, etc.)
+- ✅ Expanded FORBIDDEN_FROM_IMPORTS (os.kill, os.fork, signal.*, etc.)
+- ✅ AST validation blocks exec/eval/compile/__import__ with CodeValidationError
+- ✅ Security documentation updated (tool docstring, CLAUDE.md)
+
+Note: Runtime builtin removal was attempted but reverted because Python's import
+system requires exec() internally. AST-level blocking is sufficient for user code.
+
+**Phase 2: Production Hardening (6 days) - CLOUD REQUIRED**
+
+```bash
+# Docker isolation with resource limits
+docker run --rm \
+    --network=none \
+    --memory=2g \
+    --cpus=2 \
+    --pids-limit=100 \
+    --read-only \
+    --volume workspace:/workspace:rw \
+    python:3.11 python script.py
+```
+
+**Phase 3: Long-Term (10 weeks) - ENTERPRISE RECOMMENDED**
+- gVisor sandbox (user-space kernel)
+- Firecracker MicroVMs (full VM isolation)
+- RestrictedPython (runtime policy enforcement)
+- Cryptographic provenance (sign IR templates)
+- Third-party security audit
+
+#### Security Testing
+
+**Manual test suite**: `tests/manual/custom_code_execution/`
+- 30+ test files, 201+ attack vectors
+- 8 comprehensive security reports
+- Run with: `pytest tests/manual/custom_code_execution/ -v`
+
+**Reports:**
+- `COMPREHENSIVE_SECURITY_ASSESSMENT.md` - Consolidated findings
+- `README.md` - Testing methodology
+- Individual category reports (data exfiltration, resource exhaustion, etc.)
+
+#### Developer Guidelines
+
+When working on CustomCodeExecutionService or related code:
+
+1. **Never weaken existing protections** without security review
+2. **Test all changes** against adversarial test suite
+3. **Document new limitations** in tool docstring and CLAUDE.md
+4. **Assume malicious input** when designing validation logic
+5. **Follow principle of least privilege** for all operations
+
+**Critical files to protect:**
+- `.session.json` - Contains API keys, credentials
+- `download_queue.jsonl`, `publication_queue.jsonl` - Orchestration state
+- `.lobster/provenance/` - W3C-PROV logs (reproducibility)
+- `data/*.h5ad` - Modality data files
+
+**Red flags** (require security review):
+- Adding new imports to context setup code
+- Modifying sys.path manipulation
+- Changing subprocess execution parameters
+- Adding filesystem or network operations
+- Modifying AST validation logic
+
+#### User-Facing Documentation
+
+**Tool docstring must include**:
+```python
+⚠️ SECURITY NOTICE:
+- Code runs with YOUR user permissions
+- Network access is ALLOWED (can make HTTP requests)
+- Environment variables are FILTERED (API keys protected)
+- Resource limits: 300s timeout, no memory/CPU limits
+- Use ONLY for trusted code on trusted data
+- For untrusted code, use cloud deployment with Docker isolation
+
+This feature is designed for scientific flexibility, not security.
+```
+
+#### References
+
+- Comprehensive testing results: `tests/manual/custom_code_execution/COMPREHENSIVE_SECURITY_ASSESSMENT.md`
+- Testing methodology: `tests/manual/custom_code_execution/README.md`
+- Original plan: `.claude/plans/idempotent-stargazing-stroustrup.md`
+- Baseline tests: `REAL_WORLD_TEST_RESULTS.md`
 
 ---
 

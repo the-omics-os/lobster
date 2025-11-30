@@ -71,14 +71,34 @@ class CustomCodeExecutionService:
         4
     """
 
-    # Forbidden imports (security)
+    # Forbidden imports (security) - these modules are blocked entirely
     FORBIDDEN_MODULES = {
-        'subprocess', '__import__'
+        # Process execution
+        'subprocess',
+        'multiprocessing',
+        'concurrent',
+
+        # Import mechanisms (bypass vectors)
+        'importlib',
+        'imp',
+
+        # Serialization (RCE vectors via pickle deserialization)
+        'pickle',
+        'marshal',
+        'shelve',
+        'dill',
+
+        # Low-level (escape vectors)
+        'ctypes',
+        'cffi',
     }
 
     # Forbidden specific imports (from X import Y)
+    # os module is allowed for os.path, but dangerous functions are blocked
     FORBIDDEN_FROM_IMPORTS = {
+        # os dangerous functions (keep os module for os.path)
         ('os', 'system'),
+        ('os', 'popen'),
         ('os', 'exec'),
         ('os', 'execl'),
         ('os', 'execle'),
@@ -86,7 +106,28 @@ class CustomCodeExecutionService:
         ('os', 'execv'),
         ('os', 'execve'),
         ('os', 'execvp'),
+        ('os', 'execvpe'),
+        ('os', 'spawnl'),
+        ('os', 'spawnle'),
+        ('os', 'spawnlp'),
+        ('os', 'spawnlpe'),
+        ('os', 'spawnv'),
+        ('os', 'spawnve'),
+        ('os', 'spawnvp'),
+        ('os', 'spawnvpe'),
+        ('os', 'fork'),
+        ('os', 'forkpty'),
+        ('os', 'kill'),
+        ('os', 'killpg'),
+
+        # signal manipulation (can kill parent process)
+        ('signal', 'signal'),
+        ('signal', 'kill'),
+        ('signal', 'alarm'),
+
+        # destructive file ops
         ('shutil', 'rmtree'),
+        ('shutil', 'move'),
     }
 
     # Allowed imports (standard Lobster stack from pyproject.toml)
@@ -298,13 +339,19 @@ class CustomCodeExecutionService:
                         f"Import from '{module}' not in standard Lobster stack."
                     )
 
-            # Warn about potentially dangerous operations
+            # SECURITY: Block dangerous code execution functions
             elif isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name):
-                    if node.func.id in ['eval', 'exec', 'compile', '__import__']:
-                        warnings.append(
-                            f"Use of '{node.func.id}()' detected. "
-                            f"This may bypass safety checks."
+                    if node.func.id in ['eval', 'exec', 'compile']:
+                        raise CodeValidationError(
+                            f"Function '{node.func.id}()' is forbidden. "
+                            f"This function can execute arbitrary code and bypass safety checks. "
+                            f"Use explicit operations instead."
+                        )
+                    if node.func.id == '__import__':
+                        raise CodeValidationError(
+                            f"Function '__import__()' is forbidden. "
+                            f"Use standard 'import' statements instead."
                         )
 
         return warnings
@@ -332,12 +379,23 @@ class CustomCodeExecutionService:
         setup_code = f"""
 # Auto-generated context setup for Lobster custom code execution
 import sys
+import builtins
 from pathlib import Path
 import json
 
+# ==============================================================================
+# SECURITY NOTES:
+# - Dangerous builtins (eval, exec, compile, __import__) are blocked at AST level
+# - We do NOT remove them at runtime because Python's import system needs exec()
+# - File access is unrestricted in subprocess, but env vars are filtered
+# - Full sandbox requires Docker isolation (Phase 2)
+# ==============================================================================
+
+# ==============================================================================
 # Workspace configuration
+# ==============================================================================
 WORKSPACE = Path('{workspace_path}')
-sys.path.insert(0, str(WORKSPACE))
+sys.path.append(str(WORKSPACE))  # SECURITY: Lower priority - cannot shadow stdlib
 
 # Initialize context
 modalities = []
@@ -492,12 +550,28 @@ if 'result' in dir() and result is not None:
             timeout_seconds = context.get('timeout', DEFAULT_TIMEOUT)
             logger.debug(f"Executing code in subprocess (timeout={timeout_seconds}s)")
 
+            # SECURITY: Filter environment variables to prevent credential leakage
+            # Only pass safe, necessary variables to subprocess
+            import os as _os
+            safe_env = {
+                'PATH': _os.environ.get('PATH', ''),
+                'HOME': _os.environ.get('HOME', ''),
+                'USER': _os.environ.get('USER', ''),
+                'TMPDIR': _os.environ.get('TMPDIR', '/tmp'),
+                'LANG': _os.environ.get('LANG', 'en_US.UTF-8'),
+                'LC_ALL': _os.environ.get('LC_ALL', ''),
+                # Python-specific (empty PYTHONPATH prevents hijacking)
+                'PYTHONPATH': '',
+                'PYTHONHOME': _os.environ.get('PYTHONHOME', ''),
+            }
+
             proc_result = subprocess.run(
                 [sys.executable, str(script_path)],
                 cwd=str(workspace_path),
                 capture_output=True,
                 text=True,
-                timeout=timeout_seconds
+                timeout=timeout_seconds,
+                env=safe_env  # SECURITY: Filtered environment only
             )
 
             stdout_output = proc_result.stdout

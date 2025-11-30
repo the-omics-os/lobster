@@ -1138,17 +1138,33 @@ To save, run again with save_to_file=True"""
         **Use this tool ONLY when existing specialized tools don't cover your specific need.**
         This tool provides a fallback for edge cases and custom calculations.
 
-        SAFETY NOTICE:
-        - Code runs with high trust (Jupyter-like execution)
-        - Restricted to standard Lobster packages (scanpy, pandas, numpy, plotly, etc.)
-        - Forbidden: subprocess, os.system, destructive file operations
-        - Use persist=True only for important operations you want in notebook export
+        ============================================================================
+        SECURITY NOTICE
+        ============================================================================
+
+        Code runs in a subprocess with the following security model:
+
+        PROTECTED:
+        - Environment variables are FILTERED (API keys, AWS credentials NOT accessible)
+        - AST validation blocks eval/exec/compile/__import__ calls
+        - Dangerous modules blocked (subprocess, multiprocessing, pickle, ctypes, etc.)
+        - Module shadowing prevented (workspace cannot override stdlib)
+        - 300-second timeout enforced
+
+        NOT PROTECTED (local CLI limitations):
+        - Network access is ALLOWED (can make HTTP requests)
+        - File access: Code has YOUR user permissions (can read/write any file)
+        - Resource limits: No memory/CPU limits beyond timeout
+
+        For untrusted code or multi-tenant deployments, use cloud deployment
+        with Docker isolation (--network=none, memory limits, read-only mounts).
+
+        This feature prioritizes scientific flexibility over strict sandboxing.
+        ============================================================================
 
         AVAILABLE IN NAMESPACE:
-        - data_manager: DataManagerV2 instance
         - workspace_path: Path to workspace directory
         - adata: Loaded modality (if modality_name provided)
-        - modalities: List of all available modality names
         - Auto-loaded CSV files (as pandas DataFrames)
         - Auto-loaded JSON files (as Python dicts)
         - download_queue, publication_queue (if exist)
