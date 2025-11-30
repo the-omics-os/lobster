@@ -311,6 +311,7 @@ Stateless analysis services provide the computational backbone:
 - **ContentAccessService** - Unified literature access with 5 providers (Phase 2 complete)
 - **VisualizationService** - Interactive plot generation
 - **ConcatenationService** - Memory-efficient sample merging
+- **ProtocolExtractionService** - Extracts 16S microbiome technical protocol details from publication methods sections (primers, V-region, PCR conditions, sequencing parameters, reference databases, bioinformatics pipelines). Integrated with PMCProvider for automatic protocol extraction during full-text retrieval.
 
 ### 3. Data Management Layer
 
@@ -389,7 +390,7 @@ The system orchestrates access through 5 registered providers with capability-ba
 | **AbstractProvider** | 10 (high) | GET_ABSTRACT | 200-500ms | All PubMed |
 | **PubMedProvider** | 10 (high) | SEARCH_LITERATURE, FIND_LINKED_DATASETS, EXTRACT_METADATA | 1-3s | PubMed indexed |
 | **GEOProvider** | 10 (high) | DISCOVER_DATASETS, EXTRACT_METADATA, VALIDATE_METADATA | 2-5s | All GEO/SRA |
-| **PMCProvider** | 10 (high) | GET_FULL_CONTENT (PMC XML API, 10x faster than HTML scraping) | 500ms-2s | 30-40% biomedical lit |
+| **PMCProvider** | 10 (high) | GET_FULL_CONTENT (PMC XML API, 10x faster than HTML scraping), protocol extraction via ProtocolExtractionService | 500ms-2s | 30-40% biomedical lit |
 | **WebpageProvider** | 50 (low) | GET_FULL_CONTENT (webpage + PDF via DoclingService composition) | 2-8s | Major publishers + PDFs |
 
 **Key Design Features:**
@@ -465,6 +466,81 @@ Providers declare capabilities via `ProviderCapability` enum, enabling automatic
 # 4. Tries PMCProvider first (fast path)
 # 5. On PMCNotAvailableError, automatically falls back to WebpageProvider
 # 6. Caches result in DataManager for future requests
+```
+
+#### Protocol Extraction (16S Microbiome)
+
+The `ProtocolExtractionService` (`lobster/services/metadata/protocol_extraction_service.py`) automatically extracts technical protocol details from publication methods sections during full-text retrieval. This is integrated into PMCProvider's `_extract_parameters()` method.
+
+**Extracted Fields:**
+
+| Category | Fields | Examples |
+|----------|--------|----------|
+| **Primers** | Forward primer, reverse primer, sequences | 515F, 806R, 27F, 1492R (12 known primers) |
+| **V-Region** | Target region | V3-V4, V4, V1-V2, V1-V9 |
+| **PCR Conditions** | Annealing temperature, cycles | 55C, 30 cycles |
+| **Sequencing** | Platform, read length, paired-end | Illumina MiSeq, 250bp, 2x250bp |
+| **Reference Database** | Database name, version | SILVA v138, Greengenes, RDP, GTDB, UNITE |
+| **Pipeline** | Software, version | QIIME2, DADA2, mothur, USEARCH, VSEARCH |
+| **Clustering** | Method, threshold | ASV, OTU (97%), zOTU |
+
+**Usage Pattern:**
+```python
+from lobster.services.metadata.protocol_extraction_service import (
+    ProtocolExtractionService,
+    ProtocolDetails,
+)
+
+service = ProtocolExtractionService()
+text = """
+    The V3-V4 region of 16S rRNA gene was amplified using
+    primers 515F (GTGCCAGCMGCCGCGGTAA) and 806R. PCR was
+    performed for 30 cycles with annealing at 55C.
+    Sequencing was done on Illumina MiSeq (2x250 bp).
+    Sequences were processed using DADA2 with SILVA v138.
+"""
+details, result = service.extract_protocol(text, source="methods")
+
+# Access extracted fields
+print(details.v_region)           # "V3-V4"
+print(details.forward_primer)     # "515F"
+print(details.pcr_cycles)         # 30
+print(details.platform)           # "Illumina MiSeq"
+print(details.pipeline)           # "DADA2"
+print(details.reference_database) # "SILVA"
+print(details.confidence)         # 0.58 (7/12 fields extracted)
+```
+
+**Performance Characteristics:**
+
+| Metric | Value |
+|--------|-------|
+| Extraction Time | <50ms per publication |
+| Confidence Score | 0.0-1.0 (fields extracted / 12 total) |
+| Known Primers | 12 standard primers (515F, 806R, 27F, 1492R, etc.) |
+| Supported Platforms | 8 (MiSeq, HiSeq, NovaSeq, NextSeq, Ion Torrent, PacBio, Nanopore, 454) |
+| Supported Databases | 6 (SILVA, Greengenes, RDP, GTDB, NCBI 16S, UNITE) |
+| Supported Pipelines | 9 (QIIME2, DADA2, mothur, USEARCH, VSEARCH, Deblur, PICRUSt, LEfSe, phyloseq) |
+
+**Integration with PMCProvider:**
+
+When PMCProvider extracts full text, it automatically invokes ProtocolExtractionService on the methods section:
+
+```python
+# In PMCProvider._extract_parameters()
+service = ProtocolExtractionService()
+details, result = service.extract_protocol(methods_text, source="pmc")
+
+# Returned in PublicationContent.parameters dict
+parameters = {
+    "v_region": details.v_region,
+    "forward_primer": details.forward_primer,
+    "reverse_primer": details.reverse_primer,
+    "platform": details.platform,
+    "pipeline": details.pipeline,
+    "reference_database": details.reference_database,
+    # ... additional fields
+}
 ```
 
 ### Agent Architecture (Phase 3-4)
