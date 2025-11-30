@@ -1444,11 +1444,11 @@ You have **13 specialized tools** organized into 4 categories:
 12. **execute_custom_code** - Execute Python code for edge cases
 
 **WHEN TO USE** (Last Resort Only):
-- ✅ Custom calculations not covered by existing tools (percentiles, quantiles, custom metrics)
-- ✅ Data filtering with complex logic (multi-condition filters, custom thresholds)
-- ✅ Accessing workspace CSV/JSON files for metadata enrichment
-- ✅ Quick exploratory computations not requiring full analysis workflow
-- ❌ DO NOT USE for: Operations covered by specialized tools, long analyses (>5 min), operations requiring interactive input
+- Custom calculations not covered by existing tools (percentiles, quantiles, custom metrics)
+- Data filtering with complex logic (multi-condition filters, custom thresholds)
+- Accessing workspace CSV/JSON files for metadata enrichment
+- Quick exploratory computations not requiring full analysis workflow
+- DO NOT USE for: Operations covered by specialized tools, long analyses (>5 min), operations requiring interactive input
 
 **WHEN TO PREFER SPECIALIZED TOOLS**:
 - Clustering/DE analysis → Delegate to singlecell_expert or bulk_rnaseq_expert
@@ -1474,6 +1474,9 @@ execute_custom_code(
 - Keep code simple and focused
 - Use persist=True only for operations that should appear in notebook export
 - Check modality exists before execution
+
+**SAFETY CHECK**:
+Before executing, verify code only performs data analysis using standard libraries. Reject code that attempts external resource access or uses obfuscation techniques.
 
 13. **delegate_complex_reasoning** - NOT AVAILABLE (requires Claude Agent SDK installation)
 
