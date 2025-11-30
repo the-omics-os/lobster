@@ -1255,79 +1255,79 @@ To save, run again with save_to_file=True"""
             logger.error(f"Unexpected error in execute_custom_code: {e}")
             return f"❌ Unexpected error: {str(e)}"
 
-    @tool
-    def delegate_complex_reasoning( #TODO DEACTIVATED FOR NOW
-        task: str,
-        context: Optional[str] = None,
-        persist: bool = False
-    ) -> str:
-        """
-        Delegate complex multi-step reasoning to Claude Agent SDK sub-agent.
+    # @tool
+    # def delegate_complex_reasoning( #TODO DEACTIVATED FOR NOW
+    #     task: str,
+    #     context: Optional[str] = None,
+    #     persist: bool = False
+    # ) -> str:
+    #     """
+    #     Delegate complex multi-step reasoning to Claude Agent SDK sub-agent.
 
-        **Use this tool when you need:**
-        - Multi-step analysis planning
-        - Complex troubleshooting ("Why does my data look wrong?")
-        - Integration strategy recommendations
-        - Experimental design reasoning
+    #     **Use this tool when you need:**
+    #     - Multi-step analysis planning
+    #     - Complex troubleshooting ("Why does my data look wrong?")
+    #     - Integration strategy recommendations
+    #     - Experimental design reasoning
 
-        The sub-agent has READ-ONLY access to:
-        - List available modalities
-        - Inspect modality details (shape, columns, quality metrics)
-        - List workspace files
+    #     The sub-agent has READ-ONLY access to:
+    #     - List available modalities
+    #     - Inspect modality details (shape, columns, quality metrics)
+    #     - List workspace files
 
-        Args:
-            task: Clear description of the reasoning task
-            context: Optional additional context about the situation
-            persist: If True, save reasoning to provenance/notebook export
+    #     Args:
+    #         task: Clear description of the reasoning task
+    #         context: Optional additional context about the situation
+    #         persist: If True, save reasoning to provenance/notebook export
 
-        Returns:
-            Formatted reasoning result from SDK sub-agent
+    #     Returns:
+    #         Formatted reasoning result from SDK sub-agent
 
-        Example:
-            >>> delegate_complex_reasoning(
-            ...     task="Why do I have 15 clusters when the paper reports 7?",
-            ...     context="Dataset: geo_gse12345 with 5000 cells, paper had 3000 cells",
-            ...     persist=False
-            ... )
-        """
-        if not sdk_available:
-            return "❌ SDK delegation not available. Claude Agent SDK is not installed or not accessible."
+    #     Example:
+    #         >>> delegate_complex_reasoning(
+    #         ...     task="Why do I have 15 clusters when the paper reports 7?",
+    #         ...     context="Dataset: geo_gse12345 with 5000 cells, paper had 3000 cells",
+    #         ...     persist=False
+    #         ... )
+    #     """
+    #     if not sdk_available:
+    #         return "❌ SDK delegation not available. Claude Agent SDK is not installed or not accessible."
 
-        try:
-            reasoning_result, stats, ir = sdk_delegation_service.delegate(
-                task=task,
-                context=context,
-                persist=persist,
-                description=f"SDK Reasoning: {task[:100]}"
-            )
+    #     try:
+    #         reasoning_result, stats, ir = sdk_delegation_service.delegate(
+    #             task=task,
+    #             context=context,
+    #             persist=persist,
+    #             description=f"SDK Reasoning: {task[:100]}"
+    #         )
 
-            # Log to data manager
-            data_manager.log_tool_usage(
-                tool_name="delegate_complex_reasoning",
-                parameters={'task': task[:200], 'persist': persist},
-                description=f"SDK delegation: {task[:100]}",
-                ir=ir
-            )
+    #         # Log to data manager
+    #         data_manager.log_tool_usage(
+    #             tool_name="delegate_complex_reasoning",
+    #             parameters={'task': task[:200], 'persist': persist},
+    #             description=f"SDK delegation: {task[:100]}",
+    #             ir=ir
+    #         )
 
-            # Format response
-            response = f"## SDK Reasoning Result\n\n"
-            response += f"**Task**: {task}\n\n"
-            response += f"**Reasoning**:\n{reasoning_result}\n\n"
+    #         # Format response
+    #         response = f"## SDK Reasoning Result\n\n"
+    #         response += f"**Task**: {task}\n\n"
+    #         response += f"**Reasoning**:\n{reasoning_result}\n\n"
 
-            if persist:
-                response += "\n📝 This reasoning was saved to provenance.\n"
-            else:
-                response += "\n💨 This reasoning was ephemeral (not saved).\n"
+    #         if persist:
+    #             response += "\n📝 This reasoning was saved to provenance.\n"
+    #         else:
+    #             response += "\n💨 This reasoning was ephemeral (not saved).\n"
 
-            return response
+    #         return response
 
-        except SDKDelegationError as e:
-            logger.error(f"SDK delegation failed: {e}")
-            return f"❌ SDK delegation failed: {str(e)}"
+    #     except SDKDelegationError as e:
+    #         logger.error(f"SDK delegation failed: {e}")
+    #         return f"❌ SDK delegation failed: {str(e)}"
 
-        except Exception as e:
-            logger.error(f"Unexpected error in delegate_complex_reasoning: {e}")
-            return f"❌ Unexpected error: {str(e)}"
+    #     except Exception as e:
+    #         logger.error(f"Unexpected error in delegate_complex_reasoning: {e}")
+    #         return f"❌ Unexpected error: {str(e)}"
 
     base_tools = [
         # CORE (4 tools)
@@ -1393,9 +1393,9 @@ Professional, structured markdown with clear sections. Report download status, m
    ```
 
 3. **Modality Naming Conventions**:
-   - GEO datasets: `geo_{gse_id}_transcriptomics_{type}` (automatic)
+   - GEO datasets: `geo_{{gse_id}}_transcriptomics_{{type}}` (automatic)
    - Custom data: Descriptive names (`patient_liver_proteomics`)
-   - Processed data: `{base}_{operation}` (`geo_gse12345_clustered`)
+   - Processed data: `{{base}}_{{operation}}` (`geo_gse12345_clustered`)
    - Avoid: "data", "test", "temp"
 
 4. **Error Handling**:
@@ -1479,7 +1479,7 @@ list_available_modalities()
 
 # 2. Execute code (converts numpy types to JSON-serializable)
 execute_custom_code(
-    python_code="import numpy as np; result = {'metric': float(np.mean(adata.X))}",
+    python_code="import numpy as np; result = {{'metric': float(np.mean(adata.X))}}",
     modality_name="geo_gse12345",
     persist=False  # True only for important operations
 )
@@ -1506,7 +1506,7 @@ User asks for download
 → Check queue: get_queue_status(dataset_id_filter="GSE...")
    ├─ PENDING entry exists → execute_download_from_queue(entry_id)
    ├─ FAILED entry exists → retry_failed_download(entry_id, strategy_override=...)
-   ├─ NO entry → handoff_to_research_agent("Validate {dataset_id} and add to queue")
+   ├─ NO entry → handoff_to_research_agent("Validate {{dataset_id}} and add to queue")
    └─ COMPLETED → Return existing modality name
 ```
 
