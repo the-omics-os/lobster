@@ -1,0 +1,35 @@
+# Transcriptomics Agent Module
+# Unified agent for single-cell and bulk RNA-seq analysis
+
+from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
+from lobster.agents.transcriptomics.annotation_expert import annotation_expert
+from lobster.agents.transcriptomics.de_analysis_expert import de_analysis_expert
+from lobster.agents.transcriptomics.shared_tools import (
+    create_shared_tools,
+    _detect_data_type,
+    _get_qc_defaults,
+)
+from lobster.agents.transcriptomics.deprecated import singlecell_alias, bulk_alias
+from lobster.agents.transcriptomics.state import (
+    TranscriptomicsExpertState,
+    AnnotationExpertState,
+    DEAnalysisExpertState,
+)
+
+__all__ = [
+    # Main agents
+    "transcriptomics_expert",
+    "annotation_expert",
+    "de_analysis_expert",
+    # Shared tools
+    "create_shared_tools",
+    "_detect_data_type",
+    "_get_qc_defaults",
+    # Deprecated aliases
+    "singlecell_alias",
+    "bulk_alias",
+    # State classes
+    "TranscriptomicsExpertState",
+    "AnnotationExpertState",
+    "DEAnalysisExpertState",
+]
