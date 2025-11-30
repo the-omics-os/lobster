@@ -657,6 +657,207 @@ print(stats)
 
 ---
 
+### Protocol Extraction Service (Modular Package)
+
+**Location**: `lobster/services/metadata/protocol_extraction/`
+
+**Introduced**: November 2024 (v2.5+) - Modular refactor for multi-omics extensibility
+
+Modular protocol extraction package for extracting technical protocol details from publication methods sections. Designed as a domain-based architecture supporting amplicon (16S/ITS), mass spectrometry, and RNA-seq protocols.
+
+#### Package Architecture
+
+```
+protocol_extraction/
+├── __init__.py              # Factory: get_protocol_service(domain)
+├── base.py                  # IProtocolExtractionService ABC, BaseProtocolDetails
+├── amplicon/                # 16S/ITS microbiome (FULLY IMPLEMENTED)
+│   ├── __init__.py
+│   ├── details.py           # AmpliconProtocolDetails dataclass
+│   ├── service.py           # AmpliconProtocolService
+│   └── resources/
+│       └── primers.json     # 15 primers with sequences, sources
+├── mass_spec/               # Proteomics (STUB - NotImplementedError)
+│   └── ...
+└── rnaseq/                  # Transcriptomics (STUB - NotImplementedError)
+    └── ...
+```
+
+#### Factory Pattern Usage
+
+```python
+from lobster.services.metadata.protocol_extraction import get_protocol_service
+
+# Get amplicon service (supports domain aliases)
+service = get_protocol_service("amplicon")  # Primary
+service = get_protocol_service("16s")       # Alias
+service = get_protocol_service("its")       # Alias
+service = get_protocol_service("metagenomics")  # Alias
+
+# Extract protocol from methods text
+text = """
+The V3-V4 region was amplified using primers 515F and 806R.
+PCR for 30 cycles at 55°C. Sequenced on MiSeq (2×250 bp).
+Processed with QIIME2/DADA2 using SILVA v138.
+"""
+details, result = service.extract_protocol(text, source="pmc")
+
+print(details.v_region)           # "V3-V4"
+print(details.forward_primer)     # "515F"
+print(details.reverse_primer)     # "806R"
+print(details.pcr_cycles)         # 30
+print(details.platform)           # "Illumina MiSeq"
+print(details.pipeline)           # "DADA2"
+print(details.reference_database) # "SILVA"
+print(details.confidence)         # 1.0 (100%)
+```
+
+#### Extracted Fields (AmpliconProtocolDetails)
+
+| Field | Type | Example | Source Pattern |
+|-------|------|---------|----------------|
+| `v_region` | str | "V3-V4" | "V3-V4 region", "V4 hypervariable" |
+| `forward_primer` | str | "515F" | Primer database (15 primers) |
+| `forward_primer_sequence` | str | "GTGCCAGCMGCCGCGGTAA" | DNA sequences 15-30 bp |
+| `reverse_primer` | str | "806R" | Primer database |
+| `reverse_primer_sequence` | str | "GGACTACHVGGGTWTCTAAT" | DNA sequences |
+| `annealing_temperature` | float | 55.0 | "annealing at 55°C" |
+| `pcr_cycles` | int | 30 | "30 cycles" |
+| `platform` | str | "Illumina MiSeq" | MiSeq, HiSeq, NovaSeq, etc. |
+| `read_length` | int | 250 | "250 bp", "2×250 bp" |
+| `paired_end` | bool | True | "paired-end", "PE" |
+| `reference_database` | str | "SILVA" | SILVA, Greengenes, RDP, GTDB, UNITE |
+| `database_version` | str | "v138" | Version patterns |
+| `pipeline` | str | "DADA2" | QIIME2, DADA2, mothur, USEARCH |
+| `pipeline_version` | str | "v2021.4" | Version patterns |
+| `clustering_method` | str | "ASV" | ASV, OTU, zOTU |
+| `clustering_threshold` | float | 97.0 | "97% similarity" |
+| `confidence` | float | 0.83 | 0-1.0 (extraction completeness) |
+
+#### Schema Alignment Methods
+
+The `AmpliconProtocolDetails` class provides methods for integrating with AnnData storage:
+
+##### to_schema_dict()
+
+Maps protocol fields to metagenomics schema-compatible field names for `adata.obs`:
+
+```python
+schema_dict = details.to_schema_dict()
+# {
+#   'forward_primer_name': '515F',
+#   'forward_primer_seq': 'GTGCCAGCMGCCGCGGTAA',
+#   'reverse_primer_name': '806R',
+#   'amplicon_region': 'V3-V4',
+#   'sequencing_platform': 'Illumina MiSeq',
+#   'primer_set': '515F-806R'
+# }
+```
+
+##### to_uns_dict()
+
+Creates comprehensive structure for `adata.uns["protocol_details"]`:
+
+```python
+uns_dict = details.to_uns_dict()
+# {
+#   'forward_primer': '515F',
+#   'forward_primer_sequence': 'GTGCCAGCMGCCGCGGTAA',
+#   'target_region': 'V3-V4',
+#   'amplicon_target': '16S rRNA V3-V4',
+#   'taxonomy_database': 'SILVA',
+#   'pipeline': 'DADA2',
+#   'pcr_conditions': {
+#       'annealing_temperature_celsius': 55.0,
+#       'pcr_cycles': 30
+#   },
+#   'extraction_confidence': 0.83
+# }
+```
+
+##### store_in_adata()
+
+Helper method for storing protocol details in AnnData:
+
+```python
+import anndata as ad
+import numpy as np
+
+# Create sample AnnData
+adata = ad.AnnData(np.random.rand(10, 5))
+
+# Store protocol details
+adata = service.store_in_adata(adata, details, store_in_obs=True)
+
+# Access stored data
+print(adata.uns["protocol_details"]["forward_primer"])  # '515F'
+print(adata.obs["amplicon_region"].iloc[0])             # 'V3-V4'
+```
+
+#### Integration with PMCProvider
+
+Protocol extraction is integrated with `PMCProvider._extract_parameters()`:
+
+```python
+from lobster.tools.providers.pmc_provider import PMCProvider
+
+provider = PMCProvider()
+full_text = provider.extract_full_text("PMID:35042229")
+
+# Parameters auto-extracted from methods section
+print(full_text.parameters)
+# {
+#   'v_region': 'V3-V4',
+#   'forward_primer': '515F',
+#   'forward_primer_sequence': 'GTGCCAGCMGCCGCGGTAA',
+#   'sequencing_platform': 'Illumina MiSeq',
+#   'bioinformatics_pipeline': 'DADA2',
+#   'reference_database': 'SILVA v138'
+# }
+```
+
+#### Primer Database
+
+**Location**: `lobster/services/metadata/protocol_extraction/amplicon/resources/primers.json`
+
+Contains 15 primers with metadata:
+
+| Primer | Direction | Region | Sequence |
+|--------|-----------|--------|----------|
+| 515F | forward | V4 | GTGCCAGCMGCCGCGGTAA |
+| 515F-Y | forward | V4 | GTGYCAGCMGCCGCGGTAA |
+| 806R | reverse | V4 | GGACTACHVGGGTWTCTAAT |
+| 806RB | reverse | V4 | GGACTACNVGGGTWTCTAAT |
+| 341F | forward | V3 | CCTACGGGNGGCWGCAG |
+| 785R | reverse | V4 | GACTACHVGGGTATCTAATCC |
+| 27F | forward | V1-V2 | AGAGTTTGATCMTGGCTCAG |
+| 1492R | reverse | V9 | TACGGYTACCTTGTTACGACTT |
+| ITS1F | forward | ITS1 | CTTGGTCATTTAGAGGAAGTAA |
+| ITS2 | reverse | ITS1 | GCTGCGTTCTTCATCGATGC |
+| ... | ... | ... | ... |
+
+**Critical Feature**: Primers sorted by length (descending) before regex compilation ensures specific variants (e.g., "515F-Y") match before generic names (e.g., "515F").
+
+#### Extensibility
+
+**Adding New Domains:**
+
+1. Create domain directory: `protocol_extraction/new_domain/`
+2. Implement `NewDomainProtocolDetails(BaseProtocolDetails)`
+3. Implement `NewDomainProtocolService(IProtocolExtractionService)`
+4. Register in `__init__.py` factory
+
+```python
+# In protocol_extraction/__init__.py
+if domain_lower in ("new_domain", "alias1", "alias2"):
+    from .new_domain.service import NewDomainProtocolService
+    service = NewDomainProtocolService()
+    _service_cache[domain_lower] = service
+    return service
+```
+
+---
+
 ### metadata_assistant.filter_samples_by Tool
 
 **Location**: `lobster/agents/metadata_assistant.py` (lines 695-890)
@@ -1476,10 +1677,18 @@ entry.harmonization_metadata = {
 **Core Components**:
 - `lobster/core/publication_queue.py` - Queue implementation (308 lines)
 - `lobster/core/schemas/publication_queue.py` - Schema definitions with HandoffStatus (450 lines)
-- `lobster/core/schemas/sra.py` - SRA sample validation schema (NEW, 330 lines)
+- `lobster/core/schemas/sra.py` - SRA sample validation schema (330 lines)
 - `lobster/services/metadata/microbiome_filtering_service.py` - 16S + host validation (545 lines)
 - `lobster/services/metadata/disease_standardization_service.py` - Disease mapping + sample type filter (414 lines)
 - `lobster/agents/metadata_assistant.py` - Queue processing tools with validation (lines 934-1380)
+
+**Protocol Extraction Package** (NEW v1.2.0):
+- `lobster/services/metadata/protocol_extraction/__init__.py` - Factory: `get_protocol_service(domain)`
+- `lobster/services/metadata/protocol_extraction/base.py` - ABC + BaseProtocolDetails
+- `lobster/services/metadata/protocol_extraction/amplicon/service.py` - AmpliconProtocolService (667 lines)
+- `lobster/services/metadata/protocol_extraction/amplicon/details.py` - AmpliconProtocolDetails dataclass (279 lines)
+- `lobster/services/metadata/protocol_extraction/amplicon/resources/primers.json` - 15 primers database
+- `lobster/tools/providers/pmc_provider.py` - PMC integration via `_extract_parameters()`
 
 **Test Files**:
 - `tests/unit/core/test_publication_queue.py` - Queue unit tests (48 tests)
@@ -1495,12 +1704,19 @@ entry.harmonization_metadata = {
 
 ---
 
-**Last Updated**: 2024-11-28
-**Version**: 1.1.0 (PREMIUM Feature - Now with SRA Validation)
+**Last Updated**: 2024-11-30
+**Version**: 1.2.0 (PREMIUM Feature - Protocol Extraction + SRA Validation)
 **Authors**: Lobster AI Development Team
 **Customer**: DataBioMix (IBD Microbiome Harmonization)
 
 **Changelog**:
+- **v1.2.0 (2024-11-30)**: Added modular Protocol Extraction Service
+  - Domain-based package architecture (amplicon, mass_spec, rnaseq)
+  - Factory pattern: `get_protocol_service("amplicon")`
+  - Schema alignment: `to_schema_dict()`, `to_uns_dict()`, `store_in_adata()`
+  - PMC integration via `_extract_parameters()`
+  - 15 primers in external JSON database
+  - V-region, PCR conditions, sequencing platform extraction
 - **v1.1.0 (2024-11-28)**: Added SRA sample validation system with SRASampleSchema
   - 100% validation rate on production data
   - HandoffStatus.METADATA_FAILED for error tracking
