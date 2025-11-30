@@ -32,6 +32,10 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.services.metadata.protocol_extraction import get_protocol_service
+from lobster.services.metadata.protocol_extraction.amplicon.details import (
+    AmpliconProtocolDetails,
+)
 from lobster.tools.providers.pubmed_provider import PubMedProvider, PubMedProviderConfig
 from lobster.utils.logger import get_logger
 
@@ -1227,9 +1231,75 @@ class PMCProvider:
         )
 
     def _extract_parameters(self, methods_text: str) -> Dict[str, str]:
-        """Extract parameters from methods text."""
-        # TODO: Implement parameter extraction using pattern matching
-        return {}
+        """
+        Extract protocol parameters from methods text.
+
+        Uses AmpliconProtocolService to extract:
+        - Primer sequences (515F, 806R, etc.)
+        - V-region amplified (V3-V4, V4, etc.)
+        - PCR conditions (annealing temp, cycles)
+        - Sequencing parameters (platform, read length)
+        - Reference databases (SILVA, Greengenes)
+        - Bioinformatics pipelines (QIIME2, DADA2)
+
+        Args:
+            methods_text: Methods section text
+
+        Returns:
+            Dictionary of extracted parameters
+        """
+        if not methods_text or len(methods_text) < 50:
+            return {}
+
+        try:
+            service = get_protocol_service("amplicon")
+            details, result = service.extract_protocol(methods_text, source="pmc")
+
+            # Convert to flat dictionary for compatibility
+            params = {}
+            if details.v_region:
+                params["v_region"] = details.v_region
+            if details.forward_primer:
+                params["forward_primer"] = details.forward_primer
+            if details.forward_primer_sequence:
+                params["forward_primer_sequence"] = details.forward_primer_sequence
+            if details.reverse_primer:
+                params["reverse_primer"] = details.reverse_primer
+            if details.reverse_primer_sequence:
+                params["reverse_primer_sequence"] = details.reverse_primer_sequence
+            if details.annealing_temperature:
+                params["annealing_temperature"] = f"{details.annealing_temperature}°C"
+            if details.pcr_cycles:
+                params["pcr_cycles"] = str(details.pcr_cycles)
+            if details.platform:
+                params["sequencing_platform"] = details.platform
+            if details.read_length:
+                params["read_length"] = f"{details.read_length} bp"
+            if details.paired_end is not None:
+                params["paired_end"] = "yes" if details.paired_end else "no"
+            if details.reference_database:
+                db_str = details.reference_database
+                if details.database_version:
+                    db_str += f" {details.database_version}"
+                params["reference_database"] = db_str
+            if details.pipeline:
+                pipeline_str = details.pipeline
+                if details.pipeline_version:
+                    pipeline_str += f" {details.pipeline_version}"
+                params["bioinformatics_pipeline"] = pipeline_str
+            if details.clustering_method:
+                params["clustering_method"] = details.clustering_method
+            if details.clustering_threshold:
+                params["clustering_threshold"] = f"{details.clustering_threshold}%"
+
+            if params:
+                logger.info(f"Extracted {len(params)} protocol parameters from methods")
+
+            return params
+
+        except Exception as e:
+            logger.warning(f"Protocol extraction failed: {e}")
+            return {}
 
     def get_supported_features(self) -> Dict[str, bool]:
         """Get supported features for this provider."""
