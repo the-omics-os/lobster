@@ -193,7 +193,7 @@ def create_bioinformatics_graph(
     )
 
     # add forwarding tool for supervisor. This is useful when the supervisor determines that the worker's response is sufficient and doesn't require further processing or summarization by the supervisor itself.
-    create_forward_message_tool("supervisor")
+    #create_forward_message_tool("supervisor")
 
     # UPDATED CONFIGURATION - Changed output_mode
     # Only pass supervisor-accessible agents (those with handoff tools)
