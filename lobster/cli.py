@@ -1963,8 +1963,23 @@ def init_client_with_animation(
         f"[bold {LobsterTheme.PRIMARY_ORANGE}]🦞 Initializing Lobster AI...[/bold {LobsterTheme.PRIMARY_ORANGE}]"
     )
 
-    # Show agents being loaded
-    for agent_name, config in AGENT_REGISTRY.items():
+    # Pre-compute child agents (agents that appear in any parent's child_agents list)
+    child_agent_names = set()
+    for config in AGENT_REGISTRY.values():
+        if config.child_agents:
+            child_agent_names.update(config.child_agents)
+
+    # Filter to supervisor-accessible agents only (excludes sub-agents)
+    supervisor_accessible_agents = {}
+    for name, config in AGENT_REGISTRY.items():
+        if config.supervisor_accessible is False:
+            continue  # Explicitly not accessible
+        if name in child_agent_names:
+            continue  # Inferred as sub-agent (appears in a parent's child_agents)
+        supervisor_accessible_agents[name] = config
+
+    # Show agents being loaded (only supervisor-accessible)
+    for agent_name, config in supervisor_accessible_agents.items():
         emoji = agent_emojis.get(agent_name, "⚡")
         with console.status(
             f"[{LobsterTheme.PRIMARY_ORANGE}]{emoji} Loading {config.display_name}...[/{LobsterTheme.PRIMARY_ORANGE}]"

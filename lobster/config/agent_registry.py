@@ -51,22 +51,53 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
         handoff_tool_description="Assign literature search, dataset discovery, method analysis, parameter extraction, and download queue creation to the research agent",
         child_agents=["metadata_assistant"],
     ),
+    # === NEW: Unified Transcriptomics Expert (parent agent) ===
+    "transcriptomics_expert": AgentRegistryConfig(
+        name="transcriptomics_expert",
+        display_name="Transcriptomics Expert",
+        description="Unified expert for single-cell AND bulk RNA-seq analysis. Handles QC, clustering, and orchestrates annotation and DE analysis via specialized sub-agents.",
+        factory_function="lobster.agents.transcriptomics.transcriptomics_expert.transcriptomics_expert",
+        handoff_tool_name="handoff_to_transcriptomics_expert",
+        handoff_tool_description="Assign ALL transcriptomics analysis tasks (single-cell OR bulk RNA-seq): QC, clustering, cell type annotation, differential expression, pseudobulk, pathway analysis",
+        child_agents=["annotation_expert", "de_analysis_expert"],
+    ),
+    # === NEW: Annotation Expert (sub-agent, not supervisor-accessible) ===
+    "annotation_expert": AgentRegistryConfig(
+        name="annotation_expert",
+        display_name="Annotation Expert",
+        description="Cell type annotation sub-agent: automatic annotation, manual cluster labeling, debris detection, annotation templates",
+        factory_function="lobster.agents.transcriptomics.annotation_expert.annotation_expert",
+        handoff_tool_name=None,  # Not directly accessible
+        handoff_tool_description=None,
+        supervisor_accessible=False,  # Only via transcriptomics_expert
+    ),
+    # === NEW: DE Analysis Expert (sub-agent, not supervisor-accessible) ===
+    "de_analysis_expert": AgentRegistryConfig(
+        name="de_analysis_expert",
+        display_name="DE Analysis Expert",
+        description="Differential expression sub-agent: pseudobulk, pyDESeq2, formula-based DE, pathway enrichment",
+        factory_function="lobster.agents.transcriptomics.de_analysis_expert.de_analysis_expert",
+        handoff_tool_name=None,  # Not directly accessible
+        handoff_tool_description=None,
+        supervisor_accessible=False,  # Only via transcriptomics_expert
+    ),
+    # === DEPRECATED: Routes to transcriptomics_expert ===
     "singlecell_expert_agent": AgentRegistryConfig(
         name="singlecell_expert_agent",
-        display_name="Single-Cell Expert",
-        description="Handles single-cell RNA-seq analysis (cluster, QC, filter/normalize, automatic and manual cell annotation, differential expression etc) tasks (excluding visualization)",
-        factory_function="lobster.agents.singlecell_expert.singlecell_expert",
+        display_name="Single-Cell Expert (DEPRECATED)",
+        description="DEPRECATED: Use transcriptomics_expert instead. This agent routes to transcriptomics_expert.",
+        factory_function="lobster.agents.transcriptomics.deprecated.singlecell_alias",
         handoff_tool_name="handoff_to_singlecell_expert_agent",
-        handoff_tool_description="Assign single-cell RNA-seq analysis tasks to the single-cell expert agent",
+        handoff_tool_description="DEPRECATED: Routes to transcriptomics_expert. Use handoff_to_transcriptomics_expert instead.",
     ),
-    # "bulk_rnaseq_expert_agent": AgentRegistryConfig(
-    #     name="bulk_rnaseq_expert_agent",
-    #     display_name="Bulk RNA-seq Expert",
-    #     description="Handles bulk RNA-seq analysis tasks (excluding visualization)",
-    #     factory_function="lobster.agents.bulk_rnaseq_expert.bulk_rnaseq_expert",
-    #     handoff_tool_name="handoff_to_bulk_rnaseq_expert_agent",
-    #     handoff_tool_description="Assign bulk RNA-seq analysis tasks to the bulk RNA-seq expert agent",
-    # ),
+    "bulk_rnaseq_expert_agent": AgentRegistryConfig(
+        name="bulk_rnaseq_expert_agent",
+        display_name="Bulk RNA-seq Expert (DEPRECATED)",
+        description="DEPRECATED: Use transcriptomics_expert instead. This agent routes to transcriptomics_expert.",
+        factory_function="lobster.agents.transcriptomics.deprecated.bulk_alias",
+        handoff_tool_name="handoff_to_bulk_rnaseq_expert_agent",
+        handoff_tool_description="DEPRECATED: Routes to transcriptomics_expert. Use handoff_to_transcriptomics_expert instead.",
+    ),
     "metadata_assistant": AgentRegistryConfig(
         name="metadata_assistant",
         display_name="Metadata Assistant",

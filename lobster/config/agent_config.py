@@ -147,8 +147,13 @@ class LobsterAgentConfigurator:
     DEFAULT_AGENTS = [
         "assistant",
         "supervisor",
-        "singlecell_expert_agent",
-        "bulk_rnaseq_expert_agent",
+        # Unified transcriptomics agents (v2.5+)
+        "transcriptomics_expert",  # Parent: handles QC, clustering, orchestrates sub-agents
+        "annotation_expert",  # Sub-agent: cell type annotation
+        "de_analysis_expert",  # Sub-agent: differential expression
+        # Deprecated aliases (route to transcriptomics_expert)
+        "singlecell_expert_agent",  # DEPRECATED v2.5+: use transcriptomics_expert
+        "bulk_rnaseq_expert_agent",  # DEPRECATED v2.5+: use transcriptomics_expert
         # "method_expert_agent",  # DEPRECATED v2.2+: merged into research_agent
         "research_agent",
         "metadata_assistant",  # Metadata operations and cross-dataset mapping
@@ -177,7 +182,11 @@ class LobsterAgentConfigurator:
             "supervisor": "claude-4-5-haiku",
             # Assistant uses Claude 3.7 Sonnet
             "assistant": "claude-4-5-haiku",
-            # All expert agents use Claude 4 Sonnet
+            # Unified transcriptomics agents (v2.5+)
+            "transcriptomics_expert": "claude-4-5-haiku",
+            "annotation_expert": "claude-4-5-haiku",
+            "de_analysis_expert": "claude-4-5-haiku",
+            # Deprecated aliases (still need config for backwards compat)
             "singlecell_expert_agent": "claude-4-5-haiku",
             "bulk_rnaseq_expert_agent": "claude-4-5-haiku",
             # "method_expert_agent": "claude-4-sonnet",  # DEPRECATED v2.2+
@@ -197,7 +206,11 @@ class LobsterAgentConfigurator:
             "supervisor": "claude-4-5-sonnet",
             # Assistant uses Claude 3.7 Sonnet
             "assistant": "claude-4-sonnet",
-            # All expert agents use Claude 4 Sonnet
+            # Unified transcriptomics agents (v2.5+)
+            "transcriptomics_expert": "claude-4-sonnet",
+            "annotation_expert": "claude-4-sonnet",
+            "de_analysis_expert": "claude-4-sonnet",
+            # Deprecated aliases (still need config for backwards compat)
             "singlecell_expert_agent": "claude-4-sonnet",
             "bulk_rnaseq_expert_agent": "claude-4-sonnet",
             # "method_expert_agent": "claude-4-sonnet",  # DEPRECATED v2.2+
@@ -216,6 +229,11 @@ class LobsterAgentConfigurator:
             # All agents including supervisor and assistant use Claude 4.5 Sonnet
             "supervisor": "claude-4-5-sonnet",
             "assistant": "claude-4-5-sonnet",
+            # Unified transcriptomics agents (v2.5+)
+            "transcriptomics_expert": "claude-4-5-sonnet",
+            "annotation_expert": "claude-4-5-sonnet",
+            "de_analysis_expert": "claude-4-5-sonnet",
+            # Deprecated aliases (still need config for backwards compat)
             "singlecell_expert_agent": "claude-4-5-sonnet",
             "bulk_rnaseq_expert_agent": "claude-4-5-sonnet",
             # "method_expert_agent": "claude-4-5-sonnet",  # DEPRECATED v2.2+
@@ -228,12 +246,17 @@ class LobsterAgentConfigurator:
             "visualization_expert_agent": "claude-4-5-sonnet",
             "protein_structure_visualization_expert_agent": "claude-4-5-sonnet",
             "custom_feature_agent": "claude-4-5-sonnet",  # Use Sonnet 4.5 for code generation
-            "thinking": {},  # No thinking configured for godmode
+            "thinking": {},  # No thinking configured for ultra
         },
         "godmode": {
             # All agents including supervisor and assistant use Claude 4.5 Sonnet
             "supervisor": "claude-4-1-opus",
             "assistant": "claude-4-5-sonnet",
+            # Unified transcriptomics agents (v2.5+)
+            "transcriptomics_expert": "claude-4-5-sonnet",
+            "annotation_expert": "claude-4-5-sonnet",
+            "de_analysis_expert": "claude-4-5-sonnet",
+            # Deprecated aliases (still need config for backwards compat)
             "singlecell_expert_agent": "claude-4-5-sonnet",
             "bulk_rnaseq_expert_agent": "claude-4-5-sonnet",
             # "method_expert_agent": "claude-4-5-sonnet",  # DEPRECATED v2.2+
