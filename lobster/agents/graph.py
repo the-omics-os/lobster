@@ -135,7 +135,14 @@ def create_bioinformatics_graph(
             else:
                 logger.debug(f"Skipped supervisor handoff for child agent: {agent_config.display_name}")
         else:
-            logger.warning(f"Agent {agent_config.display_name} has no handoff tool configured")
+            # Only warn if the agent SHOULD be supervisor-accessible but lacks handoff config
+            # Sub-agents (supervisor_accessible=False or inferred as child) don't need handoff tools
+            is_child_agent = agent_name in child_agent_names
+            is_explicitly_not_accessible = agent_config.supervisor_accessible is False
+            if not is_child_agent and not is_explicitly_not_accessible:
+                logger.warning(f"Agent {agent_config.display_name} has no handoff tool configured")
+            else:
+                logger.debug(f"Sub-agent {agent_config.display_name} (no handoff tool needed)")
 
         logger.debug(f"Created agent: {agent_config.display_name} ({agent_config.name})")
 
