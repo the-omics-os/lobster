@@ -23,6 +23,13 @@ from lobster.core.schemas.download_queue import DownloadStatus, ValidationStatus
 from lobster.tools.download_orchestrator import DownloadOrchestrator
 from lobster.services.data_access.geo_download_service import GEODownloadService
 from lobster.tools.workspace_tool import create_list_modalities_tool
+from lobster.services.execution import (
+    CustomCodeExecutionService,
+    CodeExecutionError,
+    CodeValidationError,
+    SDKDelegationService,
+    SDKDelegationError,
+)
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -72,6 +79,18 @@ def data_expert(
     from lobster.services.data_management.modality_management_service import ModalityManagementService
 
     modality_service = ModalityManagementService(data_manager)
+
+    # Initialize execution services
+    custom_code_service = CustomCodeExecutionService(data_manager)
+
+    # Try to initialize SDK delegation service (may fail if SDK not available)
+    try:
+        sdk_delegation_service = SDKDelegationService(data_manager)
+        sdk_available = True
+    except SDKDelegationError as e:
+        logger.warning(f"SDK delegation not available: {e}")
+        sdk_delegation_service = None
+        sdk_available = False
 
     # Define tools for data operations
     @tool
@@ -1105,6 +1124,195 @@ To save, run again with save_to_file=True"""
             logger.error(f"Error getting queue status: {e}")
             return f"Error getting queue status: {str(e)}"
 
+    @tool
+    def execute_custom_code(
+        python_code: str,
+        modality_name: Optional[str] = None,
+        load_workspace_files: bool = True,
+        persist: bool = False,
+        description: str = "Custom code execution"
+    ) -> str:
+        """
+        Execute custom Python code with access to workspace data.
+
+        **Use this tool ONLY when existing specialized tools don't cover your specific need.**
+        This tool provides a fallback for edge cases and custom calculations.
+
+        SAFETY NOTICE:
+        - Code runs with high trust (Jupyter-like execution)
+        - Restricted to standard Lobster packages (scanpy, pandas, numpy, plotly, etc.)
+        - Forbidden: subprocess, os.system, destructive file operations
+        - Use persist=True only for important operations you want in notebook export
+
+        AVAILABLE IN NAMESPACE:
+        - data_manager: DataManagerV2 instance
+        - workspace_path: Path to workspace directory
+        - adata: Loaded modality (if modality_name provided)
+        - modalities: List of all available modality names
+        - Auto-loaded CSV files (as pandas DataFrames)
+        - Auto-loaded JSON files (as Python dicts)
+        - download_queue, publication_queue (if exist)
+
+        RETURN VALUE:
+        - Assign result to 'result' variable: result = my_computation()
+        - Or the code will attempt to capture the last expression value
+
+        Args:
+            python_code: Python code to execute (can be multi-line)
+            modality_name: Optional specific modality to load as 'adata'
+            load_workspace_files: Auto-inject CSV/JSON files from workspace
+            persist: If True, save this execution to provenance/notebook export
+            description: Human-readable description of what this code does
+
+        Returns:
+            Formatted string with execution results, warnings, and any outputs
+
+        Example:
+            >>> execute_custom_code(
+            ...     python_code=\"\"\"
+            ...     import numpy as np
+            ...     result = np.percentile(adata.obs['n_genes'], 95)
+            ...     print(f"95th percentile: {result}")
+            ...     \"\"\",
+            ...     modality_name="geo_gse12345_quality_assessed",
+            ...     persist=False,
+            ...     description="Calculate 95th percentile of gene counts"
+            ... )
+        """
+        try:
+            result, stats, ir = custom_code_service.execute(
+                code=python_code,
+                modality_name=modality_name,
+                load_workspace_files=load_workspace_files,
+                persist=persist,
+                description=description
+            )
+
+            # Log to data manager
+            data_manager.log_tool_usage(
+                tool_name="execute_custom_code",
+                parameters={
+                    'description': description,
+                    'modality_name': modality_name,
+                    'persist': persist,
+                    'duration_seconds': stats['duration_seconds'],
+                    'success': stats['success']
+                },
+                description=f"{description} ({'success' if stats['success'] else 'failed'})",
+                ir=ir
+            )
+
+            # Format response
+            response = "✓ Custom code executed successfully\n\n"
+            response += f"**Description**: {description}\n"
+            response += f"**Duration**: {stats.get('duration_seconds', 0):.2f}s\n"
+
+            if stats.get('warnings'):
+                response += f"\n**Warnings ({len(stats['warnings'])}):**\n"
+                for warning in stats['warnings']:
+                    response += f"  - {str(warning)}\n"
+
+            if result is not None:
+                result_preview = str(result)[:500]  # Limit preview length
+                result_type = stats.get('result_type', 'unknown')
+                response += f"\n**Result** ({result_type}):\n{result_preview}\n"
+
+            if stats.get('stdout_lines', 0) > 0:
+                response += f"\n**Output**: {stats['stdout_lines']} lines printed\n"
+                if stats.get('stdout_preview'):
+                    response += f"```\n{stats['stdout_preview']}\n```\n"
+
+            if persist:
+                response += "\n📝 This execution was saved to provenance and will be included in notebook export.\n"
+            else:
+                response += "\n💨 This execution was ephemeral (not saved to notebook export).\n"
+
+            return response
+
+        except CodeValidationError as e:
+            return f"❌ Code validation failed: {str(e)}\n\nPlease fix syntax errors or remove forbidden imports."
+
+        except CodeExecutionError as e:
+            return f"❌ Code execution failed: {str(e)}\n\nCheck your code for runtime errors."
+
+        except Exception as e:
+            logger.error(f"Unexpected error in execute_custom_code: {e}")
+            return f"❌ Unexpected error: {str(e)}"
+
+    @tool
+    def delegate_complex_reasoning( #TODO DEACTIVATED FOR NOW
+        task: str,
+        context: Optional[str] = None,
+        persist: bool = False
+    ) -> str:
+        """
+        Delegate complex multi-step reasoning to Claude Agent SDK sub-agent.
+
+        **Use this tool when you need:**
+        - Multi-step analysis planning
+        - Complex troubleshooting ("Why does my data look wrong?")
+        - Integration strategy recommendations
+        - Experimental design reasoning
+
+        The sub-agent has READ-ONLY access to:
+        - List available modalities
+        - Inspect modality details (shape, columns, quality metrics)
+        - List workspace files
+
+        Args:
+            task: Clear description of the reasoning task
+            context: Optional additional context about the situation
+            persist: If True, save reasoning to provenance/notebook export
+
+        Returns:
+            Formatted reasoning result from SDK sub-agent
+
+        Example:
+            >>> delegate_complex_reasoning(
+            ...     task="Why do I have 15 clusters when the paper reports 7?",
+            ...     context="Dataset: geo_gse12345 with 5000 cells, paper had 3000 cells",
+            ...     persist=False
+            ... )
+        """
+        if not sdk_available:
+            return "❌ SDK delegation not available. Claude Agent SDK is not installed or not accessible."
+
+        try:
+            reasoning_result, stats, ir = sdk_delegation_service.delegate(
+                task=task,
+                context=context,
+                persist=persist,
+                description=f"SDK Reasoning: {task[:100]}"
+            )
+
+            # Log to data manager
+            data_manager.log_tool_usage(
+                tool_name="delegate_complex_reasoning",
+                parameters={'task': task[:200], 'persist': persist},
+                description=f"SDK delegation: {task[:100]}",
+                ir=ir
+            )
+
+            # Format response
+            response = f"## SDK Reasoning Result\n\n"
+            response += f"**Task**: {task}\n\n"
+            response += f"**Reasoning**:\n{reasoning_result}\n\n"
+
+            if persist:
+                response += "\n📝 This reasoning was saved to provenance.\n"
+            else:
+                response += "\n💨 This reasoning was ephemeral (not saved).\n"
+
+            return response
+
+        except SDKDelegationError as e:
+            logger.error(f"SDK delegation failed: {e}")
+            return f"❌ SDK delegation failed: {str(e)}"
+
+        except Exception as e:
+            logger.error(f"Unexpected error in delegate_complex_reasoning: {e}")
+            return f"❌ Unexpected error: {str(e)}"
+
     base_tools = [
         # CORE (4 tools)
         execute_download_from_queue,
@@ -1120,6 +1328,9 @@ To save, run again with save_to_file=True"""
         # HELPER
         get_modality_overview,
         get_adapter_info,
+        # ADVANCED (Execution & Reasoning)
+        execute_custom_code,
+        # delegate_complex_reasoning, #TODO needs further security validation
     ]
     # create_mudata_from_modalities: Combine modalities into MuData for integrated analysis
 
