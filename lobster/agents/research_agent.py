@@ -285,7 +285,7 @@ def research_agent(
         query: str, data_type: str = "geo", max_results: int = 5, filters: str = None
     ) -> str:
         """
-        Search omics databases directly for datasets matching your query (GEO, SRA, PRIDE, etc.).
+        Search omics databases directly for datasets matching your query (GEO, SRA, PRIDE, MassIVE, etc.).
 
         Fast, keyword-based search across multiple repositories. Use this when you know
         what you're looking for (e.g., disease + technology) and want quick results.
@@ -293,7 +293,7 @@ def research_agent(
 
         Args:
             query: Search query for datasets (keywords, disease names, technology)
-            data_type: Database to search (default: "geo", options: "geo,sra,bioproject,biosample,dbgap")
+            data_type: Database to search (default: "geo", options: "geo,sra,bioproject,biosample,dbgap,pride,massive")
             max_results: Maximum results to return (default: 5)
             filters: Optional filters as JSON string. Available filters vary by database:
 
@@ -341,6 +341,8 @@ def research_agent(
                 "dbgap": DatasetType.DBGAP,
                 "arrayexpress": DatasetType.ARRAYEXPRESS,
                 "ena": DatasetType.ENA,
+                "pride": DatasetType.PRIDE,
+                "massive": DatasetType.MASSIVE,
             }
 
             dataset_type = type_mapping.get(data_type.lower(), DatasetType.GEO)
@@ -400,9 +402,9 @@ def research_agent(
         explicitly specified via the database parameter.
 
         Args:
-            identifier: Publication identifier (DOI or PMID) or dataset accession (GSE, SRA, PRIDE)
+            identifier: Publication identifier (DOI or PMID) or dataset accession (GSE, SRA, PXD, MSV)
             source: Source hint for publications (default: "auto", options: "auto,pubmed,biorxiv,medrxiv")
-            database: Database hint for explicit routing (options: "geo", "sra", "pride", "pubmed").
+            database: Database hint for explicit routing (options: "geo", "sra", "pride", "massive", "pubmed").
                      If None, auto-detects from identifier format. Use this to force interpretation
                      when identifier format is ambiguous.
             level: Metadata verbosity level (default: "standard", options: "brief", "standard", "full").
@@ -449,6 +451,8 @@ def research_agent(
                     "PXD"
                 ):
                     database = "pride"
+                elif identifier_upper.startswith("MSV"):
+                    database = "massive"
                 elif identifier_upper.startswith("PMID:") or identifier.startswith(
                     "10."
                 ):
@@ -461,7 +465,7 @@ def research_agent(
                     )
 
             # Route to appropriate metadata extraction based on database
-            if database.lower() in ["geo", "sra", "pride"]:
+            if database.lower() in ["geo", "sra", "pride", "massive"]:
                 # Dataset metadata extraction
                 logger.info(
                     f"Extracting {database.upper()} dataset metadata for: {identifier}"
@@ -541,9 +545,98 @@ def research_agent(
                     except Exception as e:
                         logger.error(f"Error fetching GEO metadata: {e}")
                         return f"Error fetching GEO metadata for {identifier}: {str(e)}"
+                elif database.lower() == "pride":
+                    # PRIDE dataset metadata extraction
+                    from lobster.tools.providers.pride_provider import PRIDEProvider
+
+                    pride_provider = PRIDEProvider(data_manager=data_manager)
+
+                    try:
+                        project_metadata = pride_provider.get_project_metadata(identifier)
+
+                        formatted = f"## PRIDE Dataset Metadata for {identifier}\n\n"
+                        formatted += "**Database**: PRIDE Archive\n"
+                        formatted += f"**Accession**: {identifier}\n"
+                        formatted += f"**Title**: {project_metadata.get('title', 'N/A')}\n"
+
+                        # Sample count
+                        if "sampleProcessingProtocol" in project_metadata:
+                            formatted += f"**Sample Protocol**: Available\n"
+
+                        # Organisms
+                        organisms = project_metadata.get("organisms", [])
+                        if organisms:
+                            organism_names = [o.get("name", "") for o in organisms]
+                            formatted += f"**Organisms**: {', '.join(organism_names)}\n"
+
+                        # Instruments
+                        instruments = project_metadata.get("instruments", [])
+                        if instruments:
+                            instrument_names = [i.get("name", "") for i in instruments]
+                            formatted += f"**Instruments**: {', '.join(instrument_names[:3])}\n"
+
+                        # Publication date
+                        if "publicationDate" in project_metadata:
+                            formatted += f"**Published**: {project_metadata['publicationDate']}\n"
+
+                        # Description (brief in standard mode)
+                        description = project_metadata.get("projectDescription", "")
+                        if description and level in ["standard", "full"]:
+                            desc_preview = description[:500] if level == "standard" else description
+                            formatted += f"\n**Description**:\n{desc_preview}{'...' if len(description) > 500 and level == 'standard' else ''}\n"
+
+                        logger.info(f"PRIDE metadata extraction completed for: {identifier}")
+                        return formatted
+
+                    except Exception as e:
+                        logger.error(f"Error fetching PRIDE metadata: {e}")
+                        return f"Error fetching PRIDE metadata for {identifier}: {str(e)}"
+
+                elif database.lower() == "massive":
+                    # MassIVE dataset metadata extraction
+                    from lobster.tools.providers.massive_provider import MassIVEProvider
+
+                    massive_provider = MassIVEProvider(data_manager=data_manager)
+
+                    try:
+                        dataset_metadata = massive_provider.get_dataset_metadata(identifier)
+
+                        formatted = f"## MassIVE Dataset Metadata for {identifier}\n\n"
+                        formatted += "**Database**: MassIVE (UCSD)\n"
+                        formatted += f"**Accession**: {identifier}\n"
+                        formatted += f"**Title**: {dataset_metadata.get('title', 'N/A')}\n"
+
+                        # Species
+                        species = dataset_metadata.get("species", [])
+                        if species:
+                            species_names = [s.get("name", "") for s in species if isinstance(s, dict)]
+                            formatted += f"**Species**: {', '.join(species_names)}\n"
+
+                        # Data type
+                        contacts = dataset_metadata.get("contacts", [])
+                        if contacts and isinstance(contacts[0], dict):
+                            contact_props = contacts[0].get("contactProperties", [])
+                            for prop in contact_props:
+                                if prop.get("name") == "DatasetType":
+                                    formatted += f"**Data Type**: {prop.get('value', 'N/A')}\n"
+                                    break
+
+                        # Description
+                        description = dataset_metadata.get("description", "")
+                        if description and level in ["standard", "full"]:
+                            desc_preview = description[:500] if level == "standard" else description
+                            formatted += f"\n**Description**:\n{desc_preview}{'...' if len(description) > 500 and level == 'standard' else ''}\n"
+
+                        logger.info(f"MassIVE metadata extraction completed for: {identifier}")
+                        return formatted
+
+                    except Exception as e:
+                        logger.error(f"Error fetching MassIVE metadata: {e}")
+                        return f"Error fetching MassIVE metadata for {identifier}: {str(e)}"
+
                 else:
-                    # SRA and PRIDE support (placeholder for future implementation)
-                    return f"Metadata extraction for {database.upper()} datasets is not yet implemented. Currently supported: GEO, publications (PMID/DOI)."
+                    # Other databases not yet implemented
+                    return f"Metadata extraction for {database.upper()} datasets is not yet implemented. Currently supported: GEO, PRIDE, MassIVE, publications (PMID/DOI)."
 
             else:
                 # Publication metadata extraction (existing behavior)
@@ -656,12 +749,12 @@ def research_agent(
 
                         geo_provider = GEOProvider(data_manager)
 
-                        # Extract URLs using cached metadata
+                        # Extract URLs using cached metadata (returns DownloadUrlResult)
                         url_data = geo_provider.get_download_urls(accession)
 
-                        if url_data.get("error"):
+                        if url_data.error:
                             logger.warning(
-                                f"URL extraction warning for {accession}: {url_data['error']}"
+                                f"URL extraction warning for {accession}: {url_data.error}"
                             )
 
                         # Extract strategy config for cached datasets
@@ -730,10 +823,10 @@ def research_agent(
                             status=DownloadStatus.PENDING,
                             metadata=metadata,
                             validation_result=cached_validation.__dict__,
-                            matrix_url=url_data.get("matrix_url"),
-                            raw_urls=url_data.get("raw_urls", []),
-                            supplementary_urls=url_data.get("supplementary_urls", []),
-                            h5_url=url_data.get("h5_url"),
+                            matrix_url=url_data.matrix_url,
+                            raw_urls=url_data.get_raw_urls_as_strings(),
+                            supplementary_urls=url_data.get_supplementary_urls_as_strings(),
+                            h5_url=url_data.h5_url,
                             created_at=datetime.now(),
                             updated_at=datetime.now(),
                             recommended_strategy=recommended_strategy,  # Use actual strategy
@@ -870,13 +963,13 @@ def research_agent(
 
                                 geo_provider = GEOProvider(data_manager)
 
-                                # Extract URLs
+                                # Extract URLs (returns DownloadUrlResult)
                                 url_data = geo_provider.get_download_urls(accession)
 
                                 # Check for URL extraction errors
-                                if url_data.get("error"):
+                                if url_data.error:
                                     logger.warning(
-                                        f"URL extraction warning for {accession}: {url_data['error']}"
+                                        f"URL extraction warning for {accession}: {url_data.error}"
                                     )
 
                                 # NEW: Extract strategy using data_expert_assistant
@@ -932,13 +1025,11 @@ def research_agent(
                                     metadata=metadata,
                                     validation_result=validation_result.__dict__,
                                     validation_status=validation_status,  # NEW
-                                    # URLs from GEOProvider
-                                    matrix_url=url_data.get("matrix_url"),
-                                    raw_urls=url_data.get("raw_urls", []),
-                                    supplementary_urls=url_data.get(
-                                        "supplementary_urls", []
-                                    ),
-                                    h5_url=url_data.get("h5_url"),
+                                    # URLs from GEOProvider (DownloadUrlResult)
+                                    matrix_url=url_data.matrix_url,
+                                    raw_urls=url_data.get_raw_urls_as_strings(),
+                                    supplementary_urls=url_data.get_supplementary_urls_as_strings(),
+                                    h5_url=url_data.h5_url,
                                     # Timestamps
                                     created_at=datetime.now(),
                                     updated_at=datetime.now(),
@@ -1681,7 +1772,7 @@ Could not extract content for: {identifier}
         strategy_config,  # data_expert_assistant.StrategyConfig
         analysis: dict,
         metadata: dict,
-        url_data: dict,
+        url_data,  # DownloadUrlResult from GEOProvider.get_download_urls()
     ) -> StrategyConfig:
         """
         Convert data_expert_assistant analysis to download_queue.StrategyConfig.
@@ -1690,7 +1781,7 @@ Could not extract content for: {identifier}
             strategy_config: File-level strategy from extract_strategy_config()
             analysis: Analysis dict from analyze_download_strategy()
             metadata: GEO metadata dictionary
-            url_data: URLs from GEOProvider.get_download_urls()
+            url_data: DownloadUrlResult from GEOProvider.get_download_urls()
 
         Returns:
             StrategyConfig for DownloadQueueEntry.recommended_strategy
@@ -1699,7 +1790,7 @@ Could not extract content for: {identifier}
         if analysis.get("has_h5ad", False):
             strategy_name = "H5_FIRST"
             confidence = 0.95
-            rationale = f"H5AD file available with optimal single-file structure ({url_data.get('file_count', 0)} total files)"
+            rationale = f"H5AD file available with optimal single-file structure ({url_data.file_count} total files)"
         elif analysis.get("has_processed_matrix", False):
             strategy_name = "MATRIX_FIRST"
             confidence = 0.85
@@ -1798,14 +1889,15 @@ Could not extract content for: {identifier}
         return False
 
     def _create_fallback_strategy(
-        url_data: dict, metadata: dict
+        url_data,  # DownloadUrlResult from GEOProvider.get_download_urls()
+        metadata: dict,
     ) -> StrategyConfig:
         """
         Create fallback strategy when LLM extraction fails.
         Uses data-type aware URL-based heuristics for strategy recommendation.
 
         Args:
-            url_data: URLs from GEOProvider.get_download_urls()
+            url_data: DownloadUrlResult from GEOProvider.get_download_urls()
             metadata: GEO metadata dictionary
 
         Returns:
@@ -1815,29 +1907,29 @@ Could not extract content for: {identifier}
         is_single_cell = _is_single_cell_dataset(metadata)
 
         # URL-based strategy detection with data-type awareness
-        if url_data.get("h5_url"):
+        if url_data.h5_url:
             # H5AD files are typically single-cell optimized
             strategy_name = "H5_FIRST"
             confidence = 0.90
             rationale = "H5AD file URL found (single-cell optimized format)"
 
-        elif is_single_cell and url_data.get("raw_urls") and len(url_data["raw_urls"]) > 0:
+        elif is_single_cell and url_data.raw_files and len(url_data.raw_files) > 0:
             # For single-cell with raw files, check if they're MTX files
-            raw_urls = url_data.get("raw_urls", [])
+            raw_urls = url_data.get_raw_urls_as_strings()
             has_mtx = any("mtx" in url.lower() or "matrix" in url.lower() for url in raw_urls)
 
             if has_mtx:
                 # MTX files at series level should use RAW_FIRST
                 strategy_name = "RAW_FIRST"
                 confidence = 0.80
-                rationale = f"Single-cell dataset with MTX files detected ({len(raw_urls)} raw files)"
+                rationale = f"Single-cell dataset with MTX files detected ({len(url_data.raw_files)} raw files)"
             else:
                 # Other raw files for single-cell might still need SAMPLES_FIRST
                 strategy_name = "SAMPLES_FIRST"
                 confidence = 0.70
-                rationale = f"Single-cell dataset with raw data files ({len(raw_urls)} files)"
+                rationale = f"Single-cell dataset with raw data files ({len(url_data.raw_files)} files)"
 
-        elif url_data.get("matrix_url"):
+        elif url_data.matrix_url:
             # Matrix files could be bulk or single-cell
             if is_single_cell:
                 strategy_name = "MATRIX_FIRST"
@@ -1848,11 +1940,11 @@ Could not extract content for: {identifier}
                 confidence = 0.75
                 rationale = "Matrix file URL found (bulk RNA-seq or processed data)"
 
-        elif url_data.get("raw_urls") and len(url_data["raw_urls"]) > 0:
+        elif url_data.raw_files and len(url_data.raw_files) > 0:
             # Non-single-cell datasets with raw URLs
             strategy_name = "SAMPLES_FIRST"
             confidence = 0.65
-            rationale = f"Raw data URLs found ({len(url_data['raw_urls'])} files, bulk RNA-seq likely)"
+            rationale = f"Raw data URLs found ({len(url_data.raw_files)} files, bulk RNA-seq likely)"
 
         else:
             # No clear pattern detected

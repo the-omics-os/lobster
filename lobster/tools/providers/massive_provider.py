@@ -411,61 +411,44 @@ class MassIVEProvider(BasePublicationProvider):
             logger.error(f"Error getting MassIVE FTP URLs: {e}")
             return []
 
-    def get_download_urls(self, accession: str) -> Dict[str, Any]:
+    def get_download_urls(self, accession: str) -> "DownloadUrlResult":
         """
-        Get download URLs for a MassIVE dataset (for DownloadQueue integration).
+        Get download URLs for a MassIVE dataset as a typed DownloadUrlResult.
+
+        Note: MassIVE PROXI v0.1 doesn't provide file listings via API.
+        File URLs are populated during FTP directory scan at download time.
 
         Args:
-            accession: MSV accession
+            accession: MSV accession (e.g., "MSV000012345")
 
         Returns:
-            Dict with FTP base URL (file listing requires FTP directory scan)
-        """
-        try:
-            ftp_base = f"ftp://massive.ucsd.edu/v06/{accession}"
-
-            return {
-                "ftp_base": ftp_base,
-                "raw_urls": [],  # Populated during FTP scan
-                "processed_urls": [],
-                "result_files": [],
-                "accession": accession,
-            }
-
-        except Exception as e:
-            logger.error(f"Error getting download URLs for {accession}: {e}")
-            return {
-                "accession": accession,
-                "ftp_base": "",
-                "raw_urls": [],
-                "processed_urls": [],
-                "result_files": [],
-            }
-
-    def get_download_urls_typed(self, accession: str) -> "DownloadUrlResult":
-        """
-        Get download URLs as a typed DownloadUrlResult.
-
-        This is the typed version of get_download_urls() that returns a
-        standardized Pydantic model instead of a dictionary. Use this for
-        new code that benefits from type safety and IDE autocompletion.
-
-        Args:
-            accession: MSV accession
-
-        Returns:
-            DownloadUrlResult with standardized file structure
+            DownloadUrlResult with FTP base URL (file lists empty until FTP scan)
 
         Example:
-            >>> provider = MassIVEProvider()
-            >>> result = provider.get_download_urls_typed("MSV000012345")
-            >>> print(result.ftp_base)
-            >>> print(len(result.raw_files))
+            >>> provider = MassIVEProvider(data_manager)
+            >>> result = provider.get_download_urls("MSV000012345")
+            >>> print(result.ftp_base)  # FTP directory for scan
         """
         from lobster.core.schemas.download_urls import DownloadUrlResult
 
-        response = self.get_download_urls(accession)
-        return DownloadUrlResult.from_massive_response(response)
+        try:
+            ftp_base = f"ftp://massive.ucsd.edu/v06/{accession}"
+
+            return DownloadUrlResult(
+                accession=accession,
+                database="massive",
+                ftp_base=ftp_base,
+                # Files empty - populated during FTP directory scan at download time
+                recommended_strategy="raw",
+            )
+
+        except Exception as e:
+            logger.error(f"Error getting download URLs for {accession}: {e}")
+            return DownloadUrlResult(
+                accession=accession,
+                database="massive",
+                error=str(e),
+            )
 
     # =========================================================================
     # HELPER METHODS

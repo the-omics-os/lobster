@@ -187,12 +187,21 @@ class PRIDEDownloadService(IDownloadService):
 
             logger.info(f"Using strategy: {strategy_name}")
 
-            # Step 2: Get file URLs from PRIDE
-            file_urls = self.pride_provider.get_download_urls(dataset_id)
+            # Step 2: Get file URLs from PRIDE (returns DownloadUrlResult)
+            url_result = self.pride_provider.get_download_urls(dataset_id)
+
+            if url_result.error:
+                raise RuntimeError(f"Failed to get URLs for {dataset_id}: {url_result.error}")
+
+            logger.info(
+                f"Retrieved URLs: {len(url_result.raw_files)} RAW, "
+                f"{len(url_result.processed_files)} processed, "
+                f"{len(url_result.search_files)} search files"
+            )
 
             # Step 3: Select files based on strategy
             selected_files = self._select_files_by_strategy(
-                file_urls, strategy_name, strategy_params
+                url_result, strategy_name, strategy_params
             )
 
             if not selected_files:
@@ -264,7 +273,7 @@ class PRIDEDownloadService(IDownloadService):
 
     def _select_files_by_strategy(
         self,
-        file_urls: Dict[str, List[Dict]],
+        url_result,  # DownloadUrlResult from PRIDEProvider
         strategy: str,
         params: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
@@ -272,23 +281,23 @@ class PRIDEDownloadService(IDownloadService):
         Select files to download based on strategy.
 
         Args:
-            file_urls: Categorized file URLs from PRIDEProvider
+            url_result: DownloadUrlResult from PRIDEProvider
             strategy: Strategy name
             params: Strategy parameters
 
         Returns:
-            List of file dicts to download
+            List of file dicts to download (with url, filename, size keys)
         """
         selected = []
 
         if strategy == "RESULT_FIRST":
             # Look for processed results (MaxQuant, DIA-NN)
-            result_files = file_urls.get("result_files", [])
+            result_files = url_result.processed_files
 
             # Prioritize known formats
             for keyword in ["proteinGroups", "report.tsv", "report.parquet"]:
                 matching = [
-                    f for f in result_files if keyword in f.get("filename", "")
+                    f for f in result_files if keyword in f.filename
                 ]
                 if matching:
                     selected.extend(matching[:1])  # Take first match
@@ -300,20 +309,20 @@ class PRIDEDownloadService(IDownloadService):
 
         elif strategy == "MZML_FIRST":
             # Look for mzML files
-            processed = file_urls.get("processed_urls", [])
-            mzml_files = [f for f in processed if f.get("filename", "").endswith(".mzML")]
+            processed = url_result.processed_files
+            mzml_files = [f for f in processed if f.filename.endswith(".mzML")]
             if mzml_files:
                 selected.extend(mzml_files[:5])  # Limit to 5 files
 
         elif strategy == "SEARCH_FIRST":
             # Search engine outputs
-            search_files = file_urls.get("search_files", [])
+            search_files = url_result.search_files
             if search_files:
                 selected.extend(search_files[:5])
 
         elif strategy == "RAW_FIRST":
             # Instrument RAW files
-            raw_files = file_urls.get("raw_urls", [])
+            raw_files = url_result.raw_files
             if raw_files:
                 selected.extend(raw_files[:5])
 
@@ -321,9 +330,13 @@ class PRIDEDownloadService(IDownloadService):
         max_size_mb = params.get("max_file_size_mb")
         if max_size_mb:
             max_bytes = max_size_mb * 1024 * 1024
-            selected = [f for f in selected if f.get("size", 0) <= max_bytes]
+            selected = [f for f in selected if (f.size_bytes or 0) <= max_bytes]
 
-        return selected
+        # Convert DownloadFile objects to dicts for FTP download method
+        return [
+            {"url": f.url, "filename": f.filename, "size": f.size_bytes or 0}
+            for f in selected
+        ]
 
     def _download_ftp_file(
         self, ftp_url: str, output_path: Path, max_retries: int = 3

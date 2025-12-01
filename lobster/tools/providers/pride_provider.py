@@ -463,27 +463,36 @@ class PRIDEProvider(BasePublicationProvider):
 
         return ftp_urls
 
-    def get_download_urls(self, accession: str) -> Dict[str, Any]:
+    def get_download_urls(self, accession: str) -> "DownloadUrlResult":
         """
-        Get download URLs for a PRIDE project (for DownloadQueue integration).
+        Get download URLs for a PRIDE project as a typed DownloadUrlResult.
 
         Args:
-            accession: PXD accession
+            accession: PXD accession (e.g., "PXD012345")
 
         Returns:
-            Dict with categorized file URLs
+            DownloadUrlResult with categorized file URLs:
+              - raw_files: Instrument RAW files
+              - processed_files: mzML, peak lists, other processed data
+              - search_files: Search engine outputs
+              - metadata_files: FASTA databases
+
+        Example:
+            >>> provider = PRIDEProvider(data_manager)
+            >>> result = provider.get_download_urls("PXD012345")
+            >>> print(len(result.raw_files))
+            >>> print(len(result.processed_files))
         """
+        from lobster.core.schemas.download_urls import DownloadFile, DownloadUrlResult
+
         try:
             files = self.get_project_files(accession)
 
-            # Categorize files
-            categorized = {
-                "raw_urls": [],
-                "processed_urls": [],
-                "search_files": [],
-                "fasta_files": [],
-                "result_files": [],
-            }
+            # Build categorized file lists
+            raw_files = []
+            processed_files = []
+            search_files = []
+            metadata_files = []  # For FASTA files
 
             for file_info in files:
                 filename = file_info.get("fileName", "")
@@ -500,63 +509,42 @@ class PRIDEProvider(BasePublicationProvider):
                 if not ftp_url:
                     continue
 
-                file_entry = {
-                    "url": ftp_url,
-                    "filename": filename,
-                    "size": file_info.get("fileSizeBytes", 0),
-                }
+                download_file = DownloadFile(
+                    url=ftp_url,
+                    filename=filename,
+                    size_bytes=file_info.get("fileSizeBytes"),
+                    file_type=category.lower() if category else "other",
+                )
 
                 # Route to appropriate category
                 if category == "RAW":
-                    categorized["raw_urls"].append(file_entry)
+                    raw_files.append(download_file)
                 elif category == "RESULT":
-                    categorized["result_files"].append(file_entry)
+                    processed_files.append(download_file)
                 elif category == "SEARCH":
-                    categorized["search_files"].append(file_entry)
+                    search_files.append(download_file)
                 elif category == "FASTA":
-                    categorized["fasta_files"].append(file_entry)
+                    metadata_files.append(download_file)
                 else:
-                    categorized["processed_urls"].append(file_entry)
+                    processed_files.append(download_file)
 
-            # Add accession to result for DownloadUrlResult conversion
-            categorized["accession"] = accession
-            return categorized
+            return DownloadUrlResult(
+                accession=accession,
+                database="pride",
+                raw_files=raw_files,
+                processed_files=processed_files,
+                search_files=search_files,
+                metadata_files=metadata_files,
+                recommended_strategy="processed" if processed_files else "raw",
+            )
 
         except Exception as e:
             logger.error(f"Error getting download URLs for {accession}: {e}")
-            return {
-                "accession": accession,
-                "raw_urls": [],
-                "processed_urls": [],
-                "search_files": [],
-                "fasta_files": [],
-                "result_files": [],
-            }
-
-    def get_download_urls_typed(self, accession: str) -> "DownloadUrlResult":
-        """
-        Get download URLs as a typed DownloadUrlResult.
-
-        This is the typed version of get_download_urls() that returns a
-        standardized Pydantic model instead of a dictionary. Use this for
-        new code that benefits from type safety and IDE autocompletion.
-
-        Args:
-            accession: PXD accession
-
-        Returns:
-            DownloadUrlResult with standardized file structure
-
-        Example:
-            >>> provider = PRIDEProvider()
-            >>> result = provider.get_download_urls_typed("PXD012345")
-            >>> print(len(result.raw_files))
-            >>> print(len(result.processed_files))
-        """
-        from lobster.core.schemas.download_urls import DownloadUrlResult
-
-        response = self.get_download_urls(accession)
-        return DownloadUrlResult.from_pride_response(response)
+            return DownloadUrlResult(
+                accession=accession,
+                database="pride",
+                error=str(e),
+            )
 
     # =========================================================================
     # HELPER METHODS

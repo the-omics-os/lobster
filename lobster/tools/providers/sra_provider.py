@@ -1352,7 +1352,7 @@ class SRAProvider(BasePublicationProvider):
 
         return response
 
-    def get_download_urls(self, accession: str) -> Dict[str, Any]:
+    def get_download_urls(self, accession: str) -> "DownloadUrlResult":
         """
         Get download URLs for SRA accession using ENA filereport API.
 
@@ -1365,18 +1365,14 @@ class SRAProvider(BasePublicationProvider):
             accession: SRA run/experiment/study accession (SRR, SRX, SRP)
 
         Returns:
-            Dictionary containing:
-            {
-                "accession": str,              # Original accession
-                "database": "sra",             # Database type
-                "raw_urls": List[Dict],        # [{url, filename, size, md5}, ...]
-                "ftp_base": str,               # Base FTP URL
-                "mirror": "ena",               # Primary mirror used
-                "layout": "PAIRED" | "SINGLE", # Library layout
-                "total_size_bytes": int,       # Total download size
-                "run_count": int,              # Number of runs
-                "platform": str,               # Sequencing platform
-            }
+            DownloadUrlResult with standardized file structure containing:
+                - raw_files: List[DownloadFile] with url, filename, size, md5
+                - ftp_base: Base FTP URL
+                - mirror: "ena" (primary mirror used)
+                - layout: "PAIRED" | "SINGLE"
+                - total_size_bytes: Total download size
+                - run_count: Number of runs
+                - platform: Sequencing platform
 
         Raises:
             SRANotFoundError: If accession not found in ENA
@@ -1384,12 +1380,15 @@ class SRAProvider(BasePublicationProvider):
 
         Examples:
             >>> provider = SRAProvider(data_manager)
-            >>> urls = provider.get_download_urls("SRR21960766")
-            >>> print(urls["layout"])
+            >>> result = provider.get_download_urls("SRR21960766")
+            >>> print(result.layout)
             'PAIRED'
-            >>> print(len(urls["raw_urls"]))
+            >>> print(len(result.raw_files))
             2  # For paired-end data
+            >>> # Get legacy dict format if needed
+            >>> legacy = result.to_legacy_dict()
         """
+        from lobster.core.schemas.download_urls import DownloadUrlResult
         from lobster.core.identifiers import get_accession_resolver
 
         # Validate accession format
@@ -1436,11 +1435,85 @@ class SRAProvider(BasePublicationProvider):
                     f"Rate limit timeout for ENA API when fetching {accession}"
                 )
 
-            # Make request
+            # Make request with retry logic (nf-core pattern)
             import requests
 
-            response = requests.get(base_url, params=params, timeout=30)
-            response.raise_for_status()
+            max_retries = 3
+            sleep_time = 5
+            attempt = 0
+
+            while attempt <= max_retries:
+                try:
+                    response = requests.get(base_url, params=params, timeout=30)
+
+                    # Handle HTTP errors with nf-core production patterns
+                    if response.status_code == 429:
+                        retry_after = response.headers.get("Retry-After")
+                        if retry_after:
+                            retry_delay = int(retry_after)
+                            logger.warning(
+                                f"ENA API rate limit (429). Retrying after {retry_delay}s"
+                            )
+                            import time
+                            time.sleep(retry_delay)
+                        else:
+                            logger.warning(f"ENA API rate limit (429). Retrying after {sleep_time}s")
+                            import time
+                            time.sleep(sleep_time)
+                            sleep_time *= 2
+                        attempt += 1
+                        continue
+
+                    elif response.status_code == 500:
+                        if attempt < max_retries:
+                            logger.warning(
+                                f"ENA API server error (500). Retrying after {sleep_time}s "
+                                f"(attempt {attempt + 1}/{max_retries})"
+                            )
+                            import time
+                            time.sleep(sleep_time)
+                            sleep_time *= 2
+                            attempt += 1
+                            continue
+                        else:
+                            raise SRAProviderError(
+                                f"ENA API server error after {max_retries} retries"
+                            )
+
+                    elif response.status_code == 204:
+                        raise SRAProviderError(
+                            f"No content available for {accession} (HTTP 204). "
+                            f"The accession may be restricted or you may lack permissions."
+                        )
+
+                    response.raise_for_status()
+                    break  # Success - exit retry loop
+
+                except requests.exceptions.Timeout:
+                    if attempt < max_retries:
+                        logger.warning(f"ENA API timeout. Retrying after {sleep_time}s")
+                        import time
+                        time.sleep(sleep_time)
+                        sleep_time *= 2
+                        attempt += 1
+                        continue
+                    else:
+                        raise SRAProviderError(
+                            f"ENA API timeout after {max_retries} retries for {accession}"
+                        )
+
+                except requests.exceptions.ConnectionError:
+                    if attempt < max_retries:
+                        logger.warning(f"ENA API connection error. Retrying after {sleep_time}s")
+                        import time
+                        time.sleep(sleep_time)
+                        sleep_time *= 2
+                        attempt += 1
+                        continue
+                    else:
+                        raise SRAProviderError(
+                            f"ENA API connection error after {max_retries} retries for {accession}"
+                        )
 
             # Parse TSV response
             lines = response.text.strip().split("\n")
@@ -1519,25 +1592,38 @@ class SRAProvider(BasePublicationProvider):
                     f"The dataset may not have pre-computed FASTQ files available."
                 )
 
-            # Build result dictionary
-            result = {
-                "accession": accession,
-                "database": "sra",
-                "raw_urls": all_urls,
-                "ftp_base": "ftp.sra.ebi.ac.uk",
-                "mirror": "ena",
-                "layout": layout or "UNKNOWN",
-                "total_size_bytes": total_size,
-                "run_count": len(data_lines),
-                "platform": platform or "UNKNOWN",
-            }
+            # Build DownloadFile objects for each URL
+            from lobster.core.schemas.download_urls import DownloadFile
+
+            raw_files = [
+                DownloadFile(
+                    url=item["url"],
+                    filename=item["filename"],
+                    size_bytes=item.get("size"),
+                    checksum=item.get("md5"),
+                    checksum_type="md5" if item.get("md5") else None,
+                    file_type="raw",
+                )
+                for item in all_urls
+            ]
 
             logger.info(
-                f"Retrieved {len(all_urls)} FASTQ file(s) for {accession} "
+                f"Retrieved {len(raw_files)} FASTQ file(s) for {accession} "
                 f"({total_size / 1e6:.1f} MB total, layout={layout})"
             )
 
-            return result
+            return DownloadUrlResult(
+                accession=accession,
+                database="sra",
+                raw_files=raw_files,
+                ftp_base="ftp.sra.ebi.ac.uk",
+                mirror="ena",
+                layout=layout or "UNKNOWN",
+                total_size_bytes=total_size,
+                run_count=len(data_lines),
+                platform=platform or "UNKNOWN",
+                recommended_strategy="FASTQ_FIRST",
+            )
 
         except requests.RequestException as e:
             logger.error(f"ENA API request failed for {accession}: {e}")
@@ -1550,29 +1636,3 @@ class SRAProvider(BasePublicationProvider):
                 f"Error processing download URLs for {accession}: {str(e)}"
             ) from e
 
-    def get_download_urls_typed(self, accession: str) -> "DownloadUrlResult":
-        """
-        Get download URLs as a typed DownloadUrlResult.
-
-        This is the typed version of get_download_urls() that returns a
-        standardized Pydantic model instead of a dictionary. Use this for
-        new code that benefits from type safety and IDE autocompletion.
-
-        Args:
-            accession: SRA run/experiment/study accession (SRR, SRX, SRP)
-
-        Returns:
-            DownloadUrlResult with standardized file structure
-
-        Example:
-            >>> provider = SRAProvider(data_manager)
-            >>> result = provider.get_download_urls_typed("SRR21960766")
-            >>> print(result.layout)  # 'PAIRED'
-            >>> print(len(result.raw_files))  # 2 for paired-end
-            >>> # Convert to queue entry fields
-            >>> fields = result.to_queue_entry_fields()
-        """
-        from lobster.core.schemas.download_urls import DownloadUrlResult
-
-        response = self.get_download_urls(accession)
-        return DownloadUrlResult.from_sra_response(response)

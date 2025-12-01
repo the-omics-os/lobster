@@ -131,6 +131,48 @@ class DownloadUrlResult(BaseModel):
     platform: Optional[str] = Field(None, description="Sequencing/analysis platform")
     run_count: Optional[int] = Field(None, description="Number of runs/samples")
 
+    # Error handling (for failed URL extraction)
+    error: Optional[str] = Field(None, description="Error message if URL extraction failed")
+
+    # PRIDE-specific: search engine output files
+    search_files: List[DownloadFile] = Field(
+        default_factory=list,
+        description="Search engine output files (PRIDE-specific)",
+    )
+
+    @property
+    def file_count(self) -> int:
+        """Get total count of all files."""
+        return len(self.get_all_files())
+
+    @property
+    def matrix_url(self) -> Optional[str]:
+        """Get primary matrix URL for backward compatibility."""
+        for f in self.primary_files:
+            if f.file_type == "matrix" or f.filename.endswith((".txt", ".txt.gz")):
+                return f.url
+        return self.primary_files[0].url if self.primary_files else None
+
+    @property
+    def h5_url(self) -> Optional[str]:
+        """Get H5AD/H5 URL for backward compatibility."""
+        for f in self.primary_files:
+            if f.filename.endswith((".h5ad", ".h5")):
+                return f.url
+        return None
+
+    def get_raw_urls_as_strings(self) -> List[str]:
+        """Get raw file URLs as simple string list (GEO compatibility)."""
+        return [f.url for f in self.raw_files]
+
+    def get_raw_urls_as_dicts(self) -> List[Dict[str, Any]]:
+        """Get raw file URLs as list of dicts (SRA compatibility)."""
+        return [f.to_dict() for f in self.raw_files]
+
+    def get_supplementary_urls_as_strings(self) -> List[str]:
+        """Get supplementary file URLs as simple string list."""
+        return [f.url for f in self.supplementary_files]
+
     def get_all_files(self) -> List[DownloadFile]:
         """Get flat list of all download files."""
         return (
@@ -139,6 +181,7 @@ class DownloadUrlResult(BaseModel):
             + self.processed_files
             + self.supplementary_files
             + self.metadata_files
+            + self.search_files
         )
 
     def get_all_urls(self) -> List[str]:
@@ -337,6 +380,7 @@ class DownloadUrlResult(BaseModel):
             supplementary_files=supplementary_files,
             ftp_base=response.get("ftp_base"),
             recommended_strategy="matrix" if primary_files else "raw",
+            error=response.get("error"),  # Pass through any error message
         )
 
     @classmethod
@@ -378,11 +422,25 @@ class DownloadUrlResult(BaseModel):
                         )
                     )
 
+        # PRIDE-specific: search engine output files
+        search_files = []
+        for item in response.get("search_files", []):
+            if isinstance(item, dict):
+                search_files.append(
+                    DownloadFile(
+                        url=item.get("downloadLink", item.get("url", "")),
+                        filename=item.get("fileName", item.get("filename", "")),
+                        size_bytes=item.get("fileSize", item.get("size")),
+                        file_type="search",
+                    )
+                )
+
         return cls(
             accession=response.get("accession", ""),
             database="pride",
             raw_files=raw_files,
             processed_files=processed_files,
+            search_files=search_files,
             ftp_base=response.get("ftp_base"),
             recommended_strategy="processed" if processed_files else "raw",
         )

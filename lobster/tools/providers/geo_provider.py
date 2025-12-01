@@ -659,7 +659,7 @@ class GEOProvider(BasePublicationProvider):
 
         return linked
 
-    def get_download_urls(self, geo_id: str) -> Dict[str, Any]:
+    def get_download_urls(self, geo_id: str) -> "DownloadUrlResult":
         """
         Extract download URLs from GEO metadata without downloading files.
 
@@ -673,22 +673,25 @@ class GEOProvider(BasePublicationProvider):
             geo_id: GEO accession (GSE12345, GDS5678, etc.)
 
         Returns:
-            Dict with structure:
-            {
-                "geo_id": str,
-                "matrix_url": Optional[str],  # Series matrix file
-                "raw_urls": List[str],        # Raw data files
-                "supplementary_urls": List[str],  # Supplementary files
-                "h5_url": Optional[str],      # H5AD file if exists
-                "ftp_base": str,              # Base FTP directory
-                "file_count": int,            # Total files found
-                "total_size_mb": Optional[float],  # Estimated size
-            }
+            DownloadUrlResult with standardized file structure containing:
+                - primary_files: Matrix and H5AD files
+                - raw_files: Raw data files (CEL, FASTQ, etc.)
+                - supplementary_files: Supplementary processed data
+                - ftp_base: Base FTP directory URL
+                - error: Error message if extraction failed
 
         Raises:
             ValueError: If geo_id format invalid
-            Exception: If GEO fetch fails
+
+        Examples:
+            >>> provider = GEOProvider(data_manager)
+            >>> result = provider.get_download_urls("GSE180759")
+            >>> print(result.matrix_url)  # Primary matrix URL
+            >>> print(len(result.raw_files))
+            >>> # Get legacy dict format if needed
+            >>> legacy = result.to_legacy_dict()
         """
+        from lobster.core.schemas.download_urls import DownloadFile, DownloadUrlResult
         # Validate GEO ID format
         if not geo_id or not isinstance(geo_id, str):
             raise ValueError(f"Invalid GEO ID: {geo_id}")
@@ -847,26 +850,50 @@ class GEOProvider(BasePublicationProvider):
                     all_urls.append(file_url)
                     logger.debug(f"Found supplementary file: {file_url}")
 
-            # Calculate file count
-            file_count = len(all_urls)
+            # Build DownloadFile objects
+            primary_files = []
+            if matrix_url:
+                primary_files.append(
+                    DownloadFile(
+                        url=matrix_url,
+                        filename=matrix_url.split("/")[-1],
+                        file_type="matrix",
+                    )
+                )
+            if h5_url:
+                primary_files.append(
+                    DownloadFile(
+                        url=h5_url,
+                        filename=h5_url.split("/")[-1],
+                        file_type="h5ad",
+                    )
+                )
 
-            # Prepare result
-            result = {
-                "geo_id": geo_id,
-                "matrix_url": matrix_url,
-                "raw_urls": raw_urls,
-                "supplementary_urls": supplementary_urls,
-                "h5_url": h5_url,
-                "ftp_base": ftp_base,
-                "file_count": file_count,
-                "total_size_mb": None,  # Size estimation would require FTP SIZE commands
-            }
+            raw_file_objs = [
+                DownloadFile(url=url, filename=url.split("/")[-1], file_type="raw")
+                for url in raw_urls
+            ]
+
+            supp_file_objs = [
+                DownloadFile(url=url, filename=url.split("/")[-1], file_type="supplementary")
+                for url in supplementary_urls
+            ]
+
+            result = DownloadUrlResult(
+                accession=geo_id,
+                database="geo",
+                primary_files=primary_files,
+                raw_files=raw_file_objs,
+                supplementary_files=supp_file_objs,
+                ftp_base=ftp_base,
+                recommended_strategy="matrix" if primary_files else "raw",
+            )
 
             logger.info(
-                f"Extracted {file_count} URLs for {geo_id}: "
+                f"Extracted {result.file_count} URLs for {geo_id}: "
                 f"matrix={1 if matrix_url else 0}, "
-                f"raw={len(raw_urls)}, "
-                f"supplementary={len(supplementary_urls)}, "
+                f"raw={len(raw_file_objs)}, "
+                f"supplementary={len(supp_file_objs)}, "
                 f"h5={1 if h5_url else 0}"
             )
 
@@ -874,49 +901,17 @@ class GEOProvider(BasePublicationProvider):
 
         except Exception as e:
             logger.error(f"Failed to extract URLs for {geo_id}: {e}")
-            # Return partial results on error
-            return {
-                "geo_id": geo_id,
-                "matrix_url": None,
-                "raw_urls": [],
-                "supplementary_urls": [],
-                "h5_url": None,
-                "ftp_base": (
+            # Return result with error
+            return DownloadUrlResult(
+                accession=geo_id,
+                database="geo",
+                ftp_base=(
                     self._construct_ftp_base_url(geo_id)
                     if geo_id.startswith("GSE")
                     else ""
                 ),
-                "file_count": 0,
-                "total_size_mb": None,
-                "error": str(e),
-            }
-
-    def get_download_urls_typed(self, geo_id: str) -> "DownloadUrlResult":
-        """
-        Get download URLs as a typed DownloadUrlResult.
-
-        This is the typed version of get_download_urls() that returns a
-        standardized Pydantic model instead of a dictionary. Use this for
-        new code that benefits from type safety and IDE autocompletion.
-
-        Args:
-            geo_id: GEO accession (GSE12345, GDS5678, etc.)
-
-        Returns:
-            DownloadUrlResult with standardized file structure
-
-        Example:
-            >>> provider = GEOProvider(data_manager)
-            >>> result = provider.get_download_urls_typed("GSE180759")
-            >>> print(len(result.primary_files))  # matrix + h5ad files
-            >>> print(len(result.raw_files))
-            >>> # Convert to queue entry fields
-            >>> fields = result.to_queue_entry_fields()
-        """
-        from lobster.core.schemas.download_urls import DownloadUrlResult
-
-        response = self.get_download_urls(geo_id)
-        return DownloadUrlResult.from_geo_response(response)
+                error=str(e),
+            )
 
     def _construct_ftp_base_url(self, geo_id: str) -> str:
         """
