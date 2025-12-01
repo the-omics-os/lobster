@@ -335,6 +335,72 @@ Centralized configuration management:
 - **Model Configuration** - LLM parameters and API keys
 - **Adapter Registry** - Dynamic data format support
 
+### 5. Identifier Resolution System (P1, Dec 2024)
+
+The **AccessionResolver** (`lobster/core/identifiers/accession_resolver.py`) provides centralized, thread-safe identifier resolution for all biobank accessions. This eliminates pattern duplication across providers and enables rapid addition of new database support.
+
+#### Supported Databases (29 patterns)
+
+| Category | Accession Types | Examples |
+|----------|-----------------|----------|
+| **GEO** | GSE, GSM, GPL, GDS | GSE194247, GSM1234567, GPL570 |
+| **NCBI SRA** | SRP, SRX, SRR, SRS | SRP116709, SRR1234567 |
+| **ENA** | ERP, ERX, ERR, ERS, PRJEB, SAMEA | ERP123456, PRJEB83385 |
+| **DDBJ** | DRP, DRX, DRR, DRS, PRJDB, SAMD | DRP123456, PRJDB12345 |
+| **BioProject/Sample** | PRJNA, SAMN | PRJNA123456, SAMN12345678 |
+| **Proteomics** | PXD (PRIDE), MSV (MassIVE) | PXD012345, MSV000012345 |
+| **Metabolomics** | MTBLS, ST | MTBLS1234, ST001234 |
+| **Other** | ArrayExpress, MGnify, DOI | E-MTAB-12345, 10.1038/nature12345 |
+
+#### Key Methods
+
+```python
+from lobster.core.identifiers import get_accession_resolver
+
+resolver = get_accession_resolver()
+
+# Detection: What database does this identifier belong to?
+resolver.detect_database("GSE12345")  # → "NCBI Gene Expression Omnibus"
+resolver.detect_database("PRJEB83385")  # → "ENA BioProject"
+
+# Text extraction: Find all accessions in abstract/methods
+resolver.extract_accessions_by_type("Data at GSE123 and PRIDE PXD012345")
+# → {'GEO': ['GSE123'], 'PRIDE': ['PXD012345']}
+
+# Validation: Is this a valid accession for a specific database?
+resolver.validate("GSE12345", database="GEO")  # → True
+resolver.validate("GSE12345", database="PRIDE")  # → False
+
+# URL generation: Get database URL for accession
+resolver.get_url("PXD012345")  # → "https://www.ebi.ac.uk/pride/archive/projects/PXD012345"
+
+# Helper methods for common checks
+resolver.is_geo_identifier("GSE12345")  # → True
+resolver.is_sra_identifier("SRP123456")  # → True (includes ENA/DDBJ)
+resolver.is_proteomics_identifier("PXD012345")  # → True
+```
+
+#### Architecture Benefits
+
+- **Single Source of Truth**: All patterns defined in `DATABASE_ACCESSION_REGISTRY` (`database_mappings.py`)
+- **Pre-compiled Patterns**: <1ms performance for validation/extraction
+- **Case-insensitive**: Improved UX (gse12345 = GSE12345)
+- **Thread-safe Singleton**: Safe for multi-agent concurrent access
+- **Easy Extension**: Add new database in ~1 hour (vs ~1 week previously)
+
+#### Provider Integration
+
+All providers now delegate identifier validation to AccessionResolver:
+
+| Provider | Before | After |
+|----------|--------|-------|
+| `pubmed_provider.py` | Hardcoded patterns | `resolver.extract_accessions_by_type()` |
+| `geo_provider.py` | 4 regex patterns | `resolver.is_geo_identifier()` |
+| `pride_provider.py` | 1 regex pattern | `resolver.validate(database="PRIDE")` |
+| `massive_provider.py` | 1 regex pattern | `resolver.validate(database="MassIVE")` |
+| `sra_provider.py` | 12 regex patterns | `resolver.is_sra_identifier()` |
+| `geo_utils.py` | 8 regex patterns | `resolver.detect_field()` |
+
 ## Research & Literature Capabilities
 
 ### Research System Overview
