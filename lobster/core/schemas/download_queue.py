@@ -313,17 +313,11 @@ class DownloadQueueEntry(BaseModel):
     @classmethod
     def validate_database(cls, v: str) -> str:
         """Validate database is one of supported sources."""
-        allowed = {
-            "geo",
-            "sra",
-            "pride",
-            "metabolights",
-            "arrayexpress",
-            "ega",
-            "ebi",
-        }
+        from lobster.core.schemas.database_registry import SupportedDatabase
+
         v_lower = v.lower().strip()
-        if v_lower not in allowed:
+        if not SupportedDatabase.is_valid(v_lower):
+            allowed = SupportedDatabase.values()
             raise ValueError(f"database must be one of {allowed}, got '{v}'")
         return v_lower
 
