@@ -1095,7 +1095,17 @@ class PubMedProvider(BasePublicationProvider):
         )
 
     def _extract_dataset_accessions(self, text: str) -> Dict[str, List[str]]:
-        """Extract various dataset accessions from text."""
+        """
+        Extract various dataset accessions from text.
+
+        Uses centralized AccessionResolver for pattern matching.
+        """
+        from lobster.core.identifiers import get_accession_resolver
+
+        resolver = get_accession_resolver()
+        extracted = resolver.extract_accessions_by_type(text)
+
+        # Map resolver output to legacy format for backward compatibility
         accessions = {
             "GEO": [],
             "SRA": [],
@@ -1104,28 +1114,36 @@ class PubMedProvider(BasePublicationProvider):
             "Platforms": [],
         }
 
-        # Define patterns for different databases
-        patterns = {
-            "GEO": r"GSE\d+",
-            "GEO_Sample": r"GSM\d+",
-            "SRA": r"SR[APRSX]\d+",
-            "ArrayExpress": r"E-\w+-\d+",
-            "ENA": r"PR[JD][NE][AB]\d+",
-            "Platforms": r"GPL\d+",
-        }
+        # GEO: include GSE and GSM
+        if "GEO" in extracted:
+            accessions["GEO"].extend(extracted["GEO"])
+        if "GEO_Sample" in extracted:
+            accessions["GEO"].extend(extracted["GEO_Sample"])
 
-        for name, pattern in patterns.items():
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            if matches:
-                if name == "GEO_Sample":
-                    accessions["GEO"].extend(matches)
-                else:
-                    key = name if name != "Platforms" else name
-                    accessions[key].extend(matches)
+        # SRA: include all SRA types
+        if "SRA" in extracted:
+            accessions["SRA"].extend(extracted["SRA"])
+
+        # ArrayExpress
+        if "ArrayExpress" in extracted:
+            accessions["ArrayExpress"].extend(extracted["ArrayExpress"])
+
+        # ENA: include ENA and BioProject (PRJEB, PRJDB)
+        if "ENA" in extracted:
+            accessions["ENA"].extend(extracted["ENA"])
+        if "BioProject" in extracted:
+            # Only include international BioProjects (PRJEB, PRJDB) in ENA
+            accessions["ENA"].extend(
+                [acc for acc in extracted["BioProject"] if not acc.startswith("PRJNA")]
+            )
+
+        # Platforms: GPL
+        if "GEO_Platform" in extracted:
+            accessions["Platforms"].extend(extracted["GEO_Platform"])
 
         # Deduplicate
         for key in accessions:
-            accessions[key] = list(set(accessions[key]))
+            accessions[key] = sorted(list(set(accessions[key])))
 
         return accessions
 
@@ -1150,12 +1168,15 @@ class PubMedProvider(BasePublicationProvider):
         # Database mapping: NCBI db name -> our key and prefix
         # Note: "gds" is the NCBI database name for GEO DataSets/Series
         # Note: "geo" also works for E-Link and returns the same UIDs
+        # Note: BioProject/BioSample need accession lookup because E-Link returns
+        #       internal UIDs, not accessions. Prefixes vary by repository:
+        #       - NCBI: PRJNA/SAMN, EBI: PRJEB/SAME, DDBJ: PRJDB/SAMD
         db_mapping = {
             "gds": {"key": "GEO", "prefix": "", "needs_accession_lookup": True},
             "geo": {"key": "GEO", "prefix": "", "needs_accession_lookup": True},
             "sra": {"key": "SRA", "prefix": "SRA", "needs_accession_lookup": False},
-            "bioproject": {"key": "BioProject", "prefix": "PRJNA", "needs_accession_lookup": False},
-            "biosample": {"key": "BioSample", "prefix": "SAMN", "needs_accession_lookup": False},
+            "bioproject": {"key": "BioProject", "prefix": "", "needs_accession_lookup": True},
+            "biosample": {"key": "BioSample", "prefix": "", "needs_accession_lookup": True},
         }
 
         # Combined E-Link call: fetch all linked databases in one request
@@ -1168,6 +1189,8 @@ class PubMedProvider(BasePublicationProvider):
         )
 
         geo_uids = []  # Collect GEO UIDs for batch accession lookup
+        bioproject_uids = []  # Collect BioProject UIDs for batch accession lookup
+        biosample_uids = []  # Collect BioSample UIDs for batch accession lookup
 
         try:
             # Single combined request instead of 4 sequential calls
@@ -1193,16 +1216,21 @@ class PubMedProvider(BasePublicationProvider):
 
                         for link_id in links:
                             if config["needs_accession_lookup"]:
-                                # GEO: collect UIDs for batch lookup
-                                geo_uids.append(str(link_id))
+                                # Collect UIDs for batch lookup by database type
+                                if key == "GEO":
+                                    geo_uids.append(str(link_id))
+                                elif key == "BioProject":
+                                    bioproject_uids.append(str(link_id))
+                                elif key == "BioSample":
+                                    biosample_uids.append(str(link_id))
                             else:
-                                # Non-GEO: construct accession directly
+                                # Non-lookup: construct accession directly
                                 linked[key].append(f"{config['prefix']}{link_id}")
 
             logger.info(
                 f"Combined E-Link found: GEO UIDs={len(geo_uids)}, "
-                f"SRA={len(linked['SRA'])}, BioProject={len(linked['BioProject'])}, "
-                f"BioSample={len(linked['BioSample'])}"
+                f"SRA={len(linked['SRA'])}, BioProject UIDs={len(bioproject_uids)}, "
+                f"BioSample UIDs={len(biosample_uids)}"
             )
 
         except Exception as e:
@@ -1214,6 +1242,16 @@ class PubMedProvider(BasePublicationProvider):
         if geo_uids:
             geo_accessions = self._batch_fetch_geo_accessions(geo_uids)
             linked["GEO"].extend(geo_accessions)
+
+        # Batch fetch BioProject accessions (handles PRJNA/PRJEB/PRJDB prefixes)
+        if bioproject_uids:
+            bioproject_accessions = self._batch_fetch_bioproject_accessions(bioproject_uids)
+            linked["BioProject"].extend(bioproject_accessions)
+
+        # Batch fetch BioSample accessions (handles SAMN/SAME/SAMD prefixes)
+        if biosample_uids:
+            biosample_accessions = self._batch_fetch_biosample_accessions(biosample_uids)
+            linked["BioSample"].extend(biosample_accessions)
 
         # Deduplicate and prioritize GSE over GSM/GDS
         if linked["GEO"]:
@@ -1301,6 +1339,119 @@ class PubMedProvider(BasePublicationProvider):
             logger.warning(f"Error fetching GEO accession for {uid}: {e}")
             return None
 
+    def _batch_fetch_bioproject_accessions(self, uids: List[str]) -> List[str]:
+        """
+        Batch fetch BioProject accessions from UIDs using esummary.
+
+        NCBI E-Link returns internal UIDs, not accessions. This method resolves
+        UIDs to proper accessions which may have different prefixes:
+        - NCBI (USA): PRJNA
+        - EBI (Europe): PRJEB
+        - DDBJ (Japan): PRJDB, PRJDA
+        - CNGB (China): PRJCA
+
+        Args:
+            uids: List of BioProject UIDs to resolve
+
+        Returns:
+            List of BioProject accession strings (PRJNA*, PRJEB*, etc.)
+        """
+        if not uids:
+            return []
+
+        accessions = []
+        batch_size = 100
+
+        for i in range(0, len(uids), batch_size):
+            batch_uids = uids[i : i + batch_size]
+            ids_param = ",".join(batch_uids)
+
+            url = self.build_ncbi_url(
+                "esummary", {"db": "bioproject", "id": ids_param, "retmode": "json"}
+            )
+
+            try:
+                content = self._make_ncbi_request(
+                    url, f"batch fetch {len(batch_uids)} BioProject accessions"
+                )
+                text = content.decode("utf-8")
+                summary = json.loads(text)
+
+                result = summary.get("result", {})
+                for uid in batch_uids:
+                    docsum = result.get(uid, {})
+                    # BioProject uses "project_acc" field for the accession
+                    acc = docsum.get("project_acc")
+                    if acc:
+                        accessions.append(acc)
+                    else:
+                        logger.debug(f"No accession found for BioProject UID {uid}")
+
+                logger.info(
+                    f"Batch resolved {len(batch_uids)} BioProject UIDs → {len(accessions)} accessions"
+                )
+
+            except Exception as e:
+                logger.warning(f"Batch BioProject accession fetch failed: {e}")
+
+        return accessions
+
+    def _batch_fetch_biosample_accessions(self, uids: List[str]) -> List[str]:
+        """
+        Batch fetch BioSample accessions from UIDs using esummary.
+
+        NCBI E-Link returns internal UIDs, not accessions. This method resolves
+        UIDs to proper accessions which may have different prefixes:
+        - NCBI (USA): SAMN
+        - EBI (Europe): SAME
+        - DDBJ (Japan): SAMD
+
+        Args:
+            uids: List of BioSample UIDs to resolve
+
+        Returns:
+            List of BioSample accession strings (SAMN*, SAME*, etc.)
+        """
+        if not uids:
+            return []
+
+        accessions = []
+        batch_size = 100
+
+        for i in range(0, len(uids), batch_size):
+            batch_uids = uids[i : i + batch_size]
+            ids_param = ",".join(batch_uids)
+
+            url = self.build_ncbi_url(
+                "esummary", {"db": "biosample", "id": ids_param, "retmode": "json"}
+            )
+
+            try:
+                content = self._make_ncbi_request(
+                    url, f"batch fetch {len(batch_uids)} BioSample accessions"
+                )
+                text = content.decode("utf-8")
+                summary = json.loads(text)
+
+                result = summary.get("result", {})
+                for uid in batch_uids:
+                    docsum = result.get(uid, {})
+                    # BioSample uses "accession" field
+                    acc = docsum.get("accession")
+                    if acc:
+                        accessions.append(acc)
+                    else:
+                        logger.debug(f"No accession found for BioSample UID {uid}")
+
+                logger.info(
+                    f"Batch resolved {len(batch_uids)} BioSample UIDs → {len(accessions)} accessions"
+                )
+
+            except Exception as e:
+                logger.warning(f"Batch BioSample accession fetch failed: {e}")
+
+        return accessions
+
     def _find_linked_datasets_batch(
         self, pmids: List[str]
     ) -> Dict[str, Dict[str, List[str]]]:
@@ -1344,19 +1495,22 @@ class PubMedProvider(BasePublicationProvider):
             )
 
             # Database mapping
+            # Note: BioProject/BioSample need accession lookup because E-Link returns
+            #       internal UIDs, not accessions. Prefixes vary by repository:
+            #       - NCBI: PRJNA/SAMN, EBI: PRJEB/SAME, DDBJ: PRJDB/SAMD
             db_mapping = {
                 "gds": {"key": "GEO", "prefix": "", "needs_accession_lookup": True},
                 "geo": {"key": "GEO", "prefix": "", "needs_accession_lookup": True},
                 "sra": {"key": "SRA", "prefix": "SRA", "needs_accession_lookup": False},
                 "bioproject": {
                     "key": "BioProject",
-                    "prefix": "PRJNA",
-                    "needs_accession_lookup": False,
+                    "prefix": "",
+                    "needs_accession_lookup": True,
                 },
                 "biosample": {
                     "key": "BioSample",
-                    "prefix": "SAMN",
-                    "needs_accession_lookup": False,
+                    "prefix": "",
+                    "needs_accession_lookup": True,
                 },
             }
 
@@ -1373,7 +1527,10 @@ class PubMedProvider(BasePublicationProvider):
                 },
             )
 
+            # Collect UIDs by type and PMID for batch accession lookup
             geo_uids_by_pmid = {pmid: [] for pmid in batch_pmids}
+            bioproject_uids_by_pmid = {pmid: [] for pmid in batch_pmids}
+            biosample_uids_by_pmid = {pmid: [] for pmid in batch_pmids}
 
             try:
                 content = self._make_ncbi_request(
@@ -1407,26 +1564,28 @@ class PubMedProvider(BasePublicationProvider):
 
                             for link_id in links:
                                 if config["needs_accession_lookup"]:
-                                    # GEO: collect UIDs for batch lookup
-                                    geo_uids_by_pmid[pmid].append(str(link_id))
+                                    # Collect UIDs by type for batch accession lookup
+                                    if key == "GEO":
+                                        geo_uids_by_pmid[pmid].append(str(link_id))
+                                    elif key == "BioProject":
+                                        bioproject_uids_by_pmid[pmid].append(str(link_id))
+                                    elif key == "BioSample":
+                                        biosample_uids_by_pmid[pmid].append(str(link_id))
                                 else:
-                                    # Non-GEO: construct accession directly
+                                    # Non-lookup: construct accession directly
                                     all_results[pmid][key].append(
                                         f"{config['prefix']}{link_id}"
                                     )
 
                 total_geo_uids = sum(len(v) for v in geo_uids_by_pmid.values())
                 total_sra = sum(len(all_results[pmid]["SRA"]) for pmid in batch_pmids)
-                total_bioproject = sum(
-                    len(all_results[pmid]["BioProject"]) for pmid in batch_pmids
-                )
-                total_biosample = sum(
-                    len(all_results[pmid]["BioSample"]) for pmid in batch_pmids
-                )
+                total_bioproject_uids = sum(len(v) for v in bioproject_uids_by_pmid.values())
+                total_biosample_uids = sum(len(v) for v in biosample_uids_by_pmid.values())
 
                 logger.info(
                     f"Batch E-Link found: GEO UIDs={total_geo_uids}, "
-                    f"SRA={total_sra}, BioProject={total_bioproject}, BioSample={total_biosample}"
+                    f"SRA={total_sra}, BioProject UIDs={total_bioproject_uids}, "
+                    f"BioSample UIDs={total_biosample_uids}"
                 )
 
             except Exception as e:
@@ -1434,13 +1593,28 @@ class PubMedProvider(BasePublicationProvider):
                 # Continue with empty results for this batch
                 continue
 
-            # Batch fetch GEO accessions for all PMIDs in this batch
+            # Batch fetch accessions for all PMIDs in this batch
             for pmid in batch_pmids:
+                # GEO accessions
                 if geo_uids_by_pmid[pmid]:
                     geo_accessions = self._batch_fetch_geo_accessions(
                         geo_uids_by_pmid[pmid]
                     )
                     all_results[pmid]["GEO"].extend(geo_accessions)
+
+                # BioProject accessions (handles PRJNA/PRJEB/PRJDB prefixes)
+                if bioproject_uids_by_pmid[pmid]:
+                    bioproject_accessions = self._batch_fetch_bioproject_accessions(
+                        bioproject_uids_by_pmid[pmid]
+                    )
+                    all_results[pmid]["BioProject"].extend(bioproject_accessions)
+
+                # BioSample accessions (handles SAMN/SAME/SAMD prefixes)
+                if biosample_uids_by_pmid[pmid]:
+                    biosample_accessions = self._batch_fetch_biosample_accessions(
+                        biosample_uids_by_pmid[pmid]
+                    )
+                    all_results[pmid]["BioSample"].extend(biosample_accessions)
 
                 # Deduplicate and prioritize GSE over GSM/GDS
                 if all_results[pmid]["GEO"]:

@@ -1461,7 +1461,9 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
 
     def _extract_dataset_accessions(self, text: str) -> Dict[str, List[str]]:
         """
-        Extract dataset accessions from text using regex patterns.
+        Extract dataset accessions from text.
+
+        Uses centralized AccessionResolver for pattern matching.
 
         Args:
             text: Text to search (full-text or abstract)
@@ -1469,6 +1471,12 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
         Returns:
             Dict[str, List[str]]: Dictionary mapping database type to accessions
         """
+        from lobster.core.identifiers import get_accession_resolver
+
+        resolver = get_accession_resolver()
+        extracted = resolver.extract_accessions_by_type(text)
+
+        # Map resolver output to legacy format for backward compatibility
         accessions = {
             "GEO": [],
             "SRA": [],
@@ -1476,26 +1484,31 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
             "ENA": [],
         }
 
-        # Define patterns for different databases
-        patterns = {
-            "GEO": r"GSE\d+",
-            "GEO_Sample": r"GSM\d+",
-            "SRA": r"SR[APRSX]\d+",
-            "ArrayExpress": r"E-\w+-\d+",
-            "ENA": r"PR[JD][NE][AB]\d+",
-        }
+        # GEO: include GSE and GSM
+        if "GEO" in extracted:
+            accessions["GEO"].extend(extracted["GEO"])
+        if "GEO_Sample" in extracted:
+            accessions["GEO"].extend(extracted["GEO_Sample"])
 
-        for name, pattern in patterns.items():
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            if matches:
-                if name == "GEO_Sample":
-                    accessions["GEO"].extend(matches)
-                else:
-                    key = name if name != "GEO_Sample" else "GEO"
-                    accessions[key].extend(matches)
+        # SRA: include all SRA types
+        if "SRA" in extracted:
+            accessions["SRA"].extend(extracted["SRA"])
+
+        # ArrayExpress
+        if "ArrayExpress" in extracted:
+            accessions["ArrayExpress"].extend(extracted["ArrayExpress"])
+
+        # ENA: include ENA and BioProject (PRJEB, PRJDB)
+        if "ENA" in extracted:
+            accessions["ENA"].extend(extracted["ENA"])
+        if "BioProject" in extracted:
+            # Only include international BioProjects (PRJEB, PRJDB) in ENA
+            accessions["ENA"].extend(
+                [acc for acc in extracted["BioProject"] if not acc.startswith("PRJNA")]
+            )
 
         # Deduplicate
         for key in accessions:
-            accessions[key] = list(set(accessions[key]))
+            accessions[key] = sorted(list(set(accessions[key])))
 
         return accessions

@@ -1098,6 +1098,7 @@ class SRAProvider(BasePublicationProvider):
         """
         Check if query matches SRA accession patterns.
 
+        Uses centralized AccessionResolver for pattern matching.
         Supports NCBI SRA, DDBJ, and ENA accession formats.
 
         Args:
@@ -1106,23 +1107,10 @@ class SRAProvider(BasePublicationProvider):
         Returns:
             bool: True if query matches SRA accession pattern
         """
-        import re
+        from lobster.core.identifiers import get_accession_resolver
 
-        patterns = [
-            r"^SRP\d{6,}$",  # NCBI Study
-            r"^SRX\d{6,}$",  # NCBI Experiment
-            r"^SRS\d{6,}$",  # NCBI Sample
-            r"^SRR\d{6,}$",  # NCBI Run
-            r"^DRP\d{6,}$",  # DDBJ Study
-            r"^DRX\d{6,}$",  # DDBJ Experiment
-            r"^DRS\d{6,}$",  # DDBJ Sample
-            r"^DRR\d{6,}$",  # DDBJ Run
-            r"^ERP\d{6,}$",  # ENA Study
-            r"^ERX\d{6,}$",  # ENA Experiment
-            r"^ERS\d{6,}$",  # ENA Sample
-            r"^ERR\d{6,}$",  # ENA Run
-        ]
-        return any(re.match(pattern, query.strip()) for pattern in patterns)
+        resolver = get_accession_resolver()
+        return resolver.is_sra_identifier(query)
 
     def _enrich_accession_metadata(
         self, df: pd.DataFrame, accession: str

@@ -236,23 +236,18 @@ class GEOProvider(BasePublicationProvider):
         """
         Validate GEO identifiers.
 
+        Uses centralized AccessionResolver for pattern matching.
+
         Args:
             identifier: Identifier to validate (GSE, GDS, GPL, etc.)
 
         Returns:
             bool: True if identifier is valid GEO format
         """
-        identifier = identifier.strip().upper()
+        from lobster.core.identifiers import get_accession_resolver
 
-        # Check for GEO accession patterns
-        geo_patterns = [
-            r"^GSE\d+$",  # Series
-            r"^GDS\d+$",  # Dataset
-            r"^GPL\d+$",  # Platform
-            r"^GSM\d+$",  # Sample
-        ]
-
-        return any(re.match(pattern, identifier) for pattern in geo_patterns)
+        resolver = get_accession_resolver()
+        return resolver.is_geo_identifier(identifier)
 
     def get_supported_features(self) -> Dict[str, bool]:
         """Return features supported by GEO provider."""

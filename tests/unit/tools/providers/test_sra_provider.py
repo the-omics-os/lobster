@@ -830,6 +830,7 @@ class TestEdgeCases:
         # Very long (should match)
         assert sra_provider._is_sra_accession("SRP1234567890") is True
 
-        # Mixed case (should not match - accessions are uppercase)
-        assert sra_provider._is_sra_accession("srp123456") is False
-        assert sra_provider._is_sra_accession("Srp123456") is False
+        # Mixed case now matches (case-insensitive via AccessionResolver)
+        # This is improved UX - users don't need to worry about case
+        assert sra_provider._is_sra_accession("srp123456") is True
+        assert sra_provider._is_sra_accession("Srp123456") is True
