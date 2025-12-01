@@ -518,17 +518,45 @@ class PRIDEProvider(BasePublicationProvider):
                 else:
                     categorized["processed_urls"].append(file_entry)
 
+            # Add accession to result for DownloadUrlResult conversion
+            categorized["accession"] = accession
             return categorized
 
         except Exception as e:
             logger.error(f"Error getting download URLs for {accession}: {e}")
             return {
+                "accession": accession,
                 "raw_urls": [],
                 "processed_urls": [],
                 "search_files": [],
                 "fasta_files": [],
                 "result_files": [],
             }
+
+    def get_download_urls_typed(self, accession: str) -> "DownloadUrlResult":
+        """
+        Get download URLs as a typed DownloadUrlResult.
+
+        This is the typed version of get_download_urls() that returns a
+        standardized Pydantic model instead of a dictionary. Use this for
+        new code that benefits from type safety and IDE autocompletion.
+
+        Args:
+            accession: PXD accession
+
+        Returns:
+            DownloadUrlResult with standardized file structure
+
+        Example:
+            >>> provider = PRIDEProvider()
+            >>> result = provider.get_download_urls_typed("PXD012345")
+            >>> print(len(result.raw_files))
+            >>> print(len(result.processed_files))
+        """
+        from lobster.core.schemas.download_urls import DownloadUrlResult
+
+        response = self.get_download_urls(accession)
+        return DownloadUrlResult.from_pride_response(response)
 
     # =========================================================================
     # HELPER METHODS

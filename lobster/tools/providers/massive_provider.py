@@ -435,11 +435,37 @@ class MassIVEProvider(BasePublicationProvider):
         except Exception as e:
             logger.error(f"Error getting download URLs for {accession}: {e}")
             return {
+                "accession": accession,
                 "ftp_base": "",
                 "raw_urls": [],
                 "processed_urls": [],
                 "result_files": [],
             }
+
+    def get_download_urls_typed(self, accession: str) -> "DownloadUrlResult":
+        """
+        Get download URLs as a typed DownloadUrlResult.
+
+        This is the typed version of get_download_urls() that returns a
+        standardized Pydantic model instead of a dictionary. Use this for
+        new code that benefits from type safety and IDE autocompletion.
+
+        Args:
+            accession: MSV accession
+
+        Returns:
+            DownloadUrlResult with standardized file structure
+
+        Example:
+            >>> provider = MassIVEProvider()
+            >>> result = provider.get_download_urls_typed("MSV000012345")
+            >>> print(result.ftp_base)
+            >>> print(len(result.raw_files))
+        """
+        from lobster.core.schemas.download_urls import DownloadUrlResult
+
+        response = self.get_download_urls(accession)
+        return DownloadUrlResult.from_massive_response(response)
 
     # =========================================================================
     # HELPER METHODS

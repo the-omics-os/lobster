@@ -1351,3 +1351,228 @@ class SRAProvider(BasePublicationProvider):
             response += f"_Showing {max_results} of {len(df)} total results._\n\n"
 
         return response
+
+    def get_download_urls(self, accession: str) -> Dict[str, Any]:
+        """
+        Get download URLs for SRA accession using ENA filereport API.
+
+        This method calls the ENA Portal API to retrieve FASTQ download URLs,
+        MD5 checksums, file sizes, and layout information for SRA datasets.
+        ENA is used as the primary source due to its stable FTP infrastructure
+        and comprehensive metadata.
+
+        Args:
+            accession: SRA run/experiment/study accession (SRR, SRX, SRP)
+
+        Returns:
+            Dictionary containing:
+            {
+                "accession": str,              # Original accession
+                "database": "sra",             # Database type
+                "raw_urls": List[Dict],        # [{url, filename, size, md5}, ...]
+                "ftp_base": str,               # Base FTP URL
+                "mirror": "ena",               # Primary mirror used
+                "layout": "PAIRED" | "SINGLE", # Library layout
+                "total_size_bytes": int,       # Total download size
+                "run_count": int,              # Number of runs
+                "platform": str,               # Sequencing platform
+            }
+
+        Raises:
+            SRANotFoundError: If accession not found in ENA
+            SRAProviderError: If API call fails
+
+        Examples:
+            >>> provider = SRAProvider(data_manager)
+            >>> urls = provider.get_download_urls("SRR21960766")
+            >>> print(urls["layout"])
+            'PAIRED'
+            >>> print(len(urls["raw_urls"]))
+            2  # For paired-end data
+        """
+        from lobster.core.identifiers import get_accession_resolver
+
+        # Validate accession format
+        resolver = get_accession_resolver()
+        if not resolver.is_sra_identifier(accession):
+            raise ValueError(
+                f"Invalid SRA accession format: {accession}. "
+                f"Expected SRR/SRX/SRP/ERS/ERX/ERP/DRS/DRX/DRP format."
+            )
+
+        logger.info(f"Fetching download URLs for {accession} from ENA")
+
+        try:
+            # ENA filereport API endpoint
+            base_url = "https://www.ebi.ac.uk/ena/portal/api/filereport"
+
+            # Fields to retrieve
+            fields = [
+                "run_accession",
+                "fastq_ftp",
+                "fastq_md5",
+                "fastq_bytes",
+                "library_layout",
+                "instrument_platform",
+            ]
+
+            # Build API request
+            params = {
+                "accession": accession,
+                "result": "read_run",
+                "fields": ",".join(fields),
+                "format": "tsv",
+            }
+
+            # Use rate-limited request
+            from lobster.tools.rate_limiter import MultiDomainRateLimiter
+
+            limiter = MultiDomainRateLimiter()
+            url = base_url
+
+            # Wait for rate limit slot
+            if not limiter.wait_for_slot(url, max_wait=30.0):
+                raise SRAProviderError(
+                    f"Rate limit timeout for ENA API when fetching {accession}"
+                )
+
+            # Make request
+            import requests
+
+            response = requests.get(base_url, params=params, timeout=30)
+            response.raise_for_status()
+
+            # Parse TSV response
+            lines = response.text.strip().split("\n")
+
+            if len(lines) < 2:
+                raise SRANotFoundError(
+                    f"No data found for accession {accession} in ENA. "
+                    f"Verify the accession is valid and publicly available."
+                )
+
+            # Parse header and data
+            header = lines[0].split("\t")
+            data_lines = lines[1:]
+
+            # Process all runs
+            all_urls = []
+            total_size = 0
+            layout = None
+            platform = None
+
+            for line in data_lines:
+                if not line.strip():
+                    continue
+
+                values = line.split("\t")
+                row = dict(zip(header, values))
+
+                # Extract run accession
+                run_acc = row.get("run_accession", "")
+
+                # Extract layout (same for all runs in a study)
+                if not layout:
+                    layout = row.get("library_layout", "UNKNOWN").upper()
+
+                # Extract platform
+                if not platform:
+                    platform = row.get("instrument_platform", "UNKNOWN")
+
+                # Parse FASTQ FTP URLs (semicolon-separated for paired-end)
+                ftp_urls = row.get("fastq_ftp", "").split(";") if row.get("fastq_ftp") else []
+
+                # Parse MD5 checksums (semicolon-separated)
+                md5_checksums = row.get("fastq_md5", "").split(";") if row.get("fastq_md5") else []
+
+                # Parse file sizes (semicolon-separated)
+                file_sizes = row.get("fastq_bytes", "").split(";") if row.get("fastq_bytes") else []
+
+                # Build URL entries
+                for idx, ftp_url in enumerate(ftp_urls):
+                    if not ftp_url.strip():
+                        continue
+
+                    # Extract filename from FTP path
+                    filename = ftp_url.split("/")[-1]
+
+                    # Get corresponding MD5 and size
+                    md5 = md5_checksums[idx] if idx < len(md5_checksums) else None
+                    size = int(file_sizes[idx]) if idx < len(file_sizes) and file_sizes[idx].isdigit() else 0
+
+                    # Convert FTP URL to HTTP (more reliable)
+                    http_url = f"https://{ftp_url}"
+
+                    all_urls.append({
+                        "url": http_url,
+                        "filename": filename,
+                        "size": size,
+                        "md5": md5,
+                        "run_accession": run_acc,
+                    })
+
+                    total_size += size
+
+            if not all_urls:
+                raise SRAProviderError(
+                    f"No FASTQ files found for {accession} in ENA. "
+                    f"The dataset may not have pre-computed FASTQ files available."
+                )
+
+            # Build result dictionary
+            result = {
+                "accession": accession,
+                "database": "sra",
+                "raw_urls": all_urls,
+                "ftp_base": "ftp.sra.ebi.ac.uk",
+                "mirror": "ena",
+                "layout": layout or "UNKNOWN",
+                "total_size_bytes": total_size,
+                "run_count": len(data_lines),
+                "platform": platform or "UNKNOWN",
+            }
+
+            logger.info(
+                f"Retrieved {len(all_urls)} FASTQ file(s) for {accession} "
+                f"({total_size / 1e6:.1f} MB total, layout={layout})"
+            )
+
+            return result
+
+        except requests.RequestException as e:
+            logger.error(f"ENA API request failed for {accession}: {e}")
+            raise SRAProviderError(
+                f"Failed to fetch download URLs for {accession} from ENA: {str(e)}"
+            ) from e
+        except Exception as e:
+            logger.error(f"Error getting download URLs for {accession}: {e}")
+            raise SRAProviderError(
+                f"Error processing download URLs for {accession}: {str(e)}"
+            ) from e
+
+    def get_download_urls_typed(self, accession: str) -> "DownloadUrlResult":
+        """
+        Get download URLs as a typed DownloadUrlResult.
+
+        This is the typed version of get_download_urls() that returns a
+        standardized Pydantic model instead of a dictionary. Use this for
+        new code that benefits from type safety and IDE autocompletion.
+
+        Args:
+            accession: SRA run/experiment/study accession (SRR, SRX, SRP)
+
+        Returns:
+            DownloadUrlResult with standardized file structure
+
+        Example:
+            >>> provider = SRAProvider(data_manager)
+            >>> result = provider.get_download_urls_typed("SRR21960766")
+            >>> print(result.layout)  # 'PAIRED'
+            >>> print(len(result.raw_files))  # 2 for paired-end
+            >>> # Convert to queue entry fields
+            >>> fields = result.to_queue_entry_fields()
+        """
+        from lobster.core.schemas.download_urls import DownloadUrlResult
+
+        response = self.get_download_urls(accession)
+        return DownloadUrlResult.from_sra_response(response)

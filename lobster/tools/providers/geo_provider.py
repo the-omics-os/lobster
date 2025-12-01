@@ -891,6 +891,33 @@ class GEOProvider(BasePublicationProvider):
                 "error": str(e),
             }
 
+    def get_download_urls_typed(self, geo_id: str) -> "DownloadUrlResult":
+        """
+        Get download URLs as a typed DownloadUrlResult.
+
+        This is the typed version of get_download_urls() that returns a
+        standardized Pydantic model instead of a dictionary. Use this for
+        new code that benefits from type safety and IDE autocompletion.
+
+        Args:
+            geo_id: GEO accession (GSE12345, GDS5678, etc.)
+
+        Returns:
+            DownloadUrlResult with standardized file structure
+
+        Example:
+            >>> provider = GEOProvider(data_manager)
+            >>> result = provider.get_download_urls_typed("GSE180759")
+            >>> print(len(result.primary_files))  # matrix + h5ad files
+            >>> print(len(result.raw_files))
+            >>> # Convert to queue entry fields
+            >>> fields = result.to_queue_entry_fields()
+        """
+        from lobster.core.schemas.download_urls import DownloadUrlResult
+
+        response = self.get_download_urls(geo_id)
+        return DownloadUrlResult.from_geo_response(response)
+
     def _construct_ftp_base_url(self, geo_id: str) -> str:
         """
         Construct FTP base URL for GEO series.
