@@ -2286,6 +2286,119 @@ def config_show():
 
 
 @app.command()
+def status():
+    """Display subscription tier, installed packages, and available agents."""
+    from rich.table import Table
+
+    console.print()
+    console.print(
+        Panel.fit(
+            f"[bold {LobsterTheme.PRIMARY_ORANGE}]🦞 Lobster Status[/bold {LobsterTheme.PRIMARY_ORANGE}]",
+            border_style=LobsterTheme.PRIMARY_ORANGE,
+            padding=(0, 2),
+        )
+    )
+    console.print()
+
+    # Get entitlement status
+    try:
+        from lobster.core.license_manager import get_entitlement_status
+        entitlement = get_entitlement_status()
+    except ImportError:
+        entitlement = {"tier": "free", "tier_display": "Free", "source": "default"}
+
+    # Get installed packages
+    try:
+        from lobster.core.plugin_loader import get_installed_packages
+        packages = get_installed_packages()
+    except ImportError:
+        packages = {"lobster-ai": "unknown"}
+
+    # Get available agents
+    try:
+        from lobster.config.agent_registry import get_worker_agents
+        from lobster.config.subscription_tiers import is_agent_available
+        worker_agents = get_worker_agents()
+        tier = entitlement.get("tier", "free")
+        available = [name for name in worker_agents if is_agent_available(name, tier)]
+        restricted = [name for name in worker_agents if not is_agent_available(name, tier)]
+    except ImportError:
+        available = []
+        restricted = []
+        tier = "free"
+
+    # Subscription tier section
+    tier_display = entitlement.get("tier_display", "Free")
+    tier_emoji = {"free": "🆓", "premium": "⭐", "enterprise": "🏢"}.get(
+        entitlement.get("tier", "free"), "🆓"
+    )
+
+    console.print(f"[bold]Subscription Tier:[/bold] {tier_emoji} {tier_display}")
+    console.print(f"[dim]Source: {entitlement.get('source', 'default')}[/dim]")
+
+    if entitlement.get("expires_at"):
+        days = entitlement.get("days_until_expiry")
+        if days is not None and days < 30:
+            console.print(f"[yellow]⚠️  License expires in {days} days[/yellow]")
+        else:
+            console.print(f"[dim]Expires: {entitlement.get('expires_at')}[/dim]")
+
+    if entitlement.get("warnings"):
+        for warning in entitlement["warnings"]:
+            console.print(f"[red]⚠️  {warning}[/red]")
+
+    console.print()
+
+    # Installed packages table
+    console.print("[bold]Installed Packages:[/bold]")
+    pkg_table = Table(box=box.ROUNDED, border_style="cyan", show_header=True)
+    pkg_table.add_column("Package", style="white")
+    pkg_table.add_column("Version", style="cyan")
+    pkg_table.add_column("Status", style="green")
+
+    for pkg_name, version in packages.items():
+        if version == "missing":
+            status_str = "[red]Missing[/red]"
+        elif version == "dev":
+            status_str = "[yellow]Development[/yellow]"
+        else:
+            status_str = "[green]Installed[/green]"
+        pkg_table.add_row(pkg_name, version, status_str)
+
+    console.print(pkg_table)
+    console.print()
+
+    # Available agents
+    if available:
+        console.print(f"[bold]Available Agents ({len(available)}):[/bold]")
+        agent_list = ", ".join(sorted(available))
+        console.print(f"[green]{agent_list}[/green]")
+        console.print()
+
+    # Restricted agents (upgrade prompt)
+    if restricted:
+        console.print(f"[bold]Premium Agents ({len(restricted)}):[/bold]")
+        restricted_list = ", ".join(sorted(restricted))
+        console.print(f"[dim]{restricted_list}[/dim]")
+        console.print()
+        console.print(
+            Panel.fit(
+                f"[yellow]⭐ Upgrade to Premium to unlock {len(restricted)} additional agents[/yellow]\n"
+                f"[dim]Visit https://omics-os.com/pricing or run 'lobster activate <code>'[/dim]",
+                border_style="yellow",
+                padding=(0, 2),
+            )
+        )
+
+    # Features
+    features = entitlement.get("features", [])
+    if features:
+        console.print()
+        console.print("[bold]Enabled Features:[/bold]")
+        console.print(f"[cyan]{', '.join(features)}[/cyan]")
+
+
+@app.command()
 def init(
     force: bool = typer.Option(
         False, "--force", "-f", help="Overwrite existing .env file"

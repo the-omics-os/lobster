@@ -196,3 +196,46 @@ def import_agent_factory(factory_path: str) -> Callable:
     module = __import__(module_path, fromlist=[function_name])
     return getattr(module, function_name)
 
+
+# =============================================================================
+# PLUGIN DISCOVERY AND REGISTRY MERGING
+# =============================================================================
+# Discover and merge agents from premium/custom packages at module load time.
+# This allows lobster-premium and lobster-custom-* packages to register
+# additional agents that become available based on subscription tier.
+
+
+def _merge_plugin_agents() -> None:
+    """
+    Discover and merge plugin agents into the registry.
+
+    Called at module load time to incorporate agents from:
+    - lobster-premium: Shared premium features
+    - lobster-custom-*: Customer-specific packages
+
+    Plugin agents are only discovered if the corresponding packages
+    are installed and authorized in the user's entitlement.
+    """
+    try:
+        from lobster.core.plugin_loader import discover_plugins
+
+        plugin_agents = discover_plugins()
+        if plugin_agents:
+            AGENT_REGISTRY.update(plugin_agents)
+            # Log at debug level to avoid noise during imports
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Merged {len(plugin_agents)} plugin agents into registry")
+    except ImportError:
+        # plugin_loader not available (shouldn't happen in normal installs)
+        pass
+    except Exception as e:
+        # Don't let plugin discovery failures break the core system
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Plugin discovery failed: {e}")
+
+
+# Merge plugins at module load time
+_merge_plugin_agents()
+

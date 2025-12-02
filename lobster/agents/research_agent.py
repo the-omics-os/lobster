@@ -100,8 +100,42 @@ def research_agent(
     callback_handler=None,
     agent_name: str = "research_agent",
     delegation_tools: list = None,
+    subscription_tier: str = "free",
 ):
-    """Create research agent using DataManagerV2 and modular publication service."""
+    """Create research agent using DataManagerV2 and modular publication service.
+
+    Args:
+        data_manager: DataManagerV2 instance for data operations
+        callback_handler: Optional callback for streaming responses
+        agent_name: Name for this agent instance
+        delegation_tools: List of tools for delegating to sub-agents
+        subscription_tier: Subscription tier for feature gating (free/premium/enterprise).
+            In FREE tier, handoff to metadata_assistant is restricted.
+    """
+    # Import tier restrictions
+    from lobster.config.subscription_tiers import get_restricted_handoffs
+
+    # Get restricted handoffs for this agent at current tier
+    restricted_handoffs = get_restricted_handoffs(subscription_tier, agent_name)
+
+    # Filter delegation tools based on tier restrictions
+    if delegation_tools and restricted_handoffs:
+        filtered_delegation_tools = []
+        for tool in delegation_tools:
+            # Check if tool name indicates a restricted handoff
+            tool_name = getattr(tool, "__name__", "") or getattr(tool, "name", "")
+            is_restricted = any(
+                restricted in tool_name
+                for restricted in restricted_handoffs
+            )
+            if is_restricted:
+                logger.info(
+                    f"Tier '{subscription_tier}' restricts {tool_name} handoff - "
+                    f"upgrade to premium for full access"
+                )
+            else:
+                filtered_delegation_tools.append(tool)
+        delegation_tools = filtered_delegation_tools
 
     settings = get_settings()
     model_params = settings.get_agent_llm_params("research_agent")

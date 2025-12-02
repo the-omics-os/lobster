@@ -67,6 +67,11 @@ lobster/config/*
 !lobster/config/*_secrets.py
 !lobster/config/*_private.py
 
+# Premium infrastructure (open-core - enables premium plugins)
+lobster/config/subscription_tiers.py
+lobster/core/plugin_loader.py
+lobster/core/license_manager.py
+
 # Schemas (data models)
 lobster/core/schemas/*
 !lobster/core/schemas/publication_queue.py    # Premium feature (DataBioMix)
