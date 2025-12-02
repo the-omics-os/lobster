@@ -121,9 +121,9 @@ def research_agent(
     # Filter delegation tools based on tier restrictions
     if delegation_tools and restricted_handoffs:
         filtered_delegation_tools = []
-        for tool in delegation_tools:
+        for delegation_tool in delegation_tools:
             # Check if tool name indicates a restricted handoff
-            tool_name = getattr(tool, "__name__", "") or getattr(tool, "name", "")
+            tool_name = getattr(delegation_tool, "__name__", "") or getattr(delegation_tool, "name", "")
             is_restricted = any(
                 restricted in tool_name
                 for restricted in restricted_handoffs
@@ -134,7 +134,7 @@ def research_agent(
                     f"upgrade to premium for full access"
                 )
             else:
-                filtered_delegation_tools.append(tool)
+                filtered_delegation_tools.append(delegation_tool)
         delegation_tools = filtered_delegation_tools
 
     settings = get_settings()
