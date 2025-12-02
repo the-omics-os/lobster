@@ -728,21 +728,46 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
             if not exists:
                 return f"Error: Identifier '{identifier}' not found in current session."
 
-            content_model = MetadataContent(
-                identifier=identifier,
-                content_type=content_type or "unknown",
-                description=f"Cached from {source_location}",
-                data=content_data,
-                related_datasets=[],
-                source=f"DataManager.{source_location}",
-                cached_at=datetime.now().isoformat(),
-            )
+            # Special handling for CSV export of samples list
+            # When exporting to CSV and data contains a 'samples' list,
+            # write directly to CSV bypassing MetadataContent model validation
+            samples_count = None
+            if output_format == "csv" and isinstance(content_data, dict):
+                if "samples" in content_data and isinstance(content_data["samples"], list):
+                    samples_list = content_data["samples"]
+                    samples_count = len(samples_list)
+                    logger.info(f"Extracting {samples_count} samples for direct CSV export")
 
-            cache_file_path = workspace_service.write_content(
-                content=content_model,
-                content_type=workspace_to_content_type[workspace],
-                output_format=output_format,
-            )
+                    # Write directly to CSV using pandas
+                    import pandas as pd
+                    content_dir = workspace_service._get_content_dir(workspace_to_content_type[workspace])
+                    filename = workspace_service._sanitize_filename(identifier)
+                    cache_file_path = content_dir / f"{filename}.csv"
+
+                    df = pd.DataFrame(samples_list)
+                    df.to_csv(cache_file_path, index=False, encoding="utf-8")
+                    logger.info(f"Direct CSV export: {samples_count} rows, {len(df.columns)} columns to {cache_file_path}")
+                else:
+                    # No samples list, fall through to normal handling
+                    samples_count = None
+
+            # Normal path: use MetadataContent model
+            if samples_count is None:
+                content_model = MetadataContent(
+                    identifier=identifier,
+                    content_type=content_type or "unknown",
+                    description=f"Cached from {source_location}",
+                    data=content_data,
+                    related_datasets=[],
+                    source=f"DataManager.{source_location}",
+                    cached_at=datetime.now().isoformat(),
+                )
+
+                cache_file_path = workspace_service.write_content(
+                    content=content_model,
+                    content_type=workspace_to_content_type[workspace],
+                    output_format=output_format,
+                )
 
             response = f"""## Content Cached Successfully
 
@@ -756,6 +781,8 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
 """
             if output_format == "csv":
                 response += "**Note**: CSV format ideal for spreadsheet import.\n"
+                if samples_count:
+                    response += f"**Rows**: {samples_count} samples exported (one row per sample).\n"
 
             return response
 

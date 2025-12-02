@@ -607,15 +607,18 @@ def validate_sra_sample(sample: Dict[str, Any]) -> ValidationResult:
             )
 
         # Warn about missing environmental context (important for microbiome filtering)
+        # Check both env_medium AND body_site since sample type info may be in either field
+        # (e.g., MIxS uses env_medium, clinical samples often use tissue → body_site)
         if validated.library_strategy == "AMPLICON":
-            if not validated.env_medium:
+            if not (validated.env_medium or validated.body_site):
                 result.add_warning(
-                    f"Sample {validated.run_accession}: Missing 'env_medium' field. "
+                    f"Sample {validated.run_accession}: Missing sample type info. "
+                    f"Neither 'env_medium' nor 'body_site' found (checked: tissue, isolation_source, etc.). "
                     f"This field is important for microbiome filtering (fecal vs tissue samples)."
                 )
 
-        # Informational: successful validation
-        result.add_info(
+        # Debug: successful validation (changed from INFO to reduce log pollution)
+        logger.debug(
             f"Sample {validated.run_accession} validated successfully "
             f"(library_strategy: {validated.library_strategy})"
         )

@@ -15,6 +15,8 @@ from lobster.tools.providers.base_provider import (
 from lobster.tools.providers.biorxiv_medrxiv_config import BioRxivMedRxivConfig
 from lobster.tools.providers.biorxiv_medrxiv_provider import BioRxivMedRxivProvider
 from lobster.tools.providers.geo_provider import GEOProvider, GEOProviderConfig
+from lobster.tools.providers.massive_provider import MassIVEProvider, MassIVEProviderConfig
+from lobster.tools.providers.pride_provider import PRIDEProvider, PRIDEProviderConfig
 from lobster.tools.providers.pubmed_provider import PubMedProvider, PubMedProviderConfig
 
 __all__ = [
@@ -33,4 +35,10 @@ __all__ = [
     # PubMed provider
     "PubMedProvider",
     "PubMedProviderConfig",
+    # PRIDE provider
+    "PRIDEProvider",
+    "PRIDEProviderConfig",
+    # MassIVE provider
+    "MassIVEProvider",
+    "MassIVEProviderConfig",
 ]
