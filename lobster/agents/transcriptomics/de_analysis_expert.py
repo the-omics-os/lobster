@@ -140,7 +140,7 @@ def de_analysis_expert(
 
     # Initialize stateless services
     pseudobulk_service = PseudobulkService()
-    bulk_rnaseq_service = BulkRNASeqService()
+    bulk_rnaseq_service = BulkRNASeqService(data_manager=data_manager)
     formula_service = DifferentialFormulaService()
 
     analysis_results = {"summary": "", "details": {}}
