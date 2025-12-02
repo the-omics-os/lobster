@@ -199,11 +199,15 @@ lobster/
 │  ├─ backends/
 │  │  ├─ h5ad_backend.py
 │  │  └─ mudata_backend.py
+│  ├─ identifiers/
+│  │  ├─ __init__.py           # Module exports
+│  │  └─ accession_resolver.py # Centralized identifier validation (29 patterns)
 │  └─ schemas/
 │     ├─ transcriptomics_schema.py
 │     ├─ proteomics_schema.py
 │     ├─ metabolomics_schema.py
-│     └─ metagenomics_schema.py
+│     ├─ metagenomics_schema.py
+│     └─ database_mappings.py  # DATABASE_ACCESSION_REGISTRY (single source of truth)
 │
 ├─ services/                # Stateless analysis services (organized by function)
 │  ├─ analysis/             # Analysis services
@@ -299,7 +303,8 @@ lobster/
 | Download | `services/data_access/geo_download_service.py` | GEO database download service (IDownloadService impl) |
 | GEO | `services/data_access/geo/` | Modular GEO package (downloader, parser, strategy, constants) |
 | Interfaces | `core/interfaces/download_service.py` | IDownloadService abstract base class |
-| Providers | `tools/providers/*.py` | PubMed/GEO/Web access |
+| Identifiers | `core/identifiers/accession_resolver.py` | Centralized accession validation (29 patterns, thread-safe singleton) |
+| Providers | `tools/providers/*.py` | PubMed/GEO/Web access (delegate to AccessionResolver for validation) |
 | Utilities | `tools/*.py` | orchestrators, helpers, workspace tools (write_to_workspace, get_content_from_workspace shared across agents) |
 | Deprecated | `tools/geo_*.py`, `tools/pipeline_strategy.py` | Backward compat aliases → `services/data_access/geo/` |
 | Registry | `config/agent_registry.py` | agent configuration |
@@ -494,7 +499,7 @@ AGENT_REGISTRY = {
 }
 ```
 
-Adding a new agent should be **registry‑only** wherever possible.
+Adding a new agent should be **registry‑only** wherever possible. For premium-only agents, use `PREMIUM_REGISTRY` in `lobster-premium` package instead.
 
 - **Adapter pattern**:
   - `IModalityAdapter` – format‑specific loading (10x, H5AD, etc.)
@@ -505,6 +510,14 @@ Adding a new agent should be **registry‑only** wherever possible.
   - Agent factories accept `delegation_tools` parameter (list of pre-wrapped tools)
   - Parent agents in registry specify `child_agents` → graph.py auto-creates delegation tools
   - **Critical**: inner function must have a proper docstring (f-strings do NOT work as docstrings)
+- **AccessionResolver pattern** (`core/identifiers/accession_resolver.py`): centralized identifier validation
+  - Thread-safe singleton via `get_accession_resolver()`
+  - 29 pre-compiled patterns in `DATABASE_ACCESSION_REGISTRY` (`core/schemas/database_mappings.py`)
+  - Case-insensitive matching for better UX (`gse12345` = `GSE12345`)
+  - Key methods: `detect_database()`, `extract_accessions_by_type()`, `validate()`, `get_url()`
+  - Helper methods: `is_geo_identifier()`, `is_sra_identifier()`, `is_proteomics_identifier()`
+  - **Rule**: All providers MUST use AccessionResolver instead of hardcoded regex patterns
+  - Supported databases: GEO (GSE/GSM/GPL/GDS), SRA (SRP/SRX/SRR/SRS), ENA, DDBJ, BioProject, BioSample, PRIDE, MassIVE, MetaboLights, ArrayExpress, DOI
 
 ### 4.6 Download Architecture (Queue-Based Pattern)
 
@@ -650,20 +663,11 @@ Data standards:
 
 **Location**: `lobster/services/execution/custom_code_execution_service.py`
 
-**Purpose**: Enables data_expert to execute arbitrary Python code for edge cases not covered by specialized tools.
+**Purpose**: Enables data_expert (and other agents) to execute arbitrary Python code for edge cases not covered by specialized tools.
 
 **Security Model**: **Subprocess isolation with Phase 1 hardening (NOT full sandboxing)**
 
 ```python
-# What the current implementation provides (Phase 1 complete):
-✅ Process crash isolation (user code crashes don't kill Lobster)
-✅ Timeout enforcement (300s default)
-✅ Output capture (stdout/stderr isolated)
-✅ Environment variable filtering (API keys, AWS credentials NOT passed to subprocess)
-✅ AST validation blocks eval/exec/compile/__import__ calls
-✅ Module shadowing prevented (sys.path.append, not insert)
-✅ Expanded import blocking (subprocess, multiprocessing, pickle, ctypes, etc.)
-
 # What still requires Phase 2 (Docker isolation):
 ❌ Network isolation (can make HTTP requests)
 ❌ File access restriction (has full user permissions)
@@ -671,23 +675,8 @@ Data standards:
 ```
 
 #### Known Vulnerabilities (Comprehensive Testing Results)
-
-**Testing Date**: 2025-11-30
-**Methodology**: 8-agent parallel adversarial testing (201+ attack vectors)
-**Results**: ~90% of attacks succeeded, confirming multiple critical vulnerabilities
-
 **Detailed documentation**: `tests/manual/custom_code_execution/`
 
-| Category | Severity | Status (Post-Phase 1) | Details |
-|----------|----------|----------------------|---------|
-| **Data Exfiltration** | 🟠 HIGH | PARTIAL | Env vars filtered; filesystem unrestricted; network open (Phase 2 needed) |
-| **Resource Exhaustion** | 🟠 HIGH | PARTIAL | Only 300s timeout, no memory/CPU/disk limits (Phase 2 needed) |
-| **Privilege Escalation** | 🟢 LOW | BLOCKED | Import blocks prevent multiprocessing, signal blocked via FORBIDDEN_FROM_IMPORTS |
-| **Supply Chain** | 🟢 LOW | BLOCKED | sys.path.append() prevents module shadowing |
-| **AST Bypass** | 🟢 LOW | BLOCKED | exec/eval/compile/__import__ blocked at AST level |
-| **Timing Attacks** | 🟡 MEDIUM | DOCUMENTED | No timing normalization (acceptable for local CLI) |
-| **Workspace Pollution** | 🟠 HIGH | PARTIAL | File access unrestricted (Phase 2 Docker needed for isolation) |
-| **Integration Attacks** | 🟡 MEDIUM | PARTIAL | Import blocking reduces attack surface; file persistence still possible |
 
 #### Production Deployment Guidelines
 
@@ -704,98 +693,37 @@ Data standards:
 - ⚠️ CONDITIONAL GO - Phase 1 complete, Phase 2 recommended
 - Recommended: Add Phase 3 enhancements for defense-in-depth
 
-#### Mitigation Roadmap
-
-**Phase 1: Critical Fixes - ✅ COMPLETE (2025-11-30)**
-
-All Phase 1 fixes have been implemented:
-- ✅ Environment variable filtering (`env=safe_env` in subprocess.run)
-- ✅ sys.path.append() instead of insert() (prevents module shadowing)
-- ✅ Expanded FORBIDDEN_MODULES (subprocess, multiprocessing, pickle, ctypes, etc.)
-- ✅ Expanded FORBIDDEN_FROM_IMPORTS (os.kill, os.fork, signal.*, etc.)
-- ✅ AST validation blocks exec/eval/compile/__import__ with CodeValidationError
-- ✅ Security documentation updated (tool docstring, CLAUDE.md)
-
-Note: Runtime builtin removal was attempted but reverted because Python's import
-system requires exec() internally. AST-level blocking is sufficient for user code.
-
-**Phase 2: Production Hardening (6 days) - CLOUD REQUIRED**
-
-```bash
-# Docker isolation with resource limits
-docker run --rm \
-    --network=none \
-    --memory=2g \
-    --cpus=2 \
-    --pids-limit=100 \
-    --read-only \
-    --volume workspace:/workspace:rw \
-    python:3.11 python script.py
-```
-
-**Phase 3: Long-Term (10 weeks) - ENTERPRISE RECOMMENDED**
-- gVisor sandbox (user-space kernel)
-- Firecracker MicroVMs (full VM isolation)
-- RestrictedPython (runtime policy enforcement)
-- Cryptographic provenance (sign IR templates)
-- Third-party security audit
-
 #### Security Testing
 
 **Manual test suite**: `tests/manual/custom_code_execution/`
 - 30+ test files, 201+ attack vectors
 - 8 comprehensive security reports
-- Run with: `pytest tests/manual/custom_code_execution/ -v`
 
-**Reports:**
-- `COMPREHENSIVE_SECURITY_ASSESSMENT.md` - Consolidated findings
-- `README.md` - Testing methodology
-- Individual category reports (data exfiltration, resource exhaustion, etc.)
+### 4.11 Feature Tiering & Conditional Activation
 
-#### Developer Guidelines
+Lobster supports FREE, PREMIUM, and ENTERPRISE tiers. Features/agents can be gated by subscription level or customer-specific packages. Design new features for conditional activation.
 
-When working on CustomCodeExecutionService or related code:
+**Key Files**:
+- `lobster/config/subscription_tiers.py` – Tier definitions (agents, handoff restrictions, features)
+- `lobster/core/plugin_loader.py` – Plugin discovery for premium/custom packages
+- `lobster/core/license_manager.py` – Entitlement validation
 
-1. **Never weaken existing protections** without security review
-2. **Test all changes** against adversarial test suite
-3. **Document new limitations** in tool docstring and CLAUDE.md
-4. **Assume malicious input** when designing validation logic
-5. **Follow principle of least privilege** for all operations
+**Rules**:
 
-**Critical files to protect:**
-- `.session.json` - Contains API keys, credentials
-- `download_queue.jsonl`, `publication_queue.jsonl` - Orchestration state
-- `.lobster/provenance/` - W3C-PROV logs (reproducibility)
-- `data/*.h5ad` - Modality data files
+1. **Agent factories**: Accept `subscription_tier: str = "free"`. Use `get_restricted_handoffs()` to conditionally exclude tools.
+2. **New premium agents**: Add to `PREMIUM_REGISTRY` in `lobster-premium`, not `AGENT_REGISTRY`.
+3. **Feature checks**: Use `is_agent_available(agent, tier)` from `subscription_tiers.py`, not hardcoded strings.
+4. **Handoff restrictions**: Define in `subscription_tiers.py` under `restricted_handoffs`, not in agent code.
+5. **Graceful degradation**: Return helpful messages when tier-restricted, don't crash.
 
-**Red flags** (require security review):
-- Adding new imports to context setup code
-- Modifying sys.path manipulation
-- Changing subprocess execution parameters
-- Adding filesystem or network operations
-- Modifying AST validation logic
+**Tier Reference**:
+| Tier | Agents | Notes |
+|------|--------|-------|
+| FREE | research_agent, data_expert, transcriptomics_expert, visualization_expert | research_agent: no metadata_assistant handoff |
+| PREMIUM | + metadata_assistant, proteomics_expert, ml_expert | Full handoffs |
+| ENTERPRISE | + lobster-custom-* packages | Per-customer agents |
 
-#### User-Facing Documentation
-
-**Tool docstring must include**:
-```python
-⚠️ SECURITY NOTICE:
-- Code runs with YOUR user permissions
-- Network access is ALLOWED (can make HTTP requests)
-- Environment variables are FILTERED (API keys protected)
-- Resource limits: 300s timeout, no memory/CPU limits
-- Use ONLY for trusted code on trusted data
-- For untrusted code, use cloud deployment with Docker isolation
-
-This feature is designed for scientific flexibility, not security.
-```
-
-#### References
-
-- Comprehensive testing results: `tests/manual/custom_code_execution/COMPREHENSIVE_SECURITY_ASSESSMENT.md`
-- Testing methodology: `tests/manual/custom_code_execution/README.md`
-- Original plan: `.claude/plans/idempotent-stargazing-stroustrup.md`
-- Baseline tests: `REAL_WORLD_TEST_RESULTS.md`
+**Full spec**: `docs/premium_lobster_architecture.md`
 
 ---
 
