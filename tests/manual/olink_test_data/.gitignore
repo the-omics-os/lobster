@@ -1,0 +1,7 @@
+# Don't ignore CSV files - these are test data
+!*.csv
+
+# Ignore temporary files
+*.tmp
+*.log
+.DS_Store

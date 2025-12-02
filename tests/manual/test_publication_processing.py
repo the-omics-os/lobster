@@ -14,6 +14,12 @@ Examples:
     # Load a RIS file and process the first three pending entries
     python tests/manual/test_publication_processing.py --ris-file data/example.ris --max-entries 3
 
+    # Process specific entries by comma-separated indices (e.g., entries 60, 78, 90)
+    python tests/manual/test_publication_processing.py --skip-ris-load --entry 60,78,90
+
+    # Process a range of entries (e.g., entries 60 through 120)
+    python tests/manual/test_publication_processing.py --skip-ris-load --entry 60-120
+
     # Show service responses and persist run metrics to JSON
     python tests/manual/test_publication_processing.py --show-response --output-file results/publication_run.json
 
@@ -31,7 +37,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from urllib.parse import urlparse
 
 from rich import box
@@ -63,19 +69,21 @@ from lobster.services.orchestration.publication_processing_service import (
 console = Console()
 
 # Keep manual output focused on Rich status messages - suppress logs that disrupt progress bars
+# NOTE: Log suppression for parallel processing is handled by PublicationProcessingService._suppress_logs()
+# These settings only apply BEFORE parallel processing starts (e.g., during RIS loading)
 logging.basicConfig(level=logging.WARNING, force=True)
-# Suppress all lobster loggers to ERROR (avoids INFO/WARNING pollution during parallel progress)
+
+# Suppress root lobster logger (catches ALL child loggers via propagation)
 logging.getLogger("lobster").setLevel(logging.ERROR)
-logging.getLogger("lobster.services").setLevel(logging.ERROR)
-logging.getLogger("lobster.tools").setLevel(logging.ERROR)
-logging.getLogger("lobster.tools.providers").setLevel(logging.ERROR)
-logging.getLogger("lobster.tools.providers.pmc_provider").setLevel(logging.ERROR)
-logging.getLogger("lobster.tools.providers.pubmed_provider").setLevel(logging.ERROR)
-logging.getLogger("lobster.tools.rate_limiter").setLevel(logging.CRITICAL)
-logging.getLogger("lobster.services.orchestration.publication_processing_service").setLevel(logging.ERROR)
-logging.getLogger("lobster.services.data_access.content_access_service").setLevel(logging.ERROR)
+
+# Suppress HTTP client libraries
 logging.getLogger("urllib3").setLevel(logging.ERROR)
 logging.getLogger("httpx").setLevel(logging.ERROR)
+logging.getLogger("httpcore").setLevel(logging.ERROR)
+logging.getLogger("filelock").setLevel(logging.ERROR)
+
+# Suppress Redis rate limiter completely (very verbose)
+logging.getLogger("lobster.tools.rate_limiter").setLevel(logging.CRITICAL)
 
 
 @dataclass
@@ -93,6 +101,7 @@ class EntryProcessingResult:
     elapsed_seconds: float
     response: str
     timings: Dict[str, float] = field(default_factory=dict)
+    original_index: Optional[int] = None
 
     def to_dict(self) -> Dict[str, object]:
         return {
@@ -107,6 +116,7 @@ class EntryProcessingResult:
             "elapsed_seconds": round(self.elapsed_seconds, 2),
             "response": self.response,
             "timings": self.timings,
+            "original_index": self.original_index,
         }
 
 
@@ -153,6 +163,9 @@ def _extract_domain(url: Optional[str]) -> Optional[str]:
 def detect_publisher(entry) -> str:
     """Best-effort publisher detection from entry URLs or DOI prefix."""
 
+    # Skip DOI resolver domains - they're not actual publishers
+    doi_resolvers = {"dx.doi.org", "doi.org"}
+
     for url in (
         entry.fulltext_url,
         entry.metadata_url,
@@ -160,7 +173,7 @@ def detect_publisher(entry) -> str:
         entry.pubmed_url,
     ):
         domain = _extract_domain(url)
-        if domain:
+        if domain and domain not in doi_resolvers:
             return domain
 
     if entry.doi:
@@ -255,17 +268,21 @@ def render_overview_table(results: List[EntryProcessingResult]) -> None:
         return
 
     table = Table(title="Entry Overview", box=box.MINIMAL_DOUBLE_HEAD)
+    table.add_column("#", justify="right", style="dim")
     table.add_column("Entry ID", style="cyan")
     table.add_column("Publisher", style="magenta")
     table.add_column("Status")
     table.add_column("Handoff")
-    table.add_column("Datasets", justify="right")
-    table.add_column("Workspace", justify="right")
-    table.add_column("Identifiers", style="green")
+    table.add_column("df", justify="right")
+    table.add_column("ws", justify="right")
+    table.add_column("IDs", style="green")
     table.add_column("Elapsed", justify="right")
 
     for result in results:
+        # Use original_index if available, otherwise fallback to "-"
+        index_str = str(result.original_index) if result.original_index is not None else "-"
         table.add_row(
+            index_str,
             result.entry_id,
             result.publisher,
             result.status,
@@ -321,7 +338,7 @@ def parse_args() -> argparse.Namespace:
         "--tasks",
         type=str,
         default=(
-            "resolve_identifiers,ncbi_enrich,metadata,methods,identifiers,fetch_sra_metadata"
+            "resolve_identifiers,ncbi_enrich,metadata,methods,identifiers,validate_provenance,fetch_sra_metadata"
         ),
         help="Comma-separated extraction tasks passed to PublicationProcessingService.",
     )
@@ -335,7 +352,7 @@ def parse_args() -> argparse.Namespace:
         "--entry",
         type=str,
         default=None,
-        help="Process entry/entries by index after queue filtering (0-based). Supports single index (e.g., '60') or range (e.g., '60-120').",
+        help="Process entry/entries by index after queue filtering (0-based). Supports single index (e.g., '60'), range (e.g., '60-120'), or comma-separated indices (e.g., '60,78,90').",
     )
     parser.add_argument(
         "--dry-run",
@@ -373,6 +390,24 @@ def parse_args() -> argparse.Namespace:
         "--quiet",
         action="store_true",
         help="Suppress INFO logs from providers (keeps progress bars clean). Default: False (show logs for debugging).",
+    )
+    # Phase 2: Metadata Assistant Handoff flags
+    parser.add_argument(
+        "--test-handoff",
+        action="store_true",
+        help="Enable Phase 2 testing (metadata_assistant handoff workflow).",
+    )
+    parser.add_argument(
+        "--filter-criteria",
+        type=str,
+        default="16S human fecal CRC",
+        help="Filter criteria for metadata_assistant (e.g., '16S human fecal CRC'). Default: '16S human fecal CRC'.",
+    )
+    parser.add_argument(
+        "--handoff-max-entries",
+        type=int,
+        default=None,
+        help="Maximum entries to process in Phase 2 (default: all READY_FOR_METADATA entries).",
     )
     return parser.parse_args()
 
@@ -427,8 +462,13 @@ def select_queue_entries(
     status_filter: str,
     max_entries: Optional[int],
     entry_index: Optional[str],
-) -> List:
-    """Return queue entries to process based on CLI filters."""
+) -> List[tuple]:
+    """Return queue entries to process based on CLI filters.
+
+    Returns:
+        List of (entry, original_index) tuples where original_index is the
+        position in the full sorted queue (0-based).
+    """
 
     queue = data_manager.publication_queue
 
@@ -443,35 +483,82 @@ def select_queue_entries(
 
     entries = sorted(queue.list_entries(status=status_enum), key=lambda e: e.created_at)
 
+    # Create tuples of (entry, original_index) for all entries
+    entries_with_indices = [(entry, idx) for idx, entry in enumerate(entries)]
+
     if entry_index is not None:
-        # Parse entry_index to support both single index and range notation
-        if '-' in entry_index:
+        # Parse entry_index to support single index, range notation, and comma-separated indices
+        if ',' in entry_index:
+            # Comma-separated indices: e.g., "60,78,90"
+            try:
+                indices_str = entry_index.split(',')
+                indices = []
+                seen_indices = set()
+
+                for idx_str in indices_str:
+                    idx_str = idx_str.strip()
+                    if not idx_str:
+                        continue
+
+                    idx = int(idx_str)
+
+                    if idx < 0:
+                        raise SystemExit(
+                            f"Entry indices must be non-negative. Got: {idx} in '{entry_index}'"
+                        )
+                    if idx >= len(entries_with_indices):
+                        raise SystemExit(
+                            f"Entry index {idx} is out of range for {len(entries_with_indices)} entries"
+                        )
+                    if idx in seen_indices:
+                        console.print(
+                            f"[yellow]Warning: Duplicate index {idx} ignored.[/yellow]"
+                        )
+                        continue
+
+                    seen_indices.add(idx)
+                    indices.append(idx)
+
+                if not indices:
+                    raise SystemExit(
+                        f"No valid indices found in '{entry_index}'"
+                    )
+
+                # Sort indices to maintain order and collect entries
+                indices.sort()
+                entries_with_indices = [entries_with_indices[idx] for idx in indices]
+
+            except ValueError as e:
+                raise SystemExit(
+                    f"Invalid comma-separated format '{entry_index}'. Expected format: 'idx1,idx2,idx3' (e.g., '60,78,90'). Error: {e}"
+                )
+        elif '-' in entry_index:
             # Range notation: e.g., "60-120"
             try:
                 start_str, end_str = entry_index.split('-', 1)
                 start_idx = int(start_str.strip())
                 end_idx = int(end_str.strip())
-                
+
                 if start_idx < 0 or end_idx < 0:
                     raise SystemExit(
                         f"Entry indices must be non-negative. Got: {entry_index}"
                     )
-                if start_idx >= len(entries):
+                if start_idx >= len(entries_with_indices):
                     raise SystemExit(
-                        f"Start index {start_idx} is out of range for {len(entries)} entries"
+                        f"Start index {start_idx} is out of range for {len(entries_with_indices)} entries"
                     )
-                if end_idx > len(entries):
+                if end_idx > len(entries_with_indices):
                     console.print(
-                        f"[yellow]Warning: End index {end_idx} exceeds available entries ({len(entries)}). "
-                        f"Using {len(entries)} as end index.[/yellow]"
+                        f"[yellow]Warning: End index {end_idx} exceeds available entries ({len(entries_with_indices)}). "
+                        f"Using {len(entries_with_indices)} as end index.[/yellow]"
                     )
-                    end_idx = len(entries)
+                    end_idx = len(entries_with_indices)
                 if start_idx >= end_idx:
                     raise SystemExit(
                         f"Start index must be less than end index. Got: {entry_index}"
                     )
-                
-                entries = entries[start_idx:end_idx]
+
+                entries_with_indices = entries_with_indices[start_idx:end_idx]
             except ValueError as e:
                 raise SystemExit(
                     f"Invalid range format '{entry_index}'. Expected format: 'start-end' (e.g., '60-120'). Error: {e}"
@@ -480,36 +567,40 @@ def select_queue_entries(
             # Single index: e.g., "60"
             try:
                 idx = int(entry_index.strip())
-                if idx < 0 or idx >= len(entries):
+                if idx < 0 or idx >= len(entries_with_indices):
                     raise SystemExit(
-                        f"Entry index {idx} is out of range for {len(entries)} entries"
+                        f"Entry index {idx} is out of range for {len(entries_with_indices)} entries"
                     )
-                entries = [entries[idx]]
+                entries_with_indices = [entries_with_indices[idx]]
             except ValueError:
                 raise SystemExit(
-                    f"Invalid entry index '{entry_index}'. Expected an integer or range (e.g., '60' or '60-120')"
+                    f"Invalid entry index '{entry_index}'. Expected an integer, range, or comma-separated list (e.g., '60', '60-120', or '60,78,90')"
                 )
 
     if max_entries and max_entries > 0:
-        entries = entries[:max_entries]
+        entries_with_indices = entries_with_indices[:max_entries]
 
-    return entries
+    return entries_with_indices
 
 
-def preview_entries(entries: List) -> None:
-    """Display a quick table describing queued entries."""
+def preview_entries(entries_with_indices: List[tuple]) -> None:
+    """Display a quick table describing queued entries.
+
+    Args:
+        entries_with_indices: List of (entry, original_index) tuples
+    """
 
     table = Table(title="Queued Entries", box=box.ROUNDED)
-    table.add_column("#", justify="right")
+    table.add_column("#", justify="right", style="dim")
     table.add_column("Entry ID", style="cyan")
     table.add_column("Status", style="magenta")
     table.add_column("DOI", overflow="fold")
     table.add_column("PMID")
     table.add_column("Title", overflow="fold")
 
-    for idx, entry in enumerate(entries):
+    for entry, original_idx in entries_with_indices:
         table.add_row(
-            str(idx),
+            str(original_idx),
             entry.entry_id,
             entry.status.value,
             entry.doi or "-",
@@ -522,14 +613,18 @@ def preview_entries(entries: List) -> None:
 
 def process_entries(
     service: PublicationProcessingService,
-    entries: List,
+    entries_with_indices: List[tuple],
     extraction_tasks: str,
     show_response: bool,
 ) -> List[EntryProcessingResult]:
-    """Run extraction tasks for each entry with progress feedback."""
+    """Run extraction tasks for each entry with progress feedback.
+
+    Args:
+        entries_with_indices: List of (entry, original_index) tuples
+    """
 
     results: List[EntryProcessingResult] = []
-    if not entries:
+    if not entries_with_indices:
         console.print("[yellow]No queue entries found for the selected filters.[/yellow]")
         return results
 
@@ -543,11 +638,11 @@ def process_entries(
     ]
 
     with Progress(*progress_columns, console=console, transient=True) as progress:
-        task = progress.add_task("Processing queue", total=len(entries))
+        task = progress.add_task("Processing queue", total=len(entries_with_indices))
 
-        for idx, entry in enumerate(entries, 1):
+        for idx, (entry, original_idx) in enumerate(entries_with_indices, 1):
             title = (entry.title or entry.entry_id)[:42]
-            progress.update(task, description=f"[{idx}/{len(entries)}] {title}")
+            progress.update(task, description=f"[{idx}/{len(entries_with_indices)}] {title}")
             start = time.time()
             response = service.process_entry(
                 entry_id=entry.entry_id,
@@ -583,6 +678,7 @@ def process_entries(
                 elapsed_seconds=elapsed,
                 response=response,
                 timings=step_timings,
+                original_index=original_idx,
             )
             results.append(result)
 
@@ -597,7 +693,7 @@ def process_entries(
 
 def process_entries_parallel(
     service: PublicationProcessingService,
-    entries: List,
+    entries_with_indices: List[tuple],
     extraction_tasks: str,
     max_workers: int,
     show_response: bool,
@@ -611,13 +707,18 @@ def process_entries_parallel(
 
     The actual parallel processing with Rich progress bars is handled by the service layer,
     ensuring a single implementation that's shared between the CLI agent tool and test harness.
+
+    Args:
+        entries_with_indices: List of (entry, original_index) tuples
     """
     results: List[EntryProcessingResult] = []
-    if not entries:
+    if not entries_with_indices:
         console.print("[yellow]No queue entries found for the selected filters.[/yellow]")
         return results
 
-    entry_ids = [e.entry_id for e in entries]
+    # Create a mapping from entry_id to original_index
+    entry_id_to_idx = {entry.entry_id: original_idx for entry, original_idx in entries_with_indices}
+    entry_ids = [e.entry_id for e, _ in entries_with_indices]
 
     # Delegate to service layer (handles Rich progress display internally)
     parallel_result = service.process_entries_parallel(
@@ -660,6 +761,7 @@ def process_entries_parallel(
             elapsed_seconds=pr.elapsed_seconds,
             response=pr.response,
             timings=pr.timings,
+            original_index=entry_id_to_idx.get(pr.entry_id),
         )
         results.append(result)
 
@@ -924,6 +1026,397 @@ def save_results(
     console.print(f"[green]Saved results to[/green] {output_file}")
 
 
+def test_metadata_handoff(
+    data_manager: DataManagerV2,
+    filter_criteria: str,
+    max_entries: Optional[int] = None,
+    output_key: str = "aggregated_filtered_samples",
+) -> Dict[str, Any]:
+    """
+    Simulate metadata_assistant handoff workflow.
+
+    This function:
+    1. Queries queue for entries with HandoffStatus.READY_FOR_METADATA
+    2. Creates metadata_assistant agent instance
+    3. Calls process_metadata_queue tool
+    4. Parses response for metrics
+    5. Validates HandoffStatus transitions
+    6. Returns structured results
+
+    Args:
+        data_manager: DataManagerV2 instance with populated workspace
+        filter_criteria: Natural language filter (e.g., "16S human fecal CRC")
+        max_entries: Limit number of entries to process
+        output_key: Workspace key for aggregated output
+
+    Returns:
+        Dict with metrics:
+        - entries_processed, entries_successful, entries_failed
+        - samples_extracted, samples_valid, samples_after_filter
+        - retention_rate, csv_path, csv_row_count
+        - handoff_status_transitions
+    """
+    from lobster.agents.metadata_assistant import metadata_assistant
+    from lobster.core.schemas.publication_queue import HandoffStatus
+
+    # Query queue for entries ready for metadata processing
+    queue = data_manager.publication_queue
+    ready_entries = [
+        e for e in queue.list_entries()
+        if e.handoff_status == HandoffStatus.READY_FOR_METADATA
+    ]
+
+    if max_entries:
+        ready_entries = ready_entries[:max_entries]
+
+    if not ready_entries:
+        return {
+            "entries_processed": 0,
+            "entries_successful": 0,
+            "entries_failed": 0,
+            "samples_extracted": 0,
+            "samples_valid": 0,
+            "samples_after_filter": 0,
+            "retention_rate": 0.0,
+            "csv_path": None,
+            "csv_row_count": 0,
+            "handoff_status_transitions": {},
+            "error": "No entries with READY_FOR_METADATA status found",
+        }
+
+    # Track initial status for each entry
+    initial_statuses = {e.entry_id: e.handoff_status for e in ready_entries}
+
+    # Create metadata_assistant agent
+    agent = metadata_assistant(data_manager=data_manager)
+
+    # Extract process_metadata_queue tool from compiled graph
+    # Agent is a CompiledStateGraph; tools are in the ToolNode
+    tools_node = agent.nodes['tools'].bound
+    process_queue_tool = tools_node.tools_by_name.get('process_metadata_queue')
+
+    if not process_queue_tool:
+        return {
+            "entries_processed": 0,
+            "entries_successful": 0,
+            "entries_failed": 0,
+            "error": "process_metadata_queue tool not found in metadata_assistant",
+        }
+
+    # Call tool
+    start_time = time.time()
+    try:
+        # Build kwargs dict - only include max_entries if not None
+        tool_kwargs = {
+            "status_filter": "handoff_ready",
+            "filter_criteria": filter_criteria,
+            "output_key": output_key,
+        }
+        if max_entries is not None:
+            tool_kwargs["max_entries"] = max_entries
+
+        response = process_queue_tool.invoke(tool_kwargs)
+    except Exception as e:
+        return {
+            "entries_processed": 0,
+            "entries_successful": 0,
+            "entries_failed": len(ready_entries),
+            "error": f"Tool execution failed: {str(e)}",
+            "elapsed_seconds": time.time() - start_time,
+        }
+
+    elapsed_seconds = time.time() - start_time
+
+    # Extract metrics from structured data in metadata_store (more reliable than regex)
+    # The tool stores stats in data_manager.metadata_store[output_key]["stats"]
+    stored_data = data_manager.metadata_store.get(output_key, {})
+    stats = stored_data.get("stats", {})
+
+    entries_processed = stats.get("processed", len(ready_entries))
+    entries_with_samples = stats.get("with_samples", 0)
+    entries_failed = stats.get("failed", 0)
+    samples_extracted = stats.get("total_extracted", 0)
+    samples_valid = stats.get("total_valid", 0)
+    samples_after_filter = stats.get("total_after_filter", 0)
+
+    # Also verify against actual samples list
+    actual_samples = stored_data.get("samples", [])
+    if actual_samples and samples_after_filter == 0:
+        # Fallback: if stats weren't populated but samples exist, use sample count
+        samples_after_filter = len(actual_samples)
+
+    # Calculate retention rate
+    retention_rate = (
+        (samples_after_filter / samples_extracted * 100)
+        if samples_extracted > 0
+        else 0.0
+    )
+
+    # Track status transitions
+    handoff_status_transitions = {}
+    for entry_id, initial_status in initial_statuses.items():
+        updated_entry = queue.get_entry(entry_id)
+        handoff_status_transitions[entry_id] = {
+            "before": initial_status.value if hasattr(initial_status, "value") else str(initial_status),
+            "after": updated_entry.handoff_status.value if hasattr(updated_entry.handoff_status, "value") else str(updated_entry.handoff_status),
+        }
+
+    # Check if CSV was exported to workspace
+    csv_path = None
+    csv_row_count = 0
+    workspace_path = data_manager.workspace_path / "metadata"
+    if workspace_path.exists():
+        csv_files = list(workspace_path.glob("*.csv"))
+        if csv_files:
+            # Get most recent CSV
+            csv_path = max(csv_files, key=lambda p: p.stat().st_mtime)
+            # Count rows
+            try:
+                import csv as csv_module
+                with open(csv_path, 'r') as f:
+                    csv_row_count = sum(1 for _ in csv_module.reader(f)) - 1  # Exclude header
+            except Exception:
+                csv_row_count = 0
+
+    return {
+        "entries_processed": entries_processed,
+        "entries_successful": entries_with_samples,
+        "entries_failed": entries_failed,
+        "samples_extracted": samples_extracted,
+        "samples_valid": samples_valid,
+        "samples_after_filter": samples_after_filter,
+        "retention_rate": retention_rate,
+        "csv_path": str(csv_path) if csv_path else None,
+        "csv_row_count": csv_row_count,
+        "handoff_status_transitions": handoff_status_transitions,
+        "tool_response": response,
+        "elapsed_seconds": elapsed_seconds,
+    }
+
+
+def render_handoff_summary(result: Dict[str, Any]) -> None:
+    """Render Phase 2 handoff results with Rich tables."""
+
+    # Check for errors
+    if "error" in result:
+        console.print(f"\n[red]❌ Error:[/red] {result['error']}\n")
+        return
+
+    # Processing Summary Table
+    summary_table = Table(title="Phase 2: Metadata Assistant Processing", box=box.ROUNDED)
+    summary_table.add_column("Metric", style="cyan")
+    summary_table.add_column("Value", justify="right", style="white")
+    summary_table.add_column("Details", style="dim")
+
+    summary_table.add_row(
+        "Entries Processed",
+        str(result["entries_processed"]),
+        f"Ready for metadata filtering"
+    )
+    summary_table.add_row(
+        "Successful",
+        f"[green]{result['entries_successful']}[/green]",
+        f"Entries with valid samples"
+    )
+    summary_table.add_row(
+        "Failed",
+        f"[red]{result['entries_failed']}[/red]" if result["entries_failed"] > 0 else "0",
+        f"Processing errors"
+    )
+    summary_table.add_row(
+        "Processing Time",
+        f"{result.get('elapsed_seconds', 0):.1f}s",
+        f"Phase 2 execution time"
+    )
+
+    console.print(summary_table)
+
+    # Sample Filtering Metrics Table
+    filtering_table = Table(title="Sample Filtering Results", box=box.ROUNDED)
+    filtering_table.add_column("Stage", style="magenta")
+    filtering_table.add_column("Count", justify="right", style="white")
+    filtering_table.add_column("Retention", justify="right", style="green")
+
+    extracted = result["samples_extracted"]
+    valid = result["samples_valid"]
+    filtered = result["samples_after_filter"]
+
+    filtering_table.add_row(
+        "Extracted from Workspace",
+        str(extracted),
+        "100.0%"
+    )
+    filtering_table.add_row(
+        "Passed Validation",
+        str(valid),
+        f"{(valid/extracted*100) if extracted > 0 else 0:.1f}%"
+    )
+    filtering_table.add_row(
+        "After Filtering",
+        f"[bold]{filtered}[/bold]",
+        f"[bold]{result['retention_rate']:.1f}%[/bold]"
+    )
+
+    console.print(filtering_table)
+
+    # HandoffStatus Transitions Table
+    transitions = result.get("handoff_status_transitions", {})
+    if transitions:
+        transition_table = Table(title="HandoffStatus Transitions", box=box.ROUNDED)
+        transition_table.add_column("Entry ID", style="cyan", overflow="fold")
+        transition_table.add_column("Before", style="yellow")
+        transition_table.add_column("After", style="green")
+
+        for entry_id, trans in list(transitions.items())[:10]:  # Show first 10
+            transition_table.add_row(
+                entry_id,
+                trans["before"],
+                trans["after"]
+            )
+
+        if len(transitions) > 10:
+            transition_table.add_row(
+                f"... +{len(transitions) - 10} more entries",
+                "",
+                ""
+            )
+
+        console.print(transition_table)
+
+    # CSV Export Details Table
+    csv_table = Table(title="CSV Export", box=box.ROUNDED)
+    csv_table.add_column("Property", style="cyan")
+    csv_table.add_column("Value", style="white")
+
+    if result.get("csv_path"):
+        csv_table.add_row("Export Path", result["csv_path"])
+        csv_table.add_row("Row Count", str(result.get("csv_row_count", 0)))
+        csv_table.add_row("Status", "[green]✓ Exported[/green]")
+    else:
+        csv_table.add_row("Status", "[yellow]⚠ No CSV found[/yellow]")
+
+    console.print(csv_table)
+
+    # Tool Response (if verbose)
+    if result.get("tool_response"):
+        response_text = result["tool_response"]
+
+        # Extract manual inspection section if present (always show this)
+        manual_inspection_section = ""
+        if "### ⚠️ Manual Inspection Needed" in response_text:
+            start_idx = response_text.find("### ⚠️ Manual Inspection Needed")
+            # Find end of this section (next ### or end of response)
+            end_idx = response_text.find("###", start_idx + 1)
+            if end_idx == -1:
+                end_idx = len(response_text)
+            manual_inspection_section = response_text[start_idx:end_idx].strip()
+
+        # Extract quality flag summary if present
+        quality_flag_section = ""
+        if "### Quality Flag Summary" in response_text:
+            start_idx = response_text.find("### Quality Flag Summary")
+            end_idx = response_text.find("\n\nUse `write_to_workspace", start_idx)
+            if end_idx == -1:
+                end_idx = len(response_text)
+            quality_flag_section = response_text[start_idx:end_idx].strip()
+
+        # Show truncated preview
+        preview = response_text[:500] + "..." if len(response_text) > 500 else response_text
+        console.print(
+            Panel(
+                preview,
+                title="Tool Response Preview",
+                expand=False,
+                border_style="dim"
+            )
+        )
+
+        # Always show manual inspection section prominently if present
+        if manual_inspection_section:
+            console.print(
+                Panel(
+                    manual_inspection_section,
+                    title="[yellow]⚠️ Manual Review Required[/yellow]",
+                    expand=False,
+                    border_style="yellow"
+                )
+            )
+
+        # Show quality flag summary if present
+        if quality_flag_section:
+            console.print(
+                Panel(
+                    quality_flag_section,
+                    title="Quality Flags",
+                    expand=False,
+                    border_style="cyan"
+                )
+            )
+
+
+def validate_csv_structure(csv_path: Path) -> Dict[str, Any]:
+    """
+    Validate CSV export structure and content.
+
+    Args:
+        csv_path: Path to CSV file
+
+    Returns:
+        Dict with validation results:
+        - has_required_columns, missing_columns, row_count, sample_columns
+    """
+    import csv as csv_module
+    import pandas as pd
+
+    required_publication_cols = [
+        "publication_entry_id",
+        "publication_title",
+        "publication_doi",
+        "publication_pmid"
+    ]
+
+    required_sample_cols = [
+        "run_accession",
+        "library_strategy",
+        "organism"
+    ]
+
+    try:
+        # Read CSV
+        df = pd.read_csv(csv_path)
+
+        # Check columns
+        all_columns = set(df.columns)
+        missing_pub_cols = [col for col in required_publication_cols if col not in all_columns]
+        missing_sample_cols = [col for col in required_sample_cols if col not in all_columns]
+
+        has_required = len(missing_pub_cols) == 0 and len(missing_sample_cols) == 0
+
+        # Check for missing values in critical columns
+        critical_missing = {}
+        for col in required_publication_cols + required_sample_cols:
+            if col in df.columns:
+                missing_count = df[col].isna().sum()
+                if missing_count > 0:
+                    critical_missing[col] = missing_count
+
+        return {
+            "valid": has_required and len(critical_missing) == 0,
+            "has_required_columns": has_required,
+            "missing_publication_columns": missing_pub_cols,
+            "missing_sample_columns": missing_sample_cols,
+            "row_count": len(df),
+            "total_columns": len(df.columns),
+            "critical_missing_values": critical_missing,
+            "sample_columns": [col for col in df.columns if col.startswith("run_") or col.startswith("sample_")],
+        }
+    except Exception as e:
+        return {
+            "valid": False,
+            "error": str(e),
+        }
+
+
 def main() -> None:
     start_time = time.time()
     args = parse_args()
@@ -966,7 +1459,7 @@ def main() -> None:
     if args.parallel:
         results = process_entries_parallel(
             service=service,
-            entries=queue_entries,
+            entries_with_indices=queue_entries,
             extraction_tasks=args.tasks,
             max_workers=args.parallel,
             show_response=args.show_response,
@@ -975,7 +1468,7 @@ def main() -> None:
     else:
         results = process_entries(
             service=service,
-            entries=queue_entries,
+            entries_with_indices=queue_entries,
             extraction_tasks=args.tasks,
             show_response=args.show_response,
         )
@@ -985,7 +1478,20 @@ def main() -> None:
 
     if args.output_file and results:
         save_results(args.output_file, args, results, summary)
-    
+
+    # Phase 2: Metadata Assistant Handoff (conditional)
+    if args.test_handoff:
+        console.print("\n" + "=" * 60)
+        console.print("[bold cyan]Phase 2: Metadata Assistant Handoff[/bold cyan]")
+        console.print("=" * 60 + "\n")
+
+        handoff_result = test_metadata_handoff(
+            data_manager=data_manager,
+            filter_criteria=args.filter_criteria,
+            max_entries=args.handoff_max_entries,
+        )
+        render_handoff_summary(handoff_result)
+
     # Display total execution time
     total_elapsed = time.time() - start_time
     console.print("\n" + "=" * 60)

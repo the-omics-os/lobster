@@ -1,0 +1,92 @@
+================================================================================
+AST BYPASS TEST SUITE - FILE LOCATIONS
+================================================================================
+
+Created by: Agent 5 - AST Bypass Tester
+Date: 2025-11-30
+Purpose: Security testing for CustomCodeExecutionService AST validation
+
+================================================================================
+ABSOLUTE FILE PATHS
+================================================================================
+
+Base Directory:
+  /Users/tyo/GITHUB/omics-os/lobster/tests/manual/custom_code_execution/05_ast_bypass/
+
+Test Files:
+  /Users/tyo/GITHUB/omics-os/lobster/tests/manual/custom_code_execution/05_ast_bypass/test_dynamic_imports.py
+  /Users/tyo/GITHUB/omics-os/lobster/tests/manual/custom_code_execution/05_ast_bypass/test_obfuscation_techniques.py
+  /Users/tyo/GITHUB/omics-os/lobster/tests/manual/custom_code_execution/05_ast_bypass/test_encoding_tricks.py
+
+Documentation:
+  /Users/tyo/GITHUB/omics-os/lobster/tests/manual/custom_code_execution/05_ast_bypass/AST_BYPASS_REPORT.md
+  /Users/tyo/GITHUB/omics-os/lobster/tests/manual/custom_code_execution/05_ast_bypass/README.md
+  /Users/tyo/GITHUB/omics-os/lobster/tests/manual/custom_code_execution/05_ast_bypass/FILE_LOCATIONS.txt (this file)
+
+Target Service:
+  /Users/tyo/GITHUB/omics-os/lobster/lobster/services/execution/custom_code_execution_service.py
+
+================================================================================
+QUICK COMMANDS
+================================================================================
+
+Navigate to test directory:
+  cd /Users/tyo/GITHUB/omics-os/lobster/tests/manual/custom_code_execution/05_ast_bypass
+
+Run all tests:
+  pytest . -v -s
+
+Run specific test file:
+  pytest test_dynamic_imports.py -v -s
+  pytest test_obfuscation_techniques.py -v -s
+  pytest test_encoding_tricks.py -v -s
+
+View report:
+  cat AST_BYPASS_REPORT.md | less
+  open AST_BYPASS_REPORT.md  # macOS
+
+View README:
+  cat README.md | less
+
+List all files:
+  ls -lh
+
+================================================================================
+TEST STATISTICS
+================================================================================
+
+Total Files: 6
+  - 3 test files (Python)
+  - 2 documentation files (Markdown)
+  - 1 location reference (this file)
+
+Total Lines of Code: ~2,400+
+  - test_dynamic_imports.py: ~450 lines
+  - test_obfuscation_techniques.py: ~440 lines
+  - test_encoding_tricks.py: ~380 lines
+  - AST_BYPASS_REPORT.md: ~900 lines
+  - README.md: ~250 lines
+
+Total Test Methods: 31
+  - Dynamic imports: 11 tests
+  - Obfuscation: 11 tests
+  - Encoding tricks: 9 tests
+
+Vulnerabilities Identified: 15+ unique bypass techniques
+
+================================================================================
+INTEGRATION NOTES
+================================================================================
+
+Repository: omics-os/lobster
+Branch: databiomix_minisupervisor (current)
+Status: Untracked (new files)
+
+To add to git:
+  git add tests/manual/custom_code_execution/05_ast_bypass/
+  git commit -m "test: add AST bypass security tests for CustomCodeExecutionService"
+
+To push:
+  git push origin databiomix_minisupervisor
+
+================================================================================
