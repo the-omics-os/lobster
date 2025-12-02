@@ -460,16 +460,16 @@ def analyze_and_route(
             context="Spatial coordinates detected"
         )
     elif n_cells > 10000:
-        # Large dataset → single-cell expert
-        return handoff_to_singlecell_expert(
+        # Large dataset → transcriptomics expert (single-cell mode)
+        return handoff_to_transcriptomics_expert(
             modality_name=modality_name,
-            context="Large cell count, suitable for clustering"
+            context="Large cell count, suitable for single-cell clustering"
         )
     elif n_cells < 100:
-        # Small dataset → bulk RNA-seq expert
-        return handoff_to_bulk_rnaseq_expert(
+        # Small dataset → transcriptomics expert (bulk mode)
+        return handoff_to_transcriptomics_expert(
             modality_name=modality_name,
-            context="Small sample count, bulk analysis recommended"
+            context="Small sample count, bulk RNA-seq analysis recommended"
         )
     else:
         return "Data characteristics unclear. Please specify analysis type."
@@ -606,7 +606,7 @@ def create_spatial_omics_expert_prompt() -> str:
 **When to Handoff**:
 - **To visualization_expert**: For complex multi-layer spatial visualizations
 - **To metadata_assistant**: For cell type annotation of domains
-- **To singlecell_expert**: If spatial data needs pseudobulk aggregation
+- **To transcriptomics_expert**: If spatial data needs pseudobulk aggregation or transcriptomic analysis
 
 Today's date: {current_date}
 
@@ -1052,10 +1052,10 @@ from lobster.agents.state import SpatialOmicsExpertState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.spatial_preprocessing_service import SpatialPreprocessingService
-from lobster.tools.spatial_domain_service import SpatialDomainService
-from lobster.tools.spatial_statistics_service import SpatialStatisticsService
-from lobster.tools.spatial_visualization_service import SpatialVisualizationService
+from lobster.services.spatial_preprocessing_service import SpatialPreprocessingService
+from lobster.services.spatial_domain_service import SpatialDomainService
+from lobster.services.spatial_statistics_service import SpatialStatisticsService
+from lobster.services.spatial_visualization_service import SpatialVisualizationService
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)

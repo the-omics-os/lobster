@@ -7,7 +7,7 @@ This guide provides a comprehensive introduction to developing within the Lobste
 ## 🎯 Core Design Principles
 
 ### 1. Agent-Based Architecture
-- **Specialized Agents**: Each agent handles specific bioinformatics domains (single-cell, bulk RNA-seq, proteomics)
+- **Specialized Agents**: Each agent handles specific bioinformatics domains (transcriptomics, proteomics)
 - **Centralized Registry**: Single source of truth for agent configuration via `AGENT_REGISTRY`
 - **Natural Language Interface**: Users describe analyses in plain English
 
@@ -55,7 +55,8 @@ class AgentRegistryConfig:
 
 AGENT_REGISTRY = {
     'data_expert_agent': AgentRegistryConfig(...),
-    'singlecell_expert_agent': AgentRegistryConfig(...),
+    'transcriptomics_expert': AgentRegistryConfig(...),
+    'proteomics_expert': AgentRegistryConfig(...),
     # ... more agents
 }
 ```

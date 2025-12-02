@@ -2,7 +2,7 @@
 
 ## Overview
 
-The agent-guided formula construction feature enhances the `singlecell_expert` agent with intelligent statistical guidance for differential expression analysis. Instead of requiring users to understand R-style formulas or statistical design principles, the agent acts as a statistical consultant that guides users through formula construction and iterative analysis workflows.
+The agent-guided formula construction feature enhances the `transcriptomics_expert` agent with intelligent statistical guidance for differential expression analysis. Instead of requiring users to understand R-style formulas or statistical design principles, the agent acts as a statistical consultant that guides users through formula construction and iterative analysis workflows.
 
 ## Key Features
 
@@ -536,7 +536,7 @@ For example, 'condition[T.treatment]' = 1 for treatment samples, 0 for controls.
 ```
 lobster/
 ├── agents/
-│   └── singlecell_expert.py          # Enhanced with 5 new tools
+│   └── transcriptomics_expert.py     # Enhanced with 5 new tools
 ├── tools/
 │   ├── differential_formula_service.py  # Enhanced with 3 helper methods
 │   └── workflow_tracker.py             # New lightweight tracker

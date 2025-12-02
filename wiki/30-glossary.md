@@ -14,7 +14,7 @@ Specialized AI component in Lobster AI that handles specific analysis domains (e
 Python function that creates and configures an agent instance. Specified in the agent registry for dynamic agent loading. Example: `lobster.agents.singlecell_expert.singlecell_expert`.
 
 **Agent Handoff**
-Architectural pattern in Lobster AI where agents transfer tasks to other agents based on analysis requirements. Coordinated by the supervisor agent using handoff tools. Example: supervisor hands off single-cell analysis to `singlecell_expert`.
+Architectural pattern in Lobster AI where agents transfer tasks to other agents based on analysis requirements. Coordinated by the supervisor agent using handoff tools. Example: supervisor hands off single-cell analysis to `transcriptomics_expert`.
 
 **Agent Registry**
 Centralized system in Lobster AI that manages all available agents, their configurations, and handoff capabilities. Located in `lobster/config/agent_registry.py`. Single source of truth for agent configuration.

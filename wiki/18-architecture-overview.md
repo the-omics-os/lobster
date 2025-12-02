@@ -224,10 +224,8 @@ The heart of Lobster AI is its multi-agent architecture, where specialized AI ag
 
 - **Supervisor Agent** - Routes requests and coordinates workflows
 - **Data Expert** - Data loading and quality assessment with 10 tools (Phase 2 queue-based downloads)
-- **Single-Cell Expert** - Specializes in scRNA-seq analysis
-- **Bulk RNA-seq Expert** - Handles bulk transcriptomics
-- **MS Proteomics Expert** - Mass spectrometry proteomics analysis
-- **Affinity Proteomics Expert** - Targeted protein analysis
+- **Transcriptomics Expert** - Unified agent handling both single-cell and bulk RNA-seq analysis
+- **Proteomics Expert** - Unified agent handling both mass spectrometry and affinity proteomics analysis
 - **Research Agent** - Discovery & content analysis with 10 tools, workspace caching, publication queue processing (Phase 1-4 complete)
 - **Metadata Assistant** - Cross-dataset harmonization with 4 tools for sample mapping and validation, **publication queue filtering** with 3 tools for batch processing (Phase 3-4 complete)
 
@@ -243,8 +241,7 @@ Main Supervisor
 ├─ data_expert (create_react_agent)
 │   └─ tools include: delegate_to_metadata_assistant
 ├─ metadata_assistant (shared leaf agent)
-├─ singlecell_expert (leaf agent)
-├─ bulk_rnaseq_expert (leaf agent)
+├─ transcriptomics_expert (unified leaf agent for single-cell and bulk RNA-seq)
 └─ ...other leaf agents
 ```
 

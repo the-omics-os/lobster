@@ -43,8 +43,7 @@ tests/
 │   │   └── test_adapters.py
 │   ├── agents/                # AI agent functionality
 │   │   ├── test_data_expert.py
-│   │   ├── test_singlecell_expert.py
-│   │   └── test_bulk_rnaseq_expert.py
+│   │   └── test_transcriptomics_expert.py
 │   ├── services/              # Analysis services (7+ files)
 │   │   ├── test_quality_service.py
 │   │   ├── test_clustering_service.py
@@ -536,11 +535,11 @@ class TestAgentServiceIntegration:
 
         # Start with data expert
         data_response = client_with_data.query(
-            "Load and prepare the test data for single-cell analysis"
+            "Load and prepare the test data for transcriptomics analysis"
         )
         assert data_response['success']
 
-        # Should handoff to single-cell expert
+        # Should handoff to transcriptomics expert
         analysis_response = client_with_data.query(
             "Now perform clustering and find marker genes"
         )

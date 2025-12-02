@@ -27,17 +27,14 @@ class AgentRegistryConfig:
 ```python
 AGENT_REGISTRY = {
     'data_expert_agent': AgentRegistryConfig(...),
-    'singlecell_expert_agent': AgentRegistryConfig(...),
-    'bulk_rnaseq_expert_agent': AgentRegistryConfig(...),
+    'transcriptomics_expert': AgentRegistryConfig(...),  # Unified agent for single-cell and bulk RNA-seq
+    'proteomics_expert': AgentRegistryConfig(...),  # Unified agent for mass spectrometry and affinity proteomics
     'research_agent': AgentRegistryConfig(...),
     'metadata_assistant': AgentRegistryConfig(...),
     'machine_learning_expert_agent': AgentRegistryConfig(...),
     'visualization_expert_agent': AgentRegistryConfig(...),
     'custom_feature_agent': AgentRegistryConfig(...),
     'protein_structure_visualization_expert_agent': AgentRegistryConfig(...)
-    # Coming soon:
-    # 'ms_proteomics_expert_agent': AgentRegistryConfig(...),
-    # 'affinity_proteomics_expert_agent': AgentRegistryConfig(...),
 }
 ```
 
@@ -196,17 +193,17 @@ restore_workspace_datasets("geo_gse123456")
 restore_workspace_datasets("geo_*")
 ```
 
-## Single-Cell Expert Agent
+## Transcriptomics Expert Agent
 
-Specialized in single-cell RNA-seq analysis with complete workflow support.
+Unified agent specialized in both single-cell and bulk RNA-seq analysis with complete workflow support.
 
 ### Factory Function
 
 ```python
-def singlecell_expert(
+def transcriptomics_expert(
     data_manager: DataManagerV2,
     callback_handler=None,
-    agent_name: str = "singlecell_expert_agent",
+    agent_name: str = "transcriptomics_expert",
     handoff_tools: List = None
 )
 ```
@@ -349,22 +346,9 @@ def create_violin_plot(
 
 Create violin plots for gene expression.
 
-## Bulk RNA-seq Expert Agent
+### Bulk RNA-seq Specific Tools
 
-Specialized in bulk RNA-seq analysis with pyDESeq2 integration.
-
-### Factory Function
-
-```python
-def bulk_rnaseq_expert(
-    data_manager: DataManagerV2,
-    callback_handler=None,
-    agent_name: str = "bulk_rnaseq_expert_agent",
-    handoff_tools: List = None
-)
-```
-
-### Tools
+The transcriptomics expert includes specialized tools for bulk RNA-seq analysis with pyDESeq2 integration.
 
 #### analyze_differential_expression
 
@@ -415,19 +399,17 @@ def create_volcano_plot(
 
 Create volcano plot for differential expression results.
 
-## Mass Spectrometry Proteomics Expert
+## Proteomics Expert Agent
 
-> **⚠️ Status: Coming Soon** - This agent is currently in development and not yet available in the active agent registry. The tools and functionality documented below represent the planned implementation.
-
-Specialized in MS proteomics analysis including DDA/DIA workflows.
+Unified agent specialized in both mass spectrometry and affinity proteomics analysis including DDA/DIA workflows.
 
 ### Factory Function
 
 ```python
-def ms_proteomics_expert(
+def proteomics_expert(
     data_manager: DataManagerV2,
     callback_handler=None,
-    agent_name: str = "ms_proteomics_expert_agent",
+    agent_name: str = "proteomics_expert",
     handoff_tools: List = None
 )
 ```
@@ -472,24 +454,9 @@ def normalize_proteomics_data(
 
 Normalize proteomics intensity data.
 
-## Affinity Proteomics Expert
+### Affinity Proteomics Specific Tools
 
-> **⚠️ Status: Coming Soon** - This agent is currently in development and not yet available in the active agent registry. The tools and functionality documented below represent the planned implementation.
-
-Specialized in affinity proteomics including Olink panels and antibody arrays.
-
-### Factory Function
-
-```python
-def affinity_proteomics_expert(
-    data_manager: DataManagerV2,
-    callback_handler=None,
-    agent_name: str = "affinity_proteomics_expert_agent",
-    handoff_tools: List = None
-)
-```
-
-### Tools
+The proteomics expert includes specialized tools for affinity proteomics including Olink panels and antibody arrays.
 
 #### analyze_affinity_proteomics
 
@@ -1349,9 +1316,9 @@ class AgentModelConfig:
 ### Example Agent Configuration
 
 ```python
-# Configure single-cell expert with specific model
-singlecell_config = AgentModelConfig(
-    name="singlecell_expert_agent",
+# Configure transcriptomics expert with specific model
+transcriptomics_config = AgentModelConfig(
+    name="transcriptomics_expert",
     model_config=ModelConfig(
         provider=ModelProvider.BEDROCK_ANTHROPIC,
         model_id="us.anthropic.claude-3-sonnet-20240229-v1:0",
@@ -1401,11 +1368,11 @@ Each agent automatically gets handoff tools to other agents based on the registr
 ```python
 # Auto-generated handoff tools
 @tool
-def handoff_to_singlecell_expert(
+def handoff_to_transcriptomics_expert(
     task_description: str,
     modality_name: str = None
 ) -> str:
-    """Assign single-cell RNA-seq analysis tasks to the single-cell expert"""
+    """Assign transcriptomics analysis tasks (single-cell or bulk RNA-seq) to the transcriptomics expert"""
 ```
 
 ### Usage Example
@@ -1418,14 +1385,9 @@ def complex_analysis_task(geo_id: str) -> str:
     dataset = download_geo_dataset(geo_id)
 
     # Hand off to appropriate expert
-    if is_single_cell_data(dataset):
-        return handoff_to_singlecell_expert(
-            "Perform complete single-cell analysis workflow",
-            modality_name=dataset
-        )
-    else:
-        return handoff_to_bulk_rnaseq_expert(
-            "Perform differential expression analysis",
+    if is_transcriptomics_data(dataset):
+        return handoff_to_transcriptomics_expert(
+            "Perform transcriptomics analysis workflow",
             modality_name=dataset
         )
 ```
@@ -1504,14 +1466,14 @@ prompt = create_supervisor_prompt(
 from lobster.config.agent_capabilities import AgentCapabilityExtractor
 
 # Extract capabilities for an agent
-capabilities = AgentCapabilityExtractor.extract_capabilities('singlecell_expert_agent')
+capabilities = AgentCapabilityExtractor.extract_capabilities('transcriptomics_expert')
 
 # Get all agent capabilities
 all_capabilities = AgentCapabilityExtractor.get_all_agent_capabilities()
 
 # Get formatted summary
 summary = AgentCapabilityExtractor.get_agent_capability_summary(
-    'singlecell_expert_agent',
+    'transcriptomics_expert',
     max_tools=5
 )
 ```
@@ -1531,7 +1493,8 @@ supervisor_config = SupervisorConfig(
 
 graph = create_bioinformatics_graph(
     data_manager=data_manager,
-    supervisor_config=supervisor_config
+    supervisor_config=supervisor_config,
+    active_agents=['data_expert_agent', 'transcriptomics_expert']
 )
 ```
 
@@ -1552,15 +1515,15 @@ result = client.query("Load GSE194247 and perform single-cell analysis")
 ### Direct Agent Tool Usage
 
 ```python
-from lobster.agents.singlecell_expert import singlecell_expert
+from lobster.agents.transcriptomics_expert import transcriptomics_expert
 from lobster.core.data_manager_v2 import DataManagerV2
 
 # Create agent
 data_manager = DataManagerV2()
-sc_agent = singlecell_expert(data_manager)
+transcriptomics_agent = transcriptomics_expert(data_manager)
 
 # Get tools
-tools = sc_agent.get_tools()
+tools = transcriptomics_agent.get_tools()
 
 # Use specific tool
 result = tools['assess_data_quality'].invoke({

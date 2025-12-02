@@ -600,7 +600,7 @@ lobster config show-config
 lobster config test --profile production
 
 # Test specific agent
-lobster config test --profile production --agent singlecell_expert
+lobster config test --profile production --agent transcriptomics_expert
 
 # Create custom configuration interactively
 lobster config create-custom

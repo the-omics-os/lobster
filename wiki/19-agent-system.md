@@ -87,10 +87,8 @@ flowchart TD
     SUPERVISOR --> |General Questions| DIRECT[Direct Response]
     SUPERVISOR --> |Data Operations| DATA_EXPERT[Data Expert Agent]
     SUPERVISOR --> |Literature Search| RESEARCH[Research Agent]
-    SUPERVISOR --> |Single-Cell Analysis| SC_EXPERT[Single-Cell Expert]
-    SUPERVISOR --> |Bulk RNA-seq| BULK_EXPERT[Bulk RNA-seq Expert]
-    SUPERVISOR --> |MS Proteomics| MS_EXPERT[MS Proteomics Expert]
-    SUPERVISOR --> |Affinity Proteomics| AF_EXPERT[Affinity Proteomics Expert]
+    SUPERVISOR --> |Transcriptomics Analysis| TRANS_EXPERT[Transcriptomics Expert]
+    SUPERVISOR --> |Proteomics Analysis| PROT_EXPERT[Proteomics Expert]
     SUPERVISOR --> |ML Tasks| ML_EXPERT[ML Expert]
 
     classDef supervisor fill:#4caf50,stroke:#2e7d32,stroke-width:3px
@@ -98,7 +96,7 @@ flowchart TD
     classDef response fill:#ffb74d,stroke:#f57c00,stroke-width:2px
 
     class SUPERVISOR supervisor
-    class DATA_EXPERT,RESEARCH,SC_EXPERT,BULK_EXPERT,MS_EXPERT,AF_EXPERT,ML_EXPERT agent
+    class DATA_EXPERT,RESEARCH,TRANS_EXPERT,PROT_EXPERT,ML_EXPERT agent
     class DIRECT response
 ```
 
@@ -118,7 +116,10 @@ Each specialist agent focuses on a specific domain of bioinformatics analysis:
 - **Publication Analysis** - DOI/PMID to dataset association
 - **Marker Gene Discovery** - Literature-based gene signature extraction
 
-#### Single-Cell Expert Agent
+#### Transcriptomics Expert Agent
+Unified agent handling both single-cell and bulk RNA-seq analysis:
+
+**Single-Cell Capabilities:**
 - **Quality Control** - Comprehensive cell and gene filtering
 - **Preprocessing** - Normalization, batch correction, doublet detection
 - **Dimensionality Reduction** - PCA, UMAP, t-SNE implementation
@@ -126,21 +127,24 @@ Each specialist agent focuses on a specific domain of bioinformatics analysis:
 - **Cell Type Annotation** - Manual and automated cell type assignment
 - **Visualization** - QC plots, UMAP plots, feature plots, heatmaps
 
-#### Bulk RNA-seq Expert Agent
+**Bulk RNA-seq Capabilities:**
 - **Sample QC** - Sequencing depth and quality metrics
 - **Differential Expression** - pyDESeq2 integration with statistical rigor
 - **Pathway Analysis** - GO, KEGG, Reactome enrichment
 - **Formula Construction** - R-style design matrices with agent guidance
 - **Iterative Analysis** - Comparative DE analysis workflows
 
-#### MS Proteomics Expert Agent
+#### Proteomics Expert Agent
+Unified agent handling both mass spectrometry and affinity proteomics analysis:
+
+**Mass Spectrometry Capabilities:**
 - **DDA/DIA Workflows** - MaxQuant and Spectronaut output processing
 - **Missing Value Handling** - MNAR/MCAR pattern analysis (30-70% missing typical)
 - **Intensity Normalization** - TMM, quantile, VSN methods
 - **Statistical Testing** - Linear models with empirical Bayes
 - **Pathway Enrichment** - Protein-centric pathway analysis
 
-#### Affinity Proteomics Expert Agent
+**Affinity Proteomics Capabilities:**
 - **Targeted Panels** - Olink NPX processing and antibody array analysis
 - **Low Missing Values** - Optimized for <30% missing data
 - **CV Analysis** - Coefficient of variation assessment
@@ -168,20 +172,14 @@ stateDiagram-v2
 
     Supervisor --> DataExpert: Data tasks
     Supervisor --> Research: Literature tasks
-    Supervisor --> SingleCell: scRNA-seq tasks
-    Supervisor --> BulkRNA: Bulk RNA tasks
-    Supervisor --> MSProteomics: MS proteomics tasks
-    Supervisor --> AffinityProteomics: Affinity tasks
-    Supervisor --> MethodExpert: Method tasks
+    Supervisor --> Transcriptomics: Transcriptomics tasks (single-cell/bulk)
+    Supervisor --> Proteomics: Proteomics tasks (MS/affinity)
     Supervisor --> MLExpert: ML tasks
 
     DataExpert --> Supervisor: Results
     Research --> Supervisor: Results
-    SingleCell --> Supervisor: Results
-    BulkRNA --> Supervisor: Results
-    MSProteomics --> Supervisor: Results
-    AffinityProteomics --> Supervisor: Results
-    MethodExpert --> Supervisor: Results
+    Transcriptomics --> Supervisor: Results
+    Proteomics --> Supervisor: Results
     MLExpert --> Supervisor: Results
 
     Supervisor --> [*]
@@ -337,20 +335,12 @@ command = expert_handoff_manager.create_context_preserving_handoff(
 The system includes **15+ pre-defined handoff patterns** for common expert collaborations:
 
 ```python
-# Single Cell Expert → ML Expert (scVI training)
-"singlecell_to_ml": {
+# Transcriptomics Expert → ML Expert (scVI training)
+"transcriptomics_to_ml": {
     "task_types": ["scvi_training", "deep_learning_embedding"],
     "context_schema": SCVI_CONTEXT_SCHEMA,
     "return_flow": "sender",
     "priority": 10
-}
-
-# Single Cell Expert → Bulk RNA-seq Expert (pseudobulk analysis)
-"singlecell_to_bulk": {
-    "task_types": ["pseudobulk_analysis", "differential_expression"],
-    "context_schema": PSEUDOBULK_CONTEXT_SCHEMA,
-    "return_flow": "sender",
-    "priority": 8
 }
 
 # Data Expert → Research Agent (dataset discovery)
@@ -364,24 +354,24 @@ The system includes **15+ pre-defined handoff patterns** for common expert colla
 
 ### Enhanced Handoff Workflow
 
-**Example: Single Cell Expert → ML Expert → Single Cell Expert (scVI Training)**
+**Example: Transcriptomics Expert → ML Expert → Transcriptomics Expert (scVI Training)**
 
 ```mermaid
 sequenceDiagram
-    participant SC as Single Cell Expert
+    participant TE as Transcriptomics Expert
     participant EHM as ExpertHandoffManager
     participant ML as ML Expert
     participant DM as DataManagerV2
 
-    Note over SC: User requests scVI embeddings
-    SC->>SC: Validate modality and parameters
-    SC->>EHM: Create handoff with context
+    Note over TE: User requests scVI embeddings
+    TE->>TE: Validate modality and parameters
+    TE->>EHM: Create handoff with context
     Note over EHM: handoff_id: abc-123<br/>task_type: scvi_training<br/>parameters: {modality, n_latent, ...}
 
     EHM->>EHM: Track active handoff
-    EHM-->>SC: LangGraph Command(goto=ML)
+    EHM-->>TE: LangGraph Command(goto=ML)
 
-    SC->>ML: Handoff with preserved context
+    TE->>ML: Handoff with preserved context
     Note over ML: Receives validated parameters<br/>and task description
 
     ML->>DM: Train scVI model
@@ -389,12 +379,12 @@ sequenceDiagram
     ML->>EHM: Complete handoff with results
 
     EHM->>EHM: Determine return path
-    EHM-->>ML: Command(goto=SingleCell)
+    EHM-->>ML: Command(goto=Transcriptomics)
 
-    ML->>SC: Return with results
-    Note over SC: Process handoff results<br/>Verify embeddings stored<br/>Continue analysis
+    ML->>TE: Return with results
+    Note over TE: Process handoff results<br/>Verify embeddings stored<br/>Continue analysis
 
-    SC-->>EHM: Cleanup completed handoff
+    TE-->>EHM: Cleanup completed handoff
 ```
 
 ### Type-Safe Context Validation
@@ -520,9 +510,9 @@ summary = get_handoff_registry_summary()
     "available_agents": 8,
     "patterns_by_priority": {10: [...], 9: [...], 8: [...]},
     "handoff_matrix": {
-        "singlecell_expert": {
+        "transcriptomics_expert": {
             "machine_learning_expert": True,
-            "bulk_rnaseq_expert": True,
+            "proteomics_expert": True,
             "research_agent": False
         }
     }
@@ -681,6 +671,8 @@ def test_agent_registry():
     # Check agent name consistency
     all_agents = get_all_agent_names()
     assert 'data_expert_agent' in all_agents
+    assert 'transcriptomics_expert' in all_agents
+    assert 'proteomics_expert' in all_agents
 ```
 
 ### Integration Testing

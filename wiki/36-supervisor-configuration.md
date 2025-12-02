@@ -145,7 +145,7 @@ data_manager = DataManagerV2()
 prompt = create_supervisor_prompt(
     data_manager=data_manager,
     config=config,
-    active_agents=['data_expert_agent', 'singlecell_expert_agent']
+    active_agents=['data_expert_agent', 'transcriptomics_expert']
 )
 ```
 

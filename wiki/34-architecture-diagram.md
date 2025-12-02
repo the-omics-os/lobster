@@ -226,16 +226,14 @@ graph TB
     subgraph "AI Agents - Dynamically Loaded"
         DE[Data Expert<br/>🔄 Data Loading & Management]
         RA[Research Agent<br/>🔍 Literature Discovery & Dataset ID<br/>📄 Method Extraction from Publications]
-        SCE[Single-Cell Expert<br/>🧬 scRNA-seq Analysis & Clustering]
-        BRE[Bulk RNA-seq Expert<br/>📊 Differential Expression Analysis]
+        TE[Transcriptomics Expert<br/>🧬 Single-Cell & Bulk RNA-seq Analysis<br/>📊 Unified Transcriptomics Workflows]
         MLE[ML Expert<br/>🤖 Machine Learning & scVI]
         VIZ[Visualization Expert<br/>📈 Publication-Quality Plots]
     end
 
-    %% Proteomics Agents (Under Development - Currently Disabled)
-    subgraph "Proteomics Agents - Under Development"
-        MSPE[MS Proteomics Expert<br/>🔬 Mass Spectrometry Analysis]:::disabled
-        APPE[Affinity Proteomics Expert<br/>🎯 Targeted Panel Analysis]:::disabled
+    %% Proteomics Agent (Unified)
+    subgraph "Proteomics Agent"
+        PE[Proteomics Expert<br/>🔬 Mass Spectrometry & Affinity Analysis<br/>🎯 Unified Proteomics Workflows]
     end
 
     %% NEW: Analysis Services Layer (Stateless)
@@ -348,29 +346,21 @@ graph TB
     WEBPAGE_PROV --> DOCLING_SVC
     ABSTRACT_PROV -.-> PUBMED
 
-    %% Single-Cell Expert connections
-    SCE --> PREP
-    SCE --> QUAL
-    SCE --> CLUST
-    SCE --> SCELL
-    SCE --> PBULK
+    %% Transcriptomics Expert connections (handles both single-cell and bulk)
+    TE --> PREP
+    TE --> QUAL
+    TE --> CLUST
+    TE --> SCELL
+    TE --> PBULK
+    TE --> FORMULA
+    TE --> BULK
 
-    %% Bulk RNA-seq Expert connections
-    BRE --> PREP
-    BRE --> FORMULA
-    BRE --> BULK
-
-    %% Proteomics Agent to Service connections
-    MSPE --> PPREP
-    MSPE --> PQUAL
-    MSPE --> PANAL
-    MSPE --> PDIFF
-    MSPE --> PVIS
-    APPE --> PPREP
-    APPE --> PQUAL
-    APPE --> PANAL
-    APPE --> PDIFF
-    APPE --> PVIS
+    %% Proteomics Expert connections (handles both MS and affinity)
+    PE --> PPREP
+    PE --> PQUAL
+    PE --> PANAL
+    PE --> PDIFF
+    PE --> PVIS
 
     %% Service to DataManager connections
     PREP --> |AnnData Processing| DM2
@@ -427,7 +417,7 @@ graph TB
     classDef foundation fill:#DDA0DD,stroke:#8B008B,stroke-width:3px,color:#000
     classDef disabled fill:#E0E0E0,stroke:#757575,stroke-width:2px,stroke-dasharray:5 5,color:#424242
 
-    class DE,RA,SCE,BRE,MLE,VIZ agent
+    class DE,RA,TE,PE,MLE,VIZ agent
     class PREP,QUAL,CLUST,SCELL,BULK,PBULK,FORMULA,PBADAP,PUBSVC,PUBMED,GEOPROV,GEOQB,METADATA_VAL service
     class DM2,MODALITIES,PROV,ERROR orchestrator
     class TRA,PRA,TRSC,TRBL,PRMS,PRAF adapter
@@ -630,21 +620,13 @@ AGENT_REGISTRY: Dict[str, AgentConfig] = {
         handoff_tool_name='handoff_to_data_expert',
         handoff_tool_description='Assign data fetching/download tasks to the data expert'
     ),
-    'singlecell_expert_agent': AgentConfig(
-        name='singlecell_expert_agent',
-        display_name='Single-Cell Expert',
-        description='Handles single-cell RNA-seq analysis tasks',
-        factory_function='lobster.agents.singlecell_expert.singlecell_expert',
-        handoff_tool_name='handoff_to_singlecell_expert',
-        handoff_tool_description='Assign single-cell RNA-seq analysis tasks to the single-cell expert'
-    ),
-    'bulk_rnaseq_expert_agent': AgentConfig(
-        name='bulk_rnaseq_expert_agent',
-        display_name='Bulk RNA-seq Expert',
-        description='Handles bulk RNA-seq analysis tasks',
-        factory_function='lobster.agents.bulk_rnaseq_expert.bulk_rnaseq_expert',
-        handoff_tool_name='handoff_to_bulk_rnaseq_expert',
-        handoff_tool_description='Assign bulk RNA-seq analysis tasks to the bulk RNA-seq expert'
+    'transcriptomics_expert': AgentConfig(
+        name='transcriptomics_expert',
+        display_name='Transcriptomics Expert',
+        description='Handles both single-cell and bulk RNA-seq analysis tasks',
+        factory_function='lobster.agents.transcriptomics_expert.transcriptomics_expert',
+        handoff_tool_name='handoff_to_transcriptomics_expert',
+        handoff_tool_description='Assign transcriptomics analysis tasks (single-cell or bulk RNA-seq) to the transcriptomics expert'
     ),
     'research_agent': AgentConfig(
         name='research_agent',
@@ -670,9 +652,14 @@ AGENT_REGISTRY: Dict[str, AgentConfig] = {
         handoff_tool_name='handoff_to_visualization_expert',
         handoff_tool_description='Delegate visualization tasks to the visualization expert agent'
     ),
-    # Proteomics agents currently disabled (under development)
-    # 'ms_proteomics_expert_agent': AgentConfig(...),
-    # 'affinity_proteomics_expert_agent': AgentConfig(...),
+    'proteomics_expert': AgentConfig(
+        name='proteomics_expert',
+        display_name='Proteomics Expert',
+        description='Handles both mass spectrometry and affinity proteomics analysis tasks',
+        factory_function='lobster.agents.proteomics_expert.proteomics_expert',
+        handoff_tool_name='handoff_to_proteomics_expert',
+        handoff_tool_description='Assign proteomics analysis tasks (mass spectrometry or affinity proteomics) to the proteomics expert'
+    ),
 }
 ```
 
@@ -1226,7 +1213,7 @@ The `bulk_rnaseq_expert` agent includes 5 new tools for conversational formula c
 ```mermaid
 graph LR
     subgraph "Agent Layer"
-        BRE[Bulk RNA-seq Expert<br/>🤖 Enhanced with Formula Tools]
+        BRE[Transcriptomics Expert<br/>🤖 Enhanced with Formula Tools]
     end
 
     subgraph "New Agent Tools (5)"
@@ -1259,7 +1246,7 @@ graph LR
     classDef tool fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
     classDef service fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
 
-    class TE agent
+    class TE,PE agent
     class T1,T2,T3,T4,T5 tool
     class FORMULA,WFLOW,BULK service
 ```
