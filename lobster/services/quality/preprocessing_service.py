@@ -816,6 +816,12 @@ print(f"Top 10 genes: {adata.var_names[adata.var['highly_deviant']].tolist()[:10
         initial_cells = adata.n_obs
         initial_genes = adata.n_vars
 
+        # BUG-005 FIX: Save ALL original obs columns before filtering
+        # This ensures biological metadata (patient_id, tissue_region, condition, sample_id)
+        # is preserved through QC operations, which is critical for pseudobulk workflows
+        original_obs = adata.obs.copy()
+        logger.debug(f"Preserving {len(original_obs.columns)} obs columns before filtering")
+
         # Filter cells
         sc.pp.filter_cells(adata, min_genes=min_genes_per_cell)
         sc.pp.filter_genes(adata, min_cells=min_cells_per_gene)
@@ -828,6 +834,16 @@ print(f"Top 10 genes: {adata.var_names[adata.var['highly_deviant']].tolist()[:10
         )
 
         adata._inplace_subset_obs(cell_filter)
+
+        # BUG-005 FIX: Restore original metadata columns for retained cells
+        # Merge original obs columns back, prioritizing newly computed QC metrics
+        for col in original_obs.columns:
+            if col not in adata.obs.columns:
+                # Column was lost during filtering - restore it
+                adata.obs[col] = original_obs.loc[adata.obs_names, col]
+                logger.debug(f"Restored obs column: {col}")
+
+        logger.info(f"Preserved {len(adata.obs.columns)} obs columns after filtering")
 
         final_cells = adata.n_obs
         final_genes = adata.n_vars

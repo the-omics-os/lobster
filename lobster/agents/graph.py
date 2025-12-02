@@ -4,6 +4,7 @@ LangGraph multi-agent graph for bioinformatics analysis.
 Implementation using langgraph_supervisor package for hierarchical multi-agent coordination.
 """
 
+import inspect
 from typing import Dict, Optional
 
 from langchain_core.tools import tool
@@ -60,14 +61,42 @@ def create_bioinformatics_graph(
     callback_handler=None,
     manual_model_params: dict = None,
     supervisor_config: Optional[SupervisorConfig] = None,
+    subscription_tier: str = None,
+    agent_filter: callable = None,
 ):
     """Create the bioinformatics multi-agent graph using langgraph_supervisor.
+
+    Args:
+        data_manager: DataManagerV2 instance for data operations
+        checkpointer: Optional memory saver for conversation persistence
+        store: Optional in-memory store for shared state
+        callback_handler: Optional callback for streaming responses
+        manual_model_params: Optional override for supervisor model parameters
+        supervisor_config: Optional supervisor configuration
+        subscription_tier: Subscription tier for feature gating (free/premium/enterprise).
+            If None, will be auto-detected from license. Controls which agents are
+            available and which handoffs are allowed.
+        agent_filter: Optional callable(agent_name, agent_config) -> bool to filter
+            which agents are included in the graph. Used for tier-based restrictions.
 
     Note: When invoking this graph, set the recursion_limit in the config to prevent
     hitting the default limit of 25. Example:
         config = {"recursion_limit": 100, ...}
         graph.invoke(input, config)
     """
+    # Auto-detect subscription tier if not provided
+    if subscription_tier is None:
+        try:
+            from lobster.core.license_manager import get_current_tier
+            subscription_tier = get_current_tier()
+        except ImportError:
+            subscription_tier = "free"
+    logger.debug(f"Creating graph with subscription tier: {subscription_tier}")
+
+    # Create tier-based agent filter if not provided
+    if agent_filter is None:
+        from lobster.config.subscription_tiers import is_agent_available
+        agent_filter = lambda name, config: is_agent_available(name, subscription_tier)
     logger.debug("Creating bioinformatics multi-agent graph")
 
     # Get model configuration for the supervisor
@@ -93,6 +122,18 @@ def create_bioinformatics_graph(
 
     worker_agents = get_worker_agents()
 
+    # Apply agent filter for tier-based restrictions
+    filtered_worker_agents = {}
+    filtered_out_agents = []
+    for agent_name, agent_config in worker_agents.items():
+        if agent_filter(agent_name, agent_config):
+            filtered_worker_agents[agent_name] = agent_config
+        else:
+            filtered_out_agents.append(agent_name)
+    if filtered_out_agents:
+        logger.info(f"Tier '{subscription_tier}' excludes agents: {filtered_out_agents}")
+    worker_agents = filtered_worker_agents
+
     # Pre-compute child agents for supervisor_accessible inference
     # Agents that appear in ANY parent's child_agents are NOT supervisor-accessible by default
     child_agent_names = set()
@@ -105,12 +146,21 @@ def create_bioinformatics_graph(
     for agent_name, agent_config in worker_agents.items():
         factory_function = import_agent_factory(agent_config.factory_function)
 
+        # Build kwargs for agent factory
+        factory_kwargs = {
+            "data_manager": data_manager,
+            "callback_handler": callback_handler,
+            "agent_name": agent_config.name,
+        }
+
+        # Pass subscription_tier to factories that support it
+        # (determined by inspecting function signature)
+        sig = inspect.signature(factory_function)
+        if "subscription_tier" in sig.parameters:
+            factory_kwargs["subscription_tier"] = subscription_tier
+
         # Create agent WITHOUT delegation tools first
-        agent = factory_function(
-            data_manager=data_manager,
-            callback_handler=callback_handler,
-            agent_name=agent_config.name,
-        )
+        agent = factory_function(**factory_kwargs)
         created_agents[agent_name] = agent
 
         # Create handoff tool if configured AND supervisor-accessible
@@ -165,12 +215,19 @@ def create_bioinformatics_graph(
 
             # Re-create the parent agent WITH delegation tools
             factory_function = import_agent_factory(agent_config.factory_function)
-            new_agent = factory_function(
-                data_manager=data_manager,
-                callback_handler=callback_handler,
-                agent_name=agent_config.name,
-                delegation_tools=delegation_tools,
-            )
+
+            # Build kwargs including subscription_tier if supported
+            factory_kwargs = {
+                "data_manager": data_manager,
+                "callback_handler": callback_handler,
+                "agent_name": agent_config.name,
+                "delegation_tools": delegation_tools,
+            }
+            sig = inspect.signature(factory_function)
+            if "subscription_tier" in sig.parameters:
+                factory_kwargs["subscription_tier"] = subscription_tier
+
+            new_agent = factory_function(**factory_kwargs)
 
             # Replace in our tracking
             old_agent = created_agents[agent_name]

@@ -1031,7 +1031,7 @@ Please check:
                     "min_pct": min_pct,
                     "max_out_pct": max_out_pct,
                 },
-                description=f"Found {marker_stats['n_marker_genes']} marker genes for {marker_stats['n_groups']} clusters (method: {marker_stats['method']}, pre-filter: {marker_stats['pre_filter_genes']}, post-filter: {marker_stats['post_filter_genes']})",
+                description=f"Found marker genes for {marker_stats['n_groups']} clusters (method: {marker_stats['method']}, pre-filter: {sum(marker_stats['pre_filter_counts'].values())}, post-filter: {sum(marker_stats['post_filter_counts'].values())}, filtered: {marker_stats['total_genes_filtered']})",
                 ir=ir,
             )
 

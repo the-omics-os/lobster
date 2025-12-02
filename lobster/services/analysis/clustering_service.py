@@ -402,11 +402,21 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
 
             # Subsample if needed
             if subsample_size and adata_clustered.n_obs > subsample_size:
+                # BUG-005 FIX: Preserve obs columns during subsampling
+                original_obs_cols = set(adata_clustered.obs.columns)
                 logger.info(
                     f"Subsampling data to {subsample_size} cells (from {adata_clustered.n_obs})"
                 )
                 sc.pp.subsample(adata_clustered, n_obs=subsample_size, random_state=42)
                 logger.info(f"Data subsampled: {adata_clustered.n_obs} cells remaining")
+
+                # Verify metadata preservation
+                new_obs_cols = set(adata_clustered.obs.columns)
+                if original_obs_cols != new_obs_cols:
+                    lost_cols = original_obs_cols - new_obs_cols
+                    logger.warning(
+                        f"BUG-005: Subsampling lost {len(lost_cols)} obs columns: {lost_cols}"
+                    )
 
             self._update_progress("Data preparation completed")
 
@@ -553,6 +563,9 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
         logger.info(f"Performing batch correction using batch key: {batch_key}")
 
         try:
+            # BUG-005 FIX: Track original obs columns for verification
+            original_obs_cols = set(adata.obs.columns)
+
             # Simple batch correction by normalizing each batch separately
             unique_batches = adata.obs[batch_key].unique()
             batch_list = []
@@ -571,6 +584,14 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
             adata_corrected = anndata.concat(
                 batch_list, label=batch_key, keys=unique_batches
             )
+
+            # BUG-005 FIX: Verify metadata preservation after batch correction
+            corrected_obs_cols = set(adata_corrected.obs.columns)
+            lost_cols = original_obs_cols - corrected_obs_cols
+            if lost_cols:
+                logger.warning(
+                    f"BUG-005: Batch correction lost {len(lost_cols)} obs columns: {lost_cols}"
+                )
 
             logger.info(f"Batch correction completed for {len(unique_batches)} batches")
             return adata_corrected
