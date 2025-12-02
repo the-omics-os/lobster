@@ -1,91 +1,263 @@
-# Allowlist for public repository sync
+# =============================================================================
+# PUBLIC REPOSITORY ALLOWLIST (lobster → lobster-local sync)
+# =============================================================================
 # Patterns use gitignore syntax
+# Lines starting with ! are explicit exclusions (even if they match other patterns)
+#
+# SYNC PHILOSOPHY:
+# ✅ INCLUDE: Core engine, open-core agents, services, configuration
+# ❌ EXCLUDE: Server/API code, premium features, cloud infrastructure
+#
+# See scripts/sync_to_public.py for sync automation
+# =============================================================================
 
-# FUNCTIONAL files
+
+# =============================================================================
+# FUNCTIONAL & BUILD FILES
+# =============================================================================
 verify_installation.py
 uv.lock
 setup.py
 pyproject.toml
 main.py
+
+# Installation scripts
 scripts/install.sh
 scripts/release.sh
-!scripts/*
+!scripts/*                          # Exclude all other scripts (sync scripts, etc.)
 
-# Installation files
+# Container files (CLI only, not server)
 Dockerfile
 dev_install.sh
 install-ubuntu.sh
 install.bat
 install.ps1
 install.sh
+!Dockerfile.server                  # Server image is private
+!docker-compose.yml                 # Multi-service orchestration is private
 
 
-# README
+# =============================================================================
+# DOCUMENTATION
+# =============================================================================
 README.md
-!README_FULL.md
+!README_FULL.md                     # Internal detailed README
+LICENSE
+*.md                                # General markdown docs
+
+# Exclude internal/agentic documentation
+!CLAUDE.md
+!LOBSTER_PROJECT_SUMMARY_FOR_CLOUD_BACKEND.md
+!activate_claude_code.sh
+!activate_claude_code_1m.sh
 !kevin_notes_completed/
 !kevin_notes_completed/*
 !kevin_notes/*
 
-# Agentic
-!CLAUDE.md
-!LOBSTER_PROJECT_SUMMARY_FOR_CLOUD_BACKEND.md
-!activate_claude_code.sh
 
-# Core engine code
+# =============================================================================
+# CORE ENGINE CODE (Open-Core)
+# =============================================================================
 lobster/*
 lobster/
+
+# Core infrastructure
+lobster/core/*
+lobster/config/*
+!lobster/config/*_secrets.py
+!lobster/config/*_private.py
+
+# Schemas (data models)
+lobster/core/schemas/*
+!lobster/core/schemas/publication_queue.py    # Premium feature (DataBioMix)
+
+# Adapters (data loading)
+lobster/core/adapters/*
+
+# Backends (storage)
+lobster/core/backends/*
+
+# Interfaces
+lobster/core/interfaces/*
+
+# Utils
+lobster/core/utils/*
+
+
+# =============================================================================
+# AGENTS (Open-Core + Premium)
+# =============================================================================
+# Open-core agents (public)
+lobster/agents/supervisor.py
+lobster/agents/research_agent.py
+lobster/agents/metadata_assistant.py
+lobster/agents/data_expert.py
+lobster/agents/singlecell_expert.py
+lobster/agents/visualization_expert.py
+lobster/agents/machine_learning_expert.py
+lobster/agents/protein_structure_visualization_expert.py
+lobster/agents/graph.py
+lobster/agents/state.py
+lobster/agents/__init__.py
+lobster/agents/draw_graph.py
+lobster/agents/data_expert_assistant.py
+
+# LangGraph supervisor (open-core orchestration)
+lobster/agents/langgraph_supervisor/*
+
+# Transcriptomics module (combines single-cell + bulk RNA-seq - OPEN-CORE)
+lobster/agents/transcriptomics/*
+
+# Proteomics module structure (open-core structure, but experts excluded below)
+lobster/agents/proteomics/__init__.py
+lobster/agents/proteomics/state.py
+lobster/agents/proteomics/deprecated.py
+
+# Archived agents
+lobster/agents/archive/*
+
+# PREMIUM AGENTS (Excluded)
+!lobster/agents/bulk_rnaseq_expert.py         # Replaced by transcriptomics module
+!lobster/agents/proteomics/proteomics_expert.py
+!lobster/agents/proteomics/platform_config.py
+!lobster/agents/custom_feature_agent.py       # AI-powered agent generation (premium)
+!lobster/agents/unified_agent_creation_template.md
+
+
+# =============================================================================
+# SERVICES (Organized by Function)
+# =============================================================================
+
+# --- Analysis Services (Open-Core) ---
+lobster/services/analysis/clustering_service.py
+lobster/services/analysis/enhanced_singlecell_service.py
+lobster/services/analysis/scvi_embedding_service.py
+lobster/services/analysis/structure_analysis_service.py
+
+# PREMIUM: Bulk RNA-seq analysis (replaced by transcriptomics in agents)
+!lobster/services/analysis/bulk_rnaseq_service.py
+!lobster/services/analysis/differential_formula_service.py
+!lobster/services/analysis/pseudobulk_service.py
+
+# PREMIUM: Proteomics analysis
+!lobster/services/analysis/proteomics_analysis_service.py
+!lobster/services/analysis/proteomics_differential_service.py
+
+# --- Quality Control & Preprocessing (Open-Core) ---
+lobster/services/quality/quality_service.py
+lobster/services/quality/preprocessing_service.py
+
+# PREMIUM: Proteomics quality control
+!lobster/services/quality/proteomics_quality_service.py
+!lobster/services/quality/proteomics_preprocessing_service.py
+
+# --- Visualization Services (Open-Core) ---
+lobster/services/visualization/visualization_service.py
+lobster/services/visualization/pymol_visualization_service.py
+lobster/services/visualization/chimerax_visualization_service_ALPHA.py
+
+# PREMIUM: Bulk & proteomics visualization
+!lobster/services/visualization/bulk_visualization_service.py
+!lobster/services/visualization/proteomics_visualization_service.py
+
+# --- Data Access & Retrieval (Open-Core) ---
+lobster/services/data_access/geo_service.py
+lobster/services/data_access/geo_download_service.py
+lobster/services/data_access/geo_fallback_service.py
+lobster/services/data_access/content_access_service.py
+lobster/services/data_access/workspace_content_service.py
+lobster/services/data_access/protein_structure_fetch_service.py
+lobster/services/data_access/docling_service.py
+
+# GEO modular package (open-core)
+lobster/services/data_access/geo/*
+
+# PREMIUM: Proteomics parsers
+lobster/services/data_access/proteomics_parsers/*
+
+# --- Data Management (Open-Core) ---
+lobster/services/data_management/modality_management_service.py
+lobster/services/data_management/concatenation_service.py
+
+# --- Metadata Operations (Open-Core + Premium) ---
+lobster/services/metadata/metadata_standardization_service.py
+lobster/services/metadata/metadata_validation_service.py
+lobster/services/metadata/manual_annotation_service.py
+
+# Protocol extraction (OPEN per user confirmation)
+lobster/services/metadata/protocol_extraction/*
+
+# Sample grouping (OPEN per user confirmation)
+lobster/services/metadata/sample_grouping_service.py
+
+# PREMIUM: Microbiome harmonization (DataBioMix feature)
+!lobster/services/metadata/microbiome_filtering_service.py
+!lobster/services/metadata/disease_standardization_service.py
+!lobster/services/metadata/sample_mapping_service.py
+
+# --- Execution Services (OPEN per user confirmation) ---
+lobster/services/execution/*
+
+# --- Orchestration Services ---
+lobster/services/orchestration/publication_processing_service.py
+
+# --- Machine Learning Services (Alpha/Premium) ---
+!lobster/services/ml/ml_transcriptomics_service_ALPHA.py
+!lobster/services/ml/ml_proteomics_service_ALPHA.py
+
+# --- Templates ---
+lobster/services/templates/annotation_templates.py
+
+
+# =============================================================================
+# TOOLS & UTILITIES (Open-Core)
+# =============================================================================
+lobster/tools/download_orchestrator.py
+lobster/tools/handoff_tools.py
+lobster/tools/workspace_tool.py
+lobster/tools/gpu_detector.py
+lobster/tools/rate_limiter.py
+lobster/tools/url_transforms.py
+
+# Providers (data sources)
+lobster/tools/providers/base_provider.py
+lobster/tools/providers/pubmed_provider.py
+lobster/tools/providers/pmc_provider.py
+lobster/tools/providers/geo_provider.py
+lobster/tools/providers/webpage_provider.py
+lobster/tools/providers/abstract_provider.py
+lobster/tools/providers/biorxiv_medrxiv_provider.py
+lobster/tools/providers/publication_resolver.py
+lobster/tools/providers/__init__.py
+
+# Archived/deprecated tools
+lobster/tools/archive/*
+
+
+# =============================================================================
+# CLOUD CLIENT (Important for upgrades)
+# =============================================================================
+lobster/lobster_cloud/
+lobster/lobster_cloud/*
+
+
+# =============================================================================
+# API & SERVER CODE (Excluded - Private Only)
+# =============================================================================
 !lobster/api/**
 !lobster/core/api_client.py
 !lobster/core/websocket*
 !lobster/core/publication_queue.py
 !lobster/core/ris_parser.py
 !lobster/cdk/**
-!*ALPHA.py
+!*ALPHA.py                          # Alpha features (except allowed above)
 !*websocket*.py
-
-# Cloud client (important for upgrades)
-lobster/lobster_cloud/
-lobster/lobster_cloud/*
 !lobster/streamlit_app.py
 
-# Agents in Development - Proteomics (Premium)
-!lobster/agents/ms_proteomics_expert.py
-!lobster/agents/affinity_proteomics_expert.py
-!lobster/core/adapters/proteomics_adapter.py
-!lobster/core/schemas/proteomics.py
-!lobster/core/schemas/metabolomics.py
-!lobster/core/schemas/metagenomics.py
-!lobster/core/schemas/publication_queue.py
 
-!lobster/services/analysis/proteomics_analysis_service.py
-!lobster/services/analysis/proteomics_differential_service.py
-!lobster/services/visualization/proteomics_visualization_service.py
-!lobster/services/quality/proteomics_quality_service.py
-!lobster/services/quality/proteomics_preprocessing_service.py
-
-# Bulk RNA-seq Expert (Premium)
-!lobster/agents/bulk_rnaseq_expert.py
-!lobster/services/analysis/bulk_rnaseq_service.py
-!lobster/services/visualization/bulk_visualization_service.py
-!lobster/services/analysis/pseudobulk_service.py
-!lobster/services/analysis/differential_formula_service.py
-!lobster/core/adapters/pseudobulk_adapter.py
-
-# Microbiome Harmonization (Premium - DataBioMix)
-!lobster/services/metadata/microbiome_*.py
-!lobster/services/metadata/disease_*.py
-
-# Custom/Template Agents (Premium/Internal)
-!lobster/agents/custom_feature_agent.py
-!lobster/agents/unified_agent_creation_template.md
-
-# Configuration (safe defaults only)
-lobster/config/**
-!lobster/config/*_secrets.py
-!lobster/config/*_private.py
-
-# Tests and examples
+# =============================================================================
+# TESTS & EXAMPLES (Excluded - Private Only)
+# =============================================================================
 !tests/
 !tests/*
 !tests/integration/test_publication_queue_workspace.py
@@ -101,40 +273,45 @@ lobster/config/**
 !tests/unit/services/analysis/test_pseudobulk_service.py
 !tests/unit/services/analysis/test_differential_formula_service.py
 !tests/unit/services/analysis/test_formula_design_service.py
+
 examples/**
 !integration-results.xml
 
-# Container files (exclude server/production configs)
-!Dockerfile.server
-!docker-compose.yml
 
-# Documentation
-*.md
-!docs/**
-!docs/
-LICENSE
-!wiki/
-!wiki.backup*
-!wiki/*
-
-# Package files
+# =============================================================================
+# DEVELOPMENT FILES (Open-Core)
+# =============================================================================
+.pre-commit-config.yaml
+pytest.ini
+.gitignore
 pyproject.toml
 setup.py
 setup.cfg
 requirements*.txt
 Makefile
 
-# Development files
-.pre-commit-config.yaml
-pytest.ini
-.gitignore
 
-# Exclude patterns (double-check)
+# =============================================================================
+# PACKAGE FILES
+# =============================================================================
+pyproject.toml
+setup.py
+setup.cfg
+
+
+# =============================================================================
+# EXCLUDE PATTERNS (Universal - Double-Check Safety)
+# =============================================================================
 !**/__pycache__/**
 !**/*.pyc
+!**/*.pyo
+!**/*.pyd
 .env.example
 !.env
 !**/private/**
 !**/customer/**
 !**/*_secret*
 !**/*_private*
+!**/results/**
+!**/cache/**
+!.mplconfig/**

@@ -1704,12 +1704,26 @@ entry.harmonization_metadata = {
 
 ---
 
-**Last Updated**: 2024-11-30
-**Version**: 1.2.0 (PREMIUM Feature - Protocol Extraction + SRA Validation)
+**Last Updated**: 2024-12-01
+**Version**: 1.3.0 (PREMIUM Feature - Protocol Extraction + SRA Validation + Accession Fix)
 **Authors**: Lobster AI Development Team
 **Customer**: DataBioMix (IBD Microbiome Harmonization)
 
 **Changelog**:
+- **v1.3.0 (2024-12-01)**: Critical bug fixes for dataset discovery and logging
+  - **BioProject/BioSample Accession Lookup Fix**: E-Link returns internal UIDs, not accessions. Fixed to properly resolve:
+    - PRJNA (NCBI), PRJEB (EBI), PRJDB (DDBJ) for BioProject
+    - SAMN (NCBI), SAME (EBI), SAMD (DDBJ) for BioSample
+    - Previously code incorrectly prepended "PRJNA" to all UIDs
+  - **PMC Full-Text Extraction Fix**: Changed primary endpoint from efetch to OAI-PMH
+    - OAI-PMH returns full JATS XML including `<back>` section with data availability statements
+    - efetch restricted by many publishers (returned empty body for Science/Nature papers)
+    - Data availability section contains 60-70% of dataset identifiers
+  - **Logging Improvements**:
+    - Fixed duplicate logging (messages appearing twice) via `propagate=False`
+    - Reduced verbosity: per-file sample extraction stats moved from INFO to DEBUG
+    - Rich UI tables now render cleanly without log spam pollution
+  - **Rich Progress UI**: Confirmed working correctly (`multi_progress.py` tables)
 - **v1.2.0 (2024-11-30)**: Added modular Protocol Extraction Service
   - Domain-based package architecture (amplicon, mass_spec, rnaseq)
   - Factory pattern: `get_protocol_service("amplicon")`

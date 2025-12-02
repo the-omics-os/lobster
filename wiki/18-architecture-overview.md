@@ -306,8 +306,54 @@ Stateless analysis services provide the computational backbone:
 - **ProteomicsAnalysisService** - Statistical testing, PCA
 - **ProteomicsDifferentialService** - Linear models, FDR control
 
-#### Supporting Services
-- **GEOService** - Dataset downloading with metadata-based adapter selection. Refactored (Nov 2024) into modular `services/data_access/geo/` package with separate downloader, parser, strategy, and constants modules. ([v0.3.2.4 improvements](./40-geo-download-improvements-2024-11.md))
+#### Data Access Services (Download Infrastructure)
+
+The **DownloadOrchestrator** pattern provides unified, queue-based downloads from multiple biological databases with automatic service routing and retry logic:
+
+**IDownloadService Interface:**
+- Abstract base class for all download implementations
+- Standardized 3-tuple return: `(adata, stats, ir)` for provenance tracking
+- Strategy validation and execution separation
+- Integration with DownloadQueue for multi-agent workflows
+
+**Implemented Download Services:**
+
+| Service | Databases | Status | Key Features |
+|---------|-----------|--------|--------------|
+| **GEODownloadService** | GEO | ✅ Production | H5AD, matrix, supplementary strategies. Refactored (Nov 2024) into modular `services/data_access/geo/` package ([v0.3.2.4](./40-geo-download-improvements-2024-11.md)) |
+| **SRADownloadService** | SRA, ENA, DDBJ | ✅ Production (Dec 2024) | Multi-mirror failover, MD5 validation, nf-core-compliant error handling |
+| **PRIDEDownloadService** | PRIDE, PXD | ✅ Production | mzML, mzTab, RAW formats |
+| **MassIVEDownloadService** | MassIVE, MSV | ✅ Production | PROXI API integration |
+
+**SRADownloadService Architecture (Dec 2024):**
+- **Primary Source**: ENA filereport API with HTTPS download
+- **Mirror Failover**: ENA → NCBI → DDBJ for high availability
+- **Error Handling**: Production-grade retry logic from nf-core/fetchngs
+  - HTTP 429: Retry-After header + exponential backoff
+  - HTTP 500: 3 retries with backoff (5s→10s→20s)
+  - HTTP 204: Permission issue detection
+  - Network errors: Automatic retry with cleanup
+- **Data Integrity**: MD5 checksum validation, atomic writes (.tmp → final)
+- **Size Protection**: Soft warning at 100 GB (override: `LOBSTER_SKIP_SIZE_WARNING=true`)
+- **Output**: Metadata-based AnnData with FASTQ file paths, ready for alignment/quantification
+- **Compliance**: Verified against nf-core/fetchngs, pachterlab/ffq, pysradb
+
+**Download Workflow:**
+```
+research_agent → validate metadata → create DownloadQueueEntry
+    ↓
+DownloadQueue (status: PENDING)
+    ↓
+supervisor → data_expert → execute_download_from_queue(entry_id)
+    ↓
+DownloadOrchestrator → routes to appropriate service (GEO/SRA/PRIDE/MassIVE)
+    ↓
+Service downloads → validates → creates AnnData → logs provenance
+    ↓
+DataManagerV2 stores modality + updates queue status: COMPLETED
+```
+
+#### Other Supporting Services
 - **ContentAccessService** - Unified literature access with 5 providers (Phase 2 complete)
 - **VisualizationService** - Interactive plot generation
 - **ConcatenationService** - Memory-efficient sample merging
