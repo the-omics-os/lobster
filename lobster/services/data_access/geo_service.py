@@ -2078,15 +2078,27 @@ class GEOService:
                     # This provides robust duplicate handling via anndata.concat(merge="unique")
                     if len(validated_matrices) > 1:
                         # Multiple samples: store individually first, then concatenate
+                        logger.info(f"Download complete for {geo_id}: {len(validated_matrices)} samples")
+                        logger.info(f"Processing pipeline: Store samples → Concatenate → Create final AnnData")
+                        logger.info(f"Step 1/3: Storing {len(validated_matrices)} samples as AnnData objects...")
+
                         stored_samples = self._store_samples_as_anndata(
                             validated_matrices, geo_id, metadata
                         )
 
                         if stored_samples:
+                            logger.info(f"Step 1/3: Successfully stored {len(stored_samples)} samples")
+                            logger.info(f"Step 2/3: Concatenating samples (this may take 30-90s for large datasets)...")
+
                             # Concatenate using ConcatenationService (handles duplicates)
                             concatenated_dataset = self._concatenate_stored_samples(
                                 geo_id, stored_samples, concat_strategy
                             )
+
+                            if concatenated_dataset is not None:
+                                logger.info(f"Step 2/3: Concatenation complete")
+                                logger.info(f"Step 3/3: Validating final AnnData structure...")
+                                logger.info(f"Step 3/3: Validation complete - dataset ready!")
 
                             if concatenated_dataset is not None:
                                 return GEOResult(

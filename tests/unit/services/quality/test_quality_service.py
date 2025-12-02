@@ -534,6 +534,7 @@ class TestQualityIRGeneration:
         service = QualityService()
         ir = service._create_quality_ir(
             min_genes=500,
+            max_genes=5000,
             max_mt_pct=20.0,
             max_ribo_pct=50.0,
             min_housekeeping_score=1.0,
@@ -549,12 +550,14 @@ class TestQualityIRGeneration:
         service = QualityService()
         ir = service._create_quality_ir(
             min_genes=600,
+            max_genes=6000,
             max_mt_pct=15.0,
             max_ribo_pct=40.0,
             min_housekeeping_score=2.0,
         )
 
         assert ir.parameters["min_genes"] == 600
+        assert ir.parameters["max_genes"] == 6000
         assert ir.parameters["max_mt_pct"] == 15.0
         assert ir.parameters["max_ribo_pct"] == 40.0
         assert ir.parameters["min_housekeeping_score"] == 2.0
@@ -564,12 +567,14 @@ class TestQualityIRGeneration:
         service = QualityService()
         ir = service._create_quality_ir(
             min_genes=500,
+            max_genes=5000,
             max_mt_pct=20.0,
             max_ribo_pct=50.0,
             min_housekeeping_score=1.0,
         )
 
         assert "min_genes" in ir.parameter_schema
+        assert "max_genes" in ir.parameter_schema
         assert "max_mt_pct" in ir.parameter_schema
         assert "max_ribo_pct" in ir.parameter_schema
         assert "min_housekeeping_score" in ir.parameter_schema
@@ -585,6 +590,7 @@ class TestQualityIRGeneration:
         service = QualityService()
         ir = service._create_quality_ir(
             min_genes=500,
+            max_genes=5000,
             max_mt_pct=20.0,
             max_ribo_pct=50.0,
             min_housekeeping_score=1.0,
@@ -592,6 +598,7 @@ class TestQualityIRGeneration:
 
         # Check template contains Jinja2 placeholders
         assert "{{ min_genes }}" in ir.code_template
+        assert "{{ max_genes }}" in ir.code_template
         assert "{{ max_mt_pct }}" in ir.code_template
         assert "{{ max_ribo_pct }}" in ir.code_template
         assert "sc.pp.calculate_qc_metrics" in ir.code_template
@@ -601,6 +608,7 @@ class TestQualityIRGeneration:
         service = QualityService()
         ir = service._create_quality_ir(
             min_genes=500,
+            max_genes=5000,
             max_mt_pct=20.0,
             max_ribo_pct=50.0,
             min_housekeeping_score=1.0,
@@ -828,3 +836,395 @@ class TestQualityPlots:
 
         for plot in plots:
             assert isinstance(plot, Figure)
+
+
+class TestMitochondrialGeneDetection:
+    """Test mitochondrial gene detection across nomenclature patterns."""
+
+    def test_detect_mt_genes_hgnc_pattern(self):
+        """Test detection of HGNC pattern (MT-)."""
+        n_obs, n_vars = 100, 50
+        X = np.random.poisson(5, size=(n_obs, n_vars)).astype(float)
+        gene_names = [f"GENE{i}" for i in range(45)] + [
+            "MT-ND1",
+            "MT-CO1",
+            "MT-ATP6",
+            "MT-CYB",
+            "MT-ND2",
+        ]
+
+        adata = AnnData(X=X, var=pd.DataFrame(index=gene_names))
+
+        service = QualityService()
+        mt_mask = service._detect_mitochondrial_genes(adata)
+
+        # Should find exactly 5 MT genes
+        assert mt_mask.sum() == 5
+        # Check correct genes identified
+        assert mt_mask[-5:].all()  # Last 5 should be True
+        assert not mt_mask[:-5].any()  # First 45 should be False
+
+    def test_detect_mt_genes_mouse_pattern(self):
+        """Test detection of mouse pattern (mt- lowercase)."""
+        n_obs, n_vars = 100, 50
+        X = np.random.poisson(5, size=(n_obs, n_vars)).astype(float)
+        gene_names = [f"Gene{i}" for i in range(45)] + [
+            "mt-Nd1",
+            "mt-Co1",
+            "mt-Atp6",
+            "mt-Cytb",
+            "mt-Nd2",
+        ]
+
+        adata = AnnData(X=X, var=pd.DataFrame(index=gene_names))
+
+        service = QualityService()
+        mt_mask = service._detect_mitochondrial_genes(adata)
+
+        # Should find exactly 5 MT genes
+        assert mt_mask.sum() == 5
+        assert mt_mask[-5:].all()
+
+    def test_detect_mt_genes_alternative_delimiter(self):
+        """Test detection of alternative delimiter (MT.)."""
+        n_obs, n_vars = 100, 50
+        X = np.random.poisson(5, size=(n_obs, n_vars)).astype(float)
+        gene_names = [f"GENE{i}" for i in range(45)] + [
+            "MT.ND1",
+            "MT.CO1",
+            "MT.ATP6",
+            "MT.CYB",
+            "MT.ND2",
+        ]
+
+        adata = AnnData(X=X, var=pd.DataFrame(index=gene_names))
+
+        service = QualityService()
+        mt_mask = service._detect_mitochondrial_genes(adata)
+
+        # Should find exactly 5 MT genes
+        assert mt_mask.sum() == 5
+        assert mt_mask[-5:].all()
+
+    def test_detect_mt_genes_ensembl_pattern(self):
+        """Test detection of Ensembl ID pattern."""
+        n_obs, n_vars = 100, 50
+        X = np.random.poisson(5, size=(n_obs, n_vars)).astype(float)
+        gene_names = [f"ENSG0000012345{i}" for i in range(45)] + [
+            "ENSG00000198888",  # MT-ND1
+            "ENSG00000198763",  # MT-ND2
+            "ENSG00000198804",  # MT-CO1
+            "ENSG00000210082",  # MT-RNR2
+            "ENSG00000210049",  # MT-TF
+        ]
+
+        adata = AnnData(X=X, var=pd.DataFrame(index=gene_names))
+
+        service = QualityService()
+        mt_mask = service._detect_mitochondrial_genes(adata)
+
+        # Should find exactly 5 MT genes
+        assert mt_mask.sum() == 5
+        assert mt_mask[-5:].all()
+
+    def test_detect_mt_genes_generic_fallback(self):
+        """Test detection using generic fallback pattern."""
+        n_obs, n_vars = 100, 50
+        X = np.random.poisson(5, size=(n_obs, n_vars)).astype(float)
+        gene_names = [f"GENE{i}" for i in range(45)] + [
+            "mitochondrial_gene1",
+            "mito_protein",
+            "mitochondria_related",
+            "gene_with_mito",
+            "mitochondrial",
+        ]
+
+        adata = AnnData(X=X, var=pd.DataFrame(index=gene_names))
+
+        service = QualityService()
+        mt_mask = service._detect_mitochondrial_genes(adata)
+
+        # Should find all 5 genes with "mito" in name
+        assert mt_mask.sum() == 5
+        assert mt_mask[-5:].all()
+
+    def test_detect_mt_genes_none_found(self):
+        """Test graceful handling when no MT genes present."""
+        n_obs, n_vars = 100, 50
+        X = np.random.poisson(5, size=(n_obs, n_vars)).astype(float)
+        gene_names = [f"GENE{i}" for i in range(n_vars)]
+
+        adata = AnnData(X=X, var=pd.DataFrame(index=gene_names))
+
+        service = QualityService()
+        mt_mask = service._detect_mitochondrial_genes(adata)
+
+        # Should return all False
+        assert mt_mask.sum() == 0
+        assert len(mt_mask) == n_vars
+        assert mt_mask.dtype == bool
+
+    def test_detect_mt_genes_cascade_order(self):
+        """Test that pattern cascade stops at first match."""
+        n_obs, n_vars = 100, 50
+        X = np.random.poisson(5, size=(n_obs, n_vars)).astype(float)
+        # Mix patterns: HGNC should win
+        gene_names = [f"GENE{i}" for i in range(40)] + [
+            "MT-ND1",
+            "MT-CO1",
+            "mt-nd2",  # Lowercase (should not be counted if HGNC present)
+            "MT.ATP6",  # Dot delimiter (should not be counted if HGNC present)
+            "mitochondrial",  # Generic (should not be counted if HGNC present)
+        ] + [f"GENE{i}" for i in range(45, 50)]
+
+        adata = AnnData(X=X, var=pd.DataFrame(index=gene_names))
+
+        service = QualityService()
+        mt_mask = service._detect_mitochondrial_genes(adata)
+
+        # Should find only the 2 HGNC pattern genes (MT-ND1, MT-CO1)
+        assert mt_mask.sum() == 2
+
+    def test_detect_mt_genes_integration_with_qc(self):
+        """Test MT detection integrates correctly with QC metrics."""
+        n_obs, n_vars = 100, 50
+        # Create dataset with known MT percentage
+        X = np.full((n_obs, n_vars), 10, dtype=float)
+        gene_names = ["MT-ND1", "MT-CO1"] + [f"GENE{i}" for i in range(48)]
+
+        adata = AnnData(X=X, var=pd.DataFrame(index=gene_names))
+
+        service = QualityService()
+        qc_metrics = service._calculate_qc_metrics_from_adata(adata)
+
+        # MT% should be 4% (2 MT genes / 50 total genes * 100)
+        expected_mt_pct = (2 / 50) * 100
+        np.testing.assert_almost_equal(
+            qc_metrics["mt_pct"].values, expected_mt_pct, decimal=5
+        )
+
+
+class TestRibosomalGeneDetection:
+    """Test ribosomal gene detection across nomenclature patterns."""
+
+    def test_detect_ribo_genes_hgnc_pattern(self):
+        """Test detection of HGNC pattern (RPS*, RPL*)."""
+        n_obs, n_vars = 100, 50
+        X = np.random.poisson(5, size=(n_obs, n_vars)).astype(float)
+        gene_names = [f"GENE{i}" for i in range(43)] + [
+            "RPS3",
+            "RPS27",
+            "RPL5",
+            "RPL23",
+            "RPS29",
+            "RPL11",
+            "RPS6",
+        ]
+
+        adata = AnnData(X=X, var=pd.DataFrame(index=gene_names))
+
+        service = QualityService()
+        ribo_mask = service._detect_ribosomal_genes(adata)
+
+        # Should find exactly 7 ribosomal genes
+        assert ribo_mask.sum() == 7
+        assert ribo_mask[-7:].all()
+
+    def test_detect_ribo_genes_mouse_pattern(self):
+        """Test detection of mouse pattern (Rps*, Rpl*)."""
+        n_obs, n_vars = 100, 50
+        X = np.random.poisson(5, size=(n_obs, n_vars)).astype(float)
+        gene_names = [f"Gene{i}" for i in range(45)] + [
+            "Rps3",
+            "Rps27",
+            "Rpl5",
+            "Rpl23",
+            "Rps29",
+        ]
+
+        adata = AnnData(X=X, var=pd.DataFrame(index=gene_names))
+
+        service = QualityService()
+        ribo_mask = service._detect_ribosomal_genes(adata)
+
+        # Should find exactly 5 ribosomal genes
+        assert ribo_mask.sum() == 5
+        assert ribo_mask[-5:].all()
+
+    def test_detect_ribo_genes_lowercase_pattern(self):
+        """Test detection of lowercase pattern (rps*, rpl*)."""
+        n_obs, n_vars = 100, 50
+        X = np.random.poisson(5, size=(n_obs, n_vars)).astype(float)
+        gene_names = [f"gene{i}" for i in range(45)] + [
+            "rps3",
+            "rps27",
+            "rpl5",
+            "rpl23",
+            "rps29",
+        ]
+
+        adata = AnnData(X=X, var=pd.DataFrame(index=gene_names))
+
+        service = QualityService()
+        ribo_mask = service._detect_ribosomal_genes(adata)
+
+        # Should find exactly 5 ribosomal genes
+        assert ribo_mask.sum() == 5
+        assert ribo_mask[-5:].all()
+
+    def test_detect_ribo_genes_compact_notation(self):
+        """Test detection of compact notation (RP[SL]*)."""
+        n_obs, n_vars = 100, 50
+        X = np.random.poisson(5, size=(n_obs, n_vars)).astype(float)
+        gene_names = [f"GENE{i}" for i in range(45)] + [
+            "RPS3",
+            "RPL5",
+            "RPS27",
+            "RPL23",
+            "RPS29",
+        ]
+
+        adata = AnnData(X=X, var=pd.DataFrame(index=gene_names))
+
+        service = QualityService()
+        ribo_mask = service._detect_ribosomal_genes(adata)
+
+        # Should find exactly 5 ribosomal genes
+        assert ribo_mask.sum() == 5
+
+    def test_detect_ribo_genes_generic_fallback(self):
+        """Test detection using generic fallback pattern."""
+        n_obs, n_vars = 100, 50
+        X = np.random.poisson(5, size=(n_obs, n_vars)).astype(float)
+        gene_names = [f"GENE{i}" for i in range(45)] + [
+            "ribosomal_protein_s3",
+            "ribosome_protein",
+            "gene_ribosom",
+            "ribosomal",
+            "ribosomes",
+        ]
+
+        adata = AnnData(X=X, var=pd.DataFrame(index=gene_names))
+
+        service = QualityService()
+        ribo_mask = service._detect_ribosomal_genes(adata)
+
+        # Should find all 5 genes with "ribosom" in name
+        assert ribo_mask.sum() == 5
+        assert ribo_mask[-5:].all()
+
+    def test_detect_ribo_genes_none_found(self):
+        """Test graceful handling when no ribosomal genes present."""
+        n_obs, n_vars = 100, 50
+        X = np.random.poisson(5, size=(n_obs, n_vars)).astype(float)
+        gene_names = [f"GENE{i}" for i in range(n_vars)]
+
+        adata = AnnData(X=X, var=pd.DataFrame(index=gene_names))
+
+        service = QualityService()
+        ribo_mask = service._detect_ribosomal_genes(adata)
+
+        # Should return all False
+        assert ribo_mask.sum() == 0
+        assert len(ribo_mask) == n_vars
+        assert ribo_mask.dtype == bool
+
+    def test_detect_ribo_genes_integration_with_qc(self):
+        """Test ribosomal detection integrates correctly with QC metrics."""
+        n_obs, n_vars = 100, 50
+        # Create dataset with known ribo percentage
+        X = np.full((n_obs, n_vars), 10, dtype=float)
+        gene_names = ["RPS3", "RPS27", "RPL5"] + [f"GENE{i}" for i in range(47)]
+
+        adata = AnnData(X=X, var=pd.DataFrame(index=gene_names))
+
+        service = QualityService()
+        qc_metrics = service._calculate_qc_metrics_from_adata(adata)
+
+        # Ribo% should be 6% (3 ribo genes / 50 total genes * 100)
+        expected_ribo_pct = (3 / 50) * 100
+        np.testing.assert_almost_equal(
+            qc_metrics["ribo_pct"].values, expected_ribo_pct, decimal=5
+        )
+
+
+class TestGeneDetectionEndToEnd:
+    """End-to-end tests for gene detection in full QC workflow."""
+
+    def test_assess_quality_with_mixed_nomenclature(self):
+        """Test full QC assessment with mixed gene nomenclature."""
+        n_obs, n_vars = 100, 50
+        X = np.random.poisson(5, size=(n_obs, n_vars)).astype(float)
+
+        # Mix of patterns
+        gene_names = (
+            ["MT-ND1", "MT-CO1"]  # HGNC MT
+            + ["RPS3", "RPL5"]  # HGNC ribo
+            + ["ACTB", "GAPDH"]  # Housekeeping
+            + [f"GENE{i}" for i in range(44)]
+        )
+
+        adata = AnnData(X=X, var=pd.DataFrame(index=gene_names))
+
+        service = QualityService()
+        result_adata, stats, ir = service.assess_quality(adata)
+
+        # Should detect MT and ribo genes
+        assert stats["mean_mt_pct"] > 0
+        assert stats["mean_ribo_pct"] > 0
+        assert "mt_pct" in result_adata.obs.columns
+        assert "ribo_pct" in result_adata.obs.columns
+
+    def test_assess_quality_before_after_comparison(self):
+        """Test that multi-pattern detection fixes 0.0% issue."""
+        n_obs, n_vars = 100, 50
+        X = np.random.poisson(10, size=(n_obs, n_vars)).astype(float)
+
+        # Use Ensembl IDs (would have failed with old implementation)
+        gene_names = [f"ENSG0000012345{i}" for i in range(45)] + [
+            "ENSG00000198888",  # MT gene
+            "ENSG00000198763",  # MT gene
+            "ENSG00000198804",  # MT gene
+            "RPS3",  # Ribo gene
+            "RPL5",  # Ribo gene
+        ]
+
+        adata = AnnData(X=X, var=pd.DataFrame(index=gene_names))
+
+        service = QualityService()
+        result_adata, stats, ir = service.assess_quality(adata)
+
+        # Old implementation would report 0.0%, new should detect
+        assert stats["mean_mt_pct"] > 0, "MT genes should be detected (was 0.0% before)"
+        assert stats["mean_ribo_pct"] > 0, "Ribo genes should be detected"
+
+    def test_assess_quality_no_false_negatives(self):
+        """Test that all common nomenclature systems are detected."""
+        test_cases = [
+            # (gene_names, expected_mt_count, expected_ribo_count)
+            (["MT-ND1", "MT-CO1", "RPS3", "RPL5"] + [f"G{i}" for i in range(46)], 2, 2),
+            (["mt-nd1", "mt-co1", "rps3", "rpl5"] + [f"G{i}" for i in range(46)], 2, 2),
+            (["MT.ND1", "MT.CO1", "Rps3", "Rpl5"] + [f"G{i}" for i in range(46)], 2, 2),
+            (
+                ["ENSG00000198888", "ENSG00000210082", "RPS3", "RPL5"]
+                + [f"G{i}" for i in range(46)],
+                2,
+                2,
+            ),
+        ]
+
+        service = QualityService()
+
+        for gene_names, expected_mt, expected_ribo in test_cases:
+            X = np.random.poisson(10, size=(100, 50)).astype(float)
+            adata = AnnData(X=X, var=pd.DataFrame(index=gene_names))
+
+            mt_mask = service._detect_mitochondrial_genes(adata)
+            ribo_mask = service._detect_ribosomal_genes(adata)
+
+            assert (
+                mt_mask.sum() == expected_mt
+            ), f"Failed to detect {expected_mt} MT genes in {gene_names[:4]}"
+            assert (
+                ribo_mask.sum() == expected_ribo
+            ), f"Failed to detect {expected_ribo} ribo genes in {gene_names[:4]}"

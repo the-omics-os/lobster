@@ -269,6 +269,170 @@ class QualityService:
             logger.exception(f"Error calculating adaptive thresholds: {e}")
             raise QualityError(f"Adaptive threshold calculation failed: {str(e)}")
 
+    def _detect_mitochondrial_genes(self, adata: anndata.AnnData) -> np.ndarray:
+        """
+        Detect mitochondrial genes using multiple nomenclature patterns.
+
+        Tries patterns in order of specificity:
+        1. Human HGNC: MT-* (dash)
+        2. Mouse MGI: mt-* (lowercase)
+        3. Alternative: MT.* (dot delimiter)
+        4. Ensembl: ENSG00000198*, ENSG00000210* (known MT gene ID ranges)
+        5. Generic: contains "mito" or "mitochondr"
+
+        Scientific Note:
+        ----------------
+        Mitochondrial percentage is a critical QC metric for single-cell RNA-seq.
+        Dying cells leak cytoplasmic RNA, increasing relative MT content.
+        Standard thresholds: 15-20% MT for healthy cells, >50% indicates dying cells.
+
+        Args:
+            adata: AnnData object
+
+        Returns:
+            Boolean array indicating mitochondrial genes
+        """
+        var_names = adata.var_names.str
+
+        # Pattern 1: HGNC (MT-)
+        mt_mask = var_names.startswith("MT-")
+        n_found = mt_mask.sum()
+        if n_found > 0:
+            logger.info(
+                f"Detected {n_found} mitochondrial genes using HGNC pattern (MT-)"
+            )
+            return mt_mask
+
+        # Pattern 2: Mouse (mt- lowercase)
+        mt_mask = var_names.lower().str.startswith("mt-")
+        n_found = mt_mask.sum()
+        if n_found > 0:
+            logger.info(
+                f"Detected {n_found} mitochondrial genes using mouse pattern (mt-)"
+            )
+            return mt_mask
+
+        # Pattern 3: Alternative delimiter (MT.)
+        mt_mask = var_names.startswith("MT.")
+        n_found = mt_mask.sum()
+        if n_found > 0:
+            logger.info(
+                f"Detected {n_found} mitochondrial genes using alternative pattern (MT.)"
+            )
+            return mt_mask
+
+        # Pattern 4: Ensembl IDs (known MT genome ranges)
+        # Human: ENSG00000198* (ENSG00000198888-ENSG00000198938)
+        # Also check ENSG00000210* range
+        ensembl_mt_prefixes = ["ENSG00000198", "ENSG00000210"]
+        mt_mask = var_names.startswith(tuple(ensembl_mt_prefixes))
+        n_found = mt_mask.sum()
+        if n_found > 0:
+            logger.info(
+                f"Detected {n_found} mitochondrial genes using Ensembl ID pattern"
+            )
+            return mt_mask
+
+        # Pattern 5: Generic fallback (contains "mito")
+        mt_mask = var_names.lower().str.contains(
+            "mito|mitochondr", regex=True, na=False
+        )
+        n_found = mt_mask.sum()
+        if n_found > 0:
+            logger.warning(
+                f"Detected {n_found} mitochondrial genes using generic fallback pattern "
+                "(may include false positives)"
+            )
+            return mt_mask
+
+        # No MT genes found
+        logger.warning(
+            "No mitochondrial genes detected using any pattern. "
+            "Mitochondrial QC metrics will be 0.0% (may be inaccurate)."
+        )
+        return np.zeros(len(adata.var_names), dtype=bool)
+
+    def _detect_ribosomal_genes(self, adata: anndata.AnnData) -> np.ndarray:
+        """
+        Detect ribosomal genes using multiple nomenclature patterns.
+
+        Tries patterns in order of specificity:
+        1. Human HGNC: RPS*, RPL* (uppercase)
+        2. Mouse MGI: Rps*, Rpl* (capitalized)
+        3. Generic: rps*, rpl* (lowercase)
+        4. Alternative: RP[SL]* (compact notation)
+        5. Fallback: contains "ribosom"
+
+        Scientific Note:
+        ----------------
+        High ribosomal content (>50%) may indicate:
+        - Metabolic stress
+        - Low-quality libraries
+        - Actively proliferating cells (context-dependent)
+
+        Args:
+            adata: AnnData object
+
+        Returns:
+            Boolean array indicating ribosomal genes
+        """
+        var_names = adata.var_names.str
+
+        # Pattern 1: HGNC (RPS*, RPL*)
+        ribo_mask = var_names.startswith("RPS") | var_names.startswith("RPL")
+        n_found = ribo_mask.sum()
+        if n_found > 0:
+            logger.info(
+                f"Detected {n_found} ribosomal genes using HGNC pattern (RPS/RPL)"
+            )
+            return ribo_mask
+
+        # Pattern 2: Mouse (Rps*, Rpl* - capitalized)
+        ribo_mask = var_names.startswith("Rps") | var_names.startswith("Rpl")
+        n_found = ribo_mask.sum()
+        if n_found > 0:
+            logger.info(
+                f"Detected {n_found} ribosomal genes using mouse pattern (Rps/Rpl)"
+            )
+            return ribo_mask
+
+        # Pattern 3: Generic lowercase (rps*, rpl*)
+        ribo_mask = var_names.lower().str.startswith(
+            "rps"
+        ) | var_names.lower().str.startswith("rpl")
+        n_found = ribo_mask.sum()
+        if n_found > 0:
+            logger.info(
+                f"Detected {n_found} ribosomal genes using lowercase pattern (rps/rpl)"
+            )
+            return ribo_mask
+
+        # Pattern 4: Compact notation (RP[SL]*)
+        ribo_mask = var_names.match(r"^RP[SL]\d+", na=False)
+        n_found = ribo_mask.sum()
+        if n_found > 0:
+            logger.info(
+                f"Detected {n_found} ribosomal genes using compact pattern (RP[SL])"
+            )
+            return ribo_mask
+
+        # Pattern 5: Generic fallback (contains "ribosom")
+        ribo_mask = var_names.lower().str.contains("ribosom", regex=False, na=False)
+        n_found = ribo_mask.sum()
+        if n_found > 0:
+            logger.warning(
+                f"Detected {n_found} ribosomal genes using generic fallback pattern "
+                "(may include false positives)"
+            )
+            return ribo_mask
+
+        # No ribosomal genes found
+        logger.warning(
+            "No ribosomal genes detected using any pattern. "
+            "Ribosomal QC metrics will be 0.0% (may be inaccurate)."
+        )
+        return np.zeros(len(adata.var_names), dtype=bool)
+
     def _calculate_qc_metrics_from_adata(self, adata: anndata.AnnData) -> pd.DataFrame:
         """
         Calculate quality control metrics from AnnData object.
@@ -281,18 +445,11 @@ class QualityService:
         """
         logger.info("Calculating quality metrics from AnnData")
 
-        # Identify mitochondrial genes
-        mt_genes = adata.var_names.str.startswith(
-            "MT-"
-        ) | adata.var_names.str.startswith("mt-")
+        # Identify mitochondrial genes using multi-pattern cascade
+        mt_genes = self._detect_mitochondrial_genes(adata)
 
-        # Identify ribosomal genes
-        ribo_genes = (
-            adata.var_names.str.startswith("RPS")
-            | adata.var_names.str.startswith("RPL")
-            | adata.var_names.str.startswith("rps")
-            | adata.var_names.str.startswith("rpl")
-        )
+        # Identify ribosomal genes using multi-pattern cascade
+        ribo_genes = self._detect_ribosomal_genes(adata)
 
         # Identify housekeeping genes for score
         housekeeping_genes = ["ACTB", "GAPDH", "MALAT1"]

@@ -7,6 +7,8 @@ and geo_service.py, implementing a strategy pattern for different data types
 with advanced memory management and progress tracking.
 """
 
+import threading
+import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -102,6 +104,122 @@ class MemoryLimitError(ConcatenationError):
     """Operation would exceed memory limits."""
 
     pass
+
+
+# ████████████████████████████████████████████████████████████████████████████████
+# ██                                                                            ██
+# ██                        RESOURCE MONITOR (TIMEOUT DETECTION)                ██
+# ██                                                                            ██
+# ████████████████████████████████████████████████████████████████████████████████
+
+
+class ResourceMonitor:
+    """
+    Monitor system resources during long-running operations.
+
+    Detects:
+    - Memory exhaustion (swapping/thrashing)
+    - Operation timeouts (with warnings, not hard kills)
+    - System resource starvation
+    """
+
+    def __init__(self, timeout_seconds: int = 300, warning_interval: int = 30):
+        """
+        Initialize resource monitor.
+
+        Args:
+            timeout_seconds: Soft timeout in seconds (default: 5 minutes)
+            warning_interval: Interval for progress warnings (default: 30s)
+        """
+        self.timeout_seconds = timeout_seconds
+        self.warning_interval = warning_interval
+        self.start_time = None
+        self.stop_flag = threading.Event()
+        self.monitor_thread = None
+        self.warnings_logged = []
+
+    def start(self):
+        """Start monitoring in background thread."""
+        self.start_time = time.time()
+        self.stop_flag.clear()
+        self.warnings_logged = []
+        self.monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
+        self.monitor_thread.start()
+
+    def stop(self):
+        """Stop monitoring."""
+        self.stop_flag.set()
+        if self.monitor_thread and self.monitor_thread.is_alive():
+            self.monitor_thread.join(timeout=1.0)
+
+    def _monitor_loop(self):
+        """Background monitoring loop."""
+        last_warning_time = self.start_time
+        last_memory_percent = 0
+
+        while not self.stop_flag.is_set():
+            elapsed = time.time() - self.start_time
+            vm = psutil.virtual_memory()
+            swap = psutil.swap_memory()
+
+            # Check for memory issues
+            if vm.percent > 90:
+                if "memory_critical" not in self.warnings_logged:
+                    logger.warning(
+                        f"CRITICAL: Memory usage at {vm.percent:.1f}% "
+                        f"({vm.available / (1024**3):.2f} GB available)"
+                    )
+                    logger.warning(
+                        "System may be swapping to disk, causing severe slowdown. "
+                        "Consider stopping the operation and using a smaller dataset."
+                    )
+                    self.warnings_logged.append("memory_critical")
+
+            elif vm.percent > 80:
+                # Only log once when crossing 80% threshold
+                if last_memory_percent <= 80:
+                    logger.warning(
+                        f"Memory usage high: {vm.percent:.1f}% "
+                        f"({vm.available / (1024**3):.2f} GB available)"
+                    )
+
+            last_memory_percent = vm.percent
+
+            # Check for swap usage
+            if swap.percent > 10:
+                if "swap_active" not in self.warnings_logged:
+                    logger.warning(
+                        f"System is swapping to disk ({swap.percent:.1f}% swap used). "
+                        f"Performance will be significantly degraded."
+                    )
+                    self.warnings_logged.append("swap_active")
+
+            # Periodic progress warnings
+            if elapsed - (last_warning_time - self.start_time) >= self.warning_interval:
+                logger.info(
+                    f"Operation still in progress: {elapsed:.0f}s elapsed "
+                    f"(Memory: {vm.percent:.1f}%)"
+                )
+                last_warning_time = time.time()
+
+            # Soft timeout check
+            if elapsed > self.timeout_seconds:
+                logger.error(
+                    f"Operation exceeded soft timeout ({self.timeout_seconds}s). "
+                    f"This may indicate insufficient system resources."
+                )
+                logger.error(
+                    "Recommendations:\n"
+                    "  1. Use a smaller dataset (<100k cells)\n"
+                    "  2. Increase system memory to 16+ GB\n"
+                    "  3. Use cloud mode: lobster query --cloud '...'\n"
+                    "  4. Contact support if issue persists"
+                )
+                # Don't break - let operation continue, just warn user
+                # Hard-killing CPU-bound operations can cause data corruption
+
+            # Check every 5 seconds
+            time.sleep(5)
 
 
 # ████████████████████████████████████████████████████████████████████████████████
@@ -267,6 +385,10 @@ class SmartSparseStrategy(BaseConcatenationStrategy):
                         error_message="anndata package required but not installed",
                     )
 
+                # PROFESSIONAL PROGRESS LOGGING: Stage 1 - Adding batch information
+                logger.info(f"Starting sample concatenation: {len(sample_data)} samples")
+                logger.info(f"Stage 1/3: Adding batch information to samples...")
+
                 # Add batch information
                 for i, adata in enumerate(sample_data):
                     sample_id = (
@@ -277,34 +399,87 @@ class SmartSparseStrategy(BaseConcatenationStrategy):
                     adata.obs[batch_key] = sample_id
                     adata.obs["sample_id"] = sample_id
 
+                    if i % 10 == 0 and i > 0:
+                        logger.debug(f"  Processed {i}/{len(sample_data)} samples...")
+
+                logger.info(f"Stage 1/3: Batch information added to all samples")
+
+                # PROFESSIONAL PROGRESS LOGGING: Stage 2 - Memory estimation
+                logger.info(f"Stage 2/3: Estimating memory requirements...")
+                total_cells = sum(adata.n_obs for adata in sample_data)
+                total_genes_per_sample = [adata.n_vars for adata in sample_data]
+                max_genes = max(total_genes_per_sample)
+                min_genes = min(total_genes_per_sample)
+
+                # Estimate memory needed (cells × genes × 8 bytes for float64 × 2 for overhead)
+                estimated_memory_gb = (total_cells * max_genes * 8 * 2) / (1024**3)
+                vm = psutil.virtual_memory()
+                available_memory_gb = vm.available / (1024**3)
+
+                logger.info(f"  Total cells: {total_cells:,}")
+                logger.info(f"  Gene range: {min_genes:,} - {max_genes:,}")
+                logger.info(f"  Estimated memory required: {estimated_memory_gb:.2f} GB")
+                logger.info(f"  Available memory: {available_memory_gb:.2f} GB")
+
+                # MEMORY WARNING: Alert user if memory is tight
+                if estimated_memory_gb > available_memory_gb * 0.8:
+                    logger.warning(
+                        f"MEMORY WARNING: Concatenation requires ~{estimated_memory_gb:.2f} GB "
+                        f"but only {available_memory_gb:.2f} GB available"
+                    )
+                    logger.warning(
+                        "This may cause system slowdown or out-of-memory errors. "
+                        "Consider using a smaller dataset or upgrading to cloud mode."
+                    )
+
                 # Use anndata.concat for optimal sparse handling
                 join_type = "inner" if use_intersecting_genes else "outer"
 
-                if use_intersecting_genes:
-                    result_adata = ad.concat(
-                        sample_data,
-                        axis=0,
-                        join="inner",
-                        merge="unique",
-                        label=batch_key,
-                        keys=kwargs.get(
-                            "sample_ids",
-                            [f"sample_{i}" for i in range(len(sample_data))],
-                        ),
-                    )
-                else:
-                    result_adata = ad.concat(
-                        sample_data,
-                        axis=0,
-                        join="outer",
-                        merge="unique",
-                        fill_value=0,
-                        label=batch_key,
-                        keys=kwargs.get(
-                            "sample_ids",
-                            [f"sample_{i}" for i in range(len(sample_data))],
-                        ),
-                    )
+                # PROFESSIONAL PROGRESS LOGGING: Stage 3 - Concatenation
+                logger.info(f"Stage 3/3: Concatenating samples using {join_type} join...")
+                logger.info(f"  This may take 30-90s for large datasets (>100k cells)")
+                logger.info(f"  Please wait - concatenation in progress...")
+
+                # Start resource monitoring (5-minute soft timeout)
+                monitor = ResourceMonitor(timeout_seconds=300, warning_interval=30)
+                monitor.start()
+
+                try:
+                    concat_start = time.time()
+
+                    if use_intersecting_genes:
+                        result_adata = ad.concat(
+                            sample_data,
+                            axis=0,
+                            join="inner",
+                            merge="unique",
+                            label=batch_key,
+                            keys=kwargs.get(
+                                "sample_ids",
+                                [f"sample_{i}" for i in range(len(sample_data))],
+                            ),
+                        )
+                    else:
+                        result_adata = ad.concat(
+                            sample_data,
+                            axis=0,
+                            join="outer",
+                            merge="unique",
+                            fill_value=0,
+                            label=batch_key,
+                            keys=kwargs.get(
+                                "sample_ids",
+                                [f"sample_{i}" for i in range(len(sample_data))],
+                            ),
+                        )
+
+                    concat_duration = time.time() - concat_start
+                    logger.info(f"Stage 3/3: Concatenation complete in {concat_duration:.1f}s")
+                    logger.info(f"  Result: {result_adata.n_obs:,} cells × {result_adata.n_vars:,} genes")
+
+                finally:
+                    # Always stop monitor, even if concatenation fails
+                    monitor.stop()
 
                 processing_time = time.time() - start_time
 
@@ -323,6 +498,10 @@ class SmartSparseStrategy(BaseConcatenationStrategy):
 
             # Handle DataFrames
             else:
+                # PROFESSIONAL PROGRESS LOGGING: Stage 1 - Adding batch information (DataFrame path)
+                logger.info(f"Starting DataFrame concatenation: {len(sample_data)} samples")
+                logger.info(f"Stage 1/3: Adding batch information to DataFrames...")
+
                 # Add batch information to DataFrames
                 processed_dfs = []
                 sample_ids = kwargs.get(
@@ -335,19 +514,75 @@ class SmartSparseStrategy(BaseConcatenationStrategy):
                     df_copy[batch_key] = sample_id
                     processed_dfs.append(df_copy)
 
-                # Concatenate DataFrames
-                if use_intersecting_genes:
-                    # Find common columns
-                    common_cols = set(processed_dfs[0].columns)
-                    for df in processed_dfs[1:]:
-                        common_cols = common_cols.intersection(set(df.columns))
+                    if i % 10 == 0 and i > 0:
+                        logger.debug(f"  Processed {i}/{len(sample_data)} DataFrames...")
 
-                    # Filter to common columns
-                    filtered_dfs = [df[list(common_cols)] for df in processed_dfs]
-                    result_df = pd.concat(filtered_dfs, axis=0, sort=False)
-                else:
-                    # Use all columns, fill missing with 0
-                    result_df = pd.concat(processed_dfs, axis=0, sort=False).fillna(0)
+                logger.info(f"Stage 1/3: Batch information added to all DataFrames")
+
+                # PROFESSIONAL PROGRESS LOGGING: Stage 2 - Memory estimation (DataFrame path)
+                logger.info(f"Stage 2/3: Estimating memory requirements...")
+                total_rows = sum(df.shape[0] for df in processed_dfs)
+                total_cols_per_sample = [df.shape[1] for df in processed_dfs]
+                max_cols = max(total_cols_per_sample)
+                min_cols = min(total_cols_per_sample)
+
+                # Estimate memory needed
+                estimated_memory_gb = (total_rows * max_cols * 8 * 2) / (1024**3)
+                vm = psutil.virtual_memory()
+                available_memory_gb = vm.available / (1024**3)
+
+                logger.info(f"  Total rows: {total_rows:,}")
+                logger.info(f"  Column range: {min_cols:,} - {max_cols:,}")
+                logger.info(f"  Estimated memory required: {estimated_memory_gb:.2f} GB")
+                logger.info(f"  Available memory: {available_memory_gb:.2f} GB")
+
+                # MEMORY WARNING: Alert user if memory is tight
+                if estimated_memory_gb > available_memory_gb * 0.8:
+                    logger.warning(
+                        f"MEMORY WARNING: Concatenation requires ~{estimated_memory_gb:.2f} GB "
+                        f"but only {available_memory_gb:.2f} GB available"
+                    )
+                    logger.warning(
+                        "This may cause system slowdown or out-of-memory errors. "
+                        "Consider using a smaller dataset or upgrading to cloud mode."
+                    )
+
+                # PROFESSIONAL PROGRESS LOGGING: Stage 3 - Concatenation (DataFrame path)
+                join_type = "inner" if use_intersecting_genes else "outer"
+                logger.info(f"Stage 3/3: Concatenating DataFrames using {join_type} join...")
+                logger.info(f"  This may take 30-90s for large datasets")
+                logger.info(f"  Please wait - concatenation in progress...")
+
+                # Start resource monitoring (5-minute soft timeout)
+                monitor = ResourceMonitor(timeout_seconds=300, warning_interval=30)
+                monitor.start()
+
+                try:
+                    concat_start = time.time()
+
+                    # Concatenate DataFrames
+                    if use_intersecting_genes:
+                        # Find common columns
+                        common_cols = set(processed_dfs[0].columns)
+                        for df in processed_dfs[1:]:
+                            common_cols = common_cols.intersection(set(df.columns))
+
+                        logger.debug(f"  Found {len(common_cols)} common columns")
+
+                        # Filter to common columns
+                        filtered_dfs = [df[list(common_cols)] for df in processed_dfs]
+                        result_df = pd.concat(filtered_dfs, axis=0, sort=False)
+                    else:
+                        # Use all columns, fill missing with 0
+                        result_df = pd.concat(processed_dfs, axis=0, sort=False).fillna(0)
+
+                    concat_duration = time.time() - concat_start
+                    logger.info(f"Stage 3/3: Concatenation complete in {concat_duration:.1f}s")
+                    logger.info(f"  Result: {result_df.shape[0]:,} rows × {result_df.shape[1]:,} columns")
+
+                finally:
+                    # Always stop monitor, even if concatenation fails
+                    monitor.stop()
 
                 processing_time = time.time() - start_time
 

@@ -16,6 +16,7 @@ Features:
 import csv
 import gzip
 import io
+import signal
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -40,6 +41,18 @@ class GEOFormatError(Exception):
     pass
 
 
+class LoadingTimeout(Exception):
+    """Raised when dataset loading exceeds timeout."""
+
+    pass
+
+
+class InsufficientMemoryError(Exception):
+    """Raised when system has insufficient memory for dataset."""
+
+    pass
+
+
 class GEOParser:
     """
     Advanced parser for GEO database files with optimized performance.
@@ -49,9 +62,14 @@ class GEOParser:
     performance optimizations for large-scale genomics data.
     """
 
-    def __init__(self):
-        """Initialize the GEO parser."""
+    def __init__(self, timeout_seconds: int = 300):
+        """Initialize the GEO parser.
+
+        Args:
+            timeout_seconds: Maximum time to allow for loading operations (default: 300 = 5 minutes)
+        """
         logger.debug("GEOParser initialized with optimized parsing capabilities")
+        self.timeout_seconds = timeout_seconds
         self._log_system_memory()
 
     def _log_system_memory(self):
@@ -66,6 +84,137 @@ class GEOParser:
         except Exception as e:
             logger.warning(f"Could not get system memory info: {e}")
 
+    def estimate_memory_from_dimensions(
+        self, n_cells: int, n_genes: int, include_overhead: bool = True
+    ) -> Dict[str, float]:
+        """
+        Estimate memory required to load dataset based on dimensions.
+
+        This is more accurate than file-size estimation because it accounts for
+        the actual matrix size (cells × genes).
+
+        Args:
+            n_cells: Number of observations (cells/samples)
+            n_genes: Number of features (genes)
+            include_overhead: Include pandas/anndata overhead (1.5x)
+
+        Returns:
+            Dict with memory estimates in GB:
+                - base_memory_gb: Raw matrix size (cells × genes × 8 bytes for float64)
+                - with_overhead_gb: Including framework overhead
+                - recommended_gb: Recommended system RAM (2x overhead for safe operation)
+                - cells: Number of cells
+                - genes: Number of genes
+        """
+        # Base: cells × genes × 8 bytes (float64)
+        base_bytes = n_cells * n_genes * 8
+        base_gb = base_bytes / (1024**3)
+
+        # Overhead: pandas DataFrames + AnnData objects (~1.5x)
+        overhead_gb = base_gb * 1.5 if include_overhead else base_gb
+
+        # Recommended: 2x overhead for safe operation (allows for temporary copies during processing)
+        recommended_gb = overhead_gb * 2
+
+        return {
+            "base_memory_gb": round(base_gb, 2),
+            "with_overhead_gb": round(overhead_gb, 2),
+            "recommended_gb": round(recommended_gb, 2),
+            "cells": n_cells,
+            "genes": n_genes,
+        }
+
+    def check_memory_for_dimensions(
+        self, n_cells: int, n_genes: int
+    ) -> Dict[str, any]:
+        """
+        Check if system has sufficient memory for dataset with given dimensions.
+
+        Args:
+            n_cells: Number of observations
+            n_genes: Number of features
+
+        Returns:
+            Dict with availability status and recommendations:
+                - can_load: True if sufficient memory available
+                - available_gb: Available system memory in GB
+                - required_gb: Required memory in GB (with overhead)
+                - shortfall_gb: Memory shortfall in GB (0 if can_load=True)
+                - total_system_gb: Total system memory
+                - used_percent: Current memory usage percentage
+                - recommendation: Human-readable recommendation
+                - subsample_target: Suggested subsampling target (if can_load=False)
+        """
+        mem_estimate = self.estimate_memory_from_dimensions(n_cells, n_genes)
+        required_gb = mem_estimate["with_overhead_gb"]
+
+        vm = psutil.virtual_memory()
+        available_gb = vm.available / (1024**3)
+        total_gb = vm.total / (1024**3)
+        used_percent = vm.percent
+
+        safety_buffer_gb = 0.5  # Keep 500 MB free
+        can_load = available_gb > (required_gb + safety_buffer_gb)
+        shortfall_gb = max(0, required_gb - available_gb + safety_buffer_gb)
+
+        # Calculate subsample target if memory insufficient
+        subsample_target = None
+        if not can_load and n_cells > 10000:
+            # Target 80% of available memory
+            target_memory_gb = available_gb * 0.8
+            # Calculate how many cells we can handle
+            memory_per_cell = mem_estimate["with_overhead_gb"] / n_cells
+            max_cells = int(target_memory_gb / memory_per_cell)
+            subsample_target = max(5000, min(max_cells, n_cells // 2))
+
+        recommendation = self._get_memory_recommendation(
+            can_load, required_gb, available_gb, mem_estimate["recommended_gb"],
+            subsample_target, n_cells
+        )
+
+        return {
+            "can_load": can_load,
+            "available_gb": round(available_gb, 2),
+            "required_gb": round(required_gb, 2),
+            "shortfall_gb": round(shortfall_gb, 2),
+            "total_system_gb": round(total_gb, 2),
+            "used_percent": used_percent,
+            "recommendation": recommendation,
+            "subsample_target": subsample_target,
+            "dimensions": f"{n_cells:,} cells × {n_genes:,} genes"
+        }
+
+    def _get_memory_recommendation(
+        self,
+        can_load: bool,
+        required_gb: float,
+        available_gb: float,
+        recommended_gb: float,
+        subsample_target: Optional[int],
+        n_cells: int
+    ) -> str:
+        """Generate human-readable memory recommendation."""
+        if can_load:
+            return (
+                f"✓ Sufficient memory available. Required: {required_gb:.1f} GB, "
+                f"Available: {available_gb:.1f} GB"
+            )
+        else:
+            options = [
+                f"1. Subsample to ~{subsample_target:,} cells (use --max-cells flag)"
+                if subsample_target else None,
+                "2. Use cloud mode with more memory (set LOBSTER_CLOUD_KEY)",
+                f"3. Increase system RAM to {recommended_gb:.1f} GB"
+            ]
+            options = [o for o in options if o]  # Filter out None
+
+            return (
+                f"✗ Insufficient memory for dataset ({n_cells:,} cells).\n"
+                f"  Need: {required_gb:.1f} GB, Have: {available_gb:.1f} GB "
+                f"(Shortfall: {required_gb - available_gb:.1f} GB)\n"
+                f"  Options:\n" + "\n".join(f"    {opt}" for opt in options)
+            )
+
     def _format_bytes(self, bytes_value: int) -> str:
         """Format bytes to human readable string."""
         for unit in ["B", "KB", "MB", "GB", "TB"]:
@@ -73,6 +222,64 @@ class GEOParser:
                 return f"{bytes_value:.2f} {unit}"
             bytes_value /= 1024.0
         return f"{bytes_value:.2f} PB"
+
+    def _timeout_handler(self, signum, frame):
+        """Signal handler for loading timeouts."""
+        raise LoadingTimeout(
+            f"Dataset loading exceeded {self.timeout_seconds}s timeout. "
+            "This usually indicates insufficient memory or corrupted file. "
+            "Try: (1) subsample with --max-cells, (2) use cloud mode, or "
+            "(3) increase system RAM."
+        )
+
+    def _estimate_dimensions_from_file(self, file_path: Path) -> Tuple[Optional[int], Optional[int]]:
+        """
+        Estimate dataset dimensions (n_cells, n_genes) from file without loading entire dataset.
+
+        This is critical for pre-flight memory checks on large datasets.
+
+        Args:
+            file_path: Path to data file
+
+        Returns:
+            Tuple of (n_cells, n_genes), or (None, None) if estimation fails
+        """
+        try:
+            delimiter = self.sniff_delimiter(file_path)
+            compression = "gzip" if file_path.name.endswith(".gz") else None
+
+            # Read just first few lines to get column count
+            sample_df = pd.read_csv(
+                file_path,
+                sep=delimiter,
+                compression=compression,
+                nrows=5,
+                index_col=0,
+                low_memory=False,
+            )
+
+            # For expression matrices: rows are usually cells, columns are genes
+            # But this can vary, so we estimate conservatively
+            n_cols = sample_df.shape[1]  # genes
+
+            # Estimate number of rows by counting lines (fast)
+            if compression == "gzip":
+                with gzip.open(file_path, "rt") as f:
+                    n_rows = sum(1 for _ in f) - 1  # -1 for header
+            else:
+                with open(file_path, "r") as f:
+                    n_rows = sum(1 for _ in f) - 1
+
+            logger.debug(
+                f"Estimated dimensions from {file_path.name}: "
+                f"{n_rows:,} rows × {n_cols:,} columns"
+            )
+
+            return n_rows, n_cols
+
+        except Exception as e:
+            logger.warning(f"Could not estimate dimensions for {file_path}: {e}")
+            return None, None
 
     def _estimate_dataframe_memory(
         self, file_path: Path, sample_rows: int = 100
@@ -211,30 +418,92 @@ class GEOParser:
         Uses intelligent delimiter detection and Polars for faster parsing of large files,
         with pandas fallback for compatibility.
 
+        PRODUCTION-GRADE MEMORY MANAGEMENT (v2.5+):
+        - Pre-flight dimension estimation (n_cells × n_genes)
+        - Dimension-based memory checks (more accurate than file size)
+        - Timeout protection (5 min default, prevents infinite hangs)
+        - Clear error messages with 3 actionable options
+
         Args:
             file_path: Path to expression file
 
         Returns:
             DataFrame: Expression matrix or None
+
+        Raises:
+            LoadingTimeout: If loading exceeds timeout (suggests memory issues)
+            InsufficientMemoryError: If system lacks memory for dataset
         """
         try:
             logger.info(f"Parsing expression file: {file_path}")
 
-            # Estimate memory requirement
-            estimated_memory = self._estimate_dataframe_memory(file_path)
-            if estimated_memory and not self._check_memory_availability(
-                estimated_memory
-            ):
-                logger.warning(
-                    f"File {file_path.name} may be too large for available memory. "
-                    "Forcing chunked reading approach."
+            # STEP 1: Estimate dataset dimensions (fast, no full load)
+            n_cells, n_genes = self._estimate_dimensions_from_file(file_path)
+
+            if n_cells and n_genes:
+                # STEP 2: Check memory availability based on actual dimensions
+                mem_check = self.check_memory_for_dimensions(n_cells, n_genes)
+
+                logger.info(
+                    f"Dataset dimensions: {mem_check['dimensions']} "
+                    f"(requires {mem_check['required_gb']} GB, "
+                    f"have {mem_check['available_gb']} GB)"
                 )
-                # Force chunked reading for large files
-                delimiter = self.sniff_delimiter(file_path)
-                compression = "gzip" if file_path.name.endswith(".gz") else None
-                return self.parse_large_file_in_chunks(
-                    file_path, delimiter, compression
+
+                # STEP 3: Handle insufficient memory
+                if not mem_check["can_load"]:
+                    logger.error(mem_check["recommendation"])
+
+                    # Try chunked reading as fallback
+                    logger.warning(
+                        "Attempting memory-efficient chunked reading as fallback..."
+                    )
+                    delimiter = self.sniff_delimiter(file_path)
+                    compression = "gzip" if file_path.name.endswith(".gz") else None
+
+                    # Set timeout for chunked reading
+                    signal.signal(signal.SIGALRM, self._timeout_handler)
+                    signal.alarm(self.timeout_seconds)
+
+                    try:
+                        result = self.parse_large_file_in_chunks(
+                            file_path, delimiter, compression
+                        )
+                        signal.alarm(0)  # Cancel timeout
+
+                        if result is None or result.empty:
+                            raise InsufficientMemoryError(
+                                f"Cannot load dataset with {n_cells:,} cells and {n_genes:,} genes.\n"
+                                + mem_check["recommendation"]
+                            )
+
+                        return result
+                    except LoadingTimeout:
+                        signal.alarm(0)  # Cancel timeout
+                        raise InsufficientMemoryError(
+                            f"Dataset loading timed out after {self.timeout_seconds}s "
+                            f"(likely memory exhaustion).\n" + mem_check["recommendation"]
+                        )
+                else:
+                    logger.info(mem_check["recommendation"])
+            else:
+                # Fallback to old file-size estimation if dimension estimation fails
+                logger.debug(
+                    "Dimension estimation failed, falling back to file-size estimation"
                 )
+                estimated_memory = self._estimate_dataframe_memory(file_path)
+                if estimated_memory and not self._check_memory_availability(
+                    estimated_memory
+                ):
+                    logger.warning(
+                        f"File {file_path.name} may be too large for available memory. "
+                        "Forcing chunked reading approach."
+                    )
+                    delimiter = self.sniff_delimiter(file_path)
+                    compression = "gzip" if file_path.name.endswith(".gz") else None
+                    return self.parse_large_file_in_chunks(
+                        file_path, delimiter, compression
+                    )
 
             # Check if it's a Matrix Market format file (.mtx or .mtx.gz)
             if "matrix.mtx" in file_path.name.lower():
@@ -247,6 +516,10 @@ class GEOParser:
 
             # Determine compression
             compression = "gzip" if file_path.name.endswith(".gz") else None
+
+            # Set timeout for main parsing operations
+            signal.signal(signal.SIGALRM, self._timeout_handler)
+            signal.alarm(self.timeout_seconds)
 
             # Try Polars first for better performance on large files
             try:
@@ -274,6 +547,7 @@ class GEOParser:
 
                 logger.debug(f"Successfully parsed with Polars: {df.shape}")
                 self._log_system_memory()  # Log memory after parsing
+                signal.alarm(0)  # Cancel timeout - success
                 return df
 
             except ImportError:
@@ -281,10 +555,14 @@ class GEOParser:
                     "Polars not available, using pandas with optimized settings"
                 )
             except MemoryError:
+                signal.alarm(0)  # Cancel timeout
                 logger.error("Memory error with Polars, forcing chunked reading")
                 return self.parse_large_file_in_chunks(
                     file_path, delimiter, compression
                 )
+            except LoadingTimeout:
+                signal.alarm(0)  # Cancel timeout
+                raise  # Re-raise timeout
             except Exception as polars_error:
                 logger.warning(
                     f"Polars parsing failed: {polars_error}, falling back to pandas"
@@ -300,9 +578,11 @@ class GEOParser:
                     logger.info(
                         f"Large file detected ({file_size:,} bytes), using chunked reading"
                     )
-                    return self.parse_large_file_in_chunks(
+                    result = self.parse_large_file_in_chunks(
                         file_path, delimiter, compression
                     )
+                    signal.alarm(0)  # Cancel timeout
+                    return result
                 else:
                     # Standard pandas parsing with optimizations
                     df = pd.read_csv(
@@ -319,21 +599,38 @@ class GEOParser:
 
                     logger.debug(f"Successfully parsed with pandas: {df.shape}")
                     self._log_system_memory()  # Log memory after parsing
+                    signal.alarm(0)  # Cancel timeout
                     return df
 
             except MemoryError:
+                signal.alarm(0)  # Cancel timeout
                 logger.error("Memory error with pandas, forcing chunked reading")
                 return self.parse_large_file_in_chunks(
                     file_path, delimiter, compression
                 )
+            except LoadingTimeout:
+                signal.alarm(0)  # Cancel timeout
+                raise  # Re-raise timeout
             except Exception as pandas_error:
+                signal.alarm(0)  # Cancel timeout
                 # Final fallback - try with basic settings
                 logger.warning(
                     f"Optimized pandas parsing failed: {pandas_error}, trying basic parsing"
                 )
                 return self.parse_with_basic_pandas(file_path, delimiter, compression)
 
+        except LoadingTimeout:
+            signal.alarm(0)  # Cancel timeout
+            logger.error(
+                f"Dataset loading timed out after {self.timeout_seconds}s. "
+                "This usually indicates insufficient memory or a very large dataset."
+            )
+            raise
+        except InsufficientMemoryError:
+            signal.alarm(0)  # Cancel timeout
+            raise
         except Exception as e:
+            signal.alarm(0)  # Cancel timeout
             logger.error(f"Error parsing expression file {file_path}: {e}")
             return None
 
