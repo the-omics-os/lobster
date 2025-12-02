@@ -378,7 +378,224 @@ Centralized configuration management:
 - **Model Configuration** - LLM parameters and API keys
 - **Adapter Registry** - Dynamic data format support
 
-### 5. Identifier Resolution System (P1, Dec 2024)
+### 5. Subscription Tiers & Plugin System (Phase 1, Dec 2024)
+
+Lobster implements a three-tier subscription model that controls agent availability and feature access. This architecture enables the open-core business model with `lobster-ai` (free) and `lobster-premium` (paid) packages.
+
+#### Tier Architecture
+
+```mermaid
+graph TB
+    subgraph "Package Hierarchy"
+        CORE[lobster-ai<br/>PyPI Public<br/>Open-Core]
+        PREMIUM[lobster-premium<br/>Private Wheel<br/>Premium Features]
+        CUSTOM[lobster-custom-*<br/>Private Wheel<br/>Customer-Specific]
+    end
+
+    subgraph "Tier Definitions"
+        FREE[🆓 FREE Tier<br/>6 agents]
+        PREM[⭐ PREMIUM Tier<br/>10 agents]
+        ENT[🏢 ENTERPRISE Tier<br/>All agents + custom]
+    end
+
+    subgraph "Runtime Components"
+        TIERS[subscription_tiers.py<br/>Tier Definitions]
+        LOADER[plugin_loader.py<br/>Package Discovery]
+        LICENSE[license_manager.py<br/>Entitlement Handling]
+    end
+
+    CORE --> FREE
+    CORE --> PREMIUM --> PREM
+    PREMIUM --> CUSTOM --> ENT
+
+    TIERS --> LOADER
+    LICENSE --> LOADER
+    LOADER --> |"Merge at import"| REGISTRY[agent_registry.py]
+
+    style FREE fill:#e8f5e9,stroke:#2e7d32
+    style PREM fill:#fff3e0,stroke:#f57c00
+    style ENT fill:#e3f2fd,stroke:#1565c0
+```
+
+#### Subscription Tiers
+
+| Tier | Agents | Key Features | Target Users |
+|------|--------|--------------|--------------|
+| **FREE** | 6 core agents | Local-only, community support | Academic researchers |
+| **PREMIUM** | 10 agents | Cloud compute, priority support | Seed-Series B biotech |
+| **ENTERPRISE** | All + custom | SLA, custom development | Biopharma |
+
+**FREE Tier Agents (6):**
+- `research_agent` - Literature discovery and dataset identification
+- `data_expert_agent` - Data loading and quality assessment
+- `transcriptomics_expert` - Single-cell and bulk RNA-seq analysis
+- `visualization_expert_agent` - Interactive plot generation
+- `annotation_expert` - Cell type annotation (sub-agent)
+- `de_analysis_expert` - Differential expression (sub-agent)
+
+**PREMIUM Tier Additions (4):**
+- `metadata_assistant` - Cross-dataset harmonization and sample mapping
+- `proteomics_expert` - MS and affinity proteomics analysis
+- `machine_learning_expert_agent` - ML-based predictions
+- `protein_structure_visualization_expert_agent` - Structural analysis
+
+#### Tier-Based Handoff Restrictions
+
+The subscription tier controls not just which agents are available, but also which agent-to-agent handoffs are permitted:
+
+```python
+# FREE tier restriction example
+SUBSCRIPTION_TIERS = {
+    "free": {
+        "agents": ["research_agent", "data_expert_agent", ...],
+        "restricted_handoffs": {
+            # FREE tier: research_agent cannot handoff to metadata_assistant
+            "research_agent": ["metadata_assistant"],
+        },
+    },
+    "premium": {
+        "agents": [...],  # All 10 agents
+        "restricted_handoffs": {},  # No restrictions
+    },
+}
+```
+
+This means in FREE tier:
+- `research_agent` can discover datasets and extract metadata
+- But cannot delegate to `metadata_assistant` for advanced harmonization
+- Upgrade prompt shown: "Upgrade to Premium for cross-dataset sample mapping"
+
+#### Plugin Discovery System
+
+The `plugin_loader.py` discovers and merges agents from premium packages at import time:
+
+```python
+# Automatic discovery at module load
+def _merge_plugin_agents():
+    """Called when agent_registry.py is imported."""
+    # 1. Try lobster-premium package
+    try:
+        from lobster_premium import PREMIUM_REGISTRY
+        AGENT_REGISTRY.update(PREMIUM_REGISTRY)
+    except ImportError:
+        pass  # Premium not installed
+
+    # 2. Discover lobster-custom-* packages from entitlement
+    entitlement = load_entitlement()
+    for pkg in entitlement.get("custom_packages", []):
+        module = importlib.import_module(pkg.replace("-", "_"))
+        AGENT_REGISTRY.update(module.CUSTOM_REGISTRY)
+```
+
+**Package Discovery Sources:**
+1. **lobster-premium** - Shared premium features (PyPI private index)
+2. **lobster-custom-*** - Customer-specific packages (per-customer private index)
+3. **Entry Points** - Future-proof plugin system via `pyproject.toml`
+
+#### License Management
+
+Entitlements are stored in `~/.lobster/license.json` and control:
+- Current subscription tier
+- Authorized custom packages
+- Feature flags
+- Expiration date
+
+```json
+{
+    "tier": "premium",
+    "customer_id": "cust_abc123",
+    "expires_at": "2025-12-01T00:00:00Z",
+    "custom_packages": ["lobster-custom-databiomix"],
+    "features": ["cloud_compute", "priority_support"]
+}
+```
+
+**Tier Detection Priority:**
+1. `LOBSTER_SUBSCRIPTION_TIER` environment variable (dev override)
+2. `~/.lobster/license.json` file (production)
+3. Default to FREE tier
+
+#### CLI Status Command
+
+The `lobster status` command displays current tier, packages, and agent availability:
+
+```
+$ lobster status
+
+╭─────────────────────╮
+│  🦞 Lobster Status  │
+╰─────────────────────╯
+
+Subscription Tier: 🆓 Free
+Source: default
+
+Installed Packages:
+╭────────────┬─────────┬───────────╮
+│ Package    │ Version │ Status    │
+├────────────┼─────────┼───────────┤
+│ lobster-ai │ 0.3.1   │ Installed │
+╰────────────┴─────────┴───────────╯
+
+Available Agents (6):
+annotation_expert, data_expert_agent, de_analysis_expert,
+research_agent, transcriptomics_expert, visualization_expert_agent
+
+Premium Agents (4):
+machine_learning_expert_agent, metadata_assistant,
+protein_structure_visualization_expert_agent, proteomics_expert
+
+╭────────────────────────────────────────────────────────────╮
+│  ⭐ Upgrade to Premium to unlock 4 additional agents       │
+│  Visit https://omics-os.com/pricing or run                 │
+│  'lobster activate <code>'                                 │
+╰────────────────────────────────────────────────────────────╯
+```
+
+#### Graph-Level Tier Enforcement
+
+The `create_bioinformatics_graph()` function enforces tier restrictions:
+
+```python
+def create_bioinformatics_graph(
+    data_manager: DataManagerV2,
+    subscription_tier: str = None,  # Auto-detected if None
+    agent_filter: callable = None,  # Custom filter function
+):
+    # Auto-detect tier from license
+    if subscription_tier is None:
+        subscription_tier = get_current_tier()
+
+    # Create tier-based filter
+    if agent_filter is None:
+        agent_filter = lambda name, config: is_agent_available(name, subscription_tier)
+
+    # Filter agents before graph creation
+    worker_agents = get_worker_agents()
+    filtered_agents = {
+        name: config
+        for name, config in worker_agents.items()
+        if agent_filter(name, config)
+    }
+
+    # Pass tier to agent factories for handoff restrictions
+    for agent_name, agent_config in filtered_agents.items():
+        factory_kwargs["subscription_tier"] = subscription_tier
+        agent = factory_function(**factory_kwargs)
+```
+
+#### Implementation Files
+
+| File | Purpose |
+|------|---------|
+| `lobster/config/subscription_tiers.py` | Tier definitions, agent lists, handoff restrictions |
+| `lobster/core/plugin_loader.py` | Package discovery, registry merging |
+| `lobster/core/license_manager.py` | Entitlement file handling, tier detection |
+| `lobster/config/agent_registry.py` | Plugin merging at import time |
+| `lobster/agents/graph.py` | Tier-based agent filtering |
+| `lobster/agents/research_agent.py` | Handoff restriction enforcement |
+| `lobster/cli.py` | `lobster status` command |
+
+### 6. Identifier Resolution System (P1, Dec 2024)
 
 The **AccessionResolver** (`lobster/core/identifiers/accession_resolver.py`) provides centralized, thread-safe identifier resolution for all biobank accessions. This eliminates pattern duplication across providers and enables rapid addition of new database support.
 
