@@ -184,7 +184,7 @@ User Input (CLI)
     ↓
 LobsterClientAdapter → BaseClient (AgentClient | CloudLobsterClient)
     ↓
-Agent Registry → Specialized Agent (data_expert, singlecell_expert, etc.)
+Agent Registry → Specialized Agent (data_expert, transcriptomics_expert, etc.)
     ↓
 Agent Tools → Stateless Services (QualityService, ClusteringService, etc.)
     ↓

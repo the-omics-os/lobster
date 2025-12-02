@@ -28,7 +28,7 @@ import pandas as pd
 # from lobster.core.data_manager_v2 import DataManagerV2
 # from lobster.agents.supervisor import supervisor_agent
 # from lobster.agents.data_expert import data_expert_agent
-# from lobster.agents.singlecell_expert import singlecell_expert_agent
+# from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 # from lobster.agents.research_agent import research_agent
 
 # from tests.mock_data.factories import SingleCellDataFactory, BulkRNASeqDataFactory
@@ -154,17 +154,17 @@ class TestBasicAgentWorkflows:
 
         # Test handoff to single-cell expert
         with patch(
-            "lobster.agents.singlecell_expert.singlecell_expert_agent"
+            "lobster.agents.transcriptomics.transcriptomics_expert"
         ) as mock_sc_agent:
             mock_sc_agent.return_value = {
                 "messages": state["messages"]
                 + [
                     {
                         "content": "Ready to analyze single-cell data",
-                        "sender": "singlecell_expert_agent",
+                        "sender": "transcriptomics_expert",
                     }
                 ],
-                "current_agent": "singlecell_expert_agent",
+                "current_agent": "transcriptomics_expert",
                 "data_context": {
                     "available_modalities": ["geo_gse123456"],
                     "data_type": "single_cell_rna_seq",
@@ -173,9 +173,9 @@ class TestBasicAgentWorkflows:
                 },
             }
 
-            result = singlecell_expert_agent(state)
+            result = transcriptomics_expert_agent(state)
 
-            assert result["current_agent"] == "singlecell_expert_agent"
+            assert result["current_agent"] == "transcriptomics_expert"
             assert "data_context" in result
             assert result["data_context"]["data_type"] == "single_cell_rna_seq"
 
@@ -282,7 +282,7 @@ class TestComplexMultiAgentWorkflows:
                 "current_agent": "data_expert_agent",
                 "loaded_modalities": ["geo_gse123456"],
                 "data_summary": {"n_cells": 5000, "n_genes": 20000},
-                "next_agent": "singlecell_expert_agent",
+                "next_agent": "transcriptomics_expert",
                 "handoff_reason": "Data loaded, ready for single-cell analysis",
             }
 
@@ -291,20 +291,20 @@ class TestComplexMultiAgentWorkflows:
 
         # Step 3: Single-cell expert performs analysis
         sc_state = data_result.copy()
-        sc_state["current_agent"] = "singlecell_expert_agent"
+        sc_state["current_agent"] = "transcriptomics_expert"
 
         with patch(
-            "lobster.agents.singlecell_expert.singlecell_expert_agent"
+            "lobster.agents.transcriptomics.transcriptomics_expert"
         ) as mock_sc_expert:
             mock_sc_expert.return_value = {
                 "messages": sc_state["messages"]
                 + [
                     {
                         "content": "Completed clustering and found 12 cell types",
-                        "sender": "singlecell_expert_agent",
+                        "sender": "transcriptomics_expert",
                     }
                 ],
-                "current_agent": "singlecell_expert_agent",
+                "current_agent": "transcriptomics_expert",
                 "analysis_results": {
                     "n_clusters": 12,
                     "cluster_quality": "high",
@@ -318,13 +318,13 @@ class TestComplexMultiAgentWorkflows:
                 ],
             }
 
-            sc_result = singlecell_expert_agent(sc_state)
-            workflow_steps.append(("singlecell_expert", sc_result))
+            sc_result = transcriptomics_expert_agent(sc_state)
+            workflow_steps.append(("transcriptomics_expert", sc_result))
 
         # Verify complete workflow
         assert len(workflow_steps) == 3
         assert workflow_steps[0][1]["next_agent"] == "data_expert_agent"
-        assert workflow_steps[1][1]["next_agent"] == "singlecell_expert_agent"
+        assert workflow_steps[1][1]["next_agent"] == "transcriptomics_expert"
         assert workflow_steps[2][1]["workflow_status"] == "completed"
         assert workflow_steps[2][1]["analysis_results"]["n_clusters"] == 12
 
@@ -366,7 +366,7 @@ class TestComplexMultiAgentWorkflows:
                     "t_cell_markers": ["CD3D", "CD3E", "CD8A", "CD4"],
                 },
                 "optimization_confidence": 0.92,
-                "next_agent": "singlecell_expert_agent",
+                "next_agent": "transcriptomics_expert",
                 "handoff_data": {
                     "optimized_params": True,
                     "analysis_type": "t_cell_specific",
@@ -378,17 +378,17 @@ class TestComplexMultiAgentWorkflows:
 
         # Step 2: Single-cell expert applies optimized parameters
         sc_state = research_result.copy()
-        sc_state["current_agent"] = "singlecell_expert_agent"
+        sc_state["current_agent"] = "transcriptomics_expert"
 
         with patch(
-            "lobster.agents.singlecell_expert.singlecell_expert_agent"
+            "lobster.agents.transcriptomics.transcriptomics_expert"
         ) as mock_sc:
             mock_sc.return_value = {
                 "messages": sc_state["messages"]
                 + [
                     {
                         "content": "Applied optimized parameters for T cell analysis",
-                        "sender": "singlecell_expert_agent",
+                        "sender": "transcriptomics_expert",
                     }
                 ],
                 "analysis_results": {
@@ -574,17 +574,17 @@ class TestAgentCommunication:
                     "n_cells": 5000,
                     "data_quality": "high",
                 },
-                "next_agent": "singlecell_expert_agent",
+                "next_agent": "transcriptomics_expert",
             }
 
             data_result = data_expert_agent(initial_state)
 
         # Agent 2: Single-cell expert uses and adds to context
         sc_state = data_result.copy()
-        sc_state["current_agent"] = "singlecell_expert_agent"
+        sc_state["current_agent"] = "transcriptomics_expert"
 
         with patch(
-            "lobster.agents.singlecell_expert.singlecell_expert_agent"
+            "lobster.agents.transcriptomics.transcriptomics_expert"
         ) as mock_sc:
             mock_sc.return_value = {
                 "context": {
@@ -629,17 +629,17 @@ class TestAgentCommunication:
                         }
                     },
                 },
-                "next_agent": "singlecell_expert_agent",
+                "next_agent": "transcriptomics_expert",
             }
 
             research_result = research_agent(research_state)
 
         # Single-cell expert applies parameters from research agent
         sc_state = research_result.copy()
-        sc_state["current_agent"] = "singlecell_expert_agent"
+        sc_state["current_agent"] = "transcriptomics_expert"
 
         with patch(
-            "lobster.agents.singlecell_expert.singlecell_expert_agent"
+            "lobster.agents.transcriptomics.transcriptomics_expert"
         ) as mock_sc:
             mock_sc.return_value = {
                 "shared_data": {
@@ -752,7 +752,7 @@ class TestWorkflowPerformanceMonitoring:
         # Agent 2: Single-cell expert (simulated timing)
         sc_start = time.time()
         with patch(
-            "lobster.agents.singlecell_expert.singlecell_expert_agent"
+            "lobster.agents.transcriptomics.transcriptomics_expert"
         ) as mock_sc:
             mock_sc.return_value = {
                 "execution_time": 8.3,
@@ -783,7 +783,7 @@ class TestWorkflowPerformanceMonitoring:
 
         # Mock resource-intensive operations
         with patch(
-            "lobster.agents.singlecell_expert.singlecell_expert_agent"
+            "lobster.agents.transcriptomics.transcriptomics_expert"
         ) as mock_sc:
             mock_sc.return_value = {
                 "resource_usage": {
@@ -931,7 +931,7 @@ class TestWorkflowStateManagement:
 
         # Simulate recovery from checkpoint
         with patch(
-            "lobster.agents.singlecell_expert.singlecell_expert_agent"
+            "lobster.agents.transcriptomics.transcriptomics_expert"
         ) as mock_sc:
             mock_sc.return_value = {
                 "recovered_from_checkpoint": True,
@@ -972,7 +972,7 @@ class TestWorkflowStateManagement:
 
         # Branch 1 execution
         with patch(
-            "lobster.agents.singlecell_expert.singlecell_expert_agent"
+            "lobster.agents.transcriptomics.transcriptomics_expert"
         ) as mock_sc1:
             mock_sc1.return_value = {
                 "branch_id": "standard_clustering",
@@ -985,7 +985,7 @@ class TestWorkflowStateManagement:
 
         # Branch 2 execution
         with patch(
-            "lobster.agents.singlecell_expert.singlecell_expert_agent"
+            "lobster.agents.transcriptomics.transcriptomics_expert"
         ) as mock_sc2:
             mock_sc2.return_value = {
                 "branch_id": "high_res_clustering",

@@ -11,7 +11,7 @@ Protein analysis method using antibody-based assays for targeted protein detecti
 Specialized AI component in Lobster AI that handles specific analysis domains (e.g., Single-cell Expert, Proteomics Expert). Agents use natural language understanding to execute appropriate tools and workflows.
 
 **Agent Factory Function**
-Python function that creates and configures an agent instance. Specified in the agent registry for dynamic agent loading. Example: `lobster.agents.singlecell_expert.singlecell_expert`.
+Python function that creates and configures an agent instance. Specified in the agent registry for dynamic agent loading. Example: `lobster.agents.transcriptomics.transcriptomics_expert`.
 
 **Agent Handoff**
 Architectural pattern in Lobster AI where agents transfer tasks to other agents based on analysis requirements. Coordinated by the supervisor agent using handoff tools. Example: supervisor hands off single-cell analysis to `transcriptomics_expert`.

@@ -210,6 +210,41 @@ All features in v0.2 are available in both **local** and **cloud** deployment mo
 
 ---
 
+## Agent Architecture Migration (v0.2 → v0.3)
+
+**Status:** Deprecation phase (v0.2.x) → Removal (v0.3.0)
+
+### Background
+In v0.2, we unified transcriptomics analysis:
+- **Before:** `singlecell_expert` + `bulk_rnaseq_expert` (2 agents)
+- **After:** `transcriptomics_expert` (unified agent)
+
+### Migration for Test Code
+
+#### Old API (deprecated):
+```python
+from lobster.agents.singlecell_expert import singlecell_expert
+agent = singlecell_expert(data_manager)
+```
+
+#### New API (v0.2+):
+```python
+from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
+agent = transcriptomics_expert(data_manager)
+```
+
+### Timeline
+- **v0.2.0:** Deprecation warnings added
+- **v0.2.x:** Both APIs available (current)
+- **v0.3.0:** Old agents removed (Q2 2025)
+
+### User Impact
+- **End users:** No action required (supervisor handles routing)
+- **Test code:** Update imports to use `transcriptomics_expert`
+- **Custom integrations:** Update agent factory references
+
+---
+
 ## Future Migrations
 
 This section will be updated as new versions are released. Check back for:
@@ -224,4 +259,4 @@ For questions or issues, see:
 
 ---
 
-*Last updated: January 2025 - v0.2 Release*
+*Last updated: December 2025 - v0.2 Release*

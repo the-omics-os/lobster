@@ -18,18 +18,19 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lobster.config.agent_registry import create_expert_handoff_tools
-from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.tools.enhanced_handoff_tool import (
-    SCVI_CONTEXT_SCHEMA,
-    create_expert_handoff_tool,
-)
-from lobster.tools.expert_handoff_manager import expert_handoff_manager
-
 # Skip entire module - direct sub-agent handoffs currently disabled (supervisor-mediated flow)
 pytestmark = pytest.mark.skip(
     reason="Direct sub-agent handoffs are currently disabled. Use supervisor-mediated flow."
 )
+
+# Imports commented out because entire module is skipped
+# from lobster.config.agent_registry import create_expert_handoff_tools
+# from lobster.core.data_manager_v2 import DataManagerV2
+# from lobster.tools.enhanced_handoff_tool import (
+#     SCVI_CONTEXT_SCHEMA,
+#     create_expert_handoff_tool,
+# )
+# from lobster.tools.expert_handoff_manager import expert_handoff_manager
 
 
 class TestScviHandoffFlow(unittest.TestCase):

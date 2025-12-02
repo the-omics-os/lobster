@@ -1,7 +1,7 @@
 """
 Integration tests for scVI agent handoff workflow.
 
-Tests the complete workflow from SingleCell Expert → ML Expert → back to SingleCell Expert
+Tests the complete workflow from Transcriptomics Expert → ML Expert → back to Transcriptomics Expert
 with conditional testing based on scVI availability.
 """
 
@@ -60,16 +60,16 @@ class TestScviHandoffWorkflow:
     """Test the complete agent handoff workflow for scVI."""
 
     @pytest.mark.skip(
-        reason="request_scvi_embedding tool is commented out in singlecell_expert.py (supervisor-mediated flow)"
+        reason="request_scvi_embedding tool is commented out in transcriptomics_expert.py (supervisor-mediated flow)"
     )
-    def test_singlecell_expert_handoff_request(self, mock_data_manager):
-        """Test SingleCell Expert creates proper handoff request."""
-        from lobster.agents.singlecell_expert import singlecell_expert
+    def test_transcriptomics_expert_handoff_request(self, mock_data_manager):
+        """Test Transcriptomics Expert creates proper handoff request."""
+        from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 
         data_manager, mock_adata = mock_data_manager
 
-        # Create SingleCell Expert agent
-        sc_agent = singlecell_expert(data_manager)
+        # Create Transcriptomics Expert agent
+        sc_agent = transcriptomics_expert(data_manager)
 
         # Get tools from compiled graph - correct API for CompiledStateGraph
         tools_by_name = sc_agent.get_graph().nodes["tools"].data.tools_by_name
@@ -105,19 +105,19 @@ class TestScviHandoffWorkflow:
         assert last_log_call[1]["tool_name"] == "request_scvi_embedding"
 
     @pytest.mark.skip(
-        reason="request_scvi_embedding tool is commented out in singlecell_expert.py (supervisor-mediated flow)"
+        reason="request_scvi_embedding tool is commented out in transcriptomics_expert.py (supervisor-mediated flow)"
     )
-    def test_singlecell_expert_validates_modality(self, mock_data_manager):
-        """Test SingleCell Expert validates modality before handoff."""
-        from lobster.agents.singlecell_expert import singlecell_expert
+    def test_transcriptomics_expert_validates_modality(self, mock_data_manager):
+        """Test Transcriptomics Expert validates modality before handoff."""
+        from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 
         data_manager, mock_adata = mock_data_manager
         data_manager.list_modalities.return_value = [
             "other_modality"
         ]  # Different modality
 
-        # Create SingleCell Expert agent
-        sc_agent = singlecell_expert(data_manager)
+        # Create Transcriptomics Expert agent
+        sc_agent = transcriptomics_expert(data_manager)
 
         # Get tools from compiled graph - correct API for CompiledStateGraph
         tools_by_name = sc_agent.get_graph().nodes["tools"].data.tools_by_name
@@ -248,12 +248,12 @@ class TestEndToEndWorkflow:
     def test_complete_workflow_without_scvi(self, mock_data_manager):
         """Test complete workflow when scVI is not available."""
         from lobster.agents.machine_learning_expert import machine_learning_expert
-        from lobster.agents.singlecell_expert import singlecell_expert
+        from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 
         data_manager, mock_adata = mock_data_manager
 
-        # Test SingleCell Expert handoff request
-        sc_agent = singlecell_expert(data_manager)
+        # Test Transcriptomics Expert handoff request
+        sc_agent = transcriptomics_expert(data_manager)
 
         # Get tools from compiled graph - correct API for CompiledStateGraph
         sc_tools_by_name = sc_agent.get_graph().nodes["tools"].data.tools_by_name
@@ -388,14 +388,14 @@ class TestEndToEndWorkflow:
 class TestAgentToolIntegration:
     """Test that agents properly integrate scVI tools."""
 
-    def test_singlecell_expert_has_scvi_handoff(self, mock_data_manager):
-        """Test SingleCell Expert includes scVI handoff tool."""
-        from lobster.agents.singlecell_expert import singlecell_expert
+    def test_transcriptomics_expert_has_scvi_handoff(self, mock_data_manager):
+        """Test Transcriptomics Expert includes scVI handoff tool."""
+        from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 
         data_manager, mock_adata = mock_data_manager
 
         # Create agent
-        agent = singlecell_expert(data_manager)
+        agent = transcriptomics_expert(data_manager)
 
         # Get tools from compiled graph - correct API for CompiledStateGraph
         tools_by_name = agent.get_graph().nodes["tools"].data.tools_by_name
@@ -428,9 +428,9 @@ class TestAgentToolIntegration:
             "train_scvi_embedding" in tools_by_name
         ), f"train_scvi_embedding not found. Available: {list(tools_by_name.keys())}"
 
-    def test_singlecell_expert_cluster_modality_use_rep(self, mock_data_manager):
-        """Test SingleCell Expert cluster_modality accepts use_rep parameter."""
-        from lobster.agents.singlecell_expert import singlecell_expert
+    def test_transcriptomics_expert_cluster_modality_use_rep(self, mock_data_manager):
+        """Test Transcriptomics Expert cluster_modality accepts use_rep parameter."""
+        from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 
         data_manager, mock_adata = mock_data_manager
 
@@ -439,9 +439,21 @@ class TestAgentToolIntegration:
 
         # Mock clustering service BEFORE creating agent (service instantiated at module level)
         with patch(
-            "lobster.agents.singlecell_expert.ClusteringService"
+            "lobster.agents.transcriptomics.transcriptomics_expert.ClusteringService"
         ) as mock_service_class:
+            from lobster.core.analysis_ir import AnalysisStep
+
             mock_service = MagicMock()
+            mock_ir = AnalysisStep(
+                operation="clustering",
+                tool_name="cluster_modality",
+                description="Mock clustering",
+                library="scanpy",
+                code_template="# mock",
+                imports=["import scanpy"],
+                parameters={},
+                parameter_schema={},
+            )
             mock_service.cluster_and_visualize.return_value = (
                 mock_adata,
                 {
@@ -455,11 +467,12 @@ class TestAgentToolIntegration:
                     "demo_mode": False,
                     "cluster_sizes": {"0": 300, "1": 400, "2": 300},
                 },
+                mock_ir,
             )
             mock_service_class.return_value = mock_service
 
             # Create agent (will use mocked service)
-            agent = singlecell_expert(data_manager)
+            agent = transcriptomics_expert(data_manager)
 
             # Get tools from compiled graph - correct API for CompiledStateGraph
             tools_by_name = agent.get_graph().nodes["tools"].data.tools_by_name
@@ -494,7 +507,7 @@ class TestWorkflowValidation:
 
     def test_scvi_handoff_validates_data_size(self, mock_data_manager):
         """Test scVI handoff validates minimum data requirements."""
-        from lobster.agents.singlecell_expert import singlecell_expert
+        from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 
         data_manager, mock_adata = mock_data_manager
 
@@ -503,7 +516,7 @@ class TestWorkflowValidation:
         mock_adata.n_vars = 200  # Below minimum of 500 genes
 
         # Create agent
-        agent = singlecell_expert(data_manager)
+        agent = transcriptomics_expert(data_manager)
 
         # Get tools from compiled graph - correct API for CompiledStateGraph
         tools_by_name = agent.get_graph().nodes["tools"].data.tools_by_name
@@ -526,7 +539,7 @@ class TestWorkflowValidation:
 
     def test_batch_key_auto_detection(self, mock_data_manager):
         """Test automatic batch key detection in handoff."""
-        from lobster.agents.singlecell_expert import singlecell_expert
+        from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 
         data_manager, mock_adata = mock_data_manager
 
@@ -540,7 +553,7 @@ class TestWorkflowValidation:
         )
 
         # Create agent
-        agent = singlecell_expert(data_manager)
+        agent = transcriptomics_expert(data_manager)
 
         # Get tools from compiled graph - correct API for CompiledStateGraph
         tools_by_name = agent.get_graph().nodes["tools"].data.tools_by_name
@@ -567,18 +580,18 @@ class TestDocumentationExamples:
     def test_typical_scvi_workflow_structure(self, mock_data_manager):
         """Test the structure of a typical scVI workflow."""
         from lobster.agents.machine_learning_expert import machine_learning_expert
-        from lobster.agents.singlecell_expert import singlecell_expert
+        from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 
         data_manager, mock_adata = mock_data_manager
 
-        # Step 1: SingleCell Expert requests scVI embedding
-        sc_agent = singlecell_expert(data_manager)
+        # Step 1: Transcriptomics Expert requests scVI embedding
+        sc_agent = transcriptomics_expert(data_manager)
 
         # Get tools from compiled graph - correct API for CompiledStateGraph
         sc_tools_by_name = sc_agent.get_graph().nodes["tools"].data.tools_by_name
         sc_tool_names = list(sc_tools_by_name.keys())
 
-        # Essential SingleCell tools
+        # Essential Transcriptomics tools
         essential_sc_tools = [
             "request_scvi_embedding",  # New scVI handoff (may be commented out)
             "cluster_modality",  # Updated with use_rep support
@@ -591,7 +604,7 @@ class TestDocumentationExamples:
                 continue
             assert (
                 essential_tool in sc_tool_names
-            ), f"Essential SingleCell tool missing: {essential_tool}. Available: {sc_tool_names}"
+            ), f"Essential Transcriptomics tool missing: {essential_tool}. Available: {sc_tool_names}"
 
         # Step 2: ML Expert handles scVI training
         ml_agent = machine_learning_expert(data_manager)

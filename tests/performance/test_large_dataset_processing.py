@@ -30,8 +30,8 @@ import psutil
 import scanpy as sc
 from memory_profiler import profile
 
-from lobster.agents.bulk_rnaseq_expert import bulk_rnaseq_expert
-from lobster.agents.singlecell_expert import singlecell_expert
+from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
+from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.analysis.clustering_service import ClusteringService
 from lobster.services.quality.preprocessing_service import PreprocessingService

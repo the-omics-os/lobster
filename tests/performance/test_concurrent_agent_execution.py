@@ -32,10 +32,10 @@ import pandas as pd
 import psutil
 
 from lobster.agents.affinity_proteomics_expert import affinity_proteomics_expert
-from lobster.agents.bulk_rnaseq_expert import bulk_rnaseq_expert
+from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 from lobster.agents.data_expert import data_expert
 from lobster.agents.ms_proteomics_expert import ms_proteomics_expert
-from lobster.agents.singlecell_expert import singlecell_expert
+from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 from lobster.core.client import AgentClient
 from lobster.core.data_manager_v2 import DataManagerV2
 from tests.mock_data.base import LARGE_DATASET_CONFIG, SMALL_DATASET_CONFIG

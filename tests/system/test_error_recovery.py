@@ -30,9 +30,9 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 
-from lobster.agents.bulk_rnaseq_expert import bulk_rnaseq_expert
+from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 from lobster.agents.data_expert import data_expert
-from lobster.agents.singlecell_expert import singlecell_expert
+from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 from lobster.core.client import AgentClient
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.provenance import ProvenanceTracker

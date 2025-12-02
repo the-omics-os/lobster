@@ -62,7 +62,7 @@ def test_agent_modifications():
         from unittest.mock import MagicMock
 
         from lobster.agents.machine_learning_expert import machine_learning_expert
-        from lobster.agents.singlecell_expert import singlecell_expert
+        from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
         from lobster.core.data_manager_v2 import DataManagerV2
 
         # Create mock data manager
@@ -84,7 +84,7 @@ def test_agent_modifications():
             return False
 
         # Test SingleCell Expert creation
-        sc_agent = singlecell_expert(mock_dm)
+        sc_agent = transcriptomics_expert(mock_dm)
         sc_tool_names = [getattr(tool, "name", str(tool)) for tool in sc_agent.tools]
 
         has_scvi_handoff = any(

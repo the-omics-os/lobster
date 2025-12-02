@@ -224,7 +224,7 @@ sequenceDiagram
     participant User
     participant Supervisor
     participant DataExpert
-    participant SingleCell
+    participant Transcriptomics
     participant DataManagerV2
 
     User->>Supervisor: "Analyze my single-cell data"
@@ -239,10 +239,10 @@ sequenceDiagram
         DataExpert-->>Supervisor: "Data ready for analysis"
     end
 
-    Supervisor->>SingleCell: handoff_to_singlecell_expert("Perform analysis")
-    SingleCell->>DataManagerV2: get_modality() + analysis
-    DataManagerV2-->>SingleCell: Processed results
-    SingleCell-->>Supervisor: "Analysis complete with visualizations"
+    Supervisor->>Transcriptomics: handoff_to_transcriptomics_expert("Perform analysis")
+    Transcriptomics->>DataManagerV2: get_modality() + analysis
+    DataManagerV2-->>Transcriptomics: Processed results
+    Transcriptomics-->>Supervisor: "Analysis complete with visualizations"
     Supervisor-->>User: Comprehensive results
 ```
 
@@ -308,7 +308,7 @@ from lobster.tools.expert_handoff_manager import expert_handoff_manager
 
 # Create context-preserving handoff
 handoff_context = create_handoff_context(
-    from_expert="singlecell_expert",
+    from_expert="transcriptomics_expert",
     to_expert="machine_learning_expert",
     task_type="scvi_training",
     parameters={"modality_name": "data", "n_latent": 10},

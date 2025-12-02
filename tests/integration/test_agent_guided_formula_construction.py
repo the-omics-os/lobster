@@ -2,7 +2,7 @@
 Integration tests for agent-guided formula construction.
 
 Tests the complete workflow of formula suggestion, construction, validation,
-and iterative analysis using the enhanced singlecell_expert agent.
+and iterative analysis using the enhanced transcriptomics_expert agent.
 """
 
 import os
@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lobster.agents.singlecell_expert import singlecell_expert
+from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.analysis.differential_formula_service import DifferentialFormulaService
 from lobster.tools.workflow_tracker import WorkflowTracker
@@ -234,8 +234,8 @@ class TestAgentGuidedFormulaConstruction:
         assert "overlap_stats" in comparison
         assert comparison["overlap_stats"]["overlapping_genes"] >= 0
 
-    @patch("lobster.tools.bulk_rnaseq_service.BulkRNASeqService")
-    @patch("lobster.tools.pseudobulk_service.PseudobulkService")
+    @patch("lobster.services.analysis.bulk_rnaseq_service.BulkRNASeqService")
+    @patch("lobster.services.analysis.pseudobulk_service.PseudobulkService")
     def test_agent_formula_suggestion_integration(
         self, mock_pseudobulk, mock_bulk, mock_data_manager
     ):
@@ -249,7 +249,7 @@ class TestAgentGuidedFormulaConstruction:
         }
 
         # Create agent (this would normally require actual services)
-        with patch("lobster.agents.singlecell_expert.get_settings") as mock_settings:
+        with patch("lobster.agents.transcriptomics.transcriptomics_expert.get_settings") as mock_settings:
             mock_settings.return_value.get_agent_llm_params.return_value = {
                 "model_id": "test-model",
                 "model_kwargs": {},
@@ -257,7 +257,7 @@ class TestAgentGuidedFormulaConstruction:
 
             with patch("langchain_aws.ChatBedrockConverse"):
                 # This test verifies the tools can be instantiated without errors
-                agent_func = singlecell_expert(mock_data_manager)
+                agent_func = transcriptomics_expert(mock_data_manager)
                 assert agent_func is not None
 
     def test_formula_parsing_edge_cases(self, formula_service):

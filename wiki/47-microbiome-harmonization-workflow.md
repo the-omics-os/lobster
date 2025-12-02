@@ -116,7 +116,7 @@ sequenceDiagram
     Note over RA: Process Phase 3: Export
     RA->>PQ: Read harmonization_metadata
     RA->>CSV: Export harmonized CSV
-    CSV-->>CLI: ✅ Dataset exported to workspace/exports/
+    CSV-->>CLI: ✅ Dataset exported to workspace/metadata/exports/
 ```
 
 **Handoff Contract Fields:**
@@ -241,6 +241,23 @@ Natural language request:
    - Healthy: 15 samples (16.9%)
 ```
 
+**Disease Extraction Note** (v1.2.0): SRA datasets have NO standardized disease field. Disease information appears in study-specific formats:
+- **Free-text fields**: `host_phenotype` ("Parkinson's Disease"), `phenotype`, `health_status`
+- **Boolean flags**: `crohns_disease: Yes`, `inflam_bowel_disease: Yes`, `parkinson_disease: TRUE`
+- **Study metadata**: Embedded in publication title or methods
+
+The metadata_assistant **automatically extracts disease** from these diverse patterns using 4-strategy approach:
+1. Existing unified columns (`disease`, `disease_state`, `condition`, `diagnosis`)
+2. Free-text phenotype fields (`host_phenotype` → `disease`)
+3. Boolean disease flags (`crohns_disease: Yes` → `disease: cd`)
+4. Study context (publication-level disease inference)
+
+Extraction creates two fields:
+- `disease`: Standardized term (e.g., "cd", "uc", "crc", "healthy", "parkinsons")
+- `disease_original`: Original raw value for traceability
+
+**Expected coverage**: 15-30% (depends on study metadata completeness)
+
 #### Step 5: Export Harmonized CSV
 
 Natural language request:
@@ -248,9 +265,12 @@ Natural language request:
 > Export harmonized metadata to CSV
 ```
 
+**Note**: Filenames are automatically timestamped (e.g., `harmonized_ibd_microbiome_2024-11-19.csv`).
+To disable auto-timestamp, use parameter `add_timestamp=False`.
+
 **research_agent reads harmonization_metadata** and exports:
 
-**File**: `workspace/exports/harmonized_ibd_microbiome_2024-11-19.csv`
+**File**: `workspace/metadata/exports/harmonized_ibd_microbiome_2024-11-19.csv`
 
 | run_accession | study_accession | biosample | organism | sample_type | disease | disease_original | tissue | age | sex | ... |
 |---------------|------------------|-----------|----------|-------------|---------|------------------|--------|-----|-----|-----|
@@ -262,11 +282,13 @@ Natural language request:
 **Final Output**:
 ```
 ✅ Harmonized dataset exported:
-   - File: workspace/exports/harmonized_ibd_microbiome_2024-11-19.csv
+   - File: workspace/metadata/exports/harmonized_ibd_microbiome_2024-11-19.csv
    - Total samples: 89
-   - Columns: 24 (run_accession, biosample, organism, sample_type, disease, disease_original, ...)
+   - Columns: 34 (28 SRA metadata + 6 harmonized fields - schema-driven)
    - Provenance: Full W3C-PROV tracking available via /pipeline export
 ```
+
+**Security Note**: Queue export functionality assumes trusted local CLI users. Multi-tenant cloud deployment requires additional authorization layer (Phase 2).
 
 ---
 
@@ -1004,7 +1026,7 @@ lobster chat
 
 # Step 5: Export CSV
 > Export harmonized metadata to CSV
-# ✅ Exported to workspace/exports/harmonized_ibd_2024-11-19.csv
+# ✅ Exported to workspace/metadata/exports/harmonized_ibd_2024-11-19.csv
 ```
 
 ### Workflow 2: Mouse Model Comparison
@@ -1026,8 +1048,8 @@ lobster chat
 # ✅ Filtered 45 → 17 gut tissue samples
 
 # Step 4: Export both datasets for comparison
-> Export fecal dataset to CSV as mouse_fecal.csv
-> Export gut tissue dataset to CSV as mouse_gut_tissue.csv
+> Export fecal dataset to CSV as mouse_fecal (auto-timestamp appended)
+> Export gut tissue dataset to CSV as mouse_gut_tissue (auto-timestamp appended)
 ```
 
 ### Workflow 3: Cross-Study Meta-Analysis
@@ -1060,8 +1082,8 @@ lobster chat
 
 # Step 5: Export for statistical analysis
 > Export harmonized dataset with provenance tracking
-# ✅ Exported: workspace/exports/crc_meta_analysis_2024-11-19.csv
-#    Provenance: workspace/exports/crc_meta_analysis_2024-11-19_provenance.json
+# ✅ Exported: workspace/metadata/exports/crc_meta_analysis_2024-11-19.csv
+#    Provenance: workspace/metadata/exports/crc_meta_analysis_2024-11-19_provenance.json
 ```
 
 ---
