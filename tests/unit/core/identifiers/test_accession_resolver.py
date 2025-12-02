@@ -352,3 +352,184 @@ class TestEdgeCases:
 
         assert "ArrayExpress" in result
         assert "E-MTAB-12345" in result["ArrayExpress"]
+
+
+class TestEGAIdentifiers:
+    """Test EGA (European Genome-phenome Archive) identifier detection.
+
+    EGA hosts controlled-access human data with 8 accession types:
+    - EGAS: Study
+    - EGAD: Dataset
+    - EGAN: Sample
+    - EGAX: Experiment
+    - EGAR: Run
+    - EGAZ: Analysis
+    - EGAP: Policy
+    - EGAC: Data Access Committee
+    """
+
+    @pytest.mark.parametrize(
+        "accession,expected_db_contains",
+        [
+            # EGA Study accessions
+            ("EGAS00001234567", "European Genome"),
+            ("EGAS00000000001", "European Genome"),
+            # EGA Dataset accessions
+            ("EGAD50000000740", "European Genome"),
+            ("EGAD00001234567", "European Genome"),
+            # EGA Sample accessions
+            ("EGAN00001234567", "European Genome"),
+            # EGA Experiment accessions
+            ("EGAX00001234567", "European Genome"),
+            # EGA Run accessions
+            ("EGAR00001234567", "European Genome"),
+            # EGA Analysis accessions
+            ("EGAZ00001234567", "European Genome"),
+            # EGA Policy accessions
+            ("EGAP00001234567", "European Genome"),
+            # EGA DAC accessions
+            ("EGAC00001234567", "European Genome"),
+        ],
+    )
+    def test_detect_ega_accessions(self, accession, expected_db_contains):
+        """Test that EGA accessions are correctly detected."""
+        resolver = get_accession_resolver()
+        result = resolver.detect_database(accession)
+
+        assert result is not None, f"Failed to detect database for {accession}"
+        assert (
+            expected_db_contains.lower() in result.lower()
+        ), f"Expected '{expected_db_contains}' in '{result}' for {accession}"
+
+    def test_ega_case_insensitive(self):
+        """Test case-insensitive EGA detection."""
+        resolver = get_accession_resolver()
+
+        assert resolver.detect_database("egas00001234567") is not None
+        assert resolver.detect_database("EGAD50000000740") is not None
+        assert resolver.detect_database("Egad50000000740") is not None
+
+    def test_ega_extraction_from_text(self):
+        """Test extraction of EGA accessions from publication text."""
+        resolver = get_accession_resolver()
+
+        text = """
+        Individual-level human genome sequencing data have been deposited
+        at the European Genome-Phenome Archive (EGA) under study accession
+        EGAS00001006747 and dataset accession EGAD50000000740.
+
+        Processed analysis files are available under EGAZ00001234567.
+
+        Data access is governed by EGAP00001234567 and managed by
+        the DAC EGAC00001234567.
+        """
+
+        result = resolver.extract_accessions_by_type(text)
+
+        assert "EGA" in result
+        ega_accessions = result["EGA"]
+        assert "EGAS00001006747" in ega_accessions
+        assert "EGAD50000000740" in ega_accessions
+        assert "EGAZ00001234567" in ega_accessions
+        assert "EGAP00001234567" in ega_accessions
+        assert "EGAC00001234567" in ega_accessions
+
+    def test_ega_url_generation(self):
+        """Test EGA URL generation."""
+        resolver = get_accession_resolver()
+
+        url = resolver.get_url("EGAD50000000740")
+        assert url is not None
+        assert "ega-archive.org" in url
+        assert "EGAD50000000740" in url
+
+    def test_ega_is_not_geo_or_sra(self):
+        """Test that EGA is not confused with GEO or SRA identifiers."""
+        resolver = get_accession_resolver()
+
+        assert resolver.is_geo_identifier("EGAS00001234567") is False
+        assert resolver.is_sra_identifier("EGAD50000000740") is False
+        assert resolver.is_proteomics_identifier("EGAN00001234567") is False
+
+    def test_ega_validation(self):
+        """Test EGA identifier validation."""
+        resolver = get_accession_resolver()
+
+        # Valid EGA accessions
+        assert resolver.validate("EGAD50000000740") is True
+        assert resolver.validate("EGAS00001234567") is True
+
+        # Invalid EGA accessions (wrong digit count)
+        assert resolver.validate("EGAD123") is False
+        assert resolver.validate("EGAS12345") is False
+
+
+class TestAccessTypeDetection:
+    """Test access type detection for identifiers (open, controlled, embargoed)."""
+
+    def test_ega_is_controlled_access(self):
+        """Test that EGA identifiers are detected as controlled access."""
+        resolver = get_accession_resolver()
+
+        result = resolver.extract_accessions_with_metadata(
+            "Data at EGAD50000000740 requires DAC application"
+        )
+
+        assert len(result) == 1
+        assert result[0]["accession"] == "EGAD50000000740"
+        assert result[0]["access_type"] == "controlled"
+        # Access notes mention DAC (Data Access Committee) application
+        assert "dac" in result[0].get("access_notes", "").lower()
+
+    def test_geo_is_open_access(self):
+        """Test that GEO identifiers are detected as open access."""
+        resolver = get_accession_resolver()
+
+        result = resolver.extract_accessions_with_metadata(
+            "Data deposited at GSE12345"
+        )
+
+        assert len(result) == 1
+        assert result[0]["accession"] == "GSE12345"
+        assert result[0]["access_type"] == "open"
+
+    def test_sra_is_open_access(self):
+        """Test that SRA identifiers are detected as open access."""
+        resolver = get_accession_resolver()
+
+        result = resolver.extract_accessions_with_metadata(
+            "Raw reads at SRP123456"
+        )
+
+        assert len(result) == 1
+        assert result[0]["accession"] == "SRP123456"
+        assert result[0]["access_type"] == "open"
+
+    def test_mixed_access_types_in_text(self):
+        """Test extraction preserves access types for mixed identifiers."""
+        resolver = get_accession_resolver()
+
+        text = """
+        Publicly available data from GSE12345 (open access) was combined
+        with controlled-access data from EGAD50000000740 (requires DAC).
+        """
+
+        result = resolver.extract_accessions_with_metadata(text)
+
+        # Sort by accession for consistent testing
+        result_by_acc = {r["accession"]: r for r in result}
+
+        assert result_by_acc["GSE12345"]["access_type"] == "open"
+        assert result_by_acc["EGAD50000000740"]["access_type"] == "controlled"
+
+    def test_pride_is_open_access(self):
+        """Test that PRIDE identifiers are detected as open access."""
+        resolver = get_accession_resolver()
+
+        result = resolver.extract_accessions_with_metadata(
+            "Proteomics data at PXD012345"
+        )
+
+        assert len(result) == 1
+        assert result[0]["accession"] == "PXD012345"
+        assert result[0]["access_type"] == "open"

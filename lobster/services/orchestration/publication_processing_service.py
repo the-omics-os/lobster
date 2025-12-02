@@ -23,25 +23,23 @@ from lobster.services.data_access.workspace_content_service import (
     ContentType,
     MetadataContent,
 )
+from lobster.services.metadata.identifier_provenance_service import (
+    IdentifierProvenanceService,
+)
 from lobster.tools.providers.sra_provider import SRAProvider
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-# Loggers to suppress during Rich progress display
+# Root loggers to suppress during Rich progress display
+# Using root loggers + propagation ensures ALL child loggers are suppressed
 _LOGGERS_TO_SUPPRESS = [
-    "lobster",
-    "lobster.services",
-    "lobster.tools",
-    "lobster.tools.providers",
-    "lobster.tools.providers.pmc_provider",
-    "lobster.tools.providers.pubmed_provider",
-    "lobster.tools.rate_limiter",
-    "lobster.services.orchestration.publication_processing_service",
-    "lobster.services.data_access.content_access_service",
-    "urllib3",
-    "httpx",
+    "lobster",           # Root: catches all lobster.* loggers
+    "urllib3",           # HTTP client library
+    "httpx",             # HTTP client library
+    "httpcore",          # HTTP client internals
+    "filelock",          # File locking library
 ]
 
 
@@ -53,15 +51,31 @@ def _suppress_logs(min_level: int = logging.CRITICAL + 1):
     This prevents log messages from interleaving with and disrupting the
     Rich progress bars. By default, ALL logs are suppressed (CRITICAL+1).
 
+    Strategy:
+    - Suppress root "lobster" logger (catches ALL child loggers via propagation)
+    - Suppress common HTTP client loggers (urllib3, httpx, httpcore)
+    - Save/restore original levels to avoid side effects
+
     Args:
         min_level: Minimum log level to show (default: CRITICAL+1 = suppress all).
                    Use logging.ERROR to show errors, logging.WARNING for warnings, etc.
     """
     original_levels = {}
+
+    # Suppress root loggers (child loggers inherit via propagation)
     for name in _LOGGERS_TO_SUPPRESS:
         log = logging.getLogger(name)
         original_levels[name] = log.level
         log.setLevel(min_level)
+
+    # Also capture all existing lobster.* child loggers for safety
+    # (in case propagate=False was set somewhere)
+    for logger_name in list(logging.Logger.manager.loggerDict.keys()):
+        if logger_name.startswith("lobster."):
+            log = logging.getLogger(logger_name)
+            if logger_name not in original_levels:
+                original_levels[logger_name] = log.level
+                log.setLevel(min_level)
 
     try:
         yield
@@ -101,6 +115,20 @@ class PublicationProcessingService:
             from lobster.tools.providers.pubmed_provider import PubMedProvider
             self._pubmed_provider = PubMedProvider(data_manager=self.data_manager)
         return self._pubmed_provider
+
+    @property
+    def provenance_service(self) -> IdentifierProvenanceService:
+        """
+        Lazy-initialized IdentifierProvenanceService.
+
+        Uses the shared PubMedProvider for E-Link validation to avoid
+        creating redundant connections.
+        """
+        if not hasattr(self, "_provenance_service") or self._provenance_service is None:
+            self._provenance_service = IdentifierProvenanceService(
+                pubmed_provider=self.pubmed_provider
+            )
+        return self._provenance_service
 
     def _get_best_source_for_extraction(self, entry: PublicationQueueEntry) -> Optional[str]:
         """
@@ -859,6 +887,89 @@ class PublicationProcessingService:
                             )
                     except Exception as e:  # pragma: no cover - provider errors
                         response_parts.append(f"✗ Identifier extraction failed: {str(e)}")
+
+            # Provenance validation (runs AFTER identifier extraction)
+            # Uses 2-layer validation:
+            # 1. Section-based: Data Availability → primary, Methods/Body → uncertain
+            # 2. E-Link validation: For non-DA BioProjects, check NCBI linkage
+            if "validate_provenance" in tasks or "full_text" in tasks:
+                _report_progress("validate_provenance")
+                with self._measure_step("validate_provenance"):
+                    try:
+                        # Get PMC full text content including Data Availability section
+                        data_availability_text = ""
+                        if content_result and content_result.get("data_availability_section"):
+                            data_availability_text = content_result.get("data_availability_section", "")
+
+                        # Get PMID for E-Link validation
+                        source_pmid = entry.pmid or (
+                            entry.identifiers.get("pmid") if entry.identifiers else None
+                        )
+
+                        if full_content:
+                            # Run provenance validation
+                            provenance_results = self.provenance_service.extract_and_validate(
+                                full_text=full_content,
+                                data_availability_text=data_availability_text,
+                                source_pmid=source_pmid,
+                                validate_elink=bool(source_pmid),  # Only validate if PMID available
+                            )
+
+                            if provenance_results:
+                                # Store provenance metadata
+                                extracted_data["identifier_provenance"] = (
+                                    self.provenance_service.to_dict_list(provenance_results)
+                                )
+
+                                # Separate by provenance type for reporting
+                                primary_ids = [r for r in provenance_results if r.provenance == "primary"]
+                                referenced_ids = [r for r in provenance_results if r.provenance == "referenced"]
+                                controlled_ids = [r for r in provenance_results if r.access_type == "controlled"]
+                                downloadable_ids = [r for r in provenance_results if r.is_downloadable]
+
+                                # Report results
+                                response_parts.append(
+                                    f"✓ Provenance validation: {len(provenance_results)} identifiers analyzed"
+                                )
+                                if primary_ids:
+                                    response_parts.append(
+                                        f"  - Primary (study's own data): {len(primary_ids)}"
+                                    )
+                                if referenced_ids:
+                                    response_parts.append(
+                                        f"  - Referenced (from other studies): {len(referenced_ids)}"
+                                    )
+                                if downloadable_ids:
+                                    response_parts.append(
+                                        f"  - Auto-downloadable: {len(downloadable_ids)}"
+                                    )
+
+                                # Controlled access notification
+                                if controlled_ids:
+                                    controlled_accs = ", ".join(r.accession for r in controlled_ids[:3])
+                                    more_text = f" (+{len(controlled_ids) - 3} more)" if len(controlled_ids) > 3 else ""
+                                    response_parts.append(
+                                        f"  ⚠ Controlled-access: {controlled_accs}{more_text} (DAC application required)"
+                                    )
+
+                                # Referenced identifiers notification
+                                if referenced_ids:
+                                    ref_accs = ", ".join(r.accession for r in referenced_ids[:3])
+                                    more_text = f" (+{len(referenced_ids) - 3} more)" if len(referenced_ids) > 3 else ""
+                                    response_parts.append(
+                                        f"  ℹ Excluded from download: {ref_accs}{more_text} (from referenced studies)"
+                                    )
+                            else:
+                                response_parts.append(
+                                    "⚠ No identifiers found for provenance validation"
+                                )
+                        else:
+                            response_parts.append(
+                                "⚠ No content available for provenance validation"
+                            )
+                    except Exception as e:  # pragma: no cover - provider errors
+                        logger.warning(f"Provenance validation failed: {e}")
+                        response_parts.append(f"⚠ Provenance validation skipped: {str(e)}")
 
             # SRA metadata fetching (runs AFTER identifier extraction to combine all BioProject sources)
             # Fetches detailed sample metadata for BioProject IDs from BOTH:

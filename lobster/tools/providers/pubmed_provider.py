@@ -720,6 +720,147 @@ class PubMedProvider(BasePublicationProvider):
             )
         return "\n\nYour API key is active, but NCBI servers may be overloaded. Try again later."
 
+    def validate_bioproject_publication_link(
+        self, bioproject_id: str, expected_pmid: str
+    ) -> Dict[str, Any]:
+        """
+        Validate that a BioProject is linked to the expected publication.
+
+        Uses NCBI E-Link to check if bioproject → pubmed link exists.
+        This enables provenance validation: identifiers that link to the source
+        publication are "primary", others are "referenced" from other studies.
+
+        Args:
+            bioproject_id: BioProject accession (e.g., "PRJNA436359", "PRJEB12345")
+            expected_pmid: PMID of source publication (e.g., "35042229")
+
+        Returns:
+            Dict with validation results:
+            - is_linked: bool - True if bioproject links to expected_pmid
+            - linked_pmids: list - All PMIDs linked to this bioproject
+            - provenance: str - "primary", "referenced", or "uncertain"
+            - confidence: float - 0.0-1.0 confidence score
+            - error: Optional[str] - Error message if validation failed
+
+        Example:
+            >>> provider = PubMedProvider()
+            >>> result = provider.validate_bioproject_publication_link(
+            ...     "PRJNA436359", "35042229"
+            ... )
+            >>> print(result)
+            {'is_linked': False, 'linked_pmids': ['29123456'],
+             'provenance': 'referenced', 'confidence': 0.2}
+        """
+        import json
+        import re
+
+        # Extract numeric ID from PRJNA/PRJEB/PRJDB format
+        match = re.match(r"PRJ[A-Z]{1,2}(\d+)", bioproject_id.upper())
+        if not match:
+            return {
+                "is_linked": False,
+                "linked_pmids": [],
+                "provenance": "uncertain",
+                "confidence": 0.0,
+                "error": f"Invalid BioProject format: {bioproject_id}",
+            }
+
+        # E-Link: bioproject → pubmed
+        # Note: E-Link uses BioProject UID, not accession. We need to search for it first.
+        try:
+            # Step 1: Get BioProject UID from accession
+            search_url = self.build_ncbi_url(
+                "esearch",
+                {
+                    "db": "bioproject",
+                    "term": bioproject_id,
+                    "retmode": "json",
+                },
+            )
+
+            search_content = self._make_ncbi_request(
+                search_url, f"search bioproject {bioproject_id}"
+            )
+            search_response = json.loads(search_content.decode("utf-8"))
+
+            id_list = search_response.get("esearchresult", {}).get("idlist", [])
+            if not id_list:
+                logger.debug(f"BioProject not found in NCBI: {bioproject_id}")
+                return {
+                    "is_linked": False,
+                    "linked_pmids": [],
+                    "provenance": "uncertain",
+                    "confidence": 0.3,
+                    "error": f"BioProject not found: {bioproject_id}",
+                }
+
+            bioproject_uid = id_list[0]
+
+            # Step 2: E-Link from bioproject to pubmed
+            elink_url = self.build_ncbi_url(
+                "elink",
+                {
+                    "dbfrom": "bioproject",
+                    "db": "pubmed",
+                    "id": bioproject_uid,
+                    "retmode": "json",
+                },
+            )
+
+            elink_content = self._make_ncbi_request(
+                elink_url, f"elink bioproject→pubmed {bioproject_id}"
+            )
+            elink_response = json.loads(elink_content.decode("utf-8"))
+
+            linked_pmids = []
+            if "linksets" in elink_response:
+                for linkset in elink_response["linksets"]:
+                    if "linksetdbs" in linkset:
+                        for db in linkset["linksetdbs"]:
+                            if db.get("dbto") == "pubmed":
+                                linked_pmids.extend(
+                                    str(x) for x in db.get("links", [])
+                                )
+
+            # Normalize expected_pmid (remove PMID: prefix if present)
+            expected_pmid_normalized = str(expected_pmid).strip()
+            if expected_pmid_normalized.upper().startswith("PMID:"):
+                expected_pmid_normalized = expected_pmid_normalized[5:].strip()
+
+            is_linked = expected_pmid_normalized in linked_pmids
+
+            if is_linked:
+                provenance = "primary"
+                confidence = 1.0
+            elif linked_pmids:
+                provenance = "referenced"
+                confidence = 0.2
+            else:
+                provenance = "uncertain"
+                confidence = 0.5
+
+            logger.debug(
+                f"E-Link validation for {bioproject_id} → PMID:{expected_pmid}: "
+                f"is_linked={is_linked}, linked_pmids={linked_pmids}, provenance={provenance}"
+            )
+
+            return {
+                "is_linked": is_linked,
+                "linked_pmids": linked_pmids,
+                "provenance": provenance,
+                "confidence": confidence,
+            }
+
+        except Exception as e:
+            logger.warning(f"E-Link validation failed for {bioproject_id}: {e}")
+            return {
+                "is_linked": False,
+                "linked_pmids": [],
+                "provenance": "uncertain",
+                "confidence": 0.3,
+                "error": str(e),
+            }
+
     def extract_computational_methods(
         self, identifier: str, method_type: str = "all", include_parameters: bool = True
     ) -> str:

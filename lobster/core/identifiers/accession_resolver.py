@@ -213,6 +213,15 @@ class AccessionResolver:
             "mgnify_accession": "MGnify",
             "qiita_accession": "Qiita",
             "publication_doi": "DOI",
+            # EGA (European Genome-phenome Archive) - controlled access
+            "ega_study_accession": "EGA",
+            "ega_dataset_accession": "EGA",
+            "ega_sample_accession": "EGA",
+            "ega_experiment_accession": "EGA",
+            "ega_run_accession": "EGA",
+            "ega_analysis_accession": "EGA",
+            "ega_policy_accession": "EGA",
+            "ega_dac_accession": "EGA",
         }
 
         results: Dict[str, Set[str]] = {}
@@ -361,6 +370,15 @@ class AccessionResolver:
             "MGYS",
             "ST",
             "E-",
+            # EGA prefixes (European Genome-phenome Archive)
+            "EGAS",
+            "EGAD",
+            "EGAN",
+            "EGAX",
+            "EGAR",
+            "EGAZ",
+            "EGAP",
+            "EGAC",
         ]
 
         for prefix in prefixes:
@@ -383,7 +401,7 @@ class AccessionResolver:
         Get list of simplified type names.
 
         Returns:
-            List of type names like 'GEO', 'SRA', 'PRIDE', etc.
+            List of type names like 'GEO', 'SRA', 'PRIDE', 'EGA', etc.
         """
         return [
             "GEO",
@@ -400,6 +418,7 @@ class AccessionResolver:
             "MetaboLights",
             "ArrayExpress",
             "MGnify",
+            "EGA",
             "DOI",
         ]
 
@@ -419,6 +438,122 @@ class AccessionResolver:
         """Check if identifier is PRIDE or MassIVE."""
         db = self.detect_database(identifier)
         return db is not None and any(x in db for x in ["PRIDE", "MassIVE"])
+
+    def is_ega_identifier(self, identifier: str) -> bool:
+        """Check if identifier is any EGA type (EGAS, EGAD, EGAN, etc.)."""
+        db = self.detect_database(identifier)
+        return db is not None and "Genome-phenome Archive" in db
+
+    def get_access_type(self, identifier: str) -> str:
+        """
+        Get access type for an identifier.
+
+        Args:
+            identifier: Accession string
+
+        Returns:
+            Access type: "open", "controlled", "embargoed", or "unknown"
+
+        Example:
+            >>> resolver.get_access_type("GSE12345")
+            'open'
+            >>> resolver.get_access_type("EGAD50000000740")
+            'controlled'
+        """
+        identifier = identifier.strip()
+        field_name = self.detect_field(identifier)
+
+        if field_name and field_name in DATABASE_ACCESSION_REGISTRY:
+            return DATABASE_ACCESSION_REGISTRY[field_name].access_type
+
+        return "unknown"
+
+    def is_controlled_access(self, identifier: str) -> bool:
+        """
+        Check if identifier requires controlled access application.
+
+        Args:
+            identifier: Accession string
+
+        Returns:
+            True if access_type is "controlled"
+
+        Example:
+            >>> resolver.is_controlled_access("EGAD50000000740")
+            True
+            >>> resolver.is_controlled_access("GSE12345")
+            False
+        """
+        return self.get_access_type(identifier) == "controlled"
+
+    def get_access_notes(self, identifier: str) -> str:
+        """
+        Get access notes for an identifier (instructions for controlled access).
+
+        Args:
+            identifier: Accession string
+
+        Returns:
+            Access notes string, empty if not applicable
+        """
+        identifier = identifier.strip()
+        field_name = self.detect_field(identifier)
+
+        if field_name and field_name in DATABASE_ACCESSION_REGISTRY:
+            return DATABASE_ACCESSION_REGISTRY[field_name].access_notes
+
+        return ""
+
+    def extract_accessions_with_metadata(self, text: str) -> List[Dict]:
+        """
+        Extract accessions from text with full metadata including access_type.
+
+        Args:
+            text: Text to search (e.g., methods section, abstract)
+
+        Returns:
+            List of dicts with accession details:
+            - accession: Normalized accession string
+            - field_name: Registry field name
+            - database: Human-readable database name
+            - access_type: "open", "controlled", "embargoed"
+            - access_notes: Instructions for controlled access
+
+        Example:
+            >>> results = resolver.extract_accessions_with_metadata(
+            ...     "Data available at GSE12345 and EGAD50000000740"
+            ... )
+            >>> for r in results:
+            ...     print(f"{r['accession']}: {r['access_type']}")
+            GSE12345: open
+            EGAD50000000740: controlled
+        """
+        if not text:
+            return []
+
+        results = []
+        seen = set()
+
+        for field_name, pattern in self._search_patterns.items():
+            matches = pattern.findall(text)
+
+            if matches:
+                accession_info = DATABASE_ACCESSION_REGISTRY[field_name]
+                for match in matches:
+                    normalized = match.upper()
+                    if normalized in seen:
+                        continue
+                    seen.add(normalized)
+
+                    results.append({
+                        "accession": normalized,
+                        "field_name": field_name,
+                        "database": accession_info.database_name,
+                        "access_type": accession_info.access_type,
+                        "access_notes": accession_info.access_notes,
+                    })
+
+        return results
 
 
 # Thread-safe singleton implementation

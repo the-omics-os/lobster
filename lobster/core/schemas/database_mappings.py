@@ -33,6 +33,8 @@ class DatabaseAccession:
         description: Field purpose and usage notes
         modalities: Which data modalities use this field
         required: Whether this field is required (vs optional)
+        access_type: Data access type ("open", "controlled", "embargoed")
+        access_notes: Instructions for accessing controlled/embargoed data
     """
 
     field_name: str
@@ -44,6 +46,8 @@ class DatabaseAccession:
     description: str
     modalities: List[str]
     required: bool = False
+    access_type: str = "open"  # "open", "controlled", "embargoed"
+    access_notes: str = ""  # Instructions for controlled access
 
 
 # =============================================================================
@@ -436,6 +440,109 @@ CROSS_PLATFORM_ACCESSIONS = {
 }
 
 # =============================================================================
+# EGA (European Genome-phenome Archive) Accessions - Controlled Access
+# =============================================================================
+
+EGA_ACCESSIONS = {
+    "ega_study_accession": DatabaseAccession(
+        field_name="ega_study_accession",
+        database_name="European Genome-phenome Archive (Study)",
+        database_url_template="https://ega-archive.org/studies/{accession}",
+        prefix_pattern=r"EGAS",
+        full_pattern=r"^EGAS\d{11}$",
+        example="EGAS00001234567",
+        description="EGA Study accession for controlled-access human data",
+        modalities=["transcriptomics", "metagenomics"],
+        access_type="controlled",
+        access_notes="Requires Data Access Committee (DAC) application via https://ega-archive.org",
+    ),
+    "ega_dataset_accession": DatabaseAccession(
+        field_name="ega_dataset_accession",
+        database_name="European Genome-phenome Archive (Dataset)",
+        database_url_template="https://ega-archive.org/datasets/{accession}",
+        prefix_pattern=r"EGAD",
+        full_pattern=r"^EGAD\d{11}$",
+        example="EGAD50000000740",
+        description="EGA Dataset accession for controlled-access data files",
+        modalities=["transcriptomics", "metagenomics"],
+        access_type="controlled",
+        access_notes="Requires Data Access Committee (DAC) application via https://ega-archive.org",
+    ),
+    "ega_sample_accession": DatabaseAccession(
+        field_name="ega_sample_accession",
+        database_name="European Genome-phenome Archive (Sample)",
+        database_url_template="https://ega-archive.org/samples/{accession}",
+        prefix_pattern=r"EGAN",
+        full_pattern=r"^EGAN\d{11}$",
+        example="EGAN00001234567",
+        description="EGA Sample accession",
+        modalities=["transcriptomics", "metagenomics"],
+        access_type="controlled",
+        access_notes="Requires Data Access Committee (DAC) application via https://ega-archive.org",
+    ),
+    "ega_experiment_accession": DatabaseAccession(
+        field_name="ega_experiment_accession",
+        database_name="European Genome-phenome Archive (Experiment)",
+        database_url_template="https://ega-archive.org/metadata/v2/experiments/{accession}",
+        prefix_pattern=r"EGAX",
+        full_pattern=r"^EGAX\d{11}$",
+        example="EGAX00001234567",
+        description="EGA Experiment accession for sequencing experiment",
+        modalities=["transcriptomics", "metagenomics"],
+        access_type="controlled",
+        access_notes="Requires Data Access Committee (DAC) application via https://ega-archive.org",
+    ),
+    "ega_run_accession": DatabaseAccession(
+        field_name="ega_run_accession",
+        database_name="European Genome-phenome Archive (Run)",
+        database_url_template="https://ega-archive.org/metadata/v2/runs/{accession}",
+        prefix_pattern=r"EGAR",
+        full_pattern=r"^EGAR\d{11}$",
+        example="EGAR00001234567",
+        description="EGA Run accession for sequencing run",
+        modalities=["transcriptomics", "metagenomics"],
+        access_type="controlled",
+        access_notes="Requires Data Access Committee (DAC) application via https://ega-archive.org",
+    ),
+    "ega_analysis_accession": DatabaseAccession(
+        field_name="ega_analysis_accession",
+        database_name="European Genome-phenome Archive (Analysis)",
+        database_url_template="https://ega-archive.org/metadata/v2/analyses/{accession}",
+        prefix_pattern=r"EGAZ",
+        full_pattern=r"^EGAZ\d{11}$",
+        example="EGAZ00001234567",
+        description="EGA Analysis accession for processed analysis files",
+        modalities=["transcriptomics", "metagenomics"],
+        access_type="controlled",
+        access_notes="Requires Data Access Committee (DAC) application via https://ega-archive.org",
+    ),
+    "ega_policy_accession": DatabaseAccession(
+        field_name="ega_policy_accession",
+        database_name="European Genome-phenome Archive (Policy)",
+        database_url_template="https://ega-archive.org/metadata/v2/policies/{accession}",
+        prefix_pattern=r"EGAP",
+        full_pattern=r"^EGAP\d{11}$",
+        example="EGAP00001234567",
+        description="EGA Policy accession for data access policy",
+        modalities=["transcriptomics", "metagenomics"],
+        access_type="controlled",
+        access_notes="Defines data access committee and application process",
+    ),
+    "ega_dac_accession": DatabaseAccession(
+        field_name="ega_dac_accession",
+        database_name="European Genome-phenome Archive (DAC)",
+        database_url_template="https://ega-archive.org/metadata/v2/dacs/{accession}",
+        prefix_pattern=r"EGAC",
+        full_pattern=r"^EGAC\d{11}$",
+        example="EGAC00001234567",
+        description="EGA Data Access Committee accession",
+        modalities=["transcriptomics", "metagenomics"],
+        access_type="controlled",
+        access_notes="Identifies the committee responsible for data access decisions",
+    ),
+}
+
+# =============================================================================
 # Consolidated Database Mapping Registry
 # =============================================================================
 
@@ -449,6 +556,7 @@ DATABASE_ACCESSION_REGISTRY: Dict[str, DatabaseAccession] = {
     **METABOLOMICS_ACCESSIONS,
     **METAGENOMICS_ACCESSIONS,
     **CROSS_PLATFORM_ACCESSIONS,
+    **EGA_ACCESSIONS,
 }
 
 

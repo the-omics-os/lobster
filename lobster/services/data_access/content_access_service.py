@@ -77,14 +77,16 @@ class ContentAccessService:
     System (1):
     - query_capabilities: Query available providers and capabilities
 
-    **Providers Registered** (7 total):
+    **Providers Registered** (9 total):
     1. AbstractProvider - Fast abstract retrieval (priority 10)
     2. PubMedProvider - Literature search, dataset linking (priority 10)
     3. GEOProvider - Dataset discovery, validation (priority 10)
     4. SRAProvider - SRA dataset discovery (priority 10)
     5. PMCProvider - Full-text from PMC XML (priority 10)
-    6. BioRxivMedRxivProvider - Preprint full-text from bioRxiv/medRxiv (priority 10)
-    7. WebpageProvider - Webpage scraping, PDF via Docling (priority 50)
+    6. PRIDEProvider - PRIDE proteomics dataset discovery (priority 10)
+    7. MassIVEProvider - MassIVE proteomics/metabolomics dataset discovery (priority 20)
+    8. BioRxivMedRxivProvider - Preprint full-text from bioRxiv/medRxiv (priority 10)
+    9. WebpageProvider - Webpage scraping, PDF via Docling (priority 50)
 
     Note: DoclingService is used internally by WebpageProvider via composition,
     not registered as a separate provider.
@@ -152,8 +154,10 @@ class ContentAccessService:
         3. GEOProvider (priority 10) - GEO dataset discovery
         4. SRAProvider (priority 10) - SRA dataset discovery
         5. PMCProvider (priority 10) - PMC full-text
-        6. BioRxivMedRxivProvider (priority 10) - BioRxiv/MedRxiv preprints
-        7. WebpageProvider (priority 50) - Webpage scraping
+        6. PRIDEProvider (priority 10) - PRIDE proteomics discovery
+        7. MassIVEProvider (priority 20) - MassIVE proteomics/metabolomics discovery
+        8. BioRxivMedRxivProvider (priority 10) - BioRxiv/MedRxiv preprints
+        9. WebpageProvider (priority 50) - Webpage scraping
 
         Each provider is instantiated with the DataManagerV2 instance
         for provenance tracking.
@@ -203,7 +207,27 @@ class ContentAccessService:
         except Exception as e:
             logger.error(f"Failed to initialize PMCProvider: {e}")
 
-        # 6. BioRxivMedRxivProvider - Preprint full-text extraction
+        # 6. PRIDEProvider - PRIDE proteomics dataset discovery
+        try:
+            from lobster.tools.providers.pride_provider import PRIDEProvider
+
+            pride_provider = PRIDEProvider(data_manager=self.data_manager)
+            self.registry.register_provider(pride_provider)
+            logger.debug("PRIDEProvider registered successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize PRIDEProvider: {e}")
+
+        # 7. MassIVEProvider - MassIVE proteomics/metabolomics dataset discovery
+        try:
+            from lobster.tools.providers.massive_provider import MassIVEProvider
+
+            massive_provider = MassIVEProvider(data_manager=self.data_manager)
+            self.registry.register_provider(massive_provider)
+            logger.debug("MassIVEProvider registered successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize MassIVEProvider: {e}")
+
+        # 8. BioRxivMedRxivProvider - Preprint full-text extraction
         try:
             biorxiv_provider = BioRxivMedRxivProvider(data_manager=self.data_manager)
             self.registry.register_provider(biorxiv_provider)
@@ -212,7 +236,7 @@ class ContentAccessService:
         except Exception as e:
             logger.error(f"Failed to initialize BioRxivMedRxivProvider: {e}")
 
-        # 7. WebpageProvider - Webpage scraping (includes PDF via Docling)
+        # 9. WebpageProvider - Webpage scraping (includes PDF via Docling)
         try:
             webpage_provider = WebpageProvider(data_manager=self.data_manager)
             self.registry.register_provider(webpage_provider)
@@ -1874,6 +1898,7 @@ class ContentAccessService:
             "methods_markdown": pmc_result.methods_section,
             "results_text": pmc_result.results_section,
             "discussion_text": pmc_result.discussion_section,
+            "data_availability_section": getattr(pmc_result, "data_availability_section", ""),
             "tier_used": tier_used,
             "source_type": pmc_result.source_type,
             "extraction_time": 0.0,
@@ -1882,7 +1907,7 @@ class ContentAccessService:
                 "figures": len(pmc_result.figures),
                 "software": pmc_result.software_tools,
                 "github_repos": pmc_result.github_repos,
-                "sections": ["methods", "results", "discussion"],
+                "sections": ["methods", "results", "discussion", "data_availability"],
             },
             "title": pmc_result.title,
             "abstract": pmc_result.abstract,
