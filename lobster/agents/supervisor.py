@@ -304,36 +304,22 @@ def _build_workflow_section(active_agents: List[str], config: SupervisorConfig) 
     section = "<Workflow Awareness>\n"
 
     # Add workflows for agents that are active
-    if "singlecell_expert_agent" in active_agents:
-        section += """    **Single-cell RNA-seq Workflow:**
-    - If user has single-cell datasets:
+    if "transcriptomics_expert" in active_agents:
+        section += """    **Transcriptomics Workflow (Single-cell & Bulk RNA-seq):**
+    - If user has transcriptomics datasets (single-cell or bulk):
       1. data_expert_agent loads and summarizes them.
-      2. singlecell_expert_agent runs QC -> normalization -> doublet detection.
-      3. singlecell_expert_agent performs clustering and UMAP visualization:
-         - For exploration: Use multi-resolution testing (resolutions=[0.25, 0.5, 1.0]) to explore granularity
-         - For production: Use single resolution (resolution=0.5 or 1.0) after determining optimal granularity
-         - Results in leiden_res0_XX columns for each resolution tested
-      4. singlecell_expert_agent finds marker genes for optimal clustering resolution.
-      5. singlecell_expert_agent annotates cell types.
-      6. research_agent consulted for parameter extraction if needed.\n\n"""
+      2. transcriptomics_expert runs QC -> normalization (auto-detects single-cell vs bulk).
+      3. For single-cell: clustering, UMAP visualization, marker gene detection, cell type annotation.
+         - For exploration: Use multi-resolution testing (resolutions=[0.25, 0.5, 1.0])
+         - For production: Use single resolution (resolution=0.5 or 1.0)
+      4. For bulk: differential expression analysis, pathway enrichment.
+      5. research_agent consulted for parameter extraction if needed.\n\n"""
 
-    if "bulk_rnaseq_expert_agent" in active_agents:
-        section += """    **Bulk RNA-seq Workflow:**
-    - If user has bulk RNA-seq datasets:
-      1. data_expert_agent loads and summarizes them.
-      2. bulk_rnaseq_expert_agent runs QC -> normalization.
-      3. bulk_rnaseq_expert_agent performs differential expression analysis between groups.
-      4. bulk_rnaseq_expert_agent runs pathway enrichment analysis.
-      5. research_agent consulted for statistical method selection if needed.\n\n"""
-
-    if (
-        "ms_proteomics_expert_agent" in active_agents
-        or "affinity_proteomics_expert_agent" in active_agents
-    ):
-        section += """    **Proteomics Workflow:**
+    if "proteomics_expert" in active_agents:
+        section += """    **Proteomics Workflow (MS & Affinity):**
     - If user has proteomics datasets:
       1. data_expert_agent loads and identifies data type.
-      2. ms_proteomics_expert_agent or affinity_proteomics_expert_agent performs appropriate analysis.
+      2. proteomics_expert auto-detects platform (MS-DDA/DIA or affinity/Olink).
       3. Quality control, normalization, and statistical testing.
       4. Pathway enrichment and visualization.\n\n"""
 
@@ -341,7 +327,7 @@ def _build_workflow_section(active_agents: List[str], config: SupervisorConfig) 
         section += """    **Machine Learning Workflow:**
     - Dataset independent:
       1. data_expert_agent loads and identifies data type.
-      2. Appropriate expert (singlecell_expert_agent, bulk_rnaseq_expert_agent, etc.) performs QC & concatenation.
+      2. Appropriate expert (transcriptomics_expert, proteomics_expert, etc.) performs QC & preprocessing.
       3. machine_learning_expert_agent runs tasks like scVI embedding training or export."""
 
     # Add download queue coordination pattern if both agents are present
@@ -516,14 +502,14 @@ def _build_examples_section() -> str:
 
 **Visualization Requests:**
 - User: "Create a UMAP plot" or "Show gene expression for CD3D, CD4, CD8A"
-- You delegate to the appropriate expert (singlecell_expert_agent for single-cell)
+- You delegate to the appropriate expert (transcriptomics_expert for RNA-seq data)
 - The expert will generate interactive plots and save them to the workspace
 
 **Analysis Workflows:**
  - For single-cell: data loading -> QC -> normalization -> clustering -> annotation
 **Multi-Resolution Clustering Example:**
 User: "Cluster my single-cell data at multiple resolutions to explore granularity"
-You delegate: singlecell_expert_agent.cluster_modality(
+You delegate: transcriptomics_expert.cluster_modality(
       modality_name="geo_gse12345_filtered",
       resolutions=[0.25, 0.5, 1.0],
       batch_correction=True
