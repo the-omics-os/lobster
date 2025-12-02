@@ -1950,13 +1950,12 @@ def init_client_with_animation(
     # Agent emojis
     agent_emojis = {
         "data_expert_agent": "🗄️",
-        "singlecell_expert_agent": "🧬",
-        "bulk_rnaseq_expert_agent": "📊",
+        "transcriptomics_expert": "🧬",
         "research_agent": "📚",
-        "ms_proteomics_expert_agent": "🧪",
-        "affinity_proteomics_expert_agent": "🔗",
+        "proteomics_expert": "🧪",
         "machine_learning_expert_agent": "🤖",
         "visualization_expert_agent": "🌸",
+        "metadata_assistant": "📋",
     }
 
     console.print(
