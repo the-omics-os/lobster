@@ -308,7 +308,7 @@ class PMCProvider:
                                 links = db.get("links", [])
                                 if links:
                                     pmc_id = str(links[0])  # First PMC ID
-                                    logger.info(
+                                    logger.debug(
                                         f"Found PMC ID: PMC{pmc_id} for PMID: {pmid}"
                                     )
                                     return pmc_id
@@ -353,13 +353,13 @@ class PMCProvider:
         if pmc_id.upper().startswith("PMC"):
             pmc_id_normalized = pmc_id[3:]
 
-        logger.info(f"Fetching PMC full text XML: PMC{pmc_id_normalized}")
+        logger.debug(f"Fetching PMC full text XML: PMC{pmc_id_normalized}")
 
         # Strategy 1: Try OAI-PMH first (returns full text for all open access papers)
         try:
             xml_text = self._fetch_via_oai_pmh(pmc_id_normalized)
             if xml_text and self._has_body_content(xml_text):
-                logger.info(
+                logger.debug(
                     f"Successfully fetched PMC XML via OAI-PMH: {len(xml_text)} bytes"
                 )
                 return xml_text
@@ -374,7 +374,7 @@ class PMCProvider:
         try:
             xml_text = self._fetch_via_efetch(pmc_id_normalized)
             if xml_text and self._has_body_content(xml_text):
-                logger.info(
+                logger.debug(
                     f"Successfully fetched PMC XML via efetch: {len(xml_text)} bytes"
                 )
                 return xml_text
@@ -624,7 +624,7 @@ class PMCProvider:
             # Extract methods section with paragraph fallback for PLOS-style XML
             methods_section = self._extract_section(body, "methods")
             if not methods_section:
-                logger.info(
+                logger.debug(
                     "No formal methods section found, attempting paragraph-based extraction"
                 )
                 methods_section = self._extract_methods_from_paragraphs(body)
@@ -641,7 +641,7 @@ class PMCProvider:
 
             extraction_time = time.time() - start_time
 
-            logger.info(
+            logger.debug(
                 f"Parsed PMC XML: {len(full_text)} chars, "
                 f"{len(methods_section)} chars methods, "
                 f"{len(tables)} tables, "
@@ -718,13 +718,13 @@ class PMCProvider:
             >>> full_text = provider.extract_full_text("PMID:35042229", known_pmc_id="PMC8891176")
         """
         try:
-            logger.info(f"Extracting PMC full text for: {identifier}")
+            logger.debug(f"Extracting PMC full text for: {identifier}")
 
             # Step 1: Use known PMC ID or look it up via E-Link
             # Phase B2 optimization: Skip E-Link call when PMC ID already known
             if known_pmc_id:
                 pmc_id = known_pmc_id
-                logger.info(f"Using pre-resolved PMC ID: {pmc_id} (skipping E-Link lookup)")
+                logger.debug(f"Using pre-resolved PMC ID: {pmc_id} (skipping E-Link lookup)")
             else:
                 pmc_id = self.get_pmc_id(identifier)
                 if not pmc_id:
@@ -1169,7 +1169,7 @@ class PMCProvider:
             # Try all keyword variations
             for keyword in keywords:
                 if keyword in title_lower or title_lower in keyword:
-                    logger.info(
+                    logger.debug(
                         f"Found section via title match: '{title}' matches '{keyword}'"
                     )
                     return self._extract_section_recursive(section, level=2)
@@ -1191,7 +1191,7 @@ class PMCProvider:
                 # Check subsection sec-type
                 sec_type = subsection.get("@sec-type", "").lower()
                 if section_type.lower() in sec_type:
-                    logger.info(f"Found section in subsection via sec-type: {sec_type}")
+                    logger.debug(f"Found section in subsection via sec-type: {sec_type}")
                     return self._extract_section_recursive(subsection, level=2)
 
                 # Check subsection title
@@ -1202,7 +1202,7 @@ class PMCProvider:
 
                 for keyword in keywords:
                     if keyword in title_lower or title_lower in keyword:
-                        logger.info(
+                        logger.debug(
                             f"Found section in subsection via title: '{title}' matches '{keyword}'"
                         )
                         return self._extract_section_recursive(subsection, level=2)
@@ -1303,7 +1303,7 @@ class PMCProvider:
         # Concatenate methods paragraphs with proper spacing
         methods_content = "\n\n".join(methods_paragraphs)
 
-        logger.info(
+        logger.debug(
             f"Extracted methods from {len(methods_paragraphs)} body paragraphs "
             f"({len(methods_content)} chars total)"
         )
@@ -1622,7 +1622,7 @@ class PMCProvider:
                 params["clustering_threshold"] = f"{details.clustering_threshold}%"
 
             if params:
-                logger.info(f"Extracted {len(params)} protocol parameters from methods")
+                logger.debug(f"Extracted {len(params)} protocol parameters from methods")
 
             return params
 

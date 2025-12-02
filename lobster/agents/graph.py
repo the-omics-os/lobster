@@ -48,7 +48,7 @@ def _create_delegation_tool(agent_name: str, agent, description: str):
         return final_msg.content if hasattr(final_msg, 'content') else str(final_msg)
 
     # Set proper name and docstring
-    delegate.__name__ = f"delegate_to_{agent_name}"
+    delegate.__name__ = f"handoff_to_{agent_name}"
     delegate.__doc__ = f"Delegate task to {agent_name}. {description}"
     return delegate
 

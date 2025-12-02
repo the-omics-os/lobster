@@ -386,7 +386,7 @@ class ContentAccessService:
         """
         from lobster.tools.providers.base_provider import ProviderCapability
 
-        logger.info(f"Literature search: {query[:50]}...")
+        logger.debug(f"Literature search: {query[:50]}...")
 
         # Initialize statistics
         stats = {
@@ -448,7 +448,7 @@ class ContentAccessService:
             # Use first provider (highest priority)
             provider = providers[0]
             provider_name = type(provider).__name__
-            logger.info(f"Using provider: {provider_name}")
+            logger.debug(f"Using provider: {provider_name}")
             stats["provider_used"] = provider_name
 
             # Call provider's search method
@@ -542,7 +542,7 @@ class ContentAccessService:
             extract_accession_info,
         )
 
-        logger.info(f"Dataset search: {query[:50]}... for {dataset_type.value}")
+        logger.debug(f"Dataset search: {query[:50]}... for {dataset_type.value}")
 
         # Initialize statistics
         stats = {
@@ -567,7 +567,7 @@ class ContentAccessService:
 
             # If direct accession detected, use accession-specific handling
             if detected_type is not None:
-                logger.info(
+                logger.debug(
                     f"Detected direct accession: {normalized_accession} (type: {detected_type.value})"
                 )
                 stats["accession_detected"] = True
@@ -650,7 +650,7 @@ class ContentAccessService:
         if accession_type == DatasetType.GEO:
             # Check if it's a GSM sample that needs parent lookup
             if is_geo_sample_accession(accession):
-                logger.info(
+                logger.debug(
                     f"GSM sample detected: {accession}, searching with parent series lookup"
                 )
 
@@ -732,7 +732,7 @@ class ContentAccessService:
 
         # Use first provider (highest priority)
         provider = supporting_providers[0]
-        logger.info(f"Using provider: {type(provider).__name__}")
+        logger.debug(f"Using provider: {type(provider).__name__}")
 
         # Call provider's search method
         results = provider.search_publications(
@@ -781,7 +781,7 @@ class ContentAccessService:
         """
         from lobster.tools.providers.base_provider import ProviderCapability
 
-        logger.info(f"Finding linked datasets for: {identifier}")
+        logger.debug(f"Finding linked datasets for: {identifier}")
 
         try:
             # Get providers for FIND_LINKED_DATASETS capability
@@ -794,7 +794,7 @@ class ContentAccessService:
 
             # Use first provider (highest priority, typically PubMed)
             provider = providers[0]
-            logger.info(f"Using provider: {type(provider).__name__}")
+            logger.debug(f"Using provider: {type(provider).__name__}")
 
             # Call provider's find datasets method
             results = provider.find_datasets_from_publication(
@@ -848,7 +848,7 @@ class ContentAccessService:
             ProviderCapability,
         )
 
-        logger.info(f"Extracting metadata for: {identifier}")
+        logger.debug(f"Extracting metadata for: {identifier}")
 
         try:
             # Get providers for EXTRACT_METADATA capability
@@ -873,7 +873,7 @@ class ContentAccessService:
 
             # Use first provider (highest priority)
             provider = providers[0]
-            logger.info(f"Using provider: {type(provider).__name__}")
+            logger.debug(f"Using provider: {type(provider).__name__}")
 
             # Call provider's metadata extraction
             metadata = provider.extract_publication_metadata(identifier)
@@ -926,7 +926,7 @@ class ContentAccessService:
         """
         from lobster.tools.providers.base_provider import ProviderCapability
 
-        logger.info(f"Getting abstract for: {identifier}")
+        logger.debug(f"Getting abstract for: {identifier}")
 
         try:
             # Get providers for GET_ABSTRACT capability
@@ -939,7 +939,7 @@ class ContentAccessService:
 
             # Use first provider (highest priority, typically AbstractProvider)
             provider = providers[0]
-            logger.info(f"Using provider: {type(provider).__name__}")
+            logger.debug(f"Using provider: {type(provider).__name__}")
 
             # Call provider's get_abstract method
             abstract = provider.get_abstract(identifier)
@@ -1020,20 +1020,20 @@ class ContentAccessService:
         from lobster.tools.providers.publication_resolver import PublicationResolver
 
         start_time = time.time()
-        logger.info(f"Getting full content for: {source}")
+        logger.debug(f"Getting full content for: {source}")
 
         try:
             # 1. Check DataManager cache first
             cached = self.data_manager.get_cached_publication(source)
             if cached:
-                logger.info(f"Cache hit for {source}")
+                logger.debug(f"Cache hit for {source}")
                 cached["extraction_time"] = time.time() - start_time
                 cached["tier_used"] = "full_cached"
                 return cached
 
             # Detect non-scientific sources (e.g., GitHub repos)
             if self._is_non_scientific_source(source):
-                logger.info(f"Detected non-scientific source, short-circuiting: {source}")
+                logger.debug(f"Detected non-scientific source, short-circuiting: {source}")
                 result = self._build_non_scientific_result(source)
                 self.data_manager.cache_publication_content(
                     identifier=source,
@@ -1044,7 +1044,7 @@ class ContentAccessService:
 
             # 2. For PMID/DOI identifiers: Try PMC Full Text XML (priority)
             if self._is_identifier(source):
-                logger.info(
+                logger.debug(
                     f"Detected identifier: {source}, trying PMC full text first..."
                 )
 
@@ -1089,13 +1089,13 @@ class ContentAccessService:
                             description="PMC XML extraction (Tier 2) via ContentAccessService",
                         )
 
-                        logger.info(
+                        logger.debug(
                             f"PMC XML extraction successful in {content_result['extraction_time']:.2f}s"
                         )
                         return content_result
 
                 except PMCNotAvailableError:
-                    logger.info(
+                    logger.debug(
                         f"PMC full text not available for {source}, falling back..."
                     )
                 except Exception as e:
@@ -1111,7 +1111,7 @@ class ContentAccessService:
             url_to_fetch = source
             resolution_result = None
             if self._is_identifier(source):
-                logger.info(f"Resolving identifier to URL: {source}")
+                logger.debug(f"Resolving identifier to URL: {source}")
                 resolver = self._get_publication_resolver()
                 resolution_result = resolver.resolve(source)
 
@@ -1126,7 +1126,7 @@ class ContentAccessService:
                         }
 
                     url_to_fetch = selected_url
-                    logger.info(f"Resolved to: {url_to_fetch}")
+                    logger.debug(f"Resolved to: {url_to_fetch}")
                 else:
                     return {
                         "error": f"Paper is paywalled: {source}",
@@ -1156,7 +1156,7 @@ class ContentAccessService:
 
             if webpage_providers:
                 webpage_provider = webpage_providers[0]
-                logger.info("Using WebpageProvider for URL extraction")
+                logger.debug("Using WebpageProvider for URL extraction")
 
                 # Extract content with full metadata (handles both webpage and PDF internally)
                 try:
@@ -1223,7 +1223,7 @@ class ContentAccessService:
                     description="Webpage/PDF extraction (Tier 2) via ContentAccessService",
                 )
 
-                logger.info(
+                logger.debug(
                     f"Content extraction successful in {content_result['extraction_time']:.2f}s"
                 )
                 return content_result
@@ -1272,7 +1272,7 @@ class ContentAccessService:
             >>> methods = service.extract_methods(content)
             >>> print(methods['software_used'])
         """
-        logger.info("Extracting methods information")
+        logger.debug("Extracting methods information")
 
         try:
             # Extract methods text (try structured first, then markdown fallback)
@@ -1284,7 +1284,7 @@ class ContentAccessService:
                     content_result["content"]
                 )
                 if methods_text:
-                    logger.info("Methods extracted via markdown fallback")
+                    logger.debug("Methods extracted via markdown fallback")
 
             metadata = content_result.get("metadata", {})
 
@@ -1359,7 +1359,7 @@ class ContentAccessService:
         """
         from lobster.services.metadata.metadata_validation_service import MetadataValidationService
 
-        logger.info(f"Validating metadata for: {dataset_id}")
+        logger.debug(f"Validating metadata for: {dataset_id}")
 
         try:
             # Check if we have cached metadata
@@ -1462,7 +1462,7 @@ class ContentAccessService:
         """
         from lobster.tools.providers.base_provider import ProviderCapability
 
-        logger.info("Querying system capabilities")
+        logger.debug("Querying system capabilities")
 
         try:
             # Get capability matrix from registry
@@ -1750,7 +1750,7 @@ class ContentAccessService:
             return None
 
         pdf_url = pdf_candidates[0]
-        logger.info(f"Falling back to PDF extraction via Docling: {pdf_url}")
+        logger.debug(f"Falling back to PDF extraction via Docling: {pdf_url}")
 
         try:
             docling_service = self._get_docling_service()

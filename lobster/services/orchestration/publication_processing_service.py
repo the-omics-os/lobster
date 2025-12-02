@@ -154,19 +154,19 @@ class PublicationProcessingService:
         """
         # Priority 1: PMC ID (from NCBI enrichment - guaranteed free open access)
         if entry.pmc_id:
-            logger.info(f"Using PMC ID (priority 1, open access): {entry.pmc_id}")
+            logger.debug(f"Using PMC ID (priority 1, open access): {entry.pmc_id}")
             return entry.pmc_id
 
         # Priority 2: PMID (triggers automatic PMC lookup in content_access_service)
         if entry.pmid:
-            logger.info(f"Using PMID (priority 2, may resolve to PMC): PMID:{entry.pmid}")
+            logger.debug(f"Using PMID (priority 2, may resolve to PMC): PMID:{entry.pmid}")
             return f"PMID:{entry.pmid}"
 
         # Priority 3: PubMed URL → extract PMID for PMC lookup
         if entry.pubmed_url:
             pmid = self._extract_pmid_from_url(entry.pubmed_url)
             if pmid:
-                logger.info(f"Using PubMed URL (priority 3), extracted PMID:{pmid}")
+                logger.debug(f"Using PubMed URL (priority 3), extracted PMID:{pmid}")
                 return f"PMID:{pmid}"
 
         # Priority 4: DOI (can resolve to PMC via content_access_service)
@@ -177,26 +177,26 @@ class PublicationProcessingService:
                 parsed = urllib.parse.urlparse(doi_value)
                 host = (parsed.hostname or "").lower()
                 if host and host not in {"doi.org", "www.doi.org"}:
-                    logger.info(
+                    logger.debug(
                         f"DOI field contains URL (treating as fulltext): {doi_value}"
                     )
                     return doi_value
-            logger.info(f"Using DOI (priority 4): {entry.doi}")
+            logger.debug(f"Using DOI (priority 4): {entry.doi}")
             return entry.doi
 
         # Priority 5: Fulltext URL (fallback - may be paywalled)
         if entry.fulltext_url:
-            logger.info(f"Using fulltext URL (priority 5, fallback): {entry.fulltext_url}")
+            logger.debug(f"Using fulltext URL (priority 5, fallback): {entry.fulltext_url}")
             return entry.fulltext_url
 
         # Priority 6: Direct PDF (fallback for Docling extraction)
         if entry.pdf_url:
-            logger.info(f"Using PDF URL (priority 6, fallback): {entry.pdf_url}")
+            logger.debug(f"Using PDF URL (priority 6, fallback): {entry.pdf_url}")
             return entry.pdf_url
 
         # Priority 7: Article/metadata URL (last resort - webpage scraping)
         if entry.metadata_url:
-            logger.info(f"Using metadata URL (priority 7, last resort): {entry.metadata_url}")
+            logger.debug(f"Using metadata URL (priority 7, last resort): {entry.metadata_url}")
             return entry.metadata_url
 
         return None
@@ -284,7 +284,7 @@ class PublicationProcessingService:
             }
 
             if result["pmid"]:
-                logger.info(f"Resolved DOI {doi} → PMID:{result['pmid']}, PMC:{result['pmc']}")
+                logger.debug(f"Resolved DOI {doi} → PMID:{result['pmid']}, PMC:{result['pmc']}")
             else:
                 logger.debug(f"DOI {doi} not found in PubMed (may be preprint or non-indexed)")
 
@@ -365,6 +365,9 @@ class PublicationProcessingService:
             pmid = self._extract_pmid_from_url(entry.pubmed_url)
 
         if pmid:
+            # Ensure entry.pmid is set even if extracted from URL
+            if not entry.pmid and pmid:
+                entry.pmid = pmid
             result["skipped"] = True
             result["resolved_pmid"] = pmid
             logger.debug(f"Skipping identifier resolution - PMID already present: {pmid}")
@@ -375,7 +378,7 @@ class PublicationProcessingService:
             result["error"] = "No DOI available for identifier resolution"
             return result
 
-        logger.info(f"Resolving identifiers for DOI: {entry.doi}")
+        logger.debug(f"Resolving identifiers for DOI: {entry.doi}")
 
         resolved = self._resolve_identifiers_via_ncbi(entry.doi)
 
@@ -389,7 +392,7 @@ class PublicationProcessingService:
             if resolved["pmc"] and not entry.pmc_id:
                 entry.pmc_id = resolved["pmc"]
 
-            logger.info(
+            logger.debug(
                 f"Successfully resolved DOI {entry.doi} → "
                 f"PMID:{resolved['pmid']}, PMC:{resolved['pmc'] or 'N/A'}"
             )
@@ -441,7 +444,7 @@ class PublicationProcessingService:
             return result
 
         result["pmid"] = pmid
-        logger.info(f"Enriching publication from NCBI E-Link: PMID {pmid}")
+        logger.debug(f"Enriching publication from NCBI E-Link: PMID {pmid}")
 
         try:
             # Use lazy-initialized provider to avoid repeated Redis pool initialization
@@ -492,7 +495,7 @@ class PublicationProcessingService:
                                 if links:
                                     pmc_id = f"PMC{links[0]}"
                                     result["pmc_id"] = pmc_id
-                                    logger.info(f"Found PMC ID: {pmc_id}")
+                                    logger.debug(f"Found PMC ID: {pmc_id}")
                                     break
                         if result.get("pmc_id"):
                             break
@@ -503,12 +506,12 @@ class PublicationProcessingService:
 
             # Log results
             total_linked = sum(len(v) for v in linked_datasets.values())
-            logger.info(
+            logger.debug(
                 f"NCBI E-Link enrichment complete: {total_linked} linked datasets found"
             )
             for db, ids in linked_datasets.items():
                 if ids:
-                    logger.info(f"  {db}: {', '.join(ids[:5])}")
+                    logger.debug(f"  {db}: {', '.join(ids[:5])}")
 
         except Exception as e:
             logger.error(f"NCBI E-Link enrichment failed: {e}")
@@ -1041,7 +1044,7 @@ class PublicationProcessingService:
                                             f"  - {bioproject_id}: {len(df)} sample(s) → {workspace_path}"
                                         )
 
-                                        logger.info(
+                                        logger.debug(
                                             f"Fetched {len(df)} samples for BioProject {bioproject_id}"
                                         )
                                     else:
@@ -1101,7 +1104,7 @@ class PublicationProcessingService:
                     }
                     metadata_file.write_text(json.dumps(metadata_content, indent=2))
                     workspace_keys.append(f"{entry_id}_metadata.json")
-                    logger.info("Saved metadata to %s", metadata_file)
+                    logger.debug("Saved metadata to %s", metadata_file)
 
                 if extracted_data.get("methods_extracted") and "methods_content" in locals():
                     methods_file = metadata_dir / f"{entry_id}_methods.json"
@@ -1114,7 +1117,7 @@ class PublicationProcessingService:
                     }
                     methods_file.write_text(json.dumps(methods_data, indent=2))
                     workspace_keys.append(f"{entry_id}_methods.json")
-                    logger.info("Saved methods to %s", methods_file)
+                    logger.debug("Saved methods to %s", methods_file)
 
                 if extracted_data.get("identifiers_extracted") and identifiers_found:
                     identifiers_file = metadata_dir / f"{entry_id}_identifiers.json"
@@ -1129,7 +1132,7 @@ class PublicationProcessingService:
                     }
                     identifiers_file.write_text(json.dumps(identifiers_data, indent=2))
                     workspace_keys.append(f"{entry_id}_identifiers.json")
-                    logger.info("Saved identifiers to %s", identifiers_file)
+                    logger.debug("Saved identifiers to %s", identifiers_file)
 
                 if workspace_keys:
                     response_parts.append(
@@ -1176,7 +1179,7 @@ class PublicationProcessingService:
 
             # FIX: SINGLE update_status call with ALL collected data
             # This replaces 4 intermediate calls that caused O(n²) file rewrites
-            # Phase B1: Persist PMC ID discovered during enrichment for reuse in later phases
+            # Phase B1: Persist PMC ID and PMID discovered during enrichment for reuse
             data_manager.publication_queue.update_status(
                 entry_id=entry_id,
                 status=final_status,
@@ -1187,6 +1190,7 @@ class PublicationProcessingService:
                 handoff_status=handoff_status,
                 error=paywall_error,
                 pmc_id=entry.pmc_id,  # Persist PMC ID for content access optimization
+                pmid=entry.pmid,  # Persist PMID for publication tracking
             )
 
             data_manager.log_tool_usage(
@@ -1364,7 +1368,7 @@ class PublicationProcessingService:
 
         # Bound concurrency (Redis coordinates rate limits across workers)
         effective_workers = min(max_workers, len(entry_ids))
-        logger.info(
+        logger.debug(
             f"Starting parallel processing: {len(entry_ids)} entries, "
             f"{effective_workers} workers (Redis-coordinated rate limiting)"
         )
@@ -1386,7 +1390,7 @@ class PublicationProcessingService:
                     continue
 
             if pmids_to_batch:
-                logger.info(
+                logger.debug(
                     f"Pre-fetching batch E-Link results for {len(pmids_to_batch)} PMIDs "
                     f"(100x speedup vs sequential)"
                 )
@@ -1394,7 +1398,7 @@ class PublicationProcessingService:
                     batch_elink_cache = self.pubmed_provider._find_linked_datasets_batch(
                         pmids_to_batch
                     )
-                    logger.info(
+                    logger.debug(
                         f"Batch E-Link cache ready: {len(batch_elink_cache)} PMIDs cached"
                     )
                 except Exception as e:
@@ -1495,7 +1499,7 @@ class PublicationProcessingService:
         successful = sum(1 for r in results if r.status in ("completed", "processed"))
         failed = sum(1 for r in results if r.status in ("failed", "error"))
 
-        logger.info(
+        logger.debug(
             f"Parallel processing complete: {successful}/{len(results)} successful "
             f"in {total_time:.1f}s ({len(results) / total_time * 60:.1f} entries/min)"
         )
@@ -1638,7 +1642,7 @@ class PublicationProcessingService:
         successful = sum(1 for r in results if r.status in ("completed", "processed"))
         failed = sum(1 for r in results if r.status in ("failed", "error"))
 
-        logger.info(
+        logger.debug(
             f"Parallel processing complete: {successful}/{len(results)} successful "
             f"in {total_time:.1f}s ({len(results) / total_time * 60:.1f} entries/min)"
         )

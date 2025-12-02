@@ -657,9 +657,31 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
         WorkspaceContentService,
     )
 
+    # Rich export columns for publication queue SRA samples (28 columns)
+    # Includes all critical fields for downstream analysis and automated downloads
+    RICH_EXPORT_COLS = [
+        # Core identifiers
+        "run_accession", "sample_accession", "biosample", "bioproject",
+        # Sample info
+        "organism_name", "host", "isolation_source", "geo_loc_name", "collection_date",
+        # Library info (CRITICAL for analysis)
+        "library_strategy", "library_layout", "library_source", "library_selection",
+        # Sequencing info (CRITICAL for QC)
+        "instrument", "instrument_model", "total_spots", "run_total_bases",
+        # Download URLs (CRITICAL for automation)
+        "ena_fastq_http", "ena_fastq_http_1", "ena_fastq_http_2",
+        "ncbi_url", "aws_url", "gcp_url",
+        # Publication context (added by tool)
+        "source_doi", "source_pmid", "source_entry_id",
+    ]
+
     @tool
     def write_to_workspace(
-        identifier: str, workspace: str, content_type: str = None, output_format: str = "json"
+        identifier: str,
+        workspace: str,
+        content_type: str = None,
+        output_format: str = "json",
+        export_mode: str = "auto",
     ) -> str:
         """
         Cache research content to workspace for later retrieval and specialist handoff.
@@ -676,11 +698,17 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
         - "json": Structured JSON format (default)
         - "csv": Tabular CSV format (best for sample metadata tables)
 
+        Export Modes (for CSV):
+        - "auto": Detect publication queue data and apply rich format automatically
+        - "rich": Force rich 28-column format with publication context
+        - "simple": Export samples as-is without enrichment
+
         Args:
             identifier: Content identifier to cache (must exist in current session)
             workspace: Target workspace category ("literature", "data", "metadata")
             content_type: Type of content ("publication", "dataset", "metadata")
             output_format: Output format ("json" or "csv"). Default: "json"
+            export_mode: CSV export mode ("auto", "rich", "simple"). Default: "auto"
 
         Returns:
             Confirmation message with storage location and next steps
@@ -702,6 +730,9 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
 
             if output_format not in {"json", "csv"}:
                 return f"Error: Invalid output_format '{output_format}'. Valid: json, csv"
+
+            if export_mode not in {"auto", "rich", "simple"}:
+                return f"Error: Invalid export_mode '{export_mode}'. Valid: auto, rich, simple"
 
             # Check if identifier exists in session
             exists = False
@@ -728,25 +759,104 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
             if not exists:
                 return f"Error: Identifier '{identifier}' not found in current session."
 
+            # Helper function to detect publication queue SRA data
+            def _is_publication_queue_sra_data(data: dict) -> bool:
+                """Detect if data is publication queue SRA samples."""
+                if not isinstance(data, dict):
+                    return False
+                samples = data.get("samples", [])
+                if not samples or not isinstance(samples, list):
+                    return False
+                # Check for SRA-specific fields
+                if samples:
+                    first_sample = samples[0]
+                    sra_indicators = ["run_accession", "biosample", "bioproject", "library_strategy"]
+                    return any(field in first_sample for field in sra_indicators)
+                return False
+
+            # Helper function to enrich samples with publication context
+            def _enrich_samples_with_publication_context(
+                samples: list, identifier: str, content_data: dict
+            ) -> list:
+                """Add publication context columns to each sample."""
+                import pandas as pd
+
+                # Extract publication context from content_data or identifier
+                source_doi = content_data.get("source_doi", "")
+                source_pmid = content_data.get("source_pmid", "")
+                source_entry_id = identifier
+
+                # If identifier is like "pub_queue_doi_X_Y_Z_samples", extract entry_id
+                if identifier.endswith("_samples"):
+                    source_entry_id = identifier.rsplit("_samples", 1)[0]
+
+                enriched_samples = []
+                for sample in samples:
+                    enriched = dict(sample)
+                    # Add publication context if not already present
+                    if "source_doi" not in enriched:
+                        enriched["source_doi"] = source_doi
+                    if "source_pmid" not in enriched:
+                        enriched["source_pmid"] = source_pmid
+                    if "source_entry_id" not in enriched:
+                        enriched["source_entry_id"] = source_entry_id
+                    enriched_samples.append(enriched)
+
+                return enriched_samples
+
             # Special handling for CSV export of samples list
             # When exporting to CSV and data contains a 'samples' list,
             # write directly to CSV bypassing MetadataContent model validation
             samples_count = None
+            rich_export_used = False
             if output_format == "csv" and isinstance(content_data, dict):
                 if "samples" in content_data and isinstance(content_data["samples"], list):
                     samples_list = content_data["samples"]
                     samples_count = len(samples_list)
-                    logger.info(f"Extracting {samples_count} samples for direct CSV export")
+                    logger.info(f"Extracting {samples_count} samples for CSV export")
 
-                    # Write directly to CSV using pandas
+                    # Determine if we should use rich export format
+                    use_rich_format = False
+                    if export_mode == "rich":
+                        use_rich_format = True
+                    elif export_mode == "auto":
+                        use_rich_format = _is_publication_queue_sra_data(content_data)
+                    # export_mode == "simple" keeps use_rich_format = False
+
                     import pandas as pd
+
+                    if use_rich_format:
+                        logger.info("Using rich publication queue export format (28 columns)")
+                        rich_export_used = True
+
+                        # Enrich samples with publication context
+                        enriched_samples = _enrich_samples_with_publication_context(
+                            samples_list, identifier, content_data
+                        )
+
+                        df = pd.DataFrame(enriched_samples)
+
+                        # Select and order columns according to RICH_EXPORT_COLS
+                        # Include columns that exist in the data
+                        available_cols = [c for c in RICH_EXPORT_COLS if c in df.columns]
+                        # Also include any extra columns not in the standard list
+                        extra_cols = [c for c in df.columns if c not in RICH_EXPORT_COLS]
+                        final_cols = available_cols + extra_cols
+                        df = df[final_cols]
+                    else:
+                        # Simple export - as-is
+                        df = pd.DataFrame(samples_list)
+
+                    # Write to CSV
                     content_dir = workspace_service._get_content_dir(workspace_to_content_type[workspace])
                     filename = workspace_service._sanitize_filename(identifier)
                     cache_file_path = content_dir / f"{filename}.csv"
 
-                    df = pd.DataFrame(samples_list)
                     df.to_csv(cache_file_path, index=False, encoding="utf-8")
-                    logger.info(f"Direct CSV export: {samples_count} rows, {len(df.columns)} columns to {cache_file_path}")
+                    logger.info(
+                        f"CSV export: {samples_count} rows, {len(df.columns)} columns "
+                        f"(rich={rich_export_used}) to {cache_file_path}"
+                    )
                 else:
                     # No samples list, fall through to normal handling
                     samples_count = None
@@ -783,6 +893,11 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
                 response += "**Note**: CSV format ideal for spreadsheet import.\n"
                 if samples_count:
                     response += f"**Rows**: {samples_count} samples exported (one row per sample).\n"
+                    if rich_export_used:
+                        response += (
+                            "**Format**: Rich 28-column format with publication context "
+                            "(source_doi, source_pmid, source_entry_id).\n"
+                        )
 
             return response
 
@@ -791,6 +906,203 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
             return f"Error caching content to workspace: {str(e)}"
 
     return write_to_workspace
+
+
+def create_export_publication_queue_tool(data_manager: DataManagerV2):
+    """
+    Factory function to create export_publication_queue_samples tool.
+
+    Enables aggregated export of samples from multiple publication queue entries
+    into a single CSV file with rich metadata format.
+
+    Args:
+        data_manager: DataManagerV2 instance for workspace access
+
+    Returns:
+        LangChain tool for exporting publication queue samples
+    """
+    from datetime import datetime
+
+    from lobster.services.data_access.workspace_content_service import (
+        ContentType,
+        WorkspaceContentService,
+    )
+
+    # Rich export columns (same as write_to_workspace)
+    RICH_EXPORT_COLS = [
+        "run_accession", "sample_accession", "biosample", "bioproject",
+        "organism_name", "host", "isolation_source", "geo_loc_name", "collection_date",
+        "library_strategy", "library_layout", "library_source", "library_selection",
+        "instrument", "instrument_model", "total_spots", "run_total_bases",
+        "ena_fastq_http", "ena_fastq_http_1", "ena_fastq_http_2",
+        "ncbi_url", "aws_url", "gcp_url",
+        "source_doi", "source_pmid", "source_entry_id",
+    ]
+
+    @tool
+    def export_publication_queue_samples(
+        entry_ids: str,
+        output_filename: str,
+        filter_criteria: str = None,
+    ) -> str:
+        """
+        Export samples from multiple publication queue entries to a single aggregated CSV.
+
+        Combines samples from multiple publications with rich metadata format including
+        publication context (DOI, PMID, entry_id) for each sample. Ideal for downstream
+        analysis pipelines requiring samples from multiple studies.
+
+        Args:
+            entry_ids: Comma-separated list of entry IDs to export, OR "all" to export
+                      all entries with samples, OR "handoff_ready" to export only
+                      entries with HANDOFF_READY status
+            output_filename: Name for the output CSV file (without path, will be saved
+                           in exports/ directory)
+            filter_criteria: Optional filter string for sample selection (e.g., "16S human")
+                           Applied to organism_name, host, library_strategy fields
+
+        Returns:
+            Summary of export with file location and sample counts per publication
+        """
+        import pandas as pd
+
+        try:
+            workspace_service = WorkspaceContentService(data_manager=data_manager)
+            content_dir = workspace_service._get_content_dir(ContentType.METADATA)
+
+            # Ensure exports subdirectory exists
+            exports_dir = content_dir / "exports"
+            exports_dir.mkdir(parents=True, exist_ok=True)
+
+            # Parse entry_ids
+            if entry_ids.lower() == "all":
+                # Find all entries with samples in metadata_store
+                target_entries = [
+                    k.rsplit("_samples", 1)[0]
+                    for k in data_manager.metadata_store.keys()
+                    if k.endswith("_samples")
+                ]
+            elif entry_ids.lower() == "handoff_ready":
+                # Find entries with HANDOFF_READY status
+                # Look for entries that have samples AND filter criteria applied
+                target_entries = []
+                for k in data_manager.metadata_store.keys():
+                    if k.endswith("_samples"):
+                        entry_id = k.rsplit("_samples", 1)[0]
+                        # Check if entry has been processed (has samples)
+                        if data_manager.metadata_store.get(k, {}).get("samples"):
+                            target_entries.append(entry_id)
+            else:
+                # Parse comma-separated list
+                target_entries = [e.strip() for e in entry_ids.split(",") if e.strip()]
+
+            if not target_entries:
+                return "Error: No valid entry IDs found. Provide comma-separated IDs, 'all', or 'handoff_ready'."
+
+            # Collect samples from all entries
+            all_samples = []
+            entries_found = []
+            entries_missing = []
+            samples_per_entry = {}
+
+            for entry_id in target_entries:
+                samples_key = f"{entry_id}_samples"
+                if samples_key not in data_manager.metadata_store:
+                    entries_missing.append(entry_id)
+                    continue
+
+                entry_data = data_manager.metadata_store[samples_key]
+                samples = entry_data.get("samples", [])
+
+                if not samples:
+                    entries_missing.append(entry_id)
+                    continue
+
+                entries_found.append(entry_id)
+
+                # Get publication context
+                source_doi = entry_data.get("source_doi", "")
+                source_pmid = entry_data.get("source_pmid", "")
+
+                # Enrich each sample with publication context
+                for sample in samples:
+                    enriched = dict(sample)
+                    enriched["source_doi"] = source_doi
+                    enriched["source_pmid"] = source_pmid
+                    enriched["source_entry_id"] = entry_id
+                    all_samples.append(enriched)
+
+                samples_per_entry[entry_id] = len(samples)
+
+            if not all_samples:
+                return f"Error: No samples found. Missing entries: {entries_missing}"
+
+            # Apply filter criteria if provided
+            filtered_samples = all_samples
+            filter_applied = False
+            if filter_criteria:
+                filter_lower = filter_criteria.lower()
+                filtered_samples = []
+                for s in all_samples:
+                    # Check multiple fields
+                    fields_to_check = [
+                        str(s.get("organism_name", "")).lower(),
+                        str(s.get("host", "")).lower(),
+                        str(s.get("library_strategy", "")).lower(),
+                        str(s.get("isolation_source", "")).lower(),
+                    ]
+                    if any(filter_lower in f for f in fields_to_check):
+                        filtered_samples.append(s)
+                filter_applied = True
+
+            if not filtered_samples:
+                return (
+                    f"Error: No samples match filter '{filter_criteria}'. "
+                    f"Total samples before filter: {len(all_samples)}"
+                )
+
+            # Create DataFrame and order columns
+            df = pd.DataFrame(filtered_samples)
+            available_cols = [c for c in RICH_EXPORT_COLS if c in df.columns]
+            extra_cols = [c for c in df.columns if c not in RICH_EXPORT_COLS]
+            df = df[available_cols + extra_cols]
+
+            # Sanitize output filename
+            safe_filename = workspace_service._sanitize_filename(output_filename)
+            if not safe_filename.endswith(".csv"):
+                safe_filename += ".csv"
+            output_path = exports_dir / safe_filename
+
+            # Write CSV
+            df.to_csv(output_path, index=False, encoding="utf-8")
+
+            # Build response
+            response = f"""## Publication Queue Samples Exported
+
+**Output File**: {output_path}
+**Total Samples**: {len(filtered_samples)}
+**Publications**: {len(entries_found)}
+**Columns**: {len(df.columns)} (rich format with publication context)
+
+**Samples per Publication**:
+"""
+            for entry_id, count in sorted(samples_per_entry.items()):
+                response += f"- {entry_id}: {count} samples\n"
+
+            if filter_applied:
+                response += f"\n**Filter Applied**: '{filter_criteria}'\n"
+                response += f"**Samples Before Filter**: {len(all_samples)}\n"
+
+            if entries_missing:
+                response += f"\n**Entries Without Samples**: {len(entries_missing)}\n"
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error exporting publication queue samples: {e}")
+            return f"Error exporting samples: {str(e)}"
+
+    return export_publication_queue_samples
 
 
 def create_list_modalities_tool(data_manager: DataManagerV2):

@@ -160,6 +160,7 @@ class PublicationQueue:
         handoff_status: Optional["HandoffStatus"] = None,
         harmonization_metadata: Optional[dict] = None,
         pmc_id: Optional[str] = None,
+        pmid: Optional[str] = None,
     ) -> PublicationQueueEntry:
         """
         Update entry status and optional fields.
@@ -173,6 +174,7 @@ class PublicationQueue:
             extracted_identifiers: Optional extracted dataset identifiers
             workspace_metadata_keys: Optional list of workspace metadata file basenames
             pmc_id: Optional PMC ID discovered during enrichment
+            pmid: Optional PubMed ID discovered during enrichment
 
         Returns:
             PublicationQueueEntry: Updated entry
@@ -206,6 +208,7 @@ class PublicationQueue:
                         handoff_status=handoff_status,
                         harmonization_metadata=harmonization_metadata,
                         pmc_id=pmc_id,
+                        pmid=pmid,
                     )
                     updated_entry = entry
                     break

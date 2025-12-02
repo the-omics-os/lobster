@@ -169,8 +169,8 @@ def annotation_expert(
     """
 
     settings = get_settings()
-    model_params = settings.get_agent_llm_params("singlecell_expert_agent")
-    llm = create_llm("annotation_expert_agent", model_params)
+    model_params = settings.get_agent_llm_params("annotation_expert")
+    llm = create_llm("annotation_expert", model_params)
 
     if callback_handler and hasattr(llm, "with_config"):
         llm = llm.with_config(callbacks=[callback_handler])

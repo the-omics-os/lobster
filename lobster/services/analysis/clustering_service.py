@@ -931,6 +931,10 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
             adata.obs["leiden"] = adata_selected.obs["leiden"]
             adata.obsm["X_umap"] = adata_selected.obsm["X_umap"]
 
+            # BUG-002 FIX: Preserve X_pca for downstream quality evaluation
+            if "X_pca" in adata_selected.obsm:
+                adata.obsm["X_pca"] = adata_selected.obsm["X_pca"].copy()
+
             # Transfer multi-resolution results if available
             if "clustering_results" in adata_selected.uns:
                 adata.uns["clustering_results"] = adata_selected.uns["clustering_results"]

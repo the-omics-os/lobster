@@ -1,11 +1,23 @@
 """
 Single-cell RNA-seq Expert Agent for specialized single-cell analysis.
 
+DEPRECATED: This agent is deprecated and will be removed in a future version.
+Use transcriptomics_expert instead, which handles both single-cell and bulk RNA-seq.
+
 This agent focuses exclusively on single-cell RNA-seq analysis using the modular DataManagerV2
 system with proper modality handling and schema enforcement.
 """
 
 import datetime
+import warnings
+
+# Emit deprecation warning on import
+warnings.warn(
+    "lobster.agents.singlecell_expert is deprecated and will be removed in a future version. "
+    "Use lobster.agents.transcriptomics.transcriptomics_expert instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 from datetime import date
 from typing import List, Optional
 

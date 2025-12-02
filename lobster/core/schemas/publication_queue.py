@@ -394,6 +394,7 @@ class PublicationQueueEntry(BaseModel):
         handoff_status: Optional[HandoffStatus] = None,
         harmonization_metadata: Optional[Dict[str, Any]] = None,
         pmc_id: Optional[str] = None,
+        pmid: Optional[str] = None,
     ) -> None:
         """
         Update entry status and related fields.
@@ -410,6 +411,7 @@ class PublicationQueueEntry(BaseModel):
             handoff_status: Optional override for handoff progress
             harmonization_metadata: Optional harmonized metadata payload
             pmc_id: Optional PMC ID discovered during enrichment
+            pmid: Optional PubMed ID discovered during enrichment
         """
         if isinstance(status, str):
             status = PublicationStatus(status)
@@ -449,6 +451,9 @@ class PublicationQueueEntry(BaseModel):
 
         if pmc_id is not None:
             self.pmc_id = pmc_id
+
+        if pmid is not None:
+            self.pmid = pmid
 
     def get_primary_identifier(self) -> Optional[str]:
         """

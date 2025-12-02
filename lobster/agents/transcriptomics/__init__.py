@@ -9,7 +9,6 @@ from lobster.agents.transcriptomics.shared_tools import (
     _detect_data_type,
     _get_qc_defaults,
 )
-from lobster.agents.transcriptomics.deprecated import singlecell_alias, bulk_alias
 from lobster.agents.transcriptomics.state import (
     TranscriptomicsExpertState,
     AnnotationExpertState,
@@ -25,9 +24,6 @@ __all__ = [
     "create_shared_tools",
     "_detect_data_type",
     "_get_qc_defaults",
-    # Deprecated aliases
-    "singlecell_alias",
-    "bulk_alias",
     # State classes
     "TranscriptomicsExpertState",
     "AnnotationExpertState",

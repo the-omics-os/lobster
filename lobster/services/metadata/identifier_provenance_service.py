@@ -215,7 +215,7 @@ class IdentifierProvenanceService:
         controlled_count = sum(1 for r in results if r.access_type == "controlled")
         downloadable_count = sum(1 for r in results if r.is_downloadable)
 
-        logger.info(
+        logger.debug(
             f"Identifier provenance validation: {len(results)} total, "
             f"{primary_count} primary, {referenced_count} referenced, "
             f"{controlled_count} controlled-access, {downloadable_count} downloadable"
