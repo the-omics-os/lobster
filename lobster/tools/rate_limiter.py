@@ -360,6 +360,7 @@ class HeaderStrategy(str, Enum):
     POLITE = "polite"        # Standard headers, identify as bot
     BROWSER = "browser"      # Full browser headers, Chrome UA
     STEALTH = "stealth"      # Browser + Sec-Fetch-* headers + cloudscraper
+    SESSION = "session"      # Session establishment + Sec-Fetch-* (no cloudscraper)
     DEFAULT = "default"      # Minimal headers (requests default)
 
 
@@ -380,13 +381,16 @@ DOMAIN_CONFIG: Dict[str, DomainConfig] = {
     "www.ncbi.nlm.nih.gov": DomainConfig(10.0, HeaderStrategy.DEFAULT, "NCBI main site"),
     "pmc.ncbi.nlm.nih.gov": DomainConfig(10.0, HeaderStrategy.DEFAULT, "PubMed Central"),
 
+    # Session-required domains (homepage visit + cookies required)
+    "asm.org": DomainConfig(10.0, HeaderStrategy.SESSION, "American Society for Microbiology"),
+    "journals.asm.org": DomainConfig(10.0, HeaderStrategy.SESSION, "ASM Journals (validated 93.3% success)"),
+
     # High protection domains (Cloudflare + aggressive anti-scraping → STEALTH)
     "academic.oup.com": DomainConfig(3, HeaderStrategy.STEALTH, "Oxford University Press"),
     "cell.com": DomainConfig(3, HeaderStrategy.STEALTH, "Cell Press"),
     "sciencedirect.com": DomainConfig(3, HeaderStrategy.STEALTH, "ScienceDirect (Elsevier)"),
     "elsevier.com": DomainConfig(3, HeaderStrategy.STEALTH, "Elsevier"),
     "science.org": DomainConfig(3, HeaderStrategy.STEALTH, "AAAS Science journals"),
-    "asm.org": DomainConfig(3, HeaderStrategy.STEALTH, "American Society for Microbiology"),
     "ashpublications.org": DomainConfig(3, HeaderStrategy.STEALTH, "American Society of Hematology"),
     "bmj.com": DomainConfig(3, HeaderStrategy.STEALTH, "British Medical Journal"),
     "jamanetwork.com": DomainConfig(3, HeaderStrategy.STEALTH, "JAMA Network"),

@@ -518,18 +518,19 @@ class PublicationProcessingService:
 
     # Step definitions for progress callback (step_name -> (index, total_steps))
     PROCESSING_STEPS = {
-        "resolve_identifiers": (1, 6),
-        "ncbi_enrich": (2, 6),
-        "metadata": (3, 6),
-        "methods": (4, 6),
-        "identifiers": (5, 6),
-        "fetch_sra_metadata": (6, 6),  # Moved to end to combine E-Link + text-extracted BioProjects
+        "resolve_identifiers": (1, 7),
+        "ncbi_enrich": (2, 7),
+        "metadata": (3, 7),
+        "methods": (4, 7),
+        "identifiers": (5, 7),
+        "validate_provenance": (6, 7),  # P1/P3: section-based + E-Link validation
+        "fetch_sra_metadata": (7, 7),  # Moved to end to combine E-Link + text-extracted BioProjects
     }
 
     def process_entry(
         self,
         entry_id: str,
-        extraction_tasks: str = "resolve_identifiers,ncbi_enrich,metadata,methods,identifiers,fetch_sra_metadata",
+        extraction_tasks: str = "resolve_identifiers,ncbi_enrich,metadata,methods,identifiers,validate_provenance,fetch_sra_metadata",
         progress_callback: Optional[Callable[[str, int, int], None]] = None,
     ) -> str:
         """Process a single publication queue entry with optional log suppression."""
@@ -542,7 +543,7 @@ class PublicationProcessingService:
 
     def _process_entry_internal(
         self, entry_id: str,
-        extraction_tasks: str = "resolve_identifiers,ncbi_enrich,metadata,methods,identifiers,fetch_sra_metadata",
+        extraction_tasks: str = "resolve_identifiers,ncbi_enrich,metadata,methods,identifiers,validate_provenance,fetch_sra_metadata",
         progress_callback: Optional[Callable[[str, int, int], None]] = None,
     ) -> str:
         """
@@ -833,7 +834,8 @@ class PublicationProcessingService:
                                         full_content,
                                     ),
                                     # EGA: European Genome-phenome Archive (controlled access)
-                                    "ega": re.findall(r"EGAS\d{11}", full_content),
+                                    # Patterns: EGAS=Study, EGAD=Dataset, EGAN=Sample, EGAF=File, EGAR=Run
+                                    "ega": re.findall(r"EGA[SDNFAR]\d{11}", full_content),
                                     # dbGaP: Database of Genotypes and Phenotypes (controlled)
                                     "dbgap": re.findall(r"phs\d{6}", full_content, re.I),
                                     # Zenodo: General-purpose repository
@@ -903,7 +905,7 @@ class PublicationProcessingService:
 
                         # Get PMID for E-Link validation
                         source_pmid = entry.pmid or (
-                            entry.identifiers.get("pmid") if entry.identifiers else None
+                            entry.extracted_identifiers.get("pmid") if entry.extracted_identifiers else None
                         )
 
                         if full_content:

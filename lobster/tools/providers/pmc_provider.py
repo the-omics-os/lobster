@@ -916,6 +916,18 @@ class PMCProvider:
             if section_text.strip():
                 parts.append(section_text)
 
+        # FIX: Also extract <notes> elements (contains Data Availability in many journals)
+        # PMC papers often have Data Availability in <notes notes-type="data-availability">
+        notes = back.get("notes", [])
+        if isinstance(notes, dict):
+            notes = [notes]
+
+        for note in notes:
+            if isinstance(note, dict):
+                note_text = self._extract_text_from_element(note)
+                if note_text.strip():
+                    parts.append(note_text)
+
         return "\n\n".join(parts)
 
     def extract_data_availability_section(self, back: dict) -> str:
