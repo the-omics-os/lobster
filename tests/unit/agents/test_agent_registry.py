@@ -273,7 +273,7 @@ class TestAgentRegistryManagement:
 
         # Check that known agents are present
         assert "data_expert_agent" in agent_names
-        assert "singlecell_expert_agent" in agent_names
+        assert "transcriptomics_expert" in agent_names
 
     def test_list_available_agents_with_filters(self):
         """Test listing agents with type filters."""
@@ -661,12 +661,13 @@ class TestRegistryPersistenceLoading:
         agent_names = get_all_agent_names()
 
         # Check for expected default agents
+        # NOTE: v2.5+ unified agents - singlecell/bulk → transcriptomics_expert, ms/affinity proteomics → proteomics_expert
         expected_agents = [
             "data_expert_agent",
-            "singlecell_expert_agent",
+            "transcriptomics_expert",
+            "proteomics_expert",
             "research_agent",
             # "method_expert_agent",  # DEPRECATED v2.2+: merged into research_agent
-            # "bulk_rnaseq_expert_agent",  # DISABLED: commented out in agent_registry.py
             "machine_learning_expert_agent",
             "visualization_expert_agent",
             "metadata_assistant",

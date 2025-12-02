@@ -134,8 +134,9 @@ class TestSupervisorAgentCore:
         ]
 
         # Mock an agent that could be selected
+        # NOTE: v2.5+ unified agents - singlecell_expert_agent → transcriptomics_expert
         mock_analysis_agent = Mock()
-        mock_analysis_agent.name = "singlecell_expert_agent"
+        mock_analysis_agent.name = "transcriptomics_expert"
 
         # Test that supervisor can be created with agents
         supervisor_graph = create_supervisor(
@@ -180,10 +181,11 @@ class TestSupervisorAgentCore:
         ]
 
         # Mock multiple agents for coordination
+        # NOTE: v2.5+ unified agents - singlecell_expert_agent → transcriptomics_expert
         mock_data_agent = Mock()
         mock_data_agent.name = "data_expert_agent"
         mock_analysis_agent = Mock()
-        mock_analysis_agent.name = "singlecell_expert_agent"
+        mock_analysis_agent.name = "transcriptomics_expert"
 
         # Test that supervisor can be created with multiple agents
         supervisor_graph = create_supervisor(
@@ -219,19 +221,22 @@ class TestSupervisorHandoffCoordination:
         assert handoff_tool.name == "transfer_to_data_expert_agent"
         assert "data expert" in handoff_tool.description.lower()
 
-    def test_handoff_to_singlecell_expert(self, mock_data_manager, mock_llm):
-        """Test handoff to single-cell expert agent via supervisor graph."""
+    def test_handoff_to_transcriptomics_expert(self, mock_data_manager, mock_llm):
+        """Test handoff to transcriptomics expert agent via supervisor graph.
+
+        NOTE: v2.5+ unified agents - singlecell_expert_agent → transcriptomics_expert
+        """
         from lobster.agents.langgraph_supervisor.handoff import create_handoff_tool
 
-        # Create a handoff tool for single-cell expert
+        # Create a handoff tool for transcriptomics expert (unified single-cell + bulk RNA-seq)
         handoff_tool = create_handoff_tool(
-            agent_name="singlecell_expert_agent",
-            description="Transfer to single-cell expert for analysis tasks",
+            agent_name="transcriptomics_expert",
+            description="Transfer to transcriptomics expert for RNA-seq analysis tasks",
         )
 
         # Test that handoff tool is created properly
-        assert handoff_tool.name == "transfer_to_singlecell_expert_agent"
-        assert "single-cell expert" in handoff_tool.description.lower()
+        assert handoff_tool.name == "transfer_to_transcriptomics_expert"
+        assert "transcriptomics expert" in handoff_tool.description.lower()
 
     def test_handoff_to_research_agent(self, mock_data_manager, mock_llm):
         """Test handoff to research agent via supervisor graph."""
@@ -299,13 +304,15 @@ class TestSupervisorDecisionMaking:
         "task,expected_agent",
         [
             ("Load GEO dataset GSE12345", "data_expert_agent"),
-            ("Perform single-cell clustering", "singlecell_expert_agent"),
+            # NOTE: v2.5+ unified agents - singlecell_expert_agent → transcriptomics_expert
+            ("Perform single-cell clustering", "transcriptomics_expert"),
             ("Find papers about T cells", "research_agent"),
             (
                 "Extract parameters from PMID:12345678",
                 "research_agent",
             ),  # Phase 1: research_agent handles method extraction
-            ("Analyze proteomics data", "proteomics_expert_agent"),
+            # NOTE: v2.5+ unified agents - ms/affinity proteomics → proteomics_expert
+            ("Analyze proteomics data", "proteomics_expert"),
         ],
     )
     def test_task_routing_decisions(
@@ -359,16 +366,17 @@ class TestSupervisorDecisionMaking:
         config = SupervisorConfig()
         config.workflow_guidance_level = "detailed"
 
+        # NOTE: v2.5+ unified agents - singlecell_expert_agent → transcriptomics_expert
         prompt = create_supervisor_prompt(
             mock_data_manager,
             config,
-            active_agents=["data_expert_agent", "singlecell_expert_agent"],
+            active_agents=["data_expert_agent", "transcriptomics_expert"],
         )
 
         # Should include workflow information
         assert "workflow" in prompt.lower()
         assert "data_expert_agent" in prompt
-        assert "singlecell_expert_agent" in prompt
+        assert "transcriptomics_expert" in prompt
 
 
 # ===============================================================================
@@ -388,10 +396,11 @@ class TestSupervisorWorkflowManagement:
         config = SupervisorConfig()
         config.workflow_guidance_level = "detailed"
 
+        # NOTE: v2.5+ unified agents - singlecell_expert_agent → transcriptomics_expert
         prompt = create_supervisor_prompt(
             mock_data_manager,
             config,
-            active_agents=["data_expert_agent", "singlecell_expert_agent"],
+            active_agents=["data_expert_agent", "transcriptomics_expert"],
         )
 
         # Should include workflow information
@@ -401,10 +410,11 @@ class TestSupervisorWorkflowManagement:
     def test_workflow_progress_tracking(self, mock_data_manager, mock_llm):
         """Test workflow progress tracking through configuration."""
         # Test that supervisor can track progress through multiple agents
+        # NOTE: v2.5+ unified agents - singlecell_expert_agent → transcriptomics_expert
         mock_data_agent = Mock()
         mock_data_agent.name = "data_expert_agent"
         mock_analysis_agent = Mock()
-        mock_analysis_agent.name = "singlecell_expert_agent"
+        mock_analysis_agent.name = "transcriptomics_expert"
 
         supervisor_graph = create_supervisor(
             agents=[mock_data_agent, mock_analysis_agent],

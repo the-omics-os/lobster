@@ -241,7 +241,8 @@ class TestSupervisorIntegration:
     def test_visualization_completion_reporting(self, mock_data_manager):
         """Test that completion reports follow correct format for supervisor."""
         plot_id = str(uuid.uuid4())
-        requesting_agent = "singlecell_expert_agent"
+        # NOTE: v2.5+ unified agents - singlecell_expert_agent → transcriptomics_expert
+        requesting_agent = "transcriptomics_expert"
 
         expected_report_format = f"""
 📊 **Visualization Task Complete**
