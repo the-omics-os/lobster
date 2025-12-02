@@ -81,23 +81,6 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
         handoff_tool_description=None,
         supervisor_accessible=False,  # Only via transcriptomics_expert
     ),
-    # === DEPRECATED: Routes to transcriptomics_expert ===
-    "singlecell_expert_agent": AgentRegistryConfig(
-        name="singlecell_expert_agent",
-        display_name="Single-Cell Expert (DEPRECATED)",
-        description="DEPRECATED: Use transcriptomics_expert instead. This agent routes to transcriptomics_expert.",
-        factory_function="lobster.agents.transcriptomics.deprecated.singlecell_alias",
-        handoff_tool_name="handoff_to_singlecell_expert_agent",
-        handoff_tool_description="DEPRECATED: Routes to transcriptomics_expert. Use handoff_to_transcriptomics_expert instead.",
-    ),
-    "bulk_rnaseq_expert_agent": AgentRegistryConfig(
-        name="bulk_rnaseq_expert_agent",
-        display_name="Bulk RNA-seq Expert (DEPRECATED)",
-        description="DEPRECATED: Use transcriptomics_expert instead. This agent routes to transcriptomics_expert.",
-        factory_function="lobster.agents.transcriptomics.deprecated.bulk_alias",
-        handoff_tool_name="handoff_to_bulk_rnaseq_expert_agent",
-        handoff_tool_description="DEPRECATED: Routes to transcriptomics_expert. Use handoff_to_transcriptomics_expert instead.",
-    ),
     "metadata_assistant": AgentRegistryConfig(
         name="metadata_assistant",
         display_name="Metadata Assistant",
@@ -138,23 +121,6 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
         factory_function="lobster.agents.proteomics.proteomics_expert.proteomics_expert",
         handoff_tool_name="handoff_to_proteomics_expert",
         handoff_tool_description="Assign ALL proteomics analysis tasks (mass spectrometry OR affinity platforms): QC, normalization, batch correction, differential protein expression, peptide mapping, antibody validation",
-    ),
-    # === DEPRECATED: Proteomics aliases (routes to proteomics_expert) ===
-    "ms_proteomics_expert_agent": AgentRegistryConfig(
-        name="ms_proteomics_expert_agent",
-        display_name="MS Proteomics Expert (DEPRECATED)",
-        description="DEPRECATED: Use proteomics_expert instead. This agent routes to proteomics_expert.",
-        factory_function="lobster.agents.proteomics.deprecated.ms_proteomics_alias",
-        handoff_tool_name="handoff_to_ms_proteomics_expert_agent",
-        handoff_tool_description="DEPRECATED: Routes to proteomics_expert. Use handoff_to_proteomics_expert instead.",
-    ),
-    "affinity_proteomics_expert_agent": AgentRegistryConfig(
-        name="affinity_proteomics_expert_agent",
-        display_name="Affinity Proteomics Expert (DEPRECATED)",
-        description="DEPRECATED: Use proteomics_expert instead. This agent routes to proteomics_expert.",
-        factory_function="lobster.agents.proteomics.deprecated.affinity_proteomics_alias",
-        handoff_tool_name="handoff_to_affinity_proteomics_expert_agent",
-        handoff_tool_description="DEPRECATED: Routes to proteomics_expert. Use handoff_to_proteomics_expert instead.",
     ),
     # 'custom_feature_agent': AgentRegistryConfig(
     #     name='custom_feature_agent',

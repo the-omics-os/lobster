@@ -151,9 +151,6 @@ class LobsterAgentConfigurator:
         "transcriptomics_expert",  # Parent: handles QC, clustering, orchestrates sub-agents
         "annotation_expert",  # Sub-agent: cell type annotation
         "de_analysis_expert",  # Sub-agent: differential expression
-        # Deprecated aliases (route to transcriptomics_expert)
-        "singlecell_expert_agent",  # DEPRECATED v2.5+: use transcriptomics_expert
-        "bulk_rnaseq_expert_agent",  # DEPRECATED v2.5+: use transcriptomics_expert
         # "method_expert_agent",  # DEPRECATED v2.2+: merged into research_agent
         "research_agent",
         "metadata_assistant",  # Metadata operations and cross-dataset mapping
@@ -162,9 +159,6 @@ class LobsterAgentConfigurator:
         "visualization_expert_agent",
         # Unified proteomics agent (v2.6+)
         "proteomics_expert",  # Parent: handles MS and affinity proteomics
-        # Deprecated aliases (route to proteomics_expert)
-        "ms_proteomics_expert_agent",  # DEPRECATED v2.6+: use proteomics_expert
-        "affinity_proteomics_expert_agent",  # DEPRECATED v2.6+: use proteomics_expert
         "custom_feature_agent",  # META-AGENT for code generation
         "protein_structure_visualization_expert_agent",  # Protein structure visualization
     ]
@@ -189,9 +183,6 @@ class LobsterAgentConfigurator:
             "transcriptomics_expert": "claude-4-5-haiku",
             "annotation_expert": "claude-4-5-haiku",
             "de_analysis_expert": "claude-4-5-haiku",
-            # Deprecated aliases (still need config for backwards compat)
-            "singlecell_expert_agent": "claude-4-5-haiku",
-            "bulk_rnaseq_expert_agent": "claude-4-5-haiku",
             # "method_expert_agent": "claude-4-sonnet",  # DEPRECATED v2.2+
             "data_expert_agent": "claude-4-5-haiku",
             "machine_learning_expert_agent": "claude-4-5-haiku",
@@ -199,9 +190,6 @@ class LobsterAgentConfigurator:
             "metadata_assistant": "claude-4-5-haiku",
             # Unified proteomics agent (v2.6+)
             "proteomics_expert": "claude-4-5-haiku",
-            # Deprecated aliases (still need config for backwards compat)
-            "ms_proteomics_expert_agent": "claude-4-5-haiku",
-            "affinity_proteomics_expert_agent": "claude-4-5-haiku",
             "visualization_expert_agent": "claude-4-5-haiku",
             "protein_structure_visualization_expert_agent": "claude-4-5-haiku",
             "custom_feature_agent": "claude-4-5-sonnet",  # Use Sonnet for code generation
@@ -216,9 +204,6 @@ class LobsterAgentConfigurator:
             "transcriptomics_expert": "claude-4-sonnet",
             "annotation_expert": "claude-4-sonnet",
             "de_analysis_expert": "claude-4-sonnet",
-            # Deprecated aliases (still need config for backwards compat)
-            "singlecell_expert_agent": "claude-4-sonnet",
-            "bulk_rnaseq_expert_agent": "claude-4-sonnet",
             # "method_expert_agent": "claude-4-sonnet",  # DEPRECATED v2.2+
             "data_expert_agent": "claude-4-sonnet",
             "machine_learning_expert_agent": "claude-4-sonnet",
@@ -226,9 +211,6 @@ class LobsterAgentConfigurator:
             "metadata_assistant": "claude-4-sonnet",
             # Unified proteomics agent (v2.6+)
             "proteomics_expert": "claude-4-sonnet",
-            # Deprecated aliases (still need config for backwards compat)
-            "ms_proteomics_expert_agent": "claude-4-sonnet",
-            "affinity_proteomics_expert_agent": "claude-4-sonnet",
             "visualization_expert_agent": "claude-4-sonnet",
             "protein_structure_visualization_expert_agent": "claude-4-sonnet",
             "custom_feature_agent": "claude-4-5-sonnet",  # Use Sonnet 4.5 for code generation
@@ -242,9 +224,6 @@ class LobsterAgentConfigurator:
             "transcriptomics_expert": "claude-4-5-sonnet",
             "annotation_expert": "claude-4-5-sonnet",
             "de_analysis_expert": "claude-4-5-sonnet",
-            # Deprecated aliases (still need config for backwards compat)
-            "singlecell_expert_agent": "claude-4-5-sonnet",
-            "bulk_rnaseq_expert_agent": "claude-4-5-sonnet",
             # "method_expert_agent": "claude-4-5-sonnet",  # DEPRECATED v2.2+
             "data_expert_agent": "claude-4-5-sonnet",
             "machine_learning_expert_agent": "claude-4-5-sonnet",
@@ -252,9 +231,6 @@ class LobsterAgentConfigurator:
             "metadata_assistant": "claude-4-5-sonnet",
             # Unified proteomics agent (v2.6+)
             "proteomics_expert": "claude-4-5-sonnet",
-            # Deprecated aliases (still need config for backwards compat)
-            "ms_proteomics_expert_agent": "claude-4-5-sonnet",
-            "affinity_proteomics_expert_agent": "claude-4-5-sonnet",
             "visualization_expert_agent": "claude-4-5-sonnet",
             "protein_structure_visualization_expert_agent": "claude-4-5-sonnet",
             "custom_feature_agent": "claude-4-5-sonnet",  # Use Sonnet 4.5 for code generation
@@ -268,9 +244,6 @@ class LobsterAgentConfigurator:
             "transcriptomics_expert": "claude-4-5-sonnet",
             "annotation_expert": "claude-4-5-sonnet",
             "de_analysis_expert": "claude-4-5-sonnet",
-            # Deprecated aliases (still need config for backwards compat)
-            "singlecell_expert_agent": "claude-4-5-sonnet",
-            "bulk_rnaseq_expert_agent": "claude-4-5-sonnet",
             # "method_expert_agent": "claude-4-5-sonnet",  # DEPRECATED v2.2+
             "data_expert_agent": "claude-4-5-sonnet",
             "machine_learning_expert_agent": "claude-4-5-sonnet",
@@ -278,9 +251,6 @@ class LobsterAgentConfigurator:
             "metadata_assistant": "claude-4-5-sonnet",
             # Unified proteomics agent (v2.6+)
             "proteomics_expert": "claude-4-5-sonnet",
-            # Deprecated aliases (still need config for backwards compat)
-            "ms_proteomics_expert_agent": "claude-4-5-sonnet",
-            "affinity_proteomics_expert_agent": "claude-4-5-sonnet",
             "visualization_expert_agent": "claude-4-5-sonnet",
             "protein_structure_visualization_expert_agent": "claude-4-5-sonnet",
             "custom_feature_agent": "claude-4-1-opus",  # Use Opus 4.1 for best code generation
