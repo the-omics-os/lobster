@@ -160,8 +160,11 @@ class LobsterAgentConfigurator:
         "data_expert_agent",
         "machine_learning_expert_agent",
         "visualization_expert_agent",
-        "ms_proteomics_expert_agent",
-        "affinity_proteomics_expert_agent",
+        # Unified proteomics agent (v2.6+)
+        "proteomics_expert",  # Parent: handles MS and affinity proteomics
+        # Deprecated aliases (route to proteomics_expert)
+        "ms_proteomics_expert_agent",  # DEPRECATED v2.6+: use proteomics_expert
+        "affinity_proteomics_expert_agent",  # DEPRECATED v2.6+: use proteomics_expert
         "custom_feature_agent",  # META-AGENT for code generation
         "protein_structure_visualization_expert_agent",  # Protein structure visualization
     ]
@@ -194,6 +197,9 @@ class LobsterAgentConfigurator:
             "machine_learning_expert_agent": "claude-4-5-haiku",
             "research_agent": "claude-4-5-haiku",
             "metadata_assistant": "claude-4-5-haiku",
+            # Unified proteomics agent (v2.6+)
+            "proteomics_expert": "claude-4-5-haiku",
+            # Deprecated aliases (still need config for backwards compat)
             "ms_proteomics_expert_agent": "claude-4-5-haiku",
             "affinity_proteomics_expert_agent": "claude-4-5-haiku",
             "visualization_expert_agent": "claude-4-5-haiku",
@@ -218,6 +224,9 @@ class LobsterAgentConfigurator:
             "machine_learning_expert_agent": "claude-4-sonnet",
             "research_agent": "claude-4-sonnet",
             "metadata_assistant": "claude-4-sonnet",
+            # Unified proteomics agent (v2.6+)
+            "proteomics_expert": "claude-4-sonnet",
+            # Deprecated aliases (still need config for backwards compat)
             "ms_proteomics_expert_agent": "claude-4-sonnet",
             "affinity_proteomics_expert_agent": "claude-4-sonnet",
             "visualization_expert_agent": "claude-4-sonnet",
@@ -241,6 +250,9 @@ class LobsterAgentConfigurator:
             "machine_learning_expert_agent": "claude-4-5-sonnet",
             "research_agent": "claude-4-5-sonnet",
             "metadata_assistant": "claude-4-5-sonnet",
+            # Unified proteomics agent (v2.6+)
+            "proteomics_expert": "claude-4-5-sonnet",
+            # Deprecated aliases (still need config for backwards compat)
             "ms_proteomics_expert_agent": "claude-4-5-sonnet",
             "affinity_proteomics_expert_agent": "claude-4-5-sonnet",
             "visualization_expert_agent": "claude-4-5-sonnet",
@@ -264,6 +276,9 @@ class LobsterAgentConfigurator:
             "machine_learning_expert_agent": "claude-4-5-sonnet",
             "research_agent": "claude-4-5-sonnet",
             "metadata_assistant": "claude-4-5-sonnet",
+            # Unified proteomics agent (v2.6+)
+            "proteomics_expert": "claude-4-5-sonnet",
+            # Deprecated aliases (still need config for backwards compat)
             "ms_proteomics_expert_agent": "claude-4-5-sonnet",
             "affinity_proteomics_expert_agent": "claude-4-5-sonnet",
             "visualization_expert_agent": "claude-4-5-sonnet",

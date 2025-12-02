@@ -130,22 +130,32 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
         handoff_tool_name="handoff_to_protein_structure_visualization_expert_agent",
         handoff_tool_description="Assign protein structure visualization tasks to the protein structure visualization expert agent",
     ),
-    # 'ms_proteomics_expert_agent': AgentRegistryConfig(
-    #     name='ms_proteomics_expert_agent',
-    #     display_name='MS Proteomics Expert',
-    #     description='Handles mass spectrometry proteomics data analysis including DDA/DIA workflows with database search artifact removal',
-    #     factory_function='lobster.agents.ms_proteomics_expert.ms_proteomics_expert',
-    #     handoff_tool_name='handoff_to_ms_proteomics_expert_agent',
-    #     handoff_tool_description='Assign mass spectrometry proteomics analysis tasks to the MS proteomics expert agent'
-    # ),
-    # 'affinity_proteomics_expert_agent': AgentRegistryConfig(
-    #     name='affinity_proteomics_expert_agent',
-    #     display_name='Affinity Proteomics Expert',
-    #     description='Handles affinity proteomics data analysis including Olink and targeted protein panels with antibody validation',
-    #     factory_function='lobster.agents.affinity_proteomics_expert.affinity_proteomics_expert',
-    #     handoff_tool_name='handoff_to_affinity_proteomics_expert_agent',
-    #     handoff_tool_description='Assign affinity proteomics and targeted panel analysis tasks to the affinity proteomics expert agent'
-    # ),
+    # === NEW: Unified Proteomics Expert ===
+    "proteomics_expert": AgentRegistryConfig(
+        name="proteomics_expert",
+        display_name="Proteomics Expert",
+        description="Unified expert for mass spectrometry AND affinity proteomics. Auto-detects platform type. Handles QC, normalization, batch correction, differential protein expression, peptide mapping (MS), antibody validation (affinity).",
+        factory_function="lobster.agents.proteomics.proteomics_expert.proteomics_expert",
+        handoff_tool_name="handoff_to_proteomics_expert",
+        handoff_tool_description="Assign ALL proteomics analysis tasks (mass spectrometry OR affinity platforms): QC, normalization, batch correction, differential protein expression, peptide mapping, antibody validation",
+    ),
+    # === DEPRECATED: Proteomics aliases (routes to proteomics_expert) ===
+    "ms_proteomics_expert_agent": AgentRegistryConfig(
+        name="ms_proteomics_expert_agent",
+        display_name="MS Proteomics Expert (DEPRECATED)",
+        description="DEPRECATED: Use proteomics_expert instead. This agent routes to proteomics_expert.",
+        factory_function="lobster.agents.proteomics.deprecated.ms_proteomics_alias",
+        handoff_tool_name="handoff_to_ms_proteomics_expert_agent",
+        handoff_tool_description="DEPRECATED: Routes to proteomics_expert. Use handoff_to_proteomics_expert instead.",
+    ),
+    "affinity_proteomics_expert_agent": AgentRegistryConfig(
+        name="affinity_proteomics_expert_agent",
+        display_name="Affinity Proteomics Expert (DEPRECATED)",
+        description="DEPRECATED: Use proteomics_expert instead. This agent routes to proteomics_expert.",
+        factory_function="lobster.agents.proteomics.deprecated.affinity_proteomics_alias",
+        handoff_tool_name="handoff_to_affinity_proteomics_expert_agent",
+        handoff_tool_description="DEPRECATED: Routes to proteomics_expert. Use handoff_to_proteomics_expert instead.",
+    ),
     # 'custom_feature_agent': AgentRegistryConfig(
     #     name='custom_feature_agent',
     #     display_name='Custom Feature Agent',

@@ -4,6 +4,9 @@ Proteomics quality control service for comprehensive quality assessment and vali
 This service implements professional-grade quality control methods specifically designed for
 proteomics data including missing value pattern analysis, contaminant detection, CV assessment,
 dynamic range evaluation, and technical replicate validation.
+
+All methods return 3-tuples (AnnData, Dict, AnalysisStep) for provenance tracking and
+reproducible notebook export via /pipeline export.
 """
 
 from typing import Any, Dict, List, Optional, Tuple
@@ -14,6 +17,7 @@ from scipy import stats
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
+from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -55,12 +59,301 @@ class ProteomicsQualityService:
 
         logger.debug("ProteomicsQualityService initialized successfully")
 
+    def _create_ir_missing_value_patterns(
+        self, sample_threshold: float, protein_threshold: float
+    ) -> AnalysisStep:
+        """Create IR for missing value pattern analysis."""
+        return AnalysisStep(
+            operation="proteomics.qc.assess_missing_value_patterns",
+            tool_name="assess_missing_value_patterns",
+            description="Analyze missing value patterns in proteomics data with MNAR/MCAR detection",
+            library="lobster.services.quality.proteomics_quality_service",
+            code_template="""# Missing value pattern analysis
+from lobster.services.quality.proteomics_quality_service import ProteomicsQualityService
+
+service = ProteomicsQualityService()
+adata_qc, stats, _ = service.assess_missing_value_patterns(
+    adata,
+    sample_threshold={{ sample_threshold }},
+    protein_threshold={{ protein_threshold }}
+)
+print(f"Missing: {stats['total_missing_percentage']:.1f}%, MNAR: {stats['mnar_proteins']}, MCAR: {stats['mcar_proteins']}")""",
+            imports=[
+                "from lobster.services.quality.proteomics_quality_service import ProteomicsQualityService"
+            ],
+            parameters={
+                "sample_threshold": sample_threshold,
+                "protein_threshold": protein_threshold,
+            },
+            parameter_schema={
+                "sample_threshold": ParameterSpec(
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=0.7,
+                    required=False,
+                    validation_rule="0 < sample_threshold <= 1",
+                    description="Threshold for high missing value samples (fraction)",
+                ),
+                "protein_threshold": ParameterSpec(
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=0.8,
+                    required=False,
+                    validation_rule="0 < protein_threshold <= 1",
+                    description="Threshold for high missing value proteins (fraction)",
+                ),
+            },
+            input_entities=["adata"],
+            output_entities=["adata_qc"],
+        )
+
+    def _create_ir_coefficient_variation(
+        self,
+        replicate_column: Optional[str],
+        cv_threshold: float,
+        min_observations: int,
+    ) -> AnalysisStep:
+        """Create IR for coefficient of variation assessment."""
+        return AnalysisStep(
+            operation="proteomics.qc.assess_coefficient_variation",
+            tool_name="assess_coefficient_variation",
+            description="Assess coefficient of variation (CV) for proteins with optional replicate grouping",
+            library="lobster.services.quality.proteomics_quality_service",
+            code_template="""# Coefficient of variation assessment
+from lobster.services.quality.proteomics_quality_service import ProteomicsQualityService
+
+service = ProteomicsQualityService()
+adata_qc, stats, _ = service.assess_coefficient_variation(
+    adata,
+    replicate_column={{ replicate_column | tojson }},
+    cv_threshold={{ cv_threshold }},
+    min_observations={{ min_observations }}
+)
+print(f"Median CV: {stats['median_cv_across_proteins']:.3f}, High CV proteins: {stats['n_high_cv_proteins']}")""",
+            imports=[
+                "from lobster.services.quality.proteomics_quality_service import ProteomicsQualityService"
+            ],
+            parameters={
+                "replicate_column": replicate_column,
+                "cv_threshold": cv_threshold,
+                "min_observations": min_observations,
+            },
+            parameter_schema={
+                "replicate_column": ParameterSpec(
+                    param_type="Optional[str]",
+                    papermill_injectable=True,
+                    default_value=None,
+                    required=False,
+                    description="Column in obs containing replicate groups",
+                ),
+                "cv_threshold": ParameterSpec(
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=0.2,
+                    required=False,
+                    validation_rule="cv_threshold > 0",
+                    description="Threshold for high CV proteins (fractional, e.g., 0.2 = 20%)",
+                ),
+                "min_observations": ParameterSpec(
+                    param_type="int",
+                    papermill_injectable=True,
+                    default_value=3,
+                    required=False,
+                    validation_rule="min_observations >= 2",
+                    description="Minimum observations required for CV calculation",
+                ),
+            },
+            input_entities=["adata"],
+            output_entities=["adata_qc"],
+        )
+
+    def _create_ir_detect_contaminants(
+        self, protein_id_column: Optional[str], custom_patterns: Optional[Dict[str, List[str]]]
+    ) -> AnalysisStep:
+        """Create IR for contaminant detection."""
+        return AnalysisStep(
+            operation="proteomics.qc.detect_contaminants",
+            tool_name="detect_contaminants",
+            description="Detect contaminant proteins based on naming patterns (keratins, trypsin, etc.)",
+            library="lobster.services.quality.proteomics_quality_service",
+            code_template="""# Contaminant detection
+from lobster.services.quality.proteomics_quality_service import ProteomicsQualityService
+
+service = ProteomicsQualityService()
+adata_qc, stats, _ = service.detect_contaminants(
+    adata,
+    protein_id_column={{ protein_id_column | tojson }}
+)
+print(f"Contaminants: {stats['total_contaminants']} ({stats['contaminant_percentage']:.1f}%)")""",
+            imports=[
+                "from lobster.services.quality.proteomics_quality_service import ProteomicsQualityService"
+            ],
+            parameters={
+                "protein_id_column": protein_id_column,
+                "custom_patterns": custom_patterns,
+            },
+            parameter_schema={
+                "protein_id_column": ParameterSpec(
+                    param_type="Optional[str]",
+                    papermill_injectable=True,
+                    default_value=None,
+                    required=False,
+                    description="Column in var containing protein IDs (uses index if None)",
+                ),
+            },
+            input_entities=["adata"],
+            output_entities=["adata_qc"],
+        )
+
+    def _create_ir_evaluate_dynamic_range(
+        self, percentile_low: float, percentile_high: float
+    ) -> AnalysisStep:
+        """Create IR for dynamic range evaluation."""
+        return AnalysisStep(
+            operation="proteomics.qc.evaluate_dynamic_range",
+            tool_name="evaluate_dynamic_range",
+            description="Evaluate dynamic range of proteomics measurements",
+            library="lobster.services.quality.proteomics_quality_service",
+            code_template="""# Dynamic range evaluation
+from lobster.services.quality.proteomics_quality_service import ProteomicsQualityService
+
+service = ProteomicsQualityService()
+adata_qc, stats, _ = service.evaluate_dynamic_range(
+    adata,
+    percentile_low={{ percentile_low }},
+    percentile_high={{ percentile_high }}
+)
+print(f"Median dynamic range: {stats['median_sample_dynamic_range']:.2f} log10 units")""",
+            imports=[
+                "from lobster.services.quality.proteomics_quality_service import ProteomicsQualityService"
+            ],
+            parameters={
+                "percentile_low": percentile_low,
+                "percentile_high": percentile_high,
+            },
+            parameter_schema={
+                "percentile_low": ParameterSpec(
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=5.0,
+                    required=False,
+                    validation_rule="0 < percentile_low < 50",
+                    description="Lower percentile for dynamic range calculation",
+                ),
+                "percentile_high": ParameterSpec(
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=95.0,
+                    required=False,
+                    validation_rule="50 < percentile_high < 100",
+                    description="Higher percentile for dynamic range calculation",
+                ),
+            },
+            input_entities=["adata"],
+            output_entities=["adata_qc"],
+        )
+
+    def _create_ir_detect_pca_outliers(
+        self, n_components: int, outlier_threshold: float
+    ) -> AnalysisStep:
+        """Create IR for PCA outlier detection."""
+        return AnalysisStep(
+            operation="proteomics.qc.detect_pca_outliers",
+            tool_name="detect_pca_outliers",
+            description="Detect outlier samples using PCA analysis",
+            library="lobster.services.quality.proteomics_quality_service",
+            code_template="""# PCA outlier detection
+from lobster.services.quality.proteomics_quality_service import ProteomicsQualityService
+
+service = ProteomicsQualityService()
+adata_qc, stats, _ = service.detect_pca_outliers(
+    adata,
+    n_components={{ n_components }},
+    outlier_threshold={{ outlier_threshold }}
+)
+print(f"Outliers: {stats['n_outliers_detected']} ({stats['outlier_percentage']:.1f}%)")""",
+            imports=[
+                "from lobster.services.quality.proteomics_quality_service import ProteomicsQualityService"
+            ],
+            parameters={
+                "n_components": n_components,
+                "outlier_threshold": outlier_threshold,
+            },
+            parameter_schema={
+                "n_components": ParameterSpec(
+                    param_type="int",
+                    papermill_injectable=True,
+                    default_value=50,
+                    required=False,
+                    validation_rule="n_components > 0",
+                    description="Number of PCA components to compute",
+                ),
+                "outlier_threshold": ParameterSpec(
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=3.0,
+                    required=False,
+                    validation_rule="outlier_threshold > 0",
+                    description="Threshold in standard deviations for outlier detection",
+                ),
+            },
+            input_entities=["adata"],
+            output_entities=["adata_qc"],
+        )
+
+    def _create_ir_assess_technical_replicates(
+        self, replicate_column: str, correlation_method: str
+    ) -> AnalysisStep:
+        """Create IR for technical replicate assessment."""
+        return AnalysisStep(
+            operation="proteomics.qc.assess_technical_replicates",
+            tool_name="assess_technical_replicates",
+            description="Assess technical replicate reproducibility and variation",
+            library="lobster.services.quality.proteomics_quality_service",
+            code_template="""# Technical replicate assessment
+from lobster.services.quality.proteomics_quality_service import ProteomicsQualityService
+
+service = ProteomicsQualityService()
+adata_qc, stats, _ = service.assess_technical_replicates(
+    adata,
+    replicate_column={{ replicate_column | tojson }},
+    correlation_method={{ correlation_method | tojson }}
+)
+print(f"Replicate correlation: {stats['median_replicate_correlation']:.3f}, CV: {stats['median_replicate_cv']:.3f}")""",
+            imports=[
+                "from lobster.services.quality.proteomics_quality_service import ProteomicsQualityService"
+            ],
+            parameters={
+                "replicate_column": replicate_column,
+                "correlation_method": correlation_method,
+            },
+            parameter_schema={
+                "replicate_column": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="replicate_id",
+                    required=True,
+                    description="Column in obs identifying technical replicates",
+                ),
+                "correlation_method": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="pearson",
+                    required=False,
+                    validation_rule="correlation_method in ['pearson', 'spearman']",
+                    description="Method for correlation analysis",
+                ),
+            },
+            input_entities=["adata"],
+            output_entities=["adata_qc"],
+        )
+
     def assess_missing_value_patterns(
         self,
         adata: anndata.AnnData,
         sample_threshold: float = 0.7,
         protein_threshold: float = 0.8,
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Analyze missing value patterns in proteomics data with MNAR/MCAR detection.
 
@@ -70,7 +363,8 @@ class ProteomicsQualityService:
             protein_threshold: Threshold for high missing value proteins
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: AnnData with QC metrics and analysis stats
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]: AnnData with QC metrics,
+                analysis stats, and IR for notebook export
 
         Raises:
             ProteomicsQualityError: If assessment fails
@@ -165,7 +459,10 @@ class ProteomicsQualityService:
             logger.info(
                 f"MNAR/MCAR: {mnar_mcar_analysis['n_mnar']} MNAR, {mnar_mcar_analysis['n_mcar']} MCAR proteins"
             )
-            return adata_qc, missing_stats
+
+            # Create IR for provenance tracking
+            ir = self._create_ir_missing_value_patterns(sample_threshold, protein_threshold)
+            return adata_qc, missing_stats, ir
 
         except Exception as e:
             logger.exception(f"Error in missing value pattern analysis: {e}")
@@ -179,7 +476,7 @@ class ProteomicsQualityService:
         replicate_column: Optional[str] = None,
         cv_threshold: float = 0.2,
         min_observations: int = 3,
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Assess coefficient of variation (CV) for proteins with optional replicate grouping.
 
@@ -193,7 +490,8 @@ class ProteomicsQualityService:
             min_observations: Minimum observations required for CV calculation
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: AnnData with CV metrics (fractional units) and analysis stats
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]: AnnData with CV metrics
+                (fractional units), analysis stats, and IR for notebook export
 
         Raises:
             ProteomicsQualityError: If assessment fails
@@ -356,7 +654,12 @@ class ProteomicsQualityService:
             logger.info(
                 f"CV assessment completed: mean protein CV = {cv_stats['mean_cv_across_proteins']:.3f}"
             )
-            return adata_qc, cv_stats
+
+            # Create IR for provenance tracking
+            ir = self._create_ir_coefficient_variation(
+                replicate_column, cv_threshold, min_observations
+            )
+            return adata_qc, cv_stats, ir
 
         except Exception as e:
             logger.exception(f"Error in coefficient of variation assessment: {e}")
@@ -369,7 +672,7 @@ class ProteomicsQualityService:
         adata: anndata.AnnData,
         protein_id_column: str = None,
         custom_patterns: Optional[Dict[str, List[str]]] = None,
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Detect contaminant proteins based on naming patterns.
 
@@ -379,7 +682,8 @@ class ProteomicsQualityService:
             custom_patterns: Custom contaminant patterns to add to defaults
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: AnnData with contaminant flags and analysis stats
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]: AnnData with contaminant flags,
+                analysis stats, and IR for notebook export
 
         Raises:
             ProteomicsQualityError: If detection fails
@@ -452,7 +756,10 @@ class ProteomicsQualityService:
             logger.info(
                 f"Contaminant detection completed: {total_contaminants} contaminants ({contaminant_percentage:.1f}%)"
             )
-            return adata_qc, contaminant_stats
+
+            # Create IR for provenance tracking
+            ir = self._create_ir_detect_contaminants(protein_id_column, custom_patterns)
+            return adata_qc, contaminant_stats, ir
 
         except Exception as e:
             logger.exception(f"Error in contaminant detection: {e}")
@@ -463,7 +770,7 @@ class ProteomicsQualityService:
         adata: anndata.AnnData,
         percentile_low: float = 5.0,
         percentile_high: float = 95.0,
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Evaluate dynamic range of proteomics measurements.
 
@@ -473,7 +780,8 @@ class ProteomicsQualityService:
             percentile_high: Higher percentile for dynamic range calculation
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: AnnData with dynamic range metrics and analysis stats
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]: AnnData with dynamic range metrics,
+                analysis stats, and IR for notebook export
 
         Raises:
             ProteomicsQualityError: If evaluation fails
@@ -607,7 +915,10 @@ class ProteomicsQualityService:
             logger.info(
                 f"Dynamic range evaluation completed: median sample range = {dynamic_range_stats['median_sample_dynamic_range']:.2f} log10"
             )
-            return adata_qc, dynamic_range_stats
+
+            # Create IR for provenance tracking
+            ir = self._create_ir_evaluate_dynamic_range(percentile_low, percentile_high)
+            return adata_qc, dynamic_range_stats, ir
 
         except Exception as e:
             logger.exception(f"Error in dynamic range evaluation: {e}")
@@ -618,7 +929,7 @@ class ProteomicsQualityService:
         adata: anndata.AnnData,
         n_components: int = 50,
         outlier_threshold: float = 3.0,
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Detect outlier samples using PCA analysis.
 
@@ -628,7 +939,8 @@ class ProteomicsQualityService:
             outlier_threshold: Threshold in standard deviations for outlier detection
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: AnnData with outlier flags and analysis stats
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]: AnnData with outlier flags,
+                analysis stats, and IR for notebook export
 
         Raises:
             ProteomicsQualityError: If detection fails
@@ -713,7 +1025,10 @@ class ProteomicsQualityService:
             logger.info(
                 f"PCA outlier detection completed: {n_outliers} outliers ({(n_outliers/adata_qc.n_obs)*100:.1f}%)"
             )
-            return adata_qc, pca_stats
+
+            # Create IR for provenance tracking
+            ir = self._create_ir_detect_pca_outliers(n_components, outlier_threshold)
+            return adata_qc, pca_stats, ir
 
         except Exception as e:
             logger.exception(f"Error in PCA outlier detection: {e}")
@@ -724,7 +1039,7 @@ class ProteomicsQualityService:
         adata: anndata.AnnData,
         replicate_column: str,
         correlation_method: str = "pearson",
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Assess technical replicate reproducibility and variation.
 
@@ -737,7 +1052,8 @@ class ProteomicsQualityService:
             correlation_method: Method for correlation analysis ('pearson', 'spearman')
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: AnnData with replicate metrics (CV in fractional units) and analysis stats
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]: AnnData with replicate metrics
+                (CV in fractional units), analysis stats, and IR for notebook export
 
         Raises:
             ProteomicsQualityError: If assessment fails
@@ -856,7 +1172,10 @@ class ProteomicsQualityService:
             logger.info(
                 f"Technical replicate assessment completed: {len(unique_groups)} replicate groups"
             )
-            return adata_qc, replicate_stats
+
+            # Create IR for provenance tracking
+            ir = self._create_ir_assess_technical_replicates(replicate_column, correlation_method)
+            return adata_qc, replicate_stats, ir
 
         except Exception as e:
             logger.exception(f"Error in technical replicate assessment: {e}")

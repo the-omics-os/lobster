@@ -4,6 +4,9 @@ Proteomics analysis service for statistical analysis and pathway enrichment.
 This service implements professional-grade analysis methods specifically designed for
 proteomics data including statistical testing with missing value handling, pathway enrichment
 analysis, GO term analysis, and protein network analysis.
+
+All methods return 3-tuples (AnnData, Dict, AnalysisStep) for provenance tracking and
+reproducible notebook export via /pipeline export.
 """
 
 from itertools import combinations
@@ -20,6 +23,7 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
 
+from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -60,6 +64,303 @@ class ProteomicsAnalysisService:
 
         logger.debug("ProteomicsAnalysisService initialized successfully")
 
+    def _create_ir_statistical_testing(
+        self,
+        group_column: str,
+        test_method: str,
+        comparison_type: str,
+        min_observations: int,
+        handle_missing: str,
+    ) -> AnalysisStep:
+        """Create IR for statistical testing."""
+        return AnalysisStep(
+            operation="proteomics.analysis.perform_statistical_testing",
+            tool_name="perform_statistical_testing",
+            description="Perform statistical testing between groups with missing value handling",
+            library="lobster.services.analysis.proteomics_analysis_service",
+            code_template="""# Statistical testing
+from lobster.services.analysis.proteomics_analysis_service import ProteomicsAnalysisService
+
+service = ProteomicsAnalysisService()
+adata_stats, stats, _ = service.perform_statistical_testing(
+    adata,
+    group_column={{ group_column | tojson }},
+    test_method={{ test_method | tojson }},
+    comparison_type={{ comparison_type | tojson }},
+    min_observations={{ min_observations }},
+    handle_missing={{ handle_missing | tojson }}
+)
+print(f"Tests: {stats['n_tests_performed']}, Significant: {stats['n_significant_results']}")""",
+            imports=[
+                "from lobster.services.analysis.proteomics_analysis_service import ProteomicsAnalysisService"
+            ],
+            parameters={
+                "group_column": group_column,
+                "test_method": test_method,
+                "comparison_type": comparison_type,
+                "min_observations": min_observations,
+                "handle_missing": handle_missing,
+            },
+            parameter_schema={
+                "group_column": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="group",
+                    required=True,
+                    description="Column in obs containing group labels",
+                ),
+                "test_method": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="t_test",
+                    required=False,
+                    validation_rule="test_method in ['t_test', 'mann_whitney', 'anova', 'kruskal']",
+                    description="Statistical test method",
+                ),
+                "comparison_type": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="all_pairs",
+                    required=False,
+                    validation_rule="comparison_type in ['all_pairs', 'vs_rest', 'multi_group']",
+                    description="Type of comparison between groups",
+                ),
+                "min_observations": ParameterSpec(
+                    param_type="int",
+                    papermill_injectable=True,
+                    default_value=3,
+                    required=False,
+                    validation_rule="min_observations >= 2",
+                    description="Minimum observations per group for testing",
+                ),
+                "handle_missing": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="skip",
+                    required=False,
+                    validation_rule="handle_missing in ['skip', 'impute_mean', 'impute_median']",
+                    description="How to handle missing values",
+                ),
+            },
+            input_entities=["adata"],
+            output_entities=["adata_stats"],
+        )
+
+    def _create_ir_dimensionality_reduction(
+        self,
+        method: str,
+        n_components: int,
+        perplexity: float,
+        random_state: int,
+    ) -> AnalysisStep:
+        """Create IR for dimensionality reduction."""
+        return AnalysisStep(
+            operation="proteomics.analysis.perform_dimensionality_reduction",
+            tool_name="perform_dimensionality_reduction",
+            description="Perform dimensionality reduction on proteomics data (PCA, t-SNE, UMAP-like)",
+            library="lobster.services.analysis.proteomics_analysis_service",
+            code_template="""# Dimensionality reduction
+from lobster.services.analysis.proteomics_analysis_service import ProteomicsAnalysisService
+
+service = ProteomicsAnalysisService()
+adata_reduced, stats, _ = service.perform_dimensionality_reduction(
+    adata,
+    method={{ method | tojson }},
+    n_components={{ n_components }},
+    perplexity={{ perplexity }},
+    random_state={{ random_state }}
+)
+print(f"Reduced to {stats['output_dimensions']} dimensions using {method}")""",
+            imports=[
+                "from lobster.services.analysis.proteomics_analysis_service import ProteomicsAnalysisService"
+            ],
+            parameters={
+                "method": method,
+                "n_components": n_components,
+                "perplexity": perplexity,
+                "random_state": random_state,
+            },
+            parameter_schema={
+                "method": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="pca",
+                    required=False,
+                    validation_rule="method in ['pca', 'tsne', 'umap_like']",
+                    description="Dimensionality reduction method",
+                ),
+                "n_components": ParameterSpec(
+                    param_type="int",
+                    papermill_injectable=True,
+                    default_value=50,
+                    required=False,
+                    validation_rule="n_components > 0",
+                    description="Number of components for PCA or output dimensions",
+                ),
+                "perplexity": ParameterSpec(
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=30.0,
+                    required=False,
+                    validation_rule="perplexity > 0",
+                    description="Perplexity parameter for t-SNE",
+                ),
+                "random_state": ParameterSpec(
+                    param_type="int",
+                    papermill_injectable=True,
+                    default_value=42,
+                    required=False,
+                    description="Random state for reproducibility",
+                ),
+            },
+            input_entities=["adata"],
+            output_entities=["adata_reduced"],
+        )
+
+    def _create_ir_clustering_analysis(
+        self,
+        clustering_method: str,
+        n_clusters: int,
+        use_pca: bool,
+        n_pca_components: int,
+    ) -> AnalysisStep:
+        """Create IR for clustering analysis."""
+        return AnalysisStep(
+            operation="proteomics.analysis.perform_clustering_analysis",
+            tool_name="perform_clustering_analysis",
+            description="Perform clustering analysis on proteomics data (K-means, hierarchical, Gaussian mixture)",
+            library="lobster.services.analysis.proteomics_analysis_service",
+            code_template="""# Clustering analysis
+from lobster.services.analysis.proteomics_analysis_service import ProteomicsAnalysisService
+
+service = ProteomicsAnalysisService()
+adata_clustered, stats, _ = service.perform_clustering_analysis(
+    adata,
+    clustering_method={{ clustering_method | tojson }},
+    n_clusters={{ n_clusters }},
+    use_pca={{ use_pca | tojson }},
+    n_pca_components={{ n_pca_components }}
+)
+print(f"Identified {stats['n_clusters']} clusters using {clustering_method}")""",
+            imports=[
+                "from lobster.services.analysis.proteomics_analysis_service import ProteomicsAnalysisService"
+            ],
+            parameters={
+                "clustering_method": clustering_method,
+                "n_clusters": n_clusters,
+                "use_pca": use_pca,
+                "n_pca_components": n_pca_components,
+            },
+            parameter_schema={
+                "clustering_method": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="kmeans",
+                    required=False,
+                    validation_rule="clustering_method in ['kmeans', 'hierarchical', 'gaussian_mixture']",
+                    description="Clustering method",
+                ),
+                "n_clusters": ParameterSpec(
+                    param_type="int",
+                    papermill_injectable=True,
+                    default_value=4,
+                    required=False,
+                    validation_rule="n_clusters > 0",
+                    description="Number of clusters",
+                ),
+                "use_pca": ParameterSpec(
+                    param_type="bool",
+                    papermill_injectable=True,
+                    default_value=True,
+                    required=False,
+                    description="Whether to use PCA-reduced data for clustering",
+                ),
+                "n_pca_components": ParameterSpec(
+                    param_type="int",
+                    papermill_injectable=True,
+                    default_value=50,
+                    required=False,
+                    validation_rule="n_pca_components > 0",
+                    description="Number of PCA components if use_pca is True",
+                ),
+            },
+            input_entities=["adata"],
+            output_entities=["adata_clustered"],
+        )
+
+    def _create_ir_pathway_enrichment(
+        self,
+        protein_list: Optional[List[str]],
+        database: str,
+        background_proteins: Optional[List[str]],
+        p_value_threshold: float,
+    ) -> AnalysisStep:
+        """Create IR for pathway enrichment analysis."""
+        return AnalysisStep(
+            operation="proteomics.analysis.perform_pathway_enrichment",
+            tool_name="perform_pathway_enrichment",
+            description="WARNING: SIMULATED pathway data for demonstration. For real pathway analysis, use gseapy or export protein list to external tools (DAVID, Enrichr, g:Profiler).",
+            library="lobster.services.analysis.proteomics_analysis_service",
+            code_template="""# Pathway enrichment (SIMULATED - for demonstration only)
+# WARNING: This uses simulated pathway data. For real analysis, use:
+# - gseapy: pip install gseapy; gp.enrichr(gene_list=proteins, gene_sets='GO_Biological_Process_2021')
+# - External tools: DAVID, Enrichr, g:Profiler
+from lobster.services.analysis.proteomics_analysis_service import ProteomicsAnalysisService
+
+service = ProteomicsAnalysisService()
+adata_enriched, stats, _ = service.perform_pathway_enrichment(
+    adata,
+    protein_list={{ protein_list | tojson }},
+    database={{ database | tojson }},
+    background_proteins={{ background_proteins | tojson }},
+    p_value_threshold={{ p_value_threshold }}
+)
+print(f"Pathways tested: {stats['n_pathways_tested']}, Significant: {stats['n_significant_pathways']}")""",
+            imports=[
+                "from lobster.services.analysis.proteomics_analysis_service import ProteomicsAnalysisService"
+            ],
+            parameters={
+                "protein_list": protein_list,
+                "database": database,
+                "background_proteins": background_proteins,
+                "p_value_threshold": p_value_threshold,
+            },
+            parameter_schema={
+                "protein_list": ParameterSpec(
+                    param_type="Optional[List[str]]",
+                    papermill_injectable=True,
+                    default_value=None,
+                    required=False,
+                    description="List of proteins for enrichment (uses significant if None)",
+                ),
+                "database": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="go_biological_process",
+                    required=False,
+                    validation_rule="database in ['go_biological_process', 'go_molecular_function', 'go_cellular_component', 'kegg_pathway', 'reactome', 'string_db']",
+                    description="Pathway database to use",
+                ),
+                "background_proteins": ParameterSpec(
+                    param_type="Optional[List[str]]",
+                    papermill_injectable=True,
+                    default_value=None,
+                    required=False,
+                    description="Background protein set (uses all proteins if None)",
+                ),
+                "p_value_threshold": ParameterSpec(
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=0.05,
+                    required=False,
+                    validation_rule="0 < p_value_threshold <= 1",
+                    description="P-value threshold for significance",
+                ),
+            },
+            input_entities=["adata"],
+            output_entities=["adata_enriched"],
+        )
+
     def perform_statistical_testing(
         self,
         adata: anndata.AnnData,
@@ -68,7 +369,7 @@ class ProteomicsAnalysisService:
         comparison_type: str = "all_pairs",
         min_observations: int = 3,
         handle_missing: str = "skip",
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Perform statistical testing between groups with missing value handling.
 
@@ -81,7 +382,8 @@ class ProteomicsAnalysisService:
             handle_missing: How to handle missing values ('skip', 'impute_mean', 'impute_median')
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: AnnData with test results and analysis stats
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]: AnnData with test results,
+                analysis stats, and IR for notebook export
 
         Raises:
             ProteomicsAnalysisError: If testing fails
@@ -184,7 +486,12 @@ class ProteomicsAnalysisService:
             logger.info(
                 f"Statistical testing completed: {n_tests_performed} tests, {n_significant} significant"
             )
-            return adata_stats, analysis_stats
+
+            # Create IR for provenance tracking
+            ir = self._create_ir_statistical_testing(
+                group_column, test_method, comparison_type, min_observations, handle_missing
+            )
+            return adata_stats, analysis_stats, ir
 
         except Exception as e:
             logger.exception(f"Error in statistical testing: {e}")
@@ -197,7 +504,7 @@ class ProteomicsAnalysisService:
         n_components: int = 50,
         perplexity: float = 30.0,
         random_state: int = 42,
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Perform dimensionality reduction on proteomics data.
 
@@ -209,7 +516,8 @@ class ProteomicsAnalysisService:
             random_state: Random state for reproducibility
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: AnnData with reduced dimensions and analysis stats
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]: AnnData with reduced dimensions,
+                analysis stats, and IR for notebook export
 
         Raises:
             ProteomicsAnalysisError: If reduction fails
@@ -284,7 +592,12 @@ class ProteomicsAnalysisService:
             logger.info(
                 f"Dimensionality reduction completed: {method} -> {reduction_results.get('output_dims', n_components)} dimensions"
             )
-            return adata_reduced, reduction_stats
+
+            # Create IR for provenance tracking
+            ir = self._create_ir_dimensionality_reduction(
+                method, n_components, perplexity, random_state
+            )
+            return adata_reduced, reduction_stats, ir
 
         except Exception as e:
             logger.exception(f"Error in dimensionality reduction: {e}")
@@ -297,7 +610,7 @@ class ProteomicsAnalysisService:
         n_clusters: int = 4,
         use_pca: bool = True,
         n_pca_components: int = 50,
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Perform clustering analysis on proteomics data.
 
@@ -309,7 +622,8 @@ class ProteomicsAnalysisService:
             n_pca_components: Number of PCA components if use_pca is True
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: AnnData with cluster assignments and analysis stats
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]: AnnData with cluster assignments,
+                analysis stats, and IR for notebook export
 
         Raises:
             ProteomicsAnalysisError: If clustering fails
@@ -397,7 +711,12 @@ class ProteomicsAnalysisService:
             logger.info(
                 f"Clustering analysis completed: {clustering_results['n_clusters']} clusters identified"
             )
-            return adata_clustered, clustering_stats
+
+            # Create IR for provenance tracking
+            ir = self._create_ir_clustering_analysis(
+                clustering_method, n_clusters, use_pca, n_pca_components
+            )
+            return adata_clustered, clustering_stats, ir
 
         except Exception as e:
             logger.exception(f"Error in clustering analysis: {e}")
@@ -410,9 +729,12 @@ class ProteomicsAnalysisService:
         database: str = "go_biological_process",
         background_proteins: Optional[List[str]] = None,
         p_value_threshold: float = 0.05,
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Perform pathway enrichment analysis on a set of proteins.
+
+        WARNING: SIMULATED pathway data for demonstration. For real pathway analysis,
+        use gseapy or export protein list to external tools (DAVID, Enrichr, g:Profiler).
 
         Args:
             adata: AnnData object with proteomics data
@@ -422,7 +744,8 @@ class ProteomicsAnalysisService:
             p_value_threshold: P-value threshold for significance
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: AnnData with enrichment results and analysis stats
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]: AnnData with enrichment results,
+                analysis stats, and IR for notebook export
 
         Raises:
             ProteomicsAnalysisError: If enrichment fails
@@ -510,7 +833,12 @@ class ProteomicsAnalysisService:
             logger.info(
                 f"Pathway enrichment completed: {len(significant_pathways)} significant pathways"
             )
-            return adata_enriched, enrichment_stats
+
+            # Create IR for provenance tracking
+            ir = self._create_ir_pathway_enrichment(
+                protein_list, database, background_proteins, p_value_threshold
+            )
+            return adata_enriched, enrichment_stats, ir
 
         except Exception as e:
             logger.exception(f"Error in pathway enrichment: {e}")
@@ -728,7 +1056,24 @@ class ProteomicsAnalysisService:
     def _perform_umap_like(
         self, X: np.ndarray, n_components: int, random_state: int
     ) -> Dict[str, Any]:
-        """Perform UMAP-like analysis (simplified version using PCA + scaling)."""
+        """Perform UMAP-like analysis (simplified version using PCA + scaling).
+
+        WARNING: This is an APPROXIMATE dimensionality reduction, NOT true UMAP.
+        Uses PCA with variance-weighted scaling instead of UMAP's topological
+        manifold learning algorithm. Results will differ from true UMAP in:
+        - Local neighborhood preservation
+        - Non-linear structure detection
+        - Cluster separation
+
+        For true UMAP, install umap-learn:
+            pip install umap-learn
+            import umap
+            reducer = umap.UMAP(n_components=2)
+            embedding = reducer.fit_transform(X)
+
+        This approximation is suitable for quick exploration but NOT recommended
+        for publication figures requiring proper UMAP embeddings.
+        """
         # Simplified UMAP-like approach using PCA
         pca = PCA(n_components=min(n_components * 2, min(X.shape) - 1))
         X_pca = pca.fit_transform(X)

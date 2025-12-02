@@ -1054,11 +1054,12 @@ def research_agent(
                                 report += f"- **Validation status**: {validation_status.value}\n"
                                 report += f"- **Recommended strategy**: {recommended_strategy.strategy_name} (confidence: {recommended_strategy.confidence:.2f})\n"
                                 report += f"- **Rationale**: {recommended_strategy.rationale}\n"
-                                report += f"- **Files found**: {url_data.get('file_count', 0)}\n"
-                                if url_data.get("matrix_url"):
+                                report += f"- **Files found**: {url_data.file_count}\n"
+                                if url_data.matrix_url:
                                     report += "- **Matrix file**: Available\n"
-                                if url_data.get("supplementary_urls"):
-                                    report += f"- **Supplementary files**: {len(url_data['supplementary_urls'])} file(s)\n"
+                                supplementary_urls = url_data.get_supplementary_urls_as_strings()
+                                if supplementary_urls:
+                                    report += f"- **Supplementary files**: {len(supplementary_urls)} file(s)\n"
 
                                 # Add warnings if validation status has warnings
                                 if validation_status == ValidationStatus.VALIDATED_WITH_WARNINGS:
@@ -1821,7 +1822,7 @@ Could not extract content for: {identifier}
             use_intersecting_genes_only = None
 
         # Determine execution parameters based on file count
-        file_count = url_data.get("file_count", 0)
+        file_count = url_data.file_count
         if file_count > 100:
             timeout = 7200  # 2 hours
             max_retries = 5

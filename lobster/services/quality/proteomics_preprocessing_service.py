@@ -4,6 +4,9 @@ Proteomics preprocessing service for missing value imputation, normalization, an
 This service implements professional-grade preprocessing methods specifically designed for
 proteomics data including MNAR imputation, proteomics-specific normalization methods,
 and batch correction techniques suitable for mass spectrometry data.
+
+All methods return 3-tuples (AnnData, Dict, AnalysisStep) for provenance tracking and
+reproducible notebook export via /pipeline export.
 """
 
 from typing import Any, Dict, Optional, Tuple
@@ -15,6 +18,7 @@ from scipy.stats import rankdata
 from sklearn.decomposition import PCA
 from sklearn.impute import KNNImputer, SimpleImputer
 
+from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -45,6 +49,229 @@ class ProteomicsPreprocessingService:
         logger.debug("Initializing stateless ProteomicsPreprocessingService")
         logger.debug("ProteomicsPreprocessingService initialized successfully")
 
+    def _create_ir_impute_missing_values(
+        self,
+        method: str,
+        knn_neighbors: int,
+        min_prob_percentile: float,
+        mnar_width: float,
+        mnar_downshift: float,
+    ) -> AnalysisStep:
+        """Create IR for missing value imputation."""
+        return AnalysisStep(
+            operation="proteomics.preprocessing.impute_missing_values",
+            tool_name="impute_missing_values",
+            description="Impute missing values in proteomics data using method-specific approaches (KNN, min_prob, MNAR, mixed)",
+            library="lobster.services.quality.proteomics_preprocessing_service",
+            code_template="""# Missing value imputation
+from lobster.services.quality.proteomics_preprocessing_service import ProteomicsPreprocessingService
+
+service = ProteomicsPreprocessingService()
+adata_imputed, stats, _ = service.impute_missing_values(
+    adata,
+    method={{ method | tojson }},
+    knn_neighbors={{ knn_neighbors }},
+    min_prob_percentile={{ min_prob_percentile }},
+    mnar_width={{ mnar_width }},
+    mnar_downshift={{ mnar_downshift }}
+)
+print(f"Imputed {stats['original_missing_count']} values using {method}")""",
+            imports=[
+                "from lobster.services.quality.proteomics_preprocessing_service import ProteomicsPreprocessingService"
+            ],
+            parameters={
+                "method": method,
+                "knn_neighbors": knn_neighbors,
+                "min_prob_percentile": min_prob_percentile,
+                "mnar_width": mnar_width,
+                "mnar_downshift": mnar_downshift,
+            },
+            parameter_schema={
+                "method": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="mixed",
+                    required=False,
+                    validation_rule="method in ['knn', 'min_prob', 'mnar', 'mixed']",
+                    description="Imputation method: knn, min_prob, mnar, or mixed",
+                ),
+                "knn_neighbors": ParameterSpec(
+                    param_type="int",
+                    papermill_injectable=True,
+                    default_value=5,
+                    required=False,
+                    validation_rule="knn_neighbors > 0",
+                    description="Number of neighbors for KNN imputation",
+                ),
+                "min_prob_percentile": ParameterSpec(
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=2.5,
+                    required=False,
+                    validation_rule="0 < min_prob_percentile < 100",
+                    description="Percentile for minimum probability imputation",
+                ),
+                "mnar_width": ParameterSpec(
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=0.3,
+                    required=False,
+                    validation_rule="mnar_width > 0",
+                    description="Width parameter for MNAR distribution",
+                ),
+                "mnar_downshift": ParameterSpec(
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=1.8,
+                    required=False,
+                    validation_rule="mnar_downshift > 0",
+                    description="Downshift parameter for MNAR distribution",
+                ),
+            },
+            input_entities=["adata"],
+            output_entities=["adata_imputed"],
+        )
+
+    def _create_ir_normalize_intensities(
+        self,
+        method: str,
+        log_transform: bool,
+        pseudocount_strategy: str,
+        reference_sample: Optional[str],
+    ) -> AnalysisStep:
+        """Create IR for intensity normalization."""
+        return AnalysisStep(
+            operation="proteomics.preprocessing.normalize_intensities",
+            tool_name="normalize_intensities",
+            description="Normalize proteomics intensity data using method-specific approaches (median, quantile, VSN, total_sum)",
+            library="lobster.services.quality.proteomics_preprocessing_service",
+            code_template="""# Intensity normalization
+from lobster.services.quality.proteomics_preprocessing_service import ProteomicsPreprocessingService
+
+service = ProteomicsPreprocessingService()
+adata_norm, stats, _ = service.normalize_intensities(
+    adata,
+    method={{ method | tojson }},
+    log_transform={{ log_transform | tojson }},
+    pseudocount_strategy={{ pseudocount_strategy | tojson }},
+    reference_sample={{ reference_sample | tojson }}
+)
+print(f"Normalized using {method}, log_transform={log_transform}")""",
+            imports=[
+                "from lobster.services.quality.proteomics_preprocessing_service import ProteomicsPreprocessingService"
+            ],
+            parameters={
+                "method": method,
+                "log_transform": log_transform,
+                "pseudocount_strategy": pseudocount_strategy,
+                "reference_sample": reference_sample,
+            },
+            parameter_schema={
+                "method": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="median",
+                    required=False,
+                    validation_rule="method in ['median', 'quantile', 'vsn', 'total_sum']",
+                    description="Normalization method: median, quantile, vsn, or total_sum",
+                ),
+                "log_transform": ParameterSpec(
+                    param_type="bool",
+                    papermill_injectable=True,
+                    default_value=True,
+                    required=False,
+                    description="Whether to apply log2 transformation",
+                ),
+                "pseudocount_strategy": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="adaptive",
+                    required=False,
+                    validation_rule="pseudocount_strategy in ['adaptive', 'fixed', 'min_observed']",
+                    description="Strategy for pseudocount in log transformation",
+                ),
+                "reference_sample": ParameterSpec(
+                    param_type="Optional[str]",
+                    papermill_injectable=True,
+                    default_value=None,
+                    required=False,
+                    description="Reference sample for normalization (if applicable)",
+                ),
+            },
+            input_entities=["adata"],
+            output_entities=["adata_norm"],
+        )
+
+    def _create_ir_correct_batch_effects(
+        self,
+        batch_key: str,
+        method: str,
+        n_pcs: int,
+        reference_batch: Optional[str],
+    ) -> AnalysisStep:
+        """Create IR for batch effect correction."""
+        return AnalysisStep(
+            operation="proteomics.preprocessing.correct_batch_effects",
+            tool_name="correct_batch_effects",
+            description="Correct for batch effects in proteomics data using method-specific approaches (combat, median_centering, reference_based)",
+            library="lobster.services.quality.proteomics_preprocessing_service",
+            code_template="""# Batch effect correction
+from lobster.services.quality.proteomics_preprocessing_service import ProteomicsPreprocessingService
+
+service = ProteomicsPreprocessingService()
+adata_corrected, stats, _ = service.correct_batch_effects(
+    adata,
+    batch_key={{ batch_key | tojson }},
+    method={{ method | tojson }},
+    n_pcs={{ n_pcs }},
+    reference_batch={{ reference_batch | tojson }}
+)
+print(f"Batch correction applied: {method}, batches: {stats['n_batches']}")""",
+            imports=[
+                "from lobster.services.quality.proteomics_preprocessing_service import ProteomicsPreprocessingService"
+            ],
+            parameters={
+                "batch_key": batch_key,
+                "method": method,
+                "n_pcs": n_pcs,
+                "reference_batch": reference_batch,
+            },
+            parameter_schema={
+                "batch_key": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="batch",
+                    required=True,
+                    description="Column in obs containing batch information",
+                ),
+                "method": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="combat",
+                    required=False,
+                    validation_rule="method in ['combat', 'median_centering', 'reference_based']",
+                    description="Batch correction method: combat, median_centering, or reference_based",
+                ),
+                "n_pcs": ParameterSpec(
+                    param_type="int",
+                    papermill_injectable=True,
+                    default_value=50,
+                    required=False,
+                    validation_rule="n_pcs > 0",
+                    description="Number of principal components for analysis",
+                ),
+                "reference_batch": ParameterSpec(
+                    param_type="Optional[str]",
+                    papermill_injectable=True,
+                    default_value=None,
+                    required=False,
+                    description="Reference batch for correction (if applicable)",
+                ),
+            },
+            input_entities=["adata"],
+            output_entities=["adata_corrected"],
+        )
+
     def impute_missing_values(
         self,
         adata: anndata.AnnData,
@@ -53,7 +280,7 @@ class ProteomicsPreprocessingService:
         min_prob_percentile: float = 2.5,
         mnar_width: float = 0.3,
         mnar_downshift: float = 1.8,
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Impute missing values using proteomics-appropriate methods.
 
@@ -66,7 +293,8 @@ class ProteomicsPreprocessingService:
             mnar_downshift: Downshift parameter for MNAR distribution
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: Imputed AnnData and processing stats
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]: Imputed AnnData,
+                processing stats, and IR for notebook export
 
         Raises:
             ProteomicsPreprocessingError: If imputation fails
@@ -89,12 +317,15 @@ class ProteomicsPreprocessingService:
             X = adata_imputed.X.copy()
             if not np.isnan(X).any():
                 logger.info("No missing values detected, skipping imputation")
+                ir = self._create_ir_impute_missing_values(
+                    method, knn_neighbors, min_prob_percentile, mnar_width, mnar_downshift
+                )
                 return adata_imputed, {
                     "method": method,
                     "missing_values_found": False,
                     "imputation_performed": False,
                     "analysis_type": "missing_value_imputation",
-                }
+                }, ir
 
             # Calculate missing value statistics
             total_missing = np.isnan(X).sum()
@@ -144,7 +375,12 @@ class ProteomicsPreprocessingService:
             logger.info(
                 f"Imputation completed: {total_missing:,} → {np.isnan(X_imputed).sum():,} missing values"
             )
-            return adata_imputed, imputation_stats
+
+            # Create IR for provenance tracking
+            ir = self._create_ir_impute_missing_values(
+                method, knn_neighbors, min_prob_percentile, mnar_width, mnar_downshift
+            )
+            return adata_imputed, imputation_stats, ir
 
         except Exception as e:
             logger.exception(f"Error in missing value imputation: {e}")
@@ -159,7 +395,7 @@ class ProteomicsPreprocessingService:
         log_transform: bool = True,
         pseudocount_strategy: str = "adaptive",
         reference_sample: Optional[str] = None,
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Normalize proteomics intensity data using appropriate methods.
 
@@ -171,7 +407,8 @@ class ProteomicsPreprocessingService:
             reference_sample: Reference sample for normalization (if applicable)
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: Normalized AnnData and processing stats
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]: Normalized AnnData,
+                processing stats, and IR for notebook export
 
         Raises:
             ProteomicsPreprocessingError: If normalization fails
@@ -241,7 +478,12 @@ class ProteomicsPreprocessingService:
             }
 
             logger.info(f"Normalization completed: {method} method applied")
-            return adata_norm, normalization_stats
+
+            # Create IR for provenance tracking
+            ir = self._create_ir_normalize_intensities(
+                method, log_transform, pseudocount_strategy, reference_sample
+            )
+            return adata_norm, normalization_stats, ir
 
         except Exception as e:
             logger.exception(f"Error in intensity normalization: {e}")
@@ -256,7 +498,7 @@ class ProteomicsPreprocessingService:
         method: str = "combat",
         n_pcs: int = 50,
         reference_batch: Optional[str] = None,
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Correct for batch effects in proteomics data.
 
@@ -268,7 +510,8 @@ class ProteomicsPreprocessingService:
             reference_batch: Reference batch for correction (if applicable)
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: Batch-corrected AnnData and processing stats
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]: Batch-corrected AnnData,
+                processing stats, and IR for notebook export
 
         Raises:
             ProteomicsPreprocessingError: If batch correction fails
@@ -295,12 +538,15 @@ class ProteomicsPreprocessingService:
 
             if n_batches < 2:
                 logger.warning("Less than 2 batches found, skipping batch correction")
+                ir = self._create_ir_correct_batch_effects(
+                    batch_key, method, n_pcs, reference_batch
+                )
                 return adata_corrected, {
                     "method": method,
                     "batch_correction_performed": False,
                     "n_batches": n_batches,
                     "analysis_type": "batch_correction",
-                }
+                }, ir
 
             # Store original data
             if adata_corrected.raw is None:
@@ -350,7 +596,12 @@ class ProteomicsPreprocessingService:
             }
 
             logger.info(f"Batch correction completed: {method} method applied")
-            return adata_corrected, correction_stats
+
+            # Create IR for provenance tracking
+            ir = self._create_ir_correct_batch_effects(
+                batch_key, method, n_pcs, reference_batch
+            )
+            return adata_corrected, correction_stats, ir
 
         except Exception as e:
             logger.exception(f"Error in batch correction: {e}")
@@ -504,7 +755,17 @@ class ProteomicsPreprocessingService:
         return X_norm
 
     def _vsn_normalization(self, X: np.ndarray) -> np.ndarray:
-        """Apply variance stabilizing normalization (VSN-like)."""
+        """Apply variance stabilizing normalization (VSN-like).
+
+        WARNING: Simplified VSN approximation using arcsinh(x/2) transform.
+        This does NOT perform true VSN with maximum likelihood parameter estimation.
+        For publication-grade analysis requiring true VSN, use R's vsn package:
+            BiocManager::install("vsn")
+            vsn::justvsn(data_matrix)
+
+        The arcsinh transform provides similar variance stabilization properties
+        but without the sample-specific calibration that true VSN provides.
+        """
         logger.info("Applying VSN-like normalization")
 
         # Simple VSN approximation: asinh transformation with scaling

@@ -4,6 +4,9 @@ Proteomics differential expression service for protein expression analysis betwe
 This service implements professional-grade differential expression methods specifically designed for
 proteomics data including statistical testing with FDR control, volcano plot generation,
 effect size calculations, and MSstats-like workflows.
+
+All methods return 3-tuples (AnnData, Dict, AnalysisStep) for provenance tracking and
+reproducible notebook export via /pipeline export.
 """
 
 from itertools import combinations
@@ -16,6 +19,7 @@ from scipy import stats
 from scipy.stats import pearsonr, spearmanr
 from sklearn.linear_model import LinearRegression
 
+from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -57,6 +61,250 @@ class ProteomicsDifferentialService:
 
         logger.debug("ProteomicsDifferentialService initialized successfully")
 
+    def _create_ir_differential_expression(
+        self,
+        group_column: str,
+        comparison_pairs: Optional[List[Tuple[str, str]]],
+        test_method: str,
+        fdr_method: str,
+        fdr_threshold: float,
+        fold_change_threshold: float,
+        min_samples_per_group: int,
+    ) -> AnalysisStep:
+        """Create IR for differential expression analysis."""
+        return AnalysisStep(
+            operation="proteomics.differential.perform_differential_expression",
+            tool_name="perform_differential_expression",
+            description="Perform comprehensive differential expression analysis between groups with FDR control",
+            library="lobster.services.analysis.proteomics_differential_service",
+            code_template="""# Differential expression analysis
+from lobster.services.analysis.proteomics_differential_service import ProteomicsDifferentialService
+
+service = ProteomicsDifferentialService()
+adata_de, stats, _ = service.perform_differential_expression(
+    adata,
+    group_column={{ group_column | tojson }},
+    comparison_pairs={{ comparison_pairs | tojson }},
+    test_method={{ test_method | tojson }},
+    fdr_method={{ fdr_method | tojson }},
+    fdr_threshold={{ fdr_threshold }},
+    fold_change_threshold={{ fold_change_threshold }},
+    min_samples_per_group={{ min_samples_per_group }}
+)
+print(f"Significant proteins: {stats['n_significant_proteins']}")""",
+            imports=[
+                "from lobster.services.analysis.proteomics_differential_service import ProteomicsDifferentialService"
+            ],
+            parameters={
+                "group_column": group_column,
+                "comparison_pairs": comparison_pairs,
+                "test_method": test_method,
+                "fdr_method": fdr_method,
+                "fdr_threshold": fdr_threshold,
+                "fold_change_threshold": fold_change_threshold,
+                "min_samples_per_group": min_samples_per_group,
+            },
+            parameter_schema={
+                "group_column": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="group",
+                    required=True,
+                    description="Column in obs containing group labels",
+                ),
+                "comparison_pairs": ParameterSpec(
+                    param_type="Optional[List[Tuple[str, str]]]",
+                    papermill_injectable=True,
+                    default_value=None,
+                    required=False,
+                    description="Specific pairs to compare (if None, does all pairwise)",
+                ),
+                "test_method": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="t_test",
+                    required=False,
+                    validation_rule="test_method in ['t_test', 'welch_t_test', 'mann_whitney', 'limma_like']",
+                    description="Statistical test method",
+                ),
+                "fdr_method": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="benjamini_hochberg",
+                    required=False,
+                    validation_rule="fdr_method in ['benjamini_hochberg', 'bonferroni', 'holm']",
+                    description="FDR correction method",
+                ),
+                "fdr_threshold": ParameterSpec(
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=0.05,
+                    required=False,
+                    validation_rule="0 < fdr_threshold <= 1",
+                    description="FDR threshold for significance",
+                ),
+                "fold_change_threshold": ParameterSpec(
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=1.5,
+                    required=False,
+                    validation_rule="fold_change_threshold > 1",
+                    description="Minimum fold change threshold",
+                ),
+                "min_samples_per_group": ParameterSpec(
+                    param_type="int",
+                    papermill_injectable=True,
+                    default_value=3,
+                    required=False,
+                    validation_rule="min_samples_per_group >= 2",
+                    description="Minimum samples required per group",
+                ),
+            },
+            input_entities=["adata"],
+            output_entities=["adata_de"],
+        )
+
+    def _create_ir_time_course_analysis(
+        self,
+        time_column: str,
+        group_column: Optional[str],
+        test_method: str,
+        fdr_threshold: float,
+    ) -> AnalysisStep:
+        """Create IR for time course analysis."""
+        return AnalysisStep(
+            operation="proteomics.differential.perform_time_course_analysis",
+            tool_name="perform_time_course_analysis",
+            description="Perform time course differential expression analysis",
+            library="lobster.services.analysis.proteomics_differential_service",
+            code_template="""# Time course analysis
+from lobster.services.analysis.proteomics_differential_service import ProteomicsDifferentialService
+
+service = ProteomicsDifferentialService()
+adata_tc, stats, _ = service.perform_time_course_analysis(
+    adata,
+    time_column={{ time_column | tojson }},
+    group_column={{ group_column | tojson }},
+    test_method={{ test_method | tojson }},
+    fdr_threshold={{ fdr_threshold }}
+)
+print(f"Significant time-dependent proteins: {stats['n_significant_results']}")""",
+            imports=[
+                "from lobster.services.analysis.proteomics_differential_service import ProteomicsDifferentialService"
+            ],
+            parameters={
+                "time_column": time_column,
+                "group_column": group_column,
+                "test_method": test_method,
+                "fdr_threshold": fdr_threshold,
+            },
+            parameter_schema={
+                "time_column": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="time",
+                    required=True,
+                    description="Column in obs containing time points",
+                ),
+                "group_column": ParameterSpec(
+                    param_type="Optional[str]",
+                    papermill_injectable=True,
+                    default_value=None,
+                    required=False,
+                    description="Optional grouping column for separate time course analysis",
+                ),
+                "test_method": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="linear_trend",
+                    required=False,
+                    validation_rule="test_method in ['linear_trend', 'polynomial', 'spline']",
+                    description="Method for time course analysis",
+                ),
+                "fdr_threshold": ParameterSpec(
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=0.05,
+                    required=False,
+                    validation_rule="0 < fdr_threshold <= 1",
+                    description="FDR threshold for significance",
+                ),
+            },
+            input_entities=["adata"],
+            output_entities=["adata_tc"],
+        )
+
+    def _create_ir_correlation_analysis(
+        self,
+        target_column: str,
+        correlation_method: str,
+        fdr_threshold: float,
+        min_correlation: float,
+    ) -> AnalysisStep:
+        """Create IR for correlation analysis."""
+        return AnalysisStep(
+            operation="proteomics.differential.perform_correlation_analysis",
+            tool_name="perform_correlation_analysis",
+            description="Perform correlation analysis between proteins and a continuous variable",
+            library="lobster.services.analysis.proteomics_differential_service",
+            code_template="""# Correlation analysis
+from lobster.services.analysis.proteomics_differential_service import ProteomicsDifferentialService
+
+service = ProteomicsDifferentialService()
+adata_corr, stats, _ = service.perform_correlation_analysis(
+    adata,
+    target_column={{ target_column | tojson }},
+    correlation_method={{ correlation_method | tojson }},
+    fdr_threshold={{ fdr_threshold }},
+    min_correlation={{ min_correlation }}
+)
+print(f"Significant correlations: {stats['n_significant_results']}")""",
+            imports=[
+                "from lobster.services.analysis.proteomics_differential_service import ProteomicsDifferentialService"
+            ],
+            parameters={
+                "target_column": target_column,
+                "correlation_method": correlation_method,
+                "fdr_threshold": fdr_threshold,
+                "min_correlation": min_correlation,
+            },
+            parameter_schema={
+                "target_column": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="target",
+                    required=True,
+                    description="Column in obs containing continuous target variable",
+                ),
+                "correlation_method": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="pearson",
+                    required=False,
+                    validation_rule="correlation_method in ['pearson', 'spearman', 'kendall']",
+                    description="Correlation method",
+                ),
+                "fdr_threshold": ParameterSpec(
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=0.05,
+                    required=False,
+                    validation_rule="0 < fdr_threshold <= 1",
+                    description="FDR threshold for significance",
+                ),
+                "min_correlation": ParameterSpec(
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=0.3,
+                    required=False,
+                    validation_rule="0 <= min_correlation <= 1",
+                    description="Minimum absolute correlation threshold",
+                ),
+            },
+            input_entities=["adata"],
+            output_entities=["adata_corr"],
+        )
+
     def perform_differential_expression(
         self,
         adata: anndata.AnnData,
@@ -67,7 +315,7 @@ class ProteomicsDifferentialService:
         fdr_threshold: float = 0.05,
         fold_change_threshold: float = 1.5,
         min_samples_per_group: int = 3,
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Perform comprehensive differential expression analysis between groups.
 
@@ -82,7 +330,8 @@ class ProteomicsDifferentialService:
             min_samples_per_group: Minimum samples required per group
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: AnnData with DE results and analysis stats
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]: AnnData with DE results,
+                analysis stats, and IR for notebook export
 
         Raises:
             ProteomicsDifferentialError: If analysis fails
@@ -175,7 +424,13 @@ class ProteomicsDifferentialService:
             logger.info(
                 f"Differential expression completed: {len(significant_results)} significant proteins"
             )
-            return adata_de, de_stats
+
+            # Create IR for provenance tracking
+            ir = self._create_ir_differential_expression(
+                group_column, comparison_pairs, test_method, fdr_method,
+                fdr_threshold, fold_change_threshold, min_samples_per_group
+            )
+            return adata_de, de_stats, ir
 
         except Exception as e:
             logger.exception(f"Error in differential expression analysis: {e}")
@@ -190,7 +445,7 @@ class ProteomicsDifferentialService:
         group_column: Optional[str] = None,
         test_method: str = "linear_trend",
         fdr_threshold: float = 0.05,
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Perform time course differential expression analysis.
 
@@ -202,7 +457,8 @@ class ProteomicsDifferentialService:
             fdr_threshold: FDR threshold for significance
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: AnnData with time course results and analysis stats
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]: AnnData with time course results,
+                analysis stats, and IR for notebook export
 
         Raises:
             ProteomicsDifferentialError: If analysis fails
@@ -270,7 +526,12 @@ class ProteomicsDifferentialService:
             logger.info(
                 f"Time course analysis completed: {len(significant_tc)} significant proteins"
             )
-            return adata_tc, tc_stats
+
+            # Create IR for provenance tracking
+            ir = self._create_ir_time_course_analysis(
+                time_column, group_column, test_method, fdr_threshold
+            )
+            return adata_tc, tc_stats, ir
 
         except Exception as e:
             logger.exception(f"Error in time course analysis: {e}")
@@ -283,7 +544,7 @@ class ProteomicsDifferentialService:
         correlation_method: str = "pearson",
         fdr_threshold: float = 0.05,
         min_correlation: float = 0.3,
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Perform correlation analysis between proteins and a continuous variable.
 
@@ -295,7 +556,8 @@ class ProteomicsDifferentialService:
             min_correlation: Minimum absolute correlation threshold
 
         Returns:
-            Tuple[anndata.AnnData, Dict[str, Any]]: AnnData with correlation results and analysis stats
+            Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]: AnnData with correlation results,
+                analysis stats, and IR for notebook export
 
         Raises:
             ProteomicsDifferentialError: If analysis fails
@@ -386,7 +648,12 @@ class ProteomicsDifferentialService:
             logger.info(
                 f"Correlation analysis completed: {len(significant_corr)} significant correlations"
             )
-            return adata_corr, corr_stats
+
+            # Create IR for provenance tracking
+            ir = self._create_ir_correlation_analysis(
+                target_column, correlation_method, fdr_threshold, min_correlation
+            )
+            return adata_corr, corr_stats, ir
 
         except Exception as e:
             logger.exception(f"Error in correlation analysis: {e}")
@@ -541,6 +808,22 @@ class ProteomicsDifferentialService:
     ) -> Tuple[float, float]:
         """
         Moderated t-test with empirical Bayes shrinkage (limma-like approach).
+
+        WARNING: This is a SIMPLIFIED moderated t-test implementation.
+        It provides basic variance shrinkage but does NOT implement full limma:
+        - No eBayes squeeze of variances across all proteins simultaneously
+        - No robust hyperparameter estimation via method of moments
+        - Simplified prior estimation (median-based, not MLE)
+
+        For publication-grade limma analysis, use R's limma package:
+            BiocManager::install("limma")
+            fit <- lmFit(data_matrix, design)
+            fit <- eBayes(fit)
+            topTable(fit)
+
+        The `_estimate_prior_variance()` method provides better prior estimation
+        but is not yet integrated into the main workflow. This simplified version
+        adds small regularization (0.01 * median variance) for stability.
 
         Args:
             group1: Values for group 1
@@ -933,9 +1216,9 @@ class ProteomicsDifferentialService:
         """Perform linear trend test for time course analysis."""
         from sklearn.metrics import r2_score
 
-        # Reshape for sklearn
-        X = time_points.reshape(-1, 1)
-        y = protein_values
+        # Reshape for sklearn (convert Series to array if needed)
+        X = np.array(time_points).reshape(-1, 1)
+        y = np.array(protein_values)
 
         # Fit linear regression
         reg = LinearRegression()
@@ -969,9 +1252,9 @@ class ProteomicsDifferentialService:
         from sklearn.metrics import r2_score
         from sklearn.preprocessing import PolynomialFeatures
 
-        # Fit polynomial regression (degree 2)
+        # Fit polynomial regression (degree 2), convert Series to array if needed
         poly_features = PolynomialFeatures(degree=2)
-        X_poly = poly_features.fit_transform(time_points.reshape(-1, 1))
+        X_poly = poly_features.fit_transform(np.array(time_points).reshape(-1, 1))
 
         reg = LinearRegression()
         reg.fit(X_poly, protein_values)
