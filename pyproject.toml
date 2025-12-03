@@ -44,6 +44,8 @@ dependencies = [
     "langchain-aws>=0.1.0",
     "langgraph==0.6.7",
     "openai>=1.0.0",
+    # Claude Code SDK for custom feature creation
+    "claude-agent-sdk>=0.1.0",
     # Bioinformatics (bumped versions for Python 3.12 support)
     "llvmlite==0.44.0", # explicit to avoid old version being pulled
     "scipy>=1.10.0",
