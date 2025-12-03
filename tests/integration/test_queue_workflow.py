@@ -55,11 +55,11 @@ from lobster.core.schemas.download_queue import (
     DownloadStatus,
     StrategyConfig,
 )
+from lobster.services.data_access.geo_download_service import GEODownloadService
 from lobster.tools.download_orchestrator import (
     DownloadOrchestrator,
     ServiceNotFoundError,
 )
-from lobster.services.data_access.geo_download_service import GEODownloadService
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)

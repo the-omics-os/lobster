@@ -19,11 +19,12 @@ if sdk_path.exists() and str(sdk_path) not in sys.path:
 
 try:
     from claude_agent_sdk import (
-        tool as sdk_tool,
-        create_sdk_mcp_server,
+        ClaudeAgentOptions,
         ClaudeSDKClient,
-        ClaudeAgentOptions
+        create_sdk_mcp_server,
     )
+    from claude_agent_sdk import tool as sdk_tool
+
     SDK_AVAILABLE = True
 except ImportError:
     SDK_AVAILABLE = False
@@ -41,6 +42,7 @@ logger = get_logger(__name__)
 
 class SDKDelegationError(Exception):
     """Raised when SDK delegation fails."""
+
     pass
 
 
@@ -89,27 +91,32 @@ class SDKDelegationService:
         Returns:
             List of SDK tool functions
         """
+
         @sdk_tool("list_modalities", "List available datasets", {})
         async def list_modalities_tool(args):
             """List all available modalities in the workspace."""
             try:
                 modalities = self.data_manager.list_modalities()
                 return {
-                    "content": [{
-                        "type": "text",
-                        "text": f"Available modalities ({len(modalities)}): {modalities}"
-                    }]
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Available modalities ({len(modalities)}): {modalities}",
+                        }
+                    ]
                 }
             except Exception as e:
                 return {
-                    "content": [{"type": "text", "text": f"Error listing modalities: {e}"}],
-                    "is_error": True
+                    "content": [
+                        {"type": "text", "text": f"Error listing modalities: {e}"}
+                    ],
+                    "is_error": True,
                 }
 
         @sdk_tool(
             "get_modality_info",
             "Get detailed information about a specific dataset",
-            {"modality_name": str}
+            {"modality_name": str},
         )
         async def get_modality_info_tool(args):
             """Get summary information about a modality."""
@@ -118,12 +125,14 @@ class SDKDelegationService:
 
                 if modality_name not in self.data_manager.list_modalities():
                     return {
-                        "content": [{
-                            "type": "text",
-                            "text": f"Modality '{modality_name}' not found. "
-                                   f"Available: {self.data_manager.list_modalities()}"
-                        }],
-                        "is_error": True
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"Modality '{modality_name}' not found. "
+                                f"Available: {self.data_manager.list_modalities()}",
+                            }
+                        ],
+                        "is_error": True,
                     }
 
                 adata = self.data_manager.get_modality(modality_name)
@@ -135,7 +144,7 @@ class SDKDelegationService:
                     "var_columns": list(adata.var.columns)[:10],  # First 10
                     "layers": list(adata.layers.keys()) if adata.layers else [],
                     "obsm_keys": list(adata.obsm.keys()) if adata.obsm else [],
-                    "uns_keys": list(adata.uns.keys()) if adata.uns else []
+                    "uns_keys": list(adata.uns.keys()) if adata.uns else [],
                 }
 
                 # Add quality metrics if available
@@ -143,22 +152,25 @@ class SDKDelegationService:
                     metrics = self.data_manager.get_quality_metrics(modality_name)
                     if metrics:
                         info["quality_metrics"] = {
-                            k: v for k, v in list(metrics.items())[:5]  # First 5 metrics
+                            k: v
+                            for k, v in list(metrics.items())[:5]  # First 5 metrics
                         }
                 except:
                     pass
 
                 return {
-                    "content": [{
-                        "type": "text",
-                        "text": f"Modality Info:\n{self._format_dict(info)}"
-                    }]
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Modality Info:\n{self._format_dict(info)}",
+                        }
+                    ]
                 }
             except Exception as e:
                 logger.error(f"Error getting modality info: {e}")
                 return {
                     "content": [{"type": "text", "text": f"Error: {e}"}],
-                    "is_error": True
+                    "is_error": True,
                 }
 
         @sdk_tool("list_workspace_files", "List files in workspace", {})
@@ -171,28 +183,30 @@ class SDKDelegationService:
 
                 file_list = {
                     "csv_files": [f.name for f in csv_files],
-                    "json_files": [f.name for f in json_files if not f.name.startswith(".")],
-                    "jsonl_files": [f.name for f in jsonl_files]
+                    "json_files": [
+                        f.name for f in json_files if not f.name.startswith(".")
+                    ],
+                    "jsonl_files": [f.name for f in jsonl_files],
                 }
 
                 return {
-                    "content": [{
-                        "type": "text",
-                        "text": f"Workspace Files:\n{self._format_dict(file_list)}"
-                    }]
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Workspace Files:\n{self._format_dict(file_list)}",
+                        }
+                    ]
                 }
             except Exception as e:
                 return {
                     "content": [{"type": "text", "text": f"Error: {e}"}],
-                    "is_error": True
+                    "is_error": True,
                 }
 
         return [list_modalities_tool, get_modality_info_tool, list_workspace_files_tool]
 
     async def _async_delegate(
-        self,
-        task: str,
-        context: Optional[str] = None
+        self, task: str, context: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Async implementation of SDK delegation.
@@ -206,9 +220,7 @@ class SDKDelegationService:
         """
         # Create SDK MCP server with Lobster tools
         lobster_tools_server = create_sdk_mcp_server(
-            name="lobster",
-            version="1.0.0",
-            tools=self.create_lobster_sdk_tools()
+            name="lobster", version="1.0.0", tools=self.create_lobster_sdk_tools()
         )
 
         # Configure SDK options
@@ -217,11 +229,11 @@ class SDKDelegationService:
             allowed_tools=[
                 "mcp__lobster__list_modalities",
                 "mcp__lobster__get_modality_info",
-                "mcp__lobster__list_workspace_files"
+                "mcp__lobster__list_workspace_files",
             ],
             max_turns=15,  # Limit reasoning iterations
             model="claude-sonnet-4-5",  # Latest model
-            cwd=str(self.workspace_path)
+            cwd=str(self.workspace_path),
         )
 
         # Build full prompt
@@ -247,9 +259,9 @@ Available modalities: {self.data_manager.list_modalities()}
 
                 async for msg in client.receive_response():
                     # Extract text from AssistantMessage
-                    if hasattr(msg, 'content'):
+                    if hasattr(msg, "content"):
                         for block in msg.content:
-                            if hasattr(block, 'text'):
+                            if hasattr(block, "text"):
                                 response_parts.append(block.text)
 
             reasoning_result = "\n".join(response_parts)
@@ -262,7 +274,7 @@ Available modalities: {self.data_manager.list_modalities()}
             return {
                 "reasoning_result": reasoning_result,
                 "status": "completed",
-                "response_length": len(reasoning_result)
+                "response_length": len(reasoning_result),
             }
 
         except Exception as e:
@@ -274,7 +286,7 @@ Available modalities: {self.data_manager.list_modalities()}
         task: str,
         context: Optional[str] = None,
         persist: bool = False,
-        description: str = "Complex reasoning delegation"
+        description: str = "Complex reasoning delegation",
     ) -> Tuple[str, Dict[str, Any], AnalysisStep]:
         """
         Delegate complex reasoning task to Claude Agent SDK.
@@ -300,11 +312,13 @@ Available modalities: {self.data_manager.list_modalities()}
                 "success": True,
                 "response_length": result["response_length"],
                 "task": task[:200],  # Truncate for stats
-                "persisted": persist
+                "persisted": persist,
             }
 
             # Create IR for provenance
-            ir = self._create_ir(task, description, result["reasoning_result"], persist, stats)
+            ir = self._create_ir(
+                task, description, result["reasoning_result"], persist, stats
+            )
 
             return result["reasoning_result"], stats, ir
 
@@ -323,7 +337,7 @@ Available modalities: {self.data_manager.list_modalities()}
         description: str,
         result: str,
         persist: bool,
-        stats: Dict[str, Any]
+        stats: Dict[str, Any],
     ) -> AnalysisStep:
         """
         Create AnalysisStep IR for provenance tracking.
@@ -344,15 +358,15 @@ Available modalities: {self.data_manager.list_modalities()}
                 papermill_injectable=False,
                 default_value=task,
                 required=True,
-                description="Task description for SDK agent"
+                description="Task description for SDK agent",
             ),
             "description": ParameterSpec(
                 param_type="str",
                 papermill_injectable=False,
                 default_value=description,
                 required=False,
-                description="Human-readable description"
-            )
+                description="Human-readable description",
+            ),
         }
 
         # Code template shows what happened (not executable Python)
@@ -380,11 +394,11 @@ Available modalities: {self.data_manager.list_modalities()}
             execution_context={
                 "persist": persist,
                 "success": stats.get("success", False),
-                "response_length": stats.get("response_length", 0)
+                "response_length": stats.get("response_length", 0),
             },
             validates_on_export=False,  # Not executable code
             requires_validation=False,
-            exportable=persist  # Only include if persist=True
+            exportable=persist,  # Only include if persist=True
         )
 
     def _format_dict(self, d: Dict[str, Any], indent: int = 2) -> str:
@@ -395,7 +409,9 @@ Available modalities: {self.data_manager.list_modalities()}
                 lines.append(f"{' ' * indent}{key}:")
                 lines.append(self._format_dict(value, indent + 2))
             elif isinstance(value, list):
-                lines.append(f"{' ' * indent}{key}: {value[:10]}")  # Truncate long lists
+                lines.append(
+                    f"{' ' * indent}{key}: {value[:10]}"
+                )  # Truncate long lists
             else:
                 lines.append(f"{' ' * indent}{key}: {value}")
         return "\n".join(lines)

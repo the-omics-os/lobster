@@ -28,15 +28,16 @@ ATTACK VECTORS:
 5. sys.modules cache poisoning
 """
 
-import pytest
-from pathlib import Path
-import tempfile
 import os
+import tempfile
+from pathlib import Path
+
+import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.execution.custom_code_execution_service import (
+    CodeExecutionError,
     CustomCodeExecutionService,
-    CodeExecutionError
 )
 
 
@@ -60,7 +61,8 @@ class TestRuntimeSysPathInjection:
 
         # Malicious module outside workspace
         fake_secrets = malicious_dir / "secrets_exfiltrator.py"
-        fake_secrets.write_text('''
+        fake_secrets.write_text(
+            '''
 # Malicious module from external directory
 import os
 import json
@@ -71,7 +73,8 @@ def exfiltrate():
     with open('/tmp/exfiltrated_secrets.json', 'w') as f:
         json.dump(secrets, f)
     return "Exfiltration complete"
-''')
+'''
+        )
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace, malicious_dir
@@ -92,7 +95,7 @@ def exfiltrate():
         """
         service, workspace, malicious_dir = service_with_external_malicious_dir
 
-        code = f'''
+        code = f"""
 import sys
 # Inject external malicious directory into sys.path
 sys.path.insert(0, '{malicious_dir}')
@@ -100,13 +103,13 @@ sys.path.insert(0, '{malicious_dir}')
 # Now import malicious module from external directory
 import secrets_exfiltrator
 result = secrets_exfiltrator.exfiltrate()
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: Runtime sys.path Injection")
-        print("="*70)
+        print("=" * 70)
 
         if result == "Exfiltration complete":
             print("⚠️  CRITICAL VULNERABILITY: sys.path injection succeeded")
@@ -137,7 +140,7 @@ result = secrets_exfiltrator.exfiltrate()
         """
         service, workspace, malicious_dir = service_with_external_malicious_dir
 
-        code = f'''
+        code = f"""
 import sys
 # Stealthier: append instead of insert (lower priority)
 sys.path.append('{malicious_dir}')
@@ -145,13 +148,13 @@ sys.path.append('{malicious_dir}')
 # Import unique module name (no conflicts)
 import secrets_exfiltrator
 result = secrets_exfiltrator.exfiltrate()
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: sys.path.append() Attack (Stealthy)")
-        print("="*70)
+        print("=" * 70)
 
         if result == "Exfiltration complete":
             print("⚠️  VULNERABILITY: sys.path.append() succeeded")
@@ -182,11 +185,13 @@ class TestSysPathRelativeImports:
 
         # Malicious module in parent directory (outside workspace)
         malicious_module = tmp_path / "escape_module.py"
-        malicious_module.write_text('''
+        malicious_module.write_text(
+            """
 # Malicious module outside workspace (in parent directory)
 def escaped():
     return "ESCAPED_WORKSPACE"
-''')
+"""
+        )
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace, tmp_path
@@ -201,7 +206,7 @@ def escaped():
         """
         service, workspace, parent_dir = service_with_parent_dir_attack
 
-        code = '''
+        code = """
 import sys
 # Escape workspace by adding parent directory
 sys.path.insert(0, '..')
@@ -209,13 +214,13 @@ sys.path.insert(0, '..')
 # Import from parent directory (outside workspace)
 import escape_module
 result = escape_module.escaped()
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: Parent Directory Escape via '../'")
-        print("="*70)
+        print("=" * 70)
 
         if result == "ESCAPED_WORKSPACE":
             print("⚠️  CRITICAL VULNERABILITY: Workspace escape succeeded")
@@ -240,11 +245,13 @@ result = escape_module.escaped()
 
         # Malicious module in /tmp (world-writable on Unix)
         tmp_malicious = Path("/tmp") / "temp_backdoor.py"
-        tmp_malicious.write_text('''
+        tmp_malicious.write_text(
+            """
 # Malicious module in /tmp (world-writable directory)
 def backdoor():
     return "BACKDOOR_ACTIVATED"
-''')
+"""
+        )
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace, tmp_malicious
@@ -259,7 +266,7 @@ def backdoor():
         """
         service, workspace, tmp_malicious = service_with_tmp_attack
 
-        code = '''
+        code = """
 import sys
 # Add world-writable /tmp directory to sys.path
 sys.path.insert(0, '/tmp')
@@ -267,14 +274,14 @@ sys.path.insert(0, '/tmp')
 # Import malicious module from /tmp
 import temp_backdoor
 result = temp_backdoor.backdoor()
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False)
 
-            print("\n" + "="*70)
+            print("\n" + "=" * 70)
             print("TEST: /tmp Directory Attack (World-Writable)")
-            print("="*70)
+            print("=" * 70)
 
             if result == "BACKDOOR_ACTIVATED":
                 print("⚠️  CRITICAL VULNERABILITY: /tmp import succeeded")
@@ -329,7 +336,7 @@ class TestSysModulesPoisoning:
         """
         service, workspace = service_with_clean_workspace
 
-        code = '''
+        code = """
 import sys
 import types
 
@@ -345,13 +352,13 @@ sys.modules['numpy'] = fake_numpy
 import numpy as np
 data = np.array([1, 2, 3, 4, 5])
 result = np.mean(data)
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: sys.modules Cache Poisoning")
-        print("="*70)
+        print("=" * 70)
 
         if result == 666.0:
             print("⚠️  CRITICAL VULNERABILITY: sys.modules poisoning succeeded")
@@ -372,9 +379,7 @@ result = np.mean(data)
             print("✅ PROTECTED: sys.modules poisoning prevented")
             pytest.fail("Expected vulnerability but system was protected")
 
-    def test_sys_modules_replacement_EXPECT_SUCCESS(
-        self, service_with_clean_workspace
-    ):
+    def test_sys_modules_replacement_EXPECT_SUCCESS(self, service_with_clean_workspace):
         """
         Test: Replace already-imported module in sys.modules
         Expected: SUCCESS (vulnerability)
@@ -385,7 +390,7 @@ result = np.mean(data)
         """
         service, workspace = service_with_clean_workspace
 
-        code = '''
+        code = """
 import sys
 import json
 
@@ -403,13 +408,13 @@ sys.modules['json'] = fake_json
 # Now reimport to get fake version
 import json
 result = json.loads('{"real": "data"}')
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: sys.modules Replacement (Post-Import)")
-        print("="*70)
+        print("=" * 70)
 
         if isinstance(result, dict) and result.get("hijacked") is True:
             print("⚠️  CRITICAL VULNERABILITY: Module replacement succeeded")
@@ -452,16 +457,18 @@ class TestEnvironmentBasedSysPathInjection:
 
         # Malicious module
         evil_module = malicious_dir / "trusted_lib.py"
-        evil_module.write_text('''
+        evil_module.write_text(
+            """
 # Malicious module loaded via PYTHONPATH
 def compute():
     return "PYTHONPATH_HIJACKED"
-''')
+"""
+        )
 
         # Set PYTHONPATH (would affect subprocess)
         # NOTE: This is demonstrative - actual attack would set PYTHONPATH
         # before running Lobster
-        monkeypatch.setenv('PYTHONPATH', str(malicious_dir))
+        monkeypatch.setenv("PYTHONPATH", str(malicious_dir))
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace, malicious_dir
@@ -484,20 +491,20 @@ def compute():
         """
         service, workspace, malicious_dir = service_with_malicious_pythonpath
 
-        code = '''
+        code = """
 # Check if PYTHONPATH was inherited
 import sys
 import os
 
 pythonpath = os.environ.get('PYTHONPATH', 'NOT_SET')
 result = f"PYTHONPATH={pythonpath}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: PYTHONPATH Hijacking (Conceptual)")
-        print("="*70)
+        print("=" * 70)
         print(f"   Result: {result}")
         print(f"   Expected malicious dir: {malicious_dir}")
         print("\n   ATTACK VECTOR (DOCUMENTED):")
@@ -552,26 +559,26 @@ class TestDynamicImportBypass:
         service, workspace = service_with_subprocess_available
 
         # This should trigger warning but NOT block
-        code = '''
+        code = """
 # Bypass static import validation using __import__
 subprocess = __import__('subprocess')
 result = "subprocess imported via __import__()"
-'''
+"""
 
         # Should succeed with warnings
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: __import__() Dynamic Import Bypass")
-        print("="*70)
+        print("=" * 70)
         print(f"   Result: {result}")
         print(f"   Warnings: {stats.get('warnings', [])}")
 
-        if stats.get('warnings'):
+        if stats.get("warnings"):
             print("\n   ⚠️  WARNING DETECTED (GOOD):")
             print("   - AST validator detected __import__() call")
             print("   - Warning issued to user")
-            for warning in stats['warnings']:
+            for warning in stats["warnings"]:
                 print(f"     - {warning}")
             print("\n   BUT WARNING IS NOT BLOCKING:")
             print("   - Code still executed despite warning")
@@ -592,18 +599,18 @@ result = "subprocess imported via __import__()"
         """
         service, workspace = service_with_subprocess_available
 
-        code = '''
+        code = """
 # Bypass using importlib (may not be detected)
 import importlib
 subprocess_module = importlib.import_module('subprocess')
 result = "subprocess imported via importlib"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: importlib.import_module() Bypass")
-        print("="*70)
+        print("=" * 70)
         print(f"   Result: {result}")
         print(f"   Warnings: {stats.get('warnings', [])}")
 
@@ -631,18 +638,18 @@ result = "subprocess imported via importlib"
         """
         service, workspace = service_with_subprocess_available
 
-        code = '''
+        code = """
 # Highly obfuscated import bypass
 import_func = getattr(__builtins__, '__import__')
 subprocess = import_func('subprocess')
 result = "subprocess imported via obfuscated __import__"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: Obfuscated __import__() via getattr")
-        print("="*70)
+        print("=" * 70)
         print(f"   Result: {result}")
         print(f"   Warnings: {stats.get('warnings', [])}")
 
@@ -656,7 +663,7 @@ result = "subprocess imported via obfuscated __import__"
             print("   - Runtime string resolution")
             print("   - Static analysis cannot predict")
             print("   - Requires runtime monitoring to detect")
-            assert True, "Obfuscated import bypass confirmed")
+            assert True, "Obfuscated import bypass confirmed"
         else:
             print("✅ PROTECTED: Obfuscated bypass prevented")
             pytest.fail("Expected vulnerability but system was protected")
@@ -700,9 +707,9 @@ def test_summary():
 
     See SUPPLY_CHAIN_REPORT.md for full analysis.
     """
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("SYS.PATH MANIPULATION TEST SUITE COMPLETE")
-    print("="*70)
+    print("=" * 70)
     print("Status: All vulnerabilities confirmed")
     print("Severity: CRITICAL")
     print("Recommendation: AST validation insufficient - need runtime controls")

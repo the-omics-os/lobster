@@ -23,29 +23,29 @@ class TestExecutionContextBuilder:
         workspace.mkdir()
 
         # Create sample CSV
-        df = pd.DataFrame({'sample': ['A', 'B', 'C'], 'value': [1, 2, 3]})
+        df = pd.DataFrame({"sample": ["A", "B", "C"], "value": [1, 2, 3]})
         df.to_csv(workspace / "test_metadata.csv", index=False)
 
         # Create sample CSV with special characters in name
-        df2 = pd.DataFrame({'x': [10, 20]})
+        df2 = pd.DataFrame({"x": [10, 20]})
         df2.to_csv(workspace / "sample-data.csv", index=False)
 
         # Create sample JSON
-        with open(workspace / "config.json", 'w') as f:
-            json.dump({'param1': 42, 'param2': 'test'}, f)
+        with open(workspace / "config.json", "w") as f:
+            json.dump({"param1": 42, "param2": "test"}, f)
 
         # Create hidden JSON (should be skipped)
-        with open(workspace / ".session.json", 'w') as f:
-            json.dump({'hidden': True}, f)
+        with open(workspace / ".session.json", "w") as f:
+            json.dump({"hidden": True}, f)
 
         # Create download queue JSONL
-        with open(workspace / "download_queue.jsonl", 'w') as f:
-            f.write(json.dumps({'entry_id': 'entry1', 'status': 'PENDING'}) + '\n')
-            f.write(json.dumps({'entry_id': 'entry2', 'status': 'COMPLETED'}) + '\n')
+        with open(workspace / "download_queue.jsonl", "w") as f:
+            f.write(json.dumps({"entry_id": "entry1", "status": "PENDING"}) + "\n")
+            f.write(json.dumps({"entry_id": "entry2", "status": "COMPLETED"}) + "\n")
 
         # Create publication queue JSONL
-        with open(workspace / "publication_queue.jsonl", 'w') as f:
-            f.write(json.dumps({'pmid': '12345', 'status': 'PENDING'}) + '\n')
+        with open(workspace / "publication_queue.jsonl", "w") as f:
+            f.write(json.dumps({"pmid": "12345", "status": "PENDING"}) + "\n")
 
         return workspace
 
@@ -54,7 +54,7 @@ class TestExecutionContextBuilder:
         """Create mock DataManagerV2 with test workspace."""
         dm = Mock(spec=DataManagerV2)
         dm.workspace_path = workspace
-        dm.list_modalities.return_value = ['modality1', 'modality2']
+        dm.list_modalities.return_value = ["modality1", "modality2"]
         return dm
 
     @pytest.fixture
@@ -69,103 +69,96 @@ class TestExecutionContextBuilder:
 
     def test_build_context_basic(self, builder):
         """Test basic context building without modality."""
-        context = builder.build_context(
-            modality_name=None,
-            load_workspace_files=False
-        )
+        context = builder.build_context(modality_name=None, load_workspace_files=False)
 
         # Check core keys
-        assert 'data_manager' in context
-        assert 'workspace_path' in context
-        assert 'modalities' in context
-        assert 'pd' in context
-        assert 'Path' in context
+        assert "data_manager" in context
+        assert "workspace_path" in context
+        assert "modalities" in context
+        assert "pd" in context
+        assert "Path" in context
 
         # Check modalities list
-        assert context['modalities'] == ['modality1', 'modality2']
+        assert context["modalities"] == ["modality1", "modality2"]
 
         # Check no adata loaded
-        assert 'adata' not in context
+        assert "adata" not in context
 
     def test_build_context_with_modality(self, builder, mock_data_manager):
         """Test context building with specific modality."""
         # Mock modality loading
         import anndata
         import numpy as np
+
         mock_adata = anndata.AnnData(X=np.array([[1, 2], [3, 4]]))
         mock_data_manager.get_modality.return_value = mock_adata
 
         context = builder.build_context(
-            modality_name='modality1',
-            load_workspace_files=False
+            modality_name="modality1", load_workspace_files=False
         )
 
         # Check adata is loaded
-        assert 'adata' in context
-        assert context['adata'] is mock_adata  # Use identity check, not equality
-        mock_data_manager.get_modality.assert_called_once_with('modality1')
+        assert "adata" in context
+        assert context["adata"] is mock_adata  # Use identity check, not equality
+        mock_data_manager.get_modality.assert_called_once_with("modality1")
 
     def test_build_context_modality_not_found(self, builder, mock_data_manager):
         """Test context building with non-existent modality."""
         context = builder.build_context(
-            modality_name='nonexistent',
-            load_workspace_files=False
+            modality_name="nonexistent", load_workspace_files=False
         )
 
         # adata should not be in context
-        assert 'adata' not in context
+        assert "adata" not in context
         # Should not have tried to load
         mock_data_manager.get_modality.assert_not_called()
 
     def test_build_context_with_workspace_files(self, builder):
         """Test context building with workspace file loading."""
-        context = builder.build_context(
-            modality_name=None,
-            load_workspace_files=True
-        )
+        context = builder.build_context(modality_name=None, load_workspace_files=True)
 
         # Check CSV files loaded
-        assert 'test_metadata' in context
-        assert isinstance(context['test_metadata'], pd.DataFrame)
-        assert list(context['test_metadata'].columns) == ['sample', 'value']
+        assert "test_metadata" in context
+        assert isinstance(context["test_metadata"], pd.DataFrame)
+        assert list(context["test_metadata"].columns) == ["sample", "value"]
 
         # Check CSV with special characters sanitized
-        assert 'sample_data' in context
-        assert isinstance(context['sample_data'], pd.DataFrame)
+        assert "sample_data" in context
+        assert isinstance(context["sample_data"], pd.DataFrame)
 
         # Check JSON files loaded
-        assert 'config' in context
-        assert context['config'] == {'param1': 42, 'param2': 'test'}
+        assert "config" in context
+        assert context["config"] == {"param1": 42, "param2": "test"}
 
         # Check hidden JSON not loaded
-        assert 'session' not in context
-        assert '.session' not in context
+        assert "session" not in context
+        assert ".session" not in context
 
         # Check queue files loaded
-        assert 'download_queue' in context
-        assert isinstance(context['download_queue'], list)
-        assert len(context['download_queue']) == 2
-        assert context['download_queue'][0]['entry_id'] == 'entry1'
+        assert "download_queue" in context
+        assert isinstance(context["download_queue"], list)
+        assert len(context["download_queue"]) == 2
+        assert context["download_queue"][0]["entry_id"] == "entry1"
 
-        assert 'publication_queue' in context
-        assert isinstance(context['publication_queue'], list)
-        assert len(context['publication_queue']) == 1
+        assert "publication_queue" in context
+        assert isinstance(context["publication_queue"], list)
+        assert len(context["publication_queue"]) == 1
 
     def test_load_workspace_files(self, builder):
         """Test _load_workspace_files method."""
         csv_data, json_data = builder._load_workspace_files()
 
         # Check CSV data
-        assert 'test_metadata' in csv_data
-        assert 'sample_data' in csv_data
+        assert "test_metadata" in csv_data
+        assert "sample_data" in csv_data
 
         # Check JSON data
-        assert 'config' in json_data
-        assert 'download_queue' in json_data
-        assert 'publication_queue' in json_data
+        assert "config" in json_data
+        assert "download_queue" in json_data
+        assert "publication_queue" in json_data
 
         # Check hidden file not loaded
-        assert 'session' not in json_data
+        assert "session" not in json_data
 
     def test_sanitize_filename_basic(self, builder):
         """Test filename sanitization - basic cases."""
@@ -201,8 +194,8 @@ class TestExecutionContextBuilder:
         """Test that convenience imports are available."""
         context = builder.build_context(load_workspace_files=False)
 
-        assert context['pd'] == pd
-        assert context['Path'] == Path
+        assert context["pd"] == pd
+        assert context["Path"] == Path
 
     def test_empty_workspace(self, tmp_path, mock_data_manager):
         """Test context building with empty workspace."""
@@ -214,13 +207,13 @@ class TestExecutionContextBuilder:
         context = builder.build_context(load_workspace_files=True)
 
         # Should still have core keys
-        assert 'data_manager' in context
-        assert 'workspace_path' in context
-        assert 'modalities' in context
+        assert "data_manager" in context
+        assert "workspace_path" in context
+        assert "modalities" in context
 
         # But no loaded files
-        assert 'test_metadata' not in context
-        assert 'config' not in context
+        assert "test_metadata" not in context
+        assert "config" not in context
 
     def test_malformed_csv_handling(self, tmp_path, mock_data_manager):
         """Test handling of malformed CSV file."""
@@ -229,7 +222,7 @@ class TestExecutionContextBuilder:
         mock_data_manager.workspace_path = workspace
 
         # Create malformed CSV
-        with open(workspace / "bad.csv", 'w') as f:
+        with open(workspace / "bad.csv", "w") as f:
             f.write("invalid,csv\ndata")
 
         builder = ExecutionContextBuilder(mock_data_manager)
@@ -247,7 +240,7 @@ class TestExecutionContextBuilder:
         mock_data_manager.workspace_path = workspace
 
         # Create malformed JSON
-        with open(workspace / "bad.json", 'w') as f:
+        with open(workspace / "bad.json", "w") as f:
             f.write("{invalid json")
 
         builder = ExecutionContextBuilder(mock_data_manager)
@@ -256,7 +249,7 @@ class TestExecutionContextBuilder:
         _, json_data = builder._load_workspace_files()
 
         # Malformed file should be skipped
-        assert 'bad' not in json_data
+        assert "bad" not in json_data
 
     def test_empty_jsonl_lines_skipped(self, tmp_path, mock_data_manager):
         """Test that empty lines in JSONL are skipped."""
@@ -265,13 +258,13 @@ class TestExecutionContextBuilder:
         mock_data_manager.workspace_path = workspace
 
         # Create JSONL with empty lines
-        with open(workspace / "download_queue.jsonl", 'w') as f:
-            f.write(json.dumps({'id': 1}) + '\n')
-            f.write('\n')  # Empty line
-            f.write(json.dumps({'id': 2}) + '\n')
+        with open(workspace / "download_queue.jsonl", "w") as f:
+            f.write(json.dumps({"id": 1}) + "\n")
+            f.write("\n")  # Empty line
+            f.write(json.dumps({"id": 2}) + "\n")
 
         builder = ExecutionContextBuilder(mock_data_manager)
         _, json_data = builder._load_workspace_files()
 
         # Should load only 2 entries (empty line skipped)
-        assert len(json_data['download_queue']) == 2
+        assert len(json_data["download_queue"]) == 2

@@ -20,23 +20,23 @@ import pytest
 from Bio import PDB
 
 from lobster.core.analysis_ir import AnalysisStep
-from lobster.services.visualization.chimerax_visualization_service_ALPHA import (
-    ChimeraXVisualizationError,
-    ChimeraXVisualizationService,
+from lobster.services.analysis.structure_analysis_service import (
+    StructureAnalysisError,
+    StructureAnalysisService,
 )
 from lobster.services.data_access.protein_structure_fetch_service import (
     ProteinStructureFetchError,
     ProteinStructureFetchService,
 )
-from lobster.tools.providers.pdb_provider import PDBStructureMetadata
+from lobster.services.visualization.chimerax_visualization_service_ALPHA import (
+    ChimeraXVisualizationError,
+    ChimeraXVisualizationService,
+)
 from lobster.services.visualization.pymol_visualization_service import (
     PyMOLVisualizationError,
     PyMOLVisualizationService,
 )
-from lobster.services.analysis.structure_analysis_service import (
-    StructureAnalysisError,
-    StructureAnalysisService,
-)
+from lobster.tools.providers.pdb_provider import PDBStructureMetadata
 
 # ===============================================================================
 # Fixtures

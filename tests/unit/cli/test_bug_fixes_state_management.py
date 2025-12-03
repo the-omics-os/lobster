@@ -192,7 +192,9 @@ class TestBug5QueueTransactionSafety:
         temp_file = queue_file.with_suffix(".tmp")
 
         # After successful write, temp file should not exist
-        assert not temp_file.exists(), "Temp file should be cleaned up after atomic write"
+        assert (
+            not temp_file.exists()
+        ), "Temp file should be cleaned up after atomic write"
 
         # Original file should be complete and valid
         assert queue_file.exists()

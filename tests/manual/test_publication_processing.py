@@ -37,7 +37,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 from rich import box
@@ -281,7 +281,9 @@ def render_overview_table(results: List[EntryProcessingResult]) -> None:
 
     for result in results:
         # Use original_index if available, otherwise fallback to "-"
-        index_str = str(result.original_index) if result.original_index is not None else "-"
+        index_str = (
+            str(result.original_index) if result.original_index is not None else "-"
+        )
         table.add_row(
             index_str,
             result.entry_id,
@@ -513,10 +515,10 @@ def select_queue_entries(
 
     if entry_index is not None:
         # Parse entry_index to support single index, range notation, and comma-separated indices
-        if ',' in entry_index:
+        if "," in entry_index:
             # Comma-separated indices: e.g., "60,78,90"
             try:
-                indices_str = entry_index.split(',')
+                indices_str = entry_index.split(",")
                 indices = []
                 seen_indices = set()
 
@@ -545,9 +547,7 @@ def select_queue_entries(
                     indices.append(idx)
 
                 if not indices:
-                    raise SystemExit(
-                        f"No valid indices found in '{entry_index}'"
-                    )
+                    raise SystemExit(f"No valid indices found in '{entry_index}'")
 
                 # Sort indices to maintain order and collect entries
                 indices.sort()
@@ -557,10 +557,10 @@ def select_queue_entries(
                 raise SystemExit(
                     f"Invalid comma-separated format '{entry_index}'. Expected format: 'idx1,idx2,idx3' (e.g., '60,78,90'). Error: {e}"
                 )
-        elif '-' in entry_index:
+        elif "-" in entry_index:
             # Range notation: e.g., "60-120"
             try:
-                start_str, end_str = entry_index.split('-', 1)
+                start_str, end_str = entry_index.split("-", 1)
                 start_idx = int(start_str.strip())
                 end_idx = int(end_str.strip())
 
@@ -650,7 +650,9 @@ def process_entries(
 
     results: List[EntryProcessingResult] = []
     if not entries_with_indices:
-        console.print("[yellow]No queue entries found for the selected filters.[/yellow]")
+        console.print(
+            "[yellow]No queue entries found for the selected filters.[/yellow]"
+        )
         return results
 
     progress_columns = [
@@ -667,14 +669,18 @@ def process_entries(
 
         for idx, (entry, original_idx) in enumerate(entries_with_indices, 1):
             title = (entry.title or entry.entry_id)[:42]
-            progress.update(task, description=f"[{idx}/{len(entries_with_indices)}] {title}")
+            progress.update(
+                task, description=f"[{idx}/{len(entries_with_indices)}] {title}"
+            )
             start = time.time()
             response = service.process_entry(
                 entry_id=entry.entry_id,
                 extraction_tasks=extraction_tasks,
             )
             elapsed = time.time() - start
-            updated_entry = service.data_manager.publication_queue.get_entry(entry.entry_id)
+            updated_entry = service.data_manager.publication_queue.get_entry(
+                entry.entry_id
+            )
             step_timings = {}
             if hasattr(service, "get_latest_timings"):
                 step_timings = service.get_latest_timings()
@@ -738,11 +744,15 @@ def process_entries_parallel(
     """
     results: List[EntryProcessingResult] = []
     if not entries_with_indices:
-        console.print("[yellow]No queue entries found for the selected filters.[/yellow]")
+        console.print(
+            "[yellow]No queue entries found for the selected filters.[/yellow]"
+        )
         return results
 
     # Create a mapping from entry_id to original_index
-    entry_id_to_idx = {entry.entry_id: original_idx for entry, original_idx in entries_with_indices}
+    entry_id_to_idx = {
+        entry.entry_id: original_idx for entry, original_idx in entries_with_indices
+    }
     entry_ids = [e.entry_id for e, _ in entries_with_indices]
 
     # Delegate to service layer (handles Rich progress display internally)
@@ -754,10 +764,12 @@ def process_entries_parallel(
         debug=debug,
     )
 
-    console.print(f"\n[bold green]Parallel processing complete:[/bold green] "
-                  f"{parallel_result.successful}/{parallel_result.total_entries} successful "
-                  f"in {parallel_result.total_time:.1f}s "
-                  f"({parallel_result.entries_per_minute:.1f} entries/min)")
+    console.print(
+        f"\n[bold green]Parallel processing complete:[/bold green] "
+        f"{parallel_result.successful}/{parallel_result.total_entries} successful "
+        f"in {parallel_result.total_time:.1f}s "
+        f"({parallel_result.entries_per_minute:.1f} entries/min)"
+    )
 
     # Convert service results to test harness EntryProcessingResult format for summary tables
     for pr in parallel_result.entry_results:
@@ -864,12 +876,16 @@ def summarize(results: List[EntryProcessingResult]) -> Dict[str, object]:
     }
 
 
-def render_summary(summary: Dict[str, object], results: List[EntryProcessingResult]) -> None:
+def render_summary(
+    summary: Dict[str, object], results: List[EntryProcessingResult]
+) -> None:
     """Pretty-print aggregated metrics with Rich tables."""
 
     processed = summary["processed"]
     if not processed:
-        console.print("[yellow]No entries were processed. Nothing to summarize.[/yellow]")
+        console.print(
+            "[yellow]No entries were processed. Nothing to summarize.[/yellow]"
+        )
         return
 
     status_table = Table(title="Final Status Distribution", box=box.ROUNDED)
@@ -1087,7 +1103,8 @@ def test_metadata_handoff(
     # Query queue for entries ready for metadata processing
     queue = data_manager.publication_queue
     ready_entries = [
-        e for e in queue.list_entries()
+        e
+        for e in queue.list_entries()
         if e.handoff_status == HandoffStatus.READY_FOR_METADATA
     ]
 
@@ -1117,8 +1134,8 @@ def test_metadata_handoff(
 
     # Extract process_metadata_queue tool from compiled graph
     # Agent is a CompiledStateGraph; tools are in the ToolNode
-    tools_node = agent.nodes['tools'].bound
-    process_queue_tool = tools_node.tools_by_name.get('process_metadata_queue')
+    tools_node = agent.nodes["tools"].bound
+    process_queue_tool = tools_node.tools_by_name.get("process_metadata_queue")
 
     if not process_queue_tool:
         return {
@@ -1182,8 +1199,16 @@ def test_metadata_handoff(
     for entry_id, initial_status in initial_statuses.items():
         updated_entry = queue.get_entry(entry_id)
         handoff_status_transitions[entry_id] = {
-            "before": initial_status.value if hasattr(initial_status, "value") else str(initial_status),
-            "after": updated_entry.handoff_status.value if hasattr(updated_entry.handoff_status, "value") else str(updated_entry.handoff_status),
+            "before": (
+                initial_status.value
+                if hasattr(initial_status, "value")
+                else str(initial_status)
+            ),
+            "after": (
+                updated_entry.handoff_status.value
+                if hasattr(updated_entry.handoff_status, "value")
+                else str(updated_entry.handoff_status)
+            ),
         }
 
     # Check if CSV was exported to workspace
@@ -1198,8 +1223,11 @@ def test_metadata_handoff(
             # Count rows
             try:
                 import csv as csv_module
-                with open(csv_path, 'r') as f:
-                    csv_row_count = sum(1 for _ in csv_module.reader(f)) - 1  # Exclude header
+
+                with open(csv_path, "r") as f:
+                    csv_row_count = (
+                        sum(1 for _ in csv_module.reader(f)) - 1
+                    )  # Exclude header
             except Exception:
                 csv_row_count = 0
 
@@ -1228,7 +1256,9 @@ def render_handoff_summary(result: Dict[str, Any]) -> None:
         return
 
     # Processing Summary Table
-    summary_table = Table(title="Phase 2: Metadata Assistant Processing", box=box.ROUNDED)
+    summary_table = Table(
+        title="Phase 2: Metadata Assistant Processing", box=box.ROUNDED
+    )
     summary_table.add_column("Metric", style="cyan")
     summary_table.add_column("Value", justify="right", style="white")
     summary_table.add_column("Details", style="dim")
@@ -1236,22 +1266,26 @@ def render_handoff_summary(result: Dict[str, Any]) -> None:
     summary_table.add_row(
         "Entries Processed",
         str(result["entries_processed"]),
-        f"Ready for metadata filtering"
+        f"Ready for metadata filtering",
     )
     summary_table.add_row(
         "Successful",
         f"[green]{result['entries_successful']}[/green]",
-        f"Entries with valid samples"
+        f"Entries with valid samples",
     )
     summary_table.add_row(
         "Failed",
-        f"[red]{result['entries_failed']}[/red]" if result["entries_failed"] > 0 else "0",
-        f"Processing errors"
+        (
+            f"[red]{result['entries_failed']}[/red]"
+            if result["entries_failed"] > 0
+            else "0"
+        ),
+        f"Processing errors",
     )
     summary_table.add_row(
         "Processing Time",
         f"{result.get('elapsed_seconds', 0):.1f}s",
-        f"Phase 2 execution time"
+        f"Phase 2 execution time",
     )
 
     console.print(summary_table)
@@ -1266,20 +1300,16 @@ def render_handoff_summary(result: Dict[str, Any]) -> None:
     valid = result["samples_valid"]
     filtered = result["samples_after_filter"]
 
-    filtering_table.add_row(
-        "Extracted from Workspace",
-        str(extracted),
-        "100.0%"
-    )
+    filtering_table.add_row("Extracted from Workspace", str(extracted), "100.0%")
     filtering_table.add_row(
         "Passed Validation",
         str(valid),
-        f"{(valid/extracted*100) if extracted > 0 else 0:.1f}%"
+        f"{(valid/extracted*100) if extracted > 0 else 0:.1f}%",
     )
     filtering_table.add_row(
         "After Filtering",
         f"[bold]{filtered}[/bold]",
-        f"[bold]{result['retention_rate']:.1f}%[/bold]"
+        f"[bold]{result['retention_rate']:.1f}%[/bold]",
     )
 
     console.print(filtering_table)
@@ -1293,17 +1323,11 @@ def render_handoff_summary(result: Dict[str, Any]) -> None:
         transition_table.add_column("After", style="green")
 
         for entry_id, trans in list(transitions.items())[:10]:  # Show first 10
-            transition_table.add_row(
-                entry_id,
-                trans["before"],
-                trans["after"]
-            )
+            transition_table.add_row(entry_id, trans["before"], trans["after"])
 
         if len(transitions) > 10:
             transition_table.add_row(
-                f"... +{len(transitions) - 10} more entries",
-                "",
-                ""
+                f"... +{len(transitions) - 10} more entries", "", ""
             )
 
         console.print(transition_table)
@@ -1346,13 +1370,12 @@ def render_handoff_summary(result: Dict[str, Any]) -> None:
             quality_flag_section = response_text[start_idx:end_idx].strip()
 
         # Show truncated preview
-        preview = response_text[:500] + "..." if len(response_text) > 500 else response_text
+        preview = (
+            response_text[:500] + "..." if len(response_text) > 500 else response_text
+        )
         console.print(
             Panel(
-                preview,
-                title="Tool Response Preview",
-                expand=False,
-                border_style="dim"
+                preview, title="Tool Response Preview", expand=False, border_style="dim"
             )
         )
 
@@ -1363,7 +1386,7 @@ def render_handoff_summary(result: Dict[str, Any]) -> None:
                     manual_inspection_section,
                     title="[yellow]⚠️ Manual Review Required[/yellow]",
                     expand=False,
-                    border_style="yellow"
+                    border_style="yellow",
                 )
             )
 
@@ -1374,7 +1397,7 @@ def render_handoff_summary(result: Dict[str, Any]) -> None:
                     quality_flag_section,
                     title="Quality Flags",
                     expand=False,
-                    border_style="cyan"
+                    border_style="cyan",
                 )
             )
 
@@ -1391,20 +1414,17 @@ def validate_csv_structure(csv_path: Path) -> Dict[str, Any]:
         - has_required_columns, missing_columns, row_count, sample_columns
     """
     import csv as csv_module
+
     import pandas as pd
 
     required_publication_cols = [
         "publication_entry_id",
         "publication_title",
         "publication_doi",
-        "publication_pmid"
+        "publication_pmid",
     ]
 
-    required_sample_cols = [
-        "run_accession",
-        "library_strategy",
-        "organism"
-    ]
+    required_sample_cols = ["run_accession", "library_strategy", "organism"]
 
     try:
         # Read CSV
@@ -1412,8 +1432,12 @@ def validate_csv_structure(csv_path: Path) -> Dict[str, Any]:
 
         # Check columns
         all_columns = set(df.columns)
-        missing_pub_cols = [col for col in required_publication_cols if col not in all_columns]
-        missing_sample_cols = [col for col in required_sample_cols if col not in all_columns]
+        missing_pub_cols = [
+            col for col in required_publication_cols if col not in all_columns
+        ]
+        missing_sample_cols = [
+            col for col in required_sample_cols if col not in all_columns
+        ]
 
         has_required = len(missing_pub_cols) == 0 and len(missing_sample_cols) == 0
 
@@ -1433,7 +1457,11 @@ def validate_csv_structure(csv_path: Path) -> Dict[str, Any]:
             "row_count": len(df),
             "total_columns": len(df.columns),
             "critical_missing_values": critical_missing,
-            "sample_columns": [col for col in df.columns if col.startswith("run_") or col.startswith("sample_")],
+            "sample_columns": [
+                col
+                for col in df.columns
+                if col.startswith("run_") or col.startswith("sample_")
+            ],
         }
     except Exception as e:
         return {
@@ -1481,7 +1509,13 @@ def export_publication_samples(
         )
 
         # Display result
-        console.print(Panel(result, title="[bold green]Export Result[/bold green]", border_style="green"))
+        console.print(
+            Panel(
+                result,
+                title="[bold green]Export Result[/bold green]",
+                border_style="green",
+            )
+        )
 
     except Exception as e:
         console.print(f"[bold red]Export failed: {e}[/bold red]")
@@ -1574,7 +1608,9 @@ def main() -> None:
     # Display total execution time
     total_elapsed = time.time() - start_time
     console.print("\n" + "=" * 60)
-    console.print(f"[bold green]Total execution time: {total_elapsed:.2f}s[/bold green]")
+    console.print(
+        f"[bold green]Total execution time: {total_elapsed:.2f}s[/bold green]"
+    )
     console.print("=" * 60)
 
 

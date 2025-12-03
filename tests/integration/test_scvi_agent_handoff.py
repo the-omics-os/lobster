@@ -64,7 +64,9 @@ class TestScviHandoffWorkflow:
     )
     def test_transcriptomics_expert_handoff_request(self, mock_data_manager):
         """Test Transcriptomics Expert creates proper handoff request."""
-        from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
+        from lobster.agents.transcriptomics.transcriptomics_expert import (
+            transcriptomics_expert,
+        )
 
         data_manager, mock_adata = mock_data_manager
 
@@ -109,7 +111,9 @@ class TestScviHandoffWorkflow:
     )
     def test_transcriptomics_expert_validates_modality(self, mock_data_manager):
         """Test Transcriptomics Expert validates modality before handoff."""
-        from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
+        from lobster.agents.transcriptomics.transcriptomics_expert import (
+            transcriptomics_expert,
+        )
 
         data_manager, mock_adata = mock_data_manager
         data_manager.list_modalities.return_value = [
@@ -248,7 +252,9 @@ class TestEndToEndWorkflow:
     def test_complete_workflow_without_scvi(self, mock_data_manager):
         """Test complete workflow when scVI is not available."""
         from lobster.agents.machine_learning_expert import machine_learning_expert
-        from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
+        from lobster.agents.transcriptomics.transcriptomics_expert import (
+            transcriptomics_expert,
+        )
 
         data_manager, mock_adata = mock_data_manager
 
@@ -390,7 +396,9 @@ class TestAgentToolIntegration:
 
     def test_transcriptomics_expert_has_scvi_handoff(self, mock_data_manager):
         """Test Transcriptomics Expert includes scVI handoff tool."""
-        from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
+        from lobster.agents.transcriptomics.transcriptomics_expert import (
+            transcriptomics_expert,
+        )
 
         data_manager, mock_adata = mock_data_manager
 
@@ -430,7 +438,9 @@ class TestAgentToolIntegration:
 
     def test_transcriptomics_expert_cluster_modality_use_rep(self, mock_data_manager):
         """Test Transcriptomics Expert cluster_modality accepts use_rep parameter."""
-        from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
+        from lobster.agents.transcriptomics.transcriptomics_expert import (
+            transcriptomics_expert,
+        )
 
         data_manager, mock_adata = mock_data_manager
 
@@ -507,7 +517,9 @@ class TestWorkflowValidation:
 
     def test_scvi_handoff_validates_data_size(self, mock_data_manager):
         """Test scVI handoff validates minimum data requirements."""
-        from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
+        from lobster.agents.transcriptomics.transcriptomics_expert import (
+            transcriptomics_expert,
+        )
 
         data_manager, mock_adata = mock_data_manager
 
@@ -539,7 +551,9 @@ class TestWorkflowValidation:
 
     def test_batch_key_auto_detection(self, mock_data_manager):
         """Test automatic batch key detection in handoff."""
-        from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
+        from lobster.agents.transcriptomics.transcriptomics_expert import (
+            transcriptomics_expert,
+        )
 
         data_manager, mock_adata = mock_data_manager
 
@@ -580,7 +594,9 @@ class TestDocumentationExamples:
     def test_typical_scvi_workflow_structure(self, mock_data_manager):
         """Test the structure of a typical scVI workflow."""
         from lobster.agents.machine_learning_expert import machine_learning_expert
-        from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
+        from lobster.agents.transcriptomics.transcriptomics_expert import (
+            transcriptomics_expert,
+        )
 
         data_manager, mock_adata = mock_data_manager
 

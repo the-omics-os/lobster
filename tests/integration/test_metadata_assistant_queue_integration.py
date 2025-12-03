@@ -20,11 +20,10 @@ import pytest
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.publication_queue import PublicationQueue
 from lobster.core.schemas.publication_queue import (
+    HandoffStatus,
     PublicationQueueEntry,
     PublicationStatus,
-    HandoffStatus,
 )
-
 
 # =============================================================================
 # Fixtures
@@ -357,7 +356,11 @@ class TestMetadataAssistantQueueIntegration:
         assert "aggregated_samples.csv" in result
 
         # Verify CSV file was created (integration test uses real WorkspaceContentService)
-        csv_file = integration_data_manager.workspace_path / "metadata" / "aggregated_samples.csv"
+        csv_file = (
+            integration_data_manager.workspace_path
+            / "metadata"
+            / "aggregated_samples.csv"
+        )
         assert csv_file.exists(), "CSV file should be created"
 
 

@@ -52,7 +52,6 @@ from lobster.core.data_manager_v2 import DataManagerV2
 from tests.mock_data.base import SMALL_DATASET_CONFIG
 from tests.mock_data.factories import SingleCellDataFactory
 
-
 # ==============================================================================
 # Test Fixtures
 # ==============================================================================
@@ -89,7 +88,9 @@ def pseudobulk_data():
     adata = ad.AnnData(X=counts)
 
     # Sample metadata
-    adata.obs["patient_id"] = ["patient_1"] * 3 + ["patient_2"] * 3 + ["patient_3"] * 3 + ["patient_4"] * 3
+    adata.obs["patient_id"] = (
+        ["patient_1"] * 3 + ["patient_2"] * 3 + ["patient_3"] * 3 + ["patient_4"] * 3
+    )
     adata.obs["condition"] = ["tumor", "normal", "adjacent"] * 4
     adata.obs["batch"] = ["batch1"] * 6 + ["batch2"] * 6
     adata.obs["n_cells_aggregated"] = np.random.randint(50, 500, n_samples)
@@ -113,7 +114,9 @@ def bulk_rnaseq_data():
     # Metadata with ≥3 replicates per condition
     adata.obs["sample_id"] = [f"sample_{i:02d}" for i in range(n_samples)]
     adata.obs["condition"] = ["treatment"] * 8 + ["control"] * 8
-    adata.obs["batch"] = ["batch1"] * 4 + ["batch2"] * 4 + ["batch1"] * 4 + ["batch2"] * 4
+    adata.obs["batch"] = (
+        ["batch1"] * 4 + ["batch2"] * 4 + ["batch1"] * 4 + ["batch2"] * 4
+    )
     adata.obs["replicate"] = list(range(1, 9)) * 2
 
     # Gene names
@@ -130,7 +133,9 @@ def _create_sc_data_with_metadata():
     # Sparse counts
     from scipy.sparse import csr_matrix
 
-    counts = csr_matrix(np.random.negative_binomial(n=2, p=0.8, size=(n_cells, n_genes)))
+    counts = csr_matrix(
+        np.random.negative_binomial(n=2, p=0.8, size=(n_cells, n_genes))
+    )
     adata = ad.AnnData(X=counts)
 
     # CRITICAL: Biological metadata (BUG-005 - must be preserved)
@@ -236,7 +241,12 @@ class TestPseudobulkTools:
 
         # Mock successful pseudobulk creation
         pseudobulk_adata = ad.AnnData(X=np.random.randn(12, 2000))
-        pseudobulk_adata.obs["patient_id"] = ["patient_1"] * 3 + ["patient_2"] * 3 + ["patient_3"] * 3 + ["patient_4"] * 3
+        pseudobulk_adata.obs["patient_id"] = (
+            ["patient_1"] * 3
+            + ["patient_2"] * 3
+            + ["patient_3"] * 3
+            + ["patient_4"] * 3
+        )
 
         mock_service.aggregate_to_pseudobulk.return_value = (
             pseudobulk_adata,
@@ -256,7 +266,12 @@ class TestPseudobulkTools:
 
         # 1000 cells → 12 pseudobulk samples
         pseudobulk_data = ad.AnnData(X=np.random.randn(12, 2000))
-        pseudobulk_data.obs["patient_id"] = ["patient_1"] * 3 + ["patient_2"] * 3 + ["patient_3"] * 3 + ["patient_4"] * 3
+        pseudobulk_data.obs["patient_id"] = (
+            ["patient_1"] * 3
+            + ["patient_2"] * 3
+            + ["patient_3"] * 3
+            + ["patient_4"] * 3
+        )
         pseudobulk_data.obs["n_cells_aggregated"] = [83] * 12
 
         mock_service.aggregate_to_pseudobulk.return_value = (
@@ -299,11 +314,13 @@ class TestDEAnalysisTools:
         mock_service = MockBulkService.return_value
 
         # Mock DE results
-        de_results = pd.DataFrame({
-            "gene": ["GENE1", "GENE2", "GENE3"],
-            "log2FoldChange": [2.5, -1.8, 3.2],
-            "padj": [0.001, 0.01, 0.0001],
-        })
+        de_results = pd.DataFrame(
+            {
+                "gene": ["GENE1", "GENE2", "GENE3"],
+                "log2FoldChange": [2.5, -1.8, 3.2],
+                "padj": [0.001, 0.01, 0.0001],
+            }
+        )
 
         mock_service.run_differential_expression.return_value = (
             Mock(),
@@ -320,15 +337,17 @@ class TestDEAnalysisTools:
         mock_service = MockBulkService.return_value
 
         # Mock insufficient replicates error
-        mock_service.run_differential_expression.side_effect = InsufficientReplicatesError(
-            "Minimum 3 replicates per condition required"
+        mock_service.run_differential_expression.side_effect = (
+            InsufficientReplicatesError("Minimum 3 replicates per condition required")
         )
 
         agent = de_analysis_expert(mock_data_manager)
         assert agent is not None
 
     @patch("lobster.services.analysis.bulk_rnaseq_service.BulkRNASeqService")
-    def test_de_warns_low_power(self, MockBulkService, mock_data_manager, bulk_rnaseq_data):
+    def test_de_warns_low_power(
+        self, MockBulkService, mock_data_manager, bulk_rnaseq_data
+    ):
         """Test that DE analysis warns when n < 4 replicates (low statistical power)."""
         # Create data with exactly 3 replicates per condition
         low_power_data = ad.AnnData(X=np.random.randn(6, 1000))
@@ -374,7 +393,9 @@ class TestFormulaTools:
         agent = de_analysis_expert(mock_data_manager)
         assert agent is not None
 
-    @patch("lobster.services.analysis.differential_formula_service.DifferentialFormulaService")
+    @patch(
+        "lobster.services.analysis.differential_formula_service.DifferentialFormulaService"
+    )
     def test_suggest_formula_analyzes_metadata(
         self, MockFormulaService, mock_data_manager, pseudobulk_data
     ):
@@ -395,7 +416,9 @@ class TestFormulaTools:
         agent = de_analysis_expert(mock_data_manager)
         assert agent is not None
 
-    @patch("lobster.services.analysis.differential_formula_service.DifferentialFormulaService")
+    @patch(
+        "lobster.services.analysis.differential_formula_service.DifferentialFormulaService"
+    )
     def test_construct_formula_validates_design(
         self, MockFormulaService, mock_data_manager
     ):
@@ -434,7 +457,9 @@ class TestIterationTools:
         agent = de_analysis_expert(mock_data_manager)
         assert agent is not None
 
-    @patch("lobster.services.analysis.differential_formula_service.DifferentialFormulaService")
+    @patch(
+        "lobster.services.analysis.differential_formula_service.DifferentialFormulaService"
+    )
     def test_iterate_tries_different_formulas(
         self, MockFormulaService, mock_data_manager
     ):
@@ -456,7 +481,9 @@ class TestIterationTools:
         agent = de_analysis_expert(mock_data_manager)
         assert agent is not None
 
-    @patch("lobster.services.analysis.differential_formula_service.DifferentialFormulaService")
+    @patch(
+        "lobster.services.analysis.differential_formula_service.DifferentialFormulaService"
+    )
     def test_compare_iterations_provides_metrics(
         self, MockFormulaService, mock_data_manager
     ):
@@ -492,9 +519,7 @@ class TestPathwayEnrichment:
         assert agent is not None
 
     @patch("lobster.services.analysis.bulk_rnaseq_service.BulkRNASeqService")
-    def test_pathway_enrichment_on_deg_list(
-        self, MockBulkService, mock_data_manager
-    ):
+    def test_pathway_enrichment_on_deg_list(self, MockBulkService, mock_data_manager):
         """Test that pathway enrichment runs on DEG list."""
         mock_service = MockBulkService.return_value
         mock_service.run_pathway_enrichment.return_value = (
@@ -587,7 +612,12 @@ class TestDEErrorHandling:
         """Test that InsufficientReplicatesError is raised for < 3 replicates."""
         # Create data with only 2 replicates per condition
         insufficient_data = ad.AnnData(X=np.random.randn(4, 1000))
-        insufficient_data.obs["condition"] = ["treatment", "treatment", "control", "control"]
+        insufficient_data.obs["condition"] = [
+            "treatment",
+            "treatment",
+            "control",
+            "control",
+        ]
 
         mock_data_manager.get_modality.return_value = insufficient_data
 

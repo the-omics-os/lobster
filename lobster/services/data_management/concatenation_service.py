@@ -386,7 +386,9 @@ class SmartSparseStrategy(BaseConcatenationStrategy):
                     )
 
                 # PROFESSIONAL PROGRESS LOGGING: Stage 1 - Adding batch information
-                logger.info(f"Starting sample concatenation: {len(sample_data)} samples")
+                logger.info(
+                    f"Starting sample concatenation: {len(sample_data)} samples"
+                )
                 logger.info(f"Stage 1/3: Adding batch information to samples...")
 
                 # Add batch information
@@ -418,7 +420,9 @@ class SmartSparseStrategy(BaseConcatenationStrategy):
 
                 logger.info(f"  Total cells: {total_cells:,}")
                 logger.info(f"  Gene range: {min_genes:,} - {max_genes:,}")
-                logger.info(f"  Estimated memory required: {estimated_memory_gb:.2f} GB")
+                logger.info(
+                    f"  Estimated memory required: {estimated_memory_gb:.2f} GB"
+                )
                 logger.info(f"  Available memory: {available_memory_gb:.2f} GB")
 
                 # MEMORY WARNING: Alert user if memory is tight
@@ -436,7 +440,9 @@ class SmartSparseStrategy(BaseConcatenationStrategy):
                 join_type = "inner" if use_intersecting_genes else "outer"
 
                 # PROFESSIONAL PROGRESS LOGGING: Stage 3 - Concatenation
-                logger.info(f"Stage 3/3: Concatenating samples using {join_type} join...")
+                logger.info(
+                    f"Stage 3/3: Concatenating samples using {join_type} join..."
+                )
                 logger.info(f"  This may take 30-90s for large datasets (>100k cells)")
                 logger.info(f"  Please wait - concatenation in progress...")
 
@@ -474,8 +480,12 @@ class SmartSparseStrategy(BaseConcatenationStrategy):
                         )
 
                     concat_duration = time.time() - concat_start
-                    logger.info(f"Stage 3/3: Concatenation complete in {concat_duration:.1f}s")
-                    logger.info(f"  Result: {result_adata.n_obs:,} cells × {result_adata.n_vars:,} genes")
+                    logger.info(
+                        f"Stage 3/3: Concatenation complete in {concat_duration:.1f}s"
+                    )
+                    logger.info(
+                        f"  Result: {result_adata.n_obs:,} cells × {result_adata.n_vars:,} genes"
+                    )
 
                 finally:
                     # Always stop monitor, even if concatenation fails
@@ -499,7 +509,9 @@ class SmartSparseStrategy(BaseConcatenationStrategy):
             # Handle DataFrames
             else:
                 # PROFESSIONAL PROGRESS LOGGING: Stage 1 - Adding batch information (DataFrame path)
-                logger.info(f"Starting DataFrame concatenation: {len(sample_data)} samples")
+                logger.info(
+                    f"Starting DataFrame concatenation: {len(sample_data)} samples"
+                )
                 logger.info(f"Stage 1/3: Adding batch information to DataFrames...")
 
                 # Add batch information to DataFrames
@@ -515,7 +527,9 @@ class SmartSparseStrategy(BaseConcatenationStrategy):
                     processed_dfs.append(df_copy)
 
                     if i % 10 == 0 and i > 0:
-                        logger.debug(f"  Processed {i}/{len(sample_data)} DataFrames...")
+                        logger.debug(
+                            f"  Processed {i}/{len(sample_data)} DataFrames..."
+                        )
 
                 logger.info(f"Stage 1/3: Batch information added to all DataFrames")
 
@@ -533,7 +547,9 @@ class SmartSparseStrategy(BaseConcatenationStrategy):
 
                 logger.info(f"  Total rows: {total_rows:,}")
                 logger.info(f"  Column range: {min_cols:,} - {max_cols:,}")
-                logger.info(f"  Estimated memory required: {estimated_memory_gb:.2f} GB")
+                logger.info(
+                    f"  Estimated memory required: {estimated_memory_gb:.2f} GB"
+                )
                 logger.info(f"  Available memory: {available_memory_gb:.2f} GB")
 
                 # MEMORY WARNING: Alert user if memory is tight
@@ -549,7 +565,9 @@ class SmartSparseStrategy(BaseConcatenationStrategy):
 
                 # PROFESSIONAL PROGRESS LOGGING: Stage 3 - Concatenation (DataFrame path)
                 join_type = "inner" if use_intersecting_genes else "outer"
-                logger.info(f"Stage 3/3: Concatenating DataFrames using {join_type} join...")
+                logger.info(
+                    f"Stage 3/3: Concatenating DataFrames using {join_type} join..."
+                )
                 logger.info(f"  This may take 30-90s for large datasets")
                 logger.info(f"  Please wait - concatenation in progress...")
 
@@ -574,11 +592,17 @@ class SmartSparseStrategy(BaseConcatenationStrategy):
                         result_df = pd.concat(filtered_dfs, axis=0, sort=False)
                     else:
                         # Use all columns, fill missing with 0
-                        result_df = pd.concat(processed_dfs, axis=0, sort=False).fillna(0)
+                        result_df = pd.concat(processed_dfs, axis=0, sort=False).fillna(
+                            0
+                        )
 
                     concat_duration = time.time() - concat_start
-                    logger.info(f"Stage 3/3: Concatenation complete in {concat_duration:.1f}s")
-                    logger.info(f"  Result: {result_df.shape[0]:,} rows × {result_df.shape[1]:,} columns")
+                    logger.info(
+                        f"Stage 3/3: Concatenation complete in {concat_duration:.1f}s"
+                    )
+                    logger.info(
+                        f"  Result: {result_df.shape[0]:,} rows × {result_df.shape[1]:,} columns"
+                    )
 
                 finally:
                     # Always stop monitor, even if concatenation fails

@@ -110,6 +110,7 @@ BODY_SITE_CANDIDATES = [
 # Sample Quality Flags
 # =============================================================================
 
+
 class SampleQualityFlag(str, Enum):
     """
     Flags indicating sample quality/usability issues.
@@ -521,16 +522,20 @@ class SRASampleSchema(BaseModel):
             + HEALTH_STATUS_CANDIDATES
             + BODY_SITE_CANDIDATES
         )
-        all_known = known_fields | heuristic_candidates | {
-            "individual_id",
-            "individual_id_sources",
-            "timepoint",
-            "timepoint_numeric",
-            "age",
-            "sex",
-            "health_status",
-            "body_site",
-        }
+        all_known = (
+            known_fields
+            | heuristic_candidates
+            | {
+                "individual_id",
+                "individual_id_sources",
+                "timepoint",
+                "timepoint_numeric",
+                "age",
+                "sex",
+                "health_status",
+                "body_site",
+            }
+        )
 
         additional = {k: v for k, v in data.items() if k not in all_known}
         if additional:

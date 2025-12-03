@@ -134,7 +134,9 @@ class TestResearchAgentCore:
 
         mock_delegation_tool.name = "delegate_to_metadata_assistant"
 
-        agent = research_agent(mock_data_manager, delegation_tools=[mock_delegation_tool])
+        agent = research_agent(
+            mock_data_manager, delegation_tools=[mock_delegation_tool]
+        )
 
         assert agent is not None
         assert hasattr(agent, "get_graph")
@@ -623,7 +625,9 @@ class TestContentAccessRealAPI:
         """
         import time
 
-        from lobster.services.data_access.content_access_service import ContentAccessService
+        from lobster.services.data_access.content_access_service import (
+            ContentAccessService,
+        )
 
         # Rate limiting
         time.sleep(1.0)
@@ -670,7 +674,9 @@ class TestContentAccessRealAPI:
         """
         import time
 
-        from lobster.services.data_access.content_access_service import ContentAccessService
+        from lobster.services.data_access.content_access_service import (
+            ContentAccessService,
+        )
 
         # Rate limiting
         time.sleep(1.0)
@@ -835,7 +841,9 @@ class TestMetadataAssistantHandoff:
 Use exact and pattern matching strategies. Return mapping report with:
 (1) mapping rate, (2) confidence scores, (3) unmapped samples, (4) integration recommendation."""
 
-        def mock_delegate_to_metadata_assistant(instruction: str = delegation_instruction):
+        def mock_delegate_to_metadata_assistant(
+            instruction: str = delegation_instruction,
+        ):
             """Mock delegation tool that expects structured instruction."""
             # Verify instruction format
             assert "geo_gse180759" in instruction

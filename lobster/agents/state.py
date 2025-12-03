@@ -126,7 +126,9 @@ class DataExpertState(AgentState):
     file_paths: List[str]  # Paths to downloaded files, loaded datasets
     methodology_parameters: Dict[str, Any]  # Download and loading parameters
     data_context: str  # Data management context
-    intermediate_outputs: Dict[str, Any]  # Partial download/load results before returning to supervisor
+    intermediate_outputs: Dict[
+        str, Any
+    ]  # Partial download/load results before returning to supervisor
 
 
 class ResearchAgentState(AgentState):
@@ -148,7 +150,9 @@ class ResearchAgentState(AgentState):
     literature_cache: Dict[str, Any]  # Cached publication content (abstracts, methods)
 
     # Dataset discovery
-    datasets_discovered: Dict[str, Any]  # Datasets found (GSE/SRA/PRIDE accessions -> metadata)
+    datasets_discovered: Dict[
+        str, Any
+    ]  # Datasets found (GSE/SRA/PRIDE accessions -> metadata)
     dataset_validation_results: Dict[str, Any]  # Validation results per dataset
     related_entries: Dict[str, Any]  # Related publications/datasets/samples
 
@@ -170,7 +174,9 @@ class ResearchAgentState(AgentState):
     file_paths: List[str]  # Paths to cached files, reports, exports
     methodology_parameters: Dict[str, Any]  # Research methodology parameters
     data_context: str  # Research context and focus area
-    intermediate_outputs: Dict[str, Any]  # Partial research results before handoff to supervisor
+    intermediate_outputs: Dict[
+        str, Any
+    ]  # Partial research results before handoff to supervisor
 
 
 class MethodState(AgentState):
@@ -192,7 +198,9 @@ class MethodState(AgentState):
 
     # Standard expert fields (for consistency)
     file_paths: List[str]  # Paths to method documentation, protocols, exports
-    intermediate_outputs: Dict[str, Any]  # Partial method analysis before handoff to supervisor
+    intermediate_outputs: Dict[
+        str, Any
+    ]  # Partial method analysis before handoff to supervisor
 
 
 class MachineLearningExpertState(AgentState):

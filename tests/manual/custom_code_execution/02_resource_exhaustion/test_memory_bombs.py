@@ -13,14 +13,16 @@ REAL ATTACK: Could allocate 10GB+ and trigger OOM killer
 Run with: pytest tests/manual/custom_code_execution/02_resource_exhaustion/test_memory_bombs.py -v -s
 """
 
-import pytest
 import sys
 from pathlib import Path
-from lobster.services.execution.custom_code_execution_service import (
-    CustomCodeExecutionService,
-    CodeExecutionError
-)
+
+import pytest
+
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.services.execution.custom_code_execution_service import (
+    CodeExecutionError,
+    CustomCodeExecutionService,
+)
 
 
 @pytest.fixture
@@ -48,12 +50,12 @@ class TestMemoryAllocationBombs:
 
         Mitigation: cgroups memory.max, Docker --memory flag
         """
-        code = '''
+        code = """
 import sys
 # Allocate ~400MB (safe for testing)
 x = [0] * (10**8)
 result = f"Allocated {sys.getsizeof(x) / 1024**2:.0f}MB"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=30)
@@ -61,7 +63,7 @@ result = f"Allocated {sys.getsizeof(x) / 1024**2:.0f}MB"
             print(f"    Result: {result}")
             print(f"    Duration: {stats['duration_seconds']}s")
             print(f"    🔥 REAL ATTACK: Could allocate 10GB+ and crash system")
-            assert stats['success'] is True
+            assert stats["success"] is True
             assert "Allocated" in result
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: Memory allocation blocked: {e}")
@@ -80,19 +82,19 @@ result = f"Allocated {sys.getsizeof(x) / 1024**2:.0f}MB"
 
         Mitigation: cgroups memory.max
         """
-        code = '''
+        code = """
 import sys
 # Allocate 100MB string (safe)
 s = 'A' * (10**8)
 result = f"String size: {sys.getsizeof(s) / 1024**2:.0f}MB"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=30)
             print(f"\n⚠️  VULNERABILITY CONFIRMED: Large string allocated")
             print(f"    Result: {result}")
             print(f"    🔥 REAL ATTACK: 1GB+ strings could exhaust RAM")
-            assert stats['success'] is True
+            assert stats["success"] is True
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: String allocation blocked: {e}")
             pytest.fail("Expected vulnerability")
@@ -110,19 +112,19 @@ result = f"String size: {sys.getsizeof(s) / 1024**2:.0f}MB"
 
         Mitigation: cgroups + Docker memory limits
         """
-        code = '''
+        code = """
 import numpy as np
 # Create ~800MB array (safe)
 arr = np.zeros((10**4, 10**4), dtype=np.float64)
 result = f"Array size: {arr.nbytes / 1024**2:.0f}MB, shape: {arr.shape}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=60)
             print(f"\n⚠️  VULNERABILITY CONFIRMED: Large numpy array created")
             print(f"    Result: {result}")
             print(f"    🔥 REAL ATTACK: 80GB arrays would trigger OOM killer")
-            assert stats['success'] is True
+            assert stats["success"] is True
             assert "MB" in result
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: numpy array blocked: {e}")
@@ -140,7 +142,7 @@ result = f"Array size: {arr.nbytes / 1024**2:.0f}MB, shape: {arr.shape}"
 
         Mitigation: cgroups tracks total process memory
         """
-        code = '''
+        code = """
 import sys
 # Allocate 10 separate 50MB lists
 allocations = []
@@ -149,14 +151,14 @@ for i in range(10):
 
 total_mb = sum(sys.getsizeof(x) for x in allocations) / 1024**2
 result = f"Total allocated: {total_mb:.0f}MB across {len(allocations)} lists"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=30)
             print(f"\n⚠️  VULNERABILITY CONFIRMED: Multiple allocations succeeded")
             print(f"    Result: {result}")
             print(f"    🔥 REAL ATTACK: 100 x 100MB = 10GB incremental exhaustion")
-            assert stats['success'] is True
+            assert stats["success"] is True
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: Multiple allocations blocked: {e}")
             pytest.fail("Expected vulnerability")
@@ -178,7 +180,7 @@ class TestRecursiveDataStructures:
 
         Mitigation: Python recursion limit (default 1000) + memory limits
         """
-        code = '''
+        code = """
 # Create nested list structure (100 levels - safe)
 def create_nested_list(depth):
     if depth == 0:
@@ -194,14 +196,14 @@ def measure_depth(obj):
     return 1 + measure_depth(obj[0])
 
 result = f"Nested list depth: {measure_depth(nested)}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=10)
             print(f"\n⚠️  VULNERABILITY: Recursive structures allowed")
             print(f"    Result: {result}")
             print(f"    🔥 REAL ATTACK: 10000 levels could cause stack overflow")
-            assert stats['success'] is True
+            assert stats["success"] is True
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: Recursion blocked: {e}")
             pytest.fail("Expected vulnerability")
@@ -216,7 +218,7 @@ result = f"Nested list depth: {measure_depth(nested)}"
 
         Note: Not a real vulnerability in Python but shows no external monitoring
         """
-        code = '''
+        code = """
 import gc
 import sys
 
@@ -238,14 +240,14 @@ for i in range(100):  # 100MB total
 collected = gc.collect()
 
 result = f"Created {len(nodes)} circular refs (~100MB), GC collected {collected} objects"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=10)
             print(f"\n✅ Python GC handles circular refs (not a vulnerability)")
             print(f"    Result: {result}")
             print(f"    Note: External memory monitoring still recommended")
-            assert stats['success'] is True
+            assert stats["success"] is True
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: Circular refs blocked: {e}")
 
@@ -266,7 +268,7 @@ class TestPandasMemoryBombs:
 
         Mitigation: Memory limits via cgroups
         """
-        code = '''
+        code = """
 import pandas as pd
 import numpy as np
 
@@ -277,14 +279,14 @@ df = pd.DataFrame({
 })
 
 result = f"DataFrame: {df.shape}, Memory: {df.memory_usage(deep=True).sum() / 1024**2:.0f}MB"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=30)
             print(f"\n⚠️  VULNERABILITY CONFIRMED: Large DataFrame created")
             print(f"    Result: {result}")
             print(f"    🔥 REAL ATTACK: 10GB DataFrames would exhaust RAM")
-            assert stats['success'] is True
+            assert stats["success"] is True
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: DataFrame blocked: {e}")
             pytest.fail("Expected vulnerability")
@@ -300,7 +302,7 @@ result = f"DataFrame: {df.shape}, Memory: {df.memory_usage(deep=True).sum() / 10
         SAFE LIMIT: 100 concatenations = ~100MB
         REAL ATTACK: 1000 concatenations = 1GB+
         """
-        code = '''
+        code = """
 import pandas as pd
 import numpy as np
 
@@ -312,14 +314,14 @@ for i in range(15):  # 2^15 = 32768 rows
     df = pd.concat([df, df], ignore_index=True)
 
 result = f"Final DataFrame: {len(df)} rows, {df.memory_usage(deep=True).sum() / 1024:.0f}KB"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=30)
             print(f"\n⚠️  VULNERABILITY CONFIRMED: Exponential DataFrame growth")
             print(f"    Result: {result}")
             print(f"    🔥 REAL ATTACK: 20 iterations = 1M+ rows, memory explosion")
-            assert stats['success'] is True
+            assert stats["success"] is True
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: DataFrame growth blocked: {e}")
             pytest.fail("Expected vulnerability")
@@ -368,9 +370,9 @@ class TestMemoryExhaustionSummary:
         resource.setrlimit(resource.RLIMIT_AS, (2 * 1024**3, 2 * 1024**3))
         ```
         """
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("MEMORY EXHAUSTION VULNERABILITY SUMMARY")
-        print("="*70)
+        print("=" * 70)
         print(self.test_memory_vulnerability_summary.__doc__)
 
         # Just a marker test

@@ -30,7 +30,6 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 
-from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 from lobster.agents.data_expert import data_expert
 from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 from lobster.core.client import AgentClient

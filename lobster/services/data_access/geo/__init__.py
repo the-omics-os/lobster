@@ -26,13 +26,13 @@ Usage:
 
 # Re-export constants and sub-modules (no GEOService to avoid circular import)
 from lobster.services.data_access.geo.constants import (
+    PLATFORM_REGISTRY,
     DownloadStrategy,
     GEODataSource,
     GEODataType,
     GEOFallbackError,
     GEOResult,
     GEOServiceError,
-    PLATFORM_REGISTRY,
     PlatformCompatibility,
 )
 

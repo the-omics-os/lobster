@@ -5,9 +5,11 @@ Normalizes disease/condition terminology and filters samples by type (fecal vs t
 Designed for IBD microbiome studies (CRC, UC, CD, Healthy controls).
 """
 
-from typing import Dict, List, Tuple, Any, Optional, Set
-import pandas as pd
 import re
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+import pandas as pd
+
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 
 
@@ -25,28 +27,61 @@ class DiseaseStandardizationService:
     # Standard disease mappings (case-insensitive)
     DISEASE_MAPPINGS = {
         # Colorectal Cancer (CRC)
-        "crc": ["crc", "colorectal cancer", "colon cancer", "rectal cancer",
-                "colorectal carcinoma", "colon carcinoma", "rectal carcinoma",
-                "adenocarcinoma", "tumor", "tumour", "cancer"],
-
+        "crc": [
+            "crc",
+            "colorectal cancer",
+            "colon cancer",
+            "rectal cancer",
+            "colorectal carcinoma",
+            "colon carcinoma",
+            "rectal carcinoma",
+            "adenocarcinoma",
+            "tumor",
+            "tumour",
+            "cancer",
+        ],
         # Ulcerative Colitis (UC)
         "uc": ["uc", "ulcerative colitis", "colitis ulcerosa", "ulcerative_colitis"],
-
         # Crohn's Disease (CD)
-        "cd": ["cd", "crohn's disease", "crohns disease", "crohn disease",
-               "crohn's", "crohns", "crohn"],
-
+        "cd": [
+            "cd",
+            "crohn's disease",
+            "crohns disease",
+            "crohn disease",
+            "crohn's",
+            "crohns",
+            "crohn",
+        ],
         # Healthy Controls
-        "healthy": ["healthy", "control", "normal", "non-ibd", "non ibd",
-                   "non-diseased", "non diseased", "healthy control",
-                   "normal control", "ctrl"]
+        "healthy": [
+            "healthy",
+            "control",
+            "normal",
+            "non-ibd",
+            "non ibd",
+            "non-diseased",
+            "non diseased",
+            "healthy control",
+            "normal control",
+            "ctrl",
+        ],
     }
 
     # Sample type mappings
     SAMPLE_TYPE_MAPPINGS = {
         "fecal": ["fecal", "feces", "stool", "faecal", "faeces", "fecal sample"],
-        "gut": ["gut", "intestinal", "colon", "colonic", "rectal", "ileal",
-                "biopsy", "tissue", "mucosal", "mucosa"]
+        "gut": [
+            "gut",
+            "intestinal",
+            "colon",
+            "colonic",
+            "rectal",
+            "ileal",
+            "biopsy",
+            "tissue",
+            "mucosal",
+            "mucosa",
+        ],
     }
 
     def __init__(self):
@@ -63,9 +98,7 @@ class DiseaseStandardizationService:
                 self._reverse_sample_map[variant.lower()] = sample_type
 
     def standardize_disease_terms(
-        self,
-        metadata: pd.DataFrame,
-        disease_column: str = "disease"
+        self, metadata: pd.DataFrame, disease_column: str = "disease"
     ) -> Tuple[pd.DataFrame, Dict[str, Any], AnalysisStep]:
         """
         Standardize disease terminology in metadata.
@@ -90,7 +123,7 @@ class DiseaseStandardizationService:
             "contains_matches": 0,
             "reverse_contains_matches": 0,
             "token_matches": 0,
-            "unmapped": 0
+            "unmapped": 0,
         }
         unique_mappings = {}
 
@@ -111,8 +144,7 @@ class DiseaseStandardizationService:
         # Build statistics
         total = len(result)
         standardization_rate = (
-            (total - mapping_stats["unmapped"]) / total * 100
-            if total > 0 else 0.0
+            (total - mapping_stats["unmapped"]) / total * 100 if total > 0 else 0.0
         )
 
         stats = {
@@ -121,7 +153,7 @@ class DiseaseStandardizationService:
             "mapping_stats": mapping_stats,
             "unique_mappings": unique_mappings,
             "disease_distribution": result[disease_column].value_counts().to_dict(),
-            "original_column": original_col
+            "original_column": original_col,
         }
 
         # Create provenance IR
@@ -129,7 +161,7 @@ class DiseaseStandardizationService:
             disease_column=disease_column,
             original_column=original_col,
             mapping_stats=mapping_stats,
-            unique_mappings=unique_mappings
+            unique_mappings=unique_mappings,
         )
 
         return result, stats, ir
@@ -138,7 +170,7 @@ class DiseaseStandardizationService:
         self,
         metadata: pd.DataFrame,
         sample_types: List[str],
-        sample_columns: Optional[List[str]] = None
+        sample_columns: Optional[List[str]] = None,
     ) -> Tuple[pd.DataFrame, Dict[str, Any], AnalysisStep]:
         """
         Filter samples by sample type (fecal vs gut tissue).
@@ -154,8 +186,14 @@ class DiseaseStandardizationService:
         """
         # Auto-detect sample columns if not specified
         if sample_columns is None:
-            common_cols = ["sample_type", "tissue", "body_site", "sample_source",
-                          "biosample_type", "material"]
+            common_cols = [
+                "sample_type",
+                "tissue",
+                "body_site",
+                "sample_source",
+                "biosample_type",
+                "material",
+            ]
             sample_columns = [col for col in common_cols if col in metadata.columns]
 
             if not sample_columns:
@@ -180,7 +218,10 @@ class DiseaseStandardizationService:
                 # Try to match this value to requested sample types
                 matched_type, _ = self._fuzzy_match(
                     str(row[col]),
-                    {t: self.SAMPLE_TYPE_MAPPINGS.get(t, [t]) for t in normalized_types}
+                    {
+                        t: self.SAMPLE_TYPE_MAPPINGS.get(t, [t])
+                        for t in normalized_types
+                    },
                 )
 
                 if matched_type in normalized_types:
@@ -197,13 +238,15 @@ class DiseaseStandardizationService:
         stats = {
             "original_samples": len(metadata),
             "filtered_samples": len(filtered),
-            "retention_rate": len(filtered) / len(metadata) * 100 if len(metadata) > 0 else 0,
+            "retention_rate": (
+                len(filtered) / len(metadata) * 100 if len(metadata) > 0 else 0
+            ),
             "sample_types_requested": sample_types,
             "columns_checked": sample_columns,
             "matches_by_column": {
                 col: filtered[filtered["matched_column"] == col].shape[0]
                 for col in sample_columns
-            }
+            },
         }
 
         # Create provenance IR
@@ -211,15 +254,13 @@ class DiseaseStandardizationService:
             sample_types=sample_types,
             sample_columns=sample_columns,
             original_samples=len(metadata),
-            filtered_samples=len(filtered)
+            filtered_samples=len(filtered),
         )
 
         return filtered, stats, ir
 
     def _fuzzy_match(
-        self,
-        value: str,
-        mappings: Dict[str, List[str]]
+        self, value: str, mappings: Dict[str, List[str]]
     ) -> Tuple[str, str]:
         """
         5-level fuzzy matching strategy.
@@ -301,7 +342,7 @@ class DiseaseStandardizationService:
         disease_column: str,
         original_column: str,
         mapping_stats: Dict[str, int],
-        unique_mappings: Dict[str, str]
+        unique_mappings: Dict[str, str],
     ) -> AnalysisStep:
         """Create provenance IR for disease standardization."""
         return AnalysisStep(
@@ -326,7 +367,7 @@ for idx, value in metadata['{{ disease_column }}'].items():
                 "original_column": original_column,
                 "disease_mappings": self.DISEASE_MAPPINGS,
                 "mapping_stats": mapping_stats,
-                "unique_mappings": unique_mappings
+                "unique_mappings": unique_mappings,
             },
             parameter_schema={
                 "disease_column": ParameterSpec(
@@ -334,25 +375,27 @@ for idx, value in metadata['{{ disease_column }}'].items():
                     papermill_injectable=True,
                     default_value="disease",
                     required=True,
-                    description="Column containing disease labels"
+                    description="Column containing disease labels",
                 ),
                 "original_column": ParameterSpec(
                     param_type="str",
                     papermill_injectable=False,
                     default_value="disease_original",
                     required=False,
-                    description="Backup column with original values"
-                )
+                    description="Backup column with original values",
+                ),
             },
             input_entities=["metadata"],
             output_entities=["standardized_metadata"],
             execution_context={
                 "standardization_rate": (
-                    100 - (mapping_stats["unmapped"] / sum(mapping_stats.values()) * 100)
-                    if sum(mapping_stats.values()) > 0 else 0.0
+                    100
+                    - (mapping_stats["unmapped"] / sum(mapping_stats.values()) * 100)
+                    if sum(mapping_stats.values()) > 0
+                    else 0.0
                 ),
-                "total_mappings": len(unique_mappings)
-            }
+                "total_mappings": len(unique_mappings),
+            },
         )
 
     def _create_filter_ir(
@@ -360,7 +403,7 @@ for idx, value in metadata['{{ disease_column }}'].items():
         sample_types: List[str],
         sample_columns: List[str],
         original_samples: int,
-        filtered_samples: int
+        filtered_samples: int,
     ) -> AnalysisStep:
         """Create provenance IR for sample type filtering."""
         return AnalysisStep(
@@ -385,7 +428,11 @@ filtered_metadata = metadata[metadata['keep']].drop(columns=['keep'])
             parameters={
                 "sample_types": sample_types,
                 "sample_columns": sample_columns,
-                "retention_rate": (filtered_samples / original_samples * 100) if original_samples > 0 else 0
+                "retention_rate": (
+                    (filtered_samples / original_samples * 100)
+                    if original_samples > 0
+                    else 0
+                ),
             },
             parameter_schema={
                 "sample_types": ParameterSpec(
@@ -393,21 +440,25 @@ filtered_metadata = metadata[metadata['keep']].drop(columns=['keep'])
                     papermill_injectable=True,
                     default_value=["fecal"],
                     required=True,
-                    description="Sample types to retain"
+                    description="Sample types to retain",
                 ),
                 "sample_columns": ParameterSpec(
                     param_type="List[str]",
                     papermill_injectable=True,
                     default_value=[],
                     required=False,
-                    description="Columns to check for sample type information"
-                )
+                    description="Columns to check for sample type information",
+                ),
             },
             input_entities=["metadata"],
             output_entities=["filtered_metadata"],
             execution_context={
                 "original_samples": original_samples,
                 "filtered_samples": filtered_samples,
-                "retention_rate": (filtered_samples / original_samples * 100) if original_samples > 0 else 0
-            }
+                "retention_rate": (
+                    (filtered_samples / original_samples * 100)
+                    if original_samples > 0
+                    else 0
+                ),
+            },
         )

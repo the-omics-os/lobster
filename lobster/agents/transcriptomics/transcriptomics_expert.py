@@ -21,9 +21,14 @@ from lobster.agents.transcriptomics.state import TranscriptomicsExpertState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.services.analysis.clustering_service import ClusteringError, ClusteringService
+from lobster.services.analysis.clustering_service import (
+    ClusteringError,
+    ClusteringService,
+)
 from lobster.services.analysis.enhanced_singlecell_service import (
     EnhancedSingleCellService,
+)
+from lobster.services.analysis.enhanced_singlecell_service import (
     SingleCellError as ServiceSingleCellError,
 )
 from lobster.services.quality.preprocessing_service import PreprocessingService
@@ -372,7 +377,9 @@ def transcriptomics_expert(
     enhanced_service = EnhancedSingleCellService()
 
     # Get shared tools (QC, preprocessing, analysis summary)
-    shared_tools = create_shared_tools(data_manager, quality_service, preprocessing_service)
+    shared_tools = create_shared_tools(
+        data_manager, quality_service, preprocessing_service
+    )
 
     # Analysis results storage (for clustering tools)
     analysis_results = {"summary": "", "details": {}}
@@ -488,9 +495,13 @@ def transcriptomics_expert(
 
             # Check if multi-resolution testing was performed
             if clustering_stats.get("n_resolutions", 1) > 1:
-                response += f"\n- Resolutions tested: {clustering_stats['resolutions_tested']}"
+                response += (
+                    f"\n- Resolutions tested: {clustering_stats['resolutions_tested']}"
+                )
                 response += f"\n- Multi-resolution summary:"
-                for res, n_clusters in clustering_stats.get("multi_resolution_summary", {}).items():
+                for res, n_clusters in clustering_stats.get(
+                    "multi_resolution_summary", {}
+                ).items():
                     response += f"\n  - Resolution {res}: {n_clusters} clusters"
             else:
                 # Single resolution mode (existing behavior)
@@ -515,7 +526,9 @@ def transcriptomics_expert(
             # Add cluster size information
             for cluster_id, size in list(clustering_stats["cluster_sizes"].items())[:8]:
                 percentage = (size / clustering_stats["final_shape"][0]) * 100
-                response += f"\n- Cluster {cluster_id}: {size} cells ({percentage:.1f}%)"
+                response += (
+                    f"\n- Cluster {cluster_id}: {size} cells ({percentage:.1f}%)"
+                )
 
             if len(clustering_stats["cluster_sizes"]) > 8:
                 response += f"\n... and {len(clustering_stats['cluster_sizes']) - 8} more clusters"
@@ -529,7 +542,9 @@ def transcriptomics_expert(
             if clustering_stats.get("n_resolutions", 1) > 1:
                 response += "\n\n**Multi-Resolution Analysis:**"
                 response += "\n- Compare clustering results across resolutions using visualization"
-                response += "\n- Lower resolutions (0.25-0.5) identify major cell populations"
+                response += (
+                    "\n- Lower resolutions (0.25-0.5) identify major cell populations"
+                )
                 response += "\n- Higher resolutions (1.0-2.0) reveal finer cell states"
                 response += "\n- Choose resolution based on biological expectations and marker gene validation"
 
@@ -659,19 +674,27 @@ def transcriptomics_expert(
 - New columns in adata.obs:"""
 
                 # Show all resolution results
-                for res_key, n_clusters in stats['multi_resolution_summary'].items():
-                    primary_marker = " (primary)" if res_key == stats['primary_column'] else ""
-                    response += f"\n  * {res_key}: {n_clusters} sub-clusters{primary_marker}"
+                for res_key, n_clusters in stats["multi_resolution_summary"].items():
+                    primary_marker = (
+                        " (primary)" if res_key == stats["primary_column"] else ""
+                    )
+                    response += (
+                        f"\n  * {res_key}: {n_clusters} sub-clusters{primary_marker}"
+                    )
 
-                response += f"\n- Execution time: {stats['execution_time']:.2f} seconds\n"
+                response += (
+                    f"\n- Execution time: {stats['execution_time']:.2f} seconds\n"
+                )
 
                 # Show primary sub-clustering results
-                response += f"\n**Primary sub-clustering ({stats['primary_column']}):**\n"
-                for cluster_id, size in list(stats['subcluster_sizes'].items())[:10]:
+                response += (
+                    f"\n**Primary sub-clustering ({stats['primary_column']}):**\n"
+                )
+                for cluster_id, size in list(stats["subcluster_sizes"].items())[:10]:
                     response += f"  - {cluster_id}: {size} cells\n"
 
-                if len(stats['subcluster_sizes']) > 10:
-                    remaining = len(stats['subcluster_sizes']) - 10
+                if len(stats["subcluster_sizes"]) > 10:
+                    remaining = len(stats["subcluster_sizes"]) - 10
                     response += f"  ... and {remaining} more sub-clusters\n"
 
                 response += """
@@ -692,11 +715,11 @@ def transcriptomics_expert(
 
 **Sub-cluster sizes:**"""
 
-                for cluster_id, size in list(stats['subcluster_sizes'].items())[:10]:
+                for cluster_id, size in list(stats["subcluster_sizes"].items())[:10]:
                     response += f"\n  - {cluster_id}: {size} cells"
 
-                if len(stats['subcluster_sizes']) > 10:
-                    remaining = len(stats['subcluster_sizes']) - 10
+                if len(stats["subcluster_sizes"]) > 10:
+                    remaining = len(stats["subcluster_sizes"]) - 10
                     response += f"\n  ... and {remaining} more sub-clusters"
 
                 response += """
@@ -795,7 +818,9 @@ Please check:
 
             # Validate cluster_key exists
             if cluster_key not in adata.obs.columns:
-                available_keys = [col for col in adata.obs.columns if 'leiden' in col.lower()]
+                available_keys = [
+                    col for col in adata.obs.columns if "leiden" in col.lower()
+                ]
                 return (
                     f"Error: Cluster key '{cluster_key}' not found in adata.obs.\n\n"
                     f"Available clustering columns: {', '.join(available_keys)}\n\n"
@@ -834,7 +859,11 @@ Please check:
                     "cluster_key": cluster_key,
                     "use_rep": use_rep,
                     "n_pcs": n_pcs,
-                    "metrics": metrics if metrics else ["silhouette", "davies_bouldin", "calinski_harabasz"],
+                    "metrics": (
+                        metrics
+                        if metrics
+                        else ["silhouette", "davies_bouldin", "calinski_harabasz"]
+                    ),
                 },
                 description=f"Evaluated clustering quality with {len(stats['metrics'])} metrics",
                 ir=ir,
@@ -853,7 +882,9 @@ Please check:
             response_lines.append(f"**Modality**: {modality_name} -> {new_name}")
             response_lines.append(f"**Cells**: {stats['n_cells']:,}")
             response_lines.append(f"**Clusters**: {stats['n_clusters']}")
-            response_lines.append(f"**Representation**: {stats['use_rep']} ({stats['n_pcs_used']} components)")
+            response_lines.append(
+                f"**Representation**: {stats['use_rep']} ({stats['n_pcs_used']} components)"
+            )
             response_lines.append("")
 
             # Quality metrics section
@@ -899,11 +930,17 @@ Please check:
 
                 for cluster_id, score in sorted_clusters[:10]:
                     size = stats["cluster_sizes"].get(cluster_id, 0)
-                    emoji = "[GOOD]" if score > 0.5 else "[OK]" if score > 0.25 else "[LOW]"
-                    response_lines.append(f"  {emoji} Cluster {cluster_id}: {score:.4f} ({size} cells)")
+                    emoji = (
+                        "[GOOD]" if score > 0.5 else "[OK]" if score > 0.25 else "[LOW]"
+                    )
+                    response_lines.append(
+                        f"  {emoji} Cluster {cluster_id}: {score:.4f} ({size} cells)"
+                    )
 
                 if len(sorted_clusters) > 10:
-                    response_lines.append(f"  ... and {len(sorted_clusters) - 10} more clusters")
+                    response_lines.append(
+                        f"  ... and {len(sorted_clusters) - 10} more clusters"
+                    )
                 response_lines.append("")
 
             # Interpretation section
@@ -927,15 +964,25 @@ Please check:
             # Next steps
             response_lines.append("**Next Steps:**")
             response_lines.append("-" * 70)
-            response_lines.append("* If comparing resolutions: Run this on each resolution key (leiden_res0_25, leiden_res0_5, etc.)")
-            response_lines.append("* If silhouette < 0.25: Try lower resolution or different preprocessing")
-            response_lines.append("* If clusters look good: Proceed with find_marker_genes_for_clusters()")
-            response_lines.append("* To visualize: Request visualization through supervisor")
+            response_lines.append(
+                "* If comparing resolutions: Run this on each resolution key (leiden_res0_25, leiden_res0_5, etc.)"
+            )
+            response_lines.append(
+                "* If silhouette < 0.25: Try lower resolution or different preprocessing"
+            )
+            response_lines.append(
+                "* If clusters look good: Proceed with find_marker_genes_for_clusters()"
+            )
+            response_lines.append(
+                "* To visualize: Request visualization through supervisor"
+            )
             response_lines.append("")
 
             # Footer
             response_lines.append("=" * 70)
-            response_lines.append(f"Evaluation completed in {stats['execution_time_seconds']:.2f}s")
+            response_lines.append(
+                f"Evaluation completed in {stats['execution_time_seconds']:.2f}s"
+            )
             response_lines.append("=" * 70)
 
             return "\n".join(response_lines)
@@ -1055,39 +1102,49 @@ Please check:
                     f"\n**Filtering Summary:** {marker_stats['total_genes_filtered']} genes removed"
                 )
                 response_parts.append("\n**Genes per Cluster (after filtering):**")
-                for group in marker_stats['groups_analyzed'][:10]:
-                    if group in marker_stats['post_filter_counts']:
-                        post = marker_stats['post_filter_counts'][group]
-                        filtered = marker_stats['filtered_counts'][group]
-                        pre = marker_stats['pre_filter_counts'][group]
+                for group in marker_stats["groups_analyzed"][:10]:
+                    if group in marker_stats["post_filter_counts"]:
+                        post = marker_stats["post_filter_counts"][group]
+                        filtered = marker_stats["filtered_counts"][group]
+                        pre = marker_stats["pre_filter_counts"][group]
                         response_parts.append(
                             f"  - Cluster {group}: {post} genes (filtered {filtered}/{pre})"
                         )
 
-                if len(marker_stats['groups_analyzed']) > 10:
-                    remaining = len(marker_stats['groups_analyzed']) - 10
+                if len(marker_stats["groups_analyzed"]) > 10:
+                    remaining = len(marker_stats["groups_analyzed"]) - 10
                     response_parts.append(f"  ... and {remaining} more clusters")
 
             response_parts.append("\n**Top Marker Genes by Cluster:**")
 
             # Show top marker genes for each cluster (first 5 clusters)
             if "top_markers_per_group" in marker_stats:
-                for cluster_id in list(marker_stats["top_markers_per_group"].keys())[:5]:
+                for cluster_id in list(marker_stats["top_markers_per_group"].keys())[
+                    :5
+                ]:
                     top_genes = marker_stats["top_markers_per_group"][cluster_id][:5]
                     gene_names = [gene["gene"] for gene in top_genes]
-                    response_parts.append(f"  - **Cluster {cluster_id}**: {', '.join(gene_names)}")
+                    response_parts.append(
+                        f"  - **Cluster {cluster_id}**: {', '.join(gene_names)}"
+                    )
 
                 if len(marker_stats["top_markers_per_group"]) > 5:
                     remaining = len(marker_stats["top_markers_per_group"]) - 5
                     response_parts.append(f"  ... and {remaining} more clusters")
 
-            response_parts.append(f"\n**New modality created**: '{marker_modality_name}'")
+            response_parts.append(
+                f"\n**New modality created**: '{marker_modality_name}'"
+            )
 
             if save_result:
                 response_parts.append(f"**Saved to**: {save_path}")
 
-            response_parts.append("**Access detailed results**: adata.uns['rank_genes_groups']")
-            response_parts.append("\n**CRITICAL**: If annotation requested, INVOKE handoff_to_annotation_expert immediately (do NOT just suggest it).")
+            response_parts.append(
+                "**Access detailed results**: adata.uns['rank_genes_groups']"
+            )
+            response_parts.append(
+                "\n**CRITICAL**: If annotation requested, INVOKE handoff_to_annotation_expert immediately (do NOT just suggest it)."
+            )
 
             response = "\n".join(response_parts)
 

@@ -16,7 +16,10 @@ import pytest
 import scanpy as sc
 from anndata import AnnData
 
-from lobster.services.analysis.clustering_service import ClusteringError, ClusteringService
+from lobster.services.analysis.clustering_service import (
+    ClusteringError,
+    ClusteringService,
+)
 
 
 @pytest.fixture
@@ -32,7 +35,7 @@ def clustered_adata():
     # Create data with 3 distinct populations
     X1 = np.random.negative_binomial(20, 0.3, size=(100, 500))  # Cluster 0
     X2 = np.random.negative_binomial(10, 0.3, size=(100, 500))  # Cluster 1
-    X3 = np.random.negative_binomial(5, 0.3, size=(100, 500))   # Cluster 2
+    X3 = np.random.negative_binomial(5, 0.3, size=(100, 500))  # Cluster 2
     X = np.vstack([X1, X2, X3])
     adata = AnnData(X=X)
 
@@ -60,7 +63,7 @@ def large_clustered_adata():
     # Create data with 5 distinct populations
     populations = []
     for i in range(5):
-        X = np.random.negative_binomial(20 - i*3, 0.3, size=(80, 500))
+        X = np.random.negative_binomial(20 - i * 3, 0.3, size=(80, 500))
         populations.append(X)
     X = np.vstack(populations)
     adata = AnnData(X=X)
@@ -85,6 +88,7 @@ def large_clustered_adata():
 # ============================================
 # TEST 1: Basic Sub-clustering (Single Cluster)
 # ============================================
+
 
 def test_basic_subcluster_single_cluster(clustering_service, clustered_adata):
     """Test basic sub-clustering of a single cluster."""
@@ -146,6 +150,7 @@ def test_basic_subcluster_single_cluster(clustering_service, clustered_adata):
 # TEST 2: Multiple Cluster Sub-clustering
 # ============================================
 
+
 def test_subcluster_multiple_clusters(clustering_service, clustered_adata):
     """Test sub-clustering of multiple clusters simultaneously."""
     # Get multiple clusters to refine
@@ -188,6 +193,7 @@ def test_subcluster_multiple_clusters(clustering_service, clustered_adata):
 # ============================================
 # TEST 3: Multi-resolution Sub-clustering
 # ============================================
+
 
 def test_multi_resolution_subcluster(clustering_service, large_clustered_adata):
     """Test sub-clustering with multiple resolutions."""
@@ -235,6 +241,7 @@ def test_multi_resolution_subcluster(clustering_service, large_clustered_adata):
 # TEST 4: Full Re-clustering (clusters_to_refine=None)
 # ============================================
 
+
 def test_full_reclustering(clustering_service, clustered_adata):
     """Test full re-clustering when clusters_to_refine=None."""
     result = clustering_service.subcluster_cells(
@@ -269,6 +276,7 @@ def test_full_reclustering(clustering_service, clustered_adata):
 # TEST 5: Error Handling - Invalid Cluster Key
 # ============================================
 
+
 def test_error_invalid_cluster_key(clustering_service, clustered_adata):
     """Test error when invalid cluster_key provided."""
     with pytest.raises(ClusteringError, match="not found in adata.obs"):
@@ -283,6 +291,7 @@ def test_error_invalid_cluster_key(clustering_service, clustered_adata):
 # TEST 6: Error Handling - Invalid Cluster IDs
 # ============================================
 
+
 def test_error_invalid_cluster_ids(clustering_service, clustered_adata):
     """Test error when invalid cluster IDs provided."""
     with pytest.raises(ClusteringError, match="Invalid cluster IDs"):
@@ -296,6 +305,7 @@ def test_error_invalid_cluster_ids(clustering_service, clustered_adata):
 # ============================================
 # TEST 7: Error Handling - Missing PCA
 # ============================================
+
 
 def test_error_missing_pca(clustering_service):
     """Test error when PCA results not found."""
@@ -316,6 +326,7 @@ def test_error_missing_pca(clustering_service):
 # ============================================
 # TEST 8: Demo Mode Behavior
 # ============================================
+
 
 def test_demo_mode_parameters(clustering_service, clustered_adata):
     """Test that demo mode reduces parameters correctly."""
@@ -338,6 +349,7 @@ def test_demo_mode_parameters(clustering_service, clustered_adata):
 # ============================================
 # TEST 9: Label Prefix Format Validation
 # ============================================
+
 
 def test_label_prefix_format(clustering_service, clustered_adata):
     """Test that sub-cluster labels have correct prefix format."""
@@ -362,13 +374,16 @@ def test_label_prefix_format(clustering_service, clustered_adata):
     for label in sub_labels.unique():
         parts = label.split(".")
         assert len(parts) == 2, f"Label {label} should be in 'parent.sub' format"
-        assert parts[0] == cluster_to_refine[0], f"Prefix should be {cluster_to_refine[0]}"
+        assert (
+            parts[0] == cluster_to_refine[0]
+        ), f"Prefix should be {cluster_to_refine[0]}"
         assert parts[1].isdigit(), f"Sub-cluster ID should be numeric"
 
 
 # ============================================
 # TEST 10: Statistics Completeness
 # ============================================
+
 
 def test_stats_completeness(clustering_service, clustered_adata):
     """Test that statistics dict contains all expected keys."""
@@ -415,6 +430,7 @@ def test_stats_completeness(clustering_service, clustered_adata):
 # TEST 11: IR Parameter Schema Validation
 # ============================================
 
+
 def test_ir_parameter_schema(clustering_service, clustered_adata):
     """Test that IR contains proper parameter schema."""
     result = clustering_service.subcluster_cells(
@@ -451,6 +467,7 @@ def test_ir_parameter_schema(clustering_service, clustered_adata):
 # ============================================
 # TEST 12: Empty Cluster List Handling
 # ============================================
+
 
 def test_empty_cluster_list(clustering_service, clustered_adata):
     """Test behavior when empty cluster list provided."""

@@ -30,7 +30,9 @@ from lobster.agents.state import SingleCellExpertState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.services.analysis.enhanced_singlecell_service import EnhancedSingleCellService
+from lobster.services.analysis.enhanced_singlecell_service import (
+    EnhancedSingleCellService,
+)
 from lobster.services.metadata.manual_annotation_service import ManualAnnotationService
 from lobster.services.templates.annotation_templates import (
     AnnotationTemplateService,
@@ -213,8 +215,10 @@ def annotation_expert(
             )
 
             # Use singlecell service for cell type annotation
-            adata_annotated, annotation_stats, ir = singlecell_service.annotate_cell_types(
-                adata=adata, reference_markers=reference_markers
+            adata_annotated, annotation_stats, ir = (
+                singlecell_service.annotate_cell_types(
+                    adata=adata, reference_markers=reference_markers
+                )
             )
 
             # Save as new modality
@@ -259,9 +263,13 @@ def annotation_expert(
             # Add confidence distribution if available
             if "confidence_mean" in annotation_stats:
                 response += f"\n\n**Confidence Scoring:**"
-                response += f"\n- Mean confidence: {annotation_stats['confidence_mean']:.3f}"
+                response += (
+                    f"\n- Mean confidence: {annotation_stats['confidence_mean']:.3f}"
+                )
                 response += f"\n- Median confidence: {annotation_stats['confidence_median']:.3f}"
-                response += f"\n- Std deviation: {annotation_stats['confidence_std']:.3f}"
+                response += (
+                    f"\n- Std deviation: {annotation_stats['confidence_std']:.3f}"
+                )
 
                 response += f"\n\n**Annotation Quality Distribution:**"
                 quality_dist = annotation_stats["quality_distribution"]
@@ -270,7 +278,9 @@ def annotation_expert(
                 response += f"\n- Low confidence: {quality_dist['low']} cells"
 
                 response += "\n\n**Note**: Per-cell confidence scores available in:"
-                response += "\n  - adata.obs['cell_type_confidence']: Correlation score (0-1)"
+                response += (
+                    "\n  - adata.obs['cell_type_confidence']: Correlation score (0-1)"
+                )
                 response += "\n  - adata.obs['cell_type_top3']: Top 3 predictions"
                 response += "\n  - adata.obs['annotation_entropy']: Shannon entropy"
                 response += "\n  - adata.obs['annotation_quality']: Quality flag (high/medium/low)"
@@ -280,9 +290,7 @@ def annotation_expert(
             if save_result:
                 response += f"\n**Saved to**: {save_path}"
 
-            response += (
-                "\n**Cell type annotations added to**: adata.obs['cell_type']"
-            )
+            response += "\n**Cell type annotations added to**: adata.obs['cell_type']"
             response += "\n\nProceed with cell type-specific downstream analysis or comparative studies."
 
             analysis_results["details"]["cell_type_annotation"] = response
@@ -841,7 +849,9 @@ def annotation_expert(
             elif validation["coverage_percentage"] >= 70:
                 response += "\n\n**Quality**: Good annotation coverage, consider annotating remaining clusters"
             else:
-                response += "\n\n**Quality**: Low annotation coverage, more annotation needed"
+                response += (
+                    "\n\n**Quality**: Low annotation coverage, more annotation needed"
+                )
 
             return response
 
@@ -956,9 +966,7 @@ def annotation_expert(
                 response += f"... and {len(available_types) - 8} more"
 
             response += f"\n\n**New modality created**: '{template_modality_name}'"
-            response += (
-                "\n**Template suggestions in**: adata.obs['cell_type_template']"
-            )
+            response += "\n**Template suggestions in**: adata.obs['cell_type_template']"
 
             if save_result:
                 response += f"\n**Saved to**: {save_path}"
@@ -1203,9 +1211,7 @@ Use this mapping to apply consistent annotations to similar datasets."""
                 response += f"\n- {cell_type}: {count:,} cells"
 
             response += f"\n\n**New modality created**: '{imported_modality_name}'"
-            response += (
-                "\n**Imported annotations in**: adata.obs['cell_type_imported']"
-            )
+            response += "\n**Imported annotations in**: adata.obs['cell_type_imported']"
 
             if save_result:
                 response += f"\n**Saved to**: {save_path}"

@@ -20,16 +20,16 @@ from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.schemas.download_queue import DownloadStatus, ValidationStatus
-from lobster.tools.download_orchestrator import DownloadOrchestrator
 from lobster.services.data_access.geo_download_service import GEODownloadService
-from lobster.tools.workspace_tool import create_list_modalities_tool
 from lobster.services.execution import (
-    CustomCodeExecutionService,
     CodeExecutionError,
     CodeValidationError,
-    SDKDelegationService,
+    CustomCodeExecutionService,
     SDKDelegationError,
+    SDKDelegationService,
 )
+from lobster.tools.download_orchestrator import DownloadOrchestrator
+from lobster.tools.workspace_tool import create_list_modalities_tool
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -76,7 +76,9 @@ def data_expert(
     assistant = DataExpertAssistant()
 
     # Initialize modality management service
-    from lobster.services.data_management.modality_management_service import ModalityManagementService
+    from lobster.services.data_management.modality_management_service import (
+        ModalityManagementService,
+    )
 
     modality_service = ModalityManagementService(data_manager)
 
@@ -137,13 +139,13 @@ def data_expert(
 
             # Check validation status and warn if issues detected
             if (
-                hasattr(entry, 'validation_status') and
-                entry.validation_status == ValidationStatus.VALIDATED_WITH_WARNINGS and
-                not force_download
+                hasattr(entry, "validation_status")
+                and entry.validation_status == ValidationStatus.VALIDATED_WITH_WARNINGS
+                and not force_download
             ):
                 warnings = []
                 if entry.validation_result:
-                    warnings = entry.validation_result.get('warnings', [])
+                    warnings = entry.validation_result.get("warnings", [])
 
                 # Get strategy info
                 strategy_info = ""
@@ -291,7 +293,11 @@ Dataset: {entry.dataset_id}
                 logger.info(f"Download complete: {entry.dataset_id} → {modality_name}")
 
                 # 7. RETURN SUCCESS REPORT
-                strategy_used = entry.recommended_strategy.strategy_name if entry.recommended_strategy else "auto-detected"
+                strategy_used = (
+                    entry.recommended_strategy.strategy_name
+                    if entry.recommended_strategy
+                    else "auto-detected"
+                )
 
                 response = f"""
 ✅ **Download completed successfully**
@@ -885,7 +891,9 @@ The MuData object contains all selected modalities and is ready for cross-modal 
         """
         try:
             # Import the ConcatenationService
-            from lobster.services.data_management.concatenation_service import ConcatenationService
+            from lobster.services.data_management.concatenation_service import (
+                ConcatenationService,
+            )
 
             # Initialize the concatenation service
             concat_service = ConcatenationService(data_manager)
@@ -1130,7 +1138,7 @@ To save, run again with save_to_file=True"""
         modality_name: Optional[str] = None,
         load_workspace_files: bool = True,
         persist: bool = False,
-        description: str = "Custom code execution"
+        description: str = "Custom code execution",
     ) -> str:
         """
         Execute custom Python code with access to workspace data.
@@ -1201,21 +1209,21 @@ To save, run again with save_to_file=True"""
                 modality_name=modality_name,
                 load_workspace_files=load_workspace_files,
                 persist=persist,
-                description=description
+                description=description,
             )
 
             # Log to data manager
             data_manager.log_tool_usage(
                 tool_name="execute_custom_code",
                 parameters={
-                    'description': description,
-                    'modality_name': modality_name,
-                    'persist': persist,
-                    'duration_seconds': stats['duration_seconds'],
-                    'success': stats['success']
+                    "description": description,
+                    "modality_name": modality_name,
+                    "persist": persist,
+                    "duration_seconds": stats["duration_seconds"],
+                    "success": stats["success"],
                 },
                 description=f"{description} ({'success' if stats['success'] else 'failed'})",
-                ir=ir
+                ir=ir,
             )
 
             # Format response
@@ -1223,19 +1231,19 @@ To save, run again with save_to_file=True"""
             response += f"**Description**: {description}\n"
             response += f"**Duration**: {stats.get('duration_seconds', 0):.2f}s\n"
 
-            if stats.get('warnings'):
+            if stats.get("warnings"):
                 response += f"\n**Warnings ({len(stats['warnings'])}):**\n"
-                for warning in stats['warnings']:
+                for warning in stats["warnings"]:
                     response += f"  - {str(warning)}\n"
 
             if result is not None:
                 result_preview = str(result)[:500]  # Limit preview length
-                result_type = stats.get('result_type', 'unknown')
+                result_type = stats.get("result_type", "unknown")
                 response += f"\n**Result** ({result_type}):\n{result_preview}\n"
 
-            if stats.get('stdout_lines', 0) > 0:
+            if stats.get("stdout_lines", 0) > 0:
                 response += f"\n**Output**: {stats['stdout_lines']} lines printed\n"
-                if stats.get('stdout_preview'):
+                if stats.get("stdout_preview"):
                     response += f"```\n{stats['stdout_preview']}\n```\n"
 
             if persist:

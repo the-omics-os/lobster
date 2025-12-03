@@ -40,12 +40,12 @@ class ExecutionContextBuilder:
         """
         self.data_manager = data_manager
         self.workspace_path = data_manager.workspace_path
-        logger.debug(f"Initialized ExecutionContextBuilder with workspace: {self.workspace_path}")
+        logger.debug(
+            f"Initialized ExecutionContextBuilder with workspace: {self.workspace_path}"
+        )
 
     def build_context(
-        self,
-        modality_name: Optional[str] = None,
-        load_workspace_files: bool = True
+        self, modality_name: Optional[str] = None, load_workspace_files: bool = True
     ) -> Dict[str, Any]:
         """
         Build execution namespace with workspace data.
@@ -66,23 +66,27 @@ class ExecutionContextBuilder:
         context = {}
 
         # Core objects (always present)
-        context['data_manager'] = self.data_manager
-        context['workspace_path'] = self.workspace_path
-        context['modalities'] = self.data_manager.list_modalities()
+        context["data_manager"] = self.data_manager
+        context["workspace_path"] = self.workspace_path
+        context["modalities"] = self.data_manager.list_modalities()
 
-        logger.debug(f"Building context with {len(context['modalities'])} modalities available")
+        logger.debug(
+            f"Building context with {len(context['modalities'])} modalities available"
+        )
 
         # Load specific modality if requested
         if modality_name:
-            if modality_name not in context['modalities']:
+            if modality_name not in context["modalities"]:
                 logger.warning(
                     f"Modality '{modality_name}' not found. "
                     f"Available: {context['modalities']}"
                 )
             else:
-                context['adata'] = self.data_manager.get_modality(modality_name)
-                logger.debug(f"Loaded modality '{modality_name}' as 'adata' "
-                           f"({context['adata'].n_obs} obs × {context['adata'].n_vars} vars)")
+                context["adata"] = self.data_manager.get_modality(modality_name)
+                logger.debug(
+                    f"Loaded modality '{modality_name}' as 'adata' "
+                    f"({context['adata'].n_obs} obs × {context['adata'].n_vars} vars)"
+                )
 
         # Load workspace files
         if load_workspace_files:
@@ -95,8 +99,8 @@ class ExecutionContextBuilder:
             )
 
         # Standard library imports (convenience)
-        context['pd'] = pd
-        context['Path'] = Path
+        context["pd"] = pd
+        context["Path"] = Path
 
         logger.debug(f"Built context with {len(context)} keys")
         return context
@@ -123,8 +127,10 @@ class ExecutionContextBuilder:
             var_name = self._sanitize_filename(csv_file.stem)
             try:
                 csv_data[var_name] = pd.read_csv(csv_file)
-                logger.debug(f"Loaded CSV: {csv_file.name} -> {var_name} "
-                           f"({csv_data[var_name].shape[0]} rows)")
+                logger.debug(
+                    f"Loaded CSV: {csv_file.name} -> {var_name} "
+                    f"({csv_data[var_name].shape[0]} rows)"
+                )
             except Exception as e:
                 logger.warning(f"Failed to load CSV {csv_file.name}: {e}")
 
@@ -143,8 +149,8 @@ class ExecutionContextBuilder:
 
         # Load JSONL queue files (special handling)
         queue_files = {
-            'download_queue': 'download_queue.jsonl',
-            'publication_queue': 'publication_queue.jsonl'
+            "download_queue": "download_queue.jsonl",
+            "publication_queue": "publication_queue.jsonl",
         }
 
         for var_name, filename in queue_files.items():
@@ -158,8 +164,10 @@ class ExecutionContextBuilder:
                             if line:  # Skip empty lines
                                 entries.append(json.loads(line))
                     json_data[var_name] = entries
-                    logger.debug(f"Loaded queue: {filename} -> {var_name} "
-                               f"({len(entries)} entries)")
+                    logger.debug(
+                        f"Loaded queue: {filename} -> {var_name} "
+                        f"({len(entries)} entries)"
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to load queue {filename}: {e}")
 

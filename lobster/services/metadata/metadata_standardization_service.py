@@ -19,7 +19,9 @@ from pydantic import BaseModel, Field, ValidationError
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.schemas.transcriptomics import TranscriptomicsMetadataSchema
-from lobster.services.metadata.metadata_validation_service import MetadataValidationService
+from lobster.services.metadata.metadata_validation_service import (
+    MetadataValidationService,
+)
 
 logger = logging.getLogger(__name__)
 

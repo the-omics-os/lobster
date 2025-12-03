@@ -181,7 +181,11 @@ class RISParser:
         pmc_id = self._extract_pmc_id(ris_entry)
 
         # Extract title early (needed for deterministic entry_id fallback)
-        title = ris_entry.get("title") or ris_entry.get("primary_title") or ris_entry.get("TI")
+        title = (
+            ris_entry.get("title")
+            or ris_entry.get("primary_title")
+            or ris_entry.get("TI")
+        )
 
         # Generate DETERMINISTIC entry ID to prevent duplicates on re-import
         # Priority: DOI > PMID > title hash > random UUID
@@ -500,7 +504,10 @@ class RISParser:
         link2_lower = link2.lower()
 
         # Check if URL is PubMed
-        if "ncbi.nlm.nih.gov/pubmed" in link2_lower or "pubmed.ncbi.nlm.nih.gov" in link2_lower:
+        if (
+            "ncbi.nlm.nih.gov/pubmed" in link2_lower
+            or "pubmed.ncbi.nlm.nih.gov" in link2_lower
+        ):
             return link2
 
         return None

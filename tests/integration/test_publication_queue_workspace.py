@@ -430,7 +430,9 @@ def test_publication_priority_ordering(agent_client):
     high_entry = agent_client.data_manager.publication_queue.get_entry(
         "high_priority_pub"
     )
-    low_entry = agent_client.data_manager.publication_queue.get_entry("low_priority_pub")
+    low_entry = agent_client.data_manager.publication_queue.get_entry(
+        "low_priority_pub"
+    )
 
     assert high_entry.priority == 1
     assert low_entry.priority == 10
@@ -459,7 +461,7 @@ def test_publication_queue_provenance_logging(agent_client):
     agent_client.data_manager.publication_queue.add_entry(entry)
 
     # Mock log_tool_usage to verify it's called with correct parameters
-    with patch.object(agent_client.data_manager, 'log_tool_usage') as mock_log:
+    with patch.object(agent_client.data_manager, "log_tool_usage") as mock_log:
         # Simulate research_agent tool calling log_tool_usage
         # (This is what the actual update_publication_status tool does)
         old_status = str(entry.status)
@@ -490,4 +492,6 @@ def test_publication_queue_provenance_logging(agent_client):
 
         # Verify the call had correct tool_name
         call_args = mock_log.call_args
-        assert call_args[1]["tool_name"] == "update_publication_status", "Tool name should be update_publication_status"
+        assert (
+            call_args[1]["tool_name"] == "update_publication_status"
+        ), "Tool name should be update_publication_status"

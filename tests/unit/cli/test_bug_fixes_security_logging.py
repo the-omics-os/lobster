@@ -12,7 +12,7 @@ import os
 import stat
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -182,7 +182,9 @@ class TestBug6PathResolverSecurity:
         for attack in attacks:
             result = resolver.resolve(attack)
             # Should block escaping current_dir and home dir
-            if not result.path.is_relative_to(current_dir) and not result.path.is_relative_to(Path.home()):
+            if not result.path.is_relative_to(
+                current_dir
+            ) and not result.path.is_relative_to(Path.home()):
                 assert not result.is_safe, f"Should block: {attack}"
 
 
@@ -256,7 +258,11 @@ class TestBug4HistoryLogging:
         mock_client.data_manager.workspace_path = tmp_path
 
         # Add multiple commands
-        commands = [("/test1", "summary1"), ("/test2", "summary2"), ("/test3", "summary3")]
+        commands = [
+            ("/test1", "summary1"),
+            ("/test2", "summary2"),
+            ("/test3", "summary3"),
+        ]
 
         for cmd, summary in commands:
             _backup_command_to_file(mock_client, cmd, summary, False, True)

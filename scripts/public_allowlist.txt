@@ -95,7 +95,6 @@ lobster/core/utils/*
 # Open-core agents (public)
 lobster/agents/supervisor.py
 lobster/agents/research_agent.py
-lobster/agents/metadata_assistant.py
 lobster/agents/data_expert.py
 lobster/agents/visualization_expert.py
 lobster/agents/machine_learning_expert.py
@@ -125,6 +124,7 @@ lobster/agents/archive/*
 !lobster/agents/bulk_rnaseq_expert.py         # Replaced by transcriptomics module
 
 # PREMIUM AGENTS (Excluded)
+!lobster/agents/metadata_assistant.py         # PREMIUM: Publication queue filtering, ID mapping
 !lobster/agents/proteomics/proteomics_expert.py
 !lobster/agents/proteomics/platform_config.py
 !lobster/agents/custom_feature_agent.py       # AI-powered agent generation (premium)
@@ -205,8 +205,8 @@ lobster/services/metadata/sample_grouping_service.py
 # --- Execution Services (OPEN per user confirmation) ---
 lobster/services/execution/*
 
-# --- Orchestration Services ---
-lobster/services/orchestration/publication_processing_service.py
+# --- Orchestration Services (PREMIUM - DataBioMix feature) ---
+!lobster/services/orchestration/publication_processing_service.py
 
 # --- Machine Learning Services (Alpha/Premium) ---
 !lobster/services/ml/ml_transcriptomics_service_ALPHA.py

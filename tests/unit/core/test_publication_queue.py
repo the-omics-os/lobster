@@ -357,14 +357,18 @@ class TestCRUDOperations:
         assert updated.status == PublicationStatus.METADATA_EXTRACTED
         assert updated.workspace_metadata_keys == workspace_keys
         assert len(updated.workspace_metadata_keys) == 3
-        assert f"{sample_entry.entry_id}_metadata.json" in updated.workspace_metadata_keys
+        assert (
+            f"{sample_entry.entry_id}_metadata.json" in updated.workspace_metadata_keys
+        )
 
         # Test get_workspace_metadata_paths helper method
         workspace_dir = "/test/workspace"
         paths = updated.get_workspace_metadata_paths(workspace_dir)
         assert len(paths) == 3
         assert all("/test/workspace/metadata/" in path for path in paths)
-        assert f"/test/workspace/metadata/{sample_entry.entry_id}_metadata.json" in paths
+        assert (
+            f"/test/workspace/metadata/{sample_entry.entry_id}_metadata.json" in paths
+        )
 
     def test_list_entries_all(self, publication_queue):
         """Test listing all entries."""
@@ -553,7 +557,9 @@ class TestPersistence:
 class TestBackup:
     """Test backup functionality (only when enabled)."""
 
-    def test_backup_created_on_modification(self, temp_queue_file, sample_entry, monkeypatch):
+    def test_backup_created_on_modification(
+        self, temp_queue_file, sample_entry, monkeypatch
+    ):
         monkeypatch.setenv("LOBSTER_ENABLE_QUEUE_BACKUPS", "1")
         publication_queue = PublicationQueue(temp_queue_file)
 
@@ -781,6 +787,7 @@ class TestStatistics:
 # Check if rispy is available
 try:
     import rispy
+
     RISPY_AVAILABLE = True
 except ImportError:
     RISPY_AVAILABLE = False
@@ -806,7 +813,10 @@ class TestRISParser:
         assert all(isinstance(e, PublicationQueueEntry) for e in entries)
 
         # Check first entry
-        assert entries[0].title == "Single-cell RNA sequencing reveals novel cell types in human brain"
+        assert (
+            entries[0].title
+            == "Single-cell RNA sequencing reveals novel cell types in human brain"
+        )
         assert "Smith" in entries[0].authors[0]
         assert entries[0].year == 2022
         assert entries[0].pmid == "35042229"
@@ -917,9 +927,9 @@ class TestRISParser:
         """Test author extraction with multiple authors."""
         parser = RISParser()
 
-        authors = parser._extract_authors({
-            "authors": ["Smith, John", "Jones, Alice", "Williams, Bob"]
-        })
+        authors = parser._extract_authors(
+            {"authors": ["Smith, John", "Jones, Alice", "Williams, Bob"]}
+        )
         assert len(authors) == 3
         assert "Smith, John" in authors
 
@@ -1091,16 +1101,22 @@ class TestWorkspaceIntegration:
     def test_workspace_metadata_keys_non_string_rejected(self):
         """Test non-string workspace_metadata_keys are rejected."""
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError, match="Input should be a valid string"):
             PublicationQueueEntry(
                 entry_id="test_entry",
                 pmid="12345678",
-                workspace_metadata_keys=["SRR123_metadata.json", 123, "SRR456_metadata.json"],
+                workspace_metadata_keys=[
+                    "SRR123_metadata.json",
+                    123,
+                    "SRR456_metadata.json",
+                ],
             )
 
     def test_workspace_metadata_keys_non_list_rejected(self):
         """Test non-list workspace_metadata_keys are rejected."""
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError, match="Input should be a valid list"):
             PublicationQueueEntry(
                 entry_id="test_entry",
@@ -1199,7 +1215,11 @@ class TestWorkspaceIntegration:
         entry.harmonization_metadata = {
             "samples": [
                 {"run_accession": "SRR123", "tissue": "brain", "cell_type": "neuron"},
-                {"run_accession": "SRR456", "tissue": "heart", "cell_type": "cardiomyocyte"},
+                {
+                    "run_accession": "SRR456",
+                    "tissue": "heart",
+                    "cell_type": "cardiomyocyte",
+                },
             ],
             "validation_status": "passed",
             "filtered_count": 2,

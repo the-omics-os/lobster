@@ -67,6 +67,7 @@ def get_protocol_service(domain: str) -> IProtocolExtractionService:
         from lobster.services.metadata.protocol_extraction.amplicon.service import (
             AmpliconProtocolService,
         )
+
         service = AmpliconProtocolService()
         _service_cache[domain_lower] = service
         return service
@@ -76,6 +77,7 @@ def get_protocol_service(domain: str) -> IProtocolExtractionService:
         from lobster.services.metadata.protocol_extraction.mass_spec.service import (
             MassSpecProtocolService,
         )
+
         service = MassSpecProtocolService()
         _service_cache[domain_lower] = service
         return service
@@ -85,6 +87,7 @@ def get_protocol_service(domain: str) -> IProtocolExtractionService:
         from lobster.services.metadata.protocol_extraction.rnaseq.service import (
             RNASeqProtocolService,
         )
+
         service = RNASeqProtocolService()
         _service_cache[domain_lower] = service
         return service

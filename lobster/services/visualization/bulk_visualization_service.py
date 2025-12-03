@@ -93,7 +93,9 @@ class BulkVisualizationService:
 
             # Validate required columns
             required_cols = ["log2FoldChange", "padj"]
-            missing_cols = [col for col in required_cols if col not in adata.var.columns]
+            missing_cols = [
+                col for col in required_cols if col not in adata.var.columns
+            ]
             if missing_cols:
                 raise BulkVisualizationError(
                     f"Missing required columns in adata.var: {missing_cols}. "
@@ -295,7 +297,9 @@ class BulkVisualizationService:
 
             # Validate required columns
             required_cols = ["log2FoldChange", "padj", "baseMean"]
-            missing_cols = [col for col in required_cols if col not in adata.var.columns]
+            missing_cols = [
+                col for col in required_cols if col not in adata.var.columns
+            ]
             if missing_cols:
                 raise BulkVisualizationError(
                     f"Missing required columns in adata.var: {missing_cols}. "
@@ -341,7 +345,11 @@ class BulkVisualizationService:
             if n_significant > 0:
                 # Color by up/down regulation
                 colors = [
-                    self.significance_colors["up"] if fc > 0 else self.significance_colors["down"]
+                    (
+                        self.significance_colors["up"]
+                        if fc > 0
+                        else self.significance_colors["down"]
+                    )
                     for fc in log2fc[significant]
                 ]
 
@@ -528,7 +536,8 @@ class BulkVisualizationService:
 
             # Update layout
             fig.update_layout(
-                title=title or f"Gene Expression Heatmap ({len(gene_names)} genes, {len(sample_names)} samples)",
+                title=title
+                or f"Gene Expression Heatmap ({len(gene_names)} genes, {len(sample_names)} samples)",
                 xaxis_title="Samples",
                 yaxis_title="Genes",
                 width=max(self.default_width, 40 * len(sample_names)),

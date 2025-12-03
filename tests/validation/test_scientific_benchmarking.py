@@ -44,7 +44,9 @@ from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
 from lobster.services.analysis.clustering_service import ClusteringService
-from lobster.services.analysis.differential_formula_service import DifferentialFormulaService
+from lobster.services.analysis.differential_formula_service import (
+    DifferentialFormulaService,
+)
 from lobster.services.quality.preprocessing_service import PreprocessingService
 from lobster.services.quality.quality_service import QualityService
 

@@ -29,7 +29,9 @@ def test_imports():
         return False
 
     try:
-        from lobster.services.analysis.scvi_embedding_service import ScviEmbeddingService
+        from lobster.services.analysis.scvi_embedding_service import (
+            ScviEmbeddingService,
+        )
 
         print("✅ scVI embedding service imports successfully")
     except ImportError as e:
@@ -62,7 +64,9 @@ def test_agent_modifications():
         from unittest.mock import MagicMock
 
         from lobster.agents.machine_learning_expert import machine_learning_expert
-        from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
+        from lobster.agents.transcriptomics.transcriptomics_expert import (
+            transcriptomics_expert,
+        )
         from lobster.core.data_manager_v2 import DataManagerV2
 
         # Create mock data manager

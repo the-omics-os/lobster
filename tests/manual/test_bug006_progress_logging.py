@@ -50,9 +50,7 @@ def test_progress_logging_small_dataset():
         service = ConcatenationService(dm)
 
         # Create 5 samples with 2k cells each
-        samples = [
-            create_test_adata(2000, 500, f"sample_{i}") for i in range(5)
-        ]
+        samples = [create_test_adata(2000, 500, f"sample_{i}") for i in range(5)]
 
         logger.info("Starting concatenation...")
         result_adata, stats, ir = service.concatenate_samples(
@@ -60,8 +58,12 @@ def test_progress_logging_small_dataset():
         )
 
         logger.info(f"✅ TEST 1 PASSED: Concatenation completed successfully")
-        logger.info(f"   Result: {result_adata.n_obs} cells × {result_adata.n_vars} genes")
-        logger.info(f"   Processing time: {stats.get('processing_time_seconds', 0):.1f}s")
+        logger.info(
+            f"   Result: {result_adata.n_obs} cells × {result_adata.n_vars} genes"
+        )
+        logger.info(
+            f"   Processing time: {stats.get('processing_time_seconds', 0):.1f}s"
+        )
 
 
 def test_memory_warning_simulation():
@@ -78,9 +80,7 @@ def test_memory_warning_simulation():
         # Create larger samples to trigger memory warnings
         # Adjust size based on available RAM
         logger.info("Creating 10 samples with 5k cells each...")
-        samples = [
-            create_test_adata(5000, 1000, f"sample_{i}") for i in range(10)
-        ]
+        samples = [create_test_adata(5000, 1000, f"sample_{i}") for i in range(10)]
 
         logger.info("Starting concatenation (watch for memory estimates)...")
         result_adata, stats, ir = service.concatenate_samples(
@@ -88,7 +88,9 @@ def test_memory_warning_simulation():
         )
 
         logger.info(f"✅ TEST 2 PASSED: Concatenation with memory monitoring completed")
-        logger.info(f"   Result: {result_adata.n_obs} cells × {result_adata.n_vars} genes")
+        logger.info(
+            f"   Result: {result_adata.n_obs} cells × {result_adata.n_vars} genes"
+        )
 
 
 def test_resource_monitor():
@@ -105,6 +107,7 @@ def test_resource_monitor():
 
     try:
         import time
+
         # Simulate a long operation
         logger.info("Simulating long-running operation...")
         time.sleep(15)  # Sleep 15s to trigger timeout warning
@@ -149,9 +152,15 @@ def test_dataframe_path():
 
 def main():
     """Run all tests."""
-    logger.info("╔════════════════════════════════════════════════════════════════════════╗")
-    logger.info("║           BUG-006: Silent Process Hang - Progress Logging Tests         ║")
-    logger.info("╚════════════════════════════════════════════════════════════════════════╝")
+    logger.info(
+        "╔════════════════════════════════════════════════════════════════════════╗"
+    )
+    logger.info(
+        "║           BUG-006: Silent Process Hang - Progress Logging Tests         ║"
+    )
+    logger.info(
+        "╚════════════════════════════════════════════════════════════════════════╝"
+    )
     logger.info("")
 
     try:
@@ -167,9 +176,15 @@ def main():
         test_dataframe_path()
         logger.info("")
 
-        logger.info("╔════════════════════════════════════════════════════════════════════════╗")
-        logger.info("║                       ALL TESTS PASSED ✅                                ║")
-        logger.info("╚════════════════════════════════════════════════════════════════════════╝")
+        logger.info(
+            "╔════════════════════════════════════════════════════════════════════════╗"
+        )
+        logger.info(
+            "║                       ALL TESTS PASSED ✅                                ║"
+        )
+        logger.info(
+            "╚════════════════════════════════════════════════════════════════════════╝"
+        )
         logger.info("")
         logger.info("Summary of improvements:")
         logger.info("  ✅ Progress logged at each stage")
@@ -182,6 +197,7 @@ def main():
     except Exception as e:
         logger.error(f"❌ TEST FAILED: {e}")
         import traceback
+
         logger.error(traceback.format_exc())
         return 1
 

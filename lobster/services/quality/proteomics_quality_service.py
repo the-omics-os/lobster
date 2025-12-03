@@ -168,7 +168,9 @@ print(f"Median CV: {stats['median_cv_across_proteins']:.3f}, High CV proteins: {
         )
 
     def _create_ir_detect_contaminants(
-        self, protein_id_column: Optional[str], custom_patterns: Optional[Dict[str, List[str]]]
+        self,
+        protein_id_column: Optional[str],
+        custom_patterns: Optional[Dict[str, List[str]]],
     ) -> AnalysisStep:
         """Create IR for contaminant detection."""
         return AnalysisStep(
@@ -461,7 +463,9 @@ print(f"Replicate correlation: {stats['median_replicate_correlation']:.3f}, CV: 
             )
 
             # Create IR for provenance tracking
-            ir = self._create_ir_missing_value_patterns(sample_threshold, protein_threshold)
+            ir = self._create_ir_missing_value_patterns(
+                sample_threshold, protein_threshold
+            )
             return adata_qc, missing_stats, ir
 
         except Exception as e:
@@ -1174,7 +1178,9 @@ print(f"Replicate correlation: {stats['median_replicate_correlation']:.3f}, CV: 
             )
 
             # Create IR for provenance tracking
-            ir = self._create_ir_assess_technical_replicates(replicate_column, correlation_method)
+            ir = self._create_ir_assess_technical_replicates(
+                replicate_column, correlation_method
+            )
             return adata_qc, replicate_stats, ir
 
         except Exception as e:

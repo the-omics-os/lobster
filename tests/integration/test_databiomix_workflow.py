@@ -49,7 +49,6 @@ from lobster.services.orchestration.publication_processing_service import (
     PublicationProcessingService,
 )
 
-
 # ============================================================================
 # Fixtures
 # ============================================================================
@@ -126,7 +125,9 @@ class TestCSVExport:
         # Verify CSV file created
         csv_file = Path(file_path)
         assert csv_file.exists(), f"CSV file not created at {file_path}"
-        assert csv_file.suffix == ".csv", f"Expected .csv extension, got {csv_file.suffix}"
+        assert (
+            csv_file.suffix == ".csv"
+        ), f"Expected .csv extension, got {csv_file.suffix}"
 
         # Verify CSV content
         df = pd.read_csv(csv_file)
@@ -224,7 +225,9 @@ class TestCSVExport:
             # Serialized as single row
             assert "records" in df.columns, "Should have records column"
         else:
-            pytest.fail(f"Unexpected DataFrame shape: {len(df)} rows, columns: {list(df.columns)}")
+            pytest.fail(
+                f"Unexpected DataFrame shape: {len(df)} rows, columns: {list(df.columns)}"
+            )
 
     def test_json_export_backward_compatible(self, workspace_service, test_workspace):
         """
@@ -359,12 +362,16 @@ class TestPublicationProcessing:
         )
 
         # Verify processing result
-        assert "Processing Publication" in result, "Result should contain processing header"
+        assert (
+            "Processing Publication" in result
+        ), "Result should contain processing header"
         assert "test_databiomix_sra_001" in result, "Entry ID should be in result"
 
         # Check if identifier resolution succeeded
         if "Identifier resolution complete" in result:
-            assert "DOI:" in result or "PMID:" in result, "Should contain resolved identifiers"
+            assert (
+                "DOI:" in result or "PMID:" in result
+            ), "Should contain resolved identifiers"
 
         # Check if NCBI enrichment succeeded
         if "NCBI E-Link enrichment complete" in result:
@@ -388,7 +395,9 @@ class TestPublicationProcessing:
                     sra_content = json.load(f)
 
                 assert "samples" in sra_content, "SRA file should contain samples"
-                assert "sample_count" in sra_content, "SRA file should contain sample_count"
+                assert (
+                    "sample_count" in sra_content
+                ), "SRA file should contain sample_count"
                 assert isinstance(
                     sra_content["samples"], list
                 ), "Samples should be a list"
@@ -503,7 +512,12 @@ class TestWorkspaceTools:
             "NORM_003",
             "NORM_004",
         ]
-        assert df["dataset"].tolist() == ["Dataset1", "Dataset1", "Dataset2", "Dataset2"]
+        assert df["dataset"].tolist() == [
+            "Dataset1",
+            "Dataset1",
+            "Dataset2",
+            "Dataset2",
+        ]
         assert all(
             isinstance(score, float) for score in df["quality_score"]
         ), "Quality scores should be floats"
@@ -646,7 +660,11 @@ class TestEdgeCases:
             description="Test Unicode handling",
             data={
                 "sample_id": ["S1", "S2", "S3"],
-                "location": ["北京", "München", "São Paulo"],  # Chinese, German, Portuguese
+                "location": [
+                    "北京",
+                    "München",
+                    "São Paulo",
+                ],  # Chinese, German, Portuguese
                 "researcher": ["张伟", "Müller", "José"],
             },
             source="TestService",
@@ -722,7 +740,11 @@ def test_databiomix_workflow_integration(data_manager, workspace_service):
     }
 
     # Step 5: Verify data integrity
-    assert df["original_sample_id"].tolist() == ["SAMPLE_001", "SAMPLE_002", "SAMPLE_003"]
+    assert df["original_sample_id"].tolist() == [
+        "SAMPLE_001",
+        "SAMPLE_002",
+        "SAMPLE_003",
+    ]
     assert df["normalized_id"].tolist() == ["DB_NORM_001", "DB_NORM_002", "DB_NORM_003"]
     assert df["source_dataset"].tolist() == ["GSE123456", "GSE123456", "GSE789012"]
 

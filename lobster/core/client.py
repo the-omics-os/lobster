@@ -30,8 +30,8 @@ from lobster.core.data_manager_v2 import DataManagerV2
 
 # Import extraction cache manager
 from lobster.core.extraction_cache import ExtractionCacheManager
-from lobster.core.workspace import resolve_workspace
 from lobster.core.interfaces.base_client import BaseClient
+from lobster.core.workspace import resolve_workspace
 from lobster.utils.callbacks import TokenTrackingCallback
 
 # Configure logging
@@ -69,7 +69,9 @@ class AgentClient(BaseClient):
         self.enable_reasoning = enable_reasoning
 
         # Set up workspace using centralized resolver
-        self.workspace_path = resolve_workspace(explicit_path=workspace_path, create=True)
+        self.workspace_path = resolve_workspace(
+            explicit_path=workspace_path, create=True
+        )
 
         # Initialize DataManagerV2
         if data_manager is None:
@@ -993,7 +995,9 @@ class AgentClient(BaseClient):
         self, directory: Path, modality_base: str
     ) -> Dict[str, Any]:
         """Load GEO RAW files (GSM*.txt.gz) from extracted directory."""
-        from lobster.services.data_management.concatenation_service import ConcatenationService
+        from lobster.services.data_management.concatenation_service import (
+            ConcatenationService,
+        )
 
         # Find GEO sample files
         geo_files = []
@@ -1590,7 +1594,9 @@ class AgentClient(BaseClient):
             merged_modality = None
             if len(results) > 1:
                 try:
-                    from lobster.services.data_management.concatenation_service import ConcatenationService
+                    from lobster.services.data_management.concatenation_service import (
+                        ConcatenationService,
+                    )
 
                     concat_service = ConcatenationService(self.data_manager)
 
@@ -1905,9 +1911,7 @@ class AgentClient(BaseClient):
         # Parse RIS file
         parser = RISParser()
         try:
-            entries = parser.parse_file(
-                file_path_obj, encoding="utf-8"
-            )
+            entries = parser.parse_file(file_path_obj, encoding="utf-8")
         except Exception as e:
             logger.error(f"Failed to parse RIS file: {e}")
             return {
@@ -1930,8 +1934,13 @@ class AgentClient(BaseClient):
                     entry.schema_type = schema_type
                 if extraction_level != "methods":
                     try:
-                        from lobster.core.schemas.publication_queue import ExtractionLevel
-                        entry.extraction_level = ExtractionLevel(extraction_level.lower())
+                        from lobster.core.schemas.publication_queue import (
+                            ExtractionLevel,
+                        )
+
+                        entry.extraction_level = ExtractionLevel(
+                            extraction_level.lower()
+                        )
                     except ImportError:
                         logger.warning("ExtractionLevel not available, using default")
 

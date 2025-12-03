@@ -8,15 +8,16 @@ Tests cover:
 - IR generation and provenance tracking
 """
 
-import pytest
-from typing import Dict, Any
+from typing import Any, Dict
 
+import pytest
+
+from lobster.core.analysis_ir import AnalysisStep
 from lobster.services.metadata.microbiome_filtering_service import (
+    HOST_ALIASES,
     MicrobiomeFilteringService,
     ValidationResult,
-    HOST_ALIASES,
 )
-from lobster.core.analysis_ir import AnalysisStep
 
 
 @pytest.fixture
@@ -309,7 +310,9 @@ class TestHostOrganism:
 
         for metadata in field_variations:
             result, stats, ir = service.validate_host_organism(metadata)
-            assert stats["is_valid"] is True, f"Failed for field: {list(metadata.keys())[0]}"
+            assert (
+                stats["is_valid"] is True
+            ), f"Failed for field: {list(metadata.keys())[0]}"
 
     def test_stats_structure_host(self, service):
         """Test stats dictionary structure for host validation."""

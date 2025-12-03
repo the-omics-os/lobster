@@ -719,9 +719,9 @@ Lobster supports FREE, PREMIUM, and ENTERPRISE tiers. Features/agents can be gat
 **Tier Reference**:
 | Tier | Agents | Notes |
 |------|--------|-------|
-| FREE | research_agent, data_expert, transcriptomics_expert, visualization_expert | research_agent: no metadata_assistant handoff |
-| PREMIUM | + metadata_assistant, proteomics_expert, ml_expert | Full handoffs |
-| ENTERPRISE | + lobster-custom-* packages | Per-customer agents |
+| FREE | supervisor, research_agent, data_expert, transcriptomics_expert, visualization_expert, machine_learning_expert, protein_structure_visualization_expert | 7 agents, no metadata_assistant handoff |
+| PREMIUM | + metadata_assistant, proteomics_expert | 9 agents, full handoffs, premium services |
+| ENTERPRISE | + lobster-custom-* packages | Per-customer agents via plugin_loader |
 
 #### License Manager & AWS Integration
 

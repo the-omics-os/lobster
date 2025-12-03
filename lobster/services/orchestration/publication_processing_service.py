@@ -5,23 +5,25 @@ from __future__ import annotations
 import json
 import logging
 import re
-import urllib.parse
 import threading
+import time
+import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Callable
-
-import time
+from typing import Any, Callable, Dict, List, Optional
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.core.schemas.publication_queue import PublicationQueueEntry, PublicationStatus
+from lobster.core.schemas.publication_queue import (
+    PublicationQueueEntry,
+    PublicationStatus,
+)
 from lobster.services.data_access.content_access_service import ContentAccessService
 from lobster.services.data_access.workspace_content_service import (
-    WorkspaceContentService,
     ContentType,
     MetadataContent,
+    WorkspaceContentService,
 )
 from lobster.services.metadata.identifier_provenance_service import (
     IdentifierProvenanceService,
@@ -35,11 +37,11 @@ logger = get_logger(__name__)
 # Root loggers to suppress during Rich progress display
 # Using root loggers + propagation ensures ALL child loggers are suppressed
 _LOGGERS_TO_SUPPRESS = [
-    "lobster",           # Root: catches all lobster.* loggers
-    "urllib3",           # HTTP client library
-    "httpx",             # HTTP client library
-    "httpcore",          # HTTP client internals
-    "filelock",          # File locking library
+    "lobster",  # Root: catches all lobster.* loggers
+    "urllib3",  # HTTP client library
+    "httpx",  # HTTP client library
+    "httpcore",  # HTTP client internals
+    "filelock",  # File locking library
 ]
 
 
@@ -87,7 +89,9 @@ def _suppress_logs(min_level: int = logging.CRITICAL + 1):
 class PublicationProcessingService:
     """High-level orchestration for publication queue extraction."""
 
-    def __init__(self, data_manager: DataManagerV2, suppress_provider_logs: bool = True) -> None:
+    def __init__(
+        self, data_manager: DataManagerV2, suppress_provider_logs: bool = True
+    ) -> None:
         self.data_manager = data_manager
         self.content_service = ContentAccessService(data_manager=data_manager)
         self.workspace_service = WorkspaceContentService(data_manager=data_manager)
@@ -113,6 +117,7 @@ class PublicationProcessingService:
         """
         if self._pubmed_provider is None:
             from lobster.tools.providers.pubmed_provider import PubMedProvider
+
             self._pubmed_provider = PubMedProvider(data_manager=self.data_manager)
         return self._pubmed_provider
 
@@ -130,7 +135,9 @@ class PublicationProcessingService:
             )
         return self._provenance_service
 
-    def _get_best_source_for_extraction(self, entry: PublicationQueueEntry) -> Optional[str]:
+    def _get_best_source_for_extraction(
+        self, entry: PublicationQueueEntry
+    ) -> Optional[str]:
         """
         Get best source for content extraction with PMC-first strategy.
 
@@ -159,7 +166,9 @@ class PublicationProcessingService:
 
         # Priority 2: PMID (triggers automatic PMC lookup in content_access_service)
         if entry.pmid:
-            logger.debug(f"Using PMID (priority 2, may resolve to PMC): PMID:{entry.pmid}")
+            logger.debug(
+                f"Using PMID (priority 2, may resolve to PMC): PMID:{entry.pmid}"
+            )
             return f"PMID:{entry.pmid}"
 
         # Priority 3: PubMed URL → extract PMID for PMC lookup
@@ -186,7 +195,9 @@ class PublicationProcessingService:
 
         # Priority 5: Fulltext URL (fallback - may be paywalled)
         if entry.fulltext_url:
-            logger.debug(f"Using fulltext URL (priority 5, fallback): {entry.fulltext_url}")
+            logger.debug(
+                f"Using fulltext URL (priority 5, fallback): {entry.fulltext_url}"
+            )
             return entry.fulltext_url
 
         # Priority 6: Direct PDF (fallback for Docling extraction)
@@ -196,7 +207,9 @@ class PublicationProcessingService:
 
         # Priority 7: Article/metadata URL (last resort - webpage scraping)
         if entry.metadata_url:
-            logger.debug(f"Using metadata URL (priority 7, last resort): {entry.metadata_url}")
+            logger.debug(
+                f"Using metadata URL (priority 7, last resort): {entry.metadata_url}"
+            )
             return entry.metadata_url
 
         return None
@@ -284,9 +297,13 @@ class PublicationProcessingService:
             }
 
             if result["pmid"]:
-                logger.debug(f"Resolved DOI {doi} → PMID:{result['pmid']}, PMC:{result['pmc']}")
+                logger.debug(
+                    f"Resolved DOI {doi} → PMID:{result['pmid']}, PMC:{result['pmc']}"
+                )
             else:
-                logger.debug(f"DOI {doi} not found in PubMed (may be preprint or non-indexed)")
+                logger.debug(
+                    f"DOI {doi} not found in PubMed (may be preprint or non-indexed)"
+                )
 
             return result
 
@@ -370,7 +387,9 @@ class PublicationProcessingService:
                 entry.pmid = pmid
             result["skipped"] = True
             result["resolved_pmid"] = pmid
-            logger.debug(f"Skipping identifier resolution - PMID already present: {pmid}")
+            logger.debug(
+                f"Skipping identifier resolution - PMID already present: {pmid}"
+            )
             return result
 
         # Try to resolve from DOI
@@ -397,7 +416,9 @@ class PublicationProcessingService:
                 f"PMID:{resolved['pmid']}, PMC:{resolved['pmc'] or 'N/A'}"
             )
         else:
-            result["error"] = f"DOI {entry.doi} not found in PubMed (may be preprint or non-indexed)"
+            result["error"] = (
+                f"DOI {entry.doi} not found in PubMed (may be preprint or non-indexed)"
+            )
             logger.debug(result["error"])
 
         return result
@@ -453,7 +474,10 @@ class PublicationProcessingService:
             # Get linked datasets via E-Link (batch cache or fallback to sequential)
             with self._measure_step("ncbi_enrich:linked_datasets"):
                 # Check if batch cache is available (100x faster)
-                if hasattr(self, "_batch_elink_cache") and pmid in self._batch_elink_cache:
+                if (
+                    hasattr(self, "_batch_elink_cache")
+                    and pmid in self._batch_elink_cache
+                ):
                     linked_datasets = self._batch_elink_cache[pmid]
                     logger.debug(f"Using batch E-Link cache for PMID {pmid}")
                 else:
@@ -527,7 +551,10 @@ class PublicationProcessingService:
         "methods": (4, 7),
         "identifiers": (5, 7),
         "validate_provenance": (6, 7),  # P1/P3: section-based + E-Link validation
-        "fetch_sra_metadata": (7, 7),  # Moved to end to combine E-Link + text-extracted BioProjects
+        "fetch_sra_metadata": (
+            7,
+            7,
+        ),  # Moved to end to combine E-Link + text-extracted BioProjects
     }
 
     def process_entry(
@@ -545,7 +572,8 @@ class PublicationProcessingService:
             )
 
     def _process_entry_internal(
-        self, entry_id: str,
+        self,
+        entry_id: str,
         extraction_tasks: str = "resolve_identifiers,ncbi_enrich,metadata,methods,identifiers,validate_provenance,fetch_sra_metadata",
         progress_callback: Optional[Callable[[str, int, int], None]] = None,
     ) -> str:
@@ -632,11 +660,15 @@ class PublicationProcessingService:
                                 f"⚠ Identifier resolution skipped: PMID already present ({identifier_resolution_result['resolved_pmid']})"
                             )
                         else:
-                            error = identifier_resolution_result.get("error", "Unknown error")
+                            error = identifier_resolution_result.get(
+                                "error", "Unknown error"
+                            )
                             response_parts.append(f"⚠ Identifier resolution: {error}")
 
                     except Exception as e:
-                        response_parts.append(f"✗ Identifier resolution failed: {str(e)}")
+                        response_parts.append(
+                            f"✗ Identifier resolution failed: {str(e)}"
+                        )
 
                 response_parts.append("")
 
@@ -653,7 +685,9 @@ class PublicationProcessingService:
                             total_linked = sum(len(v) for v in linked.values())
 
                             response_parts.append("✓ NCBI E-Link enrichment complete:")
-                            response_parts.append(f"  - PMID: {ncbi_enrichment_result['pmid']}")
+                            response_parts.append(
+                                f"  - PMID: {ncbi_enrichment_result['pmid']}"
+                            )
 
                             if ncbi_enrichment_result["pmc_id"]:
                                 response_parts.append(
@@ -664,12 +698,18 @@ class PublicationProcessingService:
                                     entry.pmc_id = ncbi_enrichment_result["pmc_id"]
 
                             if total_linked > 0:
-                                response_parts.append(f"  - Linked datasets: {total_linked}")
+                                response_parts.append(
+                                    f"  - Linked datasets: {total_linked}"
+                                )
                                 for db, ids in linked.items():
                                     if ids:
-                                        response_parts.append(f"    - {db}: {', '.join(ids[:5])}")
+                                        response_parts.append(
+                                            f"    - {db}: {', '.join(ids[:5])}"
+                                        )
                                         if len(ids) > 5:
-                                            response_parts.append(f"      (+{len(ids) - 5} more)")
+                                            response_parts.append(
+                                                f"      (+{len(ids) - 5} more)"
+                                            )
 
                                 # Merge NCBI-linked datasets with existing identifiers
                                 # Convert to lowercase keys to match existing schema
@@ -685,18 +725,28 @@ class PublicationProcessingService:
                                 for key, values in ncbi_identifiers.items():
                                     if values:
                                         if key in all_extracted_identifiers:
-                                            all_extracted_identifiers[key].extend(values)
+                                            all_extracted_identifiers[key].extend(
+                                                values
+                                            )
                                         else:
-                                            all_extracted_identifiers[key] = list(values)
+                                            all_extracted_identifiers[key] = list(
+                                                values
+                                            )
                                 extracted_data["ncbi_enrichment"] = ncbi_identifiers
                             else:
-                                response_parts.append("  - No linked datasets found in NCBI")
+                                response_parts.append(
+                                    "  - No linked datasets found in NCBI"
+                                )
                         else:
                             error = ncbi_enrichment_result.get("error", "Unknown error")
-                            response_parts.append(f"⚠ NCBI E-Link enrichment skipped: {error}")
+                            response_parts.append(
+                                f"⚠ NCBI E-Link enrichment skipped: {error}"
+                            )
 
                     except Exception as e:
-                        response_parts.append(f"✗ NCBI E-Link enrichment failed: {str(e)}")
+                        response_parts.append(
+                            f"✗ NCBI E-Link enrichment failed: {str(e)}"
+                        )
 
                 response_parts.append("")
 
@@ -725,15 +775,27 @@ class PublicationProcessingService:
                                     # FIX: Track paywall status in-memory, write at end
                                     is_paywalled = True
                                     paywall_error = error_msg
-                                    response_parts.append(f"⚠ Publication is paywalled: {error_msg}")
-                                    response_parts.append("User can manually add content later.")
+                                    response_parts.append(
+                                        f"⚠ Publication is paywalled: {error_msg}"
+                                    )
+                                    response_parts.append(
+                                        "User can manually add content later."
+                                    )
                                     # Continue with partial extraction
                                 else:
-                                    response_parts.append(f"✗ Metadata extraction failed: {error_msg}")
+                                    response_parts.append(
+                                        f"✗ Metadata extraction failed: {error_msg}"
+                                    )
                             else:
-                                content = content_result.get("content", "") if content_result else ""
+                                content = (
+                                    content_result.get("content", "")
+                                    if content_result
+                                    else ""
+                                )
                                 extracted_data["metadata_extracted"] = bool(content)
-                                response_parts.append("✓ Metadata extracted successfully")
+                                response_parts.append(
+                                    "✓ Metadata extracted successfully"
+                                )
                         else:
                             response_parts.append(
                                 "⚠ No identifier or URL available for metadata extraction"
@@ -752,9 +814,11 @@ class PublicationProcessingService:
                             if not content_result or content_result.get("error"):
                                 with self._measure_step("methods:get_content"):
                                     # Phase B2: Pass known PMC ID to skip redundant E-Link lookup
-                                    content_result = self.content_service.get_full_content(
-                                        source=source,
-                                        known_pmc_id=entry.pmc_id,
+                                    content_result = (
+                                        self.content_service.get_full_content(
+                                            source=source,
+                                            known_pmc_id=entry.pmc_id,
+                                        )
                                     )
 
                             if content_result and content_result.get("content"):
@@ -768,9 +832,13 @@ class PublicationProcessingService:
 
                             extracted_data["methods_extracted"] = bool(methods_content)
                             if methods_content:
-                                response_parts.append("✓ Methods section extracted successfully")
+                                response_parts.append(
+                                    "✓ Methods section extracted successfully"
+                                )
                             else:
-                                response_parts.append("⚠ Methods section not found in content")
+                                response_parts.append(
+                                    "⚠ Methods section not found in content"
+                                )
                         else:
                             response_parts.append(
                                 "⚠ No identifier or URL available for methods extraction"
@@ -789,13 +857,17 @@ class PublicationProcessingService:
                             if not content_result or content_result.get("error"):
                                 with self._measure_step("identifiers:get_content"):
                                     # Phase B2: Pass known PMC ID to skip redundant E-Link lookup
-                                    content_result = self.content_service.get_full_content(
-                                        source=source,
-                                        known_pmc_id=entry.pmc_id,
+                                    content_result = (
+                                        self.content_service.get_full_content(
+                                            source=source,
+                                            known_pmc_id=entry.pmc_id,
+                                        )
                                     )
 
                             full_content = (
-                                content_result.get("content", "") if content_result else ""
+                                content_result.get("content", "")
+                                if content_result
+                                else ""
                             )
                             extracted_data["identifiers_extracted"] = bool(full_content)
 
@@ -812,7 +884,9 @@ class PublicationProcessingService:
                                 # 6. General repositories (Zenodo, Figshare)
                                 identifiers_found = {
                                     # GEO: Gene Expression Omnibus (NCBI)
-                                    "geo": re.findall(r"GSE\d{4,}|GDS\d{4,}", full_content),
+                                    "geo": re.findall(
+                                        r"GSE\d{4,}|GDS\d{4,}", full_content
+                                    ),
                                     # SRA: Sequence Read Archive (NCBI + ENA + DDBJ)
                                     # S=NCBI SRA, E=ENA, D=DDBJ
                                     "sra": re.findall(
@@ -825,7 +899,9 @@ class PublicationProcessingService:
                                         r"PRJ[A-Z]{2}\d+", full_content
                                     ),
                                     # BioSample: NCBI (SAMN), EBI (SAME), DDBJ (SAMD)
-                                    "biosample": re.findall(r"SAM[A-Z]+\d+", full_content),
+                                    "biosample": re.findall(
+                                        r"SAM[A-Z]+\d+", full_content
+                                    ),
                                     # ArrayExpress (EBI) - microarray/RNA-seq
                                     "arrayexpress": re.findall(
                                         r"E-[A-Z]+-\d+", full_content
@@ -838,9 +914,13 @@ class PublicationProcessingService:
                                     ),
                                     # EGA: European Genome-phenome Archive (controlled access)
                                     # Patterns: EGAS=Study, EGAD=Dataset, EGAN=Sample, EGAF=File, EGAR=Run
-                                    "ega": re.findall(r"EGA[SDNFAR]\d{11}", full_content),
+                                    "ega": re.findall(
+                                        r"EGA[SDNFAR]\d{11}", full_content
+                                    ),
                                     # dbGaP: Database of Genotypes and Phenotypes (controlled)
-                                    "dbgap": re.findall(r"phs\d{6}", full_content, re.I),
+                                    "dbgap": re.findall(
+                                        r"phs\d{6}", full_content, re.I
+                                    ),
                                     # Zenodo: General-purpose repository
                                     "zenodo": re.findall(
                                         r"10\.5281/zenodo\.\d+", full_content
@@ -852,7 +932,9 @@ class PublicationProcessingService:
                                 }
 
                             for key in identifiers_found:
-                                identifiers_found[key] = list(set(identifiers_found[key]))
+                                identifiers_found[key] = list(
+                                    set(identifiers_found[key])
+                                )
 
                             # FIX: Collect identifiers in-memory, merge with NCBI identifiers
                             # Will be written once at the end
@@ -891,7 +973,9 @@ class PublicationProcessingService:
                                 "⚠ No identifier or URL available for identifier extraction"
                             )
                     except Exception as e:  # pragma: no cover - provider errors
-                        response_parts.append(f"✗ Identifier extraction failed: {str(e)}")
+                        response_parts.append(
+                            f"✗ Identifier extraction failed: {str(e)}"
+                        )
 
             # Provenance validation (runs AFTER identifier extraction)
             # Uses 2-layer validation:
@@ -903,34 +987,60 @@ class PublicationProcessingService:
                     try:
                         # Get PMC full text content including Data Availability section
                         data_availability_text = ""
-                        if content_result and content_result.get("data_availability_section"):
-                            data_availability_text = content_result.get("data_availability_section", "")
+                        if content_result and content_result.get(
+                            "data_availability_section"
+                        ):
+                            data_availability_text = content_result.get(
+                                "data_availability_section", ""
+                            )
 
                         # Get PMID for E-Link validation
                         source_pmid = entry.pmid or (
-                            entry.extracted_identifiers.get("pmid") if entry.extracted_identifiers else None
+                            entry.extracted_identifiers.get("pmid")
+                            if entry.extracted_identifiers
+                            else None
                         )
 
                         if full_content:
                             # Run provenance validation
-                            provenance_results = self.provenance_service.extract_and_validate(
-                                full_text=full_content,
-                                data_availability_text=data_availability_text,
-                                source_pmid=source_pmid,
-                                validate_elink=bool(source_pmid),  # Only validate if PMID available
+                            provenance_results = (
+                                self.provenance_service.extract_and_validate(
+                                    full_text=full_content,
+                                    data_availability_text=data_availability_text,
+                                    source_pmid=source_pmid,
+                                    validate_elink=bool(
+                                        source_pmid
+                                    ),  # Only validate if PMID available
+                                )
                             )
 
                             if provenance_results:
                                 # Store provenance metadata
                                 extracted_data["identifier_provenance"] = (
-                                    self.provenance_service.to_dict_list(provenance_results)
+                                    self.provenance_service.to_dict_list(
+                                        provenance_results
+                                    )
                                 )
 
                                 # Separate by provenance type for reporting
-                                primary_ids = [r for r in provenance_results if r.provenance == "primary"]
-                                referenced_ids = [r for r in provenance_results if r.provenance == "referenced"]
-                                controlled_ids = [r for r in provenance_results if r.access_type == "controlled"]
-                                downloadable_ids = [r for r in provenance_results if r.is_downloadable]
+                                primary_ids = [
+                                    r
+                                    for r in provenance_results
+                                    if r.provenance == "primary"
+                                ]
+                                referenced_ids = [
+                                    r
+                                    for r in provenance_results
+                                    if r.provenance == "referenced"
+                                ]
+                                controlled_ids = [
+                                    r
+                                    for r in provenance_results
+                                    if r.access_type == "controlled"
+                                ]
+                                downloadable_ids = [
+                                    r for r in provenance_results if r.is_downloadable
+                                ]
 
                                 # Report results
                                 response_parts.append(
@@ -951,16 +1061,28 @@ class PublicationProcessingService:
 
                                 # Controlled access notification
                                 if controlled_ids:
-                                    controlled_accs = ", ".join(r.accession for r in controlled_ids[:3])
-                                    more_text = f" (+{len(controlled_ids) - 3} more)" if len(controlled_ids) > 3 else ""
+                                    controlled_accs = ", ".join(
+                                        r.accession for r in controlled_ids[:3]
+                                    )
+                                    more_text = (
+                                        f" (+{len(controlled_ids) - 3} more)"
+                                        if len(controlled_ids) > 3
+                                        else ""
+                                    )
                                     response_parts.append(
                                         f"  ⚠ Controlled-access: {controlled_accs}{more_text} (DAC application required)"
                                     )
 
                                 # Referenced identifiers notification
                                 if referenced_ids:
-                                    ref_accs = ", ".join(r.accession for r in referenced_ids[:3])
-                                    more_text = f" (+{len(referenced_ids) - 3} more)" if len(referenced_ids) > 3 else ""
+                                    ref_accs = ", ".join(
+                                        r.accession for r in referenced_ids[:3]
+                                    )
+                                    more_text = (
+                                        f" (+{len(referenced_ids) - 3} more)"
+                                        if len(referenced_ids) > 3
+                                        else ""
+                                    )
                                     response_parts.append(
                                         f"  ℹ Excluded from download: {ref_accs}{more_text} (from referenced studies)"
                                     )
@@ -974,7 +1096,9 @@ class PublicationProcessingService:
                             )
                     except Exception as e:  # pragma: no cover - provider errors
                         logger.warning(f"Provenance validation failed: {e}")
-                        response_parts.append(f"⚠ Provenance validation skipped: {str(e)}")
+                        response_parts.append(
+                            f"⚠ Provenance validation skipped: {str(e)}"
+                        )
 
             # SRA metadata fetching (runs AFTER identifier extraction to combine all BioProject sources)
             # Fetches detailed sample metadata for BioProject IDs from BOTH:
@@ -987,11 +1111,19 @@ class PublicationProcessingService:
                 with self._measure_step("fetch_sra_metadata"):
                     try:
                         # Combine BioProject IDs from BOTH sources
-                        ncbi_bioprojects = extracted_data.get("ncbi_enrichment", {}).get("bioproject", [])
-                        text_bioprojects = identifiers_found.get("bioproject", []) if identifiers_found else []
+                        ncbi_bioprojects = extracted_data.get(
+                            "ncbi_enrichment", {}
+                        ).get("bioproject", [])
+                        text_bioprojects = (
+                            identifiers_found.get("bioproject", [])
+                            if identifiers_found
+                            else []
+                        )
 
                         # Deduplicate and combine (use list to preserve order for logging)
-                        all_bioprojects = list(set(ncbi_bioprojects) | set(text_bioprojects))
+                        all_bioprojects = list(
+                            set(ncbi_bioprojects) | set(text_bioprojects)
+                        )
 
                         # Track sources for logging
                         ncbi_count = len(ncbi_bioprojects)
@@ -1006,7 +1138,9 @@ class PublicationProcessingService:
 
                             sra_fetch_success = 0
                             sra_fetch_failed = 0
-                            sra_workspace_keys = []  # Track SRA workspace keys for handoff
+                            sra_workspace_keys = (
+                                []
+                            )  # Track SRA workspace keys for handoff
 
                             for bioproject_id in all_bioprojects:
                                 try:
@@ -1014,7 +1148,9 @@ class PublicationProcessingService:
                                     sraweb = self.sra_provider._get_sraweb()
 
                                     # Fetch metadata using pysradb with BioProject ID
-                                    df = sraweb.sra_metadata(bioproject_id, detailed=True)
+                                    df = sraweb.sra_metadata(
+                                        bioproject_id, detailed=True
+                                    )
 
                                     if df is not None and not df.empty:
                                         # Convert DataFrame to dict for storage
@@ -1025,19 +1161,26 @@ class PublicationProcessingService:
                                             identifier=f"sra_{bioproject_id}_samples",
                                             content_type="sra_samples",
                                             description=f"SRA sample metadata for BioProject {bioproject_id}",
-                                            data={"samples": metadata_dict, "sample_count": len(df)},
+                                            data={
+                                                "samples": metadata_dict,
+                                                "sample_count": len(df),
+                                            },
                                             related_datasets=[bioproject_id],
                                             source="SRAProvider",
                                             cached_at=datetime.now().isoformat(),
                                         )
 
                                         # Write to workspace
-                                        workspace_path = self.workspace_service.write_content(
-                                            metadata_content, ContentType.METADATA
+                                        workspace_path = (
+                                            self.workspace_service.write_content(
+                                                metadata_content, ContentType.METADATA
+                                            )
                                         )
 
                                         # Track workspace key for handoff
-                                        sra_workspace_keys.append(f"sra_{bioproject_id}_samples")
+                                        sra_workspace_keys.append(
+                                            f"sra_{bioproject_id}_samples"
+                                        )
 
                                         sra_fetch_success += 1
                                         response_parts.append(
@@ -1054,8 +1197,12 @@ class PublicationProcessingService:
                                         sra_fetch_failed += 1
 
                                 except Exception as e:
-                                    logger.warning(f"Failed to fetch SRA metadata for {bioproject_id}: {e}")
-                                    response_parts.append(f"  - {bioproject_id}: ✗ Failed ({str(e)})")
+                                    logger.warning(
+                                        f"Failed to fetch SRA metadata for {bioproject_id}: {e}"
+                                    )
+                                    response_parts.append(
+                                        f"  - {bioproject_id}: ✗ Failed ({str(e)})"
+                                    )
                                     sra_fetch_failed += 1
 
                             # Summary
@@ -1106,11 +1253,16 @@ class PublicationProcessingService:
                     workspace_keys.append(f"{entry_id}_metadata.json")
                     logger.debug("Saved metadata to %s", metadata_file)
 
-                if extracted_data.get("methods_extracted") and "methods_content" in locals():
+                if (
+                    extracted_data.get("methods_extracted")
+                    and "methods_content" in locals()
+                ):
                     methods_file = metadata_dir / f"{entry_id}_methods.json"
                     methods_data = {
                         "methods_text": methods_content,
-                        "methods_dict": methods_dict if "methods_dict" in locals() else {},
+                        "methods_dict": (
+                            methods_dict if "methods_dict" in locals() else {}
+                        ),
                         "source": entry.pmid or entry.doi or entry.pmc_id,
                         "extracted_at": datetime.now().isoformat(),
                         "extraction_type": "methods",
@@ -1124,9 +1276,9 @@ class PublicationProcessingService:
                     identifiers_data = {
                         "identifiers": identifiers_found,
                         "source": entry.pmid or entry.doi or entry.pmc_id,
-                        "full_content_length": len(full_content)
-                        if "full_content" in locals()
-                        else 0,
+                        "full_content_length": (
+                            len(full_content) if "full_content" in locals() else 0
+                        ),
                         "extracted_at": datetime.now().isoformat(),
                         "extraction_type": "identifiers",
                     }
@@ -1147,7 +1299,14 @@ class PublicationProcessingService:
 
             # Aggregate all dataset IDs for easy access
             all_dataset_ids = []
-            for db_type in ["geo", "sra", "bioproject", "biosample", "arrayexpress", "cngb"]:
+            for db_type in [
+                "geo",
+                "sra",
+                "bioproject",
+                "biosample",
+                "arrayexpress",
+                "cngb",
+            ]:
                 if db_type in all_extracted_identifiers:
                     all_dataset_ids.extend(all_extracted_identifiers[db_type])
             all_dataset_ids = list(set(all_dataset_ids))  # Deduplicate
@@ -1155,11 +1314,14 @@ class PublicationProcessingService:
             # Determine if entry is ready for metadata assistant handoff
             # Conditions: has identifiers AND has datasets AND has SRA SAMPLE metadata (filterable)
             # Note: metadata_assistant requires sra_*_samples files for filtering, not just identifiers
-            has_sra_samples = any(key.startswith("sra_") and key.endswith("_samples") for key in workspace_keys)
+            has_sra_samples = any(
+                key.startswith("sra_") and key.endswith("_samples")
+                for key in workspace_keys
+            )
             is_ready_for_handoff = (
-                bool(all_extracted_identifiers) and  # Has extracted identifiers
-                bool(all_dataset_ids) and            # Has dataset IDs
-                has_sra_samples                       # Has filterable SRA sample metadata
+                bool(all_extracted_identifiers)  # Has extracted identifiers
+                and bool(all_dataset_ids)  # Has dataset IDs
+                and has_sra_samples  # Has filterable SRA sample metadata
             )
 
             # FIX: Determine final status including paywall and handoff readiness
@@ -1169,6 +1331,7 @@ class PublicationProcessingService:
             elif is_ready_for_handoff:
                 final_status = PublicationStatus.HANDOFF_READY.value
                 from lobster.core.schemas.publication_queue import HandoffStatus
+
                 handoff_status = HandoffStatus.READY_FOR_METADATA
             elif extracted_data:
                 final_status = PublicationStatus.COMPLETED.value
@@ -1185,7 +1348,9 @@ class PublicationProcessingService:
                 status=final_status,
                 processed_by="research_agent",
                 workspace_metadata_keys=workspace_keys if workspace_keys else None,
-                extracted_identifiers=all_extracted_identifiers if all_extracted_identifiers else None,
+                extracted_identifiers=(
+                    all_extracted_identifiers if all_extracted_identifiers else None
+                ),
                 dataset_ids=all_dataset_ids if all_dataset_ids else None,
                 handoff_status=handoff_status,
                 error=paywall_error,
@@ -1200,9 +1365,9 @@ class PublicationProcessingService:
                     "extraction_tasks": extraction_tasks,
                     "tasks": tasks,
                     "final_status": final_status,
-                    "extracted_identifiers": identifiers_found
-                    if "identifiers" in tasks
-                    else None,
+                    "extracted_identifiers": (
+                        identifiers_found if "identifiers" in tasks else None
+                    ),
                     "title": entry.title or "N/A",
                     "pmid": entry.pmid,
                     "doi": entry.doi,
@@ -1253,11 +1418,7 @@ class PublicationProcessingService:
             try:
                 status_enum = PublicationStatus(status_filter.lower())
             except ValueError:
-                return (
-                    "Error: Invalid status filter '"
-                    + status_filter
-                    + "'."
-                )
+                return "Error: Invalid status filter '" + status_filter + "'."
 
         entries = queue.list_entries(status=status_enum)
         if not entries:
@@ -1386,7 +1547,9 @@ class PublicationProcessingService:
                         pmids_to_batch.append(entry.pmid)
                         entry_pmid_map[entry_id] = entry.pmid
                 except Exception as e:
-                    logger.debug(f"Could not get entry {entry_id} for batch E-Link: {e}")
+                    logger.debug(
+                        f"Could not get entry {entry_id} for batch E-Link: {e}"
+                    )
                     continue
 
             if pmids_to_batch:
@@ -1395,14 +1558,16 @@ class PublicationProcessingService:
                     f"(100x speedup vs sequential)"
                 )
                 try:
-                    batch_elink_cache = self.pubmed_provider._find_linked_datasets_batch(
-                        pmids_to_batch
+                    batch_elink_cache = (
+                        self.pubmed_provider._find_linked_datasets_batch(pmids_to_batch)
                     )
                     logger.debug(
                         f"Batch E-Link cache ready: {len(batch_elink_cache)} PMIDs cached"
                     )
                 except Exception as e:
-                    logger.warning(f"Batch E-Link pre-fetch failed: {e}, falling back to sequential")
+                    logger.warning(
+                        f"Batch E-Link pre-fetch failed: {e}, falling back to sequential"
+                    )
                     batch_elink_cache = {}
 
         # Store cache in service for workers to access
@@ -1485,13 +1650,15 @@ class PublicationProcessingService:
                 except Exception as e:
                     logger.error(f"Future failed for {entry_id}: {e}")
                     with results_lock:
-                        results.append(EntryProcessingResult(
-                            entry_id=entry_id,
-                            status="error",
-                            response=f"Execution error: {str(e)}",
-                            elapsed_seconds=0.0,
-                            timings={},
-                        ))
+                        results.append(
+                            EntryProcessingResult(
+                                entry_id=entry_id,
+                                status="error",
+                                response=f"Execution error: {str(e)}",
+                                elapsed_seconds=0.0,
+                                timings={},
+                            )
+                        )
         finally:
             executor.shutdown(wait=True, cancel_futures=True)
 
@@ -1526,7 +1693,9 @@ class PublicationProcessingService:
         debug: bool = False,
     ) -> "ParallelProcessingResult":
         """Process entries in parallel with Rich progress bars (work-stealing pattern)."""
-        from lobster.ui.components.parallel_workers_progress import parallel_workers_progress
+        from lobster.ui.components.parallel_workers_progress import (
+            parallel_workers_progress,
+        )
 
         results: List[EntryProcessingResult] = []
         results_lock = threading.Lock()
@@ -1548,7 +1717,9 @@ class PublicationProcessingService:
         # debug=True shows ERROR-level logs for troubleshooting
         log_level = logging.ERROR if debug else logging.CRITICAL + 1
         with _suppress_logs(min_level=log_level):
-            with parallel_workers_progress(effective_workers, len(entry_ids)) as progress:
+            with parallel_workers_progress(
+                effective_workers, len(entry_ids)
+            ) as progress:
 
                 def worker_func(worker_id: int):
                     """Worker function that processes entries from queue."""
@@ -1564,7 +1735,9 @@ class PublicationProcessingService:
 
                         # Get entry title for progress display
                         try:
-                            entry = self.data_manager.publication_queue.get_entry(entry_id)
+                            entry = self.data_manager.publication_queue.get_entry(
+                                entry_id
+                            )
                             title = (entry.title or entry_id)[:35]
                         except Exception:
                             title = entry_id[:35]
@@ -1575,10 +1748,14 @@ class PublicationProcessingService:
                         # Create step-level progress callback for this worker
                         def make_step_callback(wid: int):
                             """Create closure to capture worker_id."""
+
                             def step_callback(step_name: str, current: int, total: int):
                                 # Convert step progress to percentage (0-100)
-                                percent = int((current / total) * 100) if total > 0 else 0
+                                percent = (
+                                    int((current / total) * 100) if total > 0 else 0
+                                )
                                 progress.worker_update_step(wid, step_name, percent)
+
                             return step_callback
 
                         step_callback = make_step_callback(worker_id)
@@ -1629,7 +1806,10 @@ class PublicationProcessingService:
                 # Launch workers
                 executor = ThreadPoolExecutor(max_workers=effective_workers)
                 try:
-                    futures = [executor.submit(worker_func, i) for i in range(effective_workers)]
+                    futures = [
+                        executor.submit(worker_func, i)
+                        for i in range(effective_workers)
+                    ]
                     for future in as_completed(futures):
                         try:
                             future.result()
@@ -1660,6 +1840,7 @@ class PublicationProcessingService:
 @dataclass
 class EntryProcessingResult:
     """Result of processing a single publication entry."""
+
     entry_id: str
     status: str  # "completed", "failed", "paywalled", "error", "processed"
     response: str
@@ -1670,6 +1851,7 @@ class EntryProcessingResult:
 @dataclass
 class ParallelProcessingResult:
     """Aggregate result of parallel publication processing."""
+
     entry_results: List[EntryProcessingResult]
     total_entries: int
     successful: int
@@ -1715,7 +1897,9 @@ class ParallelProcessingResult:
         # Show per-entry details (abbreviated for large batches)
         lines.append("### Entry Details")
         for result in self.entry_results[:20]:  # Limit to first 20 for readability
-            lines.append(f"- **{result.entry_id}**: {result.status} ({result.elapsed_seconds:.1f}s)")
+            lines.append(
+                f"- **{result.entry_id}**: {result.status} ({result.elapsed_seconds:.1f}s)"
+            )
 
         if len(self.entry_results) > 20:
             lines.append(f"- ... and {len(self.entry_results) - 20} more entries")

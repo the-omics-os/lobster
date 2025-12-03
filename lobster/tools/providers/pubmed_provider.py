@@ -818,9 +818,7 @@ class PubMedProvider(BasePublicationProvider):
                     if "linksetdbs" in linkset:
                         for db in linkset["linksetdbs"]:
                             if db.get("dbto") == "pubmed":
-                                linked_pmids.extend(
-                                    str(x) for x in db.get("links", [])
-                                )
+                                linked_pmids.extend(str(x) for x in db.get("links", []))
 
             # Normalize expected_pmid (remove PMID: prefix if present)
             expected_pmid_normalized = str(expected_pmid).strip()
@@ -1316,8 +1314,16 @@ class PubMedProvider(BasePublicationProvider):
             "gds": {"key": "GEO", "prefix": "", "needs_accession_lookup": True},
             "geo": {"key": "GEO", "prefix": "", "needs_accession_lookup": True},
             "sra": {"key": "SRA", "prefix": "SRA", "needs_accession_lookup": False},
-            "bioproject": {"key": "BioProject", "prefix": "", "needs_accession_lookup": True},
-            "biosample": {"key": "BioSample", "prefix": "", "needs_accession_lookup": True},
+            "bioproject": {
+                "key": "BioProject",
+                "prefix": "",
+                "needs_accession_lookup": True,
+            },
+            "biosample": {
+                "key": "BioSample",
+                "prefix": "",
+                "needs_accession_lookup": True,
+            },
         }
 
         # Combined E-Link call: fetch all linked databases in one request
@@ -1335,7 +1341,9 @@ class PubMedProvider(BasePublicationProvider):
 
         try:
             # Single combined request instead of 4 sequential calls
-            content = self._make_ncbi_request(url, "find all linked datasets (combined)")
+            content = self._make_ncbi_request(
+                url, "find all linked datasets (combined)"
+            )
             text = content.decode("utf-8")
             json_response = json.loads(text)
 
@@ -1386,12 +1394,16 @@ class PubMedProvider(BasePublicationProvider):
 
         # Batch fetch BioProject accessions (handles PRJNA/PRJEB/PRJDB prefixes)
         if bioproject_uids:
-            bioproject_accessions = self._batch_fetch_bioproject_accessions(bioproject_uids)
+            bioproject_accessions = self._batch_fetch_bioproject_accessions(
+                bioproject_uids
+            )
             linked["BioProject"].extend(bioproject_accessions)
 
         # Batch fetch BioSample accessions (handles SAMN/SAME/SAMD prefixes)
         if biosample_uids:
-            biosample_accessions = self._batch_fetch_biosample_accessions(biosample_uids)
+            biosample_accessions = self._batch_fetch_biosample_accessions(
+                biosample_uids
+            )
             linked["BioSample"].extend(biosample_accessions)
 
         # Deduplicate and prioritize GSE over GSM/GDS
@@ -1453,7 +1465,9 @@ class PubMedProvider(BasePublicationProvider):
                     else:
                         logger.debug(f"No accession found for GEO UID {uid}")
 
-                logger.info(f"Batch resolved {len(batch_uids)} GEO UIDs → {len(accessions)} accessions")
+                logger.info(
+                    f"Batch resolved {len(batch_uids)} GEO UIDs → {len(accessions)} accessions"
+                )
 
             except Exception as e:
                 logger.warning(f"Batch GEO accession fetch failed: {e}")
@@ -1625,7 +1639,12 @@ class PubMedProvider(BasePublicationProvider):
 
         # Initialize empty results for all PMIDs
         for pmid in pmids:
-            all_results[pmid] = {"GEO": [], "SRA": [], "BioProject": [], "BioSample": []}
+            all_results[pmid] = {
+                "GEO": [],
+                "SRA": [],
+                "BioProject": [],
+                "BioSample": [],
+            }
 
         # Process in batches of 200
         for i in range(0, len(pmids), batch_size):
@@ -1709,9 +1728,13 @@ class PubMedProvider(BasePublicationProvider):
                                     if key == "GEO":
                                         geo_uids_by_pmid[pmid].append(str(link_id))
                                     elif key == "BioProject":
-                                        bioproject_uids_by_pmid[pmid].append(str(link_id))
+                                        bioproject_uids_by_pmid[pmid].append(
+                                            str(link_id)
+                                        )
                                     elif key == "BioSample":
-                                        biosample_uids_by_pmid[pmid].append(str(link_id))
+                                        biosample_uids_by_pmid[pmid].append(
+                                            str(link_id)
+                                        )
                                 else:
                                     # Non-lookup: construct accession directly
                                     all_results[pmid][key].append(
@@ -1720,8 +1743,12 @@ class PubMedProvider(BasePublicationProvider):
 
                 total_geo_uids = sum(len(v) for v in geo_uids_by_pmid.values())
                 total_sra = sum(len(all_results[pmid]["SRA"]) for pmid in batch_pmids)
-                total_bioproject_uids = sum(len(v) for v in bioproject_uids_by_pmid.values())
-                total_biosample_uids = sum(len(v) for v in biosample_uids_by_pmid.values())
+                total_bioproject_uids = sum(
+                    len(v) for v in bioproject_uids_by_pmid.values()
+                )
+                total_biosample_uids = sum(
+                    len(v) for v in biosample_uids_by_pmid.values()
+                )
 
                 logger.info(
                     f"Batch E-Link found: GEO UIDs={total_geo_uids}, "

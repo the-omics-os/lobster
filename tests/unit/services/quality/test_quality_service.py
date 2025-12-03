@@ -969,13 +969,17 @@ class TestMitochondrialGeneDetection:
         n_obs, n_vars = 100, 50
         X = np.random.poisson(5, size=(n_obs, n_vars)).astype(float)
         # Mix patterns: HGNC should win
-        gene_names = [f"GENE{i}" for i in range(40)] + [
-            "MT-ND1",
-            "MT-CO1",
-            "mt-nd2",  # Lowercase (should not be counted if HGNC present)
-            "MT.ATP6",  # Dot delimiter (should not be counted if HGNC present)
-            "mitochondrial",  # Generic (should not be counted if HGNC present)
-        ] + [f"GENE{i}" for i in range(45, 50)]
+        gene_names = (
+            [f"GENE{i}" for i in range(40)]
+            + [
+                "MT-ND1",
+                "MT-CO1",
+                "mt-nd2",  # Lowercase (should not be counted if HGNC present)
+                "MT.ATP6",  # Dot delimiter (should not be counted if HGNC present)
+                "mitochondrial",  # Generic (should not be counted if HGNC present)
+            ]
+            + [f"GENE{i}" for i in range(45, 50)]
+        )
 
         adata = AnnData(X=X, var=pd.DataFrame(index=gene_names))
 

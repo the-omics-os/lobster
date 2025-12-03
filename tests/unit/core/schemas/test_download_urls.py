@@ -185,9 +185,7 @@ class TestDownloadUrlResult:
         result = DownloadUrlResult(
             accession="GSE12345",
             database="geo",
-            primary_files=[
-                DownloadFile(url="ftp://a/data.h5ad", filename="data.h5ad")
-            ],
+            primary_files=[DownloadFile(url="ftp://a/data.h5ad", filename="data.h5ad")],
         )
         fields = result.to_queue_entry_fields()
         assert fields["h5_url"] == "ftp://a/data.h5ad"

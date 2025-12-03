@@ -14,13 +14,15 @@ PROTECTION: Only 300s timeout (no CPU throttling)
 Run with: pytest tests/manual/custom_code_execution/02_resource_exhaustion/test_cpu_exhaustion.py -v -s
 """
 
-import pytest
 import time
-from lobster.services.execution.custom_code_execution_service import (
-    CustomCodeExecutionService,
-    CodeExecutionError
-)
+
+import pytest
+
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.services.execution.custom_code_execution_service import (
+    CodeExecutionError,
+    CustomCodeExecutionService,
+)
 
 
 @pytest.fixture
@@ -48,11 +50,11 @@ class TestInfiniteLoops:
 
         Mitigation: Reduce default timeout to 30s, add CPU limits
         """
-        code = '''
+        code = """
 # Infinite loop (will hit timeout)
 while True:
     x = 1 + 1
-'''
+"""
 
         start = time.time()
         try:
@@ -81,9 +83,9 @@ while True:
 
         Mitigation: Reduce default to 30s or add CPU% limits
         """
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("⚠️  WARNING: Default 300s timeout vulnerability")
-        print("="*70)
+        print("=" * 70)
         print("Code like 'while True: pass' would run for 5 MINUTES")
         print("This allows sustained CPU exhaustion attacks")
         print("")
@@ -91,7 +93,7 @@ while True:
         print("1. Reduce DEFAULT_TIMEOUT to 30s")
         print("2. Add CPU throttling via cgroups cpu.max")
         print("3. Add per-user rate limits")
-        print("="*70)
+        print("=" * 70)
         assert True  # Just documentation
 
     def test_cpu_intensive_loop_EXPECT_SUCCESS(self, service):
@@ -106,7 +108,7 @@ while True:
 
         Mitigation: cgroups cpu.max (e.g., 50% of 1 core)
         """
-        code = '''
+        code = """
 import time
 # Burn CPU for 5 seconds
 start = time.time()
@@ -115,7 +117,7 @@ while time.time() - start < 5:
     count += 1
 
 result = f"Executed {count:,} iterations in 5 seconds (CPU at 100%)"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=10)
@@ -123,7 +125,7 @@ result = f"Executed {count:,} iterations in 5 seconds (CPU at 100%)"
             print(f"    Result: {result}")
             print(f"    Duration: {stats['duration_seconds']}s")
             print(f"    🔥 REAL ATTACK: Could run for 300s at 100% CPU")
-            assert stats['success'] is True
+            assert stats["success"] is True
             assert "iterations" in result
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: CPU burn blocked: {e}")
@@ -146,7 +148,7 @@ class TestComputationallyExpensiveOperations:
 
         Mitigation: CPU throttling via cgroups
         """
-        code = '''
+        code = """
 # Calculate primes up to 100,000 (computationally expensive)
 def find_primes(n):
     primes = []
@@ -162,7 +164,7 @@ def find_primes(n):
 
 primes = find_primes(100000)
 result = f"Found {len(primes)} primes up to 100,000"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=60)
@@ -170,7 +172,7 @@ result = f"Found {len(primes)} primes up to 100,000"
             print(f"    Result: {result}")
             print(f"    Duration: {stats['duration_seconds']}s")
             print(f"    🔥 REAL ATTACK: find_primes(10_000_000) = minutes of CPU")
-            assert stats['success'] is True
+            assert stats["success"] is True
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: Prime calculation blocked: {e}")
             pytest.fail("Expected vulnerability")
@@ -188,7 +190,7 @@ result = f"Found {len(primes)} primes up to 100,000"
 
         Mitigation: Timeout helps, but CPU throttling needed
         """
-        code = '''
+        code = """
 # O(n^3) nested loops
 n = 100
 count = 0
@@ -198,7 +200,7 @@ for i in range(n):
             count += 1
 
 result = f"Executed {count:,} iterations (O(n^3) with n={n})"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=30)
@@ -206,7 +208,7 @@ result = f"Executed {count:,} iterations (O(n^3) with n={n})"
             print(f"    Result: {result}")
             print(f"    Duration: {stats['duration_seconds']}s")
             print(f"    🔥 REAL ATTACK: n=1000 = 1 billion iterations")
-            assert stats['success'] is True
+            assert stats["success"] is True
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: Nested loops blocked: {e}")
             pytest.fail("Expected vulnerability")
@@ -224,7 +226,7 @@ result = f"Executed {count:,} iterations (O(n^3) with n={n})"
 
         Mitigation: CPU + memory limits
         """
-        code = '''
+        code = """
 import numpy as np
 import time
 
@@ -236,14 +238,14 @@ C = np.matmul(A, B)
 elapsed = time.time() - start
 
 result = f"Matrix multiply (1000x1000): {elapsed:.2f}s"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=30)
             print(f"\n⚠️  VULNERABILITY CONFIRMED: Large matrix ops allowed")
             print(f"    Result: {result}")
             print(f"    🔥 REAL ATTACK: 5000x5000 matrices = extended CPU burn")
-            assert stats['success'] is True
+            assert stats["success"] is True
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: Matrix ops blocked: {e}")
             pytest.fail("Expected vulnerability")
@@ -268,7 +270,7 @@ class TestCryptographicOperations:
 
         Mitigation: Rate limiting + timeout
         """
-        code = '''
+        code = """
 # Note: bcrypt may not be installed, use hashlib as alternative
 import hashlib
 import time
@@ -284,14 +286,14 @@ for i in range(100000):
 
 elapsed = time.time() - start
 result = f"100k hash rounds: {elapsed:.2f}s"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=30)
             print(f"\n⚠️  VULNERABILITY CONFIRMED: Expensive hashing allowed")
             print(f"    Result: {result}")
             print(f"    🔥 REAL ATTACK: Repeated expensive crypto = CPU exhaustion")
-            assert stats['success'] is True
+            assert stats["success"] is True
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: Hashing blocked: {e}")
             pytest.fail("Expected vulnerability")
@@ -318,7 +320,7 @@ class TestRegexBacktracking:
         - (a*)*b
         - (a|a)*b
         """
-        code = '''
+        code = """
 import re
 import time
 
@@ -337,7 +339,7 @@ except Exception as e:
 elapsed = time.time() - start
 
 result = f"Regex backtracking test: {elapsed:.3f}s (20 char input)"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=10)
@@ -345,7 +347,7 @@ result = f"Regex backtracking test: {elapsed:.3f}s (20 char input)"
             print(f"    Result: {result}")
             print(f"    🔥 REAL ATTACK: 30+ char input = exponential CPU burn")
             print(f"    Note: Python 3.11+ has regex timeout (good!)")
-            assert stats['success'] is True
+            assert stats["success"] is True
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: Regex blocked: {e}")
             pytest.fail("Expected vulnerability")
@@ -407,8 +409,8 @@ class TestCPUExhaustionSummary:
         MemoryMax=2G
         ```
         """
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("CPU EXHAUSTION VULNERABILITY SUMMARY")
-        print("="*70)
+        print("=" * 70)
         print(self.test_cpu_vulnerability_summary.__doc__)
         assert True

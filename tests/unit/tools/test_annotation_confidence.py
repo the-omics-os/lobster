@@ -8,14 +8,16 @@ Tests the new confidence metrics added in Task 1:
 - annotation_quality (high/medium/low flag)
 """
 
-import numpy as np
-import pytest
 import anndata
+import numpy as np
 import pandas as pd
+import pytest
 from scipy.sparse import csr_matrix
 
-from lobster.services.analysis.enhanced_singlecell_service import EnhancedSingleCellService
 from lobster.core.analysis_ir import AnalysisStep
+from lobster.services.analysis.enhanced_singlecell_service import (
+    EnhancedSingleCellService,
+)
 
 
 @pytest.fixture
@@ -39,9 +41,9 @@ def simple_adata():
     X = np.random.rand(n_cells, n_genes)
 
     # Add strong signatures
-    X[0:33, 0:7] += 5.0   # Group 1 markers
+    X[0:33, 0:7] += 5.0  # Group 1 markers
     X[34:66, 7:14] += 5.0  # Group 2 markers
-    X[67:99, 14:20] += 5.0 # Group 3 markers
+    X[67:99, 14:20] += 5.0  # Group 3 markers
 
     adata = anndata.AnnData(X=X)
     adata.var_names = [f"Gene_{i}" for i in range(n_genes)]
@@ -59,7 +61,15 @@ def reference_markers():
     """Create reference marker dictionary matching test data."""
     return {
         "TypeA": ["Gene_0", "Gene_1", "Gene_2", "Gene_3", "Gene_4", "Gene_5", "Gene_6"],
-        "TypeB": ["Gene_7", "Gene_8", "Gene_9", "Gene_10", "Gene_11", "Gene_12", "Gene_13"],
+        "TypeB": [
+            "Gene_7",
+            "Gene_8",
+            "Gene_9",
+            "Gene_10",
+            "Gene_11",
+            "Gene_12",
+            "Gene_13",
+        ],
         "TypeC": ["Gene_14", "Gene_15", "Gene_16", "Gene_17", "Gene_18", "Gene_19"],
     }
 
@@ -67,27 +77,35 @@ def reference_markers():
 class TestConfidenceScoring:
     """Test confidence scoring functionality."""
 
-    def test_annotate_returns_three_tuple(self, service, simple_adata, reference_markers):
+    def test_annotate_returns_three_tuple(
+        self, service, simple_adata, reference_markers
+    ):
         """Test that annotate_cell_types returns 3-tuple (adata, stats, ir)."""
-        result = service.annotate_cell_types(simple_adata, reference_markers=reference_markers)
+        result = service.annotate_cell_types(
+            simple_adata, reference_markers=reference_markers
+        )
 
         assert isinstance(result, tuple), "Should return tuple"
         assert len(result) == 3, "Should return 3-tuple"
 
         adata_result, stats, ir = result
-        assert isinstance(adata_result, anndata.AnnData), "First element should be AnnData"
+        assert isinstance(
+            adata_result, anndata.AnnData
+        ), "First element should be AnnData"
         assert isinstance(stats, dict), "Second element should be dict"
         assert isinstance(ir, AnalysisStep), "Third element should be AnalysisStep"
 
     def test_confidence_columns_created(self, service, simple_adata, reference_markers):
         """Test that 4 new .obs columns are created."""
-        adata_result, _, _ = service.annotate_cell_types(simple_adata, reference_markers=reference_markers)
+        adata_result, _, _ = service.annotate_cell_types(
+            simple_adata, reference_markers=reference_markers
+        )
 
         required_cols = [
             "cell_type_confidence",
             "cell_type_top3",
             "annotation_entropy",
-            "annotation_quality"
+            "annotation_quality",
         ]
 
         for col in required_cols:
@@ -95,7 +113,9 @@ class TestConfidenceScoring:
 
     def test_confidence_score_range(self, service, simple_adata, reference_markers):
         """Test that confidence scores are in valid range [0, 1]."""
-        adata_result, _, _ = service.annotate_cell_types(simple_adata, reference_markers=reference_markers)
+        adata_result, _, _ = service.annotate_cell_types(
+            simple_adata, reference_markers=reference_markers
+        )
 
         confidence = adata_result.obs["cell_type_confidence"]
 
@@ -105,13 +125,17 @@ class TestConfidenceScoring:
 
     def test_confidence_score_quality(self, service, simple_adata, reference_markers):
         """Test that confidence scores are reasonable for synthetic signatures."""
-        adata_result, _, _ = service.annotate_cell_types(simple_adata, reference_markers=reference_markers)
+        adata_result, _, _ = service.annotate_cell_types(
+            simple_adata, reference_markers=reference_markers
+        )
 
         confidence = adata_result.obs["cell_type_confidence"]
 
         # With synthetic signatures, confidence scores should be reasonable (not zero)
         mean_confidence = confidence.mean()
-        assert mean_confidence > 0.2, f"Expected reasonable mean confidence, got {mean_confidence:.3f}"
+        assert (
+            mean_confidence > 0.2
+        ), f"Expected reasonable mean confidence, got {mean_confidence:.3f}"
 
         # Verify some cells have decent confidence
         high_conf_count = (confidence > 0.3).sum()
@@ -119,7 +143,9 @@ class TestConfidenceScoring:
 
     def test_top3_predictions_format(self, service, simple_adata, reference_markers):
         """Test that top3 predictions are comma-separated strings."""
-        adata_result, _, _ = service.annotate_cell_types(simple_adata, reference_markers=reference_markers)
+        adata_result, _, _ = service.annotate_cell_types(
+            simple_adata, reference_markers=reference_markers
+        )
 
         top3 = adata_result.obs["cell_type_top3"]
 
@@ -134,7 +160,9 @@ class TestConfidenceScoring:
 
     def test_entropy_values(self, service, simple_adata, reference_markers):
         """Test that entropy values are reasonable."""
-        adata_result, _, _ = service.annotate_cell_types(simple_adata, reference_markers=reference_markers)
+        adata_result, _, _ = service.annotate_cell_types(
+            simple_adata, reference_markers=reference_markers
+        )
 
         entropy = adata_result.obs["annotation_entropy"]
 
@@ -144,28 +172,37 @@ class TestConfidenceScoring:
         # With clear signatures, entropy should be relatively low
         mean_entropy = entropy.mean()
         max_entropy = np.log(3)  # Maximum entropy for 3 cell types
-        assert mean_entropy < max_entropy, f"Mean entropy {mean_entropy:.3f} should be < max {max_entropy:.3f}"
+        assert (
+            mean_entropy < max_entropy
+        ), f"Mean entropy {mean_entropy:.3f} should be < max {max_entropy:.3f}"
 
     def test_quality_categories(self, service, simple_adata, reference_markers):
         """Test that quality flags are correctly categorized."""
-        adata_result, _, _ = service.annotate_cell_types(simple_adata, reference_markers=reference_markers)
+        adata_result, _, _ = service.annotate_cell_types(
+            simple_adata, reference_markers=reference_markers
+        )
 
         quality = adata_result.obs["annotation_quality"]
 
         # Check valid categories
         valid_categories = {"high", "medium", "low"}
-        assert set(quality.unique()).issubset(valid_categories), \
-            f"Invalid quality categories: {set(quality.unique())}"
+        assert set(quality.unique()).issubset(
+            valid_categories
+        ), f"Invalid quality categories: {set(quality.unique())}"
 
         # Verify all cells have a quality category
-        assert len(quality) == len(simple_adata), "All cells should have quality assignment"
+        assert len(quality) == len(
+            simple_adata
+        ), "All cells should have quality assignment"
 
         # Quality categories should be distributed (at least 2 categories present)
         assert len(quality.unique()) >= 1, "Should have at least one quality category"
 
     def test_quality_thresholds(self, service, simple_adata, reference_markers):
         """Test that quality categorization follows documented thresholds."""
-        adata_result, _, _ = service.annotate_cell_types(simple_adata, reference_markers=reference_markers)
+        adata_result, _, _ = service.annotate_cell_types(
+            simple_adata, reference_markers=reference_markers
+        )
 
         confidence = adata_result.obs["cell_type_confidence"]
         entropy = adata_result.obs["annotation_entropy"]
@@ -178,21 +215,33 @@ class TestConfidenceScoring:
             q = quality.iloc[i]
 
             if c > 0.5 and e < 0.8:
-                assert q == "high", f"Cell {i}: conf={c:.2f}, ent={e:.2f} should be HIGH, got {q}"
+                assert (
+                    q == "high"
+                ), f"Cell {i}: conf={c:.2f}, ent={e:.2f} should be HIGH, got {q}"
             elif c > 0.3 and e < 1.0:
-                assert q in ["high", "medium"], f"Cell {i}: should be HIGH or MEDIUM, got {q}"
+                assert q in [
+                    "high",
+                    "medium",
+                ], f"Cell {i}: should be HIGH or MEDIUM, got {q}"
             else:
-                assert q in ["medium", "low"], f"Cell {i}: should be MEDIUM or LOW, got {q}"
+                assert q in [
+                    "medium",
+                    "low",
+                ], f"Cell {i}: should be MEDIUM or LOW, got {q}"
 
-    def test_stats_dict_confidence_metrics(self, service, simple_adata, reference_markers):
+    def test_stats_dict_confidence_metrics(
+        self, service, simple_adata, reference_markers
+    ):
         """Test that stats dict includes confidence metrics."""
-        _, stats, _ = service.annotate_cell_types(simple_adata, reference_markers=reference_markers)
+        _, stats, _ = service.annotate_cell_types(
+            simple_adata, reference_markers=reference_markers
+        )
 
         required_keys = [
             "confidence_mean",
             "confidence_median",
             "confidence_std",
-            "quality_distribution"
+            "quality_distribution",
         ]
 
         for key in required_keys:
@@ -207,31 +256,45 @@ class TestConfidenceScoring:
 
         # Counts should sum to total cells
         total = quality_dist["high"] + quality_dist["medium"] + quality_dist["low"]
-        assert total == len(simple_adata), f"Quality counts {total} != cell count {len(simple_adata)}"
+        assert total == len(
+            simple_adata
+        ), f"Quality counts {total} != cell count {len(simple_adata)}"
 
     def test_ir_provenance(self, service, simple_adata, reference_markers):
         """Test that AnalysisStep IR is properly created."""
-        _, _, ir = service.annotate_cell_types(simple_adata, reference_markers=reference_markers)
+        _, _, ir = service.annotate_cell_types(
+            simple_adata, reference_markers=reference_markers
+        )
 
         # Check IR structure
-        assert ir.operation == "annotate_cell_types_with_confidence", "Wrong operation name"
-        assert ir.tool_name == "EnhancedSingleCellService.annotate_cell_types", "Wrong tool name"
+        assert (
+            ir.operation == "annotate_cell_types_with_confidence"
+        ), "Wrong operation name"
+        assert (
+            ir.tool_name == "EnhancedSingleCellService.annotate_cell_types"
+        ), "Wrong tool name"
         assert "scanpy + scipy" in ir.library, "Missing library info"
 
         # Check code template exists and mentions confidence
         assert ir.code_template is not None, "Missing code template"
-        assert "confidence" in ir.code_template.lower(), "Code template should mention confidence"
+        assert (
+            "confidence" in ir.code_template.lower()
+        ), "Code template should mention confidence"
 
         # Check parameters
         assert "reference_markers" in ir.parameters, "Missing reference_markers in IR"
 
         # Check parameter schema
         assert ir.parameter_schema is not None, "Missing parameter schema"
-        assert "reference_markers" in ir.parameter_schema, "Missing reference_markers in schema"
+        assert (
+            "reference_markers" in ir.parameter_schema
+        ), "Missing reference_markers in schema"
 
     def test_default_markers_used_when_none_provided(self, service, simple_adata):
         """Test that default markers are used when reference_markers=None."""
-        adata_result, stats, ir = service.annotate_cell_types(simple_adata, reference_markers=None)
+        adata_result, stats, ir = service.annotate_cell_types(
+            simple_adata, reference_markers=None
+        )
 
         # Should still return 3-tuple
         assert isinstance(adata_result, anndata.AnnData)
@@ -239,18 +302,22 @@ class TestConfidenceScoring:
         assert isinstance(ir, AnalysisStep)
 
         # Service should use default markers, so confidence columns SHOULD be created
-        assert "cell_type_confidence" in adata_result.obs.columns, \
-            "Should create confidence column using default markers"
-        assert "annotation_quality" in adata_result.obs.columns, \
-            "Should create quality column using default markers"
+        assert (
+            "cell_type_confidence" in adata_result.obs.columns
+        ), "Should create confidence column using default markers"
+        assert (
+            "annotation_quality" in adata_result.obs.columns
+        ), "Should create quality column using default markers"
 
         # Stats should have confidence metrics
-        assert "confidence_mean" in stats, \
-            "Should have confidence_mean when using default markers"
+        assert (
+            "confidence_mean" in stats
+        ), "Should have confidence_mean when using default markers"
 
         # Verify default markers were used (10 cell types in default markers)
-        assert stats["n_marker_sets"] == 10, \
-            "Should use 10 default marker sets from service.cell_type_markers"
+        assert (
+            stats["n_marker_sets"] == 10
+        ), "Should use 10 default marker sets from service.cell_type_markers"
 
     def test_sparse_matrix_support(self, service, reference_markers):
         """Test that confidence scoring works with sparse matrices."""
@@ -271,7 +338,9 @@ class TestConfidenceScoring:
         adata.obs["leiden"] = pd.Categorical(["0"] * 17 + ["1"] * 17 + ["2"] * 16)
 
         # Should work without errors
-        adata_result, stats, ir = service.annotate_cell_types(adata, reference_markers=reference_markers)
+        adata_result, stats, ir = service.annotate_cell_types(
+            adata, reference_markers=reference_markers
+        )
 
         # Verify confidence columns created
         assert "cell_type_confidence" in adata_result.obs.columns
@@ -286,13 +355,15 @@ class TestHelperMethods:
 
     def test_calculate_per_cell_confidence_exists(self, service):
         """Test that helper method exists."""
-        assert hasattr(service, "_calculate_per_cell_confidence"), \
-            "Missing _calculate_per_cell_confidence method"
+        assert hasattr(
+            service, "_calculate_per_cell_confidence"
+        ), "Missing _calculate_per_cell_confidence method"
 
     def test_create_annotation_ir_exists(self, service):
         """Test that IR creation method exists."""
-        assert hasattr(service, "_create_annotation_ir"), \
-            "Missing _create_annotation_ir method"
+        assert hasattr(
+            service, "_create_annotation_ir"
+        ), "Missing _create_annotation_ir method"
 
 
 if __name__ == "__main__":

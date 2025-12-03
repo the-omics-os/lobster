@@ -25,8 +25,8 @@ from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.interfaces.download_service import IDownloadService
 from lobster.core.schemas.download_queue import DownloadQueueEntry
 from lobster.services.data_access.proteomics_parsers import (
-    get_parser_for_file,
     get_available_parsers,
+    get_parser_for_file,
 )
 from lobster.tools.providers.massive_provider import MassIVEProvider
 from lobster.utils.logger import get_logger
@@ -170,9 +170,11 @@ class MassIVEDownloadService(IDownloadService):
             strategy_name = (
                 strategy_override.get("strategy_name")
                 if strategy_override
-                else queue_entry.recommended_strategy.strategy_name
-                if queue_entry.recommended_strategy
-                else "RESULT_FIRST"
+                else (
+                    queue_entry.recommended_strategy.strategy_name
+                    if queue_entry.recommended_strategy
+                    else "RESULT_FIRST"
+                )
             )
 
             strategy_params = (
@@ -224,9 +226,7 @@ class MassIVEDownloadService(IDownloadService):
             parser = get_parser_for_file(str(primary_file))
 
             if not parser:
-                raise RuntimeError(
-                    f"No parser available for file: {primary_file.name}"
-                )
+                raise RuntimeError(f"No parser available for file: {primary_file.name}")
 
             logger.info(f"Parsing {primary_file.name} with {parser.__class__.__name__}")
             adata, parse_stats = parser.parse(str(primary_file))
@@ -469,9 +469,7 @@ class MassIVEDownloadService(IDownloadService):
                 return None
 
             except (ftplib.error_temp, ConnectionError, TimeoutError) as e:
-                logger.warning(
-                    f"FTP error (attempt {attempt + 1}/{max_retries}): {e}"
-                )
+                logger.warning(f"FTP error (attempt {attempt + 1}/{max_retries}): {e}")
                 if attempt < max_retries - 1:
                     wait_time = 2**attempt
                     logger.info(f"Retrying in {wait_time}s...")

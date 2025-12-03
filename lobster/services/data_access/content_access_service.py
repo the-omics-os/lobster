@@ -37,13 +37,13 @@ from lobster.tools.providers.biorxiv_medrxiv_provider import (
 from lobster.tools.providers.geo_provider import GEOProvider
 from lobster.tools.providers.pmc_provider import PMCProvider
 from lobster.tools.providers.provider_registry import ProviderRegistry
+from lobster.tools.providers.publication_resolver import PublicationResolver
 from lobster.tools.providers.pubmed_provider import PubMedProvider
 from lobster.tools.providers.sra_provider import SRAProvider
 from lobster.tools.providers.webpage_provider import (
     WebpageExtractionError,
     WebpageProvider,
 )
-from lobster.tools.providers.publication_resolver import PublicationResolver
 from lobster.tools.url_transforms import transform_publisher_url
 from lobster.utils.logger import get_logger
 
@@ -1033,7 +1033,9 @@ class ContentAccessService:
 
             # Detect non-scientific sources (e.g., GitHub repos)
             if self._is_non_scientific_source(source):
-                logger.debug(f"Detected non-scientific source, short-circuiting: {source}")
+                logger.debug(
+                    f"Detected non-scientific source, short-circuiting: {source}"
+                )
                 result = self._build_non_scientific_result(source)
                 self.data_manager.cache_publication_content(
                     identifier=source,
@@ -1171,13 +1173,19 @@ class ContentAccessService:
                     error_code = None
 
                     # Extract HTTP status code if present
-                    code_match = re.search(r"(\d{3})\s*(client|server)?\s*error", error_str)
+                    code_match = re.search(
+                        r"(\d{3})\s*(client|server)?\s*error", error_str
+                    )
                     if code_match:
                         error_code = int(code_match.group(1))
 
                     # HTTP 400, 401, 403 typically indicate paywall/auth issues
                     # TDM API errors (like Wiley) return 400 without token
-                    if error_code in (400, 401, 403) or "tdm" in error_str or "token" in error_str:
+                    if (
+                        error_code in (400, 401, 403)
+                        or "tdm" in error_str
+                        or "token" in error_str
+                    ):
                         logger.warning(
                             f"Paywall/access error for {url_to_fetch}: {extraction_error}"
                         )
@@ -1357,7 +1365,9 @@ class ContentAccessService:
             ...     required_fields=["smoking_status", "treatment_response"]
             ... )
         """
-        from lobster.services.metadata.metadata_validation_service import MetadataValidationService
+        from lobster.services.metadata.metadata_validation_service import (
+            MetadataValidationService,
+        )
 
         logger.debug(f"Validating metadata for: {dataset_id}")
 
@@ -1606,7 +1616,9 @@ class ContentAccessService:
     # Helper Methods
     # ========================================================================
 
-    def _select_resolution_url(self, resolution_result, prefer_webpage: bool) -> Optional[str]:
+    def _select_resolution_url(
+        self, resolution_result, prefer_webpage: bool
+    ) -> Optional[str]:
         """Choose the best URL from a PublicationResolutionResult."""
 
         ordered_urls: list[str] = []
@@ -1632,7 +1644,9 @@ class ContentAccessService:
 
         return None
 
-    def _normalize_source_url(self, url: Optional[str], prefer_webpage: bool) -> Optional[str]:
+    def _normalize_source_url(
+        self, url: Optional[str], prefer_webpage: bool
+    ) -> Optional[str]:
         """Normalize URLs by applying publisher transforms and HTML preferences."""
 
         if not url or not isinstance(url, str):
@@ -1820,10 +1834,10 @@ class ContentAccessService:
                 if doi:
                     break
 
-            if (
-                not doi
-                and getattr(resolution_result, "source", "") in {"biorxiv", "medrxiv"}
-            ):
+            if not doi and getattr(resolution_result, "source", "") in {
+                "biorxiv",
+                "medrxiv",
+            }:
                 identifier = getattr(resolution_result, "identifier", "")
                 doi, server_hint = self._extract_preprint_doi_from_source(identifier)
                 if not server_hint:
@@ -1898,7 +1912,9 @@ class ContentAccessService:
             "methods_markdown": pmc_result.methods_section,
             "results_text": pmc_result.results_section,
             "discussion_text": pmc_result.discussion_section,
-            "data_availability_section": getattr(pmc_result, "data_availability_section", ""),
+            "data_availability_section": getattr(
+                pmc_result, "data_availability_section", ""
+            ),
             "tier_used": tier_used,
             "source_type": pmc_result.source_type,
             "extraction_time": 0.0,

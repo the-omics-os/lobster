@@ -256,7 +256,10 @@ class TestAgentRegistryManagement:
         assert config.name == "data_expert_agent"
         assert config.display_name == "Data Expert"
         # Updated: description focuses on download execution and modality management
-        assert "download" in config.description.lower() or "modalities" in config.description.lower()
+        assert (
+            "download" in config.description.lower()
+            or "modalities" in config.description.lower()
+        )
 
     def test_get_agent_config_nonexistent(self):
         """Test retrieving non-existent agent config."""

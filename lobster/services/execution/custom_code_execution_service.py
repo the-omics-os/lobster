@@ -39,11 +39,13 @@ DEFAULT_TIMEOUT = 300
 
 class CodeExecutionError(Exception):
     """Base exception for code execution failures."""
+
     pass
 
 
 class CodeValidationError(CodeExecutionError):
     """Raised when code fails safety validation."""
+
     pass
 
 
@@ -74,80 +76,95 @@ class CustomCodeExecutionService:
     # Forbidden imports (security) - these modules are blocked entirely
     FORBIDDEN_MODULES = {
         # Process execution
-        'subprocess',
-        'multiprocessing',
-        'concurrent',
-
+        "subprocess",
+        "multiprocessing",
+        "concurrent",
         # Import mechanisms (bypass vectors)
-        'importlib',
-        'imp',
-
+        "importlib",
+        "imp",
         # Serialization (RCE vectors via pickle deserialization)
-        'pickle',
-        'marshal',
-        'shelve',
-        'dill',
-
+        "pickle",
+        "marshal",
+        "shelve",
+        "dill",
         # Low-level (escape vectors)
-        'ctypes',
-        'cffi',
+        "ctypes",
+        "cffi",
     }
 
     # Forbidden specific imports (from X import Y)
     # os module is allowed for os.path, but dangerous functions are blocked
     FORBIDDEN_FROM_IMPORTS = {
         # os dangerous functions (keep os module for os.path)
-        ('os', 'system'),
-        ('os', 'popen'),
-        ('os', 'exec'),
-        ('os', 'execl'),
-        ('os', 'execle'),
-        ('os', 'execlp'),
-        ('os', 'execv'),
-        ('os', 'execve'),
-        ('os', 'execvp'),
-        ('os', 'execvpe'),
-        ('os', 'spawnl'),
-        ('os', 'spawnle'),
-        ('os', 'spawnlp'),
-        ('os', 'spawnlpe'),
-        ('os', 'spawnv'),
-        ('os', 'spawnve'),
-        ('os', 'spawnvp'),
-        ('os', 'spawnvpe'),
-        ('os', 'fork'),
-        ('os', 'forkpty'),
-        ('os', 'kill'),
-        ('os', 'killpg'),
-
+        ("os", "system"),
+        ("os", "popen"),
+        ("os", "exec"),
+        ("os", "execl"),
+        ("os", "execle"),
+        ("os", "execlp"),
+        ("os", "execv"),
+        ("os", "execve"),
+        ("os", "execvp"),
+        ("os", "execvpe"),
+        ("os", "spawnl"),
+        ("os", "spawnle"),
+        ("os", "spawnlp"),
+        ("os", "spawnlpe"),
+        ("os", "spawnv"),
+        ("os", "spawnve"),
+        ("os", "spawnvp"),
+        ("os", "spawnvpe"),
+        ("os", "fork"),
+        ("os", "forkpty"),
+        ("os", "kill"),
+        ("os", "killpg"),
         # signal manipulation (can kill parent process)
-        ('signal', 'signal'),
-        ('signal', 'kill'),
-        ('signal', 'alarm'),
-
+        ("signal", "signal"),
+        ("signal", "kill"),
+        ("signal", "alarm"),
         # destructive file ops
-        ('shutil', 'rmtree'),
-        ('shutil', 'move'),
+        ("shutil", "rmtree"),
+        ("shutil", "move"),
     }
 
     # Allowed imports (standard Lobster stack from pyproject.toml)
     ALLOWED_MODULES = {
         # Core scientific computing
-        'numpy', 'np', 'pandas', 'pd', 'scipy', 'sklearn',
-
+        "numpy",
+        "np",
+        "pandas",
+        "pd",
+        "scipy",
+        "sklearn",
         # Bioinformatics
-        'scanpy', 'sc', 'anndata', 'ad', 'mudata', 'mdata',
-        'pydeseq2', 'biopython', 'Bio',
-
+        "scanpy",
+        "sc",
+        "anndata",
+        "ad",
+        "mudata",
+        "mdata",
+        "pydeseq2",
+        "biopython",
+        "Bio",
         # Visualization
-        'plotly', 'matplotlib', 'plt', 'seaborn', 'sns',
-
+        "plotly",
+        "matplotlib",
+        "plt",
+        "seaborn",
+        "sns",
         # Standard library (safe subset)
-        'math', 'statistics', 're', 'json', 'csv', 'datetime',
-        'collections', 'itertools', 'functools', 'typing',
-
+        "math",
+        "statistics",
+        "re",
+        "json",
+        "csv",
+        "datetime",
+        "collections",
+        "itertools",
+        "functools",
+        "typing",
         # Lobster internal (for advanced users)
-        'lobster'
+        "lobster",
     }
 
     def __init__(self, data_manager: DataManagerV2):
@@ -169,7 +186,7 @@ class CustomCodeExecutionService:
         workspace_keys: Optional[List[str]] = None,
         persist: bool = False,
         description: str = "Custom code execution",
-        timeout: int = DEFAULT_TIMEOUT
+        timeout: int = DEFAULT_TIMEOUT,
     ) -> Tuple[Any, Dict[str, Any], AnalysisStep]:
         """
         Execute arbitrary Python code with workspace context injection.
@@ -224,17 +241,19 @@ class CustomCodeExecutionService:
         if modality_name and modality_name in self.data_manager.list_modalities():
             modality_path = self.data_manager.workspace_path / f"{modality_name}.h5ad"
             if not modality_path.exists():
-                logger.debug(f"Saving modality {modality_name} to disk for subprocess access")
+                logger.debug(
+                    f"Saving modality {modality_name} to disk for subprocess access"
+                )
                 adata = self.data_manager.get_modality(modality_name)
                 adata.write_h5ad(modality_path)
 
         # Step 3: Build execution context (now just metadata for subprocess)
         exec_context = {
-            'modality_name': modality_name,
-            'workspace_path': self.data_manager.workspace_path,
-            'load_workspace_files': load_workspace_files,
-            'workspace_keys': workspace_keys,
-            'timeout': timeout
+            "modality_name": modality_name,
+            "workspace_path": self.data_manager.workspace_path,
+            "load_workspace_files": load_workspace_files,
+            "workspace_keys": workspace_keys,
+            "timeout": timeout,
         }
 
         # Step 4: Execute code in subprocess
@@ -245,20 +264,20 @@ class CustomCodeExecutionService:
         # Step 4: Compute statistics
         duration = time.time() - start_time
         stats = {
-            'success': exec_error is None,
-            'duration_seconds': round(duration, 3),
-            'warnings': validation_warnings,
-            'stdout_lines': len(stdout_output.splitlines()) if stdout_output else 0,
-            'stderr_lines': len(stderr_output.splitlines()) if stderr_output else 0,
-            'stdout_preview': stdout_output[:500] if stdout_output else "",
-            'stderr_preview': stderr_output[:500] if stderr_output else "",
-            'result_type': type(result).__name__ if result is not None else None,
-            'modality_loaded': modality_name,
-            'workspace_files_loaded': load_workspace_files,
-            'workspace_keys': workspace_keys,
-            'selective_loading': workspace_keys is not None,
-            'persisted': persist,
-            'error': str(exec_error) if exec_error else None
+            "success": exec_error is None,
+            "duration_seconds": round(duration, 3),
+            "warnings": validation_warnings,
+            "stdout_lines": len(stdout_output.splitlines()) if stdout_output else 0,
+            "stderr_lines": len(stderr_output.splitlines()) if stderr_output else 0,
+            "stdout_preview": stdout_output[:500] if stdout_output else "",
+            "stderr_preview": stderr_output[:500] if stderr_output else "",
+            "result_type": type(result).__name__ if result is not None else None,
+            "modality_loaded": modality_name,
+            "workspace_files_loaded": load_workspace_files,
+            "workspace_keys": workspace_keys,
+            "selective_loading": workspace_keys is not None,
+            "persisted": persist,
+            "error": str(exec_error) if exec_error else None,
         }
 
         # Step 5: Generate IR (always, but mark as non-exportable if persist=False)
@@ -269,11 +288,13 @@ class CustomCodeExecutionService:
             load_workspace_files=load_workspace_files,
             workspace_keys=workspace_keys,
             persist=persist,
-            stats=stats
+            stats=stats,
         )
 
-        logger.info(f"Code execution {'succeeded' if stats['success'] else 'failed'} "
-                   f"in {duration:.2f}s")
+        logger.info(
+            f"Code execution {'succeeded' if stats['success'] else 'failed'} "
+            f"in {duration:.2f}s"
+        )
 
         if exec_error:
             logger.error(f"Execution error: {exec_error}")
@@ -313,8 +334,7 @@ class CustomCodeExecutionService:
             tree = ast.parse(code)
         except SyntaxError as e:
             raise CodeValidationError(
-                f"Syntax error in code at line {e.lineno}: {e.msg}\n"
-                f"Code: {e.text}"
+                f"Syntax error in code at line {e.lineno}: {e.msg}\n" f"Code: {e.text}"
             )
 
         # Import validation
@@ -350,7 +370,7 @@ class CustomCodeExecutionService:
                             f"System command execution and destructive operations are restricted."
                         )
 
-                if module and module.split('.')[0] not in self.ALLOWED_MODULES:
+                if module and module.split(".")[0] not in self.ALLOWED_MODULES:
                     warnings.append(
                         f"Import from '{module}' not in standard Lobster stack."
                     )
@@ -358,13 +378,13 @@ class CustomCodeExecutionService:
             # SECURITY: Block dangerous code execution functions
             elif isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name):
-                    if node.func.id in ['eval', 'exec', 'compile']:
+                    if node.func.id in ["eval", "exec", "compile"]:
                         raise CodeValidationError(
                             f"Function '{node.func.id}()' is forbidden. "
                             f"This function can execute arbitrary code and bypass safety checks. "
                             f"Use explicit operations instead."
                         )
-                    if node.func.id == '__import__':
+                    if node.func.id == "__import__":
                         raise CodeValidationError(
                             f"Function '__import__()' is forbidden. "
                             f"Use standard 'import' statements instead."
@@ -377,7 +397,7 @@ class CustomCodeExecutionService:
         modality_name: Optional[str],
         workspace_path: Path,
         load_workspace_files: bool,
-        workspace_keys: Optional[List[str]] = None
+        workspace_keys: Optional[List[str]] = None,
     ) -> str:
         """
         Generate Python code to set up execution context in subprocess.
@@ -576,16 +596,16 @@ Path = Path
             4
         """
         # Generate context setup code
-        modality_name = context.get('modality_name')
-        workspace_path = context.get('workspace_path', self.data_manager.workspace_path)
-        load_workspace_files = context.get('load_workspace_files', True)
-        workspace_keys = context.get('workspace_keys')
+        modality_name = context.get("modality_name")
+        workspace_path = context.get("workspace_path", self.data_manager.workspace_path)
+        load_workspace_files = context.get("load_workspace_files", True)
+        workspace_keys = context.get("workspace_keys")
 
         setup_code = self._generate_context_setup_code(
             modality_name=modality_name,
             workspace_path=workspace_path,
             load_workspace_files=load_workspace_files,
-            workspace_keys=workspace_keys
+            workspace_keys=workspace_keys,
         )
 
         # Combine setup + user code + result extraction
@@ -615,22 +635,23 @@ if 'result' in dir() and result is not None:
             script_path.write_text(full_script)
 
             # Execute in subprocess with timeout (from context)
-            timeout_seconds = context.get('timeout', DEFAULT_TIMEOUT)
+            timeout_seconds = context.get("timeout", DEFAULT_TIMEOUT)
             logger.debug(f"Executing code in subprocess (timeout={timeout_seconds}s)")
 
             # SECURITY: Filter environment variables to prevent credential leakage
             # Only pass safe, necessary variables to subprocess
             import os as _os
+
             safe_env = {
-                'PATH': _os.environ.get('PATH', ''),
-                'HOME': _os.environ.get('HOME', ''),
-                'USER': _os.environ.get('USER', ''),
-                'TMPDIR': _os.environ.get('TMPDIR', '/tmp'),
-                'LANG': _os.environ.get('LANG', 'en_US.UTF-8'),
-                'LC_ALL': _os.environ.get('LC_ALL', ''),
+                "PATH": _os.environ.get("PATH", ""),
+                "HOME": _os.environ.get("HOME", ""),
+                "USER": _os.environ.get("USER", ""),
+                "TMPDIR": _os.environ.get("TMPDIR", "/tmp"),
+                "LANG": _os.environ.get("LANG", "en_US.UTF-8"),
+                "LC_ALL": _os.environ.get("LC_ALL", ""),
                 # Python-specific (empty PYTHONPATH prevents hijacking)
-                'PYTHONPATH': '',
-                'PYTHONHOME': _os.environ.get('PYTHONHOME', ''),
+                "PYTHONPATH": "",
+                "PYTHONHOME": _os.environ.get("PYTHONHOME", ""),
             }
 
             proc_result = subprocess.run(
@@ -639,7 +660,7 @@ if 'result' in dir() and result is not None:
                 capture_output=True,
                 text=True,
                 timeout=timeout_seconds,
-                env=safe_env  # SECURITY: Filtered environment only
+                env=safe_env,  # SECURITY: Filtered environment only
             )
 
             stdout_output = proc_result.stdout
@@ -648,11 +669,15 @@ if 'result' in dir() and result is not None:
 
             # Truncate output if needed
             if len(stdout_output) > MAX_OUTPUT_LENGTH:
-                stdout_output = stdout_output[:MAX_OUTPUT_LENGTH] + "\n... (output truncated)"
+                stdout_output = (
+                    stdout_output[:MAX_OUTPUT_LENGTH] + "\n... (output truncated)"
+                )
                 logger.warning(f"Stdout truncated at {MAX_OUTPUT_LENGTH} characters")
 
             if len(stderr_output) > MAX_OUTPUT_LENGTH:
-                stderr_output = stderr_output[:MAX_OUTPUT_LENGTH] + "\n... (output truncated)"
+                stderr_output = (
+                    stderr_output[:MAX_OUTPUT_LENGTH] + "\n... (output truncated)"
+                )
                 logger.warning(f"Stderr truncated at {MAX_OUTPUT_LENGTH} characters")
 
             # Extract result if available
@@ -661,14 +686,16 @@ if 'result' in dir() and result is not None:
 
             if return_code != 0:
                 # Execution failed
-                error = Exception(f"Code execution failed with return code {return_code}")
+                error = Exception(
+                    f"Code execution failed with return code {return_code}"
+                )
             else:
                 # Try to load result
                 if result_path.exists():
                     try:
                         with open(result_path) as f:
                             result_data = json.load(f)
-                            result = result_data.get('result')
+                            result = result_data.get("result")
                     except Exception as e:
                         logger.debug(f"Could not load result file: {e}")
 
@@ -698,7 +725,7 @@ if 'result' in dir() and result is not None:
         load_workspace_files: bool,
         workspace_keys: Optional[List[str]],
         persist: bool,
-        stats: Dict[str, Any]
+        stats: Dict[str, Any],
     ) -> AnalysisStep:
         """
         Create AnalysisStep IR for provenance and notebook export.
@@ -738,61 +765,61 @@ if 'result' in dir() and result is not None:
 
         # Parameter schema (for Papermill injection if exported)
         parameter_schema = {
-            'code': ParameterSpec(
-                param_type='str',
+            "code": ParameterSpec(
+                param_type="str",
                 papermill_injectable=False,  # Code should not be overridden
                 default_value=code,
                 required=True,
-                description='Python code to execute'
+                description="Python code to execute",
             ),
-            'description': ParameterSpec(
-                param_type='str',
+            "description": ParameterSpec(
+                param_type="str",
                 papermill_injectable=False,
                 default_value=description,
                 required=False,
-                description='Human-readable description'
-            )
+                description="Human-readable description",
+            ),
         }
 
         # Add modality_name parameter if used
         if modality_name:
-            parameter_schema['modality_name'] = ParameterSpec(
-                param_type='str',
+            parameter_schema["modality_name"] = ParameterSpec(
+                param_type="str",
                 papermill_injectable=True,  # Can override which modality to use
                 default_value=modality_name,
                 required=False,
-                description='Modality to load as adata'
+                description="Modality to load as adata",
             )
 
         return AnalysisStep(
-            operation='custom_code_execution',
-            tool_name='execute_custom_code',
+            operation="custom_code_execution",
+            tool_name="execute_custom_code",
             description=description,
-            library='custom',
+            library="custom",
             code_template=code_template,
             imports=imports,
             parameters={
-                'code': code,
-                'description': description,
-                'modality_name': modality_name,
-                'load_workspace_files': load_workspace_files,
-                'workspace_keys': workspace_keys,
-                'selective_loading': workspace_keys is not None
+                "code": code,
+                "description": description,
+                "modality_name": modality_name,
+                "load_workspace_files": load_workspace_files,
+                "workspace_keys": workspace_keys,
+                "selective_loading": workspace_keys is not None,
             },
             parameter_schema=parameter_schema,
             input_entities=[modality_name] if modality_name else [],
             output_entities=[],  # Custom code may not produce named outputs
             execution_context={
-                'persist': persist,
-                'success': stats['success'],
-                'duration': stats['duration_seconds'],
-                'warnings': stats['warnings'],
-                'selective_loading': workspace_keys is not None,
-                'workspace_keys_count': len(workspace_keys) if workspace_keys else 0
+                "persist": persist,
+                "success": stats["success"],
+                "duration": stats["duration_seconds"],
+                "warnings": stats["warnings"],
+                "selective_loading": workspace_keys is not None,
+                "workspace_keys_count": len(workspace_keys) if workspace_keys else 0,
             },
             validates_on_export=True,
             requires_validation=True,
-            exportable=persist  # Only include in notebook if persist=True
+            exportable=persist,  # Only include in notebook if persist=True
         )
 
     def _extract_imports(self, code: str) -> List[str]:

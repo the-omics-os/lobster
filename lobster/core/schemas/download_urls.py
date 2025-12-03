@@ -132,7 +132,9 @@ class DownloadUrlResult(BaseModel):
     run_count: Optional[int] = Field(None, description="Number of runs/samples")
 
     # Error handling (for failed URL extraction)
-    error: Optional[str] = Field(None, description="Error message if URL extraction failed")
+    error: Optional[str] = Field(
+        None, description="Error message if URL extraction failed"
+    )
 
     # PRIDE-specific: search engine output files
     search_files: List[DownloadFile] = Field(

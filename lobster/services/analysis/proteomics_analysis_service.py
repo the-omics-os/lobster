@@ -489,7 +489,11 @@ print(f"Pathways tested: {stats['n_pathways_tested']}, Significant: {stats['n_si
 
             # Create IR for provenance tracking
             ir = self._create_ir_statistical_testing(
-                group_column, test_method, comparison_type, min_observations, handle_missing
+                group_column,
+                test_method,
+                comparison_type,
+                min_observations,
+                handle_missing,
             )
             return adata_stats, analysis_stats, ir
 

@@ -21,7 +21,10 @@ import scanpy as sc
 import scipy.sparse as spr
 
 from lobster.core.analysis_ir import AnalysisStep
-from lobster.services.quality.preprocessing_service import PreprocessingError, PreprocessingService
+from lobster.services.quality.preprocessing_service import (
+    PreprocessingError,
+    PreprocessingService,
+)
 from tests.mock_data.base import LARGE_DATASET_CONFIG, SMALL_DATASET_CONFIG
 from tests.mock_data.factories import SingleCellDataFactory
 

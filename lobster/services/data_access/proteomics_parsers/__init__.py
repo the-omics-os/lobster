@@ -57,7 +57,9 @@ from lobster.services.data_access.proteomics_parsers.base_parser import (
     ProteomicsParserError,
 )
 from lobster.services.data_access.proteomics_parsers.diann_parser import DIANNParser
-from lobster.services.data_access.proteomics_parsers.maxquant_parser import MaxQuantParser
+from lobster.services.data_access.proteomics_parsers.maxquant_parser import (
+    MaxQuantParser,
+)
 from lobster.services.data_access.proteomics_parsers.olink_parser import OlinkParser
 
 __all__ = [
@@ -122,8 +124,8 @@ def get_parser_for_file(file_path: str) -> ProteomicsParser:
     # Try parsers in order of specificity
     parser_classes = [
         MaxQuantParser,  # Try MaxQuant first (most specific - proteinGroups.txt)
-        OlinkParser,     # Olink second (specific - NPX/Assay/UniProt columns)
-        DIANNParser,     # DIA-NN last (more general column names)
+        OlinkParser,  # Olink second (specific - NPX/Assay/UniProt columns)
+        DIANNParser,  # DIA-NN last (more general column names)
     ]
 
     for parser_class in parser_classes:

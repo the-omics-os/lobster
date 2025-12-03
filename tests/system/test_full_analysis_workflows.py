@@ -25,7 +25,6 @@ import numpy as np
 import pandas as pd
 
 from lobster.agents.affinity_proteomics_expert import affinity_proteomics_expert
-from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 from lobster.agents.data_expert import data_expert
 from lobster.agents.ms_proteomics_expert import ms_proteomics_expert
 from lobster.agents.research_agent import research_agent

@@ -318,14 +318,22 @@ print(f"Batch correction applied: {method}, batches: {stats['n_batches']}")""",
             if not np.isnan(X).any():
                 logger.info("No missing values detected, skipping imputation")
                 ir = self._create_ir_impute_missing_values(
-                    method, knn_neighbors, min_prob_percentile, mnar_width, mnar_downshift
+                    method,
+                    knn_neighbors,
+                    min_prob_percentile,
+                    mnar_width,
+                    mnar_downshift,
                 )
-                return adata_imputed, {
-                    "method": method,
-                    "missing_values_found": False,
-                    "imputation_performed": False,
-                    "analysis_type": "missing_value_imputation",
-                }, ir
+                return (
+                    adata_imputed,
+                    {
+                        "method": method,
+                        "missing_values_found": False,
+                        "imputation_performed": False,
+                        "analysis_type": "missing_value_imputation",
+                    },
+                    ir,
+                )
 
             # Calculate missing value statistics
             total_missing = np.isnan(X).sum()
@@ -541,12 +549,16 @@ print(f"Batch correction applied: {method}, batches: {stats['n_batches']}")""",
                 ir = self._create_ir_correct_batch_effects(
                     batch_key, method, n_pcs, reference_batch
                 )
-                return adata_corrected, {
-                    "method": method,
-                    "batch_correction_performed": False,
-                    "n_batches": n_batches,
-                    "analysis_type": "batch_correction",
-                }, ir
+                return (
+                    adata_corrected,
+                    {
+                        "method": method,
+                        "batch_correction_performed": False,
+                        "n_batches": n_batches,
+                        "analysis_type": "batch_correction",
+                    },
+                    ir,
+                )
 
             # Store original data
             if adata_corrected.raw is None:

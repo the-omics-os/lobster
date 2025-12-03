@@ -347,7 +347,9 @@ class SRADownloadService(IDownloadService):
 
         if size_gb > self.SIZE_WARNING_THRESHOLD_GB:
             # Check if running in non-interactive mode (CI, scripts)
-            skip_warning = os.getenv("LOBSTER_SKIP_SIZE_WARNING", "false").lower() == "true"
+            skip_warning = (
+                os.getenv("LOBSTER_SKIP_SIZE_WARNING", "false").lower() == "true"
+            )
 
             if skip_warning:
                 logger.warning(
@@ -399,9 +401,7 @@ class SRADownloadService(IDownloadService):
         if "verify_checksum" in strategy_params:
             value = strategy_params["verify_checksum"]
             if not isinstance(value, bool):
-                error_msg = (
-                    f"Parameter 'verify_checksum' must be bool, got {type(value).__name__}"
-                )
+                error_msg = f"Parameter 'verify_checksum' must be bool, got {type(value).__name__}"
                 logger.warning(f"Validation failed: {error_msg}")
                 return False, error_msg
 
@@ -737,7 +737,7 @@ class SRADownloadManager:
                             )
                             raise requests.HTTPError(
                                 f"Server error after {max_retries} retries",
-                                response=response
+                                response=response,
                             )
 
                     elif response.status_code == 204:
@@ -763,13 +763,19 @@ class SRADownloadManager:
 
                                 # Log progress for large files (every 100 MB)
                                 if downloaded % (100 * 1024 * 1024) == 0:
-                                    progress = (downloaded / total_size * 100) if total_size > 0 else 0
+                                    progress = (
+                                        (downloaded / total_size * 100)
+                                        if total_size > 0
+                                        else 0
+                                    )
                                     logger.debug(
                                         f"Progress: {downloaded / 1e6:.1f} MB / "
                                         f"{total_size / 1e6:.1f} MB ({progress:.1f}%)"
                                     )
 
-                logger.debug(f"Download complete: {temp_path.name} ({temp_path.stat().st_size / 1e6:.1f} MB)")
+                logger.debug(
+                    f"Download complete: {temp_path.name} ({temp_path.stat().st_size / 1e6:.1f} MB)"
+                )
 
                 # Verify MD5 checksum if provided
                 if expected_md5:
@@ -795,7 +801,10 @@ class SRADownloadManager:
                 logger.debug(f"File ready: {output_path.name}")
                 return  # Success - exit retry loop
 
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            except (
+                requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError,
+            ) as e:
                 # Network errors - retry with backoff
                 if attempt < max_retries:
                     logger.warning(
@@ -950,8 +959,7 @@ class FASTQLoader:
 
         # Create index: {run_accession}_{read_type}
         obs.index = [
-            f"{acc}_{rt}"
-            for acc, rt in zip(obs["run_accession"], obs["read_type"])
+            f"{acc}_{rt}" for acc, rt in zip(obs["run_accession"], obs["read_type"])
         ]
 
         # Create minimal AnnData (FASTQ is raw data, no expression matrix yet)

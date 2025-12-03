@@ -17,20 +17,19 @@ Output:
     - Raw JSON data: asm_strategy_comparison_data.json
 """
 
-import time
 import json
-import statistics
-from typing import Dict, List, Optional
-from datetime import datetime
 import logging
+import statistics
+import time
+from datetime import datetime
 from pathlib import Path
+from typing import Dict, List, Optional
 
 # Import test URLs
 from asm_test_urls import ASM_TEST_URLS
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -49,7 +48,7 @@ class StrategyResult:
         status_code: Optional[int],
         response_time: float,
         content_length: int,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
     ):
         self.url = url
         self.journal = journal
@@ -66,17 +65,17 @@ class StrategyResult:
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON serialization."""
         return {
-            'url': self.url,
-            'journal': self.journal,
-            'doi': self.doi,
-            'strategy': self.strategy,
-            'attempt': self.attempt,
-            'success': self.success,
-            'status_code': self.status_code,
-            'response_time': self.response_time,
-            'content_length': self.content_length,
-            'error_message': self.error_message,
-            'timestamp': self.timestamp
+            "url": self.url,
+            "journal": self.journal,
+            "doi": self.doi,
+            "strategy": self.strategy,
+            "attempt": self.attempt,
+            "success": self.success,
+            "status_code": self.status_code,
+            "response_time": self.response_time,
+            "content_length": self.content_length,
+            "error_message": self.error_message,
+            "timestamp": self.timestamp,
         }
 
 
@@ -93,22 +92,22 @@ def test_strategy_a(url: str, timeout: int = 30) -> Dict:
     try:
         # Comprehensive browser-like headers
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'DNT': '1',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Sec-Fetch-User': '?1',
-            'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-            'Sec-Ch-Ua-Mobile': '?0',
-            'Sec-Ch-Ua-Platform': '"macOS"',
-            'Cache-Control': 'max-age=0',
-            'Referer': 'https://journals.asm.org/',
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "DNT": "1",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"macOS"',
+            "Cache-Control": "max-age=0",
+            "Referer": "https://journals.asm.org/",
         }
 
         # Create session
@@ -126,41 +125,43 @@ def test_strategy_a(url: str, timeout: int = 30) -> Dict:
         elapsed = time.time() - start_time
 
         return {
-            'success': response.status_code == 200,
-            'status_code': response.status_code,
-            'response_time': elapsed,
-            'content_length': len(response.content),
-            'error_message': None if response.status_code == 200 else f"HTTP {response.status_code}"
+            "success": response.status_code == 200,
+            "status_code": response.status_code,
+            "response_time": elapsed,
+            "content_length": len(response.content),
+            "error_message": (
+                None if response.status_code == 200 else f"HTTP {response.status_code}"
+            ),
         }
 
     except requests.exceptions.Timeout:
         elapsed = time.time() - start_time
         return {
-            'success': False,
-            'status_code': None,
-            'response_time': elapsed,
-            'content_length': 0,
-            'error_message': 'Timeout'
+            "success": False,
+            "status_code": None,
+            "response_time": elapsed,
+            "content_length": 0,
+            "error_message": "Timeout",
         }
 
     except requests.exceptions.RequestException as e:
         elapsed = time.time() - start_time
         return {
-            'success': False,
-            'status_code': None,
-            'response_time': elapsed,
-            'content_length': 0,
-            'error_message': str(e)[:100]  # Truncate long error messages
+            "success": False,
+            "status_code": None,
+            "response_time": elapsed,
+            "content_length": 0,
+            "error_message": str(e)[:100],  # Truncate long error messages
         }
 
     except Exception as e:
         elapsed = time.time() - start_time
         return {
-            'success': False,
-            'status_code': None,
-            'response_time': elapsed,
-            'content_length': 0,
-            'error_message': f"Unexpected error: {str(e)[:100]}"
+            "success": False,
+            "status_code": None,
+            "response_time": elapsed,
+            "content_length": 0,
+            "error_message": f"Unexpected error: {str(e)[:100]}",
         }
 
 
@@ -174,11 +175,11 @@ def test_strategy_b(url: str, timeout: int = 30) -> Dict:
         import cloudscraper
     except ImportError:
         return {
-            'success': False,
-            'status_code': None,
-            'response_time': 0,
-            'content_length': 0,
-            'error_message': 'cloudscraper not installed'
+            "success": False,
+            "status_code": None,
+            "response_time": 0,
+            "content_length": 0,
+            "error_message": "cloudscraper not installed",
         }
 
     start_time = time.time()
@@ -193,21 +194,23 @@ def test_strategy_b(url: str, timeout: int = 30) -> Dict:
         elapsed = time.time() - start_time
 
         return {
-            'success': response.status_code == 200,
-            'status_code': response.status_code,
-            'response_time': elapsed,
-            'content_length': len(response.content),
-            'error_message': None if response.status_code == 200 else f"HTTP {response.status_code}"
+            "success": response.status_code == 200,
+            "status_code": response.status_code,
+            "response_time": elapsed,
+            "content_length": len(response.content),
+            "error_message": (
+                None if response.status_code == 200 else f"HTTP {response.status_code}"
+            ),
         }
 
     except Exception as e:
         elapsed = time.time() - start_time
         return {
-            'success': False,
-            'status_code': None,
-            'response_time': elapsed,
-            'content_length': 0,
-            'error_message': str(e)[:100]
+            "success": False,
+            "status_code": None,
+            "response_time": elapsed,
+            "content_length": 0,
+            "error_message": str(e)[:100],
         }
 
 
@@ -234,9 +237,9 @@ def run_comparison() -> List[StrategyResult]:
     print()
 
     for url_data in ASM_TEST_URLS:
-        url = url_data['url']
-        journal = url_data['journal']
-        doi = url_data['doi']
+        url = url_data["url"]
+        journal = url_data["journal"]
+        doi = url_data["doi"]
 
         print(f"\n📄 Testing: {journal}")
         print(f"   DOI: {doi}")
@@ -246,7 +249,10 @@ def run_comparison() -> List[StrategyResult]:
         # Test Strategy A (3 attempts)
         for attempt in range(1, 4):
             current_test += 1
-            print(f"   [{current_test}/{total_tests}] Strategy A (Session-based) - Attempt {attempt}/3...", end=" ")
+            print(
+                f"   [{current_test}/{total_tests}] Strategy A (Session-based) - Attempt {attempt}/3...",
+                end=" ",
+            )
 
             result_dict = test_strategy_a(url)
 
@@ -254,14 +260,16 @@ def run_comparison() -> List[StrategyResult]:
                 url=url,
                 journal=journal,
                 doi=doi,
-                strategy='A_session',
+                strategy="A_session",
                 attempt=attempt,
-                **result_dict
+                **result_dict,
             )
             results.append(result)
 
             status_icon = "✅" if result.success else "❌"
-            print(f"{status_icon} {result.status_code or 'ERROR'} ({result.response_time:.2f}s)")
+            print(
+                f"{status_icon} {result.status_code or 'ERROR'} ({result.response_time:.2f}s)"
+            )
 
             # Rate limiting delay
             time.sleep(5)
@@ -269,7 +277,10 @@ def run_comparison() -> List[StrategyResult]:
         # Test Strategy B (3 attempts)
         for attempt in range(1, 4):
             current_test += 1
-            print(f"   [{current_test}/{total_tests}] Strategy B (Cloudscraper) - Attempt {attempt}/3...", end=" ")
+            print(
+                f"   [{current_test}/{total_tests}] Strategy B (Cloudscraper) - Attempt {attempt}/3...",
+                end=" ",
+            )
 
             result_dict = test_strategy_b(url)
 
@@ -277,14 +288,16 @@ def run_comparison() -> List[StrategyResult]:
                 url=url,
                 journal=journal,
                 doi=doi,
-                strategy='B_cloudscraper',
+                strategy="B_cloudscraper",
                 attempt=attempt,
-                **result_dict
+                **result_dict,
             )
             results.append(result)
 
             status_icon = "✅" if result.success else "❌"
-            print(f"{status_icon} {result.status_code or 'ERROR'} ({result.response_time:.2f}s)")
+            print(
+                f"{status_icon} {result.status_code or 'ERROR'} ({result.response_time:.2f}s)"
+            )
 
             # Rate limiting delay
             time.sleep(5)
@@ -300,8 +313,8 @@ def analyze_results(results: List[StrategyResult]) -> Dict:
     """Analyze test results and generate statistics."""
 
     # Separate by strategy
-    strategy_a_results = [r for r in results if r.strategy == 'A_session']
-    strategy_b_results = [r for r in results if r.strategy == 'B_cloudscraper']
+    strategy_a_results = [r for r in results if r.strategy == "A_session"]
+    strategy_b_results = [r for r in results if r.strategy == "B_cloudscraper"]
 
     # Calculate overall statistics
     def calc_stats(strategy_results):
@@ -321,20 +334,20 @@ def analyze_results(results: List[StrategyResult]) -> Dict:
                 failure_modes[error] = failure_modes.get(error, 0) + 1
 
         return {
-            'total': total,
-            'successes': successes,
-            'failures': total - successes,
-            'success_rate': success_rate,
-            'avg_response_time': avg_time,
-            'std_response_time': std_time,
-            'failure_modes': failure_modes
+            "total": total,
+            "successes": successes,
+            "failures": total - successes,
+            "success_rate": success_rate,
+            "avg_response_time": avg_time,
+            "std_response_time": std_time,
+            "failure_modes": failure_modes,
         }
 
     # Per-URL statistics
     url_comparison = []
     for url_data in ASM_TEST_URLS:
-        url = url_data['url']
-        journal = url_data['journal']
+        url = url_data["url"]
+        journal = url_data["journal"]
 
         a_results = [r for r in strategy_a_results if r.url == url]
         b_results = [r for r in strategy_b_results if r.url == url]
@@ -342,37 +355,51 @@ def analyze_results(results: List[StrategyResult]) -> Dict:
         a_successes = sum(1 for r in a_results if r.success)
         b_successes = sum(1 for r in b_results if r.success)
 
-        url_comparison.append({
-            'url': url,
-            'journal': journal,
-            'strategy_a_success': f"{a_successes}/3",
-            'strategy_b_success': f"{b_successes}/3",
-            'winner': 'A' if a_successes > b_successes else ('B' if b_successes > a_successes else 'Tie')
-        })
+        url_comparison.append(
+            {
+                "url": url,
+                "journal": journal,
+                "strategy_a_success": f"{a_successes}/3",
+                "strategy_b_success": f"{b_successes}/3",
+                "winner": (
+                    "A"
+                    if a_successes > b_successes
+                    else ("B" if b_successes > a_successes else "Tie")
+                ),
+            }
+        )
 
     return {
-        'strategy_a': calc_stats(strategy_a_results),
-        'strategy_b': calc_stats(strategy_b_results),
-        'url_comparison': url_comparison
+        "strategy_a": calc_stats(strategy_a_results),
+        "strategy_b": calc_stats(strategy_b_results),
+        "url_comparison": url_comparison,
     }
 
 
 def generate_report(results: List[StrategyResult], analysis: Dict) -> str:
     """Generate comprehensive markdown report."""
 
-    strategy_a = analysis['strategy_a']
-    strategy_b = analysis['strategy_b']
+    strategy_a = analysis["strategy_a"]
+    strategy_b = analysis["strategy_b"]
 
     # Determine winner
-    if strategy_a['success_rate'] > strategy_b['success_rate']:
-        winner = 'Strategy A (Session-based)'
-        confidence = 'HIGH' if strategy_a['success_rate'] - strategy_b['success_rate'] > 20 else 'MEDIUM'
-    elif strategy_b['success_rate'] > strategy_a['success_rate']:
-        winner = 'Strategy B (Cloudscraper)'
-        confidence = 'HIGH' if strategy_b['success_rate'] - strategy_a['success_rate'] > 20 else 'MEDIUM'
+    if strategy_a["success_rate"] > strategy_b["success_rate"]:
+        winner = "Strategy A (Session-based)"
+        confidence = (
+            "HIGH"
+            if strategy_a["success_rate"] - strategy_b["success_rate"] > 20
+            else "MEDIUM"
+        )
+    elif strategy_b["success_rate"] > strategy_a["success_rate"]:
+        winner = "Strategy B (Cloudscraper)"
+        confidence = (
+            "HIGH"
+            if strategy_b["success_rate"] - strategy_a["success_rate"] > 20
+            else "MEDIUM"
+        )
     else:
-        winner = 'TIE'
-        confidence = 'LOW'
+        winner = "TIE"
+        confidence = "LOW"
 
     report = f"""# ASM Access Strategy Comparison Report
 
@@ -397,13 +424,13 @@ def generate_report(results: List[StrategyResult], analysis: Dict) -> str:
 **Rationale:**
 """
 
-    if winner == 'Strategy A (Session-based)':
+    if winner == "Strategy A (Session-based)":
         report += f"""- {strategy_a['success_rate']:.1f}% success rate vs {strategy_b['success_rate']:.1f}% (Δ = {strategy_a['success_rate'] - strategy_b['success_rate']:.1f}%)
 - Average latency: {strategy_a['avg_response_time']:.2f}s vs {strategy_b['avg_response_time']:.2f}s
 - Consistency (std dev): {strategy_a['std_response_time']:.2f}s vs {strategy_b['std_response_time']:.2f}s
 - Lightweight dependencies (requests only vs cloudscraper)
 """
-    elif winner == 'Strategy B (Cloudscraper)':
+    elif winner == "Strategy B (Cloudscraper)":
         report += f"""- {strategy_b['success_rate']:.1f}% success rate vs {strategy_a['success_rate']:.1f}% (Δ = {strategy_b['success_rate'] - strategy_a['success_rate']:.1f}%)
 - Average latency: {strategy_b['avg_response_time']:.2f}s vs {strategy_a['avg_response_time']:.2f}s
 - Consistency (std dev): {strategy_b['std_response_time']:.2f}s vs {strategy_a['std_response_time']:.2f}s
@@ -422,7 +449,10 @@ def generate_report(results: List[StrategyResult], analysis: Dict) -> str:
 
 """
 
-    if strategy_a['success_rate'] >= 80 and strategy_a['success_rate'] >= strategy_b['success_rate']:
+    if (
+        strategy_a["success_rate"] >= 80
+        and strategy_a["success_rate"] >= strategy_b["success_rate"]
+    ):
         report += """**Recommended:** Replace cloudscraper with session-based approach for ASM domains.
 
 ```python
@@ -433,7 +463,7 @@ def _fetch_asm_article(self, url: str) -> str:
     return fetch_asm_article_with_retry(url, max_retries=3)
 ```
 """
-    elif strategy_b['success_rate'] >= 80:
+    elif strategy_b["success_rate"] >= 80:
         report += """**Recommended:** Keep cloudscraper as primary strategy (already working well).
 
 Consider adding homepage visit + delay pattern to improve reliability further.
@@ -461,9 +491,9 @@ except:
 |-----|---------|------------|------------|--------|
 """
 
-    for comparison in analysis['url_comparison']:
-        journal_short = comparison['journal'].split('(')[0].strip()[:30]
-        url_short = comparison['url'].split('/')[-1][:30]
+    for comparison in analysis["url_comparison"]:
+        journal_short = comparison["journal"].split("(")[0].strip()[:30]
+        url_short = comparison["url"].split("/")[-1][:30]
         report += f"| {url_short} | {journal_short} | {comparison['strategy_a_success']} | {comparison['strategy_b_success']} | {comparison['winner']} |\n"
 
     # Aggregate statistics
@@ -494,8 +524,10 @@ except:
 
 """
 
-    if strategy_a['failure_modes']:
-        for error, count in sorted(strategy_a['failure_modes'].items(), key=lambda x: x[1], reverse=True):
+    if strategy_a["failure_modes"]:
+        for error, count in sorted(
+            strategy_a["failure_modes"].items(), key=lambda x: x[1], reverse=True
+        ):
             report += f"- **{error}:** {count} occurrences\n"
     else:
         report += "✅ No failures!\n"
@@ -506,8 +538,10 @@ except:
 
 """
 
-    if strategy_b['failure_modes']:
-        for error, count in sorted(strategy_b['failure_modes'].items(), key=lambda x: x[1], reverse=True):
+    if strategy_b["failure_modes"]:
+        for error, count in sorted(
+            strategy_b["failure_modes"].items(), key=lambda x: x[1], reverse=True
+        ):
             report += f"- **{error}:** {count} occurrences\n"
     else:
         report += "✅ No failures!\n"
@@ -525,10 +559,14 @@ except:
 
     for result in results:
         if not result.success:
-            if result.strategy == 'A_session':
-                url_failures_a[result.journal] = url_failures_a.get(result.journal, 0) + 1
+            if result.strategy == "A_session":
+                url_failures_a[result.journal] = (
+                    url_failures_a.get(result.journal, 0) + 1
+                )
             else:
-                url_failures_b[result.journal] = url_failures_b.get(result.journal, 0) + 1
+                url_failures_b[result.journal] = (
+                    url_failures_b.get(result.journal, 0) + 1
+                )
 
     if url_failures_a or url_failures_b:
         report += "**Journal-specific failures detected:**\n\n"
@@ -536,7 +574,9 @@ except:
         for journal in sorted(all_journals):
             a_count = url_failures_a.get(journal, 0)
             b_count = url_failures_b.get(journal, 0)
-            report += f"- **{journal}:** Strategy A: {a_count}/3, Strategy B: {b_count}/3\n"
+            report += (
+                f"- **{journal}:** Strategy A: {a_count}/3, Strategy B: {b_count}/3\n"
+            )
     else:
         report += "✅ No journal-specific patterns detected. Failures appear random/transient.\n"
 
@@ -579,7 +619,7 @@ except:
 
 """
 
-    if strategy_a['success_rate'] >= 80:
+    if strategy_a["success_rate"] >= 80:
         report += """**Primary:** Strategy A (Session-based)
 **Fallback:** Strategy B (Cloudscraper)
 **Retry Logic:** 3 attempts with exponential backoff
@@ -613,7 +653,7 @@ except:
    "journals.asm.org": {"max_requests": 10, "time_window": 60, "delay": 2.0}
    ```
 """
-    elif strategy_b['success_rate'] >= 80:
+    elif strategy_b["success_rate"] >= 80:
         report += """**Primary:** Strategy B (Cloudscraper - current)
 **Enhancement:** Add homepage visit + delay pattern
 **Retry Logic:** 3 attempts with exponential backoff
@@ -693,7 +733,7 @@ Before production deployment:
         "[ ] Load testing (50+ requests over 5 minutes)",
         "[ ] Monitor ASM access metrics for 1 week",
         "[ ] Document fallback procedure (PMC-first)",
-        "[ ] Add alerting for success rate drops below 80%"
+        "[ ] Add alerting for success rate drops below 80%",
     ]
 
     for item in checklist_items:
@@ -727,7 +767,7 @@ Based on {len(results)} tests across {len(ASM_TEST_URLS)} diverse ASM journal ar
 
 """
 
-    if strategy_a['success_rate'] >= 80:
+    if strategy_a["success_rate"] >= 80:
         report += """**Key Takeaways:**
 - Session-based approach is reliable, lightweight, and maintainable
 - No heavy dependencies (requests vs cloudscraper)
@@ -740,7 +780,7 @@ Based on {len(results)} tests across {len(ASM_TEST_URLS)} diverse ASM journal ar
 3. Document in ASM_QUICK_REFERENCE.md
 4. Monitor production metrics for 1 week
 """
-    elif strategy_b['success_rate'] >= 80:
+    elif strategy_b["success_rate"] >= 80:
         report += """**Key Takeaways:**
 - Cloudscraper continues to work well for ASM
 - Already integrated, minimal changes needed
@@ -793,13 +833,13 @@ def main():
 
     # Save report
     report_path = Path(__file__).parent / "ASM_STRATEGY_COMPARISON.md"
-    with open(report_path, 'w') as f:
+    with open(report_path, "w") as f:
         f.write(report)
     print(f"✅ Report saved to: {report_path}")
 
     # Save raw data
     data_path = Path(__file__).parent / "asm_strategy_comparison_data.json"
-    with open(data_path, 'w') as f:
+    with open(data_path, "w") as f:
         json.dump([r.to_dict() for r in results], f, indent=2)
     print(f"✅ Raw data saved to: {data_path}")
 
@@ -807,12 +847,20 @@ def main():
     print("\n" + "=" * 80)
     print("📈 SUMMARY")
     print("=" * 80)
-    print(f"Strategy A (Session-based): {analysis['strategy_a']['successes']}/{analysis['strategy_a']['total']} ({analysis['strategy_a']['success_rate']:.1f}%)")
-    print(f"Strategy B (Cloudscraper):  {analysis['strategy_b']['successes']}/{analysis['strategy_b']['total']} ({analysis['strategy_b']['success_rate']:.1f}%)")
+    print(
+        f"Strategy A (Session-based): {analysis['strategy_a']['successes']}/{analysis['strategy_a']['total']} ({analysis['strategy_a']['success_rate']:.1f}%)"
+    )
+    print(
+        f"Strategy B (Cloudscraper):  {analysis['strategy_b']['successes']}/{analysis['strategy_b']['total']} ({analysis['strategy_b']['success_rate']:.1f}%)"
+    )
     print()
     print(f"Average latency:")
-    print(f"  Strategy A: {analysis['strategy_a']['avg_response_time']:.2f}s (±{analysis['strategy_a']['std_response_time']:.2f}s)")
-    print(f"  Strategy B: {analysis['strategy_b']['avg_response_time']:.2f}s (±{analysis['strategy_b']['std_response_time']:.2f}s)")
+    print(
+        f"  Strategy A: {analysis['strategy_a']['avg_response_time']:.2f}s (±{analysis['strategy_a']['std_response_time']:.2f}s)"
+    )
+    print(
+        f"  Strategy B: {analysis['strategy_b']['avg_response_time']:.2f}s (±{analysis['strategy_b']['std_response_time']:.2f}s)"
+    )
     print("=" * 80)
     print(f"\n✅ Full report: {report_path}")
     print(f"✅ Raw data: {data_path}")

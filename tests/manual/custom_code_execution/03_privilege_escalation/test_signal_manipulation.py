@@ -22,9 +22,9 @@ import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.execution.custom_code_execution_service import (
-    CustomCodeExecutionService,
+    CodeExecutionError,
     CodeValidationError,
-    CodeExecutionError
+    CustomCodeExecutionService,
 )
 
 
@@ -56,7 +56,7 @@ class TestParentProcessDiscovery:
 
         Attack: Find Lobster's main process PID
         """
-        code = '''
+        code = """
 import os
 
 try:
@@ -70,7 +70,7 @@ try:
     print(f"   Can now target parent with signals")
 except Exception as e:
     result = f"PROTECTED: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -99,7 +99,7 @@ except Exception as e:
 
         Attack: Read parent's command line arguments
         """
-        code = '''
+        code = """
 import os
 import sys
 from pathlib import Path
@@ -121,7 +121,7 @@ try:
         print(f"   Would reveal: Python interpreter, script path, arguments")
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -172,7 +172,7 @@ class TestSignalAttacks:
 
         ⚠️ SAFETY: Only tests capability, does NOT send signal
         """
-        code = '''
+        code = """
 import os
 import signal
 
@@ -191,7 +191,7 @@ try:
         result = "PROTECTED: os.kill or SIGTERM not available"
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -222,7 +222,7 @@ except Exception as e:
 
         ⚠️ SAFETY: Only tests capability, does NOT send signal
         """
-        code = '''
+        code = """
 import os
 import signal
 
@@ -242,7 +242,7 @@ try:
         result = "PROTECTED: SIGKILL not available"
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -274,7 +274,7 @@ except Exception as e:
 
         ⚠️ SAFETY: Only tests capability, does NOT send signal
         """
-        code = '''
+        code = """
 import os
 import signal
 
@@ -294,7 +294,7 @@ try:
         result = "PROTECTED: SIGSTOP not available"
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -323,7 +323,7 @@ except Exception as e:
 
         Attack: Override signal handlers to ignore signals
         """
-        code = '''
+        code = """
 import signal
 
 try:
@@ -341,7 +341,7 @@ try:
     print(f"   Note: Only affects subprocess, not parent Lobster")
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -387,7 +387,7 @@ class TestAdvancedProcessAttacks:
 
         Attack: Discover all running processes
         """
-        code = '''
+        code = """
 import os
 import sys
 
@@ -410,7 +410,7 @@ try:
         print(f"   Limited enumeration capability")
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -438,7 +438,7 @@ except Exception as e:
 
         Attack: Double fork to create daemon
         """
-        code = '''
+        code = """
 import os
 import sys
 
@@ -455,7 +455,7 @@ try:
         print(f"✅ fork not available on this platform")
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -484,7 +484,7 @@ except Exception as e:
 
         Attack: Set high priority to hog CPU
         """
-        code = '''
+        code = """
 import os
 
 try:
@@ -499,7 +499,7 @@ try:
     print(f"   Note: Requires root for negative values")
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -528,7 +528,7 @@ except Exception as e:
 
         Attack: Read sensitive environment variables (API keys, etc.)
         """
-        code = '''
+        code = """
 import os
 
 try:
@@ -551,7 +551,7 @@ try:
         print(f"   No sensitive keys in current environment")
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -570,9 +570,9 @@ except Exception as e:
 
 
 if __name__ == "__main__":
-    print("="*70)
+    print("=" * 70)
     print("SIGNAL MANIPULATION SECURITY TESTS")
-    print("="*70)
+    print("=" * 70)
     print("Run with: pytest test_signal_manipulation.py -v -s")
     print("")
     print("These tests check if user code can:")
@@ -588,4 +588,4 @@ if __name__ == "__main__":
     print("  - Process priority manipulation")
     print("")
     print("⚠️  SAFETY: Tests only check capability, no signals actually sent")
-    print("="*70)
+    print("=" * 70)

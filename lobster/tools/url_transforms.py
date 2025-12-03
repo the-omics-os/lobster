@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import re
-from typing import Dict
-
 import urllib.parse
+from typing import Dict
 
 from lobster.utils.logger import get_logger
 

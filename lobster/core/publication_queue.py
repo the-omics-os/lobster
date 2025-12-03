@@ -14,12 +14,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
+from lobster.core.queue_storage import (
+    atomic_write_jsonl,
+    backups_enabled,
+    queue_file_lock,
+)
 from lobster.core.schemas.publication_queue import (
+    HandoffStatus,
     PublicationQueueEntry,
     PublicationStatus,
-    HandoffStatus,
 )
-from lobster.core.queue_storage import backups_enabled, atomic_write_jsonl, queue_file_lock
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +148,9 @@ class PublicationQueue:
                 if entry.entry_id == entry_id:
                     return entry
 
-            raise EntryNotFoundError(f"Entry '{entry_id}' not found in publication queue")
+            raise EntryNotFoundError(
+                f"Entry '{entry_id}' not found in publication queue"
+            )
 
     def update_status(
         self,
@@ -214,7 +220,9 @@ class PublicationQueue:
                     break
 
             if not entry_found:
-                raise EntryNotFoundError(f"Entry '{entry_id}' not found in publication queue")
+                raise EntryNotFoundError(
+                    f"Entry '{entry_id}' not found in publication queue"
+                )
 
             # Backup before modification
             self._backup_queue()
@@ -264,7 +272,9 @@ class PublicationQueue:
             entries = [e for e in entries if e.entry_id != entry_id]
 
             if len(entries) == original_count:
-                raise EntryNotFoundError(f"Entry '{entry_id}' not found in publication queue")
+                raise EntryNotFoundError(
+                    f"Entry '{entry_id}' not found in publication queue"
+                )
 
             # Backup before modification
             self._backup_queue()
@@ -379,7 +389,9 @@ class PublicationQueue:
         try:
             atomic_write_jsonl(self.queue_file, entries, lambda e: e.to_dict())
             file_size = self.queue_file.stat().st_size
-            logger.debug(f"Successfully wrote {len(entries)} entries ({file_size} bytes)")
+            logger.debug(
+                f"Successfully wrote {len(entries)} entries ({file_size} bytes)"
+            )
 
         except Exception as e:
             logger.error(f"Failed to write publication queue atomically: {e}")

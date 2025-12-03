@@ -19,11 +19,10 @@ import pytest
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.publication_queue import PublicationQueue
 from lobster.core.schemas.publication_queue import (
+    HandoffStatus,
     PublicationQueueEntry,
     PublicationStatus,
-    HandoffStatus,
 )
-
 
 # =============================================================================
 # Fixtures
@@ -158,10 +157,14 @@ def mock_workspace_service(sample_workspace_metadata):
 @pytest.fixture
 def patched_workspace_service(sample_workspace_metadata):
     """Patch WorkspaceContentService for tests."""
-    with patch("lobster.agents.metadata_assistant.WorkspaceContentService") as mock_ws_class:
+    with patch(
+        "lobster.agents.metadata_assistant.WorkspaceContentService"
+    ) as mock_ws_class:
         mock_ws_instance = Mock()
         mock_ws_instance.read_content = Mock(return_value=sample_workspace_metadata)
-        mock_ws_instance.write_content = Mock(return_value="/workspace/metadata/output.json")
+        mock_ws_instance.write_content = Mock(
+            return_value="/workspace/metadata/output.json"
+        )
         mock_ws_class.return_value = mock_ws_instance
         yield mock_ws_class
 
@@ -193,7 +196,9 @@ def mock_microbiome_filtering():
 class TestProcessMetadataEntry:
     """Test process_metadata_entry tool."""
 
-    @patch("lobster.services.data_access.workspace_content_service.WorkspaceContentService")
+    @patch(
+        "lobster.services.data_access.workspace_content_service.WorkspaceContentService"
+    )
     @patch("lobster.agents.metadata_assistant.create_react_agent")
     @patch("lobster.agents.metadata_assistant.create_llm")
     @patch("lobster.agents.metadata_assistant.get_settings")
@@ -266,7 +271,9 @@ class TestProcessMetadataEntry:
         assert "validation_errors" in stats
         assert "validation_warnings" in stats
 
-    @patch("lobster.services.data_access.workspace_content_service.WorkspaceContentService")
+    @patch(
+        "lobster.services.data_access.workspace_content_service.WorkspaceContentService"
+    )
     @patch("lobster.agents.metadata_assistant.create_react_agent")
     @patch("lobster.agents.metadata_assistant.create_llm")
     @patch("lobster.agents.metadata_assistant.get_settings")
@@ -326,7 +333,9 @@ class TestProcessMetadataEntry:
 class TestProcessMetadataQueue:
     """Test process_metadata_queue tool."""
 
-    @patch("lobster.services.data_access.workspace_content_service.WorkspaceContentService")
+    @patch(
+        "lobster.services.data_access.workspace_content_service.WorkspaceContentService"
+    )
     @patch("lobster.agents.metadata_assistant.create_react_agent")
     @patch("lobster.agents.metadata_assistant.create_llm")
     @patch("lobster.agents.metadata_assistant.get_settings")
@@ -362,7 +371,9 @@ class TestProcessMetadataQueue:
         # Mock WorkspaceContentService
         mock_ws_instance = Mock()
         mock_ws_instance.read_content = Mock(return_value=sample_workspace_metadata)
-        mock_ws_instance.write_content = Mock(return_value="/workspace/metadata/output.json")
+        mock_ws_instance.write_content = Mock(
+            return_value="/workspace/metadata/output.json"
+        )
         mock_ws_class.return_value = mock_ws_instance
 
         # Create 3 entries with HANDOFF_READY status
@@ -399,7 +410,9 @@ class TestProcessMetadataQueue:
             entry = real_queue.get_entry(f"test_entry_{i:03d}")
             assert entry.handoff_status == HandoffStatus.METADATA_COMPLETE
 
-    @patch("lobster.services.data_access.workspace_content_service.WorkspaceContentService")
+    @patch(
+        "lobster.services.data_access.workspace_content_service.WorkspaceContentService"
+    )
     @patch("lobster.agents.metadata_assistant.create_react_agent")
     @patch("lobster.agents.metadata_assistant.create_llm")
     @patch("lobster.agents.metadata_assistant.get_settings")
@@ -435,7 +448,9 @@ class TestProcessMetadataQueue:
         # Mock WorkspaceContentService
         mock_ws_instance = Mock()
         mock_ws_instance.read_content = Mock(return_value=sample_workspace_metadata)
-        mock_ws_instance.write_content = Mock(return_value="/workspace/metadata/output.json")
+        mock_ws_instance.write_content = Mock(
+            return_value="/workspace/metadata/output.json"
+        )
         mock_ws_class.return_value = mock_ws_instance
 
         # Create 10 HANDOFF_READY entries
@@ -473,7 +488,9 @@ class TestProcessMetadataQueue:
             entry = real_queue.get_entry(f"test_entry_{i:03d}")
             assert entry.handoff_status == HandoffStatus.NOT_READY  # Unchanged
 
-    @patch("lobster.services.data_access.workspace_content_service.WorkspaceContentService")
+    @patch(
+        "lobster.services.data_access.workspace_content_service.WorkspaceContentService"
+    )
     @patch("lobster.agents.metadata_assistant.create_react_agent")
     @patch("lobster.agents.metadata_assistant.create_llm")
     @patch("lobster.agents.metadata_assistant.get_settings")
@@ -509,7 +526,9 @@ class TestProcessMetadataQueue:
         # Mock WorkspaceContentService
         mock_ws_instance = Mock()
         mock_ws_instance.read_content = Mock(return_value=sample_workspace_metadata)
-        mock_ws_instance.write_content = Mock(return_value="/workspace/metadata/output.json")
+        mock_ws_instance.write_content = Mock(
+            return_value="/workspace/metadata/output.json"
+        )
         mock_ws_class.return_value = mock_ws_instance
 
         # Create agent

@@ -22,14 +22,15 @@ ATTACK VECTORS:
 5. Typosquatting attacks
 """
 
-import pytest
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
+import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.execution.custom_code_execution_service import (
+    CodeExecutionError,
     CustomCodeExecutionService,
-    CodeExecutionError
 )
 
 
@@ -48,14 +49,16 @@ class TestMaliciousStandardLibraryShadowing:
 
         # Create malicious json.py that shadows stdlib
         fake_json = workspace / "json.py"
-        fake_json.write_text('''
+        fake_json.write_text(
+            """
 # Malicious json module replacement
 def loads(s):
     return {"hijacked": True, "original_data": "STOLEN"}
 
 def dumps(obj):
     return '{"hijacked": true}'
-''')
+"""
+        )
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -69,17 +72,17 @@ def dumps(obj):
         """
         service, workspace = service_with_fake_json
 
-        code = '''
+        code = """
 import json
 data = json.loads('{"real": "data"}')
 result = data
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: Standard Library Shadowing (json)")
-        print("="*70)
+        print("=" * 70)
 
         if isinstance(result, dict) and result.get("hijacked") is True:
             print("⚠️  VULNERABILITY CONFIRMED: Malicious json module was imported")
@@ -102,7 +105,8 @@ result = data
 
         # Malicious os.py that bypasses import blocking
         fake_os = workspace / "os.py"
-        fake_os.write_text('''
+        fake_os.write_text(
+            '''
 # Malicious os module - bypasses "from os import system" blocking
 import subprocess as _real_subprocess
 
@@ -114,7 +118,8 @@ def system(command):
 # Pretend to be safe
 def getcwd():
     return "/fake/path"
-''')
+'''
+        )
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -131,16 +136,16 @@ def getcwd():
         service, workspace = service_with_fake_os
 
         # This import is allowed by AST validator (only checks direct imports)
-        code = '''
+        code = """
 import os
 result = os.getcwd()
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: Security Bypass via os Module Shadowing")
-        print("="*70)
+        print("=" * 70)
 
         if result == "/fake/path":
             print("⚠️  CRITICAL VULNERABILITY: Malicious os module imported")
@@ -172,7 +177,8 @@ class TestScientificPackageShadowing:
         workspace.mkdir()
 
         fake_numpy = workspace / "numpy.py"
-        fake_numpy.write_text('''
+        fake_numpy.write_text(
+            '''
 # Malicious numpy that manipulates scientific data
 class ndarray:
     def __init__(self, data):
@@ -190,7 +196,8 @@ def array(data):
 
 def mean(data):
     return 999.99  # Always return fake statistics
-''')
+'''
+        )
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -205,17 +212,17 @@ def mean(data):
         """
         service, workspace = service_with_fake_numpy
 
-        code = '''
+        code = """
 import numpy as np
 data = np.array([1, 2, 3, 4, 5])
 result = np.mean(data)
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: Scientific Data Manipulation via numpy Shadowing")
-        print("="*70)
+        print("=" * 70)
 
         if result == 999.99:
             print("⚠️  CRITICAL VULNERABILITY: Malicious numpy imported")
@@ -238,7 +245,8 @@ result = np.mean(data)
         workspace.mkdir()
 
         fake_pandas = workspace / "pandas.py"
-        fake_pandas.write_text('''
+        fake_pandas.write_text(
+            '''
 # Malicious pandas that silently filters data
 class DataFrame:
     def __init__(self, data):
@@ -256,7 +264,8 @@ class DataFrame:
 def read_csv(path):
     """Always return empty DataFrame"""
     return DataFrame({})
-''')
+'''
+        )
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -269,17 +278,17 @@ def read_csv(path):
         """
         service, workspace = service_with_fake_pandas
 
-        code = '''
+        code = """
 import pandas as pd
 df = pd.DataFrame({"col1": [1, 2, 3], "col2": [4, 5, 6]})
 result = repr(df)
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: Data Loss via pandas Shadowing")
-        print("="*70)
+        print("=" * 70)
 
         if "HIJACKED" in result:
             print("⚠️  VULNERABILITY CONFIRMED: Malicious pandas imported")
@@ -315,7 +324,8 @@ class TestImportTimeCodeExecution:
 
         # __init__.py executes on import
         init_file = malicious_pkg / "__init__.py"
-        init_file.write_text('''
+        init_file.write_text(
+            """
 # Code executes immediately on import (before any function calls)
 import sys
 
@@ -325,7 +335,8 @@ with open('.PWNED', 'w') as f:
 
 # Could exfiltrate environment variables, credentials, etc.
 print("MALICIOUS: Import-time code executed")
-''')
+"""
+        )
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -340,16 +351,16 @@ print("MALICIOUS: Import-time code executed")
         """
         service, workspace = service_with_malicious_package
 
-        code = '''
+        code = """
 import malicious_pkg  # Just importing triggers malicious code
 result = "Import completed"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: Import-Time Code Execution (__init__.py)")
-        print("="*70)
+        print("=" * 70)
 
         pwned_file = workspace / ".PWNED"
         if pwned_file.exists():
@@ -378,7 +389,8 @@ result = "Import completed"
         workspace.mkdir()
 
         stealer = workspace / "config_helper.py"
-        stealer.write_text('''
+        stealer.write_text(
+            """
 # Innocent-looking config helper that steals secrets at import time
 import os
 import json
@@ -397,12 +409,15 @@ with open('.stolen_secrets.json', 'w') as f:
 # Provide innocent-looking API
 def get_config():
     return {"safe": "config"}
-''')
+"""
+        )
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
 
-    def test_credential_theft_on_import_EXPECT_SUCCESS(self, service_with_config_stealer):
+    def test_credential_theft_on_import_EXPECT_SUCCESS(
+        self, service_with_config_stealer
+    ):
         """
         Test: Steal credentials/environment at import time
         Expected: SUCCESS (vulnerability)
@@ -410,16 +425,16 @@ def get_config():
         """
         service, workspace = service_with_config_stealer
 
-        code = '''
+        code = """
 import config_helper  # Looks innocent but steals secrets
 result = config_helper.get_config()
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: Credential Theft at Import Time")
-        print("="*70)
+        print("=" * 70)
 
         secrets_file = workspace / ".stolen_secrets.json"
         if secrets_file.exists():
@@ -427,6 +442,7 @@ result = config_helper.get_config()
             print(f"   Stolen data saved to: {secrets_file}")
 
             import json
+
             stolen = json.loads(secrets_file.read_text())
             print(f"   Stolen {len(stolen.get('env_vars', {}))} environment variables")
             print(f"   Captured CWD: {stolen.get('cwd', 'N/A')}")
@@ -457,7 +473,8 @@ class TestTyposquattingAttacks:
 
         # Common typo: reqeusts instead of requests
         fake_requests = workspace / "reqeusts.py"
-        fake_requests.write_text('''
+        fake_requests.write_text(
+            """
 # Typosquatted requests module
 def get(url):
     print(f"MALICIOUS: Captured URL request: {url}")
@@ -466,16 +483,19 @@ def get(url):
 class FakeResponse:
     status_code = 200
     text = "HIJACKED RESPONSE"
-''')
+"""
+        )
 
         # Common typo: nmupy instead of numpy
         fake_numpy = workspace / "nmupy.py"
-        fake_numpy.write_text('''
+        fake_numpy.write_text(
+            """
 # Typosquatted numpy
 def array(data):
     print("MALICIOUS: nmupy instead of numpy")
     return [999] * len(data)
-''')
+"""
+        )
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -489,17 +509,17 @@ def array(data):
         service, workspace = service_with_typosquat
 
         # Intentional typo (common mistake)
-        code = '''
+        code = """
 import reqeusts  # Typo: reqeusts vs requests
 response = reqeusts.get("https://api.example.com/secrets")
 result = response.text
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: Typosquatting Attack (reqeusts)")
-        print("="*70)
+        print("=" * 70)
 
         if result == "HIJACKED RESPONSE":
             print("⚠️  VULNERABILITY: Typosquatted module imported")
@@ -524,17 +544,17 @@ result = response.text
         """
         service, workspace = service_with_typosquat
 
-        code = '''
+        code = """
 import nmupy as np  # Typo: nmupy vs numpy
 data = np.array([1, 2, 3])
 result = data
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: Typosquatting Attack (nmupy)")
-        print("="*70)
+        print("=" * 70)
 
         if result == [999, 999, 999]:
             print("⚠️  VULNERABILITY: Typosquatted numpy imported")
@@ -564,7 +584,8 @@ class TestCrossPlatformShadowing:
 
         # Shadow pathlib (used internally by Lobster)
         fake_pathlib = workspace / "pathlib.py"
-        fake_pathlib.write_text('''
+        fake_pathlib.write_text(
+            """
 # Malicious pathlib that compromises file operations
 import os as _os
 
@@ -587,7 +608,8 @@ class Path:
 
     def __str__(self):
         return self.path
-''')
+"""
+        )
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -602,17 +624,17 @@ class Path:
         """
         service, workspace = service_with_platform_specific
 
-        code = '''
+        code = """
 from pathlib import Path
 p = Path("nonexistent_file.txt")
 result = p.exists()
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: pathlib Shadowing (Internal Module)")
-        print("="*70)
+        print("=" * 70)
 
         if result is True:  # Should be False for nonexistent file
             print("⚠️  VULNERABILITY: Malicious pathlib imported")
@@ -659,9 +681,9 @@ def test_summary():
 
     See SUPPLY_CHAIN_REPORT.md for full analysis.
     """
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("MALICIOUS IMPORT SHADOWING TEST SUITE COMPLETE")
-    print("="*70)
+    print("=" * 70)
     print("Status: All vulnerabilities confirmed")
     print("Severity: CRITICAL")
     print("Recommendation: Immediate remediation required")

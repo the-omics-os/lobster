@@ -2,11 +2,12 @@
 Basic integration test to verify tools work with data_expert agent.
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import Mock
+
 import anndata
 import numpy as np
+import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.execution import CustomCodeExecutionService, SDKDelegationService
@@ -29,9 +30,9 @@ class TestBasicIntegration:
 
         # Add a test modality
         adata = anndata.AnnData(X=np.array([[1, 2, 3], [4, 5, 6]]))
-        adata.obs['sample'] = ['s1', 's2']
-        adata.var['gene'] = ['g1', 'g2', 'g3']
-        dm.modalities['test_data'] = adata
+        adata.obs["sample"] = ["s1", "s2"]
+        adata.var["gene"] = ["g1", "g2", "g3"]
+        dm.modalities["test_data"] = adata
 
         return dm
 
@@ -45,27 +46,22 @@ class TestBasicIntegration:
         """Test simple code execution."""
         service = CustomCodeExecutionService(data_manager)
 
-        result, stats, ir = service.execute(
-            code="result = 2 + 2",
-            persist=False
-        )
+        result, stats, ir = service.execute(code="result = 2 + 2", persist=False)
 
         assert result == 4
-        assert stats['success'] is True
-        assert ir.operation == 'custom_code_execution'
+        assert stats["success"] is True
+        assert ir.operation == "custom_code_execution"
 
     def test_custom_code_with_modality(self, data_manager):
         """Test code execution with modality access."""
         service = CustomCodeExecutionService(data_manager)
 
         result, stats, ir = service.execute(
-            code="result = adata.n_obs",
-            modality_name='test_data',
-            persist=False
+            code="result = adata.n_obs", modality_name="test_data", persist=False
         )
 
         assert result == 2  # 2 observations
-        assert stats['success'] is True
+        assert stats["success"] is True
 
     def test_sdk_delegation_service_initialization_fails_gracefully(self, data_manager):
         """Test that SDK service fails gracefully when SDK not available."""
@@ -82,6 +78,7 @@ class TestBasicIntegration:
         """Test that data_expert module can be imported with new tools."""
         try:
             from lobster.agents.data_expert import data_expert
+
             assert data_expert is not None
         except ImportError as e:
             pytest.fail(f"Failed to import data_expert: {e}")

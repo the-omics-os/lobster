@@ -49,7 +49,6 @@ from lobster.core.data_manager_v2 import DataManagerV2
 from tests.mock_data.base import SMALL_DATASET_CONFIG
 from tests.mock_data.factories import SingleCellDataFactory
 
-
 # ==============================================================================
 # Test Fixtures
 # ==============================================================================
@@ -100,8 +99,12 @@ def clustered_data_with_debris():
 
     # Make cluster 5 have debris characteristics
     cluster_5_mask = adata.obs["leiden"] == 5
-    adata.obs.loc[cluster_5_mask, "n_genes"] = np.random.randint(50, 200, sum(cluster_5_mask))
-    adata.obs.loc[cluster_5_mask, "pct_counts_mt"] = np.random.uniform(60, 90, sum(cluster_5_mask))
+    adata.obs.loc[cluster_5_mask, "n_genes"] = np.random.randint(
+        50, 200, sum(cluster_5_mask)
+    )
+    adata.obs.loc[cluster_5_mask, "pct_counts_mt"] = np.random.uniform(
+        60, 90, sum(cluster_5_mask)
+    )
 
     return adata
 
@@ -170,7 +173,9 @@ class TestAutomatedAnnotation:
         agent = annotation_expert(mock_data_manager)
         assert agent is not None
 
-    @patch("lobster.services.analysis.enhanced_singlecell_service.EnhancedSingleCellService")
+    @patch(
+        "lobster.services.analysis.enhanced_singlecell_service.EnhancedSingleCellService"
+    )
     def test_annotate_with_default_markers(
         self, MockSingleCellService, mock_data_manager
     ):
@@ -192,7 +197,9 @@ class TestAutomatedAnnotation:
         agent = annotation_expert(mock_data_manager)
         assert agent is not None
 
-    @patch("lobster.services.analysis.enhanced_singlecell_service.EnhancedSingleCellService")
+    @patch(
+        "lobster.services.analysis.enhanced_singlecell_service.EnhancedSingleCellService"
+    )
     def test_annotate_with_custom_markers(
         self, MockSingleCellService, mock_data_manager
     ):
@@ -252,10 +259,10 @@ class TestManualAnnotation:
         agent = annotation_expert(mock_data_manager)
         assert agent is not None
 
-    @patch("lobster.services.metadata.manual_annotation_service.ManualAnnotationService")
-    def test_manual_annotation_updates_obs(
-        self, MockManualService, mock_data_manager
-    ):
+    @patch(
+        "lobster.services.metadata.manual_annotation_service.ManualAnnotationService"
+    )
+    def test_manual_annotation_updates_obs(self, MockManualService, mock_data_manager):
         """Test that manual annotation updates adata.obs with cell types."""
         mock_service = MockManualService.return_value
 
@@ -271,7 +278,9 @@ class TestManualAnnotation:
         agent = annotation_expert(mock_data_manager)
         assert agent is not None
 
-    @patch("lobster.services.metadata.manual_annotation_service.ManualAnnotationService")
+    @patch(
+        "lobster.services.metadata.manual_annotation_service.ManualAnnotationService"
+    )
     def test_collapse_merges_multiple_clusters(
         self, MockManualService, mock_data_manager
     ):
@@ -311,7 +320,9 @@ class TestDebrisDetection:
         agent = annotation_expert(mock_data_manager)
         assert agent is not None
 
-    @patch("lobster.services.metadata.manual_annotation_service.ManualAnnotationService")
+    @patch(
+        "lobster.services.metadata.manual_annotation_service.ManualAnnotationService"
+    )
     def test_suggest_debris_uses_qc_metrics(
         self, MockManualService, mock_data_manager, clustered_data_with_debris
     ):
@@ -364,7 +375,9 @@ class TestAnnotationManagement:
         agent = annotation_expert(mock_data_manager)
         assert agent is not None
 
-    @patch("lobster.services.metadata.manual_annotation_service.ManualAnnotationService")
+    @patch(
+        "lobster.services.metadata.manual_annotation_service.ManualAnnotationService"
+    )
     def test_review_shows_coverage(self, MockManualService, mock_data_manager):
         """Test that review shows annotation coverage statistics."""
         mock_service = MockManualService.return_value
@@ -383,7 +396,9 @@ class TestAnnotationManagement:
         agent = annotation_expert(mock_data_manager)
         assert agent is not None
 
-    @patch("lobster.services.metadata.manual_annotation_service.ManualAnnotationService")
+    @patch(
+        "lobster.services.metadata.manual_annotation_service.ManualAnnotationService"
+    )
     def test_export_creates_reusable_mapping(
         self, MockManualService, mock_data_manager
     ):

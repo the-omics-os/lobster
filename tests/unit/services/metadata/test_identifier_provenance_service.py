@@ -6,8 +6,9 @@ Tests the 2-layer provenance validation system:
 2. E-Link validation (BioProject → PubMed publication link)
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from lobster.services.metadata.identifier_provenance_service import (
     IdentifierProvenanceService,
@@ -28,7 +29,9 @@ class TestSectionBasedProvenance:
         Data Availability: Raw sequencing data have been deposited at
         EGAD50000000740 and GSE12345.
         """
-        data_availability = "Raw sequencing data have been deposited at EGAD50000000740 and GSE12345."
+        data_availability = (
+            "Raw sequencing data have been deposited at EGAD50000000740 and GSE12345."
+        )
 
         results = service.extract_and_validate(
             full_text=full_text,

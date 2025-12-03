@@ -237,9 +237,15 @@ class PseudobulkService:
                 "n_unique_samples": pseudobulk_adata.obs["sample_id"].nunique(),
                 "n_cell_types": pseudobulk_adata.obs["cell_type"].nunique(),
                 "total_cells_processed": adata.n_obs,
-                "total_cells_aggregated": int(pseudobulk_adata.uns.get("aggregation_stats", {}).get("total_cells_aggregated", 0)),
+                "total_cells_aggregated": int(
+                    pseudobulk_adata.uns.get("aggregation_stats", {}).get(
+                        "total_cells_aggregated", 0
+                    )
+                ),
                 "aggregation_method": aggregation_method,
-                "cell_type_summary": pseudobulk_adata.obs["cell_type"].value_counts().to_dict(),
+                "cell_type_summary": pseudobulk_adata.obs["cell_type"]
+                .value_counts()
+                .to_dict(),
             }
 
             self.logger.info(
@@ -667,7 +673,7 @@ class PseudobulkService:
         celltype_col: str,
         aggregation_method: str,
         min_cells: int,
-        **kwargs
+        **kwargs,
     ) -> AnalysisStep:
         """Create AnalysisStep IR for pseudobulk aggregation."""
 
@@ -719,7 +725,11 @@ pseudobulk_adata = sc.AnnData(
             description=f"Aggregate single-cell data to pseudobulk using {aggregation_method} method",
             library="scanpy + numpy",
             code_template=code_template,
-            imports=["import scanpy as sc", "import pandas as pd", "import numpy as np"],
+            imports=[
+                "import scanpy as sc",
+                "import pandas as pd",
+                "import numpy as np",
+            ],
             parameters={
                 "sample_col": sample_col,
                 "celltype_col": celltype_col,

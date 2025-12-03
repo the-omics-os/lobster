@@ -129,18 +129,30 @@ def custom_feature_agent(
 
         # Check service file in all services/ subdirectories
         service_categories = [
-            "analysis", "data_access", "data_management", "metadata",
-            "ml", "orchestration", "quality", "visualization"
+            "analysis",
+            "data_access",
+            "data_management",
+            "metadata",
+            "ml",
+            "orchestration",
+            "quality",
+            "visualization",
         ]
         for category in service_categories:
             service_file = (
-                lobster_root / "lobster" / "services" / category / f"{feature_name}_service.py"
+                lobster_root
+                / "lobster"
+                / "services"
+                / category
+                / f"{feature_name}_service.py"
             )
             if service_file.exists():
                 existing.append(str(service_file))
 
         # Also check legacy tools/ location for backwards compatibility
-        legacy_service = lobster_root / "lobster" / "tools" / f"{feature_name}_service.py"
+        legacy_service = (
+            lobster_root / "lobster" / "tools" / f"{feature_name}_service.py"
+        )
         if legacy_service.exists():
             existing.append(str(legacy_service))
 
@@ -1115,13 +1127,22 @@ Begin implementation now."""
                     # SDK decides the category - we need to discover where it placed the files
                     # Scan all service categories to find the created service
                     service_categories = [
-                        "analysis", "data_access", "data_management", "metadata",
-                        "ml", "orchestration", "quality", "visualization"
+                        "analysis",
+                        "data_access",
+                        "data_management",
+                        "metadata",
+                        "ml",
+                        "orchestration",
+                        "quality",
+                        "visualization",
                     ]
                     service_found = False
                     for category in service_categories:
                         service_path = (
-                            lobster_root / "lobster" / "services" / category
+                            lobster_root
+                            / "lobster"
+                            / "services"
+                            / category
                             / f"{feature_name}_service.py"
                         )
                         if service_path.exists():
@@ -1129,7 +1150,11 @@ Begin implementation now."""
                             service_found = True
                             # Also check for corresponding test file
                             test_path = (
-                                lobster_root / "tests" / "unit" / "services" / category
+                                lobster_root
+                                / "tests"
+                                / "unit"
+                                / "services"
+                                / category
                                 / f"test_{feature_name}_service.py"
                             )
                             if test_path.exists():
@@ -1139,12 +1164,18 @@ Begin implementation now."""
                     # If no service found in services/, check legacy tools/ location
                     if not service_found:
                         legacy_service = (
-                            lobster_root / "lobster" / "tools" / f"{feature_name}_service.py"
+                            lobster_root
+                            / "lobster"
+                            / "tools"
+                            / f"{feature_name}_service.py"
                         )
                         if legacy_service.exists():
                             expected_files.append(legacy_service)
                             legacy_test = (
-                                lobster_root / "tests" / "unit" / "tools"
+                                lobster_root
+                                / "tests"
+                                / "unit"
+                                / "tools"
                                 / f"test_{feature_name}_service.py"
                             )
                             if legacy_test.exists():

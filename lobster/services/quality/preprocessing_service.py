@@ -429,7 +429,9 @@ print(f"Normalization complete (target_sum={{ target_sum }}, log1p transformed)"
                 count_data = adata_processed.raw.X
                 gene_names = adata_processed.raw.var_names
             else:
-                logger.info("Using adata.X for deviance calculation (no adata.raw found)")
+                logger.info(
+                    "Using adata.X for deviance calculation (no adata.raw found)"
+                )
                 count_data = adata_processed.X
                 gene_names = adata_processed.var_names
 
@@ -457,9 +459,9 @@ print(f"Normalization complete (target_sum={{ target_sum }}, log1p transformed)"
 
             # Mark selected features in adata.var
             adata_processed.var["highly_deviant"] = False
-            adata_processed.var.loc[
-                gene_names[top_deviance_idx], "highly_deviant"
-            ] = True
+            adata_processed.var.loc[gene_names[top_deviance_idx], "highly_deviant"] = (
+                True
+            )
 
             # Store deviance scores
             adata_processed.var["deviance_score"] = 0.0
@@ -820,7 +822,9 @@ print(f"Top 10 genes: {adata.var_names[adata.var['highly_deviant']].tolist()[:10
         # This ensures biological metadata (patient_id, tissue_region, condition, sample_id)
         # is preserved through QC operations, which is critical for pseudobulk workflows
         original_obs = adata.obs.copy()
-        logger.debug(f"Preserving {len(original_obs.columns)} obs columns before filtering")
+        logger.debug(
+            f"Preserving {len(original_obs.columns)} obs columns before filtering"
+        )
 
         # Filter cells
         sc.pp.filter_cells(adata, min_genes=min_genes_per_cell)

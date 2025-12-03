@@ -199,7 +199,9 @@ class ProteomicsParser(ABC):
             bool: True if extension is supported
         """
         path = Path(file_path)
-        return path.suffix.lower() in [ext.lower() for ext in self.get_supported_formats()]
+        return path.suffix.lower() in [
+            ext.lower() for ext in self.get_supported_formats()
+        ]
 
     def _create_base_stats(
         self,

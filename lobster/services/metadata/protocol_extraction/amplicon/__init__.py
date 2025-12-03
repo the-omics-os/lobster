@@ -14,8 +14,8 @@ Examples:
 """
 
 from lobster.services.metadata.protocol_extraction.amplicon.details import (
-    AmpliconProtocolDetails,
     V_REGIONS,
+    AmpliconProtocolDetails,
 )
 from lobster.services.metadata.protocol_extraction.amplicon.service import (
     AmpliconProtocolService,

@@ -39,8 +39,12 @@ from lobster.core.schemas.publication_queue import (
     PublicationQueueEntry,
     PublicationStatus,
 )
-from lobster.services.metadata.disease_standardization_service import DiseaseStandardizationService
-from lobster.services.metadata.microbiome_filtering_service import MicrobiomeFilteringService
+from lobster.services.metadata.disease_standardization_service import (
+    DiseaseStandardizationService,
+)
+from lobster.services.metadata.microbiome_filtering_service import (
+    MicrobiomeFilteringService,
+)
 
 # Import fixtures
 from tests.integration.fixtures.microbiome_data import (
@@ -51,7 +55,6 @@ from tests.integration.fixtures.microbiome_data import (
     sample_ris_file,
     sample_sra_metadata,
 )
-
 
 # ============================================================================
 # Test Class 1: Publication Queue Schema Extension
@@ -291,8 +294,10 @@ class TestMicrobiomeFiltering:
 
         # Verify only human samples remain
         passed_df = pd.DataFrame(passed_samples)
-        assert all("Homo sapiens" in org or "human" in org.lower()
-                   for org in passed_df["organism"])
+        assert all(
+            "Homo sapiens" in org or "human" in org.lower()
+            for org in passed_df["organism"]
+        )
 
         # Verify IR from last validation
         assert ir.operation == "microbiome_filtering_service.validate_host_organism"
@@ -348,7 +353,9 @@ class TestDiseaseStandardization:
         assert stats["exact_matches"] > 0 or stats["contains_matches"] > 0
 
         # Verify IR
-        assert ir.operation == "disease_standardization_service.standardize_disease_terms"
+        assert (
+            ir.operation == "disease_standardization_service.standardize_disease_terms"
+        )
 
     def test_fuzzy_disease_matching(self):
         """Test fuzzy disease matching (contains, token-based)."""
@@ -383,7 +390,9 @@ class TestDiseaseStandardization:
         df = pd.DataFrame(sample_sra_metadata)
 
         # Filter for fecal samples (should get stool samples)
-        filtered_df, stats, ir = service.filter_by_sample_type(df, sample_types=["fecal"])
+        filtered_df, stats, ir = service.filter_by_sample_type(
+            df, sample_types=["fecal"]
+        )
 
         # Verify filtering
         assert stats["total_input_samples"] == 24
@@ -554,7 +563,10 @@ class TestEndToEndWorkflow:
                 passed_samples.append(meta)
 
         filtered_df = pd.DataFrame(passed_samples)
-        filter_stats = {"passed_samples": len(passed_samples), "total_samples": len(all_metadata)}
+        filter_stats = {
+            "passed_samples": len(passed_samples),
+            "total_samples": len(all_metadata),
+        }
 
         # Standardize disease terms
         standardized_df, disease_stats, _ = disease_service.standardize_disease_terms(
@@ -619,7 +631,9 @@ class TestErrorRecovery:
         # Test with empty metadata dict
         empty_metadata = {}
 
-        result, stats, ir = service.validate_host_organism(empty_metadata, allowed_hosts=["Human"])
+        result, stats, ir = service.validate_host_organism(
+            empty_metadata, allowed_hosts=["Human"]
+        )
 
         # Should return invalid result
         assert stats["is_valid"] is False

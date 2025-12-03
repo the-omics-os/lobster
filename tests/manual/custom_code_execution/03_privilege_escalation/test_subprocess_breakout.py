@@ -21,9 +21,9 @@ import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.execution.custom_code_execution_service import (
-    CustomCodeExecutionService,
+    CodeExecutionError,
     CodeValidationError,
-    CodeExecutionError
+    CustomCodeExecutionService,
 )
 
 
@@ -55,7 +55,7 @@ class TestSubprocessBreakout:
 
         Attack: Create exponential process tree
         """
-        code = '''
+        code = """
 import os
 import sys
 
@@ -70,7 +70,7 @@ try:
         print("✅ os.fork() not available (macOS expected)")
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -101,7 +101,7 @@ except Exception as e:
 
         Attack: Create multiple worker processes
         """
-        code = '''
+        code = """
 import multiprocessing
 import sys
 
@@ -114,7 +114,7 @@ try:
     print(f"   Could spawn: Process, Pool, Queue")
 except Exception as e:
     result = f"PROTECTED: multiprocessing blocked: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -143,7 +143,7 @@ except Exception as e:
 
         Attack: Thread bomb (create thousands of threads)
         """
-        code = '''
+        code = """
 import threading
 
 try:
@@ -158,7 +158,7 @@ try:
     print(f"   Could create: threading.Thread(target=malicious_func)")
 except Exception as e:
     result = f"PROTECTED: threading blocked: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -172,7 +172,9 @@ except Exception as e:
             print("\n⚠️  VULNERABILITY DETECTED")
             print("   Attack Vector: threading module available")
             print("   Impact: Can create threads within subprocess")
-            print("   Real Attack: for i in range(10000): threading.Thread(target=lambda: time.sleep(999)).start()")
+            print(
+                "   Real Attack: for i in range(10000): threading.Thread(target=lambda: time.sleep(999)).start()"
+            )
             print("   Note: Limited to subprocess resources (separate PID)")
 
     # =========================================================================
@@ -187,10 +189,10 @@ except Exception as e:
 
         Attack: Spawn arbitrary commands
         """
-        code = '''
+        code = """
 import subprocess
 result = subprocess.run(['echo', 'hello'], capture_output=True)
-'''
+"""
 
         print(f"\n{'='*70}")
         print("TEST: Subprocess Module Import (Should Block)")
@@ -216,7 +218,7 @@ result = subprocess.run(['echo', 'hello'], capture_output=True)
 
         Attack: Use getattr() to access blocked functions
         """
-        code = '''
+        code = """
 import os
 
 try:
@@ -233,7 +235,7 @@ try:
         result = "PROTECTED: os.system not found"
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -263,7 +265,7 @@ except Exception as e:
 
         Attack: Bypass all static checks via exec()
         """
-        code = '''
+        code = """
 try:
     # Test if exec() is available
     malicious_code = "import os; system_func = getattr(os, 'system', None)"
@@ -281,7 +283,7 @@ try:
         result = "Partial: exec works but os.system not found"
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -295,7 +297,9 @@ except Exception as e:
             print("\n⚠️  CRITICAL VULNERABILITY")
             print("   Attack Vector: exec() builtin available")
             print("   Impact: Can bypass ALL static import checks")
-            print("   Real Attack: exec('import subprocess; subprocess.run([\"rm\", \"-rf\", \"/\"])')")
+            print(
+                '   Real Attack: exec(\'import subprocess; subprocess.run(["rm", "-rf", "/"])\')'
+            )
             print("   Mitigation: Disable builtins (__builtins__ = {})")
 
     # =========================================================================
@@ -310,7 +314,7 @@ except Exception as e:
 
         Attack: Import forbidden modules dynamically
         """
-        code = '''
+        code = """
 try:
     # Static check blocks: import subprocess
     # But __import__ works at runtime
@@ -322,7 +326,7 @@ try:
     print("   Can import: __import__('subprocess').run(['whoami'])")
 except Exception as e:
     result = f"PROTECTED: __import__ blocked: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -368,7 +372,7 @@ class TestProcessResourceExhaustion:
 
         Attack: Allocate gigabytes of memory
         """
-        code = '''
+        code = """
 import sys
 
 try:
@@ -382,7 +386,7 @@ try:
     print(f"   Current process can access all system memory")
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -411,14 +415,14 @@ except Exception as e:
 
         Attack: while True loop
         """
-        code = '''
+        code = """
 import time
 
 print("Starting infinite loop...")
 # This will be killed by timeout
 while True:
     pass  # Burn CPU
-'''
+"""
 
         print(f"\n{'='*70}")
         print("TEST: Infinite Loop Timeout Protection")
@@ -445,7 +449,7 @@ while True:
 
         Attack: Open many files without closing
         """
-        code = '''
+        code = """
 import sys
 
 try:
@@ -456,7 +460,7 @@ try:
     print("   Impact: Exhaust system fd limit (ulimit -n)")
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -475,9 +479,9 @@ except Exception as e:
 
 
 if __name__ == "__main__":
-    print("="*70)
+    print("=" * 70)
     print("SUBPROCESS BREAKOUT SECURITY TESTS")
-    print("="*70)
+    print("=" * 70)
     print("Run with: pytest test_subprocess_breakout.py -v -s")
     print("")
     print("These tests check if user code can:")
@@ -491,4 +495,4 @@ if __name__ == "__main__":
     print("  - exec(), __import__() bypass static checks")
     print("  - os.system() accessible via getattr()")
     print("  - No memory/CPU limits (except timeout)")
-    print("="*70)
+    print("=" * 70)

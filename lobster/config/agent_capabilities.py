@@ -6,8 +6,8 @@ agent modules and extracting @tool decorated functions, enabling dynamic
 supervisor prompt generation without manual updates.
 """
 
-import importlib
 import ast
+import importlib
 import inspect
 from dataclasses import dataclass
 from functools import lru_cache
@@ -173,7 +173,6 @@ class AgentCapabilityExtractor:
 
         return False
 
-
     @staticmethod
     def _extract_tools_from_factory(factory_func: Callable) -> List[Callable]:
         """
@@ -266,7 +265,7 @@ class AgentCapabilityExtractor:
                 for name, obj in inspect.getmembers(module):
                     if cls._is_tool_function(obj):
                         doc_info = cls._parse_docstring(obj.__doc__ or "")
-                        params   = cls._extract_parameters(obj)
+                        params = cls._extract_parameters(obj)
                         for p_name, p_desc in doc_info.get("params", {}).items():
                             if p_name in params:
                                 params[p_name] = p_desc
@@ -290,8 +289,6 @@ class AgentCapabilityExtractor:
             tools=capabilities,
             error=error,
         )
-
-
 
     @classmethod
     @lru_cache(maxsize=32)

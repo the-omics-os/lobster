@@ -17,7 +17,9 @@ from scipy import sparse
 
 from lobster.core import FormulaError
 from lobster.core.analysis_ir import AnalysisStep
-from lobster.services.analysis.differential_formula_service import DifferentialFormulaService
+from lobster.services.analysis.differential_formula_service import (
+    DifferentialFormulaService,
+)
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -43,9 +45,7 @@ class BulkRNASeqService:
     and differential expression analysis of bulk RNA-seq data.
     """
 
-    def __init__(
-        self, data_manager=None, results_dir: Optional[Path] = None
-    ):
+    def __init__(self, data_manager=None, results_dir: Optional[Path] = None):
         """
         Initialize the bulk RNA-seq service with workspace-aware results storage.
 
@@ -512,7 +512,9 @@ Next suggested step: Import quantification data with tximport for differential e
             logger.info("Applying DEG filtering for biological significance...")
 
             # Get expression data (convert sparse to dense if needed)
-            X_normalized = adata_de.X if not sparse.issparse(adata_de.X) else adata_de.X.toarray()
+            X_normalized = (
+                adata_de.X if not sparse.issparse(adata_de.X) else adata_de.X.toarray()
+            )
 
             # Get group indices
             group1_mask = adata_de.obs[groupby] == group1
@@ -526,8 +528,8 @@ Next suggested step: Import quantification data with tximport for differential e
             group2_expressing = (group2_data_expr > 1).mean(axis=0)
 
             # Get fold-change values
-            if 'log2FoldChange' in adata_de.var.columns:
-                fold_changes = np.abs(adata_de.var['log2FoldChange'].values)
+            if "log2FoldChange" in adata_de.var.columns:
+                fold_changes = np.abs(adata_de.var["log2FoldChange"].values)
             else:
                 # Calculate from mean expression
                 group1_mean = group1_data_expr.mean(axis=0)
@@ -536,9 +538,11 @@ Next suggested step: Import quantification data with tximport for differential e
 
             # Create filter mask
             filter_mask = (
-                (fold_changes >= np.log2(min_fold_change)) &  # Fold-change threshold
-                (group1_expressing >= min_pct_expressed) &    # Min expression in target
-                (group2_expressing <= max_out_pct_expressed)  # Max expression in comparison
+                (fold_changes >= np.log2(min_fold_change))  # Fold-change threshold
+                & (group1_expressing >= min_pct_expressed)  # Min expression in target
+                & (
+                    group2_expressing <= max_out_pct_expressed
+                )  # Max expression in comparison
             )
 
             # Apply filter
@@ -561,21 +565,23 @@ Next suggested step: Import quantification data with tximport for differential e
 
             # Handle empty confidence arrays (when all genes filtered out)
             if len(confidence_scores) == 0:
-                logger.warning("No genes passed filtering criteria. Cannot calculate confidence scores.")
-                quality_dist = {'high': 0, 'medium': 0, 'low': 0}
+                logger.warning(
+                    "No genes passed filtering criteria. Cannot calculate confidence scores."
+                )
+                quality_dist = {"high": 0, "medium": 0, "low": 0}
                 mean_conf = 0.0
                 median_conf = 0.0
                 std_conf = 0.0
             else:
                 # Add confidence columns to adata_de.var
-                adata_de.var['gene_confidence'] = confidence_scores
-                adata_de.var['gene_quality'] = quality_categories
+                adata_de.var["gene_confidence"] = confidence_scores
+                adata_de.var["gene_quality"] = quality_categories
 
                 # Calculate confidence distribution
                 quality_dist = {
-                    'high': int((quality_categories == 'high').sum()),
-                    'medium': int((quality_categories == 'medium').sum()),
-                    'low': int((quality_categories == 'low').sum()),
+                    "high": int((quality_categories == "high").sum()),
+                    "medium": int((quality_categories == "medium").sum()),
+                    "low": int((quality_categories == "low").sum()),
                 }
 
                 mean_conf = float(np.mean(confidence_scores))
@@ -1838,9 +1844,7 @@ Next suggested step: Import quantification data with tximport for differential e
         return results_df
 
     def _calculate_gene_confidence(
-        self,
-        adata_de: anndata.AnnData,
-        method: str
+        self, adata_de: anndata.AnnData, method: str
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Calculate per-gene confidence scores for differential expression results.
@@ -1866,35 +1870,37 @@ Next suggested step: Import quantification data with tximport for differential e
             return np.array([]), np.array([])
 
         confidence_scores = np.zeros(n_genes)
-        quality_categories = np.array(['low'] * n_genes, dtype=object)
+        quality_categories = np.array(["low"] * n_genes, dtype=object)
 
         # Get FDR values
-        if 'padj' in adata_de.var.columns:
-            fdr_values = adata_de.var['padj'].values
-        elif 'FDR' in adata_de.var.columns:
-            fdr_values = adata_de.var['FDR'].values
+        if "padj" in adata_de.var.columns:
+            fdr_values = adata_de.var["padj"].values
+        elif "FDR" in adata_de.var.columns:
+            fdr_values = adata_de.var["FDR"].values
         else:
             # No FDR column, return low confidence for all
             return confidence_scores, quality_categories
 
         # Get fold-changes
-        if 'log2FoldChange' in adata_de.var.columns:
-            log2fc_values = np.abs(adata_de.var['log2FoldChange'].values)
-        elif 'logFC' in adata_de.var.columns:
-            log2fc_values = np.abs(adata_de.var['logFC'].values)
+        if "log2FoldChange" in adata_de.var.columns:
+            log2fc_values = np.abs(adata_de.var["log2FoldChange"].values)
+        elif "logFC" in adata_de.var.columns:
+            log2fc_values = np.abs(adata_de.var["logFC"].values)
         else:
             # No FC column, use default
             log2fc_values = np.ones(n_genes)
 
         # Get mean expression (proxy for data quality)
-        if 'baseMean' in adata_de.var.columns:
-            mean_expr = adata_de.var['baseMean'].values
+        if "baseMean" in adata_de.var.columns:
+            mean_expr = adata_de.var["baseMean"].values
         else:
             # Calculate from data
             mean_expr = np.array(adata_de.X.mean(axis=0)).flatten()
 
         # Normalize mean expression to 0-1 scale
-        mean_expr_normalized = (mean_expr - mean_expr.min()) / (mean_expr.max() - mean_expr.min() + 1e-10)
+        mean_expr_normalized = (mean_expr - mean_expr.min()) / (
+            mean_expr.max() - mean_expr.min() + 1e-10
+        )
 
         # Calculate confidence score (0-1 scale)
         for i in range(n_genes):
@@ -1905,7 +1911,7 @@ Next suggested step: Import quantification data with tximport for differential e
             # Handle NaN values
             if np.isnan(fdr) or np.isnan(log2fc):
                 confidence_scores[i] = 0.0
-                quality_categories[i] = 'low'
+                quality_categories[i] = "low"
                 continue
 
             # Confidence formula (0-1 scale):
@@ -1922,11 +1928,11 @@ Next suggested step: Import quantification data with tximport for differential e
 
             # Categorize quality
             if fdr < 0.01 and log2fc > 1.5 and expr > 0.3:
-                quality_categories[i] = 'high'
+                quality_categories[i] = "high"
             elif fdr < 0.05 and log2fc > 1.0 and expr > 0.1:
-                quality_categories[i] = 'medium'
+                quality_categories[i] = "medium"
             else:
-                quality_categories[i] = 'low'
+                quality_categories[i] = "low"
 
         return confidence_scores, quality_categories
 

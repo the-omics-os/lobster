@@ -462,11 +462,15 @@ class OlinkParser(ProteomicsParser):
 
         # Add UniProt IDs
         if uniprot_col:
-            var_data["uniprot_id"] = protein_meta[uniprot_col].fillna("").astype(str).values
+            var_data["uniprot_id"] = (
+                protein_meta[uniprot_col].fillna("").astype(str).values
+            )
 
         # Add Olink IDs
         if olink_id_col:
-            var_data["olink_id"] = protein_meta[olink_id_col].fillna("").astype(str).values
+            var_data["olink_id"] = (
+                protein_meta[olink_id_col].fillna("").astype(str).values
+            )
 
         # Add panel information
         if "Panel" in df.columns:
@@ -478,9 +482,9 @@ class OlinkParser(ProteomicsParser):
 
         # Add missing frequency
         if "MissingFreq" in df.columns:
-            var_data["missing_freq"] = (
-                pd.to_numeric(protein_meta["MissingFreq"], errors="coerce").values
-            )
+            var_data["missing_freq"] = pd.to_numeric(
+                protein_meta["MissingFreq"], errors="coerce"
+            ).values
 
         # Add panel version
         if "Panel_Version" in df.columns:

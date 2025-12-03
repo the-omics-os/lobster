@@ -496,12 +496,15 @@ class TestContentMethods:
         mock_resolution.alternative_urls = []
         mock_resolver.resolve.return_value = mock_resolution
 
-        with patch.object(
-            mock_content_access_service, "_get_preprint_provider", return_value=None
-        ), patch.object(
-            mock_content_access_service,
-            "_get_publication_resolver",
-            return_value=mock_resolver,
+        with (
+            patch.object(
+                mock_content_access_service, "_get_preprint_provider", return_value=None
+            ),
+            patch.object(
+                mock_content_access_service,
+                "_get_publication_resolver",
+                return_value=mock_resolver,
+            ),
         ):
 
             # Return PMC provider first, then webpage provider
@@ -524,9 +527,7 @@ class TestContentMethods:
                     assert result["tier_used"] == "full_webpage"
                     assert result["source_type"] == "webpage"
 
-    def test_resolver_prefers_html_when_requested(
-        self, mock_content_access_service
-    ):
+    def test_resolver_prefers_html_when_requested(self, mock_content_access_service):
         """Ensure prefer_webpage selects html_url when resolver provides both."""
 
         mock_content_access_service.data_manager.get_cached_publication = Mock(
@@ -557,12 +558,15 @@ class TestContentMethods:
         mock_resolution.alternative_urls = []
         mock_resolver.resolve.return_value = mock_resolution
 
-        with patch.object(
-            mock_content_access_service, "_get_preprint_provider", return_value=None
-        ), patch.object(
-            mock_content_access_service,
-            "_get_publication_resolver",
-            return_value=mock_resolver,
+        with (
+            patch.object(
+                mock_content_access_service, "_get_preprint_provider", return_value=None
+            ),
+            patch.object(
+                mock_content_access_service,
+                "_get_publication_resolver",
+                return_value=mock_resolver,
+            ),
         ):
 
             with patch.object(
@@ -580,9 +584,7 @@ class TestContentMethods:
                 args, _ = mock_webpage_provider.extract_with_full_metadata.call_args
                 assert args[0] == "https://example.com/html"
 
-    def test_resolver_prefers_pdf_when_requested(
-        self, mock_content_access_service
-    ):
+    def test_resolver_prefers_pdf_when_requested(self, mock_content_access_service):
         """Ensure prefer_webpage=False picks pdf_url."""
 
         mock_content_access_service.data_manager.get_cached_publication = Mock(
@@ -613,12 +615,15 @@ class TestContentMethods:
         mock_resolution.alternative_urls = []
         mock_resolver.resolve.return_value = mock_resolution
 
-        with patch.object(
-            mock_content_access_service, "_get_preprint_provider", return_value=None
-        ), patch.object(
-            mock_content_access_service,
-            "_get_publication_resolver",
-            return_value=mock_resolver,
+        with (
+            patch.object(
+                mock_content_access_service, "_get_preprint_provider", return_value=None
+            ),
+            patch.object(
+                mock_content_access_service,
+                "_get_publication_resolver",
+                return_value=mock_resolver,
+            ),
         ):
 
             with patch.object(
@@ -636,9 +641,7 @@ class TestContentMethods:
                 args, _ = mock_webpage_provider.extract_with_full_metadata.call_args
                 assert args[0] == "https://example.com/paper.pdf"
 
-    def test_arxiv_pdf_normalized_to_abs_html(
-        self, mock_content_access_service
-    ):
+    def test_arxiv_pdf_normalized_to_abs_html(self, mock_content_access_service):
         """Direct arXiv PDF sources should be normalized to abs HTML when prefer_webpage."""
 
         mock_content_access_service.data_manager.get_cached_publication = Mock(
@@ -772,22 +775,28 @@ class TestContentMethods:
         mock_resolution.alternative_urls = []
         mock_resolver.resolve.return_value = mock_resolution
 
-        with patch.object(
-            mock_content_access_service, "_get_preprint_provider", return_value=None
-        ), patch.object(
-            mock_content_access_service,
-            "_get_publication_resolver",
-            return_value=mock_resolver,
+        with (
+            patch.object(
+                mock_content_access_service, "_get_preprint_provider", return_value=None
+            ),
+            patch.object(
+                mock_content_access_service,
+                "_get_publication_resolver",
+                return_value=mock_resolver,
+            ),
         ):
 
-            with patch.object(
-                mock_content_access_service,
-                "_get_docling_service",
-                return_value=docling_service_mock,
-            ), patch.object(
-                mock_content_access_service.data_manager,
-                "cache_publication_content",
-            ) as cache_mock:
+            with (
+                patch.object(
+                    mock_content_access_service,
+                    "_get_docling_service",
+                    return_value=docling_service_mock,
+                ),
+                patch.object(
+                    mock_content_access_service.data_manager,
+                    "cache_publication_content",
+                ) as cache_mock,
+            ):
                 with patch.object(
                     mock_content_access_service.registry,
                     "get_providers_for_capability",
@@ -826,9 +835,7 @@ class TestContentMethods:
 
             assert "error" in result
 
-    def test_preprint_doi_uses_biorxiv_provider(
-        self, mock_content_access_service
-    ):
+    def test_preprint_doi_uses_biorxiv_provider(self, mock_content_access_service):
         mock_content_access_service.data_manager.get_cached_publication = Mock(
             return_value=None
         )
@@ -1637,9 +1644,7 @@ class TestContentMethods:
         """Verify generic /pdf suffix removal."""
         service = ContentAccessService(mock_data_manager)
 
-        result = service._prefer_html_variant(
-            "https://example.com/articles/12345/pdf"
-        )
+        result = service._prefer_html_variant("https://example.com/articles/12345/pdf")
         assert result == "https://example.com/articles/12345"
         assert not result.endswith("/pdf")
 
@@ -1656,7 +1661,10 @@ class TestContentMethods:
         result = service._prefer_html_variant(
             "https://pubs.acs.org/doi/pdf/10.1021/example?download=true&token=abc123"
         )
-        assert result == "https://pubs.acs.org/doi/10.1021/example?download=true&token=abc123"
+        assert (
+            result
+            == "https://pubs.acs.org/doi/10.1021/example?download=true&token=abc123"
+        )
         assert "/pdf/" not in result
         assert "download=true" in result
         assert "token=abc123" in result
@@ -1669,20 +1677,22 @@ class TestContentMethods:
         result = service._prefer_html_variant(
             "https://www.biorxiv.org/content/10.1101/2024.01.01.574440v1.full.pdf"
         )
-        assert result == "https://www.biorxiv.org/content/10.1101/2024.01.01.574440v1.full"
+        assert (
+            result == "https://www.biorxiv.org/content/10.1101/2024.01.01.574440v1.full"
+        )
         assert not result.endswith(".pdf")
 
         # medRxiv pattern
         result = service._prefer_html_variant(
             "https://www.medrxiv.org/content/10.1101/2024.01.01.574440v1.full.pdf"
         )
-        assert result == "https://www.medrxiv.org/content/10.1101/2024.01.01.574440v1.full"
+        assert (
+            result == "https://www.medrxiv.org/content/10.1101/2024.01.01.574440v1.full"
+        )
         assert not result.endswith(".pdf")
 
         # arXiv pattern
-        result = service._prefer_html_variant(
-            "https://arxiv.org/pdf/2408.09869.pdf"
-        )
+        result = service._prefer_html_variant("https://arxiv.org/pdf/2408.09869.pdf")
         assert result == "https://arxiv.org/abs/2408.09869"
 
     def test_prefer_html_variant_nature_articles_pdf_extension(self, mock_data_manager):
@@ -1721,7 +1731,9 @@ class TestContentMethods:
         service = ContentAccessService(mock_data_manager)
 
         # Test _extract_preprint_doi_from_source
-        doi, server = service._extract_preprint_doi_from_source("10.1101/2024.01.01.574440")
+        doi, server = service._extract_preprint_doi_from_source(
+            "10.1101/2024.01.01.574440"
+        )
         assert doi == "10.1101/2024.01.01.574440"
         assert server is None  # No server hint from plain DOI
 

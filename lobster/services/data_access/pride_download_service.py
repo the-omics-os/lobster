@@ -24,8 +24,8 @@ from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.interfaces.download_service import IDownloadService
 from lobster.core.schemas.download_queue import DownloadQueueEntry
 from lobster.services.data_access.proteomics_parsers import (
-    get_parser_for_file,
     get_available_parsers,
+    get_parser_for_file,
 )
 from lobster.tools.providers.pride_provider import PRIDEProvider
 from lobster.utils.logger import get_logger
@@ -174,9 +174,11 @@ class PRIDEDownloadService(IDownloadService):
             strategy_name = (
                 strategy_override.get("strategy_name")
                 if strategy_override
-                else queue_entry.recommended_strategy.strategy_name
-                if queue_entry.recommended_strategy
-                else "RESULT_FIRST"
+                else (
+                    queue_entry.recommended_strategy.strategy_name
+                    if queue_entry.recommended_strategy
+                    else "RESULT_FIRST"
+                )
             )
 
             strategy_params = (
@@ -191,7 +193,9 @@ class PRIDEDownloadService(IDownloadService):
             url_result = self.pride_provider.get_download_urls(dataset_id)
 
             if url_result.error:
-                raise RuntimeError(f"Failed to get URLs for {dataset_id}: {url_result.error}")
+                raise RuntimeError(
+                    f"Failed to get URLs for {dataset_id}: {url_result.error}"
+                )
 
             logger.info(
                 f"Retrieved URLs: {len(url_result.raw_files)} RAW, "
@@ -231,9 +235,7 @@ class PRIDEDownloadService(IDownloadService):
             parser = get_parser_for_file(str(primary_file))
 
             if not parser:
-                raise RuntimeError(
-                    f"No parser available for file: {primary_file.name}"
-                )
+                raise RuntimeError(f"No parser available for file: {primary_file.name}")
 
             logger.info(f"Parsing {primary_file.name} with {parser.__class__.__name__}")
             adata, parse_stats = parser.parse(str(primary_file))
@@ -296,9 +298,7 @@ class PRIDEDownloadService(IDownloadService):
 
             # Prioritize known formats
             for keyword in ["proteinGroups", "report.tsv", "report.parquet"]:
-                matching = [
-                    f for f in result_files if keyword in f.filename
-                ]
+                matching = [f for f in result_files if keyword in f.filename]
                 if matching:
                     selected.extend(matching[:1])  # Take first match
                     break
@@ -377,7 +377,9 @@ class PRIDEDownloadService(IDownloadService):
                 # Get file size for progress
                 file_size = ftp.size(remote_path)
                 logger.info(
-                    f"File size: {file_size / 1024 / 1024:.1f} MB" if file_size else "File size unknown"
+                    f"File size: {file_size / 1024 / 1024:.1f} MB"
+                    if file_size
+                    else "File size unknown"
                 )
 
                 # Download with binary mode
@@ -393,15 +395,15 @@ class PRIDEDownloadService(IDownloadService):
                 return None
 
             except (ftplib.error_temp, ConnectionError, TimeoutError) as e:
-                logger.warning(
-                    f"FTP error (attempt {attempt + 1}/{max_retries}): {e}"
-                )
+                logger.warning(f"FTP error (attempt {attempt + 1}/{max_retries}): {e}")
                 if attempt < max_retries - 1:
-                    wait_time = 2 ** attempt  # Exponential backoff
+                    wait_time = 2**attempt  # Exponential backoff
                     logger.info(f"Retrying in {wait_time}s...")
                     time.sleep(wait_time)
                 else:
-                    logger.error(f"Failed to download {ftp_url} after {max_retries} attempts")
+                    logger.error(
+                        f"Failed to download {ftp_url} after {max_retries} attempts"
+                    )
                     return None
 
             except Exception as e:

@@ -15,7 +15,9 @@ import pytest
 
 from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.services.analysis.differential_formula_service import DifferentialFormulaService
+from lobster.services.analysis.differential_formula_service import (
+    DifferentialFormulaService,
+)
 from lobster.tools.workflow_tracker import WorkflowTracker
 
 
@@ -249,7 +251,9 @@ class TestAgentGuidedFormulaConstruction:
         }
 
         # Create agent (this would normally require actual services)
-        with patch("lobster.agents.transcriptomics.transcriptomics_expert.get_settings") as mock_settings:
+        with patch(
+            "lobster.agents.transcriptomics.transcriptomics_expert.get_settings"
+        ) as mock_settings:
             mock_settings.return_value.get_agent_llm_params.return_value = {
                 "model_id": "test-model",
                 "model_kwargs": {},

@@ -18,8 +18,8 @@ import pytest
 from lobster.agents.data_expert import data_expert
 from lobster.agents.data_expert_assistant import DataExpertAssistant, StrategyConfig
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.services.data_management.concatenation_service import ConcatenationService
 from lobster.services.data_access.geo_service import GEOService
+from lobster.services.data_management.concatenation_service import ConcatenationService
 from tests.mock_data.base import SMALL_DATASET_CONFIG
 from tests.mock_data.factories import SingleCellDataFactory
 

@@ -31,12 +31,12 @@ import tempfile
 import time
 from datetime import datetime
 from io import BytesIO
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import requests
 import requests.exceptions
-from pathlib import Path
-from typing import Any, Dict, List, Optional
 
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.utils.logger import get_logger
@@ -44,6 +44,7 @@ from lobster.utils.logger import get_logger
 # Cloudscraper for Cloudflare-protected publishers (OUP, Cell, Elsevier, etc.)
 try:
     import cloudscraper
+
     CLOUDSCRAPER_AVAILABLE = True
 except ImportError:
     CLOUDSCRAPER_AVAILABLE = False
@@ -65,7 +66,8 @@ def _get_protected_domains() -> List[str]:
         List of domains requiring cloudscraper for PDF downloads
     """
     return [
-        domain for domain, strategy in DOMAIN_HEADER_STRATEGIES.items()
+        domain
+        for domain, strategy in DOMAIN_HEADER_STRATEGIES.items()
         if strategy == HeaderStrategy.STEALTH and domain != "default"
     ]
 
@@ -318,6 +320,7 @@ class DoclingService:
 
         # Import Docling types
         from docling_core.types.doc import DocItemLabel
+
         ConversionStatus = self._docling_imports["ConversionStatus"]
 
         # Retry loop with comprehensive error handling
@@ -443,7 +446,9 @@ class DoclingService:
 
             except requests.exceptions.HTTPError as e:
                 # Expected HTTP errors from publishers (400, 403, 429) - log without traceback
-                status_code = e.response.status_code if e.response is not None else "unknown"
+                status_code = (
+                    e.response.status_code if e.response is not None else "unknown"
+                )
                 logger.warning(
                     f"HTTP {status_code} on attempt {attempt + 1}/{max_retries}: {e}"
                 )
@@ -1022,6 +1027,7 @@ class DoclingService:
                         # Make timezone-aware comparison
                         if cached_at.tzinfo is None:
                             import datetime as dt
+
                             cached_at = cached_at.replace(tzinfo=dt.timezone.utc)
 
                         now = datetime.now(cached_at.tzinfo)
@@ -1206,14 +1212,18 @@ class DoclingService:
             response = scraper.get(url, timeout=30)
             response.raise_for_status()
 
-            logger.info(f"Successfully downloaded {len(response.content):,} bytes from {urlparse(url).netloc}")
+            logger.info(
+                f"Successfully downloaded {len(response.content):,} bytes from {urlparse(url).netloc}"
+            )
             return response.content
 
         except Exception as e:
             logger.error(f"cloudscraper download failed for {url}: {e}")
             raise PDFExtractionError(f"Failed to download protected content: {e}")
 
-    def _convert_with_fallback(self, source: str, headers: Optional[Dict[str, str]] = None):
+    def _convert_with_fallback(
+        self, source: str, headers: Optional[Dict[str, str]] = None
+    ):
         """
         Convert source with Docling, using cloudscraper for protected domains.
 
@@ -1242,12 +1252,23 @@ class DoclingService:
                     from docling.datamodel.base_models import DocumentStream
                 except ImportError:
                     # Fallback: if DocumentStream not available, write to temp file
-                    logger.warning("DocumentStream not available, using temp file fallback")
+                    logger.warning(
+                        "DocumentStream not available, using temp file fallback"
+                    )
 
                     # Infer file extension from URL or default to .pdf
-                    suffix = ".html" if any(ext in source.lower() for ext in ["/doi/", "/articles/", ".htm"]) else ".pdf"
+                    suffix = (
+                        ".html"
+                        if any(
+                            ext in source.lower()
+                            for ext in ["/doi/", "/articles/", ".htm"]
+                        )
+                        else ".pdf"
+                    )
 
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+                    with tempfile.NamedTemporaryFile(
+                        delete=False, suffix=suffix
+                    ) as tmp_file:
                         tmp_file.write(content_bytes)
                         temp_path = Path(tmp_file.name)
                     try:
@@ -1307,7 +1328,9 @@ class DoclingService:
         logger.debug(f"Downloaded {source[:80]}... to {temp_path}")
         return temp_path
 
-    def _looks_like_pdf(self, source: str, headers: Optional[Dict[str, Any]] = None) -> bool:
+    def _looks_like_pdf(
+        self, source: str, headers: Optional[Dict[str, Any]] = None
+    ) -> bool:
         """Heuristic to decide if a source response is a PDF."""
 
         if source.lower().endswith(".pdf"):
@@ -1326,6 +1349,4 @@ class DoclingService:
         if not isinstance(source, str):
             return False
         source_lower = source.lower()
-        return source_lower.startswith("http://") or source_lower.startswith(
-            "https://"
-        )
+        return source_lower.startswith("http://") or source_lower.startswith("https://")

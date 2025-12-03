@@ -5,15 +5,16 @@ These tests verify that the subprocess model provides proper isolation,
 timeout enforcement, and crash resistance.
 """
 
-import pytest
 import time
 from pathlib import Path
+
 import anndata
 import numpy as np
 import pandas as pd
+import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.services.execution import CustomCodeExecutionService, CodeExecutionError
+from lobster.services.execution import CodeExecutionError, CustomCodeExecutionService
 
 
 class TestSubprocessSecurity:
@@ -26,7 +27,7 @@ class TestSubprocessSecurity:
         workspace.mkdir()
 
         # Create sample CSV
-        df = pd.DataFrame({'gene': ['GAPDH', 'ACTB'], 'expression': [100, 200]})
+        df = pd.DataFrame({"gene": ["GAPDH", "ACTB"], "expression": [100, 200]})
         df.to_csv(workspace / "gene_expression.csv", index=False)
 
         return workspace
@@ -39,10 +40,10 @@ class TestSubprocessSecurity:
         # Add test modality
         adata = anndata.AnnData(
             X=np.array([[1, 2, 3], [4, 5, 6]]),
-            obs=pd.DataFrame({'cell_type': ['T', 'B']}, index=['c1', 'c2']),
-            var=pd.DataFrame({'gene': ['g1', 'g2', 'g3']}, index=['g1', 'g2', 'g3'])
+            obs=pd.DataFrame({"cell_type": ["T", "B"]}, index=["c1", "c2"]),
+            var=pd.DataFrame({"gene": ["g1", "g2", "g3"]}, index=["g1", "g2", "g3"]),
         )
-        dm.modalities['test_data'] = adata
+        dm.modalities["test_data"] = adata
 
         return dm
 
@@ -90,7 +91,7 @@ result = len(workspace_files)
 
         result, stats, ir = service.execute(code=workspace_access, persist=False)
         assert result >= 0  # Should return count of CSV files
-        assert stats['success'] is True
+        assert stats["success"] is True
 
     def test_modality_loading_from_disk(self, service):
         """Test that modalities are auto-saved and loaded in subprocess."""
@@ -103,13 +104,11 @@ else:
 """
 
         result, stats, ir = service.execute(
-            code=code,
-            modality_name='test_data',
-            persist=False
+            code=code, modality_name="test_data", persist=False
         )
 
         assert result == 2  # 2 observations
-        assert stats['success'] is True
+        assert stats["success"] is True
 
     def test_csv_file_auto_loading(self, service):
         """Test that CSV files are auto-loaded in subprocess."""
@@ -122,13 +121,11 @@ else:
 """
 
         result, stats, ir = service.execute(
-            code=code,
-            load_workspace_files=True,
-            persist=False
+            code=code, load_workspace_files=True, persist=False
         )
 
         assert result == 2  # 2 rows in CSV
-        assert stats['success'] is True
+        assert stats["success"] is True
 
     def test_result_json_serialization(self, service):
         """Test that results are properly serialized via JSON."""
@@ -136,9 +133,9 @@ else:
         test_cases = [
             ("result = 42", 42),
             ("result = 3.14", 3.14),
-            ("result = 'hello'", 'hello'),
+            ("result = 'hello'", "hello"),
             ("result = [1, 2, 3]", [1, 2, 3]),
-            ("result = {'a': 1, 'b': 2}", {'a': 1, 'b': 2}),
+            ("result = {'a': 1, 'b': 2}", {"a": 1, "b": 2}),
         ]
 
         for code, expected in test_cases:
@@ -157,7 +154,7 @@ result = np.array([1, 2, 3])  # NumPy arrays not JSON-serializable
         # Should fallback to string representation
         assert result is not None
         assert isinstance(result, str)
-        assert '1' in result and '2' in result and '3' in result
+        assert "1" in result and "2" in result and "3" in result
 
     def test_execution_time_tracking(self, service):
         """Test that execution time is tracked accurately."""
@@ -169,8 +166,8 @@ result = 42
 
         result, stats, ir = service.execute(code=code, persist=False)
 
-        assert stats['duration_seconds'] >= 0.5
-        assert stats['duration_seconds'] < 2.0  # Should be reasonably fast
+        assert stats["duration_seconds"] >= 0.5
+        assert stats["duration_seconds"] < 2.0  # Should be reasonably fast
 
     def test_no_network_access_warning(self, service):
         """Test that network imports succeed but may not work (no explicit blocking yet)."""

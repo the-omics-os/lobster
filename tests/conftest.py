@@ -1042,9 +1042,7 @@ def production_sra_samples():
         ...     samples = production_sra_samples['data']['samples']
         ...     assert len(samples) == 247
     """
-    fixture_path = (
-        Path(__file__).parent / "fixtures" / "sra_prjna891765_samples.json"
-    )
+    fixture_path = Path(__file__).parent / "fixtures" / "sra_prjna891765_samples.json"
     with open(fixture_path) as f:
         return json.load(f)
 

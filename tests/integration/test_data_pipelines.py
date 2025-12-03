@@ -28,7 +28,9 @@ from lobster.services.analysis.clustering_service import ClusteringService
 from lobster.services.data_access.geo_service import GEOService
 from lobster.services.quality.preprocessing_service import PreprocessingService
 from lobster.services.quality.quality_service import QualityService
-from lobster.services.visualization.visualization_service import SingleCellVisualizationService
+from lobster.services.visualization.visualization_service import (
+    SingleCellVisualizationService,
+)
 from tests.mock_data.base import LARGE_DATASET_CONFIG, SMALL_DATASET_CONFIG
 from tests.mock_data.factories import (
     BulkRNASeqDataFactory,

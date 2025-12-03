@@ -26,8 +26,12 @@ from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.services.analysis.proteomics_analysis_service import ProteomicsAnalysisService
-from lobster.services.analysis.proteomics_differential_service import ProteomicsDifferentialService
+from lobster.services.analysis.proteomics_analysis_service import (
+    ProteomicsAnalysisService,
+)
+from lobster.services.analysis.proteomics_differential_service import (
+    ProteomicsDifferentialService,
+)
 from lobster.services.quality.proteomics_preprocessing_service import (
     ProteomicsPreprocessingService,
 )
@@ -265,9 +269,7 @@ def proteomics_expert(
 
     # Validate data manager type
     if not isinstance(data_manager, DataManagerV2):
-        raise ValueError(
-            "ProteomicsExpert requires DataManagerV2 for modular analysis"
-        )
+        raise ValueError("ProteomicsExpert requires DataManagerV2 for modular analysis")
 
     # Initialize stateless services
     preprocessing_service = ProteomicsPreprocessingService()
@@ -318,11 +320,18 @@ def proteomics_expert(
                 # Show all modalities with proteomics focus
                 modalities = data_manager.list_modalities()
                 proteomics_terms = [
-                    "proteomics", "protein", "ms", "mass_spec",
-                    "olink", "soma", "affinity", "panel"
+                    "proteomics",
+                    "protein",
+                    "ms",
+                    "mass_spec",
+                    "olink",
+                    "soma",
+                    "affinity",
+                    "panel",
                 ]
                 proteomics_modalities = [
-                    m for m in modalities
+                    m
+                    for m in modalities
                     if any(term in m.lower() for term in proteomics_terms)
                 ]
 
@@ -339,7 +348,9 @@ def proteomics_expert(
 
                     response += f"**{mod_name}**\n"
                     response += f"- Platform: {platform_config.display_name}\n"
-                    response += f"- Shape: {adata.n_obs} samples x {adata.n_vars} proteins\n"
+                    response += (
+                        f"- Shape: {adata.n_obs} samples x {adata.n_vars} proteins\n"
+                    )
                     if "missing_value_percentage" in metrics:
                         response += f"- Missing values: {metrics['missing_value_percentage']:.1f}%\n"
                     response += "\n"
@@ -363,22 +374,34 @@ def proteomics_expert(
                     response += f"- Platform type: {platform_config.platform_type}\n\n"
 
                     response += f"**Data Characteristics:**\n"
-                    response += f"- Shape: {adata.n_obs} samples x {adata.n_vars} proteins\n"
+                    response += (
+                        f"- Shape: {adata.n_obs} samples x {adata.n_vars} proteins\n"
+                    )
                     response += f"- Missing values: {missing_rate*100:.1f}%\n"
                     expected_range = platform_config.expected_missing_rate_range
                     response += f"- Expected range for platform: {expected_range[0]*100:.0f}-{expected_range[1]*100:.0f}%\n"
 
                     # Platform-specific metadata check
                     if platform_config.platform_type == "mass_spec":
-                        ms_cols = ["n_peptides", "n_unique_peptides", "sequence_coverage"]
-                        present_cols = [col for col in ms_cols if col in adata.var.columns]
+                        ms_cols = [
+                            "n_peptides",
+                            "n_unique_peptides",
+                            "sequence_coverage",
+                        ]
+                        present_cols = [
+                            col for col in ms_cols if col in adata.var.columns
+                        ]
                         if present_cols:
                             response += f"- MS metadata available: {present_cols}\n"
                     else:
                         affinity_cols = ["antibody_id", "panel_type", "plate_id"]
-                        present_cols = [col for col in affinity_cols if col in adata.var.columns]
+                        present_cols = [
+                            col for col in affinity_cols if col in adata.var.columns
+                        ]
                         if present_cols:
-                            response += f"- Affinity metadata available: {present_cols}\n"
+                            response += (
+                                f"- Affinity metadata available: {present_cols}\n"
+                            )
 
                     # Show key columns
                     obs_cols = list(adata.obs.columns)[:5]
@@ -425,10 +448,12 @@ def proteomics_expert(
                 platform_config = get_platform_config(platform_type)
 
             # Run quality assessments using service (returns 3-tuples)
-            processed_adata, missing_stats, missing_ir = quality_service.assess_missing_value_patterns(
-                adata,
-                sample_threshold=platform_config.max_missing_per_sample,
-                protein_threshold=platform_config.max_missing_per_protein,
+            processed_adata, missing_stats, missing_ir = (
+                quality_service.assess_missing_value_patterns(
+                    adata,
+                    sample_threshold=platform_config.max_missing_per_sample,
+                    protein_threshold=platform_config.max_missing_per_protein,
+                )
             )
 
             cv_adata, cv_stats, cv_ir = quality_service.assess_coefficient_variation(
@@ -436,15 +461,24 @@ def proteomics_expert(
                 cv_threshold=platform_config.cv_threshold / 100,  # Convert to decimal
             )
 
-            contam_adata, contam_stats, contam_ir = quality_service.detect_contaminants(cv_adata)
-            final_adata, range_stats, range_ir = quality_service.evaluate_dynamic_range(contam_adata)
+            contam_adata, contam_stats, contam_ir = quality_service.detect_contaminants(
+                cv_adata
+            )
+            final_adata, range_stats, range_ir = quality_service.evaluate_dynamic_range(
+                contam_adata
+            )
 
             # Update the modality with quality assessment results
             assessed_name = f"{modality_name}_quality_assessed"
             data_manager.modalities[assessed_name] = final_adata
 
             # Log with IR
-            combined_stats = {**missing_stats, **cv_stats, **contam_stats, **range_stats}
+            combined_stats = {
+                **missing_stats,
+                **cv_stats,
+                **contam_stats,
+                **range_stats,
+            }
             data_manager.log_tool_usage(
                 tool_name="assess_proteomics_quality",
                 parameters={
@@ -467,7 +501,11 @@ def proteomics_expert(
             if "missing_value_percentage" in combined_stats:
                 mv_pct = combined_stats["missing_value_percentage"]
                 expected = platform_config.expected_missing_rate_range
-                status = "OK" if expected[0]*100 <= mv_pct <= expected[1]*100 else "CHECK"
+                status = (
+                    "OK"
+                    if expected[0] * 100 <= mv_pct <= expected[1] * 100
+                    else "CHECK"
+                )
                 response += f"- Missing values: {mv_pct:.1f}% [{status}] (expected: {expected[0]*100:.0f}-{expected[1]*100:.0f}%)\n"
 
             # CV metrics
@@ -481,10 +519,14 @@ def proteomics_expert(
                 if "contaminant_proteins" in combined_stats:
                     response += f"- Contaminant proteins: {combined_stats['contaminant_proteins']}\n"
                 if "reverse_hits" in combined_stats:
-                    response += f"- Reverse database hits: {combined_stats['reverse_hits']}\n"
+                    response += (
+                        f"- Reverse database hits: {combined_stats['reverse_hits']}\n"
+                    )
             else:
                 if "high_cv_proteins" in combined_stats:
-                    response += f"- High CV proteins: {combined_stats['high_cv_proteins']}\n"
+                    response += (
+                        f"- High CV proteins: {combined_stats['high_cv_proteins']}\n"
+                    )
 
             # Dynamic range
             if "dynamic_range_log10" in combined_stats:
@@ -494,7 +536,9 @@ def proteomics_expert(
             response += f"\n**Platform-Specific Recommendations:**\n"
             if platform_config.platform_type == "mass_spec":
                 if combined_stats.get("contaminant_proteins", 0) > 0:
-                    response += "- Remove contaminant proteins before downstream analysis\n"
+                    response += (
+                        "- Remove contaminant proteins before downstream analysis\n"
+                    )
                 if combined_stats.get("reverse_hits", 0) > 0:
                     response += "- Remove reverse database hits (search artifacts)\n"
                 response += "- Consider peptide count requirements for reliable quantification\n"
@@ -502,7 +546,9 @@ def proteomics_expert(
                 if combined_stats.get("missing_value_percentage", 0) > 30:
                     response += "- High missing values unusual for affinity - check assay quality\n"
                 if combined_stats.get("median_cv", 0) > 30:
-                    response += "- High CVs suggest technical issues - check sample handling\n"
+                    response += (
+                        "- High CVs suggest technical issues - check sample handling\n"
+                    )
                 response += "- Check for plate effects and correct if needed\n"
 
             response += f"\n**New modality created**: '{assessed_name}'"
@@ -549,12 +595,20 @@ def proteomics_expert(
                 platform_config = get_platform_config(platform_type)
 
             # Use platform defaults if not overridden
-            max_sample = max_missing_per_sample or platform_config.max_missing_per_sample
-            max_protein = max_missing_per_protein or platform_config.max_missing_per_protein
+            max_sample = (
+                max_missing_per_sample or platform_config.max_missing_per_sample
+            )
+            max_protein = (
+                max_missing_per_protein or platform_config.max_missing_per_protein
+            )
 
             # Create working copy
             adata_filtered = adata.copy()
-            X = adata_filtered.X.toarray() if hasattr(adata_filtered.X, "toarray") else adata_filtered.X
+            X = (
+                adata_filtered.X.toarray()
+                if hasattr(adata_filtered.X, "toarray")
+                else adata_filtered.X
+            )
 
             # Step 1: Filter based on missing values
             sample_missing_rate = np.isnan(X).sum(axis=1) / X.shape[1]
@@ -564,7 +618,11 @@ def proteomics_expert(
             adata_filtered = adata_filtered[sample_filter, :].copy()
 
             # Recalculate after sample filtering
-            X = adata_filtered.X.toarray() if hasattr(adata_filtered.X, "toarray") else adata_filtered.X
+            X = (
+                adata_filtered.X.toarray()
+                if hasattr(adata_filtered.X, "toarray")
+                else adata_filtered.X
+            )
             protein_missing_rate = np.isnan(X).sum(axis=0) / X.shape[0]
             protein_filter = protein_missing_rate <= max_protein
             adata_filtered = adata_filtered[:, protein_filter].copy()
@@ -573,19 +631,25 @@ def proteomics_expert(
             if platform_config.platform_type == "mass_spec":
                 # MS: Filter by peptide count
                 if "n_peptides" in adata_filtered.var.columns:
-                    min_peptides = platform_config.platform_specific.get("min_peptides_per_protein", 2)
+                    min_peptides = platform_config.platform_specific.get(
+                        "min_peptides_per_protein", 2
+                    )
                     peptide_filter = adata_filtered.var["n_peptides"] >= min_peptides
                     adata_filtered = adata_filtered[:, peptide_filter].copy()
 
                 # MS: Remove contaminants
                 if platform_config.platform_specific.get("remove_contaminants", True):
                     if "is_contaminant" in adata_filtered.var.columns:
-                        adata_filtered = adata_filtered[:, ~adata_filtered.var["is_contaminant"]].copy()
+                        adata_filtered = adata_filtered[
+                            :, ~adata_filtered.var["is_contaminant"]
+                        ].copy()
 
                 # MS: Remove reverse hits
                 if platform_config.platform_specific.get("remove_reverse_hits", True):
                     if "is_reverse" in adata_filtered.var.columns:
-                        adata_filtered = adata_filtered[:, ~adata_filtered.var["is_reverse"]].copy()
+                        adata_filtered = adata_filtered[
+                            :, ~adata_filtered.var["is_reverse"]
+                        ].copy()
             else:
                 # Affinity: Filter by CV
                 if "cv" in adata_filtered.var.columns:
@@ -672,7 +736,9 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
             samples_removed = original_shape[0] - adata_filtered.n_obs
             proteins_removed = original_shape[1] - adata_filtered.n_vars
 
-            response = f"Successfully filtered proteomics modality '{modality_name}'!\n\n"
+            response = (
+                f"Successfully filtered proteomics modality '{modality_name}'!\n\n"
+            )
             response += f"**Platform:** {platform_config.display_name}\n\n"
             response += f"**Filtering Results:**\n"
             response += f"- Original shape: {original_shape[0]} samples x {original_shape[1]} proteins\n"
@@ -680,7 +746,9 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
             response += f"- Samples removed: {samples_removed} ({samples_removed/original_shape[0]*100:.1f}%)\n"
             response += f"- Proteins removed: {proteins_removed} ({proteins_removed/original_shape[1]*100:.1f}%)\n\n"
 
-            response += f"**Filtering Parameters ({platform_config.display_name} defaults):**\n"
+            response += (
+                f"**Filtering Parameters ({platform_config.display_name} defaults):**\n"
+            )
             response += f"- Max missing per sample: {max_sample*100:.0f}%\n"
             response += f"- Max missing per protein: {max_protein*100:.0f}%\n"
 
@@ -732,28 +800,39 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
 
             # Use platform defaults if not overridden
             norm_method = normalization_method or platform_config.default_normalization
-            do_log = log_transform if log_transform is not None else platform_config.log_transform
+            do_log = (
+                log_transform
+                if log_transform is not None
+                else platform_config.log_transform
+            )
             impute_method = handle_missing or platform_config.default_imputation
 
             # Step 1: Handle missing values if requested
             impute_stats = {}
             if impute_method == "impute_knn":
-                processed_adata, impute_stats, impute_ir = preprocessing_service.impute_missing_values(
-                    adata, method="knn"
+                processed_adata, impute_stats, impute_ir = (
+                    preprocessing_service.impute_missing_values(adata, method="knn")
                 )
             elif impute_method == "impute_min":
-                processed_adata, impute_stats, impute_ir = preprocessing_service.impute_missing_values(
-                    adata, method="min_prob"
+                processed_adata, impute_stats, impute_ir = (
+                    preprocessing_service.impute_missing_values(
+                        adata, method="min_prob"
+                    )
                 )
             else:
                 processed_adata = adata.copy()
-                impute_stats = {"imputation_method": "none", "imputation_applied": False}
+                impute_stats = {
+                    "imputation_method": "none",
+                    "imputation_applied": False,
+                }
 
             # Step 2: Normalize
-            normalized_adata, norm_stats, norm_ir = preprocessing_service.normalize_intensities(
-                processed_adata,
-                method=norm_method,
-                log_transform=do_log,
+            normalized_adata, norm_stats, norm_ir = (
+                preprocessing_service.normalize_intensities(
+                    processed_adata,
+                    method=norm_method,
+                    log_transform=do_log,
+                )
             )
 
             # Update modality
@@ -781,7 +860,9 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
             )
 
             # Generate response
-            response = f"Successfully normalized proteomics modality '{modality_name}'!\n\n"
+            response = (
+                f"Successfully normalized proteomics modality '{modality_name}'!\n\n"
+            )
             response += f"**Platform:** {platform_config.display_name}\n\n"
             response += f"**Normalization Settings:**\n"
             response += f"- Method: {norm_method}\n"
@@ -792,7 +873,9 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
             if combined_stats.get("imputation_applied", False):
                 response += f"- Imputation applied: {combined_stats.get('imputation_method', 'unknown')}\n"
                 if "n_imputed_values" in combined_stats:
-                    response += f"- Values imputed: {combined_stats['n_imputed_values']}\n"
+                    response += (
+                        f"- Values imputed: {combined_stats['n_imputed_values']}\n"
+                    )
             else:
                 if platform_config.platform_type == "mass_spec":
                     response += "- Preserved missing values (MNAR pattern preserved)\n"
@@ -851,14 +934,18 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
             n_pcs = n_components or platform_config.default_n_pca_components
 
             # Perform dimensionality reduction
-            pca_adata, pca_stats, pca_ir = analysis_service.perform_dimensionality_reduction(
-                adata, method="pca", n_components=n_pcs
+            pca_adata, pca_stats, pca_ir = (
+                analysis_service.perform_dimensionality_reduction(
+                    adata, method="pca", n_components=n_pcs
+                )
             )
 
             # Perform clustering if requested
             if analysis_type == "pca_clustering":
-                clustered_adata, cluster_stats, cluster_ir = analysis_service.perform_clustering_analysis(
-                    pca_adata, clustering_method="kmeans", n_clusters=n_clusters
+                clustered_adata, cluster_stats, cluster_ir = (
+                    analysis_service.perform_clustering_analysis(
+                        pca_adata, clustering_method="kmeans", n_clusters=n_clusters
+                    )
                 )
                 final_adata = clustered_adata
                 combined_stats = {**pca_stats, **cluster_stats}
@@ -892,7 +979,9 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
             )
 
             # Generate response
-            response = f"Successfully analyzed proteomics patterns in '{modality_name}'!\n\n"
+            response = (
+                f"Successfully analyzed proteomics patterns in '{modality_name}'!\n\n"
+            )
             response += f"**Platform:** {platform_config.display_name}\n\n"
             response += f"**PCA Results:**\n"
             response += f"- Components computed: {n_pcs}\n"
@@ -960,16 +1049,22 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
             else:
                 platform_config = get_platform_config(platform_type)
 
-            fc_threshold = fold_change_threshold or platform_config.default_fold_change_threshold
-            test_method = method or ("t_test" if platform_config.platform_type == "affinity" else "t_test")
+            fc_threshold = (
+                fold_change_threshold or platform_config.default_fold_change_threshold
+            )
+            test_method = method or (
+                "t_test" if platform_config.platform_type == "affinity" else "t_test"
+            )
 
             # Perform differential expression
-            de_adata, de_stats, de_ir = differential_service.perform_differential_expression(
-                adata,
-                group_column=group_column,
-                test_method=test_method,
-                fdr_threshold=fdr_threshold,
-                fold_change_threshold=fc_threshold,
+            de_adata, de_stats, de_ir = (
+                differential_service.perform_differential_expression(
+                    adata,
+                    group_column=group_column,
+                    test_method=test_method,
+                    fdr_threshold=fdr_threshold,
+                    fold_change_threshold=fc_threshold,
+                )
             )
 
             # Update modality
@@ -992,7 +1087,9 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
             )
 
             # Generate response
-            response = f"Successfully found differential proteins in '{modality_name}'!\n\n"
+            response = (
+                f"Successfully found differential proteins in '{modality_name}'!\n\n"
+            )
             response += f"**Platform:** {platform_config.display_name}\n\n"
             response += f"**Analysis Parameters:**\n"
             response += f"- Method: {test_method}\n"
@@ -1008,7 +1105,10 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
                 response += f"- Significant proteins: {de_stats['n_significant']}\n"
 
             # Show top significant proteins
-            if "top_significant_proteins" in de_stats and de_stats["top_significant_proteins"]:
+            if (
+                "top_significant_proteins" in de_stats
+                and de_stats["top_significant_proteins"]
+            ):
                 response += "\n**Top Significant Proteins:**\n"
                 for protein_info in de_stats["top_significant_proteins"][:5]:
                     response += f"- {protein_info['protein']}: log2FC={protein_info['log2_fold_change']:.2f}, FDR={protein_info['p_adjusted']:.2e}\n"
@@ -1044,8 +1144,7 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
         modalities = data_manager.list_modalities()
         proteomics_terms = ["proteomics", "protein", "ms", "olink", "soma", "affinity"]
         proteomics_modalities = [
-            m for m in modalities
-            if any(term in m.lower() for term in proteomics_terms)
+            m for m in modalities if any(term in m.lower() for term in proteomics_terms)
         ]
         summary += "## Current Proteomics Modalities\n"
         summary += f"Proteomics modalities: {', '.join(proteomics_modalities)}\n\n"
@@ -1161,7 +1260,9 @@ adata.uns['peptide_to_protein'] = peptide_df.to_dict('records')""",
 
             response = f"Successfully added peptide mapping to MS modality '{modality_name}'!\n\n"
             response += f"**Peptide Mapping Results:**\n"
-            response += f"- Peptides mapped: {peptide_info.get('n_peptides', 'Unknown')}\n"
+            response += (
+                f"- Peptides mapped: {peptide_info.get('n_peptides', 'Unknown')}\n"
+            )
             response += f"- Proteins with peptides: {peptide_info.get('n_proteins', 'Unknown')}\n"
             response += f"- Mapping file: {peptide_file_path}\n\n"
 
@@ -1216,7 +1317,11 @@ adata.uns['peptide_to_protein'] = peptide_df.to_dict('records')""",
         try:
             # Create working copy
             adata_validated = adata.copy()
-            X = adata_validated.X.toarray() if hasattr(adata_validated.X, "toarray") else adata_validated.X
+            X = (
+                adata_validated.X.toarray()
+                if hasattr(adata_validated.X, "toarray")
+                else adata_validated.X
+            )
 
             # Handle NaN for correlation
             X_filled = np.nan_to_num(X, nan=np.nanmean(X))
@@ -1313,7 +1418,9 @@ for i, j, _ in cross_reactive_pairs:
             response = f"Successfully validated antibody specificity for '{modality_name}'!\n\n"
             response += f"**Antibody Validation Results:**\n"
             response += f"- Total proteins analyzed: {adata_validated.n_vars}\n"
-            response += f"- Cross-reactive pairs detected: {len(cross_reactive_pairs)}\n"
+            response += (
+                f"- Cross-reactive pairs detected: {len(cross_reactive_pairs)}\n"
+            )
             response += f"- Correlation threshold: {cross_reactivity_threshold}\n\n"
 
             if cross_reactive_pairs:
@@ -1322,7 +1429,9 @@ for i, j, _ in cross_reactive_pairs:
                     response += f"- {protein_i} <-> {protein_j}: r={correlation:.3f}\n"
 
                 if len(cross_reactive_pairs) > 5:
-                    response += f"- ... and {len(cross_reactive_pairs) - 5} more pairs\n"
+                    response += (
+                        f"- ... and {len(cross_reactive_pairs) - 5} more pairs\n"
+                    )
 
                 response += "\n**Recommendations:**\n"
                 response += "- Review antibody specificity documentation\n"
@@ -1374,10 +1483,12 @@ for i, j, _ in cross_reactive_pairs:
                 return f"Plate column '{plate_column}' not found. Available columns: {list(adata.obs.columns)}"
 
             # Use preprocessing service for batch correction
-            corrected_adata, batch_stats, batch_ir = preprocessing_service.correct_batch_effects(
-                adata,
-                batch_key=plate_column,
-                method=method,
+            corrected_adata, batch_stats, batch_ir = (
+                preprocessing_service.correct_batch_effects(
+                    adata,
+                    batch_key=plate_column,
+                    method=method,
+                )
             )
 
             # Update modality
@@ -1407,7 +1518,9 @@ for i, j, _ in cross_reactive_pairs:
             response += f"- Plate column: {plate_column}\n"
 
             if "n_batches_corrected" in batch_stats:
-                response += f"- Plates corrected: {batch_stats['n_batches_corrected']}\n"
+                response += (
+                    f"- Plates corrected: {batch_stats['n_batches_corrected']}\n"
+                )
 
             response += f"\n**New modality created**: '{corrected_name}'"
             if save_result:

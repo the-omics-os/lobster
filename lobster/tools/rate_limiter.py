@@ -349,24 +349,26 @@ def rate_limited(api_name: str):
 # MULTI-DOMAIN RATE LIMITING (v2.0)
 # ============================================================================
 
+import urllib.parse
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List
-import urllib.parse
 
 
 # Header strategies (defined early for use in unified config)
 class HeaderStrategy(str, Enum):
     """Header strategies for different publisher types."""
-    POLITE = "polite"        # Standard headers, identify as bot
-    BROWSER = "browser"      # Full browser headers, Chrome UA
-    STEALTH = "stealth"      # Browser + Sec-Fetch-* headers + cloudscraper
-    SESSION = "session"      # Session establishment + Sec-Fetch-* (no cloudscraper)
-    DEFAULT = "default"      # Minimal headers (requests default)
+
+    POLITE = "polite"  # Standard headers, identify as bot
+    BROWSER = "browser"  # Full browser headers, Chrome UA
+    STEALTH = "stealth"  # Browser + Sec-Fetch-* headers + cloudscraper
+    SESSION = "session"  # Session establishment + Sec-Fetch-* (no cloudscraper)
+    DEFAULT = "default"  # Minimal headers (requests default)
 
 
 @dataclass
 class DomainConfig:
     """Unified domain configuration for rate limiting and header strategies."""
+
     rate_limit: float  # requests per second
     header_strategy: HeaderStrategy = HeaderStrategy.BROWSER
     comment: str = ""  # Human-readable description
@@ -377,30 +379,51 @@ class DomainConfig:
 # ============================================================================
 DOMAIN_CONFIG: Dict[str, DomainConfig] = {
     # NCBI (high rate with API key, minimal headers)
-    "eutils.ncbi.nlm.nih.gov": DomainConfig(10.0, HeaderStrategy.DEFAULT, "NCBI E-utilities"),
-    "www.ncbi.nlm.nih.gov": DomainConfig(10.0, HeaderStrategy.DEFAULT, "NCBI main site"),
-    "pmc.ncbi.nlm.nih.gov": DomainConfig(10.0, HeaderStrategy.DEFAULT, "PubMed Central"),
-
+    "eutils.ncbi.nlm.nih.gov": DomainConfig(
+        10.0, HeaderStrategy.DEFAULT, "NCBI E-utilities"
+    ),
+    "www.ncbi.nlm.nih.gov": DomainConfig(
+        10.0, HeaderStrategy.DEFAULT, "NCBI main site"
+    ),
+    "pmc.ncbi.nlm.nih.gov": DomainConfig(
+        10.0, HeaderStrategy.DEFAULT, "PubMed Central"
+    ),
     # Session-required domains (homepage visit + cookies required)
-    "asm.org": DomainConfig(10.0, HeaderStrategy.SESSION, "American Society for Microbiology"),
-    "journals.asm.org": DomainConfig(10.0, HeaderStrategy.SESSION, "ASM Journals (validated 93.3% success)"),
-
+    "asm.org": DomainConfig(
+        10.0, HeaderStrategy.SESSION, "American Society for Microbiology"
+    ),
+    "journals.asm.org": DomainConfig(
+        10.0, HeaderStrategy.SESSION, "ASM Journals (validated 93.3% success)"
+    ),
     # High protection domains (Cloudflare + aggressive anti-scraping → STEALTH)
-    "academic.oup.com": DomainConfig(3, HeaderStrategy.STEALTH, "Oxford University Press"),
+    "academic.oup.com": DomainConfig(
+        3, HeaderStrategy.STEALTH, "Oxford University Press"
+    ),
     "cell.com": DomainConfig(3, HeaderStrategy.STEALTH, "Cell Press"),
-    "sciencedirect.com": DomainConfig(3, HeaderStrategy.STEALTH, "ScienceDirect (Elsevier)"),
+    "sciencedirect.com": DomainConfig(
+        3, HeaderStrategy.STEALTH, "ScienceDirect (Elsevier)"
+    ),
     "elsevier.com": DomainConfig(3, HeaderStrategy.STEALTH, "Elsevier"),
     "science.org": DomainConfig(3, HeaderStrategy.STEALTH, "AAAS Science journals"),
-    "ashpublications.org": DomainConfig(3, HeaderStrategy.STEALTH, "American Society of Hematology"),
+    "ashpublications.org": DomainConfig(
+        3, HeaderStrategy.STEALTH, "American Society of Hematology"
+    ),
     "bmj.com": DomainConfig(3, HeaderStrategy.STEALTH, "British Medical Journal"),
     "jamanetwork.com": DomainConfig(3, HeaderStrategy.STEALTH, "JAMA Network"),
     "aacrjournals.org": DomainConfig(3, HeaderStrategy.STEALTH, "AACR Cancer Research"),
-    "nejm.org": DomainConfig(3, HeaderStrategy.STEALTH, "New England Journal of Medicine"),
-    "pubs.acs.org": DomainConfig(3, HeaderStrategy.STEALTH, "American Chemical Society"),
+    "nejm.org": DomainConfig(
+        3, HeaderStrategy.STEALTH, "New England Journal of Medicine"
+    ),
+    "pubs.acs.org": DomainConfig(
+        3, HeaderStrategy.STEALTH, "American Chemical Society"
+    ),
     "wiley.com": DomainConfig(3, HeaderStrategy.STEALTH, "Wiley"),
-    "onlinelibrary.wiley.com": DomainConfig(3, HeaderStrategy.STEALTH, "Wiley Online Library"),
-    "api.wiley.com": DomainConfig(3, HeaderStrategy.DEFAULT, "Wiley TDM API (requires token)"),
-
+    "onlinelibrary.wiley.com": DomainConfig(
+        3, HeaderStrategy.STEALTH, "Wiley Online Library"
+    ),
+    "api.wiley.com": DomainConfig(
+        3, HeaderStrategy.DEFAULT, "Wiley TDM API (requires token)"
+    ),
     # Moderate protection (standard bot detection → BROWSER headers)
     "nature.com": DomainConfig(3.0, HeaderStrategy.BROWSER, "Nature Publishing Group"),
     "springer.com": DomainConfig(5.0, HeaderStrategy.BROWSER, "Springer"),
@@ -408,40 +431,61 @@ DOMAIN_CONFIG: Dict[str, DomainConfig] = {
     "tandfonline.com": DomainConfig(5.0, HeaderStrategy.BROWSER, "Taylor & Francis"),
     "biomedcentral.com": DomainConfig(5.0, HeaderStrategy.BROWSER, "BMC journals"),
     "journals.lww.com": DomainConfig(5.0, HeaderStrategy.BROWSER, "Wolters Kluwer"),
-    "journals.sagepub.com": DomainConfig(5.0, HeaderStrategy.BROWSER, "SAGE Publishing"),
+    "journals.sagepub.com": DomainConfig(
+        5.0, HeaderStrategy.BROWSER, "SAGE Publishing"
+    ),
     "annualreviews.org": DomainConfig(5.0, HeaderStrategy.BROWSER, "Annual Reviews"),
     "jstage.jst.go.jp": DomainConfig(5.0, HeaderStrategy.BROWSER, "J-STAGE (Japan)"),
     "elifesciences.org": DomainConfig(5.0, HeaderStrategy.BROWSER, "eLife"),
     "embopress.org": DomainConfig(5.0, HeaderStrategy.BROWSER, "EMBO Press"),
     "liebertpub.com": DomainConfig(5.0, HeaderStrategy.BROWSER, "Mary Ann Liebert"),
-
     # Open access (aggressive rates, bot-friendly → POLITE headers)
     # 10x speedup: 2.0 → 20.0 req/s for preprint servers and open-access
-    "frontiersin.org": DomainConfig(20.0, HeaderStrategy.POLITE, "Frontiers (open-access)"),
-    "mdpi.com": DomainConfig(30.0, HeaderStrategy.POLITE, "MDPI (open-access publisher)"),
+    "frontiersin.org": DomainConfig(
+        20.0, HeaderStrategy.POLITE, "Frontiers (open-access)"
+    ),
+    "mdpi.com": DomainConfig(
+        30.0, HeaderStrategy.POLITE, "MDPI (open-access publisher)"
+    ),
     "peerj.com": DomainConfig(20.0, HeaderStrategy.POLITE, "PeerJ (open-access)"),
-    "biorxiv.org": DomainConfig(20.0, HeaderStrategy.POLITE, "bioRxiv (preprint server)"),
-    "medrxiv.org": DomainConfig(20.0, HeaderStrategy.POLITE, "medRxiv (preprint server)"),
-    "europepmc.org": DomainConfig(20.0, HeaderStrategy.POLITE, "Europe PMC (explicitly allows scraping)"),
+    "biorxiv.org": DomainConfig(
+        20.0, HeaderStrategy.POLITE, "bioRxiv (preprint server)"
+    ),
+    "medrxiv.org": DomainConfig(
+        20.0, HeaderStrategy.POLITE, "medRxiv (preprint server)"
+    ),
+    "europepmc.org": DomainConfig(
+        20.0, HeaderStrategy.POLITE, "Europe PMC (explicitly allows scraping)"
+    ),
     "arxiv.org": DomainConfig(30.0, HeaderStrategy.POLITE, "arXiv (preprint server)"),
-    "microbiologyresearch.org": DomainConfig(20.0, HeaderStrategy.POLITE, "Microbiology Society (open-access)"),
-    "researchsquare.com": DomainConfig(20.0, HeaderStrategy.POLITE, "Research Square (preprints)"),
+    "microbiologyresearch.org": DomainConfig(
+        20.0, HeaderStrategy.POLITE, "Microbiology Society (open-access)"
+    ),
+    "researchsquare.com": DomainConfig(
+        20.0, HeaderStrategy.POLITE, "Research Square (preprints)"
+    ),
     "ssrn.com": DomainConfig(20.0, HeaderStrategy.POLITE, "SSRN (preprints)"),
     "plos.org": DomainConfig(20.0, HeaderStrategy.POLITE, "PLOS (open-access)"),
-    "journals.plos.org": DomainConfig(20.0, HeaderStrategy.POLITE, "PLOS Journals (open-access)"),
-
+    "journals.plos.org": DomainConfig(
+        20.0, HeaderStrategy.POLITE, "PLOS Journals (open-access)"
+    ),
     # Default fallback
     "default": DomainConfig(3, HeaderStrategy.BROWSER, "Unknown domain (conservative)"),
 }
 
 # Backward compatibility: derive legacy dictionaries from unified config
-DOMAIN_RATE_LIMITS = {domain: config.rate_limit for domain, config in DOMAIN_CONFIG.items()}
-DOMAIN_HEADER_STRATEGIES = {domain: config.header_strategy for domain, config in DOMAIN_CONFIG.items()}
+DOMAIN_RATE_LIMITS = {
+    domain: config.rate_limit for domain, config in DOMAIN_CONFIG.items()
+}
+DOMAIN_HEADER_STRATEGIES = {
+    domain: config.header_strategy for domain, config in DOMAIN_CONFIG.items()
+}
 
 
 @dataclass
 class DomainStrategy:
     """Rate limit strategy for a specific domain."""
+
     name: str
     requests_per_second: float
     window_seconds: float = 1.0
@@ -464,7 +508,9 @@ class MultiDomainRateLimiter:
     """
 
     def __init__(self, redis_client: Optional[redis.Redis] = None):
-        self.redis_client = redis_client if redis_client is not None else get_redis_client()
+        self.redis_client = (
+            redis_client if redis_client is not None else get_redis_client()
+        )
         self.ncbi_api_key = os.getenv("NCBI_API_KEY")
         self._strategies = self._build_strategies()
 
@@ -515,11 +561,7 @@ class MultiDomainRateLimiter:
         strategy = self._strategies.get(domain, self._strategies["default"])
         return strategy.requests_per_second
 
-    def check_rate_limit(
-        self,
-        url_or_domain: str,
-        user_id: str = "default"
-    ) -> bool:
+    def check_rate_limit(self, url_or_domain: str, user_id: str = "default") -> bool:
         """
         Check if request is within rate limit.
 
@@ -546,7 +588,9 @@ class MultiDomainRateLimiter:
 
             current_count = int(current)
             if current_count >= rate_limit:
-                logger.debug(f"Rate limit hit for {domain}: {current_count}/{rate_limit}")
+                logger.debug(
+                    f"Rate limit hit for {domain}: {current_count}/{rate_limit}"
+                )
                 return False
 
             self.redis_client.incr(key)
@@ -557,10 +601,7 @@ class MultiDomainRateLimiter:
             return True  # Fail open
 
     def wait_for_slot(
-        self,
-        url_or_domain: str,
-        user_id: str = "default",
-        max_wait: float = 30.0
+        self, url_or_domain: str, user_id: str = "default", max_wait: float = 30.0
     ) -> bool:
         """
         Block until rate limit slot available.
@@ -601,7 +642,7 @@ class MultiDomainRateLimiter:
             Delay in seconds
         """
         strategy = self._strategies.get(domain, self._strategies["default"])
-        delay = strategy.backoff_base * (strategy.backoff_factor ** attempt)
+        delay = strategy.backoff_base * (strategy.backoff_factor**attempt)
         return min(delay, strategy.backoff_max)
 
     def should_retry(self, domain: str, status_code: int) -> bool:
@@ -625,11 +666,7 @@ class MultiDomainRateLimiter:
 
 
 def rate_limited_request(
-    url: str,
-    request_func: Callable,
-    *args,
-    max_retries: Optional[int] = None,
-    **kwargs
+    url: str, request_func: Callable, *args, max_retries: Optional[int] = None, **kwargs
 ) -> Any:
     """
     Execute HTTP request with rate limiting and exponential backoff.
@@ -655,7 +692,9 @@ def rate_limited_request(
     """
     limiter = MultiDomainRateLimiter()
     domain = limiter.detect_domain(url)
-    retries = max_retries if max_retries is not None else limiter.get_max_retries(domain)
+    retries = (
+        max_retries if max_retries is not None else limiter.get_max_retries(domain)
+    )
 
     last_error = None
 
@@ -742,6 +781,7 @@ STEALTH_HEADERS = {
 @dataclass
 class DomainRequestConfig:
     """Complete request configuration for a domain."""
+
     domain: str
     rate_limit: float
     header_strategy: HeaderStrategy

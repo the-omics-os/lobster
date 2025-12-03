@@ -10,10 +10,10 @@ Capabilities:
 - Configurable strictness and host allowlists
 """
 
-from typing import Dict, Any, List, Optional, Tuple
-from dataclasses import dataclass
 import difflib
 import logging
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
 
 from lobster.core.analysis_ir import AnalysisStep
 
@@ -294,9 +294,7 @@ class MicrobiomeFilteringService:
         """
         return str(value).lower().strip()
 
-    def _contains_16s(
-        self, value: str, keywords: List[str], strict: bool
-    ) -> bool:
+    def _contains_16s(self, value: str, keywords: List[str], strict: bool) -> bool:
         """
         Check if value contains 16S amplicon keywords.
 

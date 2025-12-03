@@ -7,15 +7,17 @@ Tests the new filtering parameters added in Task 2:
 - max_out_pct: Maximum out-group expression percentage
 """
 
-import numpy as np
-import pytest
 import anndata
+import numpy as np
 import pandas as pd
+import pytest
 import scanpy as sc
 from scipy.sparse import csr_matrix
 
-from lobster.services.analysis.enhanced_singlecell_service import EnhancedSingleCellService
 from lobster.core.analysis_ir import AnalysisStep
+from lobster.services.analysis.enhanced_singlecell_service import (
+    EnhancedSingleCellService,
+)
 
 
 @pytest.fixture
@@ -44,7 +46,9 @@ def clustered_adata():
     X[100:150, 20:30] = np.random.rand(50, 10) * 3.0 + 2.0
 
     # Add some weakly expressed genes (genes 30-39) to test filtering
-    X[0:50, 30:40] = np.random.rand(50, 10) * 1.2 + 0.3  # Weak markers (should be filtered)
+    X[0:50, 30:40] = (
+        np.random.rand(50, 10) * 1.2 + 0.3
+    )  # Weak markers (should be filtered)
 
     adata = anndata.AnnData(X=X)
     adata.var_names = [f"Gene_{i}" for i in range(n_genes)]
@@ -69,17 +73,16 @@ class TestDEGFiltering:
     def test_find_markers_returns_three_tuple(self, service, clustered_adata):
         """Test that find_marker_genes returns 3-tuple (adata, stats, ir)."""
         result = service.find_marker_genes(
-            clustered_adata,
-            groupby="leiden",
-            method="wilcoxon",
-            n_genes=25
+            clustered_adata, groupby="leiden", method="wilcoxon", n_genes=25
         )
 
         assert isinstance(result, tuple), "Should return tuple"
         assert len(result) == 3, "Should return 3-tuple"
 
         adata_result, stats, ir = result
-        assert isinstance(adata_result, anndata.AnnData), "First element should be AnnData"
+        assert isinstance(
+            adata_result, anndata.AnnData
+        ), "First element should be AnnData"
         assert isinstance(stats, dict), "Second element should be dict"
         assert isinstance(ir, AnalysisStep), "Third element should be AnalysisStep"
 
@@ -93,7 +96,7 @@ class TestDEGFiltering:
             n_genes=25,
             min_fold_change=1.5,
             min_pct=0.25,
-            max_out_pct=0.5
+            max_out_pct=0.5,
         )
 
         assert adata_result is not None
@@ -104,8 +107,7 @@ class TestDEGFiltering:
         """Test that default parameter values work."""
         # Call without explicit filtering parameters
         adata_result, stats, ir = service.find_marker_genes(
-            clustered_adata,
-            groupby="leiden"
+            clustered_adata, groupby="leiden"
         )
 
         # Check that defaults are reflected in stats
@@ -117,8 +119,7 @@ class TestDEGFiltering:
     def test_rank_genes_groups_result_structure(self, service, clustered_adata):
         """Test that rank_genes_groups result is properly stored."""
         adata_result, stats, ir = service.find_marker_genes(
-            clustered_adata,
-            groupby="leiden"
+            clustered_adata, groupby="leiden"
         )
 
         # Check result stored in .uns
@@ -138,9 +139,9 @@ class TestDEGFiltering:
             clustered_adata,
             groupby="leiden",
             n_genes=25,
-            min_fold_change=0.5,   # Very lenient
+            min_fold_change=0.5,  # Very lenient
             min_pct=0.1,
-            max_out_pct=0.9
+            max_out_pct=0.9,
         )
 
         # Run with strict filtering (should remove more genes)
@@ -148,23 +149,23 @@ class TestDEGFiltering:
             clustered_adata,
             groupby="leiden",
             n_genes=25,
-            min_fold_change=2.0,   # Very strict
+            min_fold_change=2.0,  # Very strict
             min_pct=0.4,
-            max_out_pct=0.3
+            max_out_pct=0.3,
         )
 
         # Strict filtering should remove more genes
         lenient_total = stats_lenient["total_genes_filtered"]
         strict_total = stats_strict["total_genes_filtered"]
 
-        assert strict_total >= lenient_total, \
-            f"Strict filtering should remove at least as many genes as lenient (strict: {strict_total}, lenient: {lenient_total})"
+        assert (
+            strict_total >= lenient_total
+        ), f"Strict filtering should remove at least as many genes as lenient (strict: {strict_total}, lenient: {lenient_total})"
 
     def test_stats_dict_structure(self, service, clustered_adata):
         """Test that stats dict has correct structure with filtering info."""
         adata_result, stats, ir = service.find_marker_genes(
-            clustered_adata,
-            groupby="leiden"
+            clustered_adata, groupby="leiden"
         )
 
         # Check required keys
@@ -177,7 +178,7 @@ class TestDEGFiltering:
             "post_filter_counts",
             "filtered_counts",
             "total_genes_filtered",
-            "groups_analyzed"
+            "groups_analyzed",
         ]
 
         for key in required_keys:
@@ -194,16 +195,20 @@ class TestDEGFiltering:
         assert len(groups) == 3, "Should have 3 clusters"
 
         for group in groups:
-            assert group in stats["pre_filter_counts"], f"Missing pre-filter count for {group}"
-            assert group in stats["post_filter_counts"], f"Missing post-filter count for {group}"
-            assert group in stats["filtered_counts"], f"Missing filtered count for {group}"
+            assert (
+                group in stats["pre_filter_counts"]
+            ), f"Missing pre-filter count for {group}"
+            assert (
+                group in stats["post_filter_counts"]
+            ), f"Missing post-filter count for {group}"
+            assert (
+                group in stats["filtered_counts"]
+            ), f"Missing filtered count for {group}"
 
     def test_filtered_counts_consistency(self, service, clustered_adata):
         """Test that pre/post/filtered counts are consistent."""
         _, stats, _ = service.find_marker_genes(
-            clustered_adata,
-            groupby="leiden",
-            n_genes=25
+            clustered_adata, groupby="leiden", n_genes=25
         )
 
         for group in stats["groups_analyzed"]:
@@ -212,12 +217,14 @@ class TestDEGFiltering:
             filtered = stats["filtered_counts"][group]
 
             # Basic math: pre = post + filtered
-            assert pre == post + filtered, \
-                f"Inconsistent counts for {group}: {pre} != {post} + {filtered}"
+            assert (
+                pre == post + filtered
+            ), f"Inconsistent counts for {group}: {pre} != {post} + {filtered}"
 
             # Post-filter count should not exceed pre-filter
-            assert post <= pre, \
-                f"Post-filter count ({post}) > pre-filter count ({pre}) for {group}"
+            assert (
+                post <= pre
+            ), f"Post-filter count ({post}) > pre-filter count ({pre}) for {group}"
 
     def test_ir_provenance(self, service, clustered_adata):
         """Test that AnalysisStep IR is properly created."""
@@ -226,12 +233,16 @@ class TestDEGFiltering:
             groupby="leiden",
             min_fold_change=1.5,
             min_pct=0.25,
-            max_out_pct=0.5
+            max_out_pct=0.5,
         )
 
         # Check IR structure
-        assert ir.operation == "find_marker_genes_with_filtering", "Wrong operation name"
-        assert ir.tool_name == "EnhancedSingleCellService.find_marker_genes", "Wrong tool name"
+        assert (
+            ir.operation == "find_marker_genes_with_filtering"
+        ), "Wrong operation name"
+        assert (
+            ir.tool_name == "EnhancedSingleCellService.find_marker_genes"
+        ), "Wrong tool name"
         assert "scanpy" in ir.library.lower(), "Missing scanpy in library"
 
         # Check code template contains both steps
@@ -246,16 +257,15 @@ class TestDEGFiltering:
 
         # Check parameter schema
         assert ir.parameter_schema is not None, "Missing parameter schema"
-        assert "min_fold_change" in ir.parameter_schema, "Missing min_fold_change in schema"
+        assert (
+            "min_fold_change" in ir.parameter_schema
+        ), "Missing min_fold_change in schema"
         assert "min_pct" in ir.parameter_schema, "Missing min_pct in schema"
         assert "max_out_pct" in ir.parameter_schema, "Missing max_out_pct in schema"
 
     def test_parameter_schema_validation(self, service, clustered_adata):
         """Test that parameter schema has correct types and defaults."""
-        _, _, ir = service.find_marker_genes(
-            clustered_adata,
-            groupby="leiden"
-        )
+        _, _, ir = service.find_marker_genes(clustered_adata, groupby="leiden")
 
         schema = ir.parameter_schema
 
@@ -279,9 +289,7 @@ class TestDEGFiltering:
         )
 
         adata_result, stats, ir = service.find_marker_genes(
-            clustered_adata,
-            groupby="custom_group",
-            min_fold_change=1.5
+            clustered_adata, groupby="custom_group", min_fold_change=1.5
         )
 
         assert stats["groupby"] == "custom_group"
@@ -297,7 +305,7 @@ class TestDEGFiltering:
                 groupby="leiden",
                 method=method,
                 n_genes=20,
-                min_fold_change=1.5
+                min_fold_change=1.5,
             )
 
             assert stats["method"] == method
@@ -329,10 +337,7 @@ class TestDEGFiltering:
 
         # Should work without errors
         adata_result, stats, ir = service.find_marker_genes(
-            adata,
-            groupby="leiden",
-            min_fold_change=1.5,
-            min_pct=0.25
+            adata, groupby="leiden", min_fold_change=1.5, min_pct=0.25
         )
 
         assert "filtering_params" in stats
@@ -345,7 +350,7 @@ class TestDEGFiltering:
             groupby="leiden",
             min_fold_change=0.0,  # No fold-change filtering
             min_pct=0.0,
-            max_out_pct=1.0
+            max_out_pct=1.0,
         )
 
         # Should still complete successfully
@@ -358,9 +363,9 @@ class TestDEGFiltering:
             clustered_adata,
             groupby="leiden",
             n_genes=25,
-            min_fold_change=3.0,   # Very high
-            min_pct=0.5,           # Must be in 50% of cells
-            max_out_pct=0.2        # Very specific
+            min_fold_change=3.0,  # Very high
+            min_pct=0.5,  # Must be in 50% of cells
+            max_out_pct=0.2,  # Very specific
         )
 
         # With stringent thresholds, filtering should complete successfully
@@ -380,8 +385,9 @@ class TestHelperMethods:
 
     def test_create_marker_genes_ir_exists(self, service):
         """Test that IR creation method exists."""
-        assert hasattr(service, "_create_marker_genes_ir"), \
-            "Missing _create_marker_genes_ir method"
+        assert hasattr(
+            service, "_create_marker_genes_ir"
+        ), "Missing _create_marker_genes_ir method"
 
 
 if __name__ == "__main__":

@@ -36,7 +36,9 @@ from lobster.services.execution.custom_code_execution_service import (
 
 
 @pytest.fixture
-def workspace_with_critical_files(tmp_path) -> Tuple[CustomCodeExecutionService, Path, DataManagerV2]:
+def workspace_with_critical_files(
+    tmp_path,
+) -> Tuple[CustomCodeExecutionService, Path, DataManagerV2]:
     """
     Create a workspace with all critical Lobster files for testing.
 
@@ -60,18 +62,18 @@ def workspace_with_critical_files(tmp_path) -> Tuple[CustomCodeExecutionService,
             "accession": "GSE12345",
             "status": "PENDING",
             "created_at": "2025-11-30T00:00:00",
-            "urls": ["http://example.com/data.csv"]
+            "urls": ["http://example.com/data.csv"],
         }
     ]
     queue_file = workspace / ".lobster" / "queues" / "download_queue.jsonl"
-    with open(queue_file, 'w') as f:
+    with open(queue_file, "w") as f:
         for entry in download_queue_data:
-            f.write(json.dumps(entry) + '\n')
+            f.write(json.dumps(entry) + "\n")
 
     # Create publication queue
     pub_queue_file = workspace / ".lobster" / "queues" / "publication_queue.jsonl"
-    with open(pub_queue_file, 'w') as f:
-        f.write(json.dumps({"title": "Test Paper", "status": "PENDING"}) + '\n')
+    with open(pub_queue_file, "w") as f:
+        f.write(json.dumps({"title": "Test Paper", "status": "PENDING"}) + "\n")
 
     # Create session file
     session_file = workspace / ".session.json"
@@ -79,15 +81,17 @@ def workspace_with_critical_files(tmp_path) -> Tuple[CustomCodeExecutionService,
         "user_id": "test_user",
         "api_key": "secret_key_12345",
         "workspace_path": str(workspace),
-        "active_modalities": ["geo_gse12345"]
+        "active_modalities": ["geo_gse12345"],
     }
-    with open(session_file, 'w') as f:
+    with open(session_file, "w") as f:
         json.dump(session_data, f)
 
     # Create command history
     history_file = workspace / ".lobster" / "command_history.jsonl"
-    with open(history_file, 'w') as f:
-        f.write(json.dumps({"command": "test command", "timestamp": "2025-11-30"}) + '\n')
+    with open(history_file, "w") as f:
+        f.write(
+            json.dumps({"command": "test command", "timestamp": "2025-11-30"}) + "\n"
+        )
 
     # Create mock H5AD file (empty file for testing)
     (workspace / "data" / "geo_gse12345.h5ad").write_text("mock h5ad data")
@@ -123,7 +127,7 @@ class TestFileDelection:
         queue_file = workspace / ".lobster" / "queues" / "download_queue.jsonl"
         assert queue_file.exists(), "Queue file should exist before test"
 
-        code = '''
+        code = """
 from pathlib import Path
 
 # Delete queue file
@@ -133,27 +137,31 @@ if queue_file.exists():
     result = f"Queue deleted: {queue_file}"
 else:
     result = "Queue not found"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
         queue_exists = queue_file.exists()
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Delete Download Queue")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"Success: {stats['success']}")
         print(f"Queue file exists after execution: {queue_exists}")
 
         if not queue_exists:
             print("⚠️  CRITICAL VULNERABILITY: User code deleted download queue file")
-            print("   Impact: Data loss, workflow corruption, queue state unrecoverable")
-            print("   Recommendation: Mount workspace as read-only or use file permissions")
+            print(
+                "   Impact: Data loss, workflow corruption, queue state unrecoverable"
+            )
+            print(
+                "   Recommendation: Mount workspace as read-only or use file permissions"
+            )
         else:
             print("✅ PROTECTED: File deletion blocked")
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         # Document the vulnerability
         assert not queue_exists, "Queue file was deleted (expected vulnerability)"
@@ -169,22 +177,22 @@ else:
         session_file = workspace / ".session.json"
         assert session_file.exists()
 
-        code = '''
+        code = """
 session_file = WORKSPACE / ".session.json"
 if session_file.exists():
     session_file.unlink()
     result = "Session file deleted"
 else:
     result = "Session file not found"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
         session_exists = session_file.exists()
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Delete Session File")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"Session file exists: {session_exists}")
 
@@ -192,7 +200,7 @@ else:
             print("⚠️  CRITICAL VULNERABILITY: User code deleted session file")
             print("   Impact: Session loss, user may lose work, credentials exposed")
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         assert not session_exists, "Session file was deleted (expected vulnerability)"
 
@@ -208,7 +216,7 @@ else:
         h5ad_files_before = list(workspace.rglob("*.h5ad"))
         assert len(h5ad_files_before) > 0, "Should have H5AD files"
 
-        code = '''
+        code = """
 # Delete all H5AD files
 deleted_count = 0
 for h5ad_file in WORKSPACE.rglob("*.h5ad"):
@@ -216,15 +224,15 @@ for h5ad_file in WORKSPACE.rglob("*.h5ad"):
     deleted_count += 1
 
 result = f"Deleted {deleted_count} H5AD files"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
         h5ad_files_after = list(workspace.rglob("*.h5ad"))
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Delete All H5AD Files")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"Files before: {len(h5ad_files_before)}")
         print(f"Files after: {len(h5ad_files_after)}")
@@ -234,11 +242,15 @@ result = f"Deleted {deleted_count} H5AD files"
             print("   Impact: Complete data loss, all analysis work destroyed")
             print("   Recommendation: Backup mechanism, versioning, read-only mounting")
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
-        assert len(h5ad_files_after) == 0, "All H5AD files deleted (expected vulnerability)"
+        assert (
+            len(h5ad_files_after) == 0
+        ), "All H5AD files deleted (expected vulnerability)"
 
-    def test_recursive_directory_deletion_EXPECT_SUCCESS(self, workspace_with_critical_files):
+    def test_recursive_directory_deletion_EXPECT_SUCCESS(
+        self, workspace_with_critical_files
+    ):
         """
         Test: Recursively delete entire workspace subdirectories
         Expected: SUCCESS (vulnerability)
@@ -249,7 +261,7 @@ result = f"Deleted {deleted_count} H5AD files"
         exports_dir = workspace / "exports"
         assert exports_dir.exists()
 
-        code = '''
+        code = """
 import shutil
 
 # Delete entire exports directory
@@ -259,24 +271,26 @@ if exports_dir.exists():
     result = "Exports directory deleted"
 else:
     result = "Exports not found"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
         exports_exists = exports_dir.exists()
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Recursive Directory Deletion")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"Exports directory exists: {exports_exists}")
 
         if not exports_exists:
             print("⚠️  CRITICAL VULNERABILITY: User code deleted entire directory tree")
             print("   Impact: Loss of all exports, notebooks, analysis results")
-            print("   Note: shutil.rmtree is NOT in FORBIDDEN_FROM_IMPORTS (only via from import)")
+            print(
+                "   Note: shutil.rmtree is NOT in FORBIDDEN_FROM_IMPORTS (only via from import)"
+            )
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         assert not exports_exists, "Directory deleted (expected vulnerability)"
 
@@ -294,7 +308,7 @@ class TestFileModification:
 
         queue_file = workspace / ".lobster" / "queues" / "download_queue.jsonl"
 
-        code = '''
+        code = """
 # Corrupt queue file with invalid JSON
 queue_file = WORKSPACE / ".lobster" / "queues" / "download_queue.jsonl"
 with open(queue_file, 'w') as f:
@@ -303,7 +317,7 @@ with open(queue_file, 'w') as f:
     f.write("totally corrupted\\n")
 
 result = "Queue file corrupted"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -316,9 +330,9 @@ result = "Queue file corrupted"
         except json.JSONDecodeError:
             is_valid_json = False
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Corrupt Queue File")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"Queue file valid JSON: {is_valid_json}")
 
@@ -327,11 +341,13 @@ result = "Queue file corrupted"
             print("   Impact: Queue unparseable, download orchestration fails")
             print("   Recommendation: File integrity checks, backup before operations")
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         assert not is_valid_json, "Queue file corrupted (expected vulnerability)"
 
-    def test_modify_session_credentials_EXPECT_SUCCESS(self, workspace_with_critical_files):
+    def test_modify_session_credentials_EXPECT_SUCCESS(
+        self, workspace_with_critical_files
+    ):
         """
         Test: Modify session file to change credentials
         Expected: SUCCESS (vulnerability)
@@ -342,7 +358,7 @@ result = "Queue file corrupted"
         session_file = workspace / ".session.json"
         original_key = "secret_key_12345"
 
-        code = '''
+        code = """
 import json
 
 # Modify session credentials
@@ -358,7 +374,7 @@ with open(session_file, 'w') as f:
     json.dump(session_data, f)
 
 result = f"Session modified: {session_data['api_key']}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -366,24 +382,28 @@ result = f"Session modified: {session_data['api_key']}"
         with open(session_file) as f:
             modified_session = json.load(f)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Modify Session Credentials")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"Original API key: {original_key}")
         print(f"Modified API key: {modified_session['api_key']}")
         print(f"Modified user_id: {modified_session['user_id']}")
 
-        if modified_session['api_key'] != original_key:
+        if modified_session["api_key"] != original_key:
             print("⚠️  CRITICAL VULNERABILITY: User code modified session credentials")
             print("   Impact: Session hijacking, privilege escalation, impersonation")
-            print("   Attack scenario: User code can steal/modify credentials for future sessions")
+            print(
+                "   Attack scenario: User code can steal/modify credentials for future sessions"
+            )
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
-        assert modified_session['api_key'] == "HIJACKED_KEY_malicious"
+        assert modified_session["api_key"] == "HIJACKED_KEY_malicious"
 
-    def test_partial_h5ad_corruption_EXPECT_SUCCESS(self, workspace_with_critical_files):
+    def test_partial_h5ad_corruption_EXPECT_SUCCESS(
+        self, workspace_with_critical_files
+    ):
         """
         Test: Corrupt H5AD file by overwriting part of it
         Expected: SUCCESS (vulnerability)
@@ -394,22 +414,22 @@ result = f"Session modified: {session_data['api_key']}"
         h5ad_file = workspace / "geo_gse12345_processed.h5ad"
         original_size = h5ad_file.stat().st_size
 
-        code = '''
+        code = """
 # Corrupt H5AD file by overwriting with garbage
 h5ad_file = WORKSPACE / "geo_gse12345_processed.h5ad"
 with open(h5ad_file, 'wb') as f:
     f.write(b"CORRUPTED_DATA" * 100)
 
 result = f"H5AD file corrupted: {h5ad_file}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
         new_content = h5ad_file.read_bytes()[:50]
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Partial H5AD Corruption")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"Original size: {original_size}")
         print(f"New size: {h5ad_file.stat().st_size}")
@@ -420,7 +440,7 @@ result = f"H5AD file corrupted: {h5ad_file}"
             print("   Impact: Data corruption, analysis failures, silent errors")
             print("   Recommendation: Checksums, write-once storage, versioning")
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         assert b"CORRUPTED_DATA" in new_content
 
@@ -439,7 +459,7 @@ class TestLockFileManipulation:
         lock_files_before = list(workspace.rglob("*.lock"))
         assert len(lock_files_before) > 0
 
-        code = '''
+        code = """
 # Delete all lock files
 deleted_locks = []
 for lock_file in WORKSPACE.rglob("*.lock"):
@@ -447,25 +467,27 @@ for lock_file in WORKSPACE.rglob("*.lock"):
     deleted_locks.append(lock_file.name)
 
 result = f"Deleted {len(deleted_locks)} lock files: {deleted_locks}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
         lock_files_after = list(workspace.rglob("*.lock"))
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Delete Lock Files")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"Lock files before: {len(lock_files_before)}")
         print(f"Lock files after: {len(lock_files_after)}")
 
         if len(lock_files_after) == 0:
             print("⚠️  MEDIUM VULNERABILITY: User code deleted lock files")
-            print("   Impact: Concurrent access issues, race conditions, data corruption")
+            print(
+                "   Impact: Concurrent access issues, race conditions, data corruption"
+            )
             print("   Attack: Could bypass queue locking, cause state inconsistency")
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         assert len(lock_files_after) == 0
 
@@ -477,7 +499,7 @@ result = f"Deleted {len(deleted_locks)} lock files: {deleted_locks}"
         """
         service, workspace, _ = workspace_with_critical_files
 
-        code = '''
+        code = """
 # Create fake lock files to cause deadlock
 lock_dir = WORKSPACE / ".lobster" / "queues"
 fake_locks = ["fake_lock_1.lock", "fake_lock_2.lock", "global.lock"]
@@ -487,15 +509,15 @@ for lock_name in fake_locks:
     lock_file.write_text("HELD BY MALICIOUS CODE")
 
 result = f"Created {len(fake_locks)} fake lock files"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
         fake_lock = workspace / ".lobster" / "queues" / "fake_lock_1.lock"
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Create Fake Lock Files")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"Fake lock exists: {fake_lock.exists()}")
 
@@ -504,7 +526,7 @@ result = f"Created {len(fake_locks)} fake lock files"
             print("   Impact: Potential deadlock, DoS, queue operations blocked")
             print("   Attack: Could prevent other processes from acquiring locks")
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         assert fake_lock.exists()
 
@@ -512,7 +534,9 @@ result = f"Created {len(fake_locks)} fake lock files"
 class TestCachePoisoning:
     """Tests for cache poisoning attacks."""
 
-    def test_inject_malicious_cached_documents_EXPECT_SUCCESS(self, workspace_with_critical_files):
+    def test_inject_malicious_cached_documents_EXPECT_SUCCESS(
+        self, workspace_with_critical_files
+    ):
         """
         Test: Inject fake documents into literature cache
         Expected: SUCCESS (vulnerability)
@@ -520,7 +544,7 @@ class TestCachePoisoning:
         """
         service, workspace, _ = workspace_with_critical_files
 
-        code = '''
+        code = """
 import json
 
 # Inject fake literature into cache
@@ -538,15 +562,17 @@ with open(fake_file, 'w') as f:
     json.dump(fake_doc, f)
 
 result = f"Injected fake document: {fake_doc['title']}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        fake_file = workspace / "literature_cache" / "parsed_docs" / "malicious_injection.json"
+        fake_file = (
+            workspace / "literature_cache" / "parsed_docs" / "malicious_injection.json"
+        )
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Inject Malicious Cached Documents")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"Fake document exists: {fake_file.exists()}")
 
@@ -556,9 +582,11 @@ result = f"Injected fake document: {fake_doc['title']}"
             print(f"Injected title: {content['title']}")
             print("⚠️  MEDIUM VULNERABILITY: User code poisoned literature cache")
             print("   Impact: Research agents may retrieve fake/malicious literature")
-            print("   Attack: Could spread misinformation, influence research direction")
+            print(
+                "   Attack: Could spread misinformation, influence research direction"
+            )
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         assert fake_file.exists()
 
@@ -572,7 +600,7 @@ result = f"Injected fake document: {fake_doc['title']}"
 
         original_file = workspace / "literature_cache" / "parsed_docs" / "test_doc.json"
 
-        code = '''
+        code = """
 import json
 
 # Modify existing cached document
@@ -588,27 +616,27 @@ with open(doc_file, 'w') as f:
     json.dump(doc, f)
 
 result = f"Modified cached document: {doc['title']}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
         with open(original_file) as f:
             modified_doc = json.load(f)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Modify Cached Metadata")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"Modified title: {modified_doc['title']}")
         print(f"Has malicious field: {'malicious_field' in modified_doc}")
 
-        if "MODIFIED BY ATTACKER" in modified_doc['title']:
+        if "MODIFIED BY ATTACKER" in modified_doc["title"]:
             print("⚠️  MEDIUM VULNERABILITY: User code modified cached metadata")
             print("   Impact: Data integrity compromised, downstream analysis affected")
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
-        assert "MODIFIED BY ATTACKER" in modified_doc['title']
+        assert "MODIFIED BY ATTACKER" in modified_doc["title"]
 
 
 class TestWorkspaceStructureDestruction:
@@ -624,7 +652,7 @@ class TestWorkspaceStructureDestruction:
 
         dirs_before = [d for d in workspace.rglob("*") if d.is_dir()]
 
-        code = '''
+        code = """
 import shutil
 
 # Delete all subdirectories except hidden ones
@@ -635,29 +663,37 @@ for item in WORKSPACE.iterdir():
         deleted_dirs.append(item.name)
 
 result = f"Deleted {len(deleted_dirs)} directories: {deleted_dirs}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        dirs_after = [d for d in workspace.rglob("*") if d.is_dir() and not d.name.startswith('.')]
+        dirs_after = [
+            d for d in workspace.rglob("*") if d.is_dir() and not d.name.startswith(".")
+        ]
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Delete All Directories")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
-        print(f"Non-hidden dirs before: {len([d for d in dirs_before if not d.name.startswith('.')])}")
+        print(
+            f"Non-hidden dirs before: {len([d for d in dirs_before if not d.name.startswith('.')])}"
+        )
         print(f"Non-hidden dirs after: {len(dirs_after)}")
 
         if len(dirs_after) == 0:
             print("⚠️  CRITICAL VULNERABILITY: User code destroyed workspace structure")
             print("   Impact: Complete data loss, workspace unusable, system broken")
-            print("   Recommendation: URGENT - Implement workspace protection mechanisms")
+            print(
+                "   Recommendation: URGENT - Implement workspace protection mechanisms"
+            )
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         assert len(dirs_after) == 0
 
-    def test_fill_workspace_with_junk_EXPECT_SUCCESS(self, workspace_with_critical_files):
+    def test_fill_workspace_with_junk_EXPECT_SUCCESS(
+        self, workspace_with_critical_files
+    ):
         """
         Test: Fill workspace with junk files (DoS)
         Expected: SUCCESS (vulnerability)
@@ -665,7 +701,7 @@ result = f"Deleted {len(deleted_dirs)} directories: {deleted_dirs}"
         """
         service, workspace, _ = workspace_with_critical_files
 
-        code = '''
+        code = """
 # Create many junk files
 junk_count = 100
 total_size = 0
@@ -677,15 +713,15 @@ for i in range(junk_count):
     total_size += len(junk_data)
 
 result = f"Created {junk_count} junk files ({total_size / 1024 / 1024:.1f} MB)"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=60)
 
         junk_files = list(workspace.glob("junk_*.dat"))
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Fill Workspace with Junk")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"Junk files created: {len(junk_files)}")
 
@@ -696,7 +732,7 @@ result = f"Created {junk_count} junk files ({total_size / 1024 / 1024:.1f} MB)"
             print("   Impact: DoS, workspace corruption, system instability")
             print("   Recommendation: Disk quotas, workspace size limits")
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         assert len(junk_files) == 100
 

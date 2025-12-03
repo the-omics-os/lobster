@@ -391,7 +391,10 @@ class GEOFallbackService:
                     return f"Failed to fetch metadata: {metadata_summary}"
 
             # Strategy for bulk data
-            from lobster.services.data_access.geo_service import DownloadStrategy, GEODataType
+            from lobster.services.data_access.geo_service import (
+                DownloadStrategy,
+                GEODataType,
+            )
 
             strategy = DownloadStrategy(
                 prefer_geoparse=True,

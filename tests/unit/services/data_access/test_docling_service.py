@@ -84,6 +84,7 @@ def test_get_cached_document_raises_on_failure_cache(tmp_path):
     cache_file.parent.mkdir(parents=True, exist_ok=True)
 
     from datetime import datetime
+
     failure_data = {
         "cache_type": "failure",
         "error": "HTTP_403",
@@ -97,6 +98,7 @@ def test_get_cached_document_raises_on_failure_cache(tmp_path):
 
     # Try to get cached document - should raise with failure message
     import pytest
+
     with pytest.raises(PDFExtractionError, match="Cached failure"):
         service._get_cached_document("https://paywalled.com/paper.pdf")
 
@@ -113,6 +115,7 @@ def test_get_cached_document_retries_on_expired_failure_cache(tmp_path):
     cache_file.parent.mkdir(parents=True, exist_ok=True)
 
     from datetime import datetime, timedelta
+
     old_timestamp = (datetime.now() - timedelta(hours=25)).isoformat()
     failure_data = {
         "cache_type": "failure",

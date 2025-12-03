@@ -24,9 +24,9 @@ from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.providers.base_provider import (
     BasePublicationProvider,
     DatasetType,
+    ProviderCapability,
     PublicationMetadata,
     PublicationSource,
-    ProviderCapability,
 )
 from lobster.utils.logger import get_logger
 from lobster.utils.ssl_utils import create_ssl_context, handle_ssl_error
@@ -213,7 +213,9 @@ class MassIVEProvider(BasePublicationProvider):
             datasets = datasets[:max_results]
 
             # Format response
-            result = f"Found {len(datasets)} MassIVE dataset(s) for query: '{query}'\n\n"
+            result = (
+                f"Found {len(datasets)} MassIVE dataset(s) for query: '{query}'\n\n"
+            )
 
             if not datasets:
                 return result + "No datasets found. Try different keywords."
@@ -280,9 +282,7 @@ class MassIVEProvider(BasePublicationProvider):
         try:
             # PROXI doesn't have direct PMID linking
             # Search using identifier as keyword
-            return self.search_publications(
-                query=identifier, max_results=50, **kwargs
-            )
+            return self.search_publications(query=identifier, max_results=50, **kwargs)
 
         except Exception as e:
             logger.error(f"Error finding linked MassIVE datasets: {e}")
@@ -328,9 +328,9 @@ class MassIVEProvider(BasePublicationProvider):
             return PublicationMetadata(
                 uid=identifier,
                 title=dataset.get("title", ""),
-                journal=publications[0].get("referenceLine", "")
-                if publications
-                else None,
+                journal=(
+                    publications[0].get("referenceLine", "") if publications else None
+                ),
                 published=dataset.get("publicationDate"),
                 doi=doi,
                 pmid=pmid,
@@ -398,9 +398,7 @@ class MassIVEProvider(BasePublicationProvider):
 
             # PROXI doesn't provide file listing in v0.1
             # Would need to implement FTP directory listing or use web API
-            logger.warning(
-                f"MassIVE FTP URL construction for {accession}: {ftp_base}"
-            )
+            logger.warning(f"MassIVE FTP URL construction for {accession}: {ftp_base}")
             logger.warning(
                 "PROXI v0.1 doesn't provide file listings - need FTP directory scan"
             )

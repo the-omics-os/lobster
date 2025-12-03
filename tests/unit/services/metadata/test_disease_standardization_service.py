@@ -2,10 +2,13 @@
 Unit tests for DiseaseStandardizationService
 """
 
-import pytest
-import pandas as pd
 import numpy as np
-from lobster.services.metadata.disease_standardization_service import DiseaseStandardizationService
+import pandas as pd
+import pytest
+
+from lobster.services.metadata.disease_standardization_service import (
+    DiseaseStandardizationService,
+)
 
 
 @pytest.fixture
@@ -17,39 +20,32 @@ def service():
 @pytest.fixture
 def sample_metadata():
     """Create sample metadata for testing."""
-    return pd.DataFrame({
-        "sample_id": ["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8"],
-        "disease": [
-            "Colorectal Cancer",  # CRC - exact match
-            "CRC",                # CRC - exact match
-            "Ulcerative Colitis", # UC - exact match
-            "Crohn's Disease",    # CD - exact match
-            "Healthy Control",    # Healthy - contains match
-            "tumor",              # CRC - contains match
-            "Normal",             # Healthy - exact match
-            "Unknown Disease"     # Unmapped
-        ],
-        "sample_type": [
-            "fecal",
-            "Stool",
-            "feces",
-            "biopsy",
-            "tissue",
-            "fecal sample",
-            "gut tissue",
-            "fecal"
-        ],
-        "tissue": [
-            None,
-            None,
-            None,
-            "colon",
-            "rectal",
-            None,
-            "intestinal",
-            None
-        ]
-    })
+    return pd.DataFrame(
+        {
+            "sample_id": ["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8"],
+            "disease": [
+                "Colorectal Cancer",  # CRC - exact match
+                "CRC",  # CRC - exact match
+                "Ulcerative Colitis",  # UC - exact match
+                "Crohn's Disease",  # CD - exact match
+                "Healthy Control",  # Healthy - contains match
+                "tumor",  # CRC - contains match
+                "Normal",  # Healthy - exact match
+                "Unknown Disease",  # Unmapped
+            ],
+            "sample_type": [
+                "fecal",
+                "Stool",
+                "feces",
+                "biopsy",
+                "tissue",
+                "fecal sample",
+                "gut tissue",
+                "fecal",
+            ],
+            "tissue": [None, None, None, "colon", "rectal", None, "intestinal", None],
+        }
+    )
 
 
 class TestDiseaseStandardization:
@@ -57,9 +53,7 @@ class TestDiseaseStandardization:
 
     def test_exact_match(self, service):
         """Test exact matching of disease terms."""
-        metadata = pd.DataFrame({
-            "disease": ["CRC", "UC", "CD", "Healthy"]
-        })
+        metadata = pd.DataFrame({"disease": ["CRC", "UC", "CD", "Healthy"]})
 
         result, stats, ir = service.standardize_disease_terms(metadata, "disease")
 
@@ -69,13 +63,15 @@ class TestDiseaseStandardization:
 
     def test_contains_match(self, service):
         """Test contains matching (value contains variant)."""
-        metadata = pd.DataFrame({
-            "disease": [
-                "Colorectal Cancer Stage II",
-                "Active Ulcerative Colitis",
-                "Crohn's Disease with complications"
-            ]
-        })
+        metadata = pd.DataFrame(
+            {
+                "disease": [
+                    "Colorectal Cancer Stage II",
+                    "Active Ulcerative Colitis",
+                    "Crohn's Disease with complications",
+                ]
+            }
+        )
 
         result, stats, ir = service.standardize_disease_terms(metadata, "disease")
 
@@ -84,9 +80,7 @@ class TestDiseaseStandardization:
 
     def test_reverse_contains_match(self, service):
         """Test reverse contains matching (variant contains value)."""
-        metadata = pd.DataFrame({
-            "disease": ["cancer", "colitis", "tumor"]
-        })
+        metadata = pd.DataFrame({"disease": ["cancer", "colitis", "tumor"]})
 
         result, stats, ir = service.standardize_disease_terms(metadata, "disease")
 
@@ -98,12 +92,14 @@ class TestDiseaseStandardization:
 
     def test_token_match(self, service):
         """Test token-based matching."""
-        metadata = pd.DataFrame({
-            "disease": [
-                "rectal adenocarcinoma",  # Should match CRC (tokens: rectal, cancer)
-                "colon tumor"              # Should match CRC (tokens: colon, tumor)
-            ]
-        })
+        metadata = pd.DataFrame(
+            {
+                "disease": [
+                    "rectal adenocarcinoma",  # Should match CRC (tokens: rectal, cancer)
+                    "colon tumor",  # Should match CRC (tokens: colon, tumor)
+                ]
+            }
+        )
 
         result, stats, ir = service.standardize_disease_terms(metadata, "disease")
 
@@ -111,9 +107,9 @@ class TestDiseaseStandardization:
 
     def test_unmapped_terms(self, service):
         """Test handling of unmapped terms."""
-        metadata = pd.DataFrame({
-            "disease": ["Unknown Disease", "Rare Condition", "N/A"]
-        })
+        metadata = pd.DataFrame(
+            {"disease": ["Unknown Disease", "Rare Condition", "N/A"]}
+        )
 
         result, stats, ir = service.standardize_disease_terms(metadata, "disease")
 
@@ -125,9 +121,9 @@ class TestDiseaseStandardization:
 
     def test_case_insensitive_matching(self, service):
         """Test case-insensitive matching."""
-        metadata = pd.DataFrame({
-            "disease": ["CRC", "crc", "Crc", "COLORECTAL CANCER", "colorectal cancer"]
-        })
+        metadata = pd.DataFrame(
+            {"disease": ["CRC", "crc", "Crc", "COLORECTAL CANCER", "colorectal cancer"]}
+        )
 
         result, stats, ir = service.standardize_disease_terms(metadata, "disease")
 
@@ -137,15 +133,17 @@ class TestDiseaseStandardization:
 
     def test_punctuation_handling(self, service):
         """Test handling of punctuation in disease terms."""
-        metadata = pd.DataFrame({
-            "disease": [
-                "Crohn's Disease",
-                "Crohns Disease",
-                "Crohn Disease",
-                "ulcerative-colitis",
-                "ulcerative_colitis"
-            ]
-        })
+        metadata = pd.DataFrame(
+            {
+                "disease": [
+                    "Crohn's Disease",
+                    "Crohns Disease",
+                    "Crohn Disease",
+                    "ulcerative-colitis",
+                    "ulcerative_colitis",
+                ]
+            }
+        )
 
         result, stats, ir = service.standardize_disease_terms(metadata, "disease")
 
@@ -211,9 +209,7 @@ class TestSampleTypeFiltering:
     def test_fecal_only_filter(self, service, sample_metadata):
         """Test filtering for fecal samples only."""
         result, stats, ir = service.filter_by_sample_type(
-            sample_metadata,
-            sample_types=["fecal"],
-            sample_columns=["sample_type"]
+            sample_metadata, sample_types=["fecal"], sample_columns=["sample_type"]
         )
 
         # Should keep S1, S2, S3, S6, S8 (fecal/stool/feces/fecal sample/fecal)
@@ -226,7 +222,7 @@ class TestSampleTypeFiltering:
         result, stats, ir = service.filter_by_sample_type(
             sample_metadata,
             sample_types=["gut"],
-            sample_columns=["sample_type", "tissue"]
+            sample_columns=["sample_type", "tissue"],
         )
 
         # Should keep samples with biopsy, tissue, colon, rectal, intestinal
@@ -239,7 +235,7 @@ class TestSampleTypeFiltering:
         result, stats, ir = service.filter_by_sample_type(
             sample_metadata,
             sample_types=["fecal"],
-            sample_columns=["sample_type", "tissue"]
+            sample_columns=["sample_type", "tissue"],
         )
 
         # Should find fecal in sample_type column
@@ -248,15 +244,16 @@ class TestSampleTypeFiltering:
 
     def test_auto_column_detection(self, service):
         """Test automatic detection of sample type columns."""
-        metadata = pd.DataFrame({
-            "sample_id": ["S1", "S2"],
-            "sample_type": ["fecal", "tissue"],
-            "body_site": ["gut", "gut"]
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["S1", "S2"],
+                "sample_type": ["fecal", "tissue"],
+                "body_site": ["gut", "gut"],
+            }
+        )
 
         result, stats, ir = service.filter_by_sample_type(
-            metadata,
-            sample_types=["fecal"]
+            metadata, sample_types=["fecal"]
         )
 
         # Should auto-detect sample_type and body_site columns
@@ -265,10 +262,7 @@ class TestSampleTypeFiltering:
 
     def test_no_columns_found_error(self, service):
         """Test error when no sample type columns found."""
-        metadata = pd.DataFrame({
-            "sample_id": ["S1", "S2"],
-            "disease": ["CRC", "UC"]
-        })
+        metadata = pd.DataFrame({"sample_id": ["S1", "S2"], "disease": ["CRC", "UC"]})
 
         with pytest.raises(ValueError, match="No sample type columns found"):
             service.filter_by_sample_type(metadata, sample_types=["fecal"])
@@ -278,7 +272,7 @@ class TestSampleTypeFiltering:
         result, stats, ir = service.filter_by_sample_type(
             sample_metadata,
             sample_types=["blood"],  # No blood samples in test data
-            sample_columns=["sample_type"]
+            sample_columns=["sample_type"],
         )
 
         assert len(result) == 0
@@ -287,14 +281,10 @@ class TestSampleTypeFiltering:
 
     def test_case_insensitive_sample_type(self, service):
         """Test case-insensitive sample type matching."""
-        metadata = pd.DataFrame({
-            "sample_type": ["FECAL", "Fecal", "fecal", "STOOL"]
-        })
+        metadata = pd.DataFrame({"sample_type": ["FECAL", "Fecal", "fecal", "STOOL"]})
 
         result, stats, ir = service.filter_by_sample_type(
-            metadata,
-            sample_types=["fecal"],
-            sample_columns=["sample_type"]
+            metadata, sample_types=["fecal"], sample_columns=["sample_type"]
         )
 
         assert len(result) == 4  # All should match
@@ -302,9 +292,7 @@ class TestSampleTypeFiltering:
     def test_filter_statistics(self, service, sample_metadata):
         """Test that filter statistics are complete."""
         result, stats, ir = service.filter_by_sample_type(
-            sample_metadata,
-            sample_types=["fecal"],
-            sample_columns=["sample_type"]
+            sample_metadata, sample_types=["fecal"], sample_columns=["sample_type"]
         )
 
         assert "original_samples" in stats
@@ -317,9 +305,7 @@ class TestSampleTypeFiltering:
     def test_filter_provenance_ir(self, service, sample_metadata):
         """Test that filter provenance IR is generated."""
         result, stats, ir = service.filter_by_sample_type(
-            sample_metadata,
-            sample_types=["fecal"],
-            sample_columns=["sample_type"]
+            sample_metadata, sample_types=["fecal"], sample_columns=["sample_type"]
         )
 
         assert ir.operation == "sample_type_filter"
@@ -353,16 +339,12 @@ class TestHelperMethods:
 
         # Token match (note: "disease" is a token in CRC mappings)
         match, match_type = service._fuzzy_match(
-            "completely unknown disease",
-            service.DISEASE_MAPPINGS
+            "completely unknown disease", service.DISEASE_MAPPINGS
         )
         assert match_type == "token"  # "disease" token matches CRC
 
         # Truly unmapped
-        match, match_type = service._fuzzy_match(
-            "xyz123",
-            service.DISEASE_MAPPINGS
-        )
+        match, match_type = service._fuzzy_match("xyz123", service.DISEASE_MAPPINGS)
         assert match_type == "unmapped"
         assert match == "xyz123"  # Original value preserved
 
@@ -381,9 +363,7 @@ class TestEdgeCases:
 
     def test_nan_values(self, service):
         """Test handling of NaN values."""
-        metadata = pd.DataFrame({
-            "disease": ["CRC", np.nan, "UC", None]
-        })
+        metadata = pd.DataFrame({"disease": ["CRC", np.nan, "UC", None]})
 
         result, stats, ir = service.standardize_disease_terms(metadata, "disease")
 
@@ -393,9 +373,7 @@ class TestEdgeCases:
 
     def test_numeric_values(self, service):
         """Test handling of numeric disease values."""
-        metadata = pd.DataFrame({
-            "disease": [1, 2, 3]
-        })
+        metadata = pd.DataFrame({"disease": [1, 2, 3]})
 
         result, stats, ir = service.standardize_disease_terms(metadata, "disease")
 
@@ -406,13 +384,9 @@ class TestEdgeCases:
 
     def test_special_characters(self, service):
         """Test handling of special characters."""
-        metadata = pd.DataFrame({
-            "disease": [
-                "Crohn's (active)",
-                "UC [moderate]",
-                "CRC - stage 2"
-            ]
-        })
+        metadata = pd.DataFrame(
+            {"disease": ["Crohn's (active)", "UC [moderate]", "CRC - stage 2"]}
+        )
 
         result, stats, ir = service.standardize_disease_terms(metadata, "disease")
 

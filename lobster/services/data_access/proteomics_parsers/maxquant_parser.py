@@ -160,14 +160,18 @@ class MaxQuantParser(ProteomicsParser):
             )
             # More permissive check for intensity columns
             intensity_cols = [
-                col for col in columns if "intensity" in col.lower() and col.lower() != "intensity"
+                col
+                for col in columns
+                if "intensity" in col.lower() and col.lower() != "intensity"
             ]
 
             if not intensity_cols:
                 logger.debug("No intensity columns found")
                 return False
 
-            logger.debug(f"Valid MaxQuant file: {len(intensity_cols)} intensity columns found")
+            logger.debug(
+                f"Valid MaxQuant file: {len(intensity_cols)} intensity columns found"
+            )
             return True
 
         except Exception as e:
@@ -226,7 +230,9 @@ class MaxQuantParser(ProteomicsParser):
             logger.info(f"Loaded {n_proteins_raw} protein groups")
 
             # Determine intensity type and get columns
-            intensity_cols, detected_type = self._detect_intensity_columns(df, intensity_type)
+            intensity_cols, detected_type = self._detect_intensity_columns(
+                df, intensity_type
+            )
             sample_names = self._extract_sample_names(intensity_cols, detected_type)
 
             logger.info(
@@ -234,7 +240,9 @@ class MaxQuantParser(ProteomicsParser):
             )
 
             # Extract intensity matrix
-            intensity_matrix = df[intensity_cols].values.T  # Transpose: samples x proteins
+            intensity_matrix = df[
+                intensity_cols
+            ].values.T  # Transpose: samples x proteins
 
             # Replace 0 with NaN (MaxQuant uses 0 for missing values)
             intensity_matrix = np.where(intensity_matrix == 0, np.nan, intensity_matrix)
@@ -305,7 +313,9 @@ class MaxQuantParser(ProteomicsParser):
                 n_removed = (~mask).sum()
                 filter_stats["n_low_peptides"] = int(n_removed)
                 adata = adata[:, mask].copy()
-                logger.info(f"Removed {n_removed} proteins with <{min_peptides} peptides")
+                logger.info(
+                    f"Removed {n_removed} proteins with <{min_peptides} peptides"
+                )
 
             if min_unique_peptides > 0 and "unique_peptides" in adata.var.columns:
                 mask = adata.var["unique_peptides"] >= min_unique_peptides
@@ -319,7 +329,9 @@ class MaxQuantParser(ProteomicsParser):
             # Calculate missing value statistics
             total_values = adata.X.size
             missing_values = np.isnan(adata.X).sum()
-            missing_percentage = (missing_values / total_values) * 100 if total_values > 0 else 0
+            missing_percentage = (
+                (missing_values / total_values) * 100 if total_values > 0 else 0
+            )
 
             # Build statistics
             stats = self._create_base_stats(
@@ -458,7 +470,9 @@ class MaxQuantParser(ProteomicsParser):
 
         # Optional identifiers
         if "Majority protein IDs" in df.columns:
-            var_data["majority_protein_ids"] = df["Majority protein IDs"].fillna("").astype(str)
+            var_data["majority_protein_ids"] = (
+                df["Majority protein IDs"].fillna("").astype(str)
+            )
 
         if "Gene names" in df.columns:
             var_data["gene_names"] = df["Gene names"].fillna("").astype(str)
@@ -468,10 +482,16 @@ class MaxQuantParser(ProteomicsParser):
 
         # Quality metrics
         if "Peptides" in df.columns:
-            var_data["peptide_count"] = pd.to_numeric(df["Peptides"], errors="coerce").fillna(0).astype(int)
+            var_data["peptide_count"] = (
+                pd.to_numeric(df["Peptides"], errors="coerce").fillna(0).astype(int)
+            )
 
         if "Unique peptides" in df.columns:
-            var_data["unique_peptides"] = pd.to_numeric(df["Unique peptides"], errors="coerce").fillna(0).astype(int)
+            var_data["unique_peptides"] = (
+                pd.to_numeric(df["Unique peptides"], errors="coerce")
+                .fillna(0)
+                .astype(int)
+            )
 
         if "Sequence coverage [%]" in df.columns:
             var_data["sequence_coverage"] = pd.to_numeric(
@@ -488,7 +508,9 @@ class MaxQuantParser(ProteomicsParser):
 
         # Quality flags
         if "Potential contaminant" in df.columns:
-            var_data["is_contaminant"] = df["Potential contaminant"].fillna("").str.strip() == "+"
+            var_data["is_contaminant"] = (
+                df["Potential contaminant"].fillna("").str.strip() == "+"
+            )
         else:
             # Check protein IDs for contaminant prefix
             var_data["is_contaminant"] = var_data["protein_ids"].str.contains(

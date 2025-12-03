@@ -122,9 +122,11 @@ class IdentifierProvenanceService:
         results = []
 
         # Layer 1: Section-based extraction
-        da_identifiers = self.resolver.extract_accessions_with_metadata(
-            data_availability_text
-        ) if data_availability_text else []
+        da_identifiers = (
+            self.resolver.extract_accessions_with_metadata(data_availability_text)
+            if data_availability_text
+            else []
+        )
         all_identifiers = self.resolver.extract_accessions_with_metadata(full_text)
 
         # Mark identifiers found in Data Availability
@@ -172,8 +174,10 @@ class IdentifierProvenanceService:
                     f"Running E-Link validation for {accession} → PMID:{source_pmid}"
                 )
                 try:
-                    elink_result = self.pubmed_provider.validate_bioproject_publication_link(
-                        accession, source_pmid
+                    elink_result = (
+                        self.pubmed_provider.validate_bioproject_publication_link(
+                            accession, source_pmid
+                        )
                     )
                     provenance = elink_result["provenance"]
                     base_confidence = elink_result["confidence"]
@@ -299,9 +303,7 @@ class IdentifierProvenanceService:
 
         return "\n".join(parts) if parts else None
 
-    def to_dict_list(
-        self, identifiers: List[IdentifierWithProvenance]
-    ) -> List[Dict]:
+    def to_dict_list(self, identifiers: List[IdentifierWithProvenance]) -> List[Dict]:
         """
         Convert identifiers to list of dictionaries for serialization.
 

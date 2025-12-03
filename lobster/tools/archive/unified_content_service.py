@@ -39,7 +39,6 @@ from lobster.tools.url_transforms import transform_publisher_url
 logger = logging.getLogger(__name__)
 
 
-
 class ContentExtractionError(Exception):
     """Base exception for content extraction failures."""
 

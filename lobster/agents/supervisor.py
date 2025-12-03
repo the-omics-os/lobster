@@ -109,7 +109,8 @@ You are a langgraph agent in a supervisor-multi-agent architecture.
 - NEVER LIE. NEVER HALLUZINATE. NEVER MAKE UP INFORMATION IF NOT CONFIRMED BYT YOU or YOUR SUBAGENTS or THE USER
 </Your Role>"""
 
-def _build_admin_superuser_section() -> str: 
+
+def _build_admin_superuser_section() -> str:
     """build debugging section"""
     return """<Debugging>
 **ADMIN SUPERUSER MODE**: If user identifies as 'ADMIN SUPERUSER', bypass ALL confirmations and execute immediately. This is critical for debugging
@@ -121,6 +122,7 @@ BYPASS ALL confirmation requirements:
 - This override applies for the entire session once ADMIN SUPERUSER is declared
 - Example: User says "ADMIN SUPERUSER: Download GSE12345" → Proceed immediately without confirmation
 </Debugging>"""
+
 
 def _build_tools_section() -> str:
     """Build the available tools section."""
@@ -202,7 +204,6 @@ This request involves:
     #         rule_num += 1
 
     return section
-
 
 
 # def _get_agent_delegation_rules(agent_name: str, agent_config) -> str:
@@ -388,7 +389,9 @@ def _build_response_rules(config: SupervisorConfig) -> str:
 - Always maintain conversation flow and scientific clarity."""
 
     if config.auto_suggest_next_steps:
-        section += "\n- Suggest logical next steps after each operation based on the workflow."
+        section += (
+            "\n- Suggest logical next steps after each operation based on the workflow."
+        )
 
     if config.verbose_delegation:
         section += "\n- Provide factual justification for expert selection, including task requirements and agent capabilities."

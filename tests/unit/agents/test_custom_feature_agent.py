@@ -25,7 +25,6 @@ from lobster.core.data_manager_v2 import DataManagerV2
 from tests.mock_data.base import SMALL_DATASET_CONFIG
 from tests.mock_data.factories import SingleCellDataFactory
 
-
 # ===============================================================================
 # Mock Objects and Fixtures
 # ===============================================================================
@@ -78,7 +77,9 @@ def mock_claude_sdk_client():
 
     # Create mock message types
     mock_text_block = Mock()
-    mock_text_block.text = "Created file: lobster/services/analysis/test_feature_service.py"
+    mock_text_block.text = (
+        "Created file: lobster/services/analysis/test_feature_service.py"
+    )
 
     mock_assistant_message = Mock()
     mock_assistant_message.content = [mock_text_block]
@@ -138,8 +139,8 @@ class TestFeatureNameValidation:
         """Test that uppercase names are rejected."""
         invalid_names = [
             "SpatialTranscriptomics",  # PascalCase
-            "METABOLOMICS",             # ALL CAPS
-            "Variant_Calling",          # Mixed case
+            "METABOLOMICS",  # ALL CAPS
+            "Variant_Calling",  # Mixed case
         ]
 
         pattern = r"^[a-z][a-z0-9_]*$"
@@ -153,7 +154,7 @@ class TestFeatureNameValidation:
             "spatial-transcriptomics",  # hyphens
             "spatial transcriptomics",  # spaces
             "spatial.transcriptomics",  # dots
-            "spatial@omics",            # special chars
+            "spatial@omics",  # special chars
         ]
 
         pattern = r"^[a-z][a-z0-9_]*$"
@@ -243,13 +244,23 @@ class TestCheckExistingFiles:
 
         # Check service files in all categories
         service_categories = [
-            "analysis", "data_access", "data_management", "metadata",
-            "ml", "orchestration", "quality", "visualization"
+            "analysis",
+            "data_access",
+            "data_management",
+            "metadata",
+            "ml",
+            "orchestration",
+            "quality",
+            "visualization",
         ]
 
         for category in service_categories:
             service_file = (
-                lobster_root / "lobster" / "services" / category / f"{feature_name}_service.py"
+                lobster_root
+                / "lobster"
+                / "services"
+                / category
+                / f"{feature_name}_service.py"
             )
             assert not service_file.exists()
 
@@ -269,7 +280,11 @@ class TestCheckExistingFiles:
 
         # Create service file in analysis/
         service_file = (
-            lobster_root / "lobster" / "services" / "analysis" / f"{feature_name}_service.py"
+            lobster_root
+            / "lobster"
+            / "services"
+            / "analysis"
+            / f"{feature_name}_service.py"
         )
         service_file.write_text("# Existing service")
 
@@ -281,7 +296,11 @@ class TestCheckExistingFiles:
 
         # Create service file in quality/
         service_file = (
-            lobster_root / "lobster" / "services" / "quality" / f"{feature_name}_service.py"
+            lobster_root
+            / "lobster"
+            / "services"
+            / "quality"
+            / f"{feature_name}_service.py"
         )
         service_file.write_text("# Existing service")
 
@@ -292,7 +311,9 @@ class TestCheckExistingFiles:
         feature_name = "legacy_feature"
 
         # Create service file in legacy tools/ location
-        legacy_service = lobster_root / "lobster" / "tools" / f"{feature_name}_service.py"
+        legacy_service = (
+            lobster_root / "lobster" / "tools" / f"{feature_name}_service.py"
+        )
         legacy_service.write_text("# Legacy service")
 
         assert legacy_service.exists()
@@ -324,8 +345,14 @@ class TestCheckExistingFiles:
     def test_scan_all_service_categories(self, lobster_root):
         """Test that all 8 service categories are scanned."""
         service_categories = [
-            "analysis", "data_access", "data_management", "metadata",
-            "ml", "orchestration", "quality", "visualization"
+            "analysis",
+            "data_access",
+            "data_management",
+            "metadata",
+            "ml",
+            "orchestration",
+            "quality",
+            "visualization",
         ]
 
         # Verify all categories exist
@@ -367,8 +394,7 @@ class TestCustomFeatureAgentCreation:
         mock_callback = Mock()
 
         agent = custom_feature_agent(
-            data_manager=mock_data_manager,
-            callback_handler=mock_callback
+            data_manager=mock_data_manager, callback_handler=mock_callback
         )
 
         assert agent is not None
@@ -378,8 +404,7 @@ class TestCustomFeatureAgentCreation:
         from lobster.agents.custom_feature_agent import custom_feature_agent
 
         agent = custom_feature_agent(
-            data_manager=mock_data_manager,
-            agent_name="my_custom_feature_agent"
+            data_manager=mock_data_manager, agent_name="my_custom_feature_agent"
         )
 
         assert agent is not None
@@ -398,7 +423,8 @@ class TestPackageDetection:
         """Test detection of Python imports from file content."""
         # Create a test Python file
         test_file = tmp_path / "test_service.py"
-        test_file.write_text("""
+        test_file.write_text(
+            """
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -407,7 +433,8 @@ import scanpy as sc
 from lobster.core.data_manager_v2 import DataManagerV2
 import os
 import sys
-""")
+"""
+        )
 
         # Extract imports using regex (same pattern as custom_feature_agent)
         content = test_file.read_text()
@@ -445,9 +472,20 @@ import sys
     def test_detect_bioinformatics_tools(self):
         """Test detection of bioinformatics system tools."""
         system_tools = {
-            "samtools", "bcftools", "bedtools", "bwa", "bowtie2",
-            "kallisto", "salmon", "star", "hisat2", "featurecounts",
-            "blastn", "blastp", "blastx", "makeblastdb"
+            "samtools",
+            "bcftools",
+            "bedtools",
+            "bwa",
+            "bowtie2",
+            "kallisto",
+            "salmon",
+            "star",
+            "hisat2",
+            "featurecounts",
+            "blastn",
+            "blastp",
+            "blastx",
+            "makeblastdb",
         }
 
         # These should be recognized as system tools
@@ -486,11 +524,12 @@ class TestBranchCreation:
         mock_run.return_value = Mock(returncode=1, stdout="", stderr="")
 
         import subprocess
+
         result = subprocess.run(
             ["git", "rev-parse", "--verify", "feature/test_123456"],
             capture_output=True,
             text=True,
-            check=False
+            check=False,
         )
 
         # Branch doesn't exist when returncode != 0
@@ -501,17 +540,13 @@ class TestBranchCreation:
         """Test uncommitted changes detection."""
         # Simulate uncommitted changes
         mock_run.return_value = Mock(
-            returncode=0,
-            stdout="M modified_file.py\n?? untracked_file.py",
-            stderr=""
+            returncode=0, stdout="M modified_file.py\n?? untracked_file.py", stderr=""
         )
 
         import subprocess
+
         result = subprocess.run(
-            ["git", "status", "--porcelain"],
-            capture_output=True,
-            text=True,
-            check=True
+            ["git", "status", "--porcelain"], capture_output=True, text=True, check=True
         )
 
         # Has uncommitted changes
@@ -544,8 +579,14 @@ class TestSDKIntegrationMocked:
     def test_prompt_includes_service_categories(self):
         """Test that SDK prompt includes all service categories."""
         service_categories = [
-            "analysis", "data_access", "data_management", "metadata",
-            "ml", "orchestration", "quality", "visualization"
+            "analysis",
+            "data_access",
+            "data_management",
+            "metadata",
+            "ml",
+            "orchestration",
+            "quality",
+            "visualization",
         ]
 
         # This is what the prompt should contain
@@ -569,8 +610,14 @@ class TestSDKIntegrationMocked:
 
         for feature_hint, expected_category in mapping_hints.items():
             assert expected_category in [
-                "analysis", "data_access", "data_management", "metadata",
-                "ml", "orchestration", "quality", "visualization"
+                "analysis",
+                "data_access",
+                "data_management",
+                "metadata",
+                "ml",
+                "orchestration",
+                "quality",
+                "visualization",
             ]
 
     def test_file_pattern_regex(self):
@@ -712,7 +759,9 @@ class TestCustomFeatureAgentState:
         from lobster.agents.state import CustomFeatureAgentState
 
         # State should have messages annotation
-        assert hasattr(CustomFeatureAgentState, "__annotations__") or hasattr(CustomFeatureAgentState, "messages")
+        assert hasattr(CustomFeatureAgentState, "__annotations__") or hasattr(
+            CustomFeatureAgentState, "messages"
+        )
 
 
 if __name__ == "__main__":

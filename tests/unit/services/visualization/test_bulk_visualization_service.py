@@ -22,7 +22,6 @@ from lobster.services.visualization.bulk_visualization_service import (
     BulkVisualizationService,
 )
 
-
 # ============================================
 # FIXTURES
 # ============================================
@@ -67,7 +66,10 @@ def sample_expression_adata():
     X = np.random.randn(n_samples, n_genes)
 
     obs = pd.DataFrame(
-        {"condition": ["control"] * 6 + ["treated"] * 6, "batch": ["batch1", "batch2"] * 6},
+        {
+            "condition": ["control"] * 6 + ["treated"] * 6,
+            "batch": ["batch1", "batch2"] * 6,
+        },
         index=[f"sample_{i}" for i in range(n_samples)],
     )
 
@@ -152,13 +154,16 @@ class TestVolcanoPlot:
         """Test error handling when required columns are missing."""
         # Create AnnData without DE results
         adata = AnnData(
-            X=np.random.randn(10, 50), var=pd.DataFrame(index=[f"gene_{i}" for i in range(50)])
+            X=np.random.randn(10, 50),
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(50)]),
         )
 
         with pytest.raises(BulkVisualizationError, match="Missing required columns"):
             bulk_viz_service.create_volcano_plot(adata, 0.05, 1.0)
 
-    def test_volcano_plot_with_custom_thresholds(self, bulk_viz_service, sample_de_adata):
+    def test_volcano_plot_with_custom_thresholds(
+        self, bulk_viz_service, sample_de_adata
+    ):
         """Test volcano plot with custom FDR and FC thresholds."""
         fig, stats, ir = bulk_viz_service.create_volcano_plot(
             sample_de_adata, fdr_threshold=0.01, fc_threshold=2.0, top_n_genes=5
@@ -193,14 +198,20 @@ class TestVolcanoPlot:
         assert stats_labels["top_n_genes_labeled"] == expected_labels
 
         # Check that more genes are labeled with top_n = 10 vs top_n = 0
-        assert stats_labels["top_n_genes_labeled"] >= stats_no_labels["top_n_genes_labeled"]
+        assert (
+            stats_labels["top_n_genes_labeled"]
+            >= stats_no_labels["top_n_genes_labeled"]
+        )
 
     def test_volcano_plot_handles_no_significant_genes(
         self, bulk_viz_service, no_significant_de_adata
     ):
         """Test volcano plot when all genes are non-significant."""
         fig, stats, ir = bulk_viz_service.create_volcano_plot(
-            no_significant_de_adata, fdr_threshold=0.05, fc_threshold=1.0, top_n_genes=10
+            no_significant_de_adata,
+            fdr_threshold=0.05,
+            fc_threshold=1.0,
+            top_n_genes=10,
         )
 
         # Should have zero significant genes
@@ -212,10 +223,15 @@ class TestVolcanoPlot:
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1  # At least non-significant trace
 
-    def test_volcano_plot_handles_all_significant(self, bulk_viz_service, all_significant_de_adata):
+    def test_volcano_plot_handles_all_significant(
+        self, bulk_viz_service, all_significant_de_adata
+    ):
         """Test volcano plot when all genes are significant."""
         fig, stats, ir = bulk_viz_service.create_volcano_plot(
-            all_significant_de_adata, fdr_threshold=0.05, fc_threshold=1.0, top_n_genes=10
+            all_significant_de_adata,
+            fdr_threshold=0.05,
+            fc_threshold=1.0,
+            top_n_genes=10,
         )
 
         # Most genes should be significant (depending on fc_threshold)
@@ -247,7 +263,11 @@ class TestVolcanoPlot:
             assert key in stats, f"Missing key: {key}"
 
         # Verify counts add up
-        total = stats["n_genes_up"] + stats["n_genes_down"] + stats["n_genes_not_significant"]
+        total = (
+            stats["n_genes_up"]
+            + stats["n_genes_down"]
+            + stats["n_genes_not_significant"]
+        )
         assert total == stats["n_genes_total"]
 
         # Verify plot type
@@ -334,7 +354,8 @@ class TestMAPlot:
         """Test error handling when required columns are missing."""
         # Create AnnData without DE results
         adata = AnnData(
-            X=np.random.randn(10, 50), var=pd.DataFrame(index=[f"gene_{i}" for i in range(50)])
+            X=np.random.randn(10, 50),
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(50)]),
         )
 
         with pytest.raises(BulkVisualizationError, match="Missing required columns"):
@@ -354,7 +375,9 @@ class TestMAPlot:
 
     def test_ma_plot_statistics(self, bulk_viz_service, sample_de_adata):
         """Verify stats dict includes all required metrics."""
-        _, stats, _ = bulk_viz_service.create_ma_plot(sample_de_adata, fdr_threshold=0.05)
+        _, stats, _ = bulk_viz_service.create_ma_plot(
+            sample_de_adata, fdr_threshold=0.05
+        )
 
         required_keys = [
             "plot_type",
@@ -377,7 +400,9 @@ class TestMAPlot:
 
     def test_ma_plot_figure_structure(self, bulk_viz_service, sample_de_adata):
         """Verify Plotly figure has correct traces and layout."""
-        fig, stats, ir = bulk_viz_service.create_ma_plot(sample_de_adata, fdr_threshold=0.05)
+        fig, stats, ir = bulk_viz_service.create_ma_plot(
+            sample_de_adata, fdr_threshold=0.05
+        )
 
         # Should have at least 1 trace (not_significant always exists)
         assert len(fig.data) >= 1
@@ -390,7 +415,9 @@ class TestMAPlot:
         shapes = fig.layout.shapes
         assert len(shapes) >= 1  # At least horizontal line
 
-    def test_ma_plot_handles_no_significant(self, bulk_viz_service, no_significant_de_adata):
+    def test_ma_plot_handles_no_significant(
+        self, bulk_viz_service, no_significant_de_adata
+    ):
         """Test MA plot when no genes are significant."""
         fig, stats, ir = bulk_viz_service.create_ma_plot(
             no_significant_de_adata, fdr_threshold=0.05
@@ -455,7 +482,9 @@ class TestExpressionHeatmap:
         assert isinstance(stats, dict)
         assert isinstance(ir, AnalysisStep)
 
-    def test_heatmap_returns_three_tuple(self, bulk_viz_service, sample_expression_adata):
+    def test_heatmap_returns_three_tuple(
+        self, bulk_viz_service, sample_expression_adata
+    ):
         """Verify heatmap returns (fig, stats, ir) tuple."""
         gene_list = ["gene_0", "gene_1", "gene_2"]
 
@@ -486,7 +515,9 @@ class TestExpressionHeatmap:
         assert stats["clustered_samples"] is True
         assert stats["clustered_genes"] is True
 
-    def test_heatmap_without_clustering(self, bulk_viz_service, sample_expression_adata):
+    def test_heatmap_without_clustering(
+        self, bulk_viz_service, sample_expression_adata
+    ):
         """Test heatmap without clustering."""
         gene_list = ["gene_0", "gene_1", "gene_2"]
 
@@ -529,7 +560,9 @@ class TestExpressionHeatmap:
         # Verify colorbar title does not indicate z-score
         assert "z-score" not in fig.data[0].colorbar.title.text.lower()
 
-    def test_heatmap_auto_gene_selection(self, bulk_viz_service, sample_expression_adata):
+    def test_heatmap_auto_gene_selection(
+        self, bulk_viz_service, sample_expression_adata
+    ):
         """Test heatmap with automatic gene selection (top 50 variable genes)."""
         # Don't provide gene_list
         fig, stats, ir = bulk_viz_service.create_expression_heatmap(
@@ -540,7 +573,9 @@ class TestExpressionHeatmap:
         assert stats["n_genes"] <= 50
         assert stats["n_genes"] > 0
 
-    def test_heatmap_filters_missing_genes(self, bulk_viz_service, sample_expression_adata):
+    def test_heatmap_filters_missing_genes(
+        self, bulk_viz_service, sample_expression_adata
+    ):
         """Test heatmap filters genes not in adata.var_names."""
         gene_list = ["gene_0", "gene_1", "nonexistent_gene", "gene_2"]
 
@@ -552,7 +587,9 @@ class TestExpressionHeatmap:
         # Should only include 3 genes
         assert stats["n_genes"] == 3
 
-    def test_heatmap_handles_insufficient_genes(self, bulk_viz_service, sample_expression_adata):
+    def test_heatmap_handles_insufficient_genes(
+        self, bulk_viz_service, sample_expression_adata
+    ):
         """Test heatmap error when no valid genes found."""
         gene_list = ["nonexistent_gene1", "nonexistent_gene2"]
 
@@ -730,12 +767,17 @@ class TestVisualizationIR:
         assert "z_score" in schema
         assert "n_genes" in schema
 
-    def test_heatmap_ir_code_template_renders(self, bulk_viz_service, sample_expression_adata):
+    def test_heatmap_ir_code_template_renders(
+        self, bulk_viz_service, sample_expression_adata
+    ):
         """Test that Jinja2 code template renders without errors for heatmap."""
         gene_list = ["gene_0", "gene_1", "gene_2"]
 
         _, _, ir = bulk_viz_service.create_expression_heatmap(
-            sample_expression_adata, gene_list=gene_list, cluster_samples=True, z_score=True
+            sample_expression_adata,
+            gene_list=gene_list,
+            cluster_samples=True,
+            z_score=True,
         )
 
         # Render template with parameters
@@ -749,7 +791,9 @@ class TestVisualizationIR:
         # Should be valid Python (compile check)
         compile(rendered, "<string>", "exec")
 
-    def test_all_ir_imports(self, bulk_viz_service, sample_de_adata, sample_expression_adata):
+    def test_all_ir_imports(
+        self, bulk_viz_service, sample_de_adata, sample_expression_adata
+    ):
         """Validate imports lists for all methods."""
         # Volcano plot
         _, _, ir_volcano = bulk_viz_service.create_volcano_plot(
@@ -759,7 +803,9 @@ class TestVisualizationIR:
         assert "import numpy as np" in ir_volcano.imports
 
         # MA plot
-        _, _, ir_ma = bulk_viz_service.create_ma_plot(sample_de_adata, fdr_threshold=0.05)
+        _, _, ir_ma = bulk_viz_service.create_ma_plot(
+            sample_de_adata, fdr_threshold=0.05
+        )
         assert "import plotly.graph_objects as go" in ir_ma.imports
         assert "import numpy as np" in ir_ma.imports
 
@@ -770,7 +816,10 @@ class TestVisualizationIR:
         )
         assert "import plotly.graph_objects as go" in ir_heatmap.imports
         assert "import numpy as np" in ir_heatmap.imports
-        assert "from scipy.cluster.hierarchy import linkage, dendrogram" in ir_heatmap.imports
+        assert (
+            "from scipy.cluster.hierarchy import linkage, dendrogram"
+            in ir_heatmap.imports
+        )
 
 
 # ============================================
@@ -784,9 +833,7 @@ class TestVisualizationEdgeCases:
     def test_volcano_with_zero_genes(self, bulk_viz_service):
         """Test volcano plot with empty AnnData."""
         # Create empty AnnData with proper columns
-        var = pd.DataFrame(
-            {"log2FoldChange": [], "padj": [], "baseMean": []}, index=[]
-        )
+        var = pd.DataFrame({"log2FoldChange": [], "padj": [], "baseMean": []}, index=[])
         adata = AnnData(X=np.array([]).reshape(0, 0), var=var)
 
         # Should handle gracefully
@@ -882,7 +929,11 @@ class TestVisualizationEdgeCases:
 
         # Should handle gracefully (z-score will handle division by zero)
         fig, stats, ir = bulk_viz_service.create_expression_heatmap(
-            adata, gene_list=gene_list, cluster_samples=False, cluster_genes=False, z_score=True
+            adata,
+            gene_list=gene_list,
+            cluster_samples=False,
+            cluster_genes=False,
+            z_score=True,
         )
 
         assert isinstance(fig, go.Figure)

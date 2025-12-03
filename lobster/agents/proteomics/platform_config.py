@@ -149,13 +149,20 @@ def detect_platform_type(
     """
     if force_type:
         if force_type not in PLATFORM_CONFIGS:
-            raise ValueError(f"Unknown platform type: {force_type}. Choose from: {list(PLATFORM_CONFIGS.keys())}")
+            raise ValueError(
+                f"Unknown platform type: {force_type}. Choose from: {list(PLATFORM_CONFIGS.keys())}"
+            )
         return force_type
 
     detection_scores = {"mass_spec": 0, "affinity": 0}
 
     # 1. Check for MS-specific columns in var
-    ms_columns = ["n_peptides", "n_unique_peptides", "sequence_coverage", "protein_group"]
+    ms_columns = [
+        "n_peptides",
+        "n_unique_peptides",
+        "sequence_coverage",
+        "protein_group",
+    ]
     ms_col_count = sum(1 for col in ms_columns if col in adata.var.columns)
     detection_scores["mass_spec"] += ms_col_count * 2
 
@@ -164,7 +171,13 @@ def detect_platform_type(
         detection_scores["mass_spec"] += 3
 
     # 2. Check for affinity-specific columns in var
-    affinity_columns = ["antibody_id", "antibody_clone", "panel_type", "lot_number", "npx_value"]
+    affinity_columns = [
+        "antibody_id",
+        "antibody_clone",
+        "panel_type",
+        "lot_number",
+        "npx_value",
+    ]
     affinity_col_count = sum(1 for col in affinity_columns if col in adata.var.columns)
     detection_scores["affinity"] += affinity_col_count * 2
 
@@ -205,9 +218,15 @@ def detect_platform_type(
     # 5. Check for common platform indicators in uns
     if "platform" in adata.uns:
         platform_hint = str(adata.uns["platform"]).lower()
-        if any(term in platform_hint for term in ["ms", "mass_spec", "dda", "dia", "maxquant", "spectronaut"]):
+        if any(
+            term in platform_hint
+            for term in ["ms", "mass_spec", "dda", "dia", "maxquant", "spectronaut"]
+        ):
             detection_scores["mass_spec"] += 5
-        elif any(term in platform_hint for term in ["olink", "soma", "luminex", "affinity", "antibody"]):
+        elif any(
+            term in platform_hint
+            for term in ["olink", "soma", "luminex", "affinity", "antibody"]
+        ):
             detection_scores["affinity"] += 5
 
     # Return platform with higher score, default to mass_spec if tied
@@ -228,5 +247,7 @@ def get_platform_config(platform_type: str) -> PlatformConfig:
         PlatformConfig for the specified platform
     """
     if platform_type not in PLATFORM_CONFIGS:
-        raise ValueError(f"Unknown platform type: {platform_type}. Choose from: {list(PLATFORM_CONFIGS.keys())}")
+        raise ValueError(
+            f"Unknown platform type: {platform_type}. Choose from: {list(PLATFORM_CONFIGS.keys())}"
+        )
     return PLATFORM_CONFIGS[platform_type]

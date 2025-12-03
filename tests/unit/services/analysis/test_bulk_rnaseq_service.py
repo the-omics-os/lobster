@@ -26,7 +26,9 @@ from lobster.services.analysis.bulk_rnaseq_service import (
     BulkRNASeqService,
     PyDESeq2Error,
 )
-from lobster.services.analysis.differential_formula_service import DifferentialFormulaService
+from lobster.services.analysis.differential_formula_service import (
+    DifferentialFormulaService,
+)
 from tests.mock_data.base import LARGE_DATASET_CONFIG, SMALL_DATASET_CONFIG
 from tests.mock_data.factories import BulkRNASeqDataFactory, SingleCellDataFactory
 
@@ -440,7 +442,7 @@ class TestDifferentialExpression:
         # Verify return types
         assert isinstance(adata_de, ad.AnnData), "Should return AnnData object"
         assert isinstance(de_stats, dict), "Should return stats dict"
-        assert hasattr(ir, 'operation'), "Should return AnalysisStep IR"
+        assert hasattr(ir, "operation"), "Should return AnalysisStep IR"
 
         # Verify DE results are stored in AnnData (key includes comparison name)
         de_keys = [k for k in adata_de.uns.keys() if k.startswith("de_results")]
@@ -549,17 +551,27 @@ def pydeseq2_count_matrix():
     return pd.DataFrame(
         np.random.negative_binomial(n=10, p=0.5, size=(100, 6)),
         index=[f"gene_{i}" for i in range(100)],
-        columns=[f"sample_{i}" for i in range(6)]
+        columns=[f"sample_{i}" for i in range(6)],
     )
 
 
 @pytest.fixture
 def pydeseq2_metadata():
     """Metadata for pyDESeq2 tests."""
-    return pd.DataFrame({
-        'condition': ['control', 'control', 'control', 'treated', 'treated', 'treated'],
-        'batch': ['batch1', 'batch1', 'batch2', 'batch1', 'batch2', 'batch2']
-    }, index=[f"sample_{i}" for i in range(6)])
+    return pd.DataFrame(
+        {
+            "condition": [
+                "control",
+                "control",
+                "control",
+                "treated",
+                "treated",
+                "treated",
+            ],
+            "batch": ["batch1", "batch1", "batch2", "batch1", "batch2", "batch2"],
+        },
+        index=[f"sample_{i}" for i in range(6)],
+    )
 
 
 @pytest.mark.unit
@@ -606,7 +618,7 @@ class TestPyDESeq2Integration:
                                 "pvalue": [0.001, 0.01, 0.0005],
                                 "padj": [0.01, 0.05, 0.005],
                             },
-                            index=['gene_0', 'gene_1', 'gene_2']
+                            index=["gene_0", "gene_1", "gene_2"],
                         )
                         mock_ds_class.return_value = mock_ds
 
@@ -620,7 +632,7 @@ class TestPyDESeq2Integration:
                         # Verify 3-tuple return
                         assert isinstance(results_df, pd.DataFrame)
                         assert isinstance(stats, dict)
-                        assert hasattr(ir, 'operation')
+                        assert hasattr(ir, "operation")
 
                         # Verify DataFrame structure
                         assert "baseMean" in results_df.columns
@@ -648,12 +660,14 @@ class TestPyDESeq2Integration:
                 with patch("pydeseq2.ds.DeseqStats") as mock_ds_class:
                     with patch("pydeseq2.default_inference.DefaultInference"):
                         mock_ds = Mock()
-                        mock_ds.results_df = pd.DataFrame({
-                            "baseMean": [100],
-                            "log2FoldChange": [1.2],  # Shrunk value
-                            "pvalue": [0.01],
-                            "padj": [0.05],
-                        })
+                        mock_ds.results_df = pd.DataFrame(
+                            {
+                                "baseMean": [100],
+                                "log2FoldChange": [1.2],  # Shrunk value
+                                "pvalue": [0.01],
+                                "padj": [0.05],
+                            }
+                        )
                         mock_ds.lfc_shrink = Mock()  # Mock shrinkage method
                         mock_ds_class.return_value = mock_ds
 
@@ -683,12 +697,14 @@ class TestPyDESeq2Integration:
                 with patch("pydeseq2.ds.DeseqStats") as mock_ds_class:
                     with patch("pydeseq2.default_inference.DefaultInference"):
                         mock_ds = Mock()
-                        mock_ds.results_df = pd.DataFrame({
-                            "baseMean": [100],
-                            "log2FoldChange": [1.5],
-                            "pvalue": [0.01],
-                            "padj": [0.05],
-                        })
+                        mock_ds.results_df = pd.DataFrame(
+                            {
+                                "baseMean": [100],
+                                "log2FoldChange": [1.5],
+                                "pvalue": [0.01],
+                                "padj": [0.05],
+                            }
+                        )
                         mock_ds_class.return_value = mock_ds
 
                         result = bulk_service.run_pydeseq2_analysis(
@@ -705,7 +721,7 @@ class TestPyDESeq2Integration:
                         results_df, stats, ir = result
                         assert isinstance(results_df, pd.DataFrame)
                         assert isinstance(stats, dict)
-                        assert hasattr(ir, 'operation')
+                        assert hasattr(ir, "operation")
 
     def test_pydeseq2_ir_structure(
         self, bulk_service, pydeseq2_count_matrix, pydeseq2_metadata
@@ -718,12 +734,14 @@ class TestPyDESeq2Integration:
                 with patch("pydeseq2.ds.DeseqStats") as mock_ds_class:
                     with patch("pydeseq2.default_inference.DefaultInference"):
                         mock_ds = Mock()
-                        mock_ds.results_df = pd.DataFrame({
-                            "baseMean": [100],
-                            "log2FoldChange": [1.5],
-                            "pvalue": [0.01],
-                            "padj": [0.05],
-                        })
+                        mock_ds.results_df = pd.DataFrame(
+                            {
+                                "baseMean": [100],
+                                "log2FoldChange": [1.5],
+                                "pvalue": [0.01],
+                                "padj": [0.05],
+                            }
+                        )
                         mock_ds_class.return_value = mock_ds
 
                         _, _, ir = bulk_service.run_pydeseq2_analysis(
@@ -743,7 +761,11 @@ class TestPyDESeq2Integration:
 
                         # Verify parameters
                         assert ir.parameters["formula"] == "~condition + batch"
-                        assert ir.parameters["contrast"] == ["condition", "treated", "control"]
+                        assert ir.parameters["contrast"] == [
+                            "condition",
+                            "treated",
+                            "control",
+                        ]
 
                         # Verify parameter schema
                         assert "formula" in ir.parameter_schema
@@ -764,12 +786,14 @@ class TestPyDESeq2Integration:
                 with patch("pydeseq2.ds.DeseqStats") as mock_ds_class:
                     with patch("pydeseq2.default_inference.DefaultInference"):
                         mock_ds = Mock()
-                        mock_ds.results_df = pd.DataFrame({
-                            "baseMean": [100],
-                            "log2FoldChange": [1.5],
-                            "pvalue": [0.01],
-                            "padj": [0.05],
-                        })
+                        mock_ds.results_df = pd.DataFrame(
+                            {
+                                "baseMean": [100],
+                                "log2FoldChange": [1.5],
+                                "pvalue": [0.01],
+                                "padj": [0.05],
+                            }
+                        )
                         mock_ds_class.return_value = mock_ds
 
                         _, _, ir = bulk_service.run_pydeseq2_analysis(
@@ -830,12 +854,14 @@ class TestPyDESeq2Integration:
                 with patch("pydeseq2.ds.DeseqStats") as mock_ds_class:
                     with patch("pydeseq2.default_inference.DefaultInference"):
                         mock_ds = Mock()
-                        mock_ds.results_df = pd.DataFrame({
-                            "baseMean": [100],
-                            "log2FoldChange": [1.5],
-                            "pvalue": [0.01],
-                            "padj": [0.05],
-                        })
+                        mock_ds.results_df = pd.DataFrame(
+                            {
+                                "baseMean": [100],
+                                "log2FoldChange": [1.5],
+                                "pvalue": [0.01],
+                                "padj": [0.05],
+                            }
+                        )
                         mock_ds_class.return_value = mock_ds
 
                         # Test interaction formula
@@ -877,7 +903,11 @@ class TestPyDESeq2Integration:
             )
             mock_ir = Mock()
             mock_ir.operation = "pydeseq2_analysis"
-            mock_pydeseq2.return_value = (mock_results_df, {"n_significant_genes": 1}, mock_ir)
+            mock_pydeseq2.return_value = (
+                mock_results_df,
+                {"n_significant_genes": 1},
+                mock_ir,
+            )
 
             result_df, stats = bulk_service.run_pydeseq2_from_pseudobulk(
                 pseudobulk_adata=pseudobulk_data,
@@ -1001,7 +1031,7 @@ class TestPathwayEnrichment:
 
             assert isinstance(enrichment_df, pd.DataFrame)
             assert isinstance(stats, dict)
-            assert hasattr(ir, 'operation')
+            assert hasattr(ir, "operation")
             assert "n_significant_terms" in stats
             assert "enrichment_database" in stats
             assert stats["enrichment_database"] == "GO"
@@ -1076,7 +1106,7 @@ class TestBulkRNASeqErrorHandling:
         assert isinstance(result, tuple)
         assert len(result) == 3
         assert isinstance(result[1], dict)  # stats dict
-        assert hasattr(result[2], 'operation')  # IR
+        assert hasattr(result[2], "operation")  # IR
 
     def test_invalid_results_directory(self):
         """Test handling of invalid results directory."""
@@ -1232,7 +1262,7 @@ class TestIRGeneration:
             groupby="condition",
             group1="treatment",
             group2="control",
-            min_expression_threshold=1.0
+            min_expression_threshold=1.0,
         )
 
         # Verify AnalysisStep structure
@@ -1250,7 +1280,10 @@ class TestIRGeneration:
         assert "multipletests" in ir.code_template
 
         # Verify imports
-        assert "import scipy.stats" in ir.imports or "from scipy import stats" in ir.imports
+        assert (
+            "import scipy.stats" in ir.imports
+            or "from scipy import stats" in ir.imports
+        )
         assert any("multipletests" in imp for imp in ir.imports)
 
         # Verify parameters
@@ -1271,10 +1304,7 @@ class TestIRGeneration:
     def test_create_de_ir_wilcoxon(self, bulk_service):
         """Test IR creation for Wilcoxon test."""
         ir = bulk_service._create_de_ir(
-            method="wilcoxon",
-            groupby="treatment",
-            group1="drug_a",
-            group2="placebo"
+            method="wilcoxon", groupby="treatment", group1="drug_a", group2="placebo"
         )
 
         assert ir.operation == "differential_expression"
@@ -1285,10 +1315,7 @@ class TestIRGeneration:
     def test_create_de_ir_ttest(self, bulk_service):
         """Test IR creation for t-test."""
         ir = bulk_service._create_de_ir(
-            method="t_test",
-            groupby="cell_line",
-            group1="a549",
-            group2="hek293"
+            method="t_test", groupby="cell_line", group1="a549", group2="hek293"
         )
 
         assert ir.operation == "differential_expression"
@@ -1305,13 +1332,16 @@ class TestIRGeneration:
             databases=databases,
             gene_list=gene_list,
             organism="human",
-            analysis_type="GO"
+            analysis_type="GO",
         )
 
         # Verify structure
         assert ir.operation == "pathway_enrichment"
         assert ir.tool_name == "BulkRNASeqService.run_pathway_enrichment"
-        assert "over-representation" in ir.description.lower() or "ora" in ir.description.lower()
+        assert (
+            "over-representation" in ir.description.lower()
+            or "ora" in ir.description.lower()
+        )
         assert ir.library == "gseapy"
 
         # Verify code template
@@ -1340,7 +1370,7 @@ class TestIRGeneration:
             formula="~condition + batch",
             contrast=["condition", "treatment", "control"],
             alpha=0.05,
-            shrink_lfc=True
+            shrink_lfc=True,
         )
 
         # Verify structure
@@ -1376,7 +1406,7 @@ class TestIRGeneration:
                 groupby="condition",
                 group1="control",
                 group2="treatment",
-                method="deseq2_like"
+                method="deseq2_like",
             )
 
             # Verify 3-tuple return
@@ -1388,11 +1418,13 @@ class TestIRGeneration:
             # Verify types
             assert isinstance(adata_de, ad.AnnData)
             assert isinstance(de_stats, dict)
-            assert hasattr(ir, 'operation')  # AnalysisStep duck typing
+            assert hasattr(ir, "operation")  # AnalysisStep duck typing
 
             # Verify IR
             assert ir.operation == "differential_expression"
-            assert ir.tool_name == "BulkRNASeqService.run_differential_expression_analysis"
+            assert (
+                ir.tool_name == "BulkRNASeqService.run_differential_expression_analysis"
+            )
 
         except Exception as e:
             # If the test data doesn't support DE, that's okay
@@ -1408,8 +1440,7 @@ class TestIRGeneration:
 
         try:
             result = bulk_service.run_pathway_enrichment(
-                gene_list=gene_list,
-                organism="human"
+                gene_list=gene_list, organism="human"
             )
 
             # Verify 3-tuple return
@@ -1421,7 +1452,7 @@ class TestIRGeneration:
             # Verify types
             assert isinstance(enrichment_df, pd.DataFrame) or enrichment_df is None
             assert isinstance(enrichment_stats, dict)
-            assert hasattr(ir, 'operation')
+            assert hasattr(ir, "operation")
 
             # Verify IR
             assert ir.operation == "pathway_enrichment"
@@ -1434,10 +1465,7 @@ class TestIRGeneration:
     def test_ir_parameter_schema_completeness(self, bulk_service):
         """Test that parameter schemas are complete with required fields."""
         ir = bulk_service._create_de_ir(
-            method="deseq2_like",
-            groupby="condition",
-            group1="a",
-            group2="b"
+            method="deseq2_like", groupby="condition", group1="a", group2="b"
         )
 
         # Every parameter should have schema entry
@@ -1460,7 +1488,7 @@ class TestIRGeneration:
             groupby="condition",
             group1="treated",
             group2="control",
-            min_expression_threshold=1.0
+            min_expression_threshold=1.0,
         )
 
         template_de = Template(ir_de.code_template)
@@ -1476,7 +1504,7 @@ class TestIRGeneration:
         ir_enrich = bulk_service._create_enrichment_ir(
             databases=["GO_Biological_Process_2023"],
             gene_list=["TP53", "BRCA1"],
-            organism="human"
+            organism="human",
         )
 
         template_enrich = Template(ir_enrich.code_template)

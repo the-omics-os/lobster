@@ -36,7 +36,11 @@ except ImportError:
 
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.data_access.geo_fallback_service import GEOFallbackService
-from lobster.services.data_access.geo_service import GEODataSource, GEOResult, GEOService
+from lobster.services.data_access.geo_service import (
+    GEODataSource,
+    GEOResult,
+    GEOService,
+)
 
 # ===============================================================================
 # Fixtures

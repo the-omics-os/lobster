@@ -41,99 +41,107 @@ def sample_sra_metadata() -> List[Dict[str, Any]]:
 
     # Human gut samples (12) - should pass
     for i in range(12):
-        metadata.append({
-            "run_accession": f"SRR10000{i:03d}",
-            "sample_accession": f"SRS20000{i:03d}",
-            "experiment_accession": f"SRX30000{i:03d}",
-            "study_accession": "SRP123456",
-            "bioproject_accession": "PRJNA789012",
-            "organism": "Homo sapiens",
-            "sample_type": "gut microbiome",
-            "tissue": "gut",
-            "host": "Homo sapiens",
-            "library_strategy": "AMPLICON",
-            "library_source": "METAGENOMIC",
-            "platform": "ILLUMINA",
-            "instrument_model": "Illumina MiSeq",
-            "reads": 50000 + i * 1000,
-            "bases": 7500000 + i * 150000,
-            "avg_length": 150,
-            "disease": "IBD" if i < 6 else "healthy control",
-            "age": 35 + i,
-            "sex": "male" if i % 2 == 0 else "female",
-        })
+        metadata.append(
+            {
+                "run_accession": f"SRR10000{i:03d}",
+                "sample_accession": f"SRS20000{i:03d}",
+                "experiment_accession": f"SRX30000{i:03d}",
+                "study_accession": "SRP123456",
+                "bioproject_accession": "PRJNA789012",
+                "organism": "Homo sapiens",
+                "sample_type": "gut microbiome",
+                "tissue": "gut",
+                "host": "Homo sapiens",
+                "library_strategy": "AMPLICON",
+                "library_source": "METAGENOMIC",
+                "platform": "ILLUMINA",
+                "instrument_model": "Illumina MiSeq",
+                "reads": 50000 + i * 1000,
+                "bases": 7500000 + i * 150000,
+                "avg_length": 150,
+                "disease": "IBD" if i < 6 else "healthy control",
+                "age": 35 + i,
+                "sex": "male" if i % 2 == 0 else "female",
+            }
+        )
 
     # Mouse gut samples (4) - should be filtered out
     for i in range(4):
-        metadata.append({
-            "run_accession": f"SRR10001{i:02d}",
-            "sample_accession": f"SRS20001{i:02d}",
-            "experiment_accession": f"SRX30001{i:02d}",
-            "study_accession": "SRP123456",
-            "bioproject_accession": "PRJNA789012",
-            "organism": "Mus musculus",
-            "sample_type": "gut microbiome",
-            "tissue": "intestine",
-            "host": "Mus musculus",
-            "library_strategy": "AMPLICON",
-            "library_source": "METAGENOMIC",
-            "platform": "ILLUMINA",
-            "instrument_model": "Illumina MiSeq",
-            "reads": 45000 + i * 1000,
-            "bases": 6750000 + i * 150000,
-            "avg_length": 150,
-            "disease": "control",
-            "age": 12 + i,
-            "sex": "male" if i % 2 == 0 else "female",
-        })
+        metadata.append(
+            {
+                "run_accession": f"SRR10001{i:02d}",
+                "sample_accession": f"SRS20001{i:02d}",
+                "experiment_accession": f"SRX30001{i:02d}",
+                "study_accession": "SRP123456",
+                "bioproject_accession": "PRJNA789012",
+                "organism": "Mus musculus",
+                "sample_type": "gut microbiome",
+                "tissue": "intestine",
+                "host": "Mus musculus",
+                "library_strategy": "AMPLICON",
+                "library_source": "METAGENOMIC",
+                "platform": "ILLUMINA",
+                "instrument_model": "Illumina MiSeq",
+                "reads": 45000 + i * 1000,
+                "bases": 6750000 + i * 150000,
+                "avg_length": 150,
+                "disease": "control",
+                "age": 12 + i,
+                "sex": "male" if i % 2 == 0 else "female",
+            }
+        )
 
     # Human stool samples (4) - should pass
     for i in range(4):
-        metadata.append({
-            "run_accession": f"SRR10002{i:02d}",
-            "sample_accession": f"SRS20002{i:02d}",
-            "experiment_accession": f"SRX30002{i:02d}",
-            "study_accession": "SRP123456",
-            "bioproject_accession": "PRJNA789012",
-            "organism": "human gut metagenome",
-            "sample_type": "stool",
-            "tissue": "stool",
-            "host": "Homo sapiens",
-            "library_strategy": "AMPLICON",
-            "library_source": "METAGENOMIC",
-            "platform": "ILLUMINA",
-            "instrument_model": "Illumina MiSeq",
-            "reads": 55000 + i * 1000,
-            "bases": 8250000 + i * 150000,
-            "avg_length": 150,
-            "disease": "Crohn's disease" if i < 2 else "healthy",
-            "age": 40 + i,
-            "sex": "female",
-        })
+        metadata.append(
+            {
+                "run_accession": f"SRR10002{i:02d}",
+                "sample_accession": f"SRS20002{i:02d}",
+                "experiment_accession": f"SRX30002{i:02d}",
+                "study_accession": "SRP123456",
+                "bioproject_accession": "PRJNA789012",
+                "organism": "human gut metagenome",
+                "sample_type": "stool",
+                "tissue": "stool",
+                "host": "Homo sapiens",
+                "library_strategy": "AMPLICON",
+                "library_source": "METAGENOMIC",
+                "platform": "ILLUMINA",
+                "instrument_model": "Illumina MiSeq",
+                "reads": 55000 + i * 1000,
+                "bases": 8250000 + i * 150000,
+                "avg_length": 150,
+                "disease": "Crohn's disease" if i < 2 else "healthy",
+                "age": 40 + i,
+                "sex": "female",
+            }
+        )
 
     # Environmental samples (4) - should be filtered out
     for i in range(4):
-        metadata.append({
-            "run_accession": f"SRR10003{i:02d}",
-            "sample_accession": f"SRS20003{i:02d}",
-            "experiment_accession": f"SRX30003{i:02d}",
-            "study_accession": "SRP123456",
-            "bioproject_accession": "PRJNA789012",
-            "organism": "soil metagenome",
-            "sample_type": "environmental",
-            "tissue": "soil",
-            "host": None,
-            "library_strategy": "WGS",
-            "library_source": "METAGENOMIC",
-            "platform": "ILLUMINA",
-            "instrument_model": "Illumina NovaSeq",
-            "reads": 100000 + i * 10000,
-            "bases": 30000000 + i * 3000000,
-            "avg_length": 300,
-            "disease": None,
-            "age": None,
-            "sex": None,
-        })
+        metadata.append(
+            {
+                "run_accession": f"SRR10003{i:02d}",
+                "sample_accession": f"SRS20003{i:02d}",
+                "experiment_accession": f"SRX30003{i:02d}",
+                "study_accession": "SRP123456",
+                "bioproject_accession": "PRJNA789012",
+                "organism": "soil metagenome",
+                "sample_type": "environmental",
+                "tissue": "soil",
+                "host": None,
+                "library_strategy": "WGS",
+                "library_source": "METAGENOMIC",
+                "platform": "ILLUMINA",
+                "instrument_model": "Illumina NovaSeq",
+                "reads": 100000 + i * 10000,
+                "bases": 30000000 + i * 3000000,
+                "avg_length": 300,
+                "disease": None,
+                "age": None,
+                "sex": None,
+            }
+        )
 
     return metadata
 

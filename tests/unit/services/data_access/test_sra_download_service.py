@@ -99,27 +99,33 @@ class TestSRADownloadService:
 
     def test_validate_strategy_params_valid(self, sra_service):
         """Test valid strategy parameters."""
-        valid, error = sra_service.validate_strategy_params({
-            "verify_checksum": True,
-            "layout": "PAIRED",
-        })
+        valid, error = sra_service.validate_strategy_params(
+            {
+                "verify_checksum": True,
+                "layout": "PAIRED",
+            }
+        )
         assert valid is True
         assert error is None
 
     def test_validate_strategy_params_verify_checksum_invalid_type(self, sra_service):
         """Test invalid verify_checksum type."""
-        valid, error = sra_service.validate_strategy_params({
-            "verify_checksum": "yes",  # Should be bool
-        })
+        valid, error = sra_service.validate_strategy_params(
+            {
+                "verify_checksum": "yes",  # Should be bool
+            }
+        )
         assert valid is False
         assert "verify_checksum" in error
         assert "bool" in error
 
     def test_validate_strategy_params_invalid_layout(self, sra_service):
         """Test invalid layout parameter."""
-        valid, error = sra_service.validate_strategy_params({
-            "layout": "INVALID",
-        })
+        valid, error = sra_service.validate_strategy_params(
+            {
+                "layout": "INVALID",
+            }
+        )
         assert valid is False
         assert "layout" in error.lower()
 
@@ -131,17 +137,21 @@ class TestSRADownloadService:
 
     def test_validate_strategy_params_unknown_ignored(self, sra_service):
         """Test unknown parameters are ignored (forward compatibility)."""
-        valid, error = sra_service.validate_strategy_params({
-            "unknown_param": "value",
-            "verify_checksum": True,
-        })
+        valid, error = sra_service.validate_strategy_params(
+            {
+                "unknown_param": "value",
+                "verify_checksum": True,
+            }
+        )
         assert valid is True  # Unknown params ignored
 
     def test_validate_strategy_params_file_type_invalid(self, sra_service):
         """Test unsupported file_type (Phase 1 only supports fastq)."""
-        valid, error = sra_service.validate_strategy_params({
-            "file_type": "sra",  # Not supported in Phase 1
-        })
+        valid, error = sra_service.validate_strategy_params(
+            {
+                "file_type": "sra",  # Not supported in Phase 1
+            }
+        )
         assert valid is False
         assert "file_type" in error.lower()
 
@@ -180,7 +190,7 @@ class TestSRADownloadService:
         tmp_path,
     ):
         """Test successful download workflow."""
-        from lobster.core.schemas.download_urls import DownloadUrlResult, DownloadFile
+        from lobster.core.schemas.download_urls import DownloadFile, DownloadUrlResult
 
         # Setup mocks
         mock_provider = mock_provider_class.return_value
@@ -220,13 +230,20 @@ class TestSRADownloadService:
 
         # Setup download manager mock
         mock_manager = mock_manager_class.return_value
-        fastq_files = [tmp_path / "SRR000001_1.fastq.gz", tmp_path / "SRR000001_2.fastq.gz"]
+        fastq_files = [
+            tmp_path / "SRR000001_1.fastq.gz",
+            tmp_path / "SRR000001_2.fastq.gz",
+        ]
         for f in fastq_files:
             f.write_bytes(b"mock fastq data")
 
         mock_manager.download_run.return_value = (
             fastq_files,
-            {"mirror_used": "ena", "total_size_bytes": 2000000, "download_time_seconds": 5.0}
+            {
+                "mirror_used": "ena",
+                "total_size_bytes": 2000000,
+                "download_time_seconds": 5.0,
+            },
         )
 
         # Setup FASTQ loader mock
@@ -316,6 +333,7 @@ class TestSRADownloadManager:
 
         # Calculate actual MD5
         import hashlib
+
         md5 = hashlib.md5()
         md5.update(b"hello world")
         expected_md5 = md5.hexdigest()
@@ -416,7 +434,9 @@ class TestFASTQLoader:
         assert "alignment" in adata.uns["processing_required"]
         assert "download_provenance" in adata.uns
 
-    def test_create_fastq_anndata_single_end(self, fastq_loader, mock_queue_entry, tmp_path):
+    def test_create_fastq_anndata_single_end(
+        self, fastq_loader, mock_queue_entry, tmp_path
+    ):
         """Test AnnData creation for single-end FASTQ."""
         fastq_files = [tmp_path / "SRR000001.fastq.gz"]
         fastq_files[0].write_bytes(b"@read1\nACGT\n+\nIIII\n")
@@ -480,9 +500,7 @@ class TestSRADownloadManagerErrorHandling:
                 assert mock_sleep.called
                 assert call_count[0] == 2  # Two requests (429 then 200)
 
-    def test_download_with_progress_http_500_retry(
-        self, download_manager, tmp_path
-    ):
+    def test_download_with_progress_http_500_retry(self, download_manager, tmp_path):
         """Test HTTP 500 retry with exponential backoff."""
         call_count = [0]
 
@@ -520,6 +538,7 @@ class TestSRADownloadManagerErrorHandling:
         self, download_manager, tmp_path
     ):
         """Test HTTP 204 (no content) raises PermissionError."""
+
         def mock_get(*args, **kwargs):
             mock_resp = MagicMock()
             mock_resp.status_code = 204
@@ -539,9 +558,7 @@ class TestSRADownloadManagerErrorHandling:
             assert "204" in str(exc_info.value)
             assert "permission" in str(exc_info.value).lower()
 
-    def test_download_with_progress_timeout_retry(
-        self, download_manager, tmp_path
-    ):
+    def test_download_with_progress_timeout_retry(self, download_manager, tmp_path):
         """Test timeout handling with retry."""
         import requests as requests_module
 

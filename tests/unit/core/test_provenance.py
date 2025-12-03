@@ -729,6 +729,7 @@ class TestProvenanceSerialization:
         # After sanitization, parameters contain numpy arrays which need special handling
         # Convert numpy arrays to lists for JSON serialization
         import numpy as np
+
         def convert_numpy(obj):
             if isinstance(obj, np.ndarray):
                 return obj.tolist()

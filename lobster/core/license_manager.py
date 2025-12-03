@@ -219,9 +219,9 @@ def _verify_signature(data: Dict[str, Any]) -> bool:
         import hashlib
         import json
 
+        from cryptography.hazmat.backends import default_backend
         from cryptography.hazmat.primitives import hashes
         from cryptography.hazmat.primitives.asymmetric import padding
-        from cryptography.hazmat.backends import default_backend
 
         # Fetch JWKS
         jwks_result = get_jwks()
@@ -278,7 +278,8 @@ def _verify_signature(data: Dict[str, Any]) -> bool:
         # Reconstruct the payload that was signed
         # The license service signs the entitlement payload (without signature/kid)
         payload_to_verify = {
-            k: v for k, v in data.items()
+            k: v
+            for k, v in data.items()
             if k not in ("signature", "kid", "source", "valid")
         }
         canonical = json.dumps(payload_to_verify, sort_keys=True, separators=(",", ":"))
@@ -296,7 +297,7 @@ def _verify_signature(data: Dict[str, Any]) -> bool:
                 signature_bytes,
                 message_digest,
                 padding.PKCS1v15(),
-                Prehashed(hashes.SHA256())
+                Prehashed(hashes.SHA256()),
             )
             logger.debug("Signature verification successful")
             return True
@@ -305,7 +306,9 @@ def _verify_signature(data: Dict[str, Any]) -> bool:
             return False
 
     except ImportError:
-        logger.debug("cryptography library not available - skipping signature verification")
+        logger.debug(
+            "cryptography library not available - skipping signature verification"
+        )
         return True  # Fail open if crypto not available
     except Exception as e:
         logger.warning(f"Signature verification error: {e}")
@@ -440,7 +443,9 @@ def get_entitlement_status() -> Dict[str, Any]:
         try:
             expiry_date = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
             status["expires_at"] = expires_at
-            status["days_until_expiry"] = (expiry_date - datetime.now(expiry_date.tzinfo)).days
+            status["days_until_expiry"] = (
+                expiry_date - datetime.now(expiry_date.tzinfo)
+            ).days
         except (ValueError, TypeError):
             status["expires_at"] = expires_at
             status["days_until_expiry"] = None
@@ -469,9 +474,111 @@ def get_entitlement_status() -> Dict[str, Any]:
 # =============================================================================
 
 
+def _install_packages(packages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Install custom packages from presigned URLs.
+
+    Uses `uv pip install` if available (faster), falls back to `pip install`.
+
+    Args:
+        packages: List of package dicts with {name, version, url, expires_at}
+
+    Returns:
+        List of installation results with {name, version, success, error}
+    """
+    import shutil
+    import subprocess
+    import sys
+
+    results = []
+
+    # Check if uv is available (preferred - much faster)
+    uv_path = shutil.which("uv")
+    use_uv = uv_path is not None
+
+    for pkg in packages:
+        name = pkg.get("name", "unknown")
+        version = pkg.get("version", "unknown")
+        url = pkg.get("url")
+
+        if not url:
+            results.append(
+                {
+                    "name": name,
+                    "version": version,
+                    "success": False,
+                    "error": "No download URL provided",
+                }
+            )
+            continue
+
+        logger.info(f"Installing {name} v{version}...")
+
+        try:
+            if use_uv:
+                # Use uv pip install (faster)
+                cmd = [uv_path, "pip", "install", "--quiet", url]
+            else:
+                # Fall back to standard pip
+                cmd = [sys.executable, "-m", "pip", "install", "--quiet", url]
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300,  # 5 minute timeout for large packages
+            )
+
+            if result.returncode == 0:
+                logger.info(f"Successfully installed {name} v{version}")
+                results.append(
+                    {
+                        "name": name,
+                        "version": version,
+                        "success": True,
+                        "error": None,
+                    }
+                )
+            else:
+                error_msg = (
+                    result.stderr.strip() or result.stdout.strip() or "Unknown error"
+                )
+                logger.error(f"Failed to install {name}: {error_msg}")
+                results.append(
+                    {
+                        "name": name,
+                        "version": version,
+                        "success": False,
+                        "error": error_msg[:200],  # Truncate long errors
+                    }
+                )
+
+        except subprocess.TimeoutExpired:
+            logger.error(f"Installation timeout for {name}")
+            results.append(
+                {
+                    "name": name,
+                    "version": version,
+                    "success": False,
+                    "error": "Installation timed out (>5 minutes)",
+                }
+            )
+        except Exception as e:
+            logger.error(f"Installation error for {name}: {e}")
+            results.append(
+                {
+                    "name": name,
+                    "version": version,
+                    "success": False,
+                    "error": str(e),
+                }
+            )
+
+    return results
+
+
 def activate_license(
-    access_code: str,
-    license_server_url: Optional[str] = None
+    access_code: str, license_server_url: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Activate a license using an access code.
@@ -519,6 +626,7 @@ def activate_license(
             entitlement = data.get("entitlement", {})
             signature = data.get("signature")
             kid = data.get("kid")
+            packages_to_install = data.get("packages_to_install", [])
 
             # Add signature and kid to entitlement for local storage
             if signature:
@@ -527,17 +635,30 @@ def activate_license(
                 entitlement["kid"] = kid
 
             # Save entitlement locally
-            if save_entitlement(entitlement):
-                return {
-                    "success": True,
-                    "entitlement": entitlement,
-                    "message": f"Successfully activated {entitlement.get('tier', 'premium')} license",
-                }
-            else:
+            if not save_entitlement(entitlement):
                 return {
                     "success": False,
                     "error": "Failed to save entitlement locally",
                 }
+
+            # Auto-install custom packages if any
+            packages_installed = []
+            packages_failed = []
+            if packages_to_install:
+                logger.info(
+                    f"Installing {len(packages_to_install)} custom package(s)..."
+                )
+                install_results = _install_packages(packages_to_install)
+                packages_installed = [r for r in install_results if r["success"]]
+                packages_failed = [r for r in install_results if not r["success"]]
+
+            return {
+                "success": True,
+                "entitlement": entitlement,
+                "message": f"Successfully activated {entitlement.get('tier', 'premium')} license",
+                "packages_installed": packages_installed,
+                "packages_failed": packages_failed,
+            }
 
         elif response.status_code == 401:
             return {
@@ -558,7 +679,8 @@ def activate_license(
                 pass
             return {
                 "success": False,
-                "error": f"License server error: {response.status_code}" + (f" - {error_detail}" if error_detail else ""),
+                "error": f"License server error: {response.status_code}"
+                + (f" - {error_detail}" if error_detail else ""),
             }
 
     except ImportError:
@@ -637,7 +759,7 @@ def refresh_entitlement(cloud_key: Optional[str] = None) -> Dict[str, Any]:
 
     server_url = os.environ.get(
         "LOBSTER_LICENSE_SERVER_URL",
-        "https://x6gm9vfgl5.execute-api.us-east-1.amazonaws.com/v1"
+        "https://x6gm9vfgl5.execute-api.us-east-1.amazonaws.com/v1",
     )
 
     try:
@@ -729,7 +851,7 @@ def check_revocation_status() -> Dict[str, Any]:
 
     server_url = os.environ.get(
         "LOBSTER_LICENSE_SERVER_URL",
-        "https://x6gm9vfgl5.execute-api.us-east-1.amazonaws.com/v1"
+        "https://x6gm9vfgl5.execute-api.us-east-1.amazonaws.com/v1",
     )
 
     try:
@@ -747,7 +869,9 @@ def check_revocation_status() -> Dict[str, Any]:
 
             if not is_valid:
                 # Entitlement has been revoked or expired on server
-                logger.warning(f"Entitlement {entitlement_id} is no longer valid: {data.get('message')}")
+                logger.warning(
+                    f"Entitlement {entitlement_id} is no longer valid: {data.get('message')}"
+                )
 
                 # Clear local entitlement if revoked
                 if data.get("status") == "revoked":
@@ -797,7 +921,7 @@ def get_jwks() -> Dict[str, Any]:
     """
     server_url = os.environ.get(
         "LOBSTER_LICENSE_SERVER_URL",
-        "https://x6gm9vfgl5.execute-api.us-east-1.amazonaws.com/v1"
+        "https://x6gm9vfgl5.execute-api.us-east-1.amazonaws.com/v1",
     )
 
     try:

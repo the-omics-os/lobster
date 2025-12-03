@@ -16,18 +16,22 @@ Attack vectors:
 6. Data structure size inference (list/dict length)
 """
 
-import time
 import tempfile
-import pytest
+import time
 from pathlib import Path
 from typing import Dict, List
+
+import pytest
+
 
 # Test fixtures
 @pytest.fixture
 def service(tmp_path):
     """Create CustomCodeExecutionService with temporary workspace."""
     from lobster.core.data_manager_v2 import DataManagerV2
-    from lobster.services.execution.custom_code_execution_service import CustomCodeExecutionService
+    from lobster.services.execution.custom_code_execution_service import (
+        CustomCodeExecutionService,
+    )
 
     data_manager = DataManagerV2(workspace_path=tmp_path)
     return CustomCodeExecutionService(data_manager), data_manager
@@ -52,11 +56,11 @@ def setup_test_files(tmp_path):
     test_dir.mkdir()
 
     return {
-        'small_file': small_file,
-        'large_file': large_file,
-        'hidden_file': hidden_file,
-        'test_dir': test_dir,
-        'nonexistent': tmp_path / "nonexistent_file_12345.txt"
+        "small_file": small_file,
+        "large_file": large_file,
+        "hidden_file": hidden_file,
+        "test_dir": test_dir,
+        "nonexistent": tmp_path / "nonexistent_file_12345.txt",
     }
 
 
@@ -111,9 +115,9 @@ result = {{
 
         result, stats, ir = svc.execute(code, persist=False, timeout=30)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TIMING ATTACK: File Existence Probing")
-        print("="*80)
+        print("=" * 80)
         print(f"Exists timing:     {result['exists_avg_time']*1e6:.3f} µs")
         print(f"Not exists timing: {result['not_exists_avg_time']*1e6:.3f} µs")
         print(f"Difference:        {result['difference_ns']:.3f} ns")
@@ -121,12 +125,13 @@ result = {{
         print("\n⚠️  VULNERABILITY CONFIRMED")
         print("   Attacker can probe file existence via timing differences")
         print("   Impact: Enumeration of sensitive file locations")
-        print("="*80)
+        print("=" * 80)
 
-        assert stats['success'], "Timing attack should succeed"
+        assert stats["success"], "Timing attack should succeed"
 
-
-    def test_file_vs_directory_timing_leak_EXPECT_SUCCESS(self, service, setup_test_files):
+    def test_file_vs_directory_timing_leak_EXPECT_SUCCESS(
+        self, service, setup_test_files
+    ):
         """
         Test: Distinguish files from directories via stat() timing
 
@@ -171,21 +176,22 @@ result = {{
 
         result, stats, ir = svc.execute(code, persist=False, timeout=30)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TIMING ATTACK: File vs Directory Detection")
-        print("="*80)
+        print("=" * 80)
         print(f"File check time:      {result['file_time_us']:.3f} µs")
         print(f"Directory check time: {result['dir_time_us']:.3f} µs")
         print(f"Difference:           {result['difference_us']:.3f} µs")
         print(f"Distinguishable:      {result['distinguishable']}")
         print("\n⚠️  VULNERABILITY CONFIRMED")
         print("   Attacker can distinguish files from directories")
-        print("="*80)
+        print("=" * 80)
 
-        assert stats['success']
+        assert stats["success"]
 
-
-    def test_file_size_inference_via_read_timing_EXPECT_SUCCESS(self, service, setup_test_files):
+    def test_file_size_inference_via_read_timing_EXPECT_SUCCESS(
+        self, service, setup_test_files
+    ):
         """
         Test: Infer file size via read operation timing
 
@@ -232,18 +238,18 @@ result = {{
 
         result, stats, ir = svc.execute(code, persist=False, timeout=30)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TIMING ATTACK: File Size Inference")
-        print("="*80)
+        print("=" * 80)
         print(f"Small file (100 bytes):  {result['small_file_time_us']:.3f} µs")
         print(f"Large file (10KB):       {result['large_file_time_us']:.3f} µs")
         print(f"Time ratio:              {result['time_ratio']:.2f}x")
         print(f"Size inferable:          {result['size_inferable']}")
         print("\n⚠️  VULNERABILITY CONFIRMED")
         print("   Attacker can infer approximate file sizes via read timing")
-        print("="*80)
+        print("=" * 80)
 
-        assert stats['success']
+        assert stats["success"]
 
 
 class TestStringComparisonTimingAttacks:
@@ -296,19 +302,18 @@ result = {
 
         result, stats, ir = svc.execute(code, persist=False, timeout=30)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TIMING ATTACK: String Length Inference")
-        print("="*80)
+        print("=" * 80)
         print(f"Actual secret length:   {result['actual_length']}")
         print(f"Inferred length:        {result['inferred_length']}")
         print(f"Inference correct:      {result['correct_inference']}")
         print("\n⚠️  VULNERABILITY CONFIRMED")
         print("   Attacker can infer string lengths via comparison timing")
         print("   Impact: Helps narrow brute force attacks")
-        print("="*80)
+        print("=" * 80)
 
-        assert stats['success']
-
+        assert stats["success"]
 
     def test_api_key_brute_force_timing_attack_EXPECT_SUCCESS(self, service):
         """
@@ -374,25 +379,24 @@ result = {
 
         result, stats, ir = svc.execute(code, persist=False, timeout=60)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TIMING ATTACK: API Key Brute Force (Character-by-Character)")
-        print("="*80)
+        print("=" * 80)
         print(f"Actual first char:  '{result['actual_first_char']}'")
         print(f"Inferred char:      '{result['inferred_first_char']}'")
         print(f"Attack successful:  {result['correct_inference']}")
         print(f"Timing variance:    {result['timing_variance_ns']:.3f} ns")
         print(f"\nTop 5 candidates (char, time):")
-        for char, time_ns in result['top_5_candidates']:
+        for char, time_ns in result["top_5_candidates"]:
             print(f"  '{char}': {time_ns:.3f} ns")
         print("\n⚠️  CRITICAL VULNERABILITY CONFIRMED")
         print("   Python string comparison is NOT constant-time")
         print("   Attacker can extract secrets character by character")
         print("   Impact: Complete API key/password compromise")
         print("\n   Mitigation: Use secrets.compare_digest() for sensitive comparisons")
-        print("="*80)
+        print("=" * 80)
 
-        assert stats['success']
-
+        assert stats["success"]
 
     def test_password_timing_attack_EXPECT_SUCCESS(self, service):
         """
@@ -477,9 +481,9 @@ result = {
 
         result, stats, ir = svc.execute(code, persist=False, timeout=60)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TIMING ATTACK: Password Verification")
-        print("="*80)
+        print("=" * 80)
         print(f"Length inference:")
         print(f"  Actual:   {result['password_length']['actual']}")
         print(f"  Inferred: {result['password_length']['inferred']}")
@@ -492,9 +496,9 @@ result = {
         print(f"   Attack successful: {result['attack_successful']}")
         print("   Early return in comparison leaks match position")
         print("   Impact: Efficient password brute force")
-        print("="*80)
+        print("=" * 80)
 
-        assert stats['success']
+        assert stats["success"]
 
 
 class TestDataStructureTimingLeaks:
@@ -555,18 +559,17 @@ result = {
 
         result, stats, ir = svc.execute(code, persist=False, timeout=30)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TIMING ATTACK: List Length Inference")
-        print("="*80)
+        print("=" * 80)
         print(f"Actual length:    {result['actual_length']}")
         print(f"Inferred length:  {result['inferred_length']}")
         print(f"Error:            {result['error_percent']:.1f}%")
         print("\n⚠️  VULNERABILITY CONFIRMED")
         print("   Attacker can infer data structure sizes via operation timing")
-        print("="*80)
+        print("=" * 80)
 
-        assert stats['success']
-
+        assert stats["success"]
 
     def test_dict_key_existence_timing_EXPECT_SUCCESS(self, service):
         """
@@ -616,16 +619,16 @@ result = {
 
         result, stats, ir = svc.execute(code, persist=False, timeout=30)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TIMING ATTACK: Dictionary Key Existence")
-        print("="*80)
+        print("=" * 80)
         print(f"Timing variance: {result['timing_variance_ns']:.3f} ns")
         print(f"Actual keys:     {result['actual_keys']}")
         print("\nℹ️  Note: Python dict.get() is relatively constant-time")
         print("   However, cache effects may still leak information")
-        print("="*80)
+        print("=" * 80)
 
-        assert stats['success']
+        assert stats["success"]
 
 
 if __name__ == "__main__":

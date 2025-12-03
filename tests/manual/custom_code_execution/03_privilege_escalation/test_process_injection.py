@@ -21,9 +21,9 @@ import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.execution.custom_code_execution_service import (
-    CustomCodeExecutionService,
+    CodeExecutionError,
     CodeValidationError,
-    CodeExecutionError
+    CustomCodeExecutionService,
 )
 
 
@@ -55,7 +55,7 @@ class TestMemoryInjection:
 
         Attack: Read/write parent process memory
         """
-        code = '''
+        code = """
 import os
 from pathlib import Path
 
@@ -81,7 +81,7 @@ try:
         print(f"   macOS does not expose process memory via filesystem")
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -112,7 +112,7 @@ except Exception as e:
 
         Attack: Use ptrace to debug and control parent
         """
-        code = '''
+        code = """
 import os
 import ctypes
 import ctypes.util
@@ -140,7 +140,7 @@ try:
         result = "PROTECTED: libc not loadable"
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -169,7 +169,7 @@ except Exception as e:
 
         Attack: Create shared memory for data exfiltration
         """
-        code = '''
+        code = """
 import mmap
 import os
 
@@ -187,7 +187,7 @@ try:
     shm.close()
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -216,7 +216,7 @@ except Exception as e:
 
         Attack: Read/write arbitrary memory in subprocess
         """
-        code = '''
+        code = """
 import ctypes
 
 try:
@@ -233,7 +233,7 @@ try:
     print(f"   Could crash: Segfault subprocess by accessing invalid addresses")
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -279,7 +279,7 @@ class TestIPCMechanisms:
 
         Attack: Create socket for command/control
         """
-        code = '''
+        code = """
 import socket
 import tempfile
 from pathlib import Path
@@ -301,7 +301,7 @@ try:
     sock.close()
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -330,7 +330,7 @@ except Exception as e:
 
         Attack: Create persistent IPC channel
         """
-        code = '''
+        code = """
 import os
 import tempfile
 from pathlib import Path
@@ -347,7 +347,7 @@ try:
         result = "PROTECTED: mkfifo not available (Windows expected)"
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -376,7 +376,7 @@ except Exception as e:
 
         Attack: Use kernel IPC primitives
         """
-        code = '''
+        code = """
 try:
     import sysv_ipc
 
@@ -388,7 +388,7 @@ except ImportError:
     result = "PROTECTED: sysv_ipc not installed"
     print(f"✅ sysv_ipc not available")
     print(f"   Cannot use System V IPC primitives")
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -433,7 +433,7 @@ class TestDockerEscapes:
 
         Attack: Control Docker daemon
         """
-        code = '''
+        code = """
 from pathlib import Path
 
 try:
@@ -451,7 +451,7 @@ try:
         print(f"   Not running in Docker or socket not exposed")
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -479,7 +479,7 @@ except Exception as e:
 
         Attack: Fingerprint container environment
         """
-        code = '''
+        code = """
 from pathlib import Path
 
 try:
@@ -505,7 +505,7 @@ try:
         print(f"ℹ️  /proc filesystem not available")
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -531,7 +531,7 @@ except Exception as e:
 
         Attack: Detect privileged mode
         """
-        code = '''
+        code = """
 import os
 from pathlib import Path
 
@@ -560,7 +560,7 @@ try:
         print(f"   UID: {os.getuid()}")
 except Exception as e:
     result = f"Error: {e}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False, timeout=5)
 
@@ -577,9 +577,9 @@ except Exception as e:
 
 
 if __name__ == "__main__":
-    print("="*70)
+    print("=" * 70)
     print("PROCESS INJECTION & MEMORY MANIPULATION TESTS")
-    print("="*70)
+    print("=" * 70)
     print("Run with: pytest test_process_injection.py -v -s")
     print("")
     print("These tests check if user code can:")
@@ -595,4 +595,4 @@ if __name__ == "__main__":
     print("  - Docker socket: VARIES (depends on mounting)")
     print("")
     print("⚠️  SAFETY: Tests only check capability, no actual attacks")
-    print("="*70)
+    print("=" * 70)

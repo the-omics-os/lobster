@@ -7,14 +7,16 @@ Tests the end-to-end workflow combining:
 - W3C-PROV provenance tracking throughout
 """
 
-import numpy as np
-import pytest
 import anndata
+import numpy as np
 import pandas as pd
+import pytest
 import scanpy as sc
 
-from lobster.services.analysis.enhanced_singlecell_service import EnhancedSingleCellService
 from lobster.core.analysis_ir import AnalysisStep
+from lobster.services.analysis.enhanced_singlecell_service import (
+    EnhancedSingleCellService,
+)
 
 
 @pytest.fixture
@@ -88,7 +90,9 @@ def reference_markers():
 class TestCompleteWorkflow:
     """Integration tests for complete analysis workflow."""
 
-    def test_marker_detection_then_annotation(self, service, complete_dataset, reference_markers):
+    def test_marker_detection_then_annotation(
+        self, service, complete_dataset, reference_markers
+    ):
         """Test complete workflow: marker detection → cell type annotation."""
 
         # Step 1: Find marker genes with filtering
@@ -99,7 +103,7 @@ class TestCompleteWorkflow:
             n_genes=25,
             min_fold_change=1.5,
             min_pct=0.25,
-            max_out_pct=0.5
+            max_out_pct=0.5,
         )
 
         # Verify marker detection worked
@@ -109,8 +113,7 @@ class TestCompleteWorkflow:
 
         # Step 2: Annotate cell types with confidence scoring
         adata_annotated, annotation_stats, annotation_ir = service.annotate_cell_types(
-            adata_markers,
-            reference_markers=reference_markers
+            adata_markers, reference_markers=reference_markers
         )
 
         # Verify annotation worked
@@ -126,7 +129,9 @@ class TestCompleteWorkflow:
         assert len(adata_annotated) == len(complete_dataset)
         assert adata_annotated.n_vars == complete_dataset.n_vars
 
-    def test_workflow_preserves_data(self, service, complete_dataset, reference_markers):
+    def test_workflow_preserves_data(
+        self, service, complete_dataset, reference_markers
+    ):
         """Test that workflow preserves original data and metadata."""
 
         # Store original properties
@@ -137,13 +142,11 @@ class TestCompleteWorkflow:
 
         # Run workflow
         adata_markers, _, _ = service.find_marker_genes(
-            complete_dataset,
-            groupby="leiden"
+            complete_dataset, groupby="leiden"
         )
 
         adata_annotated, _, _ = service.annotate_cell_types(
-            adata_markers,
-            reference_markers=reference_markers
+            adata_markers, reference_markers=reference_markers
         )
 
         # Verify preservation
@@ -153,18 +156,18 @@ class TestCompleteWorkflow:
         assert list(adata_annotated.var_names) == original_var_names
         assert "leiden" in adata_annotated.obs.columns  # Original metadata preserved
 
-    def test_workflow_adds_expected_columns(self, service, complete_dataset, reference_markers):
+    def test_workflow_adds_expected_columns(
+        self, service, complete_dataset, reference_markers
+    ):
         """Test that workflow adds all expected new columns."""
 
         # Run workflow
         adata_markers, _, _ = service.find_marker_genes(
-            complete_dataset,
-            groupby="leiden"
+            complete_dataset, groupby="leiden"
         )
 
         adata_annotated, _, _ = service.annotate_cell_types(
-            adata_markers,
-            reference_markers=reference_markers
+            adata_markers, reference_markers=reference_markers
         )
 
         # Check marker detection results
@@ -176,13 +179,15 @@ class TestCompleteWorkflow:
             "cell_type_confidence",
             "cell_type_top3",
             "annotation_entropy",
-            "annotation_quality"
+            "annotation_quality",
         ]
 
         for col in expected_columns:
             assert col in adata_annotated.obs.columns, f"Missing column: {col}"
 
-    def test_workflow_with_stringent_filtering(self, service, complete_dataset, reference_markers):
+    def test_workflow_with_stringent_filtering(
+        self, service, complete_dataset, reference_markers
+    ):
         """Test workflow with very stringent marker filtering."""
 
         # Step 1: Stringent marker detection
@@ -191,9 +196,9 @@ class TestCompleteWorkflow:
             groupby="leiden",
             method="wilcoxon",
             n_genes=25,
-            min_fold_change=2.0,   # Stricter
-            min_pct=0.4,           # Higher
-            max_out_pct=0.3        # Lower
+            min_fold_change=2.0,  # Stricter
+            min_pct=0.4,  # Higher
+            max_out_pct=0.3,  # Lower
         )
 
         # Verify filtering occurred
@@ -204,26 +209,25 @@ class TestCompleteWorkflow:
 
         # Step 2: Annotation should still work
         adata_annotated, annotation_stats, _ = service.annotate_cell_types(
-            adata_markers,
-            reference_markers=reference_markers
+            adata_markers, reference_markers=reference_markers
         )
 
         # Verify annotation completed
         assert "cell_type" in adata_annotated.obs.columns
         assert annotation_stats["n_clusters"] == 4
 
-    def test_workflow_confidence_correlates_with_quality(self, service, complete_dataset, reference_markers):
+    def test_workflow_confidence_correlates_with_quality(
+        self, service, complete_dataset, reference_markers
+    ):
         """Test that confidence scores correlate with annotation quality flags."""
 
         # Run complete workflow
         adata_markers, _, _ = service.find_marker_genes(
-            complete_dataset,
-            groupby="leiden"
+            complete_dataset, groupby="leiden"
         )
 
         adata_annotated, _, _ = service.annotate_cell_types(
-            adata_markers,
-            reference_markers=reference_markers
+            adata_markers, reference_markers=reference_markers
         )
 
         # Extract confidence and quality
@@ -232,27 +236,35 @@ class TestCompleteWorkflow:
 
         # Calculate mean confidence by quality category
         high_conf = confidence[quality == "high"].mean()
-        medium_conf = confidence[quality == "medium"].mean() if (quality == "medium").any() else 0
-        low_conf = confidence[quality == "low"].mean() if (quality == "low").any() else 0
+        medium_conf = (
+            confidence[quality == "medium"].mean() if (quality == "medium").any() else 0
+        )
+        low_conf = (
+            confidence[quality == "low"].mean() if (quality == "low").any() else 0
+        )
 
         # High quality should have higher mean confidence than others
         if (quality == "medium").any():
-            assert high_conf > medium_conf, "High quality should have higher confidence than medium"
+            assert (
+                high_conf > medium_conf
+            ), "High quality should have higher confidence than medium"
         if (quality == "low").any():
-            assert high_conf > low_conf, "High quality should have higher confidence than low"
+            assert (
+                high_conf > low_conf
+            ), "High quality should have higher confidence than low"
 
-    def test_workflow_stats_consistency(self, service, complete_dataset, reference_markers):
+    def test_workflow_stats_consistency(
+        self, service, complete_dataset, reference_markers
+    ):
         """Test that stats from both steps are internally consistent."""
 
         # Run workflow
         adata_markers, marker_stats, _ = service.find_marker_genes(
-            complete_dataset,
-            groupby="leiden"
+            complete_dataset, groupby="leiden"
         )
 
         adata_annotated, annotation_stats, _ = service.annotate_cell_types(
-            adata_markers,
-            reference_markers=reference_markers
+            adata_markers, reference_markers=reference_markers
         )
 
         # Verify marker stats consistency
@@ -268,19 +280,14 @@ class TestCompleteWorkflow:
         """Test that both analysis steps generate proper IR for provenance chain."""
 
         # Run workflow and collect IRs
-        _, _, marker_ir = service.find_marker_genes(
-            complete_dataset,
-            groupby="leiden"
-        )
+        _, _, marker_ir = service.find_marker_genes(complete_dataset, groupby="leiden")
 
         adata_markers, _, _ = service.find_marker_genes(
-            complete_dataset,
-            groupby="leiden"
+            complete_dataset, groupby="leiden"
         )
 
         _, _, annotation_ir = service.annotate_cell_types(
-            adata_markers,
-            reference_markers=reference_markers
+            adata_markers, reference_markers=reference_markers
         )
 
         # Verify IR chain
@@ -308,14 +315,12 @@ class TestWorkflowEdgeCases:
 
         # Run marker detection
         adata_markers, _, _ = service.find_marker_genes(
-            complete_dataset,
-            groupby="leiden"
+            complete_dataset, groupby="leiden"
         )
 
         # Annotation without reference markers (uses defaults)
         adata_annotated, annotation_stats, _ = service.annotate_cell_types(
-            adata_markers,
-            reference_markers=None  # Uses built-in markers
+            adata_markers, reference_markers=None  # Uses built-in markers
         )
 
         # Should still complete
@@ -325,16 +330,18 @@ class TestWorkflowEdgeCases:
         assert "cell_type_confidence" in adata_annotated.obs.columns
         assert "confidence_mean" in annotation_stats
 
-    def test_workflow_with_lenient_filtering(self, service, complete_dataset, reference_markers):
+    def test_workflow_with_lenient_filtering(
+        self, service, complete_dataset, reference_markers
+    ):
         """Test workflow with very lenient filtering (keeps more genes)."""
 
         # Lenient marker detection
         adata_markers, marker_stats, _ = service.find_marker_genes(
             complete_dataset,
             groupby="leiden",
-            min_fold_change=0.5,   # Very lenient
+            min_fold_change=0.5,  # Very lenient
             min_pct=0.1,
-            max_out_pct=0.9
+            max_out_pct=0.9,
         )
 
         # Should complete and have fewer filtered genes
@@ -342,8 +349,7 @@ class TestWorkflowEdgeCases:
 
         # Run annotation
         adata_annotated, annotation_stats, _ = service.annotate_cell_types(
-            adata_markers,
-            reference_markers=reference_markers
+            adata_markers, reference_markers=reference_markers
         )
 
         # Verify workflow completed

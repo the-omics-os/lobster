@@ -16,8 +16,9 @@ import pandas as pd
 import pytest
 
 from lobster.core import DesignMatrixError, FormulaError
-from lobster.services.analysis.differential_formula_service import DifferentialFormulaService
-
+from lobster.services.analysis.differential_formula_service import (
+    DifferentialFormulaService,
+)
 
 # ===============================================================================
 # Fixtures
@@ -33,38 +34,107 @@ def formula_service():
 @pytest.fixture
 def simple_metadata():
     """Create simple metadata for testing."""
-    return pd.DataFrame({
-        'condition': ['control', 'control', 'control', 'treated', 'treated', 'treated'],
-        'batch': ['batch1', 'batch1', 'batch2', 'batch1', 'batch2', 'batch2'],
-        'age': [25, 30, 35, 28, 32, 40]
-    }, index=[f"sample_{i}" for i in range(6)])
+    return pd.DataFrame(
+        {
+            "condition": [
+                "control",
+                "control",
+                "control",
+                "treated",
+                "treated",
+                "treated",
+            ],
+            "batch": ["batch1", "batch1", "batch2", "batch1", "batch2", "batch2"],
+            "age": [25, 30, 35, 28, 32, 40],
+        },
+        index=[f"sample_{i}" for i in range(6)],
+    )
 
 
 @pytest.fixture
 def complex_metadata():
     """Create complex metadata with multiple factors."""
-    return pd.DataFrame({
-        'condition': ['control', 'control', 'control', 'control',
-                     'treated', 'treated', 'treated', 'treated',
-                     'control', 'control', 'treated', 'treated'],
-        'batch': ['batch1', 'batch1', 'batch2', 'batch2',
-                 'batch1', 'batch1', 'batch2', 'batch2',
-                 'batch1', 'batch2', 'batch1', 'batch2'],
-        'donor': ['donor_a', 'donor_b', 'donor_c', 'donor_d',
-                 'donor_a', 'donor_b', 'donor_c', 'donor_d',
-                 'donor_e', 'donor_f', 'donor_e', 'donor_f'],
-        'age': [25, 30, 35, 40, 28, 32, 38, 42, 26, 34, 29, 36],
-        'weight': [65.5, 70.2, 68.8, 75.1, 72.3, 69.5, 71.8, 74.2, 67.9, 73.4, 70.1, 72.8]
-    }, index=[f"sample_{i}" for i in range(12)])
+    return pd.DataFrame(
+        {
+            "condition": [
+                "control",
+                "control",
+                "control",
+                "control",
+                "treated",
+                "treated",
+                "treated",
+                "treated",
+                "control",
+                "control",
+                "treated",
+                "treated",
+            ],
+            "batch": [
+                "batch1",
+                "batch1",
+                "batch2",
+                "batch2",
+                "batch1",
+                "batch1",
+                "batch2",
+                "batch2",
+                "batch1",
+                "batch2",
+                "batch1",
+                "batch2",
+            ],
+            "donor": [
+                "donor_a",
+                "donor_b",
+                "donor_c",
+                "donor_d",
+                "donor_a",
+                "donor_b",
+                "donor_c",
+                "donor_d",
+                "donor_e",
+                "donor_f",
+                "donor_e",
+                "donor_f",
+            ],
+            "age": [25, 30, 35, 40, 28, 32, 38, 42, 26, 34, 29, 36],
+            "weight": [
+                65.5,
+                70.2,
+                68.8,
+                75.1,
+                72.3,
+                69.5,
+                71.8,
+                74.2,
+                67.9,
+                73.4,
+                70.1,
+                72.8,
+            ],
+        },
+        index=[f"sample_{i}" for i in range(12)],
+    )
 
 
 @pytest.fixture
 def imbalanced_metadata():
     """Create imbalanced design metadata."""
-    return pd.DataFrame({
-        'condition': ['control', 'control', 'treated', 'treated', 'treated', 'treated'],
-        'batch': ['batch1', 'batch1', 'batch1', 'batch1', 'batch2', 'batch2']
-    }, index=[f"sample_{i}" for i in range(6)])
+    return pd.DataFrame(
+        {
+            "condition": [
+                "control",
+                "control",
+                "treated",
+                "treated",
+                "treated",
+                "treated",
+            ],
+            "batch": ["batch1", "batch1", "batch1", "batch1", "batch2", "batch2"],
+        },
+        index=[f"sample_{i}" for i in range(6)],
+    )
 
 
 # ===============================================================================
@@ -79,8 +149,7 @@ class TestSuggestExperimentalDesigns:
     def test_suggest_simple_design(self, formula_service, simple_metadata):
         """Test suggestion for simple single-factor design."""
         suggestions = formula_service.suggest_formulas(
-            metadata=simple_metadata,
-            analysis_goal="Compare conditions"
+            metadata=simple_metadata, analysis_goal="Compare conditions"
         )
 
         # Should have at least one suggestion
@@ -107,7 +176,7 @@ class TestSuggestExperimentalDesigns:
         """Test suggestion with batch effect correction."""
         suggestions = formula_service.suggest_formulas(
             metadata=simple_metadata,
-            analysis_goal="Compare conditions with batch correction"
+            analysis_goal="Compare conditions with batch correction",
         )
 
         # Find batch-corrected design
@@ -130,11 +199,13 @@ class TestSuggestExperimentalDesigns:
         """Test suggestion with interaction terms."""
         suggestions = formula_service.suggest_formulas(
             metadata=complex_metadata,
-            analysis_goal="Analyze condition-batch interactions"
+            analysis_goal="Analyze condition-batch interactions",
         )
 
         # Find interaction design
-        interaction_designs = [s for s in suggestions if s["complexity"] == "interaction"]
+        interaction_designs = [
+            s for s in suggestions if s["complexity"] == "interaction"
+        ]
 
         if len(interaction_designs) > 0:
             interaction_design = interaction_designs[0]
@@ -146,15 +217,18 @@ class TestSuggestExperimentalDesigns:
             # Verify higher sample requirements
             assert interaction_design["min_samples_needed"] >= 12
 
-    def test_suggest_with_continuous_covariates(self, formula_service, complex_metadata):
+    def test_suggest_with_continuous_covariates(
+        self, formula_service, complex_metadata
+    ):
         """Test suggestion with continuous variables."""
         suggestions = formula_service.suggest_formulas(
-            metadata=complex_metadata,
-            analysis_goal="Control for age and weight"
+            metadata=complex_metadata, analysis_goal="Control for age and weight"
         )
 
         # Find multi-factor design
-        multifactor_designs = [s for s in suggestions if s["complexity"] == "multifactor"]
+        multifactor_designs = [
+            s for s in suggestions if s["complexity"] == "multifactor"
+        ]
 
         if len(multifactor_designs) > 0:
             multifactor_design = multifactor_designs[0]
@@ -172,8 +246,7 @@ class TestSuggestExperimentalDesigns:
         empty_metadata = pd.DataFrame()
 
         suggestions = formula_service.suggest_formulas(
-            metadata=empty_metadata,
-            analysis_goal="Test"
+            metadata=empty_metadata, analysis_goal="Test"
         )
 
         # Should return empty list for invalid metadata
@@ -182,15 +255,17 @@ class TestSuggestExperimentalDesigns:
 
     def test_suggest_filters_invalid_columns(self, formula_service):
         """Test that internal columns are filtered out."""
-        metadata_with_internal = pd.DataFrame({
-            'condition': ['control', 'treated'] * 3,
-            '_internal_col': [1, 2] * 3,  # Should be filtered
-            'n_cells': [1000, 2000] * 3,  # Should be filtered
-        }, index=[f"sample_{i}" for i in range(6)])
+        metadata_with_internal = pd.DataFrame(
+            {
+                "condition": ["control", "treated"] * 3,
+                "_internal_col": [1, 2] * 3,  # Should be filtered
+                "n_cells": [1000, 2000] * 3,  # Should be filtered
+            },
+            index=[f"sample_{i}" for i in range(6)],
+        )
 
         suggestions = formula_service.suggest_formulas(
-            metadata=metadata_with_internal,
-            analysis_goal="Test"
+            metadata=metadata_with_internal, analysis_goal="Test"
         )
 
         # Should still generate suggestions
@@ -204,15 +279,17 @@ class TestSuggestExperimentalDesigns:
 
     def test_suggest_handles_all_numeric(self, formula_service):
         """Test suggestion when all variables are numeric."""
-        numeric_metadata = pd.DataFrame({
-            'value1': [1, 2, 3, 4, 5, 6],
-            'value2': [10.1, 20.2, 30.3, 40.4, 50.5, 60.6],
-            'value3': [100, 200, 300, 400, 500, 600]
-        }, index=[f"sample_{i}" for i in range(6)])
+        numeric_metadata = pd.DataFrame(
+            {
+                "value1": [1, 2, 3, 4, 5, 6],
+                "value2": [10.1, 20.2, 30.3, 40.4, 50.5, 60.6],
+                "value3": [100, 200, 300, 400, 500, 600],
+            },
+            index=[f"sample_{i}" for i in range(6)],
+        )
 
         suggestions = formula_service.suggest_formulas(
-            metadata=numeric_metadata,
-            analysis_goal="Test"
+            metadata=numeric_metadata, analysis_goal="Test"
         )
 
         # Should return suggestions (may be empty if no binary factors)
@@ -231,9 +308,7 @@ class TestPreviewDesignMatrix:
     def test_preview_simple_formula(self, formula_service, simple_metadata):
         """Test preview of simple formula."""
         preview = formula_service.preview_design_matrix(
-            formula="~condition",
-            metadata=simple_metadata,
-            max_rows=3
+            formula="~condition", metadata=simple_metadata, max_rows=3
         )
 
         # Verify preview structure
@@ -251,9 +326,7 @@ class TestPreviewDesignMatrix:
     def test_preview_with_batch(self, formula_service, simple_metadata):
         """Test preview with batch correction formula."""
         preview = formula_service.preview_design_matrix(
-            formula="~condition + batch",
-            metadata=simple_metadata,
-            max_rows=3
+            formula="~condition + batch", metadata=simple_metadata, max_rows=3
         )
 
         # Verify both factors included
@@ -270,9 +343,7 @@ class TestPreviewDesignMatrix:
     def test_preview_with_interaction(self, formula_service, simple_metadata):
         """Test preview with interaction terms."""
         preview = formula_service.preview_design_matrix(
-            formula="~condition * batch",
-            metadata=simple_metadata,
-            max_rows=3
+            formula="~condition * batch", metadata=simple_metadata, max_rows=3
         )
 
         # Verify interaction columns
@@ -286,8 +357,7 @@ class TestPreviewDesignMatrix:
     def test_preview_handles_invalid_formula(self, formula_service, simple_metadata):
         """Test preview with invalid formula."""
         preview = formula_service.preview_design_matrix(
-            formula="~nonexistent_column",
-            metadata=simple_metadata
+            formula="~nonexistent_column", metadata=simple_metadata
         )
 
         # Should return error message
@@ -297,9 +367,7 @@ class TestPreviewDesignMatrix:
     def test_preview_matrix_shape(self, formula_service, simple_metadata):
         """Test that preview shows correct matrix dimensions."""
         preview = formula_service.preview_design_matrix(
-            formula="~condition + batch",
-            metadata=simple_metadata,
-            max_rows=5
+            formula="~condition + batch", metadata=simple_metadata, max_rows=5
         )
 
         # Should show n_samples × n_coefficients
@@ -311,9 +379,7 @@ class TestPreviewDesignMatrix:
     def test_preview_continuous_variable(self, formula_service, simple_metadata):
         """Test preview with continuous variable."""
         preview = formula_service.preview_design_matrix(
-            formula="~condition + age",
-            metadata=simple_metadata,
-            max_rows=3
+            formula="~condition + age", metadata=simple_metadata, max_rows=3
         )
 
         # Verify continuous variable shown
@@ -323,15 +389,11 @@ class TestPreviewDesignMatrix:
     def test_preview_max_rows_limit(self, formula_service, complex_metadata):
         """Test that max_rows parameter works."""
         preview_short = formula_service.preview_design_matrix(
-            formula="~condition",
-            metadata=complex_metadata,
-            max_rows=2
+            formula="~condition", metadata=complex_metadata, max_rows=2
         )
 
         preview_long = formula_service.preview_design_matrix(
-            formula="~condition",
-            metadata=complex_metadata,
-            max_rows=10
+            formula="~condition", metadata=complex_metadata, max_rows=10
         )
 
         # Short preview should have "... and X more rows"
@@ -351,9 +413,7 @@ class TestValidateExperimentalDesign:
     def test_validate_simple_design(self, formula_service, simple_metadata):
         """Test validation of valid simple design."""
         result = formula_service.validate_experimental_design(
-            metadata=simple_metadata,
-            formula="~condition",
-            min_replicates=2
+            metadata=simple_metadata, formula="~condition", min_replicates=2
         )
 
         # Verify result structure
@@ -371,15 +431,23 @@ class TestValidateExperimentalDesign:
     def test_validate_detects_confounding(self, formula_service):
         """Test detection of confounded design."""
         # Create confounded design (condition perfectly correlated with batch)
-        confounded_metadata = pd.DataFrame({
-            'condition': ['control', 'control', 'control', 'treated', 'treated', 'treated'],
-            'batch': ['batch1', 'batch1', 'batch1', 'batch2', 'batch2', 'batch2']
-        }, index=[f"sample_{i}" for i in range(6)])
+        confounded_metadata = pd.DataFrame(
+            {
+                "condition": [
+                    "control",
+                    "control",
+                    "control",
+                    "treated",
+                    "treated",
+                    "treated",
+                ],
+                "batch": ["batch1", "batch1", "batch1", "batch2", "batch2", "batch2"],
+            },
+            index=[f"sample_{i}" for i in range(6)],
+        )
 
         result = formula_service.validate_experimental_design(
-            metadata=confounded_metadata,
-            formula="~condition + batch",
-            min_replicates=2
+            metadata=confounded_metadata, formula="~condition + batch", min_replicates=2
         )
 
         # Should have warnings (design matrix will be rank deficient)
@@ -391,15 +459,16 @@ class TestValidateExperimentalDesign:
     def test_validate_detects_rank_deficiency(self, formula_service):
         """Test detection of rank deficient design matrix."""
         # Create metadata that will lead to rank deficiency
-        rank_def_metadata = pd.DataFrame({
-            'condition': ['a', 'a', 'b', 'b'],
-            'factor2': ['x', 'x', 'y', 'y'],  # Perfectly correlated with condition
-        }, index=[f"sample_{i}" for i in range(4)])
+        rank_def_metadata = pd.DataFrame(
+            {
+                "condition": ["a", "a", "b", "b"],
+                "factor2": ["x", "x", "y", "y"],  # Perfectly correlated with condition
+            },
+            index=[f"sample_{i}" for i in range(4)],
+        )
 
         result = formula_service.validate_experimental_design(
-            metadata=rank_def_metadata,
-            formula="~condition + factor2",
-            min_replicates=1
+            metadata=rank_def_metadata, formula="~condition + factor2", min_replicates=1
         )
 
         # Validation should still work (warnings may be present)
@@ -409,14 +478,15 @@ class TestValidateExperimentalDesign:
     def test_validate_checks_sample_size(self, formula_service):
         """Test minimum sample size requirements."""
         # Very small sample size
-        small_metadata = pd.DataFrame({
-            'condition': ['control', 'treated'],
-        }, index=['sample_0', 'sample_1'])
+        small_metadata = pd.DataFrame(
+            {
+                "condition": ["control", "treated"],
+            },
+            index=["sample_0", "sample_1"],
+        )
 
         result = formula_service.validate_experimental_design(
-            metadata=small_metadata,
-            formula="~condition",
-            min_replicates=2
+            metadata=small_metadata, formula="~condition", min_replicates=2
         )
 
         # Should have warnings about small sample size or insufficient replicates
@@ -426,27 +496,28 @@ class TestValidateExperimentalDesign:
     def test_validate_warns_about_imbalance(self, formula_service, imbalanced_metadata):
         """Test detection of unbalanced designs."""
         result = formula_service.validate_experimental_design(
-            metadata=imbalanced_metadata,
-            formula="~condition",
-            min_replicates=3
+            metadata=imbalanced_metadata, formula="~condition", min_replicates=3
         )
 
         # Should warn about imbalance (control has 2 samples, treated has 4)
         assert "warnings" in result
         warnings_text = " ".join(result["warnings"])
-        assert "replicate" in warnings_text.lower() or "balance" in warnings_text.lower()
+        assert (
+            "replicate" in warnings_text.lower() or "balance" in warnings_text.lower()
+        )
 
     def test_validate_handles_missing_values(self, formula_service):
         """Test handling of missing values in metadata."""
-        metadata_with_na = pd.DataFrame({
-            'condition': ['control', 'control', None, 'treated', 'treated', None],
-            'batch': ['batch1', 'batch2', 'batch1', 'batch2', 'batch1', 'batch2']
-        }, index=[f"sample_{i}" for i in range(6)])
+        metadata_with_na = pd.DataFrame(
+            {
+                "condition": ["control", "control", None, "treated", "treated", None],
+                "batch": ["batch1", "batch2", "batch1", "batch2", "batch1", "batch2"],
+            },
+            index=[f"sample_{i}" for i in range(6)],
+        )
 
         result = formula_service.validate_experimental_design(
-            metadata=metadata_with_na,
-            formula="~condition",
-            min_replicates=2
+            metadata=metadata_with_na, formula="~condition", min_replicates=2
         )
 
         # Should return validation result
@@ -460,7 +531,7 @@ class TestValidateExperimentalDesign:
         result = formula_service.validate_experimental_design(
             metadata=complex_metadata,
             formula="~condition + batch + age",
-            min_replicates=2
+            min_replicates=2,
         )
 
         # Should validate successfully
@@ -473,15 +544,16 @@ class TestValidateExperimentalDesign:
 
     def test_validate_insufficient_replicates(self, formula_service):
         """Test detection of insufficient replicates."""
-        insufficient_metadata = pd.DataFrame({
-            'condition': ['control', 'treated', 'other'],
-            'batch': ['batch1', 'batch1', 'batch1']
-        }, index=['sample_0', 'sample_1', 'sample_2'])
+        insufficient_metadata = pd.DataFrame(
+            {
+                "condition": ["control", "treated", "other"],
+                "batch": ["batch1", "batch1", "batch1"],
+            },
+            index=["sample_0", "sample_1", "sample_2"],
+        )
 
         result = formula_service.validate_experimental_design(
-            metadata=insufficient_metadata,
-            formula="~condition",
-            min_replicates=2
+            metadata=insufficient_metadata, formula="~condition", min_replicates=2
         )
 
         # Should warn about insufficient replicates (each condition has only 1 sample)
@@ -501,8 +573,7 @@ class TestFormulaParsingAdvanced:
     def test_parse_formula_basic(self, formula_service, simple_metadata):
         """Test basic formula parsing."""
         result = formula_service.parse_formula(
-            formula="~condition",
-            metadata=simple_metadata
+            formula="~condition", metadata=simple_metadata
         )
 
         # Verify result structure
@@ -512,12 +583,14 @@ class TestFormulaParsingAdvanced:
         assert "variable_info" in result
         assert result["formula_string"] == "~condition"
 
-    def test_parse_formula_with_reference_levels(self, formula_service, simple_metadata):
+    def test_parse_formula_with_reference_levels(
+        self, formula_service, simple_metadata
+    ):
         """Test formula parsing with explicit reference levels."""
         result = formula_service.parse_formula(
             formula="~condition + batch",
             metadata=simple_metadata,
-            reference_levels={"condition": "control", "batch": "batch1"}
+            reference_levels={"condition": "control", "batch": "batch1"},
         )
 
         # Verify reference levels are set
@@ -529,22 +602,19 @@ class TestFormulaParsingAdvanced:
         """Test that parsing validates variable existence."""
         with pytest.raises(FormulaError, match="Variables not found"):
             formula_service.parse_formula(
-                formula="~nonexistent_var",
-                metadata=simple_metadata
+                formula="~nonexistent_var", metadata=simple_metadata
             )
 
     def test_construct_design_matrix_basic(self, formula_service, simple_metadata):
         """Test design matrix construction."""
         # Parse formula first
         formula_components = formula_service.parse_formula(
-            formula="~condition",
-            metadata=simple_metadata
+            formula="~condition", metadata=simple_metadata
         )
 
         # Construct design matrix
         result = formula_service.construct_design_matrix(
-            formula_components=formula_components,
-            metadata=simple_metadata
+            formula_components=formula_components, metadata=simple_metadata
         )
 
         # Verify result
@@ -558,17 +628,18 @@ class TestFormulaParsingAdvanced:
         assert result["design_matrix"].shape[0] == len(simple_metadata)
         assert result["design_matrix"].shape[1] == result["n_coefficients"]
 
-    def test_construct_design_matrix_with_contrast(self, formula_service, simple_metadata):
+    def test_construct_design_matrix_with_contrast(
+        self, formula_service, simple_metadata
+    ):
         """Test design matrix construction with contrast."""
         formula_components = formula_service.parse_formula(
-            formula="~condition",
-            metadata=simple_metadata
+            formula="~condition", metadata=simple_metadata
         )
 
         result = formula_service.construct_design_matrix(
             formula_components=formula_components,
             metadata=simple_metadata,
-            contrast=["condition", "treated", "control"]
+            contrast=["condition", "treated", "control"],
         )
 
         # Verify contrast vector created
@@ -583,7 +654,7 @@ class TestFormulaParsingAdvanced:
             metadata=simple_metadata,
             condition_col="condition",
             batch_col="batch",
-            reference_condition="control"
+            reference_condition="control",
         )
 
         # Verify result
@@ -595,19 +666,15 @@ class TestFormulaParsingAdvanced:
         """Test statistical power estimation."""
         # Create design matrix
         formula_components = formula_service.parse_formula(
-            formula="~condition + batch",
-            metadata=simple_metadata
+            formula="~condition + batch", metadata=simple_metadata
         )
         design_result = formula_service.construct_design_matrix(
-            formula_components=formula_components,
-            metadata=simple_metadata
+            formula_components=formula_components, metadata=simple_metadata
         )
 
         # Estimate power
         power_result = formula_service.estimate_statistical_power(
-            design_matrix=design_result["design_matrix"],
-            effect_size=0.5,
-            alpha=0.05
+            design_matrix=design_result["design_matrix"], effect_size=0.5, alpha=0.05
         )
 
         # Verify result
@@ -630,17 +697,13 @@ class TestFormulaServiceEdgeCases:
     def test_empty_formula(self, formula_service, simple_metadata):
         """Test handling of empty formula."""
         with pytest.raises(FormulaError, match="Empty formula"):
-            formula_service.parse_formula(
-                formula="~",
-                metadata=simple_metadata
-            )
+            formula_service.parse_formula(formula="~", metadata=simple_metadata)
 
     def test_formula_without_tilde(self, formula_service, simple_metadata):
         """Test formula without leading tilde."""
         # Should auto-add tilde
         result = formula_service.parse_formula(
-            formula="condition",
-            metadata=simple_metadata
+            formula="condition", metadata=simple_metadata
         )
 
         assert result["formula_string"] == "~condition"
@@ -648,8 +711,7 @@ class TestFormulaServiceEdgeCases:
     def test_formula_with_whitespace(self, formula_service, simple_metadata):
         """Test formula with extra whitespace."""
         result = formula_service.parse_formula(
-            formula="~  condition   +   batch  ",
-            metadata=simple_metadata
+            formula="~  condition   +   batch  ", metadata=simple_metadata
         )
 
         # Should clean whitespace
@@ -659,21 +721,22 @@ class TestFormulaServiceEdgeCases:
     def test_rank_deficient_matrix_warning(self, formula_service):
         """Test warning for rank deficient design matrix."""
         # Create perfectly correlated variables
-        correlated_metadata = pd.DataFrame({
-            'var1': [1, 2, 3, 4],
-            'var2': [2, 4, 6, 8],  # Perfectly correlated (2 * var1)
-        }, index=[f"sample_{i}" for i in range(4)])
+        correlated_metadata = pd.DataFrame(
+            {
+                "var1": [1, 2, 3, 4],
+                "var2": [2, 4, 6, 8],  # Perfectly correlated (2 * var1)
+            },
+            index=[f"sample_{i}" for i in range(4)],
+        )
 
         formula_components = formula_service.parse_formula(
-            formula="~var1 + var2",
-            metadata=correlated_metadata
+            formula="~var1 + var2", metadata=correlated_metadata
         )
 
         # Should construct but warn about rank deficiency
-        with patch.object(formula_service.logger, 'warning') as mock_warning:
+        with patch.object(formula_service.logger, "warning") as mock_warning:
             result = formula_service.construct_design_matrix(
-                formula_components=formula_components,
-                metadata=correlated_metadata
+                formula_components=formula_components, metadata=correlated_metadata
             )
 
             # Verify rank deficiency
@@ -682,8 +745,7 @@ class TestFormulaServiceEdgeCases:
     def test_invalid_contrast_format(self, formula_service, simple_metadata):
         """Test invalid contrast format."""
         formula_components = formula_service.parse_formula(
-            formula="~condition",
-            metadata=simple_metadata
+            formula="~condition", metadata=simple_metadata
         )
 
         # Contrast must have exactly 3 elements
@@ -692,23 +754,24 @@ class TestFormulaServiceEdgeCases:
             formula_service.construct_design_matrix(
                 formula_components=formula_components,
                 metadata=simple_metadata,
-                contrast=["condition", "treated"]  # Missing third element
+                contrast=["condition", "treated"],  # Missing third element
             )
 
     def test_continuous_variable_in_contrast(self, formula_service, simple_metadata):
         """Test that continuous variables cannot be used in contrasts."""
         formula_components = formula_service.parse_formula(
-            formula="~age",
-            metadata=simple_metadata
+            formula="~age", metadata=simple_metadata
         )
 
         # Should raise error (age is continuous)
         # Service wraps FormulaError in DesignMatrixError
-        with pytest.raises((FormulaError, DesignMatrixError), match="must be categorical"):
+        with pytest.raises(
+            (FormulaError, DesignMatrixError), match="must be categorical"
+        ):
             formula_service.construct_design_matrix(
                 formula_components=formula_components,
                 metadata=simple_metadata,
-                contrast=["age", "25", "30"]
+                contrast=["age", "25", "30"],
             )
 
 

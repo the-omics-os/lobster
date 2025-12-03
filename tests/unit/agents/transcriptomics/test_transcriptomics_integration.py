@@ -42,7 +42,6 @@ from lobster.core.data_manager_v2 import DataManagerV2
 from tests.mock_data.base import SMALL_DATASET_CONFIG
 from tests.mock_data.factories import SingleCellDataFactory
 
-
 # ==============================================================================
 # Integration Test Fixtures
 # ==============================================================================
@@ -85,11 +84,15 @@ def _create_raw_sc_data():
     n_cells = 1000
     n_genes = 2000
 
-    counts = csr_matrix(np.random.negative_binomial(n=2, p=0.8, size=(n_cells, n_genes)))
+    counts = csr_matrix(
+        np.random.negative_binomial(n=2, p=0.8, size=(n_cells, n_genes))
+    )
     adata = ad.AnnData(X=counts)
 
     # Biological metadata (BUG-005 - must survive entire pipeline)
-    adata.obs["patient_id"] = np.random.choice(["patient_1", "patient_2", "patient_3"], n_cells)
+    adata.obs["patient_id"] = np.random.choice(
+        ["patient_1", "patient_2", "patient_3"], n_cells
+    )
     adata.obs["tissue_region"] = np.random.choice(["tumor", "normal"], n_cells)
     adata.obs["condition"] = np.random.choice(["treated", "untreated"], n_cells)
 
@@ -213,8 +216,13 @@ class TestEndToEndWorkflows:
         agent = transcriptomics_expert(integrated_data_manager)
 
         # Verify QC workflow creates correct modalities
-        assert "geo_gse12345_quality_assessed" in integrated_data_manager.list_modalities()
-        assert "geo_gse12345_filtered_normalized" in integrated_data_manager.list_modalities()
+        assert (
+            "geo_gse12345_quality_assessed" in integrated_data_manager.list_modalities()
+        )
+        assert (
+            "geo_gse12345_filtered_normalized"
+            in integrated_data_manager.list_modalities()
+        )
 
     @patch("lobster.services.analysis.clustering_service.ClusteringService")
     def test_end_to_end_clustering_workflow(
@@ -364,9 +372,15 @@ class TestMultiResolutionClustering:
 
         # Mock multi-resolution results
         clustered_data = integrated_data_manager.get_modality("geo_gse12345_clustered")
-        clustered_data.obs["leiden_res0_25"] = np.random.randint(0, 3, clustered_data.n_obs)
-        clustered_data.obs["leiden_res0_5"] = np.random.randint(0, 5, clustered_data.n_obs)
-        clustered_data.obs["leiden_res1_0"] = np.random.randint(0, 8, clustered_data.n_obs)
+        clustered_data.obs["leiden_res0_25"] = np.random.randint(
+            0, 3, clustered_data.n_obs
+        )
+        clustered_data.obs["leiden_res0_5"] = np.random.randint(
+            0, 5, clustered_data.n_obs
+        )
+        clustered_data.obs["leiden_res1_0"] = np.random.randint(
+            0, 8, clustered_data.n_obs
+        )
 
         mock_service.cluster_and_visualize.return_value = (
             clustered_data,
@@ -439,12 +453,20 @@ class TestStateTransfer:
         # Check each stage
         raw_data = integrated_data_manager.get_modality("geo_gse12345")
         qc_data = integrated_data_manager.get_modality("geo_gse12345_quality_assessed")
-        filtered_data = integrated_data_manager.get_modality("geo_gse12345_filtered_normalized")
+        filtered_data = integrated_data_manager.get_modality(
+            "geo_gse12345_filtered_normalized"
+        )
         clustered_data = integrated_data_manager.get_modality("geo_gse12345_clustered")
         annotated_data = integrated_data_manager.get_modality("geo_gse12345_annotated")
 
         # Verify metadata at each stage
-        for stage_data in [raw_data, qc_data, filtered_data, clustered_data, annotated_data]:
+        for stage_data in [
+            raw_data,
+            qc_data,
+            filtered_data,
+            clustered_data,
+            annotated_data,
+        ]:
             assert "patient_id" in stage_data.obs.columns, "patient_id lost"
             assert "tissue_region" in stage_data.obs.columns, "tissue_region lost"
 
@@ -468,7 +490,9 @@ class TestErrorRecovery:
 
     def test_missing_modality_handled_gracefully(self, integrated_data_manager):
         """Test that missing modality errors are caught."""
-        integrated_data_manager.get_modality.side_effect = KeyError("Modality not found")
+        integrated_data_manager.get_modality.side_effect = KeyError(
+            "Modality not found"
+        )
 
         agent = transcriptomics_expert(integrated_data_manager)
         # Error should be caught at tool execution time
@@ -530,7 +554,12 @@ class TestDataIntegrity:
         # Raw counts must be available
         assert annotated_data.raw is not None
         # Raw should have integer counts
-        assert annotated_data.raw.X.dtype in [np.int32, np.int64, np.float32, np.float64]
+        assert annotated_data.raw.X.dtype in [
+            np.int32,
+            np.int64,
+            np.float32,
+            np.float64,
+        ]
 
 
 # ==============================================================================

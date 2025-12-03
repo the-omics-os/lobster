@@ -39,7 +39,9 @@ from scipy import sparse
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.provenance import ProvenanceTracker
 from lobster.services.analysis.clustering_service import ClusteringService
-from lobster.services.analysis.enhanced_singlecell_service import EnhancedSingleCellService
+from lobster.services.analysis.enhanced_singlecell_service import (
+    EnhancedSingleCellService,
+)
 from lobster.services.quality.preprocessing_service import PreprocessingService
 from lobster.services.quality.quality_service import QualityService
 

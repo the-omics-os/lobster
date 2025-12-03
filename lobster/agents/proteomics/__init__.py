@@ -1,13 +1,13 @@
 # Proteomics Agent Module
 # Unified agent for mass spectrometry and affinity proteomics analysis
 
-from lobster.agents.proteomics.proteomics_expert import proteomics_expert
 from lobster.agents.proteomics.platform_config import (
-    PlatformConfig,
     PLATFORM_CONFIGS,
+    PlatformConfig,
     detect_platform_type,
     get_platform_config,
 )
+from lobster.agents.proteomics.proteomics_expert import proteomics_expert
 from lobster.agents.proteomics.state import ProteomicsExpertState
 
 __all__ = [

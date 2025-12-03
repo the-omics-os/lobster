@@ -11,15 +11,16 @@ Test Naming Convention:
 Run with: pytest tests/manual/custom_code_execution/01_data_exfiltration/test_filesystem_exfiltration.py -v
 """
 
-import pytest
 import platform
 from pathlib import Path
+
 import anndata
 import numpy as np
 import pandas as pd
+import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.services.execution import CustomCodeExecutionService, CodeExecutionError
+from lobster.services.execution import CodeExecutionError, CustomCodeExecutionService
 
 
 class TestFilesystemExfiltration:
@@ -32,7 +33,7 @@ class TestFilesystemExfiltration:
         workspace.mkdir()
 
         # Create test file in workspace
-        test_df = pd.DataFrame({'data': [1, 2, 3]})
+        test_df = pd.DataFrame({"data": [1, 2, 3]})
         test_df.to_csv(workspace / "test.csv", index=False)
 
         return workspace
@@ -45,10 +46,10 @@ class TestFilesystemExfiltration:
         # Add test modality
         adata = anndata.AnnData(
             X=np.array([[1, 2], [3, 4]]),
-            obs=pd.DataFrame({'cell': ['c1', 'c2']}, index=['c1', 'c2']),
-            var=pd.DataFrame({'gene': ['g1', 'g2']}, index=['g1', 'g2'])
+            obs=pd.DataFrame({"cell": ["c1", "c2"]}, index=["c1", "c2"]),
+            var=pd.DataFrame({"gene": ["g1", "g2"]}, index=["g1", "g2"]),
         )
-        dm.modalities['test'] = adata
+        dm.modalities["test"] = adata
 
         return dm
 
@@ -68,7 +69,7 @@ class TestFilesystemExfiltration:
         if platform.system() == "Windows":
             pytest.skip("Test only applicable on Unix-like systems")
 
-        code = '''
+        code = """
 from pathlib import Path
 
 try:
@@ -81,7 +82,7 @@ try:
         result = "PROTECTED: File not accessible"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -103,7 +104,7 @@ except Exception as e:
         if platform.system() == "Windows":
             pytest.skip("Test only applicable on Unix-like systems")
 
-        code = '''
+        code = """
 from pathlib import Path
 
 try:
@@ -112,7 +113,7 @@ try:
     result = f"VULNERABILITY: Read /etc/hosts ({len(content)} bytes)"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -133,7 +134,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - can enumerate SSH keys)
         Impact: CRITICAL - SSH key discovery
         """
-        code = '''
+        code = """
 from pathlib import Path
 import os
 
@@ -148,7 +149,7 @@ except PermissionError:
     result = "PROTECTED: Permission denied"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -170,7 +171,7 @@ except Exception as e:
         Expected: SUCCESS if key exists (vulnerability)
         Impact: CRITICAL - Full SSH credential theft
         """
-        code = '''
+        code = """
 from pathlib import Path
 
 try:
@@ -194,7 +195,7 @@ try:
         result = "INFO: No SSH private keys found (or protected by OS)"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -218,7 +219,7 @@ except Exception as e:
         Expected: SUCCESS if file exists (vulnerability)
         Impact: CRITICAL - Cloud infrastructure access
         """
-        code = '''
+        code = """
 from pathlib import Path
 
 try:
@@ -234,7 +235,7 @@ try:
         result = "INFO: AWS credentials file does not exist"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -258,7 +259,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - path traversal allowed)
         Impact: HIGH - Can escape workspace
         """
-        code = '''
+        code = """
 from pathlib import Path
 
 try:
@@ -268,7 +269,7 @@ try:
     result = f"VULNERABILITY: Path traversal successful, found {len(files)} files in parent"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -287,7 +288,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - absolute paths allowed)
         Impact: HIGH - Direct file system access
         """
-        code = '''
+        code = """
 from pathlib import Path
 
 try:
@@ -297,7 +298,7 @@ try:
     result = f"VULNERABILITY: Accessed home directory, found files: {file_names}"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -318,7 +319,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - symlinks followed)
         Impact: HIGH - Indirect file access bypass
         """
-        code = '''
+        code = """
 from pathlib import Path
 import os
 
@@ -341,14 +342,16 @@ try:
         result = "INFO: Could not create symlink"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
         print(f"\n[Symlink follow] Result: {result}")
 
         if "VULNERABILITY" in str(result):
-            print("⚠️  HIGH VULNERABILITY: Symbolic links followed - indirect access bypass")
+            print(
+                "⚠️  HIGH VULNERABILITY: Symbolic links followed - indirect access bypass"
+            )
             assert "VULNERABILITY" in str(result)
         elif "INFO" in str(result):
             print("ℹ️  Cannot test (symlink creation failed)")
@@ -365,7 +368,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - can write outside workspace)
         Impact: MEDIUM - Persistent storage outside workspace
         """
-        code = '''
+        code = """
 from pathlib import Path
 import uuid
 
@@ -380,14 +383,16 @@ try:
         result = "PROTECTED: Could not write to /tmp"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
         print(f"\n[Write to /tmp] Result: {result}")
 
         if "VULNERABILITY" in str(result):
-            print("⚠️  MEDIUM VULNERABILITY: Can write to /tmp (persistence outside workspace)")
+            print(
+                "⚠️  MEDIUM VULNERABILITY: Can write to /tmp (persistence outside workspace)"
+            )
             assert "VULNERABILITY" in str(result)
         else:
             print("✅ PROTECTED: /tmp write blocked")
@@ -399,7 +404,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - home directory writable)
         Impact: HIGH - Persistent malicious files
         """
-        code = '''
+        code = """
 from pathlib import Path
 import uuid
 
@@ -414,7 +419,7 @@ try:
         result = "PROTECTED: Could not write to home"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -435,7 +440,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - process enumeration allowed)
         Impact: MEDIUM - Information disclosure
         """
-        code = '''
+        code = """
 from pathlib import Path
 
 try:
@@ -449,7 +454,7 @@ try:
         result = "INFO: /proc not available (not Linux)"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -471,9 +476,9 @@ class TestFilesystemExfiltrationSummary:
 
     def test_generate_summary(self):
         """Print summary of filesystem attack vectors."""
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("FILESYSTEM EXFILTRATION ATTACK SURFACE SUMMARY")
-        print("="*70)
+        print("=" * 70)
         print("\nTested Attack Vectors:")
         print("1. ⚠️  Read /etc/passwd (system users)")
         print("2. ⚠️  Read /etc/hosts (network config)")
@@ -488,6 +493,6 @@ class TestFilesystemExfiltrationSummary:
         print("11. ⚠️ Process enumeration")
         print("\nExpected Result: All applicable vulnerabilities should be confirmed")
         print("(Some tests are platform-specific and may be skipped)")
-        print("="*70 + "\n")
+        print("=" * 70 + "\n")
 
         assert True  # Always pass - this is just a summary

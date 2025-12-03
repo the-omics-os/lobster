@@ -28,31 +28,33 @@ INTEGRATION NOTES FOR docling_service.py:
     4. Respect rate limits (multi-domain rate limiting already configured)
 """
 
-import time
-import requests
-from typing import Optional, Dict
-from urllib.parse import urlparse
 import logging
+import time
+from typing import Dict, Optional
+from urllib.parse import urlparse
+
+import requests
 
 logger = logging.getLogger(__name__)
 
 
 class ASMAccessError(Exception):
     """Raised when ASM article access fails."""
+
     pass
 
 
 def is_asm_url(url: str) -> bool:
     """Check if URL is an ASM journal article."""
     parsed = urlparse(url)
-    return parsed.netloc in ['journals.asm.org', 'www.journals.asm.org']
+    return parsed.netloc in ["journals.asm.org", "www.journals.asm.org"]
 
 
 def fetch_asm_article(
     article_url: str,
     timeout: int = 30,
     homepage_delay: float = 2.0,
-    session: Optional[requests.Session] = None
+    session: Optional[requests.Session] = None,
 ) -> str:
     """
     Fetch ASM journal article HTML content.
@@ -87,31 +89,29 @@ def fetch_asm_article(
 
     # Comprehensive browser-like headers
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"macOS"',
-        'Cache-Control': 'max-age=0',
-        'Referer': 'https://journals.asm.org/',
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"macOS"',
+        "Cache-Control": "max-age=0",
+        "Referer": "https://journals.asm.org/",
     }
 
     try:
         # STEP 1: Visit homepage to establish session
         logger.debug(f"ASM access: Visiting homepage to establish session")
         homepage_response = session.get(
-            "https://journals.asm.org/",
-            headers=headers,
-            timeout=timeout
+            "https://journals.asm.org/", headers=headers, timeout=timeout
         )
         homepage_response.raise_for_status()
 
@@ -121,11 +121,7 @@ def fetch_asm_article(
 
         # STEP 3: Fetch article
         logger.debug(f"ASM access: Fetching article: {article_url}")
-        article_response = session.get(
-            article_url,
-            headers=headers,
-            timeout=timeout
-        )
+        article_response = session.get(article_url, headers=headers, timeout=timeout)
 
         # Check for bot protection
         if article_response.status_code == 403:
@@ -138,7 +134,9 @@ def fetch_asm_article(
         article_response.raise_for_status()
 
         content = article_response.text
-        logger.info(f"ASM access: Successfully fetched {len(content)} bytes from {article_url}")
+        logger.info(
+            f"ASM access: Successfully fetched {len(content)} bytes from {article_url}"
+        )
 
         return content
 
@@ -149,10 +147,7 @@ def fetch_asm_article(
 
 
 def fetch_asm_article_with_retry(
-    article_url: str,
-    max_retries: int = 3,
-    retry_delay: float = 5.0,
-    **kwargs
+    article_url: str, max_retries: int = 3, retry_delay: float = 5.0, **kwargs
 ) -> str:
     """
     Fetch ASM article with retry logic.
@@ -179,7 +174,7 @@ def fetch_asm_article_with_retry(
         except ASMAccessError as e:
             last_error = e
             if attempt < max_retries - 1:
-                wait_time = retry_delay * (2 ** attempt)  # Exponential backoff
+                wait_time = retry_delay * (2**attempt)  # Exponential backoff
                 logger.warning(
                     f"ASM access attempt {attempt + 1}/{max_retries} failed: {e}. "
                     f"Retrying in {wait_time:.1f}s..."
@@ -194,6 +189,7 @@ def fetch_asm_article_with_retry(
 # ============================================================================
 # INTEGRATION EXAMPLE: How to modify docling_service.py
 # ============================================================================
+
 
 def example_docling_integration():
     """
@@ -259,6 +255,7 @@ def example_docling_integration():
 # TEST SUITE
 # ============================================================================
 
+
 def test_asm_access():
     """Test ASM access with various URLs."""
     test_urls = [
@@ -298,7 +295,7 @@ if __name__ == "__main__":
         print("\n❌ Some tests failed. Review logs above.")
 
     # Print integration example
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("INTEGRATION EXAMPLE:")
-    print("="*80)
+    print("=" * 80)
     print(example_docling_integration())

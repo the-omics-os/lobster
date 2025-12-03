@@ -23,18 +23,19 @@ SUBSCRIPTION_TIERS: Dict[str, Dict[str, Any]] = {
     "free": {
         "display_name": "Free",
         "agents": [
-            # Core agents available to all users
+            # Core agents available to all users (6 agents)
+            # These are synced to lobster-local (public repo)
+            # Note: Names must match AGENT_REGISTRY keys exactly
             "research_agent",
             "data_expert_agent",
-            "transcriptomics_expert",
+            "transcriptomics_expert",  # Unified single-cell + bulk RNA-seq
             "visualization_expert_agent",
-            # Sub-agents (accessible via parent agents)
             "annotation_expert",
             "de_analysis_expert",
         ],
         "restricted_handoffs": {
             # FREE tier: research_agent cannot handoff to metadata_assistant
-            # This is a key premium differentiator
+            # This is a key premium differentiator (DataBioMix paid for this)
             "research_agent": ["metadata_assistant"],
         },
         "features": [
@@ -49,16 +50,16 @@ SUBSCRIPTION_TIERS: Dict[str, Dict[str, Any]] = {
     "premium": {
         "display_name": "Premium",
         "agents": [
-            # All FREE tier agents
+            # All FREE tier agents (6)
             "research_agent",
             "data_expert_agent",
             "transcriptomics_expert",
             "visualization_expert_agent",
             "annotation_expert",
             "de_analysis_expert",
-            # Premium-only agents
-            "metadata_assistant",
-            "proteomics_expert",
+            # Premium-only agents (4) - NOT synced to lobster-local
+            "metadata_assistant",  # Publication queue filtering, ID mapping
+            "proteomics_expert",  # MS proteomics (DDA/DIA)
             "machine_learning_expert_agent",
             "protein_structure_visualization_expert_agent",
         ],
@@ -159,11 +160,7 @@ def is_agent_available(agent_name: str, tier: str) -> bool:
     return "*" in agents or agent_name in agents
 
 
-def is_handoff_allowed(
-    source_agent: str,
-    target_agent: str,
-    tier: str
-) -> bool:
+def is_handoff_allowed(source_agent: str, target_agent: str, tier: str) -> bool:
     """
     Check if a handoff from source to target agent is allowed at given tier.
 
@@ -237,8 +234,12 @@ def compare_tiers(tier1: str, tier2: str) -> int:
     Returns:
         -1 if tier1 < tier2, 0 if equal, 1 if tier1 > tier2
     """
-    idx1 = _TIER_HIERARCHY.index(tier1.lower()) if tier1.lower() in _TIER_HIERARCHY else 0
-    idx2 = _TIER_HIERARCHY.index(tier2.lower()) if tier2.lower() in _TIER_HIERARCHY else 0
+    idx1 = (
+        _TIER_HIERARCHY.index(tier1.lower()) if tier1.lower() in _TIER_HIERARCHY else 0
+    )
+    idx2 = (
+        _TIER_HIERARCHY.index(tier2.lower()) if tier2.lower() in _TIER_HIERARCHY else 0
+    )
 
     if idx1 < idx2:
         return -1

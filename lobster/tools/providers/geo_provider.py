@@ -692,6 +692,7 @@ class GEOProvider(BasePublicationProvider):
             >>> legacy = result.to_legacy_dict()
         """
         from lobster.core.schemas.download_urls import DownloadFile, DownloadUrlResult
+
         # Validate GEO ID format
         if not geo_id or not isinstance(geo_id, str):
             raise ValueError(f"Invalid GEO ID: {geo_id}")
@@ -875,7 +876,9 @@ class GEOProvider(BasePublicationProvider):
             ]
 
             supp_file_objs = [
-                DownloadFile(url=url, filename=url.split("/")[-1], file_type="supplementary")
+                DownloadFile(
+                    url=url, filename=url.split("/")[-1], file_type="supplementary"
+                )
                 for url in supplementary_urls
             ]
 

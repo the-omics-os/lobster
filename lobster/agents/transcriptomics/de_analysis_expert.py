@@ -33,8 +33,13 @@ from lobster.core import (
     PseudobulkError,
 )
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqError, BulkRNASeqService
-from lobster.services.analysis.differential_formula_service import DifferentialFormulaService
+from lobster.services.analysis.bulk_rnaseq_service import (
+    BulkRNASeqError,
+    BulkRNASeqService,
+)
+from lobster.services.analysis.differential_formula_service import (
+    DifferentialFormulaService,
+)
 from lobster.services.analysis.pseudobulk_service import PseudobulkService
 from lobster.utils.logger import get_logger
 
@@ -43,16 +48,19 @@ logger = get_logger(__name__)
 
 class DEAnalysisError(Exception):
     """Base exception for differential expression analysis errors."""
+
     pass
 
 
 class ModalityNotFoundError(DEAnalysisError):
     """Raised when requested modality doesn't exist."""
+
     pass
 
 
 class InsufficientReplicatesError(DEAnalysisError):
     """Raised when there are insufficient replicates for stable variance estimation."""
+
     pass
 
 
@@ -165,12 +173,10 @@ def de_analysis_expert(
         # CRITICAL FIX: Use raw counts for DESeq2
         if adata.raw is not None:
             raw_data = adata.raw.X
-            if hasattr(raw_data, 'toarray'):
+            if hasattr(raw_data, "toarray"):
                 raw_data = raw_data.toarray()
             count_matrix = pd.DataFrame(
-                raw_data.T,
-                index=adata.raw.var_names,
-                columns=adata.obs_names
+                raw_data.T, index=adata.raw.var_names, columns=adata.obs_names
             )
             used_raw = True
             logger.info("Using adata.raw.X for count matrix (recommended for DESeq2)")
@@ -181,12 +187,10 @@ def de_analysis_expert(
                 "DESeq2 requires raw counts for accurate results."
             )
             data = adata.X
-            if hasattr(data, 'toarray'):
+            if hasattr(data, "toarray"):
                 data = data.toarray()
             count_matrix = pd.DataFrame(
-                data.T,
-                index=adata.var_names,
-                columns=adata.obs_names
+                data.T, index=adata.var_names, columns=adata.obs_names
             )
 
         return count_matrix, used_raw
@@ -194,7 +198,7 @@ def de_analysis_expert(
     def _validate_replicate_counts(
         metadata: pd.DataFrame,
         groupby: str,
-        min_replicates: int = 3  # SCIENTIFIC FIX: Changed from 2 to 3
+        min_replicates: int = 3,  # SCIENTIFIC FIX: Changed from 2 to 3
     ) -> Dict[str, Any]:
         """
         Validate replicate counts per condition.
@@ -213,7 +217,7 @@ def de_analysis_expert(
             "valid": True,
             "group_counts": group_counts,
             "warnings": [],
-            "errors": []
+            "errors": [],
         }
 
         for group, count in group_counts.items():
@@ -355,7 +359,12 @@ def de_analysis_expert(
             analysis_results["details"]["pseudobulk_aggregation"] = response
             return response
 
-        except (PseudobulkError, AggregationError, InsufficientCellsError, ModalityNotFoundError) as e:
+        except (
+            PseudobulkError,
+            AggregationError,
+            InsufficientCellsError,
+            ModalityNotFoundError,
+        ) as e:
             logger.error(f"Error creating pseudobulk matrix: {e}")
             return f"Error creating pseudobulk matrix: {str(e)}"
         except Exception as e:
@@ -459,7 +468,11 @@ def de_analysis_expert(
 **Replicate Counts:**"""
 
             for group, count in replicate_validation["group_counts"].items():
-                status = "OK" if count >= 4 else "LOW POWER" if count >= 3 else "INSUFFICIENT"
+                status = (
+                    "OK"
+                    if count >= 4
+                    else "LOW POWER" if count >= 3 else "INSUFFICIENT"
+                )
                 response += f"\n- {group}: {count} replicates ({status})"
 
             if replicate_validation["warnings"]:
@@ -467,13 +480,20 @@ def de_analysis_expert(
                 for warning in replicate_validation["warnings"]:
                     response += f"\n- {warning}"
 
-            response += "\n\n**Design information stored in**: adata.uns['formula_design']"
+            response += (
+                "\n\n**Design information stored in**: adata.uns['formula_design']"
+            )
             response += "\n\nNext step: Run 'run_pseudobulk_differential_expression' to perform pyDESeq2 analysis."
 
             analysis_results["details"]["de_design"] = response
             return response
 
-        except (DesignMatrixError, FormulaError, ModalityNotFoundError, InsufficientReplicatesError) as e:
+        except (
+            DesignMatrixError,
+            FormulaError,
+            ModalityNotFoundError,
+            InsufficientReplicatesError,
+        ) as e:
             logger.error(f"Error preparing DE design: {e}")
             return f"Error preparing differential expression design: {str(e)}"
         except Exception as e:
@@ -537,13 +557,15 @@ def de_analysis_expert(
                 )
 
             # Run pyDESeq2 analysis using bulk RNA-seq service
-            results_df, analysis_stats = bulk_rnaseq_service.run_pydeseq2_from_pseudobulk(
-                pseudobulk_adata=adata,
-                formula=formula,
-                contrast=contrast,
-                alpha=alpha,
-                shrink_lfc=shrink_lfc,
-                n_cpus=n_cpus,
+            results_df, analysis_stats = (
+                bulk_rnaseq_service.run_pydeseq2_from_pseudobulk(
+                    pseudobulk_adata=adata,
+                    formula=formula,
+                    contrast=contrast,
+                    alpha=alpha,
+                    shrink_lfc=shrink_lfc,
+                    n_cpus=n_cpus,
+                )
             )
 
             # Store results in modality
@@ -666,7 +688,9 @@ def de_analysis_expert(
             if validation_result["valid"]:
                 response += "**Overall Status**: PASSED - Design is valid for DESeq2 analysis\n\n"
             else:
-                response += "**Overall Status**: FAILED - Design has issues (see below)\n\n"
+                response += (
+                    "**Overall Status**: FAILED - Design has issues (see below)\n\n"
+                )
 
             # Design summary
             if validation_result.get("design_summary"):
@@ -707,7 +731,9 @@ def de_analysis_expert(
             if validation_result["valid"]:
                 response += "**Conclusion**: Design is ready for pyDESeq2 analysis\n"
             else:
-                response += "**Conclusion**: Please address issues before running analysis\n"
+                response += (
+                    "**Conclusion**: Please address issues before running analysis\n"
+                )
 
             return response
 
@@ -799,64 +825,72 @@ def de_analysis_expert(
 
             if main_condition:
                 # Simple comparison
-                suggestions.append({
-                    "formula": f"~{main_condition}",
-                    "complexity": "Simple",
-                    "description": f"Compare {main_condition} groups directly",
-                    "pros": [
-                        "Maximum statistical power",
-                        "Straightforward interpretation",
-                        "Robust with small sample sizes",
-                    ],
-                    "cons": [
-                        "Ignores potential confounders",
-                        "May miss batch effects",
-                    ],
-                    "recommended_for": "Initial exploratory analysis or when confounders are minimal",
-                    # SCIENTIFIC FIX: Changed from 6 to reflect min 3 per group
-                    "min_samples": 6,  # 3 per group minimum
-                })
+                suggestions.append(
+                    {
+                        "formula": f"~{main_condition}",
+                        "complexity": "Simple",
+                        "description": f"Compare {main_condition} groups directly",
+                        "pros": [
+                            "Maximum statistical power",
+                            "Straightforward interpretation",
+                            "Robust with small sample sizes",
+                        ],
+                        "cons": [
+                            "Ignores potential confounders",
+                            "May miss batch effects",
+                        ],
+                        "recommended_for": "Initial exploratory analysis or when confounders are minimal",
+                        # SCIENTIFIC FIX: Changed from 6 to reflect min 3 per group
+                        "min_samples": 6,  # 3 per group minimum
+                    }
+                )
 
                 # Batch-corrected if batch variables available
                 if batch_vars:
                     primary_batch = batch_vars[0]
-                    suggestions.append({
-                        "formula": f"~{main_condition} + {primary_batch}",
-                        "complexity": "Batch-corrected",
-                        "description": f"Compare {main_condition} while accounting for {primary_batch} effects",
-                        "pros": [
-                            "Controls for technical/batch variation",
-                            "More reliable effect estimates",
-                        ],
-                        "cons": [
-                            "Reduces degrees of freedom",
-                            "Requires balanced design",
-                        ],
-                        "recommended_for": "Multi-batch experiments or when batch effects are suspected",
-                        "min_samples": 8,
-                    })
+                    suggestions.append(
+                        {
+                            "formula": f"~{main_condition} + {primary_batch}",
+                            "complexity": "Batch-corrected",
+                            "description": f"Compare {main_condition} while accounting for {primary_batch} effects",
+                            "pros": [
+                                "Controls for technical/batch variation",
+                                "More reliable effect estimates",
+                            ],
+                            "cons": [
+                                "Reduces degrees of freedom",
+                                "Requires balanced design",
+                            ],
+                            "recommended_for": "Multi-batch experiments or when batch effects are suspected",
+                            "min_samples": 8,
+                        }
+                    )
 
                 # Full model with multiple covariates
                 if len(batch_vars) > 1 or continuous_vars:
                     covariates = batch_vars[:2] + continuous_vars[:1]
                     formula_terms = [main_condition] + covariates
-                    suggestions.append({
-                        "formula": f"~{' + '.join(formula_terms)}",
-                        "complexity": "Multi-factor",
-                        "description": f"Comprehensive model accounting for {main_condition} and {len(covariates)} covariates",
-                        "pros": [
-                            "Controls for multiple confounders",
-                            "Publication-ready analysis",
-                            "Robust effect estimates",
-                        ],
-                        "cons": [
-                            "Requires larger sample size",
-                            "More complex interpretation",
-                            "Risk of overfitting",
-                        ],
-                        "recommended_for": "Final analysis with adequate sample size and multiple known confounders",
-                        "min_samples": max(12, len(formula_terms) * 4),  # SCIENTIFIC FIX: Require more samples
-                    })
+                    suggestions.append(
+                        {
+                            "formula": f"~{' + '.join(formula_terms)}",
+                            "complexity": "Multi-factor",
+                            "description": f"Comprehensive model accounting for {main_condition} and {len(covariates)} covariates",
+                            "pros": [
+                                "Controls for multiple confounders",
+                                "Publication-ready analysis",
+                                "Robust effect estimates",
+                            ],
+                            "cons": [
+                                "Requires larger sample size",
+                                "More complex interpretation",
+                                "Risk of overfitting",
+                            ],
+                            "recommended_for": "Final analysis with adequate sample size and multiple known confounders",
+                            "min_samples": max(
+                                12, len(formula_terms) * 4
+                            ),  # SCIENTIFIC FIX: Require more samples
+                        }
+                    )
 
             # Build response
             response = f"## Formula Design Analysis for '{pseudobulk_modality}'\n\n"
@@ -873,7 +907,9 @@ def de_analysis_expert(
                     if col in categorical_vars + continuous_vars:
                         response += f"- **{col}**: {info['type']}, {info['unique_values']} levels"
                         if info["type"] == "categorical":
-                            response += f" ({', '.join(map(str, info['sample_values']))})"
+                            response += (
+                                f" ({', '.join(map(str, info['sample_values']))})"
+                            )
                         response += "\n"
                 response += "\n"
 
@@ -888,12 +924,16 @@ def de_analysis_expert(
                     response += f"   Description: {suggestion['description']}\n"
                     response += f"   Pros: {', '.join(suggestion['pros'][:2])}\n"
                     response += f"   Cons: {', '.join(suggestion['cons'][:2])}\n"
-                    response += f"   Min samples needed: {suggestion['min_samples']}\n\n"
+                    response += (
+                        f"   Min samples needed: {suggestion['min_samples']}\n\n"
+                    )
 
                 response += "**Recommendation**: Start with the simple model for exploration, then use the batch-corrected model if you see batch effects.\n\n"
                 response += "**Next step**: Use `construct_de_formula_interactive` to build and validate your chosen formula."
             else:
-                response += "**No suitable variables found for standard DE analysis.**\n"
+                response += (
+                    "**No suitable variables found for standard DE analysis.**\n"
+                )
                 response += "Please ensure your pseudobulk data has:\n"
                 response += "- At least one categorical variable with 2+ levels (main condition)\n"
                 response += "- Sufficient samples per group (minimum 3-4 replicates)\n"
@@ -949,13 +989,17 @@ def de_analysis_expert(
 
             # Validate main variable
             if main_variable not in metadata.columns:
-                available_vars = [col for col in metadata.columns if not col.startswith("_")]
+                available_vars = [
+                    col for col in metadata.columns if not col.startswith("_")
+                ]
                 return f"Main variable '{main_variable}' not found. Available: {available_vars}"
 
             # Build formula
             formula_terms = [main_variable]
             if covariates:
-                missing_covariates = [c for c in covariates if c not in metadata.columns]
+                missing_covariates = [
+                    c for c in covariates if c not in metadata.columns
+                ]
                 if missing_covariates:
                     return f"Covariates not found: {missing_covariates}"
                 formula_terms.extend(covariates)
@@ -972,10 +1016,14 @@ def de_analysis_expert(
             # Parse and validate formula
             try:
                 formula_components = formula_service.parse_formula(formula, metadata)
-                design_result = formula_service.construct_design_matrix(formula_components, metadata)
+                design_result = formula_service.construct_design_matrix(
+                    formula_components, metadata
+                )
 
                 # Format response
-                response = f"## Formula Construction Complete for '{pseudobulk_modality}'\n\n"
+                response = (
+                    f"## Formula Construction Complete for '{pseudobulk_modality}'\n\n"
+                )
                 response += f"**Constructed Formula**: `{formula}`\n\n"
 
                 response += "**Formula Components:**\n"
@@ -984,7 +1032,9 @@ def de_analysis_expert(
                     response += f"- Covariates: {', '.join(covariates)}\n"
                 if include_interactions:
                     response += f"- Interactions: Yes (between {main_variable} and {covariates[0] if covariates else 'none'})\n"
-                response += f"- Total terms: {len(formula_components['predictor_terms'])}\n\n"
+                response += (
+                    f"- Total terms: {len(formula_components['predictor_terms'])}\n\n"
+                )
 
                 # Design matrix preview
                 response += "**Design Matrix Preview**:\n"
@@ -1008,7 +1058,9 @@ def de_analysis_expert(
                     )
 
                     response += "**Design Validation**:\n"
-                    response += f"- Valid design: {'Yes' if validation['valid'] else 'No'}\n"
+                    response += (
+                        f"- Valid design: {'Yes' if validation['valid'] else 'No'}\n"
+                    )
 
                     if validation["warnings"]:
                         response += f"- Warnings ({len(validation['warnings'])}):\n"
@@ -1113,7 +1165,9 @@ def de_analysis_expert(
                 if "constructed_formula" in adata.uns:
                     formula = adata.uns["constructed_formula"]["formula"]
                     stored_info = adata.uns["constructed_formula"]
-                    response_prefix = "Using stored formula from interactive construction:\n"
+                    response_prefix = (
+                        "Using stored formula from interactive construction:\n"
+                    )
                 else:
                     return "No formula provided and no stored formula found. Use `construct_de_formula_interactive` first or provide a formula."
             else:
@@ -1126,13 +1180,17 @@ def de_analysis_expert(
                 levels = list(adata.obs[main_var].unique())
                 if len(levels) == 2:
                     contrast = [main_var, str(levels[1]), str(levels[0])]
-                    response_prefix += f"Auto-detected contrast: {contrast[1]} vs {contrast[2]}\n"
+                    response_prefix += (
+                        f"Auto-detected contrast: {contrast[1]} vs {contrast[2]}\n"
+                    )
                 else:
                     return f"Multiple levels found for {main_var}: {levels}. Please specify contrast as [factor, level1, level2]."
             elif contrast is None:
                 return "No contrast specified. Please provide contrast as [factor, level1, level2]."
 
-            logger.info(f"Running DE analysis on '{pseudobulk_modality}' with formula: {formula}")
+            logger.info(
+                f"Running DE analysis on '{pseudobulk_modality}' with formula: {formula}"
+            )
 
             # SCIENTIFIC FIX: Validate design with min_replicates=3
             design_validation = bulk_rnaseq_service.validate_experimental_design(
@@ -1145,7 +1203,9 @@ def de_analysis_expert(
 
             # Create design matrix
             condition_col = contrast[0]
-            reference_condition = reference_levels.get(condition_col) if reference_levels else None
+            reference_condition = (
+                reference_levels.get(condition_col) if reference_levels else None
+            )
 
             design_result = bulk_rnaseq_service.create_formula_design(
                 metadata=adata.obs,
@@ -1163,13 +1223,15 @@ def de_analysis_expert(
             }
 
             # Run pyDESeq2 analysis
-            results_df, analysis_stats = bulk_rnaseq_service.run_pydeseq2_from_pseudobulk(
-                pseudobulk_adata=adata,
-                formula=formula,
-                contrast=contrast,
-                alpha=alpha,
-                shrink_lfc=True,
-                n_cpus=1,
+            results_df, analysis_stats = (
+                bulk_rnaseq_service.run_pydeseq2_from_pseudobulk(
+                    pseudobulk_adata=adata,
+                    formula=formula,
+                    contrast=contrast,
+                    alpha=alpha,
+                    shrink_lfc=True,
+                    n_cpus=1,
+                )
             )
 
             # Filter by LFC threshold if specified
@@ -1210,13 +1272,17 @@ def de_analysis_expert(
             response = "## Differential Expression Analysis Complete\n\n"
             response += response_prefix
             response += f"**Formula**: `{formula}`\n"
-            response += f"**Contrast**: {contrast[1]} vs {contrast[2]} (in {contrast[0]})\n\n"
+            response += (
+                f"**Contrast**: {contrast[1]} vs {contrast[2]} (in {contrast[0]})\n\n"
+            )
 
             response += "**Results Summary**:\n"
             response += f"- Genes tested: {analysis_stats['n_genes_tested']:,}\n"
             response += f"- Significant genes (FDR < {alpha}): {analysis_stats['n_significant_genes']:,}\n"
             if lfc_threshold > 0:
-                response += f"- Significant + |LFC| >= {lfc_threshold}: {n_lfc_filtered:,}\n"
+                response += (
+                    f"- Significant + |LFC| >= {lfc_threshold}: {n_lfc_filtered:,}\n"
+                )
             response += f"- Upregulated ({contrast[1]} > {contrast[2]}): {analysis_stats['n_upregulated']:,}\n"
             response += f"- Downregulated ({contrast[1]} < {contrast[2]}): {analysis_stats['n_downregulated']:,}\n\n"
 
@@ -1232,7 +1298,9 @@ def de_analysis_expert(
                 response += f"- {gene}: LFC = {gene_data['log2FoldChange']:.2f}, FDR = {gene_data['padj']:.2e}\n"
 
             response += f"\n**Results Storage**:\n"
-            response += f"- Stored in: adata.uns['de_results_formula_{contrast_name}']\n"
+            response += (
+                f"- Stored in: adata.uns['de_results_formula_{contrast_name}']\n"
+            )
             if save_results:
                 response += f"- CSV file: {results_path}\n"
                 response += f"- H5AD file: {modality_path}\n"
@@ -1306,7 +1374,11 @@ def de_analysis_expert(
 
             # Validate experimental design
             if groupby not in adata.obs.columns:
-                available_columns = [col for col in adata.obs.columns if col.lower() in ["condition", "treatment", "group", "batch"]]
+                available_columns = [
+                    col
+                    for col in adata.obs.columns
+                    if col.lower() in ["condition", "treatment", "group", "batch"]
+                ]
                 return f"Grouping column '{groupby}' not found. Available experimental design columns: {available_columns}"
 
             # Check if groups exist
@@ -1317,7 +1389,9 @@ def de_analysis_expert(
                 return f"Group '{group2}' not found in column '{groupby}'. Available groups: {available_groups}"
 
             # SCIENTIFIC FIX: Validate replicate counts with min_replicates=3
-            replicate_validation = _validate_replicate_counts(adata.obs, groupby, min_replicates=3)
+            replicate_validation = _validate_replicate_counts(
+                adata.obs, groupby, min_replicates=3
+            )
 
             if not replicate_validation["valid"]:
                 error_msg = "; ".join(replicate_validation["errors"])
@@ -1328,16 +1402,18 @@ def de_analysis_expert(
             group2_count = (adata.obs[groupby] == group2).sum()
 
             # Use bulk service for differential expression
-            adata_de, de_stats, ir = bulk_rnaseq_service.run_differential_expression_analysis(
-                adata=adata,
-                groupby=groupby,
-                group1=group1,
-                group2=group2,
-                method=method,
-                min_expression_threshold=min_expression_threshold,
-                min_fold_change=min_fold_change,
-                min_pct_expressed=min_pct_expressed,
-                max_out_pct_expressed=max_out_pct_expressed,
+            adata_de, de_stats, ir = (
+                bulk_rnaseq_service.run_differential_expression_analysis(
+                    adata=adata,
+                    groupby=groupby,
+                    group1=group1,
+                    group2=group2,
+                    method=method,
+                    min_expression_threshold=min_expression_threshold,
+                    min_fold_change=min_fold_change,
+                    min_pct_expressed=min_pct_expressed,
+                    max_out_pct_expressed=max_out_pct_expressed,
+                )
             )
 
             # Save as new modality
@@ -1376,8 +1452,12 @@ def de_analysis_expert(
             response += f"- Significant genes (padj < 0.05): {de_stats['n_significant_genes']:,}\n\n"
 
             response += "**Differential Expression Summary:**\n"
-            response += f"- Upregulated in {group2}: {de_stats['n_upregulated']} genes\n"
-            response += f"- Downregulated in {group2}: {de_stats['n_downregulated']} genes\n\n"
+            response += (
+                f"- Upregulated in {group2}: {de_stats['n_upregulated']} genes\n"
+            )
+            response += (
+                f"- Downregulated in {group2}: {de_stats['n_downregulated']} genes\n\n"
+            )
 
             response += "**Top Upregulated Genes:**\n"
             for gene in de_stats["top_upregulated"][:5]:
@@ -1472,7 +1552,9 @@ def de_analysis_expert(
                 else:
                     return "No previous formula/contrast found and none provided. Run a DE analysis first."
 
-            logger.info(f"Starting DE iteration '{iteration_name}' on '{pseudobulk_modality}'")
+            logger.info(
+                f"Starting DE iteration '{iteration_name}' on '{pseudobulk_modality}'"
+            )
 
             # Run the analysis with new parameters
             run_result = run_differential_expression_with_formula(
@@ -1480,7 +1562,9 @@ def de_analysis_expert(
                 formula=new_formula,
                 contrast=new_contrast,
                 alpha=0.05,
-                lfc_threshold=filter_criteria.get("min_lfc", 0.0) if filter_criteria else 0.0,
+                lfc_threshold=(
+                    filter_criteria.get("min_lfc", 0.0) if filter_criteria else 0.0
+                ),
                 save_results=False,
             )
 
@@ -1512,7 +1596,9 @@ def de_analysis_expert(
             comparison_results = None
             if compare_to_previous and previous_results is not None:
                 current_sig = set(current_results[current_results["padj"] < 0.05].index)
-                previous_sig = set(previous_results[previous_results["padj"] < 0.05].index)
+                previous_sig = set(
+                    previous_results[previous_results["padj"] < 0.05].index
+                )
 
                 overlap = len(current_sig & previous_sig)
                 current_only = len(current_sig - previous_sig)
@@ -1549,15 +1635,21 @@ def de_analysis_expert(
             response += f"**Contrast**: {new_contrast[1]} vs {new_contrast[2]} (in {new_contrast[0]})\n\n"
 
             response += "**Current Results**:\n"
-            response += f"- Significant genes: {current_stats['n_significant_genes']:,}\n"
+            response += (
+                f"- Significant genes: {current_stats['n_significant_genes']:,}\n"
+            )
             response += f"- Upregulated: {current_stats['n_upregulated']:,}\n"
             response += f"- Downregulated: {current_stats['n_downregulated']:,}\n"
 
             if comparison_results:
                 response += "\n**Comparison with Previous Iteration**:\n"
                 response += f"- Overlapping significant genes: {comparison_results['overlap_genes']:,}\n"
-                response += f"- New in current: {comparison_results['current_only']:,}\n"
-                response += f"- Lost from previous: {comparison_results['previous_only']:,}\n"
+                response += (
+                    f"- New in current: {comparison_results['current_only']:,}\n"
+                )
+                response += (
+                    f"- Lost from previous: {comparison_results['previous_only']:,}\n"
+                )
                 if comparison_results["correlation"] is not None:
                     response += f"- Fold change correlation: {comparison_results['correlation']:.3f}\n"
 
@@ -1634,18 +1726,26 @@ def de_analysis_expert(
             if iteration_1 is None:
                 iter1_info = iterations[-1]
             else:
-                iter1_info = next((i for i in iterations if i["name"] == iteration_1), None)
+                iter1_info = next(
+                    (i for i in iterations if i["name"] == iteration_1), None
+                )
                 if not iter1_info:
                     available = [i["name"] for i in iterations]
-                    return f"Iteration '{iteration_1}' not found. Available: {available}"
+                    return (
+                        f"Iteration '{iteration_1}' not found. Available: {available}"
+                    )
 
             if iteration_2 is None:
                 iter2_info = iterations[-2] if len(iterations) >= 2 else iterations[0]
             else:
-                iter2_info = next((i for i in iterations if i["name"] == iteration_2), None)
+                iter2_info = next(
+                    (i for i in iterations if i["name"] == iteration_2), None
+                )
                 if not iter2_info:
                     available = [i["name"] for i in iterations]
-                    return f"Iteration '{iteration_2}' not found. Available: {available}"
+                    return (
+                        f"Iteration '{iteration_2}' not found. Available: {available}"
+                    )
 
             # Get results DataFrames
             iter1_key = f"de_results_formula_{iter1_info['contrast_name']}"
@@ -1678,8 +1778,12 @@ def de_analysis_expert(
             # Format response
             response = "## DE Iteration Comparison\n\n"
             response += "**Comparing:**\n"
-            response += f"- Iteration 1: '{iter1_info['name']}' - {iter1_info['formula']}\n"
-            response += f"- Iteration 2: '{iter2_info['name']}' - {iter2_info['formula']}\n\n"
+            response += (
+                f"- Iteration 1: '{iter1_info['name']}' - {iter1_info['formula']}\n"
+            )
+            response += (
+                f"- Iteration 2: '{iter2_info['name']}' - {iter2_info['formula']}\n\n"
+            )
 
             response += "**Results Summary:**\n"
             response += f"- Iteration 1 significant genes: {len(sig1):,}\n"
@@ -1705,7 +1809,9 @@ def de_analysis_expert(
                 response += "\n**Unique Significant Genes:**\n"
 
                 if len(unique1) > 0:
-                    response += f"**Only in '{iter1_info['name']}'** ({len(unique1)} genes):\n"
+                    response += (
+                        f"**Only in '{iter1_info['name']}'** ({len(unique1)} genes):\n"
+                    )
                     unique1_sorted = results1.loc[list(unique1)].sort_values("padj")
                     for gene in unique1_sorted.index[:8]:
                         lfc = results1.loc[gene, "log2FoldChange"]
@@ -1755,7 +1861,9 @@ def de_analysis_expert(
                     },
                 }
 
-                comparison_key = f"iteration_comparison_{iter1_info['name']}_vs_{iter2_info['name']}"
+                comparison_key = (
+                    f"iteration_comparison_{iter1_info['name']}_vs_{iter2_info['name']}"
+                )
                 if "iteration_comparisons" not in adata.uns:
                     adata.uns["iteration_comparisons"] = {}
                 adata.uns["iteration_comparisons"][comparison_key] = comparison_data
@@ -1806,16 +1914,22 @@ def de_analysis_expert(
                 adata = data_manager.get_modality(modality_name)
 
                 # Look for DE results in uns
-                de_keys = [key for key in adata.uns.keys() if key.startswith("de_results")]
+                de_keys = [
+                    key for key in adata.uns.keys() if key.startswith("de_results")
+                ]
                 if de_keys:
                     de_results = adata.uns[de_keys[0]]
                     if isinstance(de_results, dict) and "results_df" in de_results:
                         de_df = de_results["results_df"]
                         if "padj" in de_df.columns:
-                            significant_genes = de_df[de_df["padj"] < 0.05].index.tolist()
+                            significant_genes = de_df[
+                                de_df["padj"] < 0.05
+                            ].index.tolist()
                             if significant_genes:
                                 gene_list = significant_genes[:500]
-                                logger.info(f"Extracted {len(gene_list)} significant genes from {modality_name}")
+                                logger.info(
+                                    f"Extracted {len(gene_list)} significant genes from {modality_name}"
+                                )
 
             if not gene_list or len(gene_list) == 0:
                 return "No genes provided for enrichment analysis. Please provide a gene list or run differential expression analysis first."
@@ -1823,8 +1937,10 @@ def de_analysis_expert(
             logger.info(f"Running pathway enrichment on {len(gene_list)} genes")
 
             # Use bulk service for pathway enrichment
-            enrichment_df, enrichment_stats, ir = bulk_rnaseq_service.run_pathway_enrichment(
-                gene_list=gene_list, analysis_type=analysis_type
+            enrichment_df, enrichment_stats, ir = (
+                bulk_rnaseq_service.run_pathway_enrichment(
+                    gene_list=gene_list, analysis_type=analysis_type
+                )
             )
 
             # Log the operation with IR for provenance tracking

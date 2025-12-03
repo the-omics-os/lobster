@@ -2,9 +2,9 @@
 
 # SRA Download Service
 from lobster.services.data_access.sra_download_service import (
-    SRADownloadService,
-    SRADownloadManager,
     FASTQLoader,
+    SRADownloadManager,
+    SRADownloadService,
 )
 
 __all__ = [

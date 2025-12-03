@@ -570,9 +570,7 @@ class TestBackup:
         backup_files = list(download_queue.backup_dir.glob("queue_backup_*.jsonl"))
         assert len(backup_files) >= 1
 
-    def test_backup_preserves_content(
-        self, temp_queue_file, sample_entry, monkeypatch
-    ):
+    def test_backup_preserves_content(self, temp_queue_file, sample_entry, monkeypatch):
         download_queue = self._create_queue(temp_queue_file, monkeypatch)
         download_queue.add_entry(sample_entry)
 
@@ -772,9 +770,7 @@ class TestThreadSafety:
         for entry in entries:
             idx = int(entry.entry_id.split("_")[-1])
             expected = (
-                DownloadStatus.COMPLETED
-                if idx % 2 == 0
-                else DownloadStatus.FAILED
+                DownloadStatus.COMPLETED if idx % 2 == 0 else DownloadStatus.FAILED
             )
             assert entry.status == expected
 

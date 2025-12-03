@@ -5,12 +5,12 @@ Reliability test for ASM journal access strategies.
 Tests the most promising strategies multiple times to assess consistency.
 """
 
-import time
-import statistics
-from typing import List, Dict
 import logging
+import statistics
+import time
+from typing import Dict, List
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -32,8 +32,8 @@ def test_pdf_direct_download(n_attempts: int = 5) -> Dict:
             )
 
             headers = {
-                'Accept': 'application/pdf,*/*',
-                'Referer': test_url,
+                "Accept": "application/pdf,*/*",
+                "Referer": test_url,
             }
 
             response = scraper.get(pdf_url, headers=headers, timeout=30)
@@ -44,7 +44,9 @@ def test_pdf_direct_download(n_attempts: int = 5) -> Dict:
             execution_times.append(elapsed)
 
             status = "✅" if success else "❌"
-            logger.info(f"  Attempt {i+1}/{n_attempts}: {status} {response.status_code} ({len(response.content)} bytes, {elapsed:.2f}s)")
+            logger.info(
+                f"  Attempt {i+1}/{n_attempts}: {status} {response.status_code} ({len(response.content)} bytes, {elapsed:.2f}s)"
+            )
 
             # Wait between attempts
             if i < n_attempts - 1:
@@ -84,22 +86,22 @@ def test_requests_with_spoofing(n_attempts: int = 5) -> Dict:
         start = time.time()
         try:
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'none',
-                'Sec-Fetch-User': '?1',
-                'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-                'Sec-Ch-Ua-Mobile': '?0',
-                'Sec-Ch-Ua-Platform': '"macOS"',
-                'Cache-Control': 'max-age=0',
-                'Referer': 'https://journals.asm.org/',
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+                "DNT": "1",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": '"macOS"',
+                "Cache-Control": "max-age=0",
+                "Referer": "https://journals.asm.org/",
             }
 
             session = requests.Session()
@@ -116,7 +118,9 @@ def test_requests_with_spoofing(n_attempts: int = 5) -> Dict:
             execution_times.append(elapsed)
 
             status = "✅" if success else "❌"
-            logger.info(f"  Attempt {i+1}/{n_attempts}: {status} {response.status_code} ({len(response.content)} bytes, {elapsed:.2f}s)")
+            logger.info(
+                f"  Attempt {i+1}/{n_attempts}: {status} {response.status_code} ({len(response.content)} bytes, {elapsed:.2f}s)"
+            )
 
             # Wait between attempts
             if i < n_attempts - 1:
@@ -172,7 +176,9 @@ def test_cloudscraper_with_delay(n_attempts: int = 5) -> Dict:
             execution_times.append(elapsed)
 
             status = "✅" if success else "❌"
-            logger.info(f"  Attempt {i+1}/{n_attempts}: {status} {response.status_code} ({len(response.content)} bytes, {elapsed:.2f}s)")
+            logger.info(
+                f"  Attempt {i+1}/{n_attempts}: {status} {response.status_code} ({len(response.content)} bytes, {elapsed:.2f}s)"
+            )
 
             # Wait between attempts
             if i < n_attempts - 1:
@@ -203,10 +209,10 @@ def main():
     """Run reliability tests."""
     n_attempts = 5
 
-    print("="*80)
+    print("=" * 80)
     print("🔬 ASM ACCESS RELIABILITY TEST")
     print(f"Testing each strategy {n_attempts} times to assess consistency")
-    print("="*80)
+    print("=" * 80)
 
     strategies = [
         test_pdf_direct_download,
@@ -218,17 +224,17 @@ def main():
 
     for test_func in strategies:
         print(f"\n📊 Testing: {test_func.__name__}")
-        print("-"*80)
+        print("-" * 80)
         result = test_func(n_attempts)
         all_results.append(result)
         time.sleep(5)  # Longer wait between different strategies
 
     # Print summary
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("📈 RELIABILITY SUMMARY")
-    print("="*80)
+    print("=" * 80)
     print(f"{'Strategy':<35} {'Success Rate':<15} {'Avg Time (s)':<15} {'Details'}")
-    print("-"*80)
+    print("-" * 80)
 
     for r in all_results:
         success_pct = f"{r['success_rate']:.0f}%"
@@ -237,16 +243,24 @@ def main():
 
     # Recommendation
     print("\n💡 FINAL RECOMMENDATION:")
-    best = max(all_results, key=lambda x: (x['success_rate'], -x['avg_time']))
+    best = max(all_results, key=lambda x: (x["success_rate"], -x["avg_time"]))
 
-    if best['success_rate'] >= 80:
+    if best["success_rate"] >= 80:
         print(f"   ✅ RECOMMENDED: {best['strategy']}")
-        print(f"      - Success rate: {best['success_rate']:.0f}% ({best['successes']}/{best['attempts']})")
-        print(f"      - Avg latency: {best['avg_time']:.2f}s (range: {best['min_time']:.2f}s-{best['max_time']:.2f}s)")
-        print(f"      - Reliability: {'EXCELLENT' if best['success_rate'] == 100 else 'GOOD'}")
+        print(
+            f"      - Success rate: {best['success_rate']:.0f}% ({best['successes']}/{best['attempts']})"
+        )
+        print(
+            f"      - Avg latency: {best['avg_time']:.2f}s (range: {best['min_time']:.2f}s-{best['max_time']:.2f}s)"
+        )
+        print(
+            f"      - Reliability: {'EXCELLENT' if best['success_rate'] == 100 else 'GOOD'}"
+        )
     else:
         print(f"   ⚠️  BEST AVAILABLE: {best['strategy']}")
-        print(f"      - Success rate: {best['success_rate']:.0f}% (below 80% threshold)")
+        print(
+            f"      - Success rate: {best['success_rate']:.0f}% (below 80% threshold)"
+        )
         print(f"      - Consider implementing retry logic or rate limiting")
 
 

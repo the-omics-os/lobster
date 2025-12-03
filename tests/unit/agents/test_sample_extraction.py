@@ -22,7 +22,6 @@ import pytest
 
 from lobster.core.interfaces.validator import ValidationResult
 
-
 # =============================================================================
 # Helper Function Tests
 # =============================================================================
@@ -37,11 +36,13 @@ class TestExtractSamplesFromWorkspace:
         from lobster.agents import metadata_assistant
 
         # Create metadata_assistant to access helper function
-        with patch("lobster.agents.metadata_assistant.create_react_agent"), \
-             patch("lobster.agents.metadata_assistant.create_llm"), \
-             patch("lobster.agents.metadata_assistant.get_settings"), \
-             patch("lobster.agents.metadata_assistant.MetadataStandardizationService"), \
-             patch("lobster.agents.metadata_assistant.SampleMappingService"):
+        with (
+            patch("lobster.agents.metadata_assistant.create_react_agent"),
+            patch("lobster.agents.metadata_assistant.create_llm"),
+            patch("lobster.agents.metadata_assistant.get_settings"),
+            patch("lobster.agents.metadata_assistant.MetadataStandardizationService"),
+            patch("lobster.agents.metadata_assistant.SampleMappingService"),
+        ):
 
             # Access the function directly from the module
             mock_dm = Mock()
@@ -126,7 +127,9 @@ class TestExtractSamplesFromWorkspace:
 
         # Sample 5: AMPLICON without env_medium (WARNING only, still valid)
         assert results[5].is_valid, "Sample 5 should be valid (warnings allowed)"
-        assert len(results[5].warnings) > 0, "Should have warning about missing env_medium"
+        assert (
+            len(results[5].warnings) > 0
+        ), "Should have warning about missing env_medium"
 
     def test_empty_samples_array(self):
         """Gracefully handle empty samples array."""
@@ -536,7 +539,9 @@ class TestSRASampleSchema:
         # Verify to_dict() reconstructs all fields
         # Note: Pydantic may exclude None values, so count might be slightly less
         reconstructed = validated.to_dict()
-        assert len(reconstructed) >= len(sample) - 5  # Allow up to 5 None fields excluded
+        assert (
+            len(reconstructed) >= len(sample) - 5
+        )  # Allow up to 5 None fields excluded
 
     def test_has_download_url_method(self):
         """Test has_download_url() helper method."""

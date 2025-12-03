@@ -21,14 +21,13 @@ from typing import Any, Dict, List, Optional, Tuple
 from anndata import AnnData
 
 from lobster.core.interfaces.validator import ValidationResult
+from lobster.services.metadata.protocol_extraction.amplicon.details import (
+    V_REGIONS,
+    AmpliconProtocolDetails,
+)
 from lobster.services.metadata.protocol_extraction.base import (
     IProtocolExtractionService,
 )
-from lobster.services.metadata.protocol_extraction.amplicon.details import (
-    AmpliconProtocolDetails,
-    V_REGIONS,
-)
-
 
 logger = logging.getLogger(__name__)
 
@@ -108,10 +107,11 @@ class AmpliconProtocolService(IProtocolExtractionService):
         sorted_primer_names = sorted(self.primers.keys(), key=len, reverse=True)
         primer_names = "|".join(re.escape(p) for p in sorted_primer_names)
 
-        self.primer_name_pattern = re.compile(
-            rf"\b({primer_names})\b",
-            re.IGNORECASE
-        ) if primer_names else None
+        self.primer_name_pattern = (
+            re.compile(rf"\b({primer_names})\b", re.IGNORECASE)
+            if primer_names
+            else None
+        )
 
         # Generic primer patterns (capture unknown primers)
         self.generic_primer_pattern = re.compile(
@@ -120,24 +120,22 @@ class AmpliconProtocolService(IProtocolExtractionService):
 
         # Primer sequence pattern (DNA sequences 15-30 bp)
         self.primer_sequence_pattern = re.compile(
-            r"['\"]?([ACGTMRWSYKVHDBN]{15,30})['\"]?",
-            re.IGNORECASE
+            r"['\"]?([ACGTMRWSYKVHDBN]{15,30})['\"]?", re.IGNORECASE
         )
 
         # V-region patterns
         self.v_region_pattern = re.compile(
             r"\b(V[1-9](?:\s*[-–]\s*V[1-9])?)\s*(?:region|hypervariable|variable)?\b",
-            re.IGNORECASE
+            re.IGNORECASE,
         )
 
         # PCR conditions
         self.annealing_temp_pattern = re.compile(
             r"(?:annealing|anneal)\s*(?:temperature|temp\.?)?\s*(?:of|at|:)?\s*(\d{2})\s*[°º]?\s*C",
-            re.IGNORECASE
+            re.IGNORECASE,
         )
         self.pcr_cycles_pattern = re.compile(
-            r"(\d{2,3})\s*(?:PCR\s*)?cycles?",
-            re.IGNORECASE
+            r"(\d{2,3})\s*(?:PCR\s*)?cycles?", re.IGNORECASE
         )
 
         # Sequencing platform
@@ -148,24 +146,27 @@ class AmpliconProtocolService(IProtocolExtractionService):
             "Illumina NextSeq": re.compile(r"\bNextSeq\b", re.IGNORECASE),
             "Ion Torrent": re.compile(r"\bIon\s*Torrent\b", re.IGNORECASE),
             "PacBio": re.compile(r"\bPacBio|SMRT\b", re.IGNORECASE),
-            "Oxford Nanopore": re.compile(r"\bNanopore|MinION|GridION\b", re.IGNORECASE),
+            "Oxford Nanopore": re.compile(
+                r"\bNanopore|MinION|GridION\b", re.IGNORECASE
+            ),
             "454": re.compile(r"\b454|Roche\s*454\b", re.IGNORECASE),
         }
 
         # Read length
         self.read_length_pattern = re.compile(
             r"(\d{2,3})\s*(?:bp|base\s*pairs?)\s*(?:paired[-\s]?end|PE|reads?)?",
-            re.IGNORECASE
+            re.IGNORECASE,
         )
         self.paired_end_pattern = re.compile(
-            r"\b(?:paired[-\s]?end|PE|2\s*[×x]\s*\d+)\b",
-            re.IGNORECASE
+            r"\b(?:paired[-\s]?end|PE|2\s*[×x]\s*\d+)\b", re.IGNORECASE
         )
 
         # Reference databases
         self.database_patterns = {
             "SILVA": re.compile(r"\bSILVA\s*(v?\d+(?:\.\d+)?)?", re.IGNORECASE),
-            "Greengenes": re.compile(r"\bGreengenes?\s*(v?\d+(?:\.\d+)?)?", re.IGNORECASE),
+            "Greengenes": re.compile(
+                r"\bGreengenes?\s*(v?\d+(?:\.\d+)?)?", re.IGNORECASE
+            ),
             "RDP": re.compile(r"\bRDP\s*(v?\d+(?:\.\d+)?)?", re.IGNORECASE),
             "NCBI 16S": re.compile(r"\bNCBI\s*16S\b", re.IGNORECASE),
             "GTDB": re.compile(r"\bGTDB\s*(r?\d+(?:\.\d+)?)?", re.IGNORECASE),
@@ -187,19 +188,20 @@ class AmpliconProtocolService(IProtocolExtractionService):
 
         # Clustering method
         self.clustering_patterns = {
-            "ASV": re.compile(r"\b(?:ASV|amplicon\s*sequence\s*variant)s?\b", re.IGNORECASE),
-            "OTU": re.compile(r"\b(?:OTU|operational\s*taxonomic\s*unit)s?\b", re.IGNORECASE),
+            "ASV": re.compile(
+                r"\b(?:ASV|amplicon\s*sequence\s*variant)s?\b", re.IGNORECASE
+            ),
+            "OTU": re.compile(
+                r"\b(?:OTU|operational\s*taxonomic\s*unit)s?\b", re.IGNORECASE
+            ),
             "zOTU": re.compile(r"\bzOTUs?\b", re.IGNORECASE),
         }
         self.clustering_threshold_pattern = re.compile(
-            r"(\d{2,3})\s*%\s*(?:similarity|identity|threshold)",
-            re.IGNORECASE
+            r"(\d{2,3})\s*%\s*(?:similarity|identity|threshold)", re.IGNORECASE
         )
 
     def extract_protocol(
-        self,
-        text: str,
-        source: str = "unknown"
+        self, text: str, source: str = "unknown"
     ) -> Tuple[AmpliconProtocolDetails, ValidationResult]:
         """
         Extract protocol details from publication text.
@@ -231,7 +233,9 @@ class AmpliconProtocolService(IProtocolExtractionService):
         details = AmpliconProtocolDetails()
 
         if not text or len(text) < 50:
-            result.add_warning(f"Text too short for protocol extraction: {len(text)} chars")
+            result.add_warning(
+                f"Text too short for protocol extraction: {len(text)} chars"
+            )
             return details, result
 
         self.logger.info(f"Extracting protocol from {source} ({len(text)} chars)")
@@ -561,9 +565,7 @@ class AmpliconProtocolService(IProtocolExtractionService):
         return warnings
 
     def extract_from_methods_section(
-        self,
-        methods_text: str,
-        full_text: Optional[str] = None
+        self, methods_text: str, full_text: Optional[str] = None
     ) -> Tuple[AmpliconProtocolDetails, ValidationResult]:
         """
         Extract protocol details with methods section priority.
@@ -587,20 +589,34 @@ class AmpliconProtocolService(IProtocolExtractionService):
 
             # Fill missing fields
             for field in [
-                "forward_primer", "reverse_primer", "v_region",
-                "platform", "pipeline", "reference_database"
+                "forward_primer",
+                "reverse_primer",
+                "v_region",
+                "platform",
+                "pipeline",
+                "reference_database",
             ]:
                 if not getattr(details, field) and getattr(full_details, field):
                     setattr(details, field, getattr(full_details, field))
                     details.extraction_notes.append(f"{field} from full text")
 
             # Recalculate confidence
-            extracted = sum(1 for f in [
-                details.forward_primer, details.reverse_primer, details.v_region,
-                details.platform, details.pipeline, details.reference_database,
-                details.annealing_temperature, details.pcr_cycles,
-                details.read_length, details.clustering_method
-            ] if f is not None)
+            extracted = sum(
+                1
+                for f in [
+                    details.forward_primer,
+                    details.reverse_primer,
+                    details.v_region,
+                    details.platform,
+                    details.pipeline,
+                    details.reference_database,
+                    details.annealing_temperature,
+                    details.pcr_cycles,
+                    details.read_length,
+                    details.clustering_method,
+                ]
+                if f is not None
+            )
             details.confidence = extracted / 10
 
         return details, result

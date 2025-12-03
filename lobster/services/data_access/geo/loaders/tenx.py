@@ -15,10 +15,10 @@ Purpose: Fix Bug #2 - Single-cell MTX parsing failures with non-standard feature
 """
 
 import logging
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
 import anndata
 import pandas as pd
@@ -73,24 +73,26 @@ class TenXGenomicsLoader:
 
         try:
             # Handle compressed and uncompressed files
-            if features_path.name.endswith('.gz'):
-                with gzip.open(features_path, 'rt') as f:
+            if features_path.name.endswith(".gz"):
+                with gzip.open(features_path, "rt") as f:
                     first_line = f.readline().strip()
             else:
-                with open(features_path, 'r') as f:
+                with open(features_path, "r") as f:
                     first_line = f.readline().strip()
 
             # Count tabs (columns = tabs + 1)
-            n_cols = first_line.count('\t') + 1
+            n_cols = first_line.count("\t") + 1
 
             if n_cols >= 2:
-                logger.debug(f"Features file has {n_cols} columns - standard 10X format")
+                logger.debug(
+                    f"Features file has {n_cols} columns - standard 10X format"
+                )
                 return "standard_10x"
             elif n_cols == 1:
                 # Single column - determine if symbols or IDs
                 # Symbols typically have dashes, letters, mixed case
                 # IDs are typically pure numeric or ENSG* format
-                if first_line.startswith('ENSG') or first_line.startswith('ENS'):
+                if first_line.startswith("ENSG") or first_line.startswith("ENS"):
                     logger.debug("Features file has 1 column - Ensembl IDs format")
                     return "ids_only"
                 else:
@@ -105,10 +107,7 @@ class TenXGenomicsLoader:
             return "symbols_only"  # Safe fallback
 
     def load_10x_manual(
-        self,
-        temp_dir: Path,
-        features_format: str,
-        gse_id: str
+        self, temp_dir: Path, features_format: str, gse_id: str
     ) -> anndata.AnnData:
         """
         Manually load 10X MTX when features file is non-standard.
@@ -124,15 +123,24 @@ class TenXGenomicsLoader:
         Returns:
             AnnData object with properly loaded 10X data
         """
-        from scipy.io import mmread
         import gzip
 
-        logger.info(f"{gse_id}: Using manual 10X loader for non-standard format: {features_format}")
+        from scipy.io import mmread
+
+        logger.info(
+            f"{gse_id}: Using manual 10X loader for non-standard format: {features_format}"
+        )
 
         # Find files (handle various naming conventions)
-        matrix_files = list(temp_dir.glob("*matrix*.mtx*")) + list(temp_dir.glob("*.mtx*"))
-        barcodes_files = list(temp_dir.glob("*barcode*")) + list(temp_dir.glob("barcodes.*"))
-        features_files = list(temp_dir.glob("*features*")) + list(temp_dir.glob("*genes*"))
+        matrix_files = list(temp_dir.glob("*matrix*.mtx*")) + list(
+            temp_dir.glob("*.mtx*")
+        )
+        barcodes_files = list(temp_dir.glob("*barcode*")) + list(
+            temp_dir.glob("barcodes.*")
+        )
+        features_files = list(temp_dir.glob("*features*")) + list(
+            temp_dir.glob("*genes*")
+        )
 
         if not (matrix_files and barcodes_files and features_files):
             raise FileNotFoundError(
@@ -146,28 +154,32 @@ class TenXGenomicsLoader:
 
         # Load matrix (scipy handles MTX format natively)
         logger.debug(f"Loading matrix from {matrix_path.name}")
-        if matrix_path.name.endswith('.gz'):
-            with gzip.open(matrix_path, 'rb') as f:
-                X = mmread(f).T.tocsr()  # Transpose: MTX is genes × cells, we need cells × genes
+        if matrix_path.name.endswith(".gz"):
+            with gzip.open(matrix_path, "rb") as f:
+                X = mmread(
+                    f
+                ).T.tocsr()  # Transpose: MTX is genes × cells, we need cells × genes
         else:
             X = mmread(matrix_path).T.tocsr()
 
         # Load barcodes (cell IDs)
         logger.debug(f"Loading barcodes from {barcodes_path.name}")
-        if barcodes_path.name.endswith('.gz'):
-            with gzip.open(barcodes_path, 'rt') as f:
-                barcodes = [line.strip().split('\t')[0] for line in f if line.strip()]
+        if barcodes_path.name.endswith(".gz"):
+            with gzip.open(barcodes_path, "rt") as f:
+                barcodes = [line.strip().split("\t")[0] for line in f if line.strip()]
         else:
-            with open(barcodes_path, 'r') as f:
-                barcodes = [line.strip().split('\t')[0] for line in f if line.strip()]
+            with open(barcodes_path, "r") as f:
+                barcodes = [line.strip().split("\t")[0] for line in f if line.strip()]
 
         # Load features (handle 1 or 2+ columns adaptively)
-        logger.debug(f"Loading features from {features_path.name} (format: {features_format})")
-        if features_path.name.endswith('.gz'):
-            with gzip.open(features_path, 'rt') as f:
+        logger.debug(
+            f"Loading features from {features_path.name} (format: {features_format})"
+        )
+        if features_path.name.endswith(".gz"):
+            with gzip.open(features_path, "rt") as f:
                 lines = [line.strip() for line in f if line.strip()]
         else:
-            with open(features_path, 'r') as f:
+            with open(features_path, "r") as f:
                 lines = [line.strip() for line in f if line.strip()]
 
         # Parse features based on format
@@ -178,9 +190,14 @@ class TenXGenomicsLoader:
             logger.info(f"Loaded {len(gene_names)} genes from 1-column features file")
         else:  # standard_10x
             # Multi-column format: parse normally
-            gene_ids = [line.split('\t')[0] for line in lines]
-            gene_names = [line.split('\t')[1] if '\t' in line else line.split('\t')[0] for line in lines]
-            logger.info(f"Loaded {len(gene_names)} genes from standard 10X features file")
+            gene_ids = [line.split("\t")[0] for line in lines]
+            gene_names = [
+                line.split("\t")[1] if "\t" in line else line.split("\t")[0]
+                for line in lines
+            ]
+            logger.info(
+                f"Loaded {len(gene_names)} genes from standard 10X features file"
+            )
 
         # Validate dimensions match
         if X.shape[0] != len(barcodes):
@@ -193,20 +210,19 @@ class TenXGenomicsLoader:
             )
 
         # Build var DataFrame
-        var_df = pd.DataFrame({
-            'gene_ids': gene_ids,
-            'feature_types': 'Gene Expression'  # Default for 10X RNA
-        }, index=gene_names)
+        var_df = pd.DataFrame(
+            {
+                "gene_ids": gene_ids,
+                "feature_types": "Gene Expression",  # Default for 10X RNA
+            },
+            index=gene_names,
+        )
 
         # Build obs DataFrame
         obs_df = pd.DataFrame(index=barcodes)
 
         # Create AnnData
-        adata = anndata.AnnData(
-            X=X,
-            obs=obs_df,
-            var=var_df
-        )
+        adata = anndata.AnnData(X=X, obs=obs_df, var=var_df)
 
         # Ensure unique names
         adata.var_names_make_unique()
@@ -246,21 +262,24 @@ class TenXGenomicsLoader:
             # FIXED: Use extension-based matching instead of requiring "matrix.mtx" substring
             # This handles non-standard naming like "GSE182227_OPSCC.mtx.gz"
             matrix_files = [
-                f for f in suppl_files
-                if f.lower().endswith(('.mtx', '.mtx.gz', '.mtx.bz2'))
+                f
+                for f in suppl_files
+                if f.lower().endswith((".mtx", ".mtx.gz", ".mtx.bz2"))
                 and gse_id.lower() in f.lower()
             ]
             barcodes_files = [
-                f for f in suppl_files
-                if f.lower().endswith(('.tsv', '.tsv.gz', '.txt', '.txt.gz'))
-                and 'barcode' in f.lower()
+                f
+                for f in suppl_files
+                if f.lower().endswith((".tsv", ".tsv.gz", ".txt", ".txt.gz"))
+                and "barcode" in f.lower()
                 and gse_id.lower() in f.lower()
             ]
             # Features can be named "features" or "genes"
             features_files = [
-                f for f in suppl_files
-                if f.lower().endswith(('.tsv', '.tsv.gz', '.txt', '.txt.gz'))
-                and ('features' in f.lower() or 'genes' in f.lower())
+                f
+                for f in suppl_files
+                if f.lower().endswith((".tsv", ".tsv.gz", ".txt", ".txt.gz"))
+                and ("features" in f.lower() or "genes" in f.lower())
                 and gse_id.lower() in f.lower()
             ]
 
@@ -310,7 +329,9 @@ class TenXGenomicsLoader:
                         actual_path = temp_dir / source_name
                         if actual_path.exists() and not local_path.exists():
                             # Rename to expected name without .gz
-                            target_uncompressed = temp_dir / target_name.replace(".gz", "")
+                            target_uncompressed = temp_dir / target_name.replace(
+                                ".gz", ""
+                            )
                             shutil.move(str(actual_path), str(target_uncompressed))
                             local_path = target_uncompressed
 
@@ -318,7 +339,9 @@ class TenXGenomicsLoader:
 
                 # ADAPTIVE LOADING: Detect features format first, then choose appropriate loader
                 # Find the features file in temp directory
-                features_paths = list(temp_dir.glob("*features*")) + list(temp_dir.glob("*genes*"))
+                features_paths = list(temp_dir.glob("*features*")) + list(
+                    temp_dir.glob("*genes*")
+                )
                 if not features_paths:
                     logger.error(f"{gse_id}: Features file not found in {temp_dir}")
                     return None
@@ -329,7 +352,9 @@ class TenXGenomicsLoader:
                 # Choose loader based on format
                 if features_format == "standard_10x":
                     # Use scanpy for standard format (fast, well-tested)
-                    logger.debug(f"{gse_id}: Using scanpy loader for standard 10X format")
+                    logger.debug(
+                        f"{gse_id}: Using scanpy loader for standard 10X format"
+                    )
                     try:
                         adata = sc.read_10x_mtx(
                             temp_dir,
@@ -338,7 +363,9 @@ class TenXGenomicsLoader:
                         )
                     except Exception as e:
                         # Try with gene_ids if gene_symbols fails
-                        logger.warning(f"Failed with gene_symbols, trying gene_ids: {e}")
+                        logger.warning(
+                            f"Failed with gene_symbols, trying gene_ids: {e}"
+                        )
                         adata = sc.read_10x_mtx(
                             temp_dir,
                             var_names="gene_ids",
@@ -347,7 +374,9 @@ class TenXGenomicsLoader:
                     adata.var_names_make_unique()
                 else:
                     # Use manual loader for non-standard formats (robust fallback)
-                    logger.info(f"{gse_id}: Non-standard format detected, using manual loader")
+                    logger.info(
+                        f"{gse_id}: Non-standard format detected, using manual loader"
+                    )
                     adata = self.load_10x_manual(temp_dir, features_format, gse_id)
                     # Manual loader already makes names unique
 

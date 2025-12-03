@@ -36,7 +36,9 @@ from lobster.services.execution.custom_code_execution_service import (
 
 
 @pytest.fixture
-def workspace_with_provenance(tmp_path) -> Tuple[CustomCodeExecutionService, Path, DataManagerV2]:
+def workspace_with_provenance(
+    tmp_path,
+) -> Tuple[CustomCodeExecutionService, Path, DataManagerV2]:
     """
     Create workspace with provenance tracking enabled.
 
@@ -60,7 +62,7 @@ def workspace_with_provenance(tmp_path) -> Tuple[CustomCodeExecutionService, Pat
             "timestamp": "2025-11-30T10:00:00",
             "modality": "geo_gse12345",
             "parameters": {"min_genes": 200},
-            "agent": "singlecell_expert"
+            "agent": "singlecell_expert",
         },
         {
             "step_id": "step_002",
@@ -68,12 +70,12 @@ def workspace_with_provenance(tmp_path) -> Tuple[CustomCodeExecutionService, Pat
             "timestamp": "2025-11-30T10:05:00",
             "modality": "geo_gse12345",
             "parameters": {"target_sum": 10000},
-            "agent": "singlecell_expert"
-        }
+            "agent": "singlecell_expert",
+        },
     ]
-    with open(provenance_file, 'w') as f:
+    with open(provenance_file, "w") as f:
         for entry in provenance_entries:
-            f.write(json.dumps(entry) + '\n')
+            f.write(json.dumps(entry) + "\n")
 
     # Create analysis IR file
     ir_file = workspace / ".lobster" / "provenance" / "analysis_ir.json"
@@ -83,22 +85,22 @@ def workspace_with_provenance(tmp_path) -> Tuple[CustomCodeExecutionService, Pat
                 "operation": "quality_assessment",
                 "code_template": "sc.pp.calculate_qc_metrics(adata)",
                 "library": "scanpy",
-                "parameters": {}
+                "parameters": {},
             }
         ]
     }
-    with open(ir_file, 'w') as f:
+    with open(ir_file, "w") as f:
         json.dump(ir_data, f)
 
     # Create session history
     history_file = workspace / ".lobster" / "command_history.jsonl"
     commands = [
         {"command": "load geo_gse12345", "timestamp": "2025-11-30T09:00:00"},
-        {"command": "quality check", "timestamp": "2025-11-30T09:30:00"}
+        {"command": "quality check", "timestamp": "2025-11-30T09:30:00"},
     ]
-    with open(history_file, 'w') as f:
+    with open(history_file, "w") as f:
         for cmd in commands:
-            f.write(json.dumps(cmd) + '\n')
+            f.write(json.dumps(cmd) + "\n")
 
     dm = DataManagerV2(workspace_path=workspace)
     service = CustomCodeExecutionService(dm)
@@ -124,7 +126,7 @@ class TestProvenanceInjection:
             original_entries = [json.loads(line) for line in f if line.strip()]
         original_count = len(original_entries)
 
-        code = '''
+        code = """
 import json
 
 # Inject fake analysis step
@@ -144,7 +146,7 @@ with open(provenance_file, 'a') as f:
     f.write(json.dumps(fake_step) + '\\n')
 
 result = f"Injected fake step: {fake_step['step_id']}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -154,13 +156,13 @@ result = f"Injected fake step: {fake_step['step_id']}"
 
         injected_step = None
         for entry in modified_entries:
-            if entry.get('step_id') == 'step_INJECTED':
+            if entry.get("step_id") == "step_INJECTED":
                 injected_step = entry
                 break
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Inject Fake Analysis Step")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"Original entries: {original_count}")
         print(f"Modified entries: {len(modified_entries)}")
@@ -170,13 +172,17 @@ result = f"Injected fake step: {fake_step['step_id']}"
             print(f"Injected step details: {injected_step}")
             print("⚠️  CRITICAL VULNERABILITY: User code injected fake provenance")
             print("   Impact: Reproducibility BROKEN, scientific integrity compromised")
-            print("   Attack scenario: Attacker can claim analysis steps that never occurred")
-            print("   Recommendation: Cryptographic signatures, append-only logs, checksums")
+            print(
+                "   Attack scenario: Attacker can claim analysis steps that never occurred"
+            )
+            print(
+                "   Recommendation: Cryptographic signatures, append-only logs, checksums"
+            )
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         assert injected_step is not None
-        assert injected_step['operation'] == 'malicious.analysis.backdoor'
+        assert injected_step["operation"] == "malicious.analysis.backdoor"
 
     def test_inject_backdated_analysis_EXPECT_SUCCESS(self, workspace_with_provenance):
         """
@@ -186,7 +192,7 @@ result = f"Injected fake step: {fake_step['step_id']}"
         """
         service, workspace, _ = workspace_with_provenance
 
-        code = '''
+        code = """
 import json
 
 # Inject backdated steps to revise history
@@ -213,7 +219,7 @@ with open(provenance_file, 'w') as f:
         f.write(json.dumps(entry) + '\\n')
 
 result = "Injected backdated analysis step"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -224,21 +230,21 @@ result = "Injected backdated analysis step"
         # Check if first entry is backdated
         first_entry = entries[0]
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Inject Backdated Analysis")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"First entry step_id: {first_entry['step_id']}")
         print(f"First entry timestamp: {first_entry['timestamp']}")
 
-        if first_entry['step_id'] == 'step_000_backdated':
+        if first_entry["step_id"] == "step_000_backdated":
             print("⚠️  HIGH VULNERABILITY: User code backdated provenance entries")
             print("   Impact: Historical revision, audit trail unreliable")
             print("   Attack: Can insert steps to cover up data manipulation")
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
-        assert first_entry['step_id'] == 'step_000_backdated'
+        assert first_entry["step_id"] == "step_000_backdated"
 
 
 class TestProvenanceModification:
@@ -252,7 +258,7 @@ class TestProvenanceModification:
         """
         service, workspace, _ = workspace_with_provenance
 
-        code = '''
+        code = """
 import json
 
 # Modify existing provenance entry parameters
@@ -276,7 +282,7 @@ with open(provenance_file, 'w') as f:
         f.write(json.dumps(entry) + '\\n')
 
 result = f"Modified parameters of step: {entries[0]['step_id']}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -286,22 +292,26 @@ result = f"Modified parameters of step: {entries[0]['step_id']}"
 
         first_entry = entries[0]
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Modify Analysis Parameters")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"Modified parameters: {first_entry['parameters']}")
         print(f"Tampered flag: {first_entry.get('tampered', False)}")
 
-        if first_entry['parameters']['min_genes'] == 9999:
+        if first_entry["parameters"]["min_genes"] == 9999:
             print("⚠️  HIGH VULNERABILITY: User code modified provenance parameters")
-            print("   Impact: Falsified analysis documentation, reproducibility impossible")
-            print("   Attack: Can hide actual parameters used, claim different analysis")
+            print(
+                "   Impact: Falsified analysis documentation, reproducibility impossible"
+            )
+            print(
+                "   Attack: Can hide actual parameters used, claim different analysis"
+            )
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
-        assert first_entry['parameters']['min_genes'] == 9999
-        assert first_entry.get('tampered') is True
+        assert first_entry["parameters"]["min_genes"] == 9999
+        assert first_entry.get("tampered") is True
 
     def test_remove_analysis_steps_EXPECT_SUCCESS(self, workspace_with_provenance):
         """
@@ -311,7 +321,7 @@ result = f"Modified parameters of step: {entries[0]['step_id']}"
         """
         service, workspace, _ = workspace_with_provenance
 
-        code = '''
+        code = """
 import json
 
 # Remove specific steps from provenance
@@ -334,7 +344,7 @@ with open(provenance_file, 'w') as f:
         f.write(json.dumps(entry) + '\\n')
 
 result = f"Removed {original_count - len(filtered_entries)} steps from provenance"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -342,16 +352,15 @@ result = f"Removed {original_count - len(filtered_entries)} steps from provenanc
         with open(provenance_file) as f:
             remaining_entries = [json.loads(line) for line in f if line.strip()]
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Remove Analysis Steps")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"Remaining entries: {len(remaining_entries)}")
 
         # Check if filter_cells step was removed
         has_filter_step = any(
-            e.get('operation') == 'scanpy.pp.filter_cells'
-            for e in remaining_entries
+            e.get("operation") == "scanpy.pp.filter_cells" for e in remaining_entries
         )
 
         if not has_filter_step:
@@ -359,7 +368,7 @@ result = f"Removed {original_count - len(filtered_entries)} steps from provenanc
             print("   Impact: Incomplete analysis record, steps hidden from audit")
             print("   Attack: Can hide suspicious or incorrect analysis steps")
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         assert not has_filter_step
 
@@ -378,7 +387,7 @@ class TestProvenanceDeletion:
         provenance_file = workspace / ".lobster" / "provenance" / "analysis_log.jsonl"
         assert provenance_file.exists()
 
-        code = '''
+        code = """
 # Delete provenance log
 provenance_file = WORKSPACE / ".lobster" / "provenance" / "analysis_log.jsonl"
 if provenance_file.exists():
@@ -386,15 +395,15 @@ if provenance_file.exists():
     result = "Provenance log deleted"
 else:
     result = "Provenance log not found"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
         provenance_exists = provenance_file.exists()
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Delete Provenance Log")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"Provenance exists: {provenance_exists}")
 
@@ -403,7 +412,7 @@ else:
             print("   Impact: COMPLETE loss of reproducibility, audit trail gone")
             print("   Recommendation: Backup provenance, write-once storage, checksums")
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         assert not provenance_exists
 
@@ -418,7 +427,7 @@ else:
         ir_file = workspace / ".lobster" / "provenance" / "analysis_ir.json"
         assert ir_file.exists()
 
-        code = '''
+        code = """
 # Delete analysis IR file
 ir_file = WORKSPACE / ".lobster" / "provenance" / "analysis_ir.json"
 if ir_file.exists():
@@ -426,24 +435,26 @@ if ir_file.exists():
     result = "IR metadata deleted"
 else:
     result = "IR not found"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
         ir_exists = ir_file.exists()
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Delete IR Metadata")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"IR file exists: {ir_exists}")
 
         if not ir_exists:
             print("⚠️  CRITICAL VULNERABILITY: User code deleted IR metadata")
-            print("   Impact: Notebook export broken, pipeline reconstruction impossible")
+            print(
+                "   Impact: Notebook export broken, pipeline reconstruction impossible"
+            )
             print("   Attack: Prevents reproducibility, hides analysis steps")
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         assert not ir_exists
 
@@ -492,23 +503,23 @@ result = "IR code template modified with malicious code"
         with open(ir_file) as f:
             modified_ir = json.load(f)
 
-        code_template = modified_ir['pipeline'][0]['code_template']
+        code_template = modified_ir["pipeline"][0]["code_template"]
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Modify Code Templates")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"Code template preview:\n{code_template[:200]}")
 
-        if 'MALICIOUS CODE' in code_template:
+        if "MALICIOUS CODE" in code_template:
             print("⚠️  CRITICAL VULNERABILITY: User code modified IR templates")
             print("   Impact: Exported notebooks contain malicious code")
             print("   Attack: Users running exported notebooks execute attacker's code")
             print("   Recommendation: Code signing, IR integrity checks, sandboxing")
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
-        assert 'MALICIOUS CODE' in code_template
+        assert "MALICIOUS CODE" in code_template
 
     def test_inject_backdoor_imports_EXPECT_SUCCESS(self, workspace_with_provenance):
         """
@@ -518,7 +529,7 @@ result = "IR code template modified with malicious code"
         """
         service, workspace, _ = workspace_with_provenance
 
-        code = '''
+        code = """
 import json
 
 # Inject malicious imports into IR
@@ -540,7 +551,7 @@ with open(ir_file, 'w') as f:
     json.dump(ir_data, f)
 
 result = "Injected backdoor imports into IR"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -548,22 +559,22 @@ result = "Injected backdoor imports into IR"
         with open(ir_file) as f:
             modified_ir = json.load(f)
 
-        imports = modified_ir['pipeline'][0].get('imports', [])
+        imports = modified_ir["pipeline"][0].get("imports", [])
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Inject Backdoor Imports")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"Injected imports: {imports}")
 
-        if 'import subprocess' in imports:
+        if "import subprocess" in imports:
             print("⚠️  HIGH VULNERABILITY: User code injected backdoor imports")
             print("   Impact: Exported notebooks import dangerous modules")
             print("   Attack: Bypass import validation in exported notebooks")
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
-        assert 'import subprocess' in imports
+        assert "import subprocess" in imports
 
 
 class TestSessionHistoryManipulation:
@@ -579,7 +590,7 @@ class TestSessionHistoryManipulation:
 
         history_file = workspace / ".lobster" / "command_history.jsonl"
 
-        code = '''
+        code = """
 # Clear command history
 history_file = WORKSPACE / ".lobster" / "command_history.jsonl"
 if history_file.exists():
@@ -587,15 +598,15 @@ if history_file.exists():
     result = "Command history cleared"
 else:
     result = "History not found"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
         history_content = history_file.read_text()
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Clear Command History")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"History is empty: {len(history_content) == 0}")
 
@@ -604,7 +615,7 @@ else:
             print("   Impact: Audit trail lost, user actions hidden")
             print("   Attack: Can hide malicious commands from history")
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         assert len(history_content) == 0
 
@@ -616,7 +627,7 @@ else:
         """
         service, workspace, _ = workspace_with_provenance
 
-        code = '''
+        code = """
 import json
 
 # Inject fake commands into history
@@ -632,7 +643,7 @@ with open(history_file, 'a') as f:
         f.write(json.dumps(cmd) + '\\n')
 
 result = f"Injected {len(fake_commands)} fake commands"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -641,13 +652,12 @@ result = f"Injected {len(fake_commands)} fake commands"
             commands = [json.loads(line) for line in f if line.strip()]
 
         has_fake_command = any(
-            'escalate privileges' in cmd.get('command', '')
-            for cmd in commands
+            "escalate privileges" in cmd.get("command", "") for cmd in commands
         )
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST: Inject Fake Commands")
-        print("="*80)
+        print("=" * 80)
         print(f"Result: {result}")
         print(f"Total commands: {len(commands)}")
         print(f"Has fake command: {has_fake_command}")
@@ -657,7 +667,7 @@ result = f"Injected {len(fake_commands)} fake commands"
             print("   Impact: False audit trail, misleading history")
             print("   Attack: Can frame users or hide actual actions")
 
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         assert has_fake_command
 

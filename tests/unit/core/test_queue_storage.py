@@ -26,7 +26,6 @@ from lobster.core.queue_storage import (
     queue_file_lock,
 )
 
-
 # =============================================================================
 # Helper functions for multiprocessing tests (must be at module level)
 # =============================================================================
@@ -174,11 +173,13 @@ def _mp_stress_test_worker(args):
                     data = json.load(f)
 
                 # Append our operation
-                data["operations"].append({
-                    "process": process_id,
-                    "op": i,
-                    "timestamp": time.time(),
-                })
+                data["operations"].append(
+                    {
+                        "process": process_id,
+                        "op": i,
+                        "timestamp": time.time(),
+                    }
+                )
 
                 atomic_write_json(json_file, data)
         except Exception as e:
@@ -301,13 +302,19 @@ class TestAtomicWriteJson:
         def writer(thread_id):
             for i in range(num_writes_per_thread):
                 try:
-                    data = {"thread": thread_id, "iteration": i, "data": list(range(100))}
+                    data = {
+                        "thread": thread_id,
+                        "iteration": i,
+                        "data": list(range(100)),
+                    }
                     atomic_write_json(temp_json_file, data)
                     results.append((thread_id, i))
                 except Exception as e:
                     errors.append((thread_id, i, str(e)))
 
-        threads = [threading.Thread(target=writer, args=(i,)) for i in range(num_threads)]
+        threads = [
+            threading.Thread(target=writer, args=(i,)) for i in range(num_threads)
+        ]
         for t in threads:
             t.start()
         for t in threads:

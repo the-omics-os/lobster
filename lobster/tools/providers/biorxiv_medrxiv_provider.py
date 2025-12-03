@@ -44,15 +44,15 @@ from lobster.tools.providers.base_provider import (
 )
 from lobster.tools.providers.biorxiv_medrxiv_config import BioRxivMedRxivConfig
 from lobster.tools.providers.pmc_provider import PMCFullText, PMCProvider
-from lobster.tools.rate_limiter import STEALTH_HEADERS, CHROME_USER_AGENT
+from lobster.tools.rate_limiter import CHROME_USER_AGENT, STEALTH_HEADERS
 from lobster.utils.logger import get_logger
-
 from lobster.utils.ssl_utils import create_ssl_context, handle_ssl_error
 
 # Cloudscraper for Cloudflare-protected content servers (www.biorxiv.org)
 # The API (api.biorxiv.org) is friendly, but content delivery requires JS challenge solving
 try:
     import cloudscraper
+
     CLOUDSCRAPER_AVAILABLE = True
 except ImportError:
     CLOUDSCRAPER_AVAILABLE = False
@@ -157,10 +157,12 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
         # API session with polite bot headers (for api.biorxiv.org)
         # The API is bot-friendly and prefers identification
         self.session = requests.Session()
-        self.session.headers.update({
-            "User-Agent": "Lobster Bioinformatics/1.0 (+https://omics-os.com; mailto:support@omics-os.com)",
-            "Accept": "application/xml,text/xml,application/json,*/*;q=0.1",
-        })
+        self.session.headers.update(
+            {
+                "User-Agent": "Lobster Bioinformatics/1.0 (+https://omics-os.com; mailto:support@omics-os.com)",
+                "Accept": "application/xml,text/xml,application/json,*/*;q=0.1",
+            }
+        )
 
         # Content delivery session with Cloudflare bypass (for www.biorxiv.org)
         # Content servers require JS challenge solving + TLS fingerprinting to avoid 403
@@ -174,10 +176,12 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
         else:
             # Fallback to requests.Session with stealth headers (may fail on 403)
             self.content_session = requests.Session()
-            self.content_session.headers.update({
-                "User-Agent": CHROME_USER_AGENT,
-                **STEALTH_HEADERS,
-            })
+            self.content_session.headers.update(
+                {
+                    "User-Agent": CHROME_USER_AGENT,
+                    **STEALTH_HEADERS,
+                }
+            )
             logger.warning(
                 "cloudscraper not available - bioRxiv content fetching may fail. "
                 "Install with: pip install cloudscraper"
@@ -323,9 +327,7 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
     # API Request Infrastructure
     # ========================================================================
 
-    def _build_url(
-        self, endpoint: str, server: Optional[str] = None, **params
-    ) -> str:
+    def _build_url(self, endpoint: str, server: Optional[str] = None, **params) -> str:
         """
         Build bioRxiv API URL with proper parameter encoding.
 
@@ -493,7 +495,13 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
                         self._apply_backoff_delay(attempt)
 
                 # Check for network/SSL errors
-                elif isinstance(e, (requests.exceptions.RequestException, requests.exceptions.SSLError)):
+                elif isinstance(
+                    e,
+                    (
+                        requests.exceptions.RequestException,
+                        requests.exceptions.SSLError,
+                    ),
+                ):
                     # Check for SSL certificate errors
                     error_str = str(e)
                     if "CERTIFICATE_VERIFY_FAILED" in error_str or "SSL" in error_str:
@@ -623,7 +631,9 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
         else:
             # Date range query: /details/[server]/[interval]/[cursor]/json
             if not date_range:
-                raise ValueError("date_range required for search (e.g., '2024-01-01/2024-01-31')")
+                raise ValueError(
+                    "date_range required for search (e.g., '2024-01-01/2024-01-31')"
+                )
 
             # Add category filter if specified
             query_params = {}
@@ -770,9 +780,12 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
             if not date_range:
                 # Default to last 30 days
                 from datetime import datetime, timedelta
+
                 end_date = datetime.now()
                 start_date = end_date - timedelta(days=30)
-                date_range = f"{start_date.strftime('%Y-%m-%d')}/{end_date.strftime('%Y-%m-%d')}"
+                date_range = (
+                    f"{start_date.strftime('%Y-%m-%d')}/{end_date.strftime('%Y-%m-%d')}"
+                )
                 logger.info(f"No date_range specified, using default: {date_range}")
 
             # Fetch preprints with pagination
@@ -814,9 +827,7 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
                 return f"No bioRxiv/medRxiv preprints found for query: {query}"
 
             # Convert to PublicationMetadata
-            pub_metadata = [
-                self._parse_preprint_to_metadata(p) for p in all_preprints
-            ]
+            pub_metadata = [self._parse_preprint_to_metadata(p) for p in all_preprints]
 
             # Format with base class formatter
             formatted_results = self.format_search_results(pub_metadata, query)
@@ -892,7 +903,9 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
                 mapping = self.get_publication_mapping(identifier, server=server)
                 if mapping and mapping.get("published_doi"):
                     # Add published journal info to keywords
-                    metadata.keywords.append(f"Published in {mapping['published_journal']}")
+                    metadata.keywords.append(
+                        f"Published in {mapping['published_journal']}"
+                    )
             except Exception as e:
                 logger.debug(f"Could not fetch publication mapping: {e}")
 
@@ -967,9 +980,7 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
             server = server or self.config.default_server
 
             # Build URL: /pubs/[server]/[DOI]/na/json
-            url = self._build_url(
-                "pubs", server=server, interval=doi, cursor="na"
-            )
+            url = self._build_url("pubs", server=server, interval=doi, cursor="na")
 
             # Make API request
             content = self._make_api_request(
@@ -1041,9 +1052,7 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
 
             xml_text = response.text
 
-            logger.info(
-                f"Successfully fetched JATS XML: {len(xml_text)} bytes"
-            )
+            logger.info(f"Successfully fetched JATS XML: {len(xml_text)} bytes")
 
             return xml_text
 
@@ -1053,9 +1062,7 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
                 f"Failed to fetch JATS XML from {jatsxml_url}: {str(e)}"
             )
 
-    def get_full_text(
-        self, doi: str, server: Optional[str] = None
-    ) -> PMCFullText:
+    def get_full_text(self, doi: str, server: Optional[str] = None) -> PMCFullText:
         """
         Fetch and parse JATS XML for full-text extraction.
 
@@ -1124,9 +1131,7 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
                 parsed = self._jats_parser.parse_pmc_xml(xml_text)
             except Exception as e:
                 logger.error(f"PMCProvider JATS parsing failed: {e}")
-                raise BioRxivJATSError(
-                    f"Failed to parse JATS XML for {doi}: {str(e)}"
-                )
+                raise BioRxivJATSError(f"Failed to parse JATS XML for {doi}: {str(e)}")
 
             # Step 5: Update metadata (override PMC-specific fields)
             parsed.source_type = f"{server}_jatsxml"
@@ -1167,9 +1172,7 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
             raise
         except Exception as e:
             logger.exception(f"Error extracting full text for {doi}: {e}")
-            raise BioRxivJATSError(
-                f"Full text extraction failed for {doi}: {str(e)}"
-            )
+            raise BioRxivJATSError(f"Full text extraction failed for {doi}: {str(e)}")
 
     def get_category_statistics(
         self, server: Optional[str] = None, date_range: Optional[str] = None
@@ -1209,9 +1212,7 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
             logger.error(f"Error fetching category statistics: {e}")
             return {"error": str(e)}
 
-    def get_usage_statistics(
-        self, doi: str, server: Optional[str] = None
-    ) -> Dict:
+    def get_usage_statistics(self, doi: str, server: Optional[str] = None) -> Dict:
         """
         Get download/view statistics for a preprint from /usage endpoint.
 
@@ -1447,7 +1448,9 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
                     parameters={
                         "identifier": identifier,
                         "dataset_types": (
-                            [dt.value for dt in dataset_types] if dataset_types else None
+                            [dt.value for dt in dataset_types]
+                            if dataset_types
+                            else None
                         ),
                     },
                     description="Dataset discovery from bioRxiv/medRxiv preprint",

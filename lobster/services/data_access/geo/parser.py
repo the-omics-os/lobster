@@ -124,9 +124,7 @@ class GEOParser:
             "genes": n_genes,
         }
 
-    def check_memory_for_dimensions(
-        self, n_cells: int, n_genes: int
-    ) -> Dict[str, any]:
+    def check_memory_for_dimensions(self, n_cells: int, n_genes: int) -> Dict[str, any]:
         """
         Check if system has sufficient memory for dataset with given dimensions.
 
@@ -168,8 +166,12 @@ class GEOParser:
             subsample_target = max(5000, min(max_cells, n_cells // 2))
 
         recommendation = self._get_memory_recommendation(
-            can_load, required_gb, available_gb, mem_estimate["recommended_gb"],
-            subsample_target, n_cells
+            can_load,
+            required_gb,
+            available_gb,
+            mem_estimate["recommended_gb"],
+            subsample_target,
+            n_cells,
         )
 
         return {
@@ -181,7 +183,7 @@ class GEOParser:
             "used_percent": used_percent,
             "recommendation": recommendation,
             "subsample_target": subsample_target,
-            "dimensions": f"{n_cells:,} cells × {n_genes:,} genes"
+            "dimensions": f"{n_cells:,} cells × {n_genes:,} genes",
         }
 
     def _get_memory_recommendation(
@@ -191,7 +193,7 @@ class GEOParser:
         available_gb: float,
         recommended_gb: float,
         subsample_target: Optional[int],
-        n_cells: int
+        n_cells: int,
     ) -> str:
         """Generate human-readable memory recommendation."""
         if can_load:
@@ -201,10 +203,13 @@ class GEOParser:
             )
         else:
             options = [
-                f"1. Subsample to ~{subsample_target:,} cells (use --max-cells flag)"
-                if subsample_target else None,
+                (
+                    f"1. Subsample to ~{subsample_target:,} cells (use --max-cells flag)"
+                    if subsample_target
+                    else None
+                ),
                 "2. Use cloud mode with more memory (set LOBSTER_CLOUD_KEY)",
-                f"3. Increase system RAM to {recommended_gb:.1f} GB"
+                f"3. Increase system RAM to {recommended_gb:.1f} GB",
             ]
             options = [o for o in options if o]  # Filter out None
 
@@ -232,7 +237,9 @@ class GEOParser:
             "(3) increase system RAM."
         )
 
-    def _estimate_dimensions_from_file(self, file_path: Path) -> Tuple[Optional[int], Optional[int]]:
+    def _estimate_dimensions_from_file(
+        self, file_path: Path
+    ) -> Tuple[Optional[int], Optional[int]]:
         """
         Estimate dataset dimensions (n_cells, n_genes) from file without loading entire dataset.
 
@@ -461,15 +468,11 @@ class GEOParser:
                     delimiter = self.sniff_delimiter(file_path)
                     compression = "gzip" if file_path.name.endswith(".gz") else None
 
-                    # Set timeout for chunked reading
-                    signal.signal(signal.SIGALRM, self._timeout_handler)
-                    signal.alarm(self.timeout_seconds)
-
+                    # Attempt chunked reading as fallback
                     try:
                         result = self.parse_large_file_in_chunks(
                             file_path, delimiter, compression
                         )
-                        signal.alarm(0)  # Cancel timeout
 
                         if result is None or result.empty:
                             raise InsufficientMemoryError(
@@ -478,11 +481,10 @@ class GEOParser:
                             )
 
                         return result
-                    except LoadingTimeout:
-                        signal.alarm(0)  # Cancel timeout
+                    except Exception as e:
                         raise InsufficientMemoryError(
-                            f"Dataset loading timed out after {self.timeout_seconds}s "
-                            f"(likely memory exhaustion).\n" + mem_check["recommendation"]
+                            f"Dataset loading failed: {e}\n"
+                            + mem_check["recommendation"]
                         )
                 else:
                     logger.info(mem_check["recommendation"])
@@ -517,10 +519,6 @@ class GEOParser:
             # Determine compression
             compression = "gzip" if file_path.name.endswith(".gz") else None
 
-            # Set timeout for main parsing operations
-            signal.signal(signal.SIGALRM, self._timeout_handler)
-            signal.alarm(self.timeout_seconds)
-
             # Try Polars first for better performance on large files
             try:
                 import polars as pl
@@ -547,7 +545,6 @@ class GEOParser:
 
                 logger.debug(f"Successfully parsed with Polars: {df.shape}")
                 self._log_system_memory()  # Log memory after parsing
-                signal.alarm(0)  # Cancel timeout - success
                 return df
 
             except ImportError:
@@ -555,14 +552,10 @@ class GEOParser:
                     "Polars not available, using pandas with optimized settings"
                 )
             except MemoryError:
-                signal.alarm(0)  # Cancel timeout
                 logger.error("Memory error with Polars, forcing chunked reading")
                 return self.parse_large_file_in_chunks(
                     file_path, delimiter, compression
                 )
-            except LoadingTimeout:
-                signal.alarm(0)  # Cancel timeout
-                raise  # Re-raise timeout
             except Exception as polars_error:
                 logger.warning(
                     f"Polars parsing failed: {polars_error}, falling back to pandas"
@@ -581,7 +574,6 @@ class GEOParser:
                     result = self.parse_large_file_in_chunks(
                         file_path, delimiter, compression
                     )
-                    signal.alarm(0)  # Cancel timeout
                     return result
                 else:
                     # Standard pandas parsing with optimizations
@@ -599,38 +591,23 @@ class GEOParser:
 
                     logger.debug(f"Successfully parsed with pandas: {df.shape}")
                     self._log_system_memory()  # Log memory after parsing
-                    signal.alarm(0)  # Cancel timeout
                     return df
 
             except MemoryError:
-                signal.alarm(0)  # Cancel timeout
                 logger.error("Memory error with pandas, forcing chunked reading")
                 return self.parse_large_file_in_chunks(
                     file_path, delimiter, compression
                 )
-            except LoadingTimeout:
-                signal.alarm(0)  # Cancel timeout
-                raise  # Re-raise timeout
             except Exception as pandas_error:
-                signal.alarm(0)  # Cancel timeout
                 # Final fallback - try with basic settings
                 logger.warning(
                     f"Optimized pandas parsing failed: {pandas_error}, trying basic parsing"
                 )
                 return self.parse_with_basic_pandas(file_path, delimiter, compression)
 
-        except LoadingTimeout:
-            signal.alarm(0)  # Cancel timeout
-            logger.error(
-                f"Dataset loading timed out after {self.timeout_seconds}s. "
-                "This usually indicates insufficient memory or a very large dataset."
-            )
-            raise
         except InsufficientMemoryError:
-            signal.alarm(0)  # Cancel timeout
             raise
         except Exception as e:
-            signal.alarm(0)  # Cancel timeout
             logger.error(f"Error parsing expression file {file_path}: {e}")
             return None
 

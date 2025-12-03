@@ -15,17 +15,20 @@ Attack vectors:
 6. Cache timing attacks
 """
 
-import time
 import tempfile
-import pytest
+import time
 from pathlib import Path
+
+import pytest
 
 
 @pytest.fixture
 def service(tmp_path):
     """Create CustomCodeExecutionService with temporary workspace."""
     from lobster.core.data_manager_v2 import DataManagerV2
-    from lobster.services.execution.custom_code_execution_service import CustomCodeExecutionService
+    from lobster.services.execution.custom_code_execution_service import (
+        CustomCodeExecutionService,
+    )
 
     data_manager = DataManagerV2(workspace_path=tmp_path)
     return CustomCodeExecutionService(data_manager), data_manager
@@ -110,27 +113,30 @@ result = {
 
         result, stats, ir = svc.execute(code, persist=False, timeout=30)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TIMING ATTACK: Localhost Port Scanning")
-        print("="*80)
+        print("=" * 80)
         print(f"Ports scanned: {len(result['scan_results'])}")
         print(f"Fast rejects:  {len(result['fast_rejects'])} (closed ports)")
         print(f"Slow timeouts: {len(result['slow_timeouts'])} (filtered/no route)")
         print(f"Open ports:    {result['open_ports']}")
         print("\nDetailed results:")
-        for port, details in result['scan_results'].items():
+        for port, details in result["scan_results"].items():
             port_num = int(port) if isinstance(port, str) else port
-            print(f"  Port {port_num:5d} ({details['service']:12s}): "
-                  f"{details['time_ms']:6.2f} ms - "
-                  f"Code: {details.get('result_code', 'N/A')}")
+            print(
+                f"  Port {port_num:5d} ({details['service']:12s}): "
+                f"{details['time_ms']:6.2f} ms - "
+                f"Code: {details.get('result_code', 'N/A')}"
+            )
         print("\n⚠️  VULNERABILITY CONFIRMED")
         print("   Attacker can probe internal network services via timing")
         print("   Impact: Network reconnaissance without explicit network access")
-        print("   Mitigation: Disable socket operations or use network namespace isolation")
-        print("="*80)
+        print(
+            "   Mitigation: Disable socket operations or use network namespace isolation"
+        )
+        print("=" * 80)
 
-        assert stats['success']
-
+        assert stats["success"]
 
     def test_external_network_timing_reconnaissance_EXPECT_SUCCESS(self, service):
         """
@@ -187,17 +193,19 @@ result = {
 
         result, stats, ir = svc.execute(code, persist=False, timeout=30)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TIMING ATTACK: Network Reconnaissance")
-        print("="*80)
-        for target, details in result['timing_results'].items():
-            print(f"  {target:20s} ({details['label']:15s}): "
-                  f"{details['avg_time_ms']:6.2f} ms - {details['pattern']}")
+        print("=" * 80)
+        for target, details in result["timing_results"].items():
+            print(
+                f"  {target:20s} ({details['label']:15s}): "
+                f"{details['avg_time_ms']:6.2f} ms - {details['pattern']}"
+            )
         print("\n⚠️  VULNERABILITY CONFIRMED")
         print("   Timing differences reveal firewall rules and network topology")
-        print("="*80)
+        print("=" * 80)
 
-        assert stats['success']
+        assert stats["success"]
 
 
 class TestCPUTimingCovertChannels:
@@ -259,9 +267,9 @@ result = {
 
         result, stats, ir = svc.execute(code, persist=False, timeout=30)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TIMING ATTACK: CPU Usage Covert Channel")
-        print("="*80)
+        print("=" * 80)
         print(f"Message transmitted: '{result['message']}'")
         print(f"Binary encoding:     {result['binary_encoding']}")
         print(f"Bits transmitted:    {result['bits_transmitted']}")
@@ -271,10 +279,9 @@ result = {
         print("   Attacker can exfiltrate data via CPU usage patterns")
         print("   Impact: Information leakage in multi-tenant environments")
         print("   Detection: CPU usage monitoring reveals pattern")
-        print("="*80)
+        print("=" * 80)
 
-        assert stats['success']
-
+        assert stats["success"]
 
     def test_cache_timing_side_channel_EXPECT_SUCCESS(self, service):
         """
@@ -337,18 +344,18 @@ result = {
 
         result, stats, ir = svc.execute(code, persist=False, timeout=30)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TIMING ATTACK: Cache Timing Side Channel")
-        print("="*80)
+        print("=" * 80)
         print(f"Cold access time: {result['cold_access_ns']:.3f} ns")
         print(f"Hot access time:  {result['hot_access_ns']:.3f} ns")
         print(f"Cache speedup:    {result['cache_speedup']:.2f}x")
         print(f"Detectable:       {result['cache_detectable']}")
         print("\nℹ️  Note: Real cache attacks (Spectre, Meltdown) are far more complex")
         print("   This is a simplified demonstration of cache timing principles")
-        print("="*80)
+        print("=" * 80)
 
-        assert stats['success']
+        assert stats["success"]
 
 
 class TestDiskIOTimingAttacks:
@@ -408,19 +415,18 @@ result = {
 
         result, stats, ir = svc.execute(code, persist=False, timeout=30)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TIMING ATTACK: Disk I/O Covert Channel")
-        print("="*80)
+        print("=" * 80)
         print(f"Message:          '{result['message']}'")
         print(f"Binary:           {result['binary']}")
         print(f"Transmission:     {result['transmission_seconds']:.3f} seconds")
         print("\n⚠️  COVERT CHANNEL VULNERABILITY CONFIRMED")
         print("   Attacker can exfiltrate data via disk I/O patterns")
         print("   Detection: Disk usage monitoring reveals pattern")
-        print("="*80)
+        print("=" * 80)
 
-        assert stats['success']
-
+        assert stats["success"]
 
     def test_memory_allocation_timing_EXPECT_SUCCESS(self, service):
         """
@@ -465,19 +471,21 @@ result = {
 
         result, stats, ir = svc.execute(code, persist=False, timeout=30)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TIMING ATTACK: Memory Allocation Timing")
-        print("="*80)
-        for size_mb, details in result['allocation_timings'].items():
+        print("=" * 80)
+        for size_mb, details in result["allocation_timings"].items():
             size_num = int(size_mb) if isinstance(size_mb, str) else size_mb
-            print(f"  {size_num:3d} MB: {details['avg_time_ms']:6.2f} ms "
-                  f"({details['throughput_mb_per_sec']:6.1f} MB/s)")
+            print(
+                f"  {size_num:3d} MB: {details['avg_time_ms']:6.2f} ms "
+                f"({details['throughput_mb_per_sec']:6.1f} MB/s)"
+            )
         print("\n⚠️  VULNERABILITY CONFIRMED")
         print("   Memory allocation timing reveals system state")
         print("   Impact: Can infer memory pressure, other processes")
-        print("="*80)
+        print("=" * 80)
 
-        assert stats['success']
+        assert stats["success"]
 
 
 class TestResourceContentionTimingAttacks:
@@ -549,9 +557,9 @@ result = {
 
         result, stats, ir = svc.execute(code, persist=False, timeout=60)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TIMING ATTACK: Process Detection via CPU Contention")
-        print("="*80)
+        print("=" * 80)
         print(f"CPU cores:           {result['cpu_cores']}")
         print(f"Baseline timing:     {result['baseline_time_ms']:.2f} ms")
         print(f"Contention timing:   {result['contention_time_ms']:.2f} ms")
@@ -560,9 +568,9 @@ result = {
         print("\n⚠️  VULNERABILITY CONFIRMED")
         print("   Timing differences reveal presence of other processes")
         print("   Impact: Information leakage in shared environments")
-        print("="*80)
+        print("=" * 80)
 
-        assert stats['success']
+        assert stats["success"]
 
 
 class TestTimingAttackMitigations:
@@ -623,9 +631,9 @@ result = {
 
         result, stats, ir = svc.execute(code, persist=False, timeout=60)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("MITIGATION TEST: Constant-Time Comparison")
-        print("="*80)
+        print("=" * 80)
         print(f"Actual first char: '{result['actual_first_char']}'")
         print(f"Inferred char:     '{result['inferred_first_char']}'")
         print(f"Attack failed:     {result['attack_failed']}")
@@ -634,9 +642,9 @@ result = {
         print("   secrets.compare_digest() prevents timing attacks")
         print("   Timing variance is below detectable threshold")
         print("   Recommendation: Use for all sensitive comparisons")
-        print("="*80)
+        print("=" * 80)
 
-        assert stats['success']
+        assert stats["success"]
 
 
 if __name__ == "__main__":

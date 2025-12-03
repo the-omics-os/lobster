@@ -35,7 +35,6 @@ from lobster.core.schemas.download_queue import DownloadQueueEntry, DownloadStat
 from lobster.services.data_access.sra_download_service import SRADownloadService
 from lobster.tools.providers.sra_provider import SRAProvider, SRAProviderError
 
-
 # Skip all tests if NCBI_API_KEY not set (rate limiting protection)
 pytestmark = pytest.mark.real_api
 
@@ -79,7 +78,9 @@ class TestSRAURLFetching:
             assert file_obj.size_bytes > 0
             assert file_obj.checksum is not None  # MD5 from ENA
 
-        print(f"\n✅ SRR test passed: {len(result.raw_files)} file(s), {result.get_total_size()/1e6:.1f} MB")
+        print(
+            f"\n✅ SRR test passed: {len(result.raw_files)} file(s), {result.get_total_size()/1e6:.1f} MB"
+        )
 
     @pytest.mark.skip(reason="Network test - enable manually with --runreal")
     def test_fetch_urls_srp_project(self, sra_provider):
@@ -92,7 +93,9 @@ class TestSRAURLFetching:
         assert result.database == "sra"
         assert result.run_count > 0  # Study may have multiple runs
 
-        print(f"\n✅ SRP test passed: {result.run_count} run(s), {result.get_total_size()/1e6:.1f} MB total")
+        print(
+            f"\n✅ SRP test passed: {result.run_count} run(s), {result.get_total_size()/1e6:.1f} MB total"
+        )
 
     @pytest.mark.skip(reason="Network test - enable manually with --runreal")
     def test_fetch_urls_err_run(self, sra_provider):
@@ -110,7 +113,9 @@ class TestSRAURLFetching:
             assert file_obj.url.startswith("https://")
             assert "ebi.ac.uk" in file_obj.url  # ENA domain
 
-        print(f"\n✅ ERR test passed: {len(result.raw_files)} file(s), {result.get_total_size()/1e6:.1f} MB")
+        print(
+            f"\n✅ ERR test passed: {len(result.raw_files)} file(s), {result.get_total_size()/1e6:.1f} MB"
+        )
 
     @pytest.mark.skip(reason="Network test - enable manually with --runreal")
     def test_fetch_urls_srx_experiment(self, sra_provider):
@@ -123,7 +128,9 @@ class TestSRAURLFetching:
         assert result.database == "sra"
         assert len(result.raw_files) > 0
 
-        print(f"\n✅ SRX test passed: {len(result.raw_files)} file(s), {result.get_total_size()/1e6:.1f} MB")
+        print(
+            f"\n✅ SRX test passed: {len(result.raw_files)} file(s), {result.get_total_size()/1e6:.1f} MB"
+        )
 
     @pytest.mark.skip(reason="Network test - enable manually with --runreal")
     def test_fetch_urls_prjna_bioproject(self, sra_provider):
@@ -136,7 +143,9 @@ class TestSRAURLFetching:
         assert result.database == "sra"
         assert result.run_count > 0  # BioProject contains multiple runs
 
-        print(f"\n✅ PRJEB test passed: {result.run_count} run(s), {result.get_total_size()/1e6:.1f} MB total")
+        print(
+            f"\n✅ PRJEB test passed: {result.run_count} run(s), {result.get_total_size()/1e6:.1f} MB total"
+        )
 
 
 class TestSRADownloadRobustness:
@@ -270,7 +279,9 @@ class TestSRAErrorHandling:
         with pytest.raises(SRAProviderError) as exc_info:
             sra_provider.get_download_urls("SRR999999999999")
 
-        assert "not found" in str(exc_info.value).lower() or "No data" in str(exc_info.value)
+        assert "not found" in str(exc_info.value).lower() or "No data" in str(
+            exc_info.value
+        )
 
     def test_unsupported_database(self, sra_service):
         """Test error when database not supported."""
@@ -290,20 +301,25 @@ class TestSRAErrorHandling:
 class TestSRAAccessionTypesCoverage:
     """Test coverage across different SRA accession types from the table."""
 
-    @pytest.mark.parametrize("accession,expected_db,accession_type", [
-        ("SRR11130100", "sra", "SRA Run"),
-        ("SRR13355226", "sra", "SRA Run"),
-        ("SRR15056567", "sra", "SRA Run"),
-        ("SRP116709", "sra", "SRA Project"),
-        ("SRP115355", "sra", "SRA Project"),
-        ("ERR5396170", "ena", "ENA Run"),
-        ("SRX5169925", "sra", "SRA Experiment"),
-        ("SRX6095783", "sra", "SRA Experiment"),
-        ("PRJEB10878", "sra", "BioProject (ENA)"),
-        ("PRJEB12449", "sra", "BioProject (ENA)"),
-    ])
+    @pytest.mark.parametrize(
+        "accession,expected_db,accession_type",
+        [
+            ("SRR11130100", "sra", "SRA Run"),
+            ("SRR13355226", "sra", "SRA Run"),
+            ("SRR15056567", "sra", "SRA Run"),
+            ("SRP116709", "sra", "SRA Project"),
+            ("SRP115355", "sra", "SRA Project"),
+            ("ERR5396170", "ena", "ENA Run"),
+            ("SRX5169925", "sra", "SRA Experiment"),
+            ("SRX6095783", "sra", "SRA Experiment"),
+            ("PRJEB10878", "sra", "BioProject (ENA)"),
+            ("PRJEB12449", "sra", "BioProject (ENA)"),
+        ],
+    )
     @pytest.mark.skip(reason="Network test - enable manually for full regression")
-    def test_accession_types_url_fetching(self, sra_provider, accession, expected_db, accession_type):
+    def test_accession_types_url_fetching(
+        self, sra_provider, accession, expected_db, accession_type
+    ):
         """Test URL fetching for various accession types from the dataset table."""
         print(f"\nTesting {accession_type}: {accession}")
 
@@ -318,7 +334,9 @@ class TestSRAAccessionTypesCoverage:
         total_size = result.get_total_size()
         assert total_size > 0, f"Invalid total size for {accession}"
 
-        print(f"  ✓ {accession_type}: {len(result.raw_files)} file(s), {total_size/1e6:.1f} MB, {result.layout}")
+        print(
+            f"  ✓ {accession_type}: {len(result.raw_files)} file(s), {total_size/1e6:.1f} MB, {result.layout}"
+        )
 
 
 class TestSRADownloadServiceResilience:
@@ -335,11 +353,7 @@ class TestSRADownloadServiceResilience:
         )
 
         # Enable checksum verification explicitly
-        strategy_override = {
-            "strategy_params": {
-                "verify_checksum": True
-            }
-        }
+        strategy_override = {"strategy_params": {"verify_checksum": True}}
 
         os.environ["LOBSTER_SKIP_SIZE_WARNING"] = "true"
 
@@ -358,7 +372,7 @@ class TestSRADownloadServiceResilience:
                 # Verify gzip magic bytes (FASTQ validation)
                 with open(path, "rb") as f:
                     magic = f.read(2)
-                    assert magic == b'\x1f\x8b', f"Not a valid gzip file: {path}"
+                    assert magic == b"\x1f\x8b", f"Not a valid gzip file: {path}"
 
             print(f"\n✅ Checksum verification test passed")
             print(f"   All {stats['n_files']} file(s) validated with MD5")
@@ -387,10 +401,10 @@ class TestSRAProviderEdgeCases:
         # Valid accessions should not raise during validation
         valid_accessions = [
             "SRR11130100",  # NCBI SRA
-            "ERR5396170",   # ENA
-            "DRR171822",    # DDBJ
-            "SRP116709",    # Project
-            "SRX5169925",   # Experiment
+            "ERR5396170",  # ENA
+            "DRR171822",  # DDBJ
+            "SRP116709",  # Project
+            "SRX5169925",  # Experiment
         ]
 
         for acc in valid_accessions:
@@ -406,10 +420,10 @@ class TestSRAProviderEdgeCases:
     def test_invalid_accession_rejected(self, sra_provider):
         """Test invalid accessions are rejected early."""
         invalid_accessions = [
-            "GSE12345",      # GEO, not SRA
-            "PXD012345",     # PRIDE, not SRA
-            "INVALID",       # Not a real accession
-            "12345",         # Just numbers
+            "GSE12345",  # GEO, not SRA
+            "PXD012345",  # PRIDE, not SRA
+            "INVALID",  # Not a real accession
+            "12345",  # Just numbers
         ]
 
         for acc in invalid_accessions:
@@ -447,7 +461,7 @@ class TestSRAPerformanceBaseline:
             assert stats["total_size_mb"] < 100
 
             # Calculate throughput
-            throughput_mbps = (stats["total_size_mb"] / stats["download_time_seconds"])
+            throughput_mbps = stats["total_size_mb"] / stats["download_time_seconds"]
 
             print(f"\n✅ Performance baseline:")
             print(f"   Size: {stats['total_size_mb']:.1f} MB")
@@ -472,20 +486,25 @@ if __name__ == "__main__":
     import sys
 
     if "--runreal" in sys.argv:
-        pytest.main([
-            __file__,
-            "-v",
-            "-m", "real_api",
-            "--tb=short",
-            "-s",  # Show print statements
-        ])
+        pytest.main(
+            [
+                __file__,
+                "-v",
+                "-m",
+                "real_api",
+                "--tb=short",
+                "-s",  # Show print statements
+            ]
+        )
     else:
         print("SRA Download Regression Tests")
         print("=" * 70)
         print("\nThese tests verify SRA download functionality against real datasets.")
         print("They require network access and may take 5-10 minutes to complete.")
         print("\nTo run:")
-        print("  pytest tests/integration/test_sra_download_regression.py -v -m real_api")
+        print(
+            "  pytest tests/integration/test_sra_download_regression.py -v -m real_api"
+        )
         print("  python tests/integration/test_sra_download_regression.py --runreal")
         print("\nTest coverage:")
         print("  • SRA Run (SRR) - Individual sequencing runs")

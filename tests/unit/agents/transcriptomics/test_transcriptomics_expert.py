@@ -38,7 +38,6 @@ from lobster.core.data_manager_v2 import DataManagerV2
 from tests.mock_data.base import SMALL_DATASET_CONFIG
 from tests.mock_data.factories import SingleCellDataFactory
 
-
 # ==============================================================================
 # Test Fixtures
 # ==============================================================================
@@ -94,7 +93,9 @@ def singlecell_data_with_metadata():
     # Sparse counts typical of scRNA-seq
     from scipy.sparse import csr_matrix
 
-    counts = csr_matrix(np.random.negative_binomial(n=2, p=0.8, size=(n_cells, n_genes)))
+    counts = csr_matrix(
+        np.random.negative_binomial(n=2, p=0.8, size=(n_cells, n_genes))
+    )
     adata = ad.AnnData(X=counts)
 
     # CRITICAL: Biological metadata needed for pseudobulk (BUG-005)
@@ -357,7 +358,9 @@ class TestClusteringTools:
         # Verify X_pca exists in output
         assert "X_pca" in clustered_data.obsm.keys()
 
-    @patch("lobster.services.analysis.enhanced_singlecell_service.EnhancedSingleCellService")
+    @patch(
+        "lobster.services.analysis.enhanced_singlecell_service.EnhancedSingleCellService"
+    )
     def test_marker_gene_dict_keys_correct(
         self, MockEnhancedService, mock_data_manager
     ):

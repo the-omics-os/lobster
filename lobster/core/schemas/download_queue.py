@@ -24,9 +24,10 @@ class DownloadStatus(str, Enum):
 
 class ValidationStatus(str, Enum):
     """Queue entry validation status."""
-    VALIDATED_CLEAN = "validated_clean"              # All validation checks passed
-    VALIDATED_WITH_WARNINGS = "validated_warnings"   # Queueable with warnings
-    VALIDATION_FAILED = "validation_failed"          # Critical validation failure
+
+    VALIDATED_CLEAN = "validated_clean"  # All validation checks passed
+    VALIDATED_WITH_WARNINGS = "validated_warnings"  # Queueable with warnings
+    VALIDATION_FAILED = "validation_failed"  # Critical validation failure
 
 
 class StrategyConfig(BaseModel):
@@ -224,7 +225,7 @@ class DownloadQueueEntry(BaseModel):
     )
     validation_status: ValidationStatus = Field(
         default=ValidationStatus.VALIDATED_CLEAN,
-        description="Validation quality: clean, warnings, or failed"
+        description="Validation quality: clean, warnings, or failed",
     )
     recommended_strategy: Optional[StrategyConfig] = Field(
         None, description="Strategy configuration recommended by research_agent"

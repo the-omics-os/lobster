@@ -27,7 +27,9 @@ class AgentRegistryConfig:
     factory_function: str  # Module path to the factory function
     handoff_tool_name: Optional[str] = None
     handoff_tool_description: Optional[str] = None
-    child_agents: Optional[List[str]] = None  # List of agent names this agent can delegate to
+    child_agents: Optional[List[str]] = (
+        None  # List of agent names this agent can delegate to
+    )
     supervisor_accessible: Optional[bool] = None  # None=infer, True/False=override
 
 
@@ -224,6 +226,7 @@ def _merge_plugin_agents() -> None:
             AGENT_REGISTRY.update(plugin_agents)
             # Log at debug level to avoid noise during imports
             import logging
+
             logger = logging.getLogger(__name__)
             logger.debug(f"Merged {len(plugin_agents)} plugin agents into registry")
     except ImportError:
@@ -232,10 +235,10 @@ def _merge_plugin_agents() -> None:
     except Exception as e:
         # Don't let plugin discovery failures break the core system
         import logging
+
         logger = logging.getLogger(__name__)
         logger.warning(f"Plugin discovery failed: {e}")
 
 
 # Merge plugins at module load time
 _merge_plugin_agents()
-

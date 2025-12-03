@@ -30,16 +30,20 @@ from rich.prompt import Confirm, Prompt
 from rich.syntax import Syntax
 from rich.table import Table
 
+from lobster.cli_internal.utils.path_resolution import (  # BUG FIX #6: Secure path resolution
+    PathResolver,
+)
 from lobster.config.agent_config import (
     LobsterAgentConfigurator,
     get_agent_configurator,
     initialize_configurator,
 )
 from lobster.core.client import AgentClient
+from lobster.core.extraction_cache import (  # BUG FIX #1: For archive cache management
+    ExtractionCacheManager,
+)
 from lobster.core.queue_storage import queue_file_lock
-from lobster.core.extraction_cache import ExtractionCacheManager  # BUG FIX #1: For archive cache management
 from lobster.core.workspace import resolve_workspace
-from lobster.cli_internal.utils.path_resolution import PathResolver  # BUG FIX #6: Secure path resolution
 
 # Import new UI system
 from lobster.ui import LobsterTheme, setup_logging
@@ -384,11 +388,13 @@ def _add_command_to_history(
         # BUG FIX #4: Log FULL exception with stack trace (not truncated)
         logger.error(
             f"Failed to log command '{command}' to graph state: {e}",
-            exc_info=True  # Include full traceback for debugging
+            exc_info=True,  # Include full traceback for debugging
         )
 
     # 4. Backup to file (always, for audit trail and recovery)
-    backup_logged = _backup_command_to_file(client, command, summary, is_error, primary_logged)
+    backup_logged = _backup_command_to_file(
+        client, command, summary, is_error, primary_logged
+    )
 
     return primary_logged or backup_logged
 
@@ -850,7 +856,9 @@ def _resolve_profile_timings_flag(cli_flag: Optional[bool]) -> bool:
     return bool(env_value)
 
 
-def _collect_profile_timings(client: AgentClient, clear: bool = True) -> Dict[str, Dict[str, float]]:
+def _collect_profile_timings(
+    client: AgentClient, clear: bool = True
+) -> Dict[str, Dict[str, float]]:
     timings: Dict[str, Dict[str, float]] = {}
     data_manager = getattr(client, "data_manager", None)
     if data_manager and hasattr(data_manager, "get_latest_timings"):
@@ -874,7 +882,9 @@ def _maybe_print_timings(client: AgentClient, context: str) -> None:
     table.add_column("Seconds", justify="right")
 
     for component, entries in timing_sources.items():
-        for step, value in sorted(entries.items(), key=lambda item: item[1], reverse=True):
+        for step, value in sorted(
+            entries.items(), key=lambda item: item[1], reverse=True
+        ):
             table.add_row(component, step, f"{value:.2f}")
 
     console.print(table)
@@ -2303,6 +2313,7 @@ def status():
     # Get entitlement status
     try:
         from lobster.core.license_manager import get_entitlement_status
+
         entitlement = get_entitlement_status()
     except ImportError:
         entitlement = {"tier": "free", "tier_display": "Free", "source": "default"}
@@ -2310,6 +2321,7 @@ def status():
     # Get installed packages
     try:
         from lobster.core.plugin_loader import get_installed_packages
+
         packages = get_installed_packages()
     except ImportError:
         packages = {"lobster-ai": "unknown"}
@@ -2318,10 +2330,13 @@ def status():
     try:
         from lobster.config.agent_registry import get_worker_agents
         from lobster.config.subscription_tiers import is_agent_available
+
         worker_agents = get_worker_agents()
         tier = entitlement.get("tier", "free")
         available = [name for name in worker_agents if is_agent_available(name, tier)]
-        restricted = [name for name in worker_agents if not is_agent_available(name, tier)]
+        restricted = [
+            name for name in worker_agents if not is_agent_available(name, tier)
+        ]
     except ImportError:
         available = []
         restricted = []
@@ -2432,8 +2447,12 @@ def activate(
     # Check if already activated
     try:
         from lobster.core.license_manager import get_entitlement_status
+
         current = get_entitlement_status()
-        if current.get("tier") not in ("free", None) and current.get("source") == "license_file":
+        if (
+            current.get("tier") not in ("free", None)
+            and current.get("source") == "license_file"
+        ):
             console.print(
                 f"[yellow]⚠️  You already have an active {current.get('tier_display', 'Premium')} license[/yellow]"
             )
@@ -2455,13 +2474,52 @@ def activate(
         if result.get("success"):
             entitlement = result.get("entitlement", {})
             tier = entitlement.get("tier", "premium").title()
+            packages_installed = result.get("packages_installed", [])
+            packages_failed = result.get("packages_failed", [])
+
+            # Build the success message
+            msg_lines = [
+                f"[bold green]✅ License Activated Successfully![/bold green]\n",
+                f"Tier: [bold]{tier}[/bold]",
+                f"Features: {', '.join(entitlement.get('features', []))}",
+            ]
+
+            # Show installed packages
+            if packages_installed:
+                msg_lines.append("")
+                msg_lines.append(
+                    f"[bold green]Custom Packages Installed ({len(packages_installed)}):[/bold green]"
+                )
+                for pkg in packages_installed:
+                    msg_lines.append(
+                        f"  [green]✓[/green] {pkg['name']} v{pkg['version']}"
+                    )
+
+            # Show failed packages with warnings
+            if packages_failed:
+                msg_lines.append("")
+                msg_lines.append(
+                    f"[bold yellow]⚠️  Package Installation Issues ({len(packages_failed)}):[/bold yellow]"
+                )
+                for pkg in packages_failed:
+                    error = pkg.get("error", "Unknown error")
+                    msg_lines.append(
+                        f"  [yellow]✗[/yellow] {pkg['name']}: {error[:50]}..."
+                    )
+                msg_lines.append("")
+                msg_lines.append(
+                    "[dim]You can retry later with: pip install <package_name>[/dim]"
+                )
+
+            msg_lines.append("")
+            msg_lines.append(
+                f"Run [bold {LobsterTheme.PRIMARY_ORANGE}]lobster status[/bold {LobsterTheme.PRIMARY_ORANGE}] to see available agents."
+            )
+
             console.print()
             console.print(
                 Panel.fit(
-                    f"[bold green]✅ License Activated Successfully![/bold green]\n\n"
-                    f"Tier: [bold]{tier}[/bold]\n"
-                    f"Features: {', '.join(entitlement.get('features', []))}\n\n"
-                    f"Run [bold {LobsterTheme.PRIMARY_ORANGE}]lobster status[/bold {LobsterTheme.PRIMARY_ORANGE}] to see available agents.",
+                    "\n".join(msg_lines),
                     border_style="green",
                     padding=(1, 2),
                 )
@@ -2509,7 +2567,11 @@ def deactivate():
 
     # Check current status
     try:
-        from lobster.core.license_manager import get_entitlement_status, clear_entitlement
+        from lobster.core.license_manager import (
+            clear_entitlement,
+            get_entitlement_status,
+        )
+
         current = get_entitlement_status()
 
         if current.get("source") == "cloud_key":
@@ -2716,7 +2778,9 @@ def init(
             env_lines.append(f"LOBSTER_CLOUD_KEY={cloud_key.strip()}")
             if cloud_endpoint:
                 env_lines.append(f"LOBSTER_ENDPOINT={cloud_endpoint.strip()}")
-            console.print("[green]✓ Cloud API key configured (premium tier enabled)[/green]")
+            console.print(
+                "[green]✓ Cloud API key configured (premium tier enabled)[/green]"
+            )
 
         # Write .env file
         try:
@@ -2889,6 +2953,7 @@ def init(
                 console.print("[dim]Contacting license server...[/dim]")
                 try:
                     from lobster.core.license_manager import activate_license
+
                     result = activate_license(activation_code.strip())
 
                     if result.get("success"):
@@ -2900,16 +2965,12 @@ def init(
                         # Note: License is stored in ~/.lobster/license.json, not .env
                     else:
                         error = result.get("error", "Unknown error")
-                        console.print(
-                            f"[yellow]⚠️  Activation failed: {error}[/yellow]"
-                        )
+                        console.print(f"[yellow]⚠️  Activation failed: {error}[/yellow]")
                         console.print(
                             f"[dim]You can retry later with: lobster activate <code>[/dim]"
                         )
                 except ImportError:
-                    console.print(
-                        "[yellow]⚠️  License manager not available[/yellow]"
-                    )
+                    console.print("[yellow]⚠️  License manager not available[/yellow]")
                 except Exception as e:
                     console.print(f"[yellow]⚠️  Activation error: {e}[/yellow]")
                     console.print(
@@ -2919,9 +2980,7 @@ def init(
         elif premium_choice == "3":
             # Cloud API key - store in .env
             console.print("\n[bold white]🌩️  Cloud API Key[/bold white]")
-            console.print(
-                "Enter your Lobster Cloud API key for cloud processing.\n"
-            )
+            console.print("Enter your Lobster Cloud API key for cloud processing.\n")
             cloud_key = Prompt.ask(
                 "[bold white]Enter your cloud API key[/bold white]", password=True
             )
@@ -2970,8 +3029,10 @@ def init(
 @app.command()
 def chat(
     workspace: Optional[Path] = typer.Option(
-        None, "--workspace", "-w",
-        help="Workspace directory. Can also be set via LOBSTER_WORKSPACE env var. Default: ./.lobster_workspace"
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace directory. Can also be set via LOBSTER_WORKSPACE env var. Default: ./.lobster_workspace",
     ),
     reasoning: Optional[bool] = typer.Option(
         None,
@@ -3117,7 +3178,8 @@ def chat(
                 # Normal mode: show simple processing message
                 console_manager.print(
                     f"[dim cyan]🦞 Processing: {user_input[:50]}{'...' if len(user_input) > 50 else ''}[/dim cyan]",
-                    end="", flush=True
+                    end="",
+                    flush=True,
                 )
 
             # Single code path - no duplication
@@ -3342,7 +3404,11 @@ def _queue_load_file(
     # BUG FIX #6: Use PathResolver for secure path resolution
     resolver = PathResolver(
         current_directory=current_directory,
-        workspace_path=client.data_manager.workspace_path if hasattr(client, "data_manager") else None,
+        workspace_path=(
+            client.data_manager.workspace_path
+            if hasattr(client, "data_manager")
+            else None
+        ),
     )
     resolved = resolver.resolve(filename, search_workspace=True, must_exist=True)
 
@@ -3380,7 +3446,9 @@ def _queue_load_file(
                         f"[yellow]⚠️  Skipped {result['skipped_count']} malformed entries[/yellow]"
                     )
 
-                console.print("\n[bold cyan]What would you like to do with these publications?[/bold cyan]")
+                console.print(
+                    "\n[bold cyan]What would you like to do with these publications?[/bold cyan]"
+                )
                 console.print("  • Extract methods and parameters")
                 console.print("  • Search for related datasets (GEO)")
                 console.print("  • Build citation network")
@@ -3415,8 +3483,7 @@ def _queue_load_file(
     # Placeholder: .json files (API exports)
     elif ext == ".json":
         raise QueueFileTypeNotSupported(
-            "JSON queue loading coming soon. "
-            "Planned support for PubMed API exports."
+            "JSON queue loading coming soon. " "Planned support for PubMed API exports."
         )
 
     # Unknown type
@@ -3447,7 +3514,9 @@ def _queue_list(client: AgentClient, console: Console) -> Optional[str]:
     display_entries = entries[:20]
     total_count = len(entries)
 
-    console.print(f"\n[bold cyan]📋 Queue Items ({len(display_entries)} of {total_count} shown)[/bold cyan]\n")
+    console.print(
+        f"\n[bold cyan]📋 Queue Items ({len(display_entries)} of {total_count} shown)[/bold cyan]\n"
+    )
 
     table = Table(box=box.ROUNDED, show_lines=True)
     table.add_column("#", style="dim", width=4)
@@ -3457,9 +3526,15 @@ def _queue_list(client: AgentClient, console: Console) -> Optional[str]:
     table.add_column("PMID/DOI", style="dim", width=20)
 
     for i, entry in enumerate(display_entries, 1):
-        title = entry.title[:47] + "..." if entry.title and len(entry.title) > 50 else (entry.title or "N/A")
+        title = (
+            entry.title[:47] + "..."
+            if entry.title and len(entry.title) > 50
+            else (entry.title or "N/A")
+        )
         year = str(entry.year) if entry.year else "N/A"
-        status = entry.status.value if hasattr(entry.status, "value") else str(entry.status)
+        status = (
+            entry.status.value if hasattr(entry.status, "value") else str(entry.status)
+        )
         identifier = entry.pmid or entry.doi or "N/A"
 
         table.add_row(str(i), title, year, status, identifier)
@@ -3540,7 +3615,9 @@ def _queue_export(
         # Copy the queue file
         shutil.copy2(source_path, export_path)
 
-        console.print(f"[green]✅ Exported {stats.get('total', 0)} items to: {export_path}[/green]")
+        console.print(
+            f"[green]✅ Exported {stats.get('total', 0)} items to: {export_path}[/green]"
+        )
         return f"Exported {stats.get('total', 0)} queue items to workspace as '{name}'"
     except Exception as e:
         console.print(f"[red]❌ Export failed: {str(e)}[/red]")
@@ -4003,6 +4080,7 @@ when they are started by agents or analysis workflows.
 
             # Also show workspace tree if it exists
             from lobster.core.workspace import resolve_workspace
+
             workspace_path = resolve_workspace(explicit_path=workspace, create=False)
             if workspace_path.exists():
                 console_manager.print()  # Add spacing
@@ -4028,7 +4106,9 @@ when they are started by agents or analysis workflows.
         if not filename:
             console.print("[yellow]Usage: /read <file|pattern>[/yellow]")
             console.print("[grey50]  View file contents (text files only)[/grey50]")
-            console.print("[grey50]  Use /workspace load <file> to load data files[/grey50]")
+            console.print(
+                "[grey50]  Use /workspace load <file> to load data files[/grey50]"
+            )
             return None
 
         # Check if filename contains glob patterns (before path resolution)
@@ -4040,9 +4120,15 @@ when they are started by agents or analysis workflows.
         if not is_glob_pattern:
             resolver = PathResolver(
                 current_directory=current_directory,
-                workspace_path=client.data_manager.workspace_path if hasattr(client, "data_manager") else None,
+                workspace_path=(
+                    client.data_manager.workspace_path
+                    if hasattr(client, "data_manager")
+                    else None
+                ),
             )
-            resolved = resolver.resolve(filename, search_workspace=True, must_exist=False)
+            resolved = resolver.resolve(
+                filename, search_workspace=True, must_exist=False
+            )
 
             if not resolved.is_safe:
                 console.print(f"[red]❌ Security error: {resolved.error}[/red]")
@@ -4068,7 +4154,10 @@ when they are started by agents or analysis workflows.
             # BUG FIX #3: Use lazy evaluation to prevent memory explosion
             # Only load first 10 file paths instead of all matches
             import itertools
-            matching_files = list(itertools.islice(glob_module.iglob(search_pattern), 10))
+
+            matching_files = list(
+                itertools.islice(glob_module.iglob(search_pattern), 10)
+            )
 
             if not matching_files:
                 console_manager.print_error_panel(
@@ -4107,12 +4196,24 @@ when they are started by agents or analysis workflows.
                         # Language detection
                         ext = match_file.suffix.lower()
                         language_map = {
-                            ".py": "python", ".js": "javascript", ".ts": "typescript",
-                            ".html": "html", ".css": "css", ".json": "json",
-                            ".xml": "xml", ".yaml": "yaml", ".yml": "yaml",
-                            ".sh": "bash", ".bash": "bash", ".md": "markdown",
-                            ".txt": "text", ".log": "text", ".r": "r",
-                            ".csv": "csv", ".tsv": "csv", ".ris": "text",
+                            ".py": "python",
+                            ".js": "javascript",
+                            ".ts": "typescript",
+                            ".html": "html",
+                            ".css": "css",
+                            ".json": "json",
+                            ".xml": "xml",
+                            ".yaml": "yaml",
+                            ".yml": "yaml",
+                            ".sh": "bash",
+                            ".bash": "bash",
+                            ".md": "markdown",
+                            ".txt": "text",
+                            ".log": "text",
+                            ".r": "r",
+                            ".csv": "csv",
+                            ".tsv": "csv",
+                            ".ris": "text",
                         }
                         language = language_map.get(ext, "text")
 
@@ -4130,12 +4231,18 @@ when they are started by agents or analysis workflows.
                         )
                         displayed_count += 1
                     except Exception as e:
-                        console.print(f"[yellow]⚠️  Could not read {match_file.name}: {e}[/yellow]")
+                        console.print(
+                            f"[yellow]⚠️  Could not read {match_file.name}: {e}[/yellow]"
+                        )
                 else:
-                    console.print(f"[grey50]  • {match_file.name} (binary file - skipped)[/grey50]")
+                    console.print(
+                        f"[grey50]  • {match_file.name} (binary file - skipped)[/grey50]"
+                    )
 
             if total_count > 10:
-                console.print(f"\n[grey50]... and {total_count - 10} more files (not loaded)[/grey50]")
+                console.print(
+                    f"\n[grey50]... and {total_count - 10} more files (not loaded)[/grey50]"
+                )
 
             return f"Displayed {displayed_count} text files matching '{filename}' (total: {total_count})"
 
@@ -4174,18 +4281,28 @@ when they are started by agents or analysis workflows.
                 # Language detection
                 ext = file_path.suffix.lower()
                 language_map = {
-                    ".py": "python", ".js": "javascript", ".ts": "typescript",
-                    ".html": "html", ".css": "css", ".json": "json",
-                    ".xml": "xml", ".yaml": "yaml", ".yml": "yaml",
-                    ".sh": "bash", ".bash": "bash", ".md": "markdown",
-                    ".txt": "text", ".log": "text", ".r": "r",
-                    ".csv": "csv", ".tsv": "csv", ".ris": "text",
+                    ".py": "python",
+                    ".js": "javascript",
+                    ".ts": "typescript",
+                    ".html": "html",
+                    ".css": "css",
+                    ".json": "json",
+                    ".xml": "xml",
+                    ".yaml": "yaml",
+                    ".yml": "yaml",
+                    ".sh": "bash",
+                    ".bash": "bash",
+                    ".md": "markdown",
+                    ".txt": "text",
+                    ".log": "text",
+                    ".r": "r",
+                    ".csv": "csv",
+                    ".tsv": "csv",
+                    ".ris": "text",
                 }
                 language = language_map.get(ext, "text")
 
-                syntax = Syntax(
-                    content, language, theme="monokai", line_numbers=True
-                )
+                syntax = Syntax(content, language, theme="monokai", line_numbers=True)
                 console.print(
                     Panel(
                         syntax,
@@ -4198,7 +4315,9 @@ when they are started by agents or analysis workflows.
                 return f"Displayed text file '{filename}' ({file_description}, {len(lines)} lines)"
 
             except UnicodeDecodeError:
-                console.print("[yellow]⚠️  File appears to be binary despite extension[/yellow]")
+                console.print(
+                    "[yellow]⚠️  File appears to be binary despite extension[/yellow]"
+                )
                 is_binary = True
             except Exception as e:
                 console.print(f"[red]Error reading file: {e}[/red]")
@@ -4206,7 +4325,9 @@ when they are started by agents or analysis workflows.
 
         # Handle binary/data files - show info only, suggest /workspace load
         if is_binary:
-            console.print("\n[bold yellow on black] ℹ️  File Info [/bold yellow on black]")
+            console.print(
+                "\n[bold yellow on black] ℹ️  File Info [/bold yellow on black]"
+            )
 
             # Format file size
             size_bytes = file_path.stat().st_size
@@ -4226,17 +4347,23 @@ when they are started by agents or analysis workflows.
                 console.print(
                     f"\n[cyan]💡 This is a bioinformatics data file ({file_description}).[/cyan]"
                 )
-                console.print(f"[cyan]   To load into workspace: [yellow]/workspace load {filename}[/yellow][/cyan]")
+                console.print(
+                    f"[cyan]   To load into workspace: [yellow]/workspace load {filename}[/yellow][/cyan]"
+                )
             elif file_category == "tabular":
                 console.print(
                     f"\n[cyan]💡 This is a tabular data file ({file_description}).[/cyan]"
                 )
-                console.print(f"[cyan]   To load into workspace: [yellow]/workspace load {filename}[/yellow][/cyan]")
+                console.print(
+                    f"[cyan]   To load into workspace: [yellow]/workspace load {filename}[/yellow][/cyan]"
+                )
             elif file_category == "archive":
                 console.print(
                     f"\n[cyan]💡 This is an archive file ({file_description}).[/cyan]"
                 )
-                console.print(f"[cyan]   To extract and load: [yellow]/workspace load {filename}[/yellow][/cyan]")
+                console.print(
+                    f"[cyan]   To extract and load: [yellow]/workspace load {filename}[/yellow][/cyan]"
+                )
             elif file_category == "image":
                 console.print(
                     "[cyan]💡 This is an image file. Use your system's image viewer to open it.[/cyan]"
@@ -4285,15 +4412,9 @@ when they are started by agents or analysis workflows.
 
     elif cmd.startswith("/load "):
         # DEPRECATED: Use /queue load instead
-        console.print(
-            "[yellow]⚠️  Deprecation Warning: /load is deprecated.[/yellow]"
-        )
-        console.print(
-            "[yellow]   Use /queue load <file> for queue operations[/yellow]"
-        )
-        console.print(
-            "[yellow]   Use /workspace load <file> for data files[/yellow]\n"
-        )
+        console.print("[yellow]⚠️  Deprecation Warning: /load is deprecated.[/yellow]")
+        console.print("[yellow]   Use /queue load <file> for queue operations[/yellow]")
+        console.print("[yellow]   Use /workspace load <file> for data files[/yellow]\n")
 
         # Load publication list from .ris file
         filename = cmd[6:].strip()
@@ -4301,7 +4422,11 @@ when they are started by agents or analysis workflows.
         # BUG FIX #6: Use PathResolver for secure path resolution
         resolver = PathResolver(
             current_directory=current_directory,
-            workspace_path=client.data_manager.workspace_path if hasattr(client, "data_manager") else None,
+            workspace_path=(
+                client.data_manager.workspace_path
+                if hasattr(client, "data_manager")
+                else None
+            ),
         )
         resolved = resolver.resolve(filename, search_workspace=True, must_exist=False)
 
@@ -4327,7 +4452,9 @@ when they are started by agents or analysis workflows.
             )
             return None
 
-        console.print(f"[cyan]📚 Loading publication list from: {file_path.name}[/cyan]\n")
+        console.print(
+            f"[cyan]📚 Loading publication list from: {file_path.name}[/cyan]\n"
+        )
 
         try:
             with create_progress(client_arg=client) as progress:
@@ -4348,22 +4475,38 @@ when they are started by agents or analysis workflows.
 
             # Display results
             if result["added_count"] > 0:
-                console.print(f"[green]✅ Successfully loaded {result['added_count']} publications[/green]\n")
+                console.print(
+                    f"[green]✅ Successfully loaded {result['added_count']} publications[/green]\n"
+                )
 
                 console.print("[cyan]📊 Load Summary:[/cyan]")
-                console.print(f"  • Added to queue: [bold]{result['added_count']}[/bold] publications")
+                console.print(
+                    f"  • Added to queue: [bold]{result['added_count']}[/bold] publications"
+                )
                 if result["skipped_count"] > 0:
-                    console.print(f"  • Skipped: [yellow]{result['skipped_count']}[/yellow] entries (malformed or invalid)")
-                console.print(f"  • Status: [bold]PENDING[/bold] (ready for processing)")
+                    console.print(
+                        f"  • Skipped: [yellow]{result['skipped_count']}[/yellow] entries (malformed or invalid)"
+                    )
+                console.print(
+                    f"  • Status: [bold]PENDING[/bold] (ready for processing)"
+                )
                 console.print(f"  • Queue file: publication_queue.jsonl\n")
 
                 console.print("[cyan]💡 Next steps:[/cyan]")
-                console.print("  • View queue: [white]get_content_from_workspace(workspace='publication_queue')[/white]")
-                console.print("  • Process queue: Ask the research agent to process pending publications\n")
+                console.print(
+                    "  • View queue: [white]get_content_from_workspace(workspace='publication_queue')[/white]"
+                )
+                console.print(
+                    "  • Process queue: Ask the research agent to process pending publications\n"
+                )
 
                 if result.get("errors") and len(result["errors"]) > 0:
-                    console.print(f"[yellow]⚠️  {len(result['errors'])} error(s) occurred during parsing:[/yellow]")
-                    for i, error in enumerate(result["errors"][:3], 1):  # Show first 3 errors
+                    console.print(
+                        f"[yellow]⚠️  {len(result['errors'])} error(s) occurred during parsing:[/yellow]"
+                    )
+                    for i, error in enumerate(
+                        result["errors"][:3], 1
+                    ):  # Show first 3 errors
                         console.print(f"  {i}. {error}")
                     if len(result["errors"]) > 3:
                         console.print(f"  ... and {len(result['errors']) - 3} more")
@@ -4422,7 +4565,9 @@ when they are started by agents or analysis workflows.
             cache_id = recent_caches[0]["cache_id"]
         else:
             # Multiple caches available - show list and use most recent
-            console.print(f"\n[cyan]📦 Found {len(recent_caches)} cached archives (using most recent):[/cyan]")
+            console.print(
+                f"\n[cyan]📦 Found {len(recent_caches)} cached archives (using most recent):[/cyan]"
+            )
             for i, cache in enumerate(recent_caches[:3], 1):
                 age_hours = (time.time() - cache.get("timestamp", 0)) / 3600
                 console.print(f"  {i}. {cache['cache_id']} ({age_hours:.1f}h ago)")
@@ -4436,7 +4581,9 @@ when they are started by agents or analysis workflows.
 
         nested_info = cache_info.get("nested_info")
         if not nested_info:
-            console.print(f"[red]❌ Cache {cache_id} missing nested structure info[/red]")
+            console.print(
+                f"[red]❌ Cache {cache_id} missing nested structure info[/red]"
+            )
             return None
 
         if subcommand == "list":
@@ -4516,9 +4663,7 @@ when they are started by agents or analysis workflows.
             )
 
             with console.status("[cyan]Loading samples...[/cyan]"):
-                result = client.load_from_cache(
-                    cache_id, pattern, limit
-                )
+                result = client.load_from_cache(cache_id, pattern, limit)
 
             if result["success"]:
                 console.print(f"\n[green]✓ {result['message']}[/green]")
@@ -5307,7 +5452,9 @@ when they are started by agents or analysis workflows.
             # Check if user wants to force refresh with --refresh flag
             force_refresh = "--refresh" in cmd.lower()
             if hasattr(client.data_manager, "get_available_datasets"):
-                available = client.data_manager.get_available_datasets(force_refresh=force_refresh)
+                available = client.data_manager.get_available_datasets(
+                    force_refresh=force_refresh
+                )
             else:
                 # Fallback for older DataManager versions
                 if hasattr(client.data_manager, "_scan_workspace"):
@@ -5402,7 +5549,9 @@ when they are started by agents or analysis workflows.
 
             # BUG FIX #2: Use cached scan for info command
             if hasattr(client.data_manager, "get_available_datasets"):
-                available = client.data_manager.get_available_datasets(force_refresh=False)
+                available = client.data_manager.get_available_datasets(
+                    force_refresh=False
+                )
             else:
                 # Fallback for older DataManager versions
                 if hasattr(client.data_manager, "_scan_workspace"):
@@ -5518,9 +5667,15 @@ when they are started by agents or analysis workflows.
             # BUG FIX #6: Use PathResolver for secure path resolution
             resolver = PathResolver(
                 current_directory=current_directory,
-                workspace_path=client.data_manager.workspace_path if hasattr(client, "data_manager") else None,
+                workspace_path=(
+                    client.data_manager.workspace_path
+                    if hasattr(client, "data_manager")
+                    else None
+                ),
             )
-            resolved = resolver.resolve(selector, search_workspace=True, must_exist=False)
+            resolved = resolver.resolve(
+                selector, search_workspace=True, must_exist=False
+            )
 
             if not resolved.is_safe:
                 console.print(f"[red]❌ Security error: {resolved.error}[/red]")
@@ -5530,7 +5685,9 @@ when they are started by agents or analysis workflows.
 
             if file_path.exists() and file_path.is_file():
                 # Load file directly into workspace
-                console.print(f"[cyan]📂 Loading file into workspace: {file_path.name}[/cyan]\n")
+                console.print(
+                    f"[cyan]📂 Loading file into workspace: {file_path.name}[/cyan]\n"
+                )
 
                 try:
                     result = client.load_data_file(str(file_path))
@@ -5542,7 +5699,9 @@ when they are started by agents or analysis workflows.
                         )
                         return f"Loaded file '{file_path.name}' as modality '{result['modality_name']}'"
                     else:
-                        console.print(f"[red]❌ {result.get('error', 'Unknown error')}[/red]")
+                        console.print(
+                            f"[red]❌ {result.get('error', 'Unknown error')}[/red]"
+                        )
                         if result.get("suggestion"):
                             console.print(f"[cyan]💡 {result['suggestion']}[/cyan]")
                         return None
@@ -5553,7 +5712,9 @@ when they are started by agents or analysis workflows.
 
             # BUG FIX #2: Use cached scan for load command
             if hasattr(client.data_manager, "get_available_datasets"):
-                available = client.data_manager.get_available_datasets(force_refresh=False)
+                available = client.data_manager.get_available_datasets(
+                    force_refresh=False
+                )
             else:
                 # Fallback for older DataManager versions
                 if hasattr(client.data_manager, "_scan_workspace"):
@@ -5562,7 +5723,9 @@ when they are started by agents or analysis workflows.
 
             if not available:
                 console.print("[yellow]No datasets found in workspace[/yellow]")
-                console.print(f"[dim]Tip: If '{selector}' is a file, ensure the path is correct[/dim]")
+                console.print(
+                    f"[dim]Tip: If '{selector}' is a file, ensure the path is correct[/dim]"
+                )
                 return None
 
             # Determine if selector is an index or pattern
@@ -6138,9 +6301,15 @@ when they are started by agents or analysis workflows.
         # BUG FIX #6: Use PathResolver for secure path resolution with workspace search
         resolver = PathResolver(
             current_directory=current_directory,
-            workspace_path=client.data_manager.workspace_path if hasattr(client, "data_manager") else None,
+            workspace_path=(
+                client.data_manager.workspace_path
+                if hasattr(client, "data_manager")
+                else None
+            ),
         )
-        resolved = resolver.resolve(file_or_folder, search_workspace=True, must_exist=True, allow_special=False)
+        resolved = resolver.resolve(
+            file_or_folder, search_workspace=True, must_exist=True, allow_special=False
+        )
 
         if not resolved.is_safe:
             console.print(f"[red]❌ Security error: {resolved.error}[/red]")
@@ -6317,8 +6486,10 @@ Your feedback matters! Please take 1 minute to share your experience:
 def query(
     question: str,
     workspace: Optional[Path] = typer.Option(
-        None, "--workspace", "-w",
-        help="Workspace directory. Can also be set via LOBSTER_WORKSPACE env var. Default: ./.lobster_workspace"
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace directory. Can also be set via LOBSTER_WORKSPACE env var. Default: ./.lobster_workspace",
     ),
     reasoning: Optional[bool] = typer.Option(
         None,

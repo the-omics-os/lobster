@@ -27,9 +27,9 @@ from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.tools.providers.base_provider import (
     BasePublicationProvider,
     DatasetType,
+    ProviderCapability,
     PublicationMetadata,
     PublicationSource,
-    ProviderCapability,
 )
 from lobster.utils.logger import get_logger
 from lobster.utils.ssl_utils import create_ssl_context, handle_ssl_error
@@ -405,7 +405,7 @@ class PRIDEProvider(BasePublicationProvider):
                 "pageSize": 100,
                 "page": 0,
                 "sortDirection": "ASC",
-                "sortFields": "fileName"
+                "sortFields": "fileName",
             }
 
             response_data = self._make_api_request(url, params)

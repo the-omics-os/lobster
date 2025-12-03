@@ -16,8 +16,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lobster.services.analysis.proteomics_analysis_service import ProteomicsAnalysisService
-from lobster.services.analysis.proteomics_differential_service import ProteomicsDifferentialService
+from lobster.services.analysis.proteomics_analysis_service import (
+    ProteomicsAnalysisService,
+)
+from lobster.services.analysis.proteomics_differential_service import (
+    ProteomicsDifferentialService,
+)
 from lobster.services.quality.proteomics_preprocessing_service import (
     ProteomicsPreprocessingService,
 )

@@ -545,13 +545,15 @@ class AccessionResolver:
                         continue
                     seen.add(normalized)
 
-                    results.append({
-                        "accession": normalized,
-                        "field_name": field_name,
-                        "database": accession_info.database_name,
-                        "access_type": accession_info.access_type,
-                        "access_notes": accession_info.access_notes,
-                    })
+                    results.append(
+                        {
+                            "accession": normalized,
+                            "field_name": field_name,
+                            "database": accession_info.database_name,
+                            "access_type": accession_info.access_type,
+                            "access_notes": accession_info.access_notes,
+                        }
+                    )
 
         return results
 

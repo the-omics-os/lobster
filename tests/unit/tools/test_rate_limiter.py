@@ -507,7 +507,7 @@ class TestDomainStrategy:
             backoff_base=2.0,
             backoff_factor=2.0,
             backoff_max=60.0,
-            retry_on=[500, 502, 503]
+            retry_on=[500, 502, 503],
         )
         assert strategy.window_seconds == 2.0
         assert strategy.max_retries == 5
@@ -555,7 +555,9 @@ class TestMultiDomainRateLimiter:
     def test_detect_domain_pmc(self, multi_limiter):
         """Test PMC domain detection."""
         assert (
-            multi_limiter.detect_domain("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC123/")
+            multi_limiter.detect_domain(
+                "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC123/"
+            )
             == "www.ncbi.nlm.nih.gov"
         )
         assert multi_limiter.detect_domain("PMC12345") == "pmc.ncbi.nlm.nih.gov"
@@ -572,7 +574,9 @@ class TestMultiDomainRateLimiter:
             == "cell.com"
         )
         assert (
-            multi_limiter.detect_domain("https://www.sciencedirect.com/science/article/")
+            multi_limiter.detect_domain(
+                "https://www.sciencedirect.com/science/article/"
+            )
             == "sciencedirect.com"
         )
         assert (
@@ -582,7 +586,9 @@ class TestMultiDomainRateLimiter:
 
     def test_detect_domain_default(self, multi_limiter):
         """Test default domain for unknown URLs."""
-        assert multi_limiter.detect_domain("https://unknown-site.com/article") == "default"
+        assert (
+            multi_limiter.detect_domain("https://unknown-site.com/article") == "default"
+        )
         assert multi_limiter.detect_domain("invalid-url") == "default"
 
     def test_get_rate_limit(self, multi_limiter):
@@ -739,7 +745,7 @@ class TestRateLimitedRequest:
 
         with patch(
             "lobster.tools.rate_limiter.MultiDomainRateLimiter",
-            return_value=mock_limiter
+            return_value=mock_limiter,
         ):
             result = rate_limited_request("https://www.nature.com/test", mock_request)
 
@@ -766,7 +772,7 @@ class TestRateLimitedRequest:
 
         with patch(
             "lobster.tools.rate_limiter.MultiDomainRateLimiter",
-            return_value=mock_limiter
+            return_value=mock_limiter,
         ):
             result = rate_limited_request("https://www.nature.com/test", mock_request)
 
@@ -787,7 +793,7 @@ class TestRateLimitedRequest:
 
         with patch(
             "lobster.tools.rate_limiter.MultiDomainRateLimiter",
-            return_value=mock_limiter
+            return_value=mock_limiter,
         ):
             with pytest.raises(TimeoutError, match="Rate limit timeout"):
                 rate_limited_request("https://www.nature.com/test", mock_request)
@@ -808,20 +814,18 @@ class TestRateLimitedRequest:
 
         with patch(
             "lobster.tools.rate_limiter.MultiDomainRateLimiter",
-            return_value=mock_limiter
+            return_value=mock_limiter,
         ):
             result = rate_limited_request(
                 "https://www.nature.com/test",
                 mock_request,
                 timeout=30,
-                headers={"User-Agent": "test"}
+                headers={"User-Agent": "test"},
             )
 
         assert result.status_code == 200
         mock_request.assert_called_once_with(
-            "https://www.nature.com/test",
-            timeout=30,
-            headers={"User-Agent": "test"}
+            "https://www.nature.com/test", timeout=30, headers={"User-Agent": "test"}
         )
 
     def test_request_max_retries_override(self, mocker):
@@ -842,12 +846,12 @@ class TestRateLimitedRequest:
 
         with patch(
             "lobster.tools.rate_limiter.MultiDomainRateLimiter",
-            return_value=mock_limiter
+            return_value=mock_limiter,
         ):
             result = rate_limited_request(
                 "https://www.nature.com/test",
                 mock_request,
-                max_retries=1  # Override to 1
+                max_retries=1,  # Override to 1
             )
 
         # Should try 2 times total (1 initial + 1 retry)
@@ -860,7 +864,9 @@ class TestRateLimitedRequest:
 
         # First call raises exception, second succeeds
         mock_response = mocker.Mock(status_code=200)
-        mock_request = mocker.Mock(side_effect=[ConnectionError("Network error"), mock_response])
+        mock_request = mocker.Mock(
+            side_effect=[ConnectionError("Network error"), mock_response]
+        )
 
         # Mock limiter
         mock_limiter = mocker.Mock()
@@ -872,7 +878,7 @@ class TestRateLimitedRequest:
 
         with patch(
             "lobster.tools.rate_limiter.MultiDomainRateLimiter",
-            return_value=mock_limiter
+            return_value=mock_limiter,
         ):
             result = rate_limited_request("https://www.nature.com/test", mock_request)
 
@@ -895,7 +901,7 @@ class TestRateLimitedRequest:
 
         with patch(
             "lobster.tools.rate_limiter.MultiDomainRateLimiter",
-            return_value=mock_limiter
+            return_value=mock_limiter,
         ):
             with pytest.raises(ConnectionError, match="Network error"):
                 rate_limited_request("https://www.nature.com/test", mock_request)

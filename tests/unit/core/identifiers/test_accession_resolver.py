@@ -485,9 +485,7 @@ class TestAccessTypeDetection:
         """Test that GEO identifiers are detected as open access."""
         resolver = get_accession_resolver()
 
-        result = resolver.extract_accessions_with_metadata(
-            "Data deposited at GSE12345"
-        )
+        result = resolver.extract_accessions_with_metadata("Data deposited at GSE12345")
 
         assert len(result) == 1
         assert result[0]["accession"] == "GSE12345"
@@ -497,9 +495,7 @@ class TestAccessTypeDetection:
         """Test that SRA identifiers are detected as open access."""
         resolver = get_accession_resolver()
 
-        result = resolver.extract_accessions_with_metadata(
-            "Raw reads at SRP123456"
-        )
+        result = resolver.extract_accessions_with_metadata("Raw reads at SRP123456")
 
         assert len(result) == 1
         assert result[0]["accession"] == "SRP123456"

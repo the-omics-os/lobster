@@ -13,32 +13,37 @@ in Phase 4. See lobster/agents/archive/ARCHIVE_NOTICE.md for details.
 
 import json
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
+from lobster.core.analysis_ir import AnalysisStep
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.interfaces.validator import ValidationResult
+from lobster.core.schemas.publication_queue import HandoffStatus, PublicationStatus
+from lobster.services.execution.custom_code_execution_service import (
+    CodeExecutionError,
+    CodeValidationError,
+    CustomCodeExecutionService,
+)
 from lobster.services.metadata.metadata_standardization_service import (
     MetadataStandardizationService,
 )
 from lobster.services.metadata.sample_mapping_service import SampleMappingService
-from lobster.core.analysis_ir import AnalysisStep
-from lobster.core.schemas.publication_queue import PublicationStatus, HandoffStatus
-from lobster.core.interfaces.validator import ValidationResult
 from lobster.utils.logger import get_logger
-from lobster.services.execution.custom_code_execution_service import (
-    CustomCodeExecutionService,
-    CodeExecutionError,
-    CodeValidationError,
-)
 
 # Optional microbiome features (not in public lobster-local)
 try:
-    from lobster.services.metadata.microbiome_filtering_service import MicrobiomeFilteringService
-    from lobster.services.metadata.disease_standardization_service import DiseaseStandardizationService
+    from lobster.services.metadata.disease_standardization_service import (
+        DiseaseStandardizationService,
+    )
+    from lobster.services.metadata.microbiome_filtering_service import (
+        MicrobiomeFilteringService,
+    )
+
     MICROBIOME_FEATURES_AVAILABLE = True
 except ImportError:
     MicrobiomeFilteringService = None
@@ -100,6 +105,9 @@ def metadata_assistant(
     custom_code_service = CustomCodeExecutionService(data_manager)
 
     logger.debug("metadata_assistant agent initialized")
+
+    # Import pandas at factory function level for type hints in helper functions
+    import pandas as pd
 
     # =========================================================================
     # Tool 1: Sample ID Mapping
@@ -720,8 +728,7 @@ def metadata_assistant(
     # =========================================================================
 
     def _extract_disease_from_raw_fields(
-        metadata: pd.DataFrame,
-        study_context: Optional[Dict] = None
+        metadata: pd.DataFrame, study_context: Optional[Dict] = None
     ) -> Optional[str]:
         """
         Extract disease information from diverse, study-specific SRA field names.
@@ -764,7 +771,12 @@ def metadata_assistant(
                 return "disease"
 
         # Strategy 2: Extract from free-text phenotype fields
-        phenotype_cols = ["host_phenotype", "phenotype", "host_disease", "health_status"]
+        phenotype_cols = [
+            "host_phenotype",
+            "phenotype",
+            "host_disease",
+            "health_status",
+        ]
         for col in phenotype_cols:
             if col in metadata.columns:
                 # Count non-empty values
@@ -785,7 +797,9 @@ def metadata_assistant(
         disease_flag_cols = [c for c in metadata.columns if c.endswith("_disease")]
 
         if disease_flag_cols:
-            logger.debug(f"Found {len(disease_flag_cols)} disease flag columns: {disease_flag_cols}")
+            logger.debug(
+                f"Found {len(disease_flag_cols)} disease flag columns: {disease_flag_cols}"
+            )
 
             def extract_from_flags(row):
                 """Extract disease from boolean flags."""
@@ -794,7 +808,19 @@ def metadata_assistant(
                 for flag_col in disease_flag_cols:
                     # Check if flag is TRUE (handles Yes, Y, TRUE, True, 1, "1")
                     flag_value = row.get(flag_col)
-                    if flag_value in ["Yes", "YES", "yes", "Y", "y", "TRUE", "True", "true", True, 1, "1"]:
+                    if flag_value in [
+                        "Yes",
+                        "YES",
+                        "yes",
+                        "Y",
+                        "y",
+                        "TRUE",
+                        "True",
+                        "true",
+                        True,
+                        1,
+                        "1",
+                    ]:
                         # Convert flag name to disease term
                         # Examples:
                         #   crohns_disease → cd
@@ -824,7 +850,20 @@ def metadata_assistant(
 
                 # Check for negative controls (all flags FALSE)
                 all_false = all(
-                    row.get(flag_col) in ["No", "NO", "no", "N", "n", "FALSE", "False", "false", False, 0, "0"]
+                    row.get(flag_col)
+                    in [
+                        "No",
+                        "NO",
+                        "no",
+                        "N",
+                        "n",
+                        "FALSE",
+                        "False",
+                        "false",
+                        False,
+                        0,
+                        "0",
+                    ]
                     for flag_col in disease_flag_cols
                 )
                 if all_false:
@@ -835,8 +874,14 @@ def metadata_assistant(
             # Apply extraction
             metadata["disease"] = metadata.apply(extract_from_flags, axis=1)
             metadata["disease_original"] = metadata.apply(
-                lambda row: ";".join([f"{col}={row[col]}" for col in disease_flag_cols if pd.notna(row.get(col))]),
-                axis=1
+                lambda row: ";".join(
+                    [
+                        f"{col}={row[col]}"
+                        for col in disease_flag_cols
+                        if pd.notna(row.get(col))
+                    ]
+                ),
+                axis=1,
             )
 
             # Count successful extractions
@@ -853,11 +898,17 @@ def metadata_assistant(
         if study_context and "disease_focus" in study_context:
             # All samples in this study share the publication's disease focus
             metadata["disease"] = study_context["disease_focus"]
-            metadata["disease_original"] = f"inferred from publication: {study_context['disease_focus']}"
-            logger.debug(f"Assigned disease from publication context: {study_context['disease_focus']}")
+            metadata["disease_original"] = (
+                f"inferred from publication: {study_context['disease_focus']}"
+            )
+            logger.debug(
+                f"Assigned disease from publication context: {study_context['disease_focus']}"
+            )
             return "disease"
 
-        logger.warning("No disease information found in metadata fields or study context")
+        logger.warning(
+            "No disease information found in metadata fields or study context"
+        )
         return None
 
     # =========================================================================
@@ -866,9 +917,7 @@ def metadata_assistant(
 
     @tool
     def filter_samples_by(
-        workspace_key: str,
-        filter_criteria: str,
-        strict: bool = True
+        workspace_key: str, filter_criteria: str, strict: bool = True
     ) -> str:
         """
         Filter samples by multi-modal criteria (16S amplicon + host organism + sample type + disease).
@@ -917,7 +966,10 @@ def metadata_assistant(
             logger.debug(f"Parsed criteria: {parsed_criteria}")
 
             # Read workspace metadata via WorkspaceContentService
-            from lobster.services.data_access.workspace_content_service import WorkspaceContentService
+            from lobster.services.data_access.workspace_content_service import (
+                WorkspaceContentService,
+            )
+
             workspace_service = WorkspaceContentService(data_manager)
             workspace_data = workspace_service.read_content(workspace_key)
             if not workspace_data:
@@ -939,6 +991,7 @@ def metadata_assistant(
 
             # Convert to DataFrame
             import pandas as pd
+
             metadata_df = pd.DataFrame.from_dict(metadata_dict, orient="index")
             original_count = len(metadata_df)
 
@@ -955,8 +1008,10 @@ def metadata_assistant(
                 filtered_rows = []
                 for idx, row in current_metadata.iterrows():
                     row_dict = row.to_dict()
-                    filtered, stats, ir = microbiome_filtering_service.validate_16s_amplicon(
-                        row_dict, strict=strict
+                    filtered, stats, ir = (
+                        microbiome_filtering_service.validate_16s_amplicon(
+                            row_dict, strict=strict
+                        )
                     )
                     if filtered:  # Non-empty dict means valid
                         filtered_rows.append(idx)
@@ -965,16 +1020,22 @@ def metadata_assistant(
                         stats_list.append(stats)
 
                 current_metadata = current_metadata.loc[filtered_rows]
-                logger.debug(f"After 16S filter: {len(current_metadata)} samples retained")
+                logger.debug(
+                    f"After 16S filter: {len(current_metadata)} samples retained"
+                )
 
             # Filter 2: Host organism validation
             if parsed_criteria["host_organisms"]:
-                logger.debug(f"Applying host organism filter: {parsed_criteria['host_organisms']}")
+                logger.debug(
+                    f"Applying host organism filter: {parsed_criteria['host_organisms']}"
+                )
                 filtered_rows = []
                 for idx, row in current_metadata.iterrows():
                     row_dict = row.to_dict()
-                    filtered, stats, ir = microbiome_filtering_service.validate_host_organism(
-                        row_dict, allowed_hosts=parsed_criteria["host_organisms"]
+                    filtered, stats, ir = (
+                        microbiome_filtering_service.validate_host_organism(
+                            row_dict, allowed_hosts=parsed_criteria["host_organisms"]
+                        )
                     )
                     if filtered:  # Non-empty dict means valid
                         filtered_rows.append(idx)
@@ -983,18 +1044,26 @@ def metadata_assistant(
                         stats_list.append(stats)
 
                 current_metadata = current_metadata.loc[filtered_rows]
-                logger.debug(f"After host filter: {len(current_metadata)} samples retained")
+                logger.debug(
+                    f"After host filter: {len(current_metadata)} samples retained"
+                )
 
             # Filter 3: Sample type filtering
             if parsed_criteria["sample_types"]:
-                logger.debug(f"Applying sample type filter: {parsed_criteria['sample_types']}")
-                filtered, stats, ir = disease_standardization_service.filter_by_sample_type(
-                    current_metadata, sample_types=parsed_criteria["sample_types"]
+                logger.debug(
+                    f"Applying sample type filter: {parsed_criteria['sample_types']}"
+                )
+                filtered, stats, ir = (
+                    disease_standardization_service.filter_by_sample_type(
+                        current_metadata, sample_types=parsed_criteria["sample_types"]
+                    )
                 )
                 current_metadata = filtered
                 irs.append(ir)
                 stats_list.append(stats)
-                logger.debug(f"After sample type filter: {len(current_metadata)} samples retained")
+                logger.debug(
+                    f"After sample type filter: {len(current_metadata)} samples retained"
+                )
 
             # Filter 4: Disease extraction + standardization
             if parsed_criteria["standardize_disease"]:
@@ -1002,29 +1071,39 @@ def metadata_assistant(
 
                 # NEW: Extract disease from diverse field patterns (v1.2.0)
                 # Handles: host_phenotype, boolean flags (crohns_disease, etc.)
-                disease_col = _extract_disease_from_raw_fields(current_metadata, study_context=None)
+                disease_col = _extract_disease_from_raw_fields(
+                    current_metadata, study_context=None
+                )
 
                 if disease_col:
                     # Apply standardization to extracted disease column
-                    standardized, stats, ir = disease_standardization_service.standardize_disease_terms(
-                        current_metadata, disease_column=disease_col
+                    standardized, stats, ir = (
+                        disease_standardization_service.standardize_disease_terms(
+                            current_metadata, disease_column=disease_col
+                        )
                     )
                     current_metadata = standardized
                     irs.append(ir)
                     stats_list.append(stats)
-                    logger.debug(f"Disease extraction + standardization complete: {stats['standardization_rate']:.1f}% mapped")
+                    logger.debug(
+                        f"Disease extraction + standardization complete: {stats['standardization_rate']:.1f}% mapped"
+                    )
                 else:
-                    logger.warning("Disease standardization requested but no disease information found in metadata")
+                    logger.warning(
+                        "Disease standardization requested but no disease information found in metadata"
+                    )
 
             # Calculate final stats
             final_count = len(current_metadata)
-            retention_rate = (final_count / original_count * 100) if original_count > 0 else 0
+            retention_rate = (
+                (final_count / original_count * 100) if original_count > 0 else 0
+            )
 
             # Combine IRs into composite IR
             composite_ir = _combine_analysis_steps(
                 irs,
                 operation="filter_samples_by",
-                description=f"Multi-criteria filtering: {filter_criteria}"
+                description=f"Multi-criteria filtering: {filter_criteria}",
             )
 
             # Log tool usage
@@ -1034,15 +1113,15 @@ def metadata_assistant(
                     "workspace_key": workspace_key,
                     "filter_criteria": filter_criteria,
                     "strict": strict,
-                    "parsed_criteria": parsed_criteria
+                    "parsed_criteria": parsed_criteria,
                 },
                 result_summary={
                     "original_samples": original_count,
                     "filtered_samples": final_count,
                     "retention_rate": retention_rate,
-                    "filters_applied": len(irs)
+                    "filters_applied": len(irs),
                 },
-                ir=composite_ir
+                ir=composite_ir,
             )
 
             # Format report
@@ -1054,10 +1133,12 @@ def metadata_assistant(
                 final_count=final_count,
                 retention_rate=retention_rate,
                 stats_list=stats_list,
-                filtered_metadata=current_metadata
+                filtered_metadata=current_metadata,
             )
 
-            logger.debug(f"Filtering complete: {final_count}/{original_count} samples retained ({retention_rate:.1f}%)")
+            logger.debug(
+                f"Filtering complete: {final_count}/{original_count} samples retained ({retention_rate:.1f}%)"
+            )
             return report
 
         except ValueError as e:
@@ -1072,11 +1153,13 @@ def metadata_assistant(
     # =========================================================================
 
     # Import shared workspace tools and services
+    from lobster.services.data_access.workspace_content_service import (
+        WorkspaceContentService,
+    )
     from lobster.tools.workspace_tool import (
         create_get_content_from_workspace_tool,
         create_write_to_workspace_tool,
     )
-    from lobster.services.data_access.workspace_content_service import WorkspaceContentService
 
     workspace_service = WorkspaceContentService(data_manager=data_manager)
 
@@ -1125,7 +1208,9 @@ def metadata_assistant(
 
             # Update status to in_progress
             queue.update_status(
-                entry_id, entry.status, handoff_status=HandoffStatus.METADATA_IN_PROGRESS
+                entry_id,
+                entry.status,
+                handoff_status=HandoffStatus.METADATA_IN_PROGRESS,
             )
 
             # Read and aggregate samples from all workspace keys
@@ -1148,7 +1233,9 @@ def metadata_assistant(
                     ws_key, content_type=ContentType.METADATA
                 )
                 if ws_data:
-                    samples, validation_result, quality_stats = _extract_samples_from_workspace(ws_data)
+                    samples, validation_result, quality_stats = (
+                        _extract_samples_from_workspace(ws_data)
+                    )
                     all_samples.extend(samples)
                     all_validation_results.append(validation_result)
 
@@ -1242,7 +1329,9 @@ def metadata_assistant(
                 harmonization_metadata=harmonization_data,
             )
 
-            retention = (samples_after / samples_before * 100) if samples_before > 0 else 0
+            retention = (
+                (samples_after / samples_before * 100) if samples_before > 0 else 0
+            )
 
             # Build response with validation info
             response = f"""## Entry Processed: {entry_id}
@@ -1290,12 +1379,14 @@ def metadata_assistant(
         """
         try:
             from lobster.services.data_access.workspace_content_service import (
-                MetadataContent,
                 ContentType,
+                MetadataContent,
             )
 
             queue = data_manager.publication_queue
-            entries = queue.list_entries(status=PublicationStatus(status_filter.lower()))
+            entries = queue.list_entries(
+                status=PublicationStatus(status_filter.lower())
+            )
 
             if max_entries:
                 entries = entries[:max_entries]
@@ -1343,7 +1434,9 @@ def metadata_assistant(
 
                     for ws_key in entry.workspace_metadata_keys:
                         # Only process SRA sample files (skip pub_queue_*_metadata/methods/identifiers.json)
-                        if not (ws_key.startswith("sra_") and ws_key.endswith("_samples")):
+                        if not (
+                            ws_key.startswith("sra_") and ws_key.endswith("_samples")
+                        ):
                             logger.debug(f"Skipping non-SRA workspace key: {ws_key}")
                             continue
 
@@ -1359,8 +1452,8 @@ def metadata_assistant(
                             ws_key, content_type=ContentType.METADATA
                         )
                         if ws_data:
-                            samples, validation_result, quality_stats = _extract_samples_from_workspace(
-                                ws_data
+                            samples, validation_result, quality_stats = (
+                                _extract_samples_from_workspace(ws_data)
                             )
                             entry_samples.extend(samples)
                             entry_validation_results.append(validation_result)
@@ -1383,7 +1476,9 @@ def metadata_assistant(
                             if ind_id:
                                 entry_unique_individuals.add(ind_id)
                         for flag, count in qs.get("flag_counts", {}).items():
-                            entry_flag_counts[flag] = entry_flag_counts.get(flag, 0) + count
+                            entry_flag_counts[flag] = (
+                                entry_flag_counts.get(flag, 0) + count
+                            )
 
                     # Check for complete validation failure
                     if samples_extracted > 0 and samples_valid == 0:
@@ -1433,13 +1528,17 @@ def metadata_assistant(
 
                     # Aggregate quality flags into batch stats
                     for flag, count in entry_flag_counts.items():
-                        stats["flag_counts"][flag] = stats["flag_counts"].get(flag, 0) + count
+                        stats["flag_counts"][flag] = (
+                            stats["flag_counts"].get(flag, 0) + count
+                        )
 
                     # Track samples needing manual body_site review
                     for qs in entry_quality_stats:
                         flagged_ids = qs.get("flagged_sample_ids", {})
                         if "missing_body_site" in flagged_ids:
-                            stats["samples_needing_manual_review"].extend(flagged_ids["missing_body_site"])
+                            stats["samples_needing_manual_review"].extend(
+                                flagged_ids["missing_body_site"]
+                            )
 
                     # Add publication context
                     for sample in entry_samples:
@@ -1518,7 +1617,9 @@ def metadata_assistant(
             logger.debug(f"  Successful: {stats['processed'] - stats['failed']}")
             logger.debug(f"  Failed: {stats['failed']}")
             logger.debug(f"  Total samples extracted: {stats['total_extracted']}")
-            logger.debug(f"  Total samples valid: {stats['total_valid']} ({validation_rate:.1f}%)")
+            logger.debug(
+                f"  Total samples valid: {stats['total_valid']} ({validation_rate:.1f}%)"
+            )
             logger.debug(
                 f"  Total samples after filter: {stats['total_after_filter']} ({retention:.1f}%)"
             )
@@ -1572,7 +1673,7 @@ def metadata_assistant(
                 for flag, count in sorted(flag_counts.items(), key=lambda x: -x[1]):
                     response += f"- {flag}: {count} samples\n"
 
-            response += f"\nUse `write_to_workspace(identifier=\"{output_key}\", workspace=\"metadata\", output_format=\"csv\")` to export as CSV.\n"
+            response += f'\nUse `write_to_workspace(identifier="{output_key}", workspace="metadata", output_format="csv")` to export as CSV.\n'
 
             return response
         except Exception as e:
@@ -1611,7 +1712,9 @@ def metadata_assistant(
 
             queue.update_status(**update_kwargs)
 
-            return f"✓ Updated {entry_id}: handoff_status={handoff_status or 'unchanged'}"
+            return (
+                f"✓ Updated {entry_id}: handoff_status={handoff_status or 'unchanged'}"
+            )
         except Exception as e:
             logger.error(f"Error updating status: {e}")
             return f"❌ Error updating status: {str(e)}"
@@ -1809,7 +1912,9 @@ def metadata_assistant(
         Includes disease extraction + standardization if disease terms in criteria.
         """
         if not MICROBIOME_FEATURES_AVAILABLE:
-            logger.warning("Microbiome services not available, returning unfiltered samples")
+            logger.warning(
+                "Microbiome services not available, returning unfiltered samples"
+            )
             return samples
 
         parsed = _parse_filter_criteria(filter_criteria)
@@ -1824,11 +1929,13 @@ def metadata_assistant(
 
             if disease_col:
                 # Apply standardization to extracted disease
-                standardized_df, stats, ir = disease_standardization_service.standardize_disease_terms(
-                    df, disease_column=disease_col
+                standardized_df, stats, ir = (
+                    disease_standardization_service.standardize_disease_terms(
+                        df, disease_column=disease_col
+                    )
                 )
                 # Convert back to list of dicts
-                filtered = standardized_df.to_dict('records')
+                filtered = standardized_df.to_dict("records")
                 logger.debug(
                     f"Disease extraction + standardization applied: "
                     f"{stats['standardization_rate']:.1f}% mapped"
@@ -1836,9 +1943,21 @@ def metadata_assistant(
 
         # Apply other filters
         if parsed["check_16s"]:
-            filtered = [s for s in filtered if microbiome_filtering_service.validate_16s_amplicon(s, strict=False)[0]]
+            filtered = [
+                s
+                for s in filtered
+                if microbiome_filtering_service.validate_16s_amplicon(s, strict=False)[
+                    0
+                ]
+            ]
         if parsed["host_organisms"]:
-            filtered = [s for s in filtered if microbiome_filtering_service.validate_host_organism(s, allowed_hosts=parsed["host_organisms"])[0]]
+            filtered = [
+                s
+                for s in filtered
+                if microbiome_filtering_service.validate_host_organism(
+                    s, allowed_hosts=parsed["host_organisms"]
+                )[0]
+            ]
 
         return filtered
 
@@ -1876,23 +1995,44 @@ def metadata_assistant(
 
         # Check for sample types
         sample_types = []
-        if "fecal" in criteria_lower or "stool" in criteria_lower or "feces" in criteria_lower:
+        if (
+            "fecal" in criteria_lower
+            or "stool" in criteria_lower
+            or "feces" in criteria_lower
+        ):
             sample_types.append("fecal")
-        if "gut" in criteria_lower or "tissue" in criteria_lower or "biopsy" in criteria_lower:
+        if (
+            "gut" in criteria_lower
+            or "tissue" in criteria_lower
+            or "biopsy" in criteria_lower
+        ):
             sample_types.append("gut")
 
         # Check for disease terms (if any disease keywords present, enable standardization)
-        disease_keywords = ["crc", "uc", "cd", "cancer", "colitis", "crohn", "healthy", "control"]
-        standardize_disease = any(keyword in criteria_lower for keyword in disease_keywords)
+        disease_keywords = [
+            "crc",
+            "uc",
+            "cd",
+            "cancer",
+            "colitis",
+            "crohn",
+            "healthy",
+            "control",
+        ]
+        standardize_disease = any(
+            keyword in criteria_lower for keyword in disease_keywords
+        )
 
         return {
             "check_16s": check_16s,
             "host_organisms": host_organisms,
             "sample_types": sample_types,
-            "standardize_disease": standardize_disease
+            "standardize_disease": standardize_disease,
         }
 
-    def _combine_analysis_steps(irs: List[AnalysisStep], operation: str, description: str) -> AnalysisStep:
+    def _combine_analysis_steps(
+        irs: List[AnalysisStep], operation: str, description: str
+    ) -> AnalysisStep:
         """
         Combine multiple AnalysisSteps into a composite IR.
 
@@ -1916,14 +2056,16 @@ def metadata_assistant(
                 parameters={},
                 parameter_schema={},
                 input_entities=[],
-                output_entities=[]
+                output_entities=[],
             )
 
         # Combine code templates
-        combined_code = "\n\n".join([
-            f"# Step {i+1}: {ir.description}\n{ir.code_template}"
-            for i, ir in enumerate(irs)
-        ])
+        combined_code = "\n\n".join(
+            [
+                f"# Step {i+1}: {ir.description}\n{ir.code_template}"
+                for i, ir in enumerate(irs)
+            ]
+        )
 
         # Combine imports (deduplicate)
         all_imports = []
@@ -1946,7 +2088,7 @@ def metadata_assistant(
             parameters=combined_params,
             parameter_schema={},
             input_entities=[{"type": "workspace_metadata", "name": "input_metadata"}],
-            output_entities=[{"type": "filtered_metadata", "name": "output_metadata"}]
+            output_entities=[{"type": "filtered_metadata", "name": "output_metadata"}],
         )
 
     def _format_filtering_report(
@@ -1957,7 +2099,7 @@ def metadata_assistant(
         final_count: int,
         retention_rate: float,
         stats_list: List[Dict[str, Any]],
-        filtered_metadata: "pd.DataFrame"
+        filtered_metadata: "pd.DataFrame",
     ) -> str:
         """
         Format filtering report as markdown.
@@ -1975,7 +2117,9 @@ def metadata_assistant(
         Returns:
             Markdown-formatted report
         """
-        status_icon = "✅" if retention_rate > 50 else ("⚠️" if retention_rate > 10 else "❌")
+        status_icon = (
+            "✅" if retention_rate > 50 else ("⚠️" if retention_rate > 10 else "❌")
+        )
 
         report_lines = [
             f"{status_icon} Sample Filtering Complete\n",
@@ -1984,16 +2128,20 @@ def metadata_assistant(
             f"**Original Samples**: {original_count}",
             f"**Filtered Samples**: {final_count}",
             f"**Retention Rate**: {retention_rate:.1f}%\n",
-            "## Filters Applied\n"
+            "## Filters Applied\n",
         ]
 
         # List applied filters
         if parsed_criteria["check_16s"]:
             report_lines.append("- ✓ 16S amplicon detection")
         if parsed_criteria["host_organisms"]:
-            report_lines.append(f"- ✓ Host organism: {', '.join(parsed_criteria['host_organisms'])}")
+            report_lines.append(
+                f"- ✓ Host organism: {', '.join(parsed_criteria['host_organisms'])}"
+            )
         if parsed_criteria["sample_types"]:
-            report_lines.append(f"- ✓ Sample type: {', '.join(parsed_criteria['sample_types'])}")
+            report_lines.append(
+                f"- ✓ Sample type: {', '.join(parsed_criteria['sample_types'])}"
+            )
         if parsed_criteria["standardize_disease"]:
             report_lines.append("- ✓ Disease standardization")
 
@@ -2013,7 +2161,9 @@ def metadata_assistant(
             preview = filtered_metadata.head(5).to_markdown(index=True)
             report_lines.append(preview)
             if len(filtered_metadata) > 5:
-                report_lines.append(f"\n*... and {len(filtered_metadata) - 5} more samples*")
+                report_lines.append(
+                    f"\n*... and {len(filtered_metadata) - 5} more samples*"
+                )
         else:
             report_lines.append("*No samples passed filtering criteria*")
 
@@ -2038,15 +2188,13 @@ def metadata_assistant(
     # Tool 10: Custom Code Execution for Sample-Level Operations
     # =========================================================================
 
-    from typing import Optional
-
     @tool
     def execute_custom_code(
         python_code: str,
         workspace_key: str = None,
         load_workspace_files: bool = True,
         persist: bool = False,
-        description: str = "Custom metadata code execution"
+        description: str = "Custom metadata code execution",
     ) -> str:
         """
         Execute custom Python code for sample-level metadata operations.
@@ -2055,19 +2203,37 @@ def metadata_assistant(
 
         AVAILABLE IN NAMESPACE:
         - workspace_path: Path to workspace directory
-        - Auto-loaded CSV/JSON files from workspace/metadata/ (including samples files)
-        - publication_queue: Publication queue entries
+        - Auto-loaded CSV/JSON files from workspace (controlled by workspace_key)
+        - publication_queue: Publication queue entries (always loaded)
         - All JSON files loaded as Python dicts with sanitized names (dots/dashes → underscores)
 
-        COMMON USE CASES:
-        1. Filter flagged samples:
-           `samples = [s for s in aggregated_filtered_samples_16s_human['data']['samples'] if s.get('body_site')]`
+        TOKEN-EFFICIENT LOADING (IMPORTANT):
+        - Use `workspace_key` parameter to load ONLY specific files (avoids token overflow)
+        - Example: workspace_key="sra_prjna834801_samples" loads only sra_prjna834801_samples.json
+        - Without workspace_key: loads ALL workspace/*.json files (can cause timeout with >100 files)
+        - ALWAYS use workspace_key when working with large workspaces
 
-        2. Update sample metadata:
-           `for s in samples: s['manually_reviewed'] = True`
+        COMMON USE CASES:
+        1. Filter flagged samples (SELECTIVE LOADING):
+           >>> execute_custom_code(
+           ...     workspace_key="sra_prjna834801_samples",  # Load only this file
+           ...     python_code=\"\"\"
+           ...     samples = sra_prjna834801_samples['samples']
+           ...     valid = [s for s in samples if s.get('body_site')]
+           ...     result = {{'samples': valid, 'output_key': 'reviewed_samples'}}
+           ...     \"\"\"
+           ... )
+
+        2. Update sample metadata (IN-PLACE):
+           >>> execute_custom_code(
+           ...     workspace_key="aggregated_samples",
+           ...     python_code="for s in aggregated_samples['samples']: s['reviewed'] = True"
+           ... )
 
         3. Extract patterns from publication text:
-           `import re; body_site = re.search(r'(fecal|stool|biopsy)', methods_text)`
+           >>> execute_custom_code(
+           ...     python_code="import re; body_site = re.search(r'(fecal|stool|biopsy)', methods_text)"
+           ... )
 
         PERSISTING CHANGES:
         To save filtered samples for export, return a dict with:
@@ -2076,7 +2242,9 @@ def metadata_assistant(
 
         Args:
             python_code: Python code to execute (multi-line supported)
-            workspace_key: Optional key to update in metadata_store (for in-place updates)
+            workspace_key: **RECOMMENDED** - Load only this workspace file (e.g., "sra_prjna834801_samples")
+                          Reduces token usage by 70-90% in large workspaces (>100 files)
+                          If provided, also enables in-place updates to metadata_store[workspace_key]
             load_workspace_files: Auto-inject CSV/JSON files from workspace (default: True)
             persist: If True, save to provenance/notebook export (default: False)
             description: Human-readable description of the operation
@@ -2084,24 +2252,29 @@ def metadata_assistant(
         Returns:
             Formatted string with execution results and any outputs
 
-        Example:
+        Example (RECOMMENDED PATTERN):
             >>> execute_custom_code(
+            ...     workspace_key="sra_prjna834801_samples",  # SELECTIVE LOADING
             ...     python_code=\"\"\"
-            ...     samples = aggregated_filtered_samples_16s_human['data']['samples']
+            ...     samples = sra_prjna834801_samples['samples']
             ...     valid = [s for s in samples if s.get('body_site')]
-            ...     result = {'samples': valid, 'output_key': 'reviewed_samples', 'stats': {'count': len(valid)}}
+            ...     result = {{'samples': valid, 'output_key': 'reviewed_samples', 'stats': {{'count': len(valid)}}}}
             ...     \"\"\",
             ...     description="Filter samples with missing body_site"
             ... )
             # Then export with: write_to_workspace(identifier="reviewed_samples", workspace="metadata", output_format="csv")
         """
         try:
+            # Convert workspace_key to list for service (supports selective loading)
+            workspace_keys_list = [workspace_key] if workspace_key else None
+
             result, stats, ir = custom_code_service.execute(
                 code=python_code,
                 modality_name=None,  # metadata_assistant doesn't use AnnData
                 load_workspace_files=load_workspace_files,
+                workspace_keys=workspace_keys_list,  # NEW: selective loading
                 persist=persist,
-                description=description
+                description=description,
             )
 
             # Persist changes back to metadata_store if result contains 'samples'
@@ -2109,51 +2282,59 @@ def metadata_assistant(
             if isinstance(result, dict):
                 if workspace_key and workspace_key in data_manager.metadata_store:
                     # Update specific key in-place
-                    if 'samples' in result:
-                        data_manager.metadata_store[workspace_key]['samples'] = result['samples']
+                    if "samples" in result:
+                        data_manager.metadata_store[workspace_key]["samples"] = result[
+                            "samples"
+                        ]
                         persisted_key = workspace_key
-                        logger.info(f"Persisted {len(result['samples'])} samples to metadata_store['{workspace_key}']")
-                elif 'samples' in result and 'output_key' in result:
+                        logger.info(
+                            f"Persisted {len(result['samples'])} samples to metadata_store['{workspace_key}']"
+                        )
+                elif "samples" in result and "output_key" in result:
                     # Create new key with filtered samples
-                    output_key = result['output_key']
+                    output_key = result["output_key"]
                     data_manager.metadata_store[output_key] = {
-                        'samples': result['samples'],
-                        'filter_criteria': result.get('filter_criteria', 'custom'),
-                        'stats': result.get('stats', {}),
+                        "samples": result["samples"],
+                        "filter_criteria": result.get("filter_criteria", "custom"),
+                        "stats": result.get("stats", {}),
                     }
                     persisted_key = output_key
-                    logger.info(f"Created metadata_store['{output_key}'] with {len(result['samples'])} samples")
+                    logger.info(
+                        f"Created metadata_store['{output_key}'] with {len(result['samples'])} samples"
+                    )
 
             # Log to data manager for provenance
             data_manager.log_tool_usage(
                 tool_name="execute_custom_code",
                 parameters={
-                    'description': description,
-                    'workspace_key': workspace_key,
-                    'persist': persist,
-                    'duration_seconds': stats['duration_seconds'],
-                    'success': stats['success']
+                    "description": description,
+                    "workspace_key": workspace_key,
+                    "persist": persist,
+                    "duration_seconds": stats["duration_seconds"],
+                    "success": stats["success"],
                 },
                 description=f"{description} ({'success' if stats['success'] else 'failed'})",
-                ir=ir
+                ir=ir,
             )
 
             # Format response
             response = f"## Custom Code Execution\n\n"
             response += f"**Description**: {description}\n"
             response += f"**Duration**: {stats['duration_seconds']:.2f}s\n"
-            response += f"**Status**: {'✓ Success' if stats['success'] else '✗ Failed'}\n"
+            response += (
+                f"**Status**: {'✓ Success' if stats['success'] else '✗ Failed'}\n"
+            )
 
             if persisted_key:
                 response += f"**Persisted to**: `metadata_store['{persisted_key}']`\n"
-                response += f"**Export with**: `write_to_workspace(identifier=\"{persisted_key}\", workspace=\"metadata\", output_format=\"csv\")`\n"
+                response += f'**Export with**: `write_to_workspace(identifier="{persisted_key}", workspace="metadata", output_format="csv")`\n'
 
-            if stats.get('stdout'):
+            if stats.get("stdout"):
                 response += f"\n### Output\n```\n{stats['stdout']}\n```\n"
 
-            if stats.get('warnings'):
+            if stats.get("warnings"):
                 response += f"\n### Warnings\n"
-                for w in stats['warnings']:
+                for w in stats["warnings"]:
                     response += f"- {w}\n"
 
             if result is not None:
@@ -2198,7 +2379,6 @@ def metadata_assistant(
     if MICROBIOME_FEATURES_AVAILABLE:
         tools.append(filter_samples_by)
 
-
     # =========================================================================
     # System Prompt
     # =========================================================================
@@ -2209,8 +2389,7 @@ You are the Metadata Assistant – an internal sample metadata and harmonization
 	-	the data expert.
 
 <your environment>
-You are the only communcation channel between all the other agents and the user in the open-core python package called 'lobster-ai' (refered as lobster) developed by the company Omics-OS (www.omics-os.com) founded by Kevin Yar.
-You are a langgraph agent in a supervisor-multi-agent architecture. 
+You are a langgraph agent in a supervisor-multi-agent architecture within the open-core python package called 'lobster-ai' (referred as lobster) developed by the company Omics-OS (www.omics-os.com) founded by Kevin Yar.
 </your environment>
 
 Hierarchy: supervisor > research agent == data expert >> metadata assistant.
@@ -2221,12 +2400,18 @@ Your responsibilities:
 	-	Standardize metadata into requested schemas (for example transcriptomics, microbiome).
 	-	Map samples across datasets based on IDs or metadata.
 	-	Validate dataset content and report quality metrics and limitations.
+	-	MANUAL ENRICHMENT: Enrich samples with missing critical fields (disease, age, sex, tissue) by:
+		- Reading publication metadata (title, abstract, methods sections)
+		- Extracting demographics and disease context from publication text
+		- Propagating publication-level metadata to individual samples
+		- Using execute_custom_code for study-specific enrichment logic
+		- Documenting enrichment source with _source fields (e.g., disease_source="inferred_from_publication_PMID12345")
 
 You are not responsible for:
 	-	Discovering or searching for datasets or publications.
 	-	Downloading files or loading data into modalities.
 	-	Running omics analyses (QC, alignment, normalization, clustering, DE).
-	-	Changing or relaxing the user’s filters or criteria.
+	-	Changing or relaxing the user's filters or criteria.
 
 Operating Principles
 	1.	Strict source_type and target_type
@@ -2334,6 +2519,7 @@ execute_custom_code
 	-	Extract information from publication text using regex
 	-	Perform custom calculations on sample data
 	-	Review and modify flagged samples before export
+	-	**MANUAL ENRICHMENT**: Propagate publication-level metadata to samples missing critical fields
 	-	Available in Namespace:
 	-	workspace_path: Path to workspace directory
 	-	Auto-loaded CSV/JSON files from workspace/metadata/ (including samples files)
@@ -2347,6 +2533,135 @@ execute_custom_code
 	-	Use get_content_from_workspace(identifier="pub_queue_..._methods") to review publication
 	-	Use execute_custom_code to filter/update samples based on findings
 	-	Use write_to_workspace to export the cleaned samples to CSV
+
+MANUAL ENRICHMENT WORKFLOW:
+When research_agent requests manual enrichment of publication queue entries with missing critical fields (disease, age, sex, tissue), follow this workflow:
+
+Step 1: Assess Metadata Completeness
+	-	Use get_content_from_workspace(workspace="publication_queue") to list entries
+	-	For target entry: read workspace_metadata_keys to get samples
+	-	Calculate field coverage: disease, age, sex, tissue, host, sample_type, isolation_source
+	-	Identify which fields need enrichment (coverage <50%)
+
+Step 2: Extract Context from Publication
+	-	Use get_content_from_workspace(identifier="publication_PMID...", level="metadata") for publication title/abstract
+	-	Use get_content_from_workspace(identifier="pub_queue_..._methods", workspace="metadata") for methods section (if available)
+	-	Extract relevant demographics:
+		- Disease: From title (e.g., "inflammatory bowel disease patients" → disease="ibd")
+		- Age range: From methods (e.g., "participants aged 45-65" → age_min=45, age_max=65)
+		- Sex distribution: From methods (e.g., "60% male, 40% female")
+		- Sample type: From methods (e.g., "fecal samples collected" → sample_type="fecal")
+
+Step 3: Propagate to Samples via execute_custom_code
+	-	Write custom code to enrich samples (use execute_custom_code tool):
+		- **ALWAYS specify workspace_key parameter** to load only the target file (avoids token overflow)
+		- Read samples from the loaded workspace key variable
+		- Iterate through samples and add missing fields
+		- Document enrichment source for traceability
+		- Return dict with 'samples' list and 'output_key' for persistence
+	-	Example: Enrich 409 samples with disease="ibd" from publication title
+		```python
+		execute_custom_code(
+		    workspace_key="sra_prjna834801_samples",  # CRITICAL: Only load this file
+		    python_code=" ""
+		    samples = sra_prjna834801_samples['samples']
+		    for s in samples:
+		        if not s.get('disease'):
+		            s['disease'] = 'ibd'
+		            s['disease_source'] = 'inferred_from_publication_title'
+		    result = {{'samples': samples, 'output_key': 'sra_prjna834801_samples_enriched'}}
+		    "" "
+		)
+		```
+		- All samples missing disease get disease="ibd"
+		- Add disease_source="inferred_from_publication_title"
+		- Return result dict for metadata_store persistence
+
+Step 4: Report Enrichment Results
+	-	Calculate improvement: field coverage before → after
+	-	Report metrics:
+		- Samples enriched: X/Y (Z%)
+		- Fields improved: [disease: 0% → 100%, sample_type: 0% → 100%]
+		- Enrichment source: [publication_title, methods_section]
+	-	Recommendation: "proceed" if ≥70% overall completeness achieved
+
+Step 5: Export or Hand Back
+	-	If requested: write_to_workspace(identifier="pub_queue_X_samples_enriched", output_format="csv")
+	-	Or: store in metadata_store for further processing
+	-	Update publication queue status if needed
+
+**When to Use Manual Enrichment**:
+	-	Use AUTOMATIC extraction (filter_samples_by with disease extraction): When disease data exists at sample-level in SRA (host_phenotype, *_disease flags)
+	-	Use MANUAL enrichment (execute_custom_code): When disease data is MISSING at sample-level but exists in publication context
+	-	Trigger: research_agent explicitly requests "manual enrichment" or "enrich from publication"
+	-	Expected improvement: 0% disease coverage → 100% (if publication context is clear)
+	-	Limitation: Requires conservative extraction - follow these inference rules:
+		✓ Extract EXPLICIT statements from publication text (disease names, age ranges, sex distributions)
+		✓ Map terms to standard vocabularies (e.g., "inflammatory bowel disease" → "ibd")
+		✓ Preserve ranges as ranges (age_min=45, age_max=65) rather than single values
+		✗ Do NOT calculate midpoints/averages unless publication explicitly states them
+		✗ Do NOT infer sample-level variation (all samples get same publication-level value)
+		✗ Do NOT extrapolate missing fields from unrelated statements
+		- Always document source with _source fields (REQUIRED format: field_source="inferred_from_publication_PMID12345")
+
+**Common Manual Enrichment Patterns**:
+	1.	Publication title contains disease: "Gut microbiome in Parkinson's Disease patients" → all samples get disease="parkinsons", disease_source="inferred_from_publication_title"
+	2.	Methods section has demographics: "Participants aged 50-70, 65% female" → all samples get age_min=50, age_max=70, sex_distribution="65% female", demographic_source="inferred_from_methods"
+	3.	Study inclusion criteria: "IBD patients with active disease" → all samples get disease="ibd", disease_activity="active", disease_source="inferred_from_inclusion_criteria"
+	4.	Sample type inference: "Fecal samples collected at baseline" → all samples get sample_type="fecal", sample_type_source="inferred_from_methods"
+
+**ITERATIVE QUALITY IMPROVEMENT WORKFLOW** (v1.2.0 - Proactive Quality Optimization):
+After process_metadata_queue completes with mixed quality results (some entries 0% disease, others 100%), you should PROACTIVELY identify and improve low-quality entries through iterative refinement:
+
+Step 1: Assess Per-Entry Completeness (Identify Gaps)
+	-	Use get_content_from_workspace(workspace="publication_queue") to list all processed entries
+	-	For each entry with workspace_metadata_keys (sra_*_samples files):
+		- Use read_sample_metadata(source="sra_PRJXXX_samples", source_type="metadata_store", return_format="summary")
+		- Calculate per-field coverage: organism%, host%, disease%, age%, sex%, tissue%, sample_type%, isolation_source%
+		- Calculate overall_completeness: average of critical field coverages
+		- Calculate improvement_potential: sample_count × (100 - overall_completeness)
+	-	Report findings: "Analyzed 77 entries: 3 GOLD (≥70%), 20 SILVER (50-70%), 54 need improvement"
+	-	Flag low-quality entries: "Entry PRJNA642308 (409 samples, 87.5% complete): disease=0% is only gap"
+
+Step 2: Prioritize Enrichment Targets (ROI Calculation)
+	-	Rank entries by improvement_potential score (high impact first)
+	-	Filter for entries where:
+		- Baseline ≥70% (one field away from excellent)
+		- Sample count ≥100 (meaningful cohort size)
+		- Publication context clear (disease/demographics explicit in title)
+	-	Report prioritized list: "Top 3 targets: PRJNA642308 (53pts), PRJNA784939 (38pts), PRJNA1139414 (25pts)"
+	-	Estimate effort per entry: "PRJNA642308: ~5 min (disease from title), PRJNA784939: ~15 min (complex demographics)"
+
+Step 3: Enrich Single Entry (Focused Improvement)
+	-	Select highest priority entry from Step 2
+	-	Read publication context:
+		- get_content_from_workspace(identifier="pub_queue_XXXXX", workspace="publication_queue") for title
+		- get_content_from_workspace(identifier="pub_queue_XXXXX_methods", workspace="metadata") for methods (if available)
+	-	Extract missing demographics using regex/text analysis
+	-	Use execute_custom_code to propagate to samples (update only missing fields)
+	-	Document enrichment source for every modified field (field_source="inferred_from_publication_...")
+	-	Store enriched version: result = {{"samples": enriched, "output_key": "sra_PRJXXX_samples_enriched"}}
+
+Step 4: Verify Improvement (Quality Control)
+	-	Use read_sample_metadata(source="sra_PRJXXX_samples_enriched", source_type="metadata_store")
+	-	Calculate new field coverage and overall completeness
+	-	Report before/after: "PRJNA642308: 87.5% → 100% (+12.5pts, disease 0% → 100%)"
+	-	Verify enrichment accuracy: spot-check 3-5 samples to ensure values make sense
+
+Step 5: Continue or Stop (Iterative Decision)
+	-	Calculate remaining improvement_potential across all entries
+	-	If significant ROI remains (≥500 points) AND time allows: repeat Step 3 for next entry
+	-	If diminishing returns (all top entries ≥80%): stop iteration
+	-	Report final aggregate improvement: "Optimized 3/77 entries: batch completeness 32% → 58% (+26pts), +1,234 samples enriched"
+	-	Recommend next action: "Ready for export" or "5 more entries could benefit from enrichment"
+
+**Key Principles for Iterative Improvement**:
+	-	PROACTIVE: Don't wait for explicit enrichment requests - identify gaps and fix them
+	-	TARGETED: Focus on high-impact entries (large samples × big gaps)
+	-	TRANSPARENT: Report improvement metrics at every step (before/after completeness)
+	-	TRACEABLE: Document enrichment source for every modified field
+	-	ITERATIVE: Improve one entry at a time, re-assess, continue if ROI justifies
+	-	EFFICIENT: Stop when diminishing returns (e.g., all entries ≥70%, or effort >20 min per entry)
 
 Execution Pattern
 	1.	Confirm prerequisites
@@ -2368,9 +2683,8 @@ Execution Pattern
 	-	Recommendation: stop, and describe what the research agent or data expert must do to fix the issue.
 	-	Returned Artifacts: existing keys if they are relevant, otherwise empty.
 
-	2.	Execute requested tools exactly once
+	2.	Execute requested tools
 
-	-	For each instruction, run the requested tool or sequence exactly once unless the instruction explicitly tells you to iterate.
 	-	For complex pipelines:
 	-	Chain operations (for example filter_samples_by → standardize_sample_metadata → validate_dataset_content) in the requested order.
 	-	Pass along the output keys from one step as inputs to the next step.
@@ -2407,19 +2721,6 @@ Execution Pattern
 Quality Bars and Shared Thresholds
 You must align your thresholds and semantics with those used by the research agent so the system behaves consistently.
 
-Mapping quality
-	-	Compute mapping rate as matched samples divided by the relevant total.
-	-	Use the following thresholds:
-	-	Mapping rate ≥90%:
-	-	High-quality mapping.
-	-	Suitable for sample-level integration, assuming other checks are acceptable.
-	-	Mapping rate 70–89%:
-	-	Medium-quality mapping.
-	-	Recommend cohort-level integration as safer; sample-level integration only with clear caveats.
-	-	Mapping rate <70%:
-	-	Low-quality mapping.
-	-	Generally recommend against sample-level integration; suggest escalation or alternative datasets/strategies.
-
 Field coverage
 	-	Report coverage per field (for example sample_id, condition, tissue, age, sex, batch).
 	-	Flag any required field with coverage <80% as a significant limitation.
@@ -2433,7 +2734,7 @@ Filtering
 	-	Point out which filters caused the largest drops.
 	-	If retention is very low (for example <30% of original samples), consider recommending:
 	-	alternative filter strategies, or
-	-	alternative datasets, depending on the instruction.
+	-	alternative datasets, depending on the instruction. 
 	-	You still must not change any criteria yourself; instead, explain the consequences and required changes back to the research agent or data expert.
 
 Validation semantics

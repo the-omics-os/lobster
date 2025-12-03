@@ -1388,8 +1388,8 @@ class SRAProvider(BasePublicationProvider):
             >>> # Get legacy dict format if needed
             >>> legacy = result.to_legacy_dict()
         """
-        from lobster.core.schemas.download_urls import DownloadUrlResult
         from lobster.core.identifiers import get_accession_resolver
+        from lobster.core.schemas.download_urls import DownloadUrlResult
 
         # Validate accession format
         resolver = get_accession_resolver()
@@ -1455,10 +1455,14 @@ class SRAProvider(BasePublicationProvider):
                                 f"ENA API rate limit (429). Retrying after {retry_delay}s"
                             )
                             import time
+
                             time.sleep(retry_delay)
                         else:
-                            logger.warning(f"ENA API rate limit (429). Retrying after {sleep_time}s")
+                            logger.warning(
+                                f"ENA API rate limit (429). Retrying after {sleep_time}s"
+                            )
                             import time
+
                             time.sleep(sleep_time)
                             sleep_time *= 2
                         attempt += 1
@@ -1471,6 +1475,7 @@ class SRAProvider(BasePublicationProvider):
                                 f"(attempt {attempt + 1}/{max_retries})"
                             )
                             import time
+
                             time.sleep(sleep_time)
                             sleep_time *= 2
                             attempt += 1
@@ -1493,6 +1498,7 @@ class SRAProvider(BasePublicationProvider):
                     if attempt < max_retries:
                         logger.warning(f"ENA API timeout. Retrying after {sleep_time}s")
                         import time
+
                         time.sleep(sleep_time)
                         sleep_time *= 2
                         attempt += 1
@@ -1504,8 +1510,11 @@ class SRAProvider(BasePublicationProvider):
 
                 except requests.exceptions.ConnectionError:
                     if attempt < max_retries:
-                        logger.warning(f"ENA API connection error. Retrying after {sleep_time}s")
+                        logger.warning(
+                            f"ENA API connection error. Retrying after {sleep_time}s"
+                        )
                         import time
+
                         time.sleep(sleep_time)
                         sleep_time *= 2
                         attempt += 1
@@ -1553,13 +1562,21 @@ class SRAProvider(BasePublicationProvider):
                     platform = row.get("instrument_platform", "UNKNOWN")
 
                 # Parse FASTQ FTP URLs (semicolon-separated for paired-end)
-                ftp_urls = row.get("fastq_ftp", "").split(";") if row.get("fastq_ftp") else []
+                ftp_urls = (
+                    row.get("fastq_ftp", "").split(";") if row.get("fastq_ftp") else []
+                )
 
                 # Parse MD5 checksums (semicolon-separated)
-                md5_checksums = row.get("fastq_md5", "").split(";") if row.get("fastq_md5") else []
+                md5_checksums = (
+                    row.get("fastq_md5", "").split(";") if row.get("fastq_md5") else []
+                )
 
                 # Parse file sizes (semicolon-separated)
-                file_sizes = row.get("fastq_bytes", "").split(";") if row.get("fastq_bytes") else []
+                file_sizes = (
+                    row.get("fastq_bytes", "").split(";")
+                    if row.get("fastq_bytes")
+                    else []
+                )
 
                 # Build URL entries
                 for idx, ftp_url in enumerate(ftp_urls):
@@ -1571,18 +1588,24 @@ class SRAProvider(BasePublicationProvider):
 
                     # Get corresponding MD5 and size
                     md5 = md5_checksums[idx] if idx < len(md5_checksums) else None
-                    size = int(file_sizes[idx]) if idx < len(file_sizes) and file_sizes[idx].isdigit() else 0
+                    size = (
+                        int(file_sizes[idx])
+                        if idx < len(file_sizes) and file_sizes[idx].isdigit()
+                        else 0
+                    )
 
                     # Convert FTP URL to HTTP (more reliable)
                     http_url = f"https://{ftp_url}"
 
-                    all_urls.append({
-                        "url": http_url,
-                        "filename": filename,
-                        "size": size,
-                        "md5": md5,
-                        "run_accession": run_acc,
-                    })
+                    all_urls.append(
+                        {
+                            "url": http_url,
+                            "filename": filename,
+                            "size": size,
+                            "md5": md5,
+                            "run_accession": run_acc,
+                        }
+                    )
 
                     total_size += size
 
@@ -1635,4 +1658,3 @@ class SRAProvider(BasePublicationProvider):
             raise SRAProviderError(
                 f"Error processing download URLs for {accession}: {str(e)}"
             ) from e
-

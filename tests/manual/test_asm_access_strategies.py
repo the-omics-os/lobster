@@ -9,18 +9,21 @@ Tests multiple approaches to bypass ASM's bot protection:
 4. Alternative access routes
 """
 
+import logging
 import time
 from dataclasses import dataclass
-from typing import Dict, Optional, List
-import logging
+from typing import Dict, List, Optional
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class TestResult:
     """Result of a single test attempt."""
+
     strategy: str
     success: bool
     status_code: Optional[int]
@@ -48,6 +51,7 @@ class ASMAccessTester:
 
         try:
             import cloudscraper
+
             scraper = cloudscraper.create_scraper(
                 browser={"browser": "chrome", "platform": "darwin", "mobile": False},
             )
@@ -58,9 +62,9 @@ class ASMAccessTester:
                 success=response.status_code == 200,
                 status_code=response.status_code,
                 response_size=len(response.content),
-                content_type=response.headers.get('Content-Type'),
+                content_type=response.headers.get("Content-Type"),
                 execution_time=time.time() - start,
-                dependencies=["cloudscraper"]
+                dependencies=["cloudscraper"],
             )
         except Exception as e:
             return TestResult(
@@ -71,7 +75,7 @@ class ASMAccessTester:
                 content_type=None,
                 execution_time=time.time() - start,
                 error_message=str(e),
-                dependencies=["cloudscraper"]
+                dependencies=["cloudscraper"],
             )
 
     def test_cloudscraper_firefox(self) -> TestResult:
@@ -81,6 +85,7 @@ class ASMAccessTester:
 
         try:
             import cloudscraper
+
             scraper = cloudscraper.create_scraper(
                 browser={"browser": "firefox", "platform": "darwin", "mobile": False},
             )
@@ -91,9 +96,9 @@ class ASMAccessTester:
                 success=response.status_code == 200,
                 status_code=response.status_code,
                 response_size=len(response.content),
-                content_type=response.headers.get('Content-Type'),
+                content_type=response.headers.get("Content-Type"),
                 execution_time=time.time() - start,
-                dependencies=["cloudscraper"]
+                dependencies=["cloudscraper"],
             )
         except Exception as e:
             return TestResult(
@@ -104,7 +109,7 @@ class ASMAccessTester:
                 content_type=None,
                 execution_time=time.time() - start,
                 error_message=str(e),
-                dependencies=["cloudscraper"]
+                dependencies=["cloudscraper"],
             )
 
     def test_cloudscraper_enhanced_headers(self) -> TestResult:
@@ -114,23 +119,24 @@ class ASMAccessTester:
 
         try:
             import cloudscraper
+
             scraper = cloudscraper.create_scraper(
                 browser={"browser": "chrome", "platform": "darwin", "mobile": False},
             )
 
             headers = {
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'none',
-                'Sec-Fetch-User': '?1',
-                'Cache-Control': 'max-age=0',
-                'Referer': 'https://journals.asm.org/',
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+                "DNT": "1",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "Cache-Control": "max-age=0",
+                "Referer": "https://journals.asm.org/",
             }
 
             response = scraper.get(self.TEST_URL, headers=headers, timeout=30)
@@ -140,9 +146,9 @@ class ASMAccessTester:
                 success=response.status_code == 200,
                 status_code=response.status_code,
                 response_size=len(response.content),
-                content_type=response.headers.get('Content-Type'),
+                content_type=response.headers.get("Content-Type"),
                 execution_time=time.time() - start,
-                dependencies=["cloudscraper"]
+                dependencies=["cloudscraper"],
             )
         except Exception as e:
             return TestResult(
@@ -153,7 +159,7 @@ class ASMAccessTester:
                 content_type=None,
                 execution_time=time.time() - start,
                 error_message=str(e),
-                dependencies=["cloudscraper"]
+                dependencies=["cloudscraper"],
             )
 
     def test_cloudscraper_with_delay(self) -> TestResult:
@@ -163,6 +169,7 @@ class ASMAccessTester:
 
         try:
             import cloudscraper
+
             scraper = cloudscraper.create_scraper(
                 browser={"browser": "chrome", "platform": "darwin", "mobile": False},
             )
@@ -183,9 +190,9 @@ class ASMAccessTester:
                 success=response.status_code == 200,
                 status_code=response.status_code,
                 response_size=len(response.content),
-                content_type=response.headers.get('Content-Type'),
+                content_type=response.headers.get("Content-Type"),
                 execution_time=time.time() - start,
-                dependencies=["cloudscraper"]
+                dependencies=["cloudscraper"],
             )
         except Exception as e:
             return TestResult(
@@ -196,7 +203,7 @@ class ASMAccessTester:
                 content_type=None,
                 execution_time=time.time() - start,
                 error_message=str(e),
-                dependencies=["cloudscraper"]
+                dependencies=["cloudscraper"],
             )
 
     # ========== STRATEGY 2: curl_cffi (TLS fingerprinting) ==========
@@ -209,20 +216,16 @@ class ASMAccessTester:
         try:
             from curl_cffi import requests
 
-            response = requests.get(
-                self.TEST_URL,
-                impersonate="chrome110",
-                timeout=30
-            )
+            response = requests.get(self.TEST_URL, impersonate="chrome110", timeout=30)
 
             return TestResult(
                 strategy=strategy,
                 success=response.status_code == 200,
                 status_code=response.status_code,
                 response_size=len(response.content),
-                content_type=response.headers.get('Content-Type'),
+                content_type=response.headers.get("Content-Type"),
                 execution_time=time.time() - start,
-                dependencies=["curl_cffi"]
+                dependencies=["curl_cffi"],
             )
         except ImportError:
             return TestResult(
@@ -233,7 +236,7 @@ class ASMAccessTester:
                 content_type=None,
                 execution_time=time.time() - start,
                 error_message="curl_cffi not installed (pip install curl-cffi)",
-                dependencies=["curl_cffi"]
+                dependencies=["curl_cffi"],
             )
         except Exception as e:
             return TestResult(
@@ -244,7 +247,7 @@ class ASMAccessTester:
                 content_type=None,
                 execution_time=time.time() - start,
                 error_message=str(e),
-                dependencies=["curl_cffi"]
+                dependencies=["curl_cffi"],
             )
 
     # ========== STRATEGY 3: Playwright (real browser) ==========
@@ -260,12 +263,14 @@ class ASMAccessTester:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
                 context = browser.new_context(
-                    user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    viewport={'width': 1920, 'height': 1080}
+                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    viewport={"width": 1920, "height": 1080},
                 )
                 page = context.new_page()
 
-                response = page.goto(self.TEST_URL, wait_until='domcontentloaded', timeout=30000)
+                response = page.goto(
+                    self.TEST_URL, wait_until="domcontentloaded", timeout=30000
+                )
                 content = page.content()
 
                 browser.close()
@@ -275,9 +280,9 @@ class ASMAccessTester:
                     success=response.status == 200,
                     status_code=response.status,
                     response_size=len(content),
-                    content_type=response.headers.get('content-type'),
+                    content_type=response.headers.get("content-type"),
                     execution_time=time.time() - start,
-                    dependencies=["playwright"]
+                    dependencies=["playwright"],
                 )
         except ImportError:
             return TestResult(
@@ -288,7 +293,7 @@ class ASMAccessTester:
                 content_type=None,
                 execution_time=time.time() - start,
                 error_message="playwright not installed (pip install playwright && playwright install chromium)",
-                dependencies=["playwright"]
+                dependencies=["playwright"],
             )
         except Exception as e:
             return TestResult(
@@ -299,7 +304,7 @@ class ASMAccessTester:
                 content_type=None,
                 execution_time=time.time() - start,
                 error_message=str(e),
-                dependencies=["playwright"]
+                dependencies=["playwright"],
             )
 
     # ========== STRATEGY 4: Alternative routes ==========
@@ -314,13 +319,14 @@ class ASMAccessTester:
 
         try:
             import cloudscraper
+
             scraper = cloudscraper.create_scraper(
                 browser={"browser": "chrome", "platform": "darwin", "mobile": False},
             )
 
             headers = {
-                'Accept': 'application/pdf,*/*',
-                'Referer': self.TEST_URL,
+                "Accept": "application/pdf,*/*",
+                "Referer": self.TEST_URL,
             }
 
             response = scraper.get(pdf_url, headers=headers, timeout=30)
@@ -330,9 +336,9 @@ class ASMAccessTester:
                 success=response.status_code == 200,
                 status_code=response.status_code,
                 response_size=len(response.content),
-                content_type=response.headers.get('Content-Type'),
+                content_type=response.headers.get("Content-Type"),
                 execution_time=time.time() - start,
-                dependencies=["cloudscraper"]
+                dependencies=["cloudscraper"],
             )
         except Exception as e:
             return TestResult(
@@ -343,7 +349,7 @@ class ASMAccessTester:
                 content_type=None,
                 execution_time=time.time() - start,
                 error_message=str(e),
-                dependencies=["cloudscraper"]
+                dependencies=["cloudscraper"],
             )
 
     def test_requests_with_spoofing(self) -> TestResult:
@@ -355,22 +361,22 @@ class ASMAccessTester:
             import requests
 
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'none',
-                'Sec-Fetch-User': '?1',
-                'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-                'Sec-Ch-Ua-Mobile': '?0',
-                'Sec-Ch-Ua-Platform': '"macOS"',
-                'Cache-Control': 'max-age=0',
-                'Referer': 'https://journals.asm.org/',
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+                "DNT": "1",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": '"macOS"',
+                "Cache-Control": "max-age=0",
+                "Referer": "https://journals.asm.org/",
             }
 
             session = requests.Session()
@@ -386,9 +392,9 @@ class ASMAccessTester:
                 success=response.status_code == 200,
                 status_code=response.status_code,
                 response_size=len(response.content),
-                content_type=response.headers.get('Content-Type'),
+                content_type=response.headers.get("Content-Type"),
                 execution_time=time.time() - start,
-                dependencies=["requests"]
+                dependencies=["requests"],
             )
         except Exception as e:
             return TestResult(
@@ -399,7 +405,7 @@ class ASMAccessTester:
                 content_type=None,
                 execution_time=time.time() - start,
                 error_message=str(e),
-                dependencies=["requests"]
+                dependencies=["requests"],
             )
 
     # ========== Test Runner ==========
@@ -417,7 +423,9 @@ class ASMAccessTester:
             self.test_requests_with_spoofing,
         ]
 
-        logger.info(f"Testing {len(test_methods)} strategies against: {self.TEST_URL}\n")
+        logger.info(
+            f"Testing {len(test_methods)} strategies against: {self.TEST_URL}\n"
+        )
 
         for test_method in test_methods:
             logger.info(f"Testing: {test_method.__name__}")
@@ -425,20 +433,24 @@ class ASMAccessTester:
             self.results.append(result)
 
             if result.success:
-                logger.info(f"✅ SUCCESS - {result.strategy}: {result.status_code} ({result.response_size} bytes, {result.execution_time:.2f}s)")
+                logger.info(
+                    f"✅ SUCCESS - {result.strategy}: {result.status_code} ({result.response_size} bytes, {result.execution_time:.2f}s)"
+                )
             else:
-                logger.warning(f"❌ FAILED - {result.strategy}: {result.error_message or f'Status {result.status_code}'}")
+                logger.warning(
+                    f"❌ FAILED - {result.strategy}: {result.error_message or f'Status {result.status_code}'}"
+                )
 
             # Be polite - wait between tests
             time.sleep(2)
 
-        logger.info("\n" + "="*80)
+        logger.info("\n" + "=" * 80)
         self.print_summary()
 
     def print_summary(self):
         """Print formatted summary of all test results."""
         print("\n📊 TEST RESULTS SUMMARY")
-        print("="*80)
+        print("=" * 80)
 
         # Success summary
         successful = [r for r in self.results if r.success]
@@ -446,12 +458,16 @@ class ASMAccessTester:
 
         if successful:
             print("\n🎯 WORKING SOLUTIONS:")
-            print(f"{'Strategy':<35} {'Status':<8} {'Size (KB)':<12} {'Time (s)':<10} {'Dependencies'}")
-            print("-"*80)
+            print(
+                f"{'Strategy':<35} {'Status':<8} {'Size (KB)':<12} {'Time (s)':<10} {'Dependencies'}"
+            )
+            print("-" * 80)
             for r in successful:
                 size_kb = r.response_size / 1024 if r.response_size else 0
                 deps = ", ".join(r.dependencies) if r.dependencies else "N/A"
-                print(f"{r.strategy:<35} {r.status_code:<8} {size_kb:<12.1f} {r.execution_time:<10.2f} {deps}")
+                print(
+                    f"{r.strategy:<35} {r.status_code:<8} {size_kb:<12.1f} {r.execution_time:<10.2f} {deps}"
+                )
 
         # Failure analysis
         failed = [r for r in self.results if not r.success]
@@ -459,7 +475,7 @@ class ASMAccessTester:
             print(f"\n❌ Failed strategies: {len(failed)}/{len(self.results)}")
             print("\n🔍 FAILURE ANALYSIS:")
             print(f"{'Strategy':<35} {'Error/Status':<50}")
-            print("-"*80)
+            print("-" * 80)
             for r in failed:
                 error = r.error_message or f"HTTP {r.status_code}"
                 error_short = error[:50] + "..." if len(error) > 50 else error
@@ -469,24 +485,32 @@ class ASMAccessTester:
         print("\n💡 RECOMMENDATIONS:")
         if successful:
             # Prefer lighter solutions
-            lightweight = [r for r in successful if 'playwright' not in r.strategy]
+            lightweight = [r for r in successful if "playwright" not in r.strategy]
             if lightweight:
                 best = min(lightweight, key=lambda r: r.execution_time)
                 print(f"   1️⃣  RECOMMENDED: {best.strategy}")
-                print(f"      - Fastest lightweight solution ({best.execution_time:.2f}s)")
+                print(
+                    f"      - Fastest lightweight solution ({best.execution_time:.2f}s)"
+                )
                 print(f"      - Dependencies: {', '.join(best.dependencies)}")
-                print(f"      - Status: {best.status_code}, Size: {best.response_size/1024:.1f} KB")
+                print(
+                    f"      - Status: {best.status_code}, Size: {best.response_size/1024:.1f} KB"
+                )
 
             # Fallback to heavy solution
-            heavy = [r for r in successful if 'playwright' in r.strategy]
+            heavy = [r for r in successful if "playwright" in r.strategy]
             if heavy:
                 print(f"   2️⃣  FALLBACK: {heavy[0].strategy}")
-                print(f"      - Most reliable but heavier ({heavy[0].execution_time:.2f}s)")
+                print(
+                    f"      - Most reliable but heavier ({heavy[0].execution_time:.2f}s)"
+                )
                 print(f"      - Use if lightweight solutions become unreliable")
         else:
             print("   ⚠️  NO WORKING SOLUTION FOUND")
             print("   - ASM may have very aggressive bot protection")
-            print("   - Consider: API access, institutional proxy, or contact ASM directly")
+            print(
+                "   - Consider: API access, institutional proxy, or contact ASM directly"
+            )
             print("   - Check if papers available via PMC instead")
 
 

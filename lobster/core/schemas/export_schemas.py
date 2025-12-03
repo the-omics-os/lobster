@@ -30,8 +30,8 @@ Integrates with existing schemas (sra.py, proteomics.py, metabolomics.py, etc.).
 **Customer**: DataBioMix microbiome harmonization use case
 """
 
-from typing import Any, Dict, List, Optional
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 
 class ExportPriority(Enum):
@@ -43,13 +43,13 @@ class ExportPriority(Enum):
     technical details and optional fields.
     """
 
-    CORE_IDENTIFIERS = 1      # run_accession, sample_accession, biosample
-    SAMPLE_METADATA = 2        # organism, host, age, sex, condition
-    HARMONIZED_METADATA = 3    # disease, sample_type (harmonized fields)
-    LIBRARY_TECHNICAL = 4      # library_strategy, instrument, sequencing metrics
-    DOWNLOAD_URLS = 5          # URLs for automated download pipelines
-    PUBLICATION_CONTEXT = 6    # source_doi, source_pmid (publication provenance)
-    OPTIONAL_FIELDS = 99       # Extra fields not defined in schema
+    CORE_IDENTIFIERS = 1  # run_accession, sample_accession, biosample
+    SAMPLE_METADATA = 2  # organism, host, age, sex, condition
+    HARMONIZED_METADATA = 3  # disease, sample_type (harmonized fields)
+    LIBRARY_TECHNICAL = 4  # library_strategy, instrument, sequencing metrics
+    DOWNLOAD_URLS = 5  # URLs for automated download pipelines
+    PUBLICATION_CONTEXT = 6  # source_doi, source_pmid (publication provenance)
+    OPTIONAL_FIELDS = 99  # Extra fields not defined in schema
 
 
 class ExportSchemaRegistry:
@@ -96,51 +96,51 @@ class ExportSchemaRegistry:
             "description": "SRA 16S/ITS amplicon samples (microbiome)",
             "priority_groups": {
                 ExportPriority.CORE_IDENTIFIERS: [
-                    "run_accession",      # Primary identifier (SRR accession)
-                    "sample_accession",   # Sample-level accession
-                    "biosample",          # SAMN accession
-                    "bioproject",         # PRJNA accession
+                    "run_accession",  # Primary identifier (SRR accession)
+                    "sample_accession",  # Sample-level accession
+                    "biosample",  # SAMN accession
+                    "bioproject",  # PRJNA accession
                 ],
                 ExportPriority.SAMPLE_METADATA: [
-                    "organism_name",      # Scientific name (e.g., "Homo sapiens")
-                    "host",               # Host organism (e.g., "human", "mouse")
-                    "isolation_source",   # Sample origin (e.g., "fecal", "gut tissue")
-                    "geo_loc_name",       # Geographic location
-                    "collection_date",    # Sample collection date
+                    "organism_name",  # Scientific name (e.g., "Homo sapiens")
+                    "host",  # Host organism (e.g., "human", "mouse")
+                    "isolation_source",  # Sample origin (e.g., "fecal", "gut tissue")
+                    "geo_loc_name",  # Geographic location
+                    "collection_date",  # Sample collection date
                 ],
                 ExportPriority.HARMONIZED_METADATA: [
                     # DataBioMix harmonized fields (standardized by metadata_assistant)
-                    "disease",            # Standardized disease term (e.g., "crc", "uc", "cd")
-                    "disease_original",   # Original disease string from metadata
-                    "sample_type",        # Sample type (e.g., "fecal", "tissue", "biopsy")
-                    "age",                # Patient/subject age (extracted heuristically)
-                    "sex",                # Patient/subject sex (extracted heuristically)
-                    "tissue",             # Tissue type (e.g., "colon", "ileum", "rectum")
+                    "disease",  # Standardized disease term (e.g., "crc", "uc", "cd")
+                    "disease_original",  # Original disease string from metadata
+                    "sample_type",  # Sample type (e.g., "fecal", "tissue", "biopsy")
+                    "age",  # Patient/subject age (extracted heuristically)
+                    "sex",  # Patient/subject sex (extracted heuristically)
+                    "tissue",  # Tissue type (e.g., "colon", "ileum", "rectum")
                 ],
                 ExportPriority.LIBRARY_TECHNICAL: [
-                    "library_strategy",   # AMPLICON, RNA-Seq, WGS, etc.
-                    "library_layout",     # SINGLE, PAIRED
-                    "library_source",     # GENOMIC, TRANSCRIPTOMIC, METAGENOMIC
+                    "library_strategy",  # AMPLICON, RNA-Seq, WGS, etc.
+                    "library_layout",  # SINGLE, PAIRED
+                    "library_source",  # GENOMIC, TRANSCRIPTOMIC, METAGENOMIC
                     "library_selection",  # PCR, RANDOM, etc.
-                    "instrument",         # Sequencer (e.g., "Illumina MiSeq")
-                    "instrument_model",   # Model detail
-                    "total_spots",        # Number of reads
-                    "run_total_bases",    # Total sequenced bases
+                    "instrument",  # Sequencer (e.g., "Illumina MiSeq")
+                    "instrument_model",  # Model detail
+                    "total_spots",  # Number of reads
+                    "run_total_bases",  # Total sequenced bases
                 ],
                 ExportPriority.DOWNLOAD_URLS: [
                     # URLs for automated download pipelines
-                    "ena_fastq_http",     # ENA FASTQ URL (merged PAIRED)
-                    "ena_fastq_http_1",   # ENA R1 FASTQ
-                    "ena_fastq_http_2",   # ENA R2 FASTQ
-                    "ncbi_url",           # NCBI SRA Toolkit URL
-                    "aws_url",            # AWS Open Data URL
-                    "gcp_url",            # Google Cloud URL
+                    "ena_fastq_http",  # ENA FASTQ URL (merged PAIRED)
+                    "ena_fastq_http_1",  # ENA R1 FASTQ
+                    "ena_fastq_http_2",  # ENA R2 FASTQ
+                    "ncbi_url",  # NCBI SRA Toolkit URL
+                    "aws_url",  # AWS Open Data URL
+                    "gcp_url",  # Google Cloud URL
                 ],
                 ExportPriority.PUBLICATION_CONTEXT: [
                     # Publication provenance (added by write_to_workspace)
-                    "source_doi",         # DOI of source publication
-                    "source_pmid",        # PubMed ID
-                    "source_entry_id",    # Publication queue entry ID
+                    "source_doi",  # DOI of source publication
+                    "source_pmid",  # PubMed ID
+                    "source_entry_id",  # Publication queue entry ID
                 ],
             },
         }
@@ -165,30 +165,30 @@ class ExportSchemaRegistry:
             "description": "Mass spec proteomics samples",
             "priority_groups": {
                 ExportPriority.CORE_IDENTIFIERS: [
-                    "sample_id",          # Primary sample identifier
-                    "protein_id",         # Protein accession
-                    "gene_name",          # Gene symbol
-                    "uniprot_id",         # UniProt accession
+                    "sample_id",  # Primary sample identifier
+                    "protein_id",  # Protein accession
+                    "gene_name",  # Gene symbol
+                    "uniprot_id",  # UniProt accession
                 ],
                 ExportPriority.SAMPLE_METADATA: [
-                    "condition",          # Experimental condition
-                    "treatment",          # Treatment applied
-                    "batch",              # MS run batch
-                    "replicate",          # Biological replicate
-                    "organism",           # Organism (free text)
-                    "tissue",             # Tissue type (free text)
-                    "cell_type",          # Cell type (free text)
+                    "condition",  # Experimental condition
+                    "treatment",  # Treatment applied
+                    "batch",  # MS run batch
+                    "replicate",  # Biological replicate
+                    "organism",  # Organism (free text)
+                    "tissue",  # Tissue type (free text)
+                    "cell_type",  # Cell type (free text)
                 ],
                 ExportPriority.HARMONIZED_METADATA: [
-                    "disease",            # Standardized disease term
-                    "age",                # Patient age
-                    "sex",                # Patient sex
-                    "sample_type",        # Sample type (e.g., "plasma", "tissue")
+                    "disease",  # Standardized disease term
+                    "age",  # Patient age
+                    "sex",  # Patient sex
+                    "sample_type",  # Sample type (e.g., "plasma", "tissue")
                 ],
                 ExportPriority.LIBRARY_TECHNICAL: [
-                    "instrument",         # MS instrument (e.g., "Orbitrap Fusion")
-                    "acquisition_method", # DDA, DIA, SRM, PRM
-                    "total_spectra",      # Total MS/MS spectra
+                    "instrument",  # MS instrument (e.g., "Orbitrap Fusion")
+                    "acquisition_method",  # DDA, DIA, SRM, PRM
+                    "total_spectra",  # Total MS/MS spectra
                     "identified_spectra_pct",  # % spectra identified
                     "mass_accuracy_ppm",  # Mass accuracy (ppm)
                     "peptides_detected",  # Number of peptides
@@ -216,34 +216,34 @@ class ExportSchemaRegistry:
             "description": "Metabolomics samples (LC-MS, GC-MS, NMR)",
             "priority_groups": {
                 ExportPriority.CORE_IDENTIFIERS: [
-                    "sample_id",          # Primary sample identifier
-                    "metabolite_id",      # Metabolite accession
-                    "compound_name",      # IUPAC or common name
-                    "hmdb_id",            # Human Metabolome Database ID
-                    "kegg_id",            # KEGG compound ID
+                    "sample_id",  # Primary sample identifier
+                    "metabolite_id",  # Metabolite accession
+                    "compound_name",  # IUPAC or common name
+                    "hmdb_id",  # Human Metabolome Database ID
+                    "kegg_id",  # KEGG compound ID
                 ],
                 ExportPriority.SAMPLE_METADATA: [
-                    "condition",          # Experimental condition
-                    "treatment",          # Treatment applied
-                    "batch",              # Analytical batch
-                    "replicate",          # Biological replicate
-                    "organism",           # Organism (free text)
-                    "tissue",             # Tissue type (free text)
-                    "biofluid",           # Biofluid (e.g., "plasma", "urine")
+                    "condition",  # Experimental condition
+                    "treatment",  # Treatment applied
+                    "batch",  # Analytical batch
+                    "replicate",  # Biological replicate
+                    "organism",  # Organism (free text)
+                    "tissue",  # Tissue type (free text)
+                    "biofluid",  # Biofluid (e.g., "plasma", "urine")
                 ],
                 ExportPriority.HARMONIZED_METADATA: [
-                    "disease",            # Standardized disease term
-                    "age",                # Patient age
-                    "sex",                # Patient sex
-                    "sample_type",        # Sample type
+                    "disease",  # Standardized disease term
+                    "age",  # Patient age
+                    "sex",  # Patient sex
+                    "sample_type",  # Sample type
                 ],
                 ExportPriority.LIBRARY_TECHNICAL: [
-                    "platform",           # LC-MS, GC-MS, NMR
-                    "ionization_mode",    # Positive, negative, ESI, APCI
-                    "column_type",        # Chromatography column
-                    "acquisition_method", # Data acquisition method
-                    "retention_time",     # RT (minutes)
-                    "mz",                 # m/z value
+                    "platform",  # LC-MS, GC-MS, NMR
+                    "ionization_mode",  # Positive, negative, ESI, APCI
+                    "column_type",  # Chromatography column
+                    "acquisition_method",  # Data acquisition method
+                    "retention_time",  # RT (minutes)
+                    "mz",  # m/z value
                 ],
             },
         }
@@ -268,38 +268,38 @@ class ExportSchemaRegistry:
             "description": "Bulk RNA sequencing samples",
             "priority_groups": {
                 ExportPriority.CORE_IDENTIFIERS: [
-                    "sample_id",          # Primary sample identifier
-                    "run_accession",      # SRR accession (if SRA)
-                    "biosample",          # SAMN accession
-                    "bioproject",         # PRJNA accession
+                    "sample_id",  # Primary sample identifier
+                    "run_accession",  # SRR accession (if SRA)
+                    "biosample",  # SAMN accession
+                    "bioproject",  # PRJNA accession
                 ],
                 ExportPriority.SAMPLE_METADATA: [
-                    "condition",          # Experimental condition
-                    "treatment",          # Treatment applied
-                    "batch",              # Sequencing batch
-                    "replicate",          # Biological replicate
-                    "organism",           # Organism (free text)
-                    "tissue",             # Tissue type (free text)
-                    "cell_type",          # Cell type (free text)
+                    "condition",  # Experimental condition
+                    "treatment",  # Treatment applied
+                    "batch",  # Sequencing batch
+                    "replicate",  # Biological replicate
+                    "organism",  # Organism (free text)
+                    "tissue",  # Tissue type (free text)
+                    "cell_type",  # Cell type (free text)
                 ],
                 ExportPriority.HARMONIZED_METADATA: [
-                    "disease",            # Standardized disease term
-                    "age",                # Patient age
-                    "sex",                # Patient sex
-                    "sample_type",        # Sample type
+                    "disease",  # Standardized disease term
+                    "age",  # Patient age
+                    "sex",  # Patient sex
+                    "sample_type",  # Sample type
                 ],
                 ExportPriority.LIBRARY_TECHNICAL: [
-                    "library_strategy",   # RNA-Seq, miRNA-Seq, etc.
-                    "library_layout",     # SINGLE, PAIRED
-                    "instrument",         # Sequencer
-                    "total_reads",        # Total reads
-                    "mapped_reads_pct",   # % reads mapped
-                    "rRNA_pct",           # % ribosomal RNA
+                    "library_strategy",  # RNA-Seq, miRNA-Seq, etc.
+                    "library_layout",  # SINGLE, PAIRED
+                    "instrument",  # Sequencer
+                    "total_reads",  # Total reads
+                    "mapped_reads_pct",  # % reads mapped
+                    "rRNA_pct",  # % ribosomal RNA
                 ],
                 ExportPriority.DOWNLOAD_URLS: [
-                    "ena_fastq_http",     # ENA FASTQ URL
-                    "ncbi_url",           # NCBI URL
-                    "aws_url",            # AWS URL
+                    "ena_fastq_http",  # ENA FASTQ URL
+                    "ncbi_url",  # NCBI URL
+                    "aws_url",  # AWS URL
                 ],
             },
         }
@@ -352,7 +352,7 @@ class ExportSchemaRegistry:
 def get_ordered_export_columns(
     samples: List[Dict[str, Any]],
     data_type: str = "sra_amplicon",
-    include_extra: bool = True
+    include_extra: bool = True,
 ) -> List[str]:
     """
     Get priority-ordered column list for CSV export.

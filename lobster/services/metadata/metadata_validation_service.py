@@ -28,9 +28,10 @@ logger = get_logger(__name__)
 
 class ValidationSeverity(str, Enum):
     """Validation result severity levels."""
-    CRITICAL = "critical"    # Blocks queueing (corrupted/unparseable metadata)
-    WARNING = "warning"      # Allows queueing with warnings (missing optional fields)
-    CLEAN = "clean"          # No issues, proceed normally
+
+    CRITICAL = "critical"  # Blocks queueing (corrupted/unparseable metadata)
+    WARNING = "warning"  # Allows queueing with warnings (missing optional fields)
+    CLEAN = "clean"  # No issues, proceed normally
 
 
 class MetadataValidationConfig(BaseModel):
@@ -70,11 +71,11 @@ class MetadataValidationConfig(BaseModel):
     )
     severity: ValidationSeverity = Field(
         default=ValidationSeverity.WARNING,
-        description="Severity level: CRITICAL blocks queueing, WARNING allows with notice, CLEAN means validated"
+        description="Severity level: CRITICAL blocks queueing, WARNING allows with notice, CLEAN means validated",
     )
     blocking_issues: List[str] = Field(
         default_factory=list,
-        description="Critical issues that prevent queueing (e.g., corrupted metadata, unparseable structure)"
+        description="Critical issues that prevent queueing (e.g., corrupted metadata, unparseable structure)",
     )
 
     @validator("recommendation")
@@ -454,7 +455,9 @@ IMPORTANT:
             elif recommendation == "skip":
                 # Check if it's a critical structural issue or just missing optional fields
                 missing_fields = validation_config.missing_fields
-                has_low_coverage = any(coverage < 50 for coverage in field_coverage.values())
+                has_low_coverage = any(
+                    coverage < 50 for coverage in field_coverage.values()
+                )
 
                 # If all fields are missing or extremely low coverage, it's likely corrupted
                 if len(missing_fields) == len(required_fields) or has_low_coverage:

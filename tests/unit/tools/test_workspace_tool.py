@@ -15,7 +15,6 @@ import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -147,9 +146,7 @@ class TestCreateWriteToWorkspaceTool:
 
         # Create tool and call with unknown identifier
         write_tool = create_write_to_workspace_tool(mock_data_manager)
-        result = write_tool.func(
-            identifier="unknown_identifier", workspace="metadata"
-        )
+        result = write_tool.func(identifier="unknown_identifier", workspace="metadata")
 
         # Verify error message
         assert "Error" in result
@@ -281,10 +278,10 @@ class TestPublicationQueueSummary:
         self, mock_ws_service_class, mock_data_manager
     ):
         """Verify summary aggregates statistics instead of listing all entries."""
-        from lobster.tools.workspace_tool import create_get_content_from_workspace_tool
-
         # Create 350 entries with various statuses
         from datetime import datetime, timedelta
+
+        from lobster.tools.workspace_tool import create_get_content_from_workspace_tool
 
         now = datetime.now()
         entries = []
@@ -309,7 +306,9 @@ class TestPublicationQueueSummary:
                         "pmid": f"{35000000 + entry_id}",
                         "status": status,
                         "priority": (entry_id % 10) + 1,  # 1-10
-                        "updated_at": (now - timedelta(hours=entry_id % 24)).isoformat(),
+                        "updated_at": (
+                            now - timedelta(hours=entry_id % 24)
+                        ).isoformat(),
                     }
                 )
                 entry_id += 1
@@ -394,9 +393,7 @@ class TestPublicationQueueSummary:
         assert "pub_queue_002" in result
 
     @patch("lobster.tools.workspace_tool.WorkspaceContentService")
-    def test_publication_queue_empty(
-        self, mock_ws_service_class, mock_data_manager
-    ):
+    def test_publication_queue_empty(self, mock_ws_service_class, mock_data_manager):
         """Verify empty queue message."""
         from lobster.tools.workspace_tool import create_get_content_from_workspace_tool
 

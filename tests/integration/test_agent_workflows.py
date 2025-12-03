@@ -380,9 +380,7 @@ class TestComplexMultiAgentWorkflows:
         sc_state = research_result.copy()
         sc_state["current_agent"] = "transcriptomics_expert"
 
-        with patch(
-            "lobster.agents.transcriptomics.transcriptomics_expert"
-        ) as mock_sc:
+        with patch("lobster.agents.transcriptomics.transcriptomics_expert") as mock_sc:
             mock_sc.return_value = {
                 "messages": sc_state["messages"]
                 + [
@@ -583,9 +581,7 @@ class TestAgentCommunication:
         sc_state = data_result.copy()
         sc_state["current_agent"] = "transcriptomics_expert"
 
-        with patch(
-            "lobster.agents.transcriptomics.transcriptomics_expert"
-        ) as mock_sc:
+        with patch("lobster.agents.transcriptomics.transcriptomics_expert") as mock_sc:
             mock_sc.return_value = {
                 "context": {
                     **data_result["context"],
@@ -638,9 +634,7 @@ class TestAgentCommunication:
         sc_state = research_result.copy()
         sc_state["current_agent"] = "transcriptomics_expert"
 
-        with patch(
-            "lobster.agents.transcriptomics.transcriptomics_expert"
-        ) as mock_sc:
+        with patch("lobster.agents.transcriptomics.transcriptomics_expert") as mock_sc:
             mock_sc.return_value = {
                 "shared_data": {
                     **research_result["shared_data"],
@@ -751,9 +745,7 @@ class TestWorkflowPerformanceMonitoring:
 
         # Agent 2: Single-cell expert (simulated timing)
         sc_start = time.time()
-        with patch(
-            "lobster.agents.transcriptomics.transcriptomics_expert"
-        ) as mock_sc:
+        with patch("lobster.agents.transcriptomics.transcriptomics_expert") as mock_sc:
             mock_sc.return_value = {
                 "execution_time": 8.3,
                 "performance_metrics": {
@@ -782,9 +774,7 @@ class TestWorkflowPerformanceMonitoring:
         resource_usage = {"memory_peak": 0, "cpu_usage": [], "disk_usage": 0}
 
         # Mock resource-intensive operations
-        with patch(
-            "lobster.agents.transcriptomics.transcriptomics_expert"
-        ) as mock_sc:
+        with patch("lobster.agents.transcriptomics.transcriptomics_expert") as mock_sc:
             mock_sc.return_value = {
                 "resource_usage": {
                     "peak_memory_mb": 2048,
@@ -930,9 +920,7 @@ class TestWorkflowStateManagement:
         )
 
         # Simulate recovery from checkpoint
-        with patch(
-            "lobster.agents.transcriptomics.transcriptomics_expert"
-        ) as mock_sc:
+        with patch("lobster.agents.transcriptomics.transcriptomics_expert") as mock_sc:
             mock_sc.return_value = {
                 "recovered_from_checkpoint": True,
                 "checkpoint_id": checkpoint_state["checkpoint_id"],
@@ -971,9 +959,7 @@ class TestWorkflowStateManagement:
         branch_results = {}
 
         # Branch 1 execution
-        with patch(
-            "lobster.agents.transcriptomics.transcriptomics_expert"
-        ) as mock_sc1:
+        with patch("lobster.agents.transcriptomics.transcriptomics_expert") as mock_sc1:
             mock_sc1.return_value = {
                 "branch_id": "standard_clustering",
                 "clusters_found": 8,
@@ -984,9 +970,7 @@ class TestWorkflowStateManagement:
             branch_results["standard"] = singlecell_expert_agent(branch1_state)
 
         # Branch 2 execution
-        with patch(
-            "lobster.agents.transcriptomics.transcriptomics_expert"
-        ) as mock_sc2:
+        with patch("lobster.agents.transcriptomics.transcriptomics_expert") as mock_sc2:
             mock_sc2.return_value = {
                 "branch_id": "high_res_clustering",
                 "clusters_found": 15,

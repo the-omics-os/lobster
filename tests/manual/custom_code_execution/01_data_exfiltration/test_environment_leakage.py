@@ -12,15 +12,16 @@ Test Naming Convention:
 Run with: pytest tests/manual/custom_code_execution/01_data_exfiltration/test_environment_leakage.py -v
 """
 
-import pytest
 import os
 from pathlib import Path
+
 import anndata
 import numpy as np
 import pandas as pd
+import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.services.execution import CustomCodeExecutionService, CodeExecutionError
+from lobster.services.execution import CodeExecutionError, CustomCodeExecutionService
 
 
 class TestEnvironmentLeakage:
@@ -41,10 +42,10 @@ class TestEnvironmentLeakage:
         # Add test modality
         adata = anndata.AnnData(
             X=np.array([[1, 2], [3, 4]]),
-            obs=pd.DataFrame({'cell': ['c1', 'c2']}, index=['c1', 'c2']),
-            var=pd.DataFrame({'gene': ['g1', 'g2']}, index=['g1', 'g2'])
+            obs=pd.DataFrame({"cell": ["c1", "c2"]}, index=["c1", "c2"]),
+            var=pd.DataFrame({"gene": ["g1", "g2"]}, index=["g1", "g2"]),
         )
-        dm.modalities['test'] = adata
+        dm.modalities["test"] = adata
 
         return dm
 
@@ -57,9 +58,9 @@ class TestEnvironmentLeakage:
     def setup_test_env_vars(self):
         """Set up test environment variables (simulate real credentials)."""
         test_vars = {
-            'TEST_API_KEY': 'sk-test-api-key-12345',
-            'TEST_SECRET': 'super-secret-token',
-            'TEST_DATABASE_URL': 'postgresql://user:password@localhost/db'
+            "TEST_API_KEY": "sk-test-api-key-12345",
+            "TEST_SECRET": "super-secret-token",
+            "TEST_DATABASE_URL": "postgresql://user:password@localhost/db",
         }
 
         # Save original values
@@ -86,7 +87,7 @@ class TestEnvironmentLeakage:
         Expected: SUCCESS (vulnerability - subprocess inherits all env vars)
         Impact: CRITICAL - Full environment disclosure
         """
-        code = '''
+        code = """
 import os
 
 try:
@@ -98,7 +99,7 @@ try:
     result = f"VULNERABILITY: Dumped {len(env_vars)} env vars, {len(sensitive_keys)} sensitive: {sensitive_keys[:5]}"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -119,7 +120,7 @@ except Exception as e:
         Expected: SUCCESS if key present (vulnerability)
         Impact: CRITICAL - Claude API access theft
         """
-        code = '''
+        code = """
 import os
 
 try:
@@ -130,7 +131,7 @@ try:
         result = "INFO: ANTHROPIC_API_KEY not set in environment"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -154,7 +155,7 @@ except Exception as e:
         Expected: SUCCESS if keys present (vulnerability)
         Impact: CRITICAL - Cloud infrastructure access
         """
-        code = '''
+        code = """
 import os
 
 try:
@@ -173,7 +174,7 @@ try:
         result = "INFO: No AWS credentials in environment"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -197,7 +198,7 @@ except Exception as e:
         Expected: SUCCESS if token present (vulnerability)
         Impact: CRITICAL - Source code repository access
         """
-        code = '''
+        code = """
 import os
 
 try:
@@ -215,7 +216,7 @@ try:
         result = "INFO: No GitHub tokens in environment"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -239,7 +240,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - test vars are set)
         Impact: CRITICAL - Database access theft
         """
-        code = '''
+        code = """
 import os
 
 try:
@@ -267,7 +268,7 @@ try:
         result = "INFO: No database URLs in environment"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -291,7 +292,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - proves inheritance)
         Impact: CRITICAL - Confirms subprocess inherits parent env
         """
-        code = '''
+        code = """
 import os
 
 try:
@@ -302,7 +303,7 @@ try:
         result = "ERROR: Test setup failed (key not present)"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -323,7 +324,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - system info disclosure)
         Impact: MEDIUM - System reconnaissance
         """
-        code = '''
+        code = """
 import os
 
 try:
@@ -339,7 +340,7 @@ try:
     result = f"VULNERABILITY: System info disclosed: {list(info.keys())}"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -360,7 +361,7 @@ except Exception as e:
         Expected: SUCCESS on Linux (vulnerability)
         Impact: HIGH - Parent process environment disclosure
         """
-        code = '''
+        code = """
 import os
 from pathlib import Path
 
@@ -381,7 +382,7 @@ except PermissionError:
     result = "PROTECTED: Permission denied"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -405,7 +406,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - can modify own environment)
         Impact: MEDIUM - Environment pollution
         """
-        code = '''
+        code = """
 import os
 
 try:
@@ -419,7 +420,7 @@ try:
         result = "PROTECTED: Environment modification failed"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -440,7 +441,7 @@ except Exception as e:
         Expected: SUCCESS (vulnerability - can grep for secrets)
         Impact: CRITICAL - Automated credential harvesting
         """
-        code = '''
+        code = """
 import os
 import re
 
@@ -467,7 +468,7 @@ try:
         result = "INFO: No credential patterns found"
 except Exception as e:
     result = f"PROTECTED: {type(e).__name__}"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
@@ -489,9 +490,9 @@ class TestEnvironmentLeakageSummary:
 
     def test_generate_summary(self):
         """Print summary of environment leakage vectors."""
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("ENVIRONMENT VARIABLE LEAKAGE ATTACK SURFACE SUMMARY")
-        print("="*70)
+        print("=" * 70)
         print("\nTested Attack Vectors:")
         print("1. ⚠️  Dump all environment variables")
         print("2. ⚠️  Steal ANTHROPIC_API_KEY")
@@ -505,6 +506,6 @@ class TestEnvironmentLeakageSummary:
         print("10. ⚠️ Pattern-based credential search")
         print("\nExpected Result: All applicable vulnerabilities should be confirmed")
         print("(Some tests require specific environment variables to be set)")
-        print("="*70 + "\n")
+        print("=" * 70 + "\n")
 
         assert True  # Always pass - this is just a summary

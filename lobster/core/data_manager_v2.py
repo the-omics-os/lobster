@@ -13,12 +13,11 @@ import tempfile
 import threading
 import time
 import zipfile
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypedDict, Union
 from unittest.mock import Mock
-
-from contextlib import contextmanager
 
 import numpy as np
 import pandas as pd
@@ -39,9 +38,10 @@ from lobster.core.workspace import resolve_workspace
 
 # Import for IR support (TYPE_CHECKING to avoid circular import)
 if TYPE_CHECKING:
-    from lobster.core.analysis_ir import AnalysisStep
     from anndata import AnnData
     from plotly.graph_objects import Figure
+
+    from lobster.core.analysis_ir import AnalysisStep
 else:
     AnnData = Any
     Figure = Any
@@ -208,7 +208,9 @@ class DataManagerV2:
             auto_scan: Whether to automatically scan workspace for available datasets
         """
         self.default_backend = default_backend
-        self.workspace_path = resolve_workspace(explicit_path=workspace_path, create=True)
+        self.workspace_path = resolve_workspace(
+            explicit_path=workspace_path, create=True
+        )
         self.enable_provenance = enable_provenance
         self.console = console  # Store console for progress tracking in tools
 
@@ -571,7 +573,9 @@ class DataManagerV2:
             )
 
             # Create IR for data loading operation
-            source_path = str(source) if not _is_anndata_instance(source) else "AnnData object"
+            source_path = (
+                str(source) if not _is_anndata_instance(source) else "AnnData object"
+            )
             loading_ir = create_data_loading_ir(
                 input_param_name="input_data",
                 description=f"Load {name} data from {source_path}",
@@ -1643,15 +1647,15 @@ class DataManagerV2:
                     try:
                         plot = plot_entry["figure"]
                         plot_id = plot_entry["id"]
-                        plot_title = plot_entry.get("original_title", plot_entry["title"])
+                        plot_title = plot_entry.get(
+                            "original_title", plot_entry["title"]
+                        )
 
                         if len(plot_title) > 80:
                             available_chars = 80 - 3
                             start_length = (available_chars + 1) // 2
                             end_length = available_chars // 2
-                            plot_title = (
-                                f"{plot_title[:start_length]}...{plot_title[-end_length:]}"
-                            )
+                            plot_title = f"{plot_title[:start_length]}...{plot_title[-end_length:]}"
 
                         safe_title = "".join(
                             c for c in plot_title if c.isalnum() or c in [" ", "_", "-"]
@@ -1678,7 +1682,9 @@ class DataManagerV2:
                         logger.info(f"Saved plot {plot_id} to workspace")
 
                     except Exception as e:
-                        logger.error(f"Failed to save plot {plot_entry.get('id', 'unknown')}: {e}")
+                        logger.error(
+                            f"Failed to save plot {plot_entry.get('id', 'unknown')}: {e}"
+                        )
 
                 plot_ids = [p.get("id", "unknown") for p in self.latest_plots]
                 logger.info(
@@ -3442,7 +3448,9 @@ https://github.com/OmicsOS/lobster
                             "path": str(h5ad_file),
                             "size_mb": stat.st_size / 1e6,
                             "shape": shape,
-                            "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                            "modified": datetime.fromtimestamp(
+                                stat.st_mtime
+                            ).isoformat(),
                             "type": "h5ad",
                         }
                 except Exception as e:
@@ -3513,7 +3521,9 @@ https://github.com/OmicsOS/lobster
         """
         self._available_datasets_cache = None
         self._scan_timestamp = 0
-        logger.debug("Workspace scan cache invalidated - next access will trigger fresh scan")
+        logger.debug(
+            "Workspace scan cache invalidated - next access will trigger fresh scan"
+        )
 
     def _load_session_metadata(self) -> None:
         """Load session metadata from file (multi-process safe)."""

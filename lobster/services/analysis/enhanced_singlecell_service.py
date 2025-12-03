@@ -380,7 +380,11 @@ adata.obs['predicted_doublet'] = predicted_doublets
 
                 # Quality flag: high confidence if score > 0.5 and entropy < 0.8
                 adata_annotated.obs["annotation_quality"] = [
-                    "high" if (c > 0.5 and e < 0.8) else "medium" if (c > 0.3 and e < 1.0) else "low"
+                    (
+                        "high"
+                        if (c > 0.5 and e < 0.8)
+                        else "medium" if (c > 0.3 and e < 1.0) else "low"
+                    )
                     for c, e in zip(confidence, entropy)
                 ]
 
@@ -389,7 +393,9 @@ adata.obs['predicted_doublet'] = predicted_doublets
                     f"median={float(np.median(confidence)):.3f}"
                 )
             else:
-                logger.warning("No reference markers provided - skipping confidence scoring")
+                logger.warning(
+                    "No reference markers provided - skipping confidence scoring"
+                )
 
             # Calculate annotation statistics
             cell_type_counts = cell_types.value_counts().to_dict()
@@ -416,9 +422,15 @@ adata.obs['predicted_doublet'] = predicted_doublets
                 annotation_stats["confidence_median"] = float(np.median(confidence))
                 annotation_stats["confidence_std"] = float(np.std(confidence))
                 annotation_stats["quality_distribution"] = {
-                    "high": int(np.sum(adata_annotated.obs["annotation_quality"] == "high")),
-                    "medium": int(np.sum(adata_annotated.obs["annotation_quality"] == "medium")),
-                    "low": int(np.sum(adata_annotated.obs["annotation_quality"] == "low")),
+                    "high": int(
+                        np.sum(adata_annotated.obs["annotation_quality"] == "high")
+                    ),
+                    "medium": int(
+                        np.sum(adata_annotated.obs["annotation_quality"] == "medium")
+                    ),
+                    "low": int(
+                        np.sum(adata_annotated.obs["annotation_quality"] == "low")
+                    ),
                 }
 
             logger.info(
@@ -457,7 +469,8 @@ adata.obs['predicted_doublet'] = predicted_doublets
             - top3_predictions: Array of top-3 cell type predictions (str)
             - entropy_scores: Array of Shannon entropy values (lower = more confident)
         """
-        from scipy.stats import pearsonr, entropy as shannon_entropy
+        from scipy.stats import entropy as shannon_entropy
+        from scipy.stats import pearsonr
 
         n_cells = adata.n_obs
         confidence_scores = np.zeros(n_cells)
@@ -495,13 +508,19 @@ adata.obs['predicted_doublet'] = predicted_doublets
                     # Use only marker genes for correlation
                     markers = [m for m in reference_markers[ct] if m in adata.var_names]
                     if len(markers) > 0:
-                        marker_indices = [list(adata.var_names).index(m) for m in markers]
+                        marker_indices = [
+                            list(adata.var_names).index(m) for m in markers
+                        ]
                         cell_marker_expr = cell_expr[marker_indices]
-                        sig_marker_expr = sig[marker_indices] if len(sig.shape) > 0 else sig
+                        sig_marker_expr = (
+                            sig[marker_indices] if len(sig.shape) > 0 else sig
+                        )
 
                         if np.std(cell_marker_expr) > 0:
                             corr, _ = pearsonr(cell_marker_expr, sig_marker_expr)
-                            correlations[ct] = max(0, corr)  # Clip negative correlations
+                            correlations[ct] = max(
+                                0, corr
+                            )  # Clip negative correlations
                         else:
                             correlations[ct] = 0.0
                     else:
@@ -515,7 +534,9 @@ adata.obs['predicted_doublet'] = predicted_doublets
             top3_scores = np.array([correlations[ct] for ct in top3])
 
             # Confidence = max correlation
-            confidence_scores[i] = correlations[sorted_cts[0][0]] if len(sorted_cts) > 0 else 0.0
+            confidence_scores[i] = (
+                correlations[sorted_cts[0][0]] if len(sorted_cts) > 0 else 0.0
+            )
 
             # Top 3 as comma-separated string
             top3_predictions[i] = ",".join(top3)
@@ -594,7 +615,6 @@ for cluster in adata.obs[cluster_col].unique():
             input_entities=["adata"],
             output_entities=["adata_annotated"],
         )
-
 
     # =========================================================================
     # TODO: CellTypist Integration (Scheduled Q2 2025)
@@ -777,9 +797,13 @@ for cluster in adata.obs[cluster_col].unique():
 
             # Store pre-filter counts
             pre_filter_counts = {}
-            if 'names' in adata_markers.uns['rank_genes_groups']:
-                for group in adata_markers.uns['rank_genes_groups']['names'].dtype.names:
-                    pre_filter_counts[group] = len(adata_markers.uns['rank_genes_groups']['names'][group])
+            if "names" in adata_markers.uns["rank_genes_groups"]:
+                for group in adata_markers.uns["rank_genes_groups"][
+                    "names"
+                ].dtype.names:
+                    pre_filter_counts[group] = len(
+                        adata_markers.uns["rank_genes_groups"]["names"][group]
+                    )
 
             # Apply scanpy's built-in filtering
             sc.tl.filter_rank_genes_groups(
@@ -792,12 +816,18 @@ for cluster in adata.obs[cluster_col].unique():
             # Store post-filter counts
             post_filter_counts = {}
             filtered_counts = {}
-            if 'names' in adata_markers.uns['rank_genes_groups']:
-                for group in adata_markers.uns['rank_genes_groups']['names'].dtype.names:
+            if "names" in adata_markers.uns["rank_genes_groups"]:
+                for group in adata_markers.uns["rank_genes_groups"][
+                    "names"
+                ].dtype.names:
                     # Count non-NaN entries (filtered genes are set to NaN)
-                    valid_genes = ~pd.isna(adata_markers.uns['rank_genes_groups']['names'][group])
+                    valid_genes = ~pd.isna(
+                        adata_markers.uns["rank_genes_groups"]["names"][group]
+                    )
                     post_filter_counts[group] = int(np.sum(valid_genes))
-                    filtered_counts[group] = pre_filter_counts[group] - post_filter_counts[group]
+                    filtered_counts[group] = (
+                        pre_filter_counts[group] - post_filter_counts[group]
+                    )
 
             logger.info(
                 f"Filtering complete: "

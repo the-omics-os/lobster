@@ -32,14 +32,15 @@ REAL-WORLD IMPACT:
 - Trusted execution context
 """
 
-import pytest
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
+import pytest
 
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.execution.custom_code_execution_service import (
+    CodeExecutionError,
     CustomCodeExecutionService,
-    CodeExecutionError
 )
 
 
@@ -58,7 +59,8 @@ class TestCriticalStdlibShadowing:
 
         # Malicious subprocess that logs all commands
         fake_subprocess = workspace / "subprocess.py"
-        fake_subprocess.write_text('''
+        fake_subprocess.write_text(
+            '''
 # Malicious subprocess replacement that logs all commands
 import sys
 
@@ -78,7 +80,8 @@ def run(cmd, **kwargs):
 PIPE = -1
 STDOUT = -2
 DEVNULL = -3
-''')
+'''
+        )
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -102,7 +105,7 @@ DEVNULL = -3
 
         # This code doesn't directly import subprocess (would be blocked)
         # Instead, it uses it indirectly
-        code = '''
+        code = """
 import sys
 # Bypass: user code can still access subprocess if it's in workspace
 sys.path.insert(0, '.')  # Redundant but shows intent
@@ -112,13 +115,13 @@ sys.path.insert(0, '.')  # Redundant but shows intent
 sp = __import__('subprocess')
 sp.run(['echo', 'secret_command'], capture_output=True)
 result = "subprocess accessed"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: subprocess Shadowing (Command Logging)")
-        print("="*70)
+        print("=" * 70)
 
         log_file = workspace / ".command_log.txt"
         if log_file.exists():
@@ -150,7 +153,8 @@ result = "subprocess accessed"
 
         # Malicious sys module
         fake_sys = workspace / "sys.py"
-        fake_sys.write_text('''
+        fake_sys.write_text(
+            '''
 # Malicious sys module that intercepts system configuration
 import builtins
 
@@ -176,7 +180,8 @@ stdout = _StdoutInterceptor()
 def exit(code=0):
     """Fake exit that doesn't actually exit"""
     builtins.print(f"FAKE EXIT: {code}")
-''')
+'''
+        )
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -192,18 +197,18 @@ def exit(code=0):
         """
         service, workspace = service_with_fake_sys
 
-        code = '''
+        code = """
 import sys
 print(f"sys.version = {sys.version}")
 print("This output is being intercepted")
 result = sys.path[0]
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: sys Module Shadowing (stdout interception)")
-        print("="*70)
+        print("=" * 70)
 
         if result == "HIJACKED":
             print("⚠️  CRITICAL VULNERABILITY: sys module shadowed")
@@ -240,18 +245,21 @@ class TestSerializationShadowing:
 
         # Create fake config file with secrets
         config_file = workspace / "config.json"
-        config_file.write_text('''
+        config_file.write_text(
+            """
 {
     "api_key": "sk-secret-key-12345",
     "database_url": "postgresql://user:password@localhost/db",
     "aws_access_key": "AKIA...",
     "aws_secret_key": "wJalrXUtn..."
 }
-''')
+"""
+        )
 
         # Malicious json module that exfiltrates all parsed data
         fake_json = workspace / "json.py"
-        fake_json.write_text('''
+        fake_json.write_text(
+            '''
 # Malicious json that steals all parsed credentials
 import json as _real_json
 
@@ -282,7 +290,8 @@ def load(fp, **kwargs):
 dumps = _real_json.dumps
 dump = _real_json.dump
 JSONDecodeError = _real_json.JSONDecodeError
-''')
+'''
+        )
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -300,20 +309,20 @@ JSONDecodeError = _real_json.JSONDecodeError
         """
         service, workspace = service_with_credential_stealing_json
 
-        code = '''
+        code = """
 import json
 # Load configuration (contains secrets)
 with open('config.json') as f:
     config = json.load(f)
 
 result = "Config loaded"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: json Shadowing for Credential Theft")
-        print("="*70)
+        print("=" * 70)
 
         stolen_file = workspace / ".stolen_credentials.json"
         if stolen_file.exists():
@@ -321,6 +330,7 @@ result = "Config loaded"
             print(f"   Exfiltration file: {stolen_file}")
 
             import json
+
             stolen_data = json.loads(stolen_file.read_text())
             print(f"   Stolen items: {len(stolen_data)}")
 
@@ -352,7 +362,8 @@ result = "Config loaded"
         workspace.mkdir()
 
         fake_pickle = workspace / "pickle.py"
-        fake_pickle.write_text('''
+        fake_pickle.write_text(
+            '''
 # Malicious pickle that injects code into unpickled objects
 import pickle as _real_pickle
 
@@ -383,7 +394,8 @@ def load(file, **kwargs):
 # Proxy other functions
 dumps = _real_pickle.dumps
 dump = _real_pickle.dump
-''')
+'''
+        )
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -401,7 +413,7 @@ dump = _real_pickle.dump
         """
         service, workspace = service_with_malicious_pickle
 
-        code = '''
+        code = """
 import pickle
 
 # Create and pickle an object
@@ -417,13 +429,13 @@ restored = pickle.loads(pickled)
 
 # Check if backdoor was injected
 result = hasattr(restored, '__compromised__')
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: pickle Shadowing for Object Injection")
-        print("="*70)
+        print("=" * 70)
 
         if result is True:
             print("⚠️  CRITICAL VULNERABILITY: Object injection via pickle shadowing")
@@ -459,7 +471,8 @@ class TestFileSystemShadowing:
         workspace.mkdir()
 
         fake_io = workspace / "io.py"
-        fake_io.write_text('''
+        fake_io.write_text(
+            '''
 # Malicious io module that corrupts all file writes
 import io as _real_io
 
@@ -490,7 +503,8 @@ def open(file, mode='r', **kwargs):
 # Proxy other classes
 StringIO = _real_io.StringIO
 BytesIO = _real_io.BytesIO
-''')
+'''
+        )
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -506,20 +520,20 @@ BytesIO = _real_io.BytesIO
         """
         service, workspace = service_with_fake_io
 
-        code = '''
+        code = """
 import io
 # Write sensitive data to file
 with io.open('secrets.txt', 'w') as f:
     f.write('API_KEY=sk-secret-123456')
 
 result = "File written"
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: io Module Shadowing (File Operation Logging)")
-        print("="*70)
+        print("=" * 70)
 
         access_log = workspace / ".file_access.log"
         writes_log = workspace / ".file_writes.log"
@@ -558,7 +572,8 @@ result = "File written"
         workspace.mkdir()
 
         fake_tempfile = workspace / "tempfile.py"
-        fake_tempfile.write_text('''
+        fake_tempfile.write_text(
+            '''
 # Malicious tempfile that creates predictable temp files
 import tempfile as _real_tempfile
 import os
@@ -591,7 +606,8 @@ def mkdtemp(**kwargs):
 gettempdir = _real_tempfile.gettempdir
 TemporaryFile = _real_tempfile.TemporaryFile
 NamedTemporaryFile = _real_tempfile.NamedTemporaryFile
-''')
+'''
+        )
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -609,7 +625,7 @@ NamedTemporaryFile = _real_tempfile.NamedTemporaryFile
         """
         service, workspace = service_with_fake_tempfile
 
-        code = '''
+        code = """
 import tempfile
 import os
 
@@ -619,13 +635,13 @@ os.write(fd, b'SENSITIVE DATA')
 os.close(fd)
 
 result = path
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: tempfile Shadowing (Predictable Paths)")
-        print("="*70)
+        print("=" * 70)
 
         log_file = workspace / ".temp_file_log.txt"
         if log_file.exists():
@@ -665,7 +681,8 @@ class TestLobsterInternalShadowing:
         workspace.mkdir()
 
         fake_pathlib = workspace / "pathlib.py"
-        fake_pathlib.write_text('''
+        fake_pathlib.write_text(
+            '''
 # Malicious pathlib that breaks Lobster's file operations
 from pathlib import Path as _RealPath
 
@@ -694,7 +711,8 @@ class Path(_RealPath):
 
 # Must export PurePath, PosixPath etc for compatibility
 from pathlib import PurePath, PosixPath, WindowsPath
-''')
+'''
+        )
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -715,19 +733,19 @@ from pathlib import PurePath, PosixPath, WindowsPath
         """
         service, workspace = service_with_fake_pathlib
 
-        code = '''
+        code = """
 from pathlib import Path
 
 # Try to check if file exists
 nonexistent = Path('this_file_does_not_exist.txt')
 result = nonexistent.exists()
-'''
+"""
 
         result, stats, ir = service.execute(code, persist=False)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST: pathlib Shadowing (Lobster Internal Compromise)")
-        print("="*70)
+        print("=" * 70)
 
         if result is True:  # Should be False for nonexistent file
             print("⚠️  CRITICAL VULNERABILITY: pathlib shadowing succeeded")
@@ -799,9 +817,9 @@ def test_summary():
 
     See SUPPLY_CHAIN_REPORT.md for full analysis and recommendations.
     """
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("STANDARD LIBRARY SHADOWING TEST SUITE COMPLETE")
-    print("="*70)
+    print("=" * 70)
     print("Status: All vulnerabilities confirmed")
     print("Severity: CRITICAL")
     print("Impact: Complete system compromise possible")

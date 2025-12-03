@@ -7,13 +7,15 @@ These techniques make malicious code completely invisible to static analysis.
 CRITICAL: These demonstrate that AST validation alone is insufficient for security.
 """
 
-import pytest
 from pathlib import Path
+
+import pytest
+
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.execution.custom_code_execution_service import (
-    CustomCodeExecutionService,
     CodeExecutionError,
-    CodeValidationError
+    CodeValidationError,
+    CustomCodeExecutionService,
 )
 
 
@@ -44,7 +46,7 @@ class TestBase64Obfuscation:
         - The decoded string contains 'import subprocess'
         - AST cannot analyze base64-encoded strings
         """
-        code = '''
+        code = """
 import base64
 
 # Base64 encoded: 'import subprocess'
@@ -56,19 +58,19 @@ exec(base64.b64decode(encoded_payload))
 
 # Verify subprocess is imported
 result = f"subprocess in globals: {'subprocess' in globals()}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("CRITICAL VULNERABILITY: Base64 Import Bypass")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
             print(f"Warnings: {stats['warnings']}")
             print(f"Success: {stats['success']}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n🚨 SECURITY BREACH:")
                 print("   - Base64 encoded payload completely bypasses AST")
                 print("   - AST only sees: Call(func=Name('exec'), args=[...])")
@@ -94,7 +96,7 @@ result = f"subprocess in globals: {'subprocess' in globals()}"
         Expected: SUCCESS (critical vulnerability)
         Impact: CRITICAL - Can execute arbitrary system commands
         """
-        code = '''
+        code = """
 import base64
 
 # Base64 encoded: 'import subprocess; subprocess.run(["echo", "PWNED"])'
@@ -104,18 +106,18 @@ encoded = b'aW1wb3J0IHN1YnByb2Nlc3M7IHN1YnByb2Nlc3MucnVuKFsiZWNobyIsICJQV05FRCJd
 # Execute the payload
 exec(base64.b64decode(encoded))
 result = "Exploit executed"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("CRITICAL VULNERABILITY: Base64 Full RCE")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
             print(f"Stdout: {stats.get('stdout_preview', '')}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n🚨 COMPLETE REMOTE CODE EXECUTION:")
                 print("   - Attacker can encode ANY command")
                 print("   - Example: subprocess.run(['rm', '-rf', '/'])")
@@ -147,7 +149,7 @@ class TestCodecObfuscation:
         - codecs.decode('vzcbeg fhocebprff', 'rot13') = 'import subprocess'
         - AST cannot decode ROT13 at validation time
         """
-        code = '''
+        code = """
 import codecs
 
 # ROT13 encoded 'import subprocess'
@@ -158,18 +160,18 @@ decoded = codecs.decode(rot13_payload, 'rot13')
 exec(decoded)
 
 result = f"subprocess imported via ROT13: {'subprocess' in globals()}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("VULNERABILITY CONFIRMED: ROT13 Obfuscation")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
             print(f"Warnings: {stats['warnings']}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n🚨 ROT13 encoding bypasses AST validation")
                 print("📋 codecs module is standard library (likely allowed)")
                 print("📋 Mitigation: Block codecs module or exec/eval")
@@ -185,7 +187,7 @@ result = f"subprocess imported via ROT13: {'subprocess' in globals()}"
         Expected: SUCCESS (vulnerability)
         Impact: HIGH
         """
-        code = '''
+        code = """
 # Hex encoded: 'import subprocess'
 # Each character converted to hex
 hex_payload = '696d706f72742073756270726f63657373'
@@ -195,17 +197,17 @@ decoded = bytes.fromhex(hex_payload).decode('utf-8')
 exec(decoded)
 
 result = f"subprocess via hex: {'subprocess' in globals()}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("VULNERABILITY CONFIRMED: Hex Encoding Bypass")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n🚨 Hex encoding successful")
                 print("📋 bytes.fromhex() is builtin (cannot block)")
 
@@ -220,7 +222,7 @@ result = f"subprocess via hex: {'subprocess' in globals()}"
         Expected: SUCCESS (vulnerability)
         Impact: MEDIUM
         """
-        code = r'''
+        code = r"""
 # Unicode escaped: 'import subprocess'
 # \u0069 = i, \u006d = m, etc.
 unicode_payload = '\\u0069\\u006d\\u0070\\u006f\\u0072\\u0074 \\u0073\\u0075\\u0062\\u0070\\u0072\\u006f\\u0063\\u0065\\u0073\\u0073'
@@ -230,17 +232,17 @@ decoded = unicode_payload.encode().decode('unicode-escape')
 exec(decoded)
 
 result = f"subprocess via unicode: {'subprocess' in globals()}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("VULNERABILITY CONFIRMED: Unicode Escape Bypass")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n🚨 Unicode escapes bypass AST validation")
 
         except CodeValidationError as e:
@@ -267,7 +269,7 @@ class TestCompilationObfuscation:
         - exec() executes code object
         - AST warns about both, but doesn't block
         """
-        code = '''
+        code = """
 # Create code object from string
 source = "import subprocess; result = subprocess.__name__"
 code_obj = compile(source, '<string>', 'exec')
@@ -275,18 +277,18 @@ code_obj = compile(source, '<string>', 'exec')
 # Execute compiled code
 exec(code_obj)
 # result variable is now set by the exec'd code
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("VULNERABILITY CONFIRMED: compile() + exec() Chain")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
             print(f"Warnings: {stats['warnings']}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n🚨 compile() + exec() chain successful")
                 print("📋 Both compile() and exec() generate warnings")
                 print("    But warnings don't prevent execution")
@@ -317,7 +319,7 @@ class TestPickleDeserialization:
         - pickle will execute callable(*args)
         - This is the classic pickle RCE vulnerability
         """
-        code = '''
+        code = """
 import pickle
 import base64
 
@@ -332,18 +334,18 @@ try:
     result = "Pickle exploit attempted"
 except Exception as e:
     result = f"Pickle error: {e}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("CRITICAL VULNERABILITY: Pickle Deserialization RCE")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
             print(f"Stdout: {stats.get('stdout_preview', '')}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n🚨 PICKLE DESERIALIZATION VULNERABILITY:")
                 print("   - pickle.loads() can execute arbitrary code")
                 print("   - Attacker can craft malicious pickle objects")
@@ -351,7 +353,9 @@ except Exception as e:
                 print("\n📋 Mitigation Required:")
                 print("   - Block pickle module entirely")
                 print("   - Or use pickle with restricted globals")
-                print("   - See: https://docs.python.org/3/library/pickle.html#restricting-globals")
+                print(
+                    "   - See: https://docs.python.org/3/library/pickle.html#restricting-globals"
+                )
 
         except CodeValidationError as e:
             print(f"✅ PROTECTED: {e}")
@@ -369,7 +373,7 @@ except Exception as e:
         - Code objects can be executed directly
         - More dangerous than pickle in some ways
         """
-        code = '''
+        code = """
 import marshal
 import base64
 
@@ -383,17 +387,17 @@ try:
     result = "marshal code loaded (may not be valid)"
 except Exception as e:
     result = f"Marshal error: {e}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("VULNERABILITY: Marshal Code Object Loading")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n🚨 marshal.loads() can load arbitrary code objects")
                 print("📋 Mitigation: Block marshal module")
 
@@ -414,7 +418,7 @@ class TestMultiLayerObfuscation:
         Expected: SUCCESS (vulnerability)
         Impact: CRITICAL
         """
-        code = '''
+        code = """
 import base64
 import codecs
 
@@ -430,17 +434,17 @@ step2 = codecs.decode(step1, 'rot13')
 exec(step2)
 
 result = f"Double encoding bypass: {'subprocess' in globals()}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("VULNERABILITY: Multi-Layer Encoding")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n🚨 Multi-layer encoding completely hides intent")
                 print("📋 Can add unlimited encoding layers")
 
@@ -453,7 +457,7 @@ result = f"Double encoding bypass: {'subprocess' in globals()}"
         Expected: SUCCESS (vulnerability)
         Impact: HIGH
         """
-        code = '''
+        code = """
 # Build 'import subprocess' character by character
 parts = ['import', ' ', 'sub', 'pro', 'cess']
 statement = ''.join(parts)
@@ -462,22 +466,22 @@ statement = ''.join(parts)
 exec(statement)
 
 result = f"Dynamic string exec: {'subprocess' in globals()}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("VULNERABILITY: Dynamic String Building")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n🚨 Can build malicious code at runtime")
 
         except (CodeValidationError, CodeExecutionError) as e:
             print(f"✅ PROTECTED: {e}")
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v', '-s'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "-s"])

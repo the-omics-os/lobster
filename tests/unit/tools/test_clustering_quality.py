@@ -19,7 +19,10 @@ import pytest
 import scanpy as sc
 from anndata import AnnData
 
-from lobster.services.analysis.clustering_service import ClusteringError, ClusteringService
+from lobster.services.analysis.clustering_service import (
+    ClusteringError,
+    ClusteringService,
+)
 
 
 @pytest.fixture
@@ -42,20 +45,24 @@ def clustered_adata():
 
     # Cluster 2: high expression in genes 100-200
     X2 = np.random.negative_binomial(20, 0.3, size=(n_cells_per_cluster, n_genes))
-    X2[:, 100:200] = np.random.negative_binomial(50, 0.2, size=(n_cells_per_cluster, 100))
+    X2[:, 100:200] = np.random.negative_binomial(
+        50, 0.2, size=(n_cells_per_cluster, 100)
+    )
 
     # Cluster 3: high expression in genes 200-300
     X3 = np.random.negative_binomial(20, 0.3, size=(n_cells_per_cluster, n_genes))
-    X3[:, 200:300] = np.random.negative_binomial(50, 0.2, size=(n_cells_per_cluster, 100))
+    X3[:, 200:300] = np.random.negative_binomial(
+        50, 0.2, size=(n_cells_per_cluster, 100)
+    )
 
     X = np.vstack([X1, X2, X3])
     adata = AnnData(X=X)
 
     # Add clustering results
     cluster_labels = np.array(
-        ["0"] * n_cells_per_cluster +
-        ["1"] * n_cells_per_cluster +
-        ["2"] * n_cells_per_cluster
+        ["0"] * n_cells_per_cluster
+        + ["1"] * n_cells_per_cluster
+        + ["2"] * n_cells_per_cluster
     )
     adata.obs["leiden"] = cluster_labels
 
@@ -165,8 +172,9 @@ def test_selective_metrics(clustering_service, clustered_adata):
 
     # Only Davies-Bouldin and Calinski-Harabasz
     result, stats, ir = clustering_service.compute_clustering_quality(
-        clustered_adata, cluster_key="leiden",
-        metrics=["davies_bouldin", "calinski_harabasz"]
+        clustered_adata,
+        cluster_key="leiden",
+        metrics=["davies_bouldin", "calinski_harabasz"],
     )
 
     assert "silhouette_score" not in stats
@@ -229,7 +237,9 @@ def test_error_invalid_cluster_key(clustering_service, clustered_adata):
 
 def test_error_missing_representation(clustering_service, clustered_adata):
     """Test error when representation doesn't exist."""
-    with pytest.raises(ClusteringError, match="Representation 'X_nonexistent' not found"):
+    with pytest.raises(
+        ClusteringError, match="Representation 'X_nonexistent' not found"
+    ):
         clustering_service.compute_clustering_quality(
             clustered_adata, cluster_key="leiden", use_rep="X_nonexistent"
         )
@@ -258,8 +268,9 @@ def test_error_invalid_metrics(clustering_service, clustered_adata):
     """Test error when invalid metric names provided."""
     with pytest.raises(ClusteringError, match="Invalid metrics"):
         clustering_service.compute_clustering_quality(
-            clustered_adata, cluster_key="leiden",
-            metrics=["silhouette", "invalid_metric"]
+            clustered_adata,
+            cluster_key="leiden",
+            metrics=["silhouette", "invalid_metric"],
         )
 
 
@@ -336,7 +347,9 @@ def test_interpretation_generation(clustering_service, clustered_adata):
     assert "Calinski-Harabasz" in interpretation or "calinski" in interpretation.lower()
 
 
-def test_interpretation_quality_levels(clustering_service, clustered_adata, poor_clustering_adata):
+def test_interpretation_quality_levels(
+    clustering_service, clustered_adata, poor_clustering_adata
+):
     """Test interpretation shows different quality levels."""
     # Good clustering
     result_good, stats_good, _ = clustering_service.compute_clustering_quality(
@@ -397,7 +410,10 @@ def test_recommendations_high_cluster_count(clustering_service, clustered_adata)
 
     # Should recommend reducing clusters
     recommendations = " ".join(stats["recommendations"])
-    assert "high cluster count" in recommendations.lower() or "lower resolution" in recommendations.lower()
+    assert (
+        "high cluster count" in recommendations.lower()
+        or "lower resolution" in recommendations.lower()
+    )
 
 
 def test_recommendations_low_cluster_count(clustering_service, clustered_adata):
@@ -412,7 +428,10 @@ def test_recommendations_low_cluster_count(clustering_service, clustered_adata):
 
     # Should recommend higher resolution
     recommendations = " ".join(stats["recommendations"])
-    assert "low cluster count" in recommendations.lower() or "higher resolution" in recommendations.lower()
+    assert (
+        "low cluster count" in recommendations.lower()
+        or "higher resolution" in recommendations.lower()
+    )
 
 
 def test_recommendations_imbalanced_sizes(clustering_service, clustered_adata):
@@ -519,12 +538,14 @@ def test_full_workflow_multiple_resolutions(clustering_service, clustered_adata)
             clustered_adata, cluster_key=cluster_key
         )
 
-        results.append({
-            "resolution": res,
-            "silhouette": stats["silhouette_score"],
-            "davies_bouldin": stats["davies_bouldin_index"],
-            "n_clusters": stats["n_clusters"]
-        })
+        results.append(
+            {
+                "resolution": res,
+                "silhouette": stats["silhouette_score"],
+                "davies_bouldin": stats["davies_bouldin_index"],
+                "n_clusters": stats["n_clusters"],
+            }
+        )
 
     # Should have results for all resolutions
     assert len(results) == 3

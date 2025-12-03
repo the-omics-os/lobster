@@ -427,8 +427,13 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
 
             # Create IR for provenance tracking
             ir = self._create_ir_differential_expression(
-                group_column, comparison_pairs, test_method, fdr_method,
-                fdr_threshold, fold_change_threshold, min_samples_per_group
+                group_column,
+                comparison_pairs,
+                test_method,
+                fdr_method,
+                fdr_threshold,
+                fold_change_threshold,
+                min_samples_per_group,
             )
             return adata_de, de_stats, ir
 

@@ -66,7 +66,9 @@ class AnnotationExpertState(AgentState):
     cell_type_annotations: Dict[str, str] = {}  # cluster_id -> cell_type
     annotation_confidence: Dict[str, float] = {}  # cluster_id -> confidence_score
     debris_clusters: List[str] = []  # cluster IDs marked as debris/doublets
-    annotation_template: Optional[str] = None  # template name if using guided annotation
+    annotation_template: Optional[str] = (
+        None  # template name if using guided annotation
+    )
     pending_annotations: List[str] = []  # cluster IDs awaiting annotation
 
     # Cross-cutting

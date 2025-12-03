@@ -224,7 +224,9 @@ def create_shared_tools(
                 for mod_name in modalities:
                     adata = data_manager.get_modality(mod_name)
                     data_type = _detect_data_type(adata)
-                    data_type_label = "cells" if data_type == "single_cell" else "samples"
+                    data_type_label = (
+                        "cells" if data_type == "single_cell" else "samples"
+                    )
                     response += (
                         f"- **{mod_name}**: {adata.n_obs} {data_type_label} x "
                         f"{adata.n_vars} genes [{data_type}]\n"
@@ -360,7 +362,9 @@ def create_shared_tools(
             # Apply defaults for unspecified parameters
             min_genes = min_genes if min_genes is not None else defaults["min_genes"]
             max_genes = max_genes if max_genes is not None else defaults["max_genes"]
-            max_mt_pct = max_mt_pct if max_mt_pct is not None else defaults["max_mt_pct"]
+            max_mt_pct = (
+                max_mt_pct if max_mt_pct is not None else defaults["max_mt_pct"]
+            )
             max_ribo_pct = (
                 max_ribo_pct if max_ribo_pct is not None else defaults["max_ribo_pct"]
             )
@@ -609,13 +613,10 @@ Proceed with filtering and normalization for downstream analysis."""
             if save_result:
                 response += f"\n**Saved to**: {save_path}"
 
-            response += (
-                "\n\nNext recommended steps: "
-                + (
-                    "doublet detection, then clustering and cell type annotation."
-                    if data_type == "single_cell"
-                    else "differential expression analysis between experimental groups."
-                )
+            response += "\n\nNext recommended steps: " + (
+                "doublet detection, then clustering and cell type annotation."
+                if data_type == "single_cell"
+                else "differential expression analysis between experimental groups."
             )
 
             analysis_results["details"]["filter_normalize"] = response
@@ -671,10 +672,10 @@ Proceed with filtering and normalization for downstream analysis."""
                     data_type = _detect_data_type(adata)
                     obs_label = "cells" if data_type == "single_cell" else "samples"
 
-                    summary += f"- **Data type**: {data_type.replace('_', ' ').title()}\n"
                     summary += (
-                        f"- **Shape**: {adata.n_obs} {obs_label} x {adata.n_vars} genes\n"
+                        f"- **Data type**: {data_type.replace('_', ' ').title()}\n"
                     )
+                    summary += f"- **Shape**: {adata.n_obs} {obs_label} x {adata.n_vars} genes\n"
                     summary += f"- **Obs columns**: {list(adata.obs.columns)}\n"
                     summary += f"- **Var columns**: {list(adata.var.columns)}\n"
 

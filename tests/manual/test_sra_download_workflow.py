@@ -45,7 +45,9 @@ def test_sra_provider_get_urls():
             print(f"  - Files: {len(url_result.raw_files)}")
 
             for idx, file_obj in enumerate(url_result.raw_files, 1):
-                print(f"    {idx}. {file_obj.filename} ({file_obj.size_bytes / 1e6:.2f} MB)")
+                print(
+                    f"    {idx}. {file_obj.filename} ({file_obj.size_bytes / 1e6:.2f} MB)"
+                )
                 print(f"       MD5: {file_obj.checksum}")
 
             # Also test legacy dict conversion
@@ -204,5 +206,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n✗ TEST FAILED: {e}")
         import traceback
+
         traceback.print_exc()
         exit(1)

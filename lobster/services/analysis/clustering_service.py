@@ -145,7 +145,9 @@ class ClusteringService:
                 papermill_injectable=True,
                 default_value=resolutions if resolutions else [],
                 required=False,
-                validation_rule="all(r > 0 for r in resolutions)" if resolutions else None,
+                validation_rule=(
+                    "all(r > 0 for r in resolutions)" if resolutions else None
+                ),
                 description="List of resolution parameters for multi-resolution testing",
             ),
             "n_neighbors": ParameterSpec(
@@ -493,20 +495,30 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
 
             # Add multi-resolution info if available
             if "clustering_results" in adata_clustered.uns:
-                clustering_stats["clustering_results"] = adata_clustered.uns["clustering_results"]
-                clustering_stats["resolutions_tested"] = adata_clustered.uns["resolutions_tested"]
-                clustering_stats["n_resolutions"] = len(adata_clustered.uns["resolutions_tested"])
+                clustering_stats["clustering_results"] = adata_clustered.uns[
+                    "clustering_results"
+                ]
+                clustering_stats["resolutions_tested"] = adata_clustered.uns[
+                    "resolutions_tested"
+                ]
+                clustering_stats["n_resolutions"] = len(
+                    adata_clustered.uns["resolutions_tested"]
+                )
 
                 # Add summary of clusters per resolution
                 if len(adata_clustered.uns["resolutions_tested"]) > 1:
                     clustering_stats["multi_resolution_summary"] = {
-                        res: adata_clustered.uns["clustering_results"][res]["n_clusters"]
+                        res: adata_clustered.uns["clustering_results"][res][
+                            "n_clusters"
+                        ]
                         for res in adata_clustered.uns["resolutions_tested"]
                     }
 
             # Add UMAP distance warning to stats
             if "umap_distance_warning" in adata_clustered.uns:
-                clustering_stats["umap_distance_warning"] = adata_clustered.uns["umap_distance_warning"]
+                clustering_stats["umap_distance_warning"] = adata_clustered.uns[
+                    "umap_distance_warning"
+                ]
 
             # Add batch information if available
             if batch_correction and batch_key:
@@ -533,7 +545,9 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
 
             # Create IR for notebook export
             ir = self._create_clustering_ir(
-                resolution=resolution if resolution else self.default_cluster_resolution,
+                resolution=(
+                    resolution if resolution else self.default_cluster_resolution
+                ),
                 n_neighbors=15,  # Default from _perform_clustering
                 n_pcs=30,  # Updated default (was 20)
                 feature_selection_method=feature_selection_method,
@@ -725,7 +739,9 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
 
                 # Mark selected features
                 adata.var["highly_deviant"] = False
-                adata.var.iloc[top_deviance_idx, adata.var.columns.get_loc("highly_deviant")] = True
+                adata.var.iloc[
+                    top_deviance_idx, adata.var.columns.get_loc("highly_deviant")
+                ] = True
                 adata.var["deviance_score"] = deviance_scores
 
                 n_selected = sum(adata.var["highly_deviant"])
@@ -828,7 +844,9 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
 
             # Determine optimal number of PCs (best practice: 30 PCs capture more variance)
             # In demo mode, use fewer PCs for faster processing
-            n_pcs = 15 if demo_mode else 30  # Best practice: 30 PCs capture more variance
+            n_pcs = (
+                15 if demo_mode else 30
+            )  # Best practice: 30 PCs capture more variance
 
             # ISSUE #7 FIX: Validate n_pcs against available features
             n_features = adata_selected.n_vars
@@ -888,7 +906,9 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
                 # Create descriptive key name: leiden_res0_25, leiden_res0_5, etc.
                 key_name = f"leiden_res{res}".replace(".", "_")
 
-                logger.info(f"Running Leiden clustering at resolution {res} (key: {key_name})")
+                logger.info(
+                    f"Running Leiden clustering at resolution {res} (key: {key_name})"
+                )
 
                 with with_periodic_progress(
                     f"Running Leiden clustering (resolution={res})",
@@ -958,8 +978,12 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
 
             # Transfer multi-resolution results if available
             if "clustering_results" in adata_selected.uns:
-                adata.uns["clustering_results"] = adata_selected.uns["clustering_results"]
-                adata.uns["resolutions_tested"] = adata_selected.uns["resolutions_tested"]
+                adata.uns["clustering_results"] = adata_selected.uns[
+                    "clustering_results"
+                ]
+                adata.uns["resolutions_tested"] = adata_selected.uns[
+                    "resolutions_tested"
+                ]
                 # Transfer all resolution columns to main adata
                 for res in adata_selected.uns["resolutions_tested"]:
                     key_name = f"leiden_res{res}".replace(".", "_")
@@ -968,7 +992,9 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
 
             # Transfer UMAP warning
             if "umap_distance_warning" in adata_selected.uns:
-                adata.uns["umap_distance_warning"] = adata_selected.uns["umap_distance_warning"]
+                adata.uns["umap_distance_warning"] = adata_selected.uns[
+                    "umap_distance_warning"
+                ]
 
         # Find marker genes for each cluster, unless skipped
         if "marker_genes" not in skip_steps:
@@ -1086,7 +1112,9 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
                     f"Consider using a higher resolution parameter."
                 )
 
-            logger.info(f"Evaluating quality for {n_clusters} clusters using '{use_rep}' representation")
+            logger.info(
+                f"Evaluating quality for {n_clusters} clusters using '{use_rep}' representation"
+            )
 
             # Get data representation
             if n_pcs is not None:
@@ -1098,7 +1126,11 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
 
             # Step 3: Determine which metrics to compute
             if metrics is None:
-                metrics_to_compute = ["silhouette", "davies_bouldin", "calinski_harabasz"]
+                metrics_to_compute = [
+                    "silhouette",
+                    "davies_bouldin",
+                    "calinski_harabasz",
+                ]
             else:
                 metrics_to_compute = metrics
                 # Validate metric names
@@ -1126,10 +1158,10 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
             # Davies-Bouldin index (0 to ∞, lower better)
             if "davies_bouldin" in metrics_to_compute:
                 logger.info("Computing Davies-Bouldin index...")
-                results["davies_bouldin_index"] = float(
-                    davies_bouldin_score(X, labels)
+                results["davies_bouldin_index"] = float(davies_bouldin_score(X, labels))
+                logger.info(
+                    f"  → Davies-Bouldin index: {results['davies_bouldin_index']:.4f}"
                 )
-                logger.info(f"  → Davies-Bouldin index: {results['davies_bouldin_index']:.4f}")
 
             # Calinski-Harabasz score (0 to ∞, higher better)
             if "calinski_harabasz" in metrics_to_compute:
@@ -1137,7 +1169,9 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
                 results["calinski_harabasz_score"] = float(
                     calinski_harabasz_score(X, labels)
                 )
-                logger.info(f"  → Calinski-Harabasz score: {results['calinski_harabasz_score']:.2f}")
+                logger.info(
+                    f"  → Calinski-Harabasz score: {results['calinski_harabasz_score']:.2f}"
+                )
 
             # Step 5: Compute Per-Cluster Statistics
             cluster_sizes = dict(adata.obs[cluster_key].value_counts().sort_index())
@@ -1288,7 +1322,9 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
             if per_cluster_silhouette:
                 stats["per_cluster_silhouette"] = per_cluster_silhouette
 
-            logger.info(f"Clustering quality metrics computed successfully in {execution_time:.2f}s")
+            logger.info(
+                f"Clustering quality metrics computed successfully in {execution_time:.2f}s"
+            )
 
             # Step 10: Create IR
             ir = self._create_quality_metrics_ir(
@@ -1356,7 +1392,7 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
             ),
         }
 
-        code_template = '''# Compute clustering quality metrics
+        code_template = """# Compute clustering quality metrics
 from sklearn.metrics import silhouette_score, davies_bouldin_score, calinski_harabasz_score
 import numpy as np
 
@@ -1391,7 +1427,7 @@ print(f"Calinski-Harabasz score: {quality_results['calinski_harabasz_score']:.2f
 # Store results
 adata.uns["{{ cluster_key }}_quality"] = quality_results
 print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
-'''
+"""
 
         return AnalysisStep(
             operation="sklearn.metrics.clustering_quality",
@@ -1742,18 +1778,24 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
 
             # Get unique clusters
             all_clusters = set(adata.obs[cluster_key].astype(str).unique())
-            logger.info(f"Found {len(all_clusters)} clusters in '{cluster_key}': {sorted(all_clusters)}")
+            logger.info(
+                f"Found {len(all_clusters)} clusters in '{cluster_key}': {sorted(all_clusters)}"
+            )
 
             # Validate clusters_to_refine if provided
             if clusters_to_refine is not None and len(clusters_to_refine) > 0:
-                clusters_to_refine = [str(c) for c in clusters_to_refine]  # Ensure string type
+                clusters_to_refine = [
+                    str(c) for c in clusters_to_refine
+                ]  # Ensure string type
                 invalid_clusters = set(clusters_to_refine) - all_clusters
                 if invalid_clusters:
                     raise ValueError(
                         f"Invalid cluster IDs: {sorted(invalid_clusters)}. "
                         f"Valid clusters: {sorted(all_clusters)}"
                     )
-                logger.info(f"Sub-clustering {len(clusters_to_refine)} parent clusters: {clusters_to_refine}")
+                logger.info(
+                    f"Sub-clustering {len(clusters_to_refine)} parent clusters: {clusters_to_refine}"
+                )
             else:
                 # Re-cluster all cells (None or empty list)
                 clusters_to_refine = sorted(all_clusters)
@@ -1770,15 +1812,21 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
             if demo_mode:
                 n_pcs = min(n_pcs, 10)
                 n_neighbors = min(n_neighbors, 10)
-                logger.info(f"Demo mode: Using n_pcs={n_pcs}, n_neighbors={n_neighbors}")
+                logger.info(
+                    f"Demo mode: Using n_pcs={n_pcs}, n_neighbors={n_neighbors}"
+                )
 
             # Step 2: Subset Selection
             subset_mask = adata.obs[cluster_key].astype(str).isin(clusters_to_refine)
             n_cells_to_subcluster = subset_mask.sum()
-            logger.info(f"Selected {n_cells_to_subcluster} cells from {len(clusters_to_refine)} clusters for sub-clustering")
+            logger.info(
+                f"Selected {n_cells_to_subcluster} cells from {len(clusters_to_refine)} clusters for sub-clustering"
+            )
 
             if n_cells_to_subcluster == 0:
-                raise ValueError("No cells selected for sub-clustering - check cluster IDs")
+                raise ValueError(
+                    "No cells selected for sub-clustering - check cluster IDs"
+                )
 
             # Create subset
             adata_subset = adata[subset_mask].copy()
@@ -1788,7 +1836,9 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
             sc.tl.pca(adata_subset, n_comps=n_pcs)
 
             # Step 3: Sub-clustering Execution
-            logger.info(f"Computing neighbors on subset (n_neighbors={n_neighbors}, n_pcs={n_pcs})")
+            logger.info(
+                f"Computing neighbors on subset (n_neighbors={n_neighbors}, n_pcs={n_pcs})"
+            )
             sc.pp.neighbors(adata_subset, n_neighbors=n_neighbors, n_pcs=n_pcs)
 
             # Determine resolutions to test
@@ -1811,7 +1861,9 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
                 else:
                     key_name = f"leiden_sub_res{res}".replace(".", "_")
 
-                logger.info(f"Running Leiden sub-clustering at resolution {res} (key: {key_name})")
+                logger.info(
+                    f"Running Leiden sub-clustering at resolution {res} (key: {key_name})"
+                )
                 sc.tl.leiden(adata_subset, resolution=res, key_added=key_name)
 
                 # Convert categorical to string to allow new categories
@@ -1819,20 +1871,28 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
 
                 # Add parent cluster prefix to sub-cluster labels
                 for parent_cluster in clusters_to_refine:
-                    parent_mask = adata_subset.obs[cluster_key].astype(str) == parent_cluster
+                    parent_mask = (
+                        adata_subset.obs[cluster_key].astype(str) == parent_cluster
+                    )
                     if parent_mask.sum() > 0:
                         # Get sub-cluster assignments for this parent
                         sub_labels = adata_subset.obs.loc[parent_mask, key_name]
                         # Add prefix: parent_cluster + "." + sub_label
-                        prefixed_labels = sub_labels.apply(lambda x: f"{parent_cluster}.{x}")
+                        prefixed_labels = sub_labels.apply(
+                            lambda x: f"{parent_cluster}.{x}"
+                        )
                         adata_subset.obs.loc[parent_mask, key_name] = prefixed_labels
 
                 # Count sub-clusters per parent
                 n_subclusters_per_parent = {}
                 for parent_cluster in clusters_to_refine:
-                    parent_mask = adata_subset.obs[cluster_key].astype(str) == parent_cluster
+                    parent_mask = (
+                        adata_subset.obs[cluster_key].astype(str) == parent_cluster
+                    )
                     if parent_mask.sum() > 0:
-                        subclusters = adata_subset.obs.loc[parent_mask, key_name].nunique()
+                        subclusters = adata_subset.obs.loc[
+                            parent_mask, key_name
+                        ].nunique()
                         n_subclusters_per_parent[parent_cluster] = subclusters
 
                 total_subclusters = adata_subset.obs[key_name].nunique()
@@ -1882,7 +1942,8 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
                 key_name = res_data["key_name"]
                 cluster_counts = adata.obs[key_name].value_counts().to_dict()
                 cluster_sizes[key_name] = {
-                    str(cluster): int(count) for cluster, count in cluster_counts.items()
+                    str(cluster): int(count)
+                    for cluster, count in cluster_counts.items()
                 }
             stats["cluster_sizes"] = cluster_sizes
 
@@ -1956,7 +2017,9 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
                 papermill_injectable=True,
                 default_value=resolutions if resolutions else [],
                 required=False,
-                validation_rule="all(r > 0 for r in resolutions)" if resolutions else None,
+                validation_rule=(
+                    "all(r > 0 for r in resolutions)" if resolutions else None
+                ),
                 description="List of resolution parameters for multi-resolution sub-clustering",
             ),
             "n_pcs": ParameterSpec(
@@ -2053,7 +2116,9 @@ print(f"Sub-clustering complete: {n_subclusters} sub-clusters identified")
             execution_context={
                 "operation_type": "sub-clustering",
                 "cluster_key": cluster_key,
-                "n_parent_clusters": len(clusters_to_refine) if clusters_to_refine else "all",
+                "n_parent_clusters": (
+                    len(clusters_to_refine) if clusters_to_refine else "all"
+                ),
             },
             validates_on_export=True,
             requires_validation=False,

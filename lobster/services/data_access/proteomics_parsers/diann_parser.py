@@ -211,9 +211,7 @@ class DIANNParser(ProteomicsParser):
 
         # Validate file
         if not self.validate_file(file_path):
-            raise FileValidationError(
-                f"Invalid DIA-NN report format: {file_path}"
-            )
+            raise FileValidationError(f"Invalid DIA-NN report format: {file_path}")
 
         try:
             # Read file based on format
@@ -315,7 +313,9 @@ class DIANNParser(ProteomicsParser):
             # Calculate missing value statistics
             total_values = adata.X.size
             missing_values = np.isnan(adata.X).sum()
-            missing_percentage = (missing_values / total_values) * 100 if total_values > 0 else 0
+            missing_percentage = (
+                (missing_values / total_values) * 100 if total_values > 0 else 0
+            )
 
             # Build statistics
             stats = self._create_base_stats(
@@ -368,12 +368,14 @@ class DIANNParser(ProteomicsParser):
             for col in self.QUANTITY_COLUMNS:
                 if col in columns:
                     return col
-            raise ParsingError(
-                f"No valid quantity column found. Available: {columns}"
-            )
+            raise ParsingError(f"No valid quantity column found. Available: {columns}")
         else:
             if quantity_column not in columns:
-                available_qty = [c for c in columns if "quantity" in c.lower() or "normalised" in c.lower()]
+                available_qty = [
+                    c
+                    for c in columns
+                    if "quantity" in c.lower() or "normalised" in c.lower()
+                ]
                 raise ParsingError(
                     f"Quantity column '{quantity_column}' not found. "
                     f"Available quantity-related columns: {available_qty}"
@@ -496,9 +498,7 @@ class DIANNParser(ProteomicsParser):
 
         # Get first occurrence of each protein's metadata
         protein_meta_df = (
-            df.groupby(protein_column)[meta_available]
-            .first()
-            .reindex(proteins)
+            df.groupby(protein_column)[meta_available].first().reindex(proteins)
         )
 
         # Add aggregation statistics
@@ -523,11 +523,7 @@ class DIANNParser(ProteomicsParser):
 
         # Mean Q-value per protein
         if "Q.Value" in df.columns:
-            mean_qval = (
-                df.groupby(protein_column)["Q.Value"]
-                .mean()
-                .reindex(proteins)
-            )
+            mean_qval = df.groupby(protein_column)["Q.Value"].mean().reindex(proteins)
             protein_meta_df["mean_q_value"] = mean_qval.values
 
         # Standardize column names

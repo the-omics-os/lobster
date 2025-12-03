@@ -247,3 +247,12 @@ PRODUCTION_CLEANUP_PLAN.md
 # Private documentation
 *_PRIVATE.md
 INTERNAL_*.md
+
+# Stress test and temporary directories
+tmp/
+.lobster_workspace*/
+
+# Test reports (generated)
+*_TEST_REPORT.md
+*_SUMMARY.md
+STRESS_TEST_*.md

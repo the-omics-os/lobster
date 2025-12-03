@@ -45,16 +45,16 @@ class TestQueueManipulation:
             "database": "GEO",
             "status": "PENDING",
             "h5_url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE12nnn/GSE12345/suppl/GSE12345_data.h5",
-            "priority": 5
+            "priority": 5,
         }
-        with open(queue_file, 'w') as f:
-            f.write(json.dumps(legitimate_entry) + '\n')
+        with open(queue_file, "w") as f:
+            f.write(json.dumps(legitimate_entry) + "\n")
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("ATTACK: Download Queue Injection")
-        print("="*80)
+        print("=" * 80)
 
-        inject_code = '''
+        inject_code = """
 import json
 from pathlib import Path
 
@@ -89,7 +89,7 @@ with open(queue_file, 'w') as f:
         f.write(json.dumps(entry) + '\\n')
 
 result = f"Queue updated: {len(entries)} entries"
-'''
+"""
 
         print("\n[Attack] Injecting malicious queue entry...")
         result, stats, ir = service.execute(inject_code, persist=False)
@@ -148,16 +148,16 @@ result = f"Queue updated: {len(entries)} entries"
             "entry_id": "pub_12345678",
             "pmid": "12345678",
             "title": "Legitimate Cancer Study",
-            "status": "PENDING"
+            "status": "PENDING",
         }
-        with open(pub_queue, 'w') as f:
-            f.write(json.dumps(legit_entry) + '\n')
+        with open(pub_queue, "w") as f:
+            f.write(json.dumps(legit_entry) + "\n")
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("ATTACK: Publication Queue Poisoning")
-        print("="*80)
+        print("=" * 80)
 
-        poison_code = '''
+        poison_code = """
 import json
 from pathlib import Path
 
@@ -199,7 +199,7 @@ with open(pub_queue, 'w') as f:
         f.write(json.dumps(entry) + '\\n')
 
 result = f"Publication queue updated: {len(entries)} papers"
-'''
+"""
 
         print("\n[Attack] Poisoning publication queue...")
         result, stats, ir = service.execute(poison_code, persist=False)
@@ -210,7 +210,11 @@ result = f"Publication queue updated: {len(entries)} papers"
             entries = [json.loads(line) for line in f if line.strip()]
 
         print("\n[Results]")
-        fake_entries = [e for e in entries if e.get("pmid", "").startswith("9") or e.get("pmid", "").startswith("8")]
+        fake_entries = [
+            e
+            for e in entries
+            if e.get("pmid", "").startswith("9") or e.get("pmid", "").startswith("8")
+        ]
         if fake_entries:
             print(f"  ⚠️  CRITICAL: Injected {len(fake_entries)} fake publications!")
             for fake in fake_entries:
@@ -253,19 +257,29 @@ result = f"Publication queue updated: {len(entries)} papers"
         # Create queue with various statuses
         queue_file = workspace / "download_queue.jsonl"
         entries = [
-            {"entry_id": "queue_001", "dataset_id": "GSE001", "status": "FAILED", "error_log": ["Network error"]},
-            {"entry_id": "queue_002", "dataset_id": "GSE002", "status": "COMPLETED", "modality_name": "geo_gse002"},
-            {"entry_id": "queue_003", "dataset_id": "GSE003", "status": "PENDING"}
+            {
+                "entry_id": "queue_001",
+                "dataset_id": "GSE001",
+                "status": "FAILED",
+                "error_log": ["Network error"],
+            },
+            {
+                "entry_id": "queue_002",
+                "dataset_id": "GSE002",
+                "status": "COMPLETED",
+                "modality_name": "geo_gse002",
+            },
+            {"entry_id": "queue_003", "dataset_id": "GSE003", "status": "PENDING"},
         ]
-        with open(queue_file, 'w') as f:
+        with open(queue_file, "w") as f:
             for e in entries:
-                f.write(json.dumps(e) + '\n')
+                f.write(json.dumps(e) + "\n")
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("ATTACK: Queue Status Manipulation")
-        print("="*80)
+        print("=" * 80)
 
-        manipulate_code = '''
+        manipulate_code = """
 import json
 from pathlib import Path
 
@@ -296,7 +310,7 @@ with open(queue_file, 'w') as f:
         f.write(json.dumps(entry) + '\\n')
 
 result = "Queue statuses manipulated"
-'''
+"""
 
         print("\n[Attack] Manipulating queue statuses...")
         result, stats, ir = service.execute(manipulate_code, persist=False)
@@ -312,13 +326,21 @@ result = "Queue statuses manipulated"
             print(f"    {e['entry_id']}: {e['status']}")
 
         # Check specific manipulations
-        failed_to_pending = any(e['entry_id'] == 'queue_001' and e['status'] == 'PENDING' for e in after)
-        completed_to_failed = any(e['entry_id'] == 'queue_002' and e['status'] == 'FAILED' for e in after)
+        failed_to_pending = any(
+            e["entry_id"] == "queue_001" and e["status"] == "PENDING" for e in after
+        )
+        completed_to_failed = any(
+            e["entry_id"] == "queue_002" and e["status"] == "FAILED" for e in after
+        )
 
         if failed_to_pending:
-            print("  ⚠️  Status manipulation: FAILED → PENDING (will retry known-bad download)")
+            print(
+                "  ⚠️  Status manipulation: FAILED → PENDING (will retry known-bad download)"
+            )
         if completed_to_failed:
-            print("  ⚠️  Status manipulation: COMPLETED → FAILED (forces unnecessary re-download)")
+            print(
+                "  ⚠️  Status manipulation: COMPLETED → FAILED (forces unnecessary re-download)"
+            )
 
         print("\n[Impact Assessment]")
         print("  - Severity: MEDIUM")
@@ -347,23 +369,23 @@ class TestCrossAgentAttacks:
         service = CustomCodeExecutionService(dm)
 
         # Create fake modality file
-        from anndata import AnnData
         import numpy as np
         import pandas as pd
+        from anndata import AnnData
 
         adata = AnnData(
             X=np.random.randn(100, 50),
-            obs=pd.DataFrame({'cell_type': ['T cell'] * 100}),
-            var=pd.DataFrame({'gene_name': [f'Gene{i}' for i in range(50)]})
+            obs=pd.DataFrame({"cell_type": ["T cell"] * 100}),
+            var=pd.DataFrame({"gene_name": [f"Gene{i}" for i in range(50)]}),
         )
         modality_file = workspace / "test_data.h5ad"
         adata.write_h5ad(modality_file)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("ATTACK: Modality Poisoning")
-        print("="*80)
+        print("=" * 80)
 
-        poison_code = '''
+        poison_code = """
 import anndata as ad
 import numpy as np
 from pathlib import Path
@@ -396,7 +418,7 @@ adata.uns['leiden'] = {'params': {'resolution': 1.0}}
 adata.write_h5ad(modality_file)
 
 result = "Modality updated with QC metrics"
-'''
+"""
 
         print("\n[Attack] Poisoning modality data...")
         result, stats, ir = service.execute(poison_code, persist=False)
@@ -406,10 +428,10 @@ result = "Modality updated with QC metrics"
         poisoned = AnnData.__read__(modality_file)
 
         print("\n[Results]")
-        if 'qc_passed' in poisoned.uns and poisoned.uns['qc_passed']:
+        if "qc_passed" in poisoned.uns and poisoned.uns["qc_passed"]:
             print("  ⚠️  CRITICAL: Modality poisoned with fake QC!")
             print(f"     Fake metrics: {poisoned.uns.get('qc_metrics', {})}")
-        if 'leiden' in poisoned.obs.columns:
+        if "leiden" in poisoned.obs.columns:
             print("  ⚠️  Fake clustering results injected!")
             print(f"     Clusters: {poisoned.obs['leiden'].unique()}")
 
@@ -447,17 +469,22 @@ result = "Modality updated with QC metrics"
         prov_data = {
             "operations": [
                 {"step": 1, "operation": "load_data", "timestamp": 1234567890},
-                {"step": 2, "operation": "execute_custom_code", "timestamp": 1234567900, "code": "malicious_code_here"},
-                {"step": 3, "operation": "quality_check", "timestamp": 1234567910}
+                {
+                    "step": 2,
+                    "operation": "execute_custom_code",
+                    "timestamp": 1234567900,
+                    "code": "malicious_code_here",
+                },
+                {"step": 3, "operation": "quality_check", "timestamp": 1234567910},
             ]
         }
         prov_file.write_text(json.dumps(prov_data, indent=2))
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("ATTACK: Provenance Log Tampering")
-        print("="*80)
+        print("=" * 80)
 
-        tamper_code = '''
+        tamper_code = """
 import json
 from pathlib import Path
 
@@ -488,7 +515,7 @@ with open(prov_file, 'w') as f:
     json.dump(prov, f, indent=2)
 
 result = "Provenance updated"
-'''
+"""
 
         print("\n[Attack] Tampering with provenance...")
         result, stats, ir = service.execute(tamper_code, persist=False)
@@ -499,8 +526,13 @@ result = "Provenance updated"
             tampered = json.load(f)
 
         print("\n[Results]")
-        has_custom_code = any(op['operation'] == 'execute_custom_code' for op in tampered['operations'])
-        has_fake_op = any(op['operation'] == 'standard_analysis' and op.get('audited') for op in tampered['operations'])
+        has_custom_code = any(
+            op["operation"] == "execute_custom_code" for op in tampered["operations"]
+        )
+        has_fake_op = any(
+            op["operation"] == "standard_analysis" and op.get("audited")
+            for op in tampered["operations"]
+        )
 
         if not has_custom_code:
             print("  ⚠️  CRITICAL: Evidence of custom code execution removed!")
@@ -508,7 +540,7 @@ result = "Provenance updated"
             print("  ⚠️  CRITICAL: Fake 'audited' operation injected!")
 
         print(f"  Operations after tampering: {len(tampered['operations'])}")
-        for op in tampered['operations']:
+        for op in tampered["operations"]:
             print(f"    - {op['operation']}")
 
         print("\n[Impact Assessment]")
@@ -545,23 +577,23 @@ class TestRealisticAttackScenarios:
         service = CustomCodeExecutionService(dm)
 
         # Setup: Create test data
-        from anndata import AnnData
         import numpy as np
         import pandas as pd
+        from anndata import AnnData
 
         adata = AnnData(
             X=np.random.randn(100, 50),
-            obs=pd.DataFrame({'n_genes': np.random.randint(1000, 5000, 100)})
+            obs=pd.DataFrame({"n_genes": np.random.randint(1000, 5000, 100)}),
         )
         modality_file = workspace / "geo_gse12345.h5ad"
         adata.write_h5ad(modality_file)
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("REALISTIC ATTACK: Complete Compromise Chain")
-        print("="*80)
+        print("=" * 80)
         print("\nScenario: User asks for innocent calculation")
         print("User: 'Calculate 95th percentile of gene counts for QC threshold'")
-        print("="*80)
+        print("=" * 80)
 
         # STEP 1: Innocent-looking code with hidden backdoor
         malicious_code = '''
@@ -618,23 +650,23 @@ result = float(percentile_95)  # Return legitimate result
         print(f"  Hidden: Backdoor installed as 'qc_helpers.py'")
 
         # STEP 2: Next execution triggers backdoor
-        trigger_code = '''
+        trigger_code = """
 # User's next analysis request
 import qc_helpers  # Backdoor executes here!
 
 result = "QC helpers loaded"
-'''
+"""
 
         print("\n[Step 2] User's next operation (backdoor activates)...")
         result2, stats2, ir2 = service.execute(trigger_code, persist=False)
         print(f"  Result: {result2}")
 
         # Check attack success
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("ATTACK SUCCESS ANALYSIS")
-        print("="*80)
+        print("=" * 80)
 
-        exfil_file = Path('/tmp/lobster_env_exfiltrated.json')
+        exfil_file = Path("/tmp/lobster_env_exfiltrated.json")
         if exfil_file.exists():
             print("\n⚠️  CRITICAL: Complete attack chain succeeded!")
             print("  [✓] Backdoor installed")
@@ -643,7 +675,11 @@ result = "QC helpers loaded"
 
             with open(exfil_file) as f:
                 env_data = json.load(f)
-            sensitive = [k for k in env_data.keys() if any(x in k.upper() for x in ['KEY', 'SECRET', 'TOKEN'])]
+            sensitive = [
+                k
+                for k in env_data.keys()
+                if any(x in k.upper() for x in ["KEY", "SECRET", "TOKEN"])
+            ]
             print(f"  [✓] {len(sensitive)} potentially sensitive env vars exposed")
 
             exfil_file.unlink()  # Cleanup
@@ -655,14 +691,14 @@ result = "QC helpers loaded"
         if queue_file.exists():
             with open(queue_file) as f:
                 entries = [json.loads(line) for line in f if line.strip()]
-            malicious = [e for e in entries if 'evil.com' in e.get('h5_url', '')]
+            malicious = [e for e in entries if "evil.com" in e.get("h5_url", "")]
             if malicious:
                 print("  [✓] Download queue compromised")
                 print(f"      Injected: {malicious[0]['entry_id']}")
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("IMPACT ASSESSMENT")
-        print("="*80)
+        print("=" * 80)
         print("Severity: CRITICAL")
         print("\nWhat happened:")
         print("  1. User made innocent request (QC calculation)")

@@ -8,13 +8,15 @@ CRITICAL: These tests demonstrate that __import__(), importlib, and eval/exec
 can completely bypass the FORBIDDEN_MODULES check.
 """
 
-import pytest
 from pathlib import Path
+
+import pytest
+
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.execution.custom_code_execution_service import (
-    CustomCodeExecutionService,
     CodeExecutionError,
-    CodeValidationError
+    CodeValidationError,
+    CustomCodeExecutionService,
 )
 
 
@@ -45,27 +47,29 @@ class TestDynamicImportBypass:
         - FORBIDDEN_MODULES = {'subprocess', '__import__'} checks import statements, not builtins
         - Only generates warning, does not block execution
         """
-        code = '''
+        code = """
 # AST validation only checks 'import subprocess' statements
 # But __import__() is a function call (ast.Call), not an import statement (ast.Import)
 sp = __import__('subprocess')
 result = f"subprocess module imported: {sp.__name__}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("CRITICAL VULNERABILITY CONFIRMED: __import__() Bypass")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
             print(f"Success: {stats['success']}")
             print(f"Warnings: {stats['warnings']}")
             print(f"\nResult contains 'subprocess': {'subprocess' in str(result)}")
 
-            if stats['success'] and 'subprocess' in str(result):
+            if stats["success"] and "subprocess" in str(result):
                 print("\n🚨 SECURITY BREACH:")
-                print("   - Attacker can import subprocess via __import__('subprocess')")
+                print(
+                    "   - Attacker can import subprocess via __import__('subprocess')"
+                )
                 print("   - Can then execute arbitrary system commands")
                 print("   - Example: subprocess.run(['rm', '-rf', '/'])")
                 print("\n📋 Mitigation Required:")
@@ -77,7 +81,9 @@ result = f"subprocess module imported: {sp.__name__}"
             pytest.fail("Expected vulnerability to succeed, but code execution failed")
         except CodeValidationError as e:
             print(f"✅ PROTECTED (good): {e}")
-            pytest.fail("Expected warning only, got validation error (fix may have been applied)")
+            pytest.fail(
+                "Expected warning only, got validation error (fix may have been applied)"
+            )
 
     def test_importlib_bypass_EXPECT_SUCCESS(self, service):
         """
@@ -90,23 +96,23 @@ result = f"subprocess module imported: {sp.__name__}"
         - importlib.import_module() is a runtime function call
         - AST cannot detect what string is passed to it
         """
-        code = '''
+        code = """
 import importlib
 # Import subprocess dynamically
 sp = importlib.import_module('subprocess')
 result = f"subprocess loaded via importlib: {sp.__name__}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("CRITICAL VULNERABILITY CONFIRMED: importlib.import_module() Bypass")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
             print(f"Success: {stats['success']}")
 
-            if stats['success'] and 'subprocess' in str(result):
+            if stats["success"] and "subprocess" in str(result):
                 print("\n🚨 SECURITY BREACH:")
                 print("   - importlib.import_module() bypasses all import checks")
                 print("   - Works for ANY forbidden module")
@@ -129,22 +135,22 @@ result = f"subprocess loaded via importlib: {sp.__name__}"
         - Can access it via getattr() on __builtins__
         - AST sees: Call(func=Name(id='getattr'), ...)
         """
-        code = '''
+        code = """
 # Access __import__ indirectly via getattr
 import_func = getattr(__builtins__, '__import__')
 sp = import_func('subprocess')
 result = f"subprocess via getattr: {sp.__name__}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("CRITICAL VULNERABILITY CONFIRMED: getattr(__builtins__) Bypass")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
 
-            if stats['success'] and 'subprocess' in str(result):
+            if stats["success"] and "subprocess" in str(result):
                 print("\n🚨 SECURITY BREACH:")
                 print("   - getattr() can access any builtin, including __import__")
                 print("   - Cannot be blocked by AST validation")
@@ -167,30 +173,32 @@ result = f"subprocess via getattr: {sp.__name__}"
         - exec("import subprocess") generates warning but executes
         - AST cannot analyze strings passed to exec()
         """
-        code = '''
+        code = """
 # exec() only generates warning, does not block execution
 exec("import subprocess")
 # subprocess is now in globals()
 result = f"subprocess in globals: {'subprocess' in globals()}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("CRITICAL VULNERABILITY CONFIRMED: exec() Bypass")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
             print(f"Warnings: {stats['warnings']}")
             print(f"Success: {stats['success']}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n🚨 SECURITY BREACH:")
                 print("   - exec() is only warned about, not blocked")
                 print("   - Can execute ANY Python code as string")
                 print("   - Completely bypasses AST validation")
                 print("\n📋 Current Code (line 304-308):")
-                print("   if node.func.id in ['eval', 'exec', 'compile', '__import__']:")
+                print(
+                    "   if node.func.id in ['eval', 'exec', 'compile', '__import__']:"
+                )
                 print("       warnings.append(...)")
                 print("   # ⚠️ Only warns, does not raise exception!")
                 print("\n📋 Mitigation Required:")
@@ -217,21 +225,21 @@ class TestNestedImportBypass:
         Expected: SUCCESS (vulnerability)
         Impact: HIGH
         """
-        code = '''
+        code = """
 # Lambda obfuscates the __import__ call
 import_subprocess = (lambda: __import__('subprocess'))()
 result = f"subprocess via lambda: {import_subprocess.__name__}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("VULNERABILITY CONFIRMED: Lambda Import Obfuscation")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
 
-            if stats['success'] and 'subprocess' in str(result):
+            if stats["success"] and "subprocess" in str(result):
                 print("\n🚨 Lambda obfuscation successful")
                 print("📋 Mitigation: Block __import__ in builtins")
 
@@ -244,22 +252,22 @@ result = f"subprocess via lambda: {import_subprocess.__name__}"
         Expected: SUCCESS (vulnerability)
         Impact: HIGH
         """
-        code = '''
+        code = """
 # Double exec() to evade simple pattern matching
 exec("exec('import subprocess')")
 result = "Double exec() completed"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("VULNERABILITY CONFIRMED: Nested exec() Bypass")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
             print(f"Warnings: {stats['warnings']}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n🚨 Nested exec() successful")
                 print("📋 AST can detect outer exec(), but not inner string content")
 
@@ -272,21 +280,21 @@ result = "Double exec() completed"
         Expected: SUCCESS with warning (vulnerability)
         Impact: CRITICAL
         """
-        code = '''
+        code = """
 # eval() can evaluate import expressions
 result = eval("__import__('subprocess').__name__")
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("VULNERABILITY CONFIRMED: eval() Import Expression")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
             print(f"Warnings: {stats['warnings']}")
 
-            if stats['success'] and result == 'subprocess':
+            if stats["success"] and result == "subprocess":
                 print("\n🚨 eval() successfully imported subprocess")
                 print("📋 eval() is only warned, not blocked")
 
@@ -314,24 +322,26 @@ class TestRuntimeStringManipulation:
         - AST cannot evaluate runtime string operations
         - module_name = 'sub' + 'process' is invisible to static analysis
         """
-        code = '''
+        code = """
 # Build module name at runtime
 module_name = 'sub' + 'process'
 sp = __import__(module_name)
 result = f"Imported {module_name}: {sp.__name__}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("VULNERABILITY CONFIRMED: String Concatenation Bypass")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
 
-            if stats['success'] and 'subprocess' in str(result):
+            if stats["success"] and "subprocess" in str(result):
                 print("\n🚨 String concatenation completely bypasses AST")
-                print("📋 AST sees: BinOp(op=Add, left=Constant('sub'), right=Constant('process'))")
+                print(
+                    "📋 AST sees: BinOp(op=Add, left=Constant('sub'), right=Constant('process'))"
+                )
                 print("    But cannot evaluate to 'subprocess' at validation time")
                 print("\n📋 Mitigation:")
                 print("   - Block __import__ builtin entirely")
@@ -346,23 +356,23 @@ result = f"Imported {module_name}: {sp.__name__}"
         Expected: SUCCESS (vulnerability)
         Impact: HIGH
         """
-        code = '''
+        code = """
 # Build 'subprocess' from character codes
 chars = [115, 117, 98, 112, 114, 111, 99, 101, 115, 115]  # 'subprocess'
 module_name = ''.join(chr(c) for c in chars)
 sp = __import__(module_name)
 result = f"Imported via chr(): {sp.__name__}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("VULNERABILITY CONFIRMED: chr() Join Bypass")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
 
-            if stats['success'] and 'subprocess' in str(result):
+            if stats["success"] and "subprocess" in str(result):
                 print("\n🚨 Character code obfuscation successful")
                 print("📋 Completely invisible to AST validation")
 
@@ -375,29 +385,29 @@ result = f"Imported via chr(): {sp.__name__}"
         Expected: SUCCESS (vulnerability)
         Impact: HIGH
         """
-        code = '''
+        code = """
 # Use format string
 prefix = 'sub'
 suffix = 'process'
 module_name = f'{prefix}{suffix}'
 sp = __import__(module_name)
 result = f"Imported {module_name}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("VULNERABILITY CONFIRMED: Format String Bypass")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
 
-            if stats['success'] and 'subprocess' in str(result):
+            if stats["success"] and "subprocess" in str(result):
                 print("\n🚨 Format string bypass successful")
 
         except (CodeExecutionError, CodeValidationError) as e:
             print(f"✅ PROTECTED: {e}")
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v', '-s'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "-s"])

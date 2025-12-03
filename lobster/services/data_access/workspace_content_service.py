@@ -334,7 +334,10 @@ class WorkspaceContentService:
             return self.datasets_dir
         elif content_type == ContentType.METADATA:
             return self.metadata_dir
-        elif content_type in (ContentType.DOWNLOAD_QUEUE, ContentType.PUBLICATION_QUEUE):
+        elif content_type in (
+            ContentType.DOWNLOAD_QUEUE,
+            ContentType.PUBLICATION_QUEUE,
+        ):
             # Queue files are JSONL files in .lobster/queues/ managed by DataManagerV2
             return self.queues_dir
         else:
@@ -423,7 +426,9 @@ class WorkspaceContentService:
         """
         # Validate output format
         if output_format not in ["json", "csv"]:
-            raise ValueError(f"Invalid output format '{output_format}'. Must be 'json' or 'csv'")
+            raise ValueError(
+                f"Invalid output format '{output_format}'. Must be 'json' or 'csv'"
+            )
 
         # Validate content type matches model
         if content_type == ContentType.PUBLICATION and not isinstance(

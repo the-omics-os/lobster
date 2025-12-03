@@ -42,7 +42,9 @@ class HandoffStatus(str, Enum):
     READY_FOR_METADATA = "ready_for_metadata"
     METADATA_IN_PROGRESS = "metadata_in_progress"
     METADATA_COMPLETE = "metadata_complete"
-    METADATA_FAILED = "metadata_failed"  # All samples failed validation or processing error
+    METADATA_FAILED = (
+        "metadata_failed"  # All samples failed validation or processing error
+    )
 
 
 class PublicationQueueEntry(BaseModel):
@@ -103,9 +105,7 @@ class PublicationQueueEntry(BaseModel):
 
     # Publication metadata
     title: Optional[str] = Field(None, description="Publication title")
-    authors: List[str] = Field(
-        default_factory=list, description="List of author names"
-    )
+    authors: List[str] = Field(default_factory=list, description="List of author names")
     year: Optional[int] = Field(None, description="Publication year")
     journal: Optional[str] = Field(None, description="Journal name")
 
@@ -173,7 +173,7 @@ class PublicationQueueEntry(BaseModel):
     harmonization_metadata: Optional[Dict[str, Any]] = Field(
         None,
         description="Harmonized metadata from metadata_assistant. Contains filtered/validated data "
-                    "ready for final CSV export by research_agent.",
+        "ready for final CSV export by research_agent.",
     )
     handoff_status: HandoffStatus = Field(
         default=HandoffStatus.NOT_READY,
@@ -235,8 +235,16 @@ class PublicationQueueEntry(BaseModel):
                 "filtered_workspace_key": "publication_pub_queue_1234567890_filtered_samples.json",
                 "harmonization_metadata": {
                     "samples": [
-                        {"run_accession": "SRR14567890", "tissue": "brain", "cell_type": "neuron"},
-                        {"run_accession": "SRR14567891", "tissue": "brain", "cell_type": "astrocyte"},
+                        {
+                            "run_accession": "SRR14567890",
+                            "tissue": "brain",
+                            "cell_type": "neuron",
+                        },
+                        {
+                            "run_accession": "SRR14567891",
+                            "tissue": "brain",
+                            "cell_type": "astrocyte",
+                        },
                     ],
                     "validation_status": "passed",
                 },
@@ -332,7 +340,9 @@ class PublicationQueueEntry(BaseModel):
 
     @field_validator("extracted_identifiers")
     @classmethod
-    def validate_extracted_identifiers(cls, v: Dict[str, List[str]]) -> Dict[str, List[str]]:
+    def validate_extracted_identifiers(
+        cls, v: Dict[str, List[str]]
+    ) -> Dict[str, List[str]]:
         """Validate extracted_identifiers structure."""
         if not isinstance(v, dict):
             raise ValueError("extracted_identifiers must be a dictionary")
@@ -478,7 +488,9 @@ class PublicationQueueEntry(BaseModel):
         Returns:
             bool: True if identifiers exist, False otherwise
         """
-        return bool(self.extracted_identifiers and any(self.extracted_identifiers.values()))
+        return bool(
+            self.extracted_identifiers and any(self.extracted_identifiers.values())
+        )
 
     def get_workspace_metadata_paths(self, workspace_dir: str) -> List[str]:
         """

@@ -14,15 +14,17 @@ from typing import Optional
 from langchain_core.tools import tool
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.services.data_management.modality_management_service import ModalityManagementService
+from lobster.core.schemas.export_schemas import (
+    get_ordered_export_columns,
+    infer_data_type,
+)
 from lobster.services.data_access.workspace_content_service import (
     ContentType,
     RetrievalLevel,
     WorkspaceContentService,
 )
-from lobster.core.schemas.export_schemas import (
-    get_ordered_export_columns,
-    infer_data_type,
+from lobster.services.data_management.modality_management_service import (
+    ModalityManagementService,
 )
 from lobster.utils.logger import get_logger
 
@@ -63,10 +65,11 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
 
         Detail Levels:
         - "summary": Key-value pairs, high-level overview (default)
-        - "methods": Methods section (for publications)
+        - "methods": Methods section only (for publications)
+        - "metadata": Full metadata JSON including COMPLETE PUBLICATION TEXT (for publications),
+                     full entry details (for queues), or complete metadata (for datasets)
         - "samples": Sample IDs list (for datasets)
         - "platform": Platform information (for datasets)
-        - "metadata": Full metadata (for any content)
         - "github": GitHub repositories (for publications)
         - "validation": Validation results (for download_queue)
         - "strategy": Download strategy (for download_queue)
@@ -82,6 +85,26 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
         - identifier=<entry_id>: Retrieve specific entry
         - status_filter: "pending" | "extracting" | "metadata_extracted" | "metadata_enriched" | "handoff_ready" | "completed" | "failed"
         - level: "summary" (basic info) | "metadata" (full entry details)
+
+        For publication content (manual enrichment use case):
+        - Cached publications have 3 workspace files:
+          * pub_queue_doi_X_Y_Z_metadata.json: FULL PUBLICATION TEXT + metadata
+          * pub_queue_doi_X_Y_Z_methods.json: Methods section only + structured extraction
+          * pub_queue_doi_X_Y_Z_identifiers.json: Extracted dataset IDs (GEO/SRA/PRIDE)
+
+        - level="metadata" on *_metadata identifier returns JSON with:
+          * "content" field: COMPLETE PUBLICATION TEXT (Title + Intro + Methods + Results + Discussion)
+          * "title", "authors", "journal", "year" fields
+          * Use for: disease extraction from title/abstract, demographics from methods,
+                     tissue context from results, comprehensive manual enrichment
+
+        - level="methods" on *_methods identifier returns:
+          * "methods_text" field: Methods section text only
+          * "methods_dict" with software_used, parameters, statistical_methods
+          * Use for: focused age/sex extraction, cohort characteristics
+
+        - To extract specific sections from full text, use regex on "content" field
+        - To enrich samples, combine with execute_custom_code tool
 
         Args:
             identifier: Content identifier to retrieve (None = list all)
@@ -132,6 +155,37 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                 workspace="download_queue",
                 level="metadata"
             )
+
+            # PUBLICATION ENRICHMENT: Read full publication text (COMPLETE CONTENT)
+            # For manual sample enrichment, use level="metadata" to access full text
+            get_content_from_workspace(
+                identifier="pub_queue_doi_10_1080_19490976_2022_2046244_metadata",
+                workspace="metadata",
+                level="metadata"
+            )
+            # Returns JSON with "content" field containing:
+            # - Complete publication text (Title + Introduction + Methods + Results + Discussion)
+            # - All sections accessible for disease/demographics extraction
+            # - Use for: extracting disease from title, demographics from methods,
+            #            tissue context from results
+
+            # PUBLICATION ENRICHMENT: Read methods section only (FOCUSED)
+            get_content_from_workspace(
+                identifier="pub_queue_doi_10_1080_19490976_2022_2046244_methods",
+                workspace="metadata",
+                level="methods"
+            )
+            # Returns: Methods section text with cohort demographics, experimental design
+            # Use for: age/sex extraction, sample collection details
+
+            # PUBLICATION ENRICHMENT: Quick title/abstract check
+            get_content_from_workspace(
+                identifier="pub_queue_doi_10_1080_19490976_2022_2046244_metadata",
+                workspace="metadata",
+                level="summary"
+            )
+            # Returns: Title, authors, journal, year (no full text)
+            # Use for: quick disease context check before full extraction
 
             # List pending publication extractions
             get_content_from_workspace(
@@ -235,21 +289,21 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                         from datetime import datetime
 
                         # Compute statistics
-                        status_counts = Counter(entry['status'] for entry in entries)
+                        status_counts = Counter(entry["status"] for entry in entries)
 
                         # Priority distribution (1-3=high, 4-7=medium, 8-10=low)
-                        priority_high = sum(1 for e in entries if e['priority'] <= 3)
-                        priority_medium = sum(1 for e in entries if 4 <= e['priority'] <= 7)
-                        priority_low = sum(1 for e in entries if e['priority'] >= 8)
+                        priority_high = sum(1 for e in entries if e["priority"] <= 3)
+                        priority_medium = sum(
+                            1 for e in entries if 4 <= e["priority"] <= 7
+                        )
+                        priority_low = sum(1 for e in entries if e["priority"] >= 8)
 
                         # Failed entries count
-                        failed_count = status_counts.get('failed', 0)
+                        failed_count = status_counts.get("failed", 0)
 
                         # Sort by updated_at (most recent first), show top 5
                         sorted_entries = sorted(
-                            entries,
-                            key=lambda e: e.get('updated_at', ''),
-                            reverse=True
+                            entries, key=lambda e: e.get("updated_at", ""), reverse=True
                         )[:5]
 
                         # Build response
@@ -258,7 +312,16 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
 
                         # Status breakdown
                         response += "**Status Breakdown**:\n"
-                        for status in ['pending', 'extracting', 'metadata_extracted', 'metadata_enriched', 'handoff_ready', 'completed', 'failed', 'paywalled']:
+                        for status in [
+                            "pending",
+                            "extracting",
+                            "metadata_extracted",
+                            "metadata_enriched",
+                            "handoff_ready",
+                            "completed",
+                            "failed",
+                            "paywalled",
+                        ]:
                             count = status_counts.get(status, 0)
                             if count > 0:
                                 response += f"- {status}: {count} entries\n"
@@ -267,23 +330,31 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                         # Priority distribution
                         response += "**Priority Distribution**:\n"
                         response += f"- High priority (1-3): {priority_high} entries\n"
-                        response += f"- Medium priority (4-7): {priority_medium} entries\n"
+                        response += (
+                            f"- Medium priority (4-7): {priority_medium} entries\n"
+                        )
                         response += f"- Low priority (8-10): {priority_low} entries\n\n"
 
                         # Recent activity
                         response += "**Recent Activity** (last 5 updates):\n"
                         for entry in sorted_entries:
-                            title = entry.get('title', 'Untitled')
-                            title_short = title[:50] + "..." if len(title) > 50 else title
-                            updated = entry.get('updated_at', 'unknown')
+                            title = entry.get("title", "Untitled")
+                            title_short = (
+                                title[:50] + "..." if len(title) > 50 else title
+                            )
+                            updated = entry.get("updated_at", "unknown")
 
                             # Format time ago if possible
                             try:
                                 if isinstance(updated, str):
-                                    updated_dt = datetime.fromisoformat(updated.replace('Z', '+00:00'))
+                                    updated_dt = datetime.fromisoformat(
+                                        updated.replace("Z", "+00:00")
+                                    )
                                 else:
                                     updated_dt = updated
-                                time_diff = datetime.now() - updated_dt.replace(tzinfo=None)
+                                time_diff = datetime.now() - updated_dt.replace(
+                                    tzinfo=None
+                                )
 
                                 if time_diff.days > 0:
                                     time_ago = f"{time_diff.days}d ago"
@@ -306,7 +377,9 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                         # Actionable guidance
                         response += "**Tip**: Use `status_filter` parameter to focus on specific statuses:\n"
                         response += "- `status_filter='handoff_ready'` - Ready for metadata processing\n"
-                        response += "- `status_filter='failed'` - Entries needing attention\n"
+                        response += (
+                            "- `status_filter='failed'` - Entries needing attention\n"
+                        )
                         response += "- `status_filter='pending'` - Not yet started\n"
                         response += "\nUse `level='metadata'` for detailed inspection of all entries.\n"
 
@@ -715,11 +788,17 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
             if workspace not in workspace_to_content_type:
                 return f"Error: Invalid workspace '{workspace}'. Valid: {', '.join(workspace_to_content_type.keys())}"
 
-            if content_type and content_type not in {"publication", "dataset", "metadata"}:
+            if content_type and content_type not in {
+                "publication",
+                "dataset",
+                "metadata",
+            }:
                 return f"Error: Invalid content_type '{content_type}'. Valid: publication, dataset, metadata"
 
             if output_format not in {"json", "csv"}:
-                return f"Error: Invalid output_format '{output_format}'. Valid: json, csv"
+                return (
+                    f"Error: Invalid output_format '{output_format}'. Valid: json, csv"
+                )
 
             if export_mode not in {"auto", "rich", "simple"}:
                 return f"Error: Invalid export_mode '{export_mode}'. Valid: auto, rich, simple"
@@ -760,7 +839,12 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
                 # Check for SRA-specific fields
                 if samples:
                     first_sample = samples[0]
-                    sra_indicators = ["run_accession", "biosample", "bioproject", "library_strategy"]
+                    sra_indicators = [
+                        "run_accession",
+                        "biosample",
+                        "bioproject",
+                        "library_strategy",
+                    ]
                     return any(field in first_sample for field in sra_indicators)
                 return False
 
@@ -800,7 +884,9 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
             samples_count = None
             rich_export_used = False
             if output_format == "csv" and isinstance(content_data, dict):
-                if "samples" in content_data and isinstance(content_data["samples"], list):
+                if "samples" in content_data and isinstance(
+                    content_data["samples"], list
+                ):
                     samples_list = content_data["samples"]
                     samples_count = len(samples_list)
                     logger.info(f"Extracting {samples_count} samples for CSV export")
@@ -816,7 +902,9 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
                     import pandas as pd
 
                     if use_rich_format:
-                        logger.info("Using schema-driven export format (column count depends on data type)")
+                        logger.info(
+                            "Using schema-driven export format (column count depends on data type)"
+                        )
                         rich_export_used = True
 
                         # Enrich samples with publication context
@@ -832,7 +920,7 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
                         ordered_cols = get_ordered_export_columns(
                             samples=enriched_samples,
                             data_type=data_type,
-                            include_extra=True  # Include fields not in schema
+                            include_extra=True,  # Include fields not in schema
                         )
 
                         # Create DataFrame with schema-ordered columns
@@ -844,12 +932,17 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
                         df = pd.DataFrame(samples_list)
 
                     # Write to CSV
-                    content_dir = workspace_service._get_content_dir(workspace_to_content_type[workspace])
+                    from datetime import (  # Import at function level for timestamp
+                        datetime,
+                    )
+
+                    content_dir = workspace_service._get_content_dir(
+                        workspace_to_content_type[workspace]
+                    )
                     filename = workspace_service._sanitize_filename(identifier)
 
                     # Auto-append timestamp if requested and not already present
-                    if add_timestamp and not re.search(r'\d{4}-\d{2}-\d{2}', filename):
-                        from datetime import datetime
+                    if add_timestamp and not re.search(r"\d{4}-\d{2}-\d{2}", filename):
                         timestamp = datetime.now().strftime("%Y-%m-%d")
                         filename = f"{filename}_{timestamp}"
 
@@ -1061,7 +1154,7 @@ def create_export_publication_queue_tool(data_manager: DataManagerV2):
             ordered_cols = get_ordered_export_columns(
                 samples=filtered_samples,
                 data_type=data_type,
-                include_extra=True  # Include fields not in schema
+                include_extra=True,  # Include fields not in schema
             )
 
             # Create DataFrame with schema-ordered columns

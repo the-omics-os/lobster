@@ -12,7 +12,9 @@ import pandas as pd
 import pytest
 
 from lobster.core import DesignMatrixError, FormulaError
-from lobster.services.analysis.differential_formula_service import DifferentialFormulaService
+from lobster.services.analysis.differential_formula_service import (
+    DifferentialFormulaService,
+)
 
 
 @pytest.fixture

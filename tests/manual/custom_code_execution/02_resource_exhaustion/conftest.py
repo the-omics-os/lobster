@@ -5,10 +5,14 @@ Fixtures:
 - service: CustomCodeExecutionService with temporary workspace
 """
 
-import pytest
 from pathlib import Path
+
+import pytest
+
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.services.execution.custom_code_execution_service import CustomCodeExecutionService
+from lobster.services.execution.custom_code_execution_service import (
+    CustomCodeExecutionService,
+)
 
 
 @pytest.fixture

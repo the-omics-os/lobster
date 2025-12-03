@@ -88,9 +88,7 @@ class BioRxivMedRxivConfig(BaseModel):
     parse_methods: bool = Field(
         default=True, description="Parse methods section from JATS XML"
     )
-    parse_tables: bool = Field(
-        default=True, description="Parse tables from JATS XML"
-    )
+    parse_tables: bool = Field(default=True, description="Parse tables from JATS XML")
     parse_software: bool = Field(
         default=True, description="Detect software tools from JATS XML"
     )

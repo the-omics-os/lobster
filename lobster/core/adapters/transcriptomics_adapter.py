@@ -119,7 +119,9 @@ class TranscriptomicsAdapter(BaseAdapter):
                     df=source,
                     obs_metadata=dataframe_params.get("obs_metadata"),
                     var_metadata=dataframe_params.get("var_metadata"),
-                    transpose=dataframe_params.get("transpose", False),  # BUG FIX: Pass transpose param
+                    transpose=dataframe_params.get(
+                        "transpose", False
+                    ),  # BUG FIX: Pass transpose param
                 )
             elif isinstance(source, (str, Path)):
                 adata = self._load_from_file(source, **kwargs)

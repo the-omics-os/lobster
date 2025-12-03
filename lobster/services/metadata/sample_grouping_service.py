@@ -129,7 +129,9 @@ class SampleGroupingService:
                 )
 
             # Check library strategy consistency
-            strategies = set(s.library_strategy for s in ind_samples if s.library_strategy)
+            strategies = set(
+                s.library_strategy for s in ind_samples if s.library_strategy
+            )
             if len(strategies) > 1:
                 result.add_warning(
                     f"Individual {ind_id}: Multiple library strategies: {strategies}"
@@ -144,9 +146,7 @@ class SampleGroupingService:
 
         # Summary
         if not result.warnings:
-            result.add_info(
-                f"All {len(groups)} individuals have consistent metadata"
-            )
+            result.add_info(f"All {len(groups)} individuals have consistent metadata")
 
         return result
 
@@ -178,11 +178,14 @@ class SampleGroupingService:
         groups = self.group_by_individual(samples)
 
         # Samples per individual distribution
-        samples_per_individual = {ind_id: len(samps) for ind_id, samps in groups.items()}
+        samples_per_individual = {
+            ind_id: len(samps) for ind_id, samps in groups.items()
+        }
 
         # Individuals with multiple timepoints
         multi_timepoint_individuals = [
-            ind_id for ind_id, samps in groups.items()
+            ind_id
+            for ind_id, samps in groups.items()
             if len(samps) > 1 and not ind_id.startswith("unknown_")
         ]
 
@@ -205,7 +208,8 @@ class SampleGroupingService:
             ind_id for ind_id in groups if not ind_id.startswith("unknown_")
         ]
         unknown_samples = sum(
-            len(samps) for ind_id, samps in groups.items()
+            len(samps)
+            for ind_id, samps in groups.items()
             if ind_id.startswith("unknown_")
         )
 
@@ -219,7 +223,9 @@ class SampleGroupingService:
             "avg_samples_per_individual": (
                 sum(samples_per_individual.values()) / len(groups) if groups else 0
             ),
-            "max_samples_per_individual": max(samples_per_individual.values()) if groups else 0,
+            "max_samples_per_individual": (
+                max(samples_per_individual.values()) if groups else 0
+            ),
             "samples_per_individual_distribution": dict(samples_per_individual),
             "timepoint_ranges": timepoint_ranges,
         }
@@ -310,10 +316,13 @@ class SampleGroupingService:
             profile["health_statuses"] = list(set(health_statuses))
 
             # Timepoints
-            timepoints = sorted([
-                s.timepoint_numeric for s in ind_samples
-                if s.timepoint_numeric is not None
-            ])
+            timepoints = sorted(
+                [
+                    s.timepoint_numeric
+                    for s in ind_samples
+                    if s.timepoint_numeric is not None
+                ]
+            )
             profile["timepoints"] = timepoints
             profile["timepoint_range"] = (
                 timepoints[-1] - timepoints[0] if len(timepoints) >= 2 else 0

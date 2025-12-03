@@ -14,13 +14,15 @@ REAL ATTACK: Could fill entire disk (GB-TB)
 Run with: pytest tests/manual/custom_code_execution/02_resource_exhaustion/test_disk_exhaustion.py -v -s
 """
 
-import pytest
 from pathlib import Path
-from lobster.services.execution.custom_code_execution_service import (
-    CustomCodeExecutionService,
-    CodeExecutionError
-)
+
+import pytest
+
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.services.execution.custom_code_execution_service import (
+    CodeExecutionError,
+    CustomCodeExecutionService,
+)
 
 
 @pytest.fixture
@@ -48,7 +50,7 @@ class TestLargeFileCreation:
 
         Mitigation: Disk quotas, Docker volume limits
         """
-        code = '''
+        code = """
 from pathlib import Path
 
 # Write 100MB file (safe for testing)
@@ -63,7 +65,7 @@ with open(filepath, 'wb') as f:
         f.write(b'X' * chunk_size)
 
 result = f"Wrote {filepath.stat().st_size / 1024**2:.0f}MB to {filepath.name}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=30)
@@ -73,14 +75,14 @@ result = f"Wrote {filepath.stat().st_size / 1024**2:.0f}MB to {filepath.name}"
 
             # Verify file was created
             workspace = service.data_manager.workspace_path
-            large_file = workspace / 'large_file.bin'
+            large_file = workspace / "large_file.bin"
             assert large_file.exists()
             assert large_file.stat().st_size >= 100 * 1024**2  # At least 100MB
 
             # Cleanup
             large_file.unlink()
 
-            assert stats['success'] is True
+            assert stats["success"] is True
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: Large file write blocked: {e}")
             pytest.fail("Expected vulnerability")
@@ -97,7 +99,7 @@ result = f"Wrote {filepath.stat().st_size / 1024**2:.0f}MB to {filepath.name}"
 
         Mitigation: Disk quotas + inotify limits
         """
-        code = '''
+        code = """
 from pathlib import Path
 import time
 
@@ -112,7 +114,7 @@ elapsed = time.time() - start
 total_mb = sum(f.stat().st_size for f in WORKSPACE.glob('file_*.bin')) / 1024**2
 
 result = f"Wrote {total_mb:.0f}MB across 10 files in {elapsed:.2f}s"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=60)
@@ -122,10 +124,10 @@ result = f"Wrote {total_mb:.0f}MB across 10 files in {elapsed:.2f}s"
 
             # Cleanup
             workspace = service.data_manager.workspace_path
-            for f in workspace.glob('file_*.bin'):
+            for f in workspace.glob("file_*.bin"):
                 f.unlink()
 
-            assert stats['success'] is True
+            assert stats["success"] is True
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: Rapid writes blocked: {e}")
             pytest.fail("Expected vulnerability")
@@ -151,7 +153,7 @@ class TestManySmallFiles:
         - ext4: Typically 1 inode per 16KB
         - Can exhaust inodes before disk space
         """
-        code = '''
+        code = """
 from pathlib import Path
 
 # Create 1,000 small files (safe)
@@ -166,7 +168,7 @@ file_count = len(list(file_dir.glob('*')))
 total_size = sum(f.stat().st_size for f in file_dir.glob('*'))
 
 result = f"Created {file_count} files, total size: {total_size / 1024:.1f}KB"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=30)
@@ -176,13 +178,13 @@ result = f"Created {file_count} files, total size: {total_size / 1024:.1f}KB"
 
             # Cleanup
             workspace = service.data_manager.workspace_path
-            file_dir = workspace / 'small_files'
+            file_dir = workspace / "small_files"
             if file_dir.exists():
-                for f in file_dir.glob('*'):
+                for f in file_dir.glob("*"):
                     f.unlink()
                 file_dir.rmdir()
 
-            assert stats['success'] is True
+            assert stats["success"] is True
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: Many files blocked: {e}")
             pytest.fail("Expected vulnerability")
@@ -200,7 +202,7 @@ result = f"Created {file_count} files, total size: {total_size / 1024:.1f}KB"
 
         Mitigation: Path length limits (most OS have ~4096 char limit)
         """
-        code = '''
+        code = """
 from pathlib import Path
 
 # Create deeply nested directories (100 levels)
@@ -213,7 +215,7 @@ current.mkdir(parents=True, exist_ok=True)
 # Count depth
 depth = len(str(current).split('/'))
 result = f"Created {depth}-level deep directory structure"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=10)
@@ -223,12 +225,13 @@ result = f"Created {depth}-level deep directory structure"
 
             # Cleanup (walk from top)
             workspace = service.data_manager.workspace_path
-            nested_dir = workspace / 'nested'
+            nested_dir = workspace / "nested"
             if nested_dir.exists():
                 import shutil
+
                 shutil.rmtree(nested_dir)
 
-            assert stats['success'] is True
+            assert stats["success"] is True
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: Deep nesting blocked: {e}")
             pytest.fail("Expected vulnerability")
@@ -252,7 +255,7 @@ class TestSparseFiles:
 
         Mitigation: Disable sparse files, monitor actual blocks
         """
-        code = '''
+        code = """
 import os
 from pathlib import Path
 
@@ -271,7 +274,7 @@ actual_blocks = filepath.stat().st_blocks
 actual_size = actual_blocks * 512 / 1024**2  # 512 bytes per block
 
 result = f"Sparse file: {apparent_size:.0f}MB apparent, {actual_size:.2f}MB actual"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=10)
@@ -281,11 +284,11 @@ result = f"Sparse file: {apparent_size:.0f}MB apparent, {actual_size:.2f}MB actu
 
             # Cleanup
             workspace = service.data_manager.workspace_path
-            sparse_file = workspace / 'sparse_file.bin'
+            sparse_file = workspace / "sparse_file.bin"
             if sparse_file.exists():
                 sparse_file.unlink()
 
-            assert stats['success'] is True
+            assert stats["success"] is True
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: Sparse files blocked: {e}")
             pytest.fail("Expected vulnerability")
@@ -311,7 +314,7 @@ class TestFileDescriptorExhaustion:
 
         Mitigation: ulimit -n, Docker --ulimit nofile
         """
-        code = '''
+        code = """
 from pathlib import Path
 
 # Open 100 files without closing (FD leak)
@@ -328,7 +331,7 @@ result = f"Opened {len(file_handles)} files without closing (FD leak)"
 # Cleanup by closing explicitly
 for f in file_handles:
     f.close()
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=10)
@@ -338,10 +341,10 @@ for f in file_handles:
 
             # Cleanup files
             workspace = service.data_manager.workspace_path
-            for f in workspace.glob('fd_test_*.txt'):
+            for f in workspace.glob("fd_test_*.txt"):
                 f.unlink()
 
-            assert stats['success'] is True
+            assert stats["success"] is True
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: FD exhaustion blocked: {e}")
             pytest.fail("Expected vulnerability")
@@ -359,7 +362,7 @@ for f in file_handles:
 
         Mitigation: ulimit -n, network namespaces
         """
-        code = '''
+        code = """
 import socket
 
 # Create 50 sockets without closing
@@ -373,14 +376,14 @@ result = f"Created {len(sockets)} sockets (FD leak)"
 # Cleanup
 for s in sockets:
     s.close()
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=10)
             print(f"\n⚠️  VULNERABILITY: Socket FD exhaustion possible")
             print(f"    Result: {result}")
             print(f"    🔥 REAL ATTACK: 10,000 sockets = FD + memory exhaustion")
-            assert stats['success'] is True
+            assert stats["success"] is True
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: Socket exhaustion blocked: {e}")
             pytest.fail("Expected vulnerability")
@@ -404,7 +407,7 @@ class TestTempFileAccumulation:
         Note: CustomCodeExecutionService cleans up script files
         but user code could create temp files anywhere
         """
-        code = '''
+        code = """
 import tempfile
 from pathlib import Path
 
@@ -422,7 +425,7 @@ result = f"Created {len(temp_files)} temp files in /tmp (not cleaned up if crash
 # Manual cleanup
 for filepath in temp_files:
     Path(filepath).unlink(missing_ok=True)
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=10)
@@ -430,7 +433,7 @@ for filepath in temp_files:
             print(f"    Result: {result}")
             print(f"    Note: Process crash = leaked temp files")
             print(f"    🔥 REAL ATTACK: 1000 executions = /tmp pollution")
-            assert stats['success'] is True
+            assert stats["success"] is True
         except CodeExecutionError as e:
             print(f"\n✅ PROTECTED: Temp files blocked: {e}")
             pytest.fail("Expected vulnerability")
@@ -508,8 +511,8 @@ class TestDiskExhaustionSummary:
             raise Exception("Insufficient disk space")
         ```
         """
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("DISK EXHAUSTION VULNERABILITY SUMMARY")
-        print("="*70)
+        print("=" * 70)
         print(self.test_disk_vulnerability_summary.__doc__)
         assert True

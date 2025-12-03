@@ -51,12 +51,10 @@ def test_memory_estimation():
         print(f"  Can load: {'✓ YES' if mem_check['can_load'] else '✗ NO'}")
         print(f"  Available: {mem_check['available_gb']:.2f} GB")
 
-        if not mem_check['can_load']:
+        if not mem_check["can_load"]:
             print(f"  Shortfall: {mem_check['shortfall_gb']:.2f} GB")
-            if mem_check['subsample_target']:
-                print(
-                    f"  Suggested subsample: {mem_check['subsample_target']:,} cells"
-                )
+            if mem_check["subsample_target"]:
+                print(f"  Suggested subsample: {mem_check['subsample_target']:,} cells")
 
     print("\n" + "=" * 80)
 
@@ -75,10 +73,12 @@ def test_memory_check_messages():
     mem_check = parser.check_memory_for_dimensions(n_cells, n_genes)
 
     print(f"\nDataset: {n_cells:,} cells × {n_genes:,} genes")
-    print(f"System: {mem_check['total_system_gb']:.1f} GB total, "
-          f"{mem_check['available_gb']:.1f} GB available")
+    print(
+        f"System: {mem_check['total_system_gb']:.1f} GB total, "
+        f"{mem_check['available_gb']:.1f} GB available"
+    )
     print("\nRecommendation:")
-    print(mem_check['recommendation'])
+    print(mem_check["recommendation"])
 
     print("\n" + "=" * 80)
 
@@ -152,6 +152,7 @@ def main():
     except Exception as e:
         print(f"\n❌ TEST FAILED: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

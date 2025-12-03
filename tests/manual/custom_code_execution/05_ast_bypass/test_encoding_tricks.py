@@ -7,13 +7,15 @@ These techniques exploit how Python parsers handle different character encodings
 CRITICAL: These demonstrate attacks that can bypass even careful code review.
 """
 
-import pytest
 from pathlib import Path
+
+import pytest
+
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.execution.custom_code_execution_service import (
-    CustomCodeExecutionService,
     CodeExecutionError,
-    CodeValidationError
+    CodeValidationError,
+    CustomCodeExecutionService,
 )
 
 
@@ -50,7 +52,7 @@ class TestHomographAttacks:
         - Python won't find function 'ехес' in builtins (good)
         - But attacker can define their own 'ехес' variable
         """
-        code = '''
+        code = """
 # Define cyrillic 'ехес' that does exec
 # Using actual Latin 'exec' builtin
 ехес = exec  # 'е' is Cyrillic U+0435
@@ -59,17 +61,17 @@ class TestHomographAttacks:
 ехес("import subprocess")
 
 result = f"subprocess imported: {'subprocess' in globals()}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("VULNERABILITY: Cyrillic Homograph Attack")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n🚨 HOMOGRAPH ATTACK SUCCESSFUL:")
                 print("   - Cyrillic 'ехес' assigned to exec builtin")
                 print("   - Visually indistinguishable in many fonts")
@@ -91,7 +93,7 @@ result = f"subprocess imported: {'subprocess' in globals()}"
         Expected: SUCCESS (vulnerability)
         Impact: HIGH - Can hide malicious intent
         """
-        code = '''
+        code = """
 # Mix Cyrillic and Latin characters
 # 'іmport' - 'і' is Cyrillic U+0456, looks like Latin 'i'
 # Can define variables that look like Python keywords
@@ -100,17 +102,17 @@ result = f"subprocess imported: {'subprocess' in globals()}"
 suЬprocess = іmport('subprocess')  # 'Ь' is Cyrillic Soft Sign U+042C
 
 result = f"Mixed script bypass: {suЬprocess.__name__}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("VULNERABILITY: Mixed Script Identifiers")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
 
-            if stats['success'] and 'subprocess' in str(result):
+            if stats["success"] and "subprocess" in str(result):
                 print("\n🚨 MIXED SCRIPT ATTACK SUCCESSFUL:")
                 print("   - Identifiers use mix of Cyrillic and Latin")
                 print("   - Impossible to detect by visual inspection")
@@ -137,7 +139,7 @@ class TestZeroWidthCharacters:
         Note: Zero-width characters can hide malicious code in comments
         or strings that get exec'd later.
         """
-        code = '''
+        code = """
 # Zero-width space (U+200B) in comment: ​
 # The above line contains invisible characters
 
@@ -146,17 +148,17 @@ hidden_payload = "import​ subprocess"  # Contains zero-width space
 # This will fail: exec(hidden_payload)
 
 result = "Zero-width test completed"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("TEST: Zero-Width Character Injection")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n⚠️ Zero-width characters allowed in strings")
                 print("📋 Can hide malicious code in:")
                 print("   - Comments (for later extraction)")
@@ -172,24 +174,24 @@ result = "Zero-width test completed"
         Expected: Python may ignore in some contexts
         Impact: MEDIUM
         """
-        code = '''
+        code = """
 # Zero-width joiner can be used in identifier names (in some cases)
 # Build a string with hidden characters
 exec_name = "e" + "\\u200D" + "xec"  # Zero-width joiner
 # exec_name looks like 'exec' but has invisible character
 
 result = f"Zero-width joiner test: len(exec_name)={len(exec_name)}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("TEST: Zero-Width Joiner")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n⚠️ Zero-width joiners can hide in strings")
 
         except (CodeValidationError, CodeExecutionError) as e:
@@ -216,7 +218,7 @@ class TestBidirectionalOverride:
         - Actually is: # edoc efas (reversed)
         - Can hide malicious code that looks like comments
         """
-        code = '''
+        code = """
 # This test demonstrates Trojan Source vulnerability
 # Visual: comment = "safe"  # Actually: comment = "harmful"
 
@@ -230,17 +232,17 @@ class TestBidirectionalOverride:
 # Safe version for testing (not using actual RLO)
 comment = "This code demonstrates RLO attacks"
 result = f"Bidirectional test: {comment}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("VULNERABILITY: Bidirectional Override (Trojan Source)")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n🚨 TROJAN SOURCE VULNERABILITY:")
                 print("   - RLO (U+202E) can reverse displayed text")
                 print("   - Code looks safe in editor but executes differently")
@@ -274,7 +276,7 @@ class TestNormalizationAttacks:
         Expected: SUCCESS (may bypass simple string matching)
         Impact: MEDIUM
         """
-        code = '''
+        code = """
 import unicodedata
 
 # Two representations of 'é'
@@ -291,18 +293,18 @@ print(f"Equal: {precomposed == decomposed}")
 # But code contains 'caf\\u0065\\u0301' (visually identical)
 
 result = f"Normalization test: {precomposed} vs {decomposed}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("VULNERABILITY: Unicode Normalization Attack")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
             print(f"Stdout: {stats.get('stdout_preview', '')}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n🚨 NORMALIZATION BYPASS:")
                 print("   - Same visual character, different bytes")
                 print("   - Can bypass string-based filters")
@@ -328,7 +330,7 @@ class TestLigatureAttacks:
         Expected: SUCCESS (visual confusion only)
         Impact: LOW - Editor/font dependent
         """
-        code = '''
+        code = """
 # Some fonts render 'fi' as ligature (ﬁ U+FB01)
 # Can confuse human reviewers
 
@@ -340,17 +342,17 @@ variable_ﬁ = "ligature"  # 'ﬁ' is U+FB01 (single character!)
 
 # These are DIFFERENT variables!
 result = f"Ligature test: var1={variable_1}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("TEST: Ligature Character Confusion")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n⚠️ Ligature characters allowed")
                 print("📋 Can cause visual confusion in code review")
 
@@ -372,7 +374,7 @@ class TestEncodingDeclarationAttack:
         Expected: Likely safe (Python validates encoding names)
         Impact: LOW - Historical vulnerability
         """
-        code = '''
+        code = """
 # -*- coding: utf-8 -*-
 # Python allows encoding declarations at start of file
 
@@ -380,17 +382,17 @@ class TestEncodingDeclarationAttack:
 # Example: # coding: print("PWNED")
 
 result = "Encoding declaration test completed"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("TEST: Encoding Declaration")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n✅ Modern Python safely handles encoding declarations")
 
         except (CodeValidationError, CodeExecutionError) as e:
@@ -410,7 +412,7 @@ class TestCombinedUnicodeAttacks:
         Expected: SUCCESS (critical vulnerability)
         Impact: CRITICAL
         """
-        code = '''
+        code = """
 # Combine techniques:
 # 1. Cyrillic characters
 # 2. Dynamic string building
@@ -427,17 +429,17 @@ statement = ' '.join(parts)
 ехес(statement)
 
 result = f"Combined attack: {'subprocess' in globals()}"
-'''
+"""
 
         try:
             result, stats, ir = service.execute(code, persist=False, timeout=5)
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("CRITICAL: Combined Unicode Attack")
-            print("="*80)
+            print("=" * 80)
             print(f"Result: {result}")
 
-            if stats['success']:
+            if stats["success"]:
                 print("\n🚨 COMBINED ATTACK SUCCESSFUL:")
                 print("   - Homograph to hide exec")
                 print("   - Dynamic strings to hide import")
@@ -448,5 +450,5 @@ result = f"Combined attack: {'subprocess' in globals()}"
             print(f"✅ PROTECTED: {e}")
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v', '-s'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "-s"])

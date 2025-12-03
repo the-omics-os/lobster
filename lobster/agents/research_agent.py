@@ -14,6 +14,7 @@ from typing import List
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 
+from lobster.agents.data_expert_assistant import DataExpertAssistant
 from lobster.agents.state import ResearchAgentState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
@@ -25,11 +26,13 @@ from lobster.core.schemas.download_queue import (
     ValidationStatus,
 )
 from lobster.services.data_access.content_access_service import ContentAccessService
-from lobster.agents.data_expert_assistant import DataExpertAssistant
 from lobster.services.metadata.metadata_validation_service import (
     MetadataValidationConfig,
     MetadataValidationService,
     ValidationSeverity,
+)
+from lobster.services.orchestration.publication_processing_service import (
+    PublicationProcessingService,
 )
 
 # Phase 1: New providers for two-tier access
@@ -39,9 +42,6 @@ from lobster.tools.providers.webpage_provider import WebpageProvider
 from lobster.tools.workspace_tool import (
     create_get_content_from_workspace_tool,
     create_write_to_workspace_tool,
-)
-from lobster.services.orchestration.publication_processing_service import (
-    PublicationProcessingService,
 )
 from lobster.utils.logger import get_logger
 
@@ -123,10 +123,11 @@ def research_agent(
         filtered_delegation_tools = []
         for delegation_tool in delegation_tools:
             # Check if tool name indicates a restricted handoff
-            tool_name = getattr(delegation_tool, "__name__", "") or getattr(delegation_tool, "name", "")
+            tool_name = getattr(delegation_tool, "__name__", "") or getattr(
+                delegation_tool, "name", ""
+            )
             is_restricted = any(
-                restricted in tool_name
-                for restricted in restricted_handoffs
+                restricted in tool_name for restricted in restricted_handoffs
             )
             if is_restricted:
                 logger.info(
@@ -146,7 +147,7 @@ def research_agent(
 
     # Initialize services used by tools
     content_access_service = ContentAccessService(data_manager=data_manager)
-    
+
     # Initialize metadata validation service (Phase 2: extracted from ResearchAgentAssistant)
     metadata_validator = MetadataValidationService(data_manager=data_manager)
     publication_processing_service = PublicationProcessingService(
@@ -586,12 +587,16 @@ def research_agent(
                     pride_provider = PRIDEProvider(data_manager=data_manager)
 
                     try:
-                        project_metadata = pride_provider.get_project_metadata(identifier)
+                        project_metadata = pride_provider.get_project_metadata(
+                            identifier
+                        )
 
                         formatted = f"## PRIDE Dataset Metadata for {identifier}\n\n"
                         formatted += "**Database**: PRIDE Archive\n"
                         formatted += f"**Accession**: {identifier}\n"
-                        formatted += f"**Title**: {project_metadata.get('title', 'N/A')}\n"
+                        formatted += (
+                            f"**Title**: {project_metadata.get('title', 'N/A')}\n"
+                        )
 
                         # Sample count
                         if "sampleProcessingProtocol" in project_metadata:
@@ -607,7 +612,9 @@ def research_agent(
                         instruments = project_metadata.get("instruments", [])
                         if instruments:
                             instrument_names = [i.get("name", "") for i in instruments]
-                            formatted += f"**Instruments**: {', '.join(instrument_names[:3])}\n"
+                            formatted += (
+                                f"**Instruments**: {', '.join(instrument_names[:3])}\n"
+                            )
 
                         # Publication date
                         if "publicationDate" in project_metadata:
@@ -616,15 +623,23 @@ def research_agent(
                         # Description (brief in standard mode)
                         description = project_metadata.get("projectDescription", "")
                         if description and level in ["standard", "full"]:
-                            desc_preview = description[:500] if level == "standard" else description
+                            desc_preview = (
+                                description[:500]
+                                if level == "standard"
+                                else description
+                            )
                             formatted += f"\n**Description**:\n{desc_preview}{'...' if len(description) > 500 and level == 'standard' else ''}\n"
 
-                        logger.info(f"PRIDE metadata extraction completed for: {identifier}")
+                        logger.info(
+                            f"PRIDE metadata extraction completed for: {identifier}"
+                        )
                         return formatted
 
                     except Exception as e:
                         logger.error(f"Error fetching PRIDE metadata: {e}")
-                        return f"Error fetching PRIDE metadata for {identifier}: {str(e)}"
+                        return (
+                            f"Error fetching PRIDE metadata for {identifier}: {str(e)}"
+                        )
 
                 elif database.lower() == "massive":
                     # MassIVE dataset metadata extraction
@@ -633,17 +648,25 @@ def research_agent(
                     massive_provider = MassIVEProvider(data_manager=data_manager)
 
                     try:
-                        dataset_metadata = massive_provider.get_dataset_metadata(identifier)
+                        dataset_metadata = massive_provider.get_dataset_metadata(
+                            identifier
+                        )
 
                         formatted = f"## MassIVE Dataset Metadata for {identifier}\n\n"
                         formatted += "**Database**: MassIVE (UCSD)\n"
                         formatted += f"**Accession**: {identifier}\n"
-                        formatted += f"**Title**: {dataset_metadata.get('title', 'N/A')}\n"
+                        formatted += (
+                            f"**Title**: {dataset_metadata.get('title', 'N/A')}\n"
+                        )
 
                         # Species
                         species = dataset_metadata.get("species", [])
                         if species:
-                            species_names = [s.get("name", "") for s in species if isinstance(s, dict)]
+                            species_names = [
+                                s.get("name", "")
+                                for s in species
+                                if isinstance(s, dict)
+                            ]
                             formatted += f"**Species**: {', '.join(species_names)}\n"
 
                         # Data type
@@ -652,16 +675,24 @@ def research_agent(
                             contact_props = contacts[0].get("contactProperties", [])
                             for prop in contact_props:
                                 if prop.get("name") == "DatasetType":
-                                    formatted += f"**Data Type**: {prop.get('value', 'N/A')}\n"
+                                    formatted += (
+                                        f"**Data Type**: {prop.get('value', 'N/A')}\n"
+                                    )
                                     break
 
                         # Description
                         description = dataset_metadata.get("description", "")
                         if description and level in ["standard", "full"]:
-                            desc_preview = description[:500] if level == "standard" else description
+                            desc_preview = (
+                                description[:500]
+                                if level == "standard"
+                                else description
+                            )
                             formatted += f"\n**Description**:\n{desc_preview}{'...' if len(description) > 500 and level == 'standard' else ''}\n"
 
-                        logger.info(f"MassIVE metadata extraction completed for: {identifier}")
+                        logger.info(
+                            f"MassIVE metadata extraction completed for: {identifier}"
+                        )
                         return formatted
 
                     except Exception as e:
@@ -792,7 +823,10 @@ def research_agent(
                             )
 
                         # Extract strategy config for cached datasets
-                        from lobster.agents.data_expert_assistant import DataExpertAssistant
+                        from lobster.agents.data_expert_assistant import (
+                            DataExpertAssistant,
+                        )
+
                         assistant = DataExpertAssistant()
 
                         # Check if strategy_config already exists in cached data
@@ -800,8 +834,14 @@ def research_agent(
                         if not cached_strategy_config:
                             # Extract it now and persist
                             try:
-                                logger.info(f"Extracting strategy for cached dataset {accession}")
-                                cached_strategy_config = assistant.extract_strategy_config(metadata, accession)
+                                logger.info(
+                                    f"Extracting strategy for cached dataset {accession}"
+                                )
+                                cached_strategy_config = (
+                                    assistant.extract_strategy_config(
+                                        metadata, accession
+                                    )
+                                )
 
                                 if cached_strategy_config:
                                     # Persist to metadata_store
@@ -809,23 +849,42 @@ def research_agent(
                                         geo_id=accession,
                                         metadata=metadata,
                                         stored_by="research_agent_cached",
-                                        strategy_config=cached_strategy_config.model_dump() if hasattr(cached_strategy_config, 'model_dump') else cached_strategy_config
+                                        strategy_config=(
+                                            cached_strategy_config.model_dump()
+                                            if hasattr(
+                                                cached_strategy_config, "model_dump"
+                                            )
+                                            else cached_strategy_config
+                                        ),
                                     )
 
                                     # Analyze and create recommended strategy
-                                    analysis = assistant.analyze_download_strategy(cached_strategy_config, metadata)
+                                    analysis = assistant.analyze_download_strategy(
+                                        cached_strategy_config, metadata
+                                    )
                                     recommended_strategy = _create_recommended_strategy(
-                                        cached_strategy_config, analysis, metadata, url_data
+                                        cached_strategy_config,
+                                        analysis,
+                                        metadata,
+                                        url_data,
                                     )
                                 else:
                                     # Fallback strategy
-                                    recommended_strategy = _create_fallback_strategy(url_data, metadata)
+                                    recommended_strategy = _create_fallback_strategy(
+                                        url_data, metadata
+                                    )
                             except Exception as e:
-                                logger.warning(f"Strategy extraction failed for cached {accession}: {e}")
-                                recommended_strategy = _create_fallback_strategy(url_data, metadata)
+                                logger.warning(
+                                    f"Strategy extraction failed for cached {accession}: {e}"
+                                )
+                                recommended_strategy = _create_fallback_strategy(
+                                    url_data, metadata
+                                )
                         else:
                             # Use existing strategy config
-                            analysis = assistant.analyze_download_strategy(cached_strategy_config, metadata)
+                            analysis = assistant.analyze_download_strategy(
+                                cached_strategy_config, metadata
+                            )
                             recommended_strategy = _create_recommended_strategy(
                                 cached_strategy_config, analysis, metadata, url_data
                             )
@@ -978,7 +1037,9 @@ def research_agent(
                         )
 
                         # NEW: Relax validation gate - only block CRITICAL severity
-                        severity = getattr(validation_result, 'severity', ValidationSeverity.WARNING)
+                        severity = getattr(
+                            validation_result, "severity", ValidationSeverity.WARNING
+                        )
 
                         if add_to_queue and severity != ValidationSeverity.CRITICAL:
                             # Determine validation status for queue entry
@@ -987,7 +1048,9 @@ def research_agent(
                             elif validation_result.recommendation == "skip":
                                 validation_status = ValidationStatus.VALIDATION_FAILED
                             else:  # manual_check
-                                validation_status = ValidationStatus.VALIDATED_WITH_WARNINGS
+                                validation_status = (
+                                    ValidationStatus.VALIDATED_WITH_WARNINGS
+                                )
 
                             try:
                                 # Import GEOProvider
@@ -1007,31 +1070,53 @@ def research_agent(
                                     )
 
                                 # NEW: Extract strategy using data_expert_assistant
-                                logger.info(f"Extracting download strategy for {accession}")
-                                from lobster.agents.data_expert_assistant import DataExpertAssistant
+                                logger.info(
+                                    f"Extracting download strategy for {accession}"
+                                )
+                                from lobster.agents.data_expert_assistant import (
+                                    DataExpertAssistant,
+                                )
+
                                 assistant = DataExpertAssistant()
 
                                 # Extract file config using LLM (~2-5s)
                                 try:
-                                    strategy_config = assistant.extract_strategy_config(metadata, accession)
+                                    strategy_config = assistant.extract_strategy_config(
+                                        metadata, accession
+                                    )
 
                                     if strategy_config:
                                         # CRITICAL FIX: Persist strategy_config to metadata_store
                                         # This enables geo_service.py to find file-level details
-                                        logger.info(f"Persisting strategy_config to metadata_store for {accession}")
+                                        logger.info(
+                                            f"Persisting strategy_config to metadata_store for {accession}"
+                                        )
                                         data_manager._store_geo_metadata(
                                             geo_id=accession,
                                             metadata=metadata,
                                             stored_by="research_agent_validate",
-                                            strategy_config=strategy_config.model_dump() if hasattr(strategy_config, 'model_dump') else strategy_config
+                                            strategy_config=(
+                                                strategy_config.model_dump()
+                                                if hasattr(
+                                                    strategy_config, "model_dump"
+                                                )
+                                                else strategy_config
+                                            ),
                                         )
 
                                         # Analyze and generate recommendations
-                                        analysis = assistant.analyze_download_strategy(strategy_config, metadata)
+                                        analysis = assistant.analyze_download_strategy(
+                                            strategy_config, metadata
+                                        )
 
                                         # Convert to download_queue.StrategyConfig
-                                        recommended_strategy = _create_recommended_strategy(
-                                            strategy_config, analysis, metadata, url_data
+                                        recommended_strategy = (
+                                            _create_recommended_strategy(
+                                                strategy_config,
+                                                analysis,
+                                                metadata,
+                                                url_data,
+                                            )
                                         )
                                         logger.info(
                                             f"Strategy recommendation for {accession}: {recommended_strategy.strategy_name} "
@@ -1039,12 +1124,22 @@ def research_agent(
                                         )
                                     else:
                                         # Fallback: URL-based strategy
-                                        logger.warning(f"LLM strategy extraction failed for {accession}, using URL-based fallback")
-                                        recommended_strategy = _create_fallback_strategy(url_data, metadata)
+                                        logger.warning(
+                                            f"LLM strategy extraction failed for {accession}, using URL-based fallback"
+                                        )
+                                        recommended_strategy = (
+                                            _create_fallback_strategy(
+                                                url_data, metadata
+                                            )
+                                        )
                                 except Exception as e:
                                     # Graceful fallback on any error
-                                    logger.warning(f"Strategy extraction error for {accession}: {e}, using URL-based fallback")
-                                    recommended_strategy = _create_fallback_strategy(url_data, metadata)
+                                    logger.warning(
+                                        f"Strategy extraction error for {accession}: {e}, using URL-based fallback"
+                                    )
+                                    recommended_strategy = _create_fallback_strategy(
+                                        url_data, metadata
+                                    )
 
                                 # Create DownloadQueueEntry
                                 entry_id = f"queue_{accession}_{uuid.uuid4().hex[:8]}"
@@ -1091,16 +1186,25 @@ def research_agent(
                                 report += f"- **Files found**: {url_data.file_count}\n"
                                 if url_data.matrix_url:
                                     report += "- **Matrix file**: Available\n"
-                                supplementary_urls = url_data.get_supplementary_urls_as_strings()
+                                supplementary_urls = (
+                                    url_data.get_supplementary_urls_as_strings()
+                                )
                                 if supplementary_urls:
                                     report += f"- **Supplementary files**: {len(supplementary_urls)} file(s)\n"
 
                                 # Add warnings if validation status has warnings
-                                if validation_status == ValidationStatus.VALIDATED_WITH_WARNINGS:
-                                    warnings = getattr(validation_result, 'warnings', [])
+                                if (
+                                    validation_status
+                                    == ValidationStatus.VALIDATED_WITH_WARNINGS
+                                ):
+                                    warnings = getattr(
+                                        validation_result, "warnings", []
+                                    )
                                     if warnings:
                                         report += f"\n⚠️ **Warnings**:\n"
-                                        for warning in warnings[:3]:  # Show max 3 warnings
+                                        for warning in warnings[
+                                            :3
+                                        ]:  # Show max 3 warnings
                                             report += f"  - {warning}\n"
 
                                 report += "\n**Next steps**:\n"
@@ -1183,7 +1287,9 @@ def research_agent(
         """
         try:
             # Initialize UnifiedContentService (Phase 3 migration)
-            from lobster.services.data_access.content_access_service import ContentAccessService
+            from lobster.services.data_access.content_access_service import (
+                ContentAccessService,
+            )
 
             content_service = ContentAccessService(data_manager=data_manager)
 
@@ -1678,12 +1784,16 @@ Could not extract content for: {identifier}
                 except ValueError:
                     return f"Error: Invalid status filter '{status_filter}'"
 
-            entries = sorted(queue.list_entries(status=status_enum), key=lambda e: e.created_at)
+            entries = sorted(
+                queue.list_entries(status=status_enum), key=lambda e: e.created_at
+            )
             if max_entries and max_entries > 0:
                 entries = entries[:max_entries]
 
             if not entries:
-                return f"No publication queue entries found with status '{status_filter}'."
+                return (
+                    f"No publication queue entries found with status '{status_filter}'."
+                )
 
             entry_ids = [e.entry_id for e in entries]
 
@@ -1750,9 +1860,13 @@ Could not extract content for: {identifier}
             old_status = str(entry.status)
             data_manager.publication_queue.update_status(
                 entry_id=entry_id,
-                status=status.lower() if isinstance(entry.status, str) else entry.status.__class__(status.lower()),
+                status=(
+                    status.lower()
+                    if isinstance(entry.status, str)
+                    else entry.status.__class__(status.lower())
+                ),
                 error=error_message if status.lower() == "failed" else None,
-                processed_by="research_agent"
+                processed_by="research_agent",
             )
 
             # Log to W3C-PROV for reproducibility (orchestration operation - no IR)
@@ -1762,7 +1876,9 @@ Could not extract content for: {identifier}
                     "entry_id": entry_id,
                     "old_status": old_status,
                     "new_status": status.lower(),
-                    "error_message": error_message if status.lower() == "failed" else None,
+                    "error_message": (
+                        error_message if status.lower() == "failed" else None
+                    ),
                     "title": entry.title or "N/A",
                     "pmid": entry.pmid,
                     "doi": entry.doi,
@@ -1872,7 +1988,9 @@ Could not extract content for: {identifier}
             concatenation_strategy=concatenation_strategy,
             confidence=confidence,
             rationale=rationale,
-            strategy_params={"use_intersecting_genes_only": use_intersecting_genes_only},
+            strategy_params={
+                "use_intersecting_genes_only": use_intersecting_genes_only
+            },
             execution_params={
                 "timeout": timeout,
                 "max_retries": max_retries,
@@ -1893,9 +2011,20 @@ Could not extract content for: {identifier}
         """
         # Check various metadata fields for single-cell indicators
         single_cell_keywords = [
-            "single-cell", "single cell", "scRNA-seq", "10x", "10X",
-            "droplet", "Drop-seq", "Smart-seq", "CEL-seq", "inDrop",
-            "single nuclei", "snRNA-seq", "scATAC-seq", "Chromium"
+            "single-cell",
+            "single cell",
+            "scRNA-seq",
+            "10x",
+            "10X",
+            "droplet",
+            "Drop-seq",
+            "Smart-seq",
+            "CEL-seq",
+            "inDrop",
+            "single nuclei",
+            "snRNA-seq",
+            "scATAC-seq",
+            "Chromium",
         ]
 
         # Check title, summary, overall_design, and type fields
@@ -1904,11 +2033,13 @@ Could not extract content for: {identifier}
             metadata.get("summary", ""),
             metadata.get("overall_design", ""),
             metadata.get("type", ""),
-            metadata.get("description", "")
+            metadata.get("description", ""),
         ]
 
         for field in text_fields:
-            if any(keyword.lower() in field.lower() for keyword in single_cell_keywords):
+            if any(
+                keyword.lower() in field.lower() for keyword in single_cell_keywords
+            ):
                 return True
 
         # Check platform for single-cell platforms
@@ -1951,7 +2082,9 @@ Could not extract content for: {identifier}
         elif is_single_cell and url_data.raw_files and len(url_data.raw_files) > 0:
             # For single-cell with raw files, check if they're MTX files
             raw_urls = url_data.get_raw_urls_as_strings()
-            has_mtx = any("mtx" in url.lower() or "matrix" in url.lower() for url in raw_urls)
+            has_mtx = any(
+                "mtx" in url.lower() or "matrix" in url.lower() for url in raw_urls
+            )
 
             if has_mtx:
                 # MTX files at series level should use RAW_FIRST
@@ -1969,7 +2102,9 @@ Could not extract content for: {identifier}
             if is_single_cell:
                 strategy_name = "MATRIX_FIRST"
                 confidence = 0.70
-                rationale = "Single-cell dataset with matrix file (may be processed data)"
+                rationale = (
+                    "Single-cell dataset with matrix file (may be processed data)"
+                )
             else:
                 strategy_name = "MATRIX_FIRST"
                 confidence = 0.75
@@ -1988,7 +2123,9 @@ Could not extract content for: {identifier}
             rationale = "No clear file pattern detected, using auto-detection"
 
         # Add data type info to rationale
-        data_type_info = " (single-cell dataset)" if is_single_cell else " (bulk/unknown dataset)"
+        data_type_info = (
+            " (single-cell dataset)" if is_single_cell else " (bulk/unknown dataset)"
+        )
         rationale += data_type_info
 
         # Simple concatenation strategy

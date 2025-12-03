@@ -31,9 +31,7 @@ from lobster.core.schemas.publication_queue import (
 class TestProductionDataWorkflow:
     """Test complete workflow with production data."""
 
-    def test_full_workflow_with_247_samples(
-        self, tmp_path, production_sra_samples
-    ):
+    def test_full_workflow_with_247_samples(self, tmp_path, production_sra_samples):
         """
         Complete workflow test with actual production data (247 samples).
 
@@ -67,11 +65,13 @@ class TestProductionDataWorkflow:
         sra_file.write_text(json.dumps(production_sra_samples, indent=2))
 
         # Create metadata_assistant agent with mocked LLM
-        with patch("lobster.agents.metadata_assistant.create_react_agent") as mock_agent, \
-             patch("lobster.agents.metadata_assistant.create_llm") as mock_llm, \
-             patch("lobster.agents.metadata_assistant.get_settings") as mock_settings, \
-             patch("lobster.agents.metadata_assistant.MetadataStandardizationService"), \
-             patch("lobster.agents.metadata_assistant.SampleMappingService"):
+        with (
+            patch("lobster.agents.metadata_assistant.create_react_agent") as mock_agent,
+            patch("lobster.agents.metadata_assistant.create_llm") as mock_llm,
+            patch("lobster.agents.metadata_assistant.get_settings") as mock_settings,
+            patch("lobster.agents.metadata_assistant.MetadataStandardizationService"),
+            patch("lobster.agents.metadata_assistant.SampleMappingService"),
+        ):
 
             # Setup mocks
             mock_settings_instance = Mock()
@@ -193,7 +193,9 @@ class TestProductionDataWorkflow:
                 samples_with_urls += 1
 
         url_coverage = (samples_with_urls / 247) * 100
-        print(f"\nSamples with download URLs: {samples_with_urls}/247 ({url_coverage:.1f}%)")
+        print(
+            f"\nSamples with download URLs: {samples_with_urls}/247 ({url_coverage:.1f}%)"
+        )
         assert url_coverage > 95.0, "Most samples should have download URLs"
 
     @pytest.mark.slow
@@ -228,11 +230,13 @@ class TestProductionDataWorkflow:
         sra_file.write_text(json.dumps(production_sra_samples, indent=2))
 
         # Create agent
-        with patch("lobster.agents.metadata_assistant.create_react_agent") as mock_agent, \
-             patch("lobster.agents.metadata_assistant.create_llm") as mock_llm, \
-             patch("lobster.agents.metadata_assistant.get_settings") as mock_settings, \
-             patch("lobster.agents.metadata_assistant.MetadataStandardizationService"), \
-             patch("lobster.agents.metadata_assistant.SampleMappingService"):
+        with (
+            patch("lobster.agents.metadata_assistant.create_react_agent") as mock_agent,
+            patch("lobster.agents.metadata_assistant.create_llm") as mock_llm,
+            patch("lobster.agents.metadata_assistant.get_settings") as mock_settings,
+            patch("lobster.agents.metadata_assistant.MetadataStandardizationService"),
+            patch("lobster.agents.metadata_assistant.SampleMappingService"),
+        ):
 
             # Setup mocks
             mock_settings_instance = Mock()
@@ -341,7 +345,9 @@ class TestProductionDataComparison:
             strategies[strategy] = strategies.get(strategy, 0) + 1
 
         print(f"\n=== Library Strategy Distribution ===")
-        for strategy, count in sorted(strategies.items(), key=lambda x: x[1], reverse=True):
+        for strategy, count in sorted(
+            strategies.items(), key=lambda x: x[1], reverse=True
+        ):
             pct = (count / 247) * 100
             print(f"{strategy}: {count} ({pct:.1f}%)")
 
@@ -489,11 +495,13 @@ class TestBackwardCompatibility:
         sra_file.write_text(json.dumps(minimal_sra_samples, indent=2))
 
         # Process entry
-        with patch("lobster.agents.metadata_assistant.create_react_agent") as mock_agent, \
-             patch("lobster.agents.metadata_assistant.create_llm"), \
-             patch("lobster.agents.metadata_assistant.get_settings") as mock_settings, \
-             patch("lobster.agents.metadata_assistant.MetadataStandardizationService"), \
-             patch("lobster.agents.metadata_assistant.SampleMappingService"):
+        with (
+            patch("lobster.agents.metadata_assistant.create_react_agent") as mock_agent,
+            patch("lobster.agents.metadata_assistant.create_llm"),
+            patch("lobster.agents.metadata_assistant.get_settings") as mock_settings,
+            patch("lobster.agents.metadata_assistant.MetadataStandardizationService"),
+            patch("lobster.agents.metadata_assistant.SampleMappingService"),
+        ):
 
             mock_settings_instance = Mock()
             mock_settings_instance.get_agent_llm_params.return_value = {}

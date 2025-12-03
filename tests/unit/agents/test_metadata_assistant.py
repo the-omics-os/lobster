@@ -123,7 +123,9 @@ class TestMetadataAssistantInit:
         mock_create_agent.assert_called_once()
         call_kwargs = mock_create_agent.call_args[1]
         assert call_kwargs["model"] == mock_llm
-        assert len(call_kwargs["tools"]) == 5  # 5 base tools (includes filter_samples_by)
+        assert (
+            len(call_kwargs["tools"]) == 5
+        )  # 5 base tools (includes filter_samples_by)
         assert call_kwargs["name"] == "metadata_assistant"
         assert "metadata assistant" in call_kwargs["prompt"].lower()
 
@@ -2337,7 +2339,9 @@ class TestHandoffCoordination:
 class TestFilterSamplesBy:
     """Test filter_samples_by tool (multi-criteria microbiome filtering)."""
 
-    @pytest.mark.skip(reason="Requires workspace infrastructure not yet compatible with unit test mocking - needs production code investigation")
+    @pytest.mark.skip(
+        reason="Requires workspace infrastructure not yet compatible with unit test mocking - needs production code investigation"
+    )
     @patch("lobster.agents.metadata_assistant.create_react_agent")
     @patch("lobster.agents.metadata_assistant.create_llm")
     @patch("lobster.agents.metadata_assistant.get_settings")
@@ -2379,7 +2383,11 @@ class TestFilterSamplesBy:
             if "illumina" in platform or "miseq" in platform:
                 return (
                     metadata,  # Non-empty dict = valid
-                    {"is_valid": True, "reason": "16S detected", "matched_field": "platform"},
+                    {
+                        "is_valid": True,
+                        "reason": "16S detected",
+                        "matched_field": "platform",
+                    },
                     AnalysisStep(
                         operation="validate_16s",
                         tool_name="test",
@@ -2390,8 +2398,8 @@ class TestFilterSamplesBy:
                         parameters={},
                         parameter_schema={},
                         input_entities=[],
-                        output_entities=[]
-                    )
+                        output_entities=[],
+                    ),
                 )
             else:
                 return (
@@ -2407,27 +2415,40 @@ class TestFilterSamplesBy:
                         parameters={},
                         parameter_schema={},
                         input_entities=[],
-                        output_entities=[]
-                    )
+                        output_entities=[],
+                    ),
                 )
 
-        mock_microbiome_service.validate_16s_amplicon.side_effect = validate_16s_side_effect
+        mock_microbiome_service.validate_16s_amplicon.side_effect = (
+            validate_16s_side_effect
+        )
 
         # Mock workspace data - MUST be set up BEFORE creating agent
         workspace_data = {
             "metadata": {
                 "samples": {
-                    "sample1": {"platform": "Illumina MiSeq", "organism": "Homo sapiens"},
-                    "sample2": {"platform": "Illumina HiSeq", "organism": "Homo sapiens"},
-                    "sample3": {"platform": "PacBio", "organism": "Homo sapiens"}  # Should be filtered out
+                    "sample1": {
+                        "platform": "Illumina MiSeq",
+                        "organism": "Homo sapiens",
+                    },
+                    "sample2": {
+                        "platform": "Illumina HiSeq",
+                        "organism": "Homo sapiens",
+                    },
+                    "sample3": {
+                        "platform": "PacBio",
+                        "organism": "Homo sapiens",
+                    },  # Should be filtered out
                 }
             }
         }
         # Fix: Add workspace mock attribute BEFORE agent creation
         mock_workspace = Mock()
+
         # Mock read_content to accept workspace_key parameter and return workspace_data
         def mock_read_content(workspace_key=None):
             return workspace_data
+
         mock_workspace.read_content = Mock(side_effect=mock_read_content)
         mock_data_manager.workspace = mock_workspace
 
@@ -2440,9 +2461,7 @@ class TestFilterSamplesBy:
 
         # Run filtering
         result = filter_tool.func(
-            workspace_key="test_workspace",
-            filter_criteria="16S",
-            strict=False
+            workspace_key="test_workspace", filter_criteria="16S", strict=False
         )
 
         # Verify results
@@ -2458,7 +2477,9 @@ class TestFilterSamplesBy:
         call_args = mock_data_manager.log_tool_usage.call_args
         assert call_args[1]["tool_name"] == "filter_samples_by"
 
-    @pytest.mark.skip(reason="Requires workspace infrastructure not yet compatible with unit test mocking - needs production code investigation")
+    @pytest.mark.skip(
+        reason="Requires workspace infrastructure not yet compatible with unit test mocking - needs production code investigation"
+    )
     @patch("lobster.agents.metadata_assistant.create_react_agent")
     @patch("lobster.agents.metadata_assistant.create_llm")
     @patch("lobster.agents.metadata_assistant.get_settings")
@@ -2501,10 +2522,17 @@ class TestFilterSamplesBy:
             {"platform": "test"},
             {"is_valid": True, "reason": "16S detected"},
             AnalysisStep(
-                operation="validate_16s", tool_name="test", description="test",
-                library="test", code_template="", imports=[], parameters={},
-                parameter_schema={}, input_entities=[], output_entities=[]
-            )
+                operation="validate_16s",
+                tool_name="test",
+                description="test",
+                library="test",
+                code_template="",
+                imports=[],
+                parameters={},
+                parameter_schema={},
+                input_entities=[],
+                output_entities=[],
+            ),
         )
 
         # Mock host organism validation (all pass)
@@ -2512,47 +2540,79 @@ class TestFilterSamplesBy:
             {"organism": "Homo sapiens"},
             {"is_valid": True, "reason": "Host matched", "matched_host": "Human"},
             AnalysisStep(
-                operation="validate_host", tool_name="test", description="test",
-                library="test", code_template="", imports=[], parameters={},
-                parameter_schema={}, input_entities=[], output_entities=[]
-            )
+                operation="validate_host",
+                tool_name="test",
+                description="test",
+                library="test",
+                code_template="",
+                imports=[],
+                parameters={},
+                parameter_schema={},
+                input_entities=[],
+                output_entities=[],
+            ),
         )
 
         # Mock sample type filtering (2 out of 3 pass)
         def filter_by_sample_type_side_effect(metadata_df, sample_types):
             # Keep samples with fecal in sample_type
-            filtered = metadata_df[metadata_df["sample_type"].str.lower().str.contains("fecal")]
+            filtered = metadata_df[
+                metadata_df["sample_type"].str.lower().str.contains("fecal")
+            ]
             return (
                 filtered,
                 {
                     "original_samples": len(metadata_df),
                     "filtered_samples": len(filtered),
-                    "retention_rate": len(filtered) / len(metadata_df) * 100
+                    "retention_rate": len(filtered) / len(metadata_df) * 100,
                 },
                 AnalysisStep(
-                    operation="filter_sample_type", tool_name="test", description="test",
-                    library="test", code_template="", imports=[], parameters={},
-                    parameter_schema={}, input_entities=[], output_entities=[]
-                )
+                    operation="filter_sample_type",
+                    tool_name="test",
+                    description="test",
+                    library="test",
+                    code_template="",
+                    imports=[],
+                    parameters={},
+                    parameter_schema={},
+                    input_entities=[],
+                    output_entities=[],
+                ),
             )
 
-        mock_disease_service.filter_by_sample_type.side_effect = filter_by_sample_type_side_effect
+        mock_disease_service.filter_by_sample_type.side_effect = (
+            filter_by_sample_type_side_effect
+        )
 
         # Mock workspace data - MUST be set up BEFORE creating agent
         workspace_data = {
             "metadata": {
                 "samples": {
-                    "sample1": {"platform": "Illumina MiSeq", "organism": "Homo sapiens", "sample_type": "fecal"},
-                    "sample2": {"platform": "Illumina HiSeq", "organism": "Homo sapiens", "sample_type": "fecal"},
-                    "sample3": {"platform": "Illumina NextSeq", "organism": "Homo sapiens", "sample_type": "biopsy"}
+                    "sample1": {
+                        "platform": "Illumina MiSeq",
+                        "organism": "Homo sapiens",
+                        "sample_type": "fecal",
+                    },
+                    "sample2": {
+                        "platform": "Illumina HiSeq",
+                        "organism": "Homo sapiens",
+                        "sample_type": "fecal",
+                    },
+                    "sample3": {
+                        "platform": "Illumina NextSeq",
+                        "organism": "Homo sapiens",
+                        "sample_type": "biopsy",
+                    },
                 }
             }
         }
         # Fix: Add workspace mock attribute BEFORE agent creation
         mock_workspace = Mock()
+
         # Mock read_content to accept workspace_key parameter and return workspace_data
         def mock_read_content(workspace_key=None):
             return workspace_data
+
         mock_workspace.read_content = Mock(side_effect=mock_read_content)
         mock_data_manager.workspace = mock_workspace
 
@@ -2567,7 +2627,7 @@ class TestFilterSamplesBy:
         result = filter_tool.func(
             workspace_key="test_workspace",
             filter_criteria="16S human fecal",
-            strict=False
+            strict=False,
         )
 
         # Verify results
@@ -2578,7 +2638,9 @@ class TestFilterSamplesBy:
         assert "Host organism: Human" in result
         assert "Sample type: fecal" in result
 
-    @pytest.mark.skip(reason="Requires workspace infrastructure not yet compatible with unit test mocking - needs production code investigation")
+    @pytest.mark.skip(
+        reason="Requires workspace infrastructure not yet compatible with unit test mocking - needs production code investigation"
+    )
     @patch("lobster.agents.metadata_assistant.create_react_agent")
     @patch("lobster.agents.metadata_assistant.create_llm")
     @patch("lobster.agents.metadata_assistant.get_settings")
@@ -2613,9 +2675,11 @@ class TestFilterSamplesBy:
         workspace_data = {"metadata": {"samples": {}}}
         # Fix: Add workspace mock attribute BEFORE agent creation
         mock_workspace = Mock()
+
         # Mock read_content to accept workspace_key parameter and return workspace_data
         def mock_read_content(workspace_key=None):
             return workspace_data
+
         mock_workspace.read_content = Mock(side_effect=mock_read_content)
         mock_data_manager.workspace = mock_workspace
 
@@ -2634,11 +2698,15 @@ class TestFilterSamplesBy:
             ("16S Homo sapiens tissue", True, ["Human"], ["gut"], False),
         ]
 
-        for criteria, expect_16s, expect_hosts, expect_types, expect_disease in test_cases:
+        for (
+            criteria,
+            expect_16s,
+            expect_hosts,
+            expect_types,
+            expect_disease,
+        ) in test_cases:
             result = filter_tool.func(
-                workspace_key="test_workspace",
-                filter_criteria=criteria,
-                strict=False
+                workspace_key="test_workspace", filter_criteria=criteria, strict=False
             )
 
             # Verify criteria was parsed (even if no samples, should show filters applied)

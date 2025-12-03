@@ -273,7 +273,9 @@ class PMCProvider:
                     logger.debug(f"Identifier is already a PMC ID: {identifier}")
                     return pmc_num
                 else:
-                    logger.warning(f"Invalid PMC ID format: {identifier} (non-numeric after 'PMC')")
+                    logger.warning(
+                        f"Invalid PMC ID format: {identifier} (non-numeric after 'PMC')"
+                    )
                     return None
 
             # Normalize identifier to PMID
@@ -304,7 +306,10 @@ class PMCProvider:
                     if "linksetdbs" in linkset:
                         for db in linkset["linksetdbs"]:
                             # Only accept direct full-text links (pubmed_pmc), not references (pubmed_pmc_refs)
-                            if db["dbto"] == "pmc" and db.get("linkname") == "pubmed_pmc":
+                            if (
+                                db["dbto"] == "pmc"
+                                and db.get("linkname") == "pubmed_pmc"
+                            ):
                                 links = db.get("links", [])
                                 if links:
                                     pmc_id = str(links[0])  # First PMC ID
@@ -419,8 +424,8 @@ class PMCProvider:
               </GetRecord>
             </OAI-PMH>
         """
-        import urllib.request
         import ssl
+        import urllib.request
 
         # Build OAI-PMH URL (new endpoint as of 2024 - old oai.cgi redirects here)
         # Note: OAI-PMH rejects NCBI-specific params (email, tool, api_key)
@@ -437,10 +442,14 @@ class PMCProvider:
         ssl_context = ssl.create_default_context()
         request = urllib.request.Request(
             oai_url,
-            headers={"User-Agent": "lobster-ai/1.0 (https://github.com/the-omics-os/lobster)"},
+            headers={
+                "User-Agent": "lobster-ai/1.0 (https://github.com/the-omics-os/lobster)"
+            },
         )
 
-        with urllib.request.urlopen(request, timeout=30, context=ssl_context) as response:
+        with urllib.request.urlopen(
+            request, timeout=30, context=ssl_context
+        ) as response:
             xml_text = response.read().decode("utf-8")
 
         # Extract <article> element from OAI-PMH wrapper
@@ -478,7 +487,9 @@ class PMCProvider:
             return ""
 
         # Return original if we can't extract (let parse_pmc_xml handle it)
-        logger.debug("Could not extract <article> from OAI-PMH, returning full response")
+        logger.debug(
+            "Could not extract <article> from OAI-PMH, returning full response"
+        )
         return oai_xml
 
     def _fetch_via_efetch(self, pmc_id: str) -> str:
@@ -724,7 +735,9 @@ class PMCProvider:
             # Phase B2 optimization: Skip E-Link call when PMC ID already known
             if known_pmc_id:
                 pmc_id = known_pmc_id
-                logger.debug(f"Using pre-resolved PMC ID: {pmc_id} (skipping E-Link lookup)")
+                logger.debug(
+                    f"Using pre-resolved PMC ID: {pmc_id} (skipping E-Link lookup)"
+                )
             else:
                 pmc_id = self.get_pmc_id(identifier)
                 if not pmc_id:
@@ -1191,7 +1204,9 @@ class PMCProvider:
                 # Check subsection sec-type
                 sec_type = subsection.get("@sec-type", "").lower()
                 if section_type.lower() in sec_type:
-                    logger.debug(f"Found section in subsection via sec-type: {sec_type}")
+                    logger.debug(
+                        f"Found section in subsection via sec-type: {sec_type}"
+                    )
                     return self._extract_section_recursive(subsection, level=2)
 
                 # Check subsection title
@@ -1622,7 +1637,9 @@ class PMCProvider:
                 params["clustering_threshold"] = f"{details.clustering_threshold}%"
 
             if params:
-                logger.debug(f"Extracted {len(params)} protocol parameters from methods")
+                logger.debug(
+                    f"Extracted {len(params)} protocol parameters from methods"
+                )
 
             return params
 

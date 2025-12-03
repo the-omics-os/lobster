@@ -37,6 +37,7 @@ def _load_entitlement() -> Dict[str, Any]:
     """
     try:
         from lobster.core.license_manager import load_entitlement
+
         return load_entitlement()
     except ImportError:
         logger.debug("License manager not available, using free tier defaults")
@@ -74,8 +75,11 @@ def discover_plugins() -> Dict[str, Any]:
     # 1. Try to load lobster-premium package
     try:
         from lobster_premium import PREMIUM_REGISTRY
+
         discovered_agents.update(PREMIUM_REGISTRY)
-        logger.info(f"Loaded {len(PREMIUM_REGISTRY)} premium agents from lobster-premium")
+        logger.info(
+            f"Loaded {len(PREMIUM_REGISTRY)} premium agents from lobster-premium"
+        )
     except ImportError:
         logger.debug("lobster-premium not installed (expected for free tier)")
     except Exception as e:
@@ -172,6 +176,7 @@ def get_installed_packages() -> Dict[str, str]:
     # Check for premium package
     try:
         import lobster_premium
+
         version = getattr(lobster_premium, "__version__", None)
         if version is None:
             try:
@@ -227,6 +232,7 @@ def is_premium_installed() -> bool:
     """Check if lobster-premium package is installed."""
     try:
         import lobster_premium
+
         return True
     except ImportError:
         return False
@@ -279,8 +285,12 @@ def validate_plugin_compatibility(package_name: str) -> Dict[str, Any]:
                 result["warnings"].append("Could not verify version compatibility")
 
         # Check for required exports
-        if not hasattr(module, "CUSTOM_REGISTRY") and not hasattr(module, "PREMIUM_REGISTRY"):
-            result["warnings"].append("Package has no CUSTOM_REGISTRY or PREMIUM_REGISTRY export")
+        if not hasattr(module, "CUSTOM_REGISTRY") and not hasattr(
+            module, "PREMIUM_REGISTRY"
+        ):
+            result["warnings"].append(
+                "Package has no CUSTOM_REGISTRY or PREMIUM_REGISTRY export"
+            )
 
     except ImportError as e:
         result["compatible"] = False

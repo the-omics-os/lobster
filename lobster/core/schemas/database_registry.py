@@ -97,7 +97,11 @@ class SupportedDatabase(str, Enum):
     @classmethod
     def get_by_category(cls, category: DatabaseCategory) -> Set["SupportedDatabase"]:
         """Get all databases in a specific category."""
-        return {db for db in cls if DATABASE_METADATA.get(db, {}).get("category") == category}
+        return {
+            db
+            for db in cls
+            if DATABASE_METADATA.get(db, {}).get("category") == category
+        }
 
 
 class DatabaseInfo(BaseModel):

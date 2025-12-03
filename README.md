@@ -15,6 +15,7 @@
 - [🚀 Installation](#-installation)
 - [🔬 Literature Mining & Metadata](#-literature-mining--metadata)
 - [🔧 Configuration](#-configuration)
+- [⭐ Premium Features](#-premium-features)
 - [🗓️ Roadmap](#-roadmap)
 - [📚 Documentation](#-documentation)
 - [🤝 Community & Support](#-community--support)
@@ -376,6 +377,30 @@ lobster init --non-interactive --bedrock-access-key=xxx --bedrock-secret-key=yyy
 ```
 
 **Complete configuration guide:** [wiki/03-configuration.md](https://github.com/the-omics-os/lobster-local/wiki/03-configuration)
+
+## ⭐ Premium Features
+
+Unlock advanced capabilities with a Lobster Cloud subscription.
+
+**Premium includes:**
+- Proteomics analysis (DDA/DIA workflows, missing value handling)
+- Metadata assistant for cross-dataset harmonization
+- Priority support and cloud compute options
+- Custom agent packages for enterprise customers
+
+**Activate your subscription:**
+
+```bash
+# Activate with your cloud key
+lobster activate <your-cloud-key>
+
+# Check your current tier and features
+lobster status
+```
+
+When you activate, any custom packages included in your subscription are automatically installed.
+
+**Get a cloud key:** [Contact sales](mailto:info@omics-os.com) | [Pricing info](https://omics-os.com)
 
 ## 🗓️ Roadmap
 

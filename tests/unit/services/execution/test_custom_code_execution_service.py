@@ -2,15 +2,16 @@
 Unit tests for CustomCodeExecutionService.
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import pytest
+
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.execution.custom_code_execution_service import (
-    CustomCodeExecutionService,
+    CodeExecutionError,
     CodeValidationError,
-    CodeExecutionError
+    CustomCodeExecutionService,
 )
 
 
@@ -22,7 +23,7 @@ class TestCustomCodeExecutionService:
         """Create mock DataManagerV2 with test workspace."""
         dm = Mock(spec=DataManagerV2)
         dm.workspace_path = tmp_path
-        dm.list_modalities.return_value = ['test_modality']
+        dm.list_modalities.return_value = ["test_modality"]
         return dm
 
     @pytest.fixture
@@ -39,16 +40,14 @@ class TestCustomCodeExecutionService:
         """Test executing simple mathematical expression."""
         code = "result = 2 + 2"
         result, stats, ir = service.execute(
-            code=code,
-            persist=False,
-            description="Simple addition"
+            code=code, persist=False, description="Simple addition"
         )
 
         assert result == 4
-        assert stats['success'] is True
-        assert stats['warnings'] == []
-        assert stats['error'] is None
-        assert ir.operation == 'custom_code_execution'
+        assert stats["success"] is True
+        assert stats["warnings"] == []
+        assert stats["error"] is None
+        assert ir.operation == "custom_code_execution"
         assert ir.exportable is False  # persist=False
 
     def test_execute_with_imports(self, service):
@@ -61,15 +60,13 @@ df = pd.DataFrame({'a': [1, 2, 3], 'b': [4, 5, 6]})
 result = int(df['a'].sum())  # Convert to int for JSON serialization
 """
         result, stats, ir = service.execute(
-            code=code,
-            persist=False,
-            description="Pandas computation"
+            code=code, persist=False, description="Pandas computation"
         )
 
         assert result == 6
-        assert stats['success'] is True
-        assert 'import pandas as pd' in ir.imports
-        assert 'import numpy as np' in ir.imports
+        assert stats["success"] is True
+        assert "import pandas as pd" in ir.imports
+        assert "import numpy as np" in ir.imports
 
     def test_execute_with_print(self, service):
         """Test that print statements are captured."""
@@ -81,8 +78,8 @@ result = 42
         result, stats, ir = service.execute(code=code, persist=False)
 
         assert result == 42
-        assert stats['stdout_lines'] == 2
-        assert 'Hello, world!' in stats['stdout_preview']
+        assert stats["stdout_lines"] == 2
+        assert "Hello, world!" in stats["stdout_preview"]
 
     def test_syntax_error_validation(self, service):
         """Test that syntax errors are caught."""
@@ -130,26 +127,25 @@ result = 42
         result, stats, ir = service.execute(code, persist=False)
 
         assert result is None  # No result variable set
-        assert stats['success'] is True
+        assert stats["success"] is True
 
     def test_modality_loading(self, service, mock_data_manager):
         """Test that modality is loaded if specified."""
         # Mock modality loading
         import anndata
         import numpy as np
+
         mock_adata = anndata.AnnData(X=np.array([[1, 2], [3, 4]]))
         mock_data_manager.get_modality.return_value = mock_adata
 
         code = "result = adata.n_obs"
         result, stats, ir = service.execute(
-            code=code,
-            modality_name='test_modality',
-            persist=False
+            code=code, modality_name="test_modality", persist=False
         )
 
         assert result == 2  # 2 observations in mock data
-        assert stats['modality_loaded'] == 'test_modality'
-        assert 'test_modality' in ir.input_entities
+        assert stats["modality_loaded"] == "test_modality"
+        assert "test_modality" in ir.input_entities
 
     def test_warning_for_non_standard_import(self, service):
         """Test warning for non-standard library import."""
@@ -161,7 +157,7 @@ result = math.sqrt(16)
         result, stats, ir = service.execute(code, persist=False)
 
         assert result == 4.0
-        assert stats['success'] is True
+        assert stats["success"] is True
 
     def test_warning_for_eval_usage(self, service):
         """Test warning when eval is detected."""
@@ -171,22 +167,22 @@ result = x
 """
         result, stats, ir = service.execute(code, persist=False)
 
-        assert len(stats['warnings']) > 0
-        assert any('eval' in w for w in stats['warnings'])
+        assert len(stats["warnings"]) > 0
+        assert any("eval" in w for w in stats["warnings"])
 
     def test_extract_imports_basic(self, service):
         """Test _extract_imports with simple imports."""
         code = "import numpy as np"
         imports = service._extract_imports(code)
 
-        assert imports == ['import numpy as np']
+        assert imports == ["import numpy as np"]
 
     def test_extract_imports_from(self, service):
         """Test _extract_imports with from imports."""
         code = "from pandas import DataFrame"
         imports = service._extract_imports(code)
 
-        assert imports == ['from pandas import DataFrame']
+        assert imports == ["from pandas import DataFrame"]
 
     def test_extract_imports_multiple(self, service):
         """Test _extract_imports with multiple imports."""
@@ -198,9 +194,9 @@ from scipy import stats
         imports = service._extract_imports(code)
 
         assert len(imports) == 3
-        assert 'import numpy as np' in imports
-        assert 'import pandas as pd' in imports
-        assert 'from scipy import stats' in imports
+        assert "import numpy as np" in imports
+        assert "import pandas as pd" in imports
+        assert "from scipy import stats" in imports
 
     def test_extract_imports_with_syntax_error(self, service):
         """Test _extract_imports with syntax error."""
@@ -227,9 +223,9 @@ from scipy import stats
     def test_execute_in_namespace_basic(self, service):
         """Test _execute_in_namespace with basic code (subprocess model)."""
         context = {
-            'modality_name': None,
-            'workspace_path': service.data_manager.workspace_path,
-            'load_workspace_files': False
+            "modality_name": None,
+            "workspace_path": service.data_manager.workspace_path,
+            "load_workspace_files": False,
         }
         code = "result = 5 * 2"  # Can't inject arbitrary 'x' in subprocess
 
@@ -245,15 +241,15 @@ from scipy import stats
 
         result, stdout, stderr, error = service._execute_in_namespace(code, context)
 
-        assert 'test output' in stdout
+        assert "test output" in stdout
         assert error is None
 
     def test_execute_in_namespace_with_error(self, service):
         """Test _execute_in_namespace captures errors (subprocess model)."""
         context = {
-            'modality_name': None,
-            'workspace_path': service.data_manager.workspace_path,
-            'load_workspace_files': False
+            "modality_name": None,
+            "workspace_path": service.data_manager.workspace_path,
+            "load_workspace_files": False,
         }
         code = "raise ValueError('test error')"
 
@@ -261,7 +257,7 @@ from scipy import stats
 
         assert error is not None
         # In subprocess model, error is generic Exception with return code
-        assert 'Code execution failed' in str(error) or 'test error' in stderr
+        assert "Code execution failed" in str(error) or "test error" in stderr
 
     def test_output_truncation(self, service):
         """Test that very long output is truncated."""
@@ -275,7 +271,7 @@ result = 42
 
         assert result == 42
         # Output should be truncated
-        assert len(stats['stdout_preview']) <= 500  # Preview is limited to 500 chars
+        assert len(stats["stdout_preview"]) <= 500  # Preview is limited to 500 chars
 
     def test_create_ir_structure(self, service):
         """Test _create_ir creates proper IR structure."""
@@ -285,17 +281,17 @@ result = 42
             modality_name="test_mod",
             load_workspace_files=True,
             persist=True,
-            stats={'success': True, 'duration_seconds': 0.001, 'warnings': []}
+            stats={"success": True, "duration_seconds": 0.001, "warnings": []},
         )
 
-        assert ir.operation == 'custom_code_execution'
-        assert ir.tool_name == 'execute_custom_code'
+        assert ir.operation == "custom_code_execution"
+        assert ir.tool_name == "execute_custom_code"
         assert ir.description == "Test operation"
-        assert ir.library == 'custom'
+        assert ir.library == "custom"
         assert ir.code_template == "result = 2 + 2"
         assert ir.exportable is True  # persist=True
-        assert 'test_mod' in ir.input_entities
-        assert 'modality_name' in ir.parameter_schema
+        assert "test_mod" in ir.input_entities
+        assert "modality_name" in ir.parameter_schema
 
     def test_create_ir_without_modality(self, service):
         """Test _create_ir without modality."""
@@ -305,11 +301,11 @@ result = 42
             modality_name=None,
             load_workspace_files=False,
             persist=False,
-            stats={'success': True, 'duration_seconds': 0.001, 'warnings': []}
+            stats={"success": True, "duration_seconds": 0.001, "warnings": []},
         )
 
         assert ir.input_entities == []
-        assert 'modality_name' not in ir.parameter_schema
+        assert "modality_name" not in ir.parameter_schema
         assert ir.exportable is False
 
     def test_multiline_code_execution(self, service):
@@ -323,7 +319,7 @@ result = x + y + z
         result, stats, ir = service.execute(code, persist=False)
 
         assert result == 6
-        assert stats['success'] is True
+        assert stats["success"] is True
 
     def test_code_with_loops(self, service):
         """Test execution of code with loops."""
@@ -336,7 +332,7 @@ result = total
         result, stats, ir = service.execute(code, persist=False)
 
         assert result == 45  # Sum of 0-9
-        assert stats['success'] is True
+        assert stats["success"] is True
 
     def test_code_with_functions(self, service):
         """Test execution of code with function definitions."""
@@ -349,7 +345,7 @@ result = add(5, 3)
         result, stats, ir = service.execute(code, persist=False)
 
         assert result == 8
-        assert stats['success'] is True
+        assert stats["success"] is True
 
     def test_description_in_ir(self, service):
         """Test that description is properly stored in IR."""
@@ -357,13 +353,11 @@ result = add(5, 3)
         code = "result = 42"
 
         result, stats, ir = service.execute(
-            code=code,
-            description=description,
-            persist=True
+            code=code, description=description, persist=True
         )
 
         assert ir.description == description
-        assert ir.parameters['description'] == description
+        assert ir.parameters["description"] == description
 
     def test_stats_structure(self, service):
         """Test that stats dict has all required fields."""
@@ -372,27 +366,33 @@ result = add(5, 3)
 
         # Check all required stat fields
         required_fields = [
-            'success', 'duration_seconds', 'warnings',
-            'stdout_lines', 'stderr_lines', 'result_type',
-            'modality_loaded', 'workspace_files_loaded',
-            'persisted', 'error'
+            "success",
+            "duration_seconds",
+            "warnings",
+            "stdout_lines",
+            "stderr_lines",
+            "result_type",
+            "modality_loaded",
+            "workspace_files_loaded",
+            "persisted",
+            "error",
         ]
 
         for field in required_fields:
             assert field in stats
 
-        assert stats['result_type'] == 'int'
-        assert stats['persisted'] is False
+        assert stats["result_type"] == "int"
+        assert stats["persisted"] is False
 
     def test_execution_context_in_ir(self, service):
         """Test that execution context is stored in IR."""
         code = "result = 42"
         result, stats, ir = service.execute(code, persist=True)
 
-        assert 'persist' in ir.execution_context
-        assert 'success' in ir.execution_context
-        assert 'duration' in ir.execution_context
-        assert 'warnings' in ir.execution_context
+        assert "persist" in ir.execution_context
+        assert "success" in ir.execution_context
+        assert "duration" in ir.execution_context
+        assert "warnings" in ir.execution_context
 
-        assert ir.execution_context['persist'] is True
-        assert ir.execution_context['success'] is True
+        assert ir.execution_context["persist"] is True
+        assert ir.execution_context["success"] is True

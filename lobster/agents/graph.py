@@ -38,15 +38,14 @@ def _create_delegation_tool(agent_name: str, agent, description: str):
     This follows the official LangGraph supervisor pattern where
     sub-agents are wrapped as tools rather than passed as agents.
     """
+
     @tool
     def delegate(request: str) -> str:
         """Delegate task to a sub-agent."""
-        result = agent.invoke({
-            "messages": [{"role": "user", "content": request}]
-        })
+        result = agent.invoke({"messages": [{"role": "user", "content": request}]})
         # Return only the final message content
         final_msg = result["messages"][-1]
-        return final_msg.content if hasattr(final_msg, 'content') else str(final_msg)
+        return final_msg.content if hasattr(final_msg, "content") else str(final_msg)
 
     # Set proper name and docstring
     delegate.__name__ = f"handoff_to_{agent_name}"
@@ -88,6 +87,7 @@ def create_bioinformatics_graph(
     if subscription_tier is None:
         try:
             from lobster.core.license_manager import get_current_tier
+
             subscription_tier = get_current_tier()
         except ImportError:
             subscription_tier = "free"
@@ -96,6 +96,7 @@ def create_bioinformatics_graph(
     # Create tier-based agent filter if not provided
     if agent_filter is None:
         from lobster.config.subscription_tiers import is_agent_available
+
         agent_filter = lambda name, config: is_agent_available(name, subscription_tier)
     logger.debug("Creating bioinformatics multi-agent graph")
 
@@ -118,7 +119,9 @@ def create_bioinformatics_graph(
     agents = []
     handoff_tools = []
     created_agents = {}
-    supervisor_accessible_agents = []  # Track which agents should be passed to supervisor
+    supervisor_accessible_agents = (
+        []
+    )  # Track which agents should be passed to supervisor
 
     worker_agents = get_worker_agents()
 
@@ -131,7 +134,9 @@ def create_bioinformatics_graph(
         else:
             filtered_out_agents.append(agent_name)
     if filtered_out_agents:
-        logger.info(f"Tier '{subscription_tier}' excludes agents: {filtered_out_agents}")
+        logger.info(
+            f"Tier '{subscription_tier}' excludes agents: {filtered_out_agents}"
+        )
     worker_agents = filtered_worker_agents
 
     # Pre-compute child agents for supervisor_accessible inference
@@ -141,7 +146,9 @@ def create_bioinformatics_graph(
         if agent_config.child_agents:
             child_agent_names.update(agent_config.child_agents)
     if child_agent_names:
-        logger.debug(f"Child agents (not supervisor-accessible by default): {child_agent_names}")
+        logger.debug(
+            f"Child agents (not supervisor-accessible by default): {child_agent_names}"
+        )
 
     for agent_name, agent_config in worker_agents.items():
         factory_function = import_agent_factory(agent_config.factory_function)
@@ -180,21 +187,33 @@ def create_bioinformatics_graph(
                     description=agent_config.handoff_tool_description,
                 )
                 handoff_tools.append(handoff_tool)
-                supervisor_accessible_agents.append(agent)  # Only add to supervisor list if accessible
-                logger.debug(f"Created supervisor handoff tool for: {agent_config.display_name}")
+                supervisor_accessible_agents.append(
+                    agent
+                )  # Only add to supervisor list if accessible
+                logger.debug(
+                    f"Created supervisor handoff tool for: {agent_config.display_name}"
+                )
             else:
-                logger.debug(f"Skipped supervisor handoff for child agent: {agent_config.display_name}")
+                logger.debug(
+                    f"Skipped supervisor handoff for child agent: {agent_config.display_name}"
+                )
         else:
             # Only warn if the agent SHOULD be supervisor-accessible but lacks handoff config
             # Sub-agents (supervisor_accessible=False or inferred as child) don't need handoff tools
             is_child_agent = agent_name in child_agent_names
             is_explicitly_not_accessible = agent_config.supervisor_accessible is False
             if not is_child_agent and not is_explicitly_not_accessible:
-                logger.warning(f"Agent {agent_config.display_name} has no handoff tool configured")
+                logger.warning(
+                    f"Agent {agent_config.display_name} has no handoff tool configured"
+                )
             else:
-                logger.debug(f"Sub-agent {agent_config.display_name} (no handoff tool needed)")
+                logger.debug(
+                    f"Sub-agent {agent_config.display_name} (no handoff tool needed)"
+                )
 
-        logger.debug(f"Created agent: {agent_config.display_name} ({agent_config.name})")
+        logger.debug(
+            f"Created agent: {agent_config.display_name} ({agent_config.name})"
+        )
 
     # Phase 2: Re-create parent agents WITH delegation tools
     for agent_name, agent_config in worker_agents.items():
@@ -207,9 +226,7 @@ def create_bioinformatics_graph(
                     child_config = worker_agents.get(child_name)
                     if child_config:
                         delegation_tool = _create_delegation_tool(
-                            child_name,
-                            child_agent,
-                            child_config.description
+                            child_name, child_agent, child_config.description
                         )
                         delegation_tools.append(delegation_tool)
 
@@ -238,7 +255,9 @@ def create_bioinformatics_graph(
                 idx = supervisor_accessible_agents.index(old_agent)
                 supervisor_accessible_agents[idx] = new_agent
 
-            logger.debug(f"Re-created {agent_name} with {len(delegation_tools)} delegation tool(s)")
+            logger.debug(
+                f"Re-created {agent_name} with {len(delegation_tools)} delegation tool(s)"
+            )
 
     # Create shared tools with data_manager access
     list_available_modalities = create_list_modalities_tool(data_manager)
@@ -247,7 +266,9 @@ def create_bioinformatics_graph(
     # Get list of supervisor-accessible agents (for prompt generation)
     active_agent_names = [agent.name for agent in supervisor_accessible_agents]
     logger.debug(f"Supervisor-accessible agents: {active_agent_names}")
-    logger.debug(f"Total agents created: {len(created_agents)}, Supervisor-accessible: {len(supervisor_accessible_agents)}")
+    logger.debug(
+        f"Total agents created: {len(created_agents)}, Supervisor-accessible: {len(supervisor_accessible_agents)}"
+    )
 
     # Create supervisor prompt with configuration and active agents
     system_prompt = create_supervisor_prompt(
@@ -257,7 +278,7 @@ def create_bioinformatics_graph(
     )
 
     # add forwarding tool for supervisor. This is useful when the supervisor determines that the worker's response is sufficient and doesn't require further processing or summarization by the supervisor itself.
-    #create_forward_message_tool("supervisor")
+    # create_forward_message_tool("supervisor")
 
     # UPDATED CONFIGURATION - Changed output_mode
     # Only pass supervisor-accessible agents (those with handoff tools)
