@@ -166,6 +166,7 @@ class CustomCodeExecutionService:
         code: str,
         modality_name: Optional[str] = None,
         load_workspace_files: bool = True,
+        workspace_keys: Optional[List[str]] = None,
         persist: bool = False,
         description: str = "Custom code execution",
         timeout: int = DEFAULT_TIMEOUT
@@ -177,8 +178,12 @@ class CustomCodeExecutionService:
             code: Python code to execute (can be multi-line)
             modality_name: Optional specific modality to load as 'adata'
             load_workspace_files: Auto-inject CSV/JSON files from workspace
+            workspace_keys: Optional list of specific workspace keys to load (reduces token usage)
+                          If provided, only these files are loaded. If None, all files are loaded.
+                          Example: ["sra_prjna834801_samples"] loads only that file
             persist: If True, save this execution to provenance/notebook export
             description: Human-readable description of what this code does
+            timeout: Maximum execution time in seconds (default: 300s)
 
         Returns:
             Tuple containing:
@@ -199,6 +204,13 @@ class CustomCodeExecutionService:
             2.0
             >>> stats['success']
             True
+
+            >>> # Selective loading to avoid token overflow
+            >>> result, stats, ir = service.execute(
+            ...     code="samples = sra_prjna834801_samples['samples']; result = len(samples)",
+            ...     workspace_keys=["sra_prjna834801_samples"],
+            ...     persist=False
+            ... )
         """
         start_time = time.time()
 
@@ -221,6 +233,7 @@ class CustomCodeExecutionService:
             'modality_name': modality_name,
             'workspace_path': self.data_manager.workspace_path,
             'load_workspace_files': load_workspace_files,
+            'workspace_keys': workspace_keys,
             'timeout': timeout
         }
 
@@ -242,6 +255,8 @@ class CustomCodeExecutionService:
             'result_type': type(result).__name__ if result is not None else None,
             'modality_loaded': modality_name,
             'workspace_files_loaded': load_workspace_files,
+            'workspace_keys': workspace_keys,
+            'selective_loading': workspace_keys is not None,
             'persisted': persist,
             'error': str(exec_error) if exec_error else None
         }
@@ -252,6 +267,7 @@ class CustomCodeExecutionService:
             description=description,
             modality_name=modality_name,
             load_workspace_files=load_workspace_files,
+            workspace_keys=workspace_keys,
             persist=persist,
             stats=stats
         )
@@ -360,7 +376,8 @@ class CustomCodeExecutionService:
         self,
         modality_name: Optional[str],
         workspace_path: Path,
-        load_workspace_files: bool
+        load_workspace_files: bool,
+        workspace_keys: Optional[List[str]] = None
     ) -> str:
         """
         Generate Python code to set up execution context in subprocess.
@@ -372,6 +389,7 @@ class CustomCodeExecutionService:
             modality_name: Optional modality to load as 'adata'
             workspace_path: Path to workspace
             load_workspace_files: Whether to load CSV/JSON files
+            workspace_keys: Optional list of specific keys to load (selective loading)
 
         Returns:
             Python code string that sets up context
@@ -421,7 +439,55 @@ except Exception as e:
 
         # Add workspace file loading
         if load_workspace_files:
-            setup_code += """
+            # Determine if selective loading is enabled
+            if workspace_keys:
+                # Selective loading: only load specified keys
+                keys_str = repr(workspace_keys)  # Convert list to Python literal
+                setup_code += f"""
+# Selective workspace file loading (token-efficient mode)
+import pandas as pd
+
+# Only load specified keys to avoid token overflow
+workspace_keys = {keys_str}
+loaded_files = []
+
+for key in workspace_keys:
+    # Try JSON first
+    json_path = WORKSPACE / f'{{key}}.json'
+    if json_path.exists():
+        try:
+            with open(json_path) as f:
+                globals()[key] = json.load(f)
+                loaded_files.append(f'{{key}}.json')
+        except Exception as e:
+            print(f"Warning: Could not load {{json_path.name}}: {{e}}")
+        continue
+
+    # Try CSV
+    csv_path = WORKSPACE / f'{{key}}.csv'
+    if csv_path.exists():
+        try:
+            globals()[key] = pd.read_csv(csv_path)
+            loaded_files.append(f'{{key}}.csv')
+        except Exception as e:
+            print(f"Warning: Could not load {{csv_path.name}}: {{e}}")
+        continue
+
+    print(f"Warning: workspace_key '{{key}}' not found as .json or .csv")
+
+if loaded_files:
+    print(f"Selective loading: {{len(loaded_files)}} files loaded ({{', '.join(loaded_files)}})")
+else:
+    print(f"Warning: No files loaded for workspace_keys={{workspace_keys}}")
+
+# Convenience imports
+workspace_path = WORKSPACE
+Path = Path
+
+"""
+            else:
+                # Full loading: load all files (backward compatible)
+                setup_code += """
 # Auto-load CSV and JSON files
 import pandas as pd
 
@@ -513,11 +579,13 @@ Path = Path
         modality_name = context.get('modality_name')
         workspace_path = context.get('workspace_path', self.data_manager.workspace_path)
         load_workspace_files = context.get('load_workspace_files', True)
+        workspace_keys = context.get('workspace_keys')
 
         setup_code = self._generate_context_setup_code(
             modality_name=modality_name,
             workspace_path=workspace_path,
-            load_workspace_files=load_workspace_files
+            load_workspace_files=load_workspace_files,
+            workspace_keys=workspace_keys
         )
 
         # Combine setup + user code + result extraction
@@ -628,6 +696,7 @@ if 'result' in dir() and result is not None:
         description: str,
         modality_name: Optional[str],
         load_workspace_files: bool,
+        workspace_keys: Optional[List[str]],
         persist: bool,
         stats: Dict[str, Any]
     ) -> AnalysisStep:
@@ -639,6 +708,7 @@ if 'result' in dir() and result is not None:
             description: Human-readable description
             modality_name: Loaded modality name (if any)
             load_workspace_files: Whether workspace files were loaded
+            workspace_keys: Specific workspace keys loaded (if selective loading)
             persist: Whether to include in notebook export
             stats: Execution statistics
 
@@ -651,6 +721,7 @@ if 'result' in dir() and result is not None:
             ...     description="Simple addition",
             ...     modality_name=None,
             ...     load_workspace_files=False,
+            ...     workspace_keys=None,
             ...     persist=False,
             ...     stats={'success': True, 'duration_seconds': 0.001}
             ... )
@@ -704,7 +775,9 @@ if 'result' in dir() and result is not None:
                 'code': code,
                 'description': description,
                 'modality_name': modality_name,
-                'load_workspace_files': load_workspace_files
+                'load_workspace_files': load_workspace_files,
+                'workspace_keys': workspace_keys,
+                'selective_loading': workspace_keys is not None
             },
             parameter_schema=parameter_schema,
             input_entities=[modality_name] if modality_name else [],
@@ -713,7 +786,9 @@ if 'result' in dir() and result is not None:
                 'persist': persist,
                 'success': stats['success'],
                 'duration': stats['duration_seconds'],
-                'warnings': stats['warnings']
+                'warnings': stats['warnings'],
+                'selective_loading': workspace_keys is not None,
+                'workspace_keys_count': len(workspace_keys) if workspace_keys else 0
             },
             validates_on_export=True,
             requires_validation=True,
