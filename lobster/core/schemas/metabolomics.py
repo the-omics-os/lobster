@@ -14,22 +14,21 @@ from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.schemas.validation import FlexibleValidator
 
 # =============================================================================
-# ONTOLOGY FIELDS REMOVED - HANDLED BY EMBEDDING SERVICE
+# BIOLOGICAL METADATA FIELDS (FREE-TEXT, NOT ONTOLOGY-BASED)
 # =============================================================================
-# The following fields have been removed from this schema and are now handled
-# by the embedding-based ontology matching service:
+# The following fields are stored as free-text strings in obs metadata:
 #
-# - organism      → NCBI Taxonomy ID (e.g., 9606 for Homo sapiens)
-# - tissue        → UBERON term (e.g., UBERON:0000955 for brain)
+# - organism      → Free-text organism name (e.g., "Homo sapiens", "Mus musculus")
+# - tissue        → Free-text tissue/biofluid (e.g., "plasma", "urine", "liver")
+# - biofluid      → Specific biofluid type (e.g., "plasma", "serum", "urine", "CSF")
+# - disease       → Standardized disease term (e.g., "diabetes", "cancer", "healthy")
+# - age           → Numeric age value (e.g., 45, 62)
+# - sex           → Standardized sex (e.g., "male", "female", "unknown")
+# - sample_type   → Sample classification (e.g., "plasma", "tissue", "urine")
 #
-# Users provide these as free-text strings during data upload.
-# The metadata_assistant agent calls the embedding service to map
-# strings to canonical ontology terms.
-#
-# Results are stored in adata.uns["ontology_mappings"], NOT in obs/var.
-#
-# See: docs/embedding-ontology-service.md
-# Integration point: metadata_assistant.standardize_ontology_terms() tool
+# NOTE: Future enhancement will migrate to ontology-based standardization
+# (NCBI Taxonomy, UBERON) via embedding service.
+# See: kevin_notes/sragent_embedding_ontology_plan.md
 # =============================================================================
 
 
@@ -74,10 +73,14 @@ class MetabolomicsSchema:
                     "condition",  # Control, Treatment, Disease
                     "batch",  # Analytical batch
                     "replicate",  # Biological replicate
-                    # Sample characteristics
-                    # NOTE: organism and tissue fields removed - handled by embedding service
-                    # See header comment for details on ontology integration
-                    "sample_type",  # Serum, Urine, Tissue, Saliva
+                    # Biological metadata (free-text, restored v1.2.0)
+                    "organism",  # Organism name (e.g., "Homo sapiens")
+                    "tissue",  # Tissue/biofluid type (e.g., "liver", "plasma")
+                    "biofluid",  # Specific biofluid (plasma/serum/urine/CSF)
+                    "disease",  # Disease status (e.g., "diabetes", "healthy")
+                    "age",  # Subject age (numeric)
+                    "sex",  # Subject sex (male/female/unknown)
+                    "sample_type",  # Sample classification (serum/urine/tissue/saliva)
                     # Analytical metadata
                     "platform",  # LC-MS, GC-MS, NMR
                     "ionization_mode",  # positive, negative, both
@@ -105,6 +108,13 @@ class MetabolomicsSchema:
                     "condition": "categorical",
                     "batch": "string",
                     "replicate": "string",
+                    # Biological metadata types (restored v1.2.0)
+                    "organism": "string",
+                    "tissue": "string",
+                    "biofluid": "categorical",
+                    "disease": "categorical",
+                    "age": "numeric",
+                    "sex": "categorical",
                     "sample_type": "categorical",
                     "platform": "categorical",
                     "ionization_mode": "categorical",

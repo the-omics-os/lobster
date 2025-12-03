@@ -97,7 +97,6 @@ lobster/agents/supervisor.py
 lobster/agents/research_agent.py
 lobster/agents/metadata_assistant.py
 lobster/agents/data_expert.py
-lobster/agents/singlecell_expert.py
 lobster/agents/visualization_expert.py
 lobster/agents/machine_learning_expert.py
 lobster/agents/protein_structure_visualization_expert.py
@@ -121,8 +120,11 @@ lobster/agents/proteomics/deprecated.py
 # Archived agents
 lobster/agents/archive/*
 
-# PREMIUM AGENTS (Excluded)
+# Deprecated agents (removed in v0.3.0 - transcriptomics unification)
+!lobster/agents/singlecell_expert.py          # Replaced by transcriptomics module
 !lobster/agents/bulk_rnaseq_expert.py         # Replaced by transcriptomics module
+
+# PREMIUM AGENTS (Excluded)
 !lobster/agents/proteomics/proteomics_expert.py
 !lobster/agents/proteomics/platform_config.py
 !lobster/agents/custom_feature_agent.py       # AI-powered agent generation (premium)

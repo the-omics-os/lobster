@@ -14,24 +14,24 @@ from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.schemas.validation import FlexibleValidator
 
 # =============================================================================
-# ONTOLOGY FIELDS REMOVED - HANDLED BY EMBEDDING SERVICE
+# BIOLOGICAL METADATA FIELDS (FREE-TEXT, NOT ONTOLOGY-BASED)
 # =============================================================================
-# The following fields have been removed from this schema and are now handled
-# by the embedding-based ontology matching service:
+# The following fields are stored as free-text strings in obs metadata:
 #
-# - organism      → NCBI Taxonomy ID (e.g., 9606 for Homo sapiens)
-# - host_species  → NCBI Taxonomy ID for host organism
-# - body_site     → UBERON term (e.g., UBERON:0000990 for gut)
-# - tissue        → UBERON term (e.g., UBERON:0000955 for brain)
+# - organism      → Free-text organism name (e.g., "human gut metagenome", "mouse gut metagenome")
+# - host          → Host organism (e.g., "Homo sapiens", "Mus musculus")
+# - host_species  → Synonym for host (microbiome-specific)
+# - body_site     → Body site (e.g., "gut", "skin", "oral")
+# - tissue        → Specific tissue (e.g., "colon", "ileum", "rectum")
+# - isolation_source → Sample source (e.g., "fecal", "gut tissue", "biopsy")
+# - disease       → Standardized disease term (e.g., "crc", "uc", "cd", "healthy")
+# - age           → Numeric age value (e.g., 45, 62)
+# - sex           → Standardized sex (e.g., "male", "female", "unknown")
+# - sample_type   → Sample classification (e.g., "fecal", "tissue", "biopsy")
 #
-# Users provide these as free-text strings during data upload.
-# The metadata_assistant agent calls the embedding service to map
-# strings to canonical ontology terms.
-#
-# Results are stored in adata.uns["ontology_mappings"], NOT in obs/var.
-#
-# See: docs/embedding-ontology-service.md
-# Integration point: metadata_assistant.standardize_ontology_terms() tool
+# NOTE: Future enhancement will migrate to ontology-based standardization
+# (NCBI Taxonomy, UBERON) via embedding service.
+# See: kevin_notes/sragent_embedding_ontology_plan.md
 # =============================================================================
 
 
@@ -76,11 +76,17 @@ class MetagenomicsSchema:
                     "condition",  # Healthy, Disease, Treatment
                     "batch",  # Sequencing batch
                     "replicate",  # Biological replicate
-                    # Sample characteristics (NO organism/tissue/body_site - embedding)
-                    # host_species: REMOVED - See embedding service
-                    # body_site: REMOVED - See embedding service
-                    # tissue: REMOVED - See embedding service
-                    "sample_type",  # Gut, Oral, Skin, Vaginal, Soil, Water
+                    # Biological metadata (free-text, restored v1.2.0)
+                    "organism",  # Organism name (e.g., "human gut metagenome")
+                    "host",  # Host organism (e.g., "Homo sapiens", "Mus musculus")
+                    "host_species",  # Synonym for host (microbiome-specific)
+                    "body_site",  # Body site (e.g., "gut", "skin", "oral cavity")
+                    "tissue",  # Specific tissue (e.g., "colon", "ileum", "feces")
+                    "isolation_source",  # Sample source (e.g., "fecal", "biopsy")
+                    "disease",  # Disease status (e.g., "crc", "uc", "cd", "healthy")
+                    "age",  # Subject age (numeric)
+                    "sex",  # Subject sex (male/female/unknown)
+                    "sample_type",  # Sample classification (fecal/tissue/biopsy)
                     "environment",  # For non-host samples (soil, water, built)
                     # Sequencing metadata
                     "sequencing_platform",  # Illumina MiSeq, PacBio, etc.
@@ -126,6 +132,16 @@ class MetagenomicsSchema:
                 "types": {
                     "sample_id": "string",
                     "condition": "categorical",
+                    # Biological metadata types (restored v1.2.0)
+                    "organism": "string",
+                    "host": "string",
+                    "host_species": "string",
+                    "body_site": "categorical",
+                    "tissue": "string",
+                    "isolation_source": "string",
+                    "disease": "categorical",
+                    "age": "numeric",
+                    "sex": "categorical",
                     "sample_type": "categorical",
                     "sequencing_depth": "numeric",
                     "shannon_diversity": "numeric",
@@ -385,6 +401,18 @@ class MetagenomicsSchema:
                     "replicate",
                     "sample_type",
                     "environment",
+                    # Biological metadata (restored v1.2.0 - same as 16S)
+                    "organism",  # Homo sapiens, Mus musculus
+                    "host",  # For microbiome studies
+                    "host_species",  # Homo sapiens (for host-associated microbiomes)
+                    "body_site",  # Gut, Skin, Oral cavity
+                    "tissue",  # Colon, Duodenum, Fecal
+                    "isolation_source",  # Fecal, Soil, Water
+                    "disease",  # CRC, IBD, Healthy control
+                    "age",  # Age in years
+                    "age_unit",  # years, months, days
+                    "sex",  # Male, Female, Unknown
+                    # Technical metadata
                     "sequencing_platform",
                     "library_strategy",  # WGS (not AMPLICON)
                     "library_layout",
@@ -395,20 +423,24 @@ class MetagenomicsSchema:
                     "percent_assigned",
                     "n_features",
                     "total_counts",
+                    # Diversity metrics
                     "shannon_diversity",
                     "simpson_diversity",
                     "observed_features",
                     "chao1",
                     "pielou_evenness",
+                    # Environmental metadata
                     "ph",
                     "temperature",
                     "salinity",
                     "depth",
                     "elevation",
+                    # Temporal/spatial metadata
                     "collection_date",
                     "geographic_location",
                     "latitude",
                     "longitude",
+                    # Database accessions
                     "biosample_accession",
                     "sra_accession",
                     "sra_run_accession",
@@ -416,7 +448,18 @@ class MetagenomicsSchema:
                 "types": {
                     "sample_id": "string",
                     "condition": "categorical",
+                    # Biological metadata types (restored v1.2.0)
+                    "organism": "string",
+                    "host": "string",
+                    "host_species": "string",
+                    "body_site": "categorical",
+                    "tissue": "string",
+                    "isolation_source": "string",
+                    "disease": "categorical",
+                    "age": "numeric",
+                    "sex": "categorical",
                     "sample_type": "categorical",
+                    # Technical metrics
                     "sequencing_depth": "numeric",
                     "shannon_diversity": "numeric",
                     "simpson_diversity": "numeric",

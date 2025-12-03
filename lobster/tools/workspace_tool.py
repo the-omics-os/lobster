@@ -8,6 +8,7 @@ by multiple agents (research_agent, data_expert, supervisor):
 """
 
 import json
+import re
 from typing import Optional
 
 from langchain_core.tools import tool
@@ -18,6 +19,10 @@ from lobster.services.data_access.workspace_content_service import (
     ContentType,
     RetrievalLevel,
     WorkspaceContentService,
+)
+from lobster.core.schemas.export_schemas import (
+    get_ordered_export_columns,
+    infer_data_type,
 )
 from lobster.utils.logger import get_logger
 
@@ -657,24 +662,6 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
         WorkspaceContentService,
     )
 
-    # Rich export columns for publication queue SRA samples (28 columns)
-    # Includes all critical fields for downstream analysis and automated downloads
-    RICH_EXPORT_COLS = [
-        # Core identifiers
-        "run_accession", "sample_accession", "biosample", "bioproject",
-        # Sample info
-        "organism_name", "host", "isolation_source", "geo_loc_name", "collection_date",
-        # Library info (CRITICAL for analysis)
-        "library_strategy", "library_layout", "library_source", "library_selection",
-        # Sequencing info (CRITICAL for QC)
-        "instrument", "instrument_model", "total_spots", "run_total_bases",
-        # Download URLs (CRITICAL for automation)
-        "ena_fastq_http", "ena_fastq_http_1", "ena_fastq_http_2",
-        "ncbi_url", "aws_url", "gcp_url",
-        # Publication context (added by tool)
-        "source_doi", "source_pmid", "source_entry_id",
-    ]
-
     @tool
     def write_to_workspace(
         identifier: str,
@@ -682,6 +669,7 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
         content_type: str = None,
         output_format: str = "json",
         export_mode: str = "auto",
+        add_timestamp: bool = True,
     ) -> str:
         """
         Cache research content to workspace for later retrieval and specialist handoff.
@@ -709,6 +697,8 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
             content_type: Type of content ("publication", "dataset", "metadata")
             output_format: Output format ("json" or "csv"). Default: "json"
             export_mode: CSV export mode ("auto", "rich", "simple"). Default: "auto"
+            add_timestamp: Auto-append YYYY-MM-DD timestamp to filename. Default: True
+                          Set to False to use identifier as exact filename
 
         Returns:
             Confirmation message with storage location and next steps
@@ -826,7 +816,7 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
                     import pandas as pd
 
                     if use_rich_format:
-                        logger.info("Using rich publication queue export format (28 columns)")
+                        logger.info("Using schema-driven export format (column count depends on data type)")
                         rich_export_used = True
 
                         # Enrich samples with publication context
@@ -834,15 +824,21 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
                             samples_list, identifier, content_data
                         )
 
-                        df = pd.DataFrame(enriched_samples)
+                        # Schema-driven column ordering (v1.2.0 - export_schemas.py)
+                        # Infer data type from samples (auto-detects SRA/proteomics/metabolomics)
+                        data_type = infer_data_type(enriched_samples)
 
-                        # Select and order columns according to RICH_EXPORT_COLS
-                        # Include columns that exist in the data
-                        available_cols = [c for c in RICH_EXPORT_COLS if c in df.columns]
-                        # Also include any extra columns not in the standard list
-                        extra_cols = [c for c in df.columns if c not in RICH_EXPORT_COLS]
-                        final_cols = available_cols + extra_cols
-                        df = df[final_cols]
+                        # Get priority-ordered columns from schema
+                        ordered_cols = get_ordered_export_columns(
+                            samples=enriched_samples,
+                            data_type=data_type,
+                            include_extra=True  # Include fields not in schema
+                        )
+
+                        # Create DataFrame with schema-ordered columns
+                        df = pd.DataFrame(enriched_samples)
+                        available_cols = [c for c in ordered_cols if c in df.columns]
+                        df = df[available_cols]
                     else:
                         # Simple export - as-is
                         df = pd.DataFrame(samples_list)
@@ -850,6 +846,13 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
                     # Write to CSV
                     content_dir = workspace_service._get_content_dir(workspace_to_content_type[workspace])
                     filename = workspace_service._sanitize_filename(identifier)
+
+                    # Auto-append timestamp if requested and not already present
+                    if add_timestamp and not re.search(r'\d{4}-\d{2}-\d{2}', filename):
+                        from datetime import datetime
+                        timestamp = datetime.now().strftime("%Y-%m-%d")
+                        filename = f"{filename}_{timestamp}"
+
                     cache_file_path = content_dir / f"{filename}.csv"
 
                     df.to_csv(cache_file_path, index=False, encoding="utf-8")
@@ -927,17 +930,6 @@ def create_export_publication_queue_tool(data_manager: DataManagerV2):
         ContentType,
         WorkspaceContentService,
     )
-
-    # Rich export columns (same as write_to_workspace)
-    RICH_EXPORT_COLS = [
-        "run_accession", "sample_accession", "biosample", "bioproject",
-        "organism_name", "host", "isolation_source", "geo_loc_name", "collection_date",
-        "library_strategy", "library_layout", "library_source", "library_selection",
-        "instrument", "instrument_model", "total_spots", "run_total_bases",
-        "ena_fastq_http", "ena_fastq_http_1", "ena_fastq_http_2",
-        "ncbi_url", "aws_url", "gcp_url",
-        "source_doi", "source_pmid", "source_entry_id",
-    ]
 
     @tool
     def export_publication_queue_samples(
@@ -1061,11 +1053,21 @@ def create_export_publication_queue_tool(data_manager: DataManagerV2):
                     f"Total samples before filter: {len(all_samples)}"
                 )
 
-            # Create DataFrame and order columns
+            # Schema-driven column ordering (v1.2.0 - export_schemas.py)
+            # Infer data type from samples (auto-detects SRA/proteomics/metabolomics)
+            data_type = infer_data_type(filtered_samples)
+
+            # Get priority-ordered columns from schema
+            ordered_cols = get_ordered_export_columns(
+                samples=filtered_samples,
+                data_type=data_type,
+                include_extra=True  # Include fields not in schema
+            )
+
+            # Create DataFrame with schema-ordered columns
             df = pd.DataFrame(filtered_samples)
-            available_cols = [c for c in RICH_EXPORT_COLS if c in df.columns]
-            extra_cols = [c for c in df.columns if c not in RICH_EXPORT_COLS]
-            df = df[available_cols + extra_cols]
+            available_cols = [c for c in ordered_cols if c in df.columns]
+            df = df[available_cols]
 
             # Sanitize output filename
             safe_filename = workspace_service._sanitize_filename(output_filename)
@@ -1082,7 +1084,7 @@ def create_export_publication_queue_tool(data_manager: DataManagerV2):
 **Output File**: {output_path}
 **Total Samples**: {len(filtered_samples)}
 **Publications**: {len(entries_found)}
-**Columns**: {len(df.columns)} (rich format with publication context)
+**Columns**: {len(df.columns)} (schema-driven format with publication context)
 
 **Samples per Publication**:
 """

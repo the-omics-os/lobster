@@ -716,6 +716,151 @@ def metadata_assistant(
             return f"❌ Unexpected error during validation: {str(e)}"
 
     # =========================================================================
+    # Helper: Disease Extraction from Diverse SRA Fields
+    # =========================================================================
+
+    def _extract_disease_from_raw_fields(
+        metadata: pd.DataFrame,
+        study_context: Optional[Dict] = None
+    ) -> Optional[str]:
+        """
+        Extract disease information from diverse, study-specific SRA field names.
+
+        SRA datasets have NO standardized disease field. Disease data appears in:
+        - Free-text: host_phenotype, phenotype, disease_state, diagnosis
+        - Boolean flags: crohns_disease, inflam_bowel_disease, parkinson_disease
+        - Study title: Embedded in study_title or experiment_title
+
+        This method consolidates diverse field patterns into a unified "disease" column.
+
+        Extraction Strategies (applied in order):
+        1. Existing unified column (disease, disease_state, condition, diagnosis)
+        2. Free-text phenotype fields (host_phenotype → disease)
+        3. Boolean disease flags (crohns_disease: Yes → disease: cd)
+        4. Study context (publication-level disease inference)
+
+        Args:
+            metadata: DataFrame with SRA sample metadata
+            study_context: Optional publication metadata for context
+
+        Returns:
+            Column name containing unified disease data, or None if no disease info found
+
+        Example transformations:
+            host_phenotype: "Parkinson's Disease" → disease: "Parkinson's Disease"
+            crohns_disease: "Yes" → disease: "cd"
+            inflam_bowel_disease: "Yes" → disease: "ibd"
+            parkinson_disease: TRUE → disease: "parkinsons"
+        """
+        # Strategy 1: Check for existing unified disease column
+        existing_disease_cols = ["disease", "disease_state", "condition", "diagnosis"]
+        for col in existing_disease_cols:
+            if col in metadata.columns and metadata[col].notna().sum() > 0:
+                logger.debug(f"Found existing disease column: {col}")
+                # Rename to standard "disease" if different
+                if col != "disease":
+                    metadata["disease"] = metadata[col]
+                    metadata["disease_original"] = metadata[col]
+                return "disease"
+
+        # Strategy 2: Extract from free-text phenotype fields
+        phenotype_cols = ["host_phenotype", "phenotype", "host_disease", "health_status"]
+        for col in phenotype_cols:
+            if col in metadata.columns:
+                # Count non-empty values
+                populated_count = metadata[col].notna().sum()
+                if populated_count > 0:
+                    # Create unified disease column from phenotype
+                    metadata["disease"] = metadata[col].fillna("unknown")
+                    metadata["disease_original"] = metadata[col].fillna("unknown")
+                    logger.debug(
+                        f"Extracted disease from {col} "
+                        f"({populated_count}/{len(metadata)} samples, "
+                        f"{populated_count/len(metadata)*100:.1f}%)"
+                    )
+                    return "disease"
+
+        # Strategy 3: Consolidate boolean disease flags
+        # Find columns ending with "_disease" (crohns_disease, inflam_bowel_disease, etc.)
+        disease_flag_cols = [c for c in metadata.columns if c.endswith("_disease")]
+
+        if disease_flag_cols:
+            logger.debug(f"Found {len(disease_flag_cols)} disease flag columns: {disease_flag_cols}")
+
+            def extract_from_flags(row):
+                """Extract disease from boolean flags."""
+                active_diseases = []
+
+                for flag_col in disease_flag_cols:
+                    # Check if flag is TRUE (handles Yes, Y, TRUE, True, 1, "1")
+                    flag_value = row.get(flag_col)
+                    if flag_value in ["Yes", "YES", "yes", "Y", "y", "TRUE", "True", "true", True, 1, "1"]:
+                        # Convert flag name to disease term
+                        # Examples:
+                        #   crohns_disease → cd
+                        #   inflam_bowel_disease → ibd
+                        #   ulcerative_colitis → uc
+                        #   parkinson_disease → parkinsons
+                        disease_name = flag_col.replace("_disease", "").replace("_", "")
+
+                        # Map common patterns to standard terms
+                        disease_map = {
+                            "crohns": "cd",
+                            "crohn": "cd",
+                            "inflammbowel": "ibd",
+                            "inflambowel": "ibd",  # Handle different spellings
+                            "ulcerativecolitis": "uc",
+                            "colitis": "uc",
+                            "parkinson": "parkinsons",
+                            "parkinsons": "parkinsons",
+                        }
+
+                        standardized = disease_map.get(disease_name, disease_name)
+                        active_diseases.append(standardized)
+
+                if active_diseases:
+                    # If multiple diseases, join with semicolon
+                    return ";".join(active_diseases)
+
+                # Check for negative controls (all flags FALSE)
+                all_false = all(
+                    row.get(flag_col) in ["No", "NO", "no", "N", "n", "FALSE", "False", "false", False, 0, "0"]
+                    for flag_col in disease_flag_cols
+                )
+                if all_false:
+                    return "healthy"
+
+                return "unknown"
+
+            # Apply extraction
+            metadata["disease"] = metadata.apply(extract_from_flags, axis=1)
+            metadata["disease_original"] = metadata.apply(
+                lambda row: ";".join([f"{col}={row[col]}" for col in disease_flag_cols if pd.notna(row.get(col))]),
+                axis=1
+            )
+
+            # Count successful extractions
+            extracted_count = (metadata["disease"] != "unknown").sum()
+            logger.debug(
+                f"Extracted disease from {len(disease_flag_cols)} boolean flags "
+                f"({extracted_count}/{len(metadata)} samples, "
+                f"{extracted_count/len(metadata)*100:.1f}%)"
+            )
+
+            return "disease"
+
+        # Strategy 4: Use study context (publication-level disease focus)
+        if study_context and "disease_focus" in study_context:
+            # All samples in this study share the publication's disease focus
+            metadata["disease"] = study_context["disease_focus"]
+            metadata["disease_original"] = f"inferred from publication: {study_context['disease_focus']}"
+            logger.debug(f"Assigned disease from publication context: {study_context['disease_focus']}")
+            return "disease"
+
+        logger.warning("No disease information found in metadata fields or study context")
+        return None
+
+    # =========================================================================
     # Tool 5: Filter Samples By Criteria (Microbiome/Disease)
     # =========================================================================
 
@@ -851,26 +996,25 @@ def metadata_assistant(
                 stats_list.append(stats)
                 logger.debug(f"After sample type filter: {len(current_metadata)} samples retained")
 
-            # Filter 4: Disease standardization
+            # Filter 4: Disease extraction + standardization
             if parsed_criteria["standardize_disease"]:
-                logger.debug("Applying disease standardization...")
-                # Find disease column (try common names)
-                disease_col = None
-                for col_name in ["disease", "condition", "diagnosis", "disease_state"]:
-                    if col_name in current_metadata.columns:
-                        disease_col = col_name
-                        break
+                logger.debug("Applying disease extraction + standardization...")
+
+                # NEW: Extract disease from diverse field patterns (v1.2.0)
+                # Handles: host_phenotype, boolean flags (crohns_disease, etc.)
+                disease_col = _extract_disease_from_raw_fields(current_metadata, study_context=None)
 
                 if disease_col:
+                    # Apply standardization to extracted disease column
                     standardized, stats, ir = disease_standardization_service.standardize_disease_terms(
                         current_metadata, disease_column=disease_col
                     )
                     current_metadata = standardized
                     irs.append(ir)
                     stats_list.append(stats)
-                    logger.debug(f"Disease standardization complete: {stats['standardization_rate']:.1f}% mapped")
+                    logger.debug(f"Disease extraction + standardization complete: {stats['standardization_rate']:.1f}% mapped")
                 else:
-                    logger.warning("Disease standardization requested but no disease column found")
+                    logger.warning("Disease standardization requested but no disease information found in metadata")
 
             # Calculate final stats
             final_count = len(current_metadata)
@@ -1659,7 +1803,11 @@ def metadata_assistant(
         return valid_samples, validation_result, quality_stats
 
     def _apply_metadata_filters(samples: list, filter_criteria: str) -> list:
-        """Apply natural language filters using microbiome services."""
+        """
+        Apply natural language filters using microbiome services.
+
+        Includes disease extraction + standardization if disease terms in criteria.
+        """
         if not MICROBIOME_FEATURES_AVAILABLE:
             logger.warning("Microbiome services not available, returning unfiltered samples")
             return samples
@@ -1667,6 +1815,26 @@ def metadata_assistant(
         parsed = _parse_filter_criteria(filter_criteria)
         filtered = samples.copy()
 
+        # Convert to DataFrame for disease extraction (if needed)
+        if parsed["standardize_disease"] and filtered:
+            df = pd.DataFrame(filtered)
+
+            # Extract disease from diverse fields (NEW v1.2.0)
+            disease_col = _extract_disease_from_raw_fields(df, study_context=None)
+
+            if disease_col:
+                # Apply standardization to extracted disease
+                standardized_df, stats, ir = disease_standardization_service.standardize_disease_terms(
+                    df, disease_column=disease_col
+                )
+                # Convert back to list of dicts
+                filtered = standardized_df.to_dict('records')
+                logger.debug(
+                    f"Disease extraction + standardization applied: "
+                    f"{stats['standardization_rate']:.1f}% mapped"
+                )
+
+        # Apply other filters
         if parsed["check_16s"]:
             filtered = [s for s in filtered if microbiome_filtering_service.validate_16s_amplicon(s, strict=False)[0]]
         if parsed["host_organisms"]:

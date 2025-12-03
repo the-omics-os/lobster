@@ -2399,6 +2399,176 @@ def status():
 
 
 @app.command()
+def activate(
+    access_code: str = typer.Argument(
+        ..., help="Premium activation code from Omics-OS"
+    ),
+    server_url: Optional[str] = typer.Option(
+        None,
+        "--server",
+        help="License server URL (defaults to https://licenses.omics-os.com)",
+    ),
+):
+    """
+    Activate a premium license using an access code.
+
+    This command contacts the Omics-OS license server to validate your
+    access code and activate premium features on this machine.
+
+    Examples:
+      lobster activate ABC123-XYZ789
+      lobster activate ABC123-XYZ789 --server https://custom.server.com
+    """
+    console.print()
+    console.print(
+        Panel.fit(
+            f"[bold {LobsterTheme.PRIMARY_ORANGE}]🦞 License Activation[/bold {LobsterTheme.PRIMARY_ORANGE}]",
+            border_style=LobsterTheme.PRIMARY_ORANGE,
+            padding=(0, 2),
+        )
+    )
+    console.print()
+
+    # Check if already activated
+    try:
+        from lobster.core.license_manager import get_entitlement_status
+        current = get_entitlement_status()
+        if current.get("tier") not in ("free", None) and current.get("source") == "license_file":
+            console.print(
+                f"[yellow]⚠️  You already have an active {current.get('tier_display', 'Premium')} license[/yellow]"
+            )
+            console.print(f"[dim]Source: {current.get('source')}[/dim]")
+            console.print()
+            if not Confirm.ask("Replace existing license?", default=False):
+                console.print("[yellow]Activation cancelled[/yellow]")
+                raise typer.Exit(0)
+    except ImportError:
+        pass  # Continue with activation
+
+    console.print("[dim]Contacting license server...[/dim]")
+
+    try:
+        from lobster.core.license_manager import activate_license
+
+        result = activate_license(access_code, license_server_url=server_url)
+
+        if result.get("success"):
+            entitlement = result.get("entitlement", {})
+            tier = entitlement.get("tier", "premium").title()
+            console.print()
+            console.print(
+                Panel.fit(
+                    f"[bold green]✅ License Activated Successfully![/bold green]\n\n"
+                    f"Tier: [bold]{tier}[/bold]\n"
+                    f"Features: {', '.join(entitlement.get('features', []))}\n\n"
+                    f"Run [bold {LobsterTheme.PRIMARY_ORANGE}]lobster status[/bold {LobsterTheme.PRIMARY_ORANGE}] to see available agents.",
+                    border_style="green",
+                    padding=(1, 2),
+                )
+            )
+        else:
+            error = result.get("error", "Unknown error")
+            console.print()
+            console.print(
+                Panel.fit(
+                    f"[bold red]❌ Activation Failed[/bold red]\n\n"
+                    f"Error: {error}\n\n"
+                    f"[dim]If this problem persists, contact support@omics-os.com[/dim]",
+                    border_style="red",
+                    padding=(1, 2),
+                )
+            )
+            raise typer.Exit(1)
+
+    except ImportError as e:
+        console.print(f"[red]❌ License manager not available: {e}[/red]")
+        console.print("[dim]This may indicate an incomplete installation.[/dim]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]❌ Activation error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def deactivate():
+    """
+    Deactivate the current premium license.
+
+    This removes the local license file and reverts to the free tier.
+    Your license can be re-activated on another machine or re-used later.
+    """
+    console.print()
+    console.print(
+        Panel.fit(
+            f"[bold {LobsterTheme.PRIMARY_ORANGE}]🦞 License Deactivation[/bold {LobsterTheme.PRIMARY_ORANGE}]",
+            border_style=LobsterTheme.PRIMARY_ORANGE,
+            padding=(0, 2),
+        )
+    )
+    console.print()
+
+    # Check current status
+    try:
+        from lobster.core.license_manager import get_entitlement_status, clear_entitlement
+        current = get_entitlement_status()
+
+        if current.get("source") == "cloud_key":
+            console.print(
+                "[yellow]⚠️  Your premium tier is from LOBSTER_CLOUD_KEY environment variable.[/yellow]"
+            )
+            console.print(
+                "[dim]To deactivate, unset the LOBSTER_CLOUD_KEY environment variable.[/dim]"
+            )
+            raise typer.Exit(0)
+
+        if current.get("source") == "environment":
+            console.print(
+                "[yellow]⚠️  Your tier is set via LOBSTER_SUBSCRIPTION_TIER environment variable.[/yellow]"
+            )
+            console.print(
+                "[dim]To deactivate, unset the LOBSTER_SUBSCRIPTION_TIER environment variable.[/dim]"
+            )
+            raise typer.Exit(0)
+
+        if current.get("tier") == "free" or current.get("source") == "default":
+            console.print("[dim]No active license found. Already on free tier.[/dim]")
+            raise typer.Exit(0)
+
+        # Confirm deactivation
+        tier_display = current.get("tier_display", "Premium")
+        console.print(f"[bold]Current tier:[/bold] {tier_display}")
+        console.print(f"[dim]Source: {current.get('source')}[/dim]")
+        console.print()
+
+        if not Confirm.ask(
+            f"[yellow]Deactivate {tier_display} license and revert to Free tier?[/yellow]",
+            default=False,
+        ):
+            console.print("[yellow]Deactivation cancelled[/yellow]")
+            raise typer.Exit(0)
+
+        # Remove license file
+        if clear_entitlement():
+            console.print()
+            console.print(
+                Panel.fit(
+                    "[bold green]✅ License Deactivated[/bold green]\n\n"
+                    "You are now on the Free tier.\n"
+                    f"Run [bold {LobsterTheme.PRIMARY_ORANGE}]lobster activate <code>[/bold {LobsterTheme.PRIMARY_ORANGE}] to re-activate.",
+                    border_style="green",
+                    padding=(1, 2),
+                )
+            )
+        else:
+            console.print("[red]❌ Failed to remove license file[/red]")
+            raise typer.Exit(1)
+
+    except ImportError as e:
+        console.print(f"[red]❌ License manager not available: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
 def init(
     force: bool = typer.Option(
         False, "--force", "-f", help="Overwrite existing .env file"
@@ -2424,6 +2594,16 @@ def init(
     ncbi_key: Optional[str] = typer.Option(
         None, "--ncbi-key", help="NCBI API key (optional, non-interactive mode)"
     ),
+    cloud_key: Optional[str] = typer.Option(
+        None,
+        "--cloud-key",
+        help="Lobster Cloud API key (optional, enables premium tier)",
+    ),
+    cloud_endpoint: Optional[str] = typer.Option(
+        None,
+        "--cloud-endpoint",
+        help="Custom cloud endpoint URL (optional)",
+    ),
 ):
     """
     Initialize Lobster AI configuration by creating a .env file with API keys.
@@ -2442,6 +2622,9 @@ def init(
       lobster init --non-interactive \\
         --bedrock-access-key=AKIA... \\
         --bedrock-secret-key=xxx                     # CI/CD: AWS Bedrock
+      lobster init --non-interactive \\
+        --anthropic-key=sk-ant-xxx \\
+        --cloud-key=cloud_xxx                        # CI/CD: With cloud access
     """
     import datetime
 
@@ -2527,6 +2710,13 @@ def init(
         if ncbi_key:
             env_lines.append(f"\n# Optional: Enhanced literature search")
             env_lines.append(f"NCBI_API_KEY={ncbi_key.strip()}")
+
+        if cloud_key:
+            env_lines.append(f"\n# Lobster Cloud configuration (enables premium tier)")
+            env_lines.append(f"LOBSTER_CLOUD_KEY={cloud_key.strip()}")
+            if cloud_endpoint:
+                env_lines.append(f"LOBSTER_ENDPOINT={cloud_endpoint.strip()}")
+            console.print("[green]✓ Cloud API key configured (premium tier enabled)[/green]")
 
         # Write .env file
         try:
@@ -2669,6 +2859,88 @@ def init(
                 console.print(
                     f"[green]✓ Added {len(ncbi_keys)} NCBI API key(s)[/green]"
                 )
+
+        # Optional Premium/Cloud configuration
+        console.print("\n[bold white]⭐ Premium Features (Optional)[/bold white]")
+        console.print("Unlock advanced agents and cloud processing capabilities.")
+        console.print("Options:")
+        console.print("  [cyan]1[/cyan] - Skip (stay on Free tier)")
+        console.print("  [cyan]2[/cyan] - I have an activation code")
+        console.print("  [cyan]3[/cyan] - I have a cloud API key")
+        console.print()
+
+        premium_choice = Prompt.ask(
+            "[bold white]Choose option[/bold white]",
+            choices=["1", "2", "3"],
+            default="1",
+        )
+
+        if premium_choice == "2":
+            # Activation code - activate license immediately
+            console.print("\n[bold white]🔑 License Activation[/bold white]")
+            console.print(
+                "Enter your activation code from Omics-OS to unlock premium features.\n"
+            )
+            activation_code = Prompt.ask(
+                "[bold white]Enter activation code[/bold white]", password=False
+            )
+
+            if activation_code.strip():
+                console.print("[dim]Contacting license server...[/dim]")
+                try:
+                    from lobster.core.license_manager import activate_license
+                    result = activate_license(activation_code.strip())
+
+                    if result.get("success"):
+                        entitlement = result.get("entitlement", {})
+                        tier = entitlement.get("tier", "premium").title()
+                        console.print(
+                            f"[green]✓ License activated: {tier} tier[/green]"
+                        )
+                        # Note: License is stored in ~/.lobster/license.json, not .env
+                    else:
+                        error = result.get("error", "Unknown error")
+                        console.print(
+                            f"[yellow]⚠️  Activation failed: {error}[/yellow]"
+                        )
+                        console.print(
+                            f"[dim]You can retry later with: lobster activate <code>[/dim]"
+                        )
+                except ImportError:
+                    console.print(
+                        "[yellow]⚠️  License manager not available[/yellow]"
+                    )
+                except Exception as e:
+                    console.print(f"[yellow]⚠️  Activation error: {e}[/yellow]")
+                    console.print(
+                        f"[dim]You can retry later with: lobster activate <code>[/dim]"
+                    )
+
+        elif premium_choice == "3":
+            # Cloud API key - store in .env
+            console.print("\n[bold white]🌩️  Cloud API Key[/bold white]")
+            console.print(
+                "Enter your Lobster Cloud API key for cloud processing.\n"
+            )
+            cloud_key = Prompt.ask(
+                "[bold white]Enter your cloud API key[/bold white]", password=True
+            )
+
+            if cloud_key.strip():
+                env_lines.append(f"\n# Lobster Cloud configuration")
+                env_lines.append(f"LOBSTER_CLOUD_KEY={cloud_key.strip()}")
+                console.print("[green]✓ Cloud API key configured[/green]")
+
+                # Optional: custom endpoint
+                custom_endpoint = Confirm.ask(
+                    "Configure custom cloud endpoint?", default=False
+                )
+                if custom_endpoint:
+                    endpoint = Prompt.ask(
+                        "[bold white]Enter endpoint URL[/bold white]",
+                        default="https://api.lobster.omics-os.com",
+                    )
+                    env_lines.append(f"LOBSTER_ENDPOINT={endpoint.strip()}")
 
         # Write .env file
         with open(env_path, "w") as f:

@@ -15,22 +15,21 @@ from lobster.core.interfaces.validator import ValidationResult
 from .validation import FlexibleValidator
 
 # =============================================================================
-# ONTOLOGY FIELDS REMOVED - HANDLED BY EMBEDDING SERVICE
+# BIOLOGICAL METADATA FIELDS (FREE-TEXT, NOT ONTOLOGY-BASED)
 # =============================================================================
-# The following fields have been removed from this schema and are now handled
-# by the embedding-based ontology matching service:
+# The following fields are stored as free-text strings in obs metadata:
 #
-# - organism      → NCBI Taxonomy ID (e.g., 9606 for Homo sapiens)
-# - tissue        → UBERON term (e.g., UBERON:0000955 for brain)
+# - organism      → Free-text organism name (e.g., "Homo sapiens", "Mus musculus")
+# - tissue        → Free-text tissue name (e.g., "plasma", "liver", "serum")
+# - cell_type     → Free-text cell type (e.g., "PBMC", "hepatocyte")
+# - disease       → Standardized disease term (e.g., "cancer", "diabetes", "healthy")
+# - age           → Numeric age value (e.g., 45, 62)
+# - sex           → Standardized sex (e.g., "male", "female", "unknown")
+# - sample_type   → Sample classification (e.g., "plasma", "tissue", "serum", "cell_line")
 #
-# Users provide these as free-text strings during data upload.
-# The metadata_assistant agent calls the embedding service to map
-# strings to canonical ontology terms.
-#
-# Results are stored in adata.uns["ontology_mappings"], NOT in obs/var.
-#
-# See: docs/embedding-ontology-service.md
-# Integration point: metadata_assistant.standardize_ontology_terms() tool
+# NOTE: Future enhancement will migrate to ontology-based standardization
+# (NCBI Taxonomy, UBERON) via embedding service.
+# See: kevin_notes/sragent_embedding_ontology_plan.md
 # =============================================================================
 
 
@@ -62,9 +61,16 @@ class ProteomicsSchema:
                     "treatment",  # Treatment information
                     "batch",  # MS run batch
                     "replicate",  # Biological replicate
+                    # Biological metadata (free-text, restored v1.2.0)
+                    "organism",  # Organism name (e.g., "Homo sapiens")
+                    "tissue",  # Tissue/biofluid type (e.g., "plasma", "liver", "serum")
+                    "cell_type",  # Cell type (e.g., "PBMC", "hepatocyte")
+                    "disease",  # Disease status (e.g., "cancer", "diabetes", "healthy")
+                    "age",  # Subject age (numeric)
+                    "sex",  # Subject sex (male/female/unknown)
+                    "sample_type",  # Sample classification (plasma/tissue/serum/cell_line)
                     "instrument",  # MS instrument used
                     "acquisition_method",  # DDA, DIA, SRM, etc.
-                    # NOTE: organism and tissue removed - handled by embedding service
                     "n_proteins",  # Number of proteins detected
                     "total_intensity",  # Total protein intensity
                     "missing_values",  # Number of missing values
@@ -83,6 +89,14 @@ class ProteomicsSchema:
                     "treatment": "categorical",
                     "batch": "string",
                     "replicate": "string",
+                    # Biological metadata types (restored v1.2.0)
+                    "organism": "string",
+                    "tissue": "string",
+                    "cell_type": "string",
+                    "disease": "categorical",
+                    "age": "numeric",
+                    "sex": "categorical",
+                    "sample_type": "categorical",
                     "instrument": "categorical",
                     "acquisition_method": "categorical",
                     "n_proteins": "numeric",

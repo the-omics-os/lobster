@@ -52,6 +52,9 @@ LICENSE_PATH_ENV_VAR = "LOBSTER_LICENSE_PATH"
 # Environment variable to set tier directly (for development/testing)
 TIER_ENV_VAR = "LOBSTER_SUBSCRIPTION_TIER"
 
+# Environment variable for cloud API key (implies premium tier)
+CLOUD_KEY_ENV_VAR = "LOBSTER_CLOUD_KEY"
+
 # Default entitlement for free tier users
 DEFAULT_ENTITLEMENT: Dict[str, Any] = {
     "tier": "free",
@@ -90,8 +93,9 @@ def load_entitlement() -> Dict[str, Any]:
 
     Checks in order:
     1. LOBSTER_SUBSCRIPTION_TIER environment variable (dev override)
-    2. License file at ~/.lobster/license.json
-    3. Falls back to free tier defaults
+    2. LOBSTER_CLOUD_KEY environment variable (implies premium tier)
+    3. License file at ~/.lobster/license.json
+    4. Falls back to free tier defaults
 
     Returns:
         Entitlement dict with tier, features, custom_packages, etc.
@@ -105,6 +109,26 @@ def load_entitlement() -> Dict[str, Any]:
             "tier": env_tier.lower(),
             "source": "environment",
             "valid": True,
+        }
+
+    # Check for cloud API key (implies premium tier)
+    cloud_key = os.environ.get(CLOUD_KEY_ENV_VAR)
+    if cloud_key:
+        logger.debug("Cloud API key detected, using premium tier")
+        return {
+            "tier": "premium",
+            "customer_id": None,  # Will be resolved by cloud service
+            "issued_at": None,
+            "expires_at": None,
+            "custom_packages": [],
+            "features": [
+                "local_only",
+                "cloud_compute",
+                "email_support",
+                "priority_processing",
+            ],
+            "valid": True,
+            "source": "cloud_key",
         }
 
     # Try to load from license file
@@ -173,22 +197,119 @@ def _verify_signature(data: Dict[str, Any]) -> bool:
     """
     Verify the cryptographic signature of an entitlement.
 
-    This is a placeholder for future implementation. The actual
-    verification would use public key cryptography to verify
-    that the entitlement was issued by the Omics-OS license service.
+    Uses the JWKS endpoint to fetch the public key and verify
+    that the entitlement was signed by the Omics-OS license service.
 
     Args:
-        data: Entitlement data including signature
+        data: Entitlement data including signature and kid
 
     Returns:
-        True if signature is valid (currently always returns True)
+        True if signature is valid
     """
-    # TODO: Implement actual signature verification using public key
-    # For now, accept all signatures during development
     signature = data.get("signature")
-    if signature:
-        logger.debug("Signature verification placeholder - accepting signature")
-    return True
+    kid = data.get("kid")
+
+    if not signature:
+        logger.debug("No signature present - skipping verification")
+        return True  # Allow unsigned for backward compatibility
+
+    try:
+        # Try to verify with cryptography library
+        import base64
+        import hashlib
+        import json
+
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import padding
+        from cryptography.hazmat.backends import default_backend
+
+        # Fetch JWKS
+        jwks_result = get_jwks()
+        if not jwks_result.get("success"):
+            logger.warning(f"Could not fetch JWKS: {jwks_result.get('error')}")
+            # Fail open if offline (allow cached entitlement)
+            return True
+
+        jwks = jwks_result.get("jwks", {})
+        keys = jwks.get("keys", [])
+
+        # Find the matching key
+        matching_key = None
+        for key in keys:
+            if kid and key.get("kid") == kid:
+                matching_key = key
+                break
+            elif not kid:
+                # Use first key if no kid specified
+                matching_key = key
+                break
+
+        if not matching_key:
+            logger.warning(f"No matching key found for kid={kid}")
+            return False
+
+        # Reconstruct the public key from JWKS
+        n_b64 = matching_key.get("n")
+        e_b64 = matching_key.get("e")
+
+        if not n_b64 or not e_b64:
+            logger.warning("JWKS key missing n or e parameters")
+            return False
+
+        # Decode base64url
+        def base64url_decode(data: str) -> bytes:
+            # Add padding if needed
+            padding_needed = 4 - (len(data) % 4)
+            if padding_needed != 4:
+                data += "=" * padding_needed
+            return base64.urlsafe_b64decode(data)
+
+        n_bytes = base64url_decode(n_b64)
+        e_bytes = base64url_decode(e_b64)
+
+        n = int.from_bytes(n_bytes, byteorder="big")
+        e = int.from_bytes(e_bytes, byteorder="big")
+
+        from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicNumbers
+
+        public_numbers = RSAPublicNumbers(e, n)
+        public_key = public_numbers.public_key(default_backend())
+
+        # Reconstruct the payload that was signed
+        # The license service signs the entitlement payload (without signature/kid)
+        payload_to_verify = {
+            k: v for k, v in data.items()
+            if k not in ("signature", "kid", "source", "valid")
+        }
+        canonical = json.dumps(payload_to_verify, sort_keys=True, separators=(",", ":"))
+        message_bytes = canonical.encode("utf-8")
+        message_digest = hashlib.sha256(message_bytes).digest()
+
+        # Decode signature
+        signature_bytes = base64.b64decode(signature)
+
+        # Verify using PKCS1v15 with Prehashed (server signs a digest, not raw message)
+        try:
+            from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
+
+            public_key.verify(
+                signature_bytes,
+                message_digest,
+                padding.PKCS1v15(),
+                Prehashed(hashes.SHA256())
+            )
+            logger.debug("Signature verification successful")
+            return True
+        except Exception as verify_error:
+            logger.warning(f"Signature verification failed: {verify_error}")
+            return False
+
+    except ImportError:
+        logger.debug("cryptography library not available - skipping signature verification")
+        return True  # Fail open if crypto not available
+    except Exception as e:
+        logger.warning(f"Signature verification error: {e}")
+        return True  # Fail open on unexpected errors (prefer availability)
 
 
 def save_entitlement(entitlement: Dict[str, Any]) -> bool:
@@ -369,25 +490,41 @@ def activate_license(
     server_url = (
         license_server_url
         or os.environ.get("LOBSTER_LICENSE_SERVER_URL")
-        or "https://licenses.omics-os.com"
+        or "https://x6gm9vfgl5.execute-api.us-east-1.amazonaws.com/v1"
     )
 
     try:
         import httpx
 
         # Call license server activation endpoint
+        # Note: access_code is the LOBSTER_CLOUD_KEY (cloud_key)
         response = httpx.post(
             f"{server_url}/api/v1/activate",
             json={
-                "access_code": access_code,
-                "machine_id": _get_machine_fingerprint(),
+                "cloud_key": access_code,
+                "machine_fingerprint": _get_machine_fingerprint(),
             },
             timeout=30.0,
         )
 
         if response.status_code == 200:
             data = response.json()
+
+            if not data.get("success"):
+                return {
+                    "success": False,
+                    "error": data.get("message", "Activation failed"),
+                }
+
             entitlement = data.get("entitlement", {})
+            signature = data.get("signature")
+            kid = data.get("kid")
+
+            # Add signature and kid to entitlement for local storage
+            if signature:
+                entitlement["signature"] = signature
+            if kid:
+                entitlement["kid"] = kid
 
             # Save entitlement locally
             if save_entitlement(entitlement):
@@ -405,17 +542,23 @@ def activate_license(
         elif response.status_code == 401:
             return {
                 "success": False,
-                "error": "Invalid access code",
+                "error": "Invalid cloud key",
             }
         elif response.status_code == 403:
             return {
                 "success": False,
-                "error": "Access code already used or revoked",
+                "error": "Cloud key already used or revoked",
             }
         else:
+            error_detail = ""
+            try:
+                error_data = response.json()
+                error_detail = error_data.get("message", "")
+            except Exception:
+                pass
             return {
                 "success": False,
-                "error": f"License server error: {response.status_code}",
+                "error": f"License server error: {response.status_code}" + (f" - {error_detail}" if error_detail else ""),
             }
 
     except ImportError:
@@ -456,12 +599,15 @@ def _get_machine_fingerprint() -> str:
     return fingerprint
 
 
-def refresh_entitlement() -> Dict[str, Any]:
+def refresh_entitlement(cloud_key: Optional[str] = None) -> Dict[str, Any]:
     """
     Refresh the current entitlement from the license server.
 
     This can be used to check for updates to the entitlement
     (e.g., tier upgrades, package additions) without re-activating.
+
+    Args:
+        cloud_key: The LOBSTER_CLOUD_KEY (required for refresh)
 
     Returns:
         Dict with refresh result
@@ -474,16 +620,24 @@ def refresh_entitlement() -> Dict[str, Any]:
             "error": "No active license to refresh",
         }
 
-    customer_id = entitlement.get("customer_id")
-    if not customer_id:
+    entitlement_id = entitlement.get("entitlement_id")
+    if not entitlement_id:
         return {
             "success": False,
-            "error": "No customer ID in current license",
+            "error": "No entitlement ID in current license",
+        }
+
+    # Get cloud key from parameter or environment
+    cloud_key = cloud_key or os.environ.get(CLOUD_KEY_ENV_VAR)
+    if not cloud_key:
+        return {
+            "success": False,
+            "error": "Cloud key required for refresh (set LOBSTER_CLOUD_KEY)",
         }
 
     server_url = os.environ.get(
         "LOBSTER_LICENSE_SERVER_URL",
-        "https://licenses.omics-os.com"
+        "https://x6gm9vfgl5.execute-api.us-east-1.amazonaws.com/v1"
     )
 
     try:
@@ -492,15 +646,30 @@ def refresh_entitlement() -> Dict[str, Any]:
         response = httpx.post(
             f"{server_url}/api/v1/refresh",
             json={
-                "customer_id": customer_id,
-                "machine_id": _get_machine_fingerprint(),
+                "entitlement_id": entitlement_id,
+                "cloud_key": cloud_key,
             },
             timeout=30.0,
         )
 
         if response.status_code == 200:
             data = response.json()
+
+            if not data.get("success"):
+                return {
+                    "success": False,
+                    "error": data.get("message", "Refresh failed"),
+                }
+
             new_entitlement = data.get("entitlement", {})
+            signature = data.get("signature")
+            kid = data.get("kid")
+
+            # Add signature and kid
+            if signature:
+                new_entitlement["signature"] = signature
+            if kid:
+                new_entitlement["kid"] = kid
 
             if save_entitlement(new_entitlement):
                 return {
@@ -517,6 +686,137 @@ def refresh_entitlement() -> Dict[str, Any]:
             return {
                 "success": False,
                 "error": f"Refresh failed: {response.status_code}",
+            }
+
+    except ImportError:
+        return {
+            "success": False,
+            "error": "httpx not installed",
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+        }
+
+
+def check_revocation_status() -> Dict[str, Any]:
+    """
+    Check if the current entitlement has been revoked.
+
+    This should be called periodically (e.g., every 24 hours) to ensure
+    the local entitlement is still valid on the server.
+
+    Returns:
+        Dict with status check result
+    """
+    entitlement = load_entitlement()
+
+    if entitlement.get("source") != "license_file":
+        return {
+            "success": True,
+            "is_valid": True,
+            "message": "No license file to check",
+        }
+
+    entitlement_id = entitlement.get("entitlement_id")
+    if not entitlement_id:
+        return {
+            "success": True,
+            "is_valid": True,
+            "message": "No entitlement ID to check",
+        }
+
+    server_url = os.environ.get(
+        "LOBSTER_LICENSE_SERVER_URL",
+        "https://x6gm9vfgl5.execute-api.us-east-1.amazonaws.com/v1"
+    )
+
+    try:
+        import httpx
+
+        response = httpx.post(
+            f"{server_url}/api/v1/status",
+            json={"entitlement_id": entitlement_id},
+            timeout=30.0,
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            is_valid = data.get("is_valid", False)
+
+            if not is_valid:
+                # Entitlement has been revoked or expired on server
+                logger.warning(f"Entitlement {entitlement_id} is no longer valid: {data.get('message')}")
+
+                # Clear local entitlement if revoked
+                if data.get("status") == "revoked":
+                    clear_entitlement()
+                    return {
+                        "success": True,
+                        "is_valid": False,
+                        "revoked": True,
+                        "message": "License has been revoked",
+                    }
+
+            return {
+                "success": True,
+                "is_valid": is_valid,
+                "status": data.get("status"),
+                "tier": data.get("tier"),
+                "expires_at": data.get("expires_at"),
+                "message": data.get("message"),
+            }
+        else:
+            return {
+                "success": False,
+                "error": f"Status check failed: {response.status_code}",
+            }
+
+    except ImportError:
+        return {
+            "success": False,
+            "error": "httpx not installed",
+        }
+    except Exception as e:
+        logger.debug(f"Status check failed (offline?): {e}")
+        return {
+            "success": False,
+            "error": str(e),
+        }
+
+
+def get_jwks() -> Dict[str, Any]:
+    """
+    Fetch the JWKS (JSON Web Key Set) from the license server.
+
+    This contains the public keys used to verify entitlement signatures.
+
+    Returns:
+        Dict with JWKS data or error
+    """
+    server_url = os.environ.get(
+        "LOBSTER_LICENSE_SERVER_URL",
+        "https://x6gm9vfgl5.execute-api.us-east-1.amazonaws.com/v1"
+    )
+
+    try:
+        import httpx
+
+        response = httpx.get(
+            f"{server_url}/.well-known/jwks.json",
+            timeout=30.0,
+        )
+
+        if response.status_code == 200:
+            return {
+                "success": True,
+                "jwks": response.json(),
+            }
+        else:
+            return {
+                "success": False,
+                "error": f"Failed to fetch JWKS: {response.status_code}",
             }
 
     except ImportError:

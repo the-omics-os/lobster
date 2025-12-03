@@ -706,7 +706,7 @@ Lobster supports FREE, PREMIUM, and ENTERPRISE tiers. Features/agents can be gat
 **Key Files**:
 - `lobster/config/subscription_tiers.py` – Tier definitions (agents, handoff restrictions, features)
 - `lobster/core/plugin_loader.py` – Plugin discovery for premium/custom packages
-- `lobster/core/license_manager.py` – Entitlement validation
+- `lobster/core/license_manager.py` – Entitlement validation & AWS license service integration
 
 **Rules**:
 
@@ -722,6 +722,66 @@ Lobster supports FREE, PREMIUM, and ENTERPRISE tiers. Features/agents can be gat
 | FREE | research_agent, data_expert, transcriptomics_expert, visualization_expert | research_agent: no metadata_assistant handoff |
 | PREMIUM | + metadata_assistant, proteomics_expert, ml_expert | Full handoffs |
 | ENTERPRISE | + lobster-custom-* packages | Per-customer agents |
+
+#### License Manager & AWS Integration
+
+**Location**: `lobster/core/license_manager.py`
+
+**Purpose**: Manages license entitlements via AWS-hosted license service with cryptographic verification.
+
+**License Server URL**: `https://x6gm9vfgl5.execute-api.us-east-1.amazonaws.com/v1` (overridable via `LOBSTER_LICENSE_SERVER_URL`)
+
+**Entitlement File** (`~/.lobster/license.json`):
+```json
+{
+  "entitlement_id": "ent_xxx",
+  "customer_id": "dev_xxx",
+  "tier": "premium",
+  "features": ["local_only", "cloud_compute", "email_support", "priority_processing"],
+  "custom_packages": ["lobster-custom-databiomix"],
+  "issued_at": "2025-12-02T00:00:00Z",
+  "expires_at": "2026-12-02T00:00:00Z",
+  "signature": "base64_encoded_signature...",
+  "kid": "lobster-53b91554"
+}
+```
+
+**Core Functions**:
+
+| Function | Endpoint | Purpose |
+|----------|----------|---------|
+| `activate_license(access_code, server_url)` | `POST /api/v1/activate` | Exchange cloud_key for signed entitlement |
+| `refresh_entitlement(cloud_key)` | `POST /api/v1/refresh` | Update local entitlement (tier upgrades, package additions) |
+| `check_revocation_status()` | `POST /api/v1/status` | Check if entitlement has been revoked (poll every 24h) |
+| `get_jwks()` | `GET /.well-known/jwks.json` | Fetch public keys for signature verification |
+| `_verify_signature(data)` | N/A | Verify RSA signature using JWKS (RSA PKCS1v15 + SHA256) |
+
+**Signature Verification Flow**:
+1. Fetch JWKS from license server (JSON Web Key Set with public keys)
+2. Find matching key by `kid` (Key ID)
+3. Reconstruct RSA public key from `n` (modulus) and `e` (exponent) parameters
+4. Canonicalize entitlement payload (JSON with sorted keys, no signature/kid/source/valid)
+5. Compute SHA256 digest of canonical payload
+6. Verify signature using PKCS1v15 with Prehashed SHA256
+7. **Fail open** if offline or crypto library unavailable (allows cached entitlement)
+
+**Resolution Order**:
+1. `LOBSTER_SUBSCRIPTION_TIER` env var (dev override)
+2. `LOBSTER_CLOUD_KEY` env var (implies premium tier)
+3. `~/.lobster/license.json` (signed entitlement file)
+4. Free tier defaults
+
+**Security Model**:
+- Signatures verify entitlement authenticity (prevents tampering)
+- Revocation checking via periodic `/api/v1/status` polls (recommended: 24h interval)
+- Expiration enforcement (automatic downgrade to free tier on expiry)
+- Fail-open design (offline users can use cached entitlement)
+
+**Testing & Deployment**:
+- Override license path: `LOBSTER_LICENSE_PATH=/path/to/license.json`
+- Override license server: `LOBSTER_LICENSE_SERVER_URL=https://staging.example.com`
+- Manual activation: `lobster activate <cloud_key>` (CLI command)
+- Revocation check: Call `check_revocation_status()` on CLI startup or in background thread
 
 **Full spec**: `docs/premium_lobster_architecture.md`
 
