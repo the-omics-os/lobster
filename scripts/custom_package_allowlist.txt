@@ -1,0 +1,85 @@
+# =============================================================================
+# CUSTOM PACKAGE ALLOWLIST (lobster → lobster-custom-* sync)
+# =============================================================================
+# Defines which files from lobster/ (private) get synced to custom packages
+# For PREMIUM and ENTERPRISE tier features
+#
+# Source of Truth: lobster/config/subscription_tiers.py
+# Manually curated (Option 3 - Hybrid approach)
+# =============================================================================
+
+# =============================================================================
+# PREMIUM AGENTS (4 agents - NOT in free tier)
+# =============================================================================
+lobster/agents/metadata_assistant.py
+lobster/agents/machine_learning_expert.py
+lobster/agents/protein_structure_visualization_expert.py
+lobster/agents/proteomics/proteomics_expert.py
+lobster/agents/proteomics/__init__.py
+lobster/agents/proteomics/platform_config.py
+
+# =============================================================================
+# METADATA ASSISTANT DEPENDENCIES
+# =============================================================================
+# Publication processing
+lobster/services/orchestration/publication_processing_service.py
+
+# Metadata services
+lobster/services/metadata/identifier_provenance_service.py
+lobster/services/metadata/microbiome_filtering_service.py
+lobster/services/metadata/disease_standardization_service.py
+lobster/services/metadata/sample_mapping_service.py
+
+# Publication queue infrastructure
+lobster/core/schemas/publication_queue.py
+lobster/core/publication_queue.py
+lobster/core/ris_parser.py
+
+# =============================================================================
+# PROTEOMICS EXPERT DEPENDENCIES
+# =============================================================================
+lobster/services/analysis/proteomics_analysis_service.py
+lobster/services/analysis/proteomics_differential_service.py
+lobster/services/quality/proteomics_quality_service.py
+lobster/services/quality/proteomics_preprocessing_service.py
+lobster/services/visualization/proteomics_visualization_service.py
+
+# =============================================================================
+# MACHINE LEARNING EXPERT DEPENDENCIES
+# =============================================================================
+lobster/services/ml/ml_transcriptomics_service_ALPHA.py
+lobster/services/ml/ml_proteomics_service_ALPHA.py
+
+# =============================================================================
+# PROTEIN STRUCTURE VISUALIZATION DEPENDENCIES
+# =============================================================================
+lobster/services/visualization/pymol_visualization_service.py
+lobster/services/visualization/chimerax_visualization_service_ALPHA.py
+lobster/services/data_access/protein_structure_fetch_service.py
+
+# =============================================================================
+# ALWAYS EXCLUDED (base lobster-ai package provides these)
+# =============================================================================
+# Core infrastructure - already in lobster-ai dependency
+!lobster/core/**
+!lobster/config/**
+
+# Free tier agents - in base package
+!lobster/agents/supervisor.py
+!lobster/agents/research_agent.py
+!lobster/agents/data_expert.py
+!lobster/agents/singlecell_expert.py
+!lobster/agents/bulk_rnaseq_expert.py
+
+# Build files - custom package has its own
+!setup.py
+!pyproject.toml
+!README.md
+!LICENSE
+!Makefile
+
+# Development files
+!tests/**
+!.github/**
+!scripts/**
+!docs/**
