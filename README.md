@@ -19,6 +19,7 @@
 - [🗓️ Roadmap](#-roadmap)
 - [📚 Documentation](#-documentation)
 - [🤝 Community & Support](#-community--support)
+- [🛠️ For Developers](#-for-developers)
 - [📄 License](#-license)
 
 ## ✨ What is Lobster AI?
@@ -435,6 +436,27 @@ Lobster follows an **open-core model**: core transcriptomics is open source, adv
 ### Enterprise Solutions
 
 Need custom integrations or dedicated support? [Contact us](mailto:info@omics-os.com)
+
+## 🛠️ For Developers
+
+Lobster follows an **open-core model** with a single source of truth architecture:
+
+```
+lobster/config/subscription_tiers.py  (defines FREE vs PREMIUM)
+                ↓
+scripts/generate_allowlist.py         (generates file list)
+                ↓
+scripts/public_allowlist.txt          (DO NOT EDIT - auto-generated)
+                ↓
+lobster-local                         (public PyPI package)
+```
+
+**Key files for contributors:**
+- `subscription_tiers.py` - Defines which agents/features are FREE vs PREMIUM
+- `generate_allowlist.py --write` - Regenerates the sync allowlist
+- `CLAUDE.md` - Complete developer guide with architecture details
+
+**CI enforces** that `public_allowlist.txt` stays in sync with `subscription_tiers.py`.
 
 ## 📄 License
 

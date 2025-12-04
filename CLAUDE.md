@@ -345,12 +345,26 @@ lobster/
 - `Dockerfile.server` → private server image → builds from local CLI (not Docker Hub)
 - CI/CD tests CLI only; server builds are local-only via `make docker-build`
 
-**Sync strategy**:
+**Sync strategy** (Single Source of Truth Architecture):
+
+```
+subscription_tiers.py (SOURCE OF TRUTH)
+         ↓
+  generate_allowlist.py --validate (CI check)
+         ↓
+public_allowlist.txt (DERIVED - DO NOT EDIT MANUALLY)
+         ↓
+   sync_to_public.py
+         ↓
+lobster-local (PUBLIC PACKAGE)
+```
+
 - Automated: pushes to `main` → sync to lobster-local/main + both wikis (filtered for public)
 - Manual: `python scripts/sync_to_public.py --repo <url> --branch <branch>` (e.g., dev)
 - **Single Source of Truth**: `subscription_tiers.py` defines FREE/PREMIUM features
 - **Generated allowlist**: `python scripts/generate_allowlist.py --write` regenerates `public_allowlist.txt`
-- **CI validation**: sync workflow validates allowlist matches subscription_tiers.py before syncing
+- **CI validation**: Both `sync-to-public.yml` and `publish-pypi.yml` validate allowlist before syncing
+- **NEVER edit `public_allowlist.txt` directly** – always modify `subscription_tiers.py` and regenerate
 
 ---
 
