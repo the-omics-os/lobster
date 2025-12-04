@@ -158,10 +158,11 @@ jobs:
         # Verify CLI is available
         lobster --help
 
-        # Verify public agents are available
+        # Verify FREE tier agents are available (these are synced to lobster-local)
         python -c "from lobster.agents import supervisor; print('✅ Supervisor agent available')"
         python -c "from lobster.agents import research_agent; print('✅ Research agent available')"
-        python -c "from lobster.agents import singlecell_expert; print('✅ Single-cell agent available')"
+        python -c "from lobster.agents import data_expert; print('✅ Data expert agent available')"
+        python -c "from lobster.agents import visualization_expert; print('✅ Visualization expert available')"
 
         # Verify private agents are NOT available
         if python -c "from lobster.agents import ms_proteomics_expert" 2>/dev/null; then
