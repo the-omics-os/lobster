@@ -215,9 +215,7 @@ jobs:
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         repository-url: https://test.pypi.org/legacy/
-        # Trusted Publishing (OIDC) preferred - no password needed if configured
-        # Falls back to API token if Trusted Publishing not set up on PyPI
-        password: ${{ secrets.TEST_PYPI_API_TOKEN || '' }}
+        # Uses Trusted Publishing (OIDC) - no API token needed
         skip-existing: true
         verbose: true
 
@@ -303,9 +301,7 @@ jobs:
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
-        # Trusted Publishing (OIDC) preferred - no password needed if configured
-        # Falls back to API token if Trusted Publishing not set up on PyPI
-        password: ${{ secrets.PYPI_API_TOKEN || '' }}
+        # Uses Trusted Publishing (OIDC) - no API token needed
         verbose: true
 
     - name: Wait for package to be available
