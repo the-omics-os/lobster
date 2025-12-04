@@ -51,6 +51,15 @@ jobs:
         chmod 600 ~/.ssh/id_ed25519
         ssh-keyscan github.com >> ~/.ssh/known_hosts
 
+    - name: Install dependencies for validation
+      run: pip install -e .
+
+    - name: Validate allowlist matches subscription_tiers.py
+      run: |
+        # Ensure allowlist is generated from subscription_tiers.py (single source of truth)
+        # This prevents premium code from accidentally shipping in the public package
+        python scripts/generate_allowlist.py --validate
+
     - name: Sync to public repository
       run: |
         python scripts/sync_to_public.py \
