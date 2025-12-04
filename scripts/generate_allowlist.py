@@ -1,4 +1,97 @@
+#!/usr/bin/env python3
+"""
+Generate public_allowlist.txt from subscription_tiers.py.
 
+This script ensures a SINGLE SOURCE OF TRUTH for what's free vs premium.
+The subscription_tiers.py defines what's available at each tier, and this
+script generates the file-level allowlist for syncing to the public repo.
+
+Usage:
+    python scripts/generate_allowlist.py                    # Preview changes
+    python scripts/generate_allowlist.py --write            # Write allowlist
+    python scripts/generate_allowlist.py --validate         # CI validation
+
+Architecture:
+    subscription_tiers.py (SOURCE OF TRUTH)
+              ↓
+    generate_allowlist.py (THIS SCRIPT)
+              ↓
+    public_allowlist.txt (DERIVED OUTPUT)
+"""
+
+import argparse
+import sys
+from pathlib import Path
+from typing import Set
+
+# Add lobster to path for imports
+SCRIPT_DIR = Path(__file__).parent
+REPO_ROOT = SCRIPT_DIR.parent
+sys.path.insert(0, str(REPO_ROOT))
+
+from lobster.config.subscription_tiers import SUBSCRIPTION_TIERS
+
+
+# =============================================================================
+# MAPPING: Agent Names → File Paths
+# =============================================================================
+# This maps agent registry names to their actual file paths
+# Must be kept in sync with config/agent_registry.py
+
+AGENT_FILE_MAPPING = {
+    # FREE tier agents
+    "research_agent": "lobster/agents/research_agent.py",
+    "data_expert_agent": "lobster/agents/data_expert.py",
+    "transcriptomics_expert": "lobster/agents/transcriptomics/transcriptomics_expert.py",
+    "visualization_expert_agent": "lobster/agents/visualization_expert.py",
+    "annotation_expert": "lobster/agents/transcriptomics/annotation_expert.py",
+    "de_analysis_expert": "lobster/agents/transcriptomics/de_analysis_expert.py",
+    # PREMIUM tier agents
+    "metadata_assistant": "lobster/agents/metadata_assistant.py",
+    "proteomics_expert": "lobster/agents/proteomics/proteomics_expert.py",
+    "machine_learning_expert_agent": "lobster/agents/machine_learning_expert.py",
+    "protein_structure_visualization_expert_agent": "lobster/agents/protein_structure_visualization_expert.py",
+    # ENTERPRISE agents (loaded via plugin system, not in main repo)
+    "custom_feature_agent": "lobster/agents/custom_feature_agent.py",
+}
+
+# Services tied to specific agents (premium services for premium agents)
+AGENT_SERVICE_DEPENDENCIES = {
+    "proteomics_expert": [
+        "lobster/services/analysis/proteomics_analysis_service.py",
+        "lobster/services/analysis/proteomics_differential_service.py",
+        "lobster/services/quality/proteomics_quality_service.py",
+        "lobster/services/quality/proteomics_preprocessing_service.py",
+        "lobster/services/visualization/proteomics_visualization_service.py",
+        "lobster/agents/proteomics/platform_config.py",
+    ],
+    "metadata_assistant": [
+        "lobster/services/orchestration/publication_processing_service.py",
+        "lobster/services/metadata/identifier_provenance_service.py",
+        "lobster/services/metadata/microbiome_filtering_service.py",
+        "lobster/services/metadata/disease_standardization_service.py",
+        "lobster/services/metadata/sample_mapping_service.py",
+        "lobster/core/schemas/publication_queue.py",
+        "lobster/core/publication_queue.py",
+        "lobster/core/ris_parser.py",
+    ],
+    "custom_feature_agent": [
+        "lobster/services/execution/sdk_delegation_service.py",
+        "lobster/agents/unified_agent_creation_template.md",
+    ],
+    "machine_learning_expert_agent": [
+        "lobster/services/ml/ml_transcriptomics_service_ALPHA.py",
+        "lobster/services/ml/ml_proteomics_service_ALPHA.py",
+    ],
+}
+
+
+# =============================================================================
+# STATIC ALLOWLIST SECTIONS
+# =============================================================================
+# These are files that are always included/excluded regardless of tier
+
+ALWAYS_INCLUDED = """
 # =============================================================================
 # PUBLIC REPOSITORY ALLOWLIST (lobster → lobster-local sync)
 # =============================================================================
@@ -6,7 +99,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2025-12-04 11:57:00
+# Generated: {timestamp}
 # =============================================================================
 
 
@@ -361,45 +454,9 @@ lobster/lobster_cloud/__init__.py
 lobster/lobster_cloud/client.py
 
 
+"""
 
-# =============================================================================
-# AGENTS - TIER-BASED (Generated from subscription_tiers.py)
-# =============================================================================
-
-# FREE tier agents (included in public package)
-lobster/agents/transcriptomics/annotation_expert.py
-lobster/agents/data_expert.py
-lobster/agents/transcriptomics/de_analysis_expert.py
-lobster/agents/research_agent.py
-lobster/agents/transcriptomics/transcriptomics_expert.py
-lobster/agents/visualization_expert.py
-
-# PREMIUM tier agents (EXCLUDED from public package)
-!lobster/agents/machine_learning_expert.py
-!lobster/services/ml/ml_transcriptomics_service_ALPHA.py
-!lobster/services/ml/ml_proteomics_service_ALPHA.py
-!lobster/agents/metadata_assistant.py
-!lobster/services/orchestration/publication_processing_service.py
-!lobster/services/metadata/identifier_provenance_service.py
-!lobster/services/metadata/microbiome_filtering_service.py
-!lobster/services/metadata/disease_standardization_service.py
-!lobster/services/metadata/sample_mapping_service.py
-!lobster/core/schemas/publication_queue.py
-!lobster/core/publication_queue.py
-!lobster/core/ris_parser.py
-!lobster/agents/protein_structure_visualization_expert.py
-!lobster/agents/proteomics/proteomics_expert.py
-!lobster/services/analysis/proteomics_analysis_service.py
-!lobster/services/analysis/proteomics_differential_service.py
-!lobster/services/quality/proteomics_quality_service.py
-!lobster/services/quality/proteomics_preprocessing_service.py
-!lobster/services/visualization/proteomics_visualization_service.py
-!lobster/agents/proteomics/platform_config.py
-
-# ENTERPRISE agents (EXCLUDED - loaded via plugin system)
-!lobster/agents/custom_feature_agent.py
-!lobster/services/execution/sdk_delegation_service.py
-!lobster/agents/unified_agent_creation_template.md
+ALWAYS_EXCLUDED = """
 # =============================================================================
 # ALWAYS EXCLUDED (Regardless of Tier)
 # =============================================================================
@@ -453,3 +510,163 @@ lobster/agents/visualization_expert.py
 # Premium extraction cache
 !lobster/core/extraction_cache.py
 
+"""
+
+
+def get_free_tier_agents() -> Set[str]:
+    """Get set of agent names available in FREE tier."""
+    return set(SUBSCRIPTION_TIERS["free"]["agents"])
+
+
+def get_premium_only_agents() -> Set[str]:
+    """Get agents that are PREMIUM-only (not in FREE tier)."""
+    free_agents = get_free_tier_agents()
+    premium_agents = set(SUBSCRIPTION_TIERS["premium"]["agents"])
+    return premium_agents - free_agents
+
+
+def generate_agent_section() -> str:
+    """Generate the agent files section based on subscription tiers."""
+    lines = [
+        "",
+        "# =============================================================================",
+        "# AGENTS - TIER-BASED (Generated from subscription_tiers.py)",
+        "# =============================================================================",
+        "",
+        "# FREE tier agents (included in public package)",
+    ]
+
+    free_agents = get_free_tier_agents()
+    for agent in sorted(free_agents):
+        if agent in AGENT_FILE_MAPPING:
+            lines.append(AGENT_FILE_MAPPING[agent])
+
+    lines.append("")
+    lines.append("# PREMIUM tier agents (EXCLUDED from public package)")
+
+    premium_only = get_premium_only_agents()
+    for agent in sorted(premium_only):
+        if agent in AGENT_FILE_MAPPING:
+            lines.append(f"!{AGENT_FILE_MAPPING[agent]}")
+            # Also exclude dependent services
+            if agent in AGENT_SERVICE_DEPENDENCIES:
+                for service in AGENT_SERVICE_DEPENDENCIES[agent]:
+                    lines.append(f"!{service}")
+
+    # Also exclude custom_feature_agent (enterprise)
+    if "custom_feature_agent" in AGENT_FILE_MAPPING:
+        lines.append("")
+        lines.append("# ENTERPRISE agents (EXCLUDED - loaded via plugin system)")
+        lines.append(f"!{AGENT_FILE_MAPPING['custom_feature_agent']}")
+        if "custom_feature_agent" in AGENT_SERVICE_DEPENDENCIES:
+            for service in AGENT_SERVICE_DEPENDENCIES["custom_feature_agent"]:
+                lines.append(f"!{service}")
+
+    return "\n".join(lines)
+
+
+def generate_allowlist() -> str:
+    """Generate the complete allowlist content."""
+    from datetime import datetime
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    content = ALWAYS_INCLUDED.format(timestamp=timestamp)
+    content += generate_agent_section()
+    content += ALWAYS_EXCLUDED
+
+    return content
+
+
+def validate_allowlist(current_path: Path) -> bool:
+    """Validate current allowlist matches what would be generated."""
+    if not current_path.exists():
+        print("ERROR: public_allowlist.txt not found")
+        return False
+
+    current = current_path.read_text()
+    generated = generate_allowlist()
+
+    # Compare non-timestamp lines
+    def normalize(text):
+        lines = []
+        for line in text.strip().split("\n"):
+            # Skip timestamp line
+            if "Generated:" in line:
+                continue
+            lines.append(line)
+        return "\n".join(lines)
+
+    if normalize(current) != normalize(generated):
+        print("ERROR: public_allowlist.txt is out of sync with subscription_tiers.py")
+        print("\nTo fix, run:")
+        print("  python scripts/generate_allowlist.py --write")
+        return False
+
+    print("OK: public_allowlist.txt is in sync with subscription_tiers.py")
+    return True
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Generate public_allowlist.txt from subscription_tiers.py"
+    )
+    parser.add_argument(
+        "--write",
+        action="store_true",
+        help="Write the generated allowlist to file"
+    )
+    parser.add_argument(
+        "--validate",
+        action="store_true",
+        help="Validate current allowlist matches subscription_tiers.py (for CI)"
+    )
+    parser.add_argument(
+        "--diff",
+        action="store_true",
+        help="Show diff between current and generated allowlist"
+    )
+
+    args = parser.parse_args()
+
+    allowlist_path = SCRIPT_DIR / "public_allowlist.txt"
+
+    if args.validate:
+        success = validate_allowlist(allowlist_path)
+        sys.exit(0 if success else 1)
+
+    generated = generate_allowlist()
+
+    if args.diff and allowlist_path.exists():
+        import difflib
+        current = allowlist_path.read_text()
+        diff = difflib.unified_diff(
+            current.splitlines(keepends=True),
+            generated.splitlines(keepends=True),
+            fromfile="current",
+            tofile="generated"
+        )
+        print("".join(diff))
+        return
+
+    if args.write:
+        allowlist_path.write_text(generated)
+        print(f"Written: {allowlist_path}")
+
+        # Print summary
+        free_agents = get_free_tier_agents()
+        premium_only = get_premium_only_agents()
+        print(f"\nFREE tier agents ({len(free_agents)}): {sorted(free_agents)}")
+        print(f"PREMIUM-only agents ({len(premium_only)}): {sorted(premium_only)}")
+    else:
+        # Preview mode
+        print("=" * 70)
+        print("PREVIEW - Generated allowlist (use --write to save)")
+        print("=" * 70)
+        print(generated)
+        print("=" * 70)
+        print("\nTo write: python scripts/generate_allowlist.py --write")
+
+
+if __name__ == "__main__":
+    main()
