@@ -9,6 +9,17 @@
 # ✅ INCLUDE: User guides, developer docs, core architecture, open-core features
 # ❌ EXCLUDE: Cloud infrastructure, premium features, internal documentation
 #
+# RELATIONSHIP TO SUBSCRIPTION TIERS:
+# Unlike code (which uses generate_allowlist.py to derive from subscription_tiers.py),
+# wiki content is MANUALLY curated because:
+# 1. Documentation doesn't map 1:1 to code features
+# 2. Some docs cover multiple features or general concepts
+# 3. Tutorial exclusions are business decisions, not security boundaries
+#
+# When adding premium features to subscription_tiers.py, remember to:
+# - Exclude related tutorials/guides here (e.g., !XX-tutorial-newfeature.md)
+# - Exclude internal architecture docs for premium services
+#
 # See scripts/sync_wikis.py for sync automation
 # =============================================================================
 

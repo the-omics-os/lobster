@@ -335,8 +335,9 @@ lobster/
 | `.github/workflows/sync-wikis.yml` | PRIVATE | Auto-syncs wiki to both wikis |
 | `scripts/sync_to_public.py` | PRIVATE | Code sync script (supports manual dev syncs) |
 | `scripts/sync_wikis.py` | PRIVATE | Wiki sync script |
-| `scripts/public_allowlist.txt` | PRIVATE | Code sync allowlist (gitignore-style patterns) |
-| `scripts/wiki_public_allowlist.txt` | PRIVATE | Wiki sync allowlist (filename matching) |
+| `scripts/generate_allowlist.py` | PRIVATE | Generates allowlist from subscription_tiers.py |
+| `scripts/public_allowlist.txt` | PRIVATE | Code sync allowlist (AUTO-GENERATED from subscription_tiers.py) |
+| `scripts/wiki_public_allowlist.txt` | PRIVATE | Wiki sync allowlist (manual, filename matching) |
 | `pyproject.toml` | PUBLIC | Dependencies (do NOT edit – see 4.1) |
 
 **Build strategy**:
@@ -347,7 +348,9 @@ lobster/
 **Sync strategy**:
 - Automated: pushes to `main` → sync to lobster-local/main + both wikis (filtered for public)
 - Manual: `python scripts/sync_to_public.py --repo <url> --branch <branch>` (e.g., dev)
-- Exclusions: `scripts/public_allowlist.txt` ensures server code, premium features stay private
+- **Single Source of Truth**: `subscription_tiers.py` defines FREE/PREMIUM features
+- **Generated allowlist**: `python scripts/generate_allowlist.py --write` regenerates `public_allowlist.txt`
+- **CI validation**: sync workflow validates allowlist matches subscription_tiers.py before syncing
 
 ---
 

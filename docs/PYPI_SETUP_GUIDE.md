@@ -492,8 +492,19 @@ python setup.py --author
 - ❌ Private documentation
 
 This is enforced by:
-1. `scripts/public_allowlist.txt` - controls what syncs to lobster-local
-2. Workflow verification step - scans package for private code before publishing
+1. `lobster/config/subscription_tiers.py` - **SOURCE OF TRUTH** for FREE/PREMIUM features
+2. `scripts/generate_allowlist.py` - generates allowlist from subscription_tiers.py
+3. `scripts/public_allowlist.txt` - AUTO-GENERATED, controls what syncs to lobster-local
+4. CI validation step - ensures allowlist matches subscription_tiers.py before syncing
+5. Workflow verification step - scans package for private code before publishing
+
+To update what ships in the public package:
+```bash
+# 1. Edit subscription_tiers.py (source of truth)
+# 2. Regenerate allowlist
+python scripts/generate_allowlist.py --write
+# 3. Commit both files
+```
 
 ---
 
@@ -523,10 +534,11 @@ PyPI doesn't allow re-uploading the same version. Options:
 ### Private code detected in package
 
 If the workflow fails with "Found private code pattern":
-1. Check `scripts/public_allowlist.txt`
-2. Verify sync completed correctly
-3. Check package contents: `unzip -l dist/*.whl`
-4. Ensure building from lobster-local, not private repo
+1. Check `lobster/config/subscription_tiers.py` - this is the source of truth
+2. Regenerate allowlist: `python scripts/generate_allowlist.py --write`
+3. Verify allowlist is in sync: `python scripts/generate_allowlist.py --validate`
+4. Check package contents: `unzip -l dist/*.whl`
+5. Ensure building from lobster-local, not private repo
 
 ### Workflow won't approve production release
 
