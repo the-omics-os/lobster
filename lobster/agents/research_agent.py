@@ -31,9 +31,16 @@ from lobster.services.metadata.metadata_validation_service import (
     MetadataValidationService,
     ValidationSeverity,
 )
-from lobster.services.orchestration.publication_processing_service import (
-    PublicationProcessingService,
-)
+
+# Premium feature - graceful fallback if unavailable
+try:
+    from lobster.services.orchestration.publication_processing_service import (
+        PublicationProcessingService,
+    )
+    HAS_PUBLICATION_PROCESSING = True
+except ImportError:
+    PublicationProcessingService = None
+    HAS_PUBLICATION_PROCESSING = False
 
 # Phase 1: New providers for two-tier access
 from lobster.tools.providers.abstract_provider import AbstractProvider
@@ -150,9 +157,13 @@ def research_agent(
 
     # Initialize metadata validation service (Phase 2: extracted from ResearchAgentAssistant)
     metadata_validator = MetadataValidationService(data_manager=data_manager)
-    publication_processing_service = PublicationProcessingService(
-        data_manager=data_manager
-    )
+
+    # Premium feature - only instantiate if available
+    publication_processing_service = None
+    if HAS_PUBLICATION_PROCESSING:
+        publication_processing_service = PublicationProcessingService(
+            data_manager=data_manager
+        )
 
     # Define tools
     @tool
@@ -1736,6 +1747,8 @@ Could not extract content for: {identifier}
             # Full extraction (metadata + methods + identifiers)
             process_publication_entry("pub_queue_abc123")
         """
+        if not HAS_PUBLICATION_PROCESSING:
+            return "Publication processing requires a premium subscription. Visit https://omics-os.com/pricing"
         return publication_processing_service.process_entry(
             entry_id=entry_id, extraction_tasks=extraction_tasks
         )
@@ -1772,9 +1785,15 @@ Could not extract content for: {identifier}
             # Process all metadata_enriched entries (re-extraction)
             process_publication_queue(status_filter="metadata_enriched", max_entries=0)
         """
+        if not HAS_PUBLICATION_PROCESSING:
+            return "Publication processing requires a premium subscription. Visit https://omics-os.com/pricing"
+
         if parallel_workers > 1:
             # Use parallel processing with Rich progress display
-            from lobster.core.schemas.publication_queue import PublicationStatus
+            try:
+                from lobster.core.schemas.publication_queue import PublicationStatus
+            except ImportError:
+                return "Publication queue schema requires a premium subscription."
 
             queue = data_manager.publication_queue
             status_enum = None
