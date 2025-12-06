@@ -75,7 +75,7 @@ def _create_connection_pool() -> Optional[redis.ConnectionPool]:
         # Verify connectivity with a test client
         test_client = redis.Redis(connection_pool=pool)
         test_client.ping()
-        logger.info("✓ Redis connection pool established for rate limiting")
+        logger.debug("✓ Redis connection pool established for rate limiting")
         return pool
 
     except ConnectionError:

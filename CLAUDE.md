@@ -903,22 +903,158 @@ Useful CLI commands:
 
 **Critical Security Rule**: Only `lobster-local` (public repo) is published to PyPI. The private `lobster/` repo contains premium features that must NOT be published.
 
+#### Architecture: 7-Stage Automated Pipeline
+
+```mermaid
+graph TB
+    Start[Tag Push: v0.2.0] --> S1[Stage 1: sync-to-public]
+
+    S1 --> V1{Validate Allowlist}
+    V1 -->|✓ Pass| S1B[Sync to lobster-local]
+    V1 -->|✗ Fail| Fail1[❌ Allowlist Mismatch]
+
+    S1B --> S2[Stage 2: build-package]
+    S2 --> B1[Clone lobster-local]
+    B1 --> B2[python -m build]
+    B2 --> V2{Scan for Private Code}
+    V2 -->|✓ Clean| B3[Test Installation]
+    V2 -->|✗ Found| Fail2[❌ Private Code Detected]
+
+    B3 --> S3[Stage 3: publish-testpypi]
+    S3 --> T1[OIDC Auth]
+    T1 --> T2[Publish to test.pypi.org]
+    T2 --> T3[Verify Installation]
+
+    T3 --> S4[Stage 4: approve-production]
+    S4 --> A1{Manual Review}
+    A1 -->|Approved| S5[Stage 5: publish-pypi]
+    A1 -->|Rejected| End1[❌ Release Cancelled]
+
+    S5 --> P1[OIDC Auth]
+    P1 --> P2[Publish to pypi.org]
+    P2 --> P3[Verify Installation]
+
+    P3 --> S6[Stage 6: create-release]
+    S6 --> R1[GitHub Release]
+    R1 --> R2[Attach Artifacts]
+
+    R2 --> S7[Stage 7: summary]
+    S7 --> End2[✅ Release Complete]
+
+    style Start fill:#e1f5ff
+    style End2 fill:#d4edda
+    style Fail1 fill:#f8d7da
+    style Fail2 fill:#f8d7da
+    style End1 fill:#f8d7da
+    style A1 fill:#fff3cd
+```
+
+**Workflow File**: `.github/workflows/publish-pypi.yml`
+
+**Stage Breakdown**:
+
+1. **Sync to Public** (`sync-to-public` job)
+   - Validates `scripts/public_allowlist.txt` matches `config/subscription_tiers.py` (source of truth)
+   - Runs `scripts/sync_to_public.py` to push filtered code to `lobster-local/main`
+   - **Security**: Ensures premium agents (metadata_assistant, proteomics_expert) are excluded
+
+2. **Build Package** (`build-package` job)
+   - Clones `lobster-local` (public repo, NOT private `lobster`)
+   - Builds wheel + sdist via `python -m build`
+   - **Validation**: Scans package contents for private patterns (ms_proteomics_expert, etc.)
+   - Tests installation and imports to verify FREE tier agents only
+
+3. **Publish to TestPyPI** (`publish-testpypi` job)
+   - Uses Trusted Publishing (OIDC) - no API tokens needed
+   - `environment: testpypi` with `id-token: write` permission
+   - Validates package works via test installation
+
+4. **Manual Approval** (`approve-production` job)
+   - `environment: pypi-approval` with required reviewers
+   - 24-hour timeout for human review
+   - Allows testing TestPyPI before production release
+
+5. **Publish to PyPI** (`publish-pypi` job)
+   - Requires `approve-production` success
+   - Uses Trusted Publishing (OIDC)
+   - `environment: pypi` for production
+
+6. **Create GitHub Release** (`create-release` job)
+   - Attaches wheel + sdist to GitHub release
+   - Auto-generated release notes with install instructions
+
+7. **Summary** (`summary` job)
+   - Posts workflow status to GitHub Actions summary
+   - Provides install commands and links
+
+#### Authentication: Trusted Publishing (OIDC)
+
+**Why Trusted Publishing?**
+- No long-lived secrets in GitHub (OIDC-based)
+- PyPI mints short-lived tokens automatically (~15 min)
+- Zero maintenance (no token rotation needed)
+
+**How it works**:
+```
+GitHub Actions → OIDC token → PyPI verification → Short-lived publish token
+```
+
+**Configuration**:
+- PyPI side: Configured at https://pypi.org → Manage → Publishing
+- GitHub side: `permissions: id-token: write` in workflow
+- No GitHub secrets needed for publishing (only `PUBLIC_REPO_DEPLOY_KEY` for sync)
+
+#### Version Management
+
+**Source of Truth**: `lobster/version.py`
+
 **Release Process**:
 ```bash
 # 1. Update version in lobster/version.py
-# 2. Commit and push to main
-# 3. Create and push tag
+__version__ = "0.2.0"
+
+# 2. Commit and push
+git add lobster/version.py
+git commit -m "chore: bump version to 0.2.0"
+git push origin main
+
+# 3. Create and push tag (triggers workflow)
 git tag -a v0.2.0 -m "Release 0.2.0"
 git push origin v0.2.0
-# 4. GitHub Actions workflow handles the rest
 ```
+
+**setuptools-scm** reads git tags for dynamic versioning in builds.
+
+#### Security Model
+
+**Allowlist Validation** (enforced in CI):
+```
+subscription_tiers.py (SOURCE OF TRUTH)
+         ↓
+  scripts/generate_allowlist.py --validate
+         ↓
+  scripts/public_allowlist.txt (DERIVED)
+         ↓
+  scripts/sync_to_public.py
+         ↓
+lobster-local (PUBLIC) → PyPI (lobster-ai)
+```
+
+**Private Code Detection**:
+- `build-package` job scans wheel for excluded patterns
+- Fails build if private agents/services detected
+- Imports test: `from lobster.agents import ms_proteomics_expert` must fail
+
+**What's Excluded**:
+- Premium agents: metadata_assistant, proteomics_expert, custom_feature_agent
+- Premium services: proteomics_*, publication_processing_service
+- Infrastructure: CDK stacks, server code, docker-compose
+- Internal docs: CLAUDE.md sections, internal templates
 
 **Documentation**:
 - **Setup Guide**: `docs/PYPI_SETUP_GUIDE.md` (first-time setup, authentication methods)
 - **Release Summary**: `docs/PYPI_RELEASE_SUMMARY.md` (quick reference, workflow details)
 - **Workflow**: `.github/workflows/publish-pypi.yml` (7-stage automated pipeline)
-
-**Authentication**: Supports Trusted Publishing (OIDC) and API tokens. See setup guide for details.
 
 ---
 

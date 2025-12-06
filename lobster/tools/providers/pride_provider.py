@@ -91,7 +91,7 @@ class PRIDEProvider(BasePublicationProvider):
         # Create SSL context for secure connections
         self.ssl_context = create_ssl_context()
 
-        logger.info(f"Initialized PRIDE provider with base URL: {self.config.base_url}")
+        logger.debug(f"Initialized PRIDE provider with base URL: {self.config.base_url}")
 
     @property
     def source(self) -> PublicationSource:

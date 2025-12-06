@@ -90,7 +90,7 @@ class MassIVEProvider(BasePublicationProvider):
         # Create SSL context
         self.ssl_context = create_ssl_context()
 
-        logger.info(
+        logger.debug(
             f"Initialized MassIVE provider with PROXI API: {self.config.base_url}"
         )
 
