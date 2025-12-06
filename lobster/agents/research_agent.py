@@ -1714,6 +1714,116 @@ Could not extract content for: {identifier}
 """
 
     # ============================================================
+    # Helper: Flexible Identifier Resolution for Publication Queue
+    # ============================================================
+
+    def _find_or_create_queue_entry(identifier: str, data_manager) -> str:
+        """
+        Resolve flexible identifier to queue entry_id (find existing or create new).
+
+        Handles three identifier types:
+        1. Entry ID: "pub_queue_doi_..." → Return as-is (backward compatible)
+        2. PMID: "PMID:31204333" or "31204333" → Find or create entry
+        3. DOI: "10.1038/..." → Find or create entry
+
+        Args:
+            identifier: Entry ID, PMID, or DOI
+            data_manager: DataManagerV2 instance for queue access
+
+        Returns:
+            Queue entry_id (existing or newly created)
+
+        Raises:
+            ValueError: If identifier format invalid or metadata fetch fails
+        """
+        # Step 1: Check if it's already an entry_id
+        if identifier.startswith("pub_queue_"):
+            logger.debug(f"Identifier is entry_id: {identifier}")
+            return identifier  # Return as-is (backward compatible)
+
+        # Step 2: Parse PMID or DOI
+        pmid = None
+        doi = None
+
+        # Try parsing as PMID
+        if identifier.upper().startswith("PMID:"):
+            pmid = identifier[5:].strip()
+        elif identifier.isdigit() and len(identifier) == 8:  # Bare PMID (8 digits)
+            pmid = identifier
+        else:
+            # Try parsing as DOI (contains "10.")
+            if "10." in identifier:
+                doi = identifier.strip()
+
+        if not pmid and not doi:
+            raise ValueError(
+                f"Invalid identifier '{identifier}'. "
+                f"Expected: entry_id (pub_queue_...), PMID (31204333), or DOI (10.1038/...)"
+            )
+
+        logger.info(f"Resolving identifier: pmid={pmid}, doi={doi}")
+
+        # Step 3: Search existing queue for matching entry
+        queue = data_manager.publication_queue
+        if queue and queue.queue_file.exists():
+            entries = queue.list_entries()
+            for entry in entries:
+                # Match by PMID or DOI
+                if (pmid and entry.pmid == pmid) or (doi and entry.doi == doi):
+                    logger.info(f"Found existing queue entry: {entry.entry_id}")
+                    return entry.entry_id
+
+        # Step 4: Not found - create new entry
+        logger.info(f"Creating new queue entry for {identifier}")
+
+        # Fetch metadata from PubMed
+        try:
+            # Use AbstractProvider for quick metadata fetch
+            abstract_provider = AbstractProvider(data_manager=data_manager)
+            metadata = abstract_provider.get_abstract(pmid or doi)
+
+            # Create entry_id from PMID or DOI
+            if pmid:
+                entry_id = f"pub_queue_pmid_{pmid}"
+            else:
+                # Sanitize DOI for entry_id
+                doi_sanitized = doi.replace("/", "_").replace(".", "_")
+                entry_id = f"pub_queue_doi_{doi_sanitized}"
+
+            # Create PublicationQueueEntry
+            from lobster.core.schemas.publication_queue import (
+                PublicationQueueEntry,
+                PublicationStatus,
+            )
+
+            entry = PublicationQueueEntry(
+                entry_id=entry_id,
+                pmid=metadata.pmid,
+                doi=metadata.doi,
+                title=metadata.title,
+                authors=metadata.authors,
+                journal=metadata.journal,
+                year=metadata.published[:4] if metadata.published else None,
+                abstract=metadata.abstract,
+                priority=5,  # Default priority
+                status=PublicationStatus.PENDING,
+                schema_type="general",  # Default schema
+                extraction_level="methods",
+                created_at=None,  # Auto-set by PublicationQueueEntry
+                updated_at=None,
+            )
+
+            # Add to queue (auto-creates queue file if needed)
+            queue.add_entry(entry)
+
+            logger.info(f"Created queue entry: {entry_id}")
+            return entry_id
+
+        except Exception as e:
+            logger.error(f"Failed to create queue entry for {identifier}: {e}")
+            raise ValueError(f"Could not fetch metadata for {identifier}: {e}")
+
+    # ============================================================
     # Publication Queue Management (3 tools)
     # ============================================================
 
@@ -1723,14 +1833,22 @@ Could not extract content for: {identifier}
         extraction_tasks: str = "metadata,methods,identifiers",
     ) -> str:
         """
-        Process a publication queue entry to extract content and identifiers.
+        Process a publication queue entry (or create from PMID/DOI).
 
-        Extracts metadata, methods sections, and dataset identifiers (GEO, SRA,
-        BioProject, BioSample) from publications in the queue. Updates entry
-        status and caches extracted content to workspace.
+        Flexible identifier handling - accepts either:
+        1. Queue entry ID: "pub_queue_doi_10_1234..." (existing entry)
+        2. PMID: "PMID:31204333" or "31204333" (find or create entry)
+        3. DOI: "10.1038/..." (find or create entry)
+
+        If PMID/DOI provided and not in queue:
+        - Auto-creates queue entry with metadata from PubMed/DOI.org
+        - Initializes queue file if doesn't exist
+        - Returns processing report as normal
+
+        This enables single-publication workflows without requiring .ris files.
 
         Args:
-            entry_id: Publication queue entry identifier (e.g., "pub_queue_abc123")
+            entry_id: Entry ID OR PMID OR DOI (flexible)
             extraction_tasks: Comma-separated tasks (default: "metadata,methods,identifiers")
                             Options: "metadata", "methods", "identifiers", "full_text"
 
@@ -1738,25 +1856,31 @@ Could not extract content for: {identifier}
             Processing report with extracted content summary and updated status
 
         Examples:
-            # Extract metadata and methods
-            process_publication_entry("pub_queue_abc123", "metadata,methods")
-
-            # Extract dataset identifiers
-            process_publication_entry("pub_queue_abc123", "identifiers")
-
-            # Full extraction (metadata + methods + identifiers)
+            # Process existing queue entry
             process_publication_entry("pub_queue_abc123")
+
+            # Process PMID (auto-creates entry if needed)
+            process_publication_entry("PMID:31204333")
+            process_publication_entry("31204333")
+
+            # Process DOI (auto-creates entry if needed)
+            process_publication_entry("10.1038/s41586-021-03852-1")
         """
         if not HAS_PUBLICATION_PROCESSING:
             return "Publication processing requires a premium subscription. Visit https://omics-os.com/pricing"
+
+        # Resolve identifier: entry_id, PMID, or DOI → entry_id
+        resolved_entry_id = _find_or_create_queue_entry(entry_id, data_manager)
+
+        # Process the entry (existing service logic)
         return publication_processing_service.process_entry(
-            entry_id=entry_id, extraction_tasks=extraction_tasks
+            entry_id=resolved_entry_id, extraction_tasks=extraction_tasks
         )
 
     @tool
     def process_publication_queue(
         status_filter: str = "pending",
-        max_entries: int = 5,
+        max_entries: int = 0,
         extraction_tasks: str = "metadata,methods,identifiers",
         parallel_workers: int = 1,
     ) -> str:
