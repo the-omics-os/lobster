@@ -64,6 +64,12 @@ AGENT_SERVICE_DEPENDENCIES = {
         "lobster/services/quality/proteomics_preprocessing_service.py",
         "lobster/services/visualization/proteomics_visualization_service.py",
         "lobster/agents/proteomics/platform_config.py",
+        # Proteomics parsers (premium feature)
+        "lobster/services/data_access/proteomics_parsers/__init__.py",
+        "lobster/services/data_access/proteomics_parsers/base_parser.py",
+        "lobster/services/data_access/proteomics_parsers/maxquant_parser.py",
+        "lobster/services/data_access/proteomics_parsers/diann_parser.py",
+        "lobster/services/data_access/proteomics_parsers/olink_parser.py",
     ],
     "metadata_assistant": [
         "lobster/services/orchestration/publication_processing_service.py",
@@ -309,13 +315,6 @@ lobster/services/data_access/geo/loaders/tenx.py
 lobster/services/data_access/geo/metadata/__init__.py
 lobster/services/data_access/geo/sample/__init__.py
 lobster/services/data_access/geo/utils/__init__.py
-
-# Proteomics parsers (open for data loading, not analysis)
-lobster/services/data_access/proteomics_parsers/__init__.py
-lobster/services/data_access/proteomics_parsers/base_parser.py
-lobster/services/data_access/proteomics_parsers/maxquant_parser.py
-lobster/services/data_access/proteomics_parsers/diann_parser.py
-lobster/services/data_access/proteomics_parsers/olink_parser.py
 
 # Data Management - Open Core
 lobster/services/data_management/__init__.py
