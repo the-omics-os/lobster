@@ -274,10 +274,12 @@ class AnalysisScreen(Screen):
     def _inject_ui_callback(self) -> None:
         """Inject TextualCallbackHandler for live UI updates."""
         try:
+            # Enable debug=True temporarily to diagnose callback events
             ui_callback = TextualCallbackHandler(
                 app=self.app,
                 show_reasoning=False,
                 show_tools=True,
+                debug=True,  # Enable to see callback events in notifications
             )
             self.client.callbacks.append(ui_callback)
         except Exception:
@@ -328,8 +330,9 @@ class AnalysisScreen(Screen):
                     agents_panel.set_agent_active(to_agent)
                 activity_log.log_handoff(from_agent, to_agent)
 
-        except Exception:
-            pass  # Silently fail if widgets not ready
+        except Exception as e:
+            # Temporarily log errors for debugging
+            self.notify(f"Activity handler error: {type(e).__name__}: {str(e)[:100]}", severity="error")
 
     def on_token_usage_message(self, message: TokenUsageMessage) -> None:
         """Handle token usage updates from callback."""

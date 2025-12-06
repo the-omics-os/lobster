@@ -9,9 +9,13 @@ CRITICAL: Claude/Anthropic models use chat model callbacks, not LLM callbacks.
 - on_chat_model_start → Chat models (Claude, GPT-4, etc.)
 
 We implement BOTH to ensure we capture all agent activity.
+
+Agent Detection Strategy:
+- on_chain_start is the PRIMARY method for detecting agent handoffs
+- Uses get_all_agent_names() from agent registry to match chain names
+- This mirrors TerminalCallbackHandler's proven approach
 """
 
-from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
@@ -22,10 +26,10 @@ from langchain_core.messages import BaseMessage
 from langchain_core.outputs import LLMResult
 from textual.message import Message
 
+from lobster.config.agent_registry import get_all_agent_names
 from lobster.utils.callbacks import EventType
 
 
-@dataclass
 class AgentActivityMessage(Message):
     """
     Posted when agent activity changes.
@@ -33,16 +37,28 @@ class AgentActivityMessage(Message):
     Widgets can handle this via on_agent_activity_message().
     """
 
-    event_type: str  # EventType.value string
-    agent_name: str
-    tool_name: Optional[str] = None
-    content: str = ""
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    duration_ms: Optional[float] = None
-    timestamp: datetime = field(default_factory=datetime.now)
+    bubble = True  # Allow message to bubble up to parent widgets/screens
+
+    def __init__(
+        self,
+        event_type: str,
+        agent_name: str,
+        tool_name: Optional[str] = None,
+        content: str = "",
+        metadata: Optional[Dict[str, Any]] = None,
+        duration_ms: Optional[float] = None,
+        timestamp: Optional[datetime] = None,
+    ):
+        super().__init__()
+        self.event_type = event_type
+        self.agent_name = agent_name
+        self.tool_name = tool_name
+        self.content = content
+        self.metadata = metadata or {}
+        self.duration_ms = duration_ms
+        self.timestamp = timestamp or datetime.now()
 
 
-@dataclass
 class TokenUsageMessage(Message):
     """
     Posted when token usage is updated.
@@ -50,12 +66,24 @@ class TokenUsageMessage(Message):
     Widgets can handle this via on_token_usage_message().
     """
 
-    input_tokens: int = 0
-    output_tokens: int = 0
-    total_tokens: int = 0
-    cost_usd: float = 0.0
-    agent_name: str = ""
-    model_name: str = ""
+    bubble = True  # Allow message to bubble up to parent widgets/screens
+
+    def __init__(
+        self,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        total_tokens: int = 0,
+        cost_usd: float = 0.0,
+        agent_name: str = "",
+        model_name: str = "",
+    ):
+        super().__init__()
+        self.input_tokens = input_tokens
+        self.output_tokens = output_tokens
+        self.total_tokens = total_tokens
+        self.cost_usd = cost_usd
+        self.agent_name = agent_name
+        self.model_name = model_name
 
 
 class TextualCallbackHandler(BaseCallbackHandler):
@@ -81,6 +109,7 @@ class TextualCallbackHandler(BaseCallbackHandler):
         app=None,
         show_reasoning: bool = False,
         show_tools: bool = True,
+        debug: bool = False,
     ):
         """
         Initialize the Textual callback handler.
@@ -89,10 +118,12 @@ class TextualCallbackHandler(BaseCallbackHandler):
             app: Textual App instance for posting messages
             show_reasoning: Whether to post agent thinking events
             show_tools: Whether to post tool usage events
+            debug: Enable debug logging to see all callback events
         """
         self.app = app
         self.show_reasoning = show_reasoning
         self.show_tools = show_tools
+        self.debug = debug
 
         # State tracking
         self.current_agent: Optional[str] = None
@@ -109,13 +140,31 @@ class TextualCallbackHandler(BaseCallbackHandler):
         self.total_output_tokens = 0
         self.total_tokens = 0
 
+    def _debug_log(self, method: str, **kwargs) -> None:
+        """Log debug information if debug mode is enabled."""
+        if self.debug and self.app:
+            import json
+            info = {k: str(v)[:100] for k, v in kwargs.items() if v is not None}
+            try:
+                self.app.call_from_thread(
+                    self.app.notify,
+                    f"[DEBUG] {method}: {json.dumps(info, default=str)[:200]}",
+                    timeout=3,
+                )
+            except Exception:
+                pass
+
     def _post_message(self, message: Message) -> None:
         """Thread-safe post message to Textual app."""
         if self.app:
             try:
                 self.app.call_from_thread(self.app.post_message, message)
-            except Exception:
-                pass  # Silently fail if app not ready
+                # Debug: confirm message posted
+                if self.debug and isinstance(message, AgentActivityMessage):
+                    self._debug_log("MESSAGE_POSTED", event_type=message.event_type, agent=message.agent_name)
+            except Exception as e:
+                if self.debug:
+                    self._debug_log("POST_ERROR", error=str(e)[:100])
 
     def _post_activity(
         self,
@@ -170,58 +219,27 @@ class TextualCallbackHandler(BaseCallbackHandler):
         parent_run_id: Optional[UUID] = None,
         **kwargs,
     ) -> None:
-        """Common handler for both LLM and chat model starts."""
+        """
+        Common handler for both LLM and chat model starts.
+
+        NOTE: This method only tracks run_ids for hierarchy.
+        Agent detection happens in on_chain_start using the agent registry.
+        The serialized "name" here is the MODEL name (e.g., "ChatAnthropic"),
+        NOT the agent name (e.g., "research_agent").
+        """
         if serialized is None:
             serialized = {}
 
-        # Extract agent name from various sources
-        agent_name = (
-            kwargs.get("name")
-            or serialized.get("name")
-            or serialized.get("id", ["unknown"])[-1]  # LangChain ID format
-            or "unknown"
-        )
-
-        # Track run_id -> agent mapping
-        if run_id:
+        # Track run_id -> current_agent mapping (for hierarchy tracking)
+        # Use current_agent (set by on_chain_start) rather than serialized name
+        if run_id and self.current_agent:
             run_id_str = str(run_id)
-            self.run_to_agent[run_id_str] = agent_name
+            self.run_to_agent[run_id_str] = self.current_agent
             self.current_run_id = run_id_str
 
-        # Detect handoff via parent_run_id
-        if parent_run_id:
-            parent_id_str = str(parent_run_id)
-            if parent_id_str in self.run_to_agent:
-                parent_agent = self.run_to_agent[parent_id_str]
-                if parent_agent != agent_name and agent_name != "unknown":
-                    # This is a handoff!
-                    self._post_activity(
-                        event_type=EventType.HANDOFF,
-                        agent_name="system",
-                        metadata={"from": parent_agent, "to": agent_name},
-                    )
-
-        # Track start time
-        self.start_times[agent_name] = datetime.now()
-
-        # Update current agent
-        if agent_name != self.current_agent and agent_name != "unknown":
-            if self.current_agent and self.current_agent != agent_name:
-                # Agent switch detected
-                self._post_activity(
-                    event_type=EventType.HANDOFF,
-                    agent_name="system",
-                    metadata={"from": self.current_agent, "to": agent_name},
-                )
-            self.current_agent = agent_name
-            if agent_name not in self.agent_stack:
-                self.agent_stack.append(agent_name)
-
-        # Post activity event
-        self._post_activity(
-            event_type=EventType.AGENT_START,
-            agent_name=agent_name,
-        )
+        # Track start time for current agent if set
+        if self.current_agent:
+            self.start_times[self.current_agent] = datetime.now()
 
     def on_llm_start(
         self, serialized: Dict[str, Any], prompts: List[str], **kwargs
@@ -331,9 +349,6 @@ class TextualCallbackHandler(BaseCallbackHandler):
         self, serialized: Dict[str, Any], input_str: str, **kwargs
     ) -> None:
         """Called when a tool starts."""
-        if not self.show_tools:
-            return
-
         if serialized is None:
             serialized = {}
         tool_name = serialized.get("name", "unknown_tool")
@@ -342,19 +357,70 @@ class TextualCallbackHandler(BaseCallbackHandler):
         self.current_tool = tool_name
         self.start_times[f"tool_{tool_name}"] = datetime.now()
 
-        # Safely convert input to string
-        input_content = ""
-        if input_str:
-            try:
-                input_content = str(input_str)[:100]
-            except Exception:
-                pass
+        # Detect handoff tools - this is the PRIMARY handoff detection method
+        # LangGraph supervisor uses: handoff_to_<agent_name> and transfer_back_to_supervisor
+        is_handoff = False
+        if tool_name.startswith("handoff_to_"):
+            is_handoff = True
+            # Extract target agent name from tool name
+            target_agent = tool_name.replace("handoff_to_", "")
+            self._debug_log("HANDOFF", from_agent=self.current_agent or "none", to_agent=target_agent, tool=tool_name)
+            self._handle_handoff(target_agent)
+        elif tool_name.startswith("transfer_back_to_"):
+            is_handoff = True
+            # Returning to supervisor
+            self._debug_log("HANDOFF_BACK", from_agent=self.current_agent or "none", to_agent="supervisor", tool=tool_name)
+            self._handle_handoff("supervisor")
 
+        # Debug log all tool calls
+        if not is_handoff:
+            self._debug_log("TOOL", name=tool_name, agent=self.current_agent or "none")
+
+        # Post tool start event (if show_tools enabled)
+        if self.show_tools:
+            # Safely convert input to string
+            input_content = ""
+            if input_str:
+                try:
+                    input_content = str(input_str)[:100]
+                except Exception:
+                    pass
+
+            self._post_activity(
+                event_type=EventType.TOOL_START,
+                agent_name=self.current_agent or "system",
+                tool_name=tool_name,
+                content=input_content,
+            )
+
+    def _handle_handoff(self, target_agent: str) -> None:
+        """Handle agent handoff detected from tool call."""
+        if target_agent == self.current_agent:
+            return  # No change
+
+        # Post handoff event
         self._post_activity(
-            event_type=EventType.TOOL_START,
-            agent_name=self.current_agent or "system",
-            tool_name=tool_name,
-            content=input_content,
+            event_type=EventType.HANDOFF,
+            agent_name="system",
+            metadata={
+                "from": self.current_agent or "system",
+                "to": target_agent,
+            },
+        )
+
+        # Update current agent tracking
+        old_agent = self.current_agent
+        self.current_agent = target_agent
+        if target_agent not in self.agent_stack:
+            self.agent_stack.append(target_agent)
+
+        # Track start time for new agent
+        self.start_times[target_agent] = datetime.now()
+
+        # Post agent start event
+        self._post_activity(
+            event_type=EventType.AGENT_START,
+            agent_name=target_agent,
         )
 
     def on_tool_end(self, output: Any, **kwargs) -> None:
@@ -422,7 +488,11 @@ class TextualCallbackHandler(BaseCallbackHandler):
     def on_chain_start(
         self, serialized: Dict[str, Any], inputs: Dict[str, Any], **kwargs
     ) -> None:
-        """Called when a chain starts - detect handoffs."""
+        """
+        Called when a chain starts - PRIMARY method for detecting agent handoffs.
+
+        This mirrors TerminalCallbackHandler's approach using the agent registry.
+        """
         if serialized is None:
             serialized = {}
         if inputs is None:
@@ -430,30 +500,42 @@ class TextualCallbackHandler(BaseCallbackHandler):
 
         chain_name = serialized.get("name", "")
 
-        # Detect agent transitions using known agent names
-        known_agents = [
-            "supervisor",
-            "research_agent",
-            "metadata_assistant",
-            "data_expert",
-            "singlecell_expert",
-            "bulk_rnaseq_expert",
-            "ms_proteomics_expert",
-            "affinity_proteomics_expert",
-        ]
+        # Debug logging to understand what chain names we're receiving
+        self._debug_log(
+            "on_chain_start",
+            chain_name=chain_name,
+            serialized_keys=list(serialized.keys()) if serialized else [],
+        )
 
-        for agent_name in known_agents:
+        # Detect agent transitions using the agent registry (dynamic, not hardcoded)
+        agent_names = get_all_agent_names()
+
+        for agent_name in agent_names:
             if agent_name in chain_name.lower():
                 if agent_name != self.current_agent:
-                    # This is a handoff
+                    # This is a handoff - post the handoff event
                     self._post_activity(
                         event_type=EventType.HANDOFF,
                         agent_name="system",
-                        content=inputs.get("task", "")[:100],
+                        content=inputs.get("task", "")[:100] if inputs.get("task") else "",
                         metadata={
                             "from": self.current_agent or "system",
                             "to": agent_name,
                         },
+                    )
+
+                    # Update current agent tracking
+                    self.current_agent = agent_name
+                    if agent_name not in self.agent_stack:
+                        self.agent_stack.append(agent_name)
+
+                    # Track start time for this agent
+                    self.start_times[agent_name] = datetime.now()
+
+                    # Post agent start event
+                    self._post_activity(
+                        event_type=EventType.AGENT_START,
+                        agent_name=agent_name,
                     )
                 break
 
