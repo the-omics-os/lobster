@@ -36,12 +36,12 @@ class AdaptersPanel(Vertical):
     AdaptersPanel {
         height: auto;
         padding: 0 1;
-        border: round $primary 30%;
+        border: round #CC2C18 30%;
     }
 
     AdaptersPanel > Static.header {
         text-style: bold;
-        color: $text;
+        color: #CC2C18;
         margin-bottom: 1;
     }
 

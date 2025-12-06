@@ -22,12 +22,12 @@ class AgentsPanel(Vertical):
     AgentsPanel {
         height: auto;
         padding: 0 1;
-        border: round $primary 30%;
+        border: round #CC2C18 30%;
     }
 
     AgentsPanel > Static.header {
         text-style: bold;
-        color: $text;
+        color: #CC2C18;
     }
 
     AgentsPanel > Static.subheader {
@@ -126,9 +126,9 @@ class AgentsPanel(Vertical):
                 if name in self.active_agents:
                     # Active/processing - pulse between ▶ and ▸
                     dot = "▶" if self._pulse_state else "▸"
-                    text.append(f" {dot} ", style="bold yellow")
+                    text.append(f" {dot} ", style="bold #CC2C18")
                     text.append(f"{display_name}", style="bold")
-                    text.append(" (active)\n", style="yellow")
+                    text.append(" (active)\n", style="#CC2C18")
                 elif status == "idle":
                     text.append(" ● ", style="green")
                     text.append(f"{display_name}\n", style="")

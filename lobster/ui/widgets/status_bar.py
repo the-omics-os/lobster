@@ -11,7 +11,7 @@ from rich.console import RenderableType
 import re
 from typing import Any
 
-DEFAULT_ACCENT = "#e45c47"
+DEFAULT_ACCENT = "#CC2C18"
 COLOR_RE = re.compile(r"Color\((\d+),\s*(\d+),\s*(\d+)\)")
 
 

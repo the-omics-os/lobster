@@ -134,11 +134,12 @@ class QueuePanel(Vertical):
     QueuePanel {
         height: auto;
         padding: 0;
-        border: round $primary 30%;
+        border: round #CC2C18 30%;
     }
 
     QueuePanel > Static.panel-header {
         text-style: bold;
+        color: #CC2C18;
         padding: 0 1;
         margin-bottom: 1;
     }

@@ -23,17 +23,23 @@ class LobsterOS(App):
 
     Design principles:
     - Transparent backgrounds (inherit terminal theme)
-    - Single accent color (orange) for active/important elements
+    - Single accent color (Lobster Orange #CC2C18) for active/important elements
     - Clean borders, no visual noise
 
     Press Ctrl+P to open command palette with all available commands.
     """
 
-    # Minimal design - transparent, terminal-native
+    # Lobster Orange brand theme
     CSS = """
     * {
         scrollbar-size: 1 1;
     }
+
+    /* Override Textual's default primary color with Lobster Orange */
+    $primary: #CC2C18;
+    $primary-lighten-1: #E84D3A;
+    $primary-darken-1: #A82414;
+    $accent: #CC2C18;
 
     Screen {
         background: transparent;
@@ -41,6 +47,7 @@ class LobsterOS(App):
 
     Header {
         background: transparent;
+        color: #CC2C18;
     }
 
     Footer {

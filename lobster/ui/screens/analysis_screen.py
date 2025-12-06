@@ -73,7 +73,7 @@ class AnalysisScreen(Screen):
     /* Left panel - system telemetry */
     #left-panel {
         width: 26;
-        border-right: solid $primary 30%;
+        border-right: solid #CC2C18 30%;
         padding: 0 1;
     }
 
@@ -89,25 +89,25 @@ class AnalysisScreen(Screen):
 
     #results-display {
         height: 1fr;
-        border: round $primary 20%;
+        border: round #CC2C18 20%;
         overflow-y: auto;
         padding: 0 1;
     }
 
     #query-prompt {
         height: 6;
-        border: round $primary 40%;
+        border: round #CC2C18 40%;
         margin-top: 1;
     }
 
     #query-prompt:focus {
-        border: round #ffaa00 80%;
+        border: round #CC2C18 80%;
     }
 
     /* Right panel - data & agents */
     #right-panel {
         width: 26;
-        border-left: solid $primary 30%;
+        border-left: solid #CC2C18 30%;
         padding: 0 1;
     }
 
@@ -120,20 +120,20 @@ class AnalysisScreen(Screen):
     AgentsPanel, AdaptersPanel {
         height: auto;
         padding: 0 1;
-        border: round $primary 30%;
+        border: round #CC2C18 30%;
     }
 
     /* Data panels */
     ModalityList {
         height: 1fr;
         min-height: 6;
-        border: round $primary 30%;
+        border: round #CC2C18 30%;
     }
 
     PlotPreview {
         height: auto;
         max-height: 8;
-        border: round $primary 30%;
+        border: round #CC2C18 30%;
     }
 
     /* Chat messages - minimal styling */
@@ -154,13 +154,13 @@ class AnalysisScreen(Screen):
     }
 
     .agent-message {
-        border: round #e45c47 40%;
-        background: #e45c47 5%;
+        border: round #CC2C18 40%;
+        background: #CC2C18 5%;
     }
 
     .agent-message.streaming {
-        border: round #ffaa00 70%;
-        background: #ffaa00 8%;
+        border: round #E84D3A 70%;
+        background: #E84D3A 8%;
     }
 
     .system-message {
@@ -177,7 +177,7 @@ class AnalysisScreen(Screen):
     StatusBar {
         height: 1;
         background: transparent;
-        border-bottom: solid $primary 20%;
+        border-bottom: solid #CC2C18 20%;
     }
     """
 

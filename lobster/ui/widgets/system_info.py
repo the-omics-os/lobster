@@ -78,7 +78,7 @@ class SystemInfoPanel(Vertical):
     SystemInfoPanel {
         height: auto;
         padding: 0 1;
-        border: round $primary 30%;
+        border: round #CC2C18 30%;
     }
 
     SystemInfoPanel > Static {
@@ -89,6 +89,7 @@ class SystemInfoPanel(Vertical):
 
     SystemInfoPanel .header {
         text-style: bold;
+        color: #CC2C18;
         margin-bottom: 1;
     }
 

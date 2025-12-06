@@ -24,6 +24,11 @@ For advanced configuration options, continue reading below.
 - [Quick Start](#quick-start)
 - [Environment Variables](#environment-variables)
 - [API Key Management](#api-key-management)
+  - [Ollama (Local)](#ollama-local---new-)
+  - [Claude API (Cloud)](#claude-api-cloud)
+  - [AWS Bedrock (Cloud)](#aws-bedrock-cloud)
+  - [Provider Auto-Detection](#provider-auto-detection)
+  - [Running Multiple Sessions with Different Providers](#running-multiple-sessions-with-different-providers)
 - [Model Profiles](#model-profiles)
 - [Supervisor Configuration](#supervisor-configuration)
 - [Cloud vs Local Configuration](#cloud-vs-local-configuration)
@@ -38,12 +43,16 @@ Lobster AI uses environment variables for configuration. These can be set in a `
 
 ### Required Variables
 
-You must provide API keys for at least one Large Language Model (LLM) provider.
+You must configure at least one Large Language Model (LLM) provider:
 
-- `ANTHROPIC_API_KEY`: For using Claude models via Anthropic.
-- `AWS_BEDROCK_ACCESS_KEY` and `AWS_BEDROCK_SECRET_ACCESS_KEY`: For using models via AWS Bedrock.
+**Cloud Providers (require API keys):**
+- `ANTHROPIC_API_KEY`: For using Claude models via Anthropic Direct API
+- `AWS_BEDROCK_ACCESS_KEY` and `AWS_BEDROCK_SECRET_ACCESS_KEY`: For using models via AWS Bedrock
 
-See the [API Key Management](#api-key-management) section for more details.
+**Local Provider (no API keys needed):**
+- `LOBSTER_LLM_PROVIDER=ollama`: For using local models via Ollama (requires Ollama installation)
+
+See the [API Key Management](#api-key-management) section for detailed setup instructions.
 
 ### Optional Variables
 
@@ -124,6 +133,118 @@ Lobster AI automatically detects which provider to use based on available config
 LOBSTER_LLM_PROVIDER=ollama      # Local LLM
 LOBSTER_LLM_PROVIDER=anthropic   # Claude API
 LOBSTER_LLM_PROVIDER=bedrock     # AWS Bedrock
+```
+
+### Running Multiple Sessions with Different Providers
+
+You can run multiple Lobster sessions simultaneously, each using a different LLM provider. This is useful for:
+- **A/B Testing**: Compare analysis quality between providers
+- **Development vs Production**: Use local for dev, cloud for production
+- **Cost Optimization**: Use local for exploratory work, cloud for final analyses
+- **Privacy Control**: Use local for sensitive data, cloud for general analyses
+
+#### Method 1: Different Terminal Sessions (Current)
+
+Each terminal maintains its own environment variables:
+
+```bash
+# Terminal 1: Local development with Ollama
+export LOBSTER_LLM_PROVIDER=ollama
+cd ~/project-dev
+lobster chat
+
+# Terminal 2: Production with Claude (simultaneously)
+export LOBSTER_LLM_PROVIDER=anthropic
+cd ~/project-prod
+lobster chat
+
+# Terminal 3: Enterprise with Bedrock
+export LOBSTER_LLM_PROVIDER=bedrock
+cd ~/project-enterprise
+lobster chat
+```
+
+**How it works:**
+- Environment variables are process-specific (don't interfere between terminals)
+- Each session is completely independent
+- Can run unlimited simultaneous sessions
+
+#### Method 2: Shell Aliases (Convenience)
+
+Create aliases for quick provider switching:
+
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+alias lobster-local='LOBSTER_LLM_PROVIDER=ollama lobster'
+alias lobster-cloud='LOBSTER_LLM_PROVIDER=anthropic lobster'
+alias lobster-bedrock='LOBSTER_LLM_PROVIDER=bedrock lobster'
+
+# Usage
+lobster-local chat     # Always uses Ollama
+lobster-cloud query "analyze data"  # Always uses Claude
+lobster-bedrock chat   # Always uses Bedrock
+```
+
+#### Method 3: Per-Command Inline (Quick Tests)
+
+```bash
+# One-off command with specific provider
+LOBSTER_LLM_PROVIDER=ollama lobster query "cluster my data"
+LOBSTER_LLM_PROVIDER=anthropic lobster query "cluster my data"
+
+# Compare results side-by-side
+```
+
+#### Method 4: CLI Flag (Coming Soon)
+
+**Future enhancement** - provider flag per command:
+```bash
+lobster chat --provider ollama
+lobster query --provider anthropic "analyze data"
+```
+
+#### Method 5: Workspace-Specific Config (Coming Soon)
+
+**Future enhancement** - each workspace remembers its provider:
+```bash
+# project1/.lobster_workspace/config.json
+{"llm_provider": "ollama"}
+
+# project2/.lobster_workspace/config.json
+{"llm_provider": "anthropic"}
+
+cd project1 && lobster chat  # Auto-uses Ollama
+cd project2 && lobster chat  # Auto-uses Claude
+```
+
+#### Provider Selection Priority
+
+When multiple configurations exist, Lobster uses this resolution order:
+
+```
+1. CLI flag (--provider)                      [Coming Soon]
+2. Workspace config (.lobster_workspace/config.json)  [Coming Soon]
+3. Environment variable (LOBSTER_LLM_PROVIDER)        [Current]
+4. Auto-detection (Ollama → Anthropic → Bedrock)     [Current]
+```
+
+#### Practical Example: Development Workflow
+
+```bash
+# Setup: Configure both providers once
+cat > ~/.env << EOF
+ANTHROPIC_API_KEY=sk-ant-xxx
+LOBSTER_LLM_PROVIDER=anthropic  # Default to cloud
+EOF
+
+# Day-to-day usage:
+# Quick local test (Terminal 1)
+LOBSTER_LLM_PROVIDER=ollama lobster chat
+
+# Production analysis (Terminal 2, simultaneously)
+lobster chat  # Uses default (anthropic)
+
+# Both sessions run independently!
 ```
 
 ### NCBI API Key (Optional)
@@ -287,8 +408,13 @@ The recommended way to configure Lobster AI:
 lobster init
 
 # The wizard will:
-# 1. Prompt you to choose LLM provider (Claude API or AWS Bedrock)
-# 2. Securely collect your API keys (input is masked)
+# 1. Prompt you to choose LLM provider:
+#    - Option 1: Claude API (Anthropic)
+#    - Option 2: AWS Bedrock
+#    - Option 3: Ollama (Local)
+# 2. Guide you through provider-specific setup:
+#    - Cloud: Securely collect API keys (input is masked)
+#    - Ollama: Check installation, list available models
 # 3. Optionally configure NCBI API key
 # 4. Save configuration to .env file in current directory
 ```
@@ -312,15 +438,26 @@ lobster config show
 lobster init --force
 
 # Non-interactive mode for CI/CD and automation
+
+# Option 1: Claude API
 lobster init --non-interactive \
   --anthropic-key=sk-ant-xxx
 
-# Non-interactive with AWS Bedrock
+# Option 2: AWS Bedrock
 lobster init --non-interactive \
   --bedrock-access-key=AKIA... \
   --bedrock-secret-key=xxx
 
-# Add NCBI API key in non-interactive mode
+# Option 3: Ollama (Local) - NEW!
+lobster init --non-interactive \
+  --use-ollama
+
+# Ollama with custom model
+lobster init --non-interactive \
+  --use-ollama \
+  --ollama-model=mixtral:8x7b-instruct
+
+# With NCBI API key
 lobster init --non-interactive \
   --anthropic-key=sk-ant-xxx \
   --ncbi-key=your-ncbi-key
