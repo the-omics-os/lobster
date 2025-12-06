@@ -1791,10 +1791,13 @@ Could not extract content for: {identifier}
                 entry_id = f"pub_queue_doi_{doi_sanitized}"
 
             # Create PublicationQueueEntry
+            from datetime import datetime
             from lobster.core.schemas.publication_queue import (
                 PublicationQueueEntry,
                 PublicationStatus,
             )
+
+            now = datetime.now()
 
             entry = PublicationQueueEntry(
                 entry_id=entry_id,
@@ -1809,8 +1812,8 @@ Could not extract content for: {identifier}
                 status=PublicationStatus.PENDING,
                 schema_type="general",  # Default schema
                 extraction_level="methods",
-                created_at=None,  # Auto-set by PublicationQueueEntry
-                updated_at=None,
+                created_at=now,
+                updated_at=now,
             )
 
             # Add to queue (auto-creates queue file if needed)
