@@ -280,6 +280,9 @@ lobster/services/analysis/clustering_service.py
 lobster/services/analysis/enhanced_singlecell_service.py
 lobster/services/analysis/scvi_embedding_service.py
 lobster/services/analysis/structure_analysis_service.py
+lobster/services/analysis/bulk_rnaseq_service.py
+lobster/services/analysis/differential_formula_service.py
+lobster/services/analysis/pseudobulk_service.py
 
 # Quality Control - Open Core
 lobster/services/quality/__init__.py
@@ -289,6 +292,7 @@ lobster/services/quality/preprocessing_service.py
 # Visualization - Open Core
 lobster/services/visualization/__init__.py
 lobster/services/visualization/visualization_service.py
+lobster/services/visualization/bulk_visualization_service.py
 lobster/services/visualization/pymol_visualization_service.py
 
 # Data Access - Open Core
