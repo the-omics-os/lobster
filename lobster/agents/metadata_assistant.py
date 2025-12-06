@@ -82,8 +82,10 @@ def metadata_assistant(
     model_params = settings.get_agent_llm_params("assistant")
     llm = create_llm("metadata_assistant", model_params)
 
+    # Normalize callbacks to a flat list (fix double-nesting bug)
     if callback_handler and hasattr(llm, "with_config"):
-        llm = llm.with_config(callbacks=[callback_handler])
+        callbacks = callback_handler if isinstance(callback_handler, list) else [callback_handler]
+        llm = llm.with_config(callbacks=callbacks)
 
     # Initialize services (Phase 3: new services)
     sample_mapping_service = SampleMappingService(data_manager=data_manager)

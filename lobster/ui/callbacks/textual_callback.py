@@ -3,18 +3,24 @@ Textual-aware callback handler for bridging LangChain events to UI.
 
 This callback handler extends TerminalCallbackHandler but instead of
 printing to console, it posts Textual Messages that widgets can handle.
+
+CRITICAL: Claude/Anthropic models use chat model callbacks, not LLM callbacks.
+- on_llm_start → Traditional completion models (GPT-3 davinci)
+- on_chat_model_start → Chat models (Claude, GPT-4, etc.)
+
+We implement BOTH to ensure we capture all agent activity.
 """
 
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
+from uuid import UUID
 
 from langchain_core.agents import AgentAction, AgentFinish
 from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.messages import BaseMessage
 from langchain_core.outputs import LLMResult
 from textual.message import Message
-
-# Note: output in on_tool_end can be str or ToolMessage object
 
 from lobster.utils.callbacks import EventType
 
@@ -94,6 +100,10 @@ class TextualCallbackHandler(BaseCallbackHandler):
         self.start_times: Dict[str, datetime] = {}
         self.current_tool: Optional[str] = None  # Track current tool name
 
+        # Run ID tracking for agent hierarchy
+        self.run_to_agent: Dict[str, str] = {}  # run_id -> agent_name
+        self.current_run_id: Optional[str] = None
+
         # Token tracking
         self.total_input_tokens = 0
         self.total_output_tokens = 0
@@ -153,27 +163,91 @@ class TextualCallbackHandler(BaseCallbackHandler):
 
     # LangChain Callback Methods
 
-    def on_llm_start(
-        self, serialized: Dict[str, Any], prompts: List[str], **kwargs
+    def _handle_model_start(
+        self,
+        serialized: Dict[str, Any],
+        run_id: Optional[UUID] = None,
+        parent_run_id: Optional[UUID] = None,
+        **kwargs,
     ) -> None:
-        """Called when an LLM starts."""
+        """Common handler for both LLM and chat model starts."""
         if serialized is None:
             serialized = {}
-        agent_name = kwargs.get("name") or serialized.get("name", "unknown")
+
+        # Extract agent name from various sources
+        agent_name = (
+            kwargs.get("name")
+            or serialized.get("name")
+            or serialized.get("id", ["unknown"])[-1]  # LangChain ID format
+            or "unknown"
+        )
+
+        # Track run_id -> agent mapping
+        if run_id:
+            run_id_str = str(run_id)
+            self.run_to_agent[run_id_str] = agent_name
+            self.current_run_id = run_id_str
+
+        # Detect handoff via parent_run_id
+        if parent_run_id:
+            parent_id_str = str(parent_run_id)
+            if parent_id_str in self.run_to_agent:
+                parent_agent = self.run_to_agent[parent_id_str]
+                if parent_agent != agent_name and agent_name != "unknown":
+                    # This is a handoff!
+                    self._post_activity(
+                        event_type=EventType.HANDOFF,
+                        agent_name="system",
+                        metadata={"from": parent_agent, "to": agent_name},
+                    )
 
         # Track start time
         self.start_times[agent_name] = datetime.now()
 
         # Update current agent
-        if agent_name != self.current_agent:
+        if agent_name != self.current_agent and agent_name != "unknown":
+            if self.current_agent and self.current_agent != agent_name:
+                # Agent switch detected
+                self._post_activity(
+                    event_type=EventType.HANDOFF,
+                    agent_name="system",
+                    metadata={"from": self.current_agent, "to": agent_name},
+                )
             self.current_agent = agent_name
-            self.agent_stack.append(agent_name)
+            if agent_name not in self.agent_stack:
+                self.agent_stack.append(agent_name)
 
         # Post activity event
         self._post_activity(
             event_type=EventType.AGENT_START,
             agent_name=agent_name,
         )
+
+    def on_llm_start(
+        self, serialized: Dict[str, Any], prompts: List[str], **kwargs
+    ) -> None:
+        """Called when a completion LLM starts (GPT-3 davinci, etc)."""
+        run_id = kwargs.get("run_id")
+        parent_run_id = kwargs.get("parent_run_id")
+        self._handle_model_start(serialized, run_id, parent_run_id, **kwargs)
+
+    def on_chat_model_start(
+        self,
+        serialized: Dict[str, Any],
+        messages: List[List[BaseMessage]],
+        *,
+        run_id: Optional[UUID] = None,
+        parent_run_id: Optional[UUID] = None,
+        tags: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> None:
+        """
+        Called when a chat model starts (Claude, GPT-4, etc).
+
+        CRITICAL: This is what Claude/Anthropic models fire, NOT on_llm_start.
+        """
+        self._handle_model_start(serialized, run_id, parent_run_id, **kwargs)
 
     def on_llm_end(self, response: LLMResult, **kwargs) -> None:
         """Called when an LLM finishes."""
@@ -393,6 +467,8 @@ class TextualCallbackHandler(BaseCallbackHandler):
         self.agent_stack = []
         self.start_times = {}
         self.current_tool = None
+        self.run_to_agent = {}
+        self.current_run_id = None
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.total_tokens = 0

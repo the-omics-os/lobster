@@ -68,8 +68,10 @@ def custom_feature_agent(
     model_params = settings.get_agent_llm_params("custom_feature_agent")
     llm = create_llm("custom_feature_agent", model_params)
 
+    # Normalize callbacks to a flat list (fix double-nesting bug)
     if callback_handler and hasattr(llm, "with_config"):
-        llm = llm.with_config(callbacks=[callback_handler])
+        callbacks = callback_handler if isinstance(callback_handler, list) else [callback_handler]
+        llm = llm.with_config(callbacks=callbacks)
 
     # Store feature creation results
     creation_results = {"summary": "", "details": {}, "created_files": []}
@@ -902,7 +904,7 @@ Begin implementation now."""
 
             # Spawn Claude Code SDK
             try:
-                logger.info("[DEBUG] Spawning Claude Code SDK...")
+                logger.debug("[DEBUG] Spawning Claude Code SDK...")
                 debug_info["steps"].append("Spawning SDK client")
 
                 sdk_output_lines = []
@@ -910,7 +912,7 @@ Begin implementation now."""
                 message_count = 0
 
                 async with ClaudeSDKClient(options=options) as client:
-                    logger.info("[DEBUG] SDK client connected successfully")
+                    logger.debug("[DEBUG] SDK client connected successfully")
                     debug_info["steps"].append("SDK client connected")
 
                     # Send prompt
@@ -921,14 +923,14 @@ Begin implementation now."""
                         )
                         logger.info("=" * 80)
                         logger.info(f"\n[SDK Prompt]\n{prompt}\n")
-                        logger.info(
+                        logger.debug(
                             f"[DEBUG] Sending prompt to SDK (length: {len(prompt)} characters)..."
                         )
                         debug_info["steps"].append("Sending prompt to SDK")
                         debug_info["prompt_length"] = len(prompt)
 
                         await client.query(prompt)
-                        logger.info("[DEBUG] Prompt sent successfully")
+                        logger.debug("[DEBUG] Prompt sent successfully")
                         debug_info["steps"].append("Prompt sent")
                     except Exception as e:
                         error_msg = f"Failed to send prompt to SDK: {e}"
@@ -939,7 +941,7 @@ Begin implementation now."""
 
                     # Collect responses
                     try:
-                        logger.info("[DEBUG] Receiving SDK responses...")
+                        logger.debug("[DEBUG] Receiving SDK responses...")
                         debug_info["steps"].append("Receiving SDK responses")
 
                         async for message in client.receive_response():
@@ -1100,7 +1102,7 @@ Begin implementation now."""
 
             # Verify files were created
             try:
-                logger.info("[DEBUG] Verifying created files...")
+                logger.debug("[DEBUG] Verifying created files...")
                 debug_info["steps"].append("Verifying created files")
 
                 expected_files = []
@@ -1189,9 +1191,9 @@ Begin implementation now."""
                 )
                 expected_files.append(wiki_file)
 
-                logger.info(f"[DEBUG] Expected {len(expected_files)} files:")
+                logger.debug(f"[DEBUG] Expected {len(expected_files)} files:")
                 for exp_file in expected_files:
-                    logger.info(f"[DEBUG]   - {exp_file}")
+                    logger.debug(f"[DEBUG]   - {exp_file}")
 
                 debug_info["expected_files"] = [str(f) for f in expected_files]
 
@@ -1201,7 +1203,7 @@ Begin implementation now."""
                 for file_path in expected_files:
                     if file_path.exists():
                         verified_files.append(str(file_path))
-                        logger.info(f"[DEBUG] ✓ File exists: {file_path}")
+                        logger.debug(f"[DEBUG] ✓ File exists: {file_path}")
                     else:
                         missing_files.append(str(file_path))
                         logger.warning(f"[DEBUG] ✗ File missing: {file_path}")
@@ -1212,7 +1214,7 @@ Begin implementation now."""
                     f"Verification complete: {len(verified_files)}/{len(expected_files)} files"
                 )
 
-                logger.info(
+                logger.debug(
                     f"[DEBUG] Verification complete: {len(verified_files)}/{len(expected_files)} files created"
                 )
 
@@ -1228,7 +1230,7 @@ Begin implementation now."""
                 missing_system = []
 
                 try:
-                    logger.info(
+                    logger.debug(
                         "[DEBUG] Detecting required packages from created files..."
                     )
                     debug_info["steps"].append("Detecting required packages")
@@ -2649,8 +2651,10 @@ def new_agent_expert(
     model_params = settings.get_agent_llm_params(agent_name)
     llm = create_llm(agent_name, model_params)
 
+    # Normalize callbacks to a flat list (fix double-nesting bug)
     if callback_handler and hasattr(llm, "with_config"):
-        llm = llm.with_config(callbacks=[callback_handler])
+        callbacks = callback_handler if isinstance(callback_handler, list) else [callback_handler]
+        llm = llm.with_config(callbacks=callbacks)
 
     # Initialize stateless services
     service1 = Service1()
