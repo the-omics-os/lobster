@@ -1669,14 +1669,26 @@ class DataManagerV2:
                         pio_module.write_html(plot, html_path)
                         saved_files.append(str(html_path))
 
-                        png_path = plots_dir / f"{filename_base}.png"
-                        try:
-                            with SuppressKaleidoLogging():
-                                _, pio_module = _ensure_plotly()
-                                pio_module.write_image(plot, png_path)
-                            saved_files.append(str(png_path))
-                        except Exception as e:
-                            logger.warning(f"Could not save PNG for {plot_id}: {e}")
+                        # BUG010 FIX: Skip PNG export for large datasets (Kaleido limitation)
+                        # Kaleido hangs indefinitely when exporting PNG with custom hover data for >50K points
+                        dataset_info = plot_entry.get("dataset_info", {})
+                        n_cells = dataset_info.get("n_cells", 0)
+                        skip_png = n_cells > 50000
+
+                        if not skip_png:
+                            png_path = plots_dir / f"{filename_base}.png"
+                            try:
+                                with SuppressKaleidoLogging():
+                                    _, pio_module = _ensure_plotly()
+                                    pio_module.write_image(plot, png_path)
+                                saved_files.append(str(png_path))
+                            except Exception as e:
+                                logger.warning(f"Could not save PNG for {plot_id}: {e}")
+                        else:
+                            logger.info(
+                                f"Skipped PNG export for {plot_id} ({n_cells:,} cells > 50K threshold). "
+                                f"Large datasets cause Kaleido to hang. HTML version available."
+                            )
 
                         logger.info(f"Saved plot {plot_id} to workspace")
 
