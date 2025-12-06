@@ -387,6 +387,7 @@ lobster/tools/providers/pmc_provider.py
 lobster/tools/providers/geo_provider.py
 lobster/tools/providers/geo_utils.py
 lobster/tools/providers/sra_provider.py
+lobster/tools/providers/biopython_entrez_wrapper.py
 lobster/tools/providers/webpage_provider.py
 lobster/tools/providers/biorxiv_medrxiv_provider.py
 lobster/tools/providers/biorxiv_medrxiv_config.py
@@ -397,6 +398,7 @@ lobster/tools/providers/organism_enum.py
 lobster/tools/providers/structure_provider.py
 lobster/tools/providers/pdb_provider.py
 lobster/tools/providers/massive_provider.py
+lobster/tools/providers/pride_provider.py
 
 # External provider context
 lobster/tools/external_providers_context/chimerax_tut.md
