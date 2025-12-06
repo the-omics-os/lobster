@@ -28,8 +28,15 @@ from lobster.core.archive_utils import (
 )
 from lobster.core.data_manager_v2 import DataManagerV2
 
-# Import extraction cache manager
-from lobster.core.extraction_cache import ExtractionCacheManager
+# Import extraction cache manager (premium feature - graceful fallback if unavailable)
+try:
+    from lobster.core.extraction_cache import ExtractionCacheManager
+    HAS_EXTRACTION_CACHE = True
+except ImportError:
+    # Premium feature not available in open-core distribution
+    ExtractionCacheManager = None
+    HAS_EXTRACTION_CACHE = False
+
 from lobster.core.interfaces.base_client import BaseClient
 from lobster.core.workspace import resolve_workspace
 from lobster.utils.callbacks import TokenTrackingCallback
@@ -1430,6 +1437,17 @@ class AgentClient(BaseClient):
                     f"Detected nested archive with {nested_info.total_count} samples"
                 )
 
+                # Check if extraction cache is available (premium feature)
+                if not HAS_EXTRACTION_CACHE:
+                    return {
+                        "success": False,
+                        "type": "nested_archive",
+                        "nested_info": nested_info,
+                        "error": "Nested archive caching requires premium features. "
+                        "Use extract_and_load_archive() to load entire archive instead.",
+                        "message": f"Detected nested archive with {nested_info.total_count} samples (caching unavailable)",
+                    }
+
                 extractor = ArchiveExtractor()
                 extract_dir = extractor.extract_to_temp(
                     archive_path, prefix=f"lobster_nested_{archive_path.stem}_"
@@ -1519,6 +1537,14 @@ class AgentClient(BaseClient):
             - message: str
             - error: str (if failed)
         """
+        # Check if extraction cache is available (premium feature)
+        if not HAS_EXTRACTION_CACHE:
+            return {
+                "success": False,
+                "error": "Cache loading requires premium features. "
+                "Use extract_and_load_archive() to load entire archive instead.",
+            }
+
         try:
             # 1. Get matching files from cache
             cache_manager = ExtractionCacheManager(self.workspace_path)

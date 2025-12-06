@@ -3643,10 +3643,25 @@ The actual expression data download will be much faster now that metadata is pre
             # Extract any nested TAR.GZ files
             nested_archives = list(extract_dir.glob("*.tar.gz"))
             if nested_archives:
-                logger.debug(f"Found {len(nested_archives)} nested TAR.GZ files")
+                n_samples = len(nested_archives)
+                logger.info(f"Found {n_samples} nested TAR.GZ files (10X samples)")
+
+                # MEMORY ESTIMATION: Warn if dataset may cause memory issues
+                # Heuristic: Each 10X sample ~40MB sparse, but if user has <2GB available RAM, warn
+                estimated_sparse_mb = n_samples * 50  # Conservative estimate (50MB per sample)
+                try:
+                    import psutil
+                    available_mb = psutil.virtual_memory().available / 1024 / 1024
+                    if estimated_sparse_mb > available_mb * 0.5:  # Would use >50% available RAM
+                        logger.warning(
+                            f"⚠️  Memory warning: {n_samples} samples may use ~{estimated_sparse_mb:.0f} MB RAM. "
+                            f"Available: {available_mb:.0f} MB. If processing fails, try reducing sample count."
+                        )
+                except ImportError:
+                    logger.debug("psutil not available for memory estimation")
 
                 all_matrices = []
-                for archive_path in nested_archives:
+                for i, archive_path in enumerate(nested_archives, start=1):
                     try:
                         sample_id = archive_path.stem.split(".")[
                             0
@@ -3654,32 +3669,55 @@ The actual expression data download will be much faster now that metadata is pre
                         sample_extract_dir = nested_extract_dir / sample_id
                         sample_extract_dir.mkdir(exist_ok=True)
 
+                        # PROGRESS LOGGING: Show progress for multi-sample datasets
+                        logger.info(f"📦 Processing sample {i}/{n_samples}: {sample_id}")
+
                         logger.debug(f"Extracting nested archive: {archive_path.name}")
                         with tarfile.open(archive_path, "r:gz") as nested_tar:
                             nested_tar.extractall(path=sample_extract_dir)
 
-                        # Try to parse 10X Genomics format data
-                        matrix = self.geo_parser.parse_10x_data(
+                        # Try to parse 10X Genomics format data (now returns AnnData!)
+                        adata_sample = self.geo_parser.parse_10x_data(
                             sample_extract_dir, sample_id
                         )
-                        if matrix is not None:
-                            all_matrices.append(matrix)
-                            logger.debug(
-                                f"Successfully parsed 10X data for {sample_id}: {matrix.shape}"
+                        if adata_sample is not None:
+                            all_matrices.append(adata_sample)
+                            logger.info(
+                                f"✅ Sample {i}/{n_samples} parsed: {adata_sample.n_obs} cells × {adata_sample.n_vars} genes"
                             )
+                        else:
+                            logger.warning(f"⚠️  Sample {i}/{n_samples} returned None (skipping)")
 
                     except Exception as e:
                         logger.warning(
-                            f"Failed to extract/parse {archive_path.name}: {e}"
+                            f"❌ Failed to extract/parse sample {i}/{n_samples} ({archive_path.name}): {e}"
                         )
                         continue
 
                 if all_matrices:
-                    # Concatenate all sample matrices
-                    logger.info(f"Concatenating {len(all_matrices)} 10X matrices")
-                    combined_matrix = pd.concat(all_matrices, axis=0, sort=False)
-                    logger.info(f"Combined matrix shape: {combined_matrix.shape}")
-                    return combined_matrix
+                    # Concatenate all sample AnnData objects (replaces pd.concat with anndata.concat)
+                    logger.info(f"🔗 Concatenating {len(all_matrices)} AnnData objects...")
+                    try:
+                        import anndata
+                        # Use anndata.concat for proper sparse matrix concatenation
+                        combined_adata = anndata.concat(
+                            all_matrices,
+                            axis=0,  # Concatenate observations (cells)
+                            join='outer',  # Union of genes (keeps all genes, fills missing with 0)
+                            label='sample_id',  # Add sample_id metadata
+                            keys=[adata.obs['sample_id'].iloc[0] for adata in all_matrices],
+                            index_unique=None  # Keep cell barcodes as-is (already prefixed)
+                        )
+                        logger.info(
+                            f"✅ Combined dataset: {combined_adata.n_obs} cells × {combined_adata.n_vars} genes "
+                            f"(sparse: {(combined_adata.X.data.nbytes + combined_adata.X.indices.nbytes + combined_adata.X.indptr.nbytes) / 1024 / 1024:.1f} MB)"
+                        )
+                        return combined_adata
+                    except Exception as e:
+                        logger.error(f"Failed to concatenate AnnData objects: {e}")
+                        # Fallback: return first sample if concatenation fails
+                        logger.warning(f"Returning first sample only as fallback")
+                        return all_matrices[0] if all_matrices else None
 
             # Fallback: look for regular expression files
             expression_files = []

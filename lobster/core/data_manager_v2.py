@@ -226,7 +226,6 @@ class DataManagerV2:
         self.session_data: Optional[Dict] = None
         self.session_id = str(datetime.now().timestamp())  # Unique session ID
 
-        # BUG FIX #2: Workspace scan caching to prevent repeated expensive I/O
         # Cache workspace scan results with 30-second TTL (Time To Live)
         self._available_datasets_cache: Optional[Dict[str, Dict]] = None
         self._scan_timestamp: float = 0  # Timestamp of last scan

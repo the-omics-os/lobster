@@ -86,13 +86,17 @@ def data_expert(
     custom_code_service = CustomCodeExecutionService(data_manager)
 
     # Try to initialize SDK delegation service (may fail if SDK not available)
-    try:
-        sdk_delegation_service = SDKDelegationService(data_manager)
-        sdk_available = True
-    except SDKDelegationError as e:
-        logger.warning(f"SDK delegation not available: {e}")
-        sdk_delegation_service = None
-        sdk_available = False
+    # SDKDelegationService may be None in open-core distribution
+    sdk_delegation_service = None
+    sdk_available = False
+    if SDKDelegationService is not None:
+        try:
+            sdk_delegation_service = SDKDelegationService(data_manager)
+            sdk_available = True
+        except SDKDelegationError as e:
+            logger.debug(f"SDK delegation not available: {e}")
+        except Exception as e:
+            logger.debug(f"SDK delegation initialization failed: {e}")
 
     # Define tools for data operations
     @tool

@@ -14,10 +14,19 @@ from lobster.services.execution.custom_code_execution_service import (
 from lobster.services.execution.execution_context_builder import (
     ExecutionContextBuilder,
 )
-from lobster.services.execution.sdk_delegation_service import (
-    SDKDelegationError,
-    SDKDelegationService,
-)
+
+# SDK Delegation Service (premium feature - graceful fallback if unavailable)
+try:
+    from lobster.services.execution.sdk_delegation_service import (
+        SDKDelegationError,
+        SDKDelegationService,
+    )
+    HAS_SDK_DELEGATION = True
+except ImportError:
+    # Premium feature not available in open-core distribution
+    SDKDelegationService = None
+    SDKDelegationError = Exception  # Fallback base class
+    HAS_SDK_DELEGATION = False
 
 __all__ = [
     "CustomCodeExecutionService",
@@ -26,4 +35,5 @@ __all__ = [
     "ExecutionContextBuilder",
     "SDKDelegationService",
     "SDKDelegationError",
+    "HAS_SDK_DELEGATION",
 ]

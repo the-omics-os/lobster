@@ -39,9 +39,16 @@ from lobster.config.agent_config import (
     initialize_configurator,
 )
 from lobster.core.client import AgentClient
-from lobster.core.extraction_cache import (  # BUG FIX #1: For archive cache management
-    ExtractionCacheManager,
-)
+
+# Import extraction cache manager (premium feature - graceful fallback if unavailable)
+try:
+    from lobster.core.extraction_cache import ExtractionCacheManager
+    HAS_EXTRACTION_CACHE = True
+except ImportError:
+    # Premium feature not available in open-core distribution
+    ExtractionCacheManager = None
+    HAS_EXTRACTION_CACHE = False
+
 from lobster.core.queue_storage import queue_file_lock
 from lobster.core.workspace import resolve_workspace
 
@@ -4546,6 +4553,17 @@ when they are started by agents or analysis workflows.
     elif cmd.startswith("/archive"):
         # BUG FIX #1: Handle nested archive commands with proper cache management
         # Use ExtractionCacheManager instead of client instance variables to prevent race conditions
+
+        # Check if extraction cache is available (premium feature)
+        if not HAS_EXTRACTION_CACHE:
+            console.print(
+                "[yellow]Archive caching is a premium feature not available in this distribution.[/yellow]"
+            )
+            console.print(
+                "[dim]Use extract_and_load_archive() to load entire archives instead.[/dim]"
+            )
+            return None
+
         parts = cmd.split(maxsplit=2)
         subcommand = parts[1] if len(parts) > 1 else "help"
 
@@ -4751,9 +4769,7 @@ when they are started by agents or analysis workflows.
                 return f"Failed to load samples: {result['error']}"
 
         elif subcommand == "status":
-            # Show cache status
-            from lobster.core.extraction_cache import ExtractionCacheManager
-
+            # Show cache status (uses top-level import, already checked HAS_EXTRACTION_CACHE)
             cache_manager = ExtractionCacheManager(client.workspace_path)
             all_caches = cache_manager.list_all_caches()
 
@@ -4785,9 +4801,7 @@ when they are started by agents or analysis workflows.
             return f"Cache status: {len(all_caches)} active extractions"
 
         elif subcommand == "cleanup":
-            # Clean up old caches
-            from lobster.core.extraction_cache import ExtractionCacheManager
-
+            # Clean up old caches (uses top-level import, already checked HAS_EXTRACTION_CACHE)
             cache_manager = ExtractionCacheManager(client.workspace_path)
 
             console.print("[cyan]🧹 Cleaning up old cached extractions...[/cyan]")

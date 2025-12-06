@@ -516,41 +516,69 @@ class GEOProvider(BasePublicationProvider):
 
         url = f"{self.base_url_esearch}?" + urllib.parse.urlencode(url_params)
 
-        # Execute request with retry logic
-        response_data = self._execute_request_with_retry(url)
+        # Retry logic for backend errors (NCBI search backend failures)
+        retry = 0
+        sleep_time = self.config.sleep_time
+        last_error = None
 
-        # Parse eSearch response
-        try:
-            json_data = json.loads(response_data)
-            esearch_result = json_data.get("esearchresult", {})
+        while retry <= self.config.max_retry:
+            # Execute request with retry logic
+            response_data = self._execute_request_with_retry(url)
 
-            # Check for API errors (e.g., invalid database name)
-            if "ERROR" in esearch_result:
-                error_msg = esearch_result["ERROR"]
-                logger.error(f"NCBI API error: {error_msg}")
-                raise ValueError(f"NCBI API error: {error_msg}")
+            # Parse eSearch response
+            try:
+                json_data = json.loads(response_data)
+                esearch_result = json_data.get("esearchresult", {})
 
-            count = int(esearch_result.get("count", "0"))
-            ids = esearch_result.get("idlist", [])
-            web_env = esearch_result.get("webenv")
-            query_key = esearch_result.get("querykey")
+                # Check for API errors (e.g., backend failures, database issues)
+                if "ERROR" in esearch_result:
+                    error_msg = esearch_result["ERROR"]
 
-            # Cache WebEnv session if available
-            if web_env and query_key:
-                cache_key = f"{web_env}:{query_key}"
-                self._session_cache[cache_key] = (web_env, query_key, datetime.now())
+                    # Backend errors like "Search Backend failed: Database is not supported"
+                    # are often transient - retry with exponential backoff
+                    if "Search Backend failed" in error_msg or "Database is not supported" in error_msg:
+                        last_error = error_msg
+                        if retry < self.config.max_retry:
+                            logger.warning(
+                                f"NCBI backend error (attempt {retry + 1}/{self.config.max_retry + 1}): {error_msg}. "
+                                f"Retrying in {sleep_time}s..."
+                            )
+                            time.sleep(sleep_time)
+                            sleep_time *= 2  # Exponential backoff
+                            retry += 1
+                            continue
+                        else:
+                            logger.error(f"NCBI API error after {self.config.max_retry + 1} attempts: {error_msg}")
+                            raise ValueError(
+                                f"NCBI backend error persists after {self.config.max_retry + 1} attempts: {error_msg}. "
+                                f"This may indicate a temporary NCBI service issue. Please try again later."
+                            )
+                    else:
+                        # Non-retryable errors (e.g., invalid syntax)
+                        logger.error(f"NCBI API error: {error_msg}")
+                        raise ValueError(f"NCBI API error: {error_msg}")
 
-            return GEOSearchResult(
-                count=count,
-                ids=ids,
-                web_env=web_env,
-                query_key=query_key,
-                query=complete_query,
-            )
+                count = int(esearch_result.get("count", "0"))
+                ids = esearch_result.get("idlist", [])
+                web_env = esearch_result.get("webenv")
+                query_key = esearch_result.get("querykey")
 
-        except (json.JSONDecodeError, KeyError) as e:
-            logger.error(f"Error parsing eSearch response: {e}")
-            raise ValueError(f"Invalid eSearch response: {e}")
+                # Cache WebEnv session if available
+                if web_env and query_key:
+                    cache_key = f"{web_env}:{query_key}"
+                    self._session_cache[cache_key] = (web_env, query_key, datetime.now())
+
+                return GEOSearchResult(
+                    count=count,
+                    ids=ids,
+                    web_env=web_env,
+                    query_key=query_key,
+                    query=complete_query,
+                )
+
+            except (json.JSONDecodeError, KeyError) as e:
+                logger.error(f"Error parsing eSearch response: {e}")
+                raise ValueError(f"Invalid eSearch response: {e}")
 
     def get_dataset_summaries(
         self, search_result: GEOSearchResult
