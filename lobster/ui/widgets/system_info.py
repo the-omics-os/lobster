@@ -153,7 +153,7 @@ class SystemInfoPanel(Vertical):
             gpu_text = Text()
             gpu_text.append("GPU  ", style="dim")
             if self._gpu_info:
-                gpu_text.append(self._gpu_info, style="green")
+                gpu_text.append(self._gpu_info, style="white")
             else:
                 gpu_text.append("none", style="dim italic")
             self.query_one("#gpu-line", Static).update(gpu_text)

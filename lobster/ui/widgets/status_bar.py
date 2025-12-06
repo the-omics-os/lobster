@@ -229,13 +229,13 @@ class StatusBar(Horizontal):
         parts = []
 
         if self.download_count > 0:
-            parts.append(("downloads", str(self.download_count), "cyan"))
+            parts.append(("downloads", str(self.download_count), "#CC2C18"))
 
         if self.publication_count > 0:
-            parts.append(("papers", str(self.publication_count), "green"))
+            parts.append(("papers", str(self.publication_count), "white"))
 
         if self.worker_count > 0:
-            parts.append(("workers", str(self.worker_count), "yellow"))
+            parts.append(("workers", str(self.worker_count), "#CC2C18"))
 
         if not parts:
             return Text(" - ", style="dim")
@@ -254,8 +254,8 @@ class StatusBar(Horizontal):
 
         status_styles = {
             "idle": ("dim", "idle"),
-            "processing": ("bold yellow", "processing..."),
-            "thinking": ("italic cyan", "thinking..."),
+            "processing": ("bold #CC2C18", "processing..."),
+            "thinking": ("italic #E84D3A", "thinking..."),
             "error": ("bold red", "error"),
         }
 

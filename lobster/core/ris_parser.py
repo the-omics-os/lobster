@@ -144,7 +144,7 @@ class RISParser:
                     logger.warning(f"Skipping malformed entry {idx}: {e}")
                     continue
 
-            logger.info(
+            logger.debug(
                 f"Parsed {self.stats['parsed']} entries, skipped {self.stats['skipped']}"
             )
             return queue_entries

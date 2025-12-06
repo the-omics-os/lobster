@@ -31,10 +31,10 @@ class QueueItem(ListItem):
 
         status_style = {
             "pending": "dim",
-            "in_progress": "bold yellow",
-            "completed": "green",
+            "in_progress": "bold #CC2C18",
+            "completed": "white",
             "failed": "red",
-            "handoff_ready": "cyan",
+            "handoff_ready": "#CC2C18",
         }.get(self.status, "")
 
         text = Text()

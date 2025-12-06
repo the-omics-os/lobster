@@ -733,6 +733,19 @@ class ProteomicsVisualizationService:
                 hovermode="closest",
             )
 
+            # Update axes with proper padding (25% buffer on x-axis)
+            fc_values = df[fold_change_col].values
+            x_min, x_max = float(fc_values.min()), float(fc_values.max())
+            x_range = x_max - x_min
+            x_padding = max(0.25, x_range * 0.25)  # At least 0.25 or 25% of range
+            fig.update_xaxes(
+                showgrid=True,
+                gridcolor="lightgray",
+                zeroline=True,
+                range=[x_min - x_padding, x_max + x_padding],
+            )
+            fig.update_yaxes(showgrid=True, gridcolor="lightgray", zeroline=True)
+
             # Generate statistics
             stats = {
                 "plot_type": "volcano_plot",

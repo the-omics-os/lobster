@@ -122,7 +122,7 @@ class PublicationQueue:
                 existing_entries.append(entry)
                 self._write_entries_atomic(existing_entries)
 
-                logger.info(f"Added entry {entry.entry_id} to publication queue")
+                logger.debug(f"Added entry {entry.entry_id} to publication queue")
                 return entry.entry_id
 
             except Exception as e:
@@ -230,7 +230,7 @@ class PublicationQueue:
             # Write all entries atomically
             self._write_entries_atomic(entries)
 
-            logger.info(f"Updated entry {entry_id} status to {status}")
+            logger.debug(f"Updated entry {entry_id} status to {status}")
             return updated_entry
 
     def list_entries(
@@ -282,7 +282,7 @@ class PublicationQueue:
             # Write remaining entries atomically
             self._write_entries_atomic(entries)
 
-            logger.info(f"Removed entry {entry_id} from publication queue")
+            logger.debug(f"Removed entry {entry_id} from publication queue")
 
     def clear_queue(self) -> int:
         """
@@ -305,7 +305,7 @@ class PublicationQueue:
                 # Clear queue file
                 try:
                     self.queue_file.write_text("", encoding="utf-8")
-                    logger.info(f"Cleared {entry_count} entries from publication queue")
+                    logger.debug(f"Cleared {entry_count} entries from publication queue")
                 except Exception as e:
                     logger.error(f"Failed to clear publication queue: {e}")
                     raise PublicationQueueError(f"Failed to clear queue: {e}") from e

@@ -138,7 +138,7 @@ class AdaptersPanel(Vertical):
     def _get_indicator(self, status: str) -> tuple[str, str]:
         """Get status indicator dot and style."""
         indicators = {
-            "ok": ("●", "green"),
+            "ok": ("●", "white"),
             "missing": ("○", "dim"),
             "error": ("●", "red"),
             "unknown": ("○", "dim"),

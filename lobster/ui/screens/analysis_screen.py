@@ -25,9 +25,18 @@ from lobster.ui.widgets import (
     ConnectionsPanel,
     AgentsPanel,
     AdaptersPanel,
+    TokenUsagePanel,
+    ActivityLogPanel,
 )
 from lobster.ui.widgets.status_bar import get_friendly_model_name
 from lobster.ui.widgets.modality_list import ModalitySelected
+from lobster.ui.callbacks import (
+    TextualCallbackHandler,
+    AgentActivityMessage,
+    TokenUsageMessage,
+)
+from lobster.ui.services import ErrorService, ErrorCategory
+from lobster.utils.callbacks import EventType
 
 
 class AnalysisScreen(Screen):
@@ -117,10 +126,18 @@ class AnalysisScreen(Screen):
 
     /* Cockpit panel styling - compact */
     SystemInfoPanel, ConnectionsPanel, QueuePanel,
-    AgentsPanel, AdaptersPanel {
+    AgentsPanel, AdaptersPanel, TokenUsagePanel {
         height: auto;
         padding: 0 1;
         border: round #CC2C18 30%;
+    }
+
+    /* Activity log - scrollable */
+    ActivityLogPanel {
+        height: 8;
+        max-height: 10;
+        border: round #CC2C18 30%;
+        padding: 0 1;
     }
 
     /* Data panels */
@@ -164,8 +181,8 @@ class AnalysisScreen(Screen):
     }
 
     .system-message {
-        border: round #44cc44 40%;
-        background: #44cc44 5%;
+        border: round #888888 40%;
+        background: #888888 5%;
     }
 
     .error-message {
@@ -194,6 +211,8 @@ class AnalysisScreen(Screen):
         super().__init__(*args, **kwargs)
         self.client = client
         self.current_worker: Optional[Worker] = None
+        self.error_service: Optional[ErrorService] = None
+        self._last_query: str = ""  # For retry recovery
 
     def compose(self):
         """Create cockpit-style 3-column layout."""
@@ -208,11 +227,13 @@ class AnalysisScreen(Screen):
             with Vertical(id="left-panel"):
                 yield SystemInfoPanel()
                 yield ConnectionsPanel()
+                yield TokenUsagePanel()
                 yield QueuePanel(self.client)
 
-            # Center panel: Conversation
+            # Center panel: Conversation + Activity
             with Vertical(id="center-panel"):
                 yield ResultsDisplay(id="results-display")
+                yield ActivityLogPanel(id="activity-log")
                 yield QueryPrompt(id="query-prompt")
 
             # Right panel: Agents & Data
@@ -227,7 +248,9 @@ class AnalysisScreen(Screen):
     def on_mount(self) -> None:
         """Initialize the screen."""
         self.sub_title = f"Session: {self.client.session_id}"
+        self.error_service = ErrorService(self.app)
         self._init_status_bar()
+        self._inject_ui_callback()
 
     def _init_status_bar(self) -> None:
         """Initialize status bar with client data."""
@@ -248,10 +271,92 @@ class AnalysisScreen(Screen):
             status_bar.provider_name = "unknown"
             status_bar.model_name = "unknown"
 
+    def _inject_ui_callback(self) -> None:
+        """Inject TextualCallbackHandler for live UI updates."""
+        try:
+            ui_callback = TextualCallbackHandler(
+                app=self.app,
+                show_reasoning=False,
+                show_tools=True,
+            )
+            self.client.callbacks.append(ui_callback)
+        except Exception:
+            pass  # Silently fail if callbacks not supported
+
+    # Message handlers for callback events
+
+    def on_agent_activity_message(self, message: AgentActivityMessage) -> None:
+        """Handle agent activity updates from callback."""
+        try:
+            agents_panel = self.query_one(AgentsPanel)
+            activity_log = self.query_one(ActivityLogPanel)
+
+            if message.event_type == EventType.AGENT_START.value:
+                agents_panel.set_agent_active(message.agent_name)
+                activity_log.log_agent_start(message.agent_name)
+
+            elif message.event_type == EventType.AGENT_COMPLETE.value:
+                agents_panel.set_agent_idle(message.agent_name)
+                activity_log.log_complete(f"{message.agent_name} done")
+
+            elif message.event_type == EventType.AGENT_THINKING.value:
+                if message.content:
+                    activity_log.log_thinking(message.agent_name, message.content)
+
+            elif message.event_type == EventType.TOOL_START.value:
+                if message.tool_name:
+                    activity_log.log_tool_start(message.tool_name)
+
+            elif message.event_type == EventType.TOOL_COMPLETE.value:
+                if message.tool_name:
+                    activity_log.log_tool_complete(
+                        message.tool_name, message.duration_ms
+                    )
+
+            elif message.event_type == EventType.TOOL_ERROR.value:
+                if message.tool_name:
+                    activity_log.log_tool_error(
+                        message.tool_name, message.content
+                    )
+
+            elif message.event_type == EventType.HANDOFF.value:
+                from_agent = message.metadata.get("from", "")
+                to_agent = message.metadata.get("to", "")
+                if from_agent:
+                    agents_panel.set_agent_idle(from_agent)
+                if to_agent:
+                    agents_panel.set_agent_active(to_agent)
+                activity_log.log_handoff(from_agent, to_agent)
+
+        except Exception:
+            pass  # Silently fail if widgets not ready
+
+    def on_token_usage_message(self, message: TokenUsageMessage) -> None:
+        """Handle token usage updates from callback."""
+        try:
+            token_panel = self.query_one(TokenUsagePanel)
+            token_panel.update_usage(
+                input_tokens=message.input_tokens,
+                output_tokens=message.output_tokens,
+                total_tokens=message.total_tokens,
+                cost_usd=message.cost_usd,
+            )
+        except Exception:
+            pass  # Silently fail if widget not ready
+
     @on(QueryPrompt.QuerySubmitted)
     def handle_query_submission(self, event: QueryPrompt.QuerySubmitted) -> None:
         """Handle query submission."""
         query_text = event.text
+
+        # Validate input
+        if not query_text.strip():
+            if self.error_service:
+                self.error_service.show_validation_error("Cannot send empty message!")
+            return
+
+        # Store for retry recovery
+        self._last_query = query_text
 
         # Show user message
         results = self.query_one(ResultsDisplay)
@@ -260,13 +365,6 @@ class AnalysisScreen(Screen):
         # Update status bar
         status_bar = self.query_one(StatusBar)
         status_bar.agent_status = "processing"
-
-        # Mark supervisor agent as active (cockpit telemetry)
-        try:
-            agents_panel = self.query_one(AgentsPanel)
-            agents_panel.set_agent_active("supervisor")
-        except Exception:
-            pass
 
         # Lock input
         event.prompt_input.submit_ready = False
@@ -281,7 +379,7 @@ class AnalysisScreen(Screen):
         )
 
     def execute_streaming_query(self, query: str) -> None:
-        """Execute query with streaming."""
+        """Execute query with streaming and professional error handling."""
         results = self.query_one(ResultsDisplay)
 
         try:
@@ -300,12 +398,76 @@ class AnalysisScreen(Screen):
                     self.app.call_from_thread(results.complete_agent_message)
                 elif event_type == "error":
                     error = event.get("error", "Unknown error")
-                    self.app.call_from_thread(results.show_error, error)
+                    self.app.call_from_thread(
+                        self._handle_query_error, error, query
+                    )
 
+        except ConnectionError as e:
+            self.app.call_from_thread(
+                self._handle_connection_error, str(e), query
+            )
+        except TimeoutError as e:
+            self.app.call_from_thread(
+                self._handle_connection_error, f"Request timed out: {e}", query
+            )
         except Exception as e:
-            self.app.call_from_thread(results.show_error, str(e))
+            self.app.call_from_thread(
+                self._handle_query_error, str(e), query
+            )
         finally:
             self.app.call_from_thread(self._unlock_input)
+
+    def _handle_query_error(self, error_msg: str, original_query: str) -> None:
+        """Handle query execution error with recovery option."""
+        results = self.query_one(ResultsDisplay)
+        results.show_error(error_msg)
+
+        if self.error_service:
+            self.error_service.handle_error(
+                Exception(error_msg),
+                category=ErrorCategory.AGENT,
+                context="Query execution",
+                show_modal=False,
+            )
+
+        # Restore query to prompt for easy retry
+        try:
+            prompt = self.query_one(QueryPrompt)
+            if hasattr(prompt, 'input_widget'):
+                prompt.input_widget.value = original_query
+        except Exception:
+            pass
+
+    def _handle_connection_error(self, error_msg: str, original_query: str) -> None:
+        """Handle connection error with modal and retry option."""
+        results = self.query_one(ResultsDisplay)
+        results.show_error(f"Connection error: {error_msg}")
+
+        if self.error_service:
+            def retry_query():
+                # Re-submit the query
+                self.app.call_from_thread(
+                    self._retry_last_query
+                )
+
+            self.error_service.show_connection_error(
+                Exception(error_msg),
+                provider="LLM Provider",
+                can_retry=True,
+                on_retry=retry_query,
+            )
+
+    def _retry_last_query(self) -> None:
+        """Retry the last failed query."""
+        if self._last_query:
+            # Re-run the query
+            self.run_worker(
+                partial(self.execute_streaming_query, self._last_query),
+                name=f"retry_{self._last_query[:20]}",
+                group="agent_query",
+                exclusive=True,
+                thread=True,
+            )
 
     def _unlock_input(self) -> None:
         """Unlock input and refresh views."""
@@ -315,12 +477,10 @@ class AnalysisScreen(Screen):
         status_bar = self.query_one(StatusBar)
         status_bar.agent_status = "idle"
 
-        # Mark all agents as idle (cockpit telemetry)
+        # Log completion in activity log
         try:
-            agents_panel = self.query_one(AgentsPanel)
-            agents_panel.set_agent_idle("supervisor")
-            agents_panel.set_agent_idle("research_agent")
-            agents_panel.set_agent_idle("data_expert")
+            activity_log = self.query_one(ActivityLogPanel)
+            activity_log.log_complete("Query complete")
         except Exception:
             pass
 

@@ -85,9 +85,9 @@ class BioPythonEntrezWrapper:
         # - Without API key: 3 requests/second (0.34s delay)
         # - With API key: 10 requests/second (0.1s delay)
         if self._entrez.api_key:
-            logger.info("Bio.Entrez configured with API key (10 req/s rate limit)")
+            logger.debug("Bio.Entrez configured with API key (10 req/s rate limit)")
         else:
-            logger.info("Bio.Entrez configured without API key (3 req/s rate limit)")
+            logger.debug("Bio.Entrez configured without API key (3 req/s rate limit)")
 
         logger.debug(f"Bio.Entrez email: {self._entrez.email}")
 

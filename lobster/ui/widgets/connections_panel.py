@@ -120,10 +120,10 @@ class ConnectionsPanel(Vertical):
     def _get_status_indicator(self, status: str) -> tuple[str, str]:
         """Get status dot and style."""
         indicators = {
-            "ok": ("●", "green"),
+            "ok": ("●", "white"),
             "error": ("●", "red"),
-            "warning": ("●", "yellow"),
-            "checking": ("◐", "cyan"),
+            "warning": ("●", "#CC2C18"),
+            "checking": ("◐", "#CC2C18"),
             "unknown": ("○", "dim"),
         }
         return indicators.get(status, ("○", "dim"))

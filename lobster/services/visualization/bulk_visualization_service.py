@@ -241,8 +241,16 @@ class BulkVisualizationService:
                 ),
             )
 
-            # Update axes
-            fig.update_xaxes(showgrid=True, gridcolor="lightgray", zeroline=True)
+            # Update axes with proper padding (25% buffer on x-axis)
+            x_min, x_max = float(np.min(log2fc)), float(np.max(log2fc))
+            x_range = x_max - x_min
+            x_padding = max(0.25, x_range * 0.25)  # At least 0.25 or 25% of range
+            fig.update_xaxes(
+                showgrid=True,
+                gridcolor="lightgray",
+                zeroline=True,
+                range=[x_min - x_padding, x_max + x_padding],
+            )
             fig.update_yaxes(showgrid=True, gridcolor="lightgray", zeroline=True)
 
             # Generate statistics

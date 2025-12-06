@@ -5,6 +5,21 @@ Design: Terminal-native, transparent backgrounds, minimal color palette.
 Press Ctrl+P to open command palette.
 """
 
+# Python 3.13 compatibility: Fix multiprocessing/tqdm file descriptor issue
+# Must be done before any imports that might use multiprocessing
+import os
+import sys
+
+if sys.version_info >= (3, 13):
+    # Disable tqdm's multiprocessing lock (alternative fix)
+    os.environ.setdefault("TQDM_DISABLE", "0")  # Don't fully disable, just note we tried
+
+    import multiprocessing as mp
+    try:
+        mp.set_start_method("fork", force=True)
+    except RuntimeError:
+        pass  # Already set
+
 from pathlib import Path
 from typing import Optional
 
@@ -94,5 +109,13 @@ class LobsterOS(App):
 
 def run_lobster_os(workspace_path: Optional[Path] = None):
     """Entry point for lobster os command."""
+    # Ensure multiprocessing fix is applied (for direct function calls)
+    if sys.version_info >= (3, 13):
+        import multiprocessing as mp
+        try:
+            mp.set_start_method("fork", force=True)
+        except RuntimeError:
+            pass  # Already set
+
     app = LobsterOS(workspace_path)
     app.run()

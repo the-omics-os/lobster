@@ -130,7 +130,7 @@ class AgentsPanel(Vertical):
                     text.append(f"{display_name}", style="bold")
                     text.append(" (active)\n", style="#CC2C18")
                 elif status == "idle":
-                    text.append(" ● ", style="green")
+                    text.append(" ● ", style="white")
                     text.append(f"{display_name}\n", style="")
                 else:
                     text.append(" ○ ", style="dim")

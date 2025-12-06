@@ -378,7 +378,7 @@ class PRIDEProvider(BasePublicationProvider):
             url = f"{self.config.base_url}/projects/{accession}"
             project_data = self._make_api_request(url)
 
-            logger.info(f"Retrieved metadata for PRIDE project {accession}")
+            logger.debug(f"Retrieved metadata for PRIDE project {accession}")
             return project_data
 
         except Exception as e:
@@ -426,7 +426,7 @@ class PRIDEProvider(BasePublicationProvider):
                     == file_category.upper()
                 ]
 
-            logger.info(f"Retrieved {len(files)} files for {accession}")
+            logger.debug(f"Retrieved {len(files)} files for {accession}")
             return files
 
         except Exception as e:

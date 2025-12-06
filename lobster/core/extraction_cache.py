@@ -101,7 +101,7 @@ class ExtractionCacheManager:
             # Move extracted content to cache
             if extract_dir.exists():
                 shutil.move(str(extract_dir), str(cache_path))
-                logger.info(f"Cached extraction: {cache_id} -> {cache_path}")
+                logger.debug(f"Cached extraction: {cache_id} -> {cache_path}")
             else:
                 raise RuntimeError(f"Extract directory does not exist: {extract_dir}")
 
@@ -121,7 +121,7 @@ class ExtractionCacheManager:
             }
 
             self._save_metadata(cache_id, metadata)
-            logger.info(
+            logger.debug(
                 f"Cached {nested_info.total_count} nested archives with ID: {cache_id}"
             )
 
@@ -198,12 +198,12 @@ class ExtractionCacheManager:
 
         # Apply limit if specified
         if limit and len(matching_files) > limit:
-            logger.info(
+            logger.debug(
                 f"Limiting results to {limit} files (matched {len(matching_files)})"
             )
             matching_files = matching_files[:limit]
 
-        logger.info(f"Pattern '{pattern}' matched {len(matching_files)} files")
+        logger.debug(f"Pattern '{pattern}' matched {len(matching_files)} files")
         return matching_files
 
     def get_cache_info(self, cache_id: str) -> Optional[Dict[str, Any]]:
@@ -265,7 +265,7 @@ class ExtractionCacheManager:
                         cache_path = Path(metadata["cache_path"])
                         if cache_path.exists():
                             shutil.rmtree(cache_path, ignore_errors=True)
-                            logger.info(f"Removed old cache: {cache_id}")
+                            logger.debug(f"Removed old cache: {cache_id}")
 
                         del all_metadata[cache_id]
                         removed_count += 1
@@ -273,7 +273,7 @@ class ExtractionCacheManager:
                 # Save updated metadata atomically
                 atomic_write_json(self.metadata_file, all_metadata)
 
-            logger.info(f"Cleaned up {removed_count} old caches")
+            logger.debug(f"Cleaned up {removed_count} old caches")
             return removed_count
 
         except Exception as e:
@@ -313,7 +313,7 @@ class ExtractionCacheManager:
                 del all_metadata[cache_id]
                 atomic_write_json(self.metadata_file, all_metadata)
 
-            logger.info(f"Deleted cache: {cache_id}")
+            logger.debug(f"Deleted cache: {cache_id}")
             return True
 
         except Exception as e:

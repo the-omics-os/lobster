@@ -494,13 +494,13 @@ def custom_feature_agent(
                 }
 
             client = LinkupClient(api_key=api_key)
-            logger.info(f"[RESEARCH] Starting research for: {feature_description}")
+            logger.debug(f"[RESEARCH] Starting research for: {feature_description}")
 
             # Query 1: Search for GitHub repositories
             github_query = (
                 f"{feature_description} bioinformatics Python site:github.com"
             )
-            logger.info(f"[RESEARCH] Query 1: {github_query}")
+            logger.debug(f"[RESEARCH] Query 1: {github_query}")
 
             github_response = client.search(
                 query=github_query, depth="deep", output_type="sourcedAnswer"
@@ -510,7 +510,7 @@ def custom_feature_agent(
             package_query = (
                 f"{feature_description} Python library package bioinformatics"
             )
-            logger.info(f"[RESEARCH] Query 2: {package_query}")
+            logger.debug(f"[RESEARCH] Query 2: {package_query}")
 
             package_response = client.search(
                 query=package_query, depth="deep", output_type="sourcedAnswer"
@@ -518,7 +518,7 @@ def custom_feature_agent(
 
             # Query 3: Search for best practices and tutorials
             practices_query = f"{feature_description} best practices implementation tutorial bioinformatics"
-            logger.info(f"[RESEARCH] Query 3: {practices_query}")
+            logger.debug(f"[RESEARCH] Query 3: {practices_query}")
 
             practices_response = client.search(
                 query=practices_query, depth="deep", output_type="sourcedAnswer"
@@ -578,7 +578,7 @@ Relevant Packages: {', '.join(packages) if packages else 'None identified'}
 Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositories found'}
 """
 
-            logger.info(
+            logger.debug(
                 f"[RESEARCH] Completed. Found {len(github_repos)} repos, {len(packages)} packages"
             )
 
@@ -701,7 +701,7 @@ Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositori
             debug_info["steps"].append("Starting feature creation")
 
             # STEP 0: Create feature branch BEFORE any code generation
-            logger.info(f"[DEBUG] Creating feature branch for {feature_name}...")
+            logger.debug(f"[DEBUG] Creating feature branch for {feature_name}...")
             debug_info["steps"].append("Creating feature branch")
 
             branch_result = create_feature_branch(feature_name)
@@ -724,10 +724,10 @@ Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositori
             branch_name = branch_result["branch_name"]
             debug_info["branch_name"] = branch_name
             debug_info["steps"].append(f"Created branch: {branch_name}")
-            logger.info(f"[DEBUG] Feature branch created successfully: {branch_name}")
+            logger.debug(f"[DEBUG] Feature branch created successfully: {branch_name}")
 
             # Set environment variables for Claude Code SDK with AWS Bedrock
-            logger.info("[DEBUG] Setting AWS Bedrock environment variables...")
+            logger.debug("[DEBUG] Setting AWS Bedrock environment variables...")
             settings = get_settings()
             os.environ["CLAUDE_CODE_USE_BEDROCK"] = "1"
             os.environ["AWS_REGION"] = getattr(settings, "AWS_REGION", "us-east-1")
@@ -740,7 +740,7 @@ Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositori
             os.environ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = "60024"
             os.environ["MAX_THINKING_TOKENS"] = "2024"
             debug_info["steps"].append("Environment variables configured")
-            logger.info("[DEBUG] AWS Bedrock environment variables set successfully")
+            logger.debug("[DEBUG] AWS Bedrock environment variables set successfully")
 
             # Import Claude Code SDK
             try:
@@ -775,9 +775,9 @@ Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositori
 
             # Configure SDK options
             try:
-                logger.info("[DEBUG] Configuring SDK options...")
-                logger.info(f"[DEBUG] Working directory: {lobster_root}")
-                logger.info(f"[DEBUG] CLAUDE.md path: {lobster_root / 'CLAUDE.md'}")
+                logger.debug("[DEBUG] Configuring SDK options...")
+                logger.debug(f"[DEBUG] Working directory: {lobster_root}")
+                logger.debug(f"[DEBUG] CLAUDE.md path: {lobster_root / 'CLAUDE.md'}")
 
                 debug_info["steps"].append("Configuring SDK options")
                 debug_info["sdk_config"] = {
