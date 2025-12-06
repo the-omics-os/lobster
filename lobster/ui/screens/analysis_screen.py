@@ -30,13 +30,8 @@ from lobster.ui.widgets import (
 )
 from lobster.ui.widgets.status_bar import get_friendly_model_name
 from lobster.ui.widgets.modality_list import ModalitySelected
-from lobster.ui.callbacks import (
-    TextualCallbackHandler,
-    AgentActivityMessage,
-    TokenUsageMessage,
-)
+from lobster.ui.callbacks import TextualCallbackHandler
 from lobster.ui.services import ErrorService, ErrorCategory
-from lobster.utils.callbacks import EventType
 
 
 class AnalysisScreen(Screen):
@@ -272,80 +267,31 @@ class AnalysisScreen(Screen):
             status_bar.model_name = "unknown"
 
     def _inject_ui_callback(self) -> None:
-        """Inject TextualCallbackHandler for live UI updates."""
+        """
+        Inject TextualCallbackHandler for live UI updates.
+
+        IMPORTANT: Pass direct widget references to avoid race conditions.
+        Widgets must be mounted before callbacks can update them.
+        """
         try:
-            # Enable debug=True temporarily to diagnose callback events
+            # Get direct references to widgets (they're mounted by now)
+            activity_log = self.query_one(ActivityLogPanel)
+            agents_panel = self.query_one(AgentsPanel)
+            token_panel = self.query_one(TokenUsagePanel)
+
             ui_callback = TextualCallbackHandler(
                 app=self.app,
+                activity_log=activity_log,
+                agents_panel=agents_panel,
+                token_panel=token_panel,
                 show_reasoning=False,
                 show_tools=True,
-                debug=True,  # Enable to see callback events in notifications
+                debug=False,  # Set True to see callback events in notifications
             )
             self.client.callbacks.append(ui_callback)
-        except Exception:
-            pass  # Silently fail if callbacks not supported
-
-    # Message handlers for callback events
-
-    def on_agent_activity_message(self, message: AgentActivityMessage) -> None:
-        """Handle agent activity updates from callback."""
-        try:
-            agents_panel = self.query_one(AgentsPanel)
-            activity_log = self.query_one(ActivityLogPanel)
-
-            if message.event_type == EventType.AGENT_START.value:
-                agents_panel.set_agent_active(message.agent_name)
-                activity_log.log_agent_start(message.agent_name)
-
-            elif message.event_type == EventType.AGENT_COMPLETE.value:
-                agents_panel.set_agent_idle(message.agent_name)
-                activity_log.log_complete(f"{message.agent_name} done")
-
-            elif message.event_type == EventType.AGENT_THINKING.value:
-                if message.content:
-                    activity_log.log_thinking(message.agent_name, message.content)
-
-            elif message.event_type == EventType.TOOL_START.value:
-                if message.tool_name:
-                    activity_log.log_tool_start(message.tool_name)
-
-            elif message.event_type == EventType.TOOL_COMPLETE.value:
-                if message.tool_name:
-                    activity_log.log_tool_complete(
-                        message.tool_name, message.duration_ms
-                    )
-
-            elif message.event_type == EventType.TOOL_ERROR.value:
-                if message.tool_name:
-                    activity_log.log_tool_error(
-                        message.tool_name, message.content
-                    )
-
-            elif message.event_type == EventType.HANDOFF.value:
-                from_agent = message.metadata.get("from", "")
-                to_agent = message.metadata.get("to", "")
-                if from_agent:
-                    agents_panel.set_agent_idle(from_agent)
-                if to_agent:
-                    agents_panel.set_agent_active(to_agent)
-                activity_log.log_handoff(from_agent, to_agent)
-
         except Exception as e:
-            # Temporarily log errors for debugging
-            self.notify(f"Activity handler error: {type(e).__name__}: {str(e)[:100]}", severity="error")
-
-    def on_token_usage_message(self, message: TokenUsageMessage) -> None:
-        """Handle token usage updates from callback."""
-        try:
-            token_panel = self.query_one(TokenUsagePanel)
-            token_panel.update_usage(
-                input_tokens=message.input_tokens,
-                output_tokens=message.output_tokens,
-                total_tokens=message.total_tokens,
-                cost_usd=message.cost_usd,
-            )
-        except Exception:
-            pass  # Silently fail if widget not ready
+            # Log error if widgets not found
+            self.notify(f"Callback setup error: {str(e)[:50]}", severity="warning")
 
     @on(QueryPrompt.QuerySubmitted)
     def handle_query_submission(self, event: QueryPrompt.QuerySubmitted) -> None:
@@ -394,6 +340,9 @@ class AnalysisScreen(Screen):
                 if event_type == "stream":
                     content = event.get("content", "")
                     if content:
+                        # Filter out handoff/transfer messages from display
+                        if self._is_handoff_message(content):
+                            continue
                         self.app.call_from_thread(
                             results.append_to_agent_message, content
                         )
@@ -490,6 +439,22 @@ class AnalysisScreen(Screen):
         # Refresh data panels
         self.query_one(ModalityList).refresh_modalities()
         self.query_one(PlotPreview).refresh_plots()
+
+    def _is_handoff_message(self, content: str) -> bool:
+        """Check if content is a handoff/transfer message that should be filtered."""
+        if not content:
+            return False
+        content_lower = content.lower().strip()
+        # Filter patterns for agent handoff messages
+        handoff_patterns = [
+            "transfer back to supervisor",
+            "transferring back to supervisor",
+            "transferring to supervisor",
+            "handoff to",
+            "handing off to",
+            "delegating to",
+        ]
+        return any(pattern in content_lower for pattern in handoff_patterns)
 
     def on_modality_list_modality_selected(self, event: ModalitySelected) -> None:
         """Handle modality selection."""

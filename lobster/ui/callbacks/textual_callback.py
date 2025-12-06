@@ -1,8 +1,8 @@
 """
 Textual-aware callback handler for bridging LangChain events to UI.
 
-This callback handler extends TerminalCallbackHandler but instead of
-printing to console, it posts Textual Messages that widgets can handle.
+This callback handler directly updates UI widgets for reliable activity display.
+Uses call_from_thread for thread-safe widget updates (no message bubbling needed).
 
 CRITICAL: Claude/Anthropic models use chat model callbacks, not LLM callbacks.
 - on_llm_start → Traditional completion models (GPT-3 davinci)
@@ -11,9 +11,8 @@ CRITICAL: Claude/Anthropic models use chat model callbacks, not LLM callbacks.
 We implement BOTH to ensure we capture all agent activity.
 
 Agent Detection Strategy:
-- on_chain_start is the PRIMARY method for detecting agent handoffs
-- Uses get_all_agent_names() from agent registry to match chain names
-- This mirrors TerminalCallbackHandler's proven approach
+- on_tool_start detects handoffs via tool names (handoff_to_*, transfer_back_to_*)
+- on_chain_start provides backup detection using agent registry
 """
 
 from datetime import datetime
@@ -24,71 +23,14 @@ from langchain_core.agents import AgentAction, AgentFinish
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import BaseMessage
 from langchain_core.outputs import LLMResult
-from textual.message import Message
 
 from lobster.config.agent_registry import get_all_agent_names
 from lobster.utils.callbacks import EventType
 
 
-class AgentActivityMessage(Message):
-    """
-    Posted when agent activity changes.
-
-    Widgets can handle this via on_agent_activity_message().
-    """
-
-    bubble = True  # Allow message to bubble up to parent widgets/screens
-
-    def __init__(
-        self,
-        event_type: str,
-        agent_name: str,
-        tool_name: Optional[str] = None,
-        content: str = "",
-        metadata: Optional[Dict[str, Any]] = None,
-        duration_ms: Optional[float] = None,
-        timestamp: Optional[datetime] = None,
-    ):
-        super().__init__()
-        self.event_type = event_type
-        self.agent_name = agent_name
-        self.tool_name = tool_name
-        self.content = content
-        self.metadata = metadata or {}
-        self.duration_ms = duration_ms
-        self.timestamp = timestamp or datetime.now()
-
-
-class TokenUsageMessage(Message):
-    """
-    Posted when token usage is updated.
-
-    Widgets can handle this via on_token_usage_message().
-    """
-
-    bubble = True  # Allow message to bubble up to parent widgets/screens
-
-    def __init__(
-        self,
-        input_tokens: int = 0,
-        output_tokens: int = 0,
-        total_tokens: int = 0,
-        cost_usd: float = 0.0,
-        agent_name: str = "",
-        model_name: str = "",
-    ):
-        super().__init__()
-        self.input_tokens = input_tokens
-        self.output_tokens = output_tokens
-        self.total_tokens = total_tokens
-        self.cost_usd = cost_usd
-        self.agent_name = agent_name
-        self.model_name = model_name
-
-
 class TextualCallbackHandler(BaseCallbackHandler):
     """
-    Callback handler that posts Textual Messages for UI updates.
+    Callback handler that directly updates Textual UI widgets.
 
     This handler tracks:
     - Agent starts/completions
@@ -96,17 +38,27 @@ class TextualCallbackHandler(BaseCallbackHandler):
     - Agent handoffs
     - Token usage
 
-    All events are posted as Textual Messages via call_from_thread
-    for thread-safe UI updates.
+    IMPORTANT: Pass direct widget references instead of querying for them.
+    This avoids race conditions where widgets aren't mounted yet when
+    callbacks fire from background threads.
 
     Usage:
-        handler = TextualCallbackHandler(app)
+        activity_log = screen.query_one(ActivityLogPanel)
+        agents_panel = screen.query_one(AgentsPanel)
+        handler = TextualCallbackHandler(
+            app=app,
+            activity_log=activity_log,
+            agents_panel=agents_panel,
+        )
         client = AgentClient(custom_callbacks=[handler])
     """
 
     def __init__(
         self,
         app=None,
+        activity_log=None,
+        agents_panel=None,
+        token_panel=None,
         show_reasoning: bool = False,
         show_tools: bool = True,
         debug: bool = False,
@@ -115,12 +67,18 @@ class TextualCallbackHandler(BaseCallbackHandler):
         Initialize the Textual callback handler.
 
         Args:
-            app: Textual App instance for posting messages
-            show_reasoning: Whether to post agent thinking events
-            show_tools: Whether to post tool usage events
-            debug: Enable debug logging to see all callback events
+            app: Textual App instance for call_from_thread
+            activity_log: Direct reference to ActivityLogPanel widget
+            agents_panel: Direct reference to AgentsPanel widget
+            token_panel: Direct reference to TokenUsagePanel widget
+            show_reasoning: Whether to show agent thinking events
+            show_tools: Whether to show tool usage events
+            debug: Enable debug notifications to see all callback events
         """
         self.app = app
+        self.activity_log = activity_log
+        self.agents_panel = agents_panel
+        self.token_panel = token_panel
         self.show_reasoning = show_reasoning
         self.show_tools = show_tools
         self.debug = debug
@@ -129,86 +87,135 @@ class TextualCallbackHandler(BaseCallbackHandler):
         self.current_agent: Optional[str] = None
         self.agent_stack: List[str] = []
         self.start_times: Dict[str, datetime] = {}
-        self.current_tool: Optional[str] = None  # Track current tool name
+        self.current_tool: Optional[str] = None
 
         # Run ID tracking for agent hierarchy
-        self.run_to_agent: Dict[str, str] = {}  # run_id -> agent_name
+        self.run_to_agent: Dict[str, str] = {}
         self.current_run_id: Optional[str] = None
 
         # Token tracking
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.total_tokens = 0
+        self.total_cost = 0.0
 
-    def _debug_log(self, method: str, **kwargs) -> None:
-        """Log debug information if debug mode is enabled."""
+    def _debug_notify(self, message: str) -> None:
+        """Show debug notification if debug mode is enabled."""
         if self.debug and self.app:
-            import json
-            info = {k: str(v)[:100] for k, v in kwargs.items() if v is not None}
             try:
                 self.app.call_from_thread(
                     self.app.notify,
-                    f"[DEBUG] {method}: {json.dumps(info, default=str)[:200]}",
-                    timeout=3,
+                    message[:150],
+                    timeout=2,
                 )
             except Exception:
                 pass
 
-    def _post_message(self, message: Message) -> None:
-        """Thread-safe post message to Textual app."""
-        if self.app:
+    def _update_activity_log(self, method: str, **kwargs) -> None:
+        """
+        Update ActivityLogPanel widget using direct reference.
+
+        Uses call_from_thread for thread-safe UI updates.
+        """
+        if not self.activity_log or not self.app:
+            return
+
+        def _do_update():
             try:
-                self.app.call_from_thread(self.app.post_message, message)
-                # Debug: confirm message posted
-                if self.debug and isinstance(message, AgentActivityMessage):
-                    self._debug_log("MESSAGE_POSTED", event_type=message.event_type, agent=message.agent_name)
+                if method == "agent_start":
+                    self.activity_log.log_agent_start(kwargs.get("agent_name", ""))
+                elif method == "thinking":
+                    self.activity_log.log_thinking(
+                        kwargs.get("agent_name", ""),
+                        kwargs.get("thought", ""),
+                    )
+                elif method == "tool_start":
+                    self.activity_log.log_tool_start(kwargs.get("tool_name", ""))
+                elif method == "tool_complete":
+                    self.activity_log.log_tool_complete(
+                        kwargs.get("tool_name", ""),
+                        kwargs.get("duration_ms"),
+                    )
+                elif method == "tool_error":
+                    self.activity_log.log_tool_error(
+                        kwargs.get("tool_name", ""),
+                        kwargs.get("error", ""),
+                    )
+                elif method == "handoff":
+                    self.activity_log.log_handoff(
+                        kwargs.get("from_agent", ""),
+                        kwargs.get("to_agent", ""),
+                    )
+                elif method == "complete":
+                    self.activity_log.log_complete(kwargs.get("message", "Complete"))
             except Exception as e:
                 if self.debug:
-                    self._debug_log("POST_ERROR", error=str(e)[:100])
+                    self._debug_notify(f"Activity error: {str(e)[:60]}")
 
-    def _post_activity(
-        self,
-        event_type: EventType,
-        agent_name: str,
-        tool_name: Optional[str] = None,
-        content: str = "",
-        metadata: Optional[Dict[str, Any]] = None,
-        duration_ms: Optional[float] = None,
-    ) -> None:
-        """Post an agent activity message."""
-        self._post_message(
-            AgentActivityMessage(
-                event_type=event_type.value,
-                agent_name=agent_name,
-                tool_name=tool_name,
-                content=content,
-                metadata=metadata or {},
-                duration_ms=duration_ms,
-            )
-        )
+        try:
+            self.app.call_from_thread(_do_update)
+        except Exception:
+            pass
 
-    def _post_token_usage(
+    def _update_agents_panel(self, agent_name: str, active: bool) -> None:
+        """Update AgentsPanel widget using direct reference."""
+        if not self.agents_panel or not self.app:
+            return
+
+        def _do_update():
+            try:
+                if active:
+                    self.agents_panel.set_agent_active(agent_name)
+                else:
+                    self.agents_panel.set_agent_idle(agent_name)
+            except Exception:
+                pass
+
+        try:
+            self.app.call_from_thread(_do_update)
+        except Exception:
+            pass
+
+    def _update_token_panel(
         self,
         input_tokens: int,
         output_tokens: int,
         agent_name: str = "",
-        model_name: str = "",
     ) -> None:
-        """Post a token usage update message."""
+        """Update TokenUsagePanel widget using direct reference."""
+        if not self.token_panel or not self.app:
+            return
+
         self.total_input_tokens += input_tokens
         self.total_output_tokens += output_tokens
-        self.total_tokens += input_tokens + output_tokens
+        self.total_tokens = self.total_input_tokens + self.total_output_tokens
 
-        self._post_message(
-            TokenUsageMessage(
+        # Calculate cost using MODEL_PRICING
+        try:
+            from lobster.config.settings import calculate_token_cost
+
+            self.total_cost = calculate_token_cost(
                 input_tokens=self.total_input_tokens,
                 output_tokens=self.total_output_tokens,
-                total_tokens=self.total_tokens,
-                cost_usd=0.0,  # Cost calculated by TokenTrackingCallback
-                agent_name=agent_name,
-                model_name=model_name,
             )
-        )
+        except Exception:
+            self.total_cost = 0.0
+
+        def _do_update():
+            try:
+                self.token_panel.update_usage(
+                    input_tokens=self.total_input_tokens,
+                    output_tokens=self.total_output_tokens,
+                    total_tokens=self.total_tokens,
+                    cost_usd=self.total_cost,
+                )
+            except Exception:
+                pass
+
+        try:
+            self.app.call_from_thread(_do_update)
+        except Exception:
+            pass
 
     # LangChain Callback Methods
 
@@ -223,15 +230,12 @@ class TextualCallbackHandler(BaseCallbackHandler):
         Common handler for both LLM and chat model starts.
 
         NOTE: This method only tracks run_ids for hierarchy.
-        Agent detection happens in on_chain_start using the agent registry.
-        The serialized "name" here is the MODEL name (e.g., "ChatAnthropic"),
-        NOT the agent name (e.g., "research_agent").
+        Agent detection happens via tool names (handoff_to_*).
         """
         if serialized is None:
             serialized = {}
 
-        # Track run_id -> current_agent mapping (for hierarchy tracking)
-        # Use current_agent (set by on_chain_start) rather than serialized name
+        # Track run_id -> current_agent mapping
         if run_id and self.current_agent:
             run_id_str = str(run_id)
             self.run_to_agent[run_id_str] = self.current_agent
@@ -280,28 +284,24 @@ class TextualCallbackHandler(BaseCallbackHandler):
             del self.start_times[self.current_agent]
 
         # Extract token usage if available
-        self._extract_and_post_tokens(response)
+        self._extract_and_update_tokens(response)
 
         # Show reasoning if enabled
         if self.show_reasoning and response.generations:
             if response.generations[0]:
                 content = response.generations[0][0].text
                 if content:
-                    self._post_activity(
-                        event_type=EventType.AGENT_THINKING,
+                    self._update_activity_log(
+                        "thinking",
                         agent_name=self.current_agent,
-                        content=content[:200],  # Truncate
+                        thought=content[:200],
                     )
 
-        # Post completion
-        self._post_activity(
-            event_type=EventType.AGENT_COMPLETE,
-            agent_name=self.current_agent,
-            duration_ms=duration_ms,
-        )
+        # Mark completion (optional - could be noisy)
+        # self._update_activity_log("complete", message=f"{self.current_agent} done")
 
-    def _extract_and_post_tokens(self, response: LLMResult) -> None:
-        """Extract token usage from LLMResult and post update."""
+    def _extract_and_update_tokens(self, response: LLMResult) -> None:
+        """Extract token usage from LLMResult and update UI."""
         # Try newest LangChain format
         if response.generations and len(response.generations) > 0:
             first_gen_list = response.generations[0]
@@ -315,7 +315,7 @@ class TextualCallbackHandler(BaseCallbackHandler):
                         input_tokens = usage.get("input_tokens", 0)
                         output_tokens = usage.get("output_tokens", 0)
                         if input_tokens or output_tokens:
-                            self._post_token_usage(
+                            self._update_token_panel(
                                 input_tokens=input_tokens,
                                 output_tokens=output_tokens,
                                 agent_name=self.current_agent or "",
@@ -329,7 +329,7 @@ class TextualCallbackHandler(BaseCallbackHandler):
             input_tokens = usage.get("input_tokens", 0)
             output_tokens = usage.get("output_tokens", 0)
             if input_tokens or output_tokens:
-                self._post_token_usage(
+                self._update_token_panel(
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                     agent_name=self.current_agent or "",
@@ -339,10 +339,10 @@ class TextualCallbackHandler(BaseCallbackHandler):
         self, error: Union[Exception, KeyboardInterrupt], **kwargs
     ) -> None:
         """Called when an LLM errors."""
-        self._post_activity(
-            event_type=EventType.TOOL_ERROR,
-            agent_name=self.current_agent or "system",
-            content=str(error)[:100],
+        self._update_activity_log(
+            "tool_error",
+            tool_name="LLM",
+            error=str(error)[:100],
         )
 
     def on_tool_start(
@@ -357,59 +357,45 @@ class TextualCallbackHandler(BaseCallbackHandler):
         self.current_tool = tool_name
         self.start_times[f"tool_{tool_name}"] = datetime.now()
 
-        # Detect handoff tools - this is the PRIMARY handoff detection method
-        # LangGraph supervisor uses: handoff_to_<agent_name> and transfer_back_to_supervisor
+        # Detect handoff tools - PRIMARY handoff detection method
+        # LangGraph uses: handoff_to_<agent_name> and transfer_back_to_supervisor
         is_handoff = False
         if tool_name.startswith("handoff_to_"):
             is_handoff = True
-            # Extract target agent name from tool name
             target_agent = tool_name.replace("handoff_to_", "")
-            self._debug_log("HANDOFF", from_agent=self.current_agent or "none", to_agent=target_agent, tool=tool_name)
+            if self.debug:
+                self._debug_notify(f"Handoff: {self.current_agent or 'system'} → {target_agent}")
             self._handle_handoff(target_agent)
         elif tool_name.startswith("transfer_back_to_"):
             is_handoff = True
-            # Returning to supervisor
-            self._debug_log("HANDOFF_BACK", from_agent=self.current_agent or "none", to_agent="supervisor", tool=tool_name)
+            if self.debug:
+                self._debug_notify(f"Return: {self.current_agent or 'system'} → supervisor")
             self._handle_handoff("supervisor")
 
-        # Debug log all tool calls
-        if not is_handoff:
-            self._debug_log("TOOL", name=tool_name, agent=self.current_agent or "none")
-
-        # Post tool start event (if show_tools enabled)
-        if self.show_tools:
-            # Safely convert input to string
-            input_content = ""
-            if input_str:
-                try:
-                    input_content = str(input_str)[:100]
-                except Exception:
-                    pass
-
-            self._post_activity(
-                event_type=EventType.TOOL_START,
-                agent_name=self.current_agent or "system",
-                tool_name=tool_name,
-                content=input_content,
-            )
+        # Show non-handoff tools in activity log
+        if not is_handoff and self.show_tools:
+            self._update_activity_log("tool_start", tool_name=tool_name)
 
     def _handle_handoff(self, target_agent: str) -> None:
         """Handle agent handoff detected from tool call."""
         if target_agent == self.current_agent:
             return  # No change
 
-        # Post handoff event
-        self._post_activity(
-            event_type=EventType.HANDOFF,
-            agent_name="system",
-            metadata={
-                "from": self.current_agent or "system",
-                "to": target_agent,
-            },
+        from_agent = self.current_agent or "system"
+
+        # Update activity log with handoff
+        self._update_activity_log(
+            "handoff",
+            from_agent=from_agent,
+            to_agent=target_agent,
         )
 
+        # Update agents panel (mark old agent idle, new agent active)
+        if self.current_agent:
+            self._update_agents_panel(self.current_agent, active=False)
+        self._update_agents_panel(target_agent, active=True)
+
         # Update current agent tracking
-        old_agent = self.current_agent
         self.current_agent = target_agent
         if target_agent not in self.agent_stack:
             self.agent_stack.append(target_agent)
@@ -417,19 +403,20 @@ class TextualCallbackHandler(BaseCallbackHandler):
         # Track start time for new agent
         self.start_times[target_agent] = datetime.now()
 
-        # Post agent start event
-        self._post_activity(
-            event_type=EventType.AGENT_START,
-            agent_name=target_agent,
-        )
+        # Log agent start in activity
+        self._update_activity_log("agent_start", agent_name=target_agent)
 
     def on_tool_end(self, output: Any, **kwargs) -> None:
         """Called when a tool finishes."""
         if not self.show_tools:
             return
 
-        # Use tracked tool name (more reliable than kwargs)
         tool_name = self.current_tool or "unknown_tool"
+
+        # Skip logging handoff tool completions (they're already handled)
+        if tool_name.startswith("handoff_to_") or tool_name.startswith("transfer_back_to_"):
+            self.current_tool = None
+            return
 
         # Calculate duration
         duration_ms = None
@@ -439,19 +426,9 @@ class TextualCallbackHandler(BaseCallbackHandler):
             duration_ms = delta.total_seconds() * 1000
             del self.start_times[tool_key]
 
-        # Safely convert output to string
-        output_content = ""
-        if output:
-            try:
-                output_content = str(output)[:100]
-            except Exception:
-                pass
-
-        self._post_activity(
-            event_type=EventType.TOOL_COMPLETE,
-            agent_name=self.current_agent or "system",
+        self._update_activity_log(
+            "tool_complete",
             tool_name=tool_name,
-            content=output_content,
             duration_ms=duration_ms,
         )
 
@@ -462,36 +439,33 @@ class TextualCallbackHandler(BaseCallbackHandler):
         self, error: Union[Exception, KeyboardInterrupt], **kwargs
     ) -> None:
         """Called when a tool errors."""
-        tool_name = kwargs.get("name", "unknown_tool")
-        self._post_activity(
-            event_type=EventType.TOOL_ERROR,
-            agent_name=self.current_agent or "system",
+        tool_name = self.current_tool or kwargs.get("name", "unknown_tool")
+        self._update_activity_log(
+            "tool_error",
             tool_name=tool_name,
-            content=str(error)[:100],
+            error=str(error)[:100],
         )
 
     def on_agent_action(self, action: AgentAction, **kwargs) -> None:
         """Called when an agent takes an action."""
-        self._post_activity(
-            event_type=EventType.AGENT_ACTION,
-            agent_name=self.current_agent or "system",
-            tool_name=action.tool,
-            content=str(action.tool_input)[:100],
-        )
+        # This is usually redundant with on_tool_start, so we skip it
+        pass
 
     def on_agent_finish(self, finish: AgentFinish, **kwargs) -> None:
         """Called when an agent finishes."""
         if self.agent_stack:
-            self.agent_stack.pop()
+            finished_agent = self.agent_stack.pop()
+            self._update_agents_panel(finished_agent, active=False)
             self.current_agent = self.agent_stack[-1] if self.agent_stack else None
 
     def on_chain_start(
         self, serialized: Dict[str, Any], inputs: Dict[str, Any], **kwargs
     ) -> None:
         """
-        Called when a chain starts - PRIMARY method for detecting agent handoffs.
+        Called when a chain starts - BACKUP method for agent detection.
 
-        This mirrors TerminalCallbackHandler's approach using the agent registry.
+        Primary detection happens in on_tool_start via handoff_to_* tools.
+        This provides backup detection using agent registry.
         """
         if serialized is None:
             serialized = {}
@@ -500,43 +474,17 @@ class TextualCallbackHandler(BaseCallbackHandler):
 
         chain_name = serialized.get("name", "")
 
-        # Debug logging to understand what chain names we're receiving
-        self._debug_log(
-            "on_chain_start",
-            chain_name=chain_name,
-            serialized_keys=list(serialized.keys()) if serialized else [],
-        )
+        # Only process if chain_name is non-empty (LangGraph often sends empty)
+        if not chain_name:
+            return
 
-        # Detect agent transitions using the agent registry (dynamic, not hardcoded)
+        # Detect agent transitions using the agent registry
         agent_names = get_all_agent_names()
 
         for agent_name in agent_names:
             if agent_name in chain_name.lower():
                 if agent_name != self.current_agent:
-                    # This is a handoff - post the handoff event
-                    self._post_activity(
-                        event_type=EventType.HANDOFF,
-                        agent_name="system",
-                        content=inputs.get("task", "")[:100] if inputs.get("task") else "",
-                        metadata={
-                            "from": self.current_agent or "system",
-                            "to": agent_name,
-                        },
-                    )
-
-                    # Update current agent tracking
-                    self.current_agent = agent_name
-                    if agent_name not in self.agent_stack:
-                        self.agent_stack.append(agent_name)
-
-                    # Track start time for this agent
-                    self.start_times[agent_name] = datetime.now()
-
-                    # Post agent start event
-                    self._post_activity(
-                        event_type=EventType.AGENT_START,
-                        agent_name=agent_name,
-                    )
+                    self._handle_handoff(agent_name)
                 break
 
     def on_chain_end(self, outputs: Dict[str, Any], **kwargs) -> None:

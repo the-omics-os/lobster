@@ -63,7 +63,7 @@ class AgentsPanel(Vertical):
         self.set_interval(0.5, self._pulse_active)
 
     def _load_agents(self) -> None:
-        """Load available agents from registry."""
+        """Load available agents from registry (supervisor-accessible only)."""
         try:
             from lobster.config.agent_registry import AGENT_REGISTRY
             from lobster.core.license_manager import get_current_tier
@@ -71,7 +71,20 @@ class AgentsPanel(Vertical):
 
             tier = get_current_tier()
 
+            # First pass: collect all child agents (not supervisor-accessible)
+            child_agents = set()
+            for config in AGENT_REGISTRY.values():
+                if config.child_agents:
+                    child_agents.update(config.child_agents)
+
             for name, config in AGENT_REGISTRY.items():
+                # Skip agents that are explicitly not supervisor-accessible
+                if config.supervisor_accessible is False:
+                    continue
+                # Skip child agents (unless explicitly supervisor_accessible=True)
+                if name in child_agents and config.supervisor_accessible is not True:
+                    continue
+
                 if is_agent_available(name, tier):
                     self._available_agents.add(name)
                     self._agent_status[name] = "idle"
@@ -82,7 +95,7 @@ class AgentsPanel(Vertical):
             # Fallback - show basic agents
             basic_agents = [
                 "supervisor", "research_agent", "data_expert",
-                "singlecell_expert", "bulk_rnaseq_expert"
+                "transcriptomics_expert", "proteomics_expert"
             ]
             for name in basic_agents:
                 self._available_agents.add(name)
