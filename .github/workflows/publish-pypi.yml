@@ -292,7 +292,7 @@ jobs:
   # =====================================================================
   approve-production:
     name: Approve Production Release
-    needs: [publish-testpypi]
+    needs: [build-package]  # Depend on build, not TestPyPI
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event.inputs.environment == 'pypi'
     environment:
@@ -466,7 +466,7 @@ jobs:
   summary:
     name: Release Summary
     runs-on: ubuntu-latest
-    needs: [sync-to-public, build-package, publish-testpypi, publish-pypi, create-release]
+    needs: [sync-to-public, build-package, publish-pypi, create-release]  # Removed testpypi dependency
     if: always()
 
     steps:
