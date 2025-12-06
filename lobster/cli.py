@@ -33,6 +33,7 @@ from rich.table import Table
 from lobster.cli_internal.utils.path_resolution import (  # BUG FIX #6: Secure path resolution
     PathResolver,
 )
+from lobster.config import provider_setup
 from lobster.config.agent_config import (
     LobsterAgentConfigurator,
     get_agent_configurator,
@@ -517,6 +518,11 @@ def extract_available_commands() -> Dict[str, str]:
         "/reset": "Reset conversation",
         "/mode": "Change operation mode",
         "/modes": "List available modes",
+        "/provider": "List available LLM providers",
+        "/provider list": "List available LLM providers with status",
+        "/provider anthropic": "Switch to Anthropic provider",
+        "/provider bedrock": "Switch to AWS Bedrock provider",
+        "/provider ollama": "Switch to Ollama (local) provider",
         "/clear": "Clear screen",
         "/exit": "Exit the chat",
         # Deprecated commands
@@ -756,6 +762,31 @@ if PROMPT_TOOLKIT_AVAILABLE:
                 except Exception:
                     pass
 
+            elif text.startswith("/provider "):
+                # Suggest provider options (anthropic, bedrock, ollama, list)
+                prefix = text.replace("/provider ", "")
+                providers = ["anthropic", "bedrock", "ollama", "list"]
+
+                for provider in providers:
+                    if provider.lower().startswith(prefix.lower()):
+                        # Get provider status using LLMFactory
+                        from lobster.config.llm_factory import LLMFactory
+
+                        if provider == "list":
+                            meta = "Show providers with status"
+                        else:
+                            available = LLMFactory.get_available_providers()
+                            status = "✓ configured" if provider in available else "✗ not configured"
+                            meta = status
+
+                        yield Completion(
+                            text=provider,
+                            start_position=-len(prefix),
+                            display=HTML(f"<ansiyellow>{provider}</ansiyellow>"),
+                            display_meta=HTML(f"<dim>{meta}</dim>"),
+                            style="class:completion.provider",
+                        )
+
             elif any(text.startswith(cmd + " ") for cmd in self.file_commands):
                 # File completion for file-accepting commands
                 if self.adapter.can_read_files():
@@ -903,6 +934,7 @@ def init_client(
     verbose: bool = False,
     debug: bool = False,
     profile_timings: Optional[bool] = None,
+    provider_override: Optional[str] = None,
 ) -> AgentClient:
     """Initialize either local or cloud client based on environment."""
     global client
@@ -1088,6 +1120,7 @@ def init_client(
         enable_reasoning=reasoning,
         # enable_langfuse=debug,
         custom_callbacks=callbacks,  # Pass the proper callback
+        provider_override=provider_override,  # Pass provider override from CLI flag
     )
 
     client.profile_timings_enabled = profile_timings_enabled
@@ -1631,54 +1664,26 @@ def get_current_agent_name() -> str:
 
 
 def display_welcome():
-    """Display welcome message with enhanced orange branding."""
-    # Create branded header
-    header_text = LobsterTheme.create_title_text("LOBSTER by Omics-OS", "🦞")
+    """Display minimal welcome message with OS-like branding."""
+    from lobster.core.license_manager import get_current_tier
 
-    # Check for enhanced input capabilities
-    input_features = console_manager.get_input_features()
-    input_status = ""
-    if PROMPT_TOOLKIT_AVAILABLE and input_features["arrow_navigation"]:
-        input_status = f"[dim {LobsterTheme.PRIMARY_ORANGE}]✨ Enhanced input: Arrow navigation, command history, reverse search, and Tab autocomplete enabled[/dim {LobsterTheme.PRIMARY_ORANGE}]"
-    elif PROMPT_TOOLKIT_AVAILABLE:
-        input_status = f"[dim {LobsterTheme.PRIMARY_ORANGE}]✨ Enhanced input: Tab autocomplete enabled[/dim {LobsterTheme.PRIMARY_ORANGE}]"
-    else:
-        input_status = "[dim grey50]💡 Enhanced input & autocomplete available: pip install prompt-toolkit[/dim grey50]"
+    # Get current tier for badge
+    tier = get_current_tier()
+    tier_badge = f" - {tier.capitalize()}" if tier != "free" else ""
 
-    welcome_content = f"""[bold white]Multi-Agent Bioinformatics Analysis System v{__version__}[/bold white]
+    # Create minimal welcome content
+    welcome_content = f"""[bold white]Multi-Agent Bioinformatics Platform[/bold white]"""
 
-{input_status}
-
-[bold {LobsterTheme.PRIMARY_ORANGE}]Key Tasks:[/bold {LobsterTheme.PRIMARY_ORANGE}]
-• Analyze RNA-seq data
-• Generate visualizations and plots
-• Extract insights from bioinformatics datasets
-• Access GEO & literature databases
-
-[bold {LobsterTheme.PRIMARY_ORANGE}]Essential Commands:[/bold {LobsterTheme.PRIMARY_ORANGE}]
-[{LobsterTheme.PRIMARY_ORANGE}]/help[/{LobsterTheme.PRIMARY_ORANGE}]         - Show all available commands
-[{LobsterTheme.PRIMARY_ORANGE}]/status[/{LobsterTheme.PRIMARY_ORANGE}]       - Show system status
-[{LobsterTheme.PRIMARY_ORANGE}]/files[/{LobsterTheme.PRIMARY_ORANGE}]        - List all workspace files
-[{LobsterTheme.PRIMARY_ORANGE}]/data[/{LobsterTheme.PRIMARY_ORANGE}]         - Show current dataset information
-[{LobsterTheme.PRIMARY_ORANGE}]/metadata[/{LobsterTheme.PRIMARY_ORANGE}]     - Show detailed metadata information
-[{LobsterTheme.PRIMARY_ORANGE}]/workspace[/{LobsterTheme.PRIMARY_ORANGE}]    - Show workspace status and configuration
-[{LobsterTheme.PRIMARY_ORANGE}]/plots[/{LobsterTheme.PRIMARY_ORANGE}]        - List all generated visualizations
-[{LobsterTheme.PRIMARY_ORANGE}]/plot[/{LobsterTheme.PRIMARY_ORANGE}]         - Open plots directory in file manager
-[{LobsterTheme.PRIMARY_ORANGE}]/plot[/{LobsterTheme.PRIMARY_ORANGE}] <ID>    - Open a specific plot by ID or name
-[{LobsterTheme.PRIMARY_ORANGE}]/read[/{LobsterTheme.PRIMARY_ORANGE}] <file>  - Read file from workspace (supports subdirectories)
-[{LobsterTheme.PRIMARY_ORANGE}]/modes[/{LobsterTheme.PRIMARY_ORANGE}]        - List available operation modes
-
-[bold {LobsterTheme.PRIMARY_ORANGE}]Additional Features:[/bold {LobsterTheme.PRIMARY_ORANGE}]
-• Configuration management via [{LobsterTheme.PRIMARY_ORANGE}]lobster config[/{LobsterTheme.PRIMARY_ORANGE}] subcommands
-• Single query mode via [{LobsterTheme.PRIMARY_ORANGE}]lobster query[/{LobsterTheme.PRIMARY_ORANGE}] command
-• API server mode via [{LobsterTheme.PRIMARY_ORANGE}]lobster serve[/{LobsterTheme.PRIMARY_ORANGE}] command
-
-[dim grey50]Powered by LangGraph | © 2025 Omics-OS[/dim grey50]"""
-
-    # Create branded welcome panel
-    welcome_panel = LobsterTheme.create_panel(welcome_content, title=str(header_text))
+    # Create branded welcome panel with tier badge in title
+    welcome_panel = LobsterTheme.create_panel(
+        welcome_content,
+        title=f"🦞 Lobster OS v{__version__}{tier_badge}"
+    )
 
     console_manager.print(welcome_panel)
+    console_manager.print(
+        f"\n[dim]💬 Ready. Type your analysis request or [{LobsterTheme.PRIMARY_ORANGE}]/help[/{LobsterTheme.PRIMARY_ORANGE}] for commands.[/dim]\n"
+    )
 
 
 def show_default_help():
@@ -1905,48 +1910,34 @@ def display_status(client: AgentClient):
 
 
 def _show_workspace_prompt(client):
-    """Display workspace restoration prompt on startup."""
+    """Display compact session status line."""
+    from lobster.config.agent_registry import AGENT_REGISTRY
+
     datasets = client.data_manager.available_datasets
-    session = client.data_manager.session_data
+    session_id = client.session_id
 
-    if not datasets:
-        return
+    # Count supervisor-accessible agents
+    child_agent_names = set()
+    for config in AGENT_REGISTRY.values():
+        if config.child_agents:
+            child_agent_names.update(config.child_agents)
 
-    # Calculate workspace info
-    total_size = sum(d["size_mb"] for d in datasets.values())
-    dataset_count = len(datasets)
+    agent_count = sum(
+        1 for name, config in AGENT_REGISTRY.items()
+        if config.supervisor_accessible is not False and name not in child_agent_names
+    )
 
-    # Get last session info
-    last_used = "unknown"
-    if session and "last_modified" in session:
-        from datetime import datetime
+    # Build compact status line
+    if datasets:
+        total_size = sum(d["size_mb"] for d in datasets.values())
+        dataset_count = len(datasets)
+        dataset_info = f"{dataset_count} dataset{'s' if dataset_count > 1 else ''} ({total_size:.1f} MB)"
+    else:
+        dataset_info = "no data loaded"
 
-        last_modified = datetime.fromisoformat(session["last_modified"])
-        time_diff = datetime.now() - last_modified
-        if time_diff.days > 0:
-            last_used = f"{time_diff.days} day{'s' if time_diff.days > 1 else ''} ago"
-        elif time_diff.seconds > 3600:
-            hours = time_diff.seconds // 3600
-            last_used = f"{hours} hour{'s' if hours > 1 else ''} ago"
-        else:
-            minutes = time_diff.seconds // 60
-            last_used = f"{minutes} minute{'s' if minutes > 1 else ''} ago"
-
-    # Create informative panel
-    panel_content = f"""📂 Found existing workspace (last used: {last_used})
-   • {dataset_count} datasets available ({total_size:.1f} MB)
-
-Type [{LobsterTheme.PRIMARY_ORANGE}]/restore[/{LobsterTheme.PRIMARY_ORANGE}] to continue where you left off
-Type [{LobsterTheme.PRIMARY_ORANGE}]/workspace list[/{LobsterTheme.PRIMARY_ORANGE}] to see available datasets
-Type [{LobsterTheme.PRIMARY_ORANGE}]/workspace load <name>[/{LobsterTheme.PRIMARY_ORANGE}] to load specific datasets"""
-
+    # Display one-line status
     console.print(
-        Panel(
-            panel_content,
-            title="Workspace Detected",
-            border_style=LobsterTheme.PRIMARY_ORANGE,
-            padding=(1, 2),
-        )
+        f"[dim]Session: {session_id} | {dataset_info} | {agent_count} agents ready[/dim]\n"
     )
 
 
@@ -1956,60 +1947,31 @@ def init_client_with_animation(
     verbose: bool = False,
     debug: bool = False,
     profile_timings: Optional[bool] = None,
+    provider_override: Optional[str] = None,
 ) -> AgentClient:
-    """Initialize client with simple agent loading animation."""
-    import time
-
+    """Initialize client with minimal loading message."""
     from lobster.config.agent_registry import AGENT_REGISTRY
 
     get_console_manager()
 
-    # Agent emojis
-    agent_emojis = {
-        "data_expert_agent": "🗄️",
-        "transcriptomics_expert": "🧬",
-        "research_agent": "📚",
-        "proteomics_expert": "🧪",
-        "machine_learning_expert_agent": "🤖",
-        "visualization_expert_agent": "🌸",
-        "metadata_assistant": "📋",
-    }
-
-    console.print(
-        f"[bold {LobsterTheme.PRIMARY_ORANGE}]🦞 Initializing Lobster AI...[/bold {LobsterTheme.PRIMARY_ORANGE}]"
-    )
-
-    # Pre-compute child agents (agents that appear in any parent's child_agents list)
+    # Count supervisor-accessible agents
     child_agent_names = set()
     for config in AGENT_REGISTRY.values():
         if config.child_agents:
             child_agent_names.update(config.child_agents)
 
-    # Filter to supervisor-accessible agents only (excludes sub-agents)
-    supervisor_accessible_agents = {}
-    for name, config in AGENT_REGISTRY.items():
-        if config.supervisor_accessible is False:
-            continue  # Explicitly not accessible
-        if name in child_agent_names:
-            continue  # Inferred as sub-agent (appears in a parent's child_agents)
-        supervisor_accessible_agents[name] = config
-
-    # Show agents being loaded (only supervisor-accessible)
-    for agent_name, config in supervisor_accessible_agents.items():
-        emoji = agent_emojis.get(agent_name, "⚡")
-        with console.status(
-            f"[{LobsterTheme.PRIMARY_ORANGE}]{emoji} Loading {config.display_name}...[/{LobsterTheme.PRIMARY_ORANGE}]"
-        ):
-            time.sleep(0.1)  # Brief loading time
-        console.print(f"  [green]✓[/green] {emoji} {config.display_name}")
-
-    # Actually initialize the client
-    console.print(
-        f"\n[{LobsterTheme.PRIMARY_ORANGE}]🔧 Starting multi-agent system...[/{LobsterTheme.PRIMARY_ORANGE}]"
+    supervisor_accessible_count = sum(
+        1 for name, config in AGENT_REGISTRY.items()
+        if config.supervisor_accessible is not False and name not in child_agent_names
     )
-    client = init_client(workspace, reasoning, verbose, debug, profile_timings)
 
-    console.print("[bold green]✅ Lobster is cooked and ready![/bold green]\n")
+    # Single-line loading message
+    with console.status(
+        f"[{LobsterTheme.PRIMARY_ORANGE}]🦞 Loading {supervisor_accessible_count} agents...[/{LobsterTheme.PRIMARY_ORANGE}]"
+    ):
+        client = init_client(workspace, reasoning, verbose, debug, profile_timings, provider_override)
+
+    console.print(f"[green]✓[/green] Lobster is ready\n")
     return client
 
 
@@ -2229,35 +2191,58 @@ def config_show():
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
     bedrock_access = os.environ.get("AWS_BEDROCK_ACCESS_KEY")
     bedrock_secret = os.environ.get("AWS_BEDROCK_SECRET_ACCESS_KEY")
+    llm_provider = os.environ.get("LOBSTER_LLM_PROVIDER")
+    ollama_model = os.environ.get("OLLAMA_DEFAULT_MODEL")
 
     table.add_row("", "")  # Spacing
     table.add_row("[bold]LLM Provider", "")
 
+    # Show detected provider first
+    from lobster.config.llm_factory import LLMFactory
+
+    provider = LLMFactory.detect_provider()
+    if provider:
+        table.add_row("  [dim]Detected Provider[/dim]", f"[green]{provider.value}[/green]")
+
+    # Anthropic API
     if anthropic_key:
         table.add_row("  ANTHROPIC_API_KEY", mask_secret(anthropic_key))
-        from lobster.config.llm_factory import LLMFactory
-
-        provider = LLMFactory.detect_provider()
-        if provider:
-            table.add_row("  [dim]Provider[/dim]", f"[green]{provider.value}[/green]")
     else:
         table.add_row("  ANTHROPIC_API_KEY", "[dim]Not set[/dim]")
 
+    # AWS Bedrock
     if bedrock_access or bedrock_secret:
         table.add_row("  AWS_BEDROCK_ACCESS_KEY", mask_secret(bedrock_access))
         table.add_row("  AWS_BEDROCK_SECRET_ACCESS_KEY", mask_secret(bedrock_secret))
-        if not anthropic_key:
-            from lobster.config.llm_factory import LLMFactory
-
-            provider = LLMFactory.detect_provider()
-            if provider:
-                table.add_row(
-                    "  [dim]Provider[/dim]", f"[green]{provider.value}[/green]"
-                )
     else:
-        if not anthropic_key:
-            table.add_row("  AWS_BEDROCK_ACCESS_KEY", "[dim]Not set[/dim]")
-            table.add_row("  AWS_BEDROCK_SECRET_ACCESS_KEY", "[dim]Not set[/dim]")
+        table.add_row("  AWS_BEDROCK_ACCESS_KEY", "[dim]Not set[/dim]")
+        table.add_row("  AWS_BEDROCK_SECRET_ACCESS_KEY", "[dim]Not set[/dim]")
+
+    # Ollama - use provider_setup module
+    if llm_provider == "ollama" or provider and provider.value == "ollama":
+        table.add_row("  LOBSTER_LLM_PROVIDER", "[green]ollama[/green]")
+
+        # Get Ollama status using provider_setup
+        ollama_status = provider_setup.get_ollama_status()
+
+        if ollama_status.running:
+            table.add_row("  [dim]Ollama Status[/dim]", "[green]✓ Running[/green]")
+            if ollama_status.models:
+                model_count = len(ollama_status.models)
+                table.add_row(
+                    "  [dim]Available Models[/dim]", f"[cyan]{model_count} model(s)[/cyan]"
+                )
+        else:
+            table.add_row("  [dim]Ollama Status[/dim]", "[yellow]Not running[/yellow]")
+
+        if ollama_model:
+            table.add_row("  OLLAMA_DEFAULT_MODEL", f"[yellow]{ollama_model}[/yellow]")
+        else:
+            table.add_row(
+                "  OLLAMA_DEFAULT_MODEL", "[dim]llama3:8b-instruct (default)[/dim]"
+            )
+    else:
+        table.add_row("  LOBSTER_LLM_PROVIDER", "[dim]Not set (using cloud)[/dim]")
 
     # NCBI API (optional)
     table.add_row("", "")  # Spacing
@@ -2294,7 +2279,10 @@ def config_show():
         console.print(
             Panel.fit(
                 "[red]❌ No LLM provider configured[/red]\n\n"
-                "Please set either ANTHROPIC_API_KEY or AWS_BEDROCK credentials.\n"
+                "Please configure one of:\n"
+                "  • Claude API (ANTHROPIC_API_KEY)\n"
+                "  • AWS Bedrock (AWS_BEDROCK credentials)\n"
+                "  • Ollama (local, LOBSTER_LLM_PROVIDER=ollama)\n\n"
                 f"Run: [bold {LobsterTheme.PRIMARY_ORANGE}]lobster init[/bold {LobsterTheme.PRIMARY_ORANGE}]",
                 border_style="red",
                 padding=(1, 2),
@@ -2660,6 +2648,16 @@ def init(
         "--bedrock-secret-key",
         help="AWS Bedrock secret key (non-interactive mode)",
     ),
+    use_ollama: bool = typer.Option(
+        False,
+        "--use-ollama",
+        help="Use Ollama (local LLM) provider (non-interactive mode)",
+    ),
+    ollama_model: Optional[str] = typer.Option(
+        None,
+        "--ollama-model",
+        help="Ollama model name (default: llama3:8b-instruct, non-interactive mode)",
+    ),
     ncbi_key: Optional[str] = typer.Option(
         None, "--ncbi-key", help="NCBI API key (optional, non-interactive mode)"
     ),
@@ -2691,6 +2689,10 @@ def init(
       lobster init --non-interactive \\
         --bedrock-access-key=AKIA... \\
         --bedrock-secret-key=xxx                     # CI/CD: AWS Bedrock
+      lobster init --non-interactive \\
+        --use-ollama                                 # CI/CD: Ollama (local)
+      lobster init --non-interactive \\
+        --use-ollama --ollama-model=mixtral:8x7b-instruct  # CI/CD: Ollama with custom model
       lobster init --non-interactive \\
         --anthropic-key=sk-ant-xxx \\
         --cloud-key=cloud_xxx                        # CI/CD: With cloud access
@@ -2744,37 +2746,52 @@ def init(
         env_lines.append("# Lobster AI Configuration")
         env_lines.append("# Generated by lobster init --non-interactive\n")
 
-        # Validate that at least one provider is specified
+        # Validate provider configuration using provider_setup module
         has_anthropic = anthropic_key is not None
         has_bedrock = bedrock_access_key is not None and bedrock_secret_key is not None
+        has_ollama = use_ollama
 
-        if not has_anthropic and not has_bedrock:
-            console.print(
-                "[red]❌ Error: No API keys provided for non-interactive mode[/red]"
-            )
+        # Validate at least one provider
+        valid, error_msg = provider_setup.validate_provider_choice(
+            has_anthropic, has_bedrock, has_ollama
+        )
+        if not valid:
+            console.print(f"[red]❌ Error: {error_msg}[/red]")
             console.print()
-            console.print("You must provide either:")
+            console.print("You must provide one of:")
             console.print("  • Claude API: --anthropic-key=xxx")
             console.print(
                 "  • AWS Bedrock: --bedrock-access-key=xxx --bedrock-secret-key=xxx"
             )
+            console.print("  • Ollama (Local): --use-ollama")
             raise typer.Exit(1)
 
-        if has_anthropic and has_bedrock:
-            console.print(
-                "[yellow]⚠️  Warning: Both Claude API and AWS Bedrock keys provided.[/yellow]"
-            )
-            console.print(
-                "[yellow]   Using Claude API. Remove --anthropic-key to use Bedrock.[/yellow]"
-            )
+        # Warn if multiple providers
+        priority_warning = provider_setup.get_provider_priority_warning(
+            has_anthropic, has_bedrock, has_ollama
+        )
+        if priority_warning:
+            console.print(f"[yellow]⚠️  Warning: {priority_warning}[/yellow]")
 
+        # Create provider configuration
         if has_anthropic:
-            env_lines.append(f"ANTHROPIC_API_KEY={anthropic_key.strip()}")
+            config = provider_setup.create_anthropic_config(anthropic_key)
+            if config.success:
+                for key, value in config.env_vars.items():
+                    env_lines.append(f"{key}={value}")
         elif has_bedrock:
-            env_lines.append(f"AWS_BEDROCK_ACCESS_KEY={bedrock_access_key.strip()}")
-            env_lines.append(
-                f"AWS_BEDROCK_SECRET_ACCESS_KEY={bedrock_secret_key.strip()}"
+            config = provider_setup.create_bedrock_config(
+                bedrock_access_key, bedrock_secret_key
             )
+            if config.success:
+                for key, value in config.env_vars.items():
+                    env_lines.append(f"{key}={value}")
+        elif has_ollama:
+            config = provider_setup.create_ollama_config(model_name=ollama_model)
+            if config.success:
+                for key, value in config.env_vars.items():
+                    env_lines.append(f"{key}={value}")
+                console.print("[green]✓ Ollama provider configured[/green]")
 
         if ncbi_key:
             env_lines.append(f"\n# Optional: Enhanced literature search")
@@ -2824,10 +2841,11 @@ def init(
             "  [cyan]1[/cyan] - Claude API (Anthropic) - Quick testing, development"
         )
         console.print("  [cyan]2[/cyan] - AWS Bedrock - Production, enterprise use")
+        console.print("  [cyan]3[/cyan] - Ollama (Local) - Privacy, zero cost, offline")
         console.print()
 
         provider = Prompt.ask(
-            "[bold white]Choose provider[/bold white]", choices=["1", "2"], default="1"
+            "[bold white]Choose provider[/bold white]", choices=["1", "2", "3"], default="1"
         )
 
         env_lines = []
@@ -2851,7 +2869,7 @@ def init(
 
             env_lines.append(f"ANTHROPIC_API_KEY={api_key.strip()}")
 
-        else:
+        elif provider == "2":
             # AWS Bedrock setup
             console.print("\n[bold white]🔑 AWS Bedrock Configuration[/bold white]")
             console.print(
@@ -2871,6 +2889,115 @@ def init(
 
             env_lines.append(f"AWS_BEDROCK_ACCESS_KEY={access_key.strip()}")
             env_lines.append(f"AWS_BEDROCK_SECRET_ACCESS_KEY={secret_key.strip()}")
+
+        else:  # provider == "3"
+            # Ollama (local LLM) setup using provider_setup module
+            console.print("\n[bold white]🏠 Ollama (Local LLM) Configuration[/bold white]")
+            console.print("Ollama runs models locally - no API keys needed!\n")
+
+            # Get Ollama status
+            ollama_status = provider_setup.get_ollama_status()
+
+            if not ollama_status.installed:
+                # Ollama not installed - show instructions
+                console.print(
+                    "[yellow]⚠️  Ollama is not installed on this system.[/yellow]"
+                )
+                console.print()
+                console.print("[bold white]To install Ollama:[/bold white]")
+                install_instructions = provider_setup.get_ollama_install_instructions()
+                console.print(f"  • macOS/Linux: {install_instructions['macos_linux']}")
+                console.print(f"  • Windows: {install_instructions['windows']}")
+                console.print()
+
+                install_later = Confirm.ask(
+                    "Configure for Ollama anyway? (you can install it later)",
+                    default=True,
+                )
+
+                if not install_later:
+                    console.print(
+                        "[yellow]Please install Ollama first, then run 'lobster init' again[/yellow]"
+                    )
+                    raise typer.Exit(0)
+
+                # User wants to configure anyway
+                config = provider_setup.create_ollama_config()
+                for key, value in config.env_vars.items():
+                    env_lines.append(f"{key}={value}")
+                env_lines.append(
+                    "# Install Ollama: curl -fsSL https://ollama.com/install.sh | sh"
+                )
+                env_lines.append("# Then run: ollama pull llama3:8b-instruct")
+                console.print(
+                    "[green]✓ Ollama provider configured (install Ollama to use)[/green]"
+                )
+
+            else:
+                # Ollama is installed
+                console.print("[green]✓ Ollama is installed[/green]")
+                if ollama_status.version:
+                    console.print(f"[dim]  Version: {ollama_status.version}[/dim]")
+
+                if not ollama_status.running:
+                    console.print("[yellow]⚠️  Ollama server is not running[/yellow]")
+                    console.print("Start it with: ollama serve")
+                    console.print()
+
+                # Show available models if any
+                if ollama_status.running and ollama_status.models:
+                    console.print("\n[bold white]Available models:[/bold white]")
+                    for model in ollama_status.models[:5]:  # Show first 5
+                        console.print(f"  • {model}")
+                    if len(ollama_status.models) > 5:
+                        console.print(
+                            f"  ... and {len(ollama_status.models) - 5} more"
+                        )
+                    console.print()
+
+                    # Ask which model to use
+                    use_custom_model = Confirm.ask(
+                        "Specify a model? (default: llama3:8b-instruct)", default=False
+                    )
+
+                    if use_custom_model:
+                        model_name = Prompt.ask(
+                            "[bold white]Enter model name[/bold white]",
+                            default="llama3:8b-instruct",
+                        )
+                        config = provider_setup.create_ollama_config(
+                            model_name=model_name
+                        )
+                    else:
+                        config = provider_setup.create_ollama_config()
+
+                    for key, value in config.env_vars.items():
+                        env_lines.append(f"{key}={value}")
+
+                else:
+                    # No models available - show recommendations
+                    console.print("\n[yellow]No models found. Pull a model first:[/yellow]")
+                    recommended = provider_setup.get_recommended_models()
+                    for model_info in recommended:
+                        console.print(
+                            f"  ollama pull {model_info['name']}  # {model_info['description']}"
+                        )
+                    console.print()
+
+                    proceed = Confirm.ask("Configure for Ollama anyway?", default=True)
+
+                    if not proceed:
+                        console.print(
+                            "[yellow]Setup cancelled. Pull a model first, then run 'lobster init'[/yellow]"
+                        )
+                        raise typer.Exit(0)
+
+                    # Configure anyway
+                    config = provider_setup.create_ollama_config()
+                    for key, value in config.env_vars.items():
+                        env_lines.append(f"{key}={value}")
+
+                console.print("[green]✓ Ollama provider configured[/green]")
 
         # Optional NCBI key(s) - supports multiple for parallelization
         console.print("\n[bold white]📚 NCBI API Key(s) (Optional)[/bold white]")
@@ -3064,6 +3191,12 @@ def chat(
         "--profile-timings/--no-profile-timings",
         help="Enable timing diagnostics for data manager operations",
     ),
+    provider: Optional[str] = typer.Option(
+        None,
+        "--provider",
+        "-p",
+        help="LLM provider to use (bedrock, anthropic, ollama). Overrides auto-detection.",
+    ),
 ):
     """
     Start an interactive chat session with the multi-agent system.
@@ -3129,16 +3262,8 @@ def chat(
         )
         raise
 
-    # Check for existing workspace and show restoration prompt
+    # Show compact session status
     _show_workspace_prompt(client)
-
-    # Show initial status
-    display_status(client)
-
-    # Chat loop
-    console.print(
-        "\n[bold white on red] 💬 Chat Interface [/bold white on red] [grey50]Type your questions or use /help for commands[/grey50]\n"
-    )
 
     while True:
         try:
@@ -3729,6 +3854,8 @@ def _execute_command(cmd: str, client: AgentClient) -> Optional[str]:
 [{LobsterTheme.PRIMARY_ORANGE}]/reset[/{LobsterTheme.PRIMARY_ORANGE}]        [grey50]-[/grey50] Reset conversation
 [{LobsterTheme.PRIMARY_ORANGE}]/mode[/{LobsterTheme.PRIMARY_ORANGE}] <name>  [grey50]-[/grey50] Change operation mode
 [{LobsterTheme.PRIMARY_ORANGE}]/modes[/{LobsterTheme.PRIMARY_ORANGE}]        [grey50]-[/grey50] List available modes
+[{LobsterTheme.PRIMARY_ORANGE}]/provider[/{LobsterTheme.PRIMARY_ORANGE}]     [grey50]-[/grey50] List available LLM providers
+[{LobsterTheme.PRIMARY_ORANGE}]/provider[/{LobsterTheme.PRIMARY_ORANGE}] <name> [grey50]-[/grey50] Switch LLM provider (anthropic, bedrock, ollama)
 [{LobsterTheme.PRIMARY_ORANGE}]/clear[/{LobsterTheme.PRIMARY_ORANGE}]        [grey50]-[/grey50] Clear screen
 [{LobsterTheme.PRIMARY_ORANGE}]/exit[/{LobsterTheme.PRIMARY_ORANGE}]         [grey50]-[/grey50] Exit the chat
 
@@ -6470,6 +6597,62 @@ when they are started by agents or analysis workflows.
                     console.print(f"  • {profile}")
             return f"Invalid mode '{new_mode}' - available modes: {', '.join(sorted(available_profiles.keys()))}"
 
+    elif cmd.startswith("/provider"):
+        # Handle provider switching and listing
+        parts = cmd.split()
+
+        if len(parts) == 1 or (len(parts) == 2 and parts[1] == "list"):
+            # /provider or /provider list - Show available providers
+            from lobster.config.llm_factory import LLMFactory
+
+            available_providers = LLMFactory.get_available_providers()
+            current_provider = client.provider_override or LLMFactory.get_current_provider()
+
+            provider_table = Table(title="🔌 LLM Providers", box=box.ROUNDED)
+            provider_table.add_column("Provider", style="cyan")
+            provider_table.add_column("Status", style="white")
+            provider_table.add_column("Active", style="green")
+
+            for provider in ["anthropic", "bedrock", "ollama"]:
+                configured = "✓ Configured" if provider in available_providers else "✗ Not configured"
+                active = "●" if provider == current_provider else ""
+
+                status_style = "green" if provider in available_providers else "grey50"
+                provider_table.add_row(
+                    provider.capitalize(),
+                    f"[{status_style}]{configured}[/{status_style}]",
+                    f"[bold green]{active}[/bold green]" if active else ""
+                )
+
+            console_manager.print(provider_table)
+
+            console_manager.print(f"\n[cyan]💡 Usage:[/cyan]")
+            console_manager.print("  • [white]/provider <name>[/white] - Switch to specified provider")
+            console_manager.print("  • [white]/provider list[/white] - Show this list")
+            console_manager.print("\n[cyan]Available providers:[/cyan] anthropic, bedrock, ollama")
+
+            if current_provider:
+                console_manager.print(f"\n[green]✓ Current provider: {current_provider}[/green]")
+
+        elif len(parts) == 2:
+            # /provider <name> - Switch provider
+            new_provider = parts[1].lower()
+
+            console_manager.print(f"[yellow]Switching to {new_provider} provider...[/yellow]")
+
+            result = client.switch_provider(new_provider)
+
+            if result["success"]:
+                console_manager.print(
+                    f"[green]✓ Successfully switched to {result['provider']} provider[/green]"
+                )
+            else:
+                error_msg = result.get("error", "Unknown error")
+                hint = result.get("hint", "")
+                console_manager.print_error_panel(error_msg, hint)
+        else:
+            console_manager.print("[red]Invalid syntax. Use: /provider [list|<name>][/red]")
+
     elif cmd == "/clear":
         console.clear()
 
@@ -6494,6 +6677,41 @@ Your feedback matters! Please take 1 minute to share your experience:
         console.print(
             f"[bold red on white] ⚠️  Error [/bold red on white] [red]Unknown command: {cmd}[/red]"
         )
+
+
+@app.command(name="os")
+def os_command(
+    workspace: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace directory. Can also be set via LOBSTER_WORKSPACE env var. Default: ./.lobster_workspace",
+    ),
+):
+    """
+    Launch interactive OS-like workspace (Textual UI).
+
+    This command starts a Textual-based interactive terminal UI with:
+    - Multi-panel layout for browsing datasets
+    - Keyboard-first navigation (vim-like bindings)
+    - Non-blocking operations (Phase 3+)
+    - Live streaming query responses (Phase 3+)
+
+    Press 'Q' to quit, '?' for help.
+    """
+    try:
+        from lobster.ui.os_app import run_lobster_os
+
+        run_lobster_os(workspace)
+    except ImportError as e:
+        console.print(
+            f"[red]❌ Failed to import Textual UI: {str(e)}[/red]\n"
+            "[yellow]Ensure textual>=0.79.1 is installed: pip install textual[/yellow]"
+        )
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]❌ Failed to launch Lobster OS: {str(e)}[/red]")
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -6528,6 +6746,12 @@ def query(
         "--profile-timings/--no-profile-timings",
         help="Enable timing diagnostics for data manager operations",
     ),
+    provider: Optional[str] = typer.Option(
+        None,
+        "--provider",
+        "-p",
+        help="LLM provider to use (bedrock, anthropic, ollama). Overrides auto-detection.",
+    ),
 ):
     """
     Send a single query to the agent system.
@@ -6543,7 +6767,7 @@ def query(
         raise typer.Exit(1)
 
     # Initialize client
-    client = init_client(workspace, not no_reasoning, verbose, debug, profile_timings)
+    client = init_client(workspace, not no_reasoning, verbose, debug, profile_timings, provider)
 
     # Process query
     if should_show_progress(client):

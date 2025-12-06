@@ -266,7 +266,7 @@ class PubMedProvider(BasePublicationProvider):
         Returns:
             str: Formatted search results
         """
-        logger.info(f"PubMed search: {query[:50]}...")
+        logger.debug(f"PubMed search: {query[:50]}...")
 
         try:
             # Apply configuration limits

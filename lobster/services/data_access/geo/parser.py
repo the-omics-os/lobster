@@ -776,8 +776,7 @@ class GEOParser:
                 index_col=0,
                 compression=compression,
                 engine="python",  # More forgiving but slower
-                error_bad_lines=False,  # Skip bad lines
-                warn_bad_lines=False,
+                on_bad_lines='skip',  # Pandas 2.0+ API - skip malformed lines
             )
 
             if df.shape[0] > 0 and df.shape[1] > 0:

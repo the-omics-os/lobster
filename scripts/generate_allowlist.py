@@ -407,7 +407,7 @@ lobster/tools/archive/publication_service.py
 
 
 # =============================================================================
-# UI COMPONENTS (Always Open-Core)
+# UI COMPONENTS (Always Open-Core - Rich CLI only)
 # =============================================================================
 lobster/ui/__init__.py
 lobster/ui/themes.py
@@ -420,6 +420,8 @@ lobster/ui/components/file_tree.py
 lobster/ui/components/status_display.py
 lobster/ui/components/parallel_workers_progress.py
 lobster/ui/components/multi_progress.py
+
+# NOTE: Textual UI (lobster os) is EXCLUDED - see ALWAYS_EXCLUDED section
 
 
 # =============================================================================
@@ -459,6 +461,16 @@ ALWAYS_EXCLUDED = """
 # =============================================================================
 # ALWAYS EXCLUDED (Regardless of Tier)
 # =============================================================================
+
+# Textual UI (lobster os command) - Private feature
+!lobster/ui/os_app.py
+!lobster/ui/screens/**
+!lobster/ui/widgets/status_bar.py
+!lobster/ui/widgets/chat_message.py
+!lobster/ui/widgets/query_prompt.py
+!lobster/ui/widgets/modality_list.py
+!lobster/ui/widgets/results_display.py
+!lobster/ui/widgets/plot_preview.py
 
 # Server/API code (private infrastructure)
 !lobster/api/**

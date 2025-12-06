@@ -43,6 +43,35 @@ Users interact via natural language to:
 5. **Publication‑grade output**: Plotly‑based, scientifically sound.
 6. **Extensible & professional**: new agents/services plug into common patterns.
 
+### 1.5 LLM Provider System
+
+Lobster supports **3 LLM providers** via modular, testable architecture:
+
+| Provider | Type | Setup | Use Case |
+|----------|------|-------|----------|
+| **Ollama** | Local | `ollama pull llama3:8b-instruct` | Privacy, zero cost, offline |
+| **Anthropic Direct** | Cloud | API key | Fastest, best quality |
+| **AWS Bedrock** | Cloud | AWS credentials | Enterprise, compliance |
+
+**Architecture** (separation of concerns):
+```
+CLI (cli.py)                 → Logic (provider_setup.py)      → Factory (llm_factory.py)
+├─ User interaction           ├─ Ollama detection              ├─ Model instantiation
+├─ Rich console output        ├─ Provider validation           ├─ Provider enum
+└─ lobster init wizard        ├─ Config creation               └─ Auto-detection
+                              └─ Pure functions (testable)
+```
+
+**Key files**:
+- `lobster/config/provider_setup.py`: **NEW** - Pure provider logic (detection, validation, config creation)
+- `lobster/config/llm_factory.py`: Model instantiation + provider enum
+- `lobster/config/settings.py`: Environment configuration
+- `lobster/cli.py`: User-facing commands (`lobster init`, `lobster config-show`)
+
+**Auto-detection priority**: Explicit `LOBSTER_LLM_PROVIDER` → Ollama (if running) → Anthropic → Bedrock
+
+**User configuration**: Via `lobster init` wizard (recommended) or manual `.env` editing.
+
 ---
 
 ## 2. HOW – Architecture
@@ -286,7 +315,9 @@ lobster/
 
 | Area | File(s) | Role |
 |------|---------|------|
-| CLI | `cli.py` | commands, client routing |
+| CLI | `cli.py` | User-facing commands, Rich output (presentation layer) |
+| LLM Config | `config/provider_setup.py` | **NEW**: Provider detection, validation, config creation (pure logic, testable) |
+| LLM Factory | `config/llm_factory.py` | Model instantiation, provider enum |
 | Client | `core/client.py`, `core/api_client.py` | local vs cloud clients |
 | Graph | `agents/graph.py` | `create_bioinformatics_graph()` |
 | Agents | `agents/*.py` | supervisor + specialists |
@@ -676,45 +707,17 @@ Data standards:
 
 ### 4.10 Security Considerations
 
-#### CustomCodeExecutionService Security Model
+**CustomCodeExecutionService** (`services/execution/custom_code_execution_service.py`):
+- **Purpose**: Execute arbitrary Python for edge cases
+- **Model**: Subprocess isolation (Phase 1 hardening, NOT full sandboxing)
+- **Status**: ✅ Production-ready for local CLI (trusted users)
+- **Gaps**: Network access, file permissions (acceptable for local, NOT for cloud SaaS)
+- **Testing**: `tests/manual/custom_code_execution/` (30+ files, 201+ attack vectors)
 
-**Location**: `lobster/services/execution/custom_code_execution_service.py`
-
-**Purpose**: Enables data_expert (and other agents) to execute arbitrary Python code for edge cases not covered by specialized tools.
-
-**Security Model**: **Subprocess isolation with Phase 1 hardening (NOT full sandboxing)**
-
-```python
-# What still requires Phase 2 (Docker isolation):
-❌ Network isolation (can make HTTP requests)
-❌ File access restriction (has full user permissions)
-❌ Resource limits (only timeout, no memory/CPU/disk limits)
-```
-
-#### Known Vulnerabilities (Comprehensive Testing Results)
-**Detailed documentation**: `tests/manual/custom_code_execution/`
-
-
-#### Production Deployment Guidelines
-
-**Local CLI (current target):**
-- ✅ **PRODUCTION READY** (Phase 1 complete as of 2025-11-30)
-- Acceptable risk profile: trusted users, local machine, documented limitations
-- Remaining gap: Network access still allowed (acceptable for local CLI)
-
-**Cloud SaaS (future):**
-- ❌ NOT ACCEPTABLE without Docker isolation
-- Requires: Phase 2 mitigations (Docker with --network=none, memory limits)
-
-**Enterprise (mixed trust):**
-- ⚠️ CONDITIONAL GO - Phase 1 complete, Phase 2 recommended
-- Recommended: Add Phase 3 enhancements for defense-in-depth
-
-#### Security Testing
-
-**Manual test suite**: `tests/manual/custom_code_execution/`
-- 30+ test files, 201+ attack vectors
-- 8 comprehensive security reports
+**Deployment**:
+- Local CLI: ✅ Production-ready
+- Cloud SaaS: ❌ Requires Docker isolation (Phase 2)
+- Enterprise: ⚠️ Conditional (Phase 2 recommended)
 
 ### 4.11 Feature Tiering & Conditional Activation
 
@@ -743,62 +746,17 @@ Lobster supports FREE, PREMIUM, and ENTERPRISE tiers. Features/agents can be gat
 #### License Manager & AWS Integration
 
 **Location**: `lobster/core/license_manager.py`
+**Purpose**: Entitlement validation via AWS license service (RSA signature verification)
+**File**: `~/.lobster/license.json` (signed entitlement with tier, features, expiration)
 
-**Purpose**: Manages license entitlements via AWS-hosted license service with cryptographic verification.
+**Key Functions**:
+- `activate_license()` - Exchange cloud_key for signed entitlement
+- `check_revocation_status()` - Periodic validation (24h interval)
+- `_verify_signature()` - JWKS/RSA verification
 
-**License Server URL**: `https://x6gm9vfgl5.execute-api.us-east-1.amazonaws.com/v1` (overridable via `LOBSTER_LICENSE_SERVER_URL`)
+**Resolution**: `LOBSTER_SUBSCRIPTION_TIER` env → `LOBSTER_CLOUD_KEY` → `license.json` → free tier default
 
-**Entitlement File** (`~/.lobster/license.json`):
-```json
-{
-  "entitlement_id": "ent_xxx",
-  "customer_id": "dev_xxx",
-  "tier": "premium",
-  "features": ["local_only", "cloud_compute", "email_support", "priority_processing"],
-  "custom_packages": ["lobster-custom-databiomix"],
-  "issued_at": "2025-12-02T00:00:00Z",
-  "expires_at": "2026-12-02T00:00:00Z",
-  "signature": "base64_encoded_signature...",
-  "kid": "lobster-53b91554"
-}
-```
-
-**Core Functions**:
-
-| Function | Endpoint | Purpose |
-|----------|----------|---------|
-| `activate_license(access_code, server_url)` | `POST /api/v1/activate` | Exchange cloud_key for signed entitlement |
-| `refresh_entitlement(cloud_key)` | `POST /api/v1/refresh` | Update local entitlement (tier upgrades, package additions) |
-| `check_revocation_status()` | `POST /api/v1/status` | Check if entitlement has been revoked (poll every 24h) |
-| `get_jwks()` | `GET /.well-known/jwks.json` | Fetch public keys for signature verification |
-| `_verify_signature(data)` | N/A | Verify RSA signature using JWKS (RSA PKCS1v15 + SHA256) |
-
-**Signature Verification Flow**:
-1. Fetch JWKS from license server (JSON Web Key Set with public keys)
-2. Find matching key by `kid` (Key ID)
-3. Reconstruct RSA public key from `n` (modulus) and `e` (exponent) parameters
-4. Canonicalize entitlement payload (JSON with sorted keys, no signature/kid/source/valid)
-5. Compute SHA256 digest of canonical payload
-6. Verify signature using PKCS1v15 with Prehashed SHA256
-7. **Fail open** if offline or crypto library unavailable (allows cached entitlement)
-
-**Resolution Order**:
-1. `LOBSTER_SUBSCRIPTION_TIER` env var (dev override)
-2. `LOBSTER_CLOUD_KEY` env var (implies premium tier)
-3. `~/.lobster/license.json` (signed entitlement file)
-4. Free tier defaults
-
-**Security Model**:
-- Signatures verify entitlement authenticity (prevents tampering)
-- Revocation checking via periodic `/api/v1/status` polls (recommended: 24h interval)
-- Expiration enforcement (automatic downgrade to free tier on expiry)
-- Fail-open design (offline users can use cached entitlement)
-
-**Testing & Deployment**:
-- Override license path: `LOBSTER_LICENSE_PATH=/path/to/license.json`
-- Override license server: `LOBSTER_LICENSE_SERVER_URL=https://staging.example.com`
-- Manual activation: `lobster activate <cloud_key>` (CLI command)
-- Revocation check: Call `check_revocation_status()` on CLI startup or in background thread
+**Commands**: `lobster activate <key>`, `lobster status` (shows tier)
 
 **Full spec**: `docs/premium_lobster_architecture.md`
 
@@ -811,7 +769,7 @@ Lobster supports FREE, PREMIUM, and ENTERPRISE tiers. Features/agents can be gat
 | Area | Tech |
 |------|------|
 | Agent framework | LangGraph |
-| Models | AWS Bedrock (Claude) |
+| Models | AWS Bedrock (Claude), Anthropic Direct, **Ollama (local)** |
 | Language | Python 3.11+ (typing, async/await) |
 | Data structures | AnnData, MuData |
 | Bioinformatics | Scanpy, PyDESeq2 |
@@ -853,10 +811,16 @@ Env vars:
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `AWS_BEDROCK_ACCESS_KEY` | Yes | AWS Bedrock access key |
-| `AWS_BEDROCK_SECRET_ACCESS_KEY` | Yes | AWS Bedrock secret key |
+| `AWS_BEDROCK_ACCESS_KEY` | Conditional | AWS Bedrock access key (cloud) |
+| `AWS_BEDROCK_SECRET_ACCESS_KEY` | Conditional | AWS Bedrock secret key (cloud) |
+| `ANTHROPIC_API_KEY` | Conditional | Anthropic Direct API key (cloud) |
+| `LOBSTER_LLM_PROVIDER` | No | Explicit provider: `ollama`, `bedrock`, `anthropic` |
+| `OLLAMA_BASE_URL` | No | Ollama server (default: `http://localhost:11434`) |
+| `OLLAMA_DEFAULT_MODEL` | No | Model name (default: `llama3:8b-instruct`) |
 | `NCBI_API_KEY` | No | PubMed (higher rate limit) |
 | `LOBSTER_CLOUD_KEY` | No | enables cloud client mode |
+
+**Note:** At least one LLM provider is required (Anthropic OR Bedrock OR Ollama).
 
 ### 5.4 Running the App
 
@@ -897,164 +861,30 @@ Useful CLI commands:
 
 ### 5.5 Package Publishing (PyPI)
 
-**Package Name**: `lobster-ai` (PyPI) / `lobster` (import name)
-**Version Source**: `lobster/version.py` (single source of truth)
+**Package**: `lobster-ai` (PyPI) / `lobster` (import)
+**Version**: `lobster/version.py` (single source of truth)
 **Publishing**: Automated via GitHub Actions on git tags (`v*.*.*`)
 
-**Critical Security Rule**: Only `lobster-local` (public repo) is published to PyPI. The private `lobster/` repo contains premium features that must NOT be published.
+**Critical Rule**: Only `lobster-local` (public) publishes to PyPI. Private repo contains premium features.
 
-#### Architecture: 7-Stage Automated Pipeline
-
-```mermaid
-graph TB
-    Start[Tag Push: v0.2.0] --> S1[Stage 1: sync-to-public]
-
-    S1 --> V1{Validate Allowlist}
-    V1 -->|✓ Pass| S1B[Sync to lobster-local]
-    V1 -->|✗ Fail| Fail1[❌ Allowlist Mismatch]
-
-    S1B --> S2[Stage 2: build-package]
-    S2 --> B1[Clone lobster-local]
-    B1 --> B2[python -m build]
-    B2 --> V2{Scan for Private Code}
-    V2 -->|✓ Clean| B3[Test Installation]
-    V2 -->|✗ Found| Fail2[❌ Private Code Detected]
-
-    B3 --> S3[Stage 3: publish-testpypi]
-    S3 --> T1[OIDC Auth]
-    T1 --> T2[Publish to test.pypi.org]
-    T2 --> T3[Verify Installation]
-
-    T3 --> S4[Stage 4: approve-production]
-    S4 --> A1{Manual Review}
-    A1 -->|Approved| S5[Stage 5: publish-pypi]
-    A1 -->|Rejected| End1[❌ Release Cancelled]
-
-    S5 --> P1[OIDC Auth]
-    P1 --> P2[Publish to pypi.org]
-    P2 --> P3[Verify Installation]
-
-    P3 --> S6[Stage 6: create-release]
-    S6 --> R1[GitHub Release]
-    R1 --> R2[Attach Artifacts]
-
-    R2 --> S7[Stage 7: summary]
-    S7 --> End2[✅ Release Complete]
-
-    style Start fill:#e1f5ff
-    style End2 fill:#d4edda
-    style Fail1 fill:#f8d7da
-    style Fail2 fill:#f8d7da
-    style End1 fill:#f8d7da
-    style A1 fill:#fff3cd
-```
-
-**Workflow File**: `.github/workflows/publish-pypi.yml`
-
-**Stage Breakdown**:
-
-1. **Sync to Public** (`sync-to-public` job)
-   - Validates `scripts/public_allowlist.txt` matches `config/subscription_tiers.py` (source of truth)
-   - Runs `scripts/sync_to_public.py` to push filtered code to `lobster-local/main`
-   - **Security**: Ensures premium agents (metadata_assistant, proteomics_expert) are excluded
-
-2. **Build Package** (`build-package` job)
-   - Clones `lobster-local` (public repo, NOT private `lobster`)
-   - Builds wheel + sdist via `python -m build`
-   - **Validation**: Scans package contents for private patterns (ms_proteomics_expert, etc.)
-   - Tests installation and imports to verify FREE tier agents only
-
-3. **Publish to TestPyPI** (`publish-testpypi` job)
-   - Uses Trusted Publishing (OIDC) - no API tokens needed
-   - `environment: testpypi` with `id-token: write` permission
-   - Validates package works via test installation
-
-4. **Manual Approval** (`approve-production` job)
-   - `environment: pypi-approval` with required reviewers
-   - 24-hour timeout for human review
-   - Allows testing TestPyPI before production release
-
-5. **Publish to PyPI** (`publish-pypi` job)
-   - Requires `approve-production` success
-   - Uses Trusted Publishing (OIDC)
-   - `environment: pypi` for production
-
-6. **Create GitHub Release** (`create-release` job)
-   - Attaches wheel + sdist to GitHub release
-   - Auto-generated release notes with install instructions
-
-7. **Summary** (`summary` job)
-   - Posts workflow status to GitHub Actions summary
-   - Provides install commands and links
-
-#### Authentication: Trusted Publishing (OIDC)
-
-**Why Trusted Publishing?**
-- No long-lived secrets in GitHub (OIDC-based)
-- PyPI mints short-lived tokens automatically (~15 min)
-- Zero maintenance (no token rotation needed)
-
-**How it works**:
-```
-GitHub Actions → OIDC token → PyPI verification → Short-lived publish token
-```
-
-**Configuration**:
-- PyPI side: Configured at https://pypi.org → Manage → Publishing
-- GitHub side: `permissions: id-token: write` in workflow
-- No GitHub secrets needed for publishing (only `PUBLIC_REPO_DEPLOY_KEY` for sync)
-
-#### Version Management
-
-**Source of Truth**: `lobster/version.py`
-
-**Release Process**:
+**Quick Release**:
 ```bash
-# 1. Update version in lobster/version.py
+# 1. Update lobster/version.py
 __version__ = "0.2.0"
 
-# 2. Commit and push
+# 2. Tag and push
 git add lobster/version.py
 git commit -m "chore: bump version to 0.2.0"
 git push origin main
-
-# 3. Create and push tag (triggers workflow)
 git tag -a v0.2.0 -m "Release 0.2.0"
-git push origin v0.2.0
+git push origin v0.2.0  # Triggers 7-stage pipeline
 ```
 
-**setuptools-scm** reads git tags for dynamic versioning in builds.
+**Pipeline**: Sync → Build → TestPyPI → Manual Approval → PyPI → Release → Summary
 
-#### Security Model
+**Security**: Allowlist validation (`subscription_tiers.py` → `public_allowlist.txt`), private code detection, import tests.
 
-**Allowlist Validation** (enforced in CI):
-```
-subscription_tiers.py (SOURCE OF TRUTH)
-         ↓
-  scripts/generate_allowlist.py --validate
-         ↓
-  scripts/public_allowlist.txt (DERIVED)
-         ↓
-  scripts/sync_to_public.py
-         ↓
-lobster-local (PUBLIC) → PyPI (lobster-ai)
-```
-
-**Private Code Detection**:
-- `build-package` job scans wheel for excluded patterns
-- Fails build if private agents/services detected
-- Imports test: `from lobster.agents import ms_proteomics_expert` must fail
-
-**What's Excluded**:
-- Premium agents: metadata_assistant, proteomics_expert, custom_feature_agent
-- Premium services: proteomics_*, publication_processing_service
-- Infrastructure: CDK stacks, server code, docker-compose
-- Internal docs: CLAUDE.md sections, internal templates
-
-**Documentation**:
-- **Setup Guide**: `docs/PYPI_SETUP_GUIDE.md` (first-time setup, authentication methods)
-- **Release Summary**: `docs/PYPI_RELEASE_SUMMARY.md` (quick reference, workflow details)
-- **Workflow**: `.github/workflows/publish-pypi.yml` (7-stage automated pipeline)
+**Full details**: `docs/PYPI_SETUP_GUIDE.md`, `docs/PYPI_RELEASE_SUMMARY.md`, `.github/workflows/publish-pypi.yml`
 
 ---
 

@@ -70,6 +70,14 @@ class Settings:
         # Multi-key support for parallelization (NCBI_API_KEY_1, NCBI_API_KEY_2, etc.)
         self._ncbi_api_keys = self._load_ncbi_api_keys()
 
+        # Ollama settings (local LLM support)
+        self.OLLAMA_BASE_URL = os.environ.get(
+            "OLLAMA_BASE_URL", "http://localhost:11434"
+        )
+        self.OLLAMA_DEFAULT_MODEL = os.environ.get(
+            "OLLAMA_DEFAULT_MODEL", "llama3:8b-instruct"
+        )
+
         # Git automation settings (for sync scripts and CI/CD)
         self.GIT_USER_NAME = os.environ.get("GIT_USER_NAME", "")
         self.GIT_USER_EMAIL = os.environ.get("GIT_USER_EMAIL", "")
@@ -105,6 +113,8 @@ class Settings:
         """Detect which LLM provider to use based on available credentials."""
         if os.environ.get("LOBSTER_LLM_PROVIDER"):
             return os.environ.get("LOBSTER_LLM_PROVIDER")
+        elif os.environ.get("OLLAMA_BASE_URL"):
+            return "ollama"
         elif self.ANTHROPIC_API_KEY:
             return "anthropic"
         elif self.AWS_BEDROCK_ACCESS_KEY and self.AWS_BEDROCK_SECRET_ACCESS_KEY:

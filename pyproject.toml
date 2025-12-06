@@ -105,11 +105,13 @@ dependencies = [
     "docling-core>=2.50.0",
     "redis>=6.4.0",
     "pysradb>=2.5.1",
-    # Custom Feature Agent (META-AGENT for code generation)
-    "claude-agent-sdk>=0.1.0", # Claude Code SDK for programmatic agent creation
     "linkup>=0.1.0", # Linkup SDK for web research (GitHub repos, packages, best practices)
     "rispy>=0.10.0",
     "cloudscraper>=1.2.71",
+    "langchain-core>=0.3.79",
+    "textual>=6.7.1",
+    "langchain-ollama>=0.3.10",
+    "rapidfuzz>=3.14.3",
 ]
 
 [project.optional-dependencies]

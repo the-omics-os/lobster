@@ -214,8 +214,15 @@ class NCBIRateLimiter:
                 )
                 return False
 
-            # Increment counter
+            # Increment counter and ensure TTL is set (防御性编程: handle keys without TTL)
             self.redis_client.incr(key)
+            # Safeguard: ensure key has proper TTL (in case it was created without one)
+            ttl = self.redis_client.ttl(key)
+            if ttl == -1:  # Key exists but has no expiration
+                logger.warning(
+                    f"Rate limit key {key} exists without TTL, resetting to {self.window_seconds}s"
+                )
+                self.redis_client.expire(key, self.window_seconds)
             return True
 
         except RedisError as e:
@@ -246,8 +253,49 @@ class NCBIRateLimiter:
         """
         start_time = time.time()
         wait_count = 0
+        warning_logged = False
 
-        while not self.check_rate_limit(api_name, user_id):
+        while True:
+            # Check if slot is available (without warning spam)
+            if self.redis_client is None:
+                return True  # Fail open if Redis unavailable
+
+            try:
+                key = f"ratelimit:{api_name}:{user_id}"
+                current = self.redis_client.get(key)
+
+                if current is None:
+                    # First request in this window
+                    self.redis_client.setex(key, self.window_seconds, 1)
+                    return True
+
+                current_count = int(current)
+                if current_count < self.rate_limit:
+                    # Slot available - increment and return
+                    self.redis_client.incr(key)
+                    # Safeguard: ensure key has proper TTL
+                    ttl = self.redis_client.ttl(key)
+                    if ttl == -1:
+                        logger.warning(
+                            f"Rate limit key {key} exists without TTL, resetting to {self.window_seconds}s"
+                        )
+                        self.redis_client.expire(key, self.window_seconds)
+                    return True
+
+                # Rate limit exceeded - log warning once and wait
+                if not warning_logged:
+                    logger.warning(
+                        f"Rate limit exceeded for {api_name} by {user_id}: "
+                        f"{current_count}/{self.rate_limit} requests. "
+                        f"Waiting for rate limit window to reset..."
+                    )
+                    warning_logged = True
+
+            except Exception as e:
+                logger.error(f"Error checking rate limit: {e}")
+                return True  # Fail open on error
+
+            # Check timeout
             elapsed = time.time() - start_time
             if elapsed >= max_wait:
                 logger.error(
@@ -594,6 +642,13 @@ class MultiDomainRateLimiter:
                 return False
 
             self.redis_client.incr(key)
+            # Safeguard: ensure key has proper TTL
+            ttl = self.redis_client.ttl(key)
+            if ttl == -1:
+                logger.warning(
+                    f"Multi-domain rate limit key {key} exists without TTL, resetting to 1s"
+                )
+                self.redis_client.expire(key, 1)
             return True
 
         except Exception as e:

@@ -15,6 +15,7 @@
 - [🚀 Installation](#-installation)
 - [🔬 Literature Mining & Metadata](#-literature-mining--metadata)
 - [🔧 Configuration](#-configuration)
+- [🏠 Local LLM Support](#-local-llm-support-new)
 - [⭐ Premium Features](#-premium-features)
 - [🗓️ Roadmap](#-roadmap)
 - [📚 Documentation](#-documentation)
@@ -378,6 +379,77 @@ lobster init --non-interactive --bedrock-access-key=xxx --bedrock-secret-key=yyy
 ```
 
 **Complete configuration guide:** [wiki/03-configuration.md](https://github.com/the-omics-os/lobster-local/wiki/03-configuration)
+
+## 🏠 Local LLM Support (New!)
+
+Run Lobster AI **completely locally** with Ollama - no cloud dependencies, no API costs, complete privacy.
+
+### Quick Start with Ollama
+
+```bash
+# 1. Install Ollama (one-time setup)
+curl -fsSL https://ollama.com/install.sh | sh
+
+# 2. Pull a model (one-time, ~4GB download)
+ollama pull llama3:8b-instruct
+
+# 3. Set environment variable
+export LOBSTER_LLM_PROVIDER=ollama
+
+# 4. Run Lobster - now 100% local!
+lobster chat
+```
+
+### Why Use Local LLMs?
+
+| Advantage | Description |
+|-----------|-------------|
+| ✅ **Zero API Costs** | No per-token charges |
+| ✅ **Complete Privacy** | Data never leaves your machine |
+| ✅ **No Rate Limits** | Use as much as you want |
+| ✅ **Offline Capable** | Works without internet |
+
+### Model Recommendations
+
+| Model | RAM Required | Best For |
+|-------|--------------|----------|
+| `llama3:8b-instruct` | 8-16GB | Testing, light analysis |
+| `mixtral:8x7b-instruct` | 24-32GB | Production workflows |
+| `llama3:70b-instruct` | 48GB VRAM | Maximum quality (requires GPU) |
+
+### Configuration Options
+
+```bash
+# Use Ollama (explicit)
+export LOBSTER_LLM_PROVIDER=ollama
+
+# Optional: Specify model
+export OLLAMA_DEFAULT_MODEL=mixtral:8x7b-instruct
+
+# Optional: Custom Ollama server
+export OLLAMA_BASE_URL=http://localhost:11434
+```
+
+### Switching Between Cloud and Local
+
+```bash
+# Use local LLMs (Ollama)
+export LOBSTER_LLM_PROVIDER=ollama
+lobster chat
+
+# Use cloud LLMs (Bedrock/Anthropic)
+unset LOBSTER_LLM_PROVIDER  # Auto-detects based on API keys
+lobster chat
+```
+
+**Hardware Requirements:**
+- Laptop (16GB RAM): Use `llama3:8b-instruct`
+- Workstation (32-64GB RAM): Use `mixtral:8x7b-instruct`
+- Server with GPU (48GB+ VRAM): Use `llama3:70b-instruct`
+
+**Trade-offs:** Local models (<70B parameters) offer privacy and zero costs but may require more prompt engineering compared to Claude. For critical production workflows, cloud models may still be preferred. For exploratory work or privacy-sensitive data, local models are excellent.
+
+**Resources:** [Ollama docs](https://github.com/ollama/ollama) | [Model library](https://ollama.com/library) | [Troubleshooting](#troubleshooting-local-llms)
 
 ## ⭐ Premium Features
 

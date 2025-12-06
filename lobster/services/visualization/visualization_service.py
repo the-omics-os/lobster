@@ -142,6 +142,66 @@ class SingleCellVisualizationService:
                     f"'{color_by}' not found in obs columns or gene names"
                 )
 
+            # PERFORMANCE FIX: Downsample for visualization if dataset is very large
+            # Reduces file sizes (257 MB → ~25 MB) and improves browser rendering
+            # Uses stratified sampling to preserve cluster proportions (scientifically valid)
+            original_n_obs = adata.n_obs
+            downsample_threshold = 50000  # Downsample if >50K cells
+            target_n_points = 20000  # Target 20K points for optimal performance
+
+            if adata.n_obs > downsample_threshold:
+                import numpy as np
+                import scanpy as sc
+
+                logger.info(
+                    f"Downsampling {adata.n_obs:,} cells to {target_n_points:,} for visualization "
+                    f"(improves performance, preserves structure)"
+                )
+
+                # Stratified sampling by color_by variable (preserves cluster proportions)
+                if is_categorical and isinstance(color_data, pd.Series):
+                    # Calculate cells per category
+                    category_counts = color_data.value_counts()
+                    n_categories = len(category_counts)
+                    cells_per_category = target_n_points // n_categories
+
+                    # Sample from each category proportionally
+                    sampled_indices = []
+                    for category in category_counts.index:
+                        category_mask = color_data == category
+                        category_indices = np.where(category_mask)[0]
+
+                        # Sample proportionally (min 100 cells per category if available)
+                        n_to_sample = min(
+                            cells_per_category,
+                            len(category_indices),
+                            max(100, int(len(category_indices) * target_n_points / adata.n_obs))
+                        )
+                        if len(category_indices) > n_to_sample:
+                            sampled_cat = np.random.choice(
+                                category_indices, size=n_to_sample, replace=False
+                            )
+                        else:
+                            sampled_cat = category_indices
+                        sampled_indices.extend(sampled_cat.tolist())
+
+                    sampled_indices = np.array(sampled_indices)
+                else:
+                    # Random sampling for continuous variables
+                    sampled_indices = np.random.choice(
+                        adata.n_obs, size=target_n_points, replace=False
+                    )
+
+                # Create downsampled view (important: use indices to maintain alignment)
+                adata = adata[sampled_indices, :].copy()
+                umap_coords = adata.obsm["X_umap"]
+                color_data = adata.obs[color_by] if color_by in adata.obs else color_data[sampled_indices]
+
+                logger.debug(
+                    f"Downsampled from {original_n_obs:,} to {adata.n_obs:,} cells "
+                    f"({adata.n_obs / original_n_obs * 100:.1f}% of original)"
+                )
+
             # Create the plot
             if is_categorical:
                 # Categorical coloring

@@ -55,6 +55,7 @@ class AgentClient(BaseClient):
         workspace_path: Optional[Path] = None,
         custom_callbacks: Optional[List] = None,
         manual_model_params: Optional[Dict[str, Any]] = None,
+        provider_override: Optional[str] = None,
     ):
         """
         Initialize the agent client with DataManagerV2.
@@ -68,6 +69,7 @@ class AgentClient(BaseClient):
                 Resolution order: explicit path > LOBSTER_WORKSPACE env var > cwd/.lobster_workspace
             custom_callbacks: Additional callback handlers
             manual_model_params: Manual model parameter overrides
+            provider_override: Optional explicit provider name (e.g., "bedrock", "anthropic", "ollama")
         """
         # Set up session
         self.session_id = (
@@ -98,6 +100,9 @@ class AgentClient(BaseClient):
         self._publication_queue_ref = None
         self._publication_queue_unavailable = False
 
+        # Store provider override for runtime switching
+        self.provider_override = provider_override
+
         # Set up callbacks
         self.callbacks = []
 
@@ -121,6 +126,7 @@ class AgentClient(BaseClient):
             store=self.store,
             callback_handler=self.callbacks,  # Pass the list of callbacks
             manual_model_params=manual_model_params,  # Placeholder for future manual model params
+            provider_override=provider_override,  # Pass provider override to graph
         )
 
         # Conversation state
@@ -1878,6 +1884,83 @@ class AgentClient(BaseClient):
             Dictionary with session totals, per-agent breakdown, and invocation log
         """
         return self.token_tracker.get_usage_summary()
+
+    def switch_provider(self, provider_name: str) -> Dict[str, Any]:
+        """
+        Switch LLM provider at runtime and recreate the agent graph.
+
+        Args:
+            provider_name: Provider to switch to ("bedrock", "anthropic", "ollama")
+
+        Returns:
+            Dictionary with success status and message
+        """
+        from lobster.config.llm_factory import LLMFactory, LLMProvider
+
+        try:
+            # Validate provider
+            try:
+                provider = LLMProvider(provider_name)
+            except ValueError:
+                valid_providers = ", ".join([p.value for p in LLMProvider])
+                return {
+                    "success": False,
+                    "error": f"Invalid provider '{provider_name}'. Valid options: {valid_providers}",
+                }
+
+            # Check if provider is configured
+            available_providers = LLMFactory.get_available_providers()
+            if provider_name not in available_providers:
+                return {
+                    "success": False,
+                    "error": f"Provider '{provider_name}' is not configured. Available: {', '.join(available_providers)}",
+                    "hint": "Run 'lobster init' to configure providers",
+                }
+
+            # Store old provider for rollback
+            old_provider = self.provider_override
+
+            # Update provider override
+            self.provider_override = provider_name
+
+            # Recreate graph with new provider
+            try:
+                self.graph = create_bioinformatics_graph(
+                    data_manager=self.data_manager,
+                    checkpointer=self.checkpointer,
+                    store=self.store,
+                    callback_handler=self.callbacks,
+                    provider_override=provider_name,
+                )
+
+                logger.info(f"Successfully switched to provider: {provider_name}")
+                return {
+                    "success": True,
+                    "provider": provider_name,
+                    "message": f"Switched to {provider_name} provider",
+                }
+            except Exception as e:
+                # Rollback on failure
+                self.provider_override = old_provider
+                self.graph = create_bioinformatics_graph(
+                    data_manager=self.data_manager,
+                    checkpointer=self.checkpointer,
+                    store=self.store,
+                    callback_handler=self.callbacks,
+                    provider_override=old_provider,
+                )
+                return {
+                    "success": False,
+                    "error": f"Failed to switch provider: {str(e)}",
+                    "provider": old_provider,
+                }
+
+        except Exception as e:
+            logger.error(f"Provider switch failed: {e}")
+            return {
+                "success": False,
+                "error": f"Unexpected error: {str(e)}",
+            }
 
     def reset(self):
         """Reset the conversation state."""

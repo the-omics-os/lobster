@@ -303,6 +303,10 @@ class DataManagerV2:
         self._register_default_backends()
         self._register_default_adapters()
 
+        # BUG009 FIX: Auto-load existing modalities from workspace (session persistence)
+        if auto_scan:
+            self._auto_load_modalities()
+
         logger.debug(f"Initialized DataManagerV2 with workspace: {self.workspace_path}")
 
     def _get_queues_dir(self) -> Path:
@@ -412,6 +416,83 @@ class DataManagerV2:
             self.register_adapter(
                 "proteomics_affinity",
                 ProteomicsAdapter(data_type="affinity", strict_validation=False),
+            )
+
+    def _auto_load_modalities(self) -> None:
+        """
+        Auto-load existing H5AD modalities from workspace data directory.
+
+        BUG009 FIX: Enables session persistence by loading previously saved modalities
+        when DataManagerV2 is initialized. This allows users to continue multi-step
+        workflows across separate lobster query/chat sessions.
+
+        Behavior:
+        - Scans workspace/data/ directory for .h5ad files
+        - Loads each file into self.modalities dict (key = filename without extension)
+        - Skips files >2GB (memory safety - user must explicitly load large files)
+        - Silently skips corrupted/incompatible files (logs warning)
+        - Performance: Lazy loading on __init__ (happens once per session)
+
+        Example:
+            Session 1: lobster query "Analyze GSE123, create filtered modality"
+                       → Saves: workspace/data/gse123_filtered.h5ad
+            Session 2: lobster query "Cluster the filtered GSE123 data"
+                       → Auto-loads: gse123_filtered from workspace
+                       → Analysis continues seamlessly
+        """
+        if not self.data_dir.exists():
+            return
+
+        h5ad_files = list(self.data_dir.glob("*.h5ad"))
+        if not h5ad_files:
+            return
+
+        logger.info(f"Auto-loading {len(h5ad_files)} existing modalities from workspace...")
+
+        loaded_count = 0
+        skipped_large = 0
+
+        for h5ad_file in h5ad_files:
+            try:
+                # Safety: Skip very large files (>2GB) - user must explicitly load
+                file_size_gb = h5ad_file.stat().st_size / (1024 ** 3)
+                if file_size_gb > 2.0:
+                    skipped_large += 1
+                    logger.debug(
+                        f"Skipped large file {h5ad_file.name} ({file_size_gb:.1f} GB > 2GB threshold). "
+                        f"Use load_modality tool to explicitly load if needed."
+                    )
+                    continue
+
+                modality_name = h5ad_file.stem  # Filename without .h5ad extension
+
+                # Skip if modality already exists (prevent overwriting)
+                if modality_name in self.modalities:
+                    logger.debug(f"Modality '{modality_name}' already loaded, skipping")
+                    continue
+
+                # Load AnnData object
+                import anndata
+                adata = anndata.read_h5ad(h5ad_file)
+                self.modalities[modality_name] = adata
+
+                loaded_count += 1
+                logger.debug(
+                    f"Auto-loaded '{modality_name}': {adata.n_obs} obs × {adata.n_vars} vars"
+                )
+
+            except Exception as e:
+                logger.warning(
+                    f"Failed to auto-load {h5ad_file.name}: {e}. "
+                    f"File may be corrupted or require manual loading."
+                )
+                continue
+
+        if loaded_count > 0:
+            logger.info(f"✅ Auto-loaded {loaded_count} modalities from workspace")
+        if skipped_large > 0:
+            logger.info(
+                f"Skipped {skipped_large} large files (>2GB). Use load_modality tool to load explicitly."
             )
 
     @property

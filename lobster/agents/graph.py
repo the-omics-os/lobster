@@ -62,6 +62,7 @@ def create_bioinformatics_graph(
     supervisor_config: Optional[SupervisorConfig] = None,
     subscription_tier: str = None,
     agent_filter: callable = None,
+    provider_override: Optional[str] = None,
 ):
     """Create the bioinformatics multi-agent graph using langgraph_supervisor.
 
@@ -77,6 +78,7 @@ def create_bioinformatics_graph(
             available and which handoffs are allowed.
         agent_filter: Optional callable(agent_name, agent_config) -> bool to filter
             which agents are included in the graph. Used for tier-based restrictions.
+        provider_override: Optional explicit provider name (e.g., "bedrock", "anthropic", "ollama")
 
     Note: When invoking this graph, set the recursion_limit in the config to prevent
     hitting the default limit of 25. Example:
@@ -110,7 +112,7 @@ def create_bioinformatics_graph(
     else:
         model_params = settings.get_agent_llm_params("supervisor")
 
-    supervisor_model = create_llm("supervisor", model_params)
+    supervisor_model = create_llm("supervisor", model_params, provider_override=provider_override)
 
     if callback_handler and hasattr(supervisor_model, "with_config"):
         supervisor_model = supervisor_model.with_config(callbacks=[callback_handler])
@@ -160,11 +162,13 @@ def create_bioinformatics_graph(
             "agent_name": agent_config.name,
         }
 
-        # Pass subscription_tier to factories that support it
+        # Pass optional parameters to factories that support them
         # (determined by inspecting function signature)
         sig = inspect.signature(factory_function)
         if "subscription_tier" in sig.parameters:
             factory_kwargs["subscription_tier"] = subscription_tier
+        if "provider_override" in sig.parameters:
+            factory_kwargs["provider_override"] = provider_override
 
         # Create agent WITHOUT delegation tools first
         agent = factory_function(**factory_kwargs)
@@ -233,7 +237,7 @@ def create_bioinformatics_graph(
             # Re-create the parent agent WITH delegation tools
             factory_function = import_agent_factory(agent_config.factory_function)
 
-            # Build kwargs including subscription_tier if supported
+            # Build kwargs including optional parameters if supported
             factory_kwargs = {
                 "data_manager": data_manager,
                 "callback_handler": callback_handler,
@@ -243,6 +247,8 @@ def create_bioinformatics_graph(
             sig = inspect.signature(factory_function)
             if "subscription_tier" in sig.parameters:
                 factory_kwargs["subscription_tier"] = subscription_tier
+            if "provider_override" in sig.parameters:
+                factory_kwargs["provider_override"] = provider_override
 
             new_agent = factory_function(**factory_kwargs)
 

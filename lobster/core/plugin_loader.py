@@ -100,7 +100,7 @@ def discover_plugins() -> Dict[str, Any]:
                 discovered_agents.update(registry)
                 logger.info(f"Loaded {len(registry)} custom agents from {pkg_name}")
             else:
-                logger.warning(f"Package {pkg_name} has no CUSTOM_REGISTRY export")
+                logger.debug(f"Package {pkg_name} has no CUSTOM_REGISTRY export")
 
         except ImportError as e:
             logger.warning(f"Custom package {pkg_name} not installed: {e}")
