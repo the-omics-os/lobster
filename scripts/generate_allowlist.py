@@ -232,6 +232,7 @@ lobster/config/agent_config.py
 lobster/config/agent_registry.py
 lobster/config/agent_capabilities.py
 lobster/config/llm_factory.py
+lobster/config/provider_setup.py
 lobster/config/supervisor_config.py
 lobster/config/README_CONFIGURATION.md
 lobster/config/README_THINKING.md
