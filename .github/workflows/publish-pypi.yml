@@ -222,6 +222,7 @@ jobs:
     needs: [build-package]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event.inputs.environment == 'testpypi'
+    continue-on-error: true  # Don't block PyPI release if TestPyPI fails
     environment:
       name: testpypi
       url: https://test.pypi.org/project/${{ env.PACKAGE_NAME }}/
@@ -293,7 +294,7 @@ jobs:
     name: Approve Production Release
     needs: [publish-testpypi]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event.inputs.environment == 'pypi'
     environment:
       name: pypi-approval
     timeout-minutes: 1440  # 24 hours for manual approval
