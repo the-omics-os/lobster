@@ -180,7 +180,7 @@ class TestModelTranslation:
         translated = LLMFactory._translate_model_id(
             bedrock_id, LLMProvider.ANTHROPIC_DIRECT
         )
-        assert translated == "claude-3-5-sonnet-20241022"
+        assert translated == "claude-sonnet-4-5-20250929"
 
     def test_translate_unknown_model_fallback(self):
         """Test fallback for unknown model ID."""
@@ -260,7 +260,9 @@ class TestConvenienceFunction:
 
         create_llm(agent_name, model_params)
 
-        mock_factory_create.assert_called_once_with(model_params, agent_name)
+        mock_factory_create.assert_called_once_with(
+            model_params, agent_name, provider_override=None
+        )
 
 
 class TestBackwardCompatibility:
