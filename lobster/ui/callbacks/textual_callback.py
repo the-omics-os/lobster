@@ -502,3 +502,4 @@ class TextualCallbackHandler(BaseCallbackHandler):
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.total_tokens = 0
+        self.total_cost = 0.0
