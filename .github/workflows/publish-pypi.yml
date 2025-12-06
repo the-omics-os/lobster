@@ -125,6 +125,21 @@ jobs:
         echo "Inspecting wheel contents..."
         unzip -l dist/*.whl | head -100
 
+    - name: Verify package size
+      working-directory: lobster-local
+      run: |
+        SIZE=$(du -sm dist/*.whl | cut -f1)
+        echo "📦 Package size: ${SIZE}MB"
+
+        if [ $SIZE -gt 500 ]; then
+          echo "❌ ERROR: Package too large (${SIZE}MB > 500MB)"
+          echo "This may indicate CUDA dependencies were included by mistake."
+          echo "Expected size: <200MB for CPU-only package"
+          exit 1
+        else
+          echo "✅ Package size is reasonable (${SIZE}MB < 500MB)"
+        fi
+
     - name: Verify no private code in package
       working-directory: lobster-local
       run: |

@@ -207,6 +207,22 @@ lobster config show   # Display current configuration (secrets masked)
 - **AWS Bedrock**: https://aws.amazon.com/bedrock/
 - **NCBI API** (optional): https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/
 
+### Optional: Machine Learning Features (PREMIUM)
+
+Lobster's core features work out of the box. For advanced machine learning capabilities (deep learning embeddings, scVI integration), install the ML extras:
+
+```bash
+# Install with ML features (adds PyTorch + scVI-tools)
+pip install lobster-ai[ml]
+```
+
+**What's included:**
+- ✅ **scVI integration**: Deep learning-based dimensionality reduction and batch correction
+- ✅ **GPU acceleration**: Automatic CUDA/MPS detection for faster training
+- ✅ **Advanced embeddings**: State-of-the-art single-cell embeddings
+
+**Note**: ML extras add ~500MB of dependencies. Most users don't need this - the standard installation covers all common bioinformatics workflows.
+
 **Advanced: Manual Configuration**
 
 If you prefer, you can manually create a `.env` file in your working directory:
@@ -441,6 +457,55 @@ lobster chat
 unset LOBSTER_LLM_PROVIDER  # Auto-detects based on API keys
 lobster chat
 ```
+
+### Running Multiple Sessions with Different Providers
+
+**Use Case:** Test the same analysis with different LLM providers simultaneously, or use local for development and cloud for production.
+
+**Method 1: Different Terminals (Easiest)**
+```bash
+# Terminal 1: Local development with Ollama
+export LOBSTER_LLM_PROVIDER=ollama
+cd ~/project1
+lobster chat
+
+# Terminal 2: Production with Claude (simultaneously)
+export LOBSTER_LLM_PROVIDER=anthropic
+cd ~/project2
+lobster chat
+
+# Terminal 3: Enterprise with Bedrock
+export LOBSTER_LLM_PROVIDER=bedrock
+cd ~/project3
+lobster chat
+```
+
+**Method 2: Per-Command Override (Coming Soon)**
+```bash
+# Future: CLI flag support
+lobster chat --provider ollama    # Use Ollama for this session
+lobster query --provider anthropic "Analyze data"  # Use Claude for this query
+```
+
+**Method 3: Workspace-Specific Configuration (Coming Soon)**
+```bash
+# Each workspace can have its own provider
+cd project1/.lobster_workspace/
+# config.json specifies "ollama"
+
+cd project2/.lobster_workspace/
+# config.json specifies "anthropic"
+```
+
+**Current Best Practice:**
+- Use separate terminal windows/tabs with different `LOBSTER_LLM_PROVIDER` env vars
+- Each terminal maintains its own provider configuration
+- Environment variables are terminal-specific (don't interfere with each other)
+
+**Provider Selection Priority:**
+1. Explicit `LOBSTER_LLM_PROVIDER` environment variable
+2. Auto-detection: Ollama (if running) → Anthropic API → Bedrock
+3. Default: Fails with helpful error message
 
 **Hardware Requirements:**
 - Laptop (16GB RAM): Use `llama3:8b-instruct`

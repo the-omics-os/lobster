@@ -156,7 +156,7 @@ class StatusBar(Horizontal):
         min-height: 1;
         dock: top;
         padding: 0 1;
-        background: $accent 20%;
+        background: transparent;
     }
 
     StatusBar > StatusSegment {

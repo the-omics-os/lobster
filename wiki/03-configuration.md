@@ -56,18 +56,50 @@ Details on these variables are provided in the sections below.
 
 ## API Key Management
 
-Lobster AI supports multiple LLM providers with automatic detection. Choose ONE of the following providers:
+Lobster AI supports **three LLM providers**: two cloud-based and one local. Choose the provider that best fits your needs:
 
-### Claude API (Recommended for Simplicity)
+### Ollama (Local) - NEW! 🏠
 
-**Best for**: Quick testing, simple setup.
+**Best for**: Privacy, zero API costs, offline work, development without cloud dependencies.
+
+**Requirements**: 8-48GB RAM depending on model size.
+
+**Setup:**
+```bash
+# 1. Install Ollama (one-time)
+curl -fsSL https://ollama.com/install.sh | sh
+
+# 2. Pull a model (one-time)
+ollama pull llama3:8b-instruct
+
+# 3. Configure Lobster
+lobster init  # Select option 3 (Ollama)
+# Or manually:
+export LOBSTER_LLM_PROVIDER=ollama
+```
+
+**Configuration:**
+```env
+LOBSTER_LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434  # Optional: default
+OLLAMA_DEFAULT_MODEL=llama3:8b-instruct  # Optional: default
+```
+
+**Model Recommendations:**
+- `llama3:8b-instruct` - Fast, good for testing (8GB RAM)
+- `mixtral:8x7b-instruct` - Better quality (26GB RAM)
+- `llama3:70b-instruct` - Maximum quality (48GB VRAM, requires GPU)
+
+### Claude API (Cloud)
+
+**Best for**: Quick testing, simple setup, best quality.
 
 **Configuration:**
 ```env
 ANTHROPIC_API_KEY=sk-ant-api03-xxxxx
 ```
 
-### AWS Bedrock Access (Recommended for Production)
+### AWS Bedrock (Cloud)
 
 **Best for**: Production use, enterprise compliance, higher rate limits.
 
@@ -80,14 +112,18 @@ AWS_REGION=us-east-1  # Optional: defaults to us-east-1
 
 ### Provider Auto-Detection
 
-Lobster AI automatically detects which provider to use based on available environment variables in this order:
-1.  `LOBSTER_LLM_PROVIDER` environment variable (`anthropic` or `bedrock`).
-2.  Presence of `ANTHROPIC_API_KEY`.
-3.  Presence of `AWS_BEDROCK_ACCESS_KEY` and `AWS_BEDROCK_SECRET_ACCESS_KEY`.
+Lobster AI automatically detects which provider to use based on available configuration in this priority order:
 
-You can force a specific provider with:
+1. **Explicit override**: `LOBSTER_LLM_PROVIDER` environment variable
+2. **Ollama detection**: If Ollama server is running (http://localhost:11434)
+3. **Anthropic API**: If `ANTHROPIC_API_KEY` is set
+4. **AWS Bedrock**: If `AWS_BEDROCK_ACCESS_KEY` and `AWS_BEDROCK_SECRET_ACCESS_KEY` are set
+
+**Force a specific provider:**
 ```env
-LOBSTER_LLM_PROVIDER=anthropic  # or "bedrock"
+LOBSTER_LLM_PROVIDER=ollama      # Local LLM
+LOBSTER_LLM_PROVIDER=anthropic   # Claude API
+LOBSTER_LLM_PROVIDER=bedrock     # AWS Bedrock
 ```
 
 ### NCBI API Key (Optional)

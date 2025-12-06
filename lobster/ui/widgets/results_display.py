@@ -76,6 +76,16 @@ class ResultsDisplay(VerticalScroll):
         if self.scroll_offset.y >= self.max_scroll_y - 3:
             self.scroll_end(animate=False)
 
+    def append_system_message(self, content: str) -> None:
+        """Add system/command output message."""
+        message = ChatMessage(content, is_user=False)
+        message.add_class("system-message")
+        self.mount(message)
+
+        # Auto-scroll
+        if self.scroll_offset.y >= self.max_scroll_y - 3:
+            self.scroll_end(animate=False)
+
     def clear_display(self) -> None:
         """Clear all messages."""
         # Remove all ChatMessage children

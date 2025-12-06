@@ -9,12 +9,12 @@ embeddings for single-cell RNA-seq data.
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-import scvi
-
 # Import GPU detector without ML dependencies
 from lobster.tools.gpu_detector import GPUDetector, format_installation_message
 
 logger = logging.getLogger(__name__)
+
+# scvi imported conditionally in methods (optional dependency)
 
 
 class ScviEmbeddingService:
@@ -56,17 +56,20 @@ class ScviEmbeddingService:
         """
         if not self.availability_info["ready_for_scvi"]:
             message = self.get_installation_message()
-            raise ImportError(f"scVI dependencies not available.\n{message}")
+            raise ImportError(
+                f"scVI dependencies not available.\n{message}\n"
+                f"Install ML extras with: pip install lobster-ai[ml]"
+            )
 
         try:
             import torch
+            import scvi
 
             return torch
         except ImportError as e:
-            hardware_rec = self.availability_info["hardware_recommendation"]
             raise ImportError(
                 f"Failed to import scVI dependencies: {e}\n"
-                f"Try installing with: {hardware_rec['command']}"
+                f"Install ML extras with: pip install lobster-ai[ml]"
             )
 
     def setup_device(self, force_cpu: bool = False) -> str:
@@ -143,6 +146,9 @@ class ScviEmbeddingService:
 
         # Prepare data for scVI
         logger.info("Setting up scVI data...")
+
+        # Import scvi module (already validated by _import_scvi_dependencies)
+        import scvi
 
         # Setup AnnData for scVI
         scvi.model.SCVI.setup_anndata(

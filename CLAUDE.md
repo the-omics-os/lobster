@@ -403,14 +403,14 @@ lobster-local (PUBLIC PACKAGE)
 
 ### 4.1 Hard Rules (non‑negotiable)
 
-1. **Do NOT edit `pyproject.toml`** – all dependency changes go through humans.  
-2. **Prefer editing existing files** over adding new ones.  
-3. **Use `config/agent_registry.py`** for agents – do not hand‑edit `graph.py` with new agents.  
-4. **Keep services stateless**: pure functions on `AnnData` / data + 3‑tuple return.  
-5. **Use professional modality naming** (see 4.6).  
-6. **Ensure both local and cloud clients work** (CLI must behave identically).  
-7. **Preserve CLI backward compatibility** where reasonable.  
-8. **Maintain scientific correctness** – no “quick hacks” that break analysis rigor.
+1. **Do NOT edit `pyproject.toml`** – all dependency changes go through humans. **Exception**: ML extras (`torch`, `scvi-tools`) are now optional (PREMIUM tier). Install with `pip install lobster-ai[ml]`.
+2. **Prefer editing existing files** over adding new ones.
+3. **Use `config/agent_registry.py`** for agents – do not hand‑edit `graph.py` with new agents.
+4. **Keep services stateless**: pure functions on `AnnData` / data + 3‑tuple return.
+5. **Use professional modality naming** (see 4.6).
+6. **Ensure both local and cloud clients work** (CLI must behave identically).
+7. **Preserve CLI backward compatibility** where reasonable.
+8. **Maintain scientific correctness** – no "quick hacks" that break analysis rigor.
 
 ### 4.2 Service Pattern (3‑tuple)
 
@@ -773,6 +773,7 @@ Lobster supports FREE, PREMIUM, and ENTERPRISE tiers. Features/agents can be gat
 | Language | Python 3.11+ (typing, async/await) |
 | Data structures | AnnData, MuData |
 | Bioinformatics | Scanpy, PyDESeq2 |
+| ML (optional) | **PyTorch, scVI-tools** (install with `pip install lobster-ai[ml]`) |
 | CLI | Typer, Rich, prompt_toolkit |
 | Visualization | Plotly |
 | Storage | H5AD, HDF5, JSONL, S3 backends |

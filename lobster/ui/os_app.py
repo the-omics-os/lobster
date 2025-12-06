@@ -2,6 +2,7 @@
 LobsterOS - Minimal terminal UI for Lobster bioinformatics platform.
 
 Design: Terminal-native, transparent backgrounds, minimal color palette.
+Press Ctrl+P to open command palette.
 """
 
 from pathlib import Path
@@ -13,6 +14,7 @@ from textual.binding import Binding
 from lobster.core.client import AgentClient
 from lobster.core.workspace import resolve_workspace
 from lobster.ui.screens import AnalysisScreen
+from lobster.ui.commands import LobsterCommands
 
 
 class LobsterOS(App):
@@ -23,14 +25,14 @@ class LobsterOS(App):
     - Transparent backgrounds (inherit terminal theme)
     - Single accent color (orange) for active/important elements
     - Clean borders, no visual noise
+
+    Press Ctrl+P to open command palette with all available commands.
     """
 
     # Minimal design - transparent, terminal-native
     CSS = """
     * {
-        scrollbar-size: 1;
-        scrollbar-size-vertical: 1;
-        scrollbar-size-horizontal: 1;
+        scrollbar-size: 1 1;
     }
 
     Screen {
@@ -39,20 +41,18 @@ class LobsterOS(App):
 
     Header {
         background: transparent;
-        color: $text;
     }
 
     Footer {
         background: transparent;
     }
-
-    /* Accent color for active elements only */
-    .active, .processing {
-        color: #e45c47;
-    }
     """
 
+    # Register command providers for Ctrl+P palette
+    COMMANDS = {LobsterCommands}
+
     BINDINGS = [
+        Binding("ctrl+p", "command_palette", "Commands", key_display="^P"),
         Binding("q", "quit", "Quit", key_display="Q"),
         Binding("f5", "refresh", "Refresh", key_display="F5"),
     ]

@@ -91,9 +91,6 @@ dependencies = [
     "scanpy>=1.11.4",
     "pydeseq2>=0.5.2",
     "prompt-toolkit>=3.0.52",
-    "scvi-tools>=1.4.0",
-    # PyTorch support (required by scvi-tools)
-    "torch>=2.0.0",
     "langchain-anthropic>=0.3.20",
     "responses>=0.25.8",
     # Jupyter notebook support for pipeline replay
@@ -115,6 +112,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+ml = [
+    # Machine Learning features (PREMIUM tier only)
+    # Deep learning-based embeddings and batch correction
+    "scvi-tools>=1.4.0",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+]
 dev = [
     # Core testing framework
     "pytest>=7.0.0",
@@ -168,6 +172,11 @@ dev = [
     "tabulate>=0.9.0",
 ]
 all = [
+    # Include ML extras for full development setup
+    "scvi-tools>=1.4.0",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    # Dev tools
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "pytest-xdist>=3.0.0",

@@ -1,139 +1,192 @@
-"""Main analysis screen with multi-panel layout."""
+"""Main analysis screen with cockpit-style layout."""
 
 from typing import Optional
 from functools import partial
 
 from textual.screen import Screen
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, ScrollableContainer
 from textual.widgets import Header, Footer
 from textual.worker import Worker
 from textual.binding import Binding
+from textual import on
 
 from lobster.core.client import AgentClient
 from lobster.core.license_manager import get_current_tier
 from lobster.config.llm_factory import LLMFactory
 from lobster.config.settings import get_settings
-from lobster.ui.widgets import QueryPrompt, ModalityList, ResultsDisplay, PlotPreview, StatusBar
+from lobster.ui.widgets import (
+    QueryPrompt,
+    ModalityList,
+    ResultsDisplay,
+    PlotPreview,
+    StatusBar,
+    SystemInfoPanel,
+    QueuePanel,
+    ConnectionsPanel,
+    AgentsPanel,
+    AdaptersPanel,
+)
 from lobster.ui.widgets.status_bar import get_friendly_model_name
-from textual import on
 from lobster.ui.widgets.modality_list import ModalitySelected
 
 
 class AnalysisScreen(Screen):
     """
-    Main analysis screen with multi-panel layout.
+    Cockpit-style analysis screen - information-dense dashboard.
 
-    Layout:
-    ┌─────────────────────────────────────────────┐
-    │ Header                                      │
-    ├──────────┬──────────────────────┬───────────┤
-    │ Modality │ Results              │ Plot      │
-    │ List     │ (streaming)          │ Preview   │
-    │          ├──────────────────────┤           │
-    │          │ Query Prompt         │           │
-    ├──────────┴──────────────────────┴───────────┤
-    │ Footer (keybindings)                        │
-    └─────────────────────────────────────────────┘
-
-    Features:
-    - Non-blocking query execution (@work)
-    - Live streaming responses
-    - Concurrent operations
-    - Keyboard navigation (Tab to cycle focus)
+    Layout (NASA mission control inspired):
+    ┌─────────────────────────────────────────────────────────────┐
+    │ Header: Lobster OS                                          │
+    ├─────────────────────────────────────────────────────────────┤
+    │ [tier] │ [provider/model] │ [agent status]      [status bar]│
+    ├────────────────┬─────────────────────────┬──────────────────┤
+    │ SYSTEM         │                         │ AGENTS           │
+    │ ● CPU 45%      │     Results             │ ● supervisor     │
+    │ ● MEM 8.2/16GB │     (conversation)      │ ▶ research (act) │
+    │ ● GPU CUDA     │                         │ ● data_expert    │
+    ├────────────────┤                         ├──────────────────┤
+    │ CONNECTIONS    │                         │ MODALITIES       │
+    │ ● GEO  ● SRA   │                         │ ● geo_gse12345   │
+    │ ● PubMed ○PRIDE│                         │ ● rna_filtered   │
+    ├────────────────┤                         ├──────────────────┤
+    │ QUEUES         │                         │ ADAPTERS         │
+    │ Downloads: 2   │                         │ Trans: ●●●●      │
+    │ Papers: 15     ├─────────────────────────┤ Prot:  ●●●       │
+    ├────────────────┤    [Query Prompt]       ├──────────────────┤
+    │                │                         │ PLOTS            │
+    │                │                         │ ○ No plots yet   │
+    ├────────────────┴─────────────────────────┴──────────────────┤
+    │ Footer: ESC Quit │ ^P Commands │ ^L Clear │ F5 Refresh      │
+    └─────────────────────────────────────────────────────────────┘
     """
 
     CSS = """
     AnalysisScreen {
         background: transparent;
-        scrollbar-size-vertical: 1;
     }
 
-    #main-content {
-        height: 1fr;
-    }
-
+    /* Main 3-column layout */
     #main-panels {
         height: 1fr;
     }
 
-    /* StatusBar uses DEFAULT_CSS - no overrides needed */
-
+    /* Left panel - system telemetry */
     #left-panel {
-        width: 30;
-        border: solid #333333;
+        width: 26;
+        border-right: solid $primary 30%;
+        padding: 0 1;
     }
 
+    #left-panel > * {
+        margin-bottom: 1;
+    }
+
+    /* Center panel - conversation */
     #center-panel {
         width: 1fr;
+        padding: 0 1;
     }
 
     #results-display {
         height: 1fr;
-        border: solid #333333;
-        overflow-x: hidden;
+        border: round $primary 20%;
         overflow-y: auto;
+        padding: 0 1;
     }
 
     #query-prompt {
-        height: 10;
-        border: solid #444444;
+        height: 6;
+        border: round $primary 40%;
+        margin-top: 1;
     }
 
     #query-prompt:focus {
-        border: solid $accent;
+        border: round #ffaa00 80%;
     }
 
-    #query-prompt.-submit-blocked {
-        border: solid #333333 30%;
-    }
-
+    /* Right panel - data & agents */
     #right-panel {
-        width: 30;
-        border: solid #333333;
+        width: 26;
+        border-left: solid $primary 30%;
+        padding: 0 1;
     }
 
+    #right-panel > * {
+        margin-bottom: 1;
+    }
+
+    /* Cockpit panel styling - compact */
+    SystemInfoPanel, ConnectionsPanel, QueuePanel,
+    AgentsPanel, AdaptersPanel {
+        height: auto;
+        padding: 0 1;
+        border: round $primary 30%;
+    }
+
+    /* Data panels */
     ModalityList {
         height: 1fr;
+        min-height: 6;
+        border: round $primary 30%;
     }
 
     PlotPreview {
-        height: 1fr;
+        height: auto;
+        max-height: 8;
+        border: round $primary 30%;
     }
 
-    /* ChatMessage styling (Elia pattern) */
+    /* Chat messages - minimal styling */
     ChatMessage {
         height: auto;
         width: 1fr;
-        margin: 0 1;
-        padding: 0 2;
+        margin: 0 0 1 0;
+        padding: 1;
     }
 
     .user-message {
-        border: round $primary 50%;
+        border: round #4a9eff 60%;
+        background: #4a9eff 10%;
+    }
+
+    .user-message Markdown {
+        color: #4a9eff;
     }
 
     .agent-message {
-        border: round $accent 60%;
+        border: round #e45c47 40%;
+        background: #e45c47 5%;
     }
 
     .agent-message.streaming {
-        background: $accent 3%;
+        border: round #ffaa00 70%;
+        background: #ffaa00 8%;
+    }
+
+    .system-message {
+        border: round #44cc44 40%;
+        background: #44cc44 5%;
     }
 
     .error-message {
-        border: round red 70%;
+        border: round #ff4444 60%;
+        background: #ff4444 10%;
     }
 
-    /* Ensure Markdown wraps (no horizontal scroll) */
-    ChatMessage Markdown {
-        width: 100%;
-        max-width: 100%;
+    /* Status bar */
+    StatusBar {
+        height: 1;
+        background: transparent;
+        border-bottom: solid $primary 20%;
     }
     """
 
     BINDINGS = [
-        Binding("ctrl+c", "cancel_query", "Cancel Query", key_display="^C"),
-        Binding("ctrl+l", "clear_results", "Clear Results", key_display="^L"),
+        Binding("escape", "quit", "Quit", key_display="ESC", priority=True),
+        Binding("ctrl+q", "quit", "Quit", key_display="^Q"),
+        Binding("ctrl+p", "command_palette", "Commands", key_display="^P"),
+        Binding("ctrl+c", "cancel_query", "Cancel", key_display="^C"),
+        Binding("ctrl+l", "clear_results", "Clear", key_display="^L"),
         Binding("f5", "refresh_data", "Refresh", key_display="F5"),
     ]
 
@@ -143,122 +196,82 @@ class AnalysisScreen(Screen):
         self.current_worker: Optional[Worker] = None
 
     def compose(self):
-        """Create the multi-panel layout."""
+        """Create cockpit-style 3-column layout."""
         yield Header()
 
-        status_bar = StatusBar(id="status-bar")
+        # Status bar - top telemetry strip
+        yield StatusBar(id="status-bar")
 
-        left_panel = Vertical(
-            ModalityList(self.client),
-            id="left-panel",
-        )
+        # Main content area - 3 columns
+        with Horizontal(id="main-panels"):
+            # Left panel: System telemetry
+            with Vertical(id="left-panel"):
+                yield SystemInfoPanel()
+                yield ConnectionsPanel()
+                yield QueuePanel(self.client)
 
-        center_panel = Vertical(
-            ResultsDisplay(id="results-display"),
-            QueryPrompt(id="query-prompt"),
-            id="center-panel",
-        )
+            # Center panel: Conversation
+            with Vertical(id="center-panel"):
+                yield ResultsDisplay(id="results-display")
+                yield QueryPrompt(id="query-prompt")
 
-        right_panel = Vertical(
-            PlotPreview(self.client),
-            id="right-panel",
-        )
-
-        main_panels = Horizontal(
-            left_panel,
-            center_panel,
-            right_panel,
-            id="main-panels",
-        )
-
-        yield Vertical(
-            status_bar,
-            main_panels,
-            id="main-content",
-        )
+            # Right panel: Agents & Data
+            with Vertical(id="right-panel"):
+                yield AgentsPanel(client=self.client)
+                yield ModalityList(self.client)
+                yield AdaptersPanel()
+                yield PlotPreview(self.client)
 
         yield Footer()
 
     def on_mount(self) -> None:
         """Initialize the screen."""
         self.sub_title = f"Session: {self.client.session_id}"
-
-        # Initialize status bar with current state
         self._init_status_bar()
-
-        # Start polling for queue updates (every 2 seconds)
-        self.set_interval(2.0, self._update_queue_status)
 
     def _init_status_bar(self) -> None:
         """Initialize status bar with client data."""
         status_bar = self.query_one(StatusBar)
 
-        # 1. Subscription tier
+        # Subscription tier
         status_bar.subscription_tier = get_current_tier()
 
-        # 2. Provider + Model
+        # Provider + Model
         try:
             provider = LLMFactory.get_current_provider()
             if provider:
                 status_bar.provider_name = provider
-
-                # Get model name for supervisor agent
                 model_params = get_settings().get_agent_llm_params("supervisor")
                 model_id = model_params.get("model_id", "unknown")
                 status_bar.model_name = get_friendly_model_name(model_id, provider)
-        except Exception as e:
-            # Fallback if provider/model detection fails
+        except Exception:
             status_bar.provider_name = "unknown"
             status_bar.model_name = "unknown"
 
-        # 3. Initial queue counts
-        self._update_queue_status()
-
-    def _update_queue_status(self) -> None:
-        """Poll queues for status (runs every 2s via set_interval)."""
-        status_bar = self.query_one(StatusBar)
-
-        try:
-            # Download queue (always available)
-            download_queue = self.client.data_manager.download_queue
-            active_downloads = len([
-                e for e in download_queue.list_entries()
-                if e.status in ["pending", "in_progress"]
-            ])
-            status_bar.download_count = active_downloads
-
-            # Publication queue (premium - may be None)
-            if self.client.publication_queue:
-                pub_queue = self.client.publication_queue
-                active_pubs = len([
-                    e for e in pub_queue.list_entries()
-                    if e.status not in ["completed", "failed"]
-                ])
-                status_bar.publication_count = active_pubs
-            else:
-                status_bar.publication_count = 0
-
-        except Exception:
-            # Silently handle queue access errors
-            pass
-
     @on(QueryPrompt.QuerySubmitted)
     def handle_query_submission(self, event: QueryPrompt.QuerySubmitted) -> None:
-        """Handle query submission from prompt (Elia pattern)."""
+        """Handle query submission."""
         query_text = event.text
 
-        # 1. Show user's query in conversation
+        # Show user message
         results = self.query_one(ResultsDisplay)
         results.append_user_message(query_text)
 
-        # 2. Update status bar - agent is now processing
+        # Update status bar
         status_bar = self.query_one(StatusBar)
         status_bar.agent_status = "processing"
 
-        # 3. Lock input via widget reference (Elia pattern)
+        # Mark supervisor agent as active (cockpit telemetry)
+        try:
+            agents_panel = self.query_one(AgentsPanel)
+            agents_panel.set_agent_active("supervisor")
+        except Exception:
+            pass
+
+        # Lock input
         event.prompt_input.submit_ready = False
 
-        # 4. Start streaming query in background worker (pass as callable!)
+        # Run query in background
         self.run_worker(
             partial(self.execute_streaming_query, query_text),
             name=f"query_{query_text[:20]}",
@@ -268,84 +281,78 @@ class AnalysisScreen(Screen):
         )
 
     def execute_streaming_query(self, query: str) -> None:
-        """
-        Execute LangGraph query with live streaming updates.
-
-        This runs in a background thread, updating the UI via post_message().
-        The @work decorator with thread=True ensures non-blocking execution.
-        """
+        """Execute query with streaming."""
         results = self.query_one(ResultsDisplay)
 
         try:
-            # Create agent message bubble for streaming
             self.app.call_from_thread(results.start_agent_message)
 
-            # Stream events from LangGraph
             for event in self.client.query(query, stream=True):
                 event_type = event.get("type")
 
                 if event_type == "stream":
-                    # Streaming content from agent
                     content = event.get("content", "")
-
                     if content:
-                        # Append chunk to agent message bubble
                         self.app.call_from_thread(
                             results.append_to_agent_message, content
                         )
-
                 elif event_type == "complete":
-                    # Mark agent message as complete
                     self.app.call_from_thread(results.complete_agent_message)
-
                 elif event_type == "error":
-                    # Error occurred
                     error = event.get("error", "Unknown error")
                     self.app.call_from_thread(results.show_error, error)
 
         except Exception as e:
-            # Handle unexpected errors
             self.app.call_from_thread(results.show_error, str(e))
-
         finally:
-            # Always unlock input and refresh data
             self.app.call_from_thread(self._unlock_input)
 
     def _unlock_input(self) -> None:
-        """Unlock query prompt and refresh data views."""
+        """Unlock input and refresh views."""
         prompt = self.query_one(QueryPrompt)
         prompt.submit_ready = True
 
-        # Reset agent status to idle
         status_bar = self.query_one(StatusBar)
         status_bar.agent_status = "idle"
 
-        # Refresh data views
+        # Mark all agents as idle (cockpit telemetry)
+        try:
+            agents_panel = self.query_one(AgentsPanel)
+            agents_panel.set_agent_idle("supervisor")
+            agents_panel.set_agent_idle("research_agent")
+            agents_panel.set_agent_idle("data_expert")
+        except Exception:
+            pass
+
+        # Refresh data panels
         self.query_one(ModalityList).refresh_modalities()
         self.query_one(PlotPreview).refresh_plots()
 
-    def on_modality_list_modality_selected(
-        self, event: ModalitySelected
-    ) -> None:
+    def on_modality_list_modality_selected(self, event: ModalitySelected) -> None:
         """Handle modality selection."""
         self.notify(f"Selected: {event.modality_name}", timeout=2)
 
-    def action_cancel_query(self) -> None:
-        """Cancel running query (Ctrl+C)."""
-        if self.current_worker and not self.current_worker.is_finished:
-            self.current_worker.cancel()
-            self.notify("Query cancelled", severity="warning")
-            self._unlock_input()
-        else:
-            self.notify("No query running", severity="information")
-
-    def action_clear_results(self) -> None:
-        """Clear results display (Ctrl+L)."""
-        results = self.query_one(ResultsDisplay)
-        results.clear_display()
-
-    def action_refresh_data(self) -> None:
-        """Refresh modality list and plots (F5)."""
+    def refresh_all(self) -> None:
+        """Refresh all panels (called by F5)."""
         self.query_one(ModalityList).refresh_modalities()
         self.query_one(PlotPreview).refresh_plots()
-        self.notify("Data refreshed", timeout=2)
+
+    def action_cancel_query(self) -> None:
+        """Cancel running query."""
+        if self.current_worker and not self.current_worker.is_finished:
+            self.current_worker.cancel()
+            self.notify("Cancelled", severity="warning")
+            self._unlock_input()
+
+    def action_clear_results(self) -> None:
+        """Clear results display."""
+        self.query_one(ResultsDisplay).clear_display()
+
+    def action_refresh_data(self) -> None:
+        """Refresh all data panels."""
+        self.refresh_all()
+        self.notify("Refreshed", timeout=1)
+
+    def action_quit(self) -> None:
+        """Quit the application."""
+        self.app.exit()
