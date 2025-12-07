@@ -451,7 +451,10 @@ jobs:
         echo "✅ Package successfully installed from PyPI!"
 
   # =====================================================================
-  # Step 6: Create GitHub Release
+  # Step 6: Create GitHub Release in Public Repository
+  # =====================================================================
+  # Creates release in lobster-local (public) so users can download wheels
+  # Uses GitHub CLI to create release in a different repository
   # =====================================================================
   create-release:
     name: Create GitHub Release
@@ -460,13 +463,7 @@ jobs:
     if: github.event_name == 'push'
     timeout-minutes: 10
 
-    permissions:
-      contents: write
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
     - name: Extract version
       id: version
       run: |
@@ -530,17 +527,42 @@ jobs:
         📦 *Built and published automatically via GitHub Actions*
         EOF
 
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: ${{ steps.version.outputs.version }}
-        name: Release ${{ steps.version.outputs.version }}
-        body_path: release_notes.md
-        draft: false
-        prerelease: ${{ contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'rc') }}
-        files: |
-          dist/*.whl
+    - name: Create tag in lobster-local repository
+      env:
+        GH_TOKEN: ${{ secrets.WIKI_SYNC_PAT }}
+      run: |
+        # Check if tag already exists in public repo
+        if git ls-remote --tags https://github.com/the-omics-os/lobster-local.git | grep -q "refs/tags/${{ steps.version.outputs.version }}"; then
+          echo "⚠️  Tag ${{ steps.version.outputs.version }} already exists in lobster-local"
+        else
+          # Get the latest commit SHA from lobster-local
+          COMMIT_SHA=$(git ls-remote https://github.com/the-omics-os/lobster-local.git refs/heads/main | cut -f1)
+          echo "Creating tag ${{ steps.version.outputs.version }} at commit $COMMIT_SHA"
+
+          # Create tag using GitHub API
+          gh api --method POST \
+            /repos/the-omics-os/lobster-local/git/refs \
+            -f ref="refs/tags/${{ steps.version.outputs.version }}" \
+            -f sha="$COMMIT_SHA"
+
+          echo "✅ Tag created in lobster-local"
+        fi
+
+    - name: Create GitHub Release in lobster-local
+      env:
+        GH_TOKEN: ${{ secrets.WIKI_SYNC_PAT }}
+      run: |
+        # Create release in the PUBLIC repository (lobster-local)
+        gh release create "${{ steps.version.outputs.version }}" \
+          --repo the-omics-os/lobster-local \
+          --title "Release ${{ steps.version.outputs.version }}" \
+          --notes-file release_notes.md \
+          ${{ contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'rc') && '--prerelease' || '' }} \
+          dist/*.whl \
           dist/*.tar.gz
+
+        echo "✅ Release created in lobster-local"
+        echo "🔗 https://github.com/the-omics-os/lobster-local/releases/tag/${{ steps.version.outputs.version }}"
 
   # =====================================================================
   # Step 7: Summary
