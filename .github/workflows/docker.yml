@@ -1,9 +1,19 @@
 name: Docker Build & Publish
 
+# ==============================================================================
+# TRIGGER STRATEGY: Avoid double-builds during releases
+# ==============================================================================
+# - Tags (v*.*.*): Build + Publish to Docker Hub (production)
+# - Pull Requests: Build + Test only (no publish)
+# - Manual Dispatch: For ad-hoc builds
+#
+# NOTE: We do NOT trigger on push to main to avoid double-builds:
+#   Release flow: push commit → push tag → both would trigger workflow
+#   With this config: only tag push triggers workflow (once)
+# ==============================================================================
+
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*.*.*'
   pull_request:
