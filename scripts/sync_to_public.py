@@ -549,10 +549,20 @@ class PublicRepoSync:
 
             print("\n✅ Sync completed successfully!")
 
+            # Output temp directory path for CI artifact creation
+            preserve_dir = os.environ.get('PRESERVE_SYNC_DIR', 'false').lower() == 'true'
+            if preserve_dir and self.temp_dir:
+                print(f"\n📦 SYNC_DIR_PATH={self.temp_dir}")
+                print("Note: Temp directory preserved for artifact creation (PRESERVE_SYNC_DIR=true)")
+
         finally:
-            # Clean up temp directory
-            if self.temp_dir and self.temp_dir.exists():
+            # Clean up temp directory (unless preservation is requested)
+            preserve_dir = os.environ.get('PRESERVE_SYNC_DIR', 'false').lower() == 'true'
+            if self.temp_dir and self.temp_dir.exists() and not preserve_dir:
                 shutil.rmtree(temp_dir)
+                print("✅ Cleaned up temporary directory")
+            elif preserve_dir:
+                print(f"⚠️  Temporary directory preserved at: {self.temp_dir}")
 
 
 def main():

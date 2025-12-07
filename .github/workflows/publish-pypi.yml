@@ -85,42 +85,56 @@ jobs:
         # This prevents premium code from accidentally shipping in the public package
         python scripts/generate_allowlist.py --validate
 
-    - name: Sync to public repository
+    - name: Sync to public repository and capture temp directory
+      id: sync
+      env:
+        PRESERVE_SYNC_DIR: 'true'
       run: |
-        python scripts/sync_to_public.py \
+        # Run sync with temp directory preservation
+        SYNC_OUTPUT=$(python scripts/sync_to_public.py \
           --repo ${{ env.PUBLIC_REPO_URL }} \
-          --branch main
+          --branch main 2>&1)
 
-    - name: Verify sync completed
-      run: |
-        echo "✅ Code synced to lobster-local successfully"
+        echo "$SYNC_OUTPUT"
 
-    - name: Get public commit SHA from temp sync directory
+        # Extract temp directory path from output
+        SYNC_DIR=$(echo "$SYNC_OUTPUT" | grep "SYNC_DIR_PATH=" | sed 's/.*SYNC_DIR_PATH=//')
+
+        if [ -z "$SYNC_DIR" ]; then
+          echo "❌ ERROR: Could not extract sync directory path"
+          exit 1
+        fi
+
+        echo "sync_dir=$SYNC_DIR" >> $GITHUB_OUTPUT
+        echo "✅ Captured sync directory: $SYNC_DIR"
+
+    - name: Get commit SHA and archive source code
       id: get_sha
       run: |
-        # The sync script creates a temp directory with the synced repo
-        # Find the most recent temp sync directory
-        SYNC_DIR=$(ls -td /tmp/lobster-local-sync-* 2>/dev/null | head -1)
-        if [ -z "$SYNC_DIR" ] || [ ! -d "$SYNC_DIR" ]; then
-          echo "❌ ERROR: Could not find sync directory"
+        SYNC_DIR="${{ steps.sync.outputs.sync_dir }}"
+
+        if [ ! -d "$SYNC_DIR" ]; then
+          echo "❌ ERROR: Sync directory does not exist: $SYNC_DIR"
           exit 1
         fi
 
         cd "$SYNC_DIR"
+
+        # Capture commit SHA
         SHA=$(git rev-parse HEAD)
         echo "sha=$SHA" >> $GITHUB_OUTPUT
-        echo "✅ Captured commit SHA: $SHA"
-
-    - name: Archive public source code
-      run: |
-        SYNC_DIR=$(ls -td /tmp/lobster-local-sync-* 2>/dev/null | head -1)
-        cd "$SYNC_DIR"
+        echo "✅ Commit SHA: $SHA"
 
         # Create archive excluding .git directory (reduces size)
         tar --exclude='.git' -czf /tmp/source-code.tar.gz .
 
         SIZE=$(du -h /tmp/source-code.tar.gz | cut -f1)
         echo "✅ Archived source code: $SIZE"
+
+        # Clean up temp directory now that we have the archive
+        cd /tmp
+        rm -rf "$SYNC_DIR"
+        echo "✅ Cleaned up temporary sync directory"
 
     - name: Upload source code artifact
       uses: actions/upload-artifact@v4
