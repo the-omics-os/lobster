@@ -19,8 +19,7 @@ class TestLLMProvider:
         """Test that provider enum has expected values."""
         assert LLMProvider.ANTHROPIC_DIRECT.value == "anthropic"
         assert LLMProvider.BEDROCK_ANTHROPIC.value == "bedrock"
-        assert LLMProvider.OPENAI.value == "openai"  # future support
-        assert LLMProvider.AZURE_OPENAI.value == "azure_openai"
+        assert LLMProvider.OLLAMA.value == "ollama"
 
 
 class TestProviderDetection:
@@ -28,7 +27,8 @@ class TestProviderDetection:
 
     def test_detect_anthropic_provider(self):
         """Test detection when only Anthropic API key is present."""
-        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}, clear=True):
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}, clear=True), \
+             patch.object(LLMFactory, "_is_ollama_running", return_value=False):
             provider = LLMFactory.detect_provider()
             assert provider == LLMProvider.ANTHROPIC_DIRECT
 
@@ -41,13 +41,14 @@ class TestProviderDetection:
                 "AWS_BEDROCK_SECRET_ACCESS_KEY": "test-secret",
             },
             clear=True,
-        ):
+        ), patch.object(LLMFactory, "_is_ollama_running", return_value=False):
             provider = LLMFactory.detect_provider()
             assert provider == LLMProvider.BEDROCK_ANTHROPIC
 
     def test_detect_no_provider(self):
         """Test detection when no credentials are present."""
-        with patch.dict("os.environ", {}, clear=True):
+        with patch.dict("os.environ", {}, clear=True), \
+             patch.object(LLMFactory, "_is_ollama_running", return_value=False):
             provider = LLMFactory.detect_provider()
             assert provider is None
 
@@ -61,7 +62,7 @@ class TestProviderDetection:
                 "AWS_BEDROCK_SECRET_ACCESS_KEY": "test-secret",
             },
             clear=True,
-        ):
+        ), patch.object(LLMFactory, "_is_ollama_running", return_value=False):
             provider = LLMFactory.detect_provider()
             assert provider == LLMProvider.ANTHROPIC_DIRECT
 
@@ -71,7 +72,7 @@ class TestProviderDetection:
             "os.environ",
             {"ANTHROPIC_API_KEY": "test-key", "LOBSTER_LLM_PROVIDER": "bedrock"},
             clear=True,
-        ):
+        ), patch.object(LLMFactory, "_is_ollama_running", return_value=False):
             provider = LLMFactory.detect_provider()
             assert provider == LLMProvider.BEDROCK_ANTHROPIC
 
@@ -84,7 +85,7 @@ class TestProviderDetection:
                 "LOBSTER_LLM_PROVIDER": "invalid_provider",
             },
             clear=True,
-        ):
+        ), patch.object(LLMFactory, "_is_ollama_running", return_value=False):
             with patch("builtins.print") as mock_print:
                 provider = LLMFactory.detect_provider()
                 assert provider == LLMProvider.ANTHROPIC_DIRECT
@@ -99,7 +100,8 @@ class TestLLMCreation:
     @patch("langchain_anthropic.ChatAnthropic")
     def test_create_anthropic_llm(self, mock_anthropic):
         """Test creating ChatAnthropic instance."""
-        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}, clear=True):
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}, clear=True), \
+             patch.object(LLMFactory, "_is_ollama_running", return_value=False):
             model_config = {
                 "model_id": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
                 "temperature": 0.7,
@@ -125,7 +127,7 @@ class TestLLMCreation:
                 "AWS_BEDROCK_SECRET_ACCESS_KEY": "test-secret",
             },
             clear=True,
-        ):
+        ), patch.object(LLMFactory, "_is_ollama_running", return_value=False):
             model_config = {
                 "model_id": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
                 "temperature": 0.7,
@@ -144,23 +146,14 @@ class TestLLMCreation:
 
     def test_create_llm_no_credentials(self):
         """Test error when no credentials are available."""
-        with patch.dict("os.environ", {}, clear=True):
+        with patch.dict("os.environ", {}, clear=True), \
+             patch.object(LLMFactory, "_is_ollama_running", return_value=False):
             model_config = {"model_id": "test-model"}
 
             with pytest.raises(ValueError) as exc_info:
                 LLMFactory.create_llm(model_config)
 
             assert "No LLM provider credentials found" in str(exc_info.value)
-
-    def test_create_openai_not_implemented(self):
-        """Test that OpenAI provider raises NotImplementedError."""
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}, clear=True):
-            model_config = {"model_id": "gpt-4"}
-
-            with pytest.raises(NotImplementedError) as exc_info:
-                LLMFactory.create_llm(model_config)
-
-            assert "OpenAI provider support is planned" in str(exc_info.value)
 
 
 class TestModelTranslation:
@@ -223,28 +216,30 @@ class TestUtilityMethods:
                 "ANTHROPIC_API_KEY": "test-key",
                 "AWS_BEDROCK_ACCESS_KEY": "test-key",
                 "AWS_BEDROCK_SECRET_ACCESS_KEY": "test-secret",
-                "OPENAI_API_KEY": "test-key",
             },
             clear=True,
-        ):
+        ), patch.object(LLMFactory, "_is_ollama_running", return_value=True):
             providers = LLMFactory.get_available_providers()
-            assert set(providers) == {"anthropic", "bedrock", "openai"}
+            assert set(providers) == {"anthropic", "bedrock", "ollama"}
 
     def test_get_available_providers_none(self):
         """Test getting list of available providers when none are configured."""
-        with patch.dict("os.environ", {}, clear=True):
+        with patch.dict("os.environ", {}, clear=True), \
+             patch.object(LLMFactory, "_is_ollama_running", return_value=False):
             providers = LLMFactory.get_available_providers()
             assert providers == []
 
     def test_get_current_provider(self):
         """Test getting the current provider."""
-        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}, clear=True):
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}, clear=True), \
+             patch.object(LLMFactory, "_is_ollama_running", return_value=False):
             provider = LLMFactory.get_current_provider()
             assert provider == "anthropic"
 
     def test_get_current_provider_none(self):
         """Test getting current provider when none available."""
-        with patch.dict("os.environ", {}, clear=True):
+        with patch.dict("os.environ", {}, clear=True), \
+             patch.object(LLMFactory, "_is_ollama_running", return_value=False):
             provider = LLMFactory.get_current_provider()
             assert provider is None
 
@@ -278,7 +273,7 @@ class TestBackwardCompatibility:
                 "AWS_BEDROCK_SECRET_ACCESS_KEY": "existing-secret",
             },
             clear=True,
-        ):
+        ), patch.object(LLMFactory, "_is_ollama_running", return_value=False):
             # Simulate model config from agent_config.py with new models
             model_config = {
                 "model_id": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",

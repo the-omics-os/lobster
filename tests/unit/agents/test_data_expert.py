@@ -77,7 +77,7 @@ def mock_data_manager(mock_agent_environment, tmp_path):
 @pytest.fixture
 def mock_geo_service():
     """Mock GEO service for data fetching."""
-    with patch("lobster.tools.geo_service.GEOService") as MockGEOService:
+    with patch("lobster.services.data_access.geo_service.GEOService") as MockGEOService:
         mock_service = MockGEOService.return_value
         mock_service.fetch_metadata_only.return_value = (
             {
@@ -101,7 +101,7 @@ def mock_geo_service():
 def mock_concat_service():
     """Mock concatenation service for sample merging."""
     with patch(
-        "lobster.tools.concatenation_service.ConcatenationService"
+        "lobster.services.data_management.concatenation_service.ConcatenationService"
     ) as MockConcatService:
         mock_service = MockConcatService.return_value
         mock_adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
@@ -165,7 +165,7 @@ class TestDataExpertCore:
 class TestServiceIntegration:
     """Test integration with GEOService, ConcatenationService, and DataExpertAssistant."""
 
-    @patch("lobster.tools.geo_service.GEOService")
+    @patch("lobster.services.data_access.geo_service.GEOService")
     def test_geo_service_integration(self, MockGEOService, mock_data_manager):
         """Test GEO service integration for fetching and downloading datasets."""
         # Setup mock service
@@ -181,7 +181,7 @@ class TestServiceIntegration:
         # Service would be initialized when tools are called
         assert agent is not None
 
-    @patch("lobster.tools.concatenation_service.ConcatenationService")
+    @patch("lobster.services.data_management.concatenation_service.ConcatenationService")
     def test_concatenation_service_integration(
         self, MockConcatService, mock_data_manager
     ):

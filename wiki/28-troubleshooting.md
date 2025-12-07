@@ -85,7 +85,6 @@ conda env create -f environment.yml
 #### Check Environment Variables
 ```bash
 # Verify API keys are set
-echo $OPENAI_API_KEY #TODO future support
 echo $AWS_BEDROCK_ACCESS_KEY
 echo $AWS_BEDROCK_SECRET_ACCESS_KEY
 

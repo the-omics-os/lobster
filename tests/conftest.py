@@ -214,7 +214,6 @@ def isolated_environment(
     # Mock environment variables
     test_env = {
         "LOBSTER_WORKSPACE": str(temp_workspace),
-        "OPENAI_API_KEY": "test-openai-key",
         "AWS_BEDROCK_ACCESS_KEY": "test-aws-access-key",
         "AWS_BEDROCK_SECRET_ACCESS_KEY": "test-aws-secret-key",
         "NCBI_API_KEY": "test-ncbi-key",
@@ -263,7 +262,6 @@ def mock_agent_environment(
     # Mock the settings to ensure they use our test environment
     mock_settings = mocker.patch("lobster.config.settings.get_settings")
     mock_settings_instance = Mock()
-    mock_settings_instance.OPENAI_API_KEY = "test-openai-key"
     mock_settings_instance.AWS_BEDROCK_ACCESS_KEY = "test-aws-access-key"
     mock_settings_instance.AWS_BEDROCK_SECRET_ACCESS_KEY = "test-aws-secret-key"
     mock_settings_instance.ANTHROPIC_API_KEY = "test-anthropic-key"
@@ -769,14 +767,14 @@ def mock_agent_client(temp_workspace: Path) -> Mock:
 def mock_llm_responses(mocker: MockerFixture) -> Mock:
     """Mock LLM API responses for consistent agent testing.
 
-    Mocks both OpenAI and AWS Bedrock API calls to prevent real API usage
+    Mocks Anthropic (direct) and AWS Bedrock API calls to prevent real API usage
     during testing. Returns consistent, predictable responses for each agent.
 
     Args:
         mocker: Pytest-mock fixture for patching
 
     Returns:
-        Mock: Mocked OpenAI API response object with predefined agent responses
+        Mock: Mocked Anthropic client with predefined agent responses
 
     Example:
         >>> def test_llm_integration(mock_llm_responses):
@@ -791,11 +789,12 @@ def mock_llm_responses(mocker: MockerFixture) -> Mock:
         "research_agent": "I can search for relevant datasets and literature for your research question.",
     }
 
-    # Mock OpenAI API calls
-    mock_openai = mocker.patch("openai.resources.chat.completions.Completions.create")
-    mock_openai.return_value.choices = [
-        Mock(message=Mock(content=mock_responses["supervisor"]))
-    ]
+    # Mock Anthropic API calls
+    mock_anthropic = mocker.patch("langchain_anthropic.ChatAnthropic")
+    mock_anthropic_instance = mock_anthropic.return_value
+    mock_anthropic_instance.invoke.return_value = Mock(
+        content=mock_responses["supervisor"]
+    )
 
     # Mock AWS Bedrock calls
     mock_bedrock = mocker.patch("boto3.client")
@@ -807,7 +806,7 @@ def mock_llm_responses(mocker: MockerFixture) -> Mock:
         )
     }
 
-    return mock_openai
+    return mock_anthropic_instance
 
 
 # ==============================================================================

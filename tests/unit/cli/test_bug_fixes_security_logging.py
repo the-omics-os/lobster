@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from lobster.cli.utils.path_resolution import PathResolver, ResolvedPath
+from lobster.cli_internal.utils.path_resolution import PathResolver, ResolvedPath
 
 
 class TestBug6PathResolverSecurity:

@@ -664,7 +664,7 @@ print(env_vars)
 - Subprocess inherits parent process environment
 - No filtering or sanitization
 - Typically includes:
-  - API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY)
+  - API keys (ANTHROPIC_API_KEY, AWS_BEDROCK credentials)
   - Cloud credentials (AWS_*, AZURE_*, GCP_*)
   - GitHub tokens (GITHUB_TOKEN, GH_TOKEN)
   - Database URLs (DATABASE_URL, POSTGRES_URL)

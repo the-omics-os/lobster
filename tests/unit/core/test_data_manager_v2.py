@@ -1219,9 +1219,16 @@ class TestPlotManagement:
         dm.clear_plots()
         assert len(dm.latest_plots) == 0
 
-    @patch("lobster.core.data_manager_v2.pio")
-    def test_save_plots_to_workspace(self, mock_pio, temp_workspace):
+    @patch("lobster.core.data_manager_v2._ensure_plotly")
+    def test_save_plots_to_workspace(self, mock_ensure_plotly, temp_workspace):
         """Test saving plots to workspace directory."""
+        # Mock the _ensure_plotly function to return mock go and pio modules
+        mock_go = Mock()
+        # Make Figure attribute a real type so isinstance() works
+        mock_go.Figure = go.Figure
+        mock_pio = Mock()
+        mock_ensure_plotly.return_value = (mock_go, mock_pio)
+
         dm = DataManagerV2(workspace_path=temp_workspace)
 
         fig = go.Figure()
@@ -1858,8 +1865,14 @@ class TestExportDocumentation:
 
     @patch("zipfile.ZipFile")
     @patch("tempfile.TemporaryDirectory")
-    def test_create_data_package(self, mock_temp_dir, mock_zipfile, temp_workspace):
+    @patch("lobster.core.data_manager_v2._ensure_plotly")
+    def test_create_data_package(self, mock_ensure_plotly, mock_temp_dir, mock_zipfile, temp_workspace):
         """Test comprehensive data package creation."""
+        # Mock the _ensure_plotly function to return mock go and pio modules
+        mock_go = Mock()
+        mock_pio = Mock()
+        mock_ensure_plotly.return_value = (mock_go, mock_pio)
+
         # Setup mocks
         mock_temp_path = temp_workspace / "temp"
         mock_temp_path.mkdir()
@@ -1880,8 +1893,6 @@ class TestExportDocumentation:
         with (
             patch.object(test_data, "write_h5ad"),
             patch("pandas.DataFrame.to_csv"),
-            patch("lobster.core.data_manager_v2.pio.write_html"),
-            patch("lobster.core.data_manager_v2.pio.write_image"),
         ):
 
             zip_path = dm.create_data_package()

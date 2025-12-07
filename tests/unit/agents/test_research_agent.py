@@ -46,10 +46,12 @@ class MockState:
 @pytest.fixture
 def mock_data_manager(mock_agent_environment, tmp_path):
     """Mock DataManagerV2 instance."""
+    from pathlib import Path
     mock_dm = Mock(spec=DataManagerV2)
     mock_dm.metadata_store = {}
     mock_dm.list_modalities.return_value = []
-    mock_dm.workspace_path = str(tmp_path / "workspace")
+    mock_dm.workspace_path = Path(tmp_path / "workspace")
+    mock_dm.cache_dir = Path(tmp_path / "cache")
     mock_dm.log_tool_usage = Mock()
     return mock_dm
 
@@ -57,7 +59,7 @@ def mock_data_manager(mock_agent_environment, tmp_path):
 @pytest.fixture
 def mock_content_access_service():
     """Mock content access service for research agent."""
-    with patch("lobster.agents.research_agent.ContentAccessService") as MockService:
+    with patch("lobster.services.data_access.content_access_service.ContentAccessService") as MockService:
         mock_service = MockService.return_value
         mock_service.search_literature.return_value = (
             "Found 2 relevant papers about topic"
@@ -142,15 +144,13 @@ class TestResearchAgentCore:
         assert hasattr(agent, "get_graph")
 
     def test_content_access_service_initialization(self, mock_data_manager):
-        """Test that ContentAccessService is properly initialized."""
-        with patch("lobster.agents.research_agent.ContentAccessService") as MockService:
-            mock_service = MockService.return_value
-            mock_service.search_literature.return_value = "Mock response"
+        """Test that ContentAccessService is lazy-loaded when needed."""
+        # Since ContentAccessService is lazy-loaded, it should not be initialized
+        # during agent creation, only when a tool that needs it is called
+        agent = research_agent(mock_data_manager)
 
-            agent = research_agent(mock_data_manager)
-
-            # Verify ContentAccessService was initialized with data_manager
-            MockService.assert_called_once_with(data_manager=mock_data_manager)
+        # Verify agent is created successfully
+        assert agent is not None
 
     def test_agent_with_callback_handler(
         self, mock_data_manager, mock_content_access_service
@@ -237,7 +237,7 @@ class TestServiceIntegration:
 
     def test_content_access_service_integration(self, mock_data_manager):
         """Test integration with ContentAccessService."""
-        with patch("lobster.agents.research_agent.ContentAccessService") as MockService:
+        with patch("lobster.services.data_access.content_access_service.ContentAccessService") as MockService:
             mock_service = MockService.return_value
 
             # Test various service methods
@@ -255,8 +255,7 @@ class TestServiceIntegration:
 
             agent = research_agent(mock_data_manager)
 
-            # Verify the service was initialized
-            MockService.assert_called_once_with(data_manager=mock_data_manager)
+            # Verify agent is created (service is lazy-loaded, not initialized immediately)
             assert agent is not None
 
     # DELETED: test_research_assistant_integration
@@ -298,12 +297,12 @@ class TestErrorHandling:
 
     def test_agent_creation_with_service_error(self, mock_data_manager):
         """Test agent creation when service initialization fails."""
-        with patch("lobster.agents.research_agent.ContentAccessService") as MockService:
-            MockService.side_effect = Exception("Service initialization failed")
+        # Since ContentAccessService is lazy-loaded, service errors won't occur
+        # during agent creation - they would only happen when the service is used
+        agent = research_agent(mock_data_manager)
 
-            # Agent creation should handle service errors gracefully or fail appropriately
-            with pytest.raises(Exception):
-                research_agent(mock_data_manager)
+        # Verify agent is created successfully despite potential future service errors
+        assert agent is not None
 
     def test_agent_creation_with_llm_error(self, mock_data_manager):
         """Test agent creation when LLM creation fails."""
@@ -337,7 +336,7 @@ class TestToolFunctions:
 
     def test_content_access_service_method_calls(self, mock_data_manager):
         """Test that content access service methods are called correctly."""
-        with patch("lobster.agents.research_agent.ContentAccessService") as MockService:
+        with patch("lobster.services.data_access.content_access_service.ContentAccessService") as MockService:
             mock_service = MockService.return_value
 
             # Configure the mock service
@@ -352,8 +351,7 @@ class TestToolFunctions:
 
             agent = research_agent(mock_data_manager)
 
-            # Verify service was initialized
-            MockService.assert_called_once_with(data_manager=mock_data_manager)
+            # Verify agent is created (service is lazy-loaded, not initialized immediately)
             assert agent is not None
 
 
@@ -446,7 +444,7 @@ class TestContentAccessIntegration:
     Replaces legacy PublicationService tests.
     """
 
-    @patch("lobster.agents.research_agent.ContentAccessService")
+    @patch("lobster.services.data_access.content_access_service.ContentAccessService")
     @patch("lobster.agents.research_agent.create_react_agent")
     @patch("lobster.agents.research_agent.create_llm")
     def test_content_access_service_initialization(
@@ -456,7 +454,7 @@ class TestContentAccessIntegration:
         mock_content_service_class,
         mock_data_manager,
     ):
-        """Test that ContentAccessService is properly initialized with provider registry."""
+        """Test that ContentAccessService is lazy-loaded (not initialized during agent creation)."""
         mock_llm = Mock()
         mock_create_llm.return_value = mock_llm
         mock_agent = Mock()
@@ -468,13 +466,11 @@ class TestContentAccessIntegration:
 
         agent = research_agent(mock_data_manager)
 
-        # Verify ContentAccessService was initialized with data_manager
-        mock_content_service_class.assert_called_once()
-        call_args = mock_content_service_class.call_args
-        assert call_args[1]["data_manager"] == mock_data_manager
+        # Verify ContentAccessService is NOT initialized during agent creation (lazy loading)
+        mock_content_service_class.assert_not_called()
         assert agent is not None
 
-    @patch("lobster.agents.research_agent.ContentAccessService")
+    @patch("lobster.services.data_access.content_access_service.ContentAccessService")
     @patch("lobster.agents.research_agent.create_react_agent")
     @patch("lobster.agents.research_agent.create_llm")
     def test_search_literature_with_content_service(
@@ -514,7 +510,7 @@ class TestContentAccessIntegration:
         assert results["total_count"] == 2
         assert len(results["results"]) == 2
 
-    @patch("lobster.agents.research_agent.ContentAccessService")
+    @patch("lobster.services.data_access.content_access_service.ContentAccessService")
     @patch("lobster.agents.research_agent.create_react_agent")
     @patch("lobster.agents.research_agent.create_llm")
     def test_get_abstract_via_content_service(
@@ -550,7 +546,7 @@ class TestContentAccessIntegration:
         assert result["provider"] == "AbstractProvider"
         assert result["response_time"] < 1.0
 
-    @patch("lobster.agents.research_agent.ContentAccessService")
+    @patch("lobster.services.data_access.content_access_service.ContentAccessService")
     @patch("lobster.agents.research_agent.create_react_agent")
     @patch("lobster.agents.research_agent.create_llm")
     def test_three_tier_cascade_mock(
@@ -722,7 +718,7 @@ class TestMetadataAssistantHandoff:
 
     @patch("lobster.agents.research_agent.create_react_agent")
     @patch("lobster.agents.research_agent.create_llm")
-    @patch("lobster.agents.research_agent.ContentAccessService")
+    @patch("lobster.services.data_access.content_access_service.ContentAccessService")
     def test_handoff_for_sample_mapping(
         self,
         mock_content_service_class,
@@ -750,9 +746,11 @@ class TestMetadataAssistantHandoff:
 
         mock_delegate_to_metadata_assistant.name = "delegate_to_metadata_assistant"
 
-        # Create agent with delegation tool
+        # Create agent with delegation tool (premium tier to allow delegation)
         agent = research_agent(
-            mock_data_manager, delegation_tools=[mock_delegate_to_metadata_assistant]
+            mock_data_manager,
+            delegation_tools=[mock_delegate_to_metadata_assistant],
+            subscription_tier="premium"
         )
 
         # Verify agent created
@@ -765,7 +763,7 @@ class TestMetadataAssistantHandoff:
 
     @patch("lobster.agents.research_agent.create_react_agent")
     @patch("lobster.agents.research_agent.create_llm")
-    @patch("lobster.agents.research_agent.ContentAccessService")
+    @patch("lobster.services.data_access.content_access_service.ContentAccessService")
     def test_delegation_for_metadata_standardization(
         self,
         mock_content_service_class,
@@ -814,7 +812,7 @@ class TestMetadataAssistantHandoff:
 
     @patch("lobster.agents.research_agent.create_react_agent")
     @patch("lobster.agents.research_agent.create_llm")
-    @patch("lobster.agents.research_agent.ContentAccessService")
+    @patch("lobster.services.data_access.content_access_service.ContentAccessService")
     def test_delegation_message_format(
         self,
         mock_content_service_class,

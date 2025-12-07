@@ -42,8 +42,13 @@ from lobster.services.metadata.sample_mapping_service import (
 @pytest.fixture
 def mock_data_manager():
     """Create mock DataManagerV2 for testing."""
+    from pathlib import Path
+
     mock_dm = Mock(spec=DataManagerV2)
     mock_dm.log_tool_usage = Mock()
+    mock_dm.workspace_path = Path("/tmp/test_workspace")
+    mock_dm.list_modalities = Mock(return_value=[])
+    mock_dm.get_modality = Mock()
     return mock_dm
 
 
@@ -123,9 +128,12 @@ class TestMetadataAssistantInit:
         mock_create_agent.assert_called_once()
         call_kwargs = mock_create_agent.call_args[1]
         assert call_kwargs["model"] == mock_llm
-        assert (
-            len(call_kwargs["tools"]) == 5
-        )  # 5 base tools (includes filter_samples_by)
+        # 10 base tools + 1 optional filter_samples_by (if microbiome available)
+        # Base: map_samples_by_id, read_sample_metadata, standardize_sample_metadata,
+        #       validate_dataset_content, process_metadata_entry, process_metadata_queue,
+        #       update_metadata_status, get_content_from_workspace, write_to_workspace,
+        #       execute_custom_code
+        assert len(call_kwargs["tools"]) >= 10
         assert call_kwargs["name"] == "metadata_assistant"
         assert "metadata assistant" in call_kwargs["prompt"].lower()
 
@@ -206,8 +214,8 @@ class TestMetadataAssistantInit:
 
         # Verify delegation tools are included
         call_kwargs = mock_create_agent.call_args[1]
-        # Base tools: 4 core + 1 optional filter_samples_by if microbiome enabled + 2 delegation tools
-        assert len(call_kwargs["tools"]) >= 6  # At least 4 base + 2 delegation
+        # Base tools: 10 core + 1 optional filter_samples_by (if microbiome) + 2 delegation tools
+        assert len(call_kwargs["tools"]) >= 12  # At least 10 base + 2 delegation
         assert delegation_tool1 in call_kwargs["tools"]
         assert delegation_tool2 in call_kwargs["tools"]
 
@@ -1466,6 +1474,14 @@ class TestUnexpectedErrors:
         mock_create_agent.return_value = mock_agent
         mock_mapping_class.return_value = mock_sample_mapping_service
 
+        # Mock data_manager to pass validation
+        mock_data_manager.list_modalities.return_value = ["dataset1", "dataset2"]
+        mock_adata1 = Mock()
+        mock_adata1.obs = Mock()
+        mock_adata2 = Mock()
+        mock_adata2.obs = Mock()
+        mock_data_manager.get_modality.side_effect = lambda x: mock_adata1 if x == "dataset1" else mock_adata2
+
         # Service raises unexpected error
         mock_sample_mapping_service.map_samples_by_id.side_effect = RuntimeError(
             "Unexpected error"
@@ -1517,6 +1533,12 @@ class TestUnexpectedErrors:
         mock_create_llm.return_value = mock_llm
         mock_create_agent.return_value = mock_agent
         mock_standardization_class.return_value = mock_metadata_standardization_service
+
+        # Mock data_manager to pass validation
+        mock_data_manager.list_modalities.return_value = ["dataset"]
+        mock_adata = Mock()
+        mock_adata.obs = Mock()
+        mock_data_manager.get_modality.return_value = mock_adata
 
         # Service raises unexpected error
         mock_metadata_standardization_service.read_sample_metadata.side_effect = (
@@ -1615,6 +1637,12 @@ class TestUnexpectedErrors:
         mock_create_llm.return_value = mock_llm
         mock_create_agent.return_value = mock_agent
         mock_standardization_class.return_value = mock_metadata_standardization_service
+
+        # Mock data_manager to pass validation
+        mock_data_manager.list_modalities.return_value = ["dataset"]
+        mock_adata = Mock()
+        mock_adata.obs = Mock()
+        mock_data_manager.get_modality.return_value = mock_adata
 
         # Service raises unexpected error
         mock_metadata_standardization_service.validate_dataset_content.side_effect = (

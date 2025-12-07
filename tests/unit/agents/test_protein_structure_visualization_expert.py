@@ -131,7 +131,7 @@ class TestProteinStructureVisualizationExpertFactory:
 class TestFetchProteinStructureTool:
     """Test fetch_protein_structure tool."""
 
-    @patch("lobster.tools.protein_structure_fetch_service.ProteinStructureFetchService")
+    @patch("lobster.services.data_access.protein_structure_fetch_service.ProteinStructureFetchService")
     def test_fetch_structure_success(
         self,
         mock_service_class,
@@ -188,7 +188,7 @@ class TestFetchProteinStructureTool:
 class TestLinkToExpressionDataTool:
     """Test link_to_expression_data tool."""
 
-    @patch("lobster.tools.protein_structure_fetch_service.ProteinStructureFetchService")
+    @patch("lobster.services.data_access.protein_structure_fetch_service.ProteinStructureFetchService")
     def test_link_structures_success(
         self, mock_service_class, mock_data_manager, sample_adata
     ):
@@ -231,7 +231,7 @@ class TestLinkToExpressionDataTool:
 class TestVisualizeWithPyMOLTool:
     """Test visualize_with_pymol tool."""
 
-    @patch("lobster.tools.pymol_visualization_service.PyMOLVisualizationService")
+    @patch("lobster.services.visualization.pymol_visualization_service.PyMOLVisualizationService")
     def test_visualize_structure_success(
         self, mock_service_class, mock_data_manager, mock_structure_file
     ):
@@ -263,7 +263,7 @@ class TestVisualizeWithPyMOLTool:
 class TestAnalyzeProteinStructureTool:
     """Test analyze_protein_structure tool."""
 
-    @patch("lobster.tools.structure_analysis_service.StructureAnalysisService")
+    @patch("lobster.services.analysis.structure_analysis_service.StructureAnalysisService")
     def test_analyze_structure_success(
         self, mock_service_class, mock_data_manager, mock_structure_file
     ):
@@ -291,7 +291,7 @@ class TestAnalyzeProteinStructureTool:
 class TestCompareStructuresTool:
     """Test compare_structures tool."""
 
-    @patch("lobster.tools.structure_analysis_service.StructureAnalysisService")
+    @patch("lobster.services.analysis.structure_analysis_service.StructureAnalysisService")
     def test_compare_structures_success(
         self, mock_service_class, mock_data_manager, mock_structure_file
     ):
@@ -361,9 +361,9 @@ class TestProteinStructureVisualizationExpertState:
 class TestProteinStructureVisualizationExpertIntegration:
     """Integration tests for the agent."""
 
-    @patch("lobster.tools.protein_structure_fetch_service.ProteinStructureFetchService")
-    @patch("lobster.tools.pymol_visualization_service.PyMOLVisualizationService")
-    @patch("lobster.tools.structure_analysis_service.StructureAnalysisService")
+    @patch("lobster.services.data_access.protein_structure_fetch_service.ProteinStructureFetchService")
+    @patch("lobster.services.visualization.pymol_visualization_service.PyMOLVisualizationService")
+    @patch("lobster.services.analysis.structure_analysis_service.StructureAnalysisService")
     def test_full_workflow_simulation(
         self,
         mock_analysis_service_class,

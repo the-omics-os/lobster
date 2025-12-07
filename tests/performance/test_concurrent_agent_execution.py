@@ -31,9 +31,9 @@ import numpy as np
 import pandas as pd
 import psutil
 
-from lobster.agents.affinity_proteomics_expert import affinity_proteomics_expert
+# Note: Proteomics imports commented out since module is skipped (in development)
+# from lobster.agents.proteomics import proteomics_expert
 from lobster.agents.data_expert import data_expert
-from lobster.agents.ms_proteomics_expert import ms_proteomics_expert
 from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 from lobster.core.client import AgentClient
 from lobster.core.data_manager_v2 import DataManagerV2

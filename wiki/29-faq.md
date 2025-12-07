@@ -94,14 +94,13 @@ Optional API keys:
 
 Set these in your `.env` file:
 ```bash
-OPENAI_API_KEY=your-openai-key #TODO future support
 AWS_BEDROCK_ACCESS_KEY=your-aws-access-key
 AWS_BEDROCK_SECRET_ACCESS_KEY=your-aws-secret-key
 ```
 
 ### Q: Can I use Lobster AI without cloud services?
 
-**A:** Yes! Lobster AI works completely offline in local mode. You only need API keys for the LLM models (OpenAI/AWS), not for cloud processing. All analysis runs on your local machine.
+**A:** Yes! Lobster AI works completely offline in local mode. You only need API keys for Claude models (Anthropic direct or AWS Bedrock), not for additional cloud services. All analysis runs on your local machine.
 
 ### Q: How do I update Lobster AI?
 
@@ -624,10 +623,6 @@ export AWS_BEDROCK_SECRET_ACCESS_KEY=your_secret_key
 export ANTHROPIC_API_KEY=sk-ant-xxx
 # Remove: AWS_BEDROCK_*
 
-# Use OpenAI (if configured) #TODO future support
-export OPENAI_API_KEY=sk-xxx
-# Remove: ANTHROPIC_API_KEY
-
 # Verify active model
 > /status
 # Shows: "Model: AWS Bedrock (Claude)" or "Model: Anthropic API"
@@ -647,7 +642,7 @@ export OPENAI_API_KEY=sk-xxx
 - Pipeline execution (if cached)
 
 **What requires internet:**
-- LLM API calls (Anthropic, OpenAI, AWS Bedrock)
+- LLM API calls (Anthropic direct or AWS Bedrock)
 - Downloading new GEO datasets
 - PubMed/literature searches
 - Fetching protein structures from PDB

@@ -122,7 +122,6 @@ Backends (H5AD/MuData/Cloud)
 ### Environment Variables
 ```bash
 # Required for LLM access
-OPENAI_API_KEY=your-openai-key #TODO future support
 AWS_BEDROCK_ACCESS_KEY=your-aws-key
 AWS_BEDROCK_SECRET_ACCESS_KEY=your-aws-secret
 

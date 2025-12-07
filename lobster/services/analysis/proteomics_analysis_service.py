@@ -1045,7 +1045,8 @@ print(f"Pathways tested: {stats['n_pathways_tested']}, Significant: {stats['n_si
         """Perform t-SNE analysis."""
         # Use PCA preprocessing for t-SNE if data is high-dimensional
         if X.shape[1] > 50:
-            pca = PCA(n_components=50)
+            n_pca_components = min(50, min(X.shape) - 1)
+            pca = PCA(n_components=n_pca_components)
             X_pca = pca.fit_transform(X)
         else:
             X_pca = X

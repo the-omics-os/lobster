@@ -269,6 +269,10 @@ class TestMetagenomicsAccessionValidation:
         assert result.has_warnings
         assert "Invalid" in " ".join(result.warnings)
 
+    @pytest.mark.skip(
+        reason="Qiita accession is commented out in database_mappings.py to prevent "
+        "false positives from numeric-only IDs. See database_mappings.py line 397-410."
+    )
     def test_validate_valid_qiita_accession(self, basic_adata):
         """Test validation with valid Qiita accession."""
         basic_adata.uns["qiita_accession"] = "10317"

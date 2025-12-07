@@ -45,9 +45,9 @@ def data_manager(temp_workspace):
 
 
 @pytest.fixture
-def bulk_service():
+def bulk_service(data_manager):
     """Create BulkRNASeqService instance."""
-    return BulkRNASeqService()
+    return BulkRNASeqService(data_manager=data_manager)
 
 
 @pytest.fixture

@@ -164,13 +164,15 @@ class TestBulkRNASeqServiceCore:
 
     def test_service_initialization_default(self):
         """Test BulkRNASeqService initialization with default parameters."""
+        # Service now requires results_dir or data_manager
+        default_results_dir = Path("/tmp/bulk_results")
         with patch("pathlib.Path.mkdir"):
-            service = BulkRNASeqService()
+            service = BulkRNASeqService(results_dir=default_results_dir)
 
             assert hasattr(service, "results_dir")
             assert hasattr(service, "formula_service")
             assert isinstance(service.formula_service, DifferentialFormulaService)
-            assert service.results_dir.name == "bulk_results"
+            assert service.results_dir == default_results_dir
 
     def test_service_initialization_custom_dir(self):
         """Test BulkRNASeqService initialization with custom directory."""

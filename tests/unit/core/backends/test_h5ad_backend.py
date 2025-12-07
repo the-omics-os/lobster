@@ -338,8 +338,11 @@ class TestH5ADDataSanitization:
 
         # Check conversions
         assert isinstance(adata_sanitized.uns["ordered"], dict)
-        assert isinstance(adata_sanitized.uns["tuple"], list)
-        assert isinstance(adata_sanitized.uns["numpy_scalar"], float)
+        # Tuples of numeric values are converted to numpy arrays (preserving types)
+        assert isinstance(adata_sanitized.uns["tuple"], np.ndarray)
+        np.testing.assert_array_equal(adata_sanitized.uns["tuple"], [1, 2, 3])
+        # Numpy scalars are converted to strings for HDF5 compatibility
+        assert isinstance(adata_sanitized.uns["numpy_scalar"], str)
         assert "level1__slash" in adata_sanitized.uns["nested"]
         assert "X__pca" in adata_sanitized.obsm
         assert "raw__counts" in adata_sanitized.layers

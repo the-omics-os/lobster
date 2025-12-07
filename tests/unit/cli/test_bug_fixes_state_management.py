@@ -81,17 +81,23 @@ class TestBug1ArchiveStateRace:
         # Bug #1: Old code used client._last_archive_cache (instance variable)
         # New code: Uses ExtractionCacheManager (no client pollution)
 
-        mock_client = Mock()
-        mock_client.data_manager.workspace_path = Path(tempfile.gettempdir())
+        # Create a simple object to simulate a client (not Mock which has all attributes)
+        class SimpleClient:
+            def __init__(self):
+                class DataManager:
+                    workspace_path = Path(tempfile.gettempdir())
+                self.data_manager = DataManager()
+
+        client = SimpleClient()
 
         # Verify client doesn't have _last_archive_cache after using cache manager
-        cache_mgr = ExtractionCacheManager(mock_client.data_manager.workspace_path)
+        cache_mgr = ExtractionCacheManager(client.data_manager.workspace_path)
         caches = cache_mgr.list_all_caches()
 
         # Old bug: client._last_archive_cache would exist
         # New fix: client has no _last_archive_cache attribute
         assert not hasattr(
-            mock_client, "_last_archive_cache"
+            client, "_last_archive_cache"
         ), "Client should not have cache state"
 
 
@@ -159,7 +165,7 @@ class TestBug5QueueTransactionSafety:
                 title="Another Valid",
                 priority=3,
                 status=PublicationStatus.COMPLETED,
-                extraction_level=ExtractionLevel.FULL,
+                extraction_level=ExtractionLevel.FULL_TEXT,
             )
             f.write(json.dumps(valid_entry2.to_dict()) + "\n")
 
@@ -201,12 +207,15 @@ class TestBug5QueueTransactionSafety:
         entries = queue.list_entries()
         assert len(entries) == 1
 
-    def test_backup_created_before_modification(self, tmp_path):
+    def test_backup_created_before_modification(self, tmp_path, monkeypatch):
         """Test that backups created before modifying queue."""
+        # Enable backups via env var
+        monkeypatch.setenv("LOBSTER_ENABLE_QUEUE_BACKUPS", "1")
+
         queue_file = tmp_path / "queue.jsonl"
         queue = PublicationQueue(queue_file)
 
-        # Add entry
+        # Add first entry (no backup expected - file is empty)
         entry = PublicationQueueEntry(
             entry_id="entry_001",
             pmid="11111",
@@ -216,6 +225,17 @@ class TestBug5QueueTransactionSafety:
             extraction_level=ExtractionLevel.METHODS,
         )
         queue.add_entry(entry)
+
+        # Add second entry (backup should be created before this modification)
+        entry2 = PublicationQueueEntry(
+            entry_id="entry_002",
+            pmid="22222",
+            title="Second",
+            priority=5,
+            status=PublicationStatus.PENDING,
+            extraction_level=ExtractionLevel.METHODS,
+        )
+        queue.add_entry(entry2)
 
         # Verify backup created
         backup_dir = tmp_path / "backups"

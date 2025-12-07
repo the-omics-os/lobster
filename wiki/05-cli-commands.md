@@ -254,19 +254,26 @@ Restore datasets from workspace based on pattern matching.
 - Shows loading progress with detailed summaries
 - Intelligent memory management
 - Session continuation support
+- **Works WITHOUT prior `/save` command** - uses automatic session tracking
+
+**How It Works**:
+- **`recent` mode**: Reads from `.session.json` (automatically updated whenever you load data or perform operations)
+- **`all` mode**: Scans workspace directory for all `.h5ad` files
+- **Pattern mode**: Uses glob matching against workspace files
 
 **Pattern Options**:
-- `recent` - Load most recently used datasets (default)
-- `all` or `*` - Load all available datasets
+- `recent` - Load most recently used datasets from automatic session tracking (default)
+- `all` or `*` - Load all available datasets from workspace scan
 - `<dataset_name>` - Load specific dataset by exact name
 - `<partial_name>*` - Load datasets matching partial name pattern
 
 > **Note**: Use `/restore` for session continuation and bulk loading workflows. Use `/workspace load` (v0.2+) for targeted single-dataset loading by index or specific pattern.
 
-**Parameters**:
-- `recent`: Datasets from last session (default)
-- `all`: All available datasets
-- `pattern`: Glob pattern for selective restoration
+**Relationship with `/save`**:
+- `/restore` does **NOT** require prior `/save` - session tracking is automatic
+- `/save` creates explicit backup snapshots (with `_autosave` suffix)
+- `/restore recent` loads from your original working files, not autosaves
+- Use `/save` before risky operations, `/restore` for session continuation
 
 ### File Operations
 
@@ -447,10 +454,19 @@ Save current state including all loaded data and generated plots.
 ```
 
 **Saves**:
-- All loaded modalities as H5AD files
+- All loaded modalities as H5AD files (with `_autosave` suffix)
 - Generated plots in HTML and PNG formats
 - Processing log and tool usage history
 - Session metadata
+
+**Important Notes**:
+- **Explicit `/save` is NOT required for `/restore` to work** - Lobster automatically tracks your session via `.session.json`
+- Use `/save` when you want to:
+  - Create explicit backup snapshots before risky operations
+  - Export data with specific naming for archival purposes
+  - Preserve a clean checkpoint state
+- Session tracking happens automatically whenever you load data or perform operations
+- Autosaved files are named `<modality_name>_autosave.h5ad` to distinguish from working files
 
 #### `/export`
 Export complete session data as a comprehensive package.

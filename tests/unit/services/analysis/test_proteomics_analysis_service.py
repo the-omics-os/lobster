@@ -74,7 +74,26 @@ def mock_adata_with_groups():
 @pytest.fixture
 def mock_adata_with_stats():
     """Create mock AnnData with statistical test results."""
-    adata = mock_adata_with_groups()
+    n_samples, n_proteins = 48, 100
+    X = np.random.randn(n_samples, n_proteins) + np.random.randn(n_samples, 1) * 0.1
+
+    # Add some missing values
+    missing_mask = np.random.rand(n_samples, n_proteins) < 0.1
+    X[missing_mask] = np.nan
+
+    adata = ad.AnnData(X=X)
+    adata.obs_names = [f"sample_{i}" for i in range(n_samples)]
+    adata.var_names = [f"protein_{i}" for i in range(n_proteins)]
+
+    # Add group assignments
+    adata.obs["condition"] = (
+        ["control"] * 16 + ["treatment1"] * 16 + ["treatment2"] * 16
+    )
+    adata.obs["batch"] = ["batch1"] * 24 + ["batch2"] * 24
+
+    # Add some metadata
+    adata.var["protein_names"] = [f"PROT_{i}" for i in range(n_proteins)]
+    adata.var["intensity_cv"] = np.random.rand(n_proteins)
 
     # Add significance markers
     adata.var["is_significant"] = np.random.rand(adata.n_vars) < 0.2
@@ -127,7 +146,7 @@ class TestStatisticalTesting:
 
     def test_perform_statistical_testing_basic(self, service, mock_adata_with_groups):
         """Test basic statistical testing with t-test."""
-        result_adata, stats = service.perform_statistical_testing(
+        result_adata, stats, ir = service.perform_statistical_testing(
             mock_adata_with_groups,
             group_column="condition",
             test_method="t_test",
@@ -146,7 +165,7 @@ class TestStatisticalTesting:
         self, service, mock_adata_with_groups
     ):
         """Test statistical testing with Mann-Whitney U test."""
-        result_adata, stats = service.perform_statistical_testing(
+        result_adata, stats, ir = service.perform_statistical_testing(
             mock_adata_with_groups,
             group_column="condition",
             test_method="mann_whitney",
@@ -161,7 +180,7 @@ class TestStatisticalTesting:
         self, service, mock_adata_with_groups
     ):
         """Test multi-group statistical testing with ANOVA."""
-        result_adata, stats = service.perform_statistical_testing(
+        result_adata, stats, ir = service.perform_statistical_testing(
             mock_adata_with_groups,
             group_column="condition",
             test_method="anova",
@@ -174,7 +193,7 @@ class TestStatisticalTesting:
 
     def test_perform_statistical_testing_kruskal(self, service, mock_adata_with_groups):
         """Test multi-group statistical testing with Kruskal-Wallis."""
-        result_adata, stats = service.perform_statistical_testing(
+        result_adata, stats, ir = service.perform_statistical_testing(
             mock_adata_with_groups,
             group_column="condition",
             test_method="kruskal",
@@ -188,7 +207,7 @@ class TestStatisticalTesting:
         self, service, mock_adata_with_groups
     ):
         """Test statistical testing with missing values (skip method)."""
-        result_adata, stats = service.perform_statistical_testing(
+        result_adata, stats, ir = service.perform_statistical_testing(
             mock_adata_with_groups, group_column="condition", handle_missing="skip"
         )
 
@@ -199,7 +218,7 @@ class TestStatisticalTesting:
         self, service, mock_adata_with_groups
     ):
         """Test statistical testing with missing values (mean imputation)."""
-        result_adata, stats = service.perform_statistical_testing(
+        result_adata, stats, ir = service.perform_statistical_testing(
             mock_adata_with_groups,
             group_column="condition",
             handle_missing="impute_mean",
@@ -212,7 +231,7 @@ class TestStatisticalTesting:
         self, service, mock_adata_with_groups
     ):
         """Test statistical testing with missing values (median imputation)."""
-        result_adata, stats = service.perform_statistical_testing(
+        result_adata, stats, ir = service.perform_statistical_testing(
             mock_adata_with_groups,
             group_column="condition",
             handle_missing="impute_median",
@@ -239,7 +258,7 @@ class TestStatisticalTesting:
         adata = ad.AnnData(X=X)
         adata.obs["condition"] = ["control"] * 2 + ["treatment"] * 2
 
-        result_adata, stats = service.perform_statistical_testing(
+        result_adata, stats, ir = service.perform_statistical_testing(
             adata,
             group_column="condition",
             min_observations=5,  # Require 5 observations per group
@@ -252,7 +271,7 @@ class TestStatisticalTesting:
         self, service, mock_adata_with_groups
     ):
         """Test statistical testing statistics calculation."""
-        result_adata, stats = service.perform_statistical_testing(
+        result_adata, stats, ir = service.perform_statistical_testing(
             mock_adata_with_groups, group_column="condition"
         )
 
@@ -277,7 +296,7 @@ class TestDimensionalityReduction:
         self, service, mock_adata_with_groups
     ):
         """Test PCA dimensionality reduction."""
-        result_adata, stats = service.perform_dimensionality_reduction(
+        result_adata, stats, ir = service.perform_dimensionality_reduction(
             mock_adata_with_groups, method="pca", n_components=10
         )
 
@@ -293,7 +312,7 @@ class TestDimensionalityReduction:
         self, service, mock_adata_with_groups
     ):
         """Test t-SNE dimensionality reduction."""
-        result_adata, stats = service.perform_dimensionality_reduction(
+        result_adata, stats, ir = service.perform_dimensionality_reduction(
             mock_adata_with_groups, method="tsne", n_components=2, perplexity=10.0
         )
 
@@ -307,7 +326,7 @@ class TestDimensionalityReduction:
         self, service, mock_adata_with_groups
     ):
         """Test UMAP-like dimensionality reduction."""
-        result_adata, stats = service.perform_dimensionality_reduction(
+        result_adata, stats, ir = service.perform_dimensionality_reduction(
             mock_adata_with_groups, method="umap_like", n_components=2
         )
 
@@ -334,7 +353,7 @@ class TestDimensionalityReduction:
         # Add more missing values
         mock_adata_with_groups.X[0:5, 0:10] = np.nan
 
-        result_adata, stats = service.perform_dimensionality_reduction(
+        result_adata, stats, ir = service.perform_dimensionality_reduction(
             mock_adata_with_groups, method="pca"
         )
 
@@ -344,7 +363,7 @@ class TestDimensionalityReduction:
 
     def test_dimensionality_reduction_statistics(self, service, mock_adata_with_groups):
         """Test dimensionality reduction statistics calculation."""
-        result_adata, stats = service.perform_dimensionality_reduction(
+        result_adata, stats, ir = service.perform_dimensionality_reduction(
             mock_adata_with_groups, method="pca"
         )
 
@@ -365,7 +384,7 @@ class TestClusteringAnalysis:
 
     def test_perform_clustering_analysis_kmeans(self, service, mock_adata_with_groups):
         """Test K-means clustering analysis."""
-        result_adata, stats = service.perform_clustering_analysis(
+        result_adata, stats, ir = service.perform_clustering_analysis(
             mock_adata_with_groups, clustering_method="kmeans", n_clusters=3
         )
 
@@ -382,7 +401,7 @@ class TestClusteringAnalysis:
         self, service, mock_adata_with_groups
     ):
         """Test hierarchical clustering analysis."""
-        result_adata, stats = service.perform_clustering_analysis(
+        result_adata, stats, ir = service.perform_clustering_analysis(
             mock_adata_with_groups, clustering_method="hierarchical", n_clusters=4
         )
 
@@ -395,7 +414,7 @@ class TestClusteringAnalysis:
         self, service, mock_adata_with_groups
     ):
         """Test Gaussian Mixture Model clustering analysis."""
-        result_adata, stats = service.perform_clustering_analysis(
+        result_adata, stats, ir = service.perform_clustering_analysis(
             mock_adata_with_groups, clustering_method="gaussian_mixture", n_clusters=2
         )
 
@@ -408,7 +427,7 @@ class TestClusteringAnalysis:
         self, service, mock_adata_with_groups
     ):
         """Test clustering analysis with PCA preprocessing."""
-        result_adata, stats = service.perform_clustering_analysis(
+        result_adata, stats, ir = service.perform_clustering_analysis(
             mock_adata_with_groups,
             clustering_method="kmeans",
             use_pca=True,
@@ -425,7 +444,7 @@ class TestClusteringAnalysis:
         self, service, mock_adata_with_groups
     ):
         """Test clustering analysis without PCA preprocessing."""
-        result_adata, stats = service.perform_clustering_analysis(
+        result_adata, stats, ir = service.perform_clustering_analysis(
             mock_adata_with_groups, clustering_method="kmeans", use_pca=False
         )
 
@@ -446,7 +465,7 @@ class TestClusteringAnalysis:
 
     def test_clustering_analysis_statistics(self, service, mock_adata_with_groups):
         """Test clustering analysis statistics calculation."""
-        result_adata, stats = service.perform_clustering_analysis(
+        result_adata, stats, ir = service.perform_clustering_analysis(
             mock_adata_with_groups, clustering_method="kmeans"
         )
 
@@ -469,7 +488,7 @@ class TestPathwayEnrichment:
         self, service, mock_adata_with_stats
     ):
         """Test pathway enrichment with default protein list (significant proteins)."""
-        result_adata, stats = service.perform_pathway_enrichment(
+        result_adata, stats, ir = service.perform_pathway_enrichment(
             mock_adata_with_stats, database="go_biological_process"
         )
 
@@ -486,7 +505,7 @@ class TestPathwayEnrichment:
         """Test pathway enrichment with custom protein list."""
         protein_list = ["protein_0", "protein_1", "protein_2", "protein_3"]
 
-        result_adata, stats = service.perform_pathway_enrichment(
+        result_adata, stats, ir = service.perform_pathway_enrichment(
             mock_adata_with_groups, protein_list=protein_list, database="kegg_pathway"
         )
 
@@ -501,7 +520,7 @@ class TestPathwayEnrichment:
         databases = ["go_biological_process", "kegg_pathway", "reactome"]
 
         for db in databases:
-            result_adata, stats = service.perform_pathway_enrichment(
+            result_adata, stats, ir = service.perform_pathway_enrichment(
                 mock_adata_with_groups,
                 protein_list=["protein_0", "protein_1"],
                 database=db,
@@ -517,7 +536,7 @@ class TestPathwayEnrichment:
         protein_list = ["protein_0", "protein_1"]
         background_proteins = mock_adata_with_groups.var_names[:50].tolist()
 
-        result_adata, stats = service.perform_pathway_enrichment(
+        result_adata, stats, ir = service.perform_pathway_enrichment(
             mock_adata_with_groups,
             protein_list=protein_list,
             background_proteins=background_proteins,
@@ -530,7 +549,7 @@ class TestPathwayEnrichment:
         self, service, mock_adata_with_groups
     ):
         """Test pathway enrichment with different p-value thresholds."""
-        result_adata, stats = service.perform_pathway_enrichment(
+        result_adata, stats, ir = service.perform_pathway_enrichment(
             mock_adata_with_groups,
             protein_list=["protein_0", "protein_1"],
             p_value_threshold=0.01,
@@ -547,14 +566,14 @@ class TestPathwayEnrichment:
         if "is_significant" in mock_adata_with_groups.var.columns:
             del mock_adata_with_groups.var["is_significant"]
 
-        result_adata, stats = service.perform_pathway_enrichment(mock_adata_with_groups)
+        result_adata, stats, ir = service.perform_pathway_enrichment(mock_adata_with_groups)
 
         assert result_adata is not None
         assert stats["n_query_proteins"] > 0  # Should use fallback selection
 
     def test_pathway_enrichment_statistics(self, service, mock_adata_with_groups):
         """Test pathway enrichment statistics calculation."""
-        result_adata, stats = service.perform_pathway_enrichment(
+        result_adata, stats, ir = service.perform_pathway_enrichment(
             mock_adata_with_groups, protein_list=["protein_0", "protein_1"]
         )
 
@@ -690,7 +709,7 @@ class TestErrorHandlingAndEdgeCases:
         adata = ad.AnnData(X=X)
         adata.obs["condition"] = ["control"] * 10  # Only one group
 
-        result_adata, stats = service.perform_statistical_testing(
+        result_adata, stats, ir = service.perform_statistical_testing(
             adata, group_column="condition"
         )
 
@@ -704,7 +723,7 @@ class TestErrorHandlingAndEdgeCases:
         # Make first protein all missing
         mock_adata_with_groups.X[:, 0] = np.nan
 
-        result_adata, stats = service.perform_statistical_testing(
+        result_adata, stats, ir = service.perform_statistical_testing(
             mock_adata_with_groups, group_column="condition", handle_missing="skip"
         )
 
@@ -713,9 +732,10 @@ class TestErrorHandlingAndEdgeCases:
 
     def test_very_small_perplexity_tsne(self, service, mock_adata_with_groups):
         """Test t-SNE with very small perplexity (edge case)."""
-        result_adata, stats = service.perform_dimensionality_reduction(
+        result_adata, stats, ir = service.perform_dimensionality_reduction(
             mock_adata_with_groups,
             method="tsne",
+            n_components=2,  # Must be < 4 for barnes_hut with small perplexity
             perplexity=1.0,  # Very small perplexity
         )
 
@@ -735,22 +755,22 @@ class TestIntegrationScenarios:
         """Test complete analysis workflow: stats -> reduction -> clustering -> enrichment."""
 
         # Step 1: Statistical testing
-        adata_stats, _ = service.perform_statistical_testing(
+        adata_stats, _, _ = service.perform_statistical_testing(
             mock_adata_with_groups, group_column="condition"
         )
 
         # Step 2: Dimensionality reduction
-        adata_reduced, _ = service.perform_dimensionality_reduction(
+        adata_reduced, _, _ = service.perform_dimensionality_reduction(
             adata_stats, method="pca"
         )
 
         # Step 3: Clustering
-        adata_clustered, _ = service.perform_clustering_analysis(
+        adata_clustered, _, _ = service.perform_clustering_analysis(
             adata_reduced, clustering_method="kmeans"
         )
 
         # Step 4: Pathway enrichment
-        adata_enriched, _ = service.perform_pathway_enrichment(adata_clustered)
+        adata_enriched, _, _ = service.perform_pathway_enrichment(adata_clustered)
 
         # Verify final result has all analysis components
         assert "statistical_tests" in adata_enriched.uns
@@ -766,7 +786,7 @@ class TestIntegrationScenarios:
         results = {}
 
         for method in methods:
-            result_adata, stats = service.perform_statistical_testing(
+            result_adata, stats, ir = service.perform_statistical_testing(
                 mock_adata_with_groups,
                 group_column="condition",
                 test_method=method,
@@ -792,7 +812,7 @@ class TestIntegrationScenarios:
         results = {}
 
         for method in methods:
-            result_adata, stats = service.perform_dimensionality_reduction(
+            result_adata, stats, ir = service.perform_dimensionality_reduction(
                 mock_adata_with_groups, method=method, n_components=2
             )
             results[method] = stats
@@ -822,7 +842,7 @@ class TestPerformanceAndMemory:
         adata = ad.AnnData(X=X)
         adata.obs["condition"] = ["control"] * 100 + ["treatment"] * 100
 
-        result_adata, stats = service.perform_statistical_testing(
+        result_adata, stats, ir = service.perform_statistical_testing(
             adata, group_column="condition"
         )
 
@@ -838,7 +858,7 @@ class TestPerformanceAndMemory:
         X = np.random.randn(n_samples, n_proteins)
         adata = ad.AnnData(X=X)
 
-        result_adata, stats = service.perform_dimensionality_reduction(
+        result_adata, stats, ir = service.perform_dimensionality_reduction(
             adata, method="pca", n_components=50
         )
 

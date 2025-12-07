@@ -391,8 +391,11 @@ class LobsterCommands(Provider):
             return
 
         try:
-            self.client.data_manager.save_session()
-            self.app.notify("Session saved", timeout=2)
+            saved_items = self.client.data_manager.auto_save_state()
+            if saved_items:
+                self.app.notify(f"Session saved ({len(saved_items)} items)", timeout=2)
+            else:
+                self.app.notify("Nothing to save", severity="warning", timeout=2)
         except Exception as e:
             self.app.notify(f"Save failed: {e}", severity="error")
 
