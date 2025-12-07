@@ -71,7 +71,7 @@ jobs:
 
         # Step 1: Install the wheel itself, without its dependencies.
         # This places the lobster package itself in site-packages.
-        pip install dist/*.whl --no-deps
+        python -m pip install dist/*.whl --no-deps
 
         # Step 2: Extract dependencies from the wheel, filter out heavy ones, and install the rest.
         # WORKAROUND: docling → accelerate → torch chain pulls 5GB+ CUDA packages
@@ -80,14 +80,13 @@ jobs:
         DEPS_TO_INSTALL=$(unzip -p dist/*.whl */METADATA | \
             grep "^Requires-Dist:" | \
             grep -v "extra ==" | \
-            grep -iv "docling" | \
             grep -iv "torch" | \
             grep -iv "accelerate" | \
             sed 's/Requires-Dist: //' | \
             tr '\n' ' ')
 
         if [ -n "$DEPS_TO_INSTALL" ]; then
-            pip install $DEPS_TO_INSTALL
+            python -m pip install $DEPS_TO_INSTALL
         else
             echo "No dependencies to install."
         fi

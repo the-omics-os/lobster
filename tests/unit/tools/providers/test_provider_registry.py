@@ -470,6 +470,10 @@ def real_pubmed_provider(real_data_manager):
 # Test Classes for Real API Integration
 
 
+@pytest.mark.skipif(
+    os.getenv("LOBSTER_RUN_REAL_API_TESTS") != "1",
+    reason="Real API tests require LOBSTER_RUN_REAL_API_TESTS=1 environment variable"
+)
 class TestRealPMIDResolution:
     """Test PMID resolution with real NCBI API calls.
 
@@ -530,6 +534,10 @@ class TestRealPMIDResolution:
         time.sleep(0.5)
 
 
+@pytest.mark.skipif(
+    os.getenv("LOBSTER_RUN_REAL_API_TESTS") != "1",
+    reason="Real API tests require LOBSTER_RUN_REAL_API_TESTS=1 environment variable"
+)
 class TestRealDOIResolution:
     """Test DOI resolution with real CrossRef/DOI.org API calls.
 
@@ -568,6 +576,10 @@ class TestRealDOIResolution:
         time.sleep(0.5)
 
 
+@pytest.mark.skipif(
+    os.getenv("LOBSTER_RUN_REAL_API_TESTS") != "1",
+    reason="Real API tests require LOBSTER_RUN_REAL_API_TESTS=1 environment variable"
+)
 class TestRealPMCFulltextAccess:
     """Test PMC fulltext XML retrieval with real NCBI PMC API calls.
 

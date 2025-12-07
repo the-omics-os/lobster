@@ -6,7 +6,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2025-12-07 04:32:11
+# Generated: 2025-12-07 17:06:59
 # =============================================================================
 
 
@@ -27,6 +27,9 @@ install.ps1
 
 # Container files (CLI only)
 Dockerfile
+
+# GitHub Actions workflows (synced to lobster-local)
+.github/workflows/public-release.yml
 
 
 # =============================================================================

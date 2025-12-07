@@ -123,20 +123,8 @@ jobs:
           --durations=10 \
           -v
     
-    - name: Run tests/unit/agents/test_singlecell_expert.py tests
-      env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        AWS_BEDROCK_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_ACCESS_KEY }}
-        AWS_BEDROCK_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_SECRET_ACCESS_KEY }}
-        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
-      run: |
-        python -m pytest tests/unit/agents/test_singlecell_expert.py \
-          --maxfail=10 \
-          --junit-xml=test-results-singlecell.xml \
-          --durations=10 \
-          -v
-    
+    # test_singlecell_expert.py removed - functionality moved to transcriptomics_expert
+
     - name: Run tests/unit/agents/test_research_agent.py tests
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

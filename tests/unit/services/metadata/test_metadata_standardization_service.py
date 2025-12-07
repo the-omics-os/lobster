@@ -138,7 +138,7 @@ class TestStandardizeMetadata:
         mock_data_manager.list_modalities.return_value = ["transcriptomics_dataset"]
         mock_data_manager.get_modality.return_value = transcriptomics_adata
 
-        result = metadata_standardization_service.standardize_metadata(
+        result, stats, ir = metadata_standardization_service.standardize_metadata(
             identifier="transcriptomics_dataset", target_schema="transcriptomics"
         )
 
@@ -166,7 +166,7 @@ class TestStandardizeMetadata:
         mock_data_manager.list_modalities.return_value = ["proteomics_dataset"]
         mock_data_manager.get_modality.return_value = proteomics_adata
 
-        result = metadata_standardization_service.standardize_metadata(
+        result, stats, ir = metadata_standardization_service.standardize_metadata(
             identifier="proteomics_dataset", target_schema="proteomics"
         )
 
@@ -198,7 +198,7 @@ class TestStandardizeMetadata:
             "organism": ["Mus musculus"],  # Does NOT match (data has Homo sapiens)
         }
 
-        result = metadata_standardization_service.standardize_metadata(
+        result, stats, ir = metadata_standardization_service.standardize_metadata(
             identifier="dataset",
             target_schema="transcriptomics",
             controlled_vocabularies=controlled_vocabs,
@@ -229,7 +229,7 @@ class TestStandardizeMetadata:
         mock_data_manager.list_modalities.return_value = ["incomplete"]
         mock_data_manager.get_modality.return_value = adata
 
-        result = metadata_standardization_service.standardize_metadata(
+        result, stats, ir = metadata_standardization_service.standardize_metadata(
             identifier="incomplete", target_schema="transcriptomics"
         )
 
@@ -408,7 +408,7 @@ class TestValidateDatasetContent:
         mock_data_manager.list_modalities.return_value = ["dataset"]
         mock_data_manager.get_modality.return_value = transcriptomics_adata
 
-        result = metadata_standardization_service.validate_dataset_content(
+        result, stats, ir = metadata_standardization_service.validate_dataset_content(
             identifier="dataset", expected_samples=5  # Dataset has 10, so this passes
         )
 
@@ -424,7 +424,7 @@ class TestValidateDatasetContent:
         mock_data_manager.list_modalities.return_value = ["dataset"]
         mock_data_manager.get_modality.return_value = transcriptomics_adata
 
-        result = metadata_standardization_service.validate_dataset_content(
+        result, stats, ir = metadata_standardization_service.validate_dataset_content(
             identifier="dataset", expected_samples=20  # Dataset has 10, so this fails
         )
 
@@ -439,7 +439,7 @@ class TestValidateDatasetContent:
         mock_data_manager.list_modalities.return_value = ["dataset"]
         mock_data_manager.get_modality.return_value = transcriptomics_adata
 
-        result = metadata_standardization_service.validate_dataset_content(
+        result, stats, ir = metadata_standardization_service.validate_dataset_content(
             identifier="dataset",
             required_conditions=["Control", "Treatment"],  # Both present in data
         )
@@ -454,7 +454,7 @@ class TestValidateDatasetContent:
         mock_data_manager.list_modalities.return_value = ["dataset"]
         mock_data_manager.get_modality.return_value = transcriptomics_adata
 
-        result = metadata_standardization_service.validate_dataset_content(
+        result, stats, ir = metadata_standardization_service.validate_dataset_content(
             identifier="dataset",
             required_conditions=[
                 "Control",
@@ -474,7 +474,7 @@ class TestValidateDatasetContent:
         mock_data_manager.list_modalities.return_value = ["dataset"]
         mock_data_manager.get_modality.return_value = transcriptomics_adata
 
-        result = metadata_standardization_service.validate_dataset_content(
+        result, stats, ir = metadata_standardization_service.validate_dataset_content(
             identifier="dataset", check_controls=True
         )
 
@@ -500,7 +500,7 @@ class TestValidateDatasetContent:
         mock_data_manager.list_modalities.return_value = ["dataset"]
         mock_data_manager.get_modality.return_value = adata
 
-        result = metadata_standardization_service.validate_dataset_content(
+        result, stats, ir = metadata_standardization_service.validate_dataset_content(
             identifier="dataset", check_controls=True
         )
 
@@ -515,7 +515,7 @@ class TestValidateDatasetContent:
         mock_data_manager.list_modalities.return_value = ["dataset"]
         mock_data_manager.get_modality.return_value = incomplete_adata
 
-        result = metadata_standardization_service.validate_dataset_content(
+        result, stats, ir = metadata_standardization_service.validate_dataset_content(
             identifier="dataset", check_duplicates=True
         )
 
@@ -532,7 +532,7 @@ class TestValidateDatasetContent:
         mock_data_manager.list_modalities.return_value = ["dataset"]
         mock_data_manager.get_modality.return_value = transcriptomics_adata
 
-        result = metadata_standardization_service.validate_dataset_content(
+        result, stats, ir = metadata_standardization_service.validate_dataset_content(
             identifier="dataset"
         )
 
@@ -547,7 +547,7 @@ class TestValidateDatasetContent:
         mock_data_manager.list_modalities.return_value = ["dataset"]
         mock_data_manager.get_modality.return_value = incomplete_adata
 
-        result = metadata_standardization_service.validate_dataset_content(
+        result, stats, ir = metadata_standardization_service.validate_dataset_content(
             identifier="dataset"
         )
 
@@ -563,7 +563,7 @@ class TestValidateDatasetContent:
         mock_data_manager.list_modalities.return_value = ["dataset"]
         mock_data_manager.get_modality.return_value = transcriptomics_adata
 
-        result = metadata_standardization_service.validate_dataset_content(
+        result, stats, ir = metadata_standardization_service.validate_dataset_content(
             identifier="dataset"
         )
 
@@ -610,7 +610,7 @@ class TestIntegrationWithMetadataValidationService:
         mock_data_manager.list_modalities.return_value = ["dataset"]
         mock_data_manager.get_modality.return_value = adata
 
-        result = metadata_standardization_service.standardize_metadata(
+        result, stats, ir = metadata_standardization_service.standardize_metadata(
             identifier="dataset", target_schema="transcriptomics"
         )
 
@@ -644,7 +644,7 @@ class TestEdgeCases:
         mock_data_manager.list_modalities.return_value = ["dataset"]
         mock_data_manager.get_modality.return_value = adata
 
-        result = metadata_standardization_service.standardize_metadata(
+        result, stats, ir = metadata_standardization_service.standardize_metadata(
             identifier="dataset", target_schema="transcriptomics"
         )
 
@@ -669,7 +669,7 @@ class TestEdgeCases:
         mock_data_manager.list_modalities.return_value = ["dataset"]
         mock_data_manager.get_modality.return_value = adata
 
-        result = metadata_standardization_service.validate_dataset_content(
+        result, stats, ir = metadata_standardization_service.validate_dataset_content(
             identifier="dataset", required_conditions=["Control"]
         )
 

@@ -8,6 +8,7 @@ Tests cover:
 - Integration with run_differential_expression_analysis
 """
 
+from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 import anndata
@@ -23,9 +24,9 @@ from lobster.services.analysis.bulk_rnaseq_service import (
 
 
 @pytest.fixture
-def bulk_service():
+def bulk_service(tmp_path):
     """Create a BulkRNASeqService instance for testing."""
-    return BulkRNASeqService()
+    return BulkRNASeqService(results_dir=tmp_path)
 
 
 @pytest.fixture

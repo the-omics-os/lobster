@@ -127,6 +127,9 @@ install.ps1
 # Container files (CLI only)
 Dockerfile
 
+# GitHub Actions workflows (synced to lobster-local)
+.github/workflows/public-release.yml
+
 
 # =============================================================================
 # DOCUMENTATION

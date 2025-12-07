@@ -451,118 +451,75 @@ jobs:
         echo "✅ Package successfully installed from PyPI!"
 
   # =====================================================================
-  # Step 6: Create GitHub Release in Public Repository
+  # Step 6: Push Tag to Public Repository (Triggers public-release.yml)
   # =====================================================================
-  # Creates release in lobster-local (public) so users can download wheels
-  # Uses GitHub CLI to create release in a different repository
+  # Pushes the version tag to lobster-local using deploy key.
+  # This triggers the public-release.yml workflow in lobster-local,
+  # which creates the GitHub release using the repo's native GITHUB_TOKEN.
+  #
+  # Architecture:
+  #   - No PAT required (eliminates WIKI_SYNC_PAT dependency)
+  #   - Uses existing PUBLIC_REPO_DEPLOY_KEY (already configured)
+  #   - lobster-local owns its own release creation
   # =====================================================================
-  create-release:
-    name: Create GitHub Release
+  push-tag-to-public:
+    name: Push Tag to lobster-local
     needs: [publish-pypi]
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
-    timeout-minutes: 10
+    timeout-minutes: 5
 
     steps:
     - name: Extract version
       id: version
       run: |
         VERSION="${GITHUB_REF#refs/tags/}"
-        VERSION_NUM="${VERSION#v}"
         echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "version_number=$VERSION_NUM" >> $GITHUB_OUTPUT
+        echo "Pushing tag: $VERSION"
 
-    - name: Download build artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: dist-packages-${{ steps.version.outputs.version_number }}
-        path: dist/
-
-    - name: Generate release notes
-      id: notes
-      run: |
-        cat > release_notes.md << 'EOF'
-        # Lobster AI ${{ steps.version.outputs.version }}
-
-        ## 📦 Installation
-
-        ### From PyPI (Recommended)
-
-        ```bash
-        pip install lobster-ai
-        ```
-
-        ### From TestPyPI
-
-        ```bash
-        pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple lobster-ai
-        ```
-
-        ### From GitHub Release
-
-        ```bash
-        pip install https://github.com/the-omics-os/lobster-local/releases/download/${{ steps.version.outputs.version }}/lobster_ai-${{ steps.version.outputs.version_number }}-py3-none-any.whl
-        ```
-
-        ## 📋 Package Information
-
-        - **Package Name**: lobster-ai
-        - **Version**: ${{ steps.version.outputs.version_number }}
-        - **Python**: 3.11+
-        - **License**: AGPL-3.0-or-later
-        - **Repository**: [lobster-local](https://github.com/the-omics-os/lobster-local)
-
-        ## 🔗 Links
-
-        - **PyPI**: https://pypi.org/project/lobster-ai/
-        - **Documentation**: https://github.com/the-omics-os/lobster-local/wiki
-        - **Source Code**: https://github.com/the-omics-os/lobster-local
-
-        ## 🔄 What's New
-
-        See [CHANGELOG.md](https://github.com/the-omics-os/lobster-local/blob/main/CHANGELOG.md) for detailed changes.
-
-        ---
-
-        📦 *Built and published automatically via GitHub Actions*
-        EOF
-
-    - name: Create tag in lobster-local repository
+    - name: Configure SSH for deployment
       env:
-        GH_TOKEN: ${{ secrets.WIKI_SYNC_PAT }}
+        SSH_PRIVATE_KEY: ${{ secrets.PUBLIC_REPO_DEPLOY_KEY }}
       run: |
-        # Check if tag already exists in public repo
-        if git ls-remote --tags https://github.com/the-omics-os/lobster-local.git | grep -q "refs/tags/${{ steps.version.outputs.version }}"; then
-          echo "⚠️  Tag ${{ steps.version.outputs.version }} already exists in lobster-local"
+        mkdir -p ~/.ssh
+        echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+        chmod 600 ~/.ssh/id_ed25519
+        ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+    - name: Push tag to lobster-local
+      run: |
+        TAG="${{ steps.version.outputs.version }}"
+        PUBLIC_REPO="git@github.com:the-omics-os/lobster-local.git"
+
+        # Check if tag already exists
+        if git ls-remote --tags "$PUBLIC_REPO" | grep -q "refs/tags/$TAG"; then
+          echo "Tag $TAG already exists in lobster-local"
+          echo "Skipping tag push (release may already exist)"
         else
-          # Get the latest commit SHA from lobster-local
-          COMMIT_SHA=$(git ls-remote https://github.com/the-omics-os/lobster-local.git refs/heads/main | cut -f1)
-          echo "Creating tag ${{ steps.version.outputs.version }} at commit $COMMIT_SHA"
+          # Get the latest commit SHA from lobster-local main branch
+          COMMIT_SHA=$(git ls-remote "$PUBLIC_REPO" refs/heads/main | cut -f1)
 
-          # Create tag using GitHub API
-          gh api --method POST \
-            /repos/the-omics-os/lobster-local/git/refs \
-            -f ref="refs/tags/${{ steps.version.outputs.version }}" \
-            -f sha="$COMMIT_SHA"
+          if [ -z "$COMMIT_SHA" ]; then
+            echo "ERROR: Could not get commit SHA from lobster-local"
+            exit 1
+          fi
 
-          echo "✅ Tag created in lobster-local"
+          echo "Creating tag $TAG at commit $COMMIT_SHA"
+
+          # Clone minimal repo to create tag
+          git clone --depth 1 --branch main "$PUBLIC_REPO" /tmp/lobster-local
+          cd /tmp/lobster-local
+
+          git config user.name "omics-os-bot"
+          git config user.email "bot@omics-os.com"
+
+          # Create and push the tag
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+          echo "Tag $TAG pushed to lobster-local"
+          echo "This triggers: https://github.com/the-omics-os/lobster-local/actions"
         fi
-
-    - name: Create GitHub Release in lobster-local
-      env:
-        GH_TOKEN: ${{ secrets.WIKI_SYNC_PAT }}
-      run: |
-        # Create release in the PUBLIC repository (lobster-local)
-        gh release create "${{ steps.version.outputs.version }}" \
-          --repo the-omics-os/lobster-local \
-          --title "Release ${{ steps.version.outputs.version }}" \
-          --notes-file release_notes.md \
-          ${{ contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'rc') && '--prerelease' || '' }} \
-          dist/*.whl \
-          dist/*.tar.gz
-
-        echo "✅ Release created in lobster-local"
-        echo "🔗 https://github.com/the-omics-os/lobster-local/releases/tag/${{ steps.version.outputs.version }}"
 
   # =====================================================================
   # Step 7: Summary
@@ -570,7 +527,7 @@ jobs:
   summary:
     name: Release Summary
     runs-on: ubuntu-latest
-    needs: [sync-to-public, build-package, publish-pypi, create-release]  # Removed testpypi dependency
+    needs: [sync-to-public, build-package, publish-pypi, push-tag-to-public]
     if: always()
 
     steps:
@@ -594,7 +551,7 @@ jobs:
         echo "- **Build**: ${{ needs.build-package.result }}" >> $GITHUB_STEP_SUMMARY
         echo "- **TestPyPI**: ${{ needs.publish-testpypi.result }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Production PyPI**: ${{ needs.publish-pypi.result }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **GitHub Release**: ${{ needs.create-release.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Tag Push (triggers release)**: ${{ needs.push-tag-to-public.result }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
 
         if [[ "${{ needs.publish-pypi.result }}" == "success" ]]; then

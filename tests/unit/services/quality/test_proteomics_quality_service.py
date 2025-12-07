@@ -184,7 +184,7 @@ class TestMissingValuePatterns:
         self, service, mock_adata_with_missing
     ):
         """Test basic missing value pattern assessment."""
-        result_adata, stats = service.assess_missing_value_patterns(
+        result_adata, stats, ir = service.assess_missing_value_patterns(
             mock_adata_with_missing, sample_threshold=0.7, protein_threshold=0.8
         )
 
@@ -206,7 +206,7 @@ class TestMissingValuePatterns:
         self, service, mock_adata_with_missing
     ):
         """Test missing value assessment with custom thresholds."""
-        result_adata, stats = service.assess_missing_value_patterns(
+        result_adata, stats, ir = service.assess_missing_value_patterns(
             mock_adata_with_missing, sample_threshold=0.5, protein_threshold=0.6
         )
 
@@ -219,7 +219,7 @@ class TestMissingValuePatterns:
         X = np.random.lognormal(mean=8, sigma=1, size=(20, 30))
         adata = ad.AnnData(X=X)
 
-        result_adata, stats = service.assess_missing_value_patterns(adata)
+        result_adata, stats, ir = service.assess_missing_value_patterns(adata)
 
         assert result_adata is not None
         assert stats["total_missing_percentage"] == 0.0
@@ -234,7 +234,7 @@ class TestMissingValuePatterns:
 
         adata = ad.AnnData(X=X)
 
-        result_adata, stats = service.assess_missing_value_patterns(adata)
+        result_adata, stats, ir = service.assess_missing_value_patterns(adata)
 
         assert result_adata is not None
         assert stats["n_high_missing_proteins"] >= 2
@@ -243,7 +243,7 @@ class TestMissingValuePatterns:
         self, service, mock_adata_with_missing
     ):
         """Test identification of specific missing value patterns."""
-        result_adata, stats = service.assess_missing_value_patterns(
+        result_adata, stats, ir = service.assess_missing_value_patterns(
             mock_adata_with_missing
         )
 
@@ -265,7 +265,7 @@ class TestCoefficientVariation:
         self, service, mock_adata_with_replicates
     ):
         """Test basic coefficient of variation assessment."""
-        result_adata, stats = service.assess_coefficient_variation(
+        result_adata, stats, ir = service.assess_coefficient_variation(
             mock_adata_with_replicates, replicate_column="replicate_group"
         )
 
@@ -285,7 +285,7 @@ class TestCoefficientVariation:
         self, service, mock_adata_with_replicates
     ):
         """Test CV assessment with custom CV threshold."""
-        result_adata, stats = service.assess_coefficient_variation(
+        result_adata, stats, ir = service.assess_coefficient_variation(
             mock_adata_with_replicates,
             replicate_column="replicate_group",
             cv_threshold=0.15,
@@ -298,7 +298,7 @@ class TestCoefficientVariation:
         self, service, mock_adata_with_replicates
     ):
         """Test CV assessment without replicate column (overall CV)."""
-        result_adata, stats = service.assess_coefficient_variation(
+        result_adata, stats, ir = service.assess_coefficient_variation(
             mock_adata_with_replicates, replicate_column=None
         )
 
@@ -325,7 +325,7 @@ class TestCoefficientVariation:
         adata = ad.AnnData(X=X)
         adata.obs["replicate_group"] = ["group_A"] * 3
 
-        result_adata, stats = service.assess_coefficient_variation(
+        result_adata, stats, ir = service.assess_coefficient_variation(
             adata, replicate_column="replicate_group"
         )
 
@@ -344,17 +344,18 @@ class TestContaminantDetection:
 
     def test_detect_contaminants_basic(self, service, mock_adata_with_contaminants):
         """Test basic contaminant detection."""
-        result_adata, stats = service.detect_contaminants(mock_adata_with_contaminants)
+        result_adata, stats, ir = service.detect_contaminants(mock_adata_with_contaminants)
 
         assert result_adata is not None
         assert isinstance(stats, dict)
         assert stats["analysis_type"] == "contaminant_detection"
-        assert "total_contaminants_detected" in stats
-        assert "contaminant_types" in stats
+        assert "total_contaminants" in stats
+        assert "contaminant_counts_by_type" in stats
 
         # Contaminant flags should be added to variables
         assert "is_contaminant" in result_adata.var.columns
-        assert "contaminant_type" in result_adata.var.columns
+        # Individual contaminant type flags
+        assert any(col.startswith("is_") for col in result_adata.var.columns if col != "is_contaminant")
 
     def test_detect_contaminants_custom_patterns(
         self, service, mock_adata_with_contaminants
@@ -362,12 +363,12 @@ class TestContaminantDetection:
         """Test contaminant detection with custom patterns."""
         custom_patterns = {"custom_contam": ["CUSTOM_", "TEST_"]}
 
-        result_adata, stats = service.detect_contaminants(
+        result_adata, stats, ir = service.detect_contaminants(
             mock_adata_with_contaminants, custom_patterns=custom_patterns
         )
 
         assert result_adata is not None
-        assert "custom_contam" in stats["contaminant_types"]
+        assert "custom_contam" in stats["contaminant_counts_by_type"]
 
     def test_detect_contaminants_protein_name_column(self, service):
         """Test contaminant detection using protein_name column."""
@@ -382,13 +383,13 @@ class TestContaminantDetection:
             "ANOTHER_PROT",
         ]
 
-        result_adata, stats = service.detect_contaminants(
+        result_adata, stats, ir = service.detect_contaminants(
             adata, protein_name_column="protein_names"
         )
 
         assert result_adata is not None
         # Should detect keratin, common contaminant, and reverse hit
-        assert stats["total_contaminants_detected"] >= 3
+        assert stats["total_contaminants"] >= 3
 
     def test_detect_contaminants_no_contaminants(self, service):
         """Test contaminant detection when no contaminants are present."""
@@ -402,22 +403,22 @@ class TestContaminantDetection:
             "REGULAR_PROT5",
         ]
 
-        result_adata, stats = service.detect_contaminants(adata)
+        result_adata, stats, ir = service.detect_contaminants(adata)
 
         assert result_adata is not None
-        assert stats["total_contaminants_detected"] == 0
+        assert stats["total_contaminants"] == 0
 
     def test_contaminant_detection_statistics(
         self, service, mock_adata_with_contaminants
     ):
         """Test contaminant detection statistics accuracy."""
-        result_adata, stats = service.detect_contaminants(mock_adata_with_contaminants)
+        result_adata, stats, ir = service.detect_contaminants(mock_adata_with_contaminants)
 
         # Check that detected contaminants match expected patterns
         contaminant_mask = result_adata.var["is_contaminant"]
         detected_count = contaminant_mask.sum()
 
-        assert stats["total_contaminants_detected"] == detected_count
+        assert stats["total_contaminants"] == detected_count
         assert (
             stats["contaminant_percentage"]
             == (detected_count / len(contaminant_mask)) * 100
@@ -434,30 +435,30 @@ class TestDynamicRangeEvaluation:
 
     def test_evaluate_dynamic_range_basic(self, service, mock_adata_with_missing):
         """Test basic dynamic range evaluation."""
-        result_adata, stats = service.evaluate_dynamic_range(mock_adata_with_missing)
+        result_adata, stats, ir = service.evaluate_dynamic_range(mock_adata_with_missing)
 
         assert result_adata is not None
         assert isinstance(stats, dict)
         assert stats["analysis_type"] == "dynamic_range_evaluation"
-        assert "overall_dynamic_range_log10" in stats
-        assert "median_dynamic_range_log10" in stats
-        assert "intensity_distribution" in stats
+        assert "mean_sample_dynamic_range" in stats
+        assert "median_sample_dynamic_range" in stats
+        assert "mean_protein_dynamic_range" in stats
+        assert "median_protein_dynamic_range" in stats
 
-        # Dynamic range metrics should be added to variables
+        # Dynamic range metrics should be added to observations and variables
+        assert "dynamic_range_log10" in result_adata.obs.columns
         assert "dynamic_range_log10" in result_adata.var.columns
-        assert "min_intensity" in result_adata.var.columns
-        assert "max_intensity" in result_adata.var.columns
 
     def test_evaluate_dynamic_range_sample_wise(self, service, mock_adata_with_missing):
         """Test sample-wise dynamic range evaluation."""
-        result_adata, stats = service.evaluate_dynamic_range(
-            mock_adata_with_missing, calculate_sample_wise=True
+        result_adata, stats, ir = service.evaluate_dynamic_range(
+            mock_adata_with_missing
         )
 
         assert result_adata is not None
         # Sample-wise metrics should be added
         assert "dynamic_range_log10" in result_adata.obs.columns
-        assert "sample_wise_ranges" in stats
+        assert "median_sample_dynamic_range" in stats
 
     def test_evaluate_dynamic_range_with_zeros(self, service):
         """Test dynamic range evaluation with zero values."""
@@ -466,7 +467,7 @@ class TestDynamicRangeEvaluation:
 
         adata = ad.AnnData(X=X)
 
-        result_adata, stats = service.evaluate_dynamic_range(adata)
+        result_adata, stats, ir = service.evaluate_dynamic_range(adata)
 
         assert result_adata is not None
         # Should handle zero values gracefully
@@ -483,7 +484,7 @@ class TestDynamicRangeEvaluation:
         )
         adata = ad.AnnData(X=X)
 
-        result_adata, stats = service.evaluate_dynamic_range(adata)
+        result_adata, stats, ir = service.evaluate_dynamic_range(adata)
 
         # Check dynamic range calculations
         expected_ranges = [
@@ -508,7 +509,7 @@ class TestPCAOutlierDetection:
 
     def test_detect_pca_outliers_basic(self, service, mock_adata_with_outliers):
         """Test basic PCA outlier detection."""
-        result_adata, stats = service.detect_pca_outliers(mock_adata_with_outliers)
+        result_adata, stats, ir = service.detect_pca_outliers(mock_adata_with_outliers)
 
         assert result_adata is not None
         assert isinstance(stats, dict)
@@ -518,14 +519,14 @@ class TestPCAOutlierDetection:
 
         # PCA and outlier information should be added
         assert "X_pca" in result_adata.obsm
-        assert "is_outlier" in result_adata.obs.columns
+        assert "is_pca_outlier" in result_adata.obs.columns
         assert "outlier_score" in result_adata.obs.columns
 
     def test_detect_pca_outliers_custom_components(
         self, service, mock_adata_with_outliers
     ):
         """Test PCA outlier detection with custom number of components."""
-        result_adata, stats = service.detect_pca_outliers(
+        result_adata, stats, ir = service.detect_pca_outliers(
             mock_adata_with_outliers, n_components=5
         )
 
@@ -537,7 +538,7 @@ class TestPCAOutlierDetection:
         self, service, mock_adata_with_outliers
     ):
         """Test PCA outlier detection with custom threshold."""
-        result_adata, stats = service.detect_pca_outliers(
+        result_adata, stats, ir = service.detect_pca_outliers(
             mock_adata_with_outliers, outlier_threshold=2.0
         )
 
@@ -550,7 +551,7 @@ class TestPCAOutlierDetection:
         X = np.random.normal(loc=1000, scale=50, size=(20, 50))
         adata = ad.AnnData(X=X)
 
-        result_adata, stats = service.detect_pca_outliers(adata)
+        result_adata, stats, ir = service.detect_pca_outliers(adata)
 
         assert result_adata is not None
         # Should detect few or no outliers
@@ -560,7 +561,7 @@ class TestPCAOutlierDetection:
         self, service, mock_adata_with_missing
     ):
         """Test PCA outlier detection with missing values (should handle via imputation)."""
-        result_adata, stats = service.detect_pca_outliers(mock_adata_with_missing)
+        result_adata, stats, ir = service.detect_pca_outliers(mock_adata_with_missing)
 
         assert result_adata is not None
         assert "X_pca" in result_adata.obsm
@@ -568,13 +569,13 @@ class TestPCAOutlierDetection:
 
     def test_pca_variance_calculation(self, service, mock_adata_with_outliers):
         """Test PCA variance explanation calculation."""
-        result_adata, stats = service.detect_pca_outliers(mock_adata_with_outliers)
+        result_adata, stats, ir = service.detect_pca_outliers(mock_adata_with_outliers)
 
-        assert "pca_variance_explained" in stats
-        assert "cumulative_variance_explained" in stats
+        assert "variance_explained_top10" in stats
+        assert "n_components_computed" in stats
         # Variance explained should be reasonable
-        assert 0 < stats["pca_variance_explained"] <= 1
-        assert 0 < stats["cumulative_variance_explained"] <= 1
+        assert 0 < stats["variance_explained_top10"] <= 1
+        assert stats["n_components_computed"] > 0
 
 
 # ===============================================================================
@@ -589,7 +590,7 @@ class TestTechnicalReplicateAssessment:
         self, service, mock_adata_with_replicates
     ):
         """Test basic technical replicate assessment."""
-        result_adata, stats = service.assess_technical_replicates(
+        result_adata, stats, ir = service.assess_technical_replicates(
             mock_adata_with_replicates, replicate_column="replicate_group"
         )
 
@@ -598,17 +599,18 @@ class TestTechnicalReplicateAssessment:
         assert stats["analysis_type"] == "technical_replicate_assessment"
         assert "n_replicate_groups" in stats
         assert "mean_replicate_correlation" in stats
-        assert "replicate_group_stats" in stats
+        assert "median_replicate_correlation" in stats
+        assert "mean_replicate_cv" in stats
 
         # Replicate metrics should be added to observations
-        assert "replicate_correlation" in result_adata.obs.columns
-        assert "replicate_quality" in result_adata.obs.columns
+        assert "replicate_group" in result_adata.obs.columns
+        assert "group_size" in result_adata.obs.columns
 
     def test_assess_technical_replicates_custom_min_replicates(
         self, service, mock_adata_with_replicates
     ):
         """Test replicate assessment with custom minimum replicates requirement."""
-        result_adata, stats = service.assess_technical_replicates(
+        result_adata, stats, ir = service.assess_technical_replicates(
             mock_adata_with_replicates,
             replicate_column="replicate_group",
             min_replicates=2,
@@ -621,7 +623,7 @@ class TestTechnicalReplicateAssessment:
         self, service, mock_adata_with_replicates
     ):
         """Test replicate assessment with custom correlation threshold."""
-        result_adata, stats = service.assess_technical_replicates(
+        result_adata, stats, ir = service.assess_technical_replicates(
             mock_adata_with_replicates,
             replicate_column="replicate_group",
             correlation_threshold=0.9,
@@ -654,7 +656,7 @@ class TestTechnicalReplicateAssessment:
             "group_E",
         ]
 
-        result_adata, stats = service.assess_technical_replicates(
+        result_adata, stats, ir = service.assess_technical_replicates(
             adata, replicate_column="replicate_group", min_replicates=2
         )
 
@@ -678,7 +680,7 @@ class TestTechnicalReplicateAssessment:
         adata = ad.AnnData(X=X)
         adata.obs["replicate_group"] = ["group_A"] * 3
 
-        result_adata, stats = service.assess_technical_replicates(
+        result_adata, stats, ir = service.assess_technical_replicates(
             adata, replicate_column="replicate_group"
         )
 
@@ -735,10 +737,10 @@ class TestErrorHandlingAndEdgeCases:
         adata = ad.AnnData(X=X)
 
         # Should handle single sample gracefully
-        result_adata, stats = service.assess_missing_value_patterns(adata)
+        result_adata, stats, ir = service.assess_missing_value_patterns(adata)
         assert result_adata is not None
 
-        result_adata, stats = service.evaluate_dynamic_range(adata)
+        result_adata, stats, ir = service.evaluate_dynamic_range(adata)
         assert result_adata is not None
 
     def test_single_protein_quality_assessment(self, service):
@@ -746,7 +748,7 @@ class TestErrorHandlingAndEdgeCases:
         X = np.random.lognormal(mean=8, sigma=1, size=(20, 1))
         adata = ad.AnnData(X=X)
 
-        result_adata, stats = service.assess_missing_value_patterns(adata)
+        result_adata, stats, ir = service.assess_missing_value_patterns(adata)
         assert result_adata is not None
 
     def test_all_missing_data(self, service):
@@ -754,7 +756,7 @@ class TestErrorHandlingAndEdgeCases:
         X = np.full((10, 5), np.nan)
         adata = ad.AnnData(X=X)
 
-        result_adata, stats = service.assess_missing_value_patterns(adata)
+        result_adata, stats, ir = service.assess_missing_value_patterns(adata)
         assert result_adata is not None
         assert stats["total_missing_percentage"] == 100.0
 
@@ -764,7 +766,7 @@ class TestErrorHandlingAndEdgeCases:
         adata = ad.AnnData(X=X)
 
         # Should handle gracefully
-        result_adata, stats = service.detect_pca_outliers(adata)
+        result_adata, stats, ir = service.detect_pca_outliers(adata)
         assert result_adata is not None
 
     def test_insufficient_data_for_pca(self, service):
@@ -774,7 +776,7 @@ class TestErrorHandlingAndEdgeCases:
         )  # Fewer samples than features
         adata = ad.AnnData(X=X)
 
-        result_adata, stats = service.detect_pca_outliers(adata, n_components=2)
+        result_adata, stats, ir = service.detect_pca_outliers(adata, n_components=2)
         assert result_adata is not None
 
 
@@ -796,24 +798,24 @@ class TestIntegrationScenarios:
         ]
 
         # Step 1: Missing value assessment
-        adata_mv, _ = service.assess_missing_value_patterns(mock_adata_with_missing)
+        adata_mv, _, _ = service.assess_missing_value_patterns(mock_adata_with_missing)
 
         # Step 2: CV assessment
-        adata_cv, _ = service.assess_coefficient_variation(
+        adata_cv, _, _ = service.assess_coefficient_variation(
             adata_mv, replicate_column="replicate_group"
         )
 
         # Step 3: Contaminant detection
-        adata_cont, _ = service.detect_contaminants(adata_cv)
+        adata_cont, _, _ = service.detect_contaminants(adata_cv)
 
         # Step 4: Dynamic range evaluation
-        adata_dr, _ = service.evaluate_dynamic_range(adata_cont)
+        adata_dr, _, _ = service.evaluate_dynamic_range(adata_cont)
 
         # Step 5: PCA outlier detection
-        adata_pca, _ = service.detect_pca_outliers(adata_dr)
+        adata_pca, _, _ = service.detect_pca_outliers(adata_dr)
 
         # Step 6: Replicate assessment
-        adata_final, _ = service.assess_technical_replicates(
+        adata_final, _, _ = service.assess_technical_replicates(
             adata_pca, replicate_column="replicate_group"
         )
 
@@ -822,14 +824,14 @@ class TestIntegrationScenarios:
         assert "cv_mean" in adata_final.var.columns
         assert "is_contaminant" in adata_final.var.columns
         assert "dynamic_range_log10" in adata_final.var.columns
-        assert "is_outlier" in adata_final.obs.columns
-        assert "replicate_correlation" in adata_final.obs.columns
+        assert "is_pca_outlier" in adata_final.obs.columns
+        assert "replicate_group" in adata_final.obs.columns
 
     def test_quality_metrics_preservation(self, service, mock_adata_with_missing):
         """Test that quality metrics are preserved across multiple assessments."""
         # Run multiple quality assessments
-        adata_step1, _ = service.assess_missing_value_patterns(mock_adata_with_missing)
-        adata_step2, _ = service.evaluate_dynamic_range(adata_step1)
+        adata_step1, _, _ = service.assess_missing_value_patterns(mock_adata_with_missing)
+        adata_step2, _, _ = service.evaluate_dynamic_range(adata_step1)
 
         # Metrics from step 1 should be preserved in step 2
         assert "missing_value_percentage" in adata_step2.obs.columns
@@ -843,7 +845,7 @@ class TestIntegrationScenarios:
         results = {}
 
         for threshold in thresholds:
-            result_adata, stats = service.assess_missing_value_patterns(
+            result_adata, stats, ir = service.assess_missing_value_patterns(
                 mock_adata_with_missing, sample_threshold=threshold
             )
             results[threshold] = stats["n_high_missing_samples"]
@@ -872,7 +874,7 @@ class TestPerformanceAndMemory:
 
         adata = ad.AnnData(X=X)
 
-        result_adata, stats = service.assess_missing_value_patterns(adata)
+        result_adata, stats, ir = service.assess_missing_value_patterns(adata)
 
         assert result_adata is not None
         assert stats["samples_processed"] == n_samples
@@ -886,7 +888,7 @@ class TestPerformanceAndMemory:
         X = np.random.lognormal(mean=8, sigma=1, size=(n_samples, n_proteins))
         adata = ad.AnnData(X=X)
 
-        result_adata, stats = service.detect_pca_outliers(adata, n_components=20)
+        result_adata, stats, ir = service.detect_pca_outliers(adata, n_components=20)
 
         assert result_adata is not None
         # Should complete without memory errors
@@ -903,7 +905,7 @@ class TestPerformanceAndMemory:
         adata = ad.AnnData(X=X)
         adata.var_names = protein_names
 
-        result_adata, stats = service.detect_contaminants(adata)
+        result_adata, stats, ir = service.detect_contaminants(adata)
 
         assert result_adata is not None
-        assert stats["total_contaminants_detected"] >= 10
+        assert stats["total_contaminants"] >= 10

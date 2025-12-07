@@ -124,19 +124,22 @@ jobs:
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          body: |
-            ## Docker Image
-            ```bash
-            docker pull ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
-            # or
-            docker pull ${{ env.IMAGE_NAME }}:latest
-            ```
+      # NOTE: GitHub Release creation is handled by release.yml (private repo)
+      # and public-release.yml (public repo). Removed duplicate release creation
+      # to avoid multiple releases per tag push.
 
-            See [Installation Guide](https://github.com/the-omics-os/lobster-local/wiki/02-installation) for usage instructions.
+      - name: Publish summary
+        run: |
+          echo "## Docker Image Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image**: \`${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Pull Commands" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "# or" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
   # ============================================================================
   # Job 3: Test docker-compose Configuration (DISABLED)

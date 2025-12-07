@@ -52,7 +52,7 @@ def mock_adata():
 def annotation_service():
     """Create ManualAnnotationService instance."""
     # Mock the Rich Console to avoid terminal interactions in tests
-    with patch("lobster.tools.manual_annotation_service.Console"):
+    with patch("lobster.services.metadata.manual_annotation_service.Console"):
         return ManualAnnotationService()
 
 

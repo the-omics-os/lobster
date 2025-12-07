@@ -203,9 +203,11 @@ class TestConcatenationService:
 
         # Mock concatenation success
         with patch.object(service, "concatenate_samples") as mock_concat_samples:
+            mock_ir = Mock()  # Simple mock for IR
             mock_concat_samples.return_value = (
                 sample_anndata_objects[0],
                 {"n_samples": 2, "strategy_used": "smart_sparse"},
+                mock_ir
             )
 
             result_adata, statistics, _ = service.concatenate_from_modalities(

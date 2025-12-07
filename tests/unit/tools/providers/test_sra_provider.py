@@ -632,7 +632,7 @@ class TestErrorHandling:
         provider = SRAProvider(data_manager=mock_data_manager)
 
         # Simulate missing pysradb module
-        with patch.dict("sys.modules", {}, clear=True):
+        with patch.dict("sys.modules", {"pysradb": None}):
             with pytest.raises(SRAConnectionError, match="pysradb not installed"):
                 provider._get_sraweb()
 
@@ -699,7 +699,7 @@ class TestConfiguration:
             SRAProviderConfig(max_results=0)
 
         with pytest.raises(Exception):  # Pydantic validation error
-            SRAProviderConfig(max_results=2000)
+            SRAProviderConfig(max_results=200000)  # Above le=100000 limit
 
 
 class TestLazyInitialization:
