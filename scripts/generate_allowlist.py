@@ -428,7 +428,7 @@ lobster/ui/components/status_display.py
 lobster/ui/components/parallel_workers_progress.py
 lobster/ui/components/multi_progress.py
 
-# NOTE: Textual UI (lobster os) is EXCLUDED - see ALWAYS_EXCLUDED section
+# NOTE: Textual UI (lobster dashboard) is EXCLUDED - see ALWAYS_EXCLUDED section
 
 
 # =============================================================================
@@ -469,7 +469,7 @@ ALWAYS_EXCLUDED = """
 # ALWAYS EXCLUDED (Regardless of Tier)
 # =============================================================================
 
-# Textual UI (lobster os command) - Private feature
+# Textual UI (lobster dashboard command) - Private feature
 !lobster/ui/os_app.py
 !lobster/ui/screens/**
 !lobster/ui/widgets/status_bar.py

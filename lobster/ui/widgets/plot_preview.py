@@ -1,38 +1,44 @@
-"""Plot preview widget showing latest visualizations."""
+"""Plot preview widget showing list of generated plots.
 
-from typing import Optional, Dict, Any
+Simple list widget for dashboard sidebar. Use /plots command for detailed view.
+"""
+
+from typing import Dict, Any, List
 from pathlib import Path
 
 from textual.widgets import Static, ListView, ListItem, Label
 from textual.reactive import reactive
 from textual.containers import Vertical
-
-
-class PlotItem(ListItem):
-    """Single plot list item."""
-
-    def __init__(self, plot_info: Dict[str, Any], *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.plot_info = plot_info
-
-    def compose(self):
-        """Render plot item."""
-        name = self.plot_info.get("name", "Unknown")
-        file_path = self.plot_info.get("file_path", "")
-        yield Label(f"📊 {name}")
-        if file_path:
-            yield Label(f"[dim]{Path(file_path).name}[/dim]")
+from textual import on
 
 
 class PlotPreview(Vertical):
     """
-    Plot preview panel showing recently generated plots.
+    Compact plot list for dashboard sidebar.
 
-    Features:
-    - Lists latest plots with metadata
-    - Press Enter to open in browser
-    - Auto-updates when new plots generated
-    - Phase 5: Terminal thumbnails (kitty/sixel)
+    Shows plot names only. Use /plots for detailed table view.
+    Double-click or press Enter to open plot in browser.
+    """
+
+    DEFAULT_CSS = """
+    PlotPreview {
+        height: auto;
+        max-height: 10;
+    }
+
+    PlotPreview ListView {
+        height: auto;
+        max-height: 8;
+    }
+
+    PlotPreview ListItem {
+        height: 1;
+        padding: 0 1;
+    }
+
+    PlotPreview ListItem:hover {
+        background: $primary 20%;
+    }
     """
 
     plot_count = reactive(0)
@@ -40,58 +46,94 @@ class PlotPreview(Vertical):
     def __init__(self, client=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.client = client
-        self.plot_list = ListView()
+        self._plots: List[Dict[str, Any]] = []
 
     def compose(self):
-        """Render plot preview."""
-        yield self.plot_list
+        """Render plot list."""
+        yield Static("PLOTS [dim](Enter to open)[/dim]", classes="header")
+        yield ListView(id="plot-list")
 
     def on_mount(self) -> None:
-        """Initialize plot preview."""
-        self.border_title = "Plot Preview"
+        """Initialize plot list."""
         self.refresh_plots()
 
     def refresh_plots(self) -> None:
         """Refresh the list of plots."""
-        self.plot_list.clear()
+        plot_list = self.query_one("#plot-list", ListView)
+        plot_list.clear()
+        self._plots = []
 
         if not self.client:
-            self.plot_list.append(ListItem(Label("No client loaded")))
-            return
-
-        # Get latest plots from data manager
-        if not self.client.data_manager.has_data():
-            self.plot_list.append(ListItem(Label("No plots yet")))
+            plot_list.append(ListItem(Label("[dim]No session[/dim]")))
             self.plot_count = 0
             return
 
-        plots = self.client.data_manager.get_latest_plots(5)
+        # Get plots from data manager
+        if not hasattr(self.client, "data_manager") or not self.client.data_manager.has_data():
+            plot_list.append(ListItem(Label("[dim]No plots yet[/dim]")))
+            self.plot_count = 0
+            return
+
+        plots = self.client.data_manager.get_latest_plots(8)
 
         if not plots:
-            self.plot_list.append(ListItem(Label("No plots yet")))
+            plot_list.append(ListItem(Label("[dim]No plots yet[/dim]")))
             self.plot_count = 0
             return
 
-        # Add plot items
-        for plot in plots:
-            self.plot_list.append(PlotItem(plot))
+        self._plots = plots
+
+        # Add compact plot entries
+        for i, plot in enumerate(plots):
+            title = plot.get("original_title", plot.get("name", "Untitled"))
+            # Truncate long titles
+            display_title = title[:20] + "..." if len(title) > 23 else title
+            plot_list.append(
+                ListItem(Label(f"● {display_title}"), id=f"plot-{i}")
+            )
 
         self.plot_count = len(plots)
-        self.border_title = f"Plots ({self.plot_count})"
 
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
-        """Handle plot selection - open in browser."""
-        if isinstance(event.item, PlotItem):
-            file_path = event.item.plot_info.get("file_path")
+    def _open_plot(self, idx: int) -> None:
+        """Open plot at given index in browser."""
+        if 0 <= idx < len(self._plots):
+            plot = self._plots[idx]
+            file_path = plot.get("file_path")
+
+            # Fallback: construct path from workspace if not stored
+            if not file_path and self.client and hasattr(self.client, "data_manager"):
+                plot_id = plot.get("id", "")
+                plot_title = plot.get("original_title", plot.get("title", ""))
+                if plot_id:
+                    # Reconstruct the filename using same logic as save_plots_to_workspace
+                    if len(plot_title) > 80:
+                        plot_title = f"{plot_title[:38]}...{plot_title[-38:]}"
+                    safe_title = "".join(
+                        c for c in plot_title if c.isalnum() or c in [" ", "_", "-"]
+                    ).rstrip().replace(" ", "_")
+                    filename_base = f"{plot_id}_{safe_title}" if safe_title else plot_id
+                    plots_dir = self.client.data_manager.workspace_path / "plots"
+                    file_path = str(plots_dir / f"{filename_base}.html")
+
             if file_path and Path(file_path).exists():
-                # Open in browser
                 import webbrowser
-
                 webbrowser.open(f"file://{file_path}")
-                self.notify(f"Opened plot in browser", timeout=3)
+                self.notify("Opened in browser", timeout=2)
             else:
-                self.notify("Plot file not found", severity="error")
+                self.notify("Plot not saved yet. Use /save first.", severity="warning")
+
+    @on(ListView.Selected, "#plot-list")
+    def on_plot_selected(self, event: ListView.Selected) -> None:
+        """Handle Enter key on plot - open in browser."""
+        item_id = event.item.id
+        if item_id and item_id.startswith("plot-"):
+            try:
+                idx = int(item_id.replace("plot-", ""))
+                self._open_plot(idx)
+            except (ValueError, IndexError):
+                pass
+
 
     def watch_plot_count(self, count: int) -> None:
-        """Update border title when plot count changes."""
-        self.border_title = f"Plots ({count})" if count > 0 else "Plot Preview"
+        """Update display when plot count changes."""
+        pass  # Header is static, count shown via list length

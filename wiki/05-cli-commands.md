@@ -38,6 +38,22 @@ lobster query "Generate QC report" --output results.md
 lobster query "Load data.h5ad" --workspace /my/data
 ```
 
+### Dashboard Mode
+
+```bash
+# Launch interactive Textual-based dashboard
+lobster dashboard
+
+# With custom workspace
+lobster dashboard --workspace /path/to/workspace
+```
+
+The dashboard provides a cockpit-style interface with:
+- Real-time agent activity monitoring
+- Live handoff visualization
+- Query input with streaming responses
+- Token usage and system status panels
+
 ### API Server Mode
 
 ```bash
@@ -487,10 +503,27 @@ Change operation mode and agent configurations.
 ### Dashboard and Monitoring
 
 #### `/dashboard`
-Show comprehensive system health dashboard.
+Switch to the interactive Textual-based dashboard.
 
 ```
 /dashboard
+```
+
+Launches a full-screen interactive terminal UI with:
+- Multi-panel cockpit layout for real-time monitoring
+- Live agent activity tracking and handoff visualization
+- Query input with streaming responses
+- Token usage and system status panels
+
+Press ESC to quit, ^P for command palette.
+
+**Note**: You can also launch the dashboard directly with `lobster dashboard` from the command line.
+
+#### `/status-panel`
+Show comprehensive system health dashboard (Rich panels in terminal).
+
+```
+/status-panel
 ```
 
 **Includes**:

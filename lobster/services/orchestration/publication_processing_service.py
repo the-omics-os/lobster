@@ -1405,7 +1405,7 @@ class PublicationProcessingService:
         self,
         status_filter: str = "pending",
         max_entries: Optional[int] = None,
-        extraction_tasks: str = "metadata,methods,identifiers",
+        extraction_tasks: str = "resolve_identifiers,ncbi_enrich,metadata,methods,identifiers,validate_provenance,fetch_sra_metadata",
     ) -> str:
         """Process multiple publication queue entries in sequence."""
 

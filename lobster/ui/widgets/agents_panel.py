@@ -65,9 +65,12 @@ class AgentsPanel(Vertical):
     def _load_agents(self) -> None:
         """Load available agents from registry (supervisor-accessible only)."""
         try:
-            from lobster.config.agent_registry import AGENT_REGISTRY
+            from lobster.config.agent_registry import AGENT_REGISTRY, _ensure_plugins_loaded
             from lobster.core.license_manager import get_current_tier
             from lobster.config.subscription_tiers import is_agent_available
+
+            # Ensure plugins are loaded before accessing AGENT_REGISTRY
+            _ensure_plugins_loaded()
 
             tier = get_current_tier()
 
@@ -173,6 +176,10 @@ class AgentsPanel(Vertical):
         new_set = set(self.active_agents)
         new_set.discard(agent_name)
         self.active_agents = new_set
+
+    def set_all_idle(self) -> None:
+        """Mark all agents as idle (call when query completes)."""
+        self.active_agents = set()
 
     def watch_active_agents(self, _: Set[str]) -> None:
         """React to active agents changes."""

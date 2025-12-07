@@ -13,6 +13,7 @@ from .agents_panel import AgentsPanel
 from .adapters_panel import AdaptersPanel
 from .token_usage_panel import TokenUsagePanel
 from .activity_log import ActivityLogPanel
+from .data_hub import DataHub, FileDropped, FileLoadRequested, ModalitySelected as DataHubModalitySelected, WorkspaceFileSelected
 from .error_modal import (
     ErrorModal,
     ErrorContext,
@@ -36,6 +37,11 @@ __all__ = [
     "AdaptersPanel",
     "TokenUsagePanel",
     "ActivityLogPanel",
+    "DataHub",
+    "FileDropped",
+    "FileLoadRequested",
+    "DataHubModalitySelected",
+    "WorkspaceFileSelected",
     "ErrorModal",
     "ErrorContext",
     "ErrorSeverity",

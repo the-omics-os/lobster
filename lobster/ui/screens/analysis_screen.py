@@ -17,6 +17,9 @@ from lobster.config.settings import get_settings
 from lobster.ui.widgets import (
     QueryPrompt,
     ModalityList,
+    DataHub,
+    FileLoadRequested,
+    DataHubModalitySelected,
     ResultsDisplay,
     PlotPreview,
     StatusBar,
@@ -32,6 +35,7 @@ from lobster.ui.widgets.status_bar import get_friendly_model_name
 from lobster.ui.widgets.modality_list import ModalitySelected
 from lobster.ui.callbacks import TextualCallbackHandler
 from lobster.ui.services import ErrorService, ErrorCategory
+from lobster.services.data_management.modality_management_service import ModalityManagementService
 
 
 class AnalysisScreen(Screen):
@@ -76,7 +80,7 @@ class AnalysisScreen(Screen):
 
     /* Left panel - system telemetry */
     #left-panel {
-        width: 26;
+        width: 35;
         border-right: solid #CC2C18 30%;
         padding: 0 1;
     }
@@ -110,7 +114,7 @@ class AnalysisScreen(Screen):
 
     /* Right panel - data & agents */
     #right-panel {
-        width: 26;
+        width: 35;
         border-left: solid #CC2C18 30%;
         padding: 0 1;
     }
@@ -139,6 +143,13 @@ class AnalysisScreen(Screen):
     ModalityList {
         height: 1fr;
         min-height: 6;
+        border: round #CC2C18 30%;
+    }
+
+    DataHub {
+        height: auto;
+        min-height: 12;
+        max-height: 25;
         border: round #CC2C18 30%;
     }
 
@@ -234,7 +245,12 @@ class AnalysisScreen(Screen):
             # Right panel: Agents & Data
             with Vertical(id="right-panel"):
                 yield AgentsPanel(client=self.client)
-                yield ModalityList(self.client)
+                yield DataHub(
+                    client=self.client,
+                    workspace_path=self.client.data_manager.workspace_path,
+                    on_load_file=self._load_file_from_workspace,
+                    id="data-hub"
+                )
                 yield AdaptersPanel()
                 yield PlotPreview(self.client)
 
@@ -293,6 +309,86 @@ class AnalysisScreen(Screen):
             # Log error if widgets not found
             self.notify(f"Callback setup error: {str(e)[:50]}", severity="warning")
 
+    def _load_file_from_workspace(self, filepath: str) -> None:
+        """
+        Load a file from workspace into memory as a modality.
+
+        This is the callback for DataHub's file loading.
+
+        Args:
+            filepath: Absolute path to file in workspace
+        """
+        from pathlib import Path
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        try:
+            file_path = Path(filepath)
+
+            # Determine adapter based on file extension
+            ext = file_path.suffix.lower()
+
+            # Map extensions to adapters
+            adapter_map = {
+                ".h5ad": "transcriptomics_single_cell",
+                ".csv": "transcriptomics_bulk",
+                ".tsv": "transcriptomics_bulk",
+                ".xlsx": "transcriptomics_bulk",
+                ".xls": "transcriptomics_bulk",
+                ".txt": "transcriptomics_bulk",
+                ".mtx": "transcriptomics_single_cell",
+                ".gz": "transcriptomics_single_cell",  # Assume 10x format
+            }
+
+            adapter = adapter_map.get(ext)
+            if not adapter:
+                self.notify(f"Unsupported format: {ext}", severity="error")
+                return
+
+            # Generate modality name from filename (remove extension, make safe)
+            modality_name = file_path.stem.replace(".", "_").replace(" ", "_").lower()
+
+            # Ensure unique name
+            existing = self.client.data_manager.list_modalities()
+            if modality_name in existing:
+                counter = 1
+                base_name = modality_name
+                while modality_name in existing:
+                    modality_name = f"{base_name}_{counter}"
+                    counter += 1
+
+            # Create modality management service
+            service = ModalityManagementService(self.client.data_manager)
+
+            # Load the file
+            logger.info(f"Loading {file_path.name} as '{modality_name}' using adapter '{adapter}'")
+
+            adata, stats, ir = service.load_modality(
+                modality_name=modality_name,
+                file_path=str(file_path),
+                adapter=adapter,
+                dataset_type="workspace",
+                validate=True,
+            )
+
+            # Success - update conversation display
+            results = self.query_one(ResultsDisplay)
+            results.append_assistant_message(
+                f"Loaded {file_path.name} as '{modality_name}'\n"
+                f"Shape: {stats['shape']['n_obs']:,} observations × {stats['shape']['n_vars']:,} variables"
+            )
+
+            logger.info(f"Successfully loaded {modality_name}: {stats}")
+
+        except Exception as e:
+            logger.error(f"Failed to load {filepath}: {e}", exc_info=True)
+            self.notify(f"Load failed: {str(e)[:60]}", severity="error")
+
+            # Also show in conversation
+            results = self.query_one(ResultsDisplay)
+            results.append_system_message(f"❌ Failed to load {Path(filepath).name}: {str(e)[:100]}")
+
     @on(QueryPrompt.QuerySubmitted)
     def handle_query_submission(self, event: QueryPrompt.QuerySubmitted) -> None:
         """Handle query submission."""
@@ -302,6 +398,11 @@ class AnalysisScreen(Screen):
         if not query_text.strip():
             if self.error_service:
                 self.error_service.show_validation_error("Cannot send empty message!")
+            return
+
+        # Handle slash commands
+        if query_text.strip().startswith("/"):
+            self._handle_slash_command(query_text.strip())
             return
 
         # Store for retry recovery
@@ -326,6 +427,85 @@ class AnalysisScreen(Screen):
             exclusive=True,
             thread=True,
         )
+
+    def _handle_slash_command(self, cmd: str) -> None:
+        """Handle slash commands in the dashboard."""
+        results = self.query_one(ResultsDisplay)
+
+        if cmd in ("/help", "/h", "/?"):
+            help_text = """**Dashboard Commands:**
+- `/help` - Show this help
+- `/status` - Show session status
+- `/data` - Show loaded modalities
+- `/plots` - Refresh plots panel
+- `/clear` - Clear conversation
+- `/save` - Save plots to workspace
+- `/exit` - Exit dashboard (back to CLI)
+
+**Navigation:**
+- Use **arrow keys** in panels to navigate
+- Press **Enter** to select/open items
+- Press **F5** to refresh all panels
+- Press **Ctrl+L** to clear results
+- Press **ESC** to quit
+
+*For full command support, use the CLI mode (`lobster chat`)*"""
+            results.append_system_message(help_text)
+
+        elif cmd == "/status":
+            status = self.client.get_status()
+            status_text = f"""**Session Status:**
+- Session ID: `{status.get('session_id', 'N/A')}`
+- Modalities: {len(status.get('modalities', []))}
+- Plots: {len(self.client.data_manager.latest_plots)}
+- Workspace: `{self.client.data_manager.workspace_path}`"""
+            results.append_system_message(status_text)
+
+        elif cmd == "/data":
+            modalities = list(self.client.data_manager.modalities.keys())
+            if modalities:
+                mod_list = "\n".join(f"- `{m}`" for m in modalities)
+                results.append_system_message(f"**Loaded Modalities:**\n{mod_list}")
+            else:
+                results.append_system_message("*No modalities loaded*")
+            # Also refresh the data hub panel
+            self.query_one(DataHub).refresh_loaded()
+
+        elif cmd == "/plots":
+            self.query_one(PlotPreview).refresh_plots()
+            plot_count = len(self.client.data_manager.latest_plots)
+            results.append_system_message(f"Plots refreshed. {plot_count} plots available.")
+
+        elif cmd == "/clear":
+            results.clear_display()
+            self.notify("Cleared", timeout=1)
+
+        elif cmd == "/save":
+            saved = self.client.data_manager.save_plots_to_workspace()
+            if saved:
+                results.append_system_message(f"Saved {len(saved)} plots to workspace.")
+                self.query_one(PlotPreview).refresh_plots()
+            else:
+                results.append_system_message("No plots to save.")
+
+        elif cmd in ("/exit", "/quit", "/q"):
+            self.app.exit()
+
+        elif cmd.startswith("/plot "):
+            # Open specific plot
+            plot_id = cmd.replace("/plot ", "").strip()
+            plots = self.client.data_manager.latest_plots
+            for i, p in enumerate(plots):
+                if p.get("id") == plot_id or plot_id in p.get("original_title", ""):
+                    self.query_one(PlotPreview)._open_plot(i)
+                    return
+            self.notify(f"Plot not found: {plot_id}", severity="warning")
+
+        else:
+            results.append_system_message(
+                f"*Command `{cmd}` not available in dashboard. Use CLI mode for full commands.*\n\n"
+                "Type `/help` for available dashboard commands."
+            )
 
     def execute_streaming_query(self, query: str) -> None:
         """Execute query with streaming and professional error handling."""
@@ -429,6 +609,20 @@ class AnalysisScreen(Screen):
         status_bar = self.query_one(StatusBar)
         status_bar.agent_status = "idle"
 
+        # Mark all agents as idle - direct widget update since we're in main thread
+        try:
+            agents_panel = self.query_one(AgentsPanel)
+            agents_panel.set_all_idle()
+        except Exception:
+            pass
+
+        # Reset callback tracking state
+        for callback in self.client.callbacks:
+            if isinstance(callback, TextualCallbackHandler):
+                callback.current_agent = None
+                callback.agent_stack = []
+                break
+
         # Log completion in activity log
         try:
             activity_log = self.query_one(ActivityLogPanel)
@@ -437,7 +631,7 @@ class AnalysisScreen(Screen):
             pass
 
         # Refresh data panels
-        self.query_one(ModalityList).refresh_modalities()
+        self.query_one(DataHub).refresh_all()
         self.query_one(PlotPreview).refresh_plots()
 
     def _is_handoff_message(self, content: str) -> bool:
@@ -457,12 +651,17 @@ class AnalysisScreen(Screen):
         return any(pattern in content_lower for pattern in handoff_patterns)
 
     def on_modality_list_modality_selected(self, event: ModalitySelected) -> None:
-        """Handle modality selection."""
+        """Handle modality selection from legacy ModalityList (backward compatibility)."""
         self.notify(f"Selected: {event.modality_name}", timeout=2)
+
+    def on_data_hub_modality_selected(self, event: DataHubModalitySelected) -> None:
+        """Handle modality selection from DataHub."""
+        self.notify(f"Selected: {event.modality_name}", timeout=2)
+        # TODO: Future enhancement - show modality details modal
 
     def refresh_all(self) -> None:
         """Refresh all panels (called by F5)."""
-        self.query_one(ModalityList).refresh_modalities()
+        self.query_one(DataHub).refresh_all()
         self.query_one(PlotPreview).refresh_plots()
 
     def action_cancel_query(self) -> None:

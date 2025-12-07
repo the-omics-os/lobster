@@ -446,7 +446,7 @@ def test_publication_queue_provenance_logging(agent_client):
     This test verifies that W3C-PROV logging is properly set up in
     research_agent tools by checking the provenance tracker state after
     operations. The actual logging happens within the research_agent tools
-    (process_publication_entry, update_publication_status), which are tested
+    (process_publication_entry with status_override mode), which are tested
     via mock verification to ensure log_tool_usage is called correctly.
     """
     from unittest.mock import patch
@@ -463,7 +463,7 @@ def test_publication_queue_provenance_logging(agent_client):
     # Mock log_tool_usage to verify it's called with correct parameters
     with patch.object(agent_client.data_manager, "log_tool_usage") as mock_log:
         # Simulate research_agent tool calling log_tool_usage
-        # (This is what the actual update_publication_status tool does)
+        # (This is what the actual process_publication_entry tool does in status_override mode)
         old_status = str(entry.status)
         agent_client.data_manager.publication_queue.update_status(
             entry_id="provenance_test_pub",
@@ -472,10 +472,12 @@ def test_publication_queue_provenance_logging(agent_client):
         )
 
         # Manually call log_tool_usage as the research_agent tool would
+        # (Simulates process_publication_entry with status_override parameter)
         agent_client.data_manager.log_tool_usage(
-            tool_name="update_publication_status",
+            tool_name="process_publication_entry",
             parameters={
                 "entry_id": "provenance_test_pub",
+                "mode": "status_override",
                 "old_status": old_status,
                 "new_status": "extracting",
                 "error_message": None,
@@ -490,8 +492,11 @@ def test_publication_queue_provenance_logging(agent_client):
         assert mock_log.called, "log_tool_usage should be called"
         assert mock_log.call_count >= 1, "Expected at least one log_tool_usage call"
 
-        # Verify the call had correct tool_name
+        # Verify the call had correct tool_name and mode
         call_args = mock_log.call_args
         assert (
-            call_args[1]["tool_name"] == "update_publication_status"
-        ), "Tool name should be update_publication_status"
+            call_args[1]["tool_name"] == "process_publication_entry"
+        ), "Tool name should be process_publication_entry"
+        assert (
+            call_args[1]["parameters"]["mode"] == "status_override"
+        ), "Mode should be status_override for manual status updates"

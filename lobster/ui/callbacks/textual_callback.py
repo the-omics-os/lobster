@@ -491,6 +491,26 @@ class TextualCallbackHandler(BaseCallbackHandler):
         """Called when a chain finishes."""
         pass
 
+    def mark_all_agents_idle(self) -> None:
+        """Mark all agents as idle (call when query completes)."""
+        if not self.agents_panel or not self.app:
+            return
+
+        def _do_update():
+            try:
+                self.agents_panel.set_all_idle()
+            except Exception:
+                pass
+
+        try:
+            self.app.call_from_thread(_do_update)
+        except Exception:
+            pass
+
+        # Reset tracking state
+        self.current_agent = None
+        self.agent_stack = []
+
     def reset(self) -> None:
         """Reset all tracking state."""
         self.current_agent = None

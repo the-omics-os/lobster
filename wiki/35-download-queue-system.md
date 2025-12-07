@@ -980,8 +980,7 @@ graph LR
     end
 
     subgraph "research_agent"
-        PE[process_publication_entry]
-        UP[update_publication_status]
+        PE[process_publication_entry<br/>processing mode | status_override mode]
     end
 
     subgraph "supervisor"
@@ -993,13 +992,12 @@ graph LR
     QM --> Q
     WS -.reads.-> Q
     WS --> |entry_id| PE
-    PE --> UP
-    UP --> QM
+    PE --> QM
 
     classDef agent fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     classDef queue fill:#fff3e0,stroke:#f57c00,stroke-width:2px
 
-    class CLI,RIS,PE,UP,WS agent
+    class CLI,RIS,PE,WS agent
     class Q,QM queue
 ```
 
@@ -1444,25 +1442,35 @@ result = research_agent.process_publication_entry(
 # - Default: "metadata,methods,identifiers"
 ```
 
-#### update_publication_status (Research Agent)
+#### Manual Status Override (process_publication_entry with status_override)
 
 ```python
-# Update publication entry status
-result = research_agent.update_publication_status(
+# ADMIN MODE: Update publication entry status without processing
+# Use for: resetting stale entries, marking failures, administrative corrections
+
+# Reset stale entry to pending
+result = research_agent.process_publication_entry(
     entry_id="pub_queue_35042229_abc123",
-    status="completed",  # pending | extracting | metadata_extracted | completed | failed
-    error_message=None  # Optional error message for failed status
+    status_override="pending"  # pending | extracting | completed | failed | paywalled | handoff_ready
 )
-# Returns: "✅ Publication status updated: pub_queue_35042229_abc123 → COMPLETED"
+# Returns: "✅ Publication Status Updated (Manual Override)"
 
-# On completion, entry populated with:
-# - processed_by: "research_agent"
-# - cached_content_path: workspace path
-# - updated_at: current timestamp
+# Mark entry as failed with error message
+result = research_agent.process_publication_entry(
+    entry_id="pub_queue_35042229_abc123",
+    status_override="failed",
+    error_message="Content not accessible - paywall blocked"
+)
+# Returns: "✅ Publication Status Updated (Manual Override)"
 
-# On failure, entry populated with:
-# - error_log: ["Error message 1", "Error message 2"]
-# - status: FAILED
+# Administrative correction
+result = research_agent.process_publication_entry(
+    entry_id="pub_queue_35042229_abc123",
+    status_override="completed"
+)
+# Returns: "✅ Publication Status Updated (Manual Override)"
+
+# Note: extraction_tasks parameter is ignored when status_override is set
 ```
 
 ---
@@ -1575,14 +1583,16 @@ activity = prov.Activity(
     }
 )
 
-# Status update logged as:
+# Status override logged as:
 activity = prov.Activity(
-    identifier="update_publication_status_35042229",
+    identifier="process_publication_entry_35042229_override",
     attributes={
-        "tool": "update_publication_status",
+        "tool": "process_publication_entry",
+        "mode": "status_override",
         "entry_id": "pub_queue_35042229_abc123",
         "old_status": "extracting",
-        "new_status": "completed"
+        "new_status": "completed",
+        "error_message": None
     }
 )
 ```
@@ -1928,7 +1938,7 @@ class SchemaType(str, Enum):
 - `lobster/core/publication_queue.py` - Queue implementation (308 lines)
 - `lobster/core/ris_parser.py` - RIS file parser (287 lines)
 - `lobster/core/schemas/publication_queue.py` - Schema definitions
-- `lobster/agents/research_agent.py` - process_publication_entry, update_publication_status tools (lines 1417-1679)
+- `lobster/agents/research_agent.py` - process_publication_entry tool (with status_override mode for manual updates)
 - `lobster/tools/workspace_tool.py` - publication_queue workspace support
 
 ### Test Files
