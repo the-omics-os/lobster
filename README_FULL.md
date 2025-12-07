@@ -1,24 +1,42 @@
-# 🦞 Lobster AI
+# 🦞 Lobster AI - Complete Reference
 
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL%203.0--or--later-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Documentation: CC BY 4.0](https://img.shields.io/badge/Documentation-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
-**Transform your bioinformatics research with AI agents that understand your data and provide expert analysis insights.**
-  
-## 📋 Table of Contents
+> **This is the complete reference documentation.** For a quick overview, see [README.md](README.md).
 
-- [✨ What is Lobster AI?](#-what-is-lobster-ai)
-- [🚀 Quick Start](#-quick-start)
-- [💡 Example Usage](#-example-usage)
-- [🧬 Features](#-features)
-- [🔬 Literature Mining & Metadata](#-literature-mining--metadata)
-- [🔧 Configuration](#-configuration)
-- [📚 Documentation](#-documentation)
-- [🤝 Community & Support](#-community--support)
-- [📄 License](#-license)
+**Bioinformatics co-pilot to automate redundant tasks so you can focus on science**
 
-## ✨ What is Lobster AI?
+---
+
+## Table of Contents
+
+- [What is Lobster AI?](#what-is-lobster-ai)
+- [Installation Methods](#installation-methods)
+  - [PyPI Installation (Recommended)](#pypi-installation-recommended)
+  - [Platform-Specific Native Installation](#platform-specific-native-installation)
+  - [Docker Deployment](#docker-deployment)
+- [LLM Provider Configuration](#llm-provider-configuration)
+  - [Ollama (Local)](#ollama-local)
+  - [Anthropic (Cloud)](#anthropic-cloud)
+  - [AWS Bedrock (Enterprise)](#aws-bedrock-enterprise)
+  - [Provider Auto-Detection](#provider-auto-detection)
+- [Configuration](#configuration)
+- [Usage Examples](#usage-examples)
+- [Features](#features)
+- [API Rate Limits](#api-rate-limits)
+- [Cell Type Annotation - Development Status](#cell-type-annotation---development-status)
+- [Premium Features](#premium-features)
+- [Roadmap](#roadmap)
+- [For Developers](#for-developers)
+- [Uninstalling](#uninstalling)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
+---
+
+## What is Lobster AI?
 
 Lobster AI is a bioinformatics platform that combines specialized AI agents with open-source tools to analyze complex multi-omics data, discover relevant literature, and manage metadata across datasets. Simply describe your analysis needs in natural language - no coding required.
 
@@ -28,47 +46,56 @@ Lobster AI is a bioinformatics platform that combines specialized AI agents with
 - Life science teams requiring reproducible, publication-ready results
 - Students learning modern bioinformatics approaches
 
-## 🚀 Quick Start
+---
 
-### Prerequisites
+## Installation Methods
 
-- Python 3.12 or higher (for native installation)
-- An LLM API key (Claude or AWS Bedrock)
-- Docker Desktop (for Docker installation - recommended for Windows users)
-
-### Installation by Platform
-
-#### 🍎 macOS Installation (Native - Recommended)
+### PyPI Installation (Recommended)
 
 ```bash
-# 1. Clone the repository
+# Install uv if not already installed
+# macOS/Linux: curl -LsSf https://astral.sh/uv/install.sh | sh
+# Windows: powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Install Lobster globally
+uv tool install lobster-ai
+
+# Configure API keys
+lobster init
+
+# Start using Lobster
+lobster chat
+```
+
+**Alternative: Local virtual environment**
+```bash
+python3 -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+uv pip install lobster-ai  # or: pip install lobster-ai
+lobster init
+lobster chat
+```
+
+### Platform-Specific Native Installation
+
+#### macOS (Native)
+
+```bash
 git clone https://github.com/the-omics-os/lobster-local.git
 cd lobster-local
-
-# 2. Install with make (automatically creates .env file)
 make install
-
-# 3. Configure your API key
-# The .env file is automatically created during installation
-open .env
-# Add your API key: ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
-
-# 4. Activate the virtual environment
 source .venv/bin/activate
-
-# 5. Start analyzing!
+lobster init
 lobster chat
-# or if you want to see the reasoning
-lobster chat --reasoning
 
-# Optional: Install globally to use 'lobster' from any directory
+# Optional: Install globally
 make install-global
 ```
 
-#### 🐧 Ubuntu/Debian Installation (Native)
+#### Ubuntu/Debian (Native)
 
 ```bash
-# 1. Install system dependencies (REQUIRED)
+# Install system dependencies (REQUIRED)
 sudo apt update
 sudo apt install -y \
     build-essential \
@@ -82,282 +109,235 @@ sudo apt install -y \
     libblas-dev \
     liblapack-dev
 
-# 2. Clone the repository
 git clone https://github.com/the-omics-os/lobster-local.git
 cd lobster-local
-
-# 3. Install Lobster
 make install
-
-# 4. Configure your API key
-nano .env
-# Add your API key: ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
-
-# 5. Activate and run
 source .venv/bin/activate
 lobster chat
 ```
 
-**Alternative for Ubuntu**: Use the helper script
-```bash
-./install-ubuntu.sh  # Auto-detects and installs system dependencies
-```
-
-#### 🪟 Windows Installation
+#### Windows
 
 **Option 1: Docker Desktop (Recommended)**
-
-Docker provides the most reliable experience on Windows:
-
 ```powershell
-# 1. Install Docker Desktop for Windows
-# Download from: https://www.docker.com/products/docker-desktop/
-
-# 2. Clone the repository
+# Install Docker Desktop: https://www.docker.com/products/docker-desktop/
 git clone https://github.com/the-omics-os/lobster-local.git
 cd lobster-local
-
-# 3. Configure your API key
 copy .env.example .env
-notepad .env
-# Add your API key: ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
-
-# 4. Run Lobster in Docker
+notepad .env  # Add your API key
 docker-compose run --rm lobster-cli
-
-# OR run as web service
-docker-compose up lobster-server
-# Access at http://localhost:8000
 ```
 
-**Option 2: Native Installation (Experimental)**
-
-Native Windows installation is currently experimental. For the best experience, use Docker Desktop.
-
+**Option 2: Native (Experimental)**
 ```powershell
-# 1. Install Python 3.12 from python.org
-# Download from: https://www.python.org/downloads/
-
-# 2. Clone the repository
+# Install Python 3.12 from python.org
 git clone https://github.com/the-omics-os/lobster-local.git
 cd lobster-local
-
-# 3. Run the Windows installer
 .\install.ps1
-
-# 4. Configure your API key
 notepad .env
-# Add your API key: ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
-
-# 5. Activate and run
 .\.venv\Scripts\Activate.ps1
 lobster chat
 ```
 
-**Troubleshooting Windows**: See detailed guide at `docs/WINDOWS_INSTALLATION.md`
-
----
-
-#### 🐳 Docker Installation (Cross-Platform - Production Ready)
-
-**Prerequisites:**
-- Docker 20.10+ and Docker Compose 2.0+ installed
-- `.env` file with API keys (see Configuration section)
-
-**Quick Start:**
+### Docker Deployment
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/the-omics-os/lobster-local.git
 cd lobster-local
-
-# 2. Configure your API keys
 cp .env.example .env
-# Edit .env with your ANTHROPIC_API_KEY or AWS Bedrock credentials
+# Edit .env with your API keys
 
-# 3. Build Docker images
+# Build and run
 make docker-build
-
-# 4. Run interactively (CLI mode)
 make docker-run-cli
 
-# OR run as a web service (FastAPI server)
+# Or as web service
 make docker-run-server
-
-# Check server health
 curl http://localhost:8000/health
 ```
 
-**Docker Compose (Multi-Service):**
+See [Docker Deployment Guide](wiki/43-docker-deployment-guide.md) for AWS ECS, Kubernetes, and production configurations.
+
+---
+
+## LLM Provider Configuration
+
+Lobster supports three LLM providers. Choose based on your needs:
+
+| Provider | Type | Cost | Best For |
+|----------|------|------|----------|
+| 🦙 **Ollama** | Local | Free | Privacy, offline, no API costs |
+| 🔷 **Anthropic** | Cloud | Pay-per-use | Quick start, best quality |
+| ☁️ **AWS Bedrock** | Cloud | Enterprise | Production, high rate limits |
+
+### Ollama (Local)
+
+Run Lobster **completely locally** with no cloud dependencies.
 
 ```bash
-# Run CLI interactively
-make docker-compose-cli
+# 1. Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh
 
-# Start FastAPI server in background
-make docker-compose-up
+# 2. Pull a model
+ollama pull llama3:8b-instruct
 
-# Stop all services
-make docker-compose-down
+# 3. Set provider and run
+export LOBSTER_LLM_PROVIDER=ollama
+lobster chat
 ```
 
-**Why Docker?**
-- ✅ **Isolated environment** - No Python version conflicts
-- ✅ **Production-ready** - Includes healthchecks and resource limits
-- ✅ **Cloud deployment** - Ready for AWS ECS, Kubernetes, or Docker Swarm
-- ✅ **Consistent setup** - Same environment across all machines
+**Model recommendations:**
+| Model | RAM Required | Use Case |
+|-------|--------------|----------|
+| `llama3:8b-instruct` | 8-16GB | Testing, light analysis |
+| `mixtral:8x7b-instruct` | 24-32GB | Production workflows |
+| `llama3:70b-instruct` | 48GB VRAM | Maximum quality (GPU required) |
 
-📚 **See [Docker Deployment Guide](wiki/43-docker-deployment-guide.md) for:**
-- AWS ECS/Fargate deployment
-- Kubernetes manifests
-- Volume management strategies
-- Troubleshooting and best practices
+**Advanced configuration:**
+```bash
+export OLLAMA_DEFAULT_MODEL=mixtral:8x7b-instruct
+export OLLAMA_BASE_URL=http://localhost:11434
+```
 
-### ⚠️ Important: API Keys & Rate Limits
+### Anthropic (Cloud)
 
-**Rate Limits**
+Quick setup for Claude API access.
 
-Anthropic's API has conservative rate limits for new accounts. If you encounter rate limit errors:
+```bash
+lobster init
+# Or manually:
+export ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+```
 
-1. **Wait and retry** - Limits reset after a short period (typically 60 seconds)
-2. **Request increase** - Visit [Anthropic Rate Limits Documentation](https://docs.anthropic.com/en/api/rate-limits)
-3. **Use AWS Bedrock** - Recommended for production use with higher limits
-4. **Contact us** - Email [info@omics-os.com](mailto:info@omics-os.com) for assistance
+Get API key: https://console.anthropic.com/
 
-**Recommended Setup by Use Case:**
+### AWS Bedrock (Enterprise)
 
-| Use Case | Recommended Provider | Notes |
-|----------|---------------------|-------|
-| **Quick Testing** | Claude API | May encounter rate limits |
-| **Development** | Claude API + Rate Increase | Request higher limits from Anthropic |
-| **Production** | AWS Bedrock | Enterprise-grade limits |
-| **Heavy Analysis** | AWS Bedrock | Required for large datasets |
+Production-grade with enterprise rate limits.
 
-For AWS Bedrock setup, see the [Configuration Guide](wiki/03-configuration.md).
+```bash
+lobster init
+# Or manually:
+export AWS_BEDROCK_ACCESS_KEY=your-access-key
+export AWS_BEDROCK_SECRET_ACCESS_KEY=your-secret-key
+```
 
-### ⚠️ Cell Type Annotation - Development Status
+Setup guide: https://aws.amazon.com/bedrock/
 
-**IMPORTANT: Built-in marker gene lists are preliminary and not scientifically validated.**
+### Provider Auto-Detection
 
-The current cell type annotation templates use **hardcoded marker lists** without:
-- Evidence scoring (AUC, logFC, specificity metrics)
-- Validation against reference atlases (Azimuth, CellTypist, Human Cell Atlas)
-- Tissue/context-specific optimization
-- Species separation (some mouse genes may be present)
-- State handling (activation/injury markers mixed with baseline identity)
+Lobster automatically detects your provider based on:
+1. `LOBSTER_LLM_PROVIDER` environment variable (explicit)
+2. Ollama server running locally
+3. `ANTHROPIC_API_KEY` present
+4. AWS Bedrock credentials present
 
-**Current limitations:**
-- **SASP/Senescence detection**: Not reliable with RNA-seq data alone (removed in v0.1.0)
-- **Tumor cell detection**: Should use CNV inference (inferCNV/CopyKAT), not proliferation markers
-- **Cross-tissue transfer**: Markers optimized for one tissue may not work in others
+**Running multiple providers simultaneously:**
+```bash
+# Terminal 1: Local with Ollama
+export LOBSTER_LLM_PROVIDER=ollama
+lobster chat
 
-**Recommended approach for production analysis:**
-1. **Provide custom validated markers** specific to your tissue/context
-2. Use reference-based tools: [Azimuth](https://azimuth.hubmapconsortium.org/), [CellTypist](https://www.celltypist.org/), [scANVI](https://docs.scvi-tools.org/)
-3. Validate annotations manually with known markers
+# Terminal 2: Cloud with Claude
+export LOBSTER_LLM_PROVIDER=anthropic
+lobster chat
+```
 
-**Planned improvements:**
-- Integration with Azimuth/CellTypist pretrained models
-- Reference atlas-derived markers with evidence scores
-- UCell/AUCell signature scoring
-- CNV-based tumor/normal classification
-- Cell Ontology (CL ID) annotations
+---
 
-When using Lobster for annotation, agents will **prompt you for custom markers**. Only use built-in templates if you explicitly acknowledge these limitations.
+## Configuration
 
-See [Manual Annotation Guide](wiki/35-manual-annotation-service.md) for details on providing custom markers.
+### Interactive Setup (Recommended)
 
-## 💡 Example Usage
+```bash
+lobster init        # Launch configuration wizard
+lobster config test # Test API connectivity
+lobster config show # Display current configuration
+```
+
+### Manual Configuration (.env file)
+
+```bash
+# Choose ONE LLM provider:
+
+# Option 1: Ollama (Local)
+LOBSTER_LLM_PROVIDER=ollama
+OLLAMA_DEFAULT_MODEL=llama3:8b-instruct
+
+# Option 2: Claude API
+ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+
+# Option 3: AWS Bedrock
+AWS_BEDROCK_ACCESS_KEY=your-access-key
+AWS_BEDROCK_SECRET_ACCESS_KEY=your-secret-key
+
+# Optional: Enhanced literature search
+NCBI_API_KEY=your-ncbi-api-key
+NCBI_EMAIL=your.email@example.com
+
+# Optional: Performance tuning
+LOBSTER_PROFILE=production
+LOBSTER_MAX_FILE_SIZE_MB=500
+LOBSTER_LOG_LEVEL=WARNING
+```
+
+### CI/CD Non-Interactive Mode
+
+```bash
+lobster init --non-interactive --anthropic-key=sk-ant-xxx
+lobster init --non-interactive --bedrock-access-key=xxx --bedrock-secret-key=yyy
+```
+
+---
+
+## Usage Examples
 
 ### Interactive Chat Mode
 
 ```bash
-🦞 lobster chat
-
-Welcome to Lobster AI - Your bioinformatics analysis assistant
+lobster chat
 
 🦞 You: Download GSE109564 and perform single-cell clustering analysis
 
 🦞 Lobster: I'll download and analyze this single-cell dataset for you...
-
 ✓ Downloaded 5,000 cells × 20,000 genes
 ✓ Quality control: filtered to 4,477 high-quality cells
 ✓ Identified 12 distinct cell clusters
 ✓ Generated UMAP visualization and marker gene analysis
-
-Analysis complete! Results saved to workspace.
 ```
 
 ### Single Query Mode
 
-For non-interactive analysis, you can run single queries directly:
-
 ```bash
-# Basic syntax
-lobster query "your analysis request"
-
-# Examples
 lobster query "download GSE109564 and perform quality control"
-lobster query "load my_data.h5ad and create UMAP plot"
-lobster query "differential expression between control and treatment"
-
-# With workspace context
 lobster query --workspace ~/my_analysis "cluster the loaded dataset"
-
-# Show reasoning process
-lobster query --reasoning "quality control on data.csv"
-
-# Save output to file
-lobster query "analyze GSE12345" --output results.txt
-
-# Verbose logging
-lobster query --verbose "load and normalize data"
+lobster query --reasoning "differential expression between conditions"
 ```
 
-**When to use:**
+### Dashboard Mode
 
-| Use `lobster query` | Use `lobster chat` |
-|---------------------|-------------------|
-| Scripting/automation | Exploratory analysis |
-| Single-task analysis | Multi-step workflows |
-| CI/CD pipelines | Interactive debugging |
-| Batch processing | Iterative refinement |
+```bash
+lobster dashboard
+# Or from chat: /dashboard
+```
 
-### Available Commands
+### CLI Commands
 
 | Command | Description |
 |---------|-------------|
-| `/help` | Show all available commands |
+| `/help` | Show all commands |
 | `/files` | List workspace files |
 | `/read <file>` | Load a dataset |
-| `/archive <file>` | Load data from archives (tar/zip with 10X, Kallisto/Salmon) |
 | `/data` | Show current dataset info |
-| `/plots` | List generated visualizations |
-| `/workspace` | Show workspace information |
-| `/workspace list` | List available datasets |
-| `/workspace load <name>` | Load specific dataset |
+| `/plots` | List visualizations |
+| `/workspace` | Show workspace info |
+| `/pipeline export` | Export reproducible notebook |
 
-### Natural Language Examples
+---
 
-```bash
-# Download and analyze GEO datasets
-🦞 You: "Download GSE12345 and perform quality control"
+## Features
 
-# Analyze your own data
-🦞 You: "Load my_data.csv and identify differentially expressed genes"
-
-# Generate visualizations
-🦞 You: "Create a UMAP plot colored by cell type"
-
-# Perform complex analyses
-🦞 You: "Run pseudobulk aggregation and differential expression between conditions"
-```
-
-## 🧬 Features
-
-### Current Capabilities
-
-#### **Single-Cell RNA-seq Analysis**
+### Single-Cell RNA-seq
 - Quality control and filtering
 - Normalization and scaling
 - Clustering and UMAP visualization
@@ -365,196 +345,176 @@ lobster query --verbose "load and normalize data"
 - Marker gene identification
 - Pseudobulk aggregation
 
-#### **Bulk RNA-seq Analysis**
+### Bulk RNA-seq
 - Differential expression with pyDESeq2
 - R-style formula-based statistics
 - Complex experimental designs
 - Batch effect correction
 
-#### **Data Management**
+### Data Management
 - Support for CSV, Excel, H5AD, 10X formats
 - Multi-source dataset discovery (GEO, SRA, PRIDE, ENA)
 - Literature mining and full-text retrieval
 - Cross-dataset metadata harmonization
 - Sample ID mapping and validation
-- Automatic visualization generation
 
-### 🗓️ Roadmap & Premium Features
+### Optional ML Features (PREMIUM)
 
-Lobster follows an **open-core model**: core transcriptomics capabilities are open source, while advanced features are available in premium tiers.
+```bash
+pip install lobster-ai[ml]  # Adds PyTorch + scVI-tools (~500MB)
+```
 
-#### **Open-Core (Public - lobster-local)**
-✅ **Available Now:**
-- Single-cell & bulk RNA-seq analysis
-- Literature mining & dataset discovery
-- Research agents & workflow automation
-- Protein structure visualization (v2.4+)
-
-#### **Premium Features (Private)**
-
-##### **Q1 2025 - Proteomics Platform** *(In Development)*
-- 🔬 Mass spectrometry proteomics (DDA/DIA workflows)
-- 🧬 Affinity proteomics (Olink panels, antibody arrays)
-- 📊 Missing value handling and normalization
-- 🧪 Peptide-to-protein aggregation
-- 📈 Differential expression analysis
-
-##### **Q2 2025 - AI Agent Toolkit** *(Private Beta)*
-- 🤖 Custom feature agent (code generation with Claude Code SDK)
-- 🛠️ Agent creation templates & frameworks
-- 🔧 Unified agent development patterns
-
-##### **Q2-Q3 2025 - Multi-Omics Integration**
-- 🔗 Cross-platform data integration (RNA + Protein)
-- 🎯 Multi-modal analysis workflows
-- 📊 Integrated visualization suite
-
-##### **Q3 2025 - Lobster Cloud** *(Launching)*
-- ☁️ Scalable cloud computing (AWS Bedrock optimization)
-- 🚀 No local hardware requirements
-- 🔐 HIPAA/GDPR compliance (SOC2 in progress)
-- 💼 Enterprise SaaS ($6K-$30K/year)
-
-**Target:** 50 paying customers, $810K ARR by Month 18
+Includes: scVI integration, GPU acceleration, advanced embeddings.
 
 ---
 
-**Note:** Premium features are available for enterprise customers and research collaborations. [Contact us](mailto:info@omics-os.com) for access.
+## API Rate Limits
 
-## 🔬 Literature Mining & Metadata
+| Use Case | Provider | Notes |
+|----------|----------|-------|
+| Quick Testing | Claude API | May encounter rate limits |
+| Development | Claude API + Rate Increase | Request higher limits |
+| Production | AWS Bedrock | Enterprise-grade limits |
+| Privacy/Offline | Ollama | No limits, free |
 
-### Literature Discovery
+If you encounter rate limit errors:
+1. Wait and retry (limits reset after ~60 seconds)
+2. [Request rate increase from Anthropic](https://docs.anthropic.com/en/api/rate-limits)
+3. Switch to AWS Bedrock for production
+4. Use Ollama for unlimited local usage
 
-Lobster AI can automatically search scientific literature and extract key information to inform your analyses:
+---
 
-- **Search across databases** - Find relevant papers from PubMed, bioRxiv, and other scientific repositories
-- **Full-text retrieval** - Automatically access complete articles when available
-- **Methods extraction** - Extract experimental protocols, software parameters, and statistical approaches
-- **Citation networks** - Discover related papers and build comprehensive literature reviews
-- **Batch processing** - Analyze multiple publications simultaneously
+## Cell Type Annotation - Development Status
 
-### Dataset Discovery & Validation
+**IMPORTANT: Built-in marker gene lists are preliminary and not scientifically validated.**
 
-Before downloading or analyzing data, Lobster helps you find and evaluate datasets:
+Current limitations:
+- No evidence scoring (AUC, logFC, specificity metrics)
+- No validation against reference atlases
+- No tissue/context-specific optimization
+- SASP/Senescence detection not reliable with RNA-seq alone
+- Tumor cell detection should use CNV inference (inferCNV/CopyKAT)
 
-- **Multi-source search** - Search across GEO, SRA, PRIDE, and ENA databases
-- **Automatic metadata extraction** - Get platform details, sample counts, and experimental conditions
-- **Publication linking** - Connect datasets to their associated research papers
-- **Pre-download validation** - Check dataset quality, control samples, and platform consistency
-- **Compatibility assessment** - Evaluate whether datasets meet your analysis requirements
+**Recommended for production:**
+1. Provide custom validated markers specific to your tissue/context
+2. Use reference-based tools: [Azimuth](https://azimuth.hubmapconsortium.org/), [CellTypist](https://www.celltypist.org/), [scANVI](https://docs.scvi-tools.org/)
+3. Validate annotations manually with known markers
 
-### Cross-Dataset Metadata Operations
+See [Manual Annotation Guide](wiki/35-manual-annotation-service.md) for details.
 
-Harmonize and validate metadata across multiple studies:
+---
 
-- **Sample ID mapping** - Match samples between different omics datasets (e.g., RNA-seq to proteomics)
-- **Metadata standardization** - Convert diverse metadata formats to common schemas
-- **Quality control** - Validate experimental designs and detect potential issues
-- **Meta-analysis preparation** - Harmonize metadata across multiple studies for combined analysis
-- **Multi-omics integration** - Ensure sample compatibility across different data types
+## Premium Features
 
-### Natural Language Examples
+Unlock advanced capabilities with a Lobster Cloud subscription:
 
-```bash
-# Literature discovery
-🦞 You: "Find recent papers about CRISPR screens in cancer and extract their methods"
-
-# Dataset search and validation
-🦞 You: "Search GEO for single-cell datasets of pancreatic beta cells with at least 50 samples"
-
-# Cross-dataset operations
-🦞 You: "Map sample IDs between my RNA-seq and proteomics datasets"
-
-# Meta-analysis preparation
-🦞 You: "Check if these three breast cancer datasets are compatible for meta-analysis"
-
-# Automated metadata extraction
-🦞 You: "What analysis parameters did the authors use in PMID:35042229?"
-```
-
-## 🔧 Configuration
-
-### API Keys
-
-The `.env` file is automatically created during installation (`make install` calls `setup-env`). You just need to edit it with your API credentials.
-
-**Edit the .env file:**
-```bash
-# macOS - Opens in default text editor (TextEdit, etc.)
-open .env
-
-# Linux - Use nano or your preferred editor
-nano .env
-
-# Windows (⚠️ untested platform)
-notepad .env
-```
-
-**Choose ONE LLM provider:**
-
-**Option 1: Claude API (Recommended for quick start)**
-```bash
-# Get your key from https://console.anthropic.com/
-ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
-```
-⚠️ Note: Claude API has rate limits for new accounts. For production use, consider AWS Bedrock.
-
-**Option 2: AWS Bedrock (Recommended for production)**
-```bash
-# Requires AWS account with Bedrock access
-AWS_BEDROCK_ACCESS_KEY=AKIA...
-AWS_BEDROCK_SECRET_ACCESS_KEY=your-secret-key
-```
-
-### Optional Configuration
+- **Proteomics analysis** (DDA/DIA workflows, missing value handling)
+- **Metadata assistant** for cross-dataset harmonization
+- Priority support and cloud compute options
+- Custom agent packages for enterprise customers
 
 ```bash
-# Enhanced literature search (optional)
-NCBI_API_KEY=your-ncbi-api-key  # Get from NCBI
-
-# Force specific provider (auto-detected by default)
-LOBSTER_LLM_PROVIDER=anthropic  # or "bedrock"
-
-# Cloud mode (optional - contact info@omics-os.com for access)
-LOBSTER_CLOUD_KEY=your-cloud-api-key
+lobster activate <your-cloud-key>
+lobster status  # Check tier and features
 ```
 
-### Platform Support
+Contact: [info@omics-os.com](mailto:info@omics-os.com) | [Pricing](https://omics-os.com)
 
-| Platform | Native Installation | Docker | Status |
-|----------|---------------------|--------|--------|
-| **macOS** | ✅ Fully supported | ✅ Supported | Production ready |
-| **Ubuntu/Debian** | ✅ Supported (system deps required) | ✅ Supported | Production ready |
-| **Other Linux** | ⚠️ Manual setup needed | ✅ Supported | Community tested |
-| **Windows 10/11** | ⚠️ Experimental (use install.ps1) | ✅ Fully supported | Docker recommended |
+---
 
-**Recommended Installation Method:**
-- **macOS/Ubuntu**: Native installation (simpler, faster)
-- **Windows**: Docker Desktop (most reliable)
-- **Enterprise/Production**: Docker (consistent across environments)
+## Roadmap
 
-## 📚 Documentation
+**Open Source (lobster-local):**
+- ✅ Single-cell & bulk RNA-seq analysis
+- ✅ Literature mining & dataset discovery
+- ✅ Protein structure visualization
 
-- [Full Documentation](https://github.com/the-omics-os/lobster-local/wiki) - Guides and tutorials
-- [Example Analyses](https://github.com/the-omics-os/lobster-local/wiki/27-examples-cookbook) - Real-world use cases
-- [Architecture Overview](https://github.com/the-omics-os/lobster-local/wiki/18-architecture-overview) - Technical details
+**2026 Development:**
+- Knowledge graph integration for multi-dataset analysis
+- Lobster Cloud compute infrastructure
+- Enhanced multi-omics workflows (MuData integration)
+- Community-contributed agent marketplace
 
-## 🤝 Community & Support
+**Submit feature ideas:** [GitHub Discussions](https://github.com/the-omics-os/lobster-local/discussions)
 
-- 🐛 [Report Issues](https://github.com/the-omics-os/lobster-local/issues) - Bug reports and feature requests
-- 📧 [Email Support](mailto:info@omics-os.com) - Direct help from our team
+---
 
-### Enterprise Solutions
+## For Developers
 
-Need custom integrations or dedicated support? [Contact us](mailto:info@omics-os.com)
+Lobster follows an **open-core model** with single source of truth architecture:
 
-## 📄 License
+```
+lobster/config/subscription_tiers.py  (defines FREE vs PREMIUM)
+                ↓
+scripts/generate_allowlist.py         (generates file list)
+                ↓
+scripts/public_allowlist.txt          (DO NOT EDIT - auto-generated)
+                ↓
+lobster-local                         (public PyPI package)
+```
 
-Lobster AI is open source under the GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later). This license ensures that all users, including those accessing the software over a network, receive the freedoms to use, study, share, and modify the software. The AGPL-3.0 license is compatible with GPL-licensed dependencies used in our bioinformatics toolchain.
+**Key files:**
+- `subscription_tiers.py` - Defines which agents/features are FREE vs PREMIUM
+- `generate_allowlist.py --write` - Regenerates the sync allowlist
+- `CLAUDE.md` - Complete developer guide with architecture details
 
-For commercial licensing options or questions about license compatibility, please contact us at info@omics-os.com.
+CI enforces that `public_allowlist.txt` stays in sync with `subscription_tiers.py`.
 
-Documentation is licensed CC-BY-4.0. Contributions are accepted under a Contributor License Agreement to preserve future licensing flexibility.
+---
+
+## Uninstalling
+
+### Remove Package
+
+```bash
+# Global installation (uv tool)
+uv tool uninstall lobster-ai
+
+# Virtual environment
+pip uninstall lobster-ai
+rm -rf .venv
+
+# Development (make)
+make uninstall-global
+make uninstall
+```
+
+### Remove User Data (Optional)
+
+```bash
+rm -rf ~/.lobster
+rm -rf ~/.lobster_workspace
+rm .env  # In project directory
+```
+
+### Verify Removal
+
+```bash
+which lobster  # Should output nothing
+uv tool list | grep lobster  # Should output nothing
+```
+
+---
+
+## Troubleshooting
+
+See [Troubleshooting Guide](https://github.com/the-omics-os/lobster-local/wiki/28-troubleshooting) for common issues.
+
+**Quick fixes:**
+- **Import errors**: `make clean-install`
+- **Rate limits**: Switch to Bedrock or Ollama
+- **Ollama not detected**: Ensure `ollama serve` is running
+
+---
+
+## License
+
+Lobster AI is open source under **GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)**. This license ensures all users receive the freedoms to use, study, share, and modify the software.
+
+Documentation is licensed **CC-BY-4.0**. Contributions accepted under CLA.
+
+For commercial licensing: [info@omics-os.com](mailto:info@omics-os.com)
 
 ---
 
@@ -562,7 +522,7 @@ Documentation is licensed CC-BY-4.0. Contributions are accepted under a Contribu
 
 **Transform Your Bioinformatics Research Today**
 
-[Get Started](https://github.com/the-omics-os/lobster-local) • [Documentation](docs/)
+[Get Started](README.md) | [Documentation](https://github.com/the-omics-os/lobster-local/wiki)
 
 *Made with ❤️ by [Omics-OS](https://omics-os.com)*
 
