@@ -48,7 +48,13 @@ jobs:
         printf "%s\n" "${{ secrets.PUBLIC_REPO_DEPLOY_KEY }}" > ~/.ssh/id_ed25519
         chmod 600 ~/.ssh/id_ed25519
         ssh-keyscan github.com >> ~/.ssh/known_hosts
-        
+
+    - name: Install PyTorch CPU-only first (prevent CUDA bloat)
+      run: |
+        echo "📦 Installing PyTorch CPU-only to prevent 3GB CUDA dependencies..."
+        echo "Reason: docling → accelerate → torch (defaults to CUDA)"
+        pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
     - name: Install dependencies for validation
       run: pip install -e .
 
