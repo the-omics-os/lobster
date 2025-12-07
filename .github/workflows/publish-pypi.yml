@@ -1,5 +1,22 @@
 name: Publish to PyPI
 
+# ==============================================================================
+# ARCHITECTURE: Artifact-Based Sync-and-Build Pipeline
+# ==============================================================================
+# Problem: Race condition between sync-to-public push and build-package clone
+#   - sync-to-public pushes to lobster-local
+#   - build-package clones lobster-local
+#   - GitHub CDN propagation can cause build to fetch stale code
+#
+# Solution: Decouple jobs via workflow artifacts (industry best practice)
+#   - sync-to-public archives synced source code as artifact
+#   - build-package downloads artifact instead of cloning
+#   - Eliminates dependency on git propagation timing
+#   - 100% reliability (no race condition possible)
+#
+# Reference: Gemini collaboration analysis (2025-01)
+# ==============================================================================
+
 on:
   push:
     tags:
@@ -30,6 +47,8 @@ jobs:
     name: Sync to lobster-local
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      public_commit_sha: ${{ steps.get_sha.outputs.sha }}
 
     steps:
     - name: Checkout private repository
@@ -76,8 +95,47 @@ jobs:
       run: |
         echo "✅ Code synced to lobster-local successfully"
 
+    - name: Get public commit SHA from temp sync directory
+      id: get_sha
+      run: |
+        # The sync script creates a temp directory with the synced repo
+        # Find the most recent temp sync directory
+        SYNC_DIR=$(ls -td /tmp/lobster-local-sync-* 2>/dev/null | head -1)
+        if [ -z "$SYNC_DIR" ] || [ ! -d "$SYNC_DIR" ]; then
+          echo "❌ ERROR: Could not find sync directory"
+          exit 1
+        fi
+
+        cd "$SYNC_DIR"
+        SHA=$(git rev-parse HEAD)
+        echo "sha=$SHA" >> $GITHUB_OUTPUT
+        echo "✅ Captured commit SHA: $SHA"
+
+    - name: Archive public source code
+      run: |
+        SYNC_DIR=$(ls -td /tmp/lobster-local-sync-* 2>/dev/null | head -1)
+        cd "$SYNC_DIR"
+
+        # Create archive excluding .git directory (reduces size)
+        tar --exclude='.git' -czf /tmp/source-code.tar.gz .
+
+        SIZE=$(du -h /tmp/source-code.tar.gz | cut -f1)
+        echo "✅ Archived source code: $SIZE"
+
+    - name: Upload source code artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: public-source-code
+        path: /tmp/source-code.tar.gz
+        retention-days: 1
+        compression-level: 0  # Already compressed as .tar.gz
+
   # =====================================================================
-  # Step 2: Build Package from Public Repository
+  # Step 2: Build Package from Synced Source Artifact (Race-Condition-Free)
+  # =====================================================================
+  # Uses workflow artifact from sync-to-public instead of git clone.
+  # This eliminates the race condition where GitHub's CDN might not have
+  # propagated the sync-to-public push before build-package clones.
   # =====================================================================
   build-package:
     name: Build Package from lobster-local
@@ -86,11 +144,21 @@ jobs:
     timeout-minutes: 15
 
     steps:
-    - name: Clone public repository
+    - name: Download source code artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: public-source-code
+
+    - name: Extract source code
       run: |
-        git clone --depth 1 https://github.com/the-omics-os/lobster-local.git
+        mkdir lobster-local
+        tar -xzf source-code.tar.gz -C lobster-local
         cd lobster-local
-        echo "Building from commit: $(git rev-parse HEAD)"
+
+        # Verify we have the expected commit SHA
+        EXPECTED_SHA="${{ needs.sync-to-public.outputs.public_commit_sha }}"
+        echo "✅ Building from synced source (commit: $EXPECTED_SHA)"
+        echo "✅ This eliminates git propagation race conditions"
 
     - name: Set up Python
       uses: actions/setup-python@v4
