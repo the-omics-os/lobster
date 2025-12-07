@@ -195,6 +195,42 @@ class TestDiscoveryMethods:
             assert "GSE12345" in result_str
             mock_provider.find_datasets_from_publication.assert_called_once()
 
+    def test_find_related_publications_mock(self, mock_content_access_service):
+        """Test finding publications related to a given PMID (mock)."""
+        from lobster.tools.providers.pubmed_provider import PubMedProvider
+
+        mock_pubmed_provider = Mock(spec=PubMedProvider)
+        # Service calls find_related_publications(), expecting string
+        mock_pubmed_provider.find_related_publications.return_value = (
+            "## Related Publications for PMID:35042229\n\n"
+            "**Source Publication**: Original Paper Title\n"
+            "**Found 2 related publications**\n\n"
+            "### 1. Related Paper 1\n\n"
+            "**PMID**: 12345\n"
+            "**Abstract**: This study builds upon the original work...\n\n"
+            "### 2. Related Paper 2\n\n"
+            "**PMID**: 67890\n"
+            "**Abstract**: Our findings complement the previous research...\n"
+        )
+
+        with patch.object(
+            mock_content_access_service.registry,
+            "get_all_providers",
+            return_value=[mock_pubmed_provider],
+        ):
+            # find_related_publications returns string and uses 'identifier' parameter
+            result_str = mock_content_access_service.find_related_publications(
+                identifier="PMID:35042229", max_results=5
+            )
+
+            # Check formatted result string contains expected elements
+            assert "Related Publications" in result_str
+            assert "PMID:12345" in result_str or "12345" in result_str
+            assert "PMID:67890" in result_str or "67890" in result_str
+            mock_pubmed_provider.find_related_publications.assert_called_once_with(
+                identifier="PMID:35042229", max_results=5
+            )
+
     def test_search_with_filters_mock(self, mock_content_access_service):
         """Test search with filters (organism, date range, etc.)."""
         mock_provider = Mock()
@@ -1191,6 +1227,41 @@ class TestRealAPIDiscovery:
         assert result_str is not None
         assert isinstance(result_str, str), "Should return formatted string"
         assert elapsed < 3.0, f"Link search took {elapsed:.2f}s (expected <3s)"
+
+        # Rate limiting
+        time.sleep(0.5)
+
+    @pytest.mark.integration
+    @pytest.mark.slow
+    @pytest.mark.real_api
+    def test_find_related_publications_real(self, real_content_access_service):
+        """Test finding publications related to a real PMID using E-Link.
+
+        Test Paper: PMID:35102706 (from bug report)
+        Expected: Should find papers citing or cited by this paper
+
+        Requires: NCBI_API_KEY environment variable
+        Rate limit: 3 req/s with API key
+        Expected duration: 2-3s (multiple E-Link calls)
+        """
+        identifier = "PMID:35102706"
+
+        start_time = time.time()
+        # Service returns formatted string directly
+        result_str = real_content_access_service.find_related_publications(
+            identifier=identifier, max_results=5
+        )
+        elapsed = time.time() - start_time
+
+        # Verify results
+        assert result_str is not None
+        assert isinstance(result_str, str), "Should return formatted string"
+        assert "Related Publications" in result_str, "Should have header"
+        assert elapsed < 5.0, f"Related search took {elapsed:.2f}s (expected <5s)"
+
+        # Should contain at least some PMIDs or indicate no results found
+        has_results = "PMID:" in result_str or "No related publications" in result_str
+        assert has_results, "Should either show PMIDs or 'no results' message"
 
         # Rate limiting
         time.sleep(0.5)

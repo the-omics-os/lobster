@@ -540,6 +540,13 @@ class PublicRepoSync:
 
             if not has_changes:
                 print("\n✅ Sync completed - repository is already up to date!")
+
+                # Output temp directory path for CI artifact creation (even when no changes)
+                preserve_dir = os.environ.get('PRESERVE_SYNC_DIR', 'false').lower() == 'true'
+                if preserve_dir and self.temp_dir:
+                    print(f"\n📦 SYNC_DIR_PATH={self.temp_dir}")
+                    print("Note: Temp directory preserved for artifact creation (PRESERVE_SYNC_DIR=true)")
+
                 return
 
             # Push

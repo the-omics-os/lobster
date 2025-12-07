@@ -336,7 +336,8 @@ lobster/
 | Interfaces | `core/interfaces/download_service.py` | IDownloadService abstract base class |
 | Identifiers | `core/identifiers/accession_resolver.py` | Centralized accession validation (29 patterns, thread-safe singleton) |
 | Providers | `tools/providers/*.py` | PubMed/GEO/Web access (delegate to AccessionResolver for validation) |
-| Utilities | `tools/*.py` | orchestrators, helpers, workspace tools (write_to_workspace, get_content_from_workspace shared across agents) |
+| Utilities | `tools/*.py` | orchestrators, helpers |
+| Workspace Tools | `tools/workspace_tool.py` | **Unified workspace tool (v2.6+)**: write_to_workspace, get_content_from_workspace (adapter pattern for 5 workspace types) |
 | Deprecated | `tools/geo_*.py`, `tools/pipeline_strategy.py` | Backward compat aliases → `services/data_access/geo/` |
 | Registry | `config/agent_registry.py` | agent configuration |
 
@@ -566,6 +567,15 @@ Adding a new agent should be **registry‑only** wherever possible. For premium-
   - Helper methods: `is_geo_identifier()`, `is_sra_identifier()`, `is_proteomics_identifier()`
   - **Rule**: All providers MUST use AccessionResolver instead of hardcoded regex patterns
   - Supported databases: GEO (GSE/GSM/GPL/GDS), SRA (SRP/SRX/SRR/SRS), ENA, DDBJ, BioProject, BioSample, PRIDE, MassIVE, MetaboLights, ArrayExpress, DOI
+- **Unified Workspace Tool pattern** (`tools/workspace_tool.py`): adapter-based workspace access (v2.6+)
+  - **Architecture**: Dispatcher → Adapter → WorkspaceItem TypedDict → Unified Formatter
+  - **5 Workspace Types**: literature, data, metadata, download_queue, publication_queue
+  - **3 Adapters**: `_adapt_general_content()`, `_adapt_download_queue()`, `_adapt_publication_queue()`
+  - **WorkspaceItem**: Unified structure (identifier, workspace, type, status, title, cached_at, details)
+  - **Benefits**: Consistent API across all workspaces, defensive against missing fields, extensible (new workspace = 1 adapter)
+  - **Tools**: `get_content_from_workspace(identifier, workspace, level, status_filter)`, `write_to_workspace(identifier, workspace, ...)`
+  - **Rule**: All agents use same mental model for workspace operations (list, filter, retrieve)
+  - **Doc**: See `wiki/38-workspace-content-service.md` for usage examples
 
 ### 4.6 Download Architecture (Queue-Based Pattern)
 
@@ -628,8 +638,8 @@ modality_name, stats = orchestrator.execute_download(entry_id)
 
 **Key Files**:
 - `services/orchestration/publication_processing_service.py` - Queue processing with auto-status
-- `agents/metadata_assistant.py` - 3 new tools (process_metadata_entry, process_metadata_queue, update_metadata_status)
-- `tools/workspace_tool.py` - Shared write_to_workspace factory (CSV export)
+- `agents/metadata_assistant.py` - 3 tools (process_metadata_entry, process_metadata_queue, update_metadata_status)
+- `tools/workspace_tool.py` - Unified workspace tools (v2.6+: adapter pattern for all workspace types)
 - `core/schemas/publication_queue.py` - PublicationQueueEntry with handoff fields
 
 **Auto-Status Logic**:

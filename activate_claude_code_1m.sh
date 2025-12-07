@@ -11,7 +11,7 @@ export ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION=us-west-2
 #export ANTHROPIC_MODEL='global.anthropic.claude-opus-4-5-20251101-v1:0'
 export ANTHROPIC_MODEL='us.anthropic.claude-sonnet-4-5-20250929-v1:0[1m]'
 #export ANTHROPIC_MODEL='us.anthropic.claude-sonnet-4-5-20250929-v1:0'
-export ANTHROPIC_SMALL_FAST_MODEL='us.anthropic.claude-sonnet-4-20250514-v1:0[1m]'
+export ANTHROPIC_SMALL_FAST_MODEL='us.anthropic.claude-sonnet-4-5-20250929-v1:0'
 
 # Using application inference profile ARN
 #export ANTHROPIC_MODEL='arn:aws:bedrock:us-east-2:your-account-id:application-inference-profile/your-model-id'

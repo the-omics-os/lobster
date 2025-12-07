@@ -987,3 +987,112 @@ class TestPLOSParagraphFallback:
         assert "Specimen collection" in methods
         assert "Measurement instruments" in methods
         assert "Antibody reagents" in methods
+
+
+# ==============================================================================
+# Test Body Content Validation (pubmed_parser-style)
+# ==============================================================================
+
+
+class TestBodyContentValidation:
+    """
+    Test _has_body_content() method following pubmed_parser approach.
+
+    The pubmed_parser library (peer-reviewed in JOSS, 2015-2020+) does NOT
+    validate body content length with arbitrary thresholds. Instead, it trusts
+    the PMC API - if XML with <body> is returned, it's valid content.
+
+    This test suite verifies our implementation follows that proven approach.
+    """
+
+    def test_has_body_content_structured_xml(self, pmc_provider):
+        """Test validation with structured PMC XML (standard case)."""
+        structured_xml = """
+        <body>
+          <sec sec-type="intro">
+            <title>Introduction</title>
+            <p>This is the introduction.</p>
+          </sec>
+          <sec sec-type="methods">
+            <title>Methods</title>
+            <p>Methods description here.</p>
+          </sec>
+        </body>
+        """
+        assert pmc_provider._has_body_content(structured_xml) is True
+
+    def test_has_body_content_minimal_whitespace(self, pmc_provider):
+        """Test validation with minimal content (no character threshold)."""
+        minimal_xml = """<body>\n  <sec>\n    <p>X</p>\n  </sec>\n</body>"""
+        assert pmc_provider._has_body_content(minimal_xml) is True
+
+    def test_has_body_content_whitespace_only(self, pmc_provider):
+        """Test body with only whitespace (trust API approach)."""
+        whitespace_xml = """<body>\n\n  \n\n</body>"""
+        assert pmc_provider._has_body_content(whitespace_xml) is True
+
+    def test_has_body_content_empty_body_tag(self, pmc_provider):
+        """Test empty <body></body> tag (trust API to handle gracefully)."""
+        empty_xml = """<body></body>"""
+        assert pmc_provider._has_body_content(empty_xml) is True
+
+    def test_has_body_content_publisher_restriction(self, pmc_provider):
+        """Test explicit publisher restriction marker (only rejection case)."""
+        restricted_xml = """<body>Publisher does not allow downloading</body>"""
+        assert pmc_provider._has_body_content(restricted_xml) is False
+
+    def test_has_body_content_no_body_element(self, pmc_provider):
+        """Test XML without <body> element (structural requirement)."""
+        no_body_xml = """<article><front><title>Title</title></front></article>"""
+        assert pmc_provider._has_body_content(no_body_xml) is False
+
+    def test_has_body_content_body_with_attributes(self, pmc_provider):
+        """Test <body> tag with attributes (common in JATS XML)."""
+        body_with_attrs = """<body specific-use="web-only">\n  <p>Content</p>\n</body>"""
+        assert pmc_provider._has_body_content(body_with_attrs) is True
+
+    def test_has_body_content_nested_elements(self, pmc_provider):
+        """Test deeply nested body structure (common in PMC XML)."""
+        nested_xml = """
+        <body>
+          <sec>
+            <sec>
+              <sec>
+                <p>Nested content</p>
+              </sec>
+            </sec>
+          </sec>
+        </body>
+        """
+        assert pmc_provider._has_body_content(nested_xml) is True
+
+    def test_has_body_content_real_world_pmc_structure(self, pmc_provider):
+        """Test real-world PMC XML structure from PMC12367082."""
+        # Simulated minimal structure that caused false "restricted" error
+        real_world_xml = """<?xml version="1.0" ?>
+        <pmc-articleset>
+          <article>
+            <body>
+              <sec>
+                <title>Introduction</title>
+                <p>Brief intro text.</p>
+              </sec>
+              <sec sec-type="methods">
+                <title>Methods</title>
+                <p>Methods content here with structured elements.</p>
+              </sec>
+            </body>
+          </article>
+        </pmc-articleset>"""
+        assert pmc_provider._has_body_content(real_world_xml) is True
+
+    def test_has_body_content_plos_style_paragraphs(self, pmc_provider):
+        """Test PLOS-style XML with methods in paragraphs (no formal sections)."""
+        plos_xml = """
+        <body>
+          <p>Background information goes here.</p>
+          <p>Samples were collected using standard protocol.</p>
+          <p>RNA extraction was performed with specialized reagent.</p>
+        </body>
+        """
+        assert pmc_provider._has_body_content(plos_xml) is True

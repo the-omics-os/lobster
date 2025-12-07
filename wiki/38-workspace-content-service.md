@@ -417,7 +417,49 @@ def write_to_workspace(identifier: str, workspace: str, content_type: str = None
 
 **Purpose**: Retrieve cached research content with flexible detail levels.
 
-**Usage Pattern:**
+#### Unified Architecture (v2.6+)
+
+As of version 2.6, `get_content_from_workspace` uses a **unified adapter-based architecture** that provides consistent behavior across all workspace types.
+
+**Key Improvements:**
+- **Consistent API**: All workspaces support the same operations (list, filter, retrieve)
+- **Unified Formatting**: Status emojis, titles, and details formatted consistently
+- **Type Safety**: Internal `WorkspaceItem` TypedDict ensures defensive field access
+- **Error Handling**: No more KeyError crashes on missing fields
+
+**Architecture Diagram:**
+```
+User Query → Dispatcher → Adapter → WorkspaceItem[] → Formatter → Markdown
+                 ↓           ↓             ↓              ↓
+            5 workspaces  Normalize   Unified      Consistent
+                         data types   structure     output
+```
+
+**Adapters:**
+1. `_adapt_general_content()` - literature, data, metadata workspaces
+2. `_adapt_download_queue()` - download queue entries
+3. `_adapt_publication_queue()` - publication queue entries
+
+**WorkspaceItem Structure:**
+```python
+class WorkspaceItem(TypedDict, total=False):
+    identifier: str          # Primary ID
+    workspace: str           # Category
+    type: str                # Item type
+    status: Optional[str]    # For queues
+    priority: Optional[int]  # For queues
+    title: Optional[str]     # Display title
+    cached_at: Optional[str] # ISO timestamp
+    details: Optional[str]   # Summary/metadata
+```
+
+**Benefits:**
+- Agents can use same mental model for all workspaces
+- No workspace-specific error handling needed
+- Easy to add new workspace types (one adapter function)
+- Backward compatible (same output format)
+
+#### Usage Pattern (Simplified)
 ```python
 @tool
 def get_content_from_workspace(
