@@ -6,7 +6,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2025-12-07 17:35:42
+# Generated: 2025-12-07 22:22:49
 # =============================================================================
 
 
@@ -66,6 +66,7 @@ lobster/main.py
 lobster/core/__init__.py
 lobster/core/client.py
 lobster/core/workspace.py
+lobster/core/config_resolver.py
 lobster/core/data_manager_v2.py
 lobster/core/provenance.py
 lobster/core/download_queue.py

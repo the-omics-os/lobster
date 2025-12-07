@@ -165,6 +165,7 @@ lobster/main.py
 lobster/core/__init__.py
 lobster/core/client.py
 lobster/core/workspace.py
+lobster/core/config_resolver.py
 lobster/core/data_manager_v2.py
 lobster/core/provenance.py
 lobster/core/download_queue.py
