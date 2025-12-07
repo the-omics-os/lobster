@@ -67,32 +67,35 @@ jobs:
 
     - name: Test installation
       run: |
-        echo "Testing package installation (excluding heavy docling deps for CI)..."
+        echo "Testing package installation (excluding heavy docling/torch deps for CI)..."
 
-        # WORKAROUND: docling requires accelerate, which requires torch + 5GB CUDA libs
-        # This causes "No space left on device" in GitHub Actions runners (14GB disk)
-        # Solution: Use pip constraints to skip docling ONLY in CI test
-        # Production installs get full docling support via normal pip install
-        cat > /tmp/constraints.txt << 'EOF'
-        # Skip docling and its heavy dependencies in CI to save disk space
-        # (docling is still a required dep in production, just not tested here)
-        docling==99999.0.0
-        docling-core==99999.0.0
-        docling-parse==99999.0.0
-        docling-ibm-models==99999.0.0
-        accelerate==99999.0.0
-        torch==99999.0.0
-        torchvision==99999.0.0
-        EOF
+        # Step 1: Install the wheel itself, without its dependencies.
+        # This places the lobster package itself in site-packages.
+        pip install dist/*.whl --no-deps
 
-        # Install with constraints - docling will be skipped, everything else installs
-        PIP_CONSTRAINT=/tmp/constraints.txt pip install dist/*.whl --no-deps
-        PIP_CONSTRAINT=/tmp/constraints.txt pip install $(unzip -p dist/*.whl */METADATA | grep "^Requires-Dist:" | grep -v "extra ==" | sed 's/Requires-Dist: //' | sed 's/ ;.*//' | sed 's/>=.*//' | sed 's/==.*//' | tr '\n' ' ')
+        # Step 2: Extract dependencies from the wheel, filter out heavy ones, and install the rest.
+        # WORKAROUND: docling → accelerate → torch chain pulls 5GB+ CUDA packages
+        # This causes "No space left on device" in GitHub Actions (14GB disk limit)
+        # Solution: Use grep to filter out heavy packages before installing
+        DEPS_TO_INSTALL=$(unzip -p dist/*.whl */METADATA | \
+            grep "^Requires-Dist:" | \
+            grep -v "extra ==" | \
+            grep -iv "docling" | \
+            grep -iv "torch" | \
+            grep -iv "accelerate" | \
+            sed 's/Requires-Dist: //' | \
+            tr '\n' ' ')
 
-        # Verify imports (docling service will fail but core functionality works)
+        if [ -n "$DEPS_TO_INSTALL" ]; then
+            pip install $DEPS_TO_INSTALL
+        else
+            echo "No dependencies to install."
+        fi
+
+        # Step 3: Verify core functionality is available.
+        # This confirms the package is importable and the CLI entrypoint works.
+        echo "Verifying installation..."
         python -c "import lobster; print(f'✅ Lobster version: {lobster.__version__}')"
-
-        # Verify CLI is available
         lobster --help
 
     - name: Upload build artifacts
