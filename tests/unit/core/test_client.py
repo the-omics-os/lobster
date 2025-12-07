@@ -1402,7 +1402,8 @@ class TestParametrizedScenarios:
 
         assert client.enable_reasoning == enable_reasoning
 
+        # TokenTrackingCallback is always added (token tracking is always enabled)
         if enable_langfuse:
-            assert len(client.callbacks) > 0
+            assert len(client.callbacks) >= 2  # TokenTrackingCallback + LangfuseCallback
         else:
-            assert len(client.callbacks) == 0
+            assert len(client.callbacks) == 1  # Only TokenTrackingCallback
