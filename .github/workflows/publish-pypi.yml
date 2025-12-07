@@ -70,14 +70,18 @@ jobs:
         chmod 600 ~/.ssh/id_ed25519
         ssh-keyscan github.com >> ~/.ssh/known_hosts
 
-    - name: Install PyTorch CPU-only first (prevent CUDA bloat)
+    - name: Free disk space
       run: |
-        echo "📦 Installing PyTorch CPU-only to prevent 3GB CUDA dependencies..."
-        echo "Reason: docling → accelerate → torch (defaults to CUDA)"
-        pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo apt-get clean
 
-    - name: Install dependencies for validation
-      run: pip install -e .
+    - name: Install dependencies (CPU-only PyTorch via constraints)
+      run: |
+        # CRITICAL: Use constraints file to enforce CPU-only torch in SAME command
+        # Pre-installing torch separately does NOT work (pip resolves fresh)
+        pip install -e . \
+          --extra-index-url https://download.pytorch.org/whl/cpu \
+          -c constraints-cpu.txt
 
     - name: Validate allowlist matches subscription_tiers.py
       run: |
@@ -258,17 +262,31 @@ jobs:
 
         echo "✅ No private code detected in package"
 
-    - name: Install PyTorch CPU-only first (prevent CUDA bloat)
+    - name: Free disk space
       run: |
-        echo "📦 Installing PyTorch CPU-only to prevent 3GB CUDA dependencies..."
-        echo "Reason: docling → accelerate → torch (defaults to CUDA)"
-        pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo apt-get clean
+        df -h
 
-    - name: Test installation
+    - name: Test installation (CPU-only PyTorch via constraints)
       working-directory: lobster-local
       run: |
-        echo "Testing package installation..."
-        pip install dist/*.whl
+        echo "Testing package installation with CPU-only PyTorch..."
+
+        # Verify constraints file was synced (it should be in lobster-local)
+        if [ ! -f "constraints-cpu.txt" ]; then
+          echo "WARNING: constraints-cpu.txt not found, creating inline..."
+          cat > constraints-cpu.txt << 'EOF'
+        torch==2.5.1+cpu
+        torchvision==0.20.1+cpu
+        torchaudio==2.5.1+cpu
+        EOF
+        fi
+
+        # Install with CPU constraints in SAME command (critical!)
+        pip install dist/*.whl \
+          --extra-index-url https://download.pytorch.org/whl/cpu \
+          -c constraints-cpu.txt
 
         # Verify imports work
         python -c "import lobster; print(f'✅ Lobster version: {lobster.__version__}')"
@@ -344,16 +362,29 @@ jobs:
         echo "⏳ Waiting 30 seconds for TestPyPI to process package..."
         sleep 30
 
-    - name: Install PyTorch CPU-only first (prevent CUDA bloat)
+    - name: Free disk space
       run: |
-        echo "📦 Installing PyTorch CPU-only to prevent 3GB CUDA dependencies..."
-        pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo apt-get clean
 
-    - name: Test installation from TestPyPI
+    - name: Download constraints file
+      uses: actions/download-artifact@v4
+      with:
+        name: public-source-code
+
+    - name: Extract constraints file
       run: |
-        echo "📦 Testing installation from TestPyPI..."
+        tar -xzf source-code.tar.gz constraints-cpu.txt
+
+    - name: Test installation from TestPyPI (CPU-only PyTorch)
+      run: |
+        echo "📦 Testing installation from TestPyPI with CPU-only PyTorch..."
+
+        # Install with constraints in SAME command (critical!)
         pip install --index-url https://test.pypi.org/simple/ \
                     --extra-index-url https://pypi.org/simple \
+                    --extra-index-url https://download.pytorch.org/whl/cpu \
+                    -c constraints-cpu.txt \
                     ${{ env.PACKAGE_NAME }}==${{ steps.version.outputs.version }}
 
         # Verify it works
@@ -434,15 +465,28 @@ jobs:
         echo "⏳ Waiting 60 seconds for PyPI to process package..."
         sleep 60
 
-    - name: Install PyTorch CPU-only first (prevent CUDA bloat)
+    - name: Free disk space
       run: |
-        echo "📦 Installing PyTorch CPU-only to prevent 3GB CUDA dependencies..."
-        pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo apt-get clean
 
-    - name: Test installation from PyPI
+    - name: Download constraints file
+      uses: actions/download-artifact@v4
+      with:
+        name: public-source-code
+
+    - name: Extract constraints file
       run: |
-        echo "📦 Testing installation from production PyPI..."
-        pip install ${{ env.PACKAGE_NAME }}==${{ steps.version.outputs.version }}
+        tar -xzf source-code.tar.gz constraints-cpu.txt
+
+    - name: Test installation from PyPI (CPU-only PyTorch)
+      run: |
+        echo "📦 Testing installation from production PyPI with CPU-only PyTorch..."
+
+        # Install with constraints in SAME command (critical!)
+        pip install ${{ env.PACKAGE_NAME }}==${{ steps.version.outputs.version }} \
+          --extra-index-url https://download.pytorch.org/whl/cpu \
+          -c constraints-cpu.txt
 
         # Verify it works
         python -c "import lobster; print(f'Installed version: {lobster.__version__}')"

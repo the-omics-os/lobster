@@ -123,10 +123,21 @@ jobs:
         python-version: 3.12
         cache: 'pip'
 
-    - name: Install dependencies
+    - name: Free disk space
+      run: |
+        # Remove unnecessary large packages to prevent disk space issues
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo apt-get clean
+        df -h
+
+    - name: Install dependencies (CPU-only PyTorch)
       run: |
         python -m pip install --upgrade pip
-        pip install -e ".[dev]"
+        # CRITICAL: Use constraints file to enforce CPU-only torch
+        # This prevents ~3GB of CUDA packages from filling disk
+        pip install -e ".[dev]" \
+          --extra-index-url https://download.pytorch.org/whl/cpu \
+          -c constraints-cpu.txt
 
     - name: Run unit tests
       env:
@@ -312,12 +323,25 @@ jobs:
         fi
         echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-    - name: Install from Git Tag
+    - name: Checkout for constraints file
+      uses: actions/checkout@v4
+      with:
+        sparse-checkout: constraints-cpu.txt
+        sparse-checkout-cone-mode: false
+
+    - name: Free disk space
+      run: |
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo apt-get clean
+
+    - name: Install from Git Tag (CPU-only PyTorch)
       run: |
         VERSION="${{ steps.version.outputs.version }}"
 
-        echo "Installing lobster from Git tag $VERSION..."
-        pip install git+https://github.com/the-omics-os/lobster.git@$VERSION
+        echo "Installing lobster from Git tag $VERSION (CPU-only mode)..."
+        pip install "lobster @ git+https://github.com/the-omics-os/lobster.git@$VERSION" \
+          --extra-index-url https://download.pytorch.org/whl/cpu \
+          -c constraints-cpu.txt
 
     - name: Verify installation
       run: |

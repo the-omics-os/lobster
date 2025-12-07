@@ -130,6 +130,9 @@ Dockerfile
 # GitHub Actions workflows (synced to lobster-local)
 .github/workflows/public-release.yml
 
+# Constraints files for CI/CD
+constraints-cpu.txt
+
 
 # =============================================================================
 # DOCUMENTATION
