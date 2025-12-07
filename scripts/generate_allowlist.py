@@ -476,6 +476,7 @@ ALWAYS_EXCLUDED = """
 !lobster/ui/widgets/chat_message.py
 !lobster/ui/widgets/query_prompt.py
 !lobster/ui/widgets/modality_list.py
+!lobster/ui/widgets/data_hub.py
 !lobster/ui/widgets/results_display.py
 !lobster/ui/widgets/plot_preview.py
 

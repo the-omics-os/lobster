@@ -6,7 +6,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2025-12-06 23:35:44
+# Generated: 2025-12-07 04:32:11
 # =============================================================================
 
 
@@ -329,7 +329,7 @@ lobster/ui/components/status_display.py
 lobster/ui/components/parallel_workers_progress.py
 lobster/ui/components/multi_progress.py
 
-# NOTE: Textual UI (lobster os) is EXCLUDED - see ALWAYS_EXCLUDED section
+# NOTE: Textual UI (lobster dashboard) is EXCLUDED - see ALWAYS_EXCLUDED section
 
 
 # =============================================================================
@@ -411,13 +411,14 @@ lobster/agents/visualization_expert.py
 # ALWAYS EXCLUDED (Regardless of Tier)
 # =============================================================================
 
-# Textual UI (lobster os command) - Private feature
+# Textual UI (lobster dashboard command) - Private feature
 !lobster/ui/os_app.py
 !lobster/ui/screens/**
 !lobster/ui/widgets/status_bar.py
 !lobster/ui/widgets/chat_message.py
 !lobster/ui/widgets/query_prompt.py
 !lobster/ui/widgets/modality_list.py
+!lobster/ui/widgets/data_hub.py
 !lobster/ui/widgets/results_display.py
 !lobster/ui/widgets/plot_preview.py
 
