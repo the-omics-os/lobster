@@ -367,14 +367,12 @@ jobs:
         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
         sudo apt-get clean
 
-    - name: Download constraints file
-      uses: actions/download-artifact@v4
+    - name: Checkout repository for constraints file
+      uses: actions/checkout@v4
       with:
-        name: public-source-code
-
-    - name: Extract constraints file
-      run: |
-        tar -xzf source-code.tar.gz constraints-cpu.txt
+        sparse-checkout: |
+          constraints-cpu.txt
+        sparse-checkout-cone-mode: false
 
     - name: Test installation from TestPyPI (CPU-only PyTorch)
       run: |
@@ -470,14 +468,12 @@ jobs:
         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
         sudo apt-get clean
 
-    - name: Download constraints file
-      uses: actions/download-artifact@v4
+    - name: Checkout repository for constraints file
+      uses: actions/checkout@v4
       with:
-        name: public-source-code
-
-    - name: Extract constraints file
-      run: |
-        tar -xzf source-code.tar.gz constraints-cpu.txt
+        sparse-checkout: |
+          constraints-cpu.txt
+        sparse-checkout-cone-mode: false
 
     - name: Test installation from PyPI (CPU-only PyTorch)
       run: |
