@@ -298,6 +298,66 @@ class TestValidateForH5ad:
         assert len(issues) > 0
         assert any("root.level1.level2.problematic" in issue for issue in issues)
 
+    def test_validate_provenance_metadata_no_numeric_warnings(self):
+        """Test that provenance IR metadata doesn't trigger excessive numeric warnings."""
+        # Simulate provenance structure with IR containing numeric metadata
+        provenance_data = {
+            "provenance": {
+                "activities": [
+                    {
+                        "id": "activity-1",
+                        "ir": {
+                            "parameters": {
+                                "max_results": 15,  # int
+                                "threshold": 0.05,  # float
+                            },
+                            "parameter_schema": {
+                                "max_results": {
+                                    "param_type": "int",
+                                    "papermill_injectable": False,  # bool
+                                    "required": False,  # bool
+                                    "default_value": 15,
+                                }
+                            },
+                            "execution_context": {
+                                "timestamp": "2024-12-08",
+                                "version": 1,  # int
+                            },
+                        },
+                    }
+                ]
+            }
+        }
+
+        issues = validate_for_h5ad(provenance_data)
+
+        # Should NOT flag numeric values in provenance paths
+        # (They're automatically sanitized and expected)
+        numeric_warnings = [
+            issue for issue in issues if "Numeric value" in issue and "provenance" in issue
+        ]
+        assert len(numeric_warnings) == 0, (
+            f"Expected no numeric warnings for provenance metadata, "
+            f"but got {len(numeric_warnings)}: {numeric_warnings[:3]}"
+        )
+
+    def test_validate_user_data_still_warns_numeric(self):
+        """Test that user data with numeric values still generates warnings (outside provenance)."""
+        user_data = {
+            "user_metadata": {
+                "sample_count": 100,  # Should still warn
+                "quality_score": 0.95,  # Should still warn
+            }
+        }
+
+        issues = validate_for_h5ad(user_data)
+
+        # Should flag numeric values in non-provenance contexts
+        numeric_warnings = [issue for issue in issues if "Numeric value" in issue]
+        assert len(numeric_warnings) > 0, (
+            "Expected warnings for numeric values in user metadata"
+        )
+
 
 class TestRealWorldScenarios:
     """Tests for real-world GEO metadata scenarios."""

@@ -138,8 +138,15 @@ constraints-cpu.txt
 # DOCUMENTATION
 # =============================================================================
 README.md
+README_FULL.md
 LICENSE
 .env.example
+
+# Documentation images/GIFs for README
+docs/images/lobster_installation.gif
+docs/images/lobster_init.gif
+docs/images/lobster_chat.gif
+docs/images/lobster_dashboard.gif
 
 
 # =============================================================================
