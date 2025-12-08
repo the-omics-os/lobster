@@ -173,6 +173,7 @@ lobster/core/__init__.py
 lobster/core/client.py
 lobster/core/workspace.py
 lobster/core/config_resolver.py
+lobster/core/workspace_config.py
 lobster/core/data_manager_v2.py
 lobster/core/provenance.py
 lobster/core/download_queue.py
@@ -181,6 +182,7 @@ lobster/core/archive_utils.py
 lobster/core/analysis_ir.py
 lobster/core/ir_coverage.py
 lobster/core/exceptions.py
+lobster/core/global_config.py
 lobster/core/notebook_executor.py
 lobster/core/notebook_exporter.py
 lobster/core/notebook_validator.py
