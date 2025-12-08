@@ -60,18 +60,18 @@ lobster chat
 <table>
 <tr>
 <td width="50%">
-<img src="docs/images/lobster_installation.gif" alt="Installation" width="100%"/>
+<img src="docs_p/images/lobster_installation.gif" alt="Installation" width="100%"/>
 <p align="center"><strong>1️⃣ Install in 30 seconds</strong><br/><code>uv pip install lobster-ai</code></p>
 </td>
 <td width="50%">
-<img src="docs/images/lobster_init.gif" alt="Configuration" width="100%"/>
+<img src="docs_p/images/lobster_init.gif" alt="Configuration" width="100%"/>
 <p align="center"><strong>2️⃣ Configure in 1 minute</strong><br/><code>lobster init</code></p>
 </td>
 </tr>
 </table>
 
 <div align="center">
-<img src="docs/images/lobster_chat.gif" alt="Chat Demo" width="80%"/>
+<img src="docs_p/images/lobster_chat.gif" alt="Chat Demo" width="80%"/>
 <p><strong>3️⃣ Start analyzing with natural language</strong></p>
 </div>
 
@@ -82,7 +82,7 @@ lobster chat
 Lobster is a **modular bioinformatics platform** with pluggable execution environments, LLM providers, and integrated data management:
 
 <div align="center">
-<img src="docs/images/mermaid_overview_dark.svg" alt="Lobster Architecture" width="100%"/>
+<img src="docs_p/images/mermaid_overview_dark.svg" alt="Lobster Architecture" width="100%"/>
 </div>
 
 ### Component Matrix
@@ -135,7 +135,7 @@ Lobster supports three deployment patterns optimized for different use cases:
 ### 📊 Interactive Dashboard (Alpha)
 
 <div align="center">
-<img src="docs/images/lobster_dashboard.gif" alt="Dashboard Demo" width="90%"/>
+<img src="docs_p/images/lobster_dashboard.gif" alt="Dashboard Demo" width="90%"/>
 <p><em>Real-time analysis monitoring with live updates and visualization</em></p>
 </div>
 
