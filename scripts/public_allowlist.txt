@@ -6,7 +6,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2025-12-08 14:51:29
+# Generated: 2025-12-08 15:45:52
 # =============================================================================
 
 
@@ -24,6 +24,10 @@ dev_install.sh
 install-ubuntu.sh
 install.bat
 install.ps1
+
+#Claude skill
+claude-skill/*
+claude-skill/
 
 # Container files (CLI only)
 Dockerfile

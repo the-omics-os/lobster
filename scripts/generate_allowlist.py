@@ -125,6 +125,7 @@ install.bat
 install.ps1
 
 #Claude skill
+claude-skill/*
 claude-skill/
 
 # Container files (CLI only)
