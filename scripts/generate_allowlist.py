@@ -147,6 +147,7 @@ docs/images/lobster_installation.gif
 docs/images/lobster_init.gif
 docs/images/lobster_chat.gif
 docs/images/lobster_dashboard.gif
+docs/images/mermaid_overview.svg
 
 
 # =============================================================================

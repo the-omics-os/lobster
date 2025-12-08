@@ -256,6 +256,163 @@ lobster chat  # Uses default (anthropic)
 NCBI_API_KEY=your-ncbi-api-key-here
 ```
 
+## Deployment Patterns
+
+Lobster supports flexible deployment configurations combining execution environments, LLM providers, and data sources. Choose a pattern based on your privacy, quality, and scale requirements.
+
+### Pattern 1: Local + Ollama (Zero-Cost Stack)
+
+**Best for**: Individual researchers, privacy-sensitive data, unlimited usage, offline work
+
+**Setup:**
+```bash
+# 1. Install Ollama (one-time)
+curl -fsSL https://ollama.com/install.sh | sh
+
+# 2. Pull model
+ollama pull llama3:8b-instruct
+
+# 3. Install Lobster
+uv pip install lobster-ai
+
+# 4. Run
+lobster chat
+# Ollama auto-detected, no API keys needed
+```
+
+**Characteristics:**
+- ✅ **Zero cost**: No API charges
+- ✅ **Full privacy**: All data stays on your machine
+- ✅ **Offline capable**: Works without internet
+- ✅ **Unlimited usage**: No rate limits
+- ⚠️ **Hardware dependent**: Requires 8-48GB RAM depending on model
+- ⚠️ **Quality varies**: Model-dependent (llama3 < mixtral < llama3:70b)
+
+**Configuration:**
+```env
+LOBSTER_LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434  # Optional: default
+OLLAMA_DEFAULT_MODEL=llama3:8b-instruct  # Optional: default
+```
+
+---
+
+### Pattern 2: Local + Anthropic (Quality-First)
+
+**Best for**: High-quality analysis, quick start, flexible execution, development
+
+**Setup:**
+```bash
+# 1. Get API key from console.anthropic.com
+
+# 2. Install Lobster
+uv pip install lobster-ai
+
+# 3. Configure
+export ANTHROPIC_API_KEY=sk-ant-api03-...
+
+# 4. Run
+lobster chat
+```
+
+**Characteristics:**
+- ✅ **Best quality**: Claude Sonnet 4.5, highest accuracy
+- ✅ **Quick setup**: Just API key, no infrastructure
+- ✅ **Local execution**: Your hardware, your control
+- ✅ **Flexible**: Switch to other providers anytime
+- ⚠️ **API costs**: ~$0.50/analysis
+- ⚠️ **Rate limits**: ~50 requests/min for new accounts
+- ⚠️ **Requires internet**: Online-only
+
+**Configuration:**
+```env
+ANTHROPIC_API_KEY=sk-ant-api03-xxxxx
+LOBSTER_LLM_PROVIDER=anthropic  # Optional: auto-detected
+```
+
+---
+
+### Pattern 3: Cloud + Bedrock (Enterprise Scale)
+
+**Best for**: Team collaboration, production workloads, compliance requirements, high throughput
+
+**Setup:**
+```bash
+# 1. Configure AWS Bedrock access
+export LOBSTER_CLOUD_KEY=your-cloud-key
+export AWS_BEDROCK_ACCESS_KEY=AKIA...
+export AWS_BEDROCK_SECRET_ACCESS_KEY=...
+
+# 2. Install Lobster
+uv pip install lobster-ai
+
+# 3. Run
+lobster chat
+# Cloud mode + Bedrock auto-configured
+```
+
+**Characteristics:**
+- ✅ **Enterprise SLA**: Production-grade reliability
+- ✅ **High rate limits**: No throttling for production use
+- ✅ **Team collaboration**: Shared cloud infrastructure
+- ✅ **Compliance ready**: HIPAA, SOC2, GDPR support
+- ✅ **Scalable**: Handles large datasets automatically
+- ⚠️ **Cost**: $6K-$30K/year (volume-based)
+- ⚠️ **Setup complexity**: Requires AWS configuration
+
+**Configuration:**
+```env
+# Cloud execution
+LOBSTER_CLOUD_KEY=your-cloud-api-key
+LOBSTER_ENDPOINT=https://api.lobster.omics-os.com  # Optional
+
+# AWS Bedrock LLM
+AWS_BEDROCK_ACCESS_KEY=AKIA...
+AWS_BEDROCK_SECRET_ACCESS_KEY=...
+AWS_REGION=us-east-1  # Optional: default
+LOBSTER_LLM_PROVIDER=bedrock  # Optional: auto-detected
+```
+
+---
+
+### Comparison Matrix
+
+| Aspect | Pattern 1 (Ollama) | Pattern 2 (Anthropic) | Pattern 3 (Bedrock) |
+|--------|-------------------|----------------------|---------------------|
+| **Cost** | Free | ~$0.50/analysis | $6K-$30K/year |
+| **Setup** | Ollama install | API key | AWS + Cloud key |
+| **Quality** | Model-dependent | Highest (Claude 4.5) | Highest (Claude 4.5) |
+| **Privacy** | 100% local | Cloud LLM, local data | Cloud execution |
+| **Rate Limits** | None | 50 req/min | Enterprise (high) |
+| **Offline** | ✅ Yes | ❌ No | ❌ No |
+| **Scalability** | Hardware-limited | Hardware-limited | Cloud-managed |
+| **Best For** | Privacy, learning | Quality, development | Production, teams |
+
+### Switching Between Patterns
+
+You can switch patterns anytime or run multiple sessions with different patterns simultaneously:
+
+```bash
+# Terminal 1: Privacy-focused with Ollama
+export LOBSTER_LLM_PROVIDER=ollama
+cd ~/private-project
+lobster chat
+
+# Terminal 2: Quality-focused with Anthropic (simultaneously)
+export LOBSTER_LLM_PROVIDER=anthropic
+export ANTHROPIC_API_KEY=sk-ant-xxx
+cd ~/research-project
+lobster chat
+
+# Terminal 3: Production with Bedrock
+export LOBSTER_CLOUD_KEY=xxx
+export LOBSTER_LLM_PROVIDER=bedrock
+cd ~/production-project
+lobster chat
+```
+
+Each session is completely independent with its own workspace, configuration, and execution environment.
+
 ## Model Profiles
 
 Lobster AI uses a profile-based system to manage agent and model configurations. You can set the active profile using the `LOBSTER_PROFILE` environment variable.

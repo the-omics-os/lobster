@@ -1,5 +1,56 @@
 # 18. Architecture Overview
 
+## Platform Architecture
+
+Lobster AI is a **modular bioinformatics platform** with pluggable execution environments, LLM providers, and integrated data management. The platform architecture consists of seven layers that work together to provide flexible, scalable omics analysis.
+
+### Architecture Diagram
+
+<div align="center">
+<img src="../docs/images/mermaid_overview.svg" alt="Lobster Platform Architecture" width="100%"/>
+</div>
+
+**Seven-Layer Architecture:**
+
+1. **Client Layer** - CLI and Python SDK interfaces
+2. **Execution Environment** - Local (your hardware) or Cloud (managed infrastructure)
+3. **LLM Provider Layer** - Ollama (local), Anthropic API (cloud), AWS Bedrock (enterprise)
+4. **Multi-Agent System** - Specialized agents for research, data engineering, analysis
+5. **External Data Sources** - GEO, SRA, ENA, PRIDE, MassIVE, PubMed, PMC
+6. **Data Management** - DataManagerV2 for multi-modal orchestration and provenance
+7. **Output Layer** - Interactive visualizations, Jupyter notebooks, annotated data objects
+
+### Component Matrix
+
+| Layer | Component | Configuration | Use Case |
+|-------|-----------|---------------|----------|
+| **Execution** | Local | Default (no setup) | Privacy-first, offline, cost-sensitive |
+| | Cloud | `LOBSTER_CLOUD_KEY` | Team collaboration, scaling, managed infrastructure |
+| **LLM Provider** | Ollama | `ollama pull llama3:8b-instruct` | Local-only, unlimited usage, offline |
+| | Anthropic | `ANTHROPIC_API_KEY` | Best quality, quick start, cloud/local |
+| | AWS Bedrock | AWS credentials | Enterprise, compliance, high throughput |
+| **Data Sources** | GEO/SRA/ENA | Auto-configured | Transcriptomics datasets |
+| | PRIDE/MassIVE | Auto-configured | Proteomics datasets |
+| | PubMed/PMC | `NCBI_API_KEY` (optional) | Literature mining, metadata extraction |
+| **Data Management** | DataManagerV2 | Auto-configured | Multi-modal data orchestration, provenance tracking |
+
+### Deployment Patterns
+
+Lobster supports three deployment patterns optimized for different use cases. For detailed setup instructions and comparison, see the **[Deployment Patterns Guide](03-configuration.md#deployment-patterns)**.
+
+| Pattern | Best For | Key Features |
+|---------|----------|--------------|
+| **Local + Ollama** | Privacy, learning, zero cost | Offline, unlimited usage, 100% local |
+| **Local + Anthropic** | Quality, development | Best accuracy, quick setup, flexible |
+| **Cloud + Bedrock** | Production, teams | Enterprise SLA, high limits, scalable |
+
+**Configuration Resources:**
+- 📖 [Deployment Patterns Guide](03-configuration.md#deployment-patterns) - Detailed setup for each pattern
+- 🔄 [Provider Auto-Detection](03-configuration.md#provider-auto-detection) - How Lobster selects providers
+- ⚙️ [Complete Configuration Guide](03-configuration.md) - All configuration options
+
+---
+
 ## System Overview
 
 Lobster AI is a professional **multi-agent bioinformatics analysis platform** that combines specialized AI agents with proven scientific tools to analyze complex multi-omics data. The platform features a modular, service-oriented architecture that enables natural language interaction with sophisticated bioinformatics workflows.
