@@ -264,7 +264,7 @@ lobster config-test --json
 |-------|----------|
 | No LLM provider configured | Run `lobster init` or set API keys |
 | Ollama server not accessible | Start Ollama: `ollama serve` |
-| Ollama: No models installed | Install: `ollama pull llama3:8b-instruct-q8_0` |
+| Ollama: No models installed | Install: `ollama pull gpt-oss:20b` |
 | Anthropic/Bedrock API error | Verify API key validity in `.env` |
 | NCBI API not configured | Add `NCBI_API_KEY` to `.env` (optional) |
 | Workspace not writable | Check directory permissions |

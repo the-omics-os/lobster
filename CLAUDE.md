@@ -202,6 +202,10 @@ sequenceDiagram
 ```text
 lobster/
 ├─ cli.py                   # CLI entrypoint (Typer/Rich)
+├─ claude-skill/            # Claude Code integration
+│  ├─ SKILL.md             # Skill definition (installed to ~/.claude/skills/)
+│  ├─ install.sh           # Automated installation script
+│  └─ README.md            # Integration overview
 ├─ agents/                  # Supervisor + specialist agents + graph
 │  ├─ supervisor.py
 │  ├─ research_agent.py
@@ -221,6 +225,8 @@ lobster/
 │  ├─ download_queue.py
 │  ├─ notebook_exporter.py
 │  ├─ notebook_executor.py
+│  ├─ utils/
+│  │  └─ h5ad_utils.py      # H5AD validation, compression (v3.4.2+)
 │  ├─ interfaces/
 │  │  ├─ base_client.py
 │  │  ├─ data_backend.py
@@ -328,6 +334,7 @@ lobster/
 | Rate Limiting | `tools/rate_limiter.py` | Redis connection pool for NCBI API rate limiting |
 | Workspace | `core/workspace.py` | centralized workspace path resolution |
 | Export | `core/notebook_exporter.py` | Jupyter pipeline export |
+| H5AD Utils | `core/utils/h5ad_utils.py` | H5AD file validation, compression, optimization (v3.4.2+) |
 | Services | `services/*/*.py` | stateless analysis (organized by function) |
 | Services | `services/data_management/modality_management_service.py` | Modality CRUD with provenance (5 methods) |
 | Download | `tools/download_orchestrator.py` | Central router for database-specific downloads (9-step execution) |
@@ -336,6 +343,8 @@ lobster/
 | Interfaces | `core/interfaces/download_service.py` | IDownloadService abstract base class |
 | Identifiers | `core/identifiers/accession_resolver.py` | Centralized accession validation (29 patterns, thread-safe singleton) |
 | Providers | `tools/providers/*.py` | PubMed/GEO/Web access (delegate to AccessionResolver for validation) |
+| GEO Provider | `tools/providers/geo_provider.py` | GEO search/metadata with GDS/GSE disambiguation (bug fixes v3.4.2+) |
+| PMC Provider | `tools/providers/pmc_provider.py` | PubMed Central full-text retrieval (parser fixes v3.4.2+) |
 | Utilities | `tools/*.py` | orchestrators, helpers |
 | Workspace Tools | `tools/workspace_tool.py` | **Unified workspace tool (v2.6+)**: write_to_workspace, get_content_from_workspace (adapter pattern for 5 workspace types) |
 | Deprecated | `tools/geo_*.py`, `tools/pipeline_strategy.py` | Backward compat aliases → `services/data_access/geo/` |
@@ -376,6 +385,7 @@ lobster/
 - `Dockerfile` → public CLI image → published to Docker Hub as `omicsos/lobster:latest`
 - `Dockerfile.server` → private server image → builds from local CLI (not Docker Hub)
 - CI/CD tests CLI only; server builds are local-only via `make docker-build`
+- **Publishing optimization**: Uses sparse-checkout for `constraints-cpu.txt` (single source of truth, no artifact extraction)
 
 **Sync strategy** (Single Source of Truth Architecture):
 
@@ -846,6 +856,23 @@ Chat vs query:
 - `chat`: can ask follow‑ups, clarify, exploratory work
 - `query`: single‑shot, script/CI‑friendly, no follow‑ups
 
+**Session continuity** (multi-turn conversations):
+
+```bash
+# Start session with custom ID
+lobster query --session-id "project_1" "Search PubMed for CRISPR papers"
+
+# Continue same session
+lobster query --session-id "project_1" "Download the first dataset"
+
+# Use 'latest' to auto-continue most recent session
+lobster query --session-id latest "Cluster that dataset"
+```
+
+- Session files stored in workspace as `session_*.json`
+- Enables follow-up questions that reference previous context
+- Critical for Claude Code integration (see 5.6)
+
 **Workspace configuration** (applies to both `chat` and `query`):
 
 ```bash
@@ -896,6 +923,51 @@ git push origin v0.2.0  # Triggers 7-stage pipeline
 **Security**: Allowlist validation (`subscription_tiers.py` → `public_allowlist.txt`), private code detection, import tests.
 
 **Full details**: `docs/PYPI_SETUP_GUIDE.md`, `docs/PYPI_RELEASE_SUMMARY.md`, `.github/workflows/publish-pypi.yml`
+
+### 5.6 Claude Code Integration
+
+Lobster integrates with [Claude Code](https://claude.ai/code) as a custom skill, enabling IDE-native bioinformatics workflows.
+
+**Installation**:
+```bash
+# Automated install
+curl -fsSL https://raw.githubusercontent.com/the-omics-os/lobster-local/main/claude-skill/install.sh | bash
+
+# Manual install
+mkdir -p ~/.claude/skills/
+curl -o ~/.claude/skills/lobster-bioinformatics.md \
+  https://raw.githubusercontent.com/the-omics-os/lobster-local/main/claude-skill/SKILL.md
+```
+
+**Key Files**:
+- `claude-skill/SKILL.md` – Skill definition with trigger keywords, usage patterns, troubleshooting
+- `claude-skill/install.sh` – Automated installation script
+- `wiki/50-claude-code-integration.md` – Complete integration documentation
+
+**Usage Pattern**:
+```
+User (in IDE) → Claude Code: "Download GSE109564 and cluster cells"
+                      ↓
+Claude Code detects bioinformatics task → Invokes Lobster skill
+                      ↓
+Executes: lobster query --session-id latest "Download GSE109564 and cluster cells"
+                      ↓
+Lobster orchestrates: research_agent → data_expert → singlecell_expert
+                      ↓
+Returns: Natural language summary + file paths (.lobster_workspace/)
+                      ↓
+Claude Code → User: Results + next step suggestions
+```
+
+**Benefits**:
+- Seamless workflow: Stay in IDE while running complex analyses
+- Intelligent routing: Claude Code auto-detects bioinformatics tasks
+- Multi-turn conversations: Session continuity via `--session-id`
+- Direct file access: Results immediately usable in code
+
+**Trigger Keywords**: H5AD, CSV, GEO/SRA accessions, QC, clustering, differential expression, PubMed, single-cell, bulk RNA-seq, proteomics
+
+**Version**: Compatible with Lobster v0.3.1.4+ and Claude Code v1.0+
 
 ---
 

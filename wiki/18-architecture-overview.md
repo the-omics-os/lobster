@@ -422,12 +422,93 @@ See **[39. Two-Tier Caching Architecture](39-two-tier-caching-architecture.md)**
 
 ### 4. Configuration & Registry
 
-Centralized configuration management:
+Centralized configuration management with **6-layer priority system**:
 
 - **Agent Registry** - Single source of truth for all agents
 - **Settings Management** - Environment-aware configuration
-- **Model Configuration** - LLM parameters and API keys
+- **Model Configuration** - LLM parameters and API keys with runtime overrides
 - **Adapter Registry** - Dynamic data format support
+
+#### Configuration Priority System
+
+Lobster uses a sophisticated 6-layer priority hierarchy for provider and model selection:
+
+**Priority Order** (highest to lowest):
+
+```
+1. Runtime CLI flags       --provider, --model (highest priority)
+2. Workspace config        .lobster_workspace/provider_config.json
+3. Global user config      ~/.config/lobster/providers.json
+4. Environment variables   .env file (LOBSTER_LLM_PROVIDER, OLLAMA_DEFAULT_MODEL)
+5. Auto-detection          Is Ollama running? API keys present?
+6. Hardcoded defaults      bedrock + production profile (lowest priority)
+```
+
+**Configuration Files**:
+
+| File | Scope | Priority | Created By | Use Case |
+|------|-------|----------|------------|----------|
+| `.env` | Project environment variables | Layer 4 | `lobster init` | API keys, basic settings |
+| `provider_config.json` | Workspace-specific preferences | Layer 2 | `lobster init` | Per-workspace provider/model |
+| `~/.config/lobster/providers.json` | User-level defaults | Layer 3 | Manual/future CLI | Cross-project defaults |
+
+**Runtime Override Flags**:
+
+```bash
+# Override provider only
+lobster query --provider ollama "your question"
+lobster chat --provider anthropic
+
+# Override model only (uses provider from config)
+lobster query --model "gpt-oss:20b" "your question"
+lobster chat --model "llama3:70b-instruct"
+
+# Override both (highest priority - layer 1)
+lobster query --provider ollama --model "mixtral:8x7b" "your question"
+lobster chat --provider anthropic --model "claude-4-sonnet"
+```
+
+**Implementation Files**:
+- `lobster/core/workspace_config.py` - Workspace-scoped configuration (Pydantic model)
+- `lobster/core/global_config.py` - User-level defaults
+- `lobster/core/config_resolver.py` - 6-layer priority resolution logic
+- `lobster/config/provider_setup.py` - Provider detection and .env generation
+- `lobster/config/llm_factory.py` - Model instantiation with override support
+
+**Example Conflict Resolution**:
+
+```bash
+# Scenario: Multiple configs with different values
+# .env says:                    LOBSTER_LLM_PROVIDER=bedrock
+# provider_config.json says:    "global_provider": "ollama"
+# Runtime flag:                 --provider anthropic
+
+# Result: anthropic (layer 1 beats layer 2 beats layer 4)
+```
+
+**Model Selection**:
+
+Model selection follows the same priority system but is provider-aware:
+
+```bash
+# Layer 1: Runtime override
+lobster query --model "mixtral:8x7b" "question"
+
+# Layer 2: Workspace config
+# provider_config.json: {"ollama_model": "llama3:70b-instruct"}
+
+# Layer 3: Global config
+# ~/.config/lobster/providers.json: {"ollama_default_model": "gpt-oss:20b"}
+
+# Layer 4: Environment variable
+export OLLAMA_DEFAULT_MODEL=llama3:8b-instruct
+
+# Layer 5: Auto-detection
+# LLMFactory._select_best_ollama_model() chooses largest available
+
+# Layer 6: Profile configuration
+# Falls back to profile-based model (development/production/ultra/godmode)
+```
 
 ### 5. Subscription Tiers & Plugin System (Phase 1, Dec 2024)
 
