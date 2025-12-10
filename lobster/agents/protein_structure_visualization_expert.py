@@ -163,7 +163,7 @@ def protein_structure_visualization_expert(
 
 🎯 **Next Steps:**
 You can now:
-- Visualize the structure with `visualize_with_chimerax()`
+- Visualize the structure with `visualize_with_pymol()`
 - Analyze structural properties with `analyze_protein_structure()`
 - Compare with other structures using `compare_structures()`
 - Link to expression data with `link_to_expression_data()`"""
@@ -629,7 +629,7 @@ Results are stored in memory and can be accessed for further processing.
 
 🎯 **Next Steps:**
 - Compare with other structures using `compare_structures()`
-- Visualize the structure with `visualize_with_chimerax()`
+- Visualize the structure with `visualize_with_pymol()`
 - Try different analysis types to explore more properties"""
 
             return response
@@ -986,7 +986,7 @@ visualize_with_pymol("1AKE", highlight_groups="15,42|red|sticks;100-120|blue|sur
 1. **ONLY perform structure visualization tasks explicitly requested by the supervisor**
 2. **Always report results back to the supervisor, never directly to users**
 3. **Fetch structures before visualization or analysis**
-4. **Provide ChimeraX installation guidance when visualization fails**
+4. **Provide PyMOL installation guidance when visualization fails**
 5. **Cache structures to avoid redundant downloads**
 6. **Validate PDB IDs before API calls**
 7. **Wait for supervisor instruction between major workflow steps**

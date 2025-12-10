@@ -26,7 +26,7 @@ Lobster AI is a **modular bioinformatics platform** with pluggable execution env
 |-------|-----------|---------------|----------|
 | **Execution** | Local | Default (no setup) | Privacy-first, offline, cost-sensitive |
 | | Cloud | `LOBSTER_CLOUD_KEY` | Team collaboration, scaling, managed infrastructure |
-| **LLM Provider** | Ollama | `ollama pull llama3:8b-instruct` | Local-only, unlimited usage, offline |
+| **LLM Provider** | Ollama | `ollama pull gpt-oss:20b` | Local-only, unlimited usage, offline |
 | | Anthropic | `ANTHROPIC_API_KEY` | Best quality, quick start, cloud/local |
 | | AWS Bedrock | AWS credentials | Enterprise, compliance, high throughput |
 | **Data Sources** | GEO/SRA/ENA | Auto-configured | Transcriptomics datasets |
@@ -501,7 +501,7 @@ lobster query --model "mixtral:8x7b" "question"
 # ~/.config/lobster/providers.json: {"ollama_default_model": "gpt-oss:20b"}
 
 # Layer 4: Environment variable
-export OLLAMA_DEFAULT_MODEL=llama3:8b-instruct
+export OLLAMA_DEFAULT_MODEL=gpt-oss:20b
 
 # Layer 5: Auto-detection
 # LLMFactory._select_best_ollama_model() chooses largest available

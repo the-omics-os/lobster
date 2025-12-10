@@ -79,7 +79,7 @@ Lobster AI supports **three LLM providers**: two cloud-based and one local. Choo
 curl -fsSL https://ollama.com/install.sh | sh
 
 # 2. Pull a model (one-time)
-ollama pull llama3:8b-instruct
+ollama pull gpt-oss:20b
 
 # 3. Configure Lobster
 lobster init  # Select option 3 (Ollama)
@@ -91,13 +91,15 @@ export LOBSTER_LLM_PROVIDER=ollama
 ```env
 LOBSTER_LLM_PROVIDER=ollama
 OLLAMA_BASE_URL=http://localhost:11434  # Optional: default
-OLLAMA_DEFAULT_MODEL=llama3:8b-instruct  # Optional: default
+OLLAMA_DEFAULT_MODEL=gpt-oss:20b  # Optional: default
 ```
 
 **Model Recommendations:**
-- `llama3:8b-instruct` - Fast, good for testing (8GB RAM)
+- `gpt-oss:20b` - **Recommended** for Lobster (supports tools, 16GB RAM)
 - `mixtral:8x7b-instruct` - Better quality (26GB RAM)
 - `llama3:70b-instruct` - Maximum quality (48GB VRAM, requires GPU)
+
+**Note**: llama3:8b models do NOT support tool calling and will fail with Lobster. Use gpt-oss:20b or larger models.
 
 ### Claude API (Cloud)
 
@@ -270,7 +272,7 @@ Lobster supports flexible deployment configurations combining execution environm
 curl -fsSL https://ollama.com/install.sh | sh
 
 # 2. Pull model
-ollama pull llama3:8b-instruct
+ollama pull gpt-oss:20b
 
 # 3. Install Lobster
 uv pip install lobster-ai
@@ -285,14 +287,15 @@ lobster chat
 - ✅ **Full privacy**: All data stays on your machine
 - ✅ **Offline capable**: Works without internet
 - ✅ **Unlimited usage**: No rate limits
-- ⚠️ **Hardware dependent**: Requires 8-48GB RAM depending on model
-- ⚠️ **Quality varies**: Model-dependent (llama3 < mixtral < llama3:70b)
+- ✅ **Tool support**: gpt-oss:20b supports multi-agent tool calling
+- ⚠️ **Hardware dependent**: Requires 16-48GB RAM depending on model
+- ⚠️ **Quality varies**: Model-dependent (gpt-oss:20b < mixtral < llama3:70b)
 
 **Configuration:**
 ```env
 LOBSTER_LLM_PROVIDER=ollama
 OLLAMA_BASE_URL=http://localhost:11434  # Optional: default
-OLLAMA_DEFAULT_MODEL=llama3:8b-instruct  # Optional: default
+OLLAMA_DEFAULT_MODEL=gpt-oss:20b  # Optional: default
 ```
 
 ---

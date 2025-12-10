@@ -49,7 +49,7 @@ Lobster supports **3 LLM providers** via modular, testable architecture:
 
 | Provider | Type | Setup | Use Case |
 |----------|------|-------|----------|
-| **Ollama** | Local | `ollama pull llama3:8b-instruct` | Privacy, zero cost, offline |
+| **Ollama** | Local | `ollama pull gpt-oss:20b` | Privacy, zero cost, offline |
 | **Anthropic Direct** | Cloud | API key | Fastest, best quality |
 | **AWS Bedrock** | Cloud | AWS credentials | Enterprise, compliance |
 
@@ -837,7 +837,7 @@ Env vars:
 | `ANTHROPIC_API_KEY` | Conditional | Anthropic Direct API key (cloud) |
 | `LOBSTER_LLM_PROVIDER` | No | Explicit provider: `ollama`, `bedrock`, `anthropic` |
 | `OLLAMA_BASE_URL` | No | Ollama server (default: `http://localhost:11434`) |
-| `OLLAMA_DEFAULT_MODEL` | No | Model name (default: `llama3:8b-instruct`) |
+| `OLLAMA_DEFAULT_MODEL` | No | Model name (default: `gpt-oss:20b`) |
 | `NCBI_API_KEY` | No | PubMed (higher rate limit) |
 | `LOBSTER_CLOUD_KEY` | No | enables cloud client mode |
 

@@ -439,7 +439,7 @@ lobster query --workspace ~/project --session-id "project_1" "..."
 
 **Solutions:**
 1. Switch to local Ollama: `export LOBSTER_LLM_PROVIDER=ollama`
-2. Install Ollama model: `ollama pull llama3:8b-instruct-q8_0`
+2. Install Ollama model: `ollama pull gpt-oss:20b`
 3. Wait 60 seconds and retry
 4. Use AWS Bedrock for higher limits
 

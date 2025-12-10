@@ -2486,7 +2486,7 @@ read_sample_metadata
 
 standardize_sample_metadata
 	-	Purpose: convert metadata to a requested schema (for example transcriptomics or microbiome).
-	-	Inputs: source metadata key, source_type, target schema name, target_type (typically “metadata_store”).
+	-	Inputs: source metadata key, source_type, target schema name, optional controlled vocabularies.
 	-	Behavior:
 	-	Map original fields to schema fields and normalize vocabularies where possible.
 	-	Report validation errors and warnings.

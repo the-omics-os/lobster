@@ -861,5 +861,288 @@ Use exact and pattern matching strategies. Return mapping report with:
         assert "✅" in result
 
 
+# ===============================================================================
+# Filter Type Coercion Tests (Bug Fix for Type Mismatch)
+# ===============================================================================
+
+
+@pytest.mark.unit
+class TestFilterTypeCoercion:
+    """Test filter parameter accepts both dict and JSON string formats.
+
+    Tests the bug fix for: https://github.com/the-omics-os/lobster/issues/XXX
+
+    Problem: LLM agents naturally output structured data (dict) but tools expected
+    JSON strings, causing Pydantic validation errors.
+
+    Solution: Accept Union[str, Dict[str, Any], None] with type coercion.
+    """
+
+    @patch("lobster.agents.research_agent.create_react_agent")
+    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.services.data_access.content_access_service.ContentAccessService")
+    def test_fast_dataset_search_with_dict_filters(
+        self,
+        mock_content_service_class,
+        mock_create_llm,
+        mock_create_agent,
+        mock_data_manager,
+    ):
+        """Test fast_dataset_search accepts dict filters (new behavior)."""
+        mock_llm = Mock()
+        mock_create_llm.return_value = mock_llm
+        mock_agent_instance = Mock()
+        mock_create_agent.return_value = mock_agent_instance
+
+        # Mock ContentAccessService
+        mock_content_service = Mock()
+        mock_content_service.discover_datasets.return_value = (
+            "Found 3 datasets",
+            {"count": 3},
+            Mock()  # IR mock
+        )
+        mock_content_service_class.return_value = mock_content_service
+
+        agent = research_agent(mock_data_manager)
+
+        # Extract tools to test directly
+        tools = mock_create_agent.call_args[1]["tools"]
+        fast_dataset_search_tool = next(
+            t for t in tools if t.name == "fast_dataset_search"
+        )
+
+        # Call with dict filters (reproduces user's bug scenario)
+        result = fast_dataset_search_tool.func(
+            query="pancreatic cancer RNA-seq",
+            data_type="geo",
+            filters={"organism": "Homo sapiens"},  # Dict format
+            max_results=3,
+        )
+
+        # Should not error
+        assert "Error" not in result
+        assert isinstance(result, str)
+        # Verify service was called with parsed dict
+        mock_content_service.discover_datasets.assert_called_once()
+        call_args = mock_content_service.discover_datasets.call_args[1]
+        assert call_args["filters"] == {"organism": "Homo sapiens"}
+
+    @patch("lobster.agents.research_agent.create_react_agent")
+    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.services.data_access.content_access_service.ContentAccessService")
+    def test_fast_dataset_search_with_string_filters(
+        self,
+        mock_content_service_class,
+        mock_create_llm,
+        mock_create_agent,
+        mock_data_manager,
+    ):
+        """Test fast_dataset_search backward compatibility with JSON string filters."""
+        mock_llm = Mock()
+        mock_create_llm.return_value = mock_llm
+        mock_agent_instance = Mock()
+        mock_create_agent.return_value = mock_agent_instance
+
+        # Mock ContentAccessService
+        mock_content_service = Mock()
+        mock_content_service.discover_datasets.return_value = (
+            "Found 3 datasets",
+            {"count": 3},
+            Mock()  # IR mock
+        )
+        mock_content_service_class.return_value = mock_content_service
+
+        agent = research_agent(mock_data_manager)
+
+        # Extract tools
+        tools = mock_create_agent.call_args[1]["tools"]
+        fast_dataset_search_tool = next(
+            t for t in tools if t.name == "fast_dataset_search"
+        )
+
+        # Call with JSON string filters (old behavior)
+        result = fast_dataset_search_tool.func(
+            query="pancreatic cancer RNA-seq",
+            data_type="geo",
+            filters='{"organism": "Homo sapiens"}',  # JSON string format
+            max_results=3,
+        )
+
+        # Should not error
+        assert "Error" not in result
+        # Verify service was called with parsed dict
+        call_args = mock_content_service.discover_datasets.call_args[1]
+        assert call_args["filters"] == {"organism": "Homo sapiens"}
+
+    @patch("lobster.agents.research_agent.create_react_agent")
+    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.services.data_access.content_access_service.ContentAccessService")
+    def test_fast_dataset_search_with_invalid_json_string(
+        self,
+        mock_content_service_class,
+        mock_create_llm,
+        mock_create_agent,
+        mock_data_manager,
+    ):
+        """Test error handling for invalid JSON string filters."""
+        mock_llm = Mock()
+        mock_create_llm.return_value = mock_llm
+        mock_agent_instance = Mock()
+        mock_create_agent.return_value = mock_agent_instance
+
+        # Mock ContentAccessService
+        mock_content_service = Mock()
+        mock_content_service_class.return_value = mock_content_service
+
+        agent = research_agent(mock_data_manager)
+
+        # Extract tools
+        tools = mock_create_agent.call_args[1]["tools"]
+        fast_dataset_search_tool = next(
+            t for t in tools if t.name == "fast_dataset_search"
+        )
+
+        # Call with invalid JSON string
+        result = fast_dataset_search_tool.func(
+            query="test",
+            data_type="geo",
+            filters='{"invalid": json}',  # Invalid JSON
+            max_results=3,
+        )
+
+        # Should return error message
+        assert "Error" in result
+        assert "Invalid filters JSON format" in result
+
+    @patch("lobster.agents.research_agent.create_react_agent")
+    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.services.data_access.content_access_service.ContentAccessService")
+    def test_fast_dataset_search_with_invalid_type(
+        self,
+        mock_content_service_class,
+        mock_create_llm,
+        mock_create_agent,
+        mock_data_manager,
+    ):
+        """Test error handling for invalid filter types (not dict or str)."""
+        mock_llm = Mock()
+        mock_create_llm.return_value = mock_llm
+        mock_agent_instance = Mock()
+        mock_create_agent.return_value = mock_agent_instance
+
+        # Mock ContentAccessService
+        mock_content_service = Mock()
+        mock_content_service_class.return_value = mock_content_service
+
+        agent = research_agent(mock_data_manager)
+
+        # Extract tools
+        tools = mock_create_agent.call_args[1]["tools"]
+        fast_dataset_search_tool = next(
+            t for t in tools if t.name == "fast_dataset_search"
+        )
+
+        # Call with invalid type (int)
+        result = fast_dataset_search_tool.func(
+            query="test", data_type="geo", filters=123, max_results=3
+        )
+
+        # Should return error message
+        assert "Error" in result
+        assert "filters must be dict or JSON string" in result
+
+    @patch("lobster.agents.research_agent.create_react_agent")
+    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.services.data_access.content_access_service.ContentAccessService")
+    def test_search_literature_with_dict_filters(
+        self,
+        mock_content_service_class,
+        mock_create_llm,
+        mock_create_agent,
+        mock_data_manager,
+    ):
+        """Test search_literature accepts dict filters (new behavior)."""
+        mock_llm = Mock()
+        mock_create_llm.return_value = mock_llm
+        mock_agent_instance = Mock()
+        mock_create_agent.return_value = mock_agent_instance
+
+        # Mock ContentAccessService
+        mock_content_service = Mock()
+        mock_content_service.search_literature.return_value = (
+            "Found 5 papers",
+            {"count": 5},
+            Mock()  # IR mock
+        )
+        mock_content_service_class.return_value = mock_content_service
+
+        agent = research_agent(mock_data_manager)
+
+        # Extract tools
+        tools = mock_create_agent.call_args[1]["tools"]
+        search_literature_tool = next(t for t in tools if t.name == "search_literature")
+
+        # Call with dict filters
+        result = search_literature_tool.func(
+            query="lung cancer",
+            sources="pubmed",
+            filters={"date_range": {"start": "2020", "end": "2024"}},  # Dict format
+            max_results=5,
+        )
+
+        # Should not error
+        assert "Error" not in result
+        assert isinstance(result, str)
+        # Verify service was called with parsed dict
+        mock_content_service.search_literature.assert_called_once()
+        call_args = mock_content_service.search_literature.call_args[1]
+        assert call_args["filters"] == {"date_range": {"start": "2020", "end": "2024"}}
+
+    @patch("lobster.agents.research_agent.create_react_agent")
+    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.services.data_access.content_access_service.ContentAccessService")
+    def test_search_literature_with_string_filters(
+        self,
+        mock_content_service_class,
+        mock_create_llm,
+        mock_create_agent,
+        mock_data_manager,
+    ):
+        """Test search_literature backward compatibility with JSON string filters."""
+        mock_llm = Mock()
+        mock_create_llm.return_value = mock_llm
+        mock_agent_instance = Mock()
+        mock_create_agent.return_value = mock_agent_instance
+
+        # Mock ContentAccessService
+        mock_content_service = Mock()
+        mock_content_service.search_literature.return_value = (
+            "Found 5 papers",
+            {"count": 5},
+            Mock()  # IR mock
+        )
+        mock_content_service_class.return_value = mock_content_service
+
+        agent = research_agent(mock_data_manager)
+
+        # Extract tools
+        tools = mock_create_agent.call_args[1]["tools"]
+        search_literature_tool = next(t for t in tools if t.name == "search_literature")
+
+        # Call with JSON string filters (old behavior)
+        result = search_literature_tool.func(
+            query="lung cancer",
+            sources="pubmed",
+            filters='{"date_range": {"start": "2020", "end": "2024"}}',  # JSON string
+            max_results=5,
+        )
+
+        # Should not error
+        assert "Error" not in result
+        # Verify service was called with parsed dict
+        call_args = mock_content_service.search_literature.call_args[1]
+        assert call_args["filters"] == {"date_range": {"start": "2020", "end": "2024"}}
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])

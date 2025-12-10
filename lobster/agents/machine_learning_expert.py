@@ -934,7 +934,7 @@ After installation, restart your session and run this tool again."""
         n_latent: int = 10,
         n_layers: int = 2,
         n_hidden: int = 128,
-        max_epochs: int = 50,
+        max_epochs: int = 400,
         batch_key: Optional[str] = None,
         use_gpu: bool = True,
         save_model: bool = True,
@@ -963,7 +963,7 @@ After installation, restart your session and run this tool again."""
             n_hidden: Number of hidden units per layer (default: 128)
             max_epochs: Maximum training epochs (default: 400)
             batch_key: Column name for batch correction (optional)
-            use_gpu: Whether to use GPU if available (default: False for stability)
+            use_gpu: Whether to use GPU if available (default: True)
             save_model: Whether to save the trained model (default: True)
 
             # Training Parameters (limited by scVI API):
@@ -1557,7 +1557,7 @@ create_ml_analysis_summary()
 # Step 1: Check scVI availability and hardware
 check_scvi_availability()
 
-# Step 2: Train scVI embeddings for dimensionality reduction (always use gpu if awailable)
+# Step 2: Train scVI embeddings for dimensionality reduction (always use gpu if available)
 train_scvi_embedding("single_cell_data", 
                     n_latent=15, 
                     batch_key="sample", 
