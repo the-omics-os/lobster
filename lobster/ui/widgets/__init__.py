@@ -8,6 +8,7 @@ from .chat_message import ChatMessage
 from .status_bar import StatusBar
 from .system_info import SystemInfoPanel
 from .queue_panel import QueuePanel
+from .queue_status_bar import QueueStatusBar
 from .connections_panel import ConnectionsPanel
 from .agents_panel import AgentsPanel
 from .adapters_panel import AdaptersPanel
@@ -32,6 +33,7 @@ __all__ = [
     "StatusBar",
     "SystemInfoPanel",
     "QueuePanel",
+    "QueueStatusBar",
     "ConnectionsPanel",
     "AgentsPanel",
     "AdaptersPanel",

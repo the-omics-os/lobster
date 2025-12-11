@@ -497,6 +497,7 @@ ALWAYS_EXCLUDED = """
 !lobster/ui/widgets/data_hub.py
 !lobster/ui/widgets/results_display.py
 !lobster/ui/widgets/plot_preview.py
+!lobster/ui/widgets/queue_status_bar.py
 
 # Server/API code (private infrastructure)
 !lobster/api/**

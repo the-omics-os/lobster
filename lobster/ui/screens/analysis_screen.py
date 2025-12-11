@@ -25,6 +25,7 @@ from lobster.ui.widgets import (
     StatusBar,
     SystemInfoPanel,
     QueuePanel,
+    QueueStatusBar,
     ConnectionsPanel,
     AgentsPanel,
     AdaptersPanel,
@@ -124,7 +125,7 @@ class AnalysisScreen(Screen):
     }
 
     /* Cockpit panel styling - compact */
-    SystemInfoPanel, ConnectionsPanel, QueuePanel,
+    SystemInfoPanel, ConnectionsPanel, QueuePanel, QueueStatusBar,
     AgentsPanel, AdaptersPanel, TokenUsagePanel {
         height: auto;
         padding: 0 1;
@@ -235,6 +236,7 @@ class AnalysisScreen(Screen):
                 yield ConnectionsPanel()
                 yield TokenUsagePanel()
                 yield QueuePanel(self.client)
+                yield QueueStatusBar(self.client)
 
             # Center panel: Conversation + Activity
             with Vertical(id="center-panel"):

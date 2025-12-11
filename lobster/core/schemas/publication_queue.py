@@ -25,6 +25,41 @@ class PublicationStatus(str, Enum):
     FAILED = "failed"
     PAYWALLED = "paywalled"  # Paper behind paywall, awaiting manual input
 
+    @property
+    def display(self) -> tuple:
+        """
+        Get display (icon, style) tuple for this status.
+
+        Returns:
+            Tuple of (icon: str, style: str) for UI rendering.
+            Style uses Rich markup format.
+        """
+        return PUBLICATION_STATUS_DISPLAY.get(self.value, ("?", "dim"))
+
+    @property
+    def icon(self) -> str:
+        """Get the display icon for this status."""
+        return self.display[0]
+
+    @property
+    def style(self) -> str:
+        """Get the Rich style for this status."""
+        return self.display[1]
+
+
+# Display configuration for PublicationStatus (Single Source of Truth)
+# Maps status value -> (icon, style) for consistent UI rendering
+PUBLICATION_STATUS_DISPLAY: Dict[str, tuple] = {
+    "pending": ("○", "dim"),
+    "extracting": ("◐", "#CC2C18"),
+    "metadata_extracted": ("◑", "dim #CC2C18"),
+    "metadata_enriched": ("◕", "#CC2C18"),
+    "handoff_ready": ("→", "bold #CC2C18"),
+    "completed": ("✓", "green"),
+    "failed": ("✗", "red"),
+    "paywalled": ("⚠", "yellow"),
+}
+
 
 class ExtractionLevel(str, Enum):
     """Level of content extraction for publications."""

@@ -1,166 +1,68 @@
-"""Queue panel showing download and publication queue status."""
+"""
+Queue panel showing download and publication queue counts.
 
-from typing import Optional, List, Dict, Any
+Design: Compact header-only display with inline counts.
+Detailed status breakdown is handled by QueueStatusBar widget.
+"""
 
 from textual.app import ComposeResult
 from textual.containers import Vertical
-from textual.widgets import Static, ListView, ListItem, Label
+from textual.widgets import Static
 from textual.reactive import reactive
 
 from rich.text import Text
 
 
-class QueueItem(ListItem):
-    """Single queue item display."""
-
-    def __init__(self, entry_id: str, status: str, label: str, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.entry_id = entry_id
-        self.status = status
-        self.label = label
-
-    def compose(self):
-        # Status indicator + label
-        status_char = {
-            "pending": "○",
-            "in_progress": "●",
-            "completed": "✓",
-            "failed": "✗",
-            "handoff_ready": "→",
-        }.get(self.status, "?")
-
-        status_style = {
-            "pending": "dim",
-            "in_progress": "bold #CC2C18",
-            "completed": "white",
-            "failed": "red",
-            "handoff_ready": "#CC2C18",
-        }.get(self.status, "")
-
-        text = Text()
-        text.append(f"{status_char} ", style=status_style)
-        text.append(self.label[:25], style="")  # Truncate long labels
-        yield Label(text)
-
-
-class QueueSection(Vertical):
-    """A single queue section (download or publication)."""
-
-    DEFAULT_CSS = """
-    QueueSection {
-        height: auto;
-        max-height: 12;
-        padding: 0;
-        margin: 0;
-    }
-
-    QueueSection > Static {
-        height: 1;
-        padding: 0 1;
-    }
-
-    QueueSection > ListView {
-        height: auto;
-        max-height: 8;
-        padding: 0;
-        margin: 0;
-    }
-
-    QueueSection ListItem {
-        height: 1;
-        padding: 0 1;
-    }
-    """
-
-    def __init__(self, title: str, queue_type: str, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.title = title
-        self.queue_type = queue_type
-        self._entries: List[Dict[str, Any]] = []
-
-    def compose(self) -> ComposeResult:
-        yield Static(self.title, classes="header")
-        yield ListView(id=f"{self.queue_type}-list")
-
-    def update_entries(self, entries: List[Dict[str, Any]]) -> None:
-        """Update the queue entries."""
-        self._entries = entries
-        self._refresh_list()
-
-    def _refresh_list(self) -> None:
-        """Refresh the list view."""
-        try:
-            list_view = self.query_one(f"#{self.queue_type}-list", ListView)
-            list_view.clear()
-
-            if not self._entries:
-                list_view.append(ListItem(Label(Text("empty", style="dim italic"))))
-                return
-
-            # Show most recent entries (up to 5)
-            for entry in self._entries[:5]:
-                entry_id = entry.get("entry_id", entry.get("id", "?"))
-                status = entry.get("status", "pending")
-                # Try different label fields
-                label = (
-                    entry.get("dataset_id")
-                    or entry.get("accession")
-                    or entry.get("title", "")[:20]
-                    or entry_id
-                )
-                list_view.append(QueueItem(entry_id, status, label))
-
-            # Show count if more entries
-            remaining = len(self._entries) - 5
-            if remaining > 0:
-                list_view.append(
-                    ListItem(Label(Text(f"  +{remaining} more...", style="dim")))
-                )
-
-        except Exception:
-            pass  # Widget not ready
-
-
 class QueuePanel(Vertical):
     """
-    Combined queue panel for downloads and publications.
+    Compact queue panel showing queue names with active entry counts.
 
-    Shows:
-    - Download queue (pending/active downloads)
-    - Publication queue (papers being processed)
+    Layout:
+    ┌─ Queues ─────────────────────┐
+    │ Downloads (3)                │
+    │ Publications (5)             │
+    └──────────────────────────────┘
+
+    Detailed status breakdown is provided by QueueStatusBar below.
     """
 
     DEFAULT_CSS = """
     QueuePanel {
         height: auto;
-        padding: 0;
+        padding: 0 1;
         border: round #CC2C18 30%;
     }
 
     QueuePanel > Static.panel-header {
         text-style: bold;
         color: #CC2C18;
-        padding: 0 1;
-        margin-bottom: 1;
+        height: 1;
     }
 
-    QueuePanel QueueSection .header {
+    QueuePanel > Static.queue-line {
+        height: 1;
         color: $text 70%;
-        text-style: italic;
     }
     """
 
+    # Reactive counts for automatic UI updates
     download_count: reactive[int] = reactive(0)
     publication_count: reactive[int] = reactive(0)
 
     def __init__(self, client=None, **kwargs) -> None:
+        """
+        Initialize queue panel.
+
+        Args:
+            client: AgentClient with data_manager and publication_queue
+        """
         super().__init__(**kwargs)
         self.client = client
 
     def compose(self) -> ComposeResult:
         yield Static("Queues", classes="panel-header")
-        yield QueueSection("Downloads", "download")
-        yield QueueSection("Publications", "publication")
+        yield Static("Downloads", id="download-line", classes="queue-line")
+        yield Static("Publications", id="publication-line", classes="queue-line")
 
     def on_mount(self) -> None:
         """Start refresh timer."""
@@ -168,55 +70,70 @@ class QueuePanel(Vertical):
         self.set_interval(2.0, self._refresh_queues)
 
     def _refresh_queues(self) -> None:
-        """Refresh both queue displays."""
+        """Refresh queue counts and update display."""
         if not self.client:
             return
 
         try:
-            # Download queue
-            download_section = self.query_one(
-                "QueueSection", QueueSection
-            )  # First one
-            download_entries = []
-
+            # Download queue count
+            download_count = 0
             if hasattr(self.client, "data_manager"):
                 queue = self.client.data_manager.download_queue
                 entries = queue.list_entries()
-                # Filter to active entries
-                download_entries = [
-                    {
-                        "entry_id": e.entry_id,
-                        "status": e.status,
-                        "dataset_id": e.dataset_id,
-                    }
-                    for e in entries
-                    if e.status in ["pending", "in_progress"]
-                ]
-                self.download_count = len(download_entries)
+                # Count active entries (pending or in_progress)
+                download_count = sum(
+                    1 for e in entries if e.status in ["pending", "in_progress"]
+                )
+            self.download_count = download_count
+            self._update_line("download-line", "Downloads", download_count)
 
-            # Get all QueueSections
-            sections = list(self.query("QueueSection").results())
-            if len(sections) >= 1:
-                sections[0].update_entries(download_entries)
-
-            # Publication queue
-            pub_entries = []
+            # Publication queue count
+            publication_count = 0
             if hasattr(self.client, "publication_queue") and self.client.publication_queue:
                 entries = self.client.publication_queue.list_entries()
-                pub_entries = [
-                    {
-                        "entry_id": e.entry_id,
-                        "status": e.status,
-                        "title": getattr(e, "title", ""),
-                        "accession": getattr(e, "accession", ""),
-                    }
-                    for e in entries
-                    if e.status not in ["completed", "failed"]
-                ]
-                self.publication_count = len(pub_entries)
-
-            if len(sections) >= 2:
-                sections[1].update_entries(pub_entries)
+                # Count active entries (not completed or failed)
+                publication_count = sum(
+                    1 for e in entries if e.status not in ["completed", "failed"]
+                )
+            self.publication_count = publication_count
+            self._update_line("publication-line", "Publications", publication_count)
 
         except Exception:
             pass  # Queues not available
+
+    def _update_line(self, widget_id: str, label: str, count: int) -> None:
+        """
+        Update a queue line with label and count.
+
+        Args:
+            widget_id: ID of Static widget to update
+            label: Queue label (e.g., "Downloads")
+            count: Number of active entries
+        """
+        text = Text()
+        text.append(f"{label} ", style="")
+
+        if count > 0:
+            text.append(f"({count})", style="bold #CC2C18")
+        else:
+            text.append("(0)", style="dim")
+
+        try:
+            widget = self.query_one(f"#{widget_id}", Static)
+            widget.update(text)
+        except Exception:
+            pass  # Widget not ready
+
+    def get_counts(self) -> dict:
+        """
+        Get current queue counts.
+
+        Public API for external consumers (CLI, tests, other UIs).
+
+        Returns:
+            Dict with 'download' and 'publication' counts
+        """
+        return {
+            "download": self.download_count,
+            "publication": self.publication_count,
+        }

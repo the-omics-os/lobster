@@ -6,7 +6,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2025-12-08 17:15:32
+# Generated: 2025-12-11 17:14:17
 # =============================================================================
 
 
@@ -439,6 +439,7 @@ lobster/agents/visualization_expert.py
 !lobster/ui/widgets/data_hub.py
 !lobster/ui/widgets/results_display.py
 !lobster/ui/widgets/plot_preview.py
+!lobster/ui/widgets/queue_status_bar.py
 
 # Server/API code (private infrastructure)
 !lobster/api/**
