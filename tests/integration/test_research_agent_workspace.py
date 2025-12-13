@@ -362,7 +362,7 @@ class TestAgentToolCount:
 
     def test_agent_has_12_base_tools(self, data_manager):
         """Verify research_agent has exactly 12 base tools (excluding handoff tools)."""
-        agent = research_agent(data_manager, handoff_tools=None)
+        agent = research_agent(data_manager, delegation_tools=None)
 
         # Get the graph and inspect tools
         # This is a unit test to verify the tool count matches Phase 4 target
@@ -381,7 +381,7 @@ class TestAgentToolCount:
 
         mock_handoff.name = "handoff_to_metadata_assistant"
 
-        agent = research_agent(data_manager, handoff_tools=[mock_handoff])
+        agent = research_agent(data_manager, delegation_tools=[mock_handoff])
 
         assert agent is not None
         # Verify agent was created with handoff tools

@@ -107,6 +107,7 @@ class TestProteinStructureVisualizationExpertFactory:
         mock_handoff_tool.__name__ = "mock_handoff_tool"
         mock_handoff_tools = [mock_handoff_tool]
 
+        # Note: protein_structure_visualization_expert still uses 'handoff_tools' parameter
         agent = protein_structure_visualization_expert(
             data_manager=mock_data_manager, handoff_tools=mock_handoff_tools
         )

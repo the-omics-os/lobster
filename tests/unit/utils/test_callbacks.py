@@ -224,14 +224,15 @@ class TestTokenTracking:
     """Test end-to-end token tracking functionality."""
 
     def test_on_llm_start_sets_current_agent(self, token_tracker):
-        """Test that on_llm_start sets current agent context."""
+        """Test that on_llm_start sets current agent context from run_name."""
+        # Use a real agent name from registry
         token_tracker.on_llm_start(
-            serialized={"name": "test_agent"},
+            serialized={},
             prompts=["test prompt"],
-            name="test_agent",
+            run_name="supervisor",  # Real agent name
         )
 
-        assert token_tracker.current_agent == "test_agent"
+        assert token_tracker.current_agent == "supervisor"
 
     def test_on_tool_start_sets_current_tool(self, token_tracker):
         """Test that on_tool_start sets current tool context."""
@@ -535,3 +536,166 @@ class TestReset:
         assert len(token_tracker.by_agent) == 0
         assert token_tracker.current_agent is None
         assert token_tracker.current_tool is None
+
+
+class TestRobustAgentDetection:
+    """Test robust agent name detection from multiple sources."""
+
+    def test_detect_from_run_name(self, token_tracker):
+        """Test detection from explicit run_name (highest priority)."""
+        token_tracker.on_llm_start(
+            serialized={},
+            prompts=["test"],
+            run_name="research_agent",
+        )
+        assert token_tracker.current_agent == "research_agent"
+
+    def test_detect_from_tags(self, token_tracker):
+        """Test detection from tags when run_name missing."""
+        token_tracker.on_llm_start(
+            serialized={},
+            prompts=["test"],
+            tags=["data_expert_agent", "other_tag"],
+        )
+        assert token_tracker.current_agent == "data_expert_agent"
+
+    def test_detect_from_metadata(self, token_tracker):
+        """Test detection from metadata when run_name and tags missing."""
+        token_tracker.on_llm_start(
+            serialized={},
+            prompts=["test"],
+            metadata={"agent_name": "transcriptomics_expert"},
+        )
+        assert token_tracker.current_agent == "transcriptomics_expert"
+
+    def test_filter_model_class_names(self, token_tracker):
+        """Test that model class names are filtered out."""
+        token_tracker.on_llm_start(
+            serialized={"name": "ChatBedrockConverse"},
+            prompts=["test"],
+            name="ChatAnthropic",
+        )
+        # Should not set current_agent to model class name
+        assert token_tracker.current_agent is None
+
+    def test_validate_against_registry(self, token_tracker):
+        """Test that only registered agents are accepted."""
+        token_tracker.on_llm_start(
+            serialized={},
+            prompts=["test"],
+            run_name="fake_agent_xyz",  # Not in registry
+        )
+        assert token_tracker.current_agent is None
+
+    def test_maintain_state_when_no_detection(self, token_tracker):
+        """Test that current_agent is maintained when detection fails."""
+        token_tracker.current_agent = "supervisor"
+
+        token_tracker.on_llm_start(
+            serialized={"name": "ChatModel"},
+            prompts=["test"],
+        )
+
+        # Should maintain previous agent, not reset to None
+        assert token_tracker.current_agent == "supervisor"
+
+    def test_run_id_hierarchy_tracking(self, token_tracker):
+        """Test that run_id maps to agent for hierarchy."""
+        token_tracker.on_llm_start(
+            serialized={},
+            prompts=["test"],
+            run_id="abc-123",
+            run_name="research_agent",
+        )
+
+        assert token_tracker.run_to_agent["abc-123"] == "research_agent"
+        assert token_tracker.current_run_id == "abc-123"
+
+    def test_recovery_from_run_id_mapping(self, token_tracker):
+        """Test agent recovery using run_id when name not in kwargs."""
+        # First call establishes mapping
+        token_tracker.on_llm_start(
+            serialized={},
+            prompts=["test"],
+            run_id="def-456",
+            run_name="metadata_assistant",
+        )
+        assert token_tracker.current_agent == "metadata_assistant"
+
+        # Second call with same run_id but no run_name
+        token_tracker.current_agent = None  # Simulate reset
+        token_tracker.on_llm_start(
+            serialized={},
+            prompts=["test"],
+            run_id="def-456",  # Same run_id
+        )
+
+        # Should recover agent from run_id mapping
+        assert token_tracker.current_agent == "metadata_assistant"
+
+    def test_on_chat_model_start_detection(self, token_tracker):
+        """Test chat model callback (primary for Claude/Bedrock)."""
+        token_tracker.on_chat_model_start(
+            serialized={},
+            messages=[],
+            run_id="ghi-789",
+            run_name="transcriptomics_expert",
+        )
+
+        assert token_tracker.current_agent == "transcriptomics_expert"
+        assert token_tracker.run_to_agent["ghi-789"] == "transcriptomics_expert"
+
+    def test_detection_priority_order(self, token_tracker):
+        """Test that run_name has priority over other sources."""
+        token_tracker.on_llm_start(
+            serialized={"name": "data_expert_agent"},  # Lower priority
+            prompts=["test"],
+            run_name="supervisor",  # Highest priority
+            tags=["research_agent"],  # Medium priority
+            name="metadata_assistant",
+        )
+
+        # run_name should win
+        assert token_tracker.current_agent == "supervisor"
+
+    def test_is_model_class_helper(self, token_tracker):
+        """Test model class name detection."""
+        assert token_tracker._is_model_class("ChatBedrock")
+        assert token_tracker._is_model_class("chatanthropic")  # Case-insensitive
+        assert token_tracker._is_model_class("ChatOllama")
+        assert token_tracker._is_model_class("llm")
+        assert not token_tracker._is_model_class("supervisor")
+        assert not token_tracker._is_model_class("research_agent")
+
+    def test_is_valid_agent_helper(self, token_tracker):
+        """Test agent validation against registry."""
+        # Real agents from registry
+        assert token_tracker._is_valid_agent("supervisor")
+        assert token_tracker._is_valid_agent("research_agent")
+        assert token_tracker._is_valid_agent("data_expert_agent")
+
+        # Model class names should be invalid
+        assert not token_tracker._is_valid_agent("ChatBedrock")
+        assert not token_tracker._is_valid_agent("ChatAnthropic")
+
+        # Fake agents should be invalid
+        assert not token_tracker._is_valid_agent("fake_agent")
+        assert not token_tracker._is_valid_agent("")
+        assert not token_tracker._is_valid_agent(None)
+
+    def test_reset_clears_new_state(self, token_tracker):
+        """Test that reset clears run_id tracking and cache."""
+        # Setup state
+        token_tracker.current_agent = "supervisor"
+        token_tracker.run_to_agent = {"abc": "research_agent"}
+        token_tracker.current_run_id = "abc"
+        token_tracker._valid_agents = {"supervisor"}
+
+        # Reset
+        token_tracker.reset()
+
+        # Verify new tracking state is cleared
+        assert token_tracker.current_agent is None
+        assert token_tracker.run_to_agent == {}
+        assert token_tracker.current_run_id is None
+        assert token_tracker._valid_agents is None  # Should re-fetch on next use

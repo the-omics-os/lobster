@@ -79,6 +79,12 @@ def mock_kallisto_dataset(tmp_path):
 
 
 @pytest.fixture
+def bulk_service(tmp_path):
+    """Create BulkRNASeqService with temporary results directory."""
+    return BulkRNASeqService(results_dir=tmp_path)
+
+
+@pytest.fixture
 def mock_salmon_dataset(tmp_path):
     """
     Create mock Salmon quantification dataset with realistic structure.
@@ -179,21 +185,19 @@ def mock_mixed_dataset(tmp_path):
 class TestKallistoLoading:
     """Test Kallisto quantification file loading."""
 
-    def test_kallisto_detection(self, mock_kallisto_dataset):
+    def test_kallisto_detection(self, mock_kallisto_dataset, bulk_service):
         """Test Kallisto file detection."""
         kallisto_dir, _, _ = mock_kallisto_dataset
-        service = BulkRNASeqService()
 
-        tool_type = service._detect_quantification_tool(kallisto_dir)
+        tool_type = bulk_service._detect_quantification_tool(kallisto_dir)
 
         assert tool_type == "kallisto"
 
-    def test_kallisto_merge(self, mock_kallisto_dataset):
+    def test_kallisto_merge(self, mock_kallisto_dataset, bulk_service):
         """Test Kallisto file merging."""
         kallisto_dir, expected_samples, expected_genes = mock_kallisto_dataset
-        service = BulkRNASeqService()
 
-        df, metadata = service.merge_kallisto_results(kallisto_dir=kallisto_dir)
+        df, metadata = bulk_service.merge_kallisto_results(kallisto_dir=kallisto_dir)
 
         # Validate shape (genes × samples for quantification files)
         assert df.shape[1] == len(
@@ -210,14 +214,13 @@ class TestKallistoLoading:
         assert len(metadata["successful_samples"]) == len(expected_samples)
         assert len(metadata["failed_samples"]) == 0
 
-    def test_kallisto_to_anndata(self, mock_kallisto_dataset):
+    def test_kallisto_to_anndata(self, mock_kallisto_dataset, bulk_service):
         """Test Kallisto DataFrame to AnnData conversion with correct orientation."""
         kallisto_dir, expected_samples, expected_genes = mock_kallisto_dataset
-        service = BulkRNASeqService()
         adapter = TranscriptomicsAdapter(data_type="bulk")
 
         # Step 1: Merge Kallisto files
-        df, metadata = service.merge_kallisto_results(kallisto_dir)
+        df, metadata = bulk_service.merge_kallisto_results(kallisto_dir)
 
         # Step 2: Convert to AnnData
         adata = adapter.from_quantification_dataframe(
@@ -239,9 +242,10 @@ class TestKallistoLoading:
 
         # Validate transpose metadata
         assert "transpose_info" in adata.uns
-        assert adata.uns["transpose_info"]["transpose_applied"] == True
+        # Note: sanitize_value converts boolean to string for H5AD compatibility
+        assert adata.uns["transpose_info"]["transpose_applied"] in [True, "True"]
         assert "format specification" in adata.uns["transpose_info"]["transpose_reason"]
-        assert adata.uns["transpose_info"]["format_specific"] == True
+        assert adata.uns["transpose_info"]["format_specific"] in [True, "True"]
 
         # Validate quantification metadata
         assert "quantification_metadata" in adata.uns
@@ -251,21 +255,19 @@ class TestKallistoLoading:
 class TestSalmonLoading:
     """Test Salmon quantification file loading."""
 
-    def test_salmon_detection(self, mock_salmon_dataset):
+    def test_salmon_detection(self, mock_salmon_dataset, bulk_service):
         """Test Salmon file detection."""
         salmon_dir, _, _ = mock_salmon_dataset
-        service = BulkRNASeqService()
 
-        tool_type = service._detect_quantification_tool(salmon_dir)
+        tool_type = bulk_service._detect_quantification_tool(salmon_dir)
 
         assert tool_type == "salmon"
 
-    def test_salmon_merge(self, mock_salmon_dataset):
+    def test_salmon_merge(self, mock_salmon_dataset, bulk_service):
         """Test Salmon file merging."""
         salmon_dir, expected_samples, expected_transcripts = mock_salmon_dataset
-        service = BulkRNASeqService()
 
-        df, metadata = service.merge_salmon_results(salmon_dir=salmon_dir)
+        df, metadata = bulk_service.merge_salmon_results(salmon_dir=salmon_dir)
 
         # Validate shape
         assert df.shape[1] == len(expected_samples)
@@ -277,13 +279,12 @@ class TestSalmonLoading:
         assert metadata["n_genes"] == expected_transcripts
         assert len(metadata["successful_samples"]) == len(expected_samples)
 
-    def test_salmon_to_anndata(self, mock_salmon_dataset):
+    def test_salmon_to_anndata(self, mock_salmon_dataset, bulk_service):
         """Test Salmon DataFrame to AnnData conversion."""
         salmon_dir, expected_samples, expected_transcripts = mock_salmon_dataset
-        service = BulkRNASeqService()
         adapter = TranscriptomicsAdapter(data_type="bulk")
 
-        df, metadata = service.merge_salmon_results(salmon_dir)
+        df, metadata = bulk_service.merge_salmon_results(salmon_dir)
         adata = adapter.from_quantification_dataframe(
             df=df,
             data_type="bulk_rnaseq",
@@ -302,46 +303,42 @@ class TestSalmonLoading:
 class TestUnifiedLoader:
     """Test unified quantification file loader."""
 
-    def test_auto_detection_kallisto(self, mock_kallisto_dataset):
+    def test_auto_detection_kallisto(self, mock_kallisto_dataset, bulk_service):
         """Test auto-detection with Kallisto files."""
         kallisto_dir, _, _ = mock_kallisto_dataset
-        service = BulkRNASeqService()
 
-        df, metadata = service.load_from_quantification_files(
+        df, metadata = bulk_service.load_from_quantification_files(
             quantification_dir=kallisto_dir, tool="auto"
         )
 
         assert metadata["quantification_tool"] == "Kallisto"
 
-    def test_auto_detection_salmon(self, mock_salmon_dataset):
+    def test_auto_detection_salmon(self, mock_salmon_dataset, bulk_service):
         """Test auto-detection with Salmon files."""
         salmon_dir, _, _ = mock_salmon_dataset
-        service = BulkRNASeqService()
 
-        df, metadata = service.load_from_quantification_files(
+        df, metadata = bulk_service.load_from_quantification_files(
             quantification_dir=salmon_dir, tool="auto"
         )
 
         assert metadata["quantification_tool"] == "Salmon"
 
-    def test_explicit_tool_specification(self, mock_kallisto_dataset):
+    def test_explicit_tool_specification(self, mock_kallisto_dataset, bulk_service):
         """Test explicit tool specification."""
         kallisto_dir, _, _ = mock_kallisto_dataset
-        service = BulkRNASeqService()
 
-        df, metadata = service.load_from_quantification_files(
+        df, metadata = bulk_service.load_from_quantification_files(
             quantification_dir=kallisto_dir, tool="kallisto"
         )
 
         assert metadata["quantification_tool"] == "Kallisto"
 
-    def test_mixed_dataset_detection(self, mock_mixed_dataset):
+    def test_mixed_dataset_detection(self, mock_mixed_dataset, bulk_service):
         """Test detection prioritization with mixed Kallisto/Salmon files."""
         mixed_dir = mock_mixed_dataset
-        service = BulkRNASeqService()
 
         # Should detect based on count (2 Kallisto + 2 Salmon = tie, Kallisto wins)
-        tool_type = service._detect_quantification_tool(mixed_dir)
+        tool_type = bulk_service._detect_quantification_tool(mixed_dir)
 
         assert tool_type in ["kallisto", "salmon"]
 
@@ -360,7 +357,7 @@ class TestGSE130036Regression:
     of the correct 4 samples × ~60K genes orientation.
     """
 
-    def test_gse130036_correct_orientation(self, mock_kallisto_dataset):
+    def test_gse130036_correct_orientation(self, mock_kallisto_dataset, bulk_service):
         """
         REGRESSION TEST: GSE130036 must load as 4 samples × genes, NOT 4 × 187,697.
 
@@ -370,11 +367,10 @@ class TestGSE130036Regression:
         - Bug behavior: 4 samples × 187,697 "genes" (incorrect)
         """
         kallisto_dir, _, expected_genes = mock_kallisto_dataset
-        service = BulkRNASeqService()
         adapter = TranscriptomicsAdapter(data_type="bulk")
 
         # Simulate full workflow
-        df, metadata = service.load_from_quantification_files(
+        df, metadata = bulk_service.load_from_quantification_files(
             quantification_dir=kallisto_dir, tool="kallisto"
         )
 
@@ -396,7 +392,8 @@ class TestGSE130036Regression:
         ), f"Samples ({adata.n_obs}) should be < genes ({adata.n_vars})"
 
         # Validate transpose was applied correctly
-        assert adata.uns["transpose_info"]["transpose_applied"] == True
+        # Note: sanitize_value converts boolean to string for H5AD compatibility
+        assert adata.uns["transpose_info"]["transpose_applied"] in [True, "True"]
         assert "format specification" in adata.uns["transpose_info"]["transpose_reason"]
 
 
@@ -408,23 +405,20 @@ class TestGSE130036Regression:
 class TestErrorHandling:
     """Test error handling for edge cases."""
 
-    def test_missing_directory(self):
+    def test_missing_directory(self, bulk_service):
         """Test handling of non-existent directory."""
-        service = BulkRNASeqService()
-
         with pytest.raises(FileNotFoundError):
-            service._detect_quantification_tool(Path("/nonexistent/path"))
+            bulk_service._detect_quantification_tool(Path("/nonexistent/path"))
 
-    def test_empty_directory(self, tmp_path):
+    def test_empty_directory(self, tmp_path, bulk_service):
         """Test handling of empty directory."""
         empty_dir = tmp_path / "empty"
         empty_dir.mkdir()
-        service = BulkRNASeqService()
 
         with pytest.raises(ValueError, match="No Kallisto or Salmon"):
-            service._detect_quantification_tool(empty_dir)
+            bulk_service._detect_quantification_tool(empty_dir)
 
-    def test_invalid_quantification_files(self, tmp_path):
+    def test_invalid_quantification_files(self, tmp_path, bulk_service):
         """Test handling of corrupted quantification files."""
         invalid_dir = tmp_path / "invalid"
         invalid_dir.mkdir()
@@ -438,10 +432,8 @@ class TestErrorHandling:
             invalid_file, sep="\t", index=False
         )
 
-        service = BulkRNASeqService()
-
         with pytest.raises(ValueError):
-            service.merge_kallisto_results(invalid_dir)
+            bulk_service.merge_kallisto_results(invalid_dir)
 
 
 # ===============================================================================
@@ -452,13 +444,13 @@ class TestErrorHandling:
 class TestGEOServiceIntegration:
     """Test integration with GEO service for quantification file loading."""
 
-    def test_geo_quantification_detection(self, mock_kallisto_dataset, temp_workspace):
+    def test_geo_quantification_detection(self, mock_kallisto_dataset, temp_workspace, tmp_path):
         """Test that quantification files can be loaded through standard workflow."""
         kallisto_dir, _, _ = mock_kallisto_dataset
 
         # Test that BulkRNASeqService can detect and load quantification files
         # (This is what GEO service would use after extracting TAR)
-        bulk_service = BulkRNASeqService()
+        bulk_service = BulkRNASeqService(results_dir=tmp_path)
 
         # Detect tool type
         tool_type = bulk_service._detect_quantification_tool(kallisto_dir)

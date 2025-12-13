@@ -37,6 +37,15 @@ from lobster.ui.widgets.modality_list import ModalitySelected
 from lobster.ui.callbacks import TextualCallbackHandler
 from lobster.ui.services import ErrorService, ErrorCategory
 from lobster.services.data_management.modality_management_service import ModalityManagementService
+from lobster.cli_internal.commands import (
+    DashboardOutputAdapter,
+    show_queue_status,
+    queue_load_file,
+    queue_list,
+    queue_clear,
+    queue_export,
+    QueueFileTypeNotSupported,
+)
 
 
 class AnalysisScreen(Screen):
@@ -436,22 +445,31 @@ class AnalysisScreen(Screen):
 
         if cmd in ("/help", "/h", "/?"):
             help_text = """**Dashboard Commands:**
+
+**General:**
 - `/help` - Show this help
 - `/status` - Show session status
+- `/clear` - Clear conversation
+- `/exit` - Exit dashboard
+
+**Data:**
 - `/data` - Show loaded modalities
 - `/plots` - Refresh plots panel
-- `/clear` - Clear conversation
 - `/save` - Save plots to workspace
-- `/exit` - Exit dashboard (back to CLI)
+
+**Queue:**
+- `/queue` - Show queue status
+- `/queue list` - List queue entries
+- `/queue load <file>` - Load .ris file into queue
+- `/queue clear [download|all]` - Clear queue(s)
+- `/queue export [name]` - Export queue to workspace
 
 **Navigation:**
 - Use **arrow keys** in panels to navigate
 - Press **Enter** to select/open items
 - Press **F5** to refresh all panels
 - Press **Ctrl+L** to clear results
-- Press **ESC** to quit
-
-*For full command support, use the CLI mode (`lobster chat`)*"""
+- Press **ESC** to quit"""
             results.append_system_message(help_text)
 
         elif cmd == "/status":
@@ -502,6 +520,49 @@ class AnalysisScreen(Screen):
                     self.query_one(PlotPreview)._open_plot(i)
                     return
             self.notify(f"Plot not found: {plot_id}", severity="warning")
+
+        # Queue commands (shared implementation with CLI)
+        elif cmd.startswith("/queue"):
+            output = DashboardOutputAdapter(results)
+            parts = cmd.split(maxsplit=2)
+            subcommand = parts[1] if len(parts) > 1 else None
+            arg = parts[2] if len(parts) > 2 else None
+
+            try:
+                if not subcommand or subcommand == "status":
+                    # /queue or /queue status - show queue status
+                    show_queue_status(self.client, output)
+
+                elif subcommand == "list":
+                    # /queue list - list all queue entries
+                    queue_list(self.client, output)
+
+                elif subcommand == "load":
+                    # /queue load <file> - load .ris file into queue
+                    if not arg:
+                        results.append_system_message("Usage: /queue load <file>")
+                    else:
+                        queue_load_file(self.client, arg, output, current_directory=None)
+
+                elif subcommand == "clear":
+                    # /queue clear [download|all] - clear queue(s)
+                    queue_type = arg if arg in ["download", "all"] else "publication"
+                    queue_clear(self.client, output, queue_type)
+
+                elif subcommand == "export":
+                    # /queue export [name] - export queue to workspace
+                    queue_export(self.client, arg, output)
+
+                else:
+                    results.append_system_message(
+                        f"Unknown queue subcommand: {subcommand}\n"
+                        "Available: status, list, load, clear, export"
+                    )
+
+            except QueueFileTypeNotSupported as e:
+                results.append_system_message(f"❌ {str(e)}")
+            except Exception as e:
+                results.append_system_message(f"❌ Queue command failed: {str(e)}")
 
         else:
             results.append_system_message(

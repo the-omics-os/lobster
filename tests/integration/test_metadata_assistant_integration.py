@@ -265,7 +265,7 @@ class TestMetadataStandardizationWorkflow:
         )
 
         # Execute
-        result = standardization_service.standardize_metadata(
+        result, stats, ir = standardization_service.standardize_metadata(
             identifier="geo_gse12345", target_schema="transcriptomics"
         )
 
@@ -300,7 +300,7 @@ class TestMetadataStandardizationWorkflow:
         }
 
         # Execute
-        result = standardization_service.standardize_metadata(
+        result, stats, ir = standardization_service.standardize_metadata(
             identifier="dataset",
             target_schema="transcriptomics",
             controlled_vocabularies=controlled_vocabs,
@@ -320,7 +320,7 @@ class TestMetadataStandardizationWorkflow:
         )
 
         # Execute
-        result = standardization_service.standardize_metadata(
+        result, stats, ir = standardization_service.standardize_metadata(
             identifier="multi_omics", target_schema="transcriptomics"
         )
 
@@ -508,7 +508,7 @@ class TestEndToEndWorkflow:
         assert validation_result.has_required_samples is True
 
         # Step 3: Standardize metadata
-        standardization_result = standardization_service.standardize_metadata(
+        standardization_result, stats, ir = standardization_service.standardize_metadata(
             identifier="source", target_schema="transcriptomics"
         )
 

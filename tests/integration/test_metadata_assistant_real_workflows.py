@@ -66,7 +66,7 @@ def data_manager(test_workspace):
 def agent(data_manager):
     """Create metadata_assistant instance for testing."""
     return metadata_assistant(
-        data_manager=data_manager, callback_handler=None, handoff_tools=None
+        data_manager=data_manager, callback_handler=None, delegation_tools=None
     )
 
 

@@ -441,15 +441,10 @@ class PublicationQueue:
         with self._lock:
             entries = self._load_entries()
 
+            # Initialize with ALL PublicationStatus values
             stats = {
                 "total_entries": len(entries),
-                "by_status": {
-                    "pending": 0,
-                    "extracting": 0,
-                    "metadata_extracted": 0,
-                    "completed": 0,
-                    "failed": 0,
-                },
+                "by_status": {status.value: 0 for status in PublicationStatus},
                 "by_schema_type": {},
                 "by_extraction_level": {},
                 "identifiers_extracted": 0,

@@ -471,6 +471,9 @@ lobster/utils/deviance.py
 lobster/cli_internal/__init__.py
 lobster/cli_internal/utils/__init__.py
 lobster/cli_internal/utils/path_resolution.py
+lobster/cli_internal/commands/__init__.py
+lobster/cli_internal/commands/output_adapter.py
+lobster/cli_internal/commands/queue_commands.py
 
 
 # =============================================================================
