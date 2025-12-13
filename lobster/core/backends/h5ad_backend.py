@@ -146,7 +146,6 @@ class H5ADBackend(BaseBackend):
         # CRITICAL FIX: Remove columns with None names BEFORE sanitization
         # (Prevents TypeError: PurePosixPath() argument must be str, not 'NoneType')
         # Check obs DataFrame
-        logger.warning(f"🔍 SANITIZE CHECK: Checking adata.obs columns. Total: {len(adata.obs.columns)}, First 10: {list(adata.obs.columns[:10])}")
         logger.debug(f"SANITIZE: Checking adata.obs columns for None values. Total columns: {len(adata.obs.columns)}")
         none_columns_obs = [col for col in adata.obs.columns if col is None]
         if none_columns_obs:
@@ -167,10 +166,10 @@ class H5ADBackend(BaseBackend):
         # CRITICAL FIX: Check and fix None/empty index names in obs and var
         # Use falsy check to catch both None AND empty string ("") which also breaks H5AD
         if not adata.obs.index.name:
-            logger.warning("🔧 SANITIZE: obs.index.name is None/empty, setting to 'index'")
+            logger.debug("SANITIZE: obs.index.name is None/empty, setting to 'index'")
             adata.obs.index.name = "index"
         if not adata.var.index.name:
-            logger.warning("🔧 SANITIZE: var.index.name is None/empty, setting to 'gene_id'")
+            logger.debug("SANITIZE: var.index.name is None/empty, setting to 'gene_id'")
             adata.var.index.name = "gene_id"
 
         none_columns_var = [col for col in adata.var.columns if col is None]
@@ -543,26 +542,18 @@ class H5ADBackend(BaseBackend):
                 # Convert sparse to dense if requested
                 adata_to_save.X = adata_to_save.X.toarray()
 
-            # FINAL CHECK: Verify no None column names right before write
-            # (Catch any None columns introduced during copy or other operations)
-            logger.warning(f"🔍 FINAL CHECK: About to check obs ({len(adata_to_save.obs.columns)} cols) and var ({len(adata_to_save.var.columns)} cols)")
-            logger.warning(f"🔍 FINAL CHECK obs columns: {list(adata_to_save.obs.columns)}")
-            logger.warning(f"🔍 FINAL CHECK obs index name: {adata_to_save.obs.index.name}")
-            logger.warning(f"🔍 FINAL CHECK var index name: {adata_to_save.var.index.name}")
-
+            # FINAL CHECK: Verify no None/empty index names or column names right before write
             # CRITICAL: Check if index name is None/empty and fix it
             # Use falsy check to catch both None AND empty string ("") which also breaks H5AD
             if not adata_to_save.obs.index.name:
-                logger.error("🚨 FOUND IT: obs.index.name is None/empty! Setting to default 'index'")
+                logger.debug("Pre-write fix: obs.index.name is None/empty, setting to 'index'")
                 adata_to_save.obs.index.name = "index"
             if not adata_to_save.var.index.name:
-                logger.error("🚨 FOUND IT: var.index.name is None/empty! Setting to default 'index'")
+                logger.debug("Pre-write fix: var.index.name is None/empty, setting to 'index'")
                 adata_to_save.var.index.name = "index"
 
             final_none_obs = [col for col in adata_to_save.obs.columns if col is None]
             final_none_var = [col for col in adata_to_save.var.columns if col is None]
-
-            logger.warning(f"🔍 FINAL CHECK: Found {len(final_none_obs)} None in obs, {len(final_none_var)} None in var")
 
             if final_none_obs or final_none_var:
                 logger.error(
