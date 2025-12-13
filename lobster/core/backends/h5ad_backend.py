@@ -164,12 +164,13 @@ class H5ADBackend(BaseBackend):
         logger.debug(f"SANITIZE: Checking adata.var columns for None values. Total columns: {len(adata.var.columns)}")
         logger.debug(f"SANITIZE: First 10 var columns: {list(adata.var.columns[:10])}")
 
-        # CRITICAL FIX: Check and fix None index names in obs and var
-        if adata.obs.index.name is None:
-            logger.warning("🔧 SANITIZE: obs.index.name is None, setting to 'index'")
+        # CRITICAL FIX: Check and fix None/empty index names in obs and var
+        # Use falsy check to catch both None AND empty string ("") which also breaks H5AD
+        if not adata.obs.index.name:
+            logger.warning("🔧 SANITIZE: obs.index.name is None/empty, setting to 'index'")
             adata.obs.index.name = "index"
-        if adata.var.index.name is None:
-            logger.warning("🔧 SANITIZE: var.index.name is None, setting to 'gene_id'")
+        if not adata.var.index.name:
+            logger.warning("🔧 SANITIZE: var.index.name is None/empty, setting to 'gene_id'")
             adata.var.index.name = "gene_id"
 
         none_columns_var = [col for col in adata.var.columns if col is None]
@@ -342,9 +343,9 @@ class H5ADBackend(BaseBackend):
             )
             # Use to_numpy() with explicit dtype to force conversion
             values = adata_copy.obs.index.to_numpy(dtype=str, na_value="")
-            # CRITICAL FIX: Preserve index.name during conversion, default to "index" if None
-            # (pd.Index() constructor defaults name to None, which breaks H5AD serialization)
-            original_name = adata_copy.obs.index.name if adata_copy.obs.index.name is not None else "index"
+            # CRITICAL FIX: Preserve index.name during conversion, default to "index" if None/empty
+            # Use truthy check to catch both None AND empty string ("") which also breaks H5AD
+            original_name = adata_copy.obs.index.name if adata_copy.obs.index.name else "index"
             adata_copy.obs.index = pd.Index(values, dtype=object, name=original_name)
 
         # Convert var.index
@@ -353,9 +354,9 @@ class H5ADBackend(BaseBackend):
                 "Converting var.index from ArrowExtensionArray to object dtype"
             )
             values = adata_copy.var.index.to_numpy(dtype=str, na_value="")
-            # CRITICAL FIX: Preserve index.name during conversion, default to "gene_id" if None
-            # (pd.Index() constructor defaults name to None, which breaks H5AD serialization)
-            original_name = adata_copy.var.index.name if adata_copy.var.index.name is not None else "gene_id"
+            # CRITICAL FIX: Preserve index.name during conversion, default to "gene_id" if None/empty
+            # Use truthy check to catch both None AND empty string ("") which also breaks H5AD
+            original_name = adata_copy.var.index.name if adata_copy.var.index.name else "gene_id"
             adata_copy.var.index = pd.Index(values, dtype=object, name=original_name)
 
         # Convert obs columns
@@ -549,12 +550,13 @@ class H5ADBackend(BaseBackend):
             logger.warning(f"🔍 FINAL CHECK obs index name: {adata_to_save.obs.index.name}")
             logger.warning(f"🔍 FINAL CHECK var index name: {adata_to_save.var.index.name}")
 
-            # CRITICAL: Check if index name is None and fix it
-            if adata_to_save.obs.index.name is None:
-                logger.error("🚨 FOUND IT: obs.index.name is None! Setting to default 'index'")
+            # CRITICAL: Check if index name is None/empty and fix it
+            # Use falsy check to catch both None AND empty string ("") which also breaks H5AD
+            if not adata_to_save.obs.index.name:
+                logger.error("🚨 FOUND IT: obs.index.name is None/empty! Setting to default 'index'")
                 adata_to_save.obs.index.name = "index"
-            if adata_to_save.var.index.name is None:
-                logger.error("🚨 FOUND IT: var.index.name is None! Setting to default 'index'")
+            if not adata_to_save.var.index.name:
+                logger.error("🚨 FOUND IT: var.index.name is None/empty! Setting to default 'index'")
                 adata_to_save.var.index.name = "index"
 
             final_none_obs = [col for col in adata_to_save.obs.columns if col is None]

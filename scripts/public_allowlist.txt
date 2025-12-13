@@ -6,7 +6,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2025-12-11 17:14:17
+# Generated: 2025-12-13 13:29:47
 # =============================================================================
 
 
@@ -322,6 +322,7 @@ lobster/tools/providers/structure_provider.py
 lobster/tools/providers/pdb_provider.py
 lobster/tools/providers/massive_provider.py
 lobster/tools/providers/pride_provider.py
+lobster/tools/providers/pride_normalizer.py
 
 # External provider context
 lobster/tools/external_providers_context/chimerax_tut.md
@@ -372,6 +373,9 @@ lobster/utils/deviance.py
 lobster/cli_internal/__init__.py
 lobster/cli_internal/utils/__init__.py
 lobster/cli_internal/utils/path_resolution.py
+lobster/cli_internal/commands/__init__.py
+lobster/cli_internal/commands/output_adapter.py
+lobster/cli_internal/commands/queue_commands.py
 
 
 # =============================================================================

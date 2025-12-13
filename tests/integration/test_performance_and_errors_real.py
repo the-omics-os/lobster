@@ -74,15 +74,15 @@ def content_service(data_manager):
 
 
 @pytest.fixture(scope="module")
-def pubmed_provider():
+def pubmed_provider(data_manager):
     """Create PubMedProvider instance for testing."""
-    return PubMedProvider()
+    return PubMedProvider(data_manager)
 
 
 @pytest.fixture(scope="module")
-def geo_provider():
+def geo_provider(data_manager):
     """Create GEOProvider instance for testing."""
-    return GEOProvider()
+    return GEOProvider(data_manager)
 
 
 @pytest.fixture(scope="module")

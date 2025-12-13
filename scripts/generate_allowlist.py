@@ -421,6 +421,7 @@ lobster/tools/providers/structure_provider.py
 lobster/tools/providers/pdb_provider.py
 lobster/tools/providers/massive_provider.py
 lobster/tools/providers/pride_provider.py
+lobster/tools/providers/pride_normalizer.py
 
 # External provider context
 lobster/tools/external_providers_context/chimerax_tut.md

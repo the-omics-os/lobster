@@ -249,7 +249,7 @@ class TestMassSpecPreprocessing:
         initial_missing = np.isnan(adata.X).sum()
 
         # Impute with KNN
-        adata_imputed, stats = service.impute_missing_values(
+        adata_imputed, stats, ir = service.impute_missing_values(
             adata, method="knn", knn_neighbors=5
         )
 
@@ -269,7 +269,7 @@ class TestMassSpecPreprocessing:
         adata = synthetic_mass_spec_data
 
         # Impute with MNAR method
-        adata_imputed, stats = service.impute_missing_values(
+        adata_imputed, stats, ir = service.impute_missing_values(
             adata, method="mnar", mnar_width=0.3, mnar_downshift=1.8
         )
 
@@ -290,7 +290,7 @@ class TestMassSpecPreprocessing:
         adata = synthetic_mass_spec_data
 
         # Mixed imputation
-        adata_imputed, stats = service.impute_missing_values(
+        adata_imputed, stats, ir = service.impute_missing_values(
             adata, method="mixed", knn_neighbors=5, mnar_width=0.3, mnar_downshift=1.8
         )
 
@@ -304,10 +304,10 @@ class TestMassSpecPreprocessing:
         adata = synthetic_mass_spec_data
 
         # First impute missing values
-        adata_imputed, _ = service.impute_missing_values(adata, method="knn")
+        adata_imputed, _, _ = service.impute_missing_values(adata, method="knn")
 
         # Normalize
-        adata_norm, stats = service.normalize_intensities(
+        adata_norm, stats, ir = service.normalize_intensities(
             adata_imputed,
             method="median",
             log_transform=True,
@@ -326,10 +326,10 @@ class TestMassSpecPreprocessing:
         adata = synthetic_mass_spec_data
 
         # First impute
-        adata_imputed, _ = service.impute_missing_values(adata, method="knn")
+        adata_imputed, _, _ = service.impute_missing_values(adata, method="knn")
 
         # Quantile normalize
-        adata_norm, stats = service.normalize_intensities(
+        adata_norm, stats, ir = service.normalize_intensities(
             adata_imputed, method="quantile", log_transform=False
         )
 
@@ -346,11 +346,11 @@ class TestMassSpecPreprocessing:
         adata = synthetic_mass_spec_data
 
         # First impute and normalize
-        adata_imputed, _ = service.impute_missing_values(adata, method="knn")
-        adata_norm, _ = service.normalize_intensities(adata_imputed, method="median")
+        adata_imputed, _, _ = service.impute_missing_values(adata, method="knn")
+        adata_norm, _, _ = service.normalize_intensities(adata_imputed, method="median")
 
         # Batch correction
-        adata_corrected, stats = service.correct_batch_effects(
+        adata_corrected, stats, ir = service.correct_batch_effects(
             adata_norm, batch_key="batch", method="combat"
         )
 
@@ -369,7 +369,7 @@ class TestMassSpecQuality:
         adata = synthetic_mass_spec_data
 
         # Analyze missing patterns
-        adata_qc, stats = service.assess_missing_value_patterns(
+        adata_qc, stats, ir = service.assess_missing_value_patterns(
             adata, sample_threshold=0.7, protein_threshold=0.8
         )
 
@@ -394,7 +394,7 @@ class TestMassSpecQuality:
         adata = synthetic_mass_spec_data
 
         # Assess CV
-        adata_qc, stats = service.assess_coefficient_variation(
+        adata_qc, stats, ir = service.assess_coefficient_variation(
             adata, cv_threshold=50.0, min_observations=3
         )
 
@@ -414,7 +414,7 @@ class TestMassSpecQuality:
         adata = synthetic_mass_spec_data
 
         # Detect contaminants
-        adata_qc, stats = service.detect_contaminants(adata)
+        adata_qc, stats, ir = service.detect_contaminants(adata)
 
         # Check contaminant flags
         assert "is_contaminant" in adata_qc.var.columns
@@ -431,7 +431,7 @@ class TestMassSpecQuality:
         adata = synthetic_mass_spec_data
 
         # Evaluate dynamic range
-        adata_qc, stats = service.evaluate_dynamic_range(
+        adata_qc, stats, ir = service.evaluate_dynamic_range(
             adata, percentile_low=5.0, percentile_high=95.0
         )
 
@@ -449,7 +449,7 @@ class TestMassSpecQuality:
         adata = synthetic_mass_spec_data
 
         # Detect outliers
-        adata_qc, stats = service.detect_pca_outliers(
+        adata_qc, stats, ir = service.detect_pca_outliers(
             adata, n_components=10, outlier_threshold=3.0
         )
 
@@ -472,13 +472,13 @@ class TestMassSpecDifferential:
 
         # First preprocess
         prep_service = ProteomicsPreprocessingService()
-        adata_imputed, _ = prep_service.impute_missing_values(adata, method="knn")
-        adata_norm, _ = prep_service.normalize_intensities(
+        adata_imputed, _, _ = prep_service.impute_missing_values(adata, method="knn")
+        adata_norm, _, _ = prep_service.normalize_intensities(
             adata_imputed, method="median", log_transform=True
         )
 
         # Differential expression
-        adata_de, stats = service.perform_differential_expression(
+        adata_de, stats, ir = service.perform_differential_expression(
             adata_norm,
             group_column="condition",
             test_method="t_test",
@@ -503,13 +503,13 @@ class TestMassSpecDifferential:
 
         # Preprocess
         prep_service = ProteomicsPreprocessingService()
-        adata_imputed, _ = prep_service.impute_missing_values(adata, method="knn")
-        adata_norm, _ = prep_service.normalize_intensities(
+        adata_imputed, _, _ = prep_service.impute_missing_values(adata, method="knn")
+        adata_norm, _, _ = prep_service.normalize_intensities(
             adata_imputed, method="median", log_transform=True
         )
 
         # LIMMA-like analysis
-        adata_de, stats = service.perform_differential_expression(
+        adata_de, stats, ir = service.perform_differential_expression(
             adata_norm,
             group_column="condition",
             test_method="limma_like",
@@ -535,7 +535,7 @@ class TestAffinityPreprocessing:
         adata = synthetic_affinity_data
 
         # NPX data is already log2-normalized, so we test median centering
-        adata_norm, stats = service.normalize_intensities(
+        adata_norm, stats, ir = service.normalize_intensities(
             adata, method="median", log_transform=False  # Already log-transformed
         )
 
@@ -555,7 +555,7 @@ class TestAffinityPreprocessing:
         assert initial_missing_rate < 0.30
 
         # Impute with KNN (appropriate for MCAR pattern)
-        adata_imputed, stats = service.impute_missing_values(
+        adata_imputed, stats, ir = service.impute_missing_values(
             adata, method="knn", knn_neighbors=5
         )
 
@@ -573,7 +573,7 @@ class TestAffinityQuality:
         adata = synthetic_affinity_data
 
         # Assess CV
-        adata_qc, stats = service.assess_coefficient_variation(
+        adata_qc, stats, ir = service.assess_coefficient_variation(
             adata, cv_threshold=0.30, min_observations=3
         )
 
@@ -592,7 +592,7 @@ class TestAffinityQuality:
         adata.obs["replicate_group"] = ["Rep" + str(i % 5) for i in range(adata.n_obs)]
 
         # Assess replicates
-        adata_qc, stats = service.assess_technical_replicates(
+        adata_qc, stats, ir = service.assess_technical_replicates(
             adata, replicate_column="replicate_group", correlation_method="pearson"
         )
 
@@ -613,10 +613,10 @@ class TestAffinityDifferential:
 
         # Minimal preprocessing (data already normalized)
         prep_service = ProteomicsPreprocessingService()
-        adata_imputed, _ = prep_service.impute_missing_values(adata, method="knn")
+        adata_imputed, _, _ = prep_service.impute_missing_values(adata, method="knn")
 
         # Differential expression
-        adata_de, stats = service.perform_differential_expression(
+        adata_de, stats, ir = service.perform_differential_expression(
             adata_imputed,
             group_column="condition",
             test_method="t_test",
@@ -646,9 +646,9 @@ class TestCompleteWorkflows:
 
         # Step 1: Quality Control
         qc_service = ProteomicsQualityService()
-        adata_qc, qc_stats = qc_service.assess_missing_value_patterns(adata)
-        adata_qc, cv_stats = qc_service.assess_coefficient_variation(adata_qc)
-        adata_qc, contam_stats = qc_service.detect_contaminants(adata_qc)
+        adata_qc, qc_stats, _ = qc_service.assess_missing_value_patterns(adata)
+        adata_qc, cv_stats, _ = qc_service.assess_coefficient_variation(adata_qc)
+        adata_qc, contam_stats, _ = qc_service.detect_contaminants(adata_qc)
 
         # Step 2: Preprocessing
         prep_service = ProteomicsPreprocessingService()
@@ -658,23 +658,23 @@ class TestCompleteWorkflows:
         adata_clean = adata_qc[:, clean_proteins].copy()
 
         # Impute missing values
-        adata_imputed, impute_stats = prep_service.impute_missing_values(
+        adata_imputed, impute_stats, _ = prep_service.impute_missing_values(
             adata_clean, method="mixed"
         )
 
         # Normalize
-        adata_norm, norm_stats = prep_service.normalize_intensities(
+        adata_norm, norm_stats, _ = prep_service.normalize_intensities(
             adata_imputed, method="median", log_transform=True
         )
 
         # Batch correction
-        adata_corrected, batch_stats = prep_service.correct_batch_effects(
+        adata_corrected, batch_stats, _ = prep_service.correct_batch_effects(
             adata_norm, batch_key="batch", method="combat"
         )
 
         # Step 3: Differential Expression
         de_service = ProteomicsDifferentialService()
-        adata_de, de_stats = de_service.perform_differential_expression(
+        adata_de, de_stats, _ = de_service.perform_differential_expression(
             adata_corrected,
             group_column="condition",
             test_method="limma_like",
@@ -701,25 +701,25 @@ class TestCompleteWorkflows:
 
         # Step 1: Quality Control
         qc_service = ProteomicsQualityService()
-        adata_qc, qc_stats = qc_service.assess_missing_value_patterns(adata)
-        adata_qc, cv_stats = qc_service.assess_coefficient_variation(adata_qc)
+        adata_qc, qc_stats, _ = qc_service.assess_missing_value_patterns(adata)
+        adata_qc, cv_stats, _ = qc_service.assess_coefficient_variation(adata_qc)
 
         # Step 2: Preprocessing
         prep_service = ProteomicsPreprocessingService()
 
         # Impute (low missing values)
-        adata_imputed, impute_stats = prep_service.impute_missing_values(
+        adata_imputed, impute_stats, _ = prep_service.impute_missing_values(
             adata_qc, method="knn", knn_neighbors=5
         )
 
         # Normalize (NPX already log2, just median center)
-        adata_norm, norm_stats = prep_service.normalize_intensities(
+        adata_norm, norm_stats, _ = prep_service.normalize_intensities(
             adata_imputed, method="median", log_transform=False
         )
 
         # Step 3: Differential Expression
         de_service = ProteomicsDifferentialService()
-        adata_de, de_stats = de_service.perform_differential_expression(
+        adata_de, de_stats, _ = de_service.perform_differential_expression(
             adata_norm,
             group_column="condition",
             test_method="t_test",
@@ -747,12 +747,12 @@ class TestCompleteWorkflows:
         qc_service = ProteomicsQualityService()
 
         # MS
-        _, ms_qc = qc_service.assess_missing_value_patterns(synthetic_mass_spec_data)
-        _, ms_cv = qc_service.assess_coefficient_variation(synthetic_mass_spec_data)
+        _, ms_qc, _ = qc_service.assess_missing_value_patterns(synthetic_mass_spec_data)
+        _, ms_cv, _ = qc_service.assess_coefficient_variation(synthetic_mass_spec_data)
 
         # Affinity
-        _, aff_qc = qc_service.assess_missing_value_patterns(synthetic_affinity_data)
-        _, aff_cv = qc_service.assess_coefficient_variation(synthetic_affinity_data)
+        _, aff_qc, _ = qc_service.assess_missing_value_patterns(synthetic_affinity_data)
+        _, aff_cv, _ = qc_service.assess_coefficient_variation(synthetic_affinity_data)
 
         # Affinity should have better quality metrics
         assert aff_qc["overall_missing_rate"] < ms_qc["overall_missing_rate"]
@@ -784,7 +784,7 @@ class TestProteomicsEdgeCases:
 
         # QC should handle this
         qc_service = ProteomicsQualityService()
-        adata_qc, stats = qc_service.assess_missing_value_patterns(adata)
+        adata_qc, stats, ir = qc_service.assess_missing_value_patterns(adata)
 
         # Should detect completely missing protein
         assert stats["completely_missing_proteins"] >= 1
@@ -798,7 +798,7 @@ class TestProteomicsEdgeCases:
 
         # Imputation should skip
         prep_service = ProteomicsPreprocessingService()
-        adata_result, stats = prep_service.impute_missing_values(adata, method="knn")
+        adata_result, stats, ir = prep_service.impute_missing_values(adata, method="knn")
 
         assert stats["missing_values_found"] is False
         assert stats["imputation_performed"] is False
@@ -812,7 +812,7 @@ class TestProteomicsEdgeCases:
 
         # Batch correction should skip
         prep_service = ProteomicsPreprocessingService()
-        adata_result, stats = prep_service.correct_batch_effects(
+        adata_result, stats, ir = prep_service.correct_batch_effects(
             adata, batch_key="batch", method="combat"
         )
 

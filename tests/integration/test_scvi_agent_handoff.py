@@ -369,7 +369,7 @@ class TestEndToEndWorkflow:
 
             try:
                 # Test with custom embeddings
-                result_adata, stats = service.cluster_and_visualize(
+                result_adata, stats, ir = service.cluster_and_visualize(
                     adata=test_adata, use_rep="X_scvi", resolution=0.8
                 )
 
