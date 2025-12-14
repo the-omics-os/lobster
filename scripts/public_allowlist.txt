@@ -6,7 +6,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2025-12-13 13:29:47
+# Generated: 2025-12-14 20:53:51
 # =============================================================================
 
 
@@ -300,6 +300,7 @@ lobster/tools/pipeline_strategy.py
 lobster/tools/geo_downloader.py
 lobster/tools/geo_parser.py
 lobster/tools/docling_service.py.backup
+lobster/tools/todo_tools.py
 
 # Providers
 lobster/tools/providers/__init__.py
