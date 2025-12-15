@@ -2,6 +2,11 @@
 
 This guide covers all installation methods for Lobster AI, from quick setup to advanced development configurations.
 
+> **⚠️ Breaking Changes in v0.4.0:**
+> Lobster now requires explicit provider configuration via `lobster init`. Auto-detection from `.env` files has been removed.
+>
+> **Existing users:** Run `lobster init` to create the new `provider_config.json` file. Your API keys in `.env` will continue to work.
+
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
@@ -46,11 +51,19 @@ We recommend installing `uv` for significantly faster package installation and d
 
 ### Required API Keys
 
-**Easy Setup:** On your first run, Lobster will launch an **interactive setup wizard** that guides you through API key configuration. No manual file editing required!
+**Easy Setup:** Lobster requires explicit provider configuration (v0.4.0+). Run the **interactive setup wizard** to configure:
 
-Choose ONE of the following LLM providers (the wizard will prompt you):
+```bash
+lobster init
+```
 
-1. **Claude API Key** (Recommended for most users)
+The wizard creates two files:
+- **`provider_config.json`** - Provider/model selection (safe to commit to git)
+- **`.env`** - API keys and secrets (never commit to git)
+
+Choose ONE of the following LLM providers:
+
+1. **Anthropic API Key** (Recommended for most users)
 
    ⚠️ **Important: Rate Limits** - Anthropic applies conservative rate limits to new accounts. For production use or heavy workloads, we recommend AWS Bedrock. If you encounter rate limit errors, see [Troubleshooting Guide](28-troubleshooting.md).
 
@@ -60,7 +73,7 @@ Choose ONE of the following LLM providers (the wizard will prompt you):
    - **Recommended for**: Quick testing, development with small datasets
    - **Not recommended for**: Production deployments, large-scale analysis
 
-2. **AWS Bedrock Access** (Recommended for Production)
+2. **AWS Bedrock Access** (Production/Enterprise)
 
    ✅ **Best for production** - AWS Bedrock provides enterprise-grade rate limits and reliability. Recommended for heavy workloads and production deployments.
 
@@ -74,12 +87,22 @@ Choose ONE of the following LLM providers (the wizard will prompt you):
    - **Recommended for**: Production deployments, large-scale analysis, enterprise use
    - **Benefits**: Higher rate limits, better reliability, enterprise SLA
 
-3. **NCBI API Key** (Optional)
+3. **Ollama** (Local, Zero Cost)
+
+   🏠 **Privacy-first** - Run models locally on your hardware. No API keys, no internet required after model download.
+
+   - Install Ollama: https://ollama.com/
+   - Pull a model: `ollama pull llama3:70b-instruct`
+   - The wizard will auto-detect Ollama and configure it
+   - **Recommended for**: Privacy-sensitive data, offline work, unlimited usage
+   - **Benefits**: Zero cost, 100% local, no rate limits, offline capable
+
+4. **NCBI API Key** (Optional)
    - Visit [NCBI E-utilities](https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/)
    - Enhances literature search capabilities
    - The wizard offers to add this optionally
 
-**Advanced Users:** You can skip the wizard by manually creating a `.env` file in your working directory before first run.
+**Advanced Users:** You can skip the wizard by manually creating both config files (see Manual Configuration section below).
 
 ## Pre-Installation Check
 
@@ -310,10 +333,12 @@ After installation, run the configuration wizard to set up your API keys:
 lobster init
 
 # The wizard will guide you through:
-# 1. Choose LLM provider (Claude API or AWS Bedrock)
+# 1. Choose LLM provider (Anthropic, AWS Bedrock, or Ollama)
 # 2. Enter your API keys securely (input is masked)
 # 3. Optionally add NCBI API key for enhanced literature search
-# 4. Configuration saved automatically to .env file
+# 4. Configuration saved to TWO files:
+#    - provider_config.json (provider/model selection - safe to commit)
+#    - .env (API keys/secrets - never commit)
 ```
 
 **Additional configuration commands:**
@@ -331,7 +356,62 @@ lobster init --force
 lobster init --non-interactive --anthropic-key=sk-ant-xxx
 ```
 
-The wizard creates a `.env` file in your current working directory with your credentials. No manual file editing required!
+The wizard creates two configuration files:
+1. `.lobster_workspace/provider_config.json` - Provider/model selection
+2. `.env` - API keys and secrets
+
+**Security Note:**
+- ✅ `provider_config.json` can be safely committed to git (no secrets)
+- ❌ `.env` must NEVER be committed (contains API keys)
+
+No manual file editing required!
+
+#### Manual Configuration (Advanced)
+
+If you prefer to skip the wizard, create both configuration files manually:
+
+**File 1: `.lobster_workspace/provider_config.json`** (provider selection - safe to commit)
+
+```json
+{
+  "global_provider": "anthropic",
+  "anthropic_model": "claude-sonnet-4-20250514",
+  "profile": "production"
+}
+```
+
+**Available providers:** `anthropic`, `bedrock`, `ollama`
+**Available profiles:** `development`, `production`, `ultra`, `godmode`
+
+**File 2: `.env`** (API keys - never commit, add to .gitignore)
+
+```bash
+# Anthropic API
+ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+
+# AWS Bedrock
+AWS_BEDROCK_ACCESS_KEY=your-access-key
+AWS_BEDROCK_SECRET_ACCESS_KEY=your-secret-key
+
+# Ollama (local)
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_DEFAULT_MODEL=llama3:70b-instruct
+
+# Optional: NCBI
+NCBI_API_KEY=your-ncbi-key
+```
+
+**Security Best Practices:**
+```bash
+# Add .env to .gitignore
+echo ".env" >> .gitignore
+
+# Verify .env is not tracked
+git check-ignore .env  # Should output: .env
+
+# provider_config.json CAN be committed (no secrets)
+git add .lobster_workspace/provider_config.json
+```
 
 **Note:** For development or contributing to Lobster AI, use Method 1 (Quick Install) or Method 3 (Manual Installation) to install from source.
 
@@ -591,31 +671,32 @@ lobster init
 ╭────────────────────────────────────────────────────────────╮
 │  🦞 Welcome to Lobster AI!                                 │
 │                                                            │
-│  This wizard will create a .env file with your API keys.  │
+│  Let's set up your LLM provider.                          │
 ╰────────────────────────────────────────────────────────────╯
 
 Select your LLM provider:
-  1 - Claude API (Anthropic) - Quick testing, development
+  1 - Anthropic API - Best quality, quick setup
   2 - AWS Bedrock - Production, enterprise use
+  3 - Ollama (Local) - Privacy, zero cost, offline
 
 Choose provider [1]: 1
 
-🔑 Claude API Configuration
+🔑 Anthropic API Configuration
 Get your API key from: https://console.anthropic.com/
 
-Enter your Claude API key: ********************************
+Enter your API key: ********************************
 
 📚 NCBI API Key (Optional)
 Enhances literature search capabilities.
-Get key from: https://ncbiinsights.ncbi.nlm.nih.gov/...
 
 Add NCBI API key? [y/N]: n
 
 ╭────────────────────────────────────────────────────────────╮
 │  ✅ Configuration saved!                                   │
 │                                                            │
-│  File created: /path/to/your/.env                         │
-│  You can edit this file anytime to update your API keys.  │
+│  Files created:                                            │
+│  • .env (API keys - never commit to git)                  │
+│  • .lobster_workspace/provider_config.json (versioned)    │
 │                                                            │
 │  Next step: Run lobster chat                              │
 ╰────────────────────────────────────────────────────────────╯

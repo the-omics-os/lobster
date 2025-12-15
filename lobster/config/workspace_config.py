@@ -15,7 +15,7 @@ Priority Resolution (highest to lowest):
 6. Hardcoded defaults
 
 Example:
-    >>> from lobster.core.workspace_config import WorkspaceProviderConfig
+    >>> from lobster.config.workspace_config import WorkspaceProviderConfig
     >>> from pathlib import Path
     >>>
     >>> # Load config from workspace

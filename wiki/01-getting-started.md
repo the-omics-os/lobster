@@ -54,10 +54,12 @@ lobster init
 ```
 
 The wizard will guide you through:
-- ✅ Choosing your LLM provider (Claude API or AWS Bedrock)
+- ✅ Choosing your LLM provider (Anthropic, AWS Bedrock, or Ollama)
 - ✅ Entering your API keys securely (input is masked)
 - ✅ Optionally configuring NCBI API key for enhanced literature search
-- ✅ Saving configuration to .env file
+- ✅ Creating two config files:
+  - `provider_config.json` - Provider selection (safe to commit)
+  - `.env` - API keys and secrets (never commit)
 
 **Configuration management:**
 ```bash
@@ -72,14 +74,28 @@ lobster init --force
 ```
 
 **Manual configuration** (advanced users only):
-If you prefer, you can manually edit the `.env` file:
+If you prefer, create two files manually:
+
+**1. `.lobster_workspace/provider_config.json` (provider selection):**
+```json
+{
+  "global_provider": "anthropic",
+  "anthropic_model": "claude-sonnet-4-20250514",
+  "profile": "production"
+}
+```
+
+**2. `.env` (API keys - never commit to git):**
 ```env
-# Option 1: Claude API
+# Option 1: Anthropic API
 ANTHROPIC_API_KEY=sk-ant-api03-xxxxx
 
 # Option 2: AWS Bedrock
 AWS_BEDROCK_ACCESS_KEY=your-aws-access-key
 AWS_BEDROCK_SECRET_ACCESS_KEY=your-aws-secret-key
+
+# Option 3: Ollama (local)
+OLLAMA_BASE_URL=http://localhost:11434
 
 # Optional: NCBI API key
 NCBI_API_KEY=your-ncbi-api-key-here

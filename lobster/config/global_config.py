@@ -15,7 +15,7 @@ Priority Hierarchy:
 6. Defaults
 
 Example:
-    >>> from lobster.core.global_config import GlobalProviderConfig
+    >>> from lobster.config.global_config import GlobalProviderConfig
     >>>
     >>> # Load user-level config
     >>> config = GlobalProviderConfig.load()

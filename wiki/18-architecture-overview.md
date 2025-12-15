@@ -14,7 +14,7 @@ Lobster AI is a **modular bioinformatics platform** with pluggable execution env
 
 1. **Client Layer** - CLI and Python SDK interfaces
 2. **Execution Environment** - Local (your hardware) or Cloud (managed infrastructure)
-3. **LLM Provider Layer** - Ollama (local), Anthropic API (cloud), AWS Bedrock (enterprise)
+3. **LLM Provider Layer** - ProviderRegistry with pluggable providers (Anthropic, Bedrock, Ollama + future: OpenAI, Nebius)
 4. **Multi-Agent System** - Specialized agents for research, data engineering, analysis
 5. **External Data Sources** - GEO, SRA, ENA, PRIDE, MassIVE, PubMed, PMC
 6. **Data Management** - DataManagerV2 for multi-modal orchestration and provenance
@@ -26,9 +26,10 @@ Lobster AI is a **modular bioinformatics platform** with pluggable execution env
 |-------|-----------|---------------|----------|
 | **Execution** | Local | Default (no setup) | Privacy-first, offline, cost-sensitive |
 | | Cloud | `LOBSTER_CLOUD_KEY` | Team collaboration, scaling, managed infrastructure |
-| **LLM Provider** | Ollama | `ollama pull gpt-oss:20b` | Local-only, unlimited usage, offline |
-| | Anthropic | `ANTHROPIC_API_KEY` | Best quality, quick start, cloud/local |
-| | AWS Bedrock | AWS credentials | Enterprise, compliance, high throughput |
+| **LLM Provider** | Ollama | `lobster init` → provider_config.json | Local-only, unlimited usage, offline |
+| | Anthropic | `lobster init` → provider_config.json + .env | Best quality, quick start, cloud/local |
+| | AWS Bedrock | `lobster init` → provider_config.json + .env | Enterprise, compliance, high throughput |
+| | Future (OpenAI, Nebius) | Pluggable via ILLMProvider interface | Easy extensibility (~150 lines/provider) |
 | **Data Sources** | GEO/SRA/ENA | Auto-configured | Transcriptomics datasets |
 | | PRIDE/MassIVE | Auto-configured | Proteomics datasets |
 | | PubMed/PMC | `NCBI_API_KEY` (optional) | Literature mining, metadata extraction |
@@ -46,7 +47,7 @@ Lobster supports three deployment patterns optimized for different use cases. Fo
 
 **Configuration Resources:**
 - 📖 [Deployment Patterns Guide](03-configuration.md#deployment-patterns) - Detailed setup for each pattern
-- 🔄 [Provider Auto-Detection](03-configuration.md#provider-auto-detection) - How Lobster selects providers
+- 🏗️ [Provider Architecture](03-configuration.md#provider-architecture) - Provider abstraction system (v0.4.0+)
 - ⚙️ [Complete Configuration Guide](03-configuration.md) - All configuration options
 
 ---
@@ -422,35 +423,109 @@ See **[39. Two-Tier Caching Architecture](39-two-tier-caching-architecture.md)**
 
 ### 4. Configuration & Registry
 
-Centralized configuration management with **6-layer priority system**:
+Centralized configuration management with **clean provider abstraction** (refactored v0.4.0):
 
+- **Provider Registry** - Pluggable LLM provider system (ILLMProvider interface)
 - **Agent Registry** - Single source of truth for all agents
-- **Settings Management** - Environment-aware configuration
-- **Model Configuration** - LLM parameters and API keys with runtime overrides
+- **Settings Management** - Environment-aware configuration (API keys, logging)
+- **Model Configuration** - Profile-based model selection with runtime overrides
 - **Adapter Registry** - Dynamic data format support
 
-#### Configuration Priority System
+#### Provider Abstraction Architecture (v0.4.0+)
 
-Lobster uses a sophisticated 6-layer priority hierarchy for provider and model selection:
+Lobster uses a **provider abstraction layer** enabling easy addition of new LLM providers (OpenAI, Nebius, etc.):
+
+```mermaid
+graph TB
+    subgraph "Configuration Layer"
+        CLI_FLAGS[CLI Flags<br/>--provider, --model]
+        WORKSPACE[Workspace Config<br/>provider_config.json]
+        ENV[Environment Secrets<br/>.env file]
+    end
+
+    subgraph "Resolution Layer"
+        RESOLVER[ConfigResolver<br/>3-Layer Priority]
+    end
+
+    subgraph "Provider Layer"
+        REGISTRY[ProviderRegistry<br/>Singleton]
+        INTERFACE[ILLMProvider<br/>Interface]
+    end
+
+    subgraph "Provider Implementations"
+        ANTHRO[AnthropicProvider]
+        BEDROCK[BedrockProvider]
+        OLLAMA[OllamaProvider]
+        FUTURE[Future: OpenAI,<br/>Nebius, etc.]
+    end
+
+    CLI_FLAGS --> RESOLVER
+    WORKSPACE --> RESOLVER
+    ENV -.-> ANTHRO
+    ENV -.-> BEDROCK
+    ENV -.-> OLLAMA
+
+    RESOLVER --> REGISTRY
+    REGISTRY --> INTERFACE
+    INTERFACE --> ANTHRO
+    INTERFACE --> BEDROCK
+    INTERFACE --> OLLAMA
+    INTERFACE -.-> FUTURE
+
+    ANTHRO --> LLM[BaseChatModel]
+    BEDROCK --> LLM
+    OLLAMA --> LLM
+
+    classDef config fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    classDef resolver fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef provider fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef impl fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+
+    class CLI_FLAGS,WORKSPACE,ENV config
+    class RESOLVER resolver
+    class REGISTRY,INTERFACE provider
+    class ANTHRO,BEDROCK,OLLAMA,FUTURE impl
+```
+
+**Key Design Principles:**
+- **Explicit Configuration** - No auto-detection, users must configure provider
+- **Provider Interface** - All providers implement `ILLMProvider` (7 methods)
+- **Security Separation** - Config in JSON (versioned), secrets in .env (gitignored)
+- **Easy Extensibility** - New provider = implement interface + register (~150 lines)
+
+#### Configuration Priority System (v0.4.0+)
+
+Lobster uses a simplified **3-layer priority system** for provider and model selection:
 
 **Priority Order** (highest to lowest):
 
 ```
 1. Runtime CLI flags       --provider, --model (highest priority)
 2. Workspace config        .lobster_workspace/provider_config.json
-3. Global user config      ~/.config/lobster/providers.json
-4. Environment variables   .env file (LOBSTER_LLM_PROVIDER, OLLAMA_DEFAULT_MODEL)
-5. Auto-detection          Is Ollama running? API keys present?
-6. Hardcoded defaults      bedrock + production profile (lowest priority)
+3. FAIL with clear error   No auto-detection, no silent defaults
+```
+
+**Configuration Model** (Security-First):
+
+```
+provider_config.json (versioned)        .env (gitignored, secrets)
+────────────────────────────────        ──────────────────────────
+{                                        ANTHROPIC_API_KEY=sk-ant-...
+  "global_provider": "anthropic",        AWS_BEDROCK_ACCESS_KEY=...
+  "anthropic_model": "claude-4",         AWS_BEDROCK_SECRET_ACCESS_KEY=...
+  "profile": "production",               OLLAMA_BASE_URL=http://...
+  "per_agent_models": {}
+}
+
+✅ Safe to commit                        ❌ Never commit (secrets)
 ```
 
 **Configuration Files**:
 
 | File | Scope | Priority | Created By | Use Case |
 |------|-------|----------|------------|----------|
-| `.env` | Project environment variables | Layer 4 | `lobster init` | API keys, basic settings |
 | `provider_config.json` | Workspace-specific preferences | Layer 2 | `lobster init` | Per-workspace provider/model |
-| `~/.config/lobster/providers.json` | User-level defaults | Layer 3 | Manual/future CLI | Cross-project defaults |
+| `.env` | API keys and secrets | N/A (auth only) | `lobster init` | Authentication credentials |
 
 **Runtime Override Flags**:
 
@@ -469,45 +544,56 @@ lobster chat --provider anthropic --model "claude-4-sonnet"
 ```
 
 **Implementation Files**:
-- `lobster/core/workspace_config.py` - Workspace-scoped configuration (Pydantic model)
-- `lobster/core/global_config.py` - User-level defaults
-- `lobster/core/config_resolver.py` - 6-layer priority resolution logic
-- `lobster/config/provider_setup.py` - Provider detection and .env generation
-- `lobster/config/llm_factory.py` - Model instantiation with override support
+- `lobster/config/providers/base_provider.py` - ILLMProvider interface
+- `lobster/config/providers/registry.py` - ProviderRegistry singleton
+- `lobster/config/providers/anthropic_provider.py` - Anthropic implementation
+- `lobster/config/providers/bedrock_provider.py` - AWS Bedrock implementation
+- `lobster/config/providers/ollama_provider.py` - Ollama implementation
+- `lobster/config/workspace_config.py` - Workspace-scoped configuration (Pydantic)
+- `lobster/core/config_resolver.py` - 3-layer priority resolution logic
+- `lobster/config/llm_factory.py` - Factory using ProviderRegistry
 
-**Example Conflict Resolution**:
+**Example: First-Time Setup**:
 
 ```bash
-# Scenario: Multiple configs with different values
-# .env says:                    LOBSTER_LLM_PROVIDER=bedrock
-# provider_config.json says:    "global_provider": "ollama"
-# Runtime flag:                 --provider anthropic
+# User runs init wizard
+$ lobster init
 
-# Result: anthropic (layer 1 beats layer 2 beats layer 4)
+# Creates two files:
+# 1. provider_config.json (explicit provider selection)
+{
+  "global_provider": "anthropic",
+  "anthropic_model": "claude-sonnet-4-20250514",
+  "profile": "production"
+}
+
+# 2. .env (API keys - not committed to git)
+ANTHROPIC_API_KEY=sk-ant-api03-...
+```
+
+**Example: Runtime Override**:
+
+```bash
+# Workspace config says: "anthropic"
+# Override at runtime:
+$ lobster query --provider ollama "your question"
+
+# Result: Uses Ollama (layer 1 beats layer 2)
 ```
 
 **Model Selection**:
 
-Model selection follows the same priority system but is provider-aware:
+Model selection follows the same 3-layer priority:
 
 ```bash
-# Layer 1: Runtime override
+# Layer 1: Runtime override (highest priority)
 lobster query --model "mixtral:8x7b" "question"
 
 # Layer 2: Workspace config
 # provider_config.json: {"ollama_model": "llama3:70b-instruct"}
 
-# Layer 3: Global config
-# ~/.config/lobster/providers.json: {"ollama_default_model": "gpt-oss:20b"}
-
-# Layer 4: Environment variable
-export OLLAMA_DEFAULT_MODEL=gpt-oss:20b
-
-# Layer 5: Auto-detection
-# LLMFactory._select_best_ollama_model() chooses largest available
-
-# Layer 6: Profile configuration
-# Falls back to profile-based model (development/production/ultra/godmode)
+# Layer 3: Provider default
+# OllamaProvider.get_default_model() chooses largest available model
 ```
 
 ### 5. Subscription Tiers & Plugin System (Phase 1, Dec 2024)
