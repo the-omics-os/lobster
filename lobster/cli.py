@@ -1085,7 +1085,8 @@ def init_client(
     from lobster.core.config_resolver import ConfigResolver, ConfigurationError
     from lobster.core.workspace import resolve_workspace
 
-    workspace_path = resolve_workspace(explicit_path=workspace, create=False)
+    # Resolve workspace (create if needed for proper config loading)
+    workspace_path = resolve_workspace(explicit_path=workspace, create=True)
     resolver = ConfigResolver.get_instance(workspace_path)
 
     try:

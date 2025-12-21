@@ -9,6 +9,7 @@ See: https://docs.langchain.com/oss/langchain/multi-agent#tool-calling
 """
 
 import inspect
+from pathlib import Path
 from typing import Optional
 
 from langchain_core.tools import tool
@@ -113,6 +114,7 @@ def create_bioinformatics_graph(
     agent_filter: callable = None,
     provider_override: Optional[str] = None,
     model_override: Optional[str] = None,
+    workspace_path: Optional[Path] = None,
 ):
     """Create the bioinformatics multi-agent graph using langgraph_supervisor.
 
@@ -163,7 +165,7 @@ def create_bioinformatics_graph(
     else:
         model_params = settings.get_agent_llm_params("supervisor")
 
-    supervisor_model = create_llm("supervisor", model_params, provider_override=provider_override, model_override=model_override)
+    supervisor_model = create_llm("supervisor", model_params, provider_override=provider_override, model_override=model_override, workspace_path=workspace_path)
 
     # Normalize callbacks to a flat list (fix double-nesting bug)
     # callback_handler may be a single callback, a list of callbacks, or None
@@ -223,6 +225,8 @@ def create_bioinformatics_graph(
             factory_kwargs["provider_override"] = provider_override
         if "model_override" in sig.parameters:
             factory_kwargs["model_override"] = model_override
+        if "workspace_path" in sig.parameters:
+            factory_kwargs["workspace_path"] = workspace_path
 
         agent = factory_function(**factory_kwargs)
         created_agents[agent_name] = agent
@@ -259,6 +263,8 @@ def create_bioinformatics_graph(
                 factory_kwargs["provider_override"] = provider_override
             if "model_override" in sig.parameters:
                 factory_kwargs["model_override"] = model_override
+            if "workspace_path" in sig.parameters:
+                factory_kwargs["workspace_path"] = workspace_path
 
             created_agents[agent_name] = factory_function(**factory_kwargs)
             logger.debug(

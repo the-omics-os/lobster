@@ -104,23 +104,31 @@ class ConfigResolver:
             self.global_config = GlobalProviderConfig.load()
 
     @classmethod
-    def get_instance(cls, workspace_path: Optional[Path] = None) -> "ConfigResolver":
+    def get_instance(cls, workspace_path: Optional[Path] = None, force_reload: bool = False) -> "ConfigResolver":
         """
         Get singleton instance of ConfigResolver.
 
         Args:
             workspace_path: Path to workspace directory
+            force_reload: Force reload config even if workspace path unchanged
 
         Returns:
             ConfigResolver: Singleton instance
 
         Note:
-            If workspace_path changes, a new instance is created.
+            If workspace_path changes or force_reload=True, a new instance is created.
+            This ensures config files are re-read after lobster init.
 
         Example:
             >>> resolver = ConfigResolver.get_instance(Path(".lobster_workspace"))
+            >>> # After creating new config:
+            >>> resolver = ConfigResolver.get_instance(Path(".lobster_workspace"), force_reload=True)
         """
-        if cls._instance is None or cls._instance_workspace != workspace_path:
+        # Normalize workspace_path for comparison
+        norm_workspace = workspace_path.resolve() if workspace_path else None
+        norm_cached = cls._instance_workspace.resolve() if cls._instance_workspace else None
+
+        if cls._instance is None or norm_workspace != norm_cached or force_reload:
             cls._instance = cls(workspace_path)
             cls._instance_workspace = workspace_path
         return cls._instance

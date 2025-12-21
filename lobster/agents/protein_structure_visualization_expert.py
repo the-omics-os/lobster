@@ -44,6 +44,7 @@ def protein_structure_visualization_expert(
     callback_handler=None,
     agent_name: str = "protein_structure_visualization_expert_agent",
     handoff_tools: List = None,
+    workspace_path: Optional[Path] = None,
 ):
     """
     Create protein structure visualization expert agent using DataManagerV2.
@@ -66,7 +67,7 @@ def protein_structure_visualization_expert(
     """
     settings = get_settings()
     model_params = settings.get_agent_llm_params(agent_name)
-    llm = create_llm(agent_name, model_params)
+    llm = create_llm(agent_name, model_params, workspace_path=workspace_path)
 
     # Normalize callbacks to a flat list (fix double-nesting bug)
     if callback_handler and hasattr(llm, "with_config"):

@@ -9,6 +9,7 @@ The agent auto-detects platform type and applies appropriate defaults.
 """
 
 from datetime import date
+from pathlib import Path
 from typing import List, Optional, Union
 
 import numpy as np
@@ -242,6 +243,7 @@ def proteomics_expert(
     agent_name: str = "proteomics_expert",
     delegation_tools: list = None,
     force_platform_type: Optional[str] = None,
+    workspace_path: Optional[Path] = None,
 ):
     """
     Factory function for unified proteomics expert agent.
@@ -262,7 +264,7 @@ def proteomics_expert(
     """
     settings = get_settings()
     model_params = settings.get_agent_llm_params("proteomics_expert")
-    llm = create_llm("proteomics_expert", model_params)
+    llm = create_llm("proteomics_expert", model_params, workspace_path=workspace_path)
 
     # Normalize callbacks to a flat list (fix double-nesting bug)
     if callback_handler and hasattr(llm, "with_config"):

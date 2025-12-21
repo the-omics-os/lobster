@@ -48,6 +48,7 @@ def custom_feature_agent(
     callback_handler=None,
     agent_name: str = "custom_feature_agent",
     handoff_tools: List = None,
+    workspace_path: Optional[Path] = None,
 ):
     """
     Create custom feature agent that uses Claude Code SDK.
@@ -66,7 +67,7 @@ def custom_feature_agent(
     """
     settings = get_settings()
     model_params = settings.get_agent_llm_params("custom_feature_agent")
-    llm = create_llm("custom_feature_agent", model_params)
+    llm = create_llm("custom_feature_agent", model_params, workspace_path=workspace_path)
 
     # Normalize callbacks to a flat list (fix double-nesting bug)
     if callback_handler and hasattr(llm, "with_config"):
@@ -627,7 +628,9 @@ Top Recommendation: {github_repos[0]['name'] if github_repos else 'No repositori
                 "error": str(e),
             }
 
-    def display_sdk_message(msg):
+    def display_sdk_message(msg,
+    workspace_path: Optional[Path] = None,
+):
         """Display SDK message content in real-time to terminal."""
         try:
             from claude_agent_sdk import (
@@ -1551,7 +1554,9 @@ Minimum 20 characters required."""
             logger.info(f"Spawning Claude Code SDK for {feature_type}: {feature_name}")
 
             # Run async SDK call safely (avoids event loop conflicts)
-            def _run_coro(coro):
+            def _run_coro(coro,
+    workspace_path: Optional[Path] = None,
+):
                 """Run coroutine in a new event loop (thread-safe)."""
                 return asyncio.run(coro)
 
@@ -2329,7 +2334,9 @@ from lobster.core.exceptions import ProviderError
 
 class NewProvider(BasePublicationProvider):
     def __init__(self, data_manager: DataManagerV2, api_key: Optional[str] = None,
-                 base_url: str = "https://api.example.com", rate_limit: int = 5):
+                 base_url: str = "https://api.example.com", rate_limit: int = 5,
+    workspace_path: Optional[Path] = None,
+):
         self.data_manager = data_manager
         self.api_key = api_key or os.environ.get("API_KEY")
         self.base_url = base_url.rstrip('/')
@@ -2417,7 +2424,9 @@ class IDownloadService(ABC):
 
 # Example implementation:
 class GEODownloadService(IDownloadService):
-    def __init__(self, data_manager: DataManagerV2):
+    def __init__(self, data_manager: DataManagerV2,
+    workspace_path: Optional[Path] = None,
+):
         self.data_manager = data_manager
         self.geo_service = GEOService(data_manager)  # Composition pattern
 
@@ -2455,7 +2464,9 @@ from lobster.core.data_manager_v2 import DataManagerV2
 class ModalityManagementService:
     \"\"\"Service for centralized modality CRUD operations with provenance tracking.\"\"\"
 
-    def __init__(self, data_manager: DataManagerV2):
+    def __init__(self, data_manager: DataManagerV2,
+    workspace_path: Optional[Path] = None,
+):
         self.data_manager = data_manager
 
     def list_modalities(
@@ -2541,7 +2552,9 @@ from lobster.core.adapters.base_adapter import BaseAdapter
 from lobster.core.schemas.{{{{SCHEMA_MODULE}}}} import {{{{SCHEMA_CLASS}}}}
 
 class NewAdapter(BaseAdapter):
-    def __init__(self, data_type: str = "default", strict_validation: bool = False):
+    def __init__(self, data_type: str = "default", strict_validation: bool = False,
+    workspace_path: Optional[Path] = None,
+):
         super().__init__(name="NewAdapter")
         self.data_type = data_type
         self.strict_validation = strict_validation
@@ -2598,7 +2611,9 @@ class NewSchema:
         }}
 
     @staticmethod
-    def create_validator(schema_type: str = "default", strict: bool = False):
+    def create_validator(schema_type: str = "default", strict: bool = False,
+    workspace_path: Optional[Path] = None,
+):
         from lobster.core.validators import SchemaValidator
         return SchemaValidator(schema=NewSchema.get_schema(), strict=strict)
 ```
@@ -2645,11 +2660,12 @@ def new_agent_expert(
     callback_handler=None,
     agent_name: str = "new_agent_expert_agent",
     handoff_tools: List = None,
+    workspace_path: Optional[Path] = None,
 ):
     \"\"\"Create new agent expert.\"\"\"
     settings = get_settings()
     model_params = settings.get_agent_llm_params(agent_name)
-    llm = create_llm(agent_name, model_params)
+    llm = create_llm(agent_name, model_params, workspace_path=workspace_path)
 
     # Normalize callbacks to a flat list (fix double-nesting bug)
     if callback_handler and hasattr(llm, "with_config"):

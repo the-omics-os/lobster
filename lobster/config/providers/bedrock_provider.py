@@ -46,14 +46,44 @@ class BedrockProvider(ILLMProvider):
 
     # Static model catalog - extracted from BedrockModelService.MODELS
     # Note: Availability may vary by AWS region
+    # Model IDs follow AWS Bedrock format: "anthropic." (standard) or "us.anthropic." (cross-region)
     MODELS = [
+        # Cross-region model IDs (us. prefix) - Used by agent_config.py profiles
+        ModelInfo(
+            name="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+            display_name="Claude Sonnet 4.5 (Bedrock Cross-Region)",
+            description="Claude 4.5 Sonnet via Bedrock - ultra profile",
+            provider="bedrock",
+            context_window=200000,
+            is_default=True,
+            input_cost_per_million=3.0,
+            output_cost_per_million=15.0,
+        ),
+        ModelInfo(
+            name="us.anthropic.claude-sonnet-4-20250514-v1:0",
+            display_name="Claude Sonnet 4 (Bedrock Cross-Region)",
+            description="Claude 4 Sonnet via Bedrock - production profile",
+            provider="bedrock",
+            context_window=200000,
+            input_cost_per_million=3.0,
+            output_cost_per_million=15.0,
+        ),
+        ModelInfo(
+            name="us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            display_name="Claude Haiku 4.5 (Bedrock Cross-Region)",
+            description="Claude 4.5 Haiku via Bedrock - development profile",
+            provider="bedrock",
+            context_window=200000,
+            input_cost_per_million=1.0,
+            output_cost_per_million=5.0,
+        ),
+        # Standard region model IDs (anthropic. prefix)
         ModelInfo(
             name="anthropic.claude-sonnet-4-20250514-v1:0",
             display_name="Claude Sonnet 4 (Bedrock)",
             description="Latest Sonnet via Bedrock - best balance",
             provider="bedrock",
             context_window=200000,
-            is_default=True,
             input_cost_per_million=3.0,
             output_cost_per_million=15.0,
         ),
