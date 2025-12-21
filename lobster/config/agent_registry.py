@@ -65,7 +65,7 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
         description="Unified expert for single-cell AND bulk RNA-seq analysis. Handles QC, clustering, and orchestrates annotation and DE analysis via specialized sub-agents.",
         factory_function="lobster.agents.transcriptomics.transcriptomics_expert.transcriptomics_expert",
         handoff_tool_name="handoff_to_transcriptomics_expert",
-        handoff_tool_description="Assign ALL transcriptomics analysis tasks (single-cell OR bulk RNA-seq): QC, clustering, cell type annotation, differential expression, pseudobulk, pathway analysis",
+        handoff_tool_description="Assign ALL transcriptomics analysis tasks (single-cell OR bulk RNA-seq): QC, clustering, cell type annotation, differential expression, pseudobulk, pathway enrichment/functional analysis (GO/KEGG/Reactome gene set enrichment)",
         child_agents=["annotation_expert", "de_analysis_expert"],
     ),
     # === NEW: Annotation Expert (sub-agent, not supervisor-accessible) ===
@@ -135,7 +135,7 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
         description="Unified expert for mass spectrometry AND affinity proteomics. Auto-detects platform type. Handles QC, normalization, batch correction, differential protein expression, peptide mapping (MS), antibody validation (affinity).",
         factory_function="lobster.agents.proteomics.proteomics_expert.proteomics_expert",
         handoff_tool_name="handoff_to_proteomics_expert",
-        handoff_tool_description="Assign ALL proteomics analysis tasks (mass spectrometry OR affinity platforms): QC, normalization, batch correction, differential protein expression, peptide mapping, antibody validation",
+        handoff_tool_description="Assign ALL proteomics analysis tasks (mass spectrometry OR affinity platforms): QC, normalization, batch correction, differential protein expression, pathway enrichment (GO/KEGG/Reactome), peptide mapping, antibody validation",
     ),
 }
 

@@ -24,6 +24,10 @@ from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
 
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.services.analysis.pathway_enrichment_service import (
+    PathwayEnrichmentService,
+    PathwayEnrichmentError,
+)
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -288,78 +292,6 @@ print(f"Identified {stats['n_clusters']} clusters using {clustering_method}")"""
             output_entities=["adata_clustered"],
         )
 
-    def _create_ir_pathway_enrichment(
-        self,
-        protein_list: Optional[List[str]],
-        database: str,
-        background_proteins: Optional[List[str]],
-        p_value_threshold: float,
-    ) -> AnalysisStep:
-        """Create IR for pathway enrichment analysis."""
-        return AnalysisStep(
-            operation="proteomics.analysis.perform_pathway_enrichment",
-            tool_name="perform_pathway_enrichment",
-            description="WARNING: SIMULATED pathway data for demonstration. For real pathway analysis, use gseapy or export protein list to external tools (DAVID, Enrichr, g:Profiler).",
-            library="lobster.services.analysis.proteomics_analysis_service",
-            code_template="""# Pathway enrichment (SIMULATED - for demonstration only)
-# WARNING: This uses simulated pathway data. For real analysis, use:
-# - gseapy: pip install gseapy; gp.enrichr(gene_list=proteins, gene_sets='GO_Biological_Process_2021')
-# - External tools: DAVID, Enrichr, g:Profiler
-from lobster.services.analysis.proteomics_analysis_service import ProteomicsAnalysisService
-
-service = ProteomicsAnalysisService()
-adata_enriched, stats, _ = service.perform_pathway_enrichment(
-    adata,
-    protein_list={{ protein_list | tojson }},
-    database={{ database | tojson }},
-    background_proteins={{ background_proteins | tojson }},
-    p_value_threshold={{ p_value_threshold }}
-)
-print(f"Pathways tested: {stats['n_pathways_tested']}, Significant: {stats['n_significant_pathways']}")""",
-            imports=[
-                "from lobster.services.analysis.proteomics_analysis_service import ProteomicsAnalysisService"
-            ],
-            parameters={
-                "protein_list": protein_list,
-                "database": database,
-                "background_proteins": background_proteins,
-                "p_value_threshold": p_value_threshold,
-            },
-            parameter_schema={
-                "protein_list": ParameterSpec(
-                    param_type="Optional[List[str]]",
-                    papermill_injectable=True,
-                    default_value=None,
-                    required=False,
-                    description="List of proteins for enrichment (uses significant if None)",
-                ),
-                "database": ParameterSpec(
-                    param_type="str",
-                    papermill_injectable=True,
-                    default_value="go_biological_process",
-                    required=False,
-                    validation_rule="database in ['go_biological_process', 'go_molecular_function', 'go_cellular_component', 'kegg_pathway', 'reactome', 'string_db']",
-                    description="Pathway database to use",
-                ),
-                "background_proteins": ParameterSpec(
-                    param_type="Optional[List[str]]",
-                    papermill_injectable=True,
-                    default_value=None,
-                    required=False,
-                    description="Background protein set (uses all proteins if None)",
-                ),
-                "p_value_threshold": ParameterSpec(
-                    param_type="float",
-                    papermill_injectable=True,
-                    default_value=0.05,
-                    required=False,
-                    validation_rule="0 < p_value_threshold <= 1",
-                    description="P-value threshold for significance",
-                ),
-            },
-            input_entities=["adata"],
-            output_entities=["adata_enriched"],
-        )
 
     def perform_statistical_testing(
         self,
@@ -735,15 +667,15 @@ print(f"Pathways tested: {stats['n_pathways_tested']}, Significant: {stats['n_si
         p_value_threshold: float = 0.05,
     ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
-        Perform pathway enrichment analysis on a set of proteins.
+        Perform pathway enrichment analysis on a set of proteins using gseapy.
 
-        WARNING: SIMULATED pathway data for demonstration. For real pathway analysis,
-        use gseapy or export protein list to external tools (DAVID, Enrichr, g:Profiler).
+        Uses real GO, KEGG, and Reactome databases via the Enrichr API.
+        Powered by PathwayEnrichmentService.
 
         Args:
             adata: AnnData object with proteomics data
             protein_list: List of proteins for enrichment (uses significant if None)
-            database: Pathway database to use
+            database: Pathway database to use (go_biological_process, kegg_pathway, reactome, etc.)
             background_proteins: Background protein set (uses all proteins if None)
             p_value_threshold: P-value threshold for significance
 
@@ -791,61 +723,34 @@ print(f"Pathways tested: {stats['n_pathways_tested']}, Significant: {stats['n_si
                 f"Enrichment analysis: {len(protein_list)} query proteins, {len(background_proteins)} background"
             )
 
-            # Perform enrichment analysis (simplified implementation)
-            enrichment_results = self._perform_enrichment_analysis(
-                protein_list, background_proteins, database, p_value_threshold
+            # Delegate to PathwayEnrichmentService (real gseapy implementation)
+            pathway_service = PathwayEnrichmentService()
+
+            # Map legacy database name to Enrichr database (or use as-is)
+            databases = [database]  # Can be expanded to multiple databases
+
+            # Perform real enrichment analysis
+            adata_enriched, enrichment_stats, ir = pathway_service.over_representation_analysis(
+                adata=adata_enriched,
+                gene_list=protein_list,
+                databases=databases,
+                organism="human",  # Proteomics typically uses human protein IDs
+                background_genes=background_proteins,
+                p_value_threshold=p_value_threshold,
+                store_in_uns=True,  # Store results in adata.uns['pathway_enrichment']
             )
-
-            # Store enrichment results
-            adata_enriched.uns["pathway_enrichment"] = {
-                "database": database,
-                "query_proteins": protein_list,
-                "background_proteins": background_proteins,
-                "results": enrichment_results,
-                "parameters": {
-                    "database": database,
-                    "p_value_threshold": p_value_threshold,
-                    "n_query_proteins": len(protein_list),
-                    "n_background_proteins": len(background_proteins),
-                },
-            }
-
-            # Calculate enrichment statistics
-            significant_pathways = [
-                r
-                for r in enrichment_results
-                if r.get("p_value", 1.0) < p_value_threshold
-            ]
-
-            enrichment_stats = {
-                "database": database,
-                "n_query_proteins": len(protein_list),
-                "n_background_proteins": len(background_proteins),
-                "n_pathways_tested": len(enrichment_results),
-                "n_significant_pathways": len(significant_pathways),
-                "enrichment_rate": (
-                    len(significant_pathways) / len(enrichment_results)
-                    if enrichment_results
-                    else 0.0
-                ),
-                "p_value_threshold": p_value_threshold,
-                "samples_processed": adata_enriched.n_obs,
-                "proteins_processed": adata_enriched.n_vars,
-                "analysis_type": "pathway_enrichment",
-            }
 
             logger.info(
-                f"Pathway enrichment completed: {len(significant_pathways)} significant pathways"
+                f"Pathway enrichment completed: {enrichment_stats['n_significant_pathways']} significant pathways"
             )
 
-            # Create IR for provenance tracking
-            ir = self._create_ir_pathway_enrichment(
-                protein_list, database, background_proteins, p_value_threshold
-            )
             return adata_enriched, enrichment_stats, ir
 
+        except PathwayEnrichmentError as e:
+            logger.exception(f"Pathway enrichment error: {e}")
+            raise ProteomicsAnalysisError(f"Pathway enrichment failed: {str(e)}")
         except Exception as e:
-            logger.exception(f"Error in pathway enrichment: {e}")
+            logger.exception(f"Unexpected error in pathway enrichment: {e}")
             raise ProteomicsAnalysisError(f"Pathway enrichment failed: {str(e)}")
 
     # Helper methods for statistical testing
@@ -1161,112 +1066,3 @@ print(f"Pathways tested: {stats['n_pathways_tested']}, Significant: {stats['n_si
             },
         }
 
-    # Helper methods for pathway enrichment
-    def _perform_enrichment_analysis(
-        self,
-        query_proteins: List[str],
-        background_proteins: List[str],
-        database: str,
-        p_threshold: float,
-    ) -> List[Dict[str, Any]]:
-        """Perform pathway enrichment analysis (simplified implementation)."""
-        # This is a simplified implementation for demonstration
-        # In a real implementation, this would query actual pathway databases
-
-        # Simulate pathway data based on database type
-        if database == "go_biological_process":
-            simulated_pathways = [
-                {
-                    "pathway_id": "GO:0008150",
-                    "pathway_name": "biological_process",
-                    "proteins": background_proteins[:50],  # Simulate pathway membership
-                    "description": "Any process specifically pertinent to the functioning of integrated living units",
-                },
-                {
-                    "pathway_id": "GO:0009987",
-                    "pathway_name": "cellular_process",
-                    "proteins": background_proteins[10:80],
-                    "description": "Any process that is carried out at the cellular level",
-                },
-                {
-                    "pathway_id": "GO:0050896",
-                    "pathway_name": "response_to_stimulus",
-                    "proteins": background_proteins[20:90],
-                    "description": "Any process that results in a change in state or activity",
-                },
-            ]
-        elif database == "kegg_pathway":
-            simulated_pathways = [
-                {
-                    "pathway_id": "hsa04010",
-                    "pathway_name": "MAPK_signaling_pathway",
-                    "proteins": background_proteins[:40],
-                    "description": "MAPK signaling pathway",
-                },
-                {
-                    "pathway_id": "hsa04110",
-                    "pathway_name": "Cell_cycle",
-                    "proteins": background_proteins[15:65],
-                    "description": "Cell cycle pathway",
-                },
-            ]
-        else:
-            # Default pathways
-            simulated_pathways = [
-                {
-                    "pathway_id": "PATH:001",
-                    "pathway_name": "protein_metabolism",
-                    "proteins": background_proteins[:60],
-                    "description": "Protein metabolism pathway",
-                }
-            ]
-
-        # Perform enrichment testing using Fisher's exact test
-        enrichment_results = []
-
-        for pathway in simulated_pathways:
-            pathway_proteins = set(pathway["proteins"])
-            query_set = set(query_proteins)
-            background_set = set(background_proteins)
-
-            # Calculate overlap
-            overlap = len(query_set & pathway_proteins)
-            query_size = len(query_set)
-            pathway_size = len(
-                pathway_proteins & background_set
-            )  # Only count proteins in background
-            background_size = len(background_set)
-
-            # Fisher's exact test (simplified)
-            # a = overlap, b = query_size - overlap, c = pathway_size - overlap, d = background_size - pathway_size - query_size + overlap
-            if overlap > 0 and query_size > 0 and pathway_size > 0:
-                # Use hypergeometric test as approximation
-                from scipy.stats import hypergeom
-
-                p_value = 1 - hypergeom.cdf(
-                    overlap - 1, background_size, pathway_size, query_size
-                )
-
-                # Calculate enrichment ratio
-                expected = (query_size * pathway_size) / background_size
-                enrichment_ratio = overlap / expected if expected > 0 else 0
-
-                enrichment_results.append(
-                    {
-                        "pathway_id": pathway["pathway_id"],
-                        "pathway_name": pathway["pathway_name"],
-                        "description": pathway.get("description", ""),
-                        "overlap_count": overlap,
-                        "query_size": query_size,
-                        "pathway_size": pathway_size,
-                        "background_size": background_size,
-                        "p_value": float(p_value),
-                        "enrichment_ratio": float(enrichment_ratio),
-                        "overlap_proteins": list(query_set & pathway_proteins),
-                    }
-                )
-
-        # Sort by p-value
-        enrichment_results.sort(key=lambda x: x["p_value"])
-
-        return enrichment_results
