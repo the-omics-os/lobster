@@ -6,7 +6,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2025-12-22 10:33:08
+# Generated: 2025-12-22 12:08:45
 # =============================================================================
 
 
@@ -153,8 +153,6 @@ lobster/config/provider_setup.py
 lobster/config/supervisor_config.py
 lobster/config/workspace_config.py
 lobster/config/global_config.py
-lobster/config/model_service.py
-lobster/config/ollama_service.py
 lobster/config/README_CONFIGURATION.md
 lobster/config/README_THINKING.md
 
