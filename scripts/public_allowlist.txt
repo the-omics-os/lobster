@@ -6,7 +6,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2025-12-21 23:29:16
+# Generated: 2025-12-22 10:33:08
 # =============================================================================
 
 
@@ -76,7 +76,6 @@ lobster/core/__init__.py
 lobster/core/client.py
 lobster/core/workspace.py
 lobster/core/config_resolver.py
-lobster/core/workspace_config.py
 lobster/core/data_manager_v2.py
 lobster/core/provenance.py
 lobster/core/download_queue.py
@@ -85,7 +84,6 @@ lobster/core/archive_utils.py
 lobster/core/analysis_ir.py
 lobster/core/ir_coverage.py
 lobster/core/exceptions.py
-lobster/core/global_config.py
 lobster/core/notebook_executor.py
 lobster/core/notebook_exporter.py
 lobster/core/notebook_validator.py
@@ -153,8 +151,20 @@ lobster/config/agent_capabilities.py
 lobster/config/llm_factory.py
 lobster/config/provider_setup.py
 lobster/config/supervisor_config.py
+lobster/config/workspace_config.py
+lobster/config/global_config.py
+lobster/config/model_service.py
+lobster/config/ollama_service.py
 lobster/config/README_CONFIGURATION.md
 lobster/config/README_THINKING.md
+
+# Provider system (v0.4.0+ architecture)
+lobster/config/providers/__init__.py
+lobster/config/providers/base_provider.py
+lobster/config/providers/registry.py
+lobster/config/providers/anthropic_provider.py
+lobster/config/providers/bedrock_provider.py
+lobster/config/providers/ollama_provider.py
 
 
 # =============================================================================
