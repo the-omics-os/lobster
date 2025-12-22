@@ -12,7 +12,7 @@ packages, checking:
 
 Usage:
     python scripts/verify_custom_package.py                # Check all installed packages
-    python scripts/verify_custom_package.py customer     # Check specific package
+    python scripts/verify_custom_package.py databiomix     # Check specific package
     python scripts/verify_custom_package.py --list         # List available packages
 """
 
@@ -37,8 +37,8 @@ def discover_custom_packages() -> List[str]:
     packages = []
     for line in result.stdout.split("\n"):
         if line.startswith("lobster-custom-"):
-            # Extract package name: "lobster-custom-customer" -> "customer"
-            pkg_name = line.split()[0]  # "lobster-custom-customer 2.0.1"
+            # Extract package name: "lobster-custom-databiomix" -> "databiomix"
+            pkg_name = line.split()[0]  # "lobster-custom-databiomix 2.0.1"
             package_suffix = pkg_name.replace("lobster-custom-", "")
             packages.append(package_suffix)
 
@@ -356,7 +356,7 @@ def main():
     parser.add_argument(
         "package",
         nargs="?",
-        help="Package name (e.g., 'customer'). If omitted, checks all installed packages."
+        help="Package name (e.g., 'databiomix'). If omitted, checks all installed packages."
     )
     parser.add_argument(
         "--list",

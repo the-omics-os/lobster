@@ -13,6 +13,7 @@ in Phase 4. See lobster/agents/archive/ARCHIVE_NOTICE.md for details.
 
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from langchain_core.tools import tool
@@ -77,6 +78,7 @@ def metadata_assistant(
     callback_handler=None,
     agent_name: str = "metadata_assistant",
     delegation_tools: list = None,
+    workspace_path: Optional[Path] = None,
 ):
     """Create metadata assistant agent for metadata operations.
 
@@ -93,13 +95,14 @@ def metadata_assistant(
         callback_handler: Optional callback handler for LLM
         agent_name: Agent name for identification
         delegation_tools: Optional list of delegation tools for sub-agent access
+        workspace_path: Path to workspace directory for config resolution
 
     Returns:
         Compiled LangGraph agent with metadata tools
     """
     settings = get_settings()
     model_params = settings.get_agent_llm_params("assistant")
-    llm = create_llm("metadata_assistant", model_params)
+    llm = create_llm("metadata_assistant", model_params, workspace_path=workspace_path)
 
     # Normalize callbacks to a flat list (fix double-nesting bug)
     if callback_handler and hasattr(llm, "with_config"):
