@@ -662,6 +662,20 @@ wheels = [
 ]
 
 [[package]]
+name = "cloudscraper"
+version = "1.2.71"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyparsing" },
+    { name = "requests" },
+    { name = "requests-toolbelt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ac/25/6d0481860583f44953bd791de0b7c4f6d7ead7223f8a17e776247b34a5b4/cloudscraper-1.2.71.tar.gz", hash = "sha256:429c6e8aa6916d5bad5c8a5eac50f3ea53c9ac22616f6cb21b18dcc71517d0d3", size = 93261, upload-time = "2023-04-25T23:20:19.467Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/81/97/fc88803a451029688dffd7eb446dc1b529657577aec13aceff1cc9628c5d/cloudscraper-1.2.71-py2.py3-none-any.whl", hash = "sha256:76f50ca529ed2279e220837befdec892626f9511708e200d48d5bb76ded679b0", size = 99652, upload-time = "2023-04-25T23:20:15.974Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -2599,6 +2613,7 @@ dependencies = [
     { name = "beautifulsoup4" },
     { name = "biopython" },
     { name = "boto3" },
+    { name = "cloudscraper" },
     { name = "docling" },
     { name = "docling-core" },
     { name = "fastapi" },
@@ -2749,6 +2764,7 @@ requires-dist = [
     { name = "build", marker = "extra == 'dev'", specifier = ">=0.10.0" },
     { name = "bumpversion", marker = "extra == 'all'", specifier = ">=0.6.0" },
     { name = "bumpversion", marker = "extra == 'dev'", specifier = ">=0.6.0" },
+    { name = "cloudscraper", specifier = ">=1.2.71" },
     { name = "docling", specifier = ">=2.60.0" },
     { name = "docling-core", specifier = ">=2.50.0" },
     { name = "factory-boy", marker = "extra == 'dev'", specifier = ">=3.2.0" },

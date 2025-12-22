@@ -105,6 +105,7 @@ dependencies = [
     "textual>=6.7.1",
     "langchain-ollama>=0.3.10",
     "rapidfuzz>=3.14.3",
+    "cloudscraper>=1.2.71",
 ]
 
 [project.optional-dependencies]

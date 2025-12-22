@@ -525,6 +525,16 @@ ALWAYS_EXCLUDED = """
 # Scripts (sync infrastructure is private)
 !scripts/**
 
+# Custom package sync infrastructure (private)
+!scripts/sync_to_custom.py
+!scripts/custom_package_allowlist*.txt
+!scripts/README_SYNC_INFRASTRUCTURE.md
+!scripts/CUSTOM_PACKAGE_VERIFICATION.md
+!scripts/verify_custom_package.py
+!scripts/quick_verify.sh
+!CUSTOM_PACKAGE_IMPLEMENTATION_SUMMARY.md
+!.github/workflows/sync-to-custom-*.yml
+
 # Tests (private)
 !tests/**
 

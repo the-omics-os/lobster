@@ -1,0 +1,148 @@
+name: Custom Package - DataBioMix Sync
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # DataBioMix agent
+      - 'lobster/agents/metadata_assistant.py'
+      # DataBioMix services
+      - 'lobster/services/metadata/identifier_provenance_service.py'
+      - 'lobster/services/metadata/microbiome_filtering_service.py'
+      - 'lobster/services/metadata/disease_standardization_service.py'
+      - 'lobster/services/metadata/sample_mapping_service.py'
+      - 'lobster/services/orchestration/publication_processing_service.py'
+      # Publication queue infrastructure
+      - 'lobster/core/schemas/publication_queue.py'
+      - 'lobster/core/publication_queue.py'
+      - 'lobster/core/ris_parser.py'
+      # Sync infrastructure
+      - 'scripts/sync_to_custom.py'
+      - 'scripts/custom_package_allowlist_databiomix.txt'
+      - '.github/workflows/custom-package-databiomix-sync.yml'
+
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run only (preview changes without committing)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+jobs:
+  validate-and-sync:
+    name: Validate and Sync to DataBioMix Package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout lobster (private)
+        uses: actions/checkout@v4
+        with:
+          path: lobster
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
+
+      - name: Checkout lobster-custom-databiomix (private)
+        uses: actions/checkout@v4
+        with:
+          repository: the-omics-os/lobster-custom-databiomix
+          path: lobster-custom-databiomix
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate allowlist exists
+        run: |
+          cd lobster
+          if [ ! -f "scripts/custom_package_allowlist_databiomix.txt" ]; then
+            echo "ERROR: DataBioMix allowlist not found"
+            exit 1
+          fi
+          echo "✓ Allowlist found"
+
+      - name: Sync files (dry-run)
+        id: dry_run_sync
+        run: |
+          cd lobster
+          python scripts/sync_to_custom.py --package databiomix --dry-run
+
+      - name: Sync files (actual)
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          cd lobster
+          python scripts/sync_to_custom.py --package databiomix
+
+      - name: Check for changes
+        id: check_changes
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          cd lobster-custom-databiomix
+          if [[ -n $(git status -s) ]]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "📝 Changes detected - will commit"
+            git status -s
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "✅ No changes to sync"
+          fi
+
+      - name: Commit changes
+        if: ${{ steps.check_changes.outputs.has_changes == 'true' && github.event.inputs.dry_run != 'true' }}
+        run: |
+          cd lobster-custom-databiomix
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+          git commit -m "Auto-sync from lobster/main (DataBioMix)
+
+          Synced DataBioMix-specific files
+
+          Source commit: ${{ github.sha }}
+          Triggered by: ${{ github.event_name }}"
+
+      - name: Push to lobster-custom-databiomix
+        if: ${{ steps.check_changes.outputs.has_changes == 'true' && github.event.inputs.dry_run != 'true' }}
+        run: |
+          cd lobster-custom-databiomix
+          git push origin main
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## DataBioMix Package Sync" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status**: ${{ steps.check_changes.outputs.has_changes == 'true' && 'Synced ✅' || 'No changes' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Dry run**: ${{ github.event.inputs.dry_run || 'false' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Source commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Source ref**: ${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.check_changes.outputs.has_changes }}" == "true" ]; then
+            echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+            echo "1. Developer should build and upload package:" >> $GITHUB_STEP_SUMMARY
+            echo "   \`\`\`bash" >> $GITHUB_STEP_SUMMARY
+            echo "   cd lobster-custom-databiomix" >> $GITHUB_STEP_SUMMARY
+            echo "   python -m build" >> $GITHUB_STEP_SUMMARY
+            echo "   aws s3 cp dist/*.whl s3://lobster-license-packages-649207544517/databiomix/" >> $GITHUB_STEP_SUMMARY
+            echo "   aws s3 cp dist/*.whl s3://lobster-license-packages-649207544517/databiomix/latest/" >> $GITHUB_STEP_SUMMARY
+            echo "   \`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "## ❌ DataBioMix Sync Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Source commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Error**: Check logs above for details" >> $GITHUB_STEP_SUMMARY

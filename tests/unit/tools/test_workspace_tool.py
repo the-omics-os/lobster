@@ -134,7 +134,8 @@ class TestCreateWriteToWorkspaceTool:
         assert "Content Cached Successfully" in result
         assert "CSV" in result
         assert "spreadsheet" in result.lower()
-        assert "aggregated_samples.csv" in result  # Flexible path check
+        # Flexible path check - filename may include date suffix (e.g., aggregated_samples_2025-12-21.csv)
+        assert "aggregated_samples" in result and ".csv" in result
 
     def test_identifier_not_found_error(self, mock_data_manager):
         """Error when identifier not in metadata_store or modalities."""
@@ -387,8 +388,11 @@ class TestPublicationQueueSummary:
         get_tool = create_get_content_from_workspace_tool(mock_data_manager)
         result = get_tool.func(workspace="publication_queue", level="metadata")
 
-        # Verify full listing is still present for metadata level
-        assert "Publication Queue Entries (2)" in result
+        # Verify smart hybrid format: Statistics + Head entries + entries
+        assert "Publication Queue Metadata (2 total)" in result
+        assert "Statistics Overview" in result
+        assert "Status Distribution" in result
+        assert "Recent Entries (head" in result
         assert "pub_queue_001" in result
         assert "pub_queue_002" in result
 

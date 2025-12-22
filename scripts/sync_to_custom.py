@@ -25,7 +25,17 @@ class CustomPackageSync:
         self.source_dir = Path(__file__).parent.parent  # lobster/
         self.target_dir = self.source_dir.parent / f"lobster-custom-{package_name}"
         self.target_package_dir = self.target_dir / f"lobster_custom_{package_name}"
-        self.allowlist_file = self.source_dir / "scripts/custom_package_allowlist.txt"
+
+        # Use package-specific allowlist if it exists, otherwise use generic
+        package_specific_allowlist = self.source_dir / f"scripts/custom_package_allowlist_{package_name}.txt"
+        generic_allowlist = self.source_dir / "scripts/custom_package_allowlist.txt"
+
+        if package_specific_allowlist.exists():
+            self.allowlist_file = package_specific_allowlist
+            print(f"Using package-specific allowlist: {package_specific_allowlist.name}")
+        else:
+            self.allowlist_file = generic_allowlist
+            print(f"Using generic allowlist: {generic_allowlist.name}")
 
         self.copied_files = []
         self.skipped_files = []
@@ -84,8 +94,14 @@ class CustomPackageSync:
                 continue
 
             # Determine target path
-            # Map lobster/ paths to lobster_custom_{package}/ paths
-            target_path = self.target_package_dir / rel_path
+            # Map lobster/ paths to flattened lobster_custom_{package}/ structure
+            # lobster/agents/X.py → lobster_custom_{package}/agents/X.py
+            # lobster/services/Y/Z.py → lobster_custom_{package}/services/Y/Z.py
+            if rel_str.startswith("lobster/"):
+                rel_path_no_lobster = Path(rel_str[8:])  # Remove "lobster/" prefix
+                target_path = self.target_package_dir / rel_path_no_lobster
+            else:
+                target_path = self.target_package_dir / rel_path
 
             if self.dry_run:
                 print(f"[DRY-RUN] Would copy: {rel_str}")

@@ -23,7 +23,17 @@ from lobster.config.settings import get_settings
 from lobster.core.analysis_ir import AnalysisStep
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.interfaces.validator import ValidationResult
-from lobster.core.schemas.publication_queue import HandoffStatus, PublicationStatus
+
+# Publication queue schemas - try local package first (for public lobster-ai with custom packages),
+# then fall back to base lobster (for private lobster or premium installations)
+try:
+    from lobster_custom_databiomix.core.schemas.publication_queue import (
+        HandoffStatus,
+        PublicationStatus,
+    )
+except ImportError:
+    from lobster.core.schemas.publication_queue import HandoffStatus, PublicationStatus
+
 from lobster.services.execution.custom_code_execution_service import (
     CodeExecutionError,
     CodeValidationError,
@@ -32,7 +42,16 @@ from lobster.services.execution.custom_code_execution_service import (
 from lobster.services.metadata.metadata_standardization_service import (
     MetadataStandardizationService,
 )
-from lobster.services.metadata.sample_mapping_service import SampleMappingService
+
+# Sample mapping service - try local package first (for public lobster-ai with custom packages),
+# then fall back to base lobster (for private lobster or premium installations)
+try:
+    from lobster_custom_databiomix.services.metadata.sample_mapping_service import (
+        SampleMappingService,
+    )
+except ImportError:
+    from lobster.services.metadata.sample_mapping_service import SampleMappingService
+
 from lobster.utils.logger import get_logger
 
 # Optional microbiome features (not in public lobster-local)

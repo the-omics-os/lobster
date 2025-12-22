@@ -6,7 +6,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2025-12-14 20:53:51
+# Generated: 2025-12-21 23:29:16
 # =============================================================================
 
 
@@ -466,6 +466,16 @@ lobster/agents/visualization_expert.py
 
 # Scripts (sync infrastructure is private)
 !scripts/**
+
+# Custom package sync infrastructure (private)
+!scripts/sync_to_custom.py
+!scripts/custom_package_allowlist*.txt
+!scripts/README_SYNC_INFRASTRUCTURE.md
+!scripts/CUSTOM_PACKAGE_VERIFICATION.md
+!scripts/verify_custom_package.py
+!scripts/quick_verify.sh
+!CUSTOM_PACKAGE_IMPLEMENTATION_SUMMARY.md
+!.github/workflows/sync-to-custom-*.yml
 
 # Tests (private)
 !tests/**
