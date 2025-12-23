@@ -11,6 +11,24 @@ The PDF resolution features were archived and will be migrated to research_agent
 in Phase 4. See lobster/agents/archive/ARCHIVE_NOTICE.md for details.
 """
 
+# =============================================================================
+# AGENT_CONFIG must be defined FIRST (before heavy imports) for entry point loading
+# This prevents circular import issues when component_registry loads this module
+# =============================================================================
+from lobster.config.agent_registry import AgentRegistryConfig
+
+AGENT_CONFIG = AgentRegistryConfig(
+    name="metadata_assistant",
+    display_name="Metadata Assistant",
+    description="Handles cross-dataset metadata operations including sample ID mapping (exact/fuzzy/pattern/metadata strategies), metadata standardization using Pydantic schemas (transcriptomics/proteomics), dataset completeness validation (samples, conditions, controls, duplicates, platform), and sample metadata reading in multiple formats. Specialized in metadata harmonization for multi-omics integration and publication queue processing.",
+    factory_function="lobster.agents.metadata_assistant.metadata_assistant",
+    handoff_tool_name="handoff_to_metadata_assistant",
+    handoff_tool_description="Assign metadata operations (cross-dataset sample mapping, metadata standardization to Pydantic schemas, dataset validation before download, metadata reading/formatting, publication queue filtering) to the metadata assistant",
+)
+
+# =============================================================================
+# Heavy imports below (may have circular dependencies, but AGENT_CONFIG is already defined)
+# =============================================================================
 import json
 from datetime import datetime
 from pathlib import Path

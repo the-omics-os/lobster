@@ -35,14 +35,10 @@ from lobster.services.metadata.metadata_validation_service import (
 )
 
 # Premium feature - graceful fallback if unavailable
-try:
-    from lobster.services.orchestration.publication_processing_service import (
-        PublicationProcessingService,
-    )
-    HAS_PUBLICATION_PROCESSING = True
-except ImportError:
-    PublicationProcessingService = None
-    HAS_PUBLICATION_PROCESSING = False
+from lobster.core.component_registry import component_registry
+
+PublicationProcessingService = component_registry.get_service('publication_processing')
+HAS_PUBLICATION_PROCESSING = PublicationProcessingService is not None
 
 # Phase 1: New providers for two-tier access
 from lobster.tools.providers.abstract_provider import AbstractProvider

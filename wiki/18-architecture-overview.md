@@ -685,30 +685,38 @@ This means in FREE tier:
 
 #### Plugin Discovery System
 
-The `plugin_loader.py` discovers and merges agents from premium packages at import time:
+The `component_registry.py` discovers and loads components (services + agents) from premium packages via Python entry points:
 
 ```python
-# Automatic discovery at module load
-def _merge_plugin_agents():
-    """Called when agent_registry.py is imported."""
-    # 1. Try lobster-premium package
-    try:
-        from lobster_premium import PREMIUM_REGISTRY
-        AGENT_REGISTRY.update(PREMIUM_REGISTRY)
-    except ImportError:
-        pass  # Premium not installed
+# Unified component discovery via entry points
+class ComponentRegistry:
+    def load_components(self):
+        """Discover services and agents from entry points."""
+        # 1. Discover premium services
+        #    Entry point group: "lobster.services"
+        #    Format: service_name = "package.module:ServiceClass"
+        self._load_entry_point_group('lobster.services', self._services)
 
-    # 2. Discover lobster-custom-* packages from entitlement
-    entitlement = load_entitlement()
-    for pkg in entitlement.get("custom_packages", []):
-        module = importlib.import_module(pkg.replace("-", "_"))
-        AGENT_REGISTRY.update(module.CUSTOM_REGISTRY)
+        # 2. Discover custom agents
+        #    Entry point group: "lobster.agents"
+        #    Format: agent_name = "package.module:AGENT_CONFIG"
+        self._load_entry_point_group('lobster.agents', self._custom_agents)
+
+# Custom packages declare components in pyproject.toml:
+[project.entry-points."lobster.services"]
+publication_processing = "lobster_custom_databiomix.services.orchestration.publication_processing_service:PublicationProcessingService"
+
+[project.entry-points."lobster.agents"]
+metadata_assistant = "lobster_custom_databiomix.agents.metadata_assistant:AGENT_CONFIG"
 ```
 
 **Package Discovery Sources:**
 1. **lobster-premium** - Shared premium features (PyPI private index)
-2. **lobster-custom-*** - Customer-specific packages (per-customer private index)
-3. **Entry Points** - Future-proof plugin system via `pyproject.toml`
+2. **lobster-custom-*** - Customer-specific packages (per-customer S3 distribution)
+
+**Entry Point Groups:**
+- `lobster.services` - Premium service classes (e.g., PublicationProcessingService)
+- `lobster.agents` - Custom agent configurations (AgentRegistryConfig instances)
 
 #### License Management
 

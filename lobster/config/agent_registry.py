@@ -165,33 +165,36 @@ def _merge_plugin_agents() -> None:
     """
     Discover and merge plugin agents into the registry.
 
-    Called at module load time to incorporate agents from:
-    - lobster-premium: Shared premium features
-    - lobster-custom-*: Customer-specific packages
+    Now delegates to the unified ComponentRegistry which discovers both
+    services and agents via entry points (lobster.services, lobster.agents).
 
-    Plugin agents are only discovered if the corresponding packages
-    are installed and authorized in the user's entitlement.
+    Custom agents from lobster-premium and lobster-custom-* packages are
+    discovered automatically and merged with core agents.
     """
     try:
-        from lobster.core.plugin_loader import discover_plugins
+        from lobster.core.component_registry import component_registry
 
-        plugin_agents = discover_plugins()
-        if plugin_agents:
-            AGENT_REGISTRY.update(plugin_agents)
+        # Trigger component discovery (services + custom agents)
+        component_registry.load_components()
+
+        # Merge custom agents into AGENT_REGISTRY for backward compatibility
+        custom_agents = component_registry.list_custom_agents()
+        if custom_agents:
+            AGENT_REGISTRY.update(custom_agents)
             # Log at debug level to avoid noise during imports
             import logging
 
             logger = logging.getLogger(__name__)
-            logger.debug(f"Merged {len(plugin_agents)} plugin agents into registry")
+            logger.debug(f"Merged {len(custom_agents)} custom agents into registry")
     except ImportError:
-        # plugin_loader not available (shouldn't happen in normal installs)
+        # component_registry not available (shouldn't happen in normal installs)
         pass
     except Exception as e:
-        # Don't let plugin discovery failures break the core system
+        # Don't let component discovery failures break the core system
         import logging
 
         logger = logging.getLogger(__name__)
-        logger.warning(f"Plugin discovery failed: {e}")
+        logger.warning(f"Component registry loading failed: {e}")
 
 
 # Plugin merging is now lazy-loaded via _ensure_plugins_loaded()

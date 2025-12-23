@@ -220,6 +220,8 @@ sequenceDiagram
 
 ### 3.1 Top‑Level Structure
 
+**PEP 420 Namespace Package**: No `lobster/__init__.py` – enables namespace merging for `lobster-custom-*` packages.
+
 ```text
 lobster/
 ├─ cli.py                   # CLI entrypoint (Typer/Rich)
@@ -241,6 +243,8 @@ lobster/
 ├─ core/                    # Client, data, provenance, backends
 │  ├─ client.py             # AgentClient (local)
 │  ├─ api_client.py         # Cloud/WebSocket client
+│  ├─ component_registry.py # PEP 420 namespace packages: service + agent discovery
+│  ├─ plugin_loader.py      # Delegates to component_registry
 │  ├─ data_manager_v2.py
 │  ├─ provenance.py
 │  ├─ download_queue.py
@@ -370,6 +374,8 @@ lobster/
 | Workspace Tools | `tools/workspace_tool.py` | **Unified workspace tool (v2.6+)**: write_to_workspace, get_content_from_workspace (adapter pattern for 5 workspace types) |
 | Deprecated | `tools/geo_*.py`, `tools/pipeline_strategy.py` | Backward compat aliases → `services/data_access/geo/` |
 | Registry | `config/agent_registry.py` | agent configuration |
+| Component Registry | `core/component_registry.py` | **PEP 420 namespace packages**: unified service + agent discovery via entry points |
+| Plugin Loader | `core/plugin_loader.py` | delegates to component_registry for agent discovery |
 
 ### 3.3 Agent Roles (summary)
 
@@ -443,6 +449,7 @@ lobster-local (PUBLIC PACKAGE)
 6. **Ensure both local and cloud clients work** (CLI must behave identically).
 7. **Preserve CLI backward compatibility** where reasonable.
 8. **Maintain scientific correctness** – no "quick hacks" that break analysis rigor.
+9. **Use component_registry for premium features** – NO `try/except ImportError` or `sys.modules` injection (see 4.5).
 
 ### 4.2 Service Pattern (3‑tuple)
 
@@ -579,7 +586,26 @@ AGENT_REGISTRY = {
 }
 ```
 
-Adding a new agent should be **registry‑only** wherever possible. For premium-only agents, use `PREMIUM_REGISTRY` in `lobster-premium` package instead.
+Adding a new agent should be **registry‑only** wherever possible. For premium-only agents, use entry points in custom packages (see Component Registry pattern below).
+
+- **Component Registry pattern** (`core/component_registry.py`): **PEP 420 namespace packages** for premium features
+  - **Architecture**: Entry points → ComponentRegistry → Services + Agents
+  - **No `lobster/__init__.py`** – enables namespace merging across packages (PEP 420)
+  - **Entry point groups**: `lobster.services` (premium service classes), `lobster.agents` (agent configs)
+  - **Discovery**: `component_registry.load_components()` scans all installed packages
+  - **Service API**: `component_registry.get_service('publication_processing')` → class or None
+  - **Agent API**: `component_registry.list_agents()` → core + custom agents (merged dict)
+  - **Custom packages**: Register via `pyproject.toml` entry points (no `sys.modules` injection):
+    ```toml
+    [project.entry-points."lobster.services"]
+    publication_processing = "package.module:ServiceClass"
+
+    [project.entry-points."lobster.agents"]
+    metadata_assistant = "package.module:AGENT_CONFIG"
+    ```
+  - **Lazy loading**: Module-level `AGENT_CONFIG` must be defined FIRST (before heavy imports) to avoid circular imports
+  - **Consumer pattern**: `ServiceClass = component_registry.get_service('name'); HAS_SERVICE = ServiceClass is not None`
+  - **Rule**: ALL premium features MUST use component_registry, NOT `try/except ImportError`
 
 - **Adapter pattern**:
   - `IModalityAdapter` – format‑specific loading (10x, H5AD, etc.)
@@ -766,16 +792,18 @@ Lobster supports FREE, PREMIUM, and ENTERPRISE tiers. Features/agents can be gat
 
 **Key Files**:
 - `lobster/config/subscription_tiers.py` – Tier definitions (agents, handoff restrictions, features)
-- `lobster/core/plugin_loader.py` – Plugin discovery for premium/custom packages
+- `lobster/core/component_registry.py` – **PEP 420 namespace packages**: unified service + agent discovery
+- `lobster/core/plugin_loader.py` – Delegates to component_registry
 - `lobster/core/license_manager.py` – Entitlement validation & AWS license service integration
 
 **Rules**:
 
 1. **Agent factories**: Accept `subscription_tier: str = "free"`. Use `get_restricted_handoffs()` to conditionally exclude tools.
-2. **New premium agents**: Add to `PREMIUM_REGISTRY` in `lobster-premium`, not `AGENT_REGISTRY`.
-3. **Feature checks**: Use `is_agent_available(agent, tier)` from `subscription_tiers.py`, not hardcoded strings.
-4. **Handoff restrictions**: Define in `subscription_tiers.py` under `restricted_handoffs`, not in agent code.
-5. **Graceful degradation**: Return helpful messages when tier-restricted, don't crash.
+2. **New premium agents**: Register via entry points in custom packages (see 4.5 Component Registry pattern).
+3. **Premium services**: Use `component_registry.get_service('name')` pattern, NOT `try/except ImportError`.
+4. **Feature checks**: Use `is_agent_available(agent, tier)` from `subscription_tiers.py`, not hardcoded strings.
+5. **Handoff restrictions**: Define in `subscription_tiers.py` under `restricted_handoffs`, not in agent code.
+6. **Graceful degradation**: Return helpful messages when tier-restricted, don't crash.
 
 **Tier Reference**:
 | Tier | Agents | Notes |
@@ -811,27 +839,55 @@ Lobster supports FREE, PREMIUM, and ENTERPRISE tiers. Features/agents can be gat
 1. Copy template → replace `TEMPLATE` with customer name
 2. Add premium files from `lobster/` (check `scripts/public_allowlist.txt` for excluded files)
 3. Update imports: `lobster.*` → `lobster_custom_{customer}.*`
-4. Build & upload to S3: `s3://lobster-license-packages-649207544517/{customer}/`
+4. Register via entry points (services + agents in `pyproject.toml`)
+5. Build & upload to S3: `s3://lobster-license-packages-649207544517/{customer}/`
 
 **Key Files**:
 - `lobster-custom-template/README.md` - Comprehensive guide (versioning, testing, deployment, troubleshooting)
 - `lobster/config/subscription_tiers.py` - Premium feature definitions (single source of truth)
 - `lobster/scripts/public_allowlist.txt` - Files excluded from public PyPI package (prefix `!`)
-- `lobster-custom-databiomix/` - Reference implementation (v2.0.5)
+- `lobster-custom-databiomix/` - Reference implementation (v2.0.6)
 
 **Critical Rules**:
 1. **Import paths**: ALL `lobster.*` imports MUST become `lobster_custom_{customer}.*` (except public files)
 2. **Dependencies**: Copy ALL transitive dependencies (check imports recursively)
 3. **Versioning**: Track lobster-ai version (e.g., `0.3.4.1` for lobster-ai 0.3.4.x)
 4. **Testing**: Test in clean environment with fresh `lobster-ai` install
-5. **Plugin registration**: Entry point in `pyproject.toml` + `register_agents()` in `__init__.py`
+5. **Entry points**: Register services + agents in `pyproject.toml` (see 4.5 Component Registry pattern)
+6. **AGENT_CONFIG**: Define at module top (before heavy imports) to avoid circular imports
+7. **Package structure**: Add `namespaces = true` to `[tool.setuptools.packages.find]`
 
-**Common Pattern** (premium core module):
+**Entry Point Pattern** (replaces old `sys.modules` injection):
+```toml
+# pyproject.toml
+[project.entry-points."lobster.services"]
+my_service = "lobster_custom_customer.services.my_service:MyServiceClass"
+
+[project.entry-points."lobster.agents"]
+my_agent = "lobster_custom_customer.agents.my_agent:AGENT_CONFIG"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lobster_custom_customer*"]
+namespaces = true  # Required for PEP 420
+```
+
+**Agent Config Pattern**:
 ```python
-# Custom package copies lobster/core/publication_queue.py
-# Update internal imports:
-from lobster.core.schemas.publication_queue import ...  # ❌ WRONG
-from lobster_custom_{customer}.core.schemas.publication_queue import ...  # ✅ CORRECT
+# In my_agent.py - DEFINE FIRST (top of file)
+from lobster.config.agent_registry import AgentRegistryConfig
+
+AGENT_CONFIG = AgentRegistryConfig(
+    name="my_agent",
+    display_name="My Agent",
+    description="...",
+    factory_function="lobster_custom_customer.agents.my_agent.my_agent",
+    handoff_tool_name="handoff_to_my_agent",
+    handoff_tool_description="...",
+)
+
+# Heavy imports below (after AGENT_CONFIG)
+from lobster.core.data_manager_v2 import DataManagerV2
 ```
 
 **See**: `lobster-custom-template/README.md` for complete workflow, pitfalls, and deployment checklist.

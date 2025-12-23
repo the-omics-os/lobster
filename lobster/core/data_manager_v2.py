@@ -329,9 +329,10 @@ class DataManagerV2:
         if self._publication_queue_unavailable:
             return None
         if self._publication_queue is None:
-            try:
-                from lobster.core.publication_queue import PublicationQueue
-            except ImportError:
+            from lobster.core.component_registry import component_registry
+
+            PublicationQueue = component_registry.get_service("publication_queue")
+            if PublicationQueue is None:
                 logger.debug(
                     "Publication queue feature not available (premium feature)"
                 )

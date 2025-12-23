@@ -206,7 +206,8 @@ lobster = "lobster.cli:app"
 [tool.setuptools]
 # Automatically discover all packages under lobster/
 # This ensures all lobster.* subpackages are included in the distribution
-packages.find = {where = ["."], include = ["lobster*"]}
+# namespaces = true enables PEP 420 namespace packages for premium/custom extensions
+packages.find = {where = ["."], include = ["lobster*"], namespaces = true}
 
 [tool.setuptools.dynamic]
 version = {attr = "lobster.version.__version__"}

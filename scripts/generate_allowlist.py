@@ -163,7 +163,7 @@ Makefile
 # =============================================================================
 # CORE ENGINE (Always Open-Core)
 # =============================================================================
-lobster/__init__.py
+# Note: lobster/__init__.py removed for PEP 420 namespace packages
 lobster/__main__.py
 lobster/_version.py
 lobster/version.py
@@ -189,6 +189,7 @@ lobster/core/notebook_validator.py
 
 # Premium infrastructure (enables plugin system in free tier)
 lobster/config/subscription_tiers.py
+lobster/core/component_registry.py
 lobster/core/plugin_loader.py
 lobster/core/license_manager.py
 

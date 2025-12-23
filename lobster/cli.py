@@ -67,13 +67,10 @@ from lobster.config.agent_config import (
 )
 
 # Import extraction cache manager (premium feature - graceful fallback if unavailable)
-try:
-    from lobster.core.extraction_cache import ExtractionCacheManager
-    HAS_EXTRACTION_CACHE = True
-except ImportError:
-    # Premium feature not available in open-core distribution
-    ExtractionCacheManager = None
-    HAS_EXTRACTION_CACHE = False
+from lobster.core.component_registry import component_registry
+
+ExtractionCacheManager = component_registry.get_service('extraction_cache')
+HAS_EXTRACTION_CACHE = ExtractionCacheManager is not None
 
 from lobster.core.queue_storage import queue_file_lock
 from lobster.core.workspace import resolve_workspace
