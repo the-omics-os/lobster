@@ -596,7 +596,7 @@ lobster query --model "mixtral:8x7b" "question"
 # OllamaProvider.get_default_model() chooses largest available model
 ```
 
-### 5. Subscription Tiers & Plugin System (Phase 1, Dec 2024)
+### 5. Subscription Tiers & Plugin System (Phase 1, Dec 2025)
 
 Lobster implements a three-tier subscription model that controls agent availability and feature access. This architecture enables the open-core business model with `lobster-ai` (free) and `lobster-premium` (paid) packages.
 
