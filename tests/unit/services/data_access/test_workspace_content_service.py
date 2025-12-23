@@ -429,3 +429,109 @@ class TestMultipleEntriesAndFiltering:
         assert priorities["low"] == 8
         assert priorities["high"] == 1
         assert priorities["medium"] == 5
+
+
+# ============================================================================
+# NoneType Handling Tests (Bug Fix)
+# ============================================================================
+
+
+class TestNoneTypeHandling:
+    """
+    Test suite for None handling in queue listing methods.
+
+    These tests verify the bug fix for NoneType errors when queue.list_entries()
+    returns None instead of an empty list.
+
+    Bug Report: workspace_tool.py:969 - object of type 'NoneType' has no len()
+    """
+
+    def test_list_download_queue_entries_handles_none_from_queue(self, temp_workspace):
+        """Test that list_download_queue_entries returns [] if queue.list_entries() returns None."""
+        # Create mock data manager with download_queue that returns None
+        dm = Mock(spec=DataManagerV2)
+        dm.workspace_path = temp_workspace
+        dm.download_queue = Mock()
+        dm.download_queue.list_entries.return_value = None
+
+        service = WorkspaceContentService(dm)
+        result = service.list_download_queue_entries()
+
+        # Should not crash, should return empty list
+        assert result == []
+        assert isinstance(result, list)
+
+    def test_list_publication_queue_entries_handles_none_from_queue(self, temp_workspace):
+        """Test that list_publication_queue_entries returns [] if queue.list_entries() returns None."""
+        # Create mock data manager with publication_queue that returns None
+        dm = Mock(spec=DataManagerV2)
+        dm.workspace_path = temp_workspace
+        dm.publication_queue = Mock()
+        dm.publication_queue.list_entries.return_value = None
+
+        service = WorkspaceContentService(dm)
+        result = service.list_publication_queue_entries()
+
+        # Should not crash, should return empty list
+        assert result == []
+        assert isinstance(result, list)
+
+    def test_list_download_queue_entries_handles_exception(self, temp_workspace):
+        """Test graceful degradation when queue.list_entries() raises exception."""
+        # Create mock data manager with download_queue that raises exception
+        dm = Mock(spec=DataManagerV2)
+        dm.workspace_path = temp_workspace
+        dm.download_queue = Mock()
+        dm.download_queue.list_entries.side_effect = RuntimeError("Queue corrupted")
+
+        service = WorkspaceContentService(dm)
+        result = service.list_download_queue_entries()
+
+        # Should not crash, should return empty list
+        assert result == []
+        assert isinstance(result, list)
+
+    def test_list_publication_queue_entries_handles_exception(self, temp_workspace):
+        """Test graceful degradation when queue.list_entries() raises exception."""
+        # Create mock data manager with publication_queue that raises exception
+        dm = Mock(spec=DataManagerV2)
+        dm.workspace_path = temp_workspace
+        dm.publication_queue = Mock()
+        dm.publication_queue.list_entries.side_effect = RuntimeError("Queue corrupted")
+
+        service = WorkspaceContentService(dm)
+        result = service.list_publication_queue_entries()
+
+        # Should not crash, should return empty list
+        assert result == []
+        assert isinstance(result, list)
+
+    def test_list_download_queue_entries_with_none_and_status_filter(
+        self, temp_workspace
+    ):
+        """Test None handling with status filter applied."""
+        dm = Mock(spec=DataManagerV2)
+        dm.workspace_path = temp_workspace
+        dm.download_queue = Mock()
+        dm.download_queue.list_entries.return_value = None
+
+        service = WorkspaceContentService(dm)
+        result = service.list_download_queue_entries(status_filter="PENDING")
+
+        assert result == []
+        assert isinstance(result, list)
+
+    def test_list_publication_queue_entries_with_none_and_status_filter(
+        self, temp_workspace
+    ):
+        """Test None handling with status filter applied."""
+        dm = Mock(spec=DataManagerV2)
+        dm.workspace_path = temp_workspace
+        dm.publication_queue = Mock()
+        dm.publication_queue.list_entries.return_value = None
+
+        service = WorkspaceContentService(dm)
+        result = service.list_publication_queue_entries(status_filter="pending")
+
+        assert result == []
+        assert isinstance(result, list)

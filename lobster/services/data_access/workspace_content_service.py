@@ -839,29 +839,39 @@ class WorkspaceContentService:
             >>> print(len(pending))
             2
         """
-        if not self.data_manager or not hasattr(self.data_manager, "download_queue"):
-            return []
-
-        if self.data_manager.download_queue is None:
-            return []
-
-        from lobster.core.schemas.download_queue import DownloadStatus
-
-        # Convert string to enum if provided
-        status_enum = None
-        if status_filter:
-            try:
-                # DownloadStatus enum values are lowercase ("pending", "completed")
-                status_enum = DownloadStatus(status_filter.lower())
-            except ValueError:
-                # Invalid status, return empty list
-                logger.warning(
-                    f"Invalid status filter '{status_filter}', returning empty list"
-                )
+        try:
+            if not self.data_manager or not hasattr(self.data_manager, "download_queue"):
                 return []
 
-        entries = self.data_manager.download_queue.list_entries(status=status_enum)
-        return [entry.model_dump(mode="json") for entry in entries]
+            if self.data_manager.download_queue is None:
+                return []
+
+            from lobster.core.schemas.download_queue import DownloadStatus
+
+            # Convert string to enum if provided
+            status_enum = None
+            if status_filter:
+                try:
+                    # DownloadStatus enum values are lowercase ("pending", "completed")
+                    status_enum = DownloadStatus(status_filter.lower())
+                except ValueError:
+                    # Invalid status, return empty list
+                    logger.warning(
+                        f"Invalid status filter '{status_filter}', returning empty list"
+                    )
+                    return []
+
+            entries = self.data_manager.download_queue.list_entries(status=status_enum)
+
+            # BUGFIX: Handle None return from list_entries()
+            if entries is None:
+                logger.warning("download_queue.list_entries() returned None (expected list)")
+                return []
+
+            return [entry.model_dump(mode="json") for entry in entries]
+        except Exception as e:
+            logger.error(f"Failed to list download queue entries: {e}", exc_info=True)
+            return []  # Graceful degradation
 
     def get_workspace_stats(self) -> Dict[str, Any]:
         """
@@ -969,30 +979,40 @@ class WorkspaceContentService:
             >>> print(len(pending))
             2
         """
-        if not self.data_manager or not hasattr(self.data_manager, "publication_queue"):
-            return []
-
-        if self.data_manager.publication_queue is None:
-            return []
-
         try:
-            from lobster.core.schemas.publication_queue import PublicationStatus
-        except ImportError:
-            logger.warning("Publication queue schema not available (premium feature)")
-            return []
-
-        # Convert string to enum if provided
-        status_enum = None
-        if status_filter:
-            try:
-                # PublicationStatus enum values are lowercase ("pending", "completed", etc.)
-                status_enum = PublicationStatus(status_filter.lower())
-            except ValueError:
-                # Invalid status, return empty list
-                logger.warning(
-                    f"Invalid status filter '{status_filter}', returning empty list"
-                )
+            if not self.data_manager or not hasattr(self.data_manager, "publication_queue"):
                 return []
 
-        entries = self.data_manager.publication_queue.list_entries(status=status_enum)
-        return [entry.to_dict() for entry in entries]
+            if self.data_manager.publication_queue is None:
+                return []
+
+            try:
+                from lobster.core.schemas.publication_queue import PublicationStatus
+            except ImportError:
+                logger.warning("Publication queue schema not available (premium feature)")
+                return []
+
+            # Convert string to enum if provided
+            status_enum = None
+            if status_filter:
+                try:
+                    # PublicationStatus enum values are lowercase ("pending", "completed", etc.)
+                    status_enum = PublicationStatus(status_filter.lower())
+                except ValueError:
+                    # Invalid status, return empty list
+                    logger.warning(
+                        f"Invalid status filter '{status_filter}', returning empty list"
+                    )
+                    return []
+
+            entries = self.data_manager.publication_queue.list_entries(status=status_enum)
+
+            # BUGFIX: Handle None return from list_entries()
+            if entries is None:
+                logger.warning("publication_queue.list_entries() returned None (expected list)")
+                return []
+
+            return [entry.to_dict() for entry in entries]
+        except Exception as e:
+            logger.error(f"Failed to list publication queue entries: {e}", exc_info=True)
+            return []  # Graceful degradation

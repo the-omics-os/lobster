@@ -614,9 +614,9 @@ jobs:
 
 | Document | Purpose |
 |----------|---------|
-| `docs/premium_lobster_architecture.md` | Premium tier system architecture |
-| `docs/DEVELOPER_GUIDE_PREMIUM_LICENSING.md` | License service integration |
-| `lobster-cloud/docs/CUSTOM_PACKAGES_ACTIVATION_FLOW.md` | End-to-end activation flow |
+| `../../docs/PREMIUM_LICENSING.md` | Premium tier system architecture (root repo) |
+| `../../docs/archive/DEVELOPER_GUIDE_PREMIUM_LICENSING.md` | License service integration (archived) |
+| `../../docs/CUSTOM_PACKAGES_ACTIVATION_FLOW.md` | End-to-end activation flow (root repo) |
 | `scripts/sync_to_public.py` | Reference implementation (public sync) |
 | `scripts/generate_allowlist.py` | Allowlist generation from subscription_tiers.py |
 

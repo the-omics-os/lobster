@@ -417,6 +417,11 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
 
                 items = workspace_service.list_content(content_type=content_type)
 
+                # DEFENSIVE: Should never happen after service fix, but be safe
+                if items is None:
+                    logger.warning("list_content returned None (service bug)")
+                    return []
+
                 normalized_items: List[WorkspaceItem] = []
                 for item in items:
                     # Defensive identifier extraction (already implemented in line 418-423)
@@ -448,6 +453,11 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                 """
                 entries = workspace_service.list_download_queue_entries(status_filter=filter_status)
 
+                # DEFENSIVE: Should never happen after service fix, but be safe
+                if entries is None:
+                    logger.warning("list_download_queue_entries returned None (service bug)")
+                    return []
+
                 normalized_items: List[WorkspaceItem] = []
                 for entry in entries:
                     dataset_id = entry.get('dataset_id', 'unknown')
@@ -475,6 +485,11 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                 Converts PublicationQueueEntry objects to unified WorkspaceItem structure.
                 """
                 entries = workspace_service.list_publication_queue_entries(status_filter=filter_status)
+
+                # DEFENSIVE: Should never happen after service fix, but be safe
+                if entries is None:
+                    logger.warning("list_publication_queue_entries returned None (service bug)")
+                    return []
 
                 normalized_items: List[WorkspaceItem] = []
                 for entry in entries:
@@ -757,6 +772,12 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                     # Smart hybrid mode using helper (Statistics + Head + Guidance)
                     if workspace == "publication_queue":
                         entries = workspace_service.list_publication_queue_entries(status_filter)
+
+                        # DEFENSIVE: Validate entries before rendering
+                        if entries is None or not isinstance(entries, list):
+                            logger.error(f"Invalid entries type: {type(entries)} (expected list)")
+                            return "Error: Unable to retrieve publication queue entries. Please check logs."
+
                         return _render_queue_metadata_hybrid(
                             entries=entries,
                             queue_type="publication",
@@ -765,6 +786,12 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
 
                     elif workspace == "download_queue":
                         entries = workspace_service.list_download_queue_entries(status_filter)
+
+                        # DEFENSIVE: Validate entries before rendering
+                        if entries is None or not isinstance(entries, list):
+                            logger.error(f"Invalid entries type: {type(entries)} (expected list)")
+                            return "Error: Unable to retrieve download queue entries. Please check logs."
+
                         return _render_queue_metadata_hybrid(
                             entries=entries,
                             queue_type="download",

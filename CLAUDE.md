@@ -1,7 +1,28 @@
 # CLAUDE.md
 
-System prompt for Lobster AI — a professional multi‑agent bioinformatics analysis platform.  
+System prompt for Lobster AI — a professional multi‑agent bioinformatics analysis platform.
 Goal: help senior engineers understand **architecture, file layout, and non‑negotiable rules** with minimal tokens.
+
+---
+
+## 📍 Documentation Navigation
+
+**This document**: Lobster AI engine development guide (agents, services, core architecture)
+**Parent**: `../CLAUDE.md` (Monorepo overview)
+**Related**:
+  - `../lobster-cloud/CLAUDE.md` (Cloud infrastructure & AWS backend)
+  - `../landing/CLAUDE.md` (Marketing website & React frontend)
+  - `../lobster-local/` (Public open-core distribution)
+
+**Detailed documentation**:
+  - `wiki/` (58 pages: user guides, tutorials, API reference, architecture)
+  - `docs/` (17 files: technical specs, PyPI publishing, custom packages)
+  - `../../docs/` (Root: business docs, premium licensing, customer proposals)
+
+**Key external links**:
+  - Premium Licensing: `../../docs/PREMIUM_LICENSING.md`
+  - Testing Guide: `../../docs/PREMIUM_TESTING_CHECKLIST.md`
+  - Custom Packages: `../../docs/CUSTOM_PACKAGES_ACTIVATION_FLOW.md`
 
 ---
 
@@ -778,7 +799,42 @@ Lobster supports FREE, PREMIUM, and ENTERPRISE tiers. Features/agents can be gat
 
 **Commands**: `lobster activate <key>`, `lobster status` (shows tier)
 
-**Full spec**: `docs/premium_lobster_architecture.md`
+**Full spec**: See root repository `../../docs/PREMIUM_LICENSING.md` (comprehensive implementation guide)
+
+### 4.12 Custom Package Development
+
+**Purpose**: Customer-specific premium packages (`lobster-custom-{customer}`) that extend `lobster-ai` with enterprise features.
+
+**Template Location**: `/Users/tyo/GITHUB/omics-os/lobster-custom-template/` (copy-and-customize approach)
+
+**Quick Workflow**:
+1. Copy template → replace `TEMPLATE` with customer name
+2. Add premium files from `lobster/` (check `scripts/public_allowlist.txt` for excluded files)
+3. Update imports: `lobster.*` → `lobster_custom_{customer}.*`
+4. Build & upload to S3: `s3://lobster-license-packages-649207544517/{customer}/`
+
+**Key Files**:
+- `lobster-custom-template/README.md` - Comprehensive guide (versioning, testing, deployment, troubleshooting)
+- `lobster/config/subscription_tiers.py` - Premium feature definitions (single source of truth)
+- `lobster/scripts/public_allowlist.txt` - Files excluded from public PyPI package (prefix `!`)
+- `lobster-custom-databiomix/` - Reference implementation (v2.0.5)
+
+**Critical Rules**:
+1. **Import paths**: ALL `lobster.*` imports MUST become `lobster_custom_{customer}.*` (except public files)
+2. **Dependencies**: Copy ALL transitive dependencies (check imports recursively)
+3. **Versioning**: Track lobster-ai version (e.g., `0.3.4.1` for lobster-ai 0.3.4.x)
+4. **Testing**: Test in clean environment with fresh `lobster-ai` install
+5. **Plugin registration**: Entry point in `pyproject.toml` + `register_agents()` in `__init__.py`
+
+**Common Pattern** (premium core module):
+```python
+# Custom package copies lobster/core/publication_queue.py
+# Update internal imports:
+from lobster.core.schemas.publication_queue import ...  # ❌ WRONG
+from lobster_custom_{customer}.core.schemas.publication_queue import ...  # ✅ CORRECT
+```
+
+**See**: `lobster-custom-template/README.md` for complete workflow, pitfalls, and deployment checklist.
 
 ---
 
