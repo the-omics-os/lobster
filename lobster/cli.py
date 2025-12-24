@@ -2966,6 +2966,44 @@ def status():
     )
     console.print()
 
+    # Check initialization status
+    env_file = Path.cwd() / ".env"
+    is_initialized = env_file.exists()
+
+    if is_initialized:
+        console.print("[bold]Initialization:[/bold] ✅ Configured")
+        # Try to detect provider from .env
+        try:
+            from dotenv import dotenv_values
+            env_vars = dotenv_values(env_file)
+            provider = env_vars.get("LOBSTER_LLM_PROVIDER")
+            if provider:
+                console.print(f"[dim]Provider: {provider}[/dim]")
+            else:
+                # Auto-detect from available keys
+                if env_vars.get("ANTHROPIC_API_KEY"):
+                    console.print("[dim]Provider: anthropic (auto-detected)[/dim]")
+                elif env_vars.get("AWS_BEDROCK_ACCESS_KEY"):
+                    console.print("[dim]Provider: bedrock (auto-detected)[/dim]")
+                elif env_vars.get("OLLAMA_BASE_URL"):
+                    console.print("[dim]Provider: ollama (auto-detected)[/dim]")
+        except Exception:
+            pass  # Silently skip if dotenv not available
+        console.print(f"[dim]Config file: {env_file}[/dim]")
+    else:
+        console.print("[bold]Initialization:[/bold] ❌ Not configured")
+        console.print(
+            Panel.fit(
+                "[yellow]⚠️  Lobster is not initialized yet[/yellow]\n\n"
+                f"Run: [bold {LobsterTheme.PRIMARY_ORANGE}]lobster init[/bold {LobsterTheme.PRIMARY_ORANGE}]\n\n"
+                "[dim]This will configure your LLM provider (Anthropic/Bedrock/Ollama)[/dim]",
+                border_style="yellow",
+                padding=(1, 2),
+            )
+        )
+
+    console.print()
+
     # Get entitlement status
     try:
         from lobster.core.license_manager import get_entitlement_status
@@ -3371,6 +3409,9 @@ def init(
         "--ollama-model",
         help="Ollama model name (default: llama3:8b-instruct, non-interactive mode)",
     ),
+    gemini_key: Optional[str] = typer.Option(
+        None, "--gemini-key", help="Google API key (non-interactive mode)"
+    ),
     profile: Optional[str] = typer.Option(
         None,
         "--profile",
@@ -3475,10 +3516,11 @@ def init(
         has_anthropic = anthropic_key is not None
         has_bedrock = bedrock_access_key is not None and bedrock_secret_key is not None
         has_ollama = use_ollama
+        has_gemini = gemini_key is not None
 
         # Validate at least one provider
         valid, error_msg = provider_setup.validate_provider_choice(
-            has_anthropic, has_bedrock, has_ollama
+            has_anthropic, has_bedrock, has_ollama, has_gemini
         )
         if not valid:
             console.print(f"[red]❌ Error: {error_msg}[/red]")
@@ -3489,11 +3531,12 @@ def init(
                 "  • AWS Bedrock: --bedrock-access-key=xxx --bedrock-secret-key=xxx"
             )
             console.print("  • Ollama (Local): --use-ollama")
+            console.print("  • Google Gemini: --gemini-key=xxx")
             raise typer.Exit(1)
 
         # Warn if multiple providers
         priority_warning = provider_setup.get_provider_priority_warning(
-            has_anthropic, has_bedrock, has_ollama
+            has_anthropic, has_bedrock, has_ollama, has_gemini
         )
         if priority_warning:
             console.print(f"[yellow]⚠️  Warning: {priority_warning}[/yellow]")
@@ -3545,6 +3588,13 @@ def init(
                 if ollama_model:
                     config_dict["ollama_model"] = ollama_model
                 console.print("[green]✓ Ollama provider configured[/green]")
+        elif has_gemini:
+            config = provider_setup.create_gemini_config(gemini_key)
+            if config.success:
+                for key, value in config.env_vars.items():
+                    env_lines.append(f"{key}={value}")
+                config_dict["provider"] = "gemini"
+                console.print("[green]✓ Gemini provider configured[/green]")
 
         # Write profile configuration (only for Anthropic/Bedrock)
         if selected_profile:
@@ -3609,10 +3659,11 @@ def init(
         )
         console.print("  [cyan]2[/cyan] - AWS Bedrock - Production, enterprise use")
         console.print("  [cyan]3[/cyan] - Ollama (Local) - Privacy, zero cost, offline")
+        console.print("  [cyan]4[/cyan] - Google Gemini - Latest models with thinking support")
         console.print()
 
         provider = Prompt.ask(
-            "[bold white]Choose provider[/bold white]", choices=["1", "2", "3"], default="1"
+            "[bold white]Choose provider[/bold white]", choices=["1", "2", "3", "4"], default="1"
         )
 
         env_lines = []
@@ -3662,7 +3713,7 @@ def init(
             env_lines.append(f"AWS_BEDROCK_SECRET_ACCESS_KEY={secret_key.strip()}")
             config_dict["provider"] = "bedrock"
 
-        else:  # provider == "3"
+        elif provider == "3":  # provider == "3"
             # Ollama (local LLM) setup using provider_setup module
             console.print("\n[bold white]🏠 Ollama (Local LLM) Configuration[/bold white]")
             console.print("Ollama runs models locally - no API keys needed!\n")
@@ -3777,6 +3828,28 @@ def init(
 
                 console.print("[green]✓ Ollama provider configured[/green]")
 
+        elif provider == "4":
+            # Google Gemini setup
+            console.print("\n[bold white]🔑 Google Gemini Configuration[/bold white]")
+            console.print(
+                "Get your API key from: [link]https://aistudio.google.com/apikey[/link]\n"
+            )
+
+            api_key = Prompt.ask(
+                "[bold white]Enter your Google API key[/bold white]", password=True
+            )
+
+            if not api_key.strip():
+                console.print("[red]❌ API key cannot be empty[/red]")
+                raise typer.Exit(1)
+
+            config = provider_setup.create_gemini_config(api_key)
+            if config.success:
+                for key, value in config.env_vars.items():
+                    env_lines.append(f"{key}={value}")
+                config_dict["provider"] = "gemini"
+                console.print("[green]✓ Gemini provider configured[/green]")
+
         # Profile selection (only for Anthropic/Bedrock providers)
         profile_to_write = None
         if provider in ["1", "2"]:  # Anthropic or Bedrock
@@ -3812,9 +3885,9 @@ def init(
             config_dict["profile"] = profile_to_write
             console.print(f"[green]✓ Profile set to: {profile_to_write}[/green]")
 
-        elif provider == "3":  # Ollama
-            # No profile needed - Ollama uses local models
-            console.print("[dim]ℹ️  Note: Ollama uses local models (profile configuration not applicable)[/dim]")
+        elif provider in ["3", "4"]:  # Ollama or Gemini
+            # No profile needed - Ollama uses local models, Gemini uses its own models
+            console.print("[dim]ℹ️  Note: Profile configuration not applicable for this provider[/dim]")
 
         # Optional NCBI key(s) - supports multiple for parallelization
         console.print("\n[bold white]📚 NCBI API Key(s) (Optional)[/bold white]")
@@ -3876,19 +3949,62 @@ def init(
                 )
 
         # Optional Premium/Cloud configuration
-        console.print("\n[bold white]⭐ Premium Features (Optional)[/bold white]")
-        console.print("Unlock advanced agents and cloud processing capabilities.")
-        console.print("Options:")
-        console.print("  [cyan]1[/cyan] - Skip (stay on Free tier)")
-        console.print("  [cyan]2[/cyan] - I have an activation code")
-        console.print("  [cyan]3[/cyan] - I have a cloud API key")
-        console.print()
+        # First check if license is already activated
+        existing_license = None
+        try:
+            from lobster.core.license_manager import load_entitlement
+            entitlement = load_entitlement()
+            if entitlement.get("tier") != "free" and entitlement.get("source") in ["license_file", "cloud_key"]:
+                existing_license = entitlement
+        except Exception:
+            pass  # No license or error loading
 
-        premium_choice = Prompt.ask(
-            "[bold white]Choose option[/bold white]",
-            choices=["1", "2", "3"],
-            default="1",
-        )
+        if existing_license and not force:
+            # License already activated - show status and skip prompt (unless --force)
+            tier = existing_license.get("tier", "premium").title()
+            tier_emoji = {"premium": "⭐", "enterprise": "🏢"}.get(existing_license.get("tier"), "⭐")
+            console.print(f"\n[bold white]{tier_emoji} Premium Features[/bold white]")
+            console.print(f"[green]✓ License already activated: {tier} tier[/green]")
+            console.print(f"[dim]Source: {existing_license.get('source')}[/dim]")
+
+            # Show installed custom packages if any
+            try:
+                from lobster.core.plugin_loader import get_installed_packages
+                packages = get_installed_packages()
+                custom_pkgs = [p for p in packages.keys() if "lobster-custom-" in p]
+                if custom_pkgs:
+                    console.print(f"[dim]Custom packages: {', '.join(custom_pkgs)}[/dim]")
+            except Exception:
+                pass
+
+            console.print()
+            console.print(
+                f"[dim]Your {tier} license is preserved. Use [bold]lobster init --force[/bold] to reconfigure.[/dim]"
+            )
+            console.print()
+            # Skip premium configuration since already activated
+            premium_choice = "1"  # Set to skip
+        else:
+            # No license OR force flag used - show options
+            if existing_license and force:
+                console.print("\n[yellow]⚠️  Existing license detected but --force flag used[/yellow]")
+                tier = existing_license.get("tier", "premium").title()
+                console.print(f"[dim]Current: {tier} tier from {existing_license.get('source')}[/dim]")
+                console.print()
+
+            console.print("[bold white]⭐ Premium Features (Optional)[/bold white]")
+            console.print("Unlock advanced agents and cloud processing capabilities.")
+            console.print("Options:")
+            console.print("  [cyan]1[/cyan] - Skip (stay on Free tier)" + (" [yellow](will preserve existing license)[/yellow]" if existing_license and force else ""))
+            console.print("  [cyan]2[/cyan] - I have an activation code")
+            console.print("  [cyan]3[/cyan] - I have a cloud API key")
+            console.print()
+
+            premium_choice = Prompt.ask(
+                "[bold white]Choose option[/bold white]",
+                choices=["1", "2", "3"],
+                default="1",
+            )
 
         if premium_choice == "2":
             # Activation code - activate license immediately
