@@ -430,6 +430,106 @@ Centralized configuration management with **clean provider abstraction** (refact
 - **Settings Management** - Environment-aware configuration (API keys, logging)
 - **Model Configuration** - Profile-based model selection with runtime overrides
 - **Adapter Registry** - Dynamic data format support
+- **Configuration Constants** - Single source of truth for valid providers/profiles (v0.4.0+)
+- **Configuration Base Classes** - Shared validation via abstract base classes (v0.4.0+)
+
+#### Configuration Constants + Base Class Pattern (v0.4.0+)
+
+**Problem**: Adding new LLM providers (Gemini, OpenAI, etc.) required changes in 4+ files with duplicate validation logic, violating DRY principles.
+
+**Solution**: Single source of truth for constants + abstract base class with shared Pydantic validation.
+
+```mermaid
+graph TB
+    subgraph "Single Source of Truth"
+        CONST[constants.py<br/>VALID_PROVIDERS<br/>VALID_PROFILES<br/>PROVIDER_DISPLAY_NAMES]
+    end
+
+    subgraph "Abstract Base Class"
+        BASE[base_config.py<br/>ProviderConfigBase<br/>Abstract Properties<br/>Shared Validation]
+    end
+
+    subgraph "Configuration Classes"
+        WORKSPACE[WorkspaceProviderConfig<br/>provider_field_name: global_provider<br/>model_field_suffix: _model]
+        GLOBAL[GlobalProviderConfig<br/>provider_field_name: default_provider<br/>model_field_suffix: _default_model]
+    end
+
+    subgraph "Consumers"
+        RESOLVER[config_resolver.py<br/>Priority Resolution]
+        SETUP[provider_setup.py<br/>CLI Wizard Logic]
+        CLIENT[client.py<br/>Client Initialization]
+    end
+
+    CONST --> BASE
+    BASE --> WORKSPACE
+    BASE --> GLOBAL
+
+    CONST --> RESOLVER
+    CONST --> SETUP
+
+    WORKSPACE --> RESOLVER
+    GLOBAL --> RESOLVER
+    RESOLVER --> CLIENT
+
+    style CONST fill:#e8f5e9,stroke:#2e7d32,stroke-width:3px
+    style BASE fill:#e3f2fd,stroke:#1565c0,stroke-width:3px
+    style WORKSPACE fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style GLOBAL fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style RESOLVER fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+```
+
+**Architecture Benefits**:
+- **~120 lines removed**: Eliminated duplicate validation logic across 4 files
+- **Single file change**: Adding new provider requires updating only `constants.py`
+- **Type safety**: `Final[List[str]]` ensures immutability
+- **Automatic propagation**: Changes in constants immediately affect all consumers
+- **Pydantic validation**: `@model_validator(mode="before")` provides shared validation
+
+**Implementation Details**:
+
+| File | Purpose | Key Elements |
+|------|---------|--------------|
+| `constants.py` | Single source of truth | `VALID_PROVIDERS = ["anthropic", "bedrock", "ollama", "gemini"]` |
+| `base_config.py` | Abstract base class | `ProviderConfigBase` with `@model_validator`, abstract properties |
+| `workspace_config.py` | Workspace config | Inherits from `ProviderConfigBase`, uses `_model` suffix |
+| `global_config.py` | Global config | Inherits from `ProviderConfigBase`, uses `_default_model` suffix |
+| `config_resolver.py` | Resolution logic | Imports `VALID_PROVIDERS` for validation |
+
+**Adding a New Provider (5-Step Process)**:
+
+```python
+# 1. Update constants.py (ONLY file that needs editing for validation)
+VALID_PROVIDERS: Final[List[str]] = ["anthropic", "bedrock", "ollama", "gemini", "openai"]
+PROVIDER_DISPLAY_NAMES["openai"] = "OpenAI API"
+
+# 2. Add provider class (new file)
+# lobster/config/providers/openai_provider.py
+class OpenAIProvider(BaseProvider):
+    # ~150 lines of implementation
+
+# 3. Register in registry.py
+PROVIDER_REGISTRY.register("openai", OpenAIProvider)
+
+# 4. Update config field definitions (workspace + global)
+# workspace_config.py: openai_model: Optional[str] = None
+# global_config.py: openai_default_model: Optional[str] = None
+
+# 5. Update CLI wizard (cli.py + provider_setup.py)
+# Add OpenAI option to lobster init
+
+# That's it! Validation automatically includes OpenAI across all config classes.
+```
+
+**Before vs After**:
+
+| Aspect | Before (Duplicated) | After (Refactored) |
+|--------|---------------------|-------------------|
+| Files to change | 4+ files (workspace_config, global_config, config_resolver, client) | 1 file (constants.py) |
+| Validation logic | ~120 lines duplicated | Shared in base class |
+| Type safety | Manual list literals | `Final[List[str]]` |
+| Maintainability | High risk of inconsistency | Guaranteed consistency |
+
+For complete documentation, see **[Configuration Guide - Configuration Architecture (Advanced)](03-configuration.md#configuration-architecture-advanced)**.
 
 #### Provider Abstraction Architecture (v0.4.0+)
 

@@ -627,6 +627,182 @@ lobster init --non-interactive \
 
 For advanced users, you can manually edit the `.env` file in your working directory. See the [Environment Variables](#environment-variables) and [API Key Management](#api-key-management) sections for details on available settings.
 
+## Configuration Architecture (Advanced)
+
+For developers extending Lobster AI or understanding the configuration system internals, this section documents the architecture patterns used for configuration management.
+
+### Single Source of Truth Pattern
+
+As of v0.4.0+, Lobster AI uses a **constants module** as the single source of truth for valid providers and profiles. This eliminates code duplication and ensures consistency across the codebase.
+
+**File**: `lobster/config/constants.py`
+
+```python
+from typing import Final, List
+
+# Valid LLM providers (single source of truth)
+VALID_PROVIDERS: Final[List[str]] = ["anthropic", "bedrock", "ollama", "gemini"]
+
+# Valid model profiles
+VALID_PROFILES: Final[List[str]] = ["development", "production", "ultra", "godmode", "hybrid"]
+
+# Provider display names for user interfaces
+PROVIDER_DISPLAY_NAMES: Final[dict] = {
+    "anthropic": "Anthropic Direct API",
+    "bedrock": "AWS Bedrock",
+    "ollama": "Ollama (Local)",
+    "gemini": "Google Gemini",
+}
+```
+
+**Benefits:**
+- **No duplication**: Adding a new provider requires updating only `constants.py`
+- **Type safety**: `Final[List[str]]` ensures immutability
+- **Centralized**: All consumers import from same location
+- **Maintainable**: Changes propagate automatically to all config classes
+
+### Abstract Base Class Pattern
+
+Configuration classes inherit from `ProviderConfigBase`, which provides shared validation logic and abstract properties.
+
+**File**: `lobster/config/base_config.py`
+
+```python
+import abc
+from pydantic import BaseModel, model_validator
+from lobster.config.constants import VALID_PROVIDERS, VALID_PROFILES
+
+class ProviderConfigBase(BaseModel, abc.ABC):
+    """Abstract base for WorkspaceProviderConfig and GlobalProviderConfig."""
+
+    @property
+    @abc.abstractmethod
+    def provider_field_name(self) -> str:
+        """Name of the provider field (e.g., 'global_provider', 'default_provider')."""
+        pass
+
+    @property
+    @abc.abstractmethod
+    def model_field_suffix(self) -> str:
+        """Suffix for model fields (e.g., '_model', '_default_model')."""
+        pass
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_providers_and_profiles(cls, data):
+        """Shared validation for provider and profile fields."""
+        # Validates global_provider, default_provider, profile, per_agent_providers
+        # Uses VALID_PROVIDERS and VALID_PROFILES from constants.py
+        ...
+
+    def get_model_for_provider(self, provider: str) -> Optional[str]:
+        """Get model name for provider (e.g., 'anthropic' -> 'anthropic_model')."""
+        field_name = f"{provider}{self.model_field_suffix}"
+        return getattr(self, field_name, None)
+```
+
+**Benefits:**
+- **Shared validation**: Pydantic `model_validator` ensures consistency
+- **Explicit contracts**: Abstract properties enforce implementation
+- **DRY principle**: ~120 lines of duplicated code removed
+- **Extensible**: Adding validation logic applies to all config classes
+
+### Configuration Classes
+
+**WorkspaceProviderConfig** (`lobster/config/workspace_config.py`):
+```python
+from lobster.config.base_config import ProviderConfigBase
+
+class WorkspaceProviderConfig(ProviderConfigBase):
+    """Workspace-specific provider configuration."""
+
+    @property
+    def provider_field_name(self) -> str:
+        return "global_provider"
+
+    @property
+    def model_field_suffix(self) -> str:
+        return "_model"
+
+    # Fields: global_provider, anthropic_model, bedrock_model, ollama_model, gemini_model, etc.
+```
+
+**GlobalProviderConfig** (`lobster/config/global_config.py`):
+```python
+from lobster.config.base_config import ProviderConfigBase
+
+class GlobalProviderConfig(ProviderConfigBase):
+    """Global provider configuration."""
+
+    @property
+    def provider_field_name(self) -> str:
+        return "default_provider"
+
+    @property
+    def model_field_suffix(self) -> str:
+        return "_default_model"
+
+    # Fields: default_provider, anthropic_default_model, bedrock_default_model, etc.
+```
+
+### Configuration Priority System
+
+Lobster AI uses a **6-level priority system** for configuration resolution:
+
+```
+1. Runtime overrides (highest priority)
+   ↓
+2. Workspace config (.lobster_workspace/.config.yaml)
+   ↓
+3. Global config (~/.lobster/global_config.yaml)
+   ↓
+4. Environment variables (.env)
+   ↓
+5. Auto-detection (e.g., Ollama server check)
+   ↓
+6. Defaults (lowest priority)
+```
+
+**Implementation**: `lobster/core/config_resolver.py` imports from `constants.py` and resolves configuration using the priority chain.
+
+### Adding a New Provider (Developer Guide)
+
+To add a new LLM provider (e.g., "openai"):
+
+1. **Update constants** (`lobster/config/constants.py`):
+   ```python
+   VALID_PROVIDERS: Final[List[str]] = ["anthropic", "bedrock", "ollama", "gemini", "openai"]
+   PROVIDER_DISPLAY_NAMES["openai"] = "OpenAI API"
+   ```
+
+2. **Add provider class** (`lobster/config/providers/openai_provider.py`):
+   ```python
+   class OpenAIProvider(BaseProvider):
+       """OpenAI provider implementation."""
+       ...
+   ```
+
+3. **Register provider** (`lobster/config/providers/registry.py`):
+   ```python
+   PROVIDER_REGISTRY.register("openai", OpenAIProvider)
+   ```
+
+4. **Update config fields**:
+   - `workspace_config.py`: Add `openai_model: Optional[str] = None`
+   - `global_config.py`: Add `openai_default_model: Optional[str] = None`
+   - Update `reset()` and `set_model_for_provider()` methods
+
+5. **Update CLI** (`lobster/cli.py`):
+   - Add OpenAI option to `lobster init` wizard
+   - Add provider setup logic in `provider_setup.py`
+
+6. **Regenerate allowlist**:
+   ```bash
+   python scripts/generate_allowlist.py --write
+   ```
+
+The constants pattern ensures that provider validation automatically includes the new provider across all configuration classes without additional changes.
+
 ## Security Best Practices
 
 -   **Never commit `.env` files** to version control.

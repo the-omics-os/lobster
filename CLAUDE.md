@@ -66,13 +66,14 @@ Users interact via natural language to:
 
 ### 1.5 LLM Provider System
 
-Lobster supports **3 LLM providers** via modular, testable architecture:
+Lobster supports **4 LLM providers** via modular, testable architecture:
 
 | Provider | Type | Setup | Use Case |
 |----------|------|-------|----------|
 | **Ollama** | Local | `ollama pull gpt-oss:20b` | Privacy, zero cost, offline |
 | **Anthropic Direct** | Cloud | API key | Fastest, best quality |
 | **AWS Bedrock** | Cloud | AWS credentials | Enterprise, compliance |
+| **Google Gemini** | Cloud | Google API key | Multimodal, long context |
 
 **Architecture** (separation of concerns):
 ```
@@ -87,9 +88,11 @@ CLI (cli.py)                 → Logic (provider_setup.py)      → Factory (llm
 - `lobster/config/provider_setup.py`: **NEW** - Pure provider logic (detection, validation, config creation)
 - `lobster/config/llm_factory.py`: Model instantiation + provider enum
 - `lobster/config/settings.py`: Environment configuration
+- `lobster/config/constants.py`: **v0.4.0+** - Single source of truth for VALID_PROVIDERS (eliminates duplication)
+- `lobster/config/base_config.py`: **v0.4.0+** - Abstract base class for config validation (Pydantic)
 - `lobster/cli.py`: User-facing commands (`lobster init`, `lobster config-show`)
 
-**Auto-detection priority**: Explicit `LOBSTER_LLM_PROVIDER` → Ollama (if running) → Anthropic → Bedrock
+**Auto-detection priority**: Explicit `LOBSTER_LLM_PROVIDER` → Ollama (if running) → Anthropic → Bedrock → Gemini
 
 **User configuration**: Via `lobster init` wizard (recommended) or manual `.env` editing.
 
@@ -349,6 +352,10 @@ lobster/
 | CLI | `cli.py` | User-facing commands, Rich output (presentation layer) |
 | LLM Config | `config/provider_setup.py` | **NEW**: Provider detection, validation, config creation (pure logic, testable) |
 | LLM Factory | `config/llm_factory.py` | Model instantiation, provider enum |
+| Config Constants | `config/constants.py` | **v0.4.0+**: Single source of truth for VALID_PROVIDERS, VALID_PROFILES (eliminates duplication) |
+| Config Base | `config/base_config.py` | **v0.4.0+**: Abstract base class with shared validation (Pydantic model_validator, abstract properties) |
+| Workspace Config | `config/workspace_config.py` | Workspace-specific config (inherits ProviderConfigBase, uses `_model` suffix) |
+| Global Config | `config/global_config.py` | Global config (inherits ProviderConfigBase, uses `_default_model` suffix) |
 | Client | `core/client.py`, `core/api_client.py` | local vs cloud clients |
 | Graph | `agents/graph.py` | `create_bioinformatics_graph()` |
 | Agents | `agents/*.py` | supervisor + specialists |
@@ -587,6 +594,21 @@ AGENT_REGISTRY = {
 ```
 
 Adding a new agent should be **registry‑only** wherever possible. For premium-only agents, use entry points in custom packages (see Component Registry pattern below).
+
+- **Configuration Constants + Base Class pattern** (`config/constants.py`, `config/base_config.py`): **v0.4.0+ refactoring**
+  - **Problem**: Adding new LLM providers required changes in 4+ files (workspace_config.py, global_config.py, config_resolver.py, client.py) with identical validation logic
+  - **Solution**: Single source of truth + abstract base class with shared validation
+  - **constants.py**: `VALID_PROVIDERS`, `VALID_PROFILES`, `PROVIDER_DISPLAY_NAMES` (immutable via `Final[List[str]]`)
+  - **base_config.py**: `ProviderConfigBase` abstract class with:
+    - `@model_validator(mode="before")` for shared Pydantic validation
+    - Abstract properties: `provider_field_name`, `model_field_suffix` (enforces contracts)
+    - Shared method: `get_model_for_provider(provider)` → model name
+  - **Inheritance**:
+    - `WorkspaceProviderConfig(ProviderConfigBase)`: uses `_model` suffix (e.g., `anthropic_model`)
+    - `GlobalProviderConfig(ProviderConfigBase)`: uses `_default_model` suffix (e.g., `anthropic_default_model`)
+  - **Benefits**: ~120 lines of duplicated code removed, adding new provider = 1 file change (constants.py)
+  - **Rule**: When adding LLM providers, update `constants.py` FIRST, then provider-specific files
+  - **Doc**: See `wiki/03-configuration.md` "Configuration Architecture (Advanced)" section
 
 - **Component Registry pattern** (`core/component_registry.py`): **PEP 420 namespace packages** for premium features
   - **Architecture**: Entry points → ComponentRegistry → Services + Agents
