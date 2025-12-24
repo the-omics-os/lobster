@@ -253,6 +253,8 @@ lobster/config/provider_setup.py
 lobster/config/supervisor_config.py
 lobster/config/workspace_config.py
 lobster/config/global_config.py
+lobster/config/constants.py
+lobster/config/base_config.py
 lobster/config/README_CONFIGURATION.md
 lobster/config/README_THINKING.md
 
@@ -263,6 +265,7 @@ lobster/config/providers/registry.py
 lobster/config/providers/anthropic_provider.py
 lobster/config/providers/bedrock_provider.py
 lobster/config/providers/ollama_provider.py
+lobster/config/providers/gemini_provider.py
 
 
 # =============================================================================

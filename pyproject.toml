@@ -41,7 +41,8 @@ dependencies = [
     "langchain>=0.1.0",
     "langchain-community>=0.0.10",
     "langchain-aws>=0.1.0",
-    "langgraph==0.6.7",
+    "langgraph>=1.0.5",
+    "langchain-google-genai>=4.1.2",
     # Bioinformatics (bumped versions for Python 3.12 support)
     "llvmlite==0.44.0", # explicit to avoid old version being pulled
     "scipy>=1.10.0",
