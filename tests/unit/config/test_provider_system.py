@@ -38,11 +38,12 @@ def test_provider_registry_initialization():
     # Trigger initialization
     providers = ProviderRegistry.get_provider_names()
 
-    # Should have all 3 providers registered
+    # Should have all 4 providers registered
     assert "anthropic" in providers
     assert "bedrock" in providers
     assert "ollama" in providers
-    assert len(providers) == 3
+    assert "gemini" in providers
+    assert len(providers) == 4
 
 
 def test_get_provider():
@@ -219,6 +220,79 @@ def test_ollama_provider_is_available(mock_get):
     # Connection error
     mock_get.side_effect = Exception("Connection refused")
     assert not provider.is_available()
+
+
+# =============================================================================
+# Gemini Provider Tests
+# =============================================================================
+
+
+def test_gemini_provider_basic():
+    """Test GeminiProvider basic properties."""
+    provider = get_provider("gemini")
+    assert provider is not None
+    assert provider.name == "gemini"
+    assert "Gemini" in provider.display_name
+
+
+def test_gemini_provider_is_configured():
+    """Test Gemini configuration detection."""
+    provider = get_provider("gemini")
+
+    # Without API key
+    with patch.dict(os.environ, {}, clear=True):
+        assert not provider.is_configured()
+
+    # With GOOGLE_API_KEY
+    with patch.dict(os.environ, {"GOOGLE_API_KEY": "test-key"}, clear=True):
+        assert provider.is_configured()
+
+    # With GEMINI_API_KEY (fallback)
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=True):
+        assert provider.is_configured()
+
+
+def test_gemini_provider_list_models():
+    """Test Gemini model listing."""
+    provider = get_provider("gemini")
+    models = provider.list_models()
+
+    assert len(models) >= 2
+    assert all(isinstance(m, ModelInfo) for m in models)
+    assert all(m.provider == "gemini" for m in models)
+
+    # Check default model exists
+    default_models = [m for m in models if m.is_default]
+    assert len(default_models) == 1
+    assert "gemini-3-pro" in default_models[0].name
+
+
+def test_gemini_provider_get_default_model():
+    """Test Gemini default model selection."""
+    provider = get_provider("gemini")
+    default = provider.get_default_model()
+
+    assert default is not None
+    assert default == "gemini-3-pro-preview"
+
+
+def test_gemini_provider_validate_model():
+    """Test Gemini model validation."""
+    provider = get_provider("gemini")
+
+    # Valid models
+    assert provider.validate_model("gemini-3-pro-preview")
+    assert provider.validate_model("gemini-3-flash-preview")
+
+    # Invalid models
+    assert not provider.validate_model("gpt-4")
+    assert not provider.validate_model("claude-sonnet-4-20250514")
+
+
+def test_provider_registry_includes_gemini():
+    """Test that Gemini is registered in ProviderRegistry."""
+    providers = ProviderRegistry.get_provider_names()
+    assert "gemini" in providers
 
 
 # =============================================================================
@@ -527,6 +601,7 @@ def test_llm_provider_enum_still_exists():
     assert LLMProvider.ANTHROPIC_DIRECT.value == "anthropic"
     assert LLMProvider.BEDROCK_ANTHROPIC.value == "bedrock"
     assert LLMProvider.OLLAMA.value == "ollama"
+    assert LLMProvider.GEMINI.value == "gemini"
 
 
 def test_create_llm_convenience_function():
