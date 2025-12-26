@@ -58,8 +58,12 @@ from tests.mock_data.factories import SingleCellDataFactory
 
 
 @pytest.fixture
-def mock_data_manager(tmp_path):
-    """Create mock data manager with pseudobulk-ready data."""
+def mock_data_manager(mock_provider_config, tmp_path):
+    """Create mock data manager with pseudobulk-ready data.
+
+    Note: This fixture now requires mock_provider_config to ensure LLM
+    creation works properly in the refactored provider system.
+    """
     from pathlib import Path
 
     mock_dm = Mock(spec=DataManagerV2)

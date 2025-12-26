@@ -212,6 +212,7 @@ class TestWorkspaceProviderConfig:
 # =============================================================================
 
 
+@pytest.mark.no_auto_config
 class TestGlobalProviderConfig:
     """Test global user configuration functionality."""
 
@@ -302,6 +303,7 @@ class TestGlobalProviderConfig:
 # =============================================================================
 
 
+@pytest.mark.no_auto_config
 class TestConfigResolver:
     """Test configuration resolution with priority hierarchy."""
 

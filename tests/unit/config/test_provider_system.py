@@ -300,8 +300,11 @@ def test_provider_registry_includes_gemini():
 # =============================================================================
 
 
+@pytest.mark.no_auto_config
 def test_config_resolver_fails_without_config(tmp_path):
     """Test that ConfigResolver raises ConfigurationError when not configured."""
+    # Reset singleton to ensure clean state
+    ConfigResolver.reset_instance()
     resolver = ConfigResolver.get_instance(tmp_path)
 
     with pytest.raises(ConfigurationError) as exc_info:
@@ -312,8 +315,10 @@ def test_config_resolver_fails_without_config(tmp_path):
     assert "lobster init" in exc_info.value.help_text
 
 
+@pytest.mark.no_auto_config
 def test_config_resolver_with_runtime_override(tmp_path):
     """Test that runtime override works without config file."""
+    ConfigResolver.reset_instance()
     resolver = ConfigResolver.get_instance(tmp_path)
 
     provider, source = resolver.resolve_provider(runtime_override="anthropic")
@@ -321,9 +326,12 @@ def test_config_resolver_with_runtime_override(tmp_path):
     assert source == "runtime flag --provider"
 
 
+@pytest.mark.no_auto_config
 def test_config_resolver_with_workspace_config(tmp_path):
     """Test that workspace config is respected."""
     from lobster.config.workspace_config import WorkspaceProviderConfig
+
+    ConfigResolver.reset_instance()
 
     # Create workspace config
     workspace_path = tmp_path / ".lobster_workspace"
@@ -340,9 +348,12 @@ def test_config_resolver_with_workspace_config(tmp_path):
     assert source == "workspace config"
 
 
+@pytest.mark.no_auto_config
 def test_config_resolver_priority_order(tmp_path):
     """Test that runtime override beats workspace config."""
     from lobster.config.workspace_config import WorkspaceProviderConfig
+
+    ConfigResolver.reset_instance()
 
     # Create workspace config with bedrock
     workspace_path = tmp_path / ".lobster_workspace"
@@ -364,9 +375,12 @@ def test_config_resolver_priority_order(tmp_path):
 # =============================================================================
 
 
+@pytest.mark.no_auto_config
 def test_llm_factory_fails_without_config(tmp_path):
     """Test that LLMFactory raises ConfigurationError when not configured."""
     from lobster.config.llm_factory import LLMFactory
+
+    ConfigResolver.reset_instance()
 
     with pytest.raises(ConfigurationError):
         LLMFactory.create_llm(

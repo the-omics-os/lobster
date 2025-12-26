@@ -111,8 +111,12 @@ def temp_agent_registry():
 
 
 @pytest.fixture
-def mock_data_manager():
-    """Create mock data manager for agent testing."""
+def mock_data_manager(mock_provider_config):
+    """Create mock data manager for agent testing.
+
+    Note: This fixture now requires mock_provider_config to ensure LLM
+    creation works properly in the refactored provider system.
+    """
     with patch("lobster.core.data_manager_v2.DataManagerV2") as MockDataManager:
         mock_dm = MockDataManager.return_value
         mock_dm.list_modalities.return_value = ["test_modality_1", "test_modality_2"]
@@ -663,17 +667,16 @@ class TestRegistryPersistenceLoading:
         """Test that default agents are properly registered."""
         agent_names = get_all_agent_names()
 
-        # Check for expected default agents
-        # NOTE: v2.5+ unified agents - singlecell/bulk → transcriptomics_expert, ms/affinity proteomics → proteomics_expert
+        # Check for expected FREE TIER agents (base package only)
+        # Premium agents (metadata_assistant, machine_learning_expert, proteomics_expert)
+        # are loaded via plugin system from lobster-premium or lobster-custom-* packages
         expected_agents = [
             "data_expert_agent",
             "transcriptomics_expert",
-            "proteomics_expert",
+            "annotation_expert",  # Sub-agent of transcriptomics_expert
+            "de_analysis_expert",  # Sub-agent of transcriptomics_expert
             "research_agent",
-            # "method_expert_agent",  # DEPRECATED v2.2+: merged into research_agent
-            "machine_learning_expert_agent",
             "visualization_expert_agent",
-            "metadata_assistant",
             "protein_structure_visualization_expert_agent",
         ]
 

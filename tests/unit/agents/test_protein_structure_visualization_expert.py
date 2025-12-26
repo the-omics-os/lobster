@@ -27,8 +27,12 @@ from lobster.tools.providers.pdb_provider import PDBStructureMetadata
 
 
 @pytest.fixture
-def mock_data_manager(tmp_path):
-    """Create mock DataManagerV2 instance."""
+def mock_data_manager(mock_provider_config, tmp_path):
+    """Create mock DataManagerV2 instance.
+
+    Note: This fixture now requires mock_provider_config to ensure LLM
+    creation works properly in the refactored provider system.
+    """
     dm = Mock(spec=DataManagerV2)
     dm.workspace_path = str(tmp_path)
     dm.list_modalities.return_value = ["test_modality"]
@@ -424,7 +428,7 @@ class TestProteinStructureVisualizationExpertIntegration:
 class TestErrorHandling:
     """Test error handling in agent tools."""
 
-    def test_exception_handling_in_agent_creation(self):
+    def test_exception_handling_in_agent_creation(self, mock_provider_config):
         """Test that agent creation handles exceptions gracefully."""
         # Even with invalid data manager, agent should be created
         # (errors would occur during tool execution, not creation)

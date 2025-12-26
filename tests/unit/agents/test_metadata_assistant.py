@@ -40,8 +40,12 @@ from lobster.services.metadata.sample_mapping_service import (
 
 
 @pytest.fixture
-def mock_data_manager():
-    """Create mock DataManagerV2 for testing."""
+def mock_data_manager(mock_provider_config):
+    """Create mock DataManagerV2 for testing.
+
+    Note: This fixture now requires mock_provider_config to ensure LLM
+    creation works properly in the refactored provider system.
+    """
     from pathlib import Path
 
     mock_dm = Mock(spec=DataManagerV2)
@@ -118,10 +122,10 @@ class TestMetadataAssistantInit:
             data_manager=mock_data_manager
         )
 
-        # Verify LLM creation
+        # Verify LLM creation (updated for new signature with workspace_path)
         mock_settings_instance.get_agent_llm_params.assert_called_once_with("assistant")
         mock_create_llm.assert_called_once_with(
-            "metadata_assistant", {"param": "value"}
+            "metadata_assistant", {"param": "value"}, workspace_path=None
         )
 
         # Verify agent creation

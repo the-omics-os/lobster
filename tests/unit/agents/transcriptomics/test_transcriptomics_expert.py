@@ -44,8 +44,12 @@ from tests.mock_data.factories import SingleCellDataFactory
 
 
 @pytest.fixture
-def mock_data_manager(tmp_path):
-    """Create mock data manager with single-cell data."""
+def mock_data_manager(mock_provider_config, tmp_path):
+    """Create mock data manager with single-cell data.
+
+    Note: This fixture now requires mock_provider_config to ensure LLM
+    creation works properly in the refactored provider system.
+    """
     from pathlib import Path
 
     mock_dm = Mock(spec=DataManagerV2)
@@ -480,7 +484,7 @@ class TestErrorHandling:
         # Error should be caught at tool execution time
         assert agent is not None
 
-    def test_agent_creation_with_empty_workspace(self, tmp_path):
+    def test_agent_creation_with_empty_workspace(self, mock_provider_config, tmp_path):
         """Test agent creation with empty workspace."""
         from pathlib import Path
 

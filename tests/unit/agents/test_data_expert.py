@@ -46,8 +46,12 @@ class MockState:
 
 
 @pytest.fixture
-def mock_data_manager(mock_agent_environment, tmp_path):
-    """Create mock data manager with modality operations."""
+def mock_data_manager(mock_provider_config, tmp_path):
+    """Create mock data manager with modality operations.
+
+    Note: This fixture now requires mock_provider_config to ensure LLM
+    creation works properly in the refactored provider system.
+    """
     mock_dm = Mock(spec=DataManagerV2)
     mock_dm.list_modalities.return_value = ["geo_gse12345", "custom_dataset"]
     mock_dm.workspace_path = str(tmp_path / "workspace")

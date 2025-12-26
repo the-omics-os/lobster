@@ -92,6 +92,9 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "performance: mark test as a performance benchmark"
     )
+    config.addinivalue_line(
+        "markers", "no_auto_config: skip automatic provider configuration for this test"
+    )
 
 
 def pytest_collection_modifyitems(config, items):
@@ -238,6 +241,7 @@ def mock_agent_environment(
     This fixture provides a unified environment for testing all agents with:
     - Mocked settings that return test API keys
     - Mocked LLM creation to prevent real API calls
+    - Mocked ConfigResolver for provider resolution
     - Isolated workspace and environment variables
     - Mocked agent configurator for consistent agent behavior
 
@@ -251,6 +255,7 @@ def mock_agent_environment(
             - settings: Mocked settings instance
             - llm: Mocked LLM instance
             - agent_config: Mocked agent configurator
+            - config_resolver: Mocked ConfigResolver instance
 
     Example:
         >>> def test_agent(mock_agent_environment):
@@ -269,14 +274,20 @@ def mock_agent_environment(
     mock_settings_instance.llm_provider = "anthropic"
     mock_settings.return_value = mock_settings_instance
 
+    # Mock ConfigResolver.get_instance() to return a mock with proper methods
+    mock_resolver_instance = Mock()
+    mock_resolver_instance.resolve_provider.return_value = ("anthropic", "env")
+    mock_resolver_instance.resolve_model.return_value = ("claude-sonnet-4", "default")
+
+    mock_get_instance = mocker.patch("lobster.core.config_resolver.ConfigResolver.get_instance")
+    mock_get_instance.return_value = mock_resolver_instance
+
     # Mock agent configurator
     mock_agent_config = mocker.patch(
         "lobster.config.agent_config.initialize_configurator"
     )
     mock_agent_config.return_value.get_agent_llm_params.return_value = {
-        "model": "claude-3-sonnet-20240229",
         "temperature": 0.1,
-        "max_tokens": 4096,
     }
 
     # Mock LLM creation to prevent any real API calls
@@ -290,7 +301,108 @@ def mock_agent_environment(
         "settings": mock_settings_instance,
         "llm": mock_llm,
         "agent_config": mock_agent_config.return_value,
+        "config_resolver": mock_resolver_instance,
     }
+
+
+@pytest.fixture(scope="function", autouse=True)
+def auto_mock_provider_config(request, monkeypatch, mocker: MockerFixture) -> Dict[str, Any]:
+    """AUTOUSE: Automatically mock provider configuration for ALL tests.
+
+    This fixture runs automatically for every test to ensure ConfigResolver
+    is properly mocked, preventing "No provider configured" errors.
+
+    The autouse design ensures:
+    - All tests have a valid provider configuration by default
+    - Tests that need custom behavior can override individual mocks
+    - No test can accidentally hit real API endpoints
+
+    Tests can opt-out using @pytest.mark.no_auto_config marker.
+
+    Args:
+        request: Pytest request fixture (for checking markers)
+        monkeypatch: Pytest monkeypatch fixture
+        mocker: Pytest-mock fixture for patching
+
+    Returns:
+        Dict[str, Any]: Provider configuration containing:
+            - provider: Provider name ("anthropic")
+            - model: Model name ("claude-sonnet-4")
+            - config_resolver: Mocked ConfigResolver instance
+            - llm: Mocked LLM instance
+
+    Note:
+        This is autouse=True, so it applies to ALL tests automatically
+        unless marked with @pytest.mark.no_auto_config.
+    """
+    # Skip if test is marked with no_auto_config
+    if "no_auto_config" in request.keywords:
+        return {}
+    # Set environment variable to enable provider
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+    monkeypatch.setenv("LOBSTER_LLM_PROVIDER", "anthropic")
+
+    # Mock ConfigResolver.get_instance() to return a mock with proper methods
+    mock_resolver_instance = Mock()
+    mock_resolver_instance.resolve_provider.return_value = ("anthropic", "env")
+    mock_resolver_instance.resolve_model.return_value = ("claude-sonnet-4", "default")
+    mock_resolver_instance.resolve_profile.return_value = ("production", "default")
+    mock_resolver_instance.is_configured.return_value = True
+
+    mock_get_instance = mocker.patch("lobster.core.config_resolver.ConfigResolver.get_instance")
+    mock_get_instance.return_value = mock_resolver_instance
+
+    # Mock LLM creation to prevent any real API calls
+    mock_llm = Mock()
+    mock_llm.with_config.return_value = mock_llm
+    mock_llm.invoke.return_value = Mock(content="Mock LLM response")
+    mock_create_llm = mocker.patch("lobster.config.llm_factory.create_llm")
+    mock_create_llm.return_value = mock_llm
+
+    # Also mock LLMFactory.create_llm directly
+    mock_factory_create = mocker.patch("lobster.config.llm_factory.LLMFactory.create_llm")
+    mock_factory_create.return_value = mock_llm
+
+    # Mock agent configurator to return minimal params (no model_id)
+    mock_agent_config = mocker.patch(
+        "lobster.config.agent_config.initialize_configurator"
+    )
+    mock_agent_config_instance = Mock()
+    mock_agent_config_instance.get_agent_llm_params.return_value = {
+        "temperature": 0.1,
+    }
+    mock_agent_config.return_value = mock_agent_config_instance
+
+    return {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4",
+        "config_resolver": mock_resolver_instance,
+        "llm": mock_llm,
+        "agent_config": mock_agent_config_instance,
+    }
+
+
+@pytest.fixture(scope="function")
+def mock_provider_config(auto_mock_provider_config) -> Dict[str, Any]:
+    """Legacy fixture that delegates to auto_mock_provider_config.
+
+    This fixture exists for backward compatibility with tests that
+    explicitly request mock_provider_config. It simply returns the
+    auto-configured mocks from auto_mock_provider_config.
+
+    Args:
+        auto_mock_provider_config: Auto-configured provider mocks
+
+    Returns:
+        Dict[str, Any]: Provider configuration (same as auto_mock_provider_config)
+
+    Example:
+        >>> def test_agent_creation(mock_provider_config, mock_data_manager):
+        ...     # Provider is configured, agent creation will succeed
+        ...     agent = data_expert(mock_data_manager)
+        ...     assert agent is not None
+    """
+    return auto_mock_provider_config
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -48,8 +48,11 @@ from tests.mock_data.factories import SingleCellDataFactory
 
 
 @pytest.fixture
-def integrated_data_manager(tmp_path):
-    """Create data manager with complete workflow modalities."""
+def integrated_data_manager(mock_provider_config, tmp_path):
+    """Create data manager with complete workflow modalities.
+
+    Note: Requires mock_provider_config to ensure LLM creation works properly.
+    """
     from pathlib import Path
 
     mock_dm = Mock(spec=DataManagerV2)

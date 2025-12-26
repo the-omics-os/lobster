@@ -51,8 +51,12 @@ def real_queue(real_queue_file):
 
 
 @pytest.fixture
-def mock_data_manager(temp_workspace, real_queue):
-    """Create mock DataManagerV2 with real queue."""
+def mock_data_manager(mock_provider_config, temp_workspace, real_queue):
+    """Create mock DataManagerV2 with real queue.
+
+    Note: This fixture now requires mock_provider_config to ensure LLM
+    creation works properly in the refactored provider system.
+    """
     mock_dm = Mock(spec=DataManagerV2)
     mock_dm.publication_queue = real_queue
     mock_dm.workspace_path = temp_workspace
