@@ -861,7 +861,13 @@ if PROMPT_TOOLKIT_AVAILABLE:
                         pass
 
                 elif text == "/config provider":
-                    providers = ["anthropic", "bedrock", "ollama"]
+                    # Dynamically fetch providers from ProviderRegistry
+                    from lobster.config.providers import ProviderRegistry
+                    try:
+                        providers = ProviderRegistry.get_provider_names()
+                    except Exception:
+                        providers = ["anthropic", "bedrock", "ollama", "gemini"]  # Fallback
+
                     for provider in providers:
                         meta = f"Switch to {provider}"
                         yield Completion(
@@ -907,8 +913,13 @@ if PROMPT_TOOLKIT_AVAILABLE:
                         pass
 
                 elif text.startswith("/config provider "):
-                    # Provider completion (reuse existing logic from /provider)
-                    providers = ["anthropic", "bedrock", "ollama"]
+                    # Provider completion - dynamically fetch from ProviderRegistry
+                    from lobster.config.providers import ProviderRegistry
+                    try:
+                        providers = ProviderRegistry.get_provider_names()
+                    except Exception:
+                        providers = ["anthropic", "bedrock", "ollama", "gemini"]  # Fallback
+
                     for provider in providers:
                         if provider.lower().startswith(prefix.lower()):
                             meta = f"Switch to {provider}"
@@ -6226,6 +6237,71 @@ when they are started by agents or analysis workflows.
         else:
             console.print("[grey50]No current data metadata available[/grey50]")
 
+        # ================================================================
+        # Workspace Files Section (v1.0+ - Unified View)
+        # ================================================================
+        workspace_path = Path(client.data_manager.workspace_path)
+
+        # Show workspace metadata files
+        metadata_dir = workspace_path / "metadata"
+        if metadata_dir.exists():
+            json_files = sorted(metadata_dir.glob("*.json"))
+            if json_files:
+                console.print("\n[bold white]📁 Workspace Metadata Files:[/bold white]")
+                files_table = Table(box=box.SIMPLE, border_style="cyan", show_header=True)
+                files_table.add_column("File", style="cyan", width=50)
+                files_table.add_column("Size", style="grey50", width=10)
+                files_table.add_column("Modified", style="grey50", width=20)
+
+                for json_file in json_files[:20]:  # Limit to 20 files
+                    stat = json_file.stat()
+                    size_kb = stat.st_size / 1024
+                    from datetime import datetime
+                    modified = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
+                    files_table.add_row(json_file.name, f"{size_kb:.1f} KB", modified)
+
+                console.print(files_table)
+                if len(json_files) > 20:
+                    console.print(f"[grey50]... and {len(json_files) - 20} more files[/grey50]")
+                console.print(f"[grey50]Path: {metadata_dir}[/grey50]")
+
+        # Show export files (centralized exports directory)
+        exports_dir = workspace_path / "exports"
+        if exports_dir.exists():
+            export_files = sorted(
+                [f for f in exports_dir.iterdir() if f.is_file() and f.suffix in {".csv", ".tsv", ".xlsx"}],
+                key=lambda x: x.stat().st_mtime,
+                reverse=True
+            )
+            if export_files:
+                console.print("\n[bold white]📤 Export Files:[/bold white]")
+                exports_table = Table(box=box.SIMPLE, border_style="green", show_header=True)
+                exports_table.add_column("File", style="green", width=50)
+                exports_table.add_column("Size", style="grey50", width=10)
+                exports_table.add_column("Modified", style="grey50", width=20)
+
+                for export_file in export_files[:15]:  # Limit to 15 files
+                    stat = export_file.stat()
+                    size_kb = stat.st_size / 1024
+                    from datetime import datetime
+                    modified = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
+                    exports_table.add_row(export_file.name, f"{size_kb:.1f} KB", modified)
+
+                console.print(exports_table)
+                if len(export_files) > 15:
+                    console.print(f"[grey50]... and {len(export_files) - 15} more files[/grey50]")
+                console.print(f"[grey50]Path: {exports_dir}[/grey50]")
+
+        # Check for deprecated export location and warn user
+        old_exports_dir = workspace_path / "metadata" / "exports"
+        if old_exports_dir.exists():
+            old_files = list(old_exports_dir.glob("*"))
+            if old_files:
+                console.print("\n[bold yellow]⚠️  Deprecated Export Location Detected[/bold yellow]")
+                console.print(f"[yellow]Found {len(old_files)} file(s) in old location: {old_exports_dir}[/yellow]")
+                console.print("[yellow]New exports go to: workspace/exports/[/yellow]")
+                console.print("[grey50]Migration: mv workspace/metadata/exports/* workspace/exports/[/grey50]")
+
     elif cmd.startswith("/workspace"):
         # Workspace management commands
         parts = cmd.split()
@@ -7381,11 +7457,69 @@ when they are started by agents or analysis workflows.
 
             console_manager.print(status_table)
 
+            # Per-Agent Model Configuration
+            agent_table = Table(title="🤖 Agent Models", box=box.ROUNDED)
+            agent_table.add_column("Agent", style="cyan", width=30)
+            agent_table.add_column("Model", style="yellow", width=40)
+            agent_table.add_column("Source", style="dim", width=30)
+
+            # Get agent configurations
+            from lobster.config.settings import get_settings
+            from lobster.config.agent_registry import AGENT_REGISTRY
+            from lobster.core.license_manager import get_current_tier
+            from lobster.config.subscription_tiers import is_agent_available
+
+            settings = get_settings()
+            current_tier = get_current_tier()
+
+            # Get provider object for model resolution
+            from lobster.config.providers import get_provider
+            provider_obj = get_provider(provider)
+
+            # Show models for available agents
+            for agent_name, agent_cfg in AGENT_REGISTRY.items():
+                # Filter by license tier
+                if not is_agent_available(agent_name, current_tier):
+                    continue
+
+                try:
+                    # Get model parameters
+                    model_params = settings.get_agent_llm_params(agent_name)
+
+                    # Resolve model for this agent
+                    model_id, model_source = resolver.resolve_model(
+                        agent_name=agent_name,
+                        runtime_override=None,
+                        provider=provider
+                    )
+
+                    # If no model resolved, get provider's default model
+                    if not model_id:
+                        if provider_obj:
+                            model_id = provider_obj.get_default_model()
+                            model_source = "provider default"
+                        else:
+                            model_id = model_params.get("model_id", "unknown")
+                            model_source = "profile config"
+
+                    # Add row
+                    agent_table.add_row(
+                        agent_cfg.display_name,
+                        model_id,
+                        model_source
+                    )
+                except Exception as e:
+                    # Skip agents with config errors
+                    continue
+
+            console_manager.print(agent_table)
+
             # Usage hints
             console_manager.print("\n[cyan]💡 Usage:[/cyan]")
             console_manager.print("  • [white]/config provider[/white] - List available providers")
             console_manager.print("  • [white]/config provider <name>[/white] - Switch provider (runtime only)")
             console_manager.print("  • [white]/config provider <name> --save[/white] - Switch and persist to workspace")
+            console_manager.print("  • [white]/config model <name>[/white] - Set model for current provider")
 
             # Deprecation note
             console_manager.print(
@@ -7397,6 +7531,7 @@ when they are started by agents or analysis workflows.
             if len(parts) == 2:
                 # /config provider (list providers)
                 from lobster.config.llm_factory import LLMFactory
+                from lobster.config.providers import ProviderRegistry
 
                 available_providers = LLMFactory.get_available_providers()
                 current_provider = client.provider_override or LLMFactory.get_current_provider()
@@ -7406,13 +7541,17 @@ when they are started by agents or analysis workflows.
                 provider_table.add_column("Status", style="white")
                 provider_table.add_column("Active", style="green")
 
-                for provider in ["anthropic", "bedrock", "ollama"]:
-                    configured = "✓ Configured" if provider in available_providers else "✗ Not configured"
-                    active = "●" if provider == current_provider else ""
+                # Dynamically fetch all registered providers from ProviderRegistry
+                all_providers = ProviderRegistry.get_all()
 
-                    status_style = "green" if provider in available_providers else "grey50"
+                for provider_obj in all_providers:
+                    provider_name = provider_obj.name
+                    configured = "✓ Configured" if provider_name in available_providers else "✗ Not configured"
+                    active = "●" if provider_name == current_provider else ""
+
+                    status_style = "green" if provider_name in available_providers else "grey50"
                     provider_table.add_row(
-                        provider.capitalize(),
+                        provider_obj.display_name,  # Use display_name for proper formatting
                         f"[{status_style}]{configured}[/{status_style}]",
                         f"[bold green]{active}[/bold green]" if active else ""
                     )
@@ -7422,7 +7561,10 @@ when they are started by agents or analysis workflows.
                 console_manager.print(f"\n[cyan]💡 Usage:[/cyan]")
                 console_manager.print("  • [white]/config provider <name>[/white] - Switch to specified provider (runtime)")
                 console_manager.print("  • [white]/config provider <name> --save[/white] - Switch and persist to workspace")
-                console_manager.print("\n[cyan]Available providers:[/cyan] anthropic, bedrock, ollama")
+
+                # Dynamically show available providers
+                provider_names = ", ".join([p.name for p in all_providers])
+                console_manager.print(f"\n[cyan]Available providers:[/cyan] {provider_names}")
 
                 if current_provider:
                     console_manager.print(f"\n[green]✓ Current provider: {current_provider}[/green]")
@@ -7532,7 +7674,7 @@ when they are started by agents or analysis workflows.
                             console_manager.print(f"[yellow]No models available for {current_provider}[/yellow]")
                     else:
                         # Provider-specific table title
-                        provider_icons = {"anthropic": "🤖", "bedrock": "☁️", "ollama": "🦙"}
+                        provider_icons = {"anthropic": "🤖", "bedrock": "☁️", "ollama": "🦙", "gemini": "✨"}
                         icon = provider_icons.get(current_provider, "🤖")
                         title = f"{icon} Available {current_provider.capitalize()} Models"
 
@@ -8017,8 +8159,8 @@ def list_profiles():
 
 @config_app.command(name="show-config")
 def show_config(
-    profile: Optional[str] = typer.Option(
-        None, "--profile", "-p", help="Profile to show"
+    workspace: Optional[Path] = typer.Option(
+        None, "--workspace", "-w", help="Workspace path (default: current directory)"
     ),
     show_all: bool = typer.Option(
         False,
@@ -8026,13 +8168,200 @@ def show_config(
         help="Show all configured agents regardless of license tier",
     ),
 ):
-    """Show current configuration, filtered by license tier."""
-    configurator = (
-        initialize_configurator(profile=profile)
-        if profile
-        else LobsterAgentConfigurator()
+    """Show current runtime configuration from ConfigResolver and ProviderRegistry."""
+    from lobster.core.config_resolver import ConfigResolver, ConfigurationError
+    from lobster.config.providers import ProviderRegistry, get_provider
+    from lobster.core.license_manager import get_current_tier
+    from lobster.config.subscription_tiers import is_agent_available, get_tier_display_name
+    from lobster.config.agent_registry import AGENT_REGISTRY
+    from lobster.config.workspace_config import WorkspaceProviderConfig
+    from lobster.config.global_config import GlobalProviderConfig
+    from lobster.core.workspace import resolve_workspace
+
+    # Resolve workspace path
+    workspace_path = resolve_workspace(workspace, create=False)
+
+    # Get ConfigResolver instance
+    resolver = ConfigResolver.get_instance(workspace_path)
+
+    # Get license tier
+    current_tier = get_current_tier()
+
+    console.print()
+    console.print(
+        Panel.fit(
+            f"[bold {LobsterTheme.PRIMARY_ORANGE}]🔧 Lobster AI Runtime Configuration[/bold {LobsterTheme.PRIMARY_ORANGE}]",
+            border_style=LobsterTheme.PRIMARY_ORANGE,
+            padding=(0, 2),
+        )
     )
-    configurator.print_current_config(show_all=show_all)
+    console.print()
+
+    # Section 1: License & Workspace
+    console.print(f"[bold cyan]📍 Environment[/bold cyan]")
+    console.print(f"   Workspace: [yellow]{workspace_path}[/yellow]")
+    console.print(f"   License Tier: [green]{get_tier_display_name(current_tier)}[/green]")
+    console.print()
+
+    # Section 2: Provider Configuration
+    console.print(f"[bold cyan]🔌 Provider Configuration[/bold cyan]")
+
+    try:
+        provider_name, provider_source = resolver.resolve_provider()
+        provider_obj = get_provider(provider_name)
+
+        console.print(f"   Active Provider: [green]{provider_obj.display_name if provider_obj else provider_name}[/green]")
+        console.print(f"   Source: [dim]{provider_source}[/dim]")
+
+        if provider_obj:
+            # Show provider-specific information
+            default_model = provider_obj.get_default_model()
+            console.print(f"   Default Model: [yellow]{default_model}[/yellow]")
+
+            # Show available models for this provider
+            models = provider_obj.list_models()
+            if models:
+                console.print(f"   Available Models: [dim]{len(models)} model(s)[/dim]")
+
+    except ConfigurationError as e:
+        console.print(f"   [red]✗ No provider configured[/red]")
+        console.print(f"   [dim]Error: {str(e)}[/dim]")
+        console.print(f"   [yellow]💡 Run 'lobster init' to configure a provider[/yellow]")
+
+    console.print()
+
+    # Section 3: Profile Configuration
+    console.print(f"[bold cyan]⚙️  Profile Configuration[/bold cyan]")
+
+    try:
+        profile, profile_source = resolver.resolve_profile()
+        console.print(f"   Active Profile: [green]{profile}[/green]")
+        console.print(f"   Source: [dim]{profile_source}[/dim]")
+    except Exception:
+        console.print(f"   Active Profile: [yellow]production[/yellow] [dim](default)[/dim]")
+
+    console.print()
+
+    # Section 4: Configuration Files
+    console.print(f"[bold cyan]📁 Configuration Files[/bold cyan]")
+
+    # Workspace config
+    workspace_config_path = workspace_path / "provider_config.json"
+    if workspace_config_path.exists():
+        console.print(f"   [green]✓[/green] Workspace: {workspace_config_path}")
+        try:
+            ws_config = WorkspaceProviderConfig.load(workspace_path)
+            if ws_config.global_provider:
+                console.print(f"      Provider: [yellow]{ws_config.global_provider}[/yellow]")
+            if ws_config.profile:
+                console.print(f"      Profile: [yellow]{ws_config.profile}[/yellow]")
+        except Exception as e:
+            console.print(f"      [dim]Could not read: {str(e)}[/dim]")
+    else:
+        console.print(f"   [dim]○ Workspace: {workspace_config_path} (not found)[/dim]")
+
+    # Global config
+    global_config_path = Path.home() / ".config" / "lobster" / "providers.json"
+    if global_config_path.exists():
+        console.print(f"   [green]✓[/green] Global: {global_config_path}")
+        try:
+            global_config = GlobalProviderConfig.load()
+            if global_config.global_default_provider:
+                console.print(f"      Provider: [yellow]{global_config.global_default_provider}[/yellow]")
+            if global_config.default_profile:
+                console.print(f"      Profile: [yellow]{global_config.default_profile}[/yellow]")
+        except Exception as e:
+            console.print(f"      [dim]Could not read: {str(e)}[/dim]")
+    else:
+        console.print(f"   [dim]○ Global: {global_config_path} (not found)[/dim]")
+
+    console.print()
+
+    # Section 5: Per-Agent Configuration
+    console.print(f"[bold cyan]🤖 Agent Configuration[/bold cyan]")
+    console.print()
+
+    # Get agent configurations from settings (for temperature/thinking)
+    from lobster.config.settings import get_settings
+    settings = get_settings()
+
+    displayed_count = 0
+    filtered_count = 0
+
+    for agent_name, agent_cfg in AGENT_REGISTRY.items():
+        # Check if agent is available for current tier
+        if not show_all and not is_agent_available(agent_name, current_tier):
+            filtered_count += 1
+            continue
+
+        displayed_count += 1
+
+        try:
+            # Get model parameters from settings (temperature, thinking)
+            model_params = settings.get_agent_llm_params(agent_name)
+
+            # Try to resolve model for this agent
+            try:
+                provider_name, _ = resolver.resolve_provider()
+                model_id, model_source = resolver.resolve_model(
+                    agent_name=agent_name,
+                    runtime_override=None,
+                    provider=provider_name
+                )
+
+                # If no model resolved, get provider's default model
+                if not model_id:
+                    provider_obj = get_provider(provider_name)
+                    if provider_obj:
+                        model_id = provider_obj.get_default_model()
+                        model_source = "provider default"
+                    else:
+                        model_id = model_params.get("model_id", "unknown")
+                        model_source = "profile config"
+
+            except Exception:
+                # Fallback: try to get from provider's default
+                try:
+                    provider_name, _ = resolver.resolve_provider()
+                    provider_obj = get_provider(provider_name)
+                    if provider_obj:
+                        model_id = provider_obj.get_default_model()
+                        model_source = "provider default"
+                    else:
+                        model_id = model_params.get("model_id", "unknown")
+                        model_source = "profile config"
+                except Exception:
+                    model_id = model_params.get("model_id", "unknown")
+                    model_source = "profile config"
+
+            # Display agent configuration
+            console.print(f"   [bold white]{agent_cfg.display_name}[/bold white] ([dim]{agent_name}[/dim])")
+            console.print(f"      Model: [yellow]{model_id}[/yellow] [dim](from {model_source})[/dim]")
+            console.print(f"      Temperature: [cyan]{model_params.get('temperature', 1.0)}[/cyan]")
+
+            # Show thinking configuration if present
+            additional_fields = model_params.get("additional_model_request_fields", {})
+            if "thinking" in additional_fields:
+                thinking = additional_fields["thinking"]
+                budget = thinking.get("budget_tokens", "unknown")
+                console.print(f"      [dim]🧠 Thinking: Enabled (Budget: {budget} tokens)[/dim]")
+
+            console.print()
+
+        except Exception as e:
+            console.print(f"   [bold white]{agent_cfg.display_name}[/bold white]: [red]Error - {str(e)}[/red]")
+            console.print()
+
+    # Summary
+    if filtered_count > 0 and not show_all:
+        console.print(f"[dim]{'─' * 60}[/dim]")
+        console.print(
+            f"[cyan]📊 Summary:[/cyan] Showing {displayed_count} agents available for [green]{current_tier}[/green] tier"
+        )
+        console.print(f"   [dim]({filtered_count} premium agents hidden)[/dim]")
+        console.print(f"   [yellow]💡 Use '--show-all' to see all configured agents[/yellow]")
+
+    console.print()
 
 
 @config_app.command(name="test")

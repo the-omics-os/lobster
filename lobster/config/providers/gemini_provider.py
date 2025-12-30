@@ -52,7 +52,7 @@ class GeminiProvider(ILLMProvider):
     """
 
     # Static model catalog - Gemini 3.0 models
-    # Source: https://ai.google.dev/gemini-api/docs
+    # Source: https://ai.google.dev/gemini-api/docs/pricing
     MODELS = [
         ModelInfo(
             name="gemini-3-pro-preview",
@@ -61,18 +61,18 @@ class GeminiProvider(ILLMProvider):
             provider="gemini",
             context_window=200000,
             is_default=True,
-            input_cost_per_million=0.00,  # Preview pricing TBD
-            output_cost_per_million=0.00,
+            input_cost_per_million=2.00,  # $2.00 for prompts ≤200k tokens, $4.00 for >200k
+            output_cost_per_million=12.00,  # $12.00 for prompts ≤200k tokens, $18.00 for >200k
         ),
         ModelInfo(
             name="gemini-3-flash-preview",
             display_name="Gemini 3 Flash",
-            description="Fastest Gemini - quick tasks with thinking support",
+            description="Fastest Gemini - quick tasks with thinking support (free tier available)",
             provider="gemini",
             context_window=200000,
             is_default=False,
-            input_cost_per_million=0.00,
-            output_cost_per_million=0.00,
+            input_cost_per_million=0.50,  # $0.50 text/image/video, $1.00 audio; free tier available
+            output_cost_per_million=3.00,  # $3.00 (free tier available)
         ),
     ]
 
