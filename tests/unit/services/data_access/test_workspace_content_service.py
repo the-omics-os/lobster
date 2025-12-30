@@ -535,3 +535,176 @@ class TestNoneTypeHandling:
 
         assert result == []
         assert isinstance(result, list)
+
+
+# ============================================================================
+# Test Exports Directory Functionality
+# ============================================================================
+
+
+class TestExportsDirectory:
+    """Test exports directory creation and file listing."""
+
+    def test_get_exports_directory_creates_directory(self, workspace_service, temp_workspace):
+        """Test get_exports_directory creates exports/ directory."""
+        exports_dir = workspace_service.get_exports_directory(create=True)
+
+        assert exports_dir.exists()
+        assert exports_dir.is_dir()
+        assert exports_dir.name == "exports"
+        assert exports_dir.parent == temp_workspace
+
+    def test_get_exports_directory_without_create(self, workspace_service, temp_workspace):
+        """Test get_exports_directory returns path without creating."""
+        exports_dir = workspace_service.get_exports_directory(create=False)
+
+        # Path is returned but directory doesn't exist yet
+        assert not exports_dir.exists()
+        assert exports_dir.parent == temp_workspace
+
+    def test_list_export_files_empty_directory(self, workspace_service):
+        """Test list_export_files returns empty list when no files."""
+        files = workspace_service.list_export_files()
+        assert files == []
+
+    def test_list_export_files_with_csv_files(self, workspace_service, temp_workspace):
+        """Test list_export_files finds CSV files."""
+        # Create exports directory with test files
+        exports_dir = temp_workspace / "exports"
+        exports_dir.mkdir()
+
+        # Create test CSV files
+        (exports_dir / "samples.csv").write_text("sample_id,condition\nS1,control\n")
+        (exports_dir / "metadata.csv").write_text("id,value\n1,100\n")
+
+        files = workspace_service.list_export_files()
+
+        assert len(files) == 2
+        assert all(f["path"].suffix == ".csv" for f in files)
+        assert {f["name"] for f in files} == {"samples.csv", "metadata.csv"}
+
+    def test_list_export_files_with_pattern_filter(self, workspace_service, temp_workspace):
+        """Test list_export_files filters by pattern."""
+        exports_dir = temp_workspace / "exports"
+        exports_dir.mkdir()
+
+        (exports_dir / "samples.csv").write_text("data")
+        (exports_dir / "results.tsv").write_text("data")
+        (exports_dir / "plot.png").write_text("data")
+
+        csv_files = workspace_service.list_export_files(pattern="*.csv")
+
+        assert len(csv_files) == 1
+        assert csv_files[0]["name"] == "samples.csv"
+
+    def test_list_export_files_categorization(self, workspace_service, temp_workspace):
+        """Test export files are categorized correctly."""
+        exports_dir = temp_workspace / "exports"
+        exports_dir.mkdir()
+
+        # Create files with category-specific names
+        (exports_dir / "metadata_samples.csv").write_text("data")
+        (exports_dir / "results_analysis.csv").write_text("data")
+        (exports_dir / "plot_figure1.png").write_text("data")
+        (exports_dir / "custom_data.txt").write_text("data")
+
+        files = workspace_service.list_export_files()
+        categories = {f["name"]: f["category"] for f in files}
+
+        assert categories["metadata_samples.csv"] == "metadata"
+        assert categories["results_analysis.csv"] == "results"
+        assert categories["plot_figure1.png"] == "plots"
+        assert categories["custom_data.txt"] == "custom"
+
+    def test_list_export_files_with_category_filter(self, workspace_service, temp_workspace):
+        """Test list_export_files filters by category."""
+        exports_dir = temp_workspace / "exports"
+        exports_dir.mkdir()
+
+        (exports_dir / "metadata_samples.csv").write_text("data")
+        (exports_dir / "results_analysis.csv").write_text("data")
+
+        metadata_files = workspace_service.list_export_files(category="metadata")
+
+        assert len(metadata_files) == 1
+        assert metadata_files[0]["category"] == "metadata"
+
+
+# ============================================================================
+# Test Unified Metadata Sources
+# ============================================================================
+
+
+class TestUnifiedMetadataSources:
+    """Test get_all_metadata_sources() method."""
+
+    def test_get_all_metadata_sources_empty(self, workspace_service):
+        """Test get_all_metadata_sources with no data."""
+        sources = workspace_service.get_all_metadata_sources()
+
+        assert "in_memory" in sources
+        assert "workspace_files" in sources
+        assert "exports" in sources
+        assert "deprecated" in sources
+
+        assert sources["in_memory"] == []
+        assert sources["workspace_files"] == []
+        assert sources["exports"] == []
+        assert sources["deprecated"] == []
+
+    def test_get_all_metadata_sources_with_exports(self, workspace_service, temp_workspace, data_manager):
+        """Test get_all_metadata_sources includes export files."""
+        # Create exports directory with files
+        exports_dir = temp_workspace / "exports"
+        exports_dir.mkdir()
+        (exports_dir / "aggregated_samples.csv").write_text("data")
+
+        sources = workspace_service.get_all_metadata_sources()
+
+        assert len(sources["exports"]) == 1
+        assert sources["exports"][0]["name"] == "aggregated_samples.csv"
+
+    def test_get_all_metadata_sources_with_workspace_files(
+        self, workspace_service, temp_workspace, data_manager
+    ):
+        """Test get_all_metadata_sources includes workspace JSON files."""
+        # Create metadata directory with JSON files
+        metadata_dir = temp_workspace / "metadata"
+        metadata_dir.mkdir(exist_ok=True)
+        (metadata_dir / "sra_prjna123_samples.json").write_text('{"samples": []}')
+
+        sources = workspace_service.get_all_metadata_sources()
+
+        assert len(sources["workspace_files"]) == 1
+        assert sources["workspace_files"][0]["name"] == "sra_prjna123_samples.json"
+
+    def test_get_all_metadata_sources_with_deprecated_location(
+        self, workspace_service, temp_workspace
+    ):
+        """Test get_all_metadata_sources detects deprecated export location."""
+        # Create deprecated metadata/exports/ directory
+        old_exports = temp_workspace / "metadata" / "exports"
+        old_exports.mkdir(parents=True)
+        (old_exports / "old_export.csv").write_text("data")
+
+        sources = workspace_service.get_all_metadata_sources()
+
+        assert len(sources["deprecated"]) == 1
+        assert sources["deprecated"][0]["name"] == "old_export.csv"
+        assert "metadata/exports" in str(sources["deprecated"][0]["path"])
+
+    def test_get_all_metadata_sources_with_in_memory(
+        self, workspace_service, data_manager
+    ):
+        """Test get_all_metadata_sources includes in-memory metadata_store."""
+        # Add test data to metadata_store
+        data_manager.metadata_store = {
+            "geo_gse12345": {"samples": {"S1": {"id": "S1"}}},
+            "aggregated_samples": {"samples": [{"id": "S1"}]},
+        }
+
+        sources = workspace_service.get_all_metadata_sources()
+
+        assert len(sources["in_memory"]) == 2
+        keys = {item["key"] for item in sources["in_memory"]}
+        assert keys == {"geo_gse12345", "aggregated_samples"}

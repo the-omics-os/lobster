@@ -656,6 +656,24 @@ Adding a new agent should be **registry‑only** wherever possible. For premium-
   - **Rule**: All agents use same mental model for workspace operations (list, filter, retrieve)
   - **Doc**: See `wiki/38-workspace-content-service.md` for usage examples
 
+- **Custom Code Tool Factory** (`tools/custom_code_tool.py`): shared tool across agents (v2.7+)
+  - **Factory**: `create_execute_custom_code_tool(data_manager, service, agent_name, post_processor)`
+  - **Unified signature**: Both `modality_name` (AnnData) AND `workspace_key` (metadata) supported
+  - **Post-processor pattern**: Agent-specific behavior via callback function
+    - Signature: `(result, stats, data_manager, workspace_key, modality_name) -> Optional[str]`
+    - Called only on successful execution
+    - Return value appended to response
+  - **Pre-built post-processors**: `metadata_store_post_processor` for metadata_assistant
+  - **Usage in agents**:
+    ```python
+    from lobster.tools.custom_code_tool import create_execute_custom_code_tool
+    execute_custom_code = create_execute_custom_code_tool(
+        data_manager, custom_code_service, "agent_name", post_processor=None
+    )
+    ```
+  - **Benefits**: Single source of truth, ~245 lines of duplicated code eliminated, follows workspace_tool.py pattern
+  - **Rule**: Do NOT define inline `execute_custom_code` in agents; always use factory
+
 ### 4.6 Download Architecture (Queue-Based Pattern)
 
 **Problem**: data_expert had online access, could fetch metadata/URLs directly, breaking single-responsibility principle.

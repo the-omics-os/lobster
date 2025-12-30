@@ -28,7 +28,7 @@ The **Microbiome Metadata Harmonization Workflow** is a PREMIUM enterprise featu
 ```mermaid
 graph TB
     subgraph "CLI Entry Point"
-        RIS["/load publications.ris"]
+        RIS["/queue load publications.ris"]
         RISPARSE[RISParser]
     end
 
@@ -174,7 +174,7 @@ ER  -
 
 ```bash
 lobster chat
-> /load ibd_microbiome_studies.ris
+> /queue load ibd_microbiome_studies.ris
 ```
 
 **Output**:

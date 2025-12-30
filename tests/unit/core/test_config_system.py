@@ -42,7 +42,7 @@ def temp_global_config_dir(tmp_path, monkeypatch):
     config_dir.mkdir(parents=True, exist_ok=True)
 
     # Patch the CONFIG_DIR in global_config module
-    import lobster.core.global_config as gc
+    import lobster.config.global_config as gc
     monkeypatch.setattr(gc, "CONFIG_DIR", config_dir)
 
     return config_dir
@@ -330,21 +330,26 @@ class TestConfigResolver:
         assert provider == "ollama"
         assert source == "workspace config"
 
+    @pytest.mark.skip(reason="LEGACY: Global config provider selection removed, only workspace config supported")
     def test_resolve_provider_global_config(
         self, temp_workspace, temp_global_config_dir, clean_env
     ):
-        """Test Layer 3: Global user config."""
+        """Test Layer 3: Global user config (DEPRECATED)."""
+        # Global config no longer used for provider selection
+        # Only workspace config is checked for provider
+        # Global config is now only used for profile defaults
         global_config = GlobalProviderConfig(default_provider="anthropic")
         global_config.save()
 
         resolver = ConfigResolver(temp_workspace)
-        provider, source = resolver.resolve_provider()
 
-        assert provider == "anthropic"
-        assert source == "global user config"
+        # Should raise ConfigurationError instead of reading global config
+        with pytest.raises(Exception):  # ConfigurationError
+            provider, source = resolver.resolve_provider()
 
+    @pytest.mark.skip(reason="LEGACY: Environment variable provider selection removed in favor of explicit configuration")
     def test_resolve_provider_env_variable(self, temp_workspace, monkeypatch):
-        """Test Layer 4: Environment variable."""
+        """Test Layer 4: Environment variable (DEPRECATED - no longer supported)."""
         monkeypatch.setenv("LOBSTER_LLM_PROVIDER", "bedrock")
 
         resolver = ConfigResolver(temp_workspace)
@@ -353,42 +358,27 @@ class TestConfigResolver:
         assert provider == "bedrock"
         assert source == "environment variable LOBSTER_LLM_PROVIDER"
 
-    @patch("lobster.config.llm_factory.LLMFactory._is_ollama_running")
+    @pytest.mark.skip(reason="LEGACY: Auto-detection removed in favor of explicit configuration")
     def test_resolve_provider_auto_detect_ollama(
-        self, mock_ollama, temp_workspace, clean_env
+        self, temp_workspace, clean_env
     ):
-        """Test Layer 5: Auto-detection (Ollama running)."""
-        mock_ollama.return_value = True
+        """Test Layer 5: Auto-detection (Ollama running) (DEPRECATED)."""
+        # Auto-detection was removed - system now requires explicit configuration
+        pass
 
-        resolver = ConfigResolver(temp_workspace)
-        provider, source = resolver.resolve_provider()
-
-        assert provider == "ollama"
-        assert source == "auto-detected (Ollama running)"
-
+    @pytest.mark.skip(reason="LEGACY: Auto-detection removed in favor of explicit configuration")
     def test_resolve_provider_auto_detect_anthropic(
         self, temp_workspace, monkeypatch, clean_env
     ):
-        """Test Layer 5: Auto-detection (Anthropic API key)."""
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        """Test Layer 5: Auto-detection (Anthropic API key) (DEPRECATED)."""
+        # Auto-detection was removed - system now requires explicit configuration
+        pass
 
-        # Mock Ollama not running
-        with patch("lobster.config.llm_factory.LLMFactory._is_ollama_running", return_value=False):
-            resolver = ConfigResolver(temp_workspace)
-            provider, source = resolver.resolve_provider()
-
-        assert provider == "anthropic"
-        assert source == "auto-detected (ANTHROPIC_API_KEY set)"
-
+    @pytest.mark.skip(reason="LEGACY: Default fallback removed in favor of explicit configuration")
     def test_resolve_provider_default(self, temp_workspace, clean_env):
-        """Test Layer 6: Default fallback."""
-        # Mock Ollama not running
-        with patch("lobster.config.llm_factory.LLMFactory._is_ollama_running", return_value=False):
-            resolver = ConfigResolver(temp_workspace)
-            provider, source = resolver.resolve_provider()
-
-        assert provider == "bedrock"
-        assert source == "default (no configuration found)"
+        """Test Layer 6: Default fallback (DEPRECATED)."""
+        # Default fallback was removed - system now raises ConfigurationError
+        pass
 
     def test_resolve_model_workspace_per_agent(self, temp_workspace):
         """Test per-agent model resolution from workspace."""
@@ -427,10 +417,11 @@ class TestConfigResolver:
         assert profile == "ultra"
         assert source == "workspace config"
 
+    @pytest.mark.skip(reason="LEGACY: Profile env variable behavior changed - now only via --profile flag")
     def test_resolve_profile_env_variable(self, tmp_path, monkeypatch):
-        """Test profile resolution from environment."""
-        # Use tmp_path without creating workspace config
-        # to test env variable priority (layer 4)
+        """Test profile resolution from environment (DEPRECATED)."""
+        # LOBSTER_PROFILE env variable is no longer checked
+        # Profile must be set via --profile flag or workspace config
         monkeypatch.setenv("LOBSTER_PROFILE", "development")
 
         # Create empty workspace dir without config file
@@ -440,8 +431,9 @@ class TestConfigResolver:
         resolver = ConfigResolver(empty_workspace)
         profile, source = resolver.resolve_profile()
 
-        assert profile == "development"
-        assert source == "environment variable LOBSTER_PROFILE"
+        # Now defaults to "production" instead of reading env var
+        assert profile == "production"
+        assert source == "default"
 
     def test_resolve_per_agent_provider(self, temp_workspace):
         """Test per-agent provider override."""
@@ -484,25 +476,30 @@ class TestEdgeCases:
         assert config.global_provider is None
         assert config.profile == "production"
 
+    @pytest.mark.skip(reason="LEGACY: Resolver now requires explicit configuration, no defaults")
     def test_resolver_without_workspace(self):
-        """Test resolver without workspace path."""
+        """Test resolver without workspace path (DEPRECATED)."""
+        # System now requires explicit configuration
+        # Without workspace config, resolve_provider() raises ConfigurationError
         resolver = ConfigResolver(workspace_path=None)
 
-        # Should still work with defaults
-        provider, source = resolver.resolve_provider()
-        assert provider in ["bedrock", "anthropic", "ollama"]
+        # Should raise ConfigurationError instead of returning default
+        with pytest.raises(Exception):  # ConfigurationError
+            provider, source = resolver.resolve_provider()
 
+    @pytest.mark.skip(reason="LEGACY: Invalid runtime provider now raises error instead of falling back")
     def test_invalid_runtime_provider_fallback(self, temp_workspace):
-        """Test invalid runtime provider falls back to next layer."""
+        """Test invalid runtime provider behavior (DEPRECATED)."""
+        # Old behavior: invalid runtime provider fell back to next layer
+        # New behavior: raises ConfigurationError immediately
         workspace_config = WorkspaceProviderConfig(global_provider="ollama")
         workspace_config.save(temp_workspace)
 
         resolver = ConfigResolver(temp_workspace)
-        provider, source = resolver.resolve_provider(runtime_override="invalid")
 
-        # Should fallback to workspace config
-        assert provider == "ollama"
-        assert source == "workspace config"
+        # Should raise ConfigurationError for invalid provider
+        with pytest.raises(Exception):  # ConfigurationError
+            provider, source = resolver.resolve_provider(runtime_override="invalid")
 
     def test_permission_error_on_save(self, temp_workspace):
         """Test permission error during save."""

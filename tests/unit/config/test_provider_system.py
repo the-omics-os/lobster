@@ -24,6 +24,10 @@ from lobster.config.providers import (
 from lobster.config.providers.registry import ProviderRegistry as Registry
 from lobster.core.config_resolver import ConfigResolver, ConfigurationError
 
+# Mark all tests in this module to skip auto_config
+# These tests are specifically testing provider/config system behavior
+pytestmark = pytest.mark.no_auto_config
+
 
 # =============================================================================
 # Provider Registry Tests

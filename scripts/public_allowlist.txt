@@ -6,7 +6,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2025-12-24 13:12:36
+# Generated: 2025-12-27 23:21:36
 # =============================================================================
 
 
@@ -421,6 +421,7 @@ lobster/agents/visualization_expert.py
 !lobster/services/metadata/microbiome_filtering_service.py
 !lobster/services/metadata/disease_standardization_service.py
 !lobster/services/metadata/sample_mapping_service.py
+!lobster/services/metadata/metadata_filtering_service.py
 !lobster/core/schemas/publication_queue.py
 !lobster/core/publication_queue.py
 !lobster/core/ris_parser.py

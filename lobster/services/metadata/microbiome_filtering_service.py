@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 # Host organism aliases for fuzzy matching
 HOST_ALIASES = {
     "Human": [
+        # Individual organism (traditional)
         "Homo sapiens",
         "homo sapiens",
         "human",
@@ -31,8 +32,26 @@ HOST_ALIASES = {
         "h. sapiens",
         "H. sapiens",
         "hsapiens",
+        # Metagenome variants (Bug 4 fix - DataBioMix)
+        # CRITICAL: Only add EXPLICIT human variants to avoid false positives
+        # 16S amplicon studies use metagenome organism names instead of "Homo sapiens"
+        "human gut metagenome",              # 800+ samples (DataBioMix)
+        "human metagenome",                  # 200+ samples (generic)
+        "human fecal metagenome",            # Alternative spelling
+        "human feces metagenome",            # NCBI variant
+        "human oral metagenome",             # Oral microbiome studies
+        "human skin metagenome",             # Skin microbiome
+        "human nasal metagenome",            # Nasal/respiratory
+        "human vaginal metagenome",          # Vaginal microbiome
+        "human respiratory tract metagenome",
+        "human urogenital metagenome",
+        # DO NOT ADD ambiguous terms (could match mouse/rat):
+        # - "gut metagenome" (ambiguous)
+        # - "metagenome" (too generic)
+        # - "fecal metagenome" (could be any host)
     ],
     "Mouse": [
+        # Individual organism
         "Mus musculus",
         "mus musculus",
         "mouse",
@@ -41,6 +60,10 @@ HOST_ALIASES = {
         "m. musculus",
         "M. musculus",
         "mmusculus",
+        # Metagenome variants
+        "mouse gut metagenome",
+        "mouse metagenome",
+        "mouse fecal metagenome",
     ],
 }
 
@@ -134,6 +157,148 @@ class MicrobiomeFilteringService:
         ir = self._create_16s_ir(metadata, strict, result)
 
         return filtered_metadata, stats, ir
+
+    # Shotgun metagenomic detection keywords (case-insensitive)
+    SHOTGUN_KEYWORDS = {
+        "library_strategy": [
+            "wgs",                      # Whole Genome Shotgun
+            "wxs",                      # Whole Exome Shotgun
+            "metagenomic",              # Generic metagenomic
+            "whole genome shotgun",
+            "shotgun metagenomics",
+        ],
+        "assay_type": [
+            "metagenomic sequencing",
+            "shotgun metagenomics",
+            "whole genome sequencing",
+            "metagenomic shotgun",
+        ],
+    }
+
+    def validate_shotgun(
+        self, metadata: Dict[str, Any], strict: bool = False
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], AnalysisStep]:
+        """
+        Validate if metadata represents shotgun metagenomic sequencing.
+
+        Uses OR-based detection across library_strategy and assay_type fields.
+        Explicitly EXCLUDES amplification-based methods (WGA, AMPLICON) to ensure
+        unbiased metagenomic profiling.
+
+        Args:
+            metadata: Sample metadata dictionary with SRA fields
+            strict: If True, require exact keyword match. If False, allow substring match (default: False)
+
+        Returns:
+            (filtered_metadata, stats, ir): Standard 3-tuple
+            - filtered_metadata: Non-empty dict if valid shotgun, empty dict if invalid
+            - stats: {"is_valid": bool, "matched_field": str, "matched_value": str}
+            - ir: AnalysisStep for provenance tracking
+
+        Examples:
+            >>> service = MicrobiomeFilteringService()
+            >>> metadata = {"library_strategy": "WGS", "assay_type": "metagenomic sequencing"}
+            >>> filtered, stats, ir = service.validate_shotgun(metadata, strict=False)
+            >>> stats["is_valid"]
+            True
+
+            >>> wga_metadata = {"library_strategy": "WGA"}
+            >>> filtered, stats, ir = service.validate_shotgun(wga_metadata, strict=False)
+            >>> stats["is_valid"]
+            False  # WGA excluded (amplification-based)
+        """
+        library_strategy = str(metadata.get("library_strategy", "")).lower()
+        assay_type = str(metadata.get("assay_type", "")).lower()
+
+        # EXCLUSION RULES: Reject amplification-based methods
+        # WGA and AMPLICON introduce bias incompatible with shotgun metagenomics
+        exclusion_patterns = ["amplicon", "wga", "targeted"]
+        for pattern in exclusion_patterns:
+            if pattern in library_strategy or pattern in assay_type:
+                stats = {
+                    "is_valid": False,
+                    "reason": f"excluded_{pattern}_based",
+                    "library_strategy": library_strategy,
+                    "assay_type": assay_type,
+                    "strict": strict,
+                }
+                return {}, stats, None  # Rejected
+
+        # INCLUSION RULES: Check for shotgun indicators
+        is_valid = False
+        matched_field = None
+        matched_value = None
+
+        if strict:
+            # Exact match required
+            if library_strategy in self.SHOTGUN_KEYWORDS["library_strategy"]:
+                is_valid = True
+                matched_field = "library_strategy"
+                matched_value = library_strategy
+            elif assay_type in self.SHOTGUN_KEYWORDS["assay_type"]:
+                is_valid = True
+                matched_field = "assay_type"
+                matched_value = assay_type
+        else:
+            # Substring match (more permissive) - recommended for microbiome
+            for keyword in self.SHOTGUN_KEYWORDS["library_strategy"]:
+                if keyword in library_strategy:
+                    is_valid = True
+                    matched_field = "library_strategy"
+                    matched_value = library_strategy
+                    break
+
+            if not is_valid:
+                for keyword in self.SHOTGUN_KEYWORDS["assay_type"]:
+                    if keyword in assay_type:
+                        is_valid = True
+                        matched_field = "assay_type"
+                        matched_value = assay_type
+                        break
+
+        stats = {
+            "is_valid": is_valid,
+            "matched_field": matched_field,
+            "matched_value": matched_value,
+            "strict": strict,
+            "library_strategy": library_strategy,
+            "assay_type": assay_type,
+        }
+
+        # Create IR for provenance
+        ir = AnalysisStep(
+            operation="validate_shotgun_metagenomic",
+            tool_name="MicrobiomeFilteringService.validate_shotgun",
+            description=f"Validate shotgun metagenomic sequencing (strict={strict})",
+            library="lobster.services.metadata.microbiome_filtering_service",
+            code_template="""# Validate shotgun metagenomic sequencing
+library_strategy = metadata.get('library_strategy', '').lower()
+assay_type = metadata.get('assay_type', '').lower()
+
+# Exclude amplification-based methods (WGA, AMPLICON)
+if 'amplicon' in library_strategy or 'wga' in library_strategy:
+    is_shotgun = False
+else:
+    # Check for shotgun indicators
+    is_shotgun = any(
+        kw in library_strategy or kw in assay_type
+        for kw in ['wgs', 'metagenomic', 'shotgun', 'whole genome']
+    )
+""",
+            imports=[],
+            parameters={"strict": strict},
+            parameter_schema={
+                "strict": {
+                    "type": "boolean",
+                    "description": "Require exact match vs substring match",
+                    "default": False,
+                }
+            },
+            input_entities=[{"type": "sample_metadata", "name": "metadata"}],
+            output_entities=[{"type": "validated_sample", "name": "filtered_metadata"}],
+        )
+
+        return (metadata if is_valid else {}), stats, ir
 
     def validate_host_organism(
         self,

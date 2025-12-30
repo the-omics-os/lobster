@@ -63,6 +63,23 @@ class CustomCodeExecutionService:
     - Ephemeral by default: Only persist to provenance if persist=True
     - Full workspace access: Auto-inject modalities, CSV, JSON, queues
 
+    Injected Variables (available in custom code):
+    - WORKSPACE (Path): Full workspace path for reading inputs
+    - OUTPUT_DIR (Path): Recommended directory for exports (workspace/exports/)
+    - modalities (list): Available modality names
+    - adata (AnnData): Loaded modality if modality_name specified
+    - Workspace data (dict/DataFrame): If load_workspace_files=True
+
+    File Output Convention:
+        Use OUTPUT_DIR for CSV/TSV/Excel exports to ensure predictable file locations:
+
+        >>> import pandas as pd
+        >>> df = pd.DataFrame(...)
+        >>> df.to_csv(OUTPUT_DIR / "my_results.csv")
+
+        This saves to workspace/exports/my_results.csv for easy user discovery.
+        Note: OUTPUT_DIR is a convention, not enforced. Code can write anywhere.
+
     Example:
         >>> service = CustomCodeExecutionService(data_manager)
         >>> result, stats, ir = service.execute(
@@ -434,6 +451,12 @@ import json
 # ==============================================================================
 WORKSPACE = Path('{workspace_path}')
 sys.path.append(str(WORKSPACE))  # SECURITY: Lower priority - cannot shadow stdlib
+
+# OUTPUT_DIR: Recommended directory for all CSV/TSV/Excel exports (v1.0+)
+# Using this ensures files go to workspace/exports/ for easy user discovery
+# Convention: df.to_csv(f"{{OUTPUT_DIR}}/my_results.csv")
+OUTPUT_DIR = WORKSPACE / 'exports'
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Initialize context
 modalities = []

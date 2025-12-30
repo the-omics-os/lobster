@@ -317,8 +317,8 @@ class TestPyDESeq2Analysis:
         # Convert to counts (pyDESeq2 needs integer counts)
         count_df = df.round().astype(int)
 
-        # Run pyDESeq2 analysis
-        results = bulk_service.run_pydeseq2_analysis(
+        # Run pyDESeq2 analysis (returns 3-tuple: df, stats, ir)
+        results_df, stats, ir = bulk_service.run_pydeseq2_analysis(
             count_matrix=count_df,
             metadata=metadata,
             formula="~condition",
@@ -327,15 +327,23 @@ class TestPyDESeq2Analysis:
             shrink_lfc=True,
         )
 
-        # Validate results
-        assert results is not None
-        assert isinstance(results, pd.DataFrame)
-        assert "log2FoldChange" in results.columns
-        assert "padj" in results.columns
-        assert len(results) > 0
+        # Validate results (DataFrame)
+        assert results_df is not None
+        assert isinstance(results_df, pd.DataFrame)
+        assert "log2FoldChange" in results_df.columns
+        assert "padj" in results_df.columns
+        assert len(results_df) > 0
+
+        # Validate stats dict
+        assert isinstance(stats, dict)
+        assert "alpha" in stats
+
+        # Validate IR for provenance
+        assert ir is not None
+        assert ir.operation == "pydeseq2_analysis"
 
         # Check for differential expression
-        significant_genes = results[results["padj"] < 0.05]
+        significant_genes = results_df[results_df["padj"] < 0.05]
         assert len(significant_genes) > 0, "Should find some DE genes"
 
     def test_pydeseq2_with_batch_correction(self, mock_kallisto_data, bulk_service):
@@ -348,8 +356,8 @@ class TestPyDESeq2Analysis:
 
         count_df = df.round().astype(int)
 
-        # Run with batch correction
-        results = bulk_service.run_pydeseq2_analysis(
+        # Run with batch correction (returns 3-tuple)
+        results_df, stats, ir = bulk_service.run_pydeseq2_analysis(
             count_matrix=count_df,
             metadata=metadata,
             formula="~batch + condition",  # Batch first, then condition
@@ -357,9 +365,9 @@ class TestPyDESeq2Analysis:
             alpha=0.05,
         )
 
-        assert results is not None
-        assert len(results) > 0
-        assert "log2FoldChange" in results.columns
+        assert results_df is not None
+        assert len(results_df) > 0
+        assert "log2FoldChange" in results_df.columns
 
 
 # ===============================================================================
@@ -488,16 +496,16 @@ class TestEndToEndWorkflows:
         )
         assert validation["valid"] == True
 
-        # Step 6: Run differential expression
+        # Step 6: Run differential expression (returns 3-tuple)
         count_df = df.round().astype(int)
-        de_results = bulk_service.run_pydeseq2_analysis(
+        de_results_df, de_stats, de_ir = bulk_service.run_pydeseq2_analysis(
             count_matrix=count_df,
             metadata=metadata,
             formula=design_result["formula"],
             contrast=["condition", "treatment", "control"],
         )
-        assert de_results is not None
-        assert len(de_results) > 0
+        assert de_results_df is not None
+        assert len(de_results_df) > 0
 
         # Workflow complete
 

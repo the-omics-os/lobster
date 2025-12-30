@@ -103,6 +103,14 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
         handoff_tool_name="handoff_to_visualization_expert_agent",
         handoff_tool_description="Delegate visualization tasks to the visualization expert agent",
     ),
+    "protein_structure_visualization_expert_agent": AgentRegistryConfig(
+        name="protein_structure_visualization_expert_agent",
+        display_name="Protein Structure Visualization Expert",
+        description="Specialized agent for protein structure visualization using PyMOL and ChimeraX",
+        factory_function="lobster.agents.protein_structure_visualization_expert.protein_structure_visualization_expert",
+        handoff_tool_name="handoff_to_protein_structure_visualization_expert_agent",
+        handoff_tool_description="Delegate protein structure visualization tasks to the protein structure visualization expert agent",
+    ),
 }
 
 

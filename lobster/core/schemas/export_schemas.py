@@ -112,10 +112,17 @@ class ExportSchemaRegistry:
                     # DataBioMix harmonized fields (standardized by metadata_assistant)
                     "disease",  # Standardized disease term (e.g., "crc", "uc", "cd")
                     "disease_original",  # Original disease string from metadata
+                    "host_disease_stat",  # MIMARKS: Disease ontology term (fallback populated)
                     "sample_type",  # Sample type (e.g., "fecal", "tissue", "biopsy")
+                    "host_body_site",  # MIMARKS: Anatomical sampling site
+                    "host_body_product",  # MIMARKS: Biological product (stool, saliva, etc.)
                     "age",  # Patient/subject age (extracted heuristically)
                     "sex",  # Patient/subject sex (extracted heuristically)
                     "tissue",  # Tissue type (e.g., "colon", "ileum", "rectum")
+                    # Lobster internal quality tracking
+                    "_individual_id",  # Harmonized subject ID for longitudinal tracking
+                    "_quality_score",  # Metadata completeness score (0-100)
+                    "_quality_flags",  # Human-readable quality warnings
                 ],
                 ExportPriority.LIBRARY_TECHNICAL: [
                     "library_strategy",  # AMPLICON, RNA-Seq, WGS, etc.

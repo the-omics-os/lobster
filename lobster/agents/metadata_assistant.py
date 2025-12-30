@@ -30,6 +30,8 @@ AGENT_CONFIG = AgentRegistryConfig(
 # Heavy imports below (may have circular dependencies, but AGENT_CONFIG is already defined)
 # =============================================================================
 import json
+import logging
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -58,6 +60,10 @@ from lobster.services.execution.custom_code_execution_service import (
     CodeValidationError,
     CustomCodeExecutionService,
 )
+from lobster.tools.custom_code_tool import (
+    create_execute_custom_code_tool,
+    metadata_store_post_processor,
+)
 from lobster.services.metadata.metadata_standardization_service import (
     MetadataStandardizationService,
 )
@@ -81,14 +87,125 @@ try:
     from lobster.services.metadata.microbiome_filtering_service import (
         MicrobiomeFilteringService,
     )
+    from lobster.services.metadata.metadata_filtering_service import (
+        MetadataFilteringService,
+        extract_disease_with_fallback,
+    )
 
     MICROBIOME_FEATURES_AVAILABLE = True
 except ImportError:
     MicrobiomeFilteringService = None
     DiseaseStandardizationService = None
+    MetadataFilteringService = None
     MICROBIOME_FEATURES_AVAILABLE = False
 
+# Optional Rich UI for progress visualization
+try:
+    from lobster.ui.components.parallel_workers_progress import parallel_workers_progress
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import threading
+    import time
+    PROGRESS_UI_AVAILABLE = True
+except ImportError:
+    parallel_workers_progress = None
+    ThreadPoolExecutor = None
+    PROGRESS_UI_AVAILABLE = False
+
 logger = get_logger(__name__)
+
+
+# =========================================================================
+# Helper: Log Suppression for Progress UI
+# =========================================================================
+
+
+@contextmanager
+def _suppress_logs(min_level: int = logging.CRITICAL + 1):
+    """
+    Temporarily suppress logs during Rich progress display.
+
+    This prevents log messages from interleaving with and disrupting the
+    Rich progress bars. By default, ALL logs are suppressed (CRITICAL+1).
+
+    Args:
+        min_level: Minimum log level to show (default: CRITICAL+1 = suppress all).
+                   Use logging.ERROR to show errors, logging.WARNING for warnings, etc.
+    """
+    original_levels = {}
+
+    # Suppress root loggers (child loggers inherit via propagation)
+    loggers_to_suppress = ["lobster", "urllib3", "httpx", "httpcore", "filelock"]
+    for name in loggers_to_suppress:
+        log = logging.getLogger(name)
+        original_levels[name] = log.level
+        log.setLevel(min_level)
+
+    # Also capture all existing lobster.* child loggers for safety
+    for logger_name in list(logging.Logger.manager.loggerDict.keys()):
+        if logger_name.startswith("lobster.") or logger_name.startswith("lobster_custom_"):
+            log = logging.getLogger(logger_name)
+            if logger_name not in original_levels:
+                original_levels[logger_name] = log.level
+                log.setLevel(min_level)
+
+    try:
+        yield
+    finally:
+        for name, level in original_levels.items():
+            logging.getLogger(name).setLevel(level)
+
+
+# =========================================================================
+# Helper: Metadata Pattern Detection (Option D - Namespace Separation)
+# =========================================================================
+
+
+def _detect_metadata_pattern(data: dict) -> str:
+    """Detect metadata storage pattern.
+
+    Two patterns exist in metadata_store:
+    - GEO pattern: {"metadata": {"samples": {...}}} - dict-of-dicts for single-dataset lookups
+    - Aggregated pattern: {"samples": [...]} - list for batch processing/CSV export
+
+    Key naming conventions:
+    - geo_*, sra_*, metadata_* → Should use GEO pattern
+    - aggregated_*, pub_queue_* → Should use Aggregated pattern
+
+    Returns:
+        "geo": GEO pattern {"metadata": {"samples": {...}}}
+        "aggregated": Aggregated pattern {"samples": [...]}
+        "unknown": Unrecognized pattern
+    """
+    if "metadata" in data and isinstance(data.get("metadata", {}).get("samples"), dict):
+        return "geo"
+    elif "samples" in data and isinstance(data["samples"], list):
+        return "aggregated"
+    return "unknown"
+
+
+def _convert_list_to_dict(samples_list: list, key_field: str = "run_accession") -> dict:
+    """Convert list of samples to dict keyed by specified field.
+
+    Used when reading aggregated pattern data with tools that expect dict-of-dicts.
+
+    Args:
+        samples_list: List of sample dicts
+        key_field: Field to use as key (default: run_accession)
+
+    Returns:
+        Dict mapping sample IDs to sample data
+    """
+    if not samples_list:
+        return {}
+
+    # Fallback if key_field not present in first sample
+    if samples_list and key_field not in samples_list[0]:
+        key_field = next(iter(samples_list[0].keys()), "index")
+
+    return {
+        s.get(key_field, f"sample_{i}"): s
+        for i, s in enumerate(samples_list)
+    }
 
 
 def metadata_assistant(
@@ -136,15 +253,29 @@ def metadata_assistant(
     # Initialize optional microbiome services if available
     microbiome_filtering_service = None
     disease_standardization_service = None
+    metadata_filtering_service = None
     if MICROBIOME_FEATURES_AVAILABLE:
         microbiome_filtering_service = MicrobiomeFilteringService()
         disease_standardization_service = DiseaseStandardizationService()
+        # Create filtering service with dependencies (disease_extractor set later)
+        metadata_filtering_service = MetadataFilteringService(
+            microbiome_service=microbiome_filtering_service,
+            disease_service=disease_standardization_service,
+        )
         logger.debug("Microbiome features enabled")
     else:
         logger.debug("Microbiome features not available (optional)")
 
     # Custom code execution service for sample-level operations
     custom_code_service = CustomCodeExecutionService(data_manager)
+
+    # Create shared execute_custom_code tool via factory (v2.7+: unified tool)
+    execute_custom_code = create_execute_custom_code_tool(
+        data_manager=data_manager,
+        custom_code_service=custom_code_service,
+        agent_name="metadata_assistant",
+        post_processor=metadata_store_post_processor,
+    )
 
     logger.debug("metadata_assistant agent initialized")
 
@@ -245,7 +376,20 @@ def metadata_assistant(
                             f"'{identifier}' not found in metadata_store. Use research_agent.validate_dataset_metadata() first."
                         )
                     cached = data_manager.metadata_store[identifier]
-                    samples_dict = cached.get("metadata", {}).get("samples", {})
+
+                    # Detect pattern (Option D: Namespace Separation)
+                    pattern = _detect_metadata_pattern(cached)
+
+                    if pattern == "geo":
+                        samples_dict = cached["metadata"]["samples"]
+                    elif pattern == "aggregated":
+                        samples_dict = _convert_list_to_dict(cached["samples"])
+                    else:
+                        raise ValueError(
+                            f"Unrecognized metadata pattern in '{identifier}'. "
+                            "Expected 'metadata.samples' dict or 'samples' list."
+                        )
+
                     if not samples_dict:
                         raise ValueError(f"No sample metadata in '{identifier}'")
                     return pd.DataFrame.from_dict(samples_dict, orient="index")
@@ -355,12 +499,56 @@ def metadata_assistant(
                 adata = data_manager.get_modality(source)
                 sample_df = adata.obs
             elif source_type == "metadata_store":
-                if source not in data_manager.metadata_store:
-                    return f"❌ Error: '{source}' not found in metadata_store. Use research_agent.validate_dataset_metadata() first."
-                cached = data_manager.metadata_store[source]
-                samples_dict = cached.get("metadata", {}).get("samples", {})
+                # Two-tier cache pattern: Check memory first, then workspace files
+                cached = None
+
+                # Tier 1: Check in-memory metadata_store (fast path)
+                if source in data_manager.metadata_store:
+                    cached = data_manager.metadata_store[source]
+                    logger.debug(f"Found '{source}' in metadata_store (Tier 1 - memory)")
+
+                # Tier 2: Fallback to workspace files (persistent, survives session restart)
+                else:
+                    logger.debug(f"'{source}' not in metadata_store, checking workspace files (Tier 2)")
+                    try:
+                        from lobster.services.data_access.workspace_content_service import (
+                            WorkspaceContentService,
+                            ContentType,
+                        )
+
+                        workspace_service = WorkspaceContentService(data_manager)
+                        cached = workspace_service.read_content(
+                            identifier=source,
+                            content_type=ContentType.METADATA,
+                            level=None,  # Full content
+                        )
+
+                        # Lazy loading: Promote to metadata_store for subsequent fast access
+                        data_manager.metadata_store[source] = cached
+                        logger.info(f"Loaded '{source}' from workspace and promoted to metadata_store")
+
+                    except FileNotFoundError:
+                        return (
+                            f"❌ Error: '{source}' not found in metadata_store or workspace files. "
+                            f"Use research_agent.validate_dataset_metadata() or process_metadata_queue first."
+                        )
+
+                # Detect pattern (Option D: Namespace Separation)
+                pattern = _detect_metadata_pattern(cached)
+
+                if pattern == "geo":
+                    # GEO pattern: {"metadata": {"samples": {...}}}
+                    samples_dict = cached["metadata"]["samples"]
+                elif pattern == "aggregated":
+                    # Aggregated pattern: {"samples": [...]} - convert list to dict
+                    samples_dict = _convert_list_to_dict(cached["samples"])
+                    logger.debug(f"Converted aggregated pattern ({len(cached['samples'])} samples) to dict for '{source}'")
+                else:
+                    return f"❌ Error: Unrecognized metadata pattern in '{source}'. Expected 'metadata.samples' dict or 'samples' list."
+
                 if not samples_dict:
-                    return f"❌ Error: No sample metadata in '{source}'"
+                    return f"❌ Error: No sample metadata in '{source}'."
+
                 sample_df = pd.DataFrame.from_dict(samples_dict, orient="index")
 
             # Filter fields if specified
@@ -634,10 +822,20 @@ def metadata_assistant(
                     )
 
                 cached_metadata = data_manager.metadata_store[source]
-                metadata_dict = cached_metadata.get("metadata", {})
 
-                # Extract sample metadata from GEO structure
-                samples_dict = metadata_dict.get("samples", {})
+                # Detect pattern (Option D: Namespace Separation)
+                pattern = _detect_metadata_pattern(cached_metadata)
+
+                if pattern == "geo":
+                    samples_dict = cached_metadata["metadata"]["samples"]
+                elif pattern == "aggregated":
+                    samples_dict = _convert_list_to_dict(cached_metadata["samples"])
+                else:
+                    return (
+                        f"❌ Error: Unrecognized metadata pattern in '{source}'. "
+                        "Expected 'metadata.samples' dict or 'samples' list."
+                    )
+
                 if not samples_dict:
                     return f"❌ Error: No sample metadata in '{source}'. Cannot validate from metadata_store."
 
@@ -1002,8 +1200,10 @@ def metadata_assistant(
                 f"Filtering samples: workspace_key={workspace_key}, criteria='{filter_criteria}', strict={strict}"
             )
 
-            # Parse natural language criteria
-            parsed_criteria = _parse_filter_criteria(filter_criteria)
+            # Parse natural language criteria using service
+            if not metadata_filtering_service:
+                return "❌ Error: Microbiome filtering service not available"
+            parsed_criteria = metadata_filtering_service.parse_criteria(filter_criteria)
 
             logger.debug(f"Parsed criteria: {parsed_criteria}")
 
@@ -1017,16 +1217,22 @@ def metadata_assistant(
             if not workspace_data:
                 return f"❌ Error: Workspace key '{workspace_key}' not found or empty"
 
-            # Extract metadata (assume dict structure with 'metadata' or 'samples')
-            if isinstance(workspace_data, dict):
-                if "metadata" in workspace_data:
-                    metadata_dict = workspace_data["metadata"].get("samples", {})
-                elif "samples" in workspace_data:
-                    metadata_dict = workspace_data["samples"]
-                else:
-                    metadata_dict = workspace_data
+            # Detect pattern (Option D: Namespace Separation)
+            if not isinstance(workspace_data, dict):
+                return f"❌ Error: Unexpected workspace data format (expected dict)"
+
+            pattern = _detect_metadata_pattern(workspace_data)
+
+            if pattern == "geo":
+                # GEO pattern: {"metadata": {"samples": {...}}}
+                metadata_dict = workspace_data["metadata"]["samples"]
+            elif pattern == "aggregated":
+                # Aggregated pattern: {"samples": [...]} - keep as list for filtering efficiency
+                metadata_dict = workspace_data["samples"]
+                logger.debug(f"Using aggregated pattern ({len(metadata_dict)} samples) from '{workspace_key}'")
             else:
-                return f"❌ Error: Unexpected workspace data format"
+                # Fallback: treat entire workspace_data as samples dict
+                metadata_dict = workspace_data
 
             if not metadata_dict:
                 return f"❌ Error: No sample metadata found in workspace key '{workspace_key}'"
@@ -1034,7 +1240,14 @@ def metadata_assistant(
             # Convert to DataFrame
             import pandas as pd
 
-            metadata_df = pd.DataFrame.from_dict(metadata_dict, orient="index")
+            # Handle both dict-of-dicts (orient="index") and list-of-dicts
+            if isinstance(metadata_dict, list):
+                metadata_df = pd.DataFrame(metadata_dict)
+                # Set index to run_accession if available for consistency
+                if "run_accession" in metadata_df.columns:
+                    metadata_df = metadata_df.set_index("run_accession")
+            else:
+                metadata_df = pd.DataFrame.from_dict(metadata_dict, orient="index")
             original_count = len(metadata_df)
 
             logger.debug(f"Loaded {original_count} samples from workspace")
@@ -1320,12 +1533,20 @@ def metadata_assistant(
                 return f"❌ {error_msg}"
 
             # Apply filters if specified
-            if filter_criteria and all_samples:
+            if filter_criteria and all_samples and metadata_filtering_service:
                 logger.debug(
                     f"Applying filter criteria to {len(all_samples)} samples: '{filter_criteria}'"
                 )
-                all_samples = _apply_metadata_filters(all_samples, filter_criteria)
-                logger.debug(f"After filtering: {len(all_samples)} samples retained")
+                parsed = metadata_filtering_service.parse_criteria(filter_criteria)
+                # Pass disease_extractor with fallback chain (Bug 3 fix - DataBioMix)
+                metadata_filtering_service.disease_extractor = extract_disease_with_fallback
+                all_samples, filter_stats, _ = metadata_filtering_service.apply_filters(
+                    all_samples, parsed
+                )
+                logger.debug(
+                    f"After filtering: {len(all_samples)} samples retained "
+                    f"({filter_stats.get('retention_rate', 0):.1f}%)"
+                )
 
             samples_after = len(all_samples)
 
@@ -1397,27 +1618,342 @@ def metadata_assistant(
             logger.error(f"Error processing entry {entry_id}: {e}")
             return f"❌ Error processing entry: {str(e)}"
 
+    def _process_single_entry_for_queue(entry, filter_criteria):
+        """
+        Process a single entry and return (entry_samples, entry_stats, failed_reason).
+
+        Extracted for reuse in both sequential and parallel processing.
+
+        Returns:
+            Tuple of (entry_samples: List, entry_stats: Dict, failed_reason: Optional[str])
+        """
+        try:
+            if not entry.workspace_metadata_keys:
+                logger.debug(
+                    f"Skipping entry {entry.entry_id}: no workspace_metadata_keys"
+                )
+                return [], {}, None
+
+            entry_samples = []
+            entry_validation_results = []
+            entry_quality_stats = []
+
+            for ws_key in entry.workspace_metadata_keys:
+                # Only process SRA sample files
+                if not (ws_key.startswith("sra_") and ws_key.endswith("_samples")):
+                    continue
+
+                logger.debug(f"Processing {ws_key} for entry {entry.entry_id}")
+
+                from lobster.services.data_access.workspace_content_service import ContentType
+
+                ws_data = workspace_service.read_content(ws_key, content_type=ContentType.METADATA)
+                if ws_data:
+                    samples, validation_result, quality_stats = _extract_samples_from_workspace(ws_data)
+                    entry_samples.extend(samples)
+                    entry_validation_results.append(validation_result)
+                    entry_quality_stats.append(quality_stats)
+
+            samples_extracted = sum(vr.metadata.get("total_samples", 0) for vr in entry_validation_results)
+            samples_valid = len(entry_samples)
+
+            # Check for complete validation failure
+            if samples_extracted > 0 and samples_valid == 0:
+                error_count = sum(len(vr.errors) for vr in entry_validation_results)
+                error_msg = f"All {samples_extracted} samples failed validation ({error_count} errors)"
+                logger.error(f"Entry {entry.entry_id}: {error_msg}")
+                return [], {"extracted": samples_extracted, "valid": 0}, error_msg
+
+            # Apply filters if specified
+            if filter_criteria and entry_samples and metadata_filtering_service:
+                samples_before_filter = len(entry_samples)
+                parsed = metadata_filtering_service.parse_criteria(filter_criteria)
+                metadata_filtering_service.disease_extractor = extract_disease_with_fallback
+                entry_samples, _, _ = metadata_filtering_service.apply_filters(entry_samples, parsed)
+                logger.debug(
+                    f"Entry {entry.entry_id}: Filter applied - "
+                    f"{len(entry_samples)}/{samples_before_filter} samples retained"
+                )
+
+            # Add publication context
+            for sample in entry_samples:
+                sample["publication_entry_id"] = entry.entry_id
+                sample["publication_title"] = entry.title
+                sample["publication_doi"] = entry.doi
+                sample["publication_pmid"] = entry.pmid
+
+            entry_stats = {
+                "extracted": samples_extracted,
+                "valid": samples_valid,
+                "after_filter": len(entry_samples),
+                "validation_errors": sum(len(vr.errors) for vr in entry_validation_results),
+                "validation_warnings": sum(len(vr.warnings) for vr in entry_validation_results),
+            }
+
+            return entry_samples, entry_stats, None
+
+        except Exception as e:
+            error_msg = f"Failed to process entry {entry.entry_id}: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return [], {}, error_msg
+
+    def _process_queue_with_progress(entries, filter_criteria, output_key, parallel_workers):
+        """Process queue entries in parallel with Rich progress visualization."""
+        if not PROGRESS_UI_AVAILABLE:
+            logger.warning("Progress UI not available, cannot use parallel processing")
+            return "❌ Progress UI not available. Use sequential processing instead."
+
+        # Batch flush configuration - reduces 655 atomic writes to ~33 writes (20x improvement)
+        BATCH_FLUSH_SIZE = 20
+
+        # Access publication queue via data_manager (in closure scope)
+        pub_queue = data_manager.publication_queue
+
+        def _batch_flush_updates(updates):
+            """Flush multiple status updates in a single atomic write.
+
+            This dramatically reduces I/O by writing all pending updates at once
+            instead of one-by-one, avoiding the O(N²) bottleneck where each update
+            reads/writes the entire queue file.
+            """
+            if not updates:
+                return
+
+            with pub_queue._locked():
+                entries_list = pub_queue._load_entries()
+                entry_map = {e.entry_id: e for e in entries_list}
+
+                for update in updates:
+                    entry_id = update["entry_id"]
+                    if entry_id in entry_map:
+                        entry = entry_map[entry_id]
+                        entry.update_status(
+                            status=update["status"],
+                            handoff_status=update["handoff_status"],
+                            error=update.get("error"),
+                        )
+
+                pub_queue._write_entries_atomic(entries_list)
+
+            logger.debug(f"Batch flushed {len(updates)} status updates")
+
+        results = []
+        results_lock = threading.Lock()
+        all_samples = []
+        samples_lock = threading.Lock()
+
+        # Work-stealing queue
+        entry_queue = list(enumerate(entries))
+        queue_lock = threading.Lock()
+
+        def get_next_entry():
+            with queue_lock:
+                if entry_queue:
+                    return entry_queue.pop(0)
+                return None
+
+        start_time = time.time()
+        effective_workers = min(parallel_workers, len(entries))
+
+        with _suppress_logs():
+            with parallel_workers_progress(effective_workers, len(entries)) as progress:
+
+                def worker_func(worker_id: int):
+                    """Worker function that processes entries from queue."""
+                    # Collect status updates in memory, flush in batches to avoid O(N²) I/O
+                    pending_updates = []
+
+                    while True:
+                        next_item = get_next_entry()
+                        if next_item is None:
+                            # Flush remaining updates before exiting
+                            if pending_updates:
+                                _batch_flush_updates(pending_updates)
+                            progress.worker_done(worker_id)
+                            break
+
+                        idx, entry = next_item
+
+                        # Get title for display
+                        title = (entry.title or entry.entry_id)[:35]
+                        progress.worker_start(worker_id, title)
+
+                        # Process entry
+                        entry_start = time.time()
+                        entry_samples, entry_stats, failed_reason = _process_single_entry_for_queue(
+                            entry, filter_criteria
+                        )
+
+                        elapsed = time.time() - entry_start
+
+                        # Determine status and queue update (batched, not immediate)
+                        if failed_reason:
+                            status = "failed"
+                            pending_updates.append({
+                                "entry_id": entry.entry_id,
+                                "status": entry.status,
+                                "handoff_status": HandoffStatus.METADATA_FAILED,
+                                "error": failed_reason,
+                            })
+                        else:
+                            status = "completed"
+                            pending_updates.append({
+                                "entry_id": entry.entry_id,
+                                "status": entry.status,
+                                "handoff_status": HandoffStatus.METADATA_COMPLETE,
+                            })
+
+                        # Flush batch when threshold reached
+                        if len(pending_updates) >= BATCH_FLUSH_SIZE:
+                            _batch_flush_updates(pending_updates)
+                            pending_updates = []
+
+                        progress.worker_complete(worker_id, status, elapsed)
+
+                        # Store results
+                        with results_lock:
+                            results.append({
+                                "entry_id": entry.entry_id,
+                                "status": status,
+                                "stats": entry_stats,
+                                "error": failed_reason,
+                            })
+
+                        with samples_lock:
+                            all_samples.extend(entry_samples)
+
+                # Launch workers
+                executor = ThreadPoolExecutor(max_workers=effective_workers)
+                try:
+                    futures = [executor.submit(worker_func, i) for i in range(effective_workers)]
+                    for future in as_completed(futures):
+                        try:
+                            future.result()
+                        except Exception as e:
+                            logger.error(f"Worker error: {e}")
+                finally:
+                    executor.shutdown(wait=True, cancel_futures=True)
+
+        # Post-processing with progress feedback (prevents "654/655 hang" UX issue)
+        from rich.console import Console
+        console = Console()
+
+        with console.status("[bold cyan]Finalizing: aggregating results...") as status:
+            # Aggregate stats
+            total_extracted = sum(r["stats"].get("extracted", 0) for r in results)
+            total_valid = sum(r["stats"].get("valid", 0) for r in results)
+            total_after_filter = len(all_samples)
+            successful = sum(1 for r in results if r["status"] == "completed")
+            failed = sum(1 for r in results if r["status"] == "failed")
+
+            # Store aggregated results
+            if all_samples:
+                status.update("[bold cyan]Finalizing: writing to workspace...")
+
+                from datetime import datetime
+                from lobster.services.data_access.workspace_content_service import ContentType, MetadataContent
+
+                content = MetadataContent(
+                    identifier=output_key,
+                    content_type="filtered_samples",
+                    description=f"Batch filtered samples: {filter_criteria or 'no filter'}",
+                    data={"samples": all_samples, "filter_criteria": filter_criteria, "stats": results},
+                    source="metadata_assistant",
+                    cached_at=datetime.now().isoformat(),
+                )
+                workspace_service.write_content(content, ContentType.METADATA)
+                data_manager.metadata_store[output_key] = {
+                    "samples": all_samples,
+                    "filter_criteria": filter_criteria,
+                    "stats": results,
+                }
+
+        retention = (total_after_filter / total_extracted * 100) if total_extracted > 0 else 0
+        validation_rate = (total_valid / total_extracted * 100) if total_extracted > 0 else 0
+        total_time = time.time() - start_time
+
+        response = f"""## Queue Processing Complete (Parallel Mode)
+**Entries Processed**: {len(results)}
+**Successful**: {successful}
+**Failed**: {failed}
+**Samples Extracted**: {total_extracted}
+**Samples Valid**: {total_valid} ({validation_rate:.1f}%)
+**Samples After Filter**: {total_after_filter}
+**Retention Rate**: {retention:.1f}%
+**Processing Time**: {total_time:.1f}s ({len(results)/total_time*60:.1f} entries/min)
+**Output Key**: {output_key}
+
+Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_format="csv")` to export as CSV.
+"""
+        return response
+
     @tool
     def process_metadata_queue(
         status_filter: str = "handoff_ready",
         filter_criteria: str = None,
         max_entries: int = None,
         output_key: str = "aggregated_filtered_samples",
+        parallel_workers: int = None,
     ) -> str:
         """
-        Process multiple publication queue entries and aggregate results.
+        Process multiple publication queue entries and aggregate SAMPLE-LEVEL results.
 
-        Iterates through entries matching status_filter, processes each,
-        and aggregates all filtered samples into a single workspace artifact.
+        **PRIMARY TOOL for batch publication queue processing**. Use this tool when:
+        - Processing multiple handoff_ready entries at once
+        - Aggregating sample-level metadata from sra_*_samples files
+        - Applying filter_criteria at the SAMPLE level (16S, host, sample_type, disease)
+
+        This tool reads workspace_metadata_keys from each entry (e.g., sra_PRJNA123_samples),
+        loads the actual SAMPLE metadata (run_accession, biosample, organism, library_strategy, etc.),
+        applies filtering at the sample level using MicrobiomeFilteringService and
+        DiseaseStandardizationService, and aggregates ALL samples from ALL publications
+        into a single output.
+
+        DO NOT use execute_custom_code for initial aggregation - that tool is for
+        SECONDARY enrichment when samples are missing critical fields AFTER
+        process_metadata_queue has already completed.
 
         Args:
             status_filter: Queue status to filter (default: "handoff_ready")
-            filter_criteria: Natural language filter (e.g., "16S human fecal CRC")
+            filter_criteria: Natural language filter applied at SAMPLE level (e.g., "16S human fecal CRC")
+                            - "16S": Filters samples with library_strategy="AMPLICON"
+                            - "shotgun": Filters samples with library_strategy="WGS"|"WXS"|"METAGENOMIC"
+                            - "16S shotgun": Includes BOTH (OR logic) - samples matching 16S OR shotgun
+                            - "human": Filters samples with host="Homo sapiens"
+                            - "fecal": Filters samples with isolation_source containing "fecal|stool|feces"
+                            Note: WGA (Whole Genome Amplification) is excluded from shotgun (amplification bias)
             max_entries: Maximum entries to process (None = all)
-            output_key: Workspace key for aggregated output
+            output_key: Workspace key for aggregated output (default: "aggregated_filtered_samples")
+            parallel_workers: Number of parallel workers (default: None = sequential).
+                             If >1 and Rich UI available, shows real-time progress bars.
+                             Falls back to sequential processing if UI unavailable.
 
         Returns:
-            Processing summary with total counts and output location
+            Processing summary with SAMPLE counts (not publication counts), validation metrics,
+            and output location for CSV export
+
+        Examples:
+            # Process all handoff_ready entries, filter for 16S human fecal samples
+            process_metadata_queue(
+                status_filter="handoff_ready",
+                filter_criteria="16S human fecal",
+                output_key="aggregated_16s_human_fecal_samples"
+            )
+            # Expected output: 5,000-10,000 SAMPLE rows (one per run_accession)
+
+            # Process all handoff_ready entries, include both 16S and shotgun
+            process_metadata_queue(
+                status_filter="handoff_ready",
+                filter_criteria="16S shotgun human",
+                output_key="aggregated_microbiome_samples"
+            )
+
+            # No filtering - aggregate all samples from all entries
+            process_metadata_queue(
+                status_filter="handoff_ready",
+                filter_criteria=None,
+                output_key="all_samples_unfiltered"
+            )
         """
         try:
             from lobster.services.data_access.workspace_content_service import (
@@ -1437,10 +1973,25 @@ def metadata_assistant(
                 logger.info(f"No entries found with status '{status_filter}'")
                 return f"No entries found with status '{status_filter}'"
 
-            # Log batch processing start
+            # Route to parallel processing if requested and available
+            if parallel_workers and parallel_workers > 1 and PROGRESS_UI_AVAILABLE:
+                logger.info(
+                    f"Using parallel processing: {len(entries)} entries, "
+                    f"{parallel_workers} workers, Rich UI enabled"
+                )
+                return _process_queue_with_progress(
+                    entries, filter_criteria, output_key, parallel_workers
+                )
+            elif parallel_workers and parallel_workers > 1 and not PROGRESS_UI_AVAILABLE:
+                logger.warning(
+                    f"Parallel processing requested but Rich UI not available. "
+                    f"Falling back to sequential processing."
+                )
+
+            # Log batch processing start (sequential mode)
             logger.info(
                 f"Starting batch processing: {len(entries)} entries "
-                f"(filter: '{filter_criteria or 'none'}')"
+                f"(filter: '{filter_criteria or 'none'}', mode: sequential)"
             )
 
             all_samples = []
@@ -1556,10 +2107,12 @@ def metadata_assistant(
                         f"Entry {entry.entry_id}: {samples_valid}/{samples_extracted} samples valid"
                     )
 
-                    if filter_criteria and entry_samples:
+                    if filter_criteria and entry_samples and metadata_filtering_service:
                         samples_before_filter = len(entry_samples)
-                        entry_samples = _apply_metadata_filters(
-                            entry_samples, filter_criteria
+                        parsed = metadata_filtering_service.parse_criteria(filter_criteria)
+                        metadata_filtering_service.disease_extractor = extract_disease_with_fallback
+                        entry_samples, _, _ = metadata_filtering_service.apply_filters(
+                            entry_samples, parsed
                         )
                         logger.debug(
                             f"Entry {entry.entry_id}: Filter applied - "
@@ -1853,6 +2406,7 @@ def metadata_assistant(
             "flag_counts": {},
             "flagged_sample_ids": {},
             "individuals": set(),
+            "validation_errors": [],  # Track errors for aggregated summary
         }
         scores = []
 
@@ -1920,9 +2474,33 @@ def metadata_assistant(
                 for warning in sample_result.warnings:
                     logger.debug(warning)
             else:
-                # Log errors for invalid samples (these are excluded)
+                # Track validation errors by type (aggregated, not per-sample)
+                # These are data quality issues, not system errors
                 for error in sample_result.errors:
-                    logger.error(error)
+                    quality_stats["validation_errors"].append(error)
+                    logger.debug(f"Sample validation failed: {error}")
+
+        # Log aggregated validation error summary (once per batch, not per sample)
+        if quality_stats["validation_errors"]:
+            # Group errors by type for concise summary
+            error_types: Dict[str, int] = {}
+            for error in quality_stats["validation_errors"]:
+                # Extract error type from message (e.g., "Field 'organism_name':" -> "organism_name")
+                if "Field '" in error:
+                    field = error.split("Field '")[1].split("'")[0]
+                    error_types[f"missing_{field}"] = error_types.get(f"missing_{field}", 0) + 1
+                elif "No download URLs" in error:
+                    error_types["no_download_url"] = error_types.get("no_download_url", 0) + 1
+                else:
+                    error_types["other"] = error_types.get("other", 0) + 1
+
+            # Log summary at WARNING level (data quality issue, not system error)
+            invalid_count = len(raw_samples) - len(valid_samples)
+            error_summary = ", ".join(f"{k}: {v}" for k, v in sorted(error_types.items()))
+            logger.warning(
+                f"Validation summary: {invalid_count} samples excluded "
+                f"({error_summary})"
+            )
 
         # Finalize quality stats
         quality_stats["total_samples"] = len(valid_samples)
@@ -1947,130 +2525,12 @@ def metadata_assistant(
 
         return valid_samples, validation_result, quality_stats
 
-    def _apply_metadata_filters(samples: list, filter_criteria: str) -> list:
-        """
-        Apply natural language filters using microbiome services.
-
-        Includes disease extraction + standardization if disease terms in criteria.
-        """
-        if not MICROBIOME_FEATURES_AVAILABLE:
-            logger.warning(
-                "Microbiome services not available, returning unfiltered samples"
-            )
-            return samples
-
-        parsed = _parse_filter_criteria(filter_criteria)
-        filtered = samples.copy()
-
-        # Convert to DataFrame for disease extraction (if needed)
-        if parsed["standardize_disease"] and filtered:
-            df = pd.DataFrame(filtered)
-
-            # Extract disease from diverse fields (NEW v1.2.0)
-            disease_col = _extract_disease_from_raw_fields(df, study_context=None)
-
-            if disease_col:
-                # Apply standardization to extracted disease
-                standardized_df, stats, ir = (
-                    disease_standardization_service.standardize_disease_terms(
-                        df, disease_column=disease_col
-                    )
-                )
-                # Convert back to list of dicts
-                filtered = standardized_df.to_dict("records")
-                logger.debug(
-                    f"Disease extraction + standardization applied: "
-                    f"{stats['standardization_rate']:.1f}% mapped"
-                )
-
-        # Apply other filters
-        if parsed["check_16s"]:
-            filtered = [
-                s
-                for s in filtered
-                if microbiome_filtering_service.validate_16s_amplicon(s, strict=False)[
-                    0
-                ]
-            ]
-        if parsed["host_organisms"]:
-            filtered = [
-                s
-                for s in filtered
-                if microbiome_filtering_service.validate_host_organism(
-                    s, allowed_hosts=parsed["host_organisms"]
-                )[0]
-            ]
-
-        return filtered
-
     # =========================================================================
     # Helper Functions for filter_samples_by
     # =========================================================================
-
-    def _parse_filter_criteria(criteria: str) -> Dict[str, Any]:
-        """
-        Parse natural language filter criteria into structured format.
-
-        Args:
-            criteria: Natural language string (e.g., "16S human fecal CRC UC")
-
-        Returns:
-            Dictionary with parsed criteria:
-            {
-                "check_16s": bool,
-                "host_organisms": List[str],
-                "sample_types": List[str],
-                "standardize_disease": bool
-            }
-        """
-        criteria_lower = criteria.lower()
-
-        # Check for 16S amplicon
-        check_16s = "16s" in criteria_lower or "amplicon" in criteria_lower
-
-        # Check for host organisms
-        host_organisms = []
-        if "human" in criteria_lower or "homo sapiens" in criteria_lower:
-            host_organisms.append("Human")
-        if "mouse" in criteria_lower or "mus musculus" in criteria_lower:
-            host_organisms.append("Mouse")
-
-        # Check for sample types
-        sample_types = []
-        if (
-            "fecal" in criteria_lower
-            or "stool" in criteria_lower
-            or "feces" in criteria_lower
-        ):
-            sample_types.append("fecal")
-        if (
-            "gut" in criteria_lower
-            or "tissue" in criteria_lower
-            or "biopsy" in criteria_lower
-        ):
-            sample_types.append("gut")
-
-        # Check for disease terms (if any disease keywords present, enable standardization)
-        disease_keywords = [
-            "crc",
-            "uc",
-            "cd",
-            "cancer",
-            "colitis",
-            "crohn",
-            "healthy",
-            "control",
-        ]
-        standardize_disease = any(
-            keyword in criteria_lower for keyword in disease_keywords
-        )
-
-        return {
-            "check_16s": check_16s,
-            "host_organisms": host_organisms,
-            "sample_types": sample_types,
-            "standardize_disease": standardize_disease,
-        }
+    # NOTE: _parse_filter_criteria and _apply_metadata_filters have been moved to
+    # lobster/services/metadata/metadata_filtering_service.py (MetadataFilteringService)
+    # =========================================================================
 
     def _combine_analysis_steps(
         irs: List[AnalysisStep], operation: str, description: str
@@ -2230,173 +2690,9 @@ def metadata_assistant(
     # Tool 10: Custom Code Execution for Sample-Level Operations
     # =========================================================================
 
-    @tool
-    def execute_custom_code(
-        python_code: str,
-        workspace_key: str = None,
-        load_workspace_files: bool = True,
-        persist: bool = False,
-        description: str = "Custom metadata code execution",
-    ) -> str:
-        """
-        Execute custom Python code for sample-level metadata operations.
-
-        **Use this tool for manual review and filtering of samples when standard tools are insufficient.**
-
-        AVAILABLE IN NAMESPACE:
-        - workspace_path: Path to workspace directory
-        - Auto-loaded CSV/JSON files from workspace (controlled by workspace_key)
-        - publication_queue: Publication queue entries (always loaded)
-        - All JSON files loaded as Python dicts with sanitized names (dots/dashes → underscores)
-
-        TOKEN-EFFICIENT LOADING (IMPORTANT):
-        - Use `workspace_key` parameter to load ONLY specific files (avoids token overflow)
-        - Example: workspace_key="sra_prjna834801_samples" loads only sra_prjna834801_samples.json
-        - Without workspace_key: loads ALL workspace/*.json files (can cause timeout with >100 files)
-        - ALWAYS use workspace_key when working with large workspaces
-
-        COMMON USE CASES:
-        1. Filter flagged samples (SELECTIVE LOADING):
-           >>> execute_custom_code(
-           ...     workspace_key="sra_prjna834801_samples",  # Load only this file
-           ...     python_code=\"\"\"
-           ...     samples = sra_prjna834801_samples['samples']
-           ...     valid = [s for s in samples if s.get('body_site')]
-           ...     result = {{'samples': valid, 'output_key': 'reviewed_samples'}}
-           ...     \"\"\"
-           ... )
-
-        2. Update sample metadata (IN-PLACE):
-           >>> execute_custom_code(
-           ...     workspace_key="aggregated_samples",
-           ...     python_code="for s in aggregated_samples['samples']: s['reviewed'] = True"
-           ... )
-
-        3. Extract patterns from publication text:
-           >>> execute_custom_code(
-           ...     python_code="import re; body_site = re.search(r'(fecal|stool|biopsy)', methods_text)"
-           ... )
-
-        PERSISTING CHANGES:
-        To save filtered samples for export, return a dict with:
-        - 'samples': list of sample dicts to persist
-        - 'output_key': key name for metadata_store (enables write_to_workspace export)
-
-        Args:
-            python_code: Python code to execute (multi-line supported)
-            workspace_key: **RECOMMENDED** - Load only this workspace file (e.g., "sra_prjna834801_samples")
-                          Reduces token usage by 70-90% in large workspaces (>100 files)
-                          If provided, also enables in-place updates to metadata_store[workspace_key]
-            load_workspace_files: Auto-inject CSV/JSON files from workspace (default: True)
-            persist: If True, save to provenance/notebook export (default: False)
-            description: Human-readable description of the operation
-
-        Returns:
-            Formatted string with execution results and any outputs
-
-        Example (RECOMMENDED PATTERN):
-            >>> execute_custom_code(
-            ...     workspace_key="sra_prjna834801_samples",  # SELECTIVE LOADING
-            ...     python_code=\"\"\"
-            ...     samples = sra_prjna834801_samples['samples']
-            ...     valid = [s for s in samples if s.get('body_site')]
-            ...     result = {{'samples': valid, 'output_key': 'reviewed_samples', 'stats': {{'count': len(valid)}}}}
-            ...     \"\"\",
-            ...     description="Filter samples with missing body_site"
-            ... )
-            # Then export with: write_to_workspace(identifier="reviewed_samples", workspace="metadata", output_format="csv")
-        """
-        try:
-            # Convert workspace_key to list for service (supports selective loading)
-            workspace_keys_list = [workspace_key] if workspace_key else None
-
-            result, stats, ir = custom_code_service.execute(
-                code=python_code,
-                modality_name=None,  # metadata_assistant doesn't use AnnData
-                load_workspace_files=load_workspace_files,
-                workspace_keys=workspace_keys_list,  # NEW: selective loading
-                persist=persist,
-                description=description,
-            )
-
-            # Persist changes back to metadata_store if result contains 'samples'
-            persisted_key = None
-            if isinstance(result, dict):
-                if workspace_key and workspace_key in data_manager.metadata_store:
-                    # Update specific key in-place
-                    if "samples" in result:
-                        data_manager.metadata_store[workspace_key]["samples"] = result[
-                            "samples"
-                        ]
-                        persisted_key = workspace_key
-                        logger.info(
-                            f"Persisted {len(result['samples'])} samples to metadata_store['{workspace_key}']"
-                        )
-                elif "samples" in result and "output_key" in result:
-                    # Create new key with filtered samples
-                    output_key = result["output_key"]
-                    data_manager.metadata_store[output_key] = {
-                        "samples": result["samples"],
-                        "filter_criteria": result.get("filter_criteria", "custom"),
-                        "stats": result.get("stats", {}),
-                    }
-                    persisted_key = output_key
-                    logger.info(
-                        f"Created metadata_store['{output_key}'] with {len(result['samples'])} samples"
-                    )
-
-            # Log to data manager for provenance
-            data_manager.log_tool_usage(
-                tool_name="execute_custom_code",
-                parameters={
-                    "description": description,
-                    "workspace_key": workspace_key,
-                    "persist": persist,
-                    "duration_seconds": stats["duration_seconds"],
-                    "success": stats["success"],
-                },
-                description=f"{description} ({'success' if stats['success'] else 'failed'})",
-                ir=ir,
-            )
-
-            # Format response
-            response = f"## Custom Code Execution\n\n"
-            response += f"**Description**: {description}\n"
-            response += f"**Duration**: {stats['duration_seconds']:.2f}s\n"
-            response += (
-                f"**Status**: {'✓ Success' if stats['success'] else '✗ Failed'}\n"
-            )
-
-            if persisted_key:
-                response += f"**Persisted to**: `metadata_store['{persisted_key}']`\n"
-                response += f'**Export with**: `write_to_workspace(identifier="{persisted_key}", workspace="metadata", output_format="csv")`\n'
-
-            if stats.get("stdout"):
-                response += f"\n### Output\n```\n{stats['stdout']}\n```\n"
-
-            if stats.get("warnings"):
-                response += f"\n### Warnings\n"
-                for w in stats["warnings"]:
-                    response += f"- {w}\n"
-
-            if result is not None:
-                # Truncate large results for readability
-                result_str = str(result)
-                if len(result_str) > 1000:
-                    result_str = result_str[:1000] + "... (truncated)"
-                response += f"\n### Result\n```python\n{result_str}\n```\n"
-
-            return response
-
-        except CodeValidationError as e:
-            return f"❌ Code validation failed: {str(e)}\n\nPlease fix syntax errors or remove forbidden imports."
-
-        except CodeExecutionError as e:
-            return f"❌ Code execution failed: {str(e)}\n\nCheck your code for runtime errors."
-
-        except Exception as e:
-            logger.error(f"Unexpected error in execute_custom_code: {e}")
-            return f"❌ Unexpected error: {str(e)}"
+    # execute_custom_code is created via factory at line ~273 (v2.7+: unified tool)
+    # See create_execute_custom_code_tool() in lobster/tools/custom_code_tool.py
+    # Post-processor: metadata_store_post_processor handles sample persistence
 
     # =========================================================================
     # Tool Registry
@@ -2502,6 +2798,97 @@ Operating Principles
 	-	Clearly state which key, modality, or parameter is missing.
 	-	Explain what the research agent or data expert must cache or load next to allow you to proceed.
 
+	6.	Parameter Type Conventions
+
+	CRITICAL: When calling tools with optional parameters:
+	-	To skip an optional parameter, OMIT it entirely from the tool call.
+	-	DO NOT pass string values like 'null', 'None', 'undefined', or empty strings for omitted parameters.
+	-	Integer parameters (max_entries, limit, offset) must be actual integers or omitted completely.
+	-	String parameters must be actual non-empty strings or omitted completely.
+
+	Examples:
+	-	WRONG: process_metadata_queue(max_entries='null')
+	-	WRONG: process_metadata_queue(filter_criteria='null')
+	-	WRONG: process_metadata_queue(output_key='None')
+	-	CORRECT: process_metadata_queue()
+	-	CORRECT: process_metadata_queue(max_entries=10)
+	-	CORRECT: process_metadata_queue(filter_criteria="16S human fecal")
+	-	CORRECT: process_metadata_queue(status_filter="handoff_ready", output_key="filtered_samples")
+
+	7.	Efficient Workspace Navigation
+
+	CRITICAL: Avoid context overflow when discovering metadata keys:
+	-	NEVER call get_content_from_workspace(workspace="metadata") without filters (returns 1000+ items)
+	-	ALWAYS use the pattern parameter to narrow scope: get_content_from_workspace(workspace="metadata", pattern="aggregated_*")
+	-	Parse output_key from tool responses (e.g., "**Output Key**: my_samples") and use directly
+	-	For targeted discovery, use execute_custom_code to list metadata_store keys
+
+	Examples:
+	-	WRONG: get_content_from_workspace(workspace="metadata") # Returns 1294 items!
+	-	CORRECT: get_content_from_workspace(workspace="metadata", pattern="aggregated_*") # Returns ~50 items
+	-	CORRECT: get_content_from_workspace(workspace="metadata", pattern="sra_prjna*") # Returns ~10 items
+	-	CORRECT: execute_custom_code(python_code="result = {{'keys': [k for k in metadata_store.keys() if 'aggregated' in k]}}") # Targeted discovery
+
+Tool Selection Priority
+For publication queue processing requests, follow this decision tree:
+
+	1.	Batch Publication Queue Processing (ALWAYS START HERE)
+
+	Use process_metadata_queue when request involves:
+	- "process publication queue" or "process handoff_ready entries"
+	- "aggregate samples from publications"
+	- "filter 16S" or "filter shotgun" or "filter microbiome samples"
+	- "create export table" or "export to CSV"
+
+	This tool:
+	- Reads workspace_metadata_keys (sra_*_samples files) from ALL entries
+	- Aggregates SAMPLE-LEVEL metadata (run_accession, biosample, organism, etc.)
+	- Applies filter_criteria at SAMPLE level using MicrobiomeFilteringService
+	- Validates with SRASampleSchema + quality scoring
+	- Outputs 5,000-10,000+ sample rows ready for CSV export
+
+	Example:
+	```
+	process_metadata_queue(
+	    status_filter="handoff_ready",
+	    filter_criteria="16S human fecal",
+	    output_key="aggregated_samples"
+	)
+	```
+
+	2.	Sample Enrichment (ONLY AFTER process_metadata_queue)
+
+	Use execute_custom_code ONLY when:
+	- process_metadata_queue completed successfully
+	- BUT output has low field coverage (disease <50%, age <30%, etc.)
+	- AND publication text contains the missing information
+
+	This tool:
+	- Reads publication text (pub_queue_*_metadata.json)
+	- Extracts demographics via regex
+	- Propagates to individual samples
+	- Used for SECONDARY enrichment, NOT primary aggregation
+
+	Example:
+	```
+	execute_custom_code(
+	    workspace_key="sra_prjna123_samples",
+	    python_code="for s in samples: s['disease'] = 'ibd'"
+	)
+	```
+
+	Decision Flow:
+	```
+	User: "process queue + filter + export"
+	         ↓
+	  Use process_metadata_queue (PRIMARY)
+	         ↓
+	  Check field coverage in output
+	         ↓
+	  ≥70% coverage? → Export to CSV (DONE)
+	  <70% coverage? → Use execute_custom_code (SECONDARY)
+	```
+
 Tooling Cheat Sheet
 You have the following tools available. You must always specify source_type and, when applicable, target_type.
 
@@ -2553,20 +2940,55 @@ filter_samples_by
 	-	Compute retention percentage and per-field coverage for the filtered subset.
 	-	Persist the filtered subset under a new key (for example metadata_GSE12345_samples_filtered_16S_human_fecal) and return that key.
 
-execute_custom_code
+process_metadata_queue (PRIMARY TOOL for batch processing)
+	-	Purpose: Process multiple publication queue entries and aggregate SAMPLE-LEVEL results.
+	-	When to use:
+	-	Batch processing of handoff_ready entries
+	-	Aggregating sample metadata from multiple publications
+	-	Applying 16S/shotgun filtering at sample level
+	-	Creating export-ready aggregated datasets
+	-	Behavior:
+	-	Reads workspace_metadata_keys (sra_*_samples files) from all entries
+	-	Extracts SAMPLE metadata (run_accession, biosample, organism, library_strategy, host, etc.)
+	-	Applies filter_criteria at SAMPLE level (16S, host, sample_type, disease)
+	-	Validates with SRASampleSchema + quality scoring
+	-	Aggregates ALL samples into single metadata_store key
+	-	Outputs: 5,000-10,000+ SAMPLE rows (not publication rows)
+	-	Example:
+	```
+	process_metadata_queue(
+	    status_filter="handoff_ready",
+	    filter_criteria="16S human fecal",
+	    output_key="aggregated_16s_samples"
+	)
+	```
+
+execute_custom_code (SECONDARY TOOL - use only after process_metadata_queue)
 	-	Purpose: Execute custom Python code for sample-level metadata operations when standard tools are insufficient.
+	-	When to use:
+	-	ONLY AFTER process_metadata_queue completed
+	-	When samples have low field coverage (disease <50%, age <30%)
+	-	When publication text contains missing demographics
 	-	Use Cases:
-	-	Filter samples at individual level (not entry level)
-	-	Update sample metadata fields manually
+	-	Update sample metadata fields manually (post-aggregation enrichment)
 	-	Extract information from publication text using regex
 	-	Perform custom calculations on sample data
 	-	Review and modify flagged samples before export
-	-	**MANUAL ENRICHMENT**: Propagate publication-level metadata to samples missing critical fields
+	-	**MANUAL ENRICHMENT**: Propagate publication-level metadata to samples missing critical fields (SECONDARY step)
 	-	Available in Namespace:
-	-	workspace_path: Path to workspace directory
+	-	WORKSPACE: Path to workspace directory (pathlib.Path)
+	-	OUTPUT_DIR: Path to centralized exports directory (workspace/exports/) - USE FOR ALL CSV/TSV EXPORTS
+	-	workspace_path: Alias for WORKSPACE (string path)
 	-	Auto-loaded CSV/JSON files from workspace/metadata/ (including samples files)
 	-	publication_queue: Publication queue entries
 	-	All JSON files loaded as Python dicts with sanitized names (dots/dashes → underscores)
+	-	File Output Convention (v1.0+):
+	-	When exporting data to CSV/TSV/Excel, ALWAYS use OUTPUT_DIR:
+	-	```python
+	-	df.to_csv(OUTPUT_DIR / "my_results.csv")  # Saves to workspace/exports/
+	-	```
+	-	This ensures all exports go to a single, predictable location for easy user discovery
+	-	DO NOT save files directly to WORKSPACE root or other subdirectories
 	-	Persisting Changes:
 	-	To save filtered samples for export, return a dict with:
 	-	'samples': list of sample dicts to persist

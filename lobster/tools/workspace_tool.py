@@ -35,6 +35,54 @@ logger = get_logger(__name__)
 
 
 # ===============================================================================
+# Centralized Exports Directory (v1.0+)
+# ===============================================================================
+
+EXPORTS_DIR_NAME = "exports"  # Single location for all user-facing exports
+
+
+def _get_exports_directory(workspace_path: Path, create: bool = True) -> Path:
+    """
+    Get the centralized exports directory for all CSV/TSV/Excel exports.
+
+    This provides a single, predictable location for users to find exported files,
+    regardless of which agent or tool created them.
+
+    Args:
+        workspace_path: Base workspace path
+        create: Whether to create directory if it doesn't exist (default: True)
+
+    Returns:
+        Path to exports directory (workspace/exports/)
+    """
+    exports_dir = workspace_path / EXPORTS_DIR_NAME
+    if create and not exports_dir.exists():
+        exports_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Created exports directory: {exports_dir}")
+    return exports_dir
+
+
+def _check_deprecated_export_location(workspace_path: Path) -> Optional[List[Path]]:
+    """
+    Check for files in deprecated metadata/exports/ location.
+
+    Returns list of files if found, None otherwise. Logs warning if deprecated
+    location contains files.
+    """
+    old_export_dir = workspace_path / "metadata" / "exports"
+    if old_export_dir.exists():
+        old_files = list(old_export_dir.glob("*"))
+        if old_files:
+            logger.warning(
+                f"Found {len(old_files)} file(s) in deprecated location: {old_export_dir}. "
+                f"New exports go to {workspace_path / EXPORTS_DIR_NAME}. "
+                "Consider migrating: mv workspace/metadata/exports/* workspace/exports/"
+            )
+            return old_files
+    return None
+
+
+# ===============================================================================
 # Docstring-Driven Error System (v2.6+)
 # ===============================================================================
 
@@ -185,6 +233,7 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
         workspace: str = None,
         level: str = "summary",
         status_filter: str = None,
+        pattern: str = None,
     ) -> str:
         """
         Retrieve cached research content from workspace with flexible detail levels.
@@ -199,11 +248,11 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
         extracting specific details (summary, methods, samples, platform, full metadata).
 
         ## Workspace Categories
-        - "literature": Publications, papers, abstracts
-        - "data": Dataset metadata, GEO records
-        - "metadata": Validation results, sample mappings
-        - "download_queue": Pending/completed download tasks
-        - "publication_queue": Pending/completed publication extraction tasks
+        - "literature": Publications, papers, abstracts (cached research content)
+        - "data": Dataset metadata, GEO records (cached dataset information)
+        - "metadata": Validation results, sample mappings (processed metadata)
+        - "download_queue": Dataset downloads from databases (GEO/SRA/PRIDE/etc.) - tracks file download progress
+        - "publication_queue": Publication processing pipeline (RIS imports, PubMed papers, full-text extraction) - tracks literature mining workflows
         Example: get_content_from_workspace(workspace="literature")
 
         ## Detail Levels
@@ -220,6 +269,10 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
         - "strategy": Download strategy (for download_queue)
         Example: get_content_from_workspace("literature", level="summary")
 
+        **Queue Selection Guide**:
+        - Use "download_queue" when tracking dataset downloads from databases (GEO, SRA, PRIDE, etc.)
+        - Use "publication_queue" when tracking publication processing workflows (RIS files, PubMed searches, full-text extraction, identifier extraction)
+
         For download_queue workspace:
         - identifier=None: List all entries (filtered by status_filter if provided)
         - identifier=<entry_id>: Retrieve specific entry
@@ -227,12 +280,13 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
         - level="summary": Stats + top 5 recent entries
         - level="metadata": **Smart hybrid** (Stats + head 10 entries + guidance)
 
-        For publication_queue workspace:
-        - identifier=None: List all entries (filtered by status_filter if provided)
-        - identifier=<entry_id>: Retrieve specific entry
+        For publication_queue workspace (publication/paper/literature processing):
+        - Tracks: RIS file imports, PubMed paper extraction, full-text retrieval, dataset identifier mining
+        - identifier=None: List all publication entries (filtered by status_filter if provided)
+        - identifier=<entry_id>: Retrieve specific publication entry
         - status_filter: "pending" | "extracting" | "metadata_extracted" | "metadata_enriched" | "handoff_ready" | "completed" | "failed"
-        - level="summary": Stats + top 5 recent entries
-        - level="metadata": **Smart hybrid** (Stats + head 10 entries + guidance)
+        - level="summary": Stats + top 5 recent publications
+        - level="metadata": **Smart hybrid** (Stats + head 10 publications + guidance)
 
         **Unified Behavior**: All workspaces now support consistent operations:
         - List mode (identifier=None): Always returns formatted markdown list
@@ -264,7 +318,8 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
             identifier: Content identifier to retrieve (None = list all)
             workspace: Filter by workspace category (None = all workspaces)
             level: Detail level to extract (default: "summary")
-            status_filter: Status filter for download_queue (optional)
+            status_filter: Status filter for download_queue/publication_queue (optional)
+            pattern: Glob pattern to filter identifiers (e.g., "aggregated_*", "sra_*") - only for literature/data/metadata workspaces
 
         Returns:
             Formatted content based on detail level or list of cached items
@@ -275,6 +330,11 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
 
             # List content in specific workspace
             get_content_from_workspace(workspace="literature")
+
+            # List metadata with pattern filter (avoids loading all 1000+ items)
+            get_content_from_workspace(workspace="metadata", pattern="aggregated_*")
+            get_content_from_workspace(workspace="metadata", pattern="sra_*")
+            get_content_from_workspace(workspace="metadata", pattern="pub_queue_*")
 
             # Read publication methods section
             get_content_from_workspace(
@@ -353,6 +413,16 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                 workspace="publication_queue",
                 level="metadata"
             )
+
+            # Check publication processing queue state
+            get_content_from_workspace(
+                workspace="publication_queue"
+            )
+
+            # Check dataset download queue state
+            get_content_from_workspace(
+                workspace="download_queue"
+            )
         """
         try:
             # Initialize workspace service
@@ -405,11 +475,16 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
             # Adapter Functions: Normalize workspace data to WorkspaceItem
             # ===================================================================
 
-            def _adapt_general_content(ws: str, filter_status: Optional[str] = None) -> List[WorkspaceItem]:
+            def _adapt_general_content(ws: str, filter_status: Optional[str] = None, filter_pattern: Optional[str] = None) -> List[WorkspaceItem]:
                 """
                 Adapter for literature, data, and metadata workspaces.
 
                 Converts WorkspaceContentService items to unified WorkspaceItem structure.
+
+                Args:
+                    ws: Workspace name
+                    filter_status: Not used for general content (only for queues)
+                    filter_pattern: Glob pattern to filter by identifier (e.g., "aggregated_*", "sra_*")
                 """
                 content_type = workspace_to_content_type.get(ws)
                 if not content_type:
@@ -422,14 +497,30 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                     logger.warning("list_content returned None (service bug)")
                     return []
 
+                # Apply glob pattern filtering if provided
+                if filter_pattern:
+                    from fnmatch import fnmatch
+                    filtered_items = []
+                    for item in items:
+                        item_id = (
+                            item.get('identifier')
+                            or item.get('name')
+                            or (Path(item.get('_file_path', '')).stem if item.get('_file_path') else None)
+                            or ''
+                        )
+                        if fnmatch(item_id.lower(), filter_pattern.lower()):
+                            filtered_items.append(item)
+                    items = filtered_items
+                    logger.debug(f"Pattern '{filter_pattern}' matched {len(items)} items in '{ws}' workspace")
+
                 normalized_items: List[WorkspaceItem] = []
                 for item in items:
-                    # Defensive identifier extraction (already implemented in line 418-423)
+                    # Defensive identifier extraction (safe fallback pattern)
                     item_id = (
                         item.get('identifier')
                         or item.get('name')
                         or (Path(item.get('_file_path', '')).stem if item.get('_file_path') else None)
-                        or next(iter(item.keys()), 'unknown')
+                        or 'unknown'  # Safe fallback (removed fragile item.keys() call)
                     )
 
                     normalized_items.append(WorkspaceItem(
@@ -493,9 +584,9 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
 
                 normalized_items: List[WorkspaceItem] = []
                 for entry in entries:
-                    # Extract title and authors
-                    title = entry.get('title', 'Untitled')[:80]
-                    authors = entry.get('authors', [])
+                    # Extract title and authors (defensive None handling)
+                    title = (entry.get('title') or 'Untitled')[:80]
+                    authors = entry.get('authors') or []
                     authors_str = ', '.join(authors[:2]) if authors else 'Unknown'
                     if len(authors) > 2:
                         authors_str += f" et al. ({len(authors)} total)"
@@ -617,12 +708,13 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                 return response
 
             # Workspace adapter dispatcher
-            WORKSPACE_ADAPTERS: Dict[str, Callable[[Optional[str]], List[WorkspaceItem]]] = {
-                "literature": lambda s: _adapt_general_content("literature", s),
-                "data": lambda s: _adapt_general_content("data", s),
-                "metadata": lambda s: _adapt_general_content("metadata", s),
-                "download_queue": _adapt_download_queue,
-                "publication_queue": _adapt_publication_queue,
+            # Signature: adapter(status_filter, pattern) -> List[WorkspaceItem]
+            WORKSPACE_ADAPTERS: Dict[str, Callable[[Optional[str], Optional[str]], List[WorkspaceItem]]] = {
+                "literature": lambda s, p: _adapt_general_content("literature", s, p),
+                "data": lambda s, p: _adapt_general_content("data", s, p),
+                "metadata": lambda s, p: _adapt_general_content("metadata", s, p),
+                "download_queue": lambda s, p: _adapt_download_queue(s),  # Queues ignore pattern
+                "publication_queue": lambda s, p: _adapt_publication_queue(s),  # Queues ignore pattern
             }
 
             # ===================================================================
@@ -697,7 +789,7 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                         # Recent activity
                         response += "**Recent Activity** (last 5 updates):\n"
                         for entry in sorted_entries:
-                            title = entry.get("title", "Untitled")
+                            title = entry.get("title") or "Untitled"
                             title_short = (
                                 title[:50] + "..." if len(title) > 50 else title
                             )
@@ -756,7 +848,7 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                     adapter = WORKSPACE_ADAPTERS.get(ws)
                     if adapter:
                         try:
-                            items = adapter(status_filter)
+                            items = adapter(status_filter, pattern)
                             all_items.extend(items)
                         except Exception as e:
                             logger.warning(f"Failed to list workspace '{ws}': {e}")
@@ -1173,13 +1265,14 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
         - "auto": Detect publication queue data and apply rich format automatically
         - "rich": Force rich 28-column format with publication context
         - "simple": Export samples as-is without enrichment
+        - "strict": MIMARKS-compliant export (excludes non-schema columns + deduplicates by run_accession)
 
         Args:
             identifier: Content identifier to cache (must exist in current session)
             workspace: Target workspace category ("literature", "data", "metadata")
             content_type: Type of content ("publication", "dataset", "metadata")
             output_format: Output format ("json" or "csv"). Default: "json"
-            export_mode: CSV export mode ("auto", "rich", "simple"). Default: "auto"
+            export_mode: CSV export mode ("auto", "rich", "simple", "strict"). Default: "auto"
             add_timestamp: Auto-append YYYY-MM-DD timestamp to filename. Default: True
                           Set to False to use identifier as exact filename
 
@@ -1210,8 +1303,8 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
                     f"Error: Invalid output_format '{output_format}'. Valid: json, csv"
                 )
 
-            if export_mode not in {"auto", "rich", "simple"}:
-                return f"Error: Invalid export_mode '{export_mode}'. Valid: auto, rich, simple"
+            if export_mode not in {"auto", "rich", "simple", "strict"}:
+                return f"Error: Invalid export_mode '{export_mode}'. Valid: auto, rich, simple, strict"
 
             # Check if identifier exists in session
             exists = False
@@ -1315,9 +1408,10 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
 
                     import pandas as pd
 
-                    if use_rich_format:
+                    if use_rich_format or export_mode == "strict":
+                        format_name = "strict MIMARKS" if export_mode == "strict" else "schema-driven"
                         logger.info(
-                            "Using schema-driven export format (column count depends on data type)"
+                            f"Using {format_name} export format (column count depends on data type)"
                         )
                         rich_export_used = True
 
@@ -1330,25 +1424,41 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
                         # Infer data type from samples (auto-detects SRA/proteomics/metabolomics)
                         data_type = infer_data_type(enriched_samples)
 
-                        # Get priority-ordered columns from schema
+                        # Strict mode: exclude non-schema columns (MIMARKS compliance)
+                        # Rich mode: include extra columns for flexibility
+                        strict_export = export_mode == "strict"
                         ordered_cols = get_ordered_export_columns(
                             samples=enriched_samples,
                             data_type=data_type,
-                            include_extra=True,  # Include fields not in schema
+                            include_extra=not strict_export,
                         )
 
                         # Create DataFrame with schema-ordered columns
                         df = pd.DataFrame(enriched_samples)
+
+                        # Deduplication by run_accession (Bug 2 fix - DataBioMix)
+                        # Multiple publications can reference same BioProject/samples
+                        duplicates_removed = 0
+                        if "run_accession" in df.columns:
+                            original_count = len(df)
+                            df = df.drop_duplicates(subset=["run_accession"], keep="first")
+                            duplicates_removed = original_count - len(df)
+                            if duplicates_removed > 0:
+                                logger.info(
+                                    f"Deduplication: removed {duplicates_removed} duplicate samples "
+                                    f"by run_accession ({original_count} → {len(df)})"
+                                )
+                                samples_count = len(df)  # Update count after dedup
+
                         available_cols = [c for c in ordered_cols if c in df.columns]
                         df = df[available_cols]
                     else:
                         # Simple export - as-is
                         df = pd.DataFrame(samples_list)
 
-                    # Write to CSV
-                    content_dir = workspace_service._get_content_dir(
-                        workspace_to_content_type[workspace]
-                    )
+                    # Write to CSV - use centralized exports directory (v1.0+)
+                    workspace_path = Path(data_manager.workspace_path)
+                    exports_dir = _get_exports_directory(workspace_path, create=True)
                     filename = workspace_service._sanitize_filename(identifier)
 
                     # Auto-append timestamp if requested and not already present
@@ -1356,7 +1466,10 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
                         timestamp = datetime.now().strftime("%Y-%m-%d")
                         filename = f"{filename}_{timestamp}"
 
-                    cache_file_path = content_dir / f"{filename}.csv"
+                    cache_file_path = exports_dir / f"{filename}.csv"
+
+                    # Check for deprecated location
+                    _check_deprecated_export_location(workspace_path)
 
                     df.to_csv(cache_file_path, index=False, encoding="utf-8")
                     logger.info(
@@ -1505,11 +1618,13 @@ def create_export_publication_queue_tool(data_manager: DataManagerV2):
 
         try:
             workspace_service = WorkspaceContentService(data_manager=data_manager)
-            content_dir = workspace_service._get_content_dir(ContentType.METADATA)
+            workspace_path = Path(data_manager.workspace_path)
 
-            # Ensure exports subdirectory exists
-            exports_dir = content_dir / "exports"
-            exports_dir.mkdir(parents=True, exist_ok=True)
+            # Use centralized exports directory (v1.0+)
+            exports_dir = _get_exports_directory(workspace_path, create=True)
+
+            # Check for deprecated location and warn user
+            _check_deprecated_export_location(workspace_path)
 
             # Parse entry_ids with bounded iteration
             truncated_warning = ""
@@ -1906,7 +2021,7 @@ def create_delete_from_workspace_tool(data_manager: DataManagerV2):
             elif workspace == "publication_queue":
                 try:
                     entry = workspace_service.read_publication_queue_entry(identifier)
-                    title = entry.get("title", "Untitled")
+                    title = entry.get("title") or "Untitled"
                     items_to_delete.append({
                         "type": "queue_entry",
                         "identifier": identifier,

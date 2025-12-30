@@ -77,6 +77,7 @@ AGENT_SERVICE_DEPENDENCIES = {
         "lobster/services/metadata/microbiome_filtering_service.py",
         "lobster/services/metadata/disease_standardization_service.py",
         "lobster/services/metadata/sample_mapping_service.py",
+        "lobster/services/metadata/metadata_filtering_service.py",  # Natural language filter parsing
         "lobster/core/schemas/publication_queue.py",
         "lobster/core/publication_queue.py",
         "lobster/core/ris_parser.py",

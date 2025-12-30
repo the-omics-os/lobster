@@ -12,6 +12,36 @@ This guide explains how to sync PREMIUM agent code from the private `lobster` re
 
 ## Architecture
 
+### Dynamic S3 Discovery (Dec 2025)
+
+**Major Update:** The license service now uses **dynamic S3 discovery** to automatically detect package versions from S3, eliminating the need for code deployments when updating packages.
+
+**How it works:**
+1. Upload new wheel file to S3 `{customer}/latest/` folder
+2. License service automatically discovers version from wheel filename
+3. Customer activates/refreshes license → gets latest version immediately
+4. **No Lambda redeployment needed**
+
+**S3 Structure:**
+```
+s3://lobster-license-packages-{account}/
+├── databiomix/
+│   ├── latest/
+│   │   └── lobster_custom_databiomix-2.0.7-py3-none-any.whl  # Current version
+│   └── v2.0.6/
+│       └── lobster_custom_databiomix-2.0.6-py3-none-any.whl  # Archived version
+└── customer2/
+    └── latest/
+        └── lobster_custom_customer2-1.0.0-py3-none-any.whl
+```
+
+**Benefits:**
+- ✅ Zero-downtime updates (just upload to S3)
+- ✅ No code changes required
+- ✅ Automatic version detection from wheel filename
+- ✅ 5-minute cache for performance
+- ✅ Security: Input validation and directory traversal protection
+
 ### Three-Tier Model
 
 | Tier | Agents | Distribution | Package |
@@ -24,12 +54,12 @@ This guide explains how to sync PREMIUM agent code from the private `lobster` re
 
 ```mermaid
 graph LR
-    Source[lobster/<br/>Private Repo] --> Script[sync_to_custom.py<br/>Manual trigger]
-    Script --> Allow[custom_package_allowlist.txt<br/>21 premium files]
-    Allow --> Target[lobster-custom-{package}/<br/>Customer package]
-    Target --> Build[python -m build<br/>Create wheel]
-    Build --> S3[S3 Upload<br/>packages/lobster-custom-{package}/]
-    S3 --> Customer[Customer activation<br/>Auto-install via pip]
+    Source["lobster<br/>Private Repo"] --> Script["sync_to_custom.py<br/>Manual trigger"]
+    Script --> Allow["custom_package_allowlist.txt<br/>21 premium files"]
+    Allow --> Target["lobster-custom-{package}/<br/>Customer package"]
+    Target --> Build["python -m build<br/>Create wheel"]
+    Build --> S3["S3 Upload<br/>packages/lobster-custom-{package}/"]
+    S3 --> Customer["Customer activation<br/>Auto-install via pip"]
 ```
 
 ### Source of Truth
@@ -106,12 +136,13 @@ python -m build
 # Output:
 # Successfully built lobster_custom_databiomix-1.0.0-py3-none-any.whl
 
-# 3. Upload to S3
-aws s3 cp dist/lobster_custom_databiomix-1.0.0-py3-none-any.whl \
-  s3://lobster-license-packages-649207544517/packages/lobster-custom-databiomix/1.0.0/lobster_custom_databiomix-1.0.0-py3-none-any.whl
+# 3. Upload to S3 ({customer}/latest/ structure)
+AWS_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+aws s3 cp dist/lobster_custom_databiomix-2.0.7-py3-none-any.whl \
+  s3://lobster-license-packages-${AWS_ACCOUNT}/databiomix/latest/lobster_custom_databiomix-2.0.7-py3-none-any.whl
 
 # Output:
-# upload: dist/lobster_custom_databiomix-1.0.0-py3-none-any.whl to s3://...
+# upload: dist/lobster_custom_databiomix-2.0.7-py3-none-any.whl to s3://...
 
 # Done! Customer can now activate and use premium agents.
 ```
@@ -192,20 +223,21 @@ cd ../lobster-custom-databiomix
 rm -rf dist/
 python -m build
 
-# 5. Bump version (optional - or overwrite 1.0.0)
-# Edit pyproject.toml: version = "1.0.1"
+# 5. Bump version
+# Edit pyproject.toml: version = "2.0.7"
 
-# 6. Upload new version
-aws s3 cp dist/lobster_custom_databiomix-1.0.1-py3-none-any.whl \
-  s3://lobster-license-packages-649207544517/packages/lobster-custom-databiomix/1.0.1/
+# 6. Upload to S3 (use {customer}/latest/ structure)
+AWS_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+aws s3 cp dist/lobster_custom_databiomix-2.0.7-py3-none-any.whl \
+  s3://lobster-license-packages-${AWS_ACCOUNT}/databiomix/latest/lobster_custom_databiomix-2.0.7-py3-none-any.whl
 
-# 7. Update package_service.py registry with new version
-# Edit: lobster-cloud/license_service/services/package_service.py
-# Update PACKAGE_REGISTRY["lobster-custom-databiomix"].current_version = "1.0.1"
+# Verify upload
+aws s3 ls s3://lobster-license-packages-${AWS_ACCOUNT}/databiomix/latest/
 
-# 8. Notify customer to refresh license
+# 7. DONE! Notify customer to refresh license
 # Customer runs: lobster activate <their-key>
-# CLI will download new version automatically
+# CLI will automatically discover and download new version from S3
+# No Lambda redeployment needed - dynamic S3 discovery active since Dec 2025
 ```
 
 ---
@@ -279,16 +311,22 @@ lobster/services/data_access/protein_structure_fetch_service.py
 **File:** `lobster-cloud/license_service/services/package_service.py`
 
 ```python
-PACKAGE_REGISTRY = {
-    "lobster-custom-databiomix": PackageInfo(
-        name="lobster-custom-databiomix",
-        current_version="1.0.0",
-        s3_path_template="packages/lobster-custom-databiomix/{version}/lobster_custom_databiomix-{version}-py3-none-any.whl",
-    ),
+PACKAGE_REGISTRY: Dict[str, Dict] = {
+    "lobster-custom-databiomix": {
+        "latest": "2.0.7",
+        "versions": {
+            "2.0.7": "databiomix/latest/lobster_custom_databiomix-2.0.7-py3-none-any.whl",
+        },
+    },
     # Add more packages as needed:
     # "lobster-custom-biotechco": PackageInfo(...),
 }
 ```
+
+**Important:** The `PACKAGE_REGISTRY` is hard-coded in Python. After updating the registry with a new version:
+1. You MUST redeploy the Lambda function via `cdk deploy LobsterLicenseService`
+2. Without redeployment, Lambda continues serving old version URLs from memory
+3. See [License Service Deployment Guide](https://github.com/the-omics-os/lobster-cloud/wiki/DevOps/06-License-Service) for full workflow
 
 ### Customer Activation Flow
 
@@ -353,7 +391,7 @@ Run `sync_to_custom.py` when:
 
 ```bash
 # Check S3 bucket contents
-aws s3 ls s3://lobster-license-packages-649207544517/packages/ --recursive
+aws s3 ls s3://lobster-license-packages-649207544517/ --recursive
 
 # Check package registry
 cat /Users/tyo/GITHUB/omics-os/lobster-cloud/license_service/services/package_service.py | grep PACKAGE_REGISTRY -A 20

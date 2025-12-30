@@ -11,7 +11,7 @@ import os
 import re
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent

@@ -851,6 +851,9 @@ class PublicationProcessingService:
                 _report_progress("identifiers")
                 with self._measure_step("identifiers"):
                     try:
+                        # Initialize full_content to prevent UnboundLocalError if source is None
+                        full_content = ""
+
                         # Use priority-based URL selection (fulltext > pdf > metadata > pubmed > doi)
                         source = self._get_best_source_for_extraction(entry)
                         if source:

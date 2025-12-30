@@ -339,6 +339,86 @@ stats = workspace_service.get_workspace_stats()
 # }
 ```
 
+### Centralized Exports Directory (v1.0+)
+
+As of version 1.0, all user-facing data exports (CSV, TSV, Excel) are written to a **centralized exports directory** for easy discovery.
+
+**Directory Structure:**
+```
+workspace_path/
+├── literature/    # Publications (PublicationContent)
+├── data/          # Datasets (DatasetContent)
+├── metadata/      # Metadata (MetadataContent)
+└── exports/       # 🆕 User-facing CSV/TSV/Excel exports (v1.0+)
+```
+
+**Why Centralized Exports?**
+- **Single Location**: Customers know exactly where to find exported files
+- **Easy Discovery**: No hunting across multiple subdirectories
+- **Clean Organization**: Separates cached JSON (metadata/) from final outputs (exports/)
+- **Predictable**: All tools write to same location
+
+**Getting Exports Directory:**
+```python
+exports_dir = workspace_service.get_exports_directory(create=True)
+# Returns: Path("workspace_path/exports")
+```
+
+**Listing Export Files:**
+```python
+# List all exports
+files = workspace_service.list_export_files()
+# Returns: [
+#     {
+#         "name": "aggregated_samples.csv",
+#         "path": Path("workspace_path/exports/aggregated_samples.csv"),
+#         "size": 1024567,
+#         "modified": "2025-01-12T14:30:00",
+#         "category": "metadata"  # metadata, results, plots, custom
+#     },
+#     ...
+# ]
+
+# Filter by pattern
+csv_files = workspace_service.list_export_files(pattern="*.csv")
+
+# Filter by category
+metadata_exports = workspace_service.list_export_files(category="metadata")
+```
+
+**File Categorization:**
+Files are automatically categorized based on naming conventions:
+- `metadata_*` → "metadata" (sample tables, mappings)
+- `results_*` → "results" (analysis outputs)
+- `plot_*` → "plots" (visualizations)
+- Other → "custom"
+
+**Usage in Custom Code:**
+```python
+# In execute_custom_code, OUTPUT_DIR variable is pre-configured
+df.to_csv(OUTPUT_DIR / "my_results.csv")  # Saves to workspace/exports/
+```
+
+**Unified Metadata View:**
+The `/metadata` CLI command now shows exports alongside other sources:
+```python
+sources = workspace_service.get_all_metadata_sources()
+# Returns: {
+#     "in_memory": [...],           # metadata_store entries
+#     "workspace_files": [...],      # workspace/metadata/*.json
+#     "exports": [...],              # workspace/exports/*.csv
+#     "deprecated": [...]            # workspace/metadata/exports/*.csv (old location)
+# }
+```
+
+**Deprecation Warning:**
+The old `workspace/metadata/exports/` location is deprecated. A warning is shown if files exist there:
+```
+⚠️ Found 3 files in deprecated location: workspace/metadata/exports/
+New exports go to workspace/exports/. Consider migrating:
+    mv workspace/metadata/exports/* workspace/exports/
+```
+
 ## Integration with research_agent Tools
 
 The research_agent provides two tools that use WorkspaceContentService under the hood:
