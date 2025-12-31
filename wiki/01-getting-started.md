@@ -8,8 +8,10 @@ Welcome to Lobster AI! This quick start guide will have you analyzing bioinforma
 - **Python 3.11+** (Python 3.12+ recommended)
 - **Git** for cloning the repository
 - **LLM Provider** (choose one):
-  - [Claude API Key](https://console.anthropic.com/) (Recommended - simpler setup)
-  - [AWS Bedrock Access](https://console.aws.amazon.com/) (For AWS users)
+  - [Claude API Key](https://console.anthropic.com/) (Recommended - best quality)
+  - [AWS Bedrock Access](https://console.aws.amazon.com/) (For enterprise/AWS users)
+  - [Google Gemini API Key](https://aistudio.google.com/apikey) (Free tier available)
+  - [Ollama](https://ollama.com/) (Local, privacy-first)
 - **NCBI API Key** (optional, for enhanced literature search)
 
 ### 2. Choose Installation Method
@@ -54,8 +56,9 @@ lobster init
 ```
 
 The wizard will guide you through:
-- ✅ Choosing your LLM provider (Anthropic, AWS Bedrock, or Ollama)
+- ✅ Choosing your LLM provider (Anthropic, AWS Bedrock, Google Gemini, or Ollama)
 - ✅ Entering your API keys securely (input is masked)
+- ✅ Selecting model for your provider (e.g., Gemini 3 Pro vs Flash)
 - ✅ Optionally configuring NCBI API key for enhanced literature search
 - ✅ Creating two config files:
   - `provider_config.json` - Provider selection (safe to commit)
@@ -94,7 +97,12 @@ ANTHROPIC_API_KEY=sk-ant-api03-xxxxx
 AWS_BEDROCK_ACCESS_KEY=your-aws-access-key
 AWS_BEDROCK_SECRET_ACCESS_KEY=your-aws-secret-key
 
-# Option 3: Ollama (local)
+# Option 3: Google Gemini
+GOOGLE_API_KEY=your-google-api-key
+LOBSTER_LLM_PROVIDER=gemini
+
+# Option 4: Ollama (local)
+LOBSTER_LLM_PROVIDER=ollama
 OLLAMA_BASE_URL=http://localhost:11434
 
 # Optional: NCBI API key

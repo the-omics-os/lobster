@@ -65,7 +65,7 @@ Details on these variables are provided in the sections below.
 
 ## API Key Management
 
-Lobster AI supports **three LLM providers**: two cloud-based and one local. Choose the provider that best fits your needs:
+Lobster AI supports **four LLM providers**: three cloud-based and one local. Choose the provider that best fits your needs:
 
 ### Ollama (Local) - NEW! 🏠
 
@@ -121,6 +121,24 @@ AWS_BEDROCK_SECRET_ACCESS_KEY=abc123...
 AWS_REGION=us-east-1  # Optional: defaults to us-east-1
 ```
 
+### Google Gemini (Cloud) ✨
+
+**Best for**: Long context windows, multimodal capabilities, free tier available.
+
+**Configuration:**
+```env
+GOOGLE_API_KEY=your-key-here
+LOBSTER_LLM_PROVIDER=gemini
+```
+
+**Get your API key**: https://aistudio.google.com/apikey
+
+**Available Models:**
+- `gemini-3-pro-preview` - Best balance ($2.00 input / $12.00 output per million tokens)
+- `gemini-3-flash-preview` - Fastest, free tier available ($0.50 input / $3.00 output)
+
+**Note**: Gemini 3.0+ models require `temperature=1.0` (lower values can cause issues).
+
 ### Provider Auto-Detection
 
 Lobster AI automatically detects which provider to use based on available configuration in this priority order:
@@ -129,12 +147,14 @@ Lobster AI automatically detects which provider to use based on available config
 2. **Ollama detection**: If Ollama server is running (http://localhost:11434)
 3. **Anthropic API**: If `ANTHROPIC_API_KEY` is set
 4. **AWS Bedrock**: If `AWS_BEDROCK_ACCESS_KEY` and `AWS_BEDROCK_SECRET_ACCESS_KEY` are set
+5. **Google Gemini**: If `GOOGLE_API_KEY` is set
 
 **Force a specific provider:**
 ```env
 LOBSTER_LLM_PROVIDER=ollama      # Local LLM
 LOBSTER_LLM_PROVIDER=anthropic   # Claude API
 LOBSTER_LLM_PROVIDER=bedrock     # AWS Bedrock
+LOBSTER_LLM_PROVIDER=gemini      # Google Gemini
 ```
 
 ### Running Multiple Sessions with Different Providers
@@ -180,11 +200,13 @@ Create aliases for quick provider switching:
 alias lobster-local='LOBSTER_LLM_PROVIDER=ollama lobster'
 alias lobster-cloud='LOBSTER_LLM_PROVIDER=anthropic lobster'
 alias lobster-bedrock='LOBSTER_LLM_PROVIDER=bedrock lobster'
+alias lobster-gemini='LOBSTER_LLM_PROVIDER=gemini lobster'
 
 # Usage
 lobster-local chat     # Always uses Ollama
 lobster-cloud query "analyze data"  # Always uses Claude
 lobster-bedrock chat   # Always uses Bedrock
+lobster-gemini chat    # Always uses Gemini
 ```
 
 #### Method 3: Per-Command Inline (Quick Tests)
@@ -572,9 +594,11 @@ lobster init
 #    - Option 1: Claude API (Anthropic)
 #    - Option 2: AWS Bedrock
 #    - Option 3: Ollama (Local)
+#    - Option 4: Google Gemini
 # 2. Guide you through provider-specific setup:
 #    - Cloud: Securely collect API keys (input is masked)
 #    - Ollama: Check installation, list available models
+#    - Gemini: Collect Google API key, select model (Pro/Flash)
 # 3. Optionally configure NCBI API key
 # 4. Save configuration to .env file in current directory
 ```
@@ -587,9 +611,25 @@ Use the `lobster config` commands to manage and verify your configuration:
 # Test API connectivity and validate configuration
 lobster config test
 
-# Display current configuration with masked secrets
+# Display current configuration with masked secrets (simple view)
 lobster config show
+
+# Display detailed runtime configuration (shows per-agent models)
+lobster config show-config
+
+# List available providers
+lobster config provider
+
+# View available models for current provider
+lobster config model
 ```
+
+**New in v0.4.0:** The `lobster config show-config` command now displays actual runtime configuration using ConfigResolver and ProviderRegistry, showing:
+- Active provider and configuration source
+- Per-agent model assignments (see which model each agent uses)
+- Profile information
+- Configuration files status
+- License tier and available agents
 
 ### Advanced Options
 
@@ -608,7 +648,7 @@ lobster init --non-interactive \
   --bedrock-access-key=AKIA... \
   --bedrock-secret-key=xxx
 
-# Option 3: Ollama (Local) - NEW!
+# Option 3: Ollama (Local)
 lobster init --non-interactive \
   --use-ollama
 
@@ -616,6 +656,15 @@ lobster init --non-interactive \
 lobster init --non-interactive \
   --use-ollama \
   --ollama-model=mixtral:8x7b-instruct
+
+# Option 4: Google Gemini
+lobster init --non-interactive \
+  --gemini-key=your-google-api-key
+
+# Gemini with specific model
+lobster init --non-interactive \
+  --gemini-key=your-google-api-key \
+  --gemini-model=gemini-3-flash-preview
 
 # With NCBI API key
 lobster init --non-interactive \

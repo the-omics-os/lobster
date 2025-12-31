@@ -380,7 +380,7 @@ If you prefer to skip the wizard, create both configuration files manually:
 }
 ```
 
-**Available providers:** `anthropic`, `bedrock`, `ollama`
+**Available providers:** `anthropic`, `bedrock`, `ollama`, `gemini`
 **Available profiles:** `development`, `production`, `ultra`, `godmode`
 
 **File 2: `.env`** (API keys - never commit, add to .gitignore)
@@ -392,6 +392,9 @@ ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
 # AWS Bedrock
 AWS_BEDROCK_ACCESS_KEY=your-access-key
 AWS_BEDROCK_SECRET_ACCESS_KEY=your-secret-key
+
+# Google Gemini
+GOOGLE_API_KEY=your-google-api-key
 
 # Ollama (local)
 OLLAMA_BASE_URL=http://localhost:11434

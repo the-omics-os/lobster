@@ -636,14 +636,20 @@ open results/                    # Open in file manager (same as /open)
 ### Agent Configuration
 
 ```bash
+# Display current runtime configuration (shows per-agent models)
+lobster config show-config
+
+# Show configuration for specific workspace
+lobster config show-config --workspace /path/to/workspace
+
+# Show all agents (including premium-only)
+lobster config show-config --show-all
+
 # List available model presets
 lobster config list-models
 
 # List available testing profiles
 lobster config list-profiles
-
-# Show current configuration
-lobster config show-config
 
 # Test specific configuration
 lobster config test --profile production
@@ -657,6 +663,8 @@ lobster config create-custom
 # Generate environment template
 lobster config generate-env
 ```
+
+**Note:** As of v0.4.0, `lobster config show-config` displays actual runtime configuration from ConfigResolver and ProviderRegistry, showing which provider and model each agent is using. This works with all four providers: Anthropic, Bedrock, Ollama, and Gemini.
 
 ## Usage Examples
 
