@@ -194,13 +194,21 @@ class ActivityLogPanel(VerticalScroll):
             content=f"{tool_name}: {error[:20]}",
         ))
 
-    def log_handoff(self, from_agent: str, to_agent: str) -> None:
-        """Log agent handoff."""
+    def log_handoff(self, from_agent: str, to_agent: str, task_description: str = "") -> None:
+        """Log agent handoff with optional task description."""
         from_display = from_agent.replace("_", " ")[:10]
         to_display = to_agent.replace("_", " ")[:10]
+
+        # Include task description if provided
+        content = f"{from_display} → {to_display}"
+        if task_description:
+            # Truncate task description to reasonable length for display
+            task_preview = task_description[:80] + "..." if len(task_description) > 80 else task_description
+            content += f"\n  Task: {task_preview}"
+
         self._append_event(ActivityEvent(
             type=ActivityType.HANDOFF,
-            content=f"{from_display} → {to_display}",
+            content=content,
         ))
 
     def log_complete(self, message: str = "Complete") -> None:

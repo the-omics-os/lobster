@@ -2047,7 +2047,7 @@ Could not extract content for: {identifier}
             status_filter: Queue status to target (default: "pending").
                           Options: pending, extracting, completed, handoff_ready, etc.
                           Ignored if force_reprocess=True.
-            max_entries: Maximum entries to process (default: 5, 0 = all matching).
+            max_entries: Maximum entries to process (0 = all matching).
             extraction_tasks: Comma-separated tasks (default: full 7-step pipeline).
                             Individual tasks:
                             - "resolve_identifiers": DOI → PMID resolution via NCBI ID Converter
@@ -2063,7 +2063,7 @@ Could not extract content for: {identifier}
                             - "metadata,identifiers": Quick text mining only
                             - "ncbi_enrich,fetch_sra_metadata": NCBI-only enrichment
             parallel_workers: Number of parallel workers (default: 1 = sequential).
-                             Use 2-3 for faster processing of large queues.
+                             Use 2-8 for faster processing of large queues.
                              Higher values (>3) risk NCBI API rate limit issues.
             force_reprocess: Reprocess ALL entries regardless of current status (default: False).
                             When True, ignores status_filter and processes all queue entries.
@@ -2149,10 +2149,6 @@ Could not extract content for: {identifier}
     # Create workspace tools using shared factories (Phase 7+: deduplication complete)
     write_to_workspace = create_write_to_workspace_tool(data_manager)
     get_content_from_workspace = create_get_content_from_workspace_tool(data_manager)
-
-    # NOTE: The inline write_to_workspace definition has been moved to
-    # lobster/tools/workspace_tool.py as create_write_to_workspace_tool()
-    # for sharing between research_agent and metadata_assistant.
 
     # ============================================================
     # Helper Methods: Strategy Mapping

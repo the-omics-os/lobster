@@ -537,7 +537,7 @@ import pandas as pd
 csv_data = {}
 json_data = {}
 
-# Load CSV files
+# Load CSV files from workspace root
 for csv_file in WORKSPACE.glob('*.csv'):
     var_name = csv_file.stem.replace('-', '_').replace(' ', '_')
     if var_name and var_name[0].isdigit():
@@ -549,6 +549,21 @@ for csv_file in WORKSPACE.glob('*.csv'):
         csv_data[var_name] = csv_file.name
     except Exception as e:
         print(f"Warning: Could not load {csv_file.name}: {e}")
+
+# Also scan exports/ subdirectory (v1.0+ centralized exports)
+exports_dir = WORKSPACE / 'exports'
+if exports_dir.exists():
+    for csv_file in exports_dir.glob('*.csv'):
+        var_name = csv_file.stem.replace('-', '_').replace(' ', '_')
+        if var_name and var_name[0].isdigit():
+            var_name = 'data_' + var_name
+        var_name = ''.join(c for c in var_name if c.isalnum() or c == '_') or 'data'
+
+        try:
+            globals()[var_name] = pd.read_csv(csv_file)
+            csv_data[var_name] = f"exports/{csv_file.name}"
+        except Exception as e:
+            print(f"Warning: Could not load exports/{csv_file.name}: {e}")
 
 # Load JSON files (skip hidden files)
 for json_file in WORKSPACE.glob('*.json'):
@@ -783,11 +798,36 @@ if 'result' in dir() and result is not None:
         # Extract imports from code
         imports = self._extract_imports(code)
 
-        # For custom code, the template IS the code (no Jinja2 templating)
-        code_template = code
+        # Build workspace setup code for notebook export
+        # This ensures WORKSPACE and OUTPUT_DIR are defined when notebook runs
+        workspace_setup = """# Workspace setup (for notebook execution)
+from pathlib import Path
+import sys
+
+WORKSPACE = Path('{{ workspace_path }}')
+sys.path.append(str(WORKSPACE))
+
+# OUTPUT_DIR: Recommended directory for CSV/TSV/Excel exports
+OUTPUT_DIR = WORKSPACE / 'exports'
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+"""
+
+        # Combine workspace setup with user code for notebook export
+        # Uses Jinja2 template syntax for workspace_path parameter injection
+        code_template = f"{workspace_setup}\n# User code\n{code}"
+
+        # Get workspace path for parameter default
+        workspace_path_str = str(self.data_manager.workspace_path)
 
         # Parameter schema (for Papermill injection if exported)
         parameter_schema = {
+            "workspace_path": ParameterSpec(
+                param_type="str",
+                papermill_injectable=True,  # Can override workspace location
+                default_value=workspace_path_str,
+                required=True,
+                description="Path to Lobster workspace directory",
+            ),
             "code": ParameterSpec(
                 param_type="str",
                 papermill_injectable=False,  # Code should not be overridden
@@ -822,6 +862,7 @@ if 'result' in dir() and result is not None:
             code_template=code_template,
             imports=imports,
             parameters={
+                "workspace_path": workspace_path_str,  # For Jinja2 template rendering
                 "code": code,
                 "description": description,
                 "modality_name": modality_name,

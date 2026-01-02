@@ -40,6 +40,7 @@ class ContentType(str, Enum):
     METADATA = "metadata"
     DOWNLOAD_QUEUE = "download_queue"
     PUBLICATION_QUEUE = "publication_queue"
+    EXPORTS = "exports"
 
 
 class RetrievalLevel(str, Enum):

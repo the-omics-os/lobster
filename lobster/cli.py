@@ -2545,6 +2545,7 @@ def init_client_with_animation(
     profile_timings: Optional[bool] = None,
     provider_override: Optional[str] = None,
     model_override: Optional[str] = None,
+    session_id: Optional[str] = None,
 ) -> "AgentClient":
     """
     Initialize client. Fast startup thanks to lazy imports.
@@ -2552,7 +2553,7 @@ def init_client_with_animation(
     get_console_manager()
 
     # Initialize client - lazy imports make this fast
-    client = init_client(workspace, reasoning, verbose, debug, profile_timings, provider_override, model_override)
+    client = init_client(workspace, reasoning, verbose, debug, profile_timings, provider_override, model_override, session_id)
 
     return client
 
@@ -4117,6 +4118,12 @@ def chat(
         "-w",
         help="Workspace directory. Can also be set via LOBSTER_WORKSPACE env var. Default: ./.lobster_workspace",
     ),
+    session_id: Optional[str] = typer.Option(
+        None,
+        "--session-id",
+        "-s",
+        help="Session ID to continue (use 'latest' for most recent session in workspace)",
+    ),
     reasoning: bool = typer.Option(
         False,
         "--reasoning",
@@ -4149,6 +4156,10 @@ def chat(
 ):
     """
     Start an interactive chat session with the multi-agent system.
+
+    Use --session-id to continue a previous conversation:
+      lobster chat --session-id latest
+      lobster chat --session-id session_20241208_150000
 
     Use --reasoning to see agent thinking process. Use --verbose for detailed tool output.
     """
@@ -4185,17 +4196,78 @@ def chat(
         console.print()
         raise typer.Exit(1)
 
+    # Handle session loading for continuity (similar to query command)
+    session_file_to_load = None
+    session_id_for_client = None
+
+    if session_id:
+        # Resolve workspace early to check for session files
+        from lobster.core.workspace import resolve_workspace
+        workspace_path = resolve_workspace(explicit_path=workspace, create=True)
+
+        if session_id == "latest":
+            # Find most recent session file
+            session_files = list(workspace_path.glob("session_*.json"))
+            if session_files:
+                # Sort by modification time (most recent first)
+                session_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+                session_file_to_load = session_files[0]
+                console.print(
+                    f"[cyan]📂 Loading session: {session_file_to_load.name}[/cyan]"
+                )
+            else:
+                console.print(
+                    "[yellow]⚠️  No previous sessions found - creating new session[/yellow]"
+                )
+        else:
+            # Explicit session ID provided
+            # Try with session_ prefix first
+            session_file_candidate = workspace_path / f"session_{session_id}.json"
+            if not session_file_candidate.exists():
+                # Try exact filename
+                session_file_candidate = workspace_path / f"{session_id}.json"
+
+            if session_file_candidate.exists():
+                session_file_to_load = session_file_candidate
+                console.print(
+                    f"[cyan]📂 Loading session: {session_file_candidate.name}[/cyan]"
+                )
+            else:
+                # Session file doesn't exist - use this session_id for new session
+                session_id_for_client = session_id
+                console.print(
+                    f"[cyan]📂 Creating new session: {session_id}[/cyan]"
+                )
+
     # Show DNA animation (starts instantly thanks to lazy imports)
     display_welcome()
 
     # Initialize client (heavy imports happen here)
     try:
         client = init_client_with_animation(
-            workspace, reasoning, verbose, debug, profile_timings, provider, model
+            workspace, reasoning, verbose, debug, profile_timings, provider, model,
+            session_id_for_client
         )
     except Exception as e:
         console.print(f"\n[red]✗[/red] init failed: {str(e)[:80]}")
         raise
+
+    # Load session if found
+    if session_file_to_load:
+        try:
+            load_result = client.load_session(session_file_to_load)
+            console.print(
+                f"[green]✓ Loaded {load_result['messages_loaded']} "
+                f"previous messages[/green]"
+            )
+            if load_result.get("original_session_id"):
+                console.print(
+                    f"[dim]  Original session: "
+                    f"{load_result['original_session_id']}[/dim]"
+                )
+        except Exception as e:
+            console.print(f"[red]❌ Failed to load session: {e}[/red]")
+            console.print("[yellow]   Starting fresh session instead[/yellow]")
 
     # Show compact session status
     _show_workspace_prompt(client)
@@ -4272,25 +4344,8 @@ def chat(
                     agent_display = "Lobster"
                 console.print(f"\n[dim]◀ {agent_display}[/dim]")
 
-                # Display reasoning as separate step if available
-                if reasoning and result.get("reasoning"):
-                    # Clean reasoning text (remove [Thinking: ] wrapper if present)
-                    reasoning_text = result["reasoning"]
-                    reasoning_text = reasoning_text.replace("[Thinking: ", "").replace("]", "")
-
-                    reasoning_panel = Panel(
-                        Markdown(reasoning_text),
-                        title="[dim cyan]🧠 Reasoning[/dim cyan]",
-                        border_style="dim cyan",
-                        box=box.ROUNDED,
-                        padding=(0, 2),
-                    )
-                    console.print(reasoning_panel)
-                    console.print()  # Spacing
-
-                # Display main response (use separate text field if available)
-                response_text = result.get("text") or result["response"]
-                console.print(Markdown(response_text))
+                # Response as markdown (no panel)
+                console.print(Markdown(result["response"]))
 
                 # Plots indicator
                 if result.get("plots"):
@@ -8063,27 +8118,9 @@ def query(
                 f"[bold red]✓[/bold red] [white]Response saved to:[/white] [grey74]{output}[/grey74]"
             )
         else:
-            # Display reasoning as separate panel if available
-            if reasoning and result.get("reasoning"):
-                # Clean reasoning text (remove [Thinking: ] wrapper if present)
-                reasoning_text = result["reasoning"]
-                reasoning_text = reasoning_text.replace("[Thinking: ", "").replace("]", "")
-
-                reasoning_panel = Panel(
-                    Markdown(reasoning_text),
-                    title="[dim cyan]🧠 Agent Reasoning[/dim cyan]",
-                    border_style="dim cyan",
-                    box=box.ROUNDED,
-                    padding=(1, 2),
-                )
-                console.print(reasoning_panel)
-                console.print()  # Spacing between panels
-
-            # Display main response (use separate text field if available)
-            response_text = result.get("text") or result["response"]
             console.print(
                 Panel(
-                    Markdown(response_text),
+                    Markdown(result["response"]),
                     title="[bold white on red] 🦞 Lobster Response [/bold white on red]",
                     border_style="red",
                     box=box.DOUBLE,

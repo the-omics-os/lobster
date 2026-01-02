@@ -154,6 +154,70 @@ def get_agent_registry_config(agent_name: str) -> Optional[AgentRegistryConfig]:
     return AGENT_REGISTRY.get(agent_name)
 
 
+def get_valid_handoffs() -> Dict[str, set]:
+    """
+    Build a map of valid agent handoffs from the registry.
+
+    Returns a dict mapping agent_name -> set of agents it can hand off to.
+    Used to validate/correct handoff display during parallel tool calls.
+
+    Example:
+        {
+            "supervisor": {"data_expert_agent", "research_agent", ...},
+            "data_expert_agent": {"metadata_assistant"},
+            "research_agent": {"metadata_assistant"},
+            "transcriptomics_expert": {"annotation_expert", "de_analysis_expert"},
+        }
+    """
+    _ensure_plugins_loaded()
+
+    valid_handoffs: Dict[str, set] = {}
+
+    # Build supervisor's valid targets (all supervisor-accessible agents)
+    supervisor_targets = set()
+    for name, config in AGENT_REGISTRY.items():
+        # Check explicit supervisor_accessible flag first
+        if config.supervisor_accessible is True:
+            supervisor_targets.add(name)
+        elif config.supervisor_accessible is False:
+            continue  # Explicitly not accessible
+        else:
+            # Infer: accessible if NOT a child of any other agent
+            is_child = False
+            for other_config in AGENT_REGISTRY.values():
+                if other_config.child_agents and name in other_config.child_agents:
+                    is_child = True
+                    break
+            if not is_child:
+                supervisor_targets.add(name)
+
+    valid_handoffs["supervisor"] = supervisor_targets
+
+    # Build each agent's valid targets from child_agents
+    for name, config in AGENT_REGISTRY.items():
+        if config.child_agents:
+            valid_handoffs[name] = set(config.child_agents)
+        else:
+            valid_handoffs[name] = set()
+
+    return valid_handoffs
+
+
+def is_valid_handoff(from_agent: str, to_agent: str) -> bool:
+    """
+    Check if a handoff from one agent to another is valid.
+
+    Args:
+        from_agent: The agent initiating the handoff
+        to_agent: The agent being handed off to
+
+    Returns:
+        True if the handoff is valid according to the agent hierarchy
+    """
+    valid_handoffs = get_valid_handoffs()
+    return to_agent in valid_handoffs.get(from_agent, set())
+
+
 def import_agent_factory(factory_path: str) -> Callable:
     """Dynamically import an agent factory function."""
     module_path, function_name = factory_path.rsplit(".", 1)

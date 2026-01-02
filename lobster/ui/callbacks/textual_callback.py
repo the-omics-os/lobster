@@ -145,6 +145,7 @@ class TextualCallbackHandler(BaseCallbackHandler):
                     self.activity_log.log_handoff(
                         kwargs.get("from_agent", ""),
                         kwargs.get("to_agent", ""),
+                        kwargs.get("task_description", ""),
                     )
                 elif method == "complete":
                     self.activity_log.log_complete(kwargs.get("message", "Complete"))
@@ -345,8 +346,63 @@ class TextualCallbackHandler(BaseCallbackHandler):
             error=str(error)[:100],
         )
 
+    def _extract_task_description(
+        self,
+        input_str: str,
+        inputs: Dict[str, Any] | None = None
+    ) -> str:
+        """
+        Extract task_description from tool input.
+
+        Uses structured `inputs` dict (preferred) with fallback to `input_str`
+        for simple string-only tools. Never parses input_str as JSON since
+        it's a Python repr string, not JSON.
+
+        Args:
+            input_str: String representation of tool input (display only)
+            inputs: Structured tool input dict (with injected args filtered out)
+
+        Returns:
+            Extracted task description or empty string if not found
+
+        Examples:
+            # Case 1: Simple string tool (graph.py delegation)
+            input_str = "Download GSE109564"
+            inputs = None
+            → Returns: "Download GSE109564"
+
+            # Case 2: Multiple params (handoff_tool.py)
+            input_str = "{'task_description': 'Download GSE109564', ...}"
+            inputs = {'task_description': 'Download GSE109564'}
+            → Returns: "Download GSE109564"
+        """
+        # Strategy 1: Use structured inputs dict (preferred)
+        if inputs and isinstance(inputs, dict):
+            # Look for explicit 'task_description' field
+            if "task_description" in inputs:
+                return inputs["task_description"]
+
+            # For tools with single parameter but different name
+            # (e.g., 'task', 'description', 'query')
+            if len(inputs) == 1:
+                return next(iter(inputs.values()), "")
+
+        # Strategy 2: Fallback for simple string-only tools
+        # (When tool has signature: def tool(task_description: str))
+        if not inputs:
+            # input_str IS the raw parameter value (no parsing needed)
+            return input_str if input_str else ""
+
+        # Strategy 3: If we have inputs but no recognizable field, return empty
+        return ""
+
     def on_tool_start(
-        self, serialized: Dict[str, Any], input_str: str, **kwargs
+        self,
+        serialized: Dict[str, Any],
+        input_str: str,
+        *,
+        inputs: Dict[str, Any] | None = None,
+        **kwargs
     ) -> None:
         """Called when a tool starts."""
         if serialized is None:
@@ -363,31 +419,57 @@ class TextualCallbackHandler(BaseCallbackHandler):
         if tool_name.startswith("handoff_to_"):
             is_handoff = True
             target_agent = tool_name.replace("handoff_to_", "")
+            # Extract task description from tool input
+            task_description = self._extract_task_description(input_str, inputs)
             if self.debug:
                 self._debug_notify(f"Handoff: {self.current_agent or 'system'} → {target_agent}")
-            self._handle_handoff(target_agent)
+            self._handle_handoff(target_agent, task_description)
         elif tool_name.startswith("transfer_back_to_"):
             is_handoff = True
+            task_description = self._extract_task_description(input_str, inputs)
             if self.debug:
                 self._debug_notify(f"Return: {self.current_agent or 'system'} → supervisor")
-            self._handle_handoff("supervisor")
+            self._handle_handoff("supervisor", task_description)
 
         # Show non-handoff tools in activity log
         if not is_handoff and self.show_tools:
             self._update_activity_log("tool_start", tool_name=tool_name)
 
-    def _handle_handoff(self, target_agent: str) -> None:
-        """Handle agent handoff detected from tool call."""
+    def _handle_handoff(self, target_agent: str, task_description: str = "") -> None:
+        """Handle agent handoff detected from tool call.
+
+        Uses hierarchy validation to correct the from_agent during parallel tool calls.
+        When multiple agents are called in parallel by the supervisor, the current_agent
+        state gets corrupted. Instead of complex run_id tracking, we validate the
+        handoff against the known agent hierarchy and correct impossible transitions.
+
+        Args:
+            target_agent: The agent being handed off to
+            task_description: Description of the task being delegated
+        """
         if target_agent == self.current_agent:
             return  # No change
 
-        from_agent = self.current_agent or "system"
+        # Get the supposed from_agent from current state (may be wrong during parallel calls)
+        supposed_from_agent = self.current_agent or "system"
 
-        # Update activity log with handoff
+        # Validate and correct using agent hierarchy
+        # If the handoff is impossible (e.g., data_expert → transcriptomics_expert),
+        # correct it to supervisor (the only agent that can reach anywhere)
+        from lobster.config.agent_registry import is_valid_handoff
+
+        if is_valid_handoff(supposed_from_agent, target_agent):
+            from_agent = supposed_from_agent
+        else:
+            # Impossible handoff detected - must be supervisor calling in parallel
+            from_agent = "supervisor"
+
+        # Update activity log with handoff (including task description)
         self._update_activity_log(
             "handoff",
             from_agent=from_agent,
             to_agent=target_agent,
+            task_description=task_description,
         )
 
         # Update agents panel (mark old agent idle, new agent active)

@@ -40,6 +40,9 @@ logger = get_logger(__name__)
 
 EXPORTS_DIR_NAME = "exports"  # Single location for all user-facing exports
 
+# Maximum items to display in list mode (prevents context overflow)
+MAX_LIST_ITEMS = 50
+
 
 def _get_exports_directory(workspace_path: Path, create: bool = True) -> Path:
     """
@@ -251,6 +254,7 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
         - "literature": Publications, papers, abstracts (cached research content)
         - "data": Dataset metadata, GEO records (cached dataset information)
         - "metadata": Validation results, sample mappings (processed metadata)
+        - "exports": Centralized export files (CSV/TSV exports, user-facing files)
         - "download_queue": Dataset downloads from databases (GEO/SRA/PRIDE/etc.) - tracks file download progress
         - "publication_queue": Publication processing pipeline (RIS imports, PubMed papers, full-text extraction) - tracks literature mining workflows
         Example: get_content_from_workspace(workspace="literature")
@@ -315,16 +319,32 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
         - To enrich samples, combine with execute_custom_code tool
 
         Args:
-            identifier: Content identifier to retrieve (None = list all)
+            identifier: **EXACT LOOKUP** - Complete filename or ID for single item retrieval (e.g., "harmonized_metadata.csv", "GSE123456"). Use this for accessing specific files.
             workspace: Filter by workspace category (None = all workspaces)
             level: Detail level to extract (default: "summary")
             status_filter: Status filter for download_queue/publication_queue (optional)
-            pattern: Glob pattern to filter identifiers (e.g., "aggregated_*", "sra_*") - only for literature/data/metadata workspaces
+            pattern: **GLOB FILTER** - Wildcard pattern for filtering lists (e.g., "harmonized*", "GSE*"). Only use with wildcards (*?[]), NOT for exact filenames.
 
         Returns:
             Formatted content based on detail level or list of cached items
 
         Examples:
+            # ===== EXACT LOOKUPS (use identifier parameter) =====
+            # Retrieve specific export file by exact filename
+            get_content_from_workspace(identifier="harmonized_metadata.csv", workspace="exports")
+            get_content_from_workspace(identifier="harmonized_metadata_170_datasets.csv", workspace="exports")
+
+            # Retrieve specific dataset by accession
+            get_content_from_workspace(identifier="GSE123456", workspace="data")
+
+            # ===== GLOB FILTERING (use pattern parameter) =====
+            # List all files starting with "harmonized"
+            get_content_from_workspace(pattern="harmonized*", workspace="exports")
+
+            # List all GEO datasets
+            get_content_from_workspace(pattern="GSE*", workspace="data")
+
+            # ===== LISTING (no identifier or pattern) =====
             # List all cached content
             get_content_from_workspace()
 
@@ -435,6 +455,7 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                 "metadata": ContentType.METADATA,
                 "download_queue": ContentType.DOWNLOAD_QUEUE,
                 "publication_queue": ContentType.PUBLICATION_QUEUE,
+                "exports": ContentType.EXPORTS,
             }
 
             # Map level strings to RetrievalLevel enum
@@ -604,6 +625,48 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
 
                 return normalized_items
 
+            def _adapt_exports(filter_status: Optional[str] = None, filter_pattern: Optional[str] = None) -> List[WorkspaceItem]:
+                """
+                Adapter for exports workspace.
+
+                Converts export files to unified WorkspaceItem structure.
+                Uses WorkspaceContentService.list_export_files() to scan workspace/exports/ directory.
+                """
+                # Use pattern if provided, otherwise default to all files
+                pattern = filter_pattern or "*"
+                export_files = workspace_service.list_export_files(pattern=pattern)
+
+                # DEFENSIVE: Should never happen, but be safe
+                if export_files is None:
+                    logger.warning("list_export_files returned None (service bug)")
+                    return []
+
+                normalized_items: List[WorkspaceItem] = []
+                for file_info in export_files:
+                    # Extract file metadata
+                    file_name = file_info.get('name', 'unknown')
+                    file_path = file_info.get('path')
+                    file_size = file_info.get('size', 0)
+                    modified_time = file_info.get('modified', 'unknown')
+                    category = file_info.get('category', 'unknown')
+
+                    # Format size for display
+                    size_mb = file_size / (1024 * 1024) if file_size else 0
+                    size_str = f"{size_mb:.2f} MB" if size_mb > 0.01 else f"{file_size} bytes"
+
+                    normalized_items.append(WorkspaceItem(
+                        identifier=file_name,
+                        workspace='exports',
+                        type='export_file',
+                        status=None,  # No status for export files
+                        priority=None,
+                        title=file_name,
+                        cached_at=modified_time,
+                        details=f"{size_str} | {category}"
+                    ))
+
+                return normalized_items
+
             def _format_workspace_item(item: WorkspaceItem) -> str:
                 """
                 Format a WorkspaceItem into consistent markdown output.
@@ -713,6 +776,7 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                 "literature": lambda s, p: _adapt_general_content("literature", s, p),
                 "data": lambda s, p: _adapt_general_content("data", s, p),
                 "metadata": lambda s, p: _adapt_general_content("metadata", s, p),
+                "exports": lambda s, p: _adapt_exports(s, p),  # Uses pattern for file filtering
                 "download_queue": lambda s, p: _adapt_download_queue(s),  # Queues ignore pattern
                 "publication_queue": lambda s, p: _adapt_publication_queue(s),  # Queues ignore pattern
             }
@@ -890,14 +954,90 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                             entry_formatter=_format_queue_entry_full,
                         )
 
-                # Summary mode (default) - unified formatting
-                ws_display = workspace.title() if workspace else "All"
-                response = f"## {ws_display} Workspace ({len(all_items)} items)\n\n"
+                # Summary mode (default) - unified formatting with truncation
+                total_items = len(all_items)
 
-                for item in all_items:
+                # Apply truncation to prevent context overflow
+                if total_items > MAX_LIST_ITEMS:
+                    displayed_items = all_items[:MAX_LIST_ITEMS]
+                    truncation_msg = (
+                        f"\n---\n**Note**: Showing {MAX_LIST_ITEMS} of {total_items} total items.\n\n"
+                        f"**To narrow results**:\n"
+                        f"- Use `identifier='exact_filename.csv'` for exact file lookup\n"
+                        f"- Use `pattern='prefix*'` for wildcard filtering\n"
+                    )
+                else:
+                    displayed_items = all_items
+                    truncation_msg = ""
+
+                ws_display = workspace.title() if workspace else "All"
+                response = f"## {ws_display} Workspace ({len(displayed_items)}/{total_items} items)\n\n"
+
+                for item in displayed_items:
                     response += _format_workspace_item(item)
 
+                response += truncation_msg
                 return response
+
+            # Handle exports workspace retrieval mode (flexible filename matching)
+            if workspace == "exports" and identifier:
+                # Normalize identifier (strip extension if present for stem matching)
+                identifier_stem = identifier
+                for ext in ['.csv', '.tsv', '.xlsx', '.json']:
+                    if identifier_stem.lower().endswith(ext):
+                        identifier_stem = identifier_stem[:-len(ext)]
+                        break
+
+                # Find matching file in exports directory
+                exports_dir = Path(data_manager.workspace_path) / "exports"
+                if not exports_dir.exists():
+                    return "Error: exports directory does not exist."
+
+                # Try exact match first (with extension), then stem match (without extension)
+                matching_files = []
+                for f in exports_dir.iterdir():
+                    if f.is_file():
+                        if f.name == identifier or f.stem == identifier_stem:
+                            matching_files.append(f)
+
+                if not matching_files:
+                    # Return helpful error with available files
+                    available = [f.name for f in exports_dir.iterdir() if f.is_file()][:10]
+                    available_str = ', '.join(available) if available else 'none'
+                    return (
+                        f"Error: No export file matching '{identifier}' found.\n\n"
+                        f"**Available files**: {available_str}"
+                    )
+
+                if len(matching_files) > 1:
+                    return (
+                        f"Error: Multiple files match '{identifier}': "
+                        f"{[f.name for f in matching_files]}. Please specify exact filename with extension."
+                    )
+
+                matched_file = matching_files[0]
+                file_size = matched_file.stat().st_size
+                size_mb = file_size / (1024 * 1024)
+                size_str = f"{size_mb:.2f} MB" if size_mb > 0.01 else f"{file_size} bytes"
+
+                # Return based on level
+                if level == "summary":
+                    return (
+                        f"## Export File: {matched_file.name}\n\n"
+                        f"**Path**: {matched_file}\n"
+                        f"**Size**: {size_str}\n"
+                    )
+                elif level == "metadata":
+                    return (
+                        f"## Export File: {matched_file.name}\n\n"
+                        f"**Full Path**: {matched_file}\n"
+                        f"**Size**: {size_str}\n\n"
+                        f"**Usage**: Use `execute_custom_code` with `load_workspace_files=True` "
+                        f"to access this file as variable `{matched_file.stem.replace('-', '_')}`."
+                    )
+                else:
+                    # Default: return path info
+                    return f"**File**: {matched_file.name}\n**Path**: {matched_file}"
 
             # Handle download_queue retrieval mode
             if workspace == "download_queue":
@@ -1476,6 +1616,12 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
                         f"CSV export: {samples_count} rows, {len(df.columns)} columns "
                         f"(rich={rich_export_used}) to {cache_file_path}"
                     )
+
+                    # Update metadata_store with CSV path tracking (Task 4)
+                    if identifier in data_manager.metadata_store:
+                        data_manager.metadata_store[identifier]["csv_export_path"] = str(cache_file_path)
+                        data_manager.metadata_store[identifier]["csv_export_filename"] = cache_file_path.name
+                        logger.info(f"Updated metadata_store['{identifier}'] with csv_export_path")
                 else:
                     # No samples list, fall through to normal handling
                     samples_count = None
@@ -1543,11 +1689,10 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
 **Workspace**: {workspace}
 **Output Format**: {output_format.upper()}
 **Location**: {cache_file_path}
-
-**Next Steps**:
-- Use `get_content_from_workspace()` to retrieve cached content
 """
             if output_format == "csv":
+                response += f"**File Name**: {cache_file_path.name}\n"
+                response += f"**File Path**: {str(cache_file_path)}\n\n"
                 response += "**Note**: CSV format ideal for spreadsheet import.\n"
                 if samples_count:
                     response += f"**Rows**: {samples_count} samples exported (one row per sample).\n"
@@ -1556,6 +1701,11 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
                             "**Format**: Rich 28-column format with publication context "
                             "(source_doi, source_pmid, source_entry_id).\n"
                         )
+                    response += f"\n**Quick Access**: The file is now auto-loaded in `execute_custom_code` as variable `{workspace_service._sanitize_filename(identifier).replace('-', '_')}`\n"
+
+            response += "\n**Next Steps**:\n"
+            response += "- Use `get_content_from_workspace(workspace='exports')` to list all export files\n"
+            response += "- Use `execute_custom_code(load_workspace_files=True)` to access the exported data\n"
 
             return response
 

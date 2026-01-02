@@ -14,22 +14,45 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.notebook_exporter import NotebookExporter
 from lobster.core.provenance import ProvenanceTracker
 
 
+def create_sample_ir(operation: str, tool_name: str, description: str) -> AnalysisStep:
+    """Create a sample exportable IR for testing."""
+    return AnalysisStep(
+        operation=operation,
+        tool_name=tool_name,
+        description=description,
+        library="scanpy",
+        code_template=f"# {operation}\nprint('Running {tool_name}')",
+        imports=["import scanpy as sc"],
+        parameters={},
+        parameter_schema={},
+        input_entities=["adata"],
+        output_entities=["adata"],
+        exportable=True,
+    )
+
+
 @pytest.fixture
 def provenance_tracker():
-    """Create provenance tracker with sample activities."""
+    """Create provenance tracker with sample activities including exportable IR."""
     tracker = ProvenanceTracker()
 
-    # Add sample activities using correct API
+    # Add sample activities with exportable IR for notebook export testing
     tracker.create_activity(
         activity_type="quality_control",
         agent="singlecell_expert",
         description="Calculate QC metrics",
         outputs=[{"id": "qc_metrics", "type": "calculated"}],
+        ir=create_sample_ir(
+            "scanpy.pp.calculate_qc_metrics",
+            "quality_control",
+            "Calculate QC metrics",
+        ),
     )
 
     tracker.create_activity(
@@ -38,6 +61,9 @@ def provenance_tracker():
         description="Filter low-quality cells",
         parameters={"min_genes": 200, "min_cells": 3, "max_mito_percent": 20.0},
         outputs=[{"id": "filtered_adata", "type": "ready"}],
+        ir=create_sample_ir(
+            "scanpy.pp.filter_cells", "filter_cells", "Filter low-quality cells"
+        ),
     )
 
     tracker.create_activity(
@@ -46,6 +72,34 @@ def provenance_tracker():
         description="Normalize counts",
         parameters={"target_sum": 1e4},
         outputs=[{"id": "normalized_adata", "type": "ready"}],
+        ir=create_sample_ir(
+            "scanpy.pp.normalize_total", "normalize", "Normalize counts"
+        ),
+    )
+
+    return tracker
+
+
+@pytest.fixture
+def provenance_tracker_no_ir():
+    """Create provenance tracker with activities WITHOUT IR (for testing filtering)."""
+    tracker = ProvenanceTracker()
+
+    # Add sample activities WITHOUT IR (orchestration-style activities)
+    tracker.create_activity(
+        activity_type="process_publication_entry",
+        agent="research_agent",
+        description="Process publication entry",
+        parameters={"entry_id": "pub_123"},
+        # No IR - these should be filtered out
+    )
+
+    tracker.create_activity(
+        activity_type="download_dataset",
+        agent="data_expert",
+        description="Download dataset",
+        parameters={"accession": "GSE12345"},
+        # No IR - these should be filtered out
     )
 
     return tracker
@@ -56,7 +110,9 @@ def data_manager():
     """Create mock data manager with sample modalities."""
     dm = Mock(spec=DataManagerV2)
     dm.modalities = {"test_data": create_test_adata()}
-    dm.workspace_dir = Path(tempfile.mkdtemp())
+    workspace = Path(tempfile.mkdtemp())
+    dm.workspace_dir = workspace
+    dm.workspace_path = workspace  # For integrity manifest hashing
     return dm
 
 
@@ -119,6 +175,60 @@ class TestNotebookExporter:
         with pytest.raises(ValueError, match="No activities recorded"):
             exporter.export(name="test")
 
+    def test_export_requires_exportable_irs(
+        self, provenance_tracker_no_ir, data_manager
+    ):
+        """Test export raises error when no exportable IRs found."""
+        exporter = NotebookExporter(provenance_tracker_no_ir, data_manager)
+
+        with pytest.raises(ValueError, match="No exportable IR objects found"):
+            exporter.export(name="test")
+
+    def test_get_exportable_activity_ir_pairs(self, provenance_tracker, data_manager):
+        """Test extraction of exportable (activity, IR) pairs."""
+        exporter = NotebookExporter(provenance_tracker, data_manager)
+        activities = exporter._filter_activities("successful")
+        pairs = exporter._get_exportable_activity_ir_pairs(activities)
+
+        # All activities have exportable IR in this fixture
+        assert len(pairs) == 3
+        for activity, ir in pairs:
+            assert ir.exportable is True
+            assert ir.operation is not None
+
+    def test_get_exportable_activity_ir_pairs_filters_no_ir(
+        self, provenance_tracker_no_ir, data_manager
+    ):
+        """Test that activities without IR are filtered out."""
+        exporter = NotebookExporter(provenance_tracker_no_ir, data_manager)
+        activities = exporter._filter_activities("successful")
+        pairs = exporter._get_exportable_activity_ir_pairs(activities)
+
+        # No activities have IR in this fixture
+        assert len(pairs) == 0
+
+    def test_ir_to_code_cell(self, provenance_tracker, data_manager):
+        """Test IR to code cell conversion."""
+        exporter = NotebookExporter(provenance_tracker, data_manager)
+        ir = create_sample_ir("test_op", "test_tool", "Test description")
+
+        cell = exporter._ir_to_code_cell(ir, validate=True)
+
+        assert cell.cell_type == "code"
+        assert "test_op" in cell.source  # From code_template
+
+    def test_create_provenance_summary_cell(self, provenance_tracker, data_manager):
+        """Test provenance summary cell creation."""
+        exporter = NotebookExporter(provenance_tracker, data_manager)
+        cell = exporter._create_provenance_summary_cell(
+            total_activities=100, exportable_count=5
+        )
+
+        assert cell.cell_type == "markdown"
+        assert "Executable Steps" in cell.source
+        assert "5" in cell.source  # Exportable count
+        assert "95" in cell.source  # Filtered count (100 - 5)
+
     def test_export_notebook_structure(self, provenance_tracker, data_manager):
         """Test exported notebook has correct structure."""
         exporter = NotebookExporter(provenance_tracker, data_manager)
@@ -139,10 +249,14 @@ class TestNotebookExporter:
                 assert nb.cells[0].cell_type == "markdown"
                 assert "test_notebook" in nb.cells[0].source
 
-                # Without IR, second cell is imports (not parameters)
-                # With IR, second cell would be parameters (tagged)
-                assert nb.cells[1].cell_type == "code"
-                # Just verify it's a code cell (could be imports or parameters)
+                # Second cell should be integrity manifest (markdown)
+                assert nb.cells[1].cell_type == "markdown"
+                assert "Data Integrity Manifest" in nb.cells[1].source
+                assert "sha256" in nb.cells[1].source
+
+                # Third cell should be imports (code)
+                assert nb.cells[2].cell_type == "code"
+                assert "import" in nb.cells[2].source
 
                 # Should have activity cells
                 code_cells = [c for c in nb.cells if c.cell_type == "code"]
@@ -255,10 +369,10 @@ class TestNotebookExporter:
         assert irs[0].operation == "scanpy.pp.calculate_qc_metrics"
         assert irs[0].parameters == {"qc_vars": ["mt", "ribo"]}
 
-    def test_extract_irs_without_ir(self, provenance_tracker, data_manager):
+    def test_extract_irs_without_ir(self, provenance_tracker_no_ir, data_manager):
         """Test IR extraction from activities without IR."""
-        exporter = NotebookExporter(provenance_tracker, data_manager)
-        irs = exporter._extract_irs(provenance_tracker.activities)
+        exporter = NotebookExporter(provenance_tracker_no_ir, data_manager)
+        irs = exporter._extract_irs(provenance_tracker_no_ir.activities)
 
         # None of the fixture activities have IR
         assert len(irs) == 0
