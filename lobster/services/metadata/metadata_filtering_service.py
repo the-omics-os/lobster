@@ -259,6 +259,15 @@ class MetadataFilteringService:
             )
             filter_steps.append(f"host({host_stats['retained']}/{host_stats['input']})")
 
+        # Apply sample type filter (fecal, gut, oral, skin)
+        if parsed_criteria.get("sample_types"):
+            filtered, sample_type_stats = self._apply_sample_type_filter(
+                filtered, parsed_criteria["sample_types"]
+            )
+            filter_steps.append(
+                f"sample_type({sample_type_stats['retained']}/{sample_type_stats['input']})"
+            )
+
         # Build stats
         stats = {
             "samples_original": original_count,
@@ -358,6 +367,53 @@ class MetadataFilteringService:
         return filtered, {
             "input": input_count,
             "retained": len(filtered),
+        }
+
+    def _apply_sample_type_filter(
+        self,
+        samples: List[Dict[str, Any]],
+        allowed_sample_types: List[str],
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """
+        Apply sample type filter (fecal, gut, oral, skin).
+
+        Filters samples based on isolation_source and related fields,
+        checking for keywords matching the allowed sample types.
+
+        Args:
+            samples: List of sample dictionaries
+            allowed_sample_types: List of allowed sample types (e.g., ["fecal", "gut"])
+
+        Returns:
+            Tuple of (filtered_samples, stats_dict)
+        """
+        input_count = len(samples)
+        sample_type_filtered = []
+
+        for s in samples:
+            # Use microbiome_service.validate_sample_type() for consistent validation
+            is_valid, stats, _ = self.microbiome_service.validate_sample_type(
+                s, allowed_sample_types=allowed_sample_types, strict=False
+            )
+
+            if stats.get("is_valid"):
+                # Tag sample with matched type for transparency
+                matched_type = stats.get("matched_sample_type")
+                matched_field = stats.get("matched_field")
+                if matched_type:
+                    s["_matched_sample_type"] = matched_type
+                    s["_matched_sample_type_field"] = matched_field
+                sample_type_filtered.append(s)
+
+        logger.debug(
+            f"After sample_type filter ({allowed_sample_types}): "
+            f"{len(sample_type_filtered)}/{input_count} samples retained"
+        )
+
+        return sample_type_filtered, {
+            "input": input_count,
+            "retained": len(sample_type_filtered),
+            "allowed_types": allowed_sample_types,
         }
 
     def _create_ir(

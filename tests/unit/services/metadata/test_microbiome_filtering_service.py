@@ -349,6 +349,238 @@ class TestHostOrganism:
 
 
 # =============================================================================
+# Sample Type Validation Tests
+# =============================================================================
+
+
+class TestSampleType:
+    """Tests for validate_sample_type method."""
+
+    def test_valid_fecal_isolation_source(self, service):
+        """Test detection of fecal sample via isolation_source."""
+        metadata = {"isolation_source": "human feces"}
+        result, stats, ir = service.validate_sample_type(metadata, ["fecal"])
+
+        assert result == metadata
+        assert stats["is_valid"] is True
+        assert stats["matched_sample_type"] == "fecal"
+        assert stats["matched_field"] == "isolation_source"
+        assert isinstance(ir, AnalysisStep)
+        assert ir.operation == "microbiome.filtering.validate_sample_type"
+
+    def test_valid_fecal_stool(self, service):
+        """Test detection of fecal sample via 'stool' keyword."""
+        metadata = {"isolation_source": "stool sample"}
+        result, stats, ir = service.validate_sample_type(metadata, ["fecal"])
+
+        assert stats["is_valid"] is True
+        assert stats["matched_sample_type"] == "fecal"
+
+    def test_valid_fecal_faecal_spelling(self, service):
+        """Test British spelling 'faecal'."""
+        metadata = {"isolation_source": "faecal material"}
+        result, stats, ir = service.validate_sample_type(metadata, ["fecal"])
+
+        assert stats["is_valid"] is True
+        assert stats["matched_sample_type"] == "fecal"
+
+    def test_valid_gut_tissue(self, service):
+        """Test detection of gut sample via tissue keywords."""
+        metadata = {"body_site": "colon biopsy"}
+        result, stats, ir = service.validate_sample_type(metadata, ["gut"])
+
+        assert stats["is_valid"] is True
+        assert stats["matched_sample_type"] == "gut"
+
+    def test_valid_gut_intestine(self, service):
+        """Test detection via 'intestine' keyword."""
+        metadata = {"isolation_source": "small intestine"}
+        result, stats, ir = service.validate_sample_type(metadata, ["gut"])
+
+        assert stats["is_valid"] is True
+        assert stats["matched_sample_type"] == "gut"
+
+    def test_valid_oral_saliva(self, service):
+        """Test detection of oral sample."""
+        metadata = {"body_site": "saliva"}
+        result, stats, ir = service.validate_sample_type(metadata, ["oral"])
+
+        assert stats["is_valid"] is True
+        assert stats["matched_sample_type"] == "oral"
+
+    def test_valid_skin_sample(self, service):
+        """Test detection of skin sample."""
+        metadata = {"body_site": "skin swab"}
+        result, stats, ir = service.validate_sample_type(metadata, ["skin"])
+
+        assert stats["is_valid"] is True
+        assert stats["matched_sample_type"] == "skin"
+
+    def test_multiple_allowed_types_or_logic(self, service):
+        """Test OR logic when multiple sample types allowed."""
+        metadata = {"isolation_source": "fecal sample"}
+        result, stats, ir = service.validate_sample_type(metadata, ["fecal", "gut"])
+
+        assert stats["is_valid"] is True
+        assert stats["matched_sample_type"] == "fecal"
+
+    def test_field_priority_isolation_source_first(self, service):
+        """Test that isolation_source is checked before body_site."""
+        metadata = {
+            "isolation_source": "stool",
+            "body_site": "oral cavity",
+        }
+        result, stats, ir = service.validate_sample_type(metadata, ["fecal", "oral"])
+
+        # Should match isolation_source first
+        assert stats["is_valid"] is True
+        assert stats["matched_sample_type"] == "fecal"
+        assert stats["matched_field"] == "isolation_source"
+
+    def test_invalid_not_in_allowed_list(self, service):
+        """Test rejection when sample type not in allowed list."""
+        metadata = {"isolation_source": "skin swab"}
+        result, stats, ir = service.validate_sample_type(metadata, ["fecal"])
+
+        assert result == {}
+        assert stats["is_valid"] is False
+        assert stats["matched_sample_type"] is None
+        assert "not in allowed list" in stats["reason"]
+
+    def test_invalid_empty_metadata(self, service):
+        """Test with empty metadata."""
+        metadata = {}
+        result, stats, ir = service.validate_sample_type(metadata, ["fecal"])
+
+        assert result == {}
+        assert stats["is_valid"] is False
+
+    def test_invalid_missing_relevant_fields(self, service):
+        """Test with metadata lacking sample type fields."""
+        metadata = {"platform": "Illumina", "organism": "Homo sapiens"}
+        result, stats, ir = service.validate_sample_type(metadata, ["fecal"])
+
+        assert stats["is_valid"] is False
+
+    def test_case_insensitive_matching(self, service):
+        """Test case-insensitive keyword matching."""
+        test_cases = [
+            {"isolation_source": "FECAL"},
+            {"isolation_source": "Fecal"},
+            {"isolation_source": "fecal"},
+            {"body_site": "STOOL SAMPLE"},
+        ]
+
+        for metadata in test_cases:
+            result, stats, ir = service.validate_sample_type(metadata, ["fecal"])
+            assert stats["is_valid"] is True, f"Failed for: {metadata}"
+
+    def test_substring_matching_nonstrict(self, service):
+        """Test substring matching in non-strict mode."""
+        metadata = {"isolation_source": "human fecal microbiome sample collected from healthy adult"}
+        result, stats, ir = service.validate_sample_type(metadata, ["fecal"], strict=False)
+
+        assert stats["is_valid"] is True
+        assert stats["strict_mode"] is False
+
+    def test_strict_mode_exact_match_required(self, service):
+        """Test strict mode requires exact match."""
+        metadata = {"isolation_source": "fecal"}
+        result, stats, ir = service.validate_sample_type(metadata, ["fecal"], strict=True)
+
+        assert stats["is_valid"] is True
+
+    def test_strict_mode_substring_rejected(self, service):
+        """Test strict mode rejects substring matches."""
+        metadata = {"isolation_source": "human fecal sample"}
+        result, stats, ir = service.validate_sample_type(metadata, ["fecal"], strict=True)
+
+        # "human fecal sample" != "fecal" (exact), should fail
+        assert stats["is_valid"] is False
+
+    def test_env_material_field(self, service):
+        """Test detection via env_material field."""
+        metadata = {"env_material": "feces"}
+        result, stats, ir = service.validate_sample_type(metadata, ["fecal"])
+
+        assert stats["is_valid"] is True
+        assert stats["matched_field"] == "env_material"
+
+    def test_tissue_field(self, service):
+        """Test detection via tissue field."""
+        metadata = {"tissue": "colon mucosa"}
+        result, stats, ir = service.validate_sample_type(metadata, ["gut"])
+
+        assert stats["is_valid"] is True
+        assert stats["matched_field"] == "tissue"
+
+    def test_sample_type_field_direct(self, service):
+        """Test detection via sample_type field."""
+        metadata = {"sample_type": "stool"}
+        result, stats, ir = service.validate_sample_type(metadata, ["fecal"])
+
+        assert stats["is_valid"] is True
+        assert stats["matched_field"] == "sample_type"
+
+    def test_stats_structure(self, service):
+        """Test stats dictionary structure."""
+        metadata = {"isolation_source": "fecal sample"}
+        result, stats, ir = service.validate_sample_type(metadata, ["fecal"])
+
+        required_keys = [
+            "is_valid",
+            "reason",
+            "matched_sample_type",
+            "matched_field",
+            "allowed_sample_types",
+            "strict_mode",
+        ]
+        for key in required_keys:
+            assert key in stats, f"Missing key: {key}"
+
+        assert isinstance(stats["allowed_sample_types"], list)
+
+    def test_ir_structure_sample_type(self, service):
+        """Test IR structure for sample type validation."""
+        metadata = {"isolation_source": "human feces"}
+        result, stats, ir = service.validate_sample_type(metadata, ["fecal"])
+
+        assert ir.operation == "microbiome.filtering.validate_sample_type"
+        assert ir.tool_name == "MicrobiomeFilteringService.validate_sample_type"
+        assert "strict=" in ir.description
+        assert ir.library == "lobster.services.metadata.microbiome_filtering_service"
+        assert "metadata" in ir.parameters
+        assert "allowed_sample_types" in ir.parameters
+        assert "strict" in ir.parameters
+        assert len(ir.input_entities) > 0
+        assert len(ir.output_entities) > 0
+
+    def test_default_allowed_types(self, service):
+        """Test default allowed sample types (fecal, gut)."""
+        metadata = {"isolation_source": "stool sample"}
+        result, stats, ir = service.validate_sample_type(metadata)
+
+        assert stats["is_valid"] is True
+        assert stats["allowed_sample_types"] == ["fecal", "gut"]
+
+    def test_cecal_content_fecal(self, service):
+        """Test that cecal content is recognized as fecal."""
+        metadata = {"isolation_source": "cecal content"}
+        result, stats, ir = service.validate_sample_type(metadata, ["fecal"])
+
+        assert stats["is_valid"] is True
+        assert stats["matched_sample_type"] == "fecal"
+
+    def test_gut_content_fecal(self, service):
+        """Test that gut content is recognized as fecal."""
+        metadata = {"isolation_source": "gut content"}
+        result, stats, ir = service.validate_sample_type(metadata, ["fecal"])
+
+        assert stats["is_valid"] is True
+        assert stats["matched_sample_type"] == "fecal"
+
+
+# =============================================================================
 # Helper Method Tests
 # =============================================================================
 

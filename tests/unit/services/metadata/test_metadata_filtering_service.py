@@ -187,6 +187,130 @@ class TestApplyFilters:
         assert ir.parameters["check_16s"] is True
 
 
+class TestSampleTypeFilter:
+    """Tests for sample type filtering."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.mock_microbiome = Mock()
+        self.mock_disease = Mock()
+
+        self.service = MetadataFilteringService(
+            microbiome_service=self.mock_microbiome,
+            disease_service=self.mock_disease,
+        )
+
+    def test_sample_type_filter_applied(self):
+        """Test that sample type filter is applied when sample_types in criteria."""
+        # Set up mock - first sample matches fecal, second doesn't
+        self.mock_microbiome.validate_sample_type.side_effect = [
+            ({}, {"is_valid": True, "matched_sample_type": "fecal", "matched_field": "isolation_source"}, None),
+            ({}, {"is_valid": False, "matched_sample_type": None, "matched_field": None}, None),
+        ]
+
+        samples = [
+            {"id": 1, "isolation_source": "human feces"},
+            {"id": 2, "isolation_source": "blood"},
+        ]
+        parsed = {"sample_types": ["fecal"]}
+
+        result, stats, ir = self.service.apply_filters(samples, parsed)
+
+        assert len(result) == 1
+        assert result[0]["id"] == 1
+        assert result[0]["_matched_sample_type"] == "fecal"
+        assert "sample_type(1/2)" in stats["filters_applied"]
+
+    def test_sample_type_filter_or_logic(self):
+        """Test OR logic when multiple sample types allowed."""
+        # Set up mock - sample 1 is fecal, sample 2 is gut
+        self.mock_microbiome.validate_sample_type.side_effect = [
+            ({}, {"is_valid": True, "matched_sample_type": "fecal", "matched_field": "isolation_source"}, None),
+            ({}, {"is_valid": True, "matched_sample_type": "gut", "matched_field": "body_site"}, None),
+        ]
+
+        samples = [
+            {"id": 1, "isolation_source": "stool"},
+            {"id": 2, "body_site": "colon biopsy"},
+        ]
+        parsed = {"sample_types": ["fecal", "gut"]}
+
+        result, stats, ir = self.service.apply_filters(samples, parsed)
+
+        # Both samples should be retained (OR logic across sample types)
+        assert len(result) == 2
+        assert result[0]["_matched_sample_type"] == "fecal"
+        assert result[1]["_matched_sample_type"] == "gut"
+
+    def test_sample_type_filter_stats(self):
+        """Test stats include sample type filtering info."""
+        self.mock_microbiome.validate_sample_type.side_effect = [
+            ({}, {"is_valid": True, "matched_sample_type": "fecal", "matched_field": "isolation_source"}, None),
+            ({}, {"is_valid": False, "matched_sample_type": None}, None),
+            ({}, {"is_valid": True, "matched_sample_type": "fecal", "matched_field": "body_site"}, None),
+        ]
+
+        samples = [{"id": i} for i in range(3)]
+        parsed = {"sample_types": ["fecal"]}
+
+        result, stats, ir = self.service.apply_filters(samples, parsed)
+
+        assert stats["samples_original"] == 3
+        assert stats["samples_retained"] == 2
+        assert stats["retention_rate"] == pytest.approx(66.67, rel=0.01)
+        assert any("sample_type" in step for step in stats["filters_applied"])
+
+    def test_sample_type_combined_with_other_filters(self):
+        """Test sample type filter combined with sequencing and host filters."""
+        # All filters pass for sample 1, sample 2 fails host
+        self.mock_microbiome.validate_16s_amplicon.return_value = (True, {}, None)
+        self.mock_microbiome.validate_host_organism.side_effect = [
+            (True, {}, None),
+            (False, {}, None),
+        ]
+        self.mock_microbiome.validate_sample_type.return_value = (
+            {}, {"is_valid": True, "matched_sample_type": "fecal", "matched_field": "isolation_source"}, None
+        )
+
+        samples = [{"id": 1}, {"id": 2}]
+        parsed = {
+            "check_16s": True,
+            "host_organisms": ["Human"],
+            "sample_types": ["fecal"],
+        }
+
+        result, stats, ir = self.service.apply_filters(samples, parsed)
+
+        # Only sample 1 should pass (sample 2 fails host filter before reaching sample_type)
+        assert len(result) == 1
+        assert result[0]["id"] == 1
+
+    def test_sample_type_not_applied_when_empty(self):
+        """Test sample type filter not called when sample_types is empty."""
+        samples = [{"id": 1}]
+        parsed = {"sample_types": []}  # Empty list
+
+        result, stats, ir = self.service.apply_filters(samples, parsed)
+
+        # Should not call validate_sample_type
+        self.mock_microbiome.validate_sample_type.assert_not_called()
+        assert len(result) == 1
+
+    def test_sample_type_ir_includes_filter(self):
+        """Test that IR description includes sample type filter."""
+        self.mock_microbiome.validate_sample_type.return_value = (
+            {}, {"is_valid": True, "matched_sample_type": "fecal", "matched_field": "isolation_source"}, None
+        )
+
+        samples = [{"id": 1}]
+        parsed = {"sample_types": ["fecal"]}
+
+        result, stats, ir = self.service.apply_filters(samples, parsed)
+
+        assert "sample_type" in ir.description
+        assert ir.parameters["sample_types"] == ["fecal"]
+
+
 class TestIsAvailable:
     """Tests for service availability check."""
 

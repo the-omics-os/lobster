@@ -158,6 +158,69 @@ class MicrobiomeFilteringService:
 
         return filtered_metadata, stats, ir
 
+    # Sample type detection keywords (case-insensitive)
+    # Maps canonical sample type to keywords found in isolation_source, body_site, etc.
+    SAMPLE_TYPE_KEYWORDS = {
+        "fecal": [
+            "fecal",
+            "feces",
+            "stool",
+            "faecal",
+            "faeces",
+            "fecal sample",
+            "stool sample",
+            "human feces",
+            "mouse feces",
+            "gut content",
+            "intestinal content",
+            "colon content",
+            "cecal content",
+            "caecal content",
+        ],
+        "gut": [
+            "gut",
+            "intestine",
+            "intestinal",
+            "colon",
+            "colonic",
+            "cecum",
+            "caecum",
+            "ileum",
+            "jejunum",
+            "duodenum",
+            "small intestine",
+            "large intestine",
+            "gastrointestinal",
+            "gi tract",
+            "biopsy",
+            "tissue",
+            "mucosa",
+            "mucosal",
+            "epithelium",
+            "epithelial",
+        ],
+        "oral": [
+            "oral",
+            "saliva",
+            "mouth",
+            "tongue",
+            "dental",
+            "plaque",
+            "gingiva",
+            "gingival",
+            "buccal",
+            "subgingival",
+            "supragingival",
+        ],
+        "skin": [
+            "skin",
+            "dermal",
+            "cutaneous",
+            "epidermis",
+            "sebaceous",
+        ],
+    }
+
     # Shotgun metagenomic detection keywords (case-insensitive)
     SHOTGUN_KEYWORDS = {
         "library_strategy": [
@@ -352,9 +415,139 @@ else:
 
         return filtered_metadata, stats, ir
 
+    def validate_sample_type(
+        self,
+        metadata: Dict[str, Any],
+        allowed_sample_types: Optional[List[str]] = None,
+        strict: bool = False,
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], AnalysisStep]:
+        """
+        Validate sample type using keyword matching on isolation_source and related fields.
+
+        Checks multiple metadata fields (isolation_source, body_site, sample_type, env_material)
+        for keywords matching the allowed sample types. Uses OR logic across fields.
+
+        Args:
+            metadata: Sample metadata dictionary with SRA/BioSample fields
+            allowed_sample_types: List of allowed sample types (default: ["fecal", "gut"])
+                Supported types: "fecal", "gut", "oral", "skin"
+            strict: If True, require exact keyword match. If False, allow substring match (default: False)
+
+        Returns:
+            Tuple of:
+            - filtered_metadata: Original metadata if valid, empty dict if invalid
+            - stats: Validation summary with match details
+            - ir: AnalysisStep for provenance tracking
+
+        Example:
+            >>> service = MicrobiomeFilteringService()
+            >>> metadata = {"isolation_source": "human feces"}
+            >>> result, stats, ir = service.validate_sample_type(metadata, ["fecal"])
+            >>> stats["is_valid"]
+            True
+            >>> stats["matched_sample_type"]
+            'fecal'
+        """
+        if allowed_sample_types is None:
+            allowed_sample_types = ["fecal", "gut"]
+
+        result = self._check_sample_type(metadata, allowed_sample_types, strict)
+
+        # Filter metadata based on validation
+        filtered_metadata = metadata if result.is_valid else {}
+
+        # Build stats
+        stats = {
+            "is_valid": result.is_valid,
+            "reason": result.reason,
+            "matched_sample_type": result.matched_value if result.is_valid else None,
+            "matched_field": result.matched_field,
+            "allowed_sample_types": allowed_sample_types,
+            "strict_mode": strict,
+        }
+
+        # Generate IR
+        ir = self._create_sample_type_ir(metadata, allowed_sample_types, strict, result)
+
+        return filtered_metadata, stats, ir
+
     # -------------------------------------------------------------------------
     # Internal Validation Logic
     # -------------------------------------------------------------------------
+
+    def _check_sample_type(
+        self,
+        metadata: Dict[str, Any],
+        allowed_sample_types: List[str],
+        strict: bool,
+    ) -> ValidationResult:
+        """
+        Check if metadata contains allowed sample type indicators.
+
+        Searches multiple fields for sample type keywords using OR logic.
+
+        Args:
+            metadata: Metadata to check
+            allowed_sample_types: List of allowed sample types (e.g., ["fecal", "gut"])
+            strict: Use strict (exact) matching
+
+        Returns:
+            ValidationResult with match details
+        """
+        # Fields to check for sample type information (priority order)
+        sample_type_fields = [
+            "isolation_source",
+            "body_site",
+            "sample_type",
+            "env_material",
+            "tissue",
+            "body_product",
+            "body_habitat",
+            "env_biome",
+        ]
+
+        for field_name in sample_type_fields:
+            if field_name not in metadata:
+                continue
+
+            value = self._normalize_field(metadata[field_name])
+            if not value:
+                continue
+
+            # Check each allowed sample type
+            for sample_type in allowed_sample_types:
+                keywords = self.SAMPLE_TYPE_KEYWORDS.get(sample_type, [])
+                if not keywords:
+                    logger.warning(f"Unknown sample type '{sample_type}', skipping")
+                    continue
+
+                for keyword in keywords:
+                    keyword_lower = keyword.lower()
+                    if strict:
+                        # Exact match
+                        if value == keyword_lower:
+                            return ValidationResult(
+                                is_valid=True,
+                                reason=f"Sample type '{sample_type}' matched in {field_name}",
+                                matched_field=field_name,
+                                matched_value=sample_type,
+                                confidence=100.0,
+                            )
+                    else:
+                        # Substring match
+                        if keyword_lower in value:
+                            return ValidationResult(
+                                is_valid=True,
+                                reason=f"Sample type '{sample_type}' matched in {field_name}",
+                                matched_field=field_name,
+                                matched_value=sample_type,
+                                confidence=90.0,  # Substring match = slightly lower confidence
+                            )
+
+        return ValidationResult(
+            is_valid=False,
+            reason=f"Sample type not in allowed list: {allowed_sample_types}",
+        )
 
     def _check_16s_amplicon(
         self, metadata: Dict[str, Any], strict: bool
@@ -701,6 +894,113 @@ if matched_host:
                     "type": "validation_result",
                     "name": "filtered_metadata",
                     "is_valid": result.is_valid,
+                    "confidence": result.confidence,
+                }
+            ],
+        )
+
+    def _create_sample_type_ir(
+        self,
+        metadata: Dict[str, Any],
+        allowed_sample_types: List[str],
+        strict: bool,
+        result: ValidationResult,
+    ) -> AnalysisStep:
+        """
+        Create AnalysisStep IR for sample type validation.
+
+        Args:
+            metadata: Input metadata
+            allowed_sample_types: Allowed sample types list
+            strict: Strict mode flag
+            result: Validation result
+
+        Returns:
+            AnalysisStep for provenance tracking
+        """
+        code_template = """
+# Sample Type Validation
+metadata = {{ metadata }}
+allowed_sample_types = {{ allowed_sample_types }}
+strict = {{ strict }}
+
+# Sample type keywords
+SAMPLE_TYPE_KEYWORDS = {
+    "fecal": ["fecal", "feces", "stool", "faecal", "faeces", "gut content"],
+    "gut": ["gut", "intestine", "colon", "biopsy", "tissue", "mucosa"],
+    "oral": ["oral", "saliva", "mouth", "dental", "plaque"],
+    "skin": ["skin", "dermal", "cutaneous", "epidermis"],
+}
+
+# Fields to check (priority order)
+sample_type_fields = ["isolation_source", "body_site", "sample_type", "env_material", "tissue"]
+
+is_valid = False
+matched_sample_type = None
+matched_field = None
+
+for field_name in sample_type_fields:
+    if field_name not in metadata:
+        continue
+    value = str(metadata[field_name]).lower().strip()
+    if not value:
+        continue
+
+    for sample_type in allowed_sample_types:
+        keywords = SAMPLE_TYPE_KEYWORDS.get(sample_type, [])
+        for keyword in keywords:
+            if strict and value == keyword.lower():
+                is_valid = True
+                matched_sample_type = sample_type
+                matched_field = field_name
+                break
+            elif not strict and keyword.lower() in value:
+                is_valid = True
+                matched_sample_type = sample_type
+                matched_field = field_name
+                break
+        if is_valid:
+            break
+    if is_valid:
+        break
+
+print(f"Validation result: {is_valid}")
+if matched_sample_type:
+    print(f"Matched sample type: {matched_sample_type} (field: {matched_field})")
+"""
+
+        return AnalysisStep(
+            operation="microbiome.filtering.validate_sample_type",
+            tool_name="MicrobiomeFilteringService.validate_sample_type",
+            description=f"Validate sample type (allowed: {allowed_sample_types}, strict={strict})",
+            library="lobster.services.metadata.microbiome_filtering_service",
+            code_template=code_template.strip(),
+            imports=[],
+            parameters={
+                "metadata": metadata,
+                "allowed_sample_types": allowed_sample_types,
+                "strict": strict,
+            },
+            parameter_schema={
+                "metadata": {"type": "dict", "description": "Metadata to validate"},
+                "allowed_sample_types": {
+                    "type": "list",
+                    "default": ["fecal", "gut"],
+                    "description": "Allowed sample types (fecal, gut, oral, skin)",
+                },
+                "strict": {
+                    "type": "bool",
+                    "default": False,
+                    "description": "Require exact keyword matches",
+                },
+            },
+            input_entities=[{"type": "metadata", "name": "input_metadata"}],
+            output_entities=[
+                {
+                    "type": "validation_result",
+                    "name": "filtered_metadata",
+                    "is_valid": result.is_valid,
+                    "matched_sample_type": result.matched_value,
                     "confidence": result.confidence,
                 }
             ],
