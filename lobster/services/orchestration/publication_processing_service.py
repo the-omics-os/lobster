@@ -1337,7 +1337,10 @@ class PublicationProcessingService:
 
                 handoff_status = HandoffStatus.READY_FOR_METADATA
             elif extracted_data:
-                final_status = PublicationStatus.COMPLETED.value
+                # Has extracted data but NOT ready for handoff (missing SRA sample metadata)
+                # Use METADATA_ENRICHED (intermediate) - NOT COMPLETED (terminal)
+                # COMPLETED is reserved for after metadata_assistant finishes harmonization
+                final_status = PublicationStatus.METADATA_ENRICHED.value
                 handoff_status = None
             else:
                 final_status = PublicationStatus.FAILED.value

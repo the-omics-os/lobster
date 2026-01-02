@@ -416,12 +416,7 @@ def metadata_assistant(
                     "min_confidence": min_confidence,
                     "strategies": strategies,
                 },
-                result_summary={
-                    "exact_matches": result.summary["exact_matches"],
-                    "fuzzy_matches": result.summary["fuzzy_matches"],
-                    "unmapped": result.summary["unmapped"],
-                    "mapping_rate": result.summary["mapping_rate"],
-                },
+                description=f"Mapped {result.summary['exact_matches']} exact, {result.summary['fuzzy_matches']} fuzzy, {result.summary['unmapped']} unmapped ({result.summary['mapping_rate']:.1%} rate)",
             )
 
             # Format report
@@ -568,7 +563,7 @@ def metadata_assistant(
                     "fields": fields,
                     "return_format": return_format,
                 },
-                result_summary={"format": return_format, "num_samples": len(sample_df)},
+                description=f"Read {len(sample_df)} samples in {return_format} format",
             )
 
             # Format output based on return_format
@@ -675,11 +670,7 @@ def metadata_assistant(
                     "target_schema": target_schema,
                     "controlled_vocabularies": controlled_vocabularies,
                 },
-                result_summary={
-                    "valid_samples": len(result.standardized_metadata),
-                    "validation_errors": len(result.validation_errors),
-                    "warnings": len(result.warnings),
-                },
+                description=f"Standardized {len(result.standardized_metadata)} valid samples, {len(result.validation_errors)} errors, {len(result.warnings)} warnings",
                 ir=ir,  # Pass IR for provenance tracking
             )
 
@@ -882,13 +873,7 @@ def metadata_assistant(
                     "check_controls": check_controls,
                     "check_duplicates": check_duplicates,
                 },
-                result_summary={
-                    "has_required_samples": result.has_required_samples,
-                    "missing_conditions": len(result.missing_conditions),
-                    "duplicate_ids": len(result.duplicate_ids),
-                    "platform_consistency": result.platform_consistency,
-                    "warnings": len(result.warnings),
-                },
+                description=f"Validated: samples={'✓' if result.has_required_samples else '✗'}, platform={'✓' if result.platform_consistency else '✗'}, {len(result.duplicate_ids)} duplicates, {len(result.warnings)} warnings",
                 ir=ir,  # Pass IR for provenance tracking (None for metadata_store)
             )
 
@@ -1370,12 +1355,7 @@ def metadata_assistant(
                     "strict": strict,
                     "parsed_criteria": parsed_criteria,
                 },
-                result_summary={
-                    "original_samples": original_count,
-                    "filtered_samples": final_count,
-                    "retention_rate": retention_rate,
-                    "filters_applied": len(irs),
-                },
+                description=f"Filtered {original_count}→{final_count} samples ({retention_rate:.1f}% retention), {len(irs)} filters applied",
                 ir=composite_ir,
             )
 
@@ -1587,7 +1567,7 @@ def metadata_assistant(
 
             queue.update_status(
                 entry_id=entry_id,
-                status=entry.status,
+                status=PublicationStatus.COMPLETED,  # Terminal success state
                 handoff_status=HandoffStatus.METADATA_COMPLETE,
                 harmonization_metadata=harmonization_data,
             )
@@ -1799,7 +1779,7 @@ def metadata_assistant(
                             status = "completed"
                             pending_updates.append({
                                 "entry_id": entry.entry_id,
-                                "status": entry.status,
+                                "status": PublicationStatus.COMPLETED,  # Terminal success state
                                 "handoff_status": HandoffStatus.METADATA_COMPLETE,
                             })
 
@@ -2147,10 +2127,10 @@ Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_
                     if entry_samples:
                         stats["with_samples"] += 1
 
-                    # Update entry status
+                    # Update entry status to terminal success state
                     queue.update_status(
                         entry.entry_id,
-                        entry.status,
+                        PublicationStatus.COMPLETED,  # Terminal success state
                         handoff_status=HandoffStatus.METADATA_COMPLETE,
                     )
 
@@ -2226,7 +2206,27 @@ Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_
                     logger.warning(f"  - {entry_id}: {error}")
             logger.debug("=" * 60)
 
-            # Build response
+            # Build response - check for 0 samples scenario first
+            if stats['total_extracted'] == 0:
+                response = f"""⚠️ **0 Samples Extracted** (status='{status_filter}', {len(entries)} entries, {stats['with_samples']} with metadata)
+
+Likely cause: Wrong status_filter. Use `status_filter='handoff_ready'` (default) for entries ready for processing. 'completed' entries have no actionable metadata.
+
+Fix: `process_metadata_queue(status_filter="handoff_ready", filter_criteria="{filter_criteria or ''}", output_key="{output_key}")`
+"""
+                return response
+
+            # Check if samples were extracted but ALL filtered out
+            if stats['total_after_filter'] == 0 and stats['total_extracted'] > 0 and filter_criteria:
+                response = f"""⚠️ **All {stats['total_extracted']} Samples Filtered Out** (filter: '{filter_criteria}')
+
+{stats['total_valid']}/{stats['total_extracted']} valid, 0 after filter. Note: sample_type filters (fecal/gut) are NOT YET IMPLEMENTED - only 16S/shotgun and host filters work.
+
+Fix: Run without filter first to inspect data: `process_metadata_queue(status_filter="{status_filter}", filter_criteria=None, output_key="unfiltered")`
+"""
+                return response
+
+            # Normal response for successful processing
             response = f"""## Queue Processing Complete
 **Entries Processed**: {stats['processed']}
 **Successful**: {stats['processed'] - stats['failed']}
