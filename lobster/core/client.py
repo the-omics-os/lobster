@@ -205,8 +205,15 @@ class AgentClient(BaseClient):
             final_response = self._extract_response(events)
 
             # Update messages with the final response (not the raw events)
+            # When reasoning is enabled, final_response is a dict with "combined" key
+            # AIMessage.content requires string or list, so extract the combined text
             if final_response:
-                self.messages.append(AIMessage(content=final_response))
+                if isinstance(final_response, dict):
+                    # Use combined text for conversation history (preserves reasoning in response dict)
+                    message_content = final_response.get("combined", "")
+                else:
+                    message_content = final_response
+                self.messages.append(AIMessage(content=message_content))
 
             # Get token usage information
             token_cost = self.token_tracker.get_latest_cost()
@@ -214,22 +221,49 @@ class AgentClient(BaseClient):
             # Auto-save session for continuity (enables multi-turn lobster query)
             session_path = self._save_session_json()
 
-            return {
-                "success": True,
-                "response": final_response,
-                "duration": (datetime.now() - start_time).total_seconds(),
-                "events_count": len(events),
-                "session_id": self.session_id,
-                "session_path": str(session_path) if session_path else None,
-                "has_data": self.data_manager.has_data(),
-                "plots": (
-                    self.data_manager.get_latest_plots(5)
-                    if self.data_manager.has_data()
-                    else []
-                ),
-                "last_agent": last_agent,  # Include which agent provided the response
-                "token_usage": token_cost,  # Include token cost information
-            }
+            # Build response dict with structured reasoning support
+            # When reasoning is enabled and present, final_response is a dict with:
+            #   - "reasoning": extracted thinking/reasoning text
+            #   - "text": main response text
+            #   - "combined": full concatenated text (for backward compatibility)
+            if isinstance(final_response, dict):
+                response_data = {
+                    "success": True,
+                    "response": final_response.get("combined", ""),  # Backward compat
+                    "reasoning": final_response.get("reasoning", ""),  # Separate reasoning
+                    "text": final_response.get("text", ""),  # Separate main text
+                    "duration": (datetime.now() - start_time).total_seconds(),
+                    "events_count": len(events),
+                    "session_id": self.session_id,
+                    "session_path": str(session_path) if session_path else None,
+                    "has_data": self.data_manager.has_data(),
+                    "plots": (
+                        self.data_manager.get_latest_plots(5)
+                        if self.data_manager.has_data()
+                        else []
+                    ),
+                    "last_agent": last_agent,
+                    "token_usage": token_cost,
+                }
+            else:
+                # Simple string response (no reasoning)
+                response_data = {
+                    "success": True,
+                    "response": final_response,
+                    "duration": (datetime.now() - start_time).total_seconds(),
+                    "events_count": len(events),
+                    "session_id": self.session_id,
+                    "session_path": str(session_path) if session_path else None,
+                    "has_data": self.data_manager.has_data(),
+                    "plots": (
+                        self.data_manager.get_latest_plots(5)
+                        if self.data_manager.has_data()
+                        else []
+                    ),
+                    "last_agent": last_agent,
+                    "token_usage": token_cost,
+                }
+            return response_data
 
         except Exception as e:
             # Enhanced error information for better debugging
@@ -273,8 +307,13 @@ class AgentClient(BaseClient):
         except Exception as e:
             yield {"type": "error", "error": str(e), "session_id": self.session_id}
 
-    def _extract_response(self, events: List[Dict]) -> str:
-        """Extract the final response from events, expecting supervisor responses."""
+    def _extract_response(self, events: List[Dict]) -> str | Dict[str, str]:
+        """Extract the final response from events, expecting supervisor responses.
+
+        Returns:
+            When reasoning is enabled and present: Dict with reasoning/text/combined
+            Otherwise: Simple string with response text
+        """
         if not events:
             return "No response generated."
 
@@ -314,7 +353,7 @@ class AgentClient(BaseClient):
 
         return "No response generated."
 
-    def _extract_content_from_message(self, message: AIMessage) -> str:
+    def _extract_content_from_message(self, message: AIMessage) -> str | Dict[str, str]:
         """
         Extract text content from AIMessage using LangChain's normalized content_blocks.
 
@@ -338,7 +377,10 @@ class AgentClient(BaseClient):
             message: LangChain AIMessage object with normalized content_blocks
 
         Returns:
-            Formatted string with optional reasoning prefix
+            When reasoning is enabled and reasoning blocks present:
+                Dict with {"reasoning": str, "text": str, "combined": str}
+            Otherwise:
+                Simple string with extracted text
 
         See:
             - DeepAgents execution.py:430-453 for pattern reference
@@ -356,7 +398,7 @@ class AgentClient(BaseClient):
         # Fallback to legacy manual parsing for backward compatibility
         return self._extract_from_raw_content(message.content)
 
-    def _extract_from_content_blocks(self, content_blocks) -> str:
+    def _extract_from_content_blocks(self, content_blocks) -> str | Dict[str, str]:
         """
         Extract text from LangChain's normalized content_blocks.
 
@@ -372,7 +414,13 @@ class AgentClient(BaseClient):
             content_blocks: List of normalized content block dictionaries
 
         Returns:
-            Formatted string combining reasoning (if enabled) and text
+            When reasoning is enabled and reasoning blocks present:
+                Dict with {"reasoning": str, "text": str, "combined": str}
+                - "reasoning": extracted thinking text with [Thinking: ...] prefix
+                - "text": main response text
+                - "combined": full concatenated text (for backward compat)
+            Otherwise:
+                Simple string with extracted text
 
         Example:
             >>> blocks = [
@@ -380,10 +428,8 @@ class AgentClient(BaseClient):
             ...     {"type": "text", "text": "Here's my response"}
             ... ]
             >>> result = self._extract_from_content_blocks(blocks)
-            >>> print(result)
-            [Thinking: Let me analyze...]
-
-            Here's my response
+            >>> # When reasoning enabled, returns dict:
+            >>> # {"reasoning": "[Thinking: ...]", "text": "...", "combined": "..."}
         """
         text_parts = []
         reasoning_parts = []
@@ -418,10 +464,16 @@ class AgentClient(BaseClient):
                     f"Unknown content block type '{block_type}' with keys: {list(block.keys())}"
                 )
 
-        # Combine parts: reasoning first (if enabled), then main text
+        # Return structured response when reasoning is enabled, allowing CLI to display separately
+        if self.enable_reasoning and reasoning_parts:
+            return {
+                "reasoning": "\n\n".join(reasoning_parts).strip(),
+                "text": "\n\n".join(text_parts).strip() if text_parts else "",
+                "combined": "\n\n".join(reasoning_parts + text_parts).strip()
+            }
+
+        # Combine parts for non-reasoning mode (backward compatible)
         result_parts = []
-        if reasoning_parts and self.enable_reasoning:
-            result_parts.extend(reasoning_parts)
         if text_parts:
             result_parts.extend(text_parts)
 
@@ -519,7 +571,11 @@ class AgentClient(BaseClient):
                     and hasattr(msg, "content")
                     and msg.content
                 ):
-                    return self._extract_content_from_message(msg)
+                    extracted = self._extract_content_from_message(msg)
+                    # Handle structured response (dict) when reasoning is enabled
+                    if isinstance(extracted, dict):
+                        return extracted.get("combined", "")
+                    return extracted
 
         # Check for other relevant fields
         for key in ["analysis_results", "next", "data_context"]:

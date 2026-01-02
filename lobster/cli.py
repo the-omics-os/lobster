@@ -4272,8 +4272,25 @@ def chat(
                     agent_display = "Lobster"
                 console.print(f"\n[dim]◀ {agent_display}[/dim]")
 
-                # Response as markdown (no panel)
-                console.print(Markdown(result["response"]))
+                # Display reasoning as separate step if available
+                if reasoning and result.get("reasoning"):
+                    # Clean reasoning text (remove [Thinking: ] wrapper if present)
+                    reasoning_text = result["reasoning"]
+                    reasoning_text = reasoning_text.replace("[Thinking: ", "").replace("]", "")
+
+                    reasoning_panel = Panel(
+                        Markdown(reasoning_text),
+                        title="[dim cyan]🧠 Reasoning[/dim cyan]",
+                        border_style="dim cyan",
+                        box=box.ROUNDED,
+                        padding=(0, 2),
+                    )
+                    console.print(reasoning_panel)
+                    console.print()  # Spacing
+
+                # Display main response (use separate text field if available)
+                response_text = result.get("text") or result["response"]
+                console.print(Markdown(response_text))
 
                 # Plots indicator
                 if result.get("plots"):
@@ -4286,6 +4303,13 @@ def chat(
         except KeyboardInterrupt:
             if Confirm.ask("\n[dim]exit?[/dim]"):
                 display_goodbye()
+
+                # Display session ID for continuity
+                console.print(
+                    f"[dim]Session: {client.session_id} "
+                    f"(use --session-id latest to continue)[/dim]"
+                )
+
                 console.print("[dim]◆ feedback: [link=https://forms.cloud.microsoft/e/AkNk8J8nE8]forms.cloud.microsoft/e/AkNk8J8nE8[/link][/dim]")
 
                 # Display session token usage summary
@@ -7841,6 +7865,13 @@ when they are started by agents or analysis workflows.
     elif cmd == "/exit":
         if Confirm.ask("[dim]exit?[/dim]"):
             display_goodbye()
+
+            # Display session ID for continuity
+            console.print(
+                f"[dim]Session: {client.session_id} "
+                f"(use --session-id latest to continue)[/dim]"
+            )
+
             console.print("[dim]◆ feedback: [link=https://forms.cloud.microsoft/e/AkNk8J8nE8]forms.cloud.microsoft/e/AkNk8J8nE8[/link][/dim]")
 
             # Display session token usage summary
@@ -8032,9 +8063,27 @@ def query(
                 f"[bold red]✓[/bold red] [white]Response saved to:[/white] [grey74]{output}[/grey74]"
             )
         else:
+            # Display reasoning as separate panel if available
+            if reasoning and result.get("reasoning"):
+                # Clean reasoning text (remove [Thinking: ] wrapper if present)
+                reasoning_text = result["reasoning"]
+                reasoning_text = reasoning_text.replace("[Thinking: ", "").replace("]", "")
+
+                reasoning_panel = Panel(
+                    Markdown(reasoning_text),
+                    title="[dim cyan]🧠 Agent Reasoning[/dim cyan]",
+                    border_style="dim cyan",
+                    box=box.ROUNDED,
+                    padding=(1, 2),
+                )
+                console.print(reasoning_panel)
+                console.print()  # Spacing between panels
+
+            # Display main response (use separate text field if available)
+            response_text = result.get("text") or result["response"]
             console.print(
                 Panel(
-                    Markdown(result["response"]),
+                    Markdown(response_text),
                     title="[bold white on red] 🦞 Lobster Response [/bold white on red]",
                     border_style="red",
                     box=box.DOUBLE,
