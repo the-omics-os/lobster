@@ -1946,8 +1946,8 @@ Could not extract content for: {identifier}
             process_publication_entry("pub_queue_abc123", status_override="failed",
                                     error_message="Content not accessible")
 
-            # STATUS OVERRIDE MODE: Administrative correction
-            process_publication_entry("pub_queue_abc123", status_override="completed")
+            # STATUS OVERRIDE MODE: Mark as paywalled (when extraction is blocked)
+            process_publication_entry("pub_queue_abc123", status_override="paywalled")
         """
         if not HAS_PUBLICATION_PROCESSING:
             return "Publication processing requires a premium subscription. Visit https://omics-os.com/pricing"
@@ -1962,7 +1962,9 @@ Could not extract content for: {identifier}
                     "metadata_extracted",
                     "metadata_enriched",
                     "handoff_ready",
-                    "completed",
+                    # NOTE: "completed" is intentionally excluded
+                    # ONLY metadata_assistant can set COMPLETED status after harmonization
+                    # research_agent should NEVER mark entries as complete
                     "failed",
                     "paywalled",
                 ]

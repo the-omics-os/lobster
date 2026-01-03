@@ -506,6 +506,8 @@ def extract_available_commands() -> Dict[str, str]:
         "/tree": "Show directory tree view",
         "/data": "Show current data summary",
         "/metadata": "Show detailed metadata information",
+        "/metadata list": "List metadata store entries",
+        "/metadata clear": "Clear metadata store",
         # Queue commands (temporary, intent-driven)
         "/queue": "Show queue status",
         "/queue load": "Load file into queue (supports .ris, more coming)",
@@ -6215,171 +6217,199 @@ when they are started by agents or analysis workflows.
         else:
             console.print("[grey50]No data currently loaded[/grey50]")
 
-    elif cmd == "/metadata":
-        # Show metadata store contents (for DataManagerV2) and current metadata
-        console.print("[bold red]📋 Metadata Information[/bold red]\n")
+    elif cmd.startswith("/metadata"):
+        # Metadata management commands
+        parts = cmd.split()
+        subcommand = parts[1] if len(parts) > 1 else None
 
-        # Check if using DataManagerV2 with metadata_store
-        if hasattr(client.data_manager, "metadata_store"):
+        if subcommand == "clear":
+            # Clear metadata store
+            if not hasattr(client.data_manager, "metadata_store"):
+                console.print("[yellow]⚠️  Metadata store not available[/yellow]")
+                return None
+
             metadata_store = client.data_manager.metadata_store
-            if metadata_store:
-                console.print(
-                    "[bold white]🗄️  Metadata Store (Cached GEO/External Data):[/bold white]"
-                )
+            num_entries = len(metadata_store)
 
-                store_table = Table(
-                    box=box.ROUNDED,
-                    border_style="red",
-                    title="🗄️ Metadata Store",
-                    title_style="bold red on white",
-                )
-                store_table.add_column("Dataset ID", style="bold white")
-                store_table.add_column("Type", style="cyan")
-                store_table.add_column("Title", style="white")
-                store_table.add_column("Samples", style="grey74")
-                store_table.add_column("Cached", style="grey50")
+            if num_entries == 0:
+                console.print("[grey50]Metadata store is already empty[/grey50]")
+                return "Metadata store already empty"
 
-                for dataset_id, metadata_info in metadata_store.items():
-                    metadata = metadata_info.get("metadata", {})
-                    validation = metadata_info.get("validation", {})
+            # Clear the store
+            metadata_store.clear()
+            console.print(f"[green]✓ Cleared {num_entries} metadata entries from store[/green]")
+            return f"Cleared {num_entries} metadata entries"
 
-                    # Extract key information
-                    title = (
-                        str(metadata.get("title", "N/A"))[:40] + "..."
-                        if len(str(metadata.get("title", "N/A"))) > 40
-                        else str(metadata.get("title", "N/A"))
-                    )
-                    data_type = (
-                        validation.get("predicted_data_type", "unknown")
-                        .replace("_", " ")
-                        .title()
-                    )
-                    samples = (
-                        len(metadata.get("samples", {}))
-                        if metadata.get("samples")
-                        else "N/A"
+        elif subcommand == "list" or subcommand is None:
+            # Show metadata store contents (for DataManagerV2) and current metadata
+            console.print("[bold red]📋 Metadata Information[/bold red]\n")
+
+            # Check if using DataManagerV2 with metadata_store
+            if hasattr(client.data_manager, "metadata_store"):
+                metadata_store = client.data_manager.metadata_store
+                if metadata_store:
+                    console.print(
+                        "[bold white]🗄️  Metadata Store (Cached GEO/External Data):[/bold white]"
                     )
 
-                    # Parse timestamp
-                    timestamp = metadata_info.get("fetch_timestamp", "")
-                    try:
-                        from datetime import datetime
+                    store_table = Table(
+                        box=box.ROUNDED,
+                        border_style="red",
+                        title="🗄️ Metadata Store",
+                        title_style="bold red on white",
+                    )
+                    store_table.add_column("Dataset ID", style="bold white")
+                    store_table.add_column("Type", style="cyan")
+                    store_table.add_column("Title", style="white")
+                    store_table.add_column("Samples", style="grey74")
+                    store_table.add_column("Cached", style="grey50")
 
-                        cached_time = datetime.fromisoformat(
-                            timestamp.replace("Z", "+00:00")
+                    for dataset_id, metadata_info in metadata_store.items():
+                        metadata = metadata_info.get("metadata", {})
+                        validation = metadata_info.get("validation", {})
+
+                        # Extract key information
+                        title = (
+                            str(metadata.get("title", "N/A"))[:40] + "..."
+                            if len(str(metadata.get("title", "N/A"))) > 40
+                            else str(metadata.get("title", "N/A"))
                         )
-                        cached_str = cached_time.strftime("%Y-%m-%d %H:%M")
-                    except Exception:
-                        cached_str = timestamp[:16] if timestamp else "N/A"
+                        data_type = (
+                            validation.get("predicted_data_type", "unknown")
+                            .replace("_", " ")
+                            .title()
+                        )
+                        samples = (
+                            len(metadata.get("samples", {}))
+                            if metadata.get("samples")
+                            else "N/A"
+                        )
 
-                    store_table.add_row(
-                        dataset_id, data_type, title, str(samples), cached_str
-                    )
+                        # Parse timestamp
+                        timestamp = metadata_info.get("fetch_timestamp", "")
+                        try:
+                            from datetime import datetime
 
-                console.print(store_table)
-                console.print()
-            else:
-                console.print("[grey50]No cached metadata in metadata store[/grey50]\n")
+                            cached_time = datetime.fromisoformat(
+                                timestamp.replace("Z", "+00:00")
+                            )
+                            cached_str = cached_time.strftime("%Y-%m-%d %H:%M")
+                        except Exception:
+                            cached_str = timestamp[:16] if timestamp else "N/A"
 
-        # Show current data metadata
-        if (
-            hasattr(client.data_manager, "current_metadata")
-            and client.data_manager.current_metadata
-        ):
-            console.print("[bold white]📊 Current Data Metadata:[/bold white]")
-            metadata = client.data_manager.current_metadata
+                        store_table.add_row(
+                            dataset_id, data_type, title, str(samples), cached_str
+                        )
 
-            metadata_table = Table(box=box.SIMPLE, border_style="red", show_header=True)
-            metadata_table.add_column("Key", style="bold grey93", width=25)
-            metadata_table.add_column("Value", style="white", width=50)
+                    console.print(store_table)
+                    console.print()
+                else:
+                    console.print("[grey50]No cached metadata in metadata store[/grey50]\n")
 
-            for key, value in metadata.items():
-                # Format value for display
-                if isinstance(value, dict):
-                    display_value = f"Dict with {len(value)} keys: {', '.join(list(value.keys())[:3])}"
-                    if len(value) > 3:
-                        display_value += f" ... (+{len(value)-3} more)"
-                elif isinstance(value, list):
-                    display_value = f"List with {len(value)} items"
-                    if len(value) > 0:
-                        display_value += f": {', '.join(str(v) for v in value[:3])}"
+            # Show current data metadata
+            if (
+                hasattr(client.data_manager, "current_metadata")
+                and client.data_manager.current_metadata
+            ):
+                console.print("[bold white]📊 Current Data Metadata:[/bold white]")
+                metadata = client.data_manager.current_metadata
+
+                metadata_table = Table(box=box.SIMPLE, border_style="red", show_header=True)
+                metadata_table.add_column("Key", style="bold grey93", width=25)
+                metadata_table.add_column("Value", style="white", width=50)
+
+                for key, value in metadata.items():
+                    # Format value for display
+                    if isinstance(value, dict):
+                        display_value = f"Dict with {len(value)} keys: {', '.join(list(value.keys())[:3])}"
                         if len(value) > 3:
                             display_value += f" ... (+{len(value)-3} more)"
-                else:
-                    display_value = str(value)
-                    if len(display_value) > 60:
-                        display_value = display_value[:60] + "..."
+                    elif isinstance(value, list):
+                        display_value = f"List with {len(value)} items"
+                        if len(value) > 0:
+                            display_value += f": {', '.join(str(v) for v in value[:3])}"
+                            if len(value) > 3:
+                                display_value += f" ... (+{len(value)-3} more)"
+                    else:
+                        display_value = str(value)
+                        if len(display_value) > 60:
+                            display_value = display_value[:60] + "..."
 
-                metadata_table.add_row(key, display_value)
+                    metadata_table.add_row(key, display_value)
 
-            console.print(metadata_table)
+                console.print(metadata_table)
+            else:
+                console.print("[grey50]No current data metadata available[/grey50]")
+
+            # ================================================================
+            # Workspace Files Section (v1.0+ - Unified View)
+            # ================================================================
+            workspace_path = Path(client.data_manager.workspace_path)
+
+            # Show workspace metadata files
+            metadata_dir = workspace_path / "metadata"
+            if metadata_dir.exists():
+                json_files = sorted(metadata_dir.glob("*.json"))
+                if json_files:
+                    console.print("\n[bold white]📁 Workspace Metadata Files:[/bold white]")
+                    files_table = Table(box=box.SIMPLE, border_style="cyan", show_header=True)
+                    files_table.add_column("File", style="cyan", width=50)
+                    files_table.add_column("Size", style="grey50", width=10)
+                    files_table.add_column("Modified", style="grey50", width=20)
+
+                    for json_file in json_files[:20]:  # Limit to 20 files
+                        stat = json_file.stat()
+                        size_kb = stat.st_size / 1024
+                        from datetime import datetime
+                        modified = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
+                        files_table.add_row(json_file.name, f"{size_kb:.1f} KB", modified)
+
+                    console.print(files_table)
+                    if len(json_files) > 20:
+                        console.print(f"[grey50]... and {len(json_files) - 20} more files[/grey50]")
+                    console.print(f"[grey50]Path: {metadata_dir}[/grey50]")
+
+            # Show export files (centralized exports directory)
+            exports_dir = workspace_path / "exports"
+            if exports_dir.exists():
+                export_files = sorted(
+                    [f for f in exports_dir.iterdir() if f.is_file() and f.suffix in {".csv", ".tsv", ".xlsx"}],
+                    key=lambda x: x.stat().st_mtime,
+                    reverse=True
+                )
+                if export_files:
+                    console.print("\n[bold white]📤 Export Files:[/bold white]")
+                    exports_table = Table(box=box.SIMPLE, border_style="green", show_header=True)
+                    exports_table.add_column("File", style="green", width=50)
+                    exports_table.add_column("Size", style="grey50", width=10)
+                    exports_table.add_column("Modified", style="grey50", width=20)
+
+                    for export_file in export_files[:15]:  # Limit to 15 files
+                        stat = export_file.stat()
+                        size_kb = stat.st_size / 1024
+                        from datetime import datetime
+                        modified = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
+                        exports_table.add_row(export_file.name, f"{size_kb:.1f} KB", modified)
+
+                    console.print(exports_table)
+                    if len(export_files) > 15:
+                        console.print(f"[grey50]... and {len(export_files) - 15} more files[/grey50]")
+                    console.print(f"[grey50]Path: {exports_dir}[/grey50]")
+
+            # Check for deprecated export location and warn user
+            old_exports_dir = workspace_path / "metadata" / "exports"
+            if old_exports_dir.exists():
+                old_files = list(old_exports_dir.glob("*"))
+                if old_files:
+                    console.print("\n[bold yellow]⚠️  Deprecated Export Location Detected[/bold yellow]")
+                    console.print(f"[yellow]Found {len(old_files)} file(s) in old location: {old_exports_dir}[/yellow]")
+                    console.print("[yellow]New exports go to: workspace/exports/[/yellow]")
+                    console.print("[grey50]Migration: mv workspace/metadata/exports/* workspace/exports/[/grey50]")
+
         else:
-            console.print("[grey50]No current data metadata available[/grey50]")
-
-        # ================================================================
-        # Workspace Files Section (v1.0+ - Unified View)
-        # ================================================================
-        workspace_path = Path(client.data_manager.workspace_path)
-
-        # Show workspace metadata files
-        metadata_dir = workspace_path / "metadata"
-        if metadata_dir.exists():
-            json_files = sorted(metadata_dir.glob("*.json"))
-            if json_files:
-                console.print("\n[bold white]📁 Workspace Metadata Files:[/bold white]")
-                files_table = Table(box=box.SIMPLE, border_style="cyan", show_header=True)
-                files_table.add_column("File", style="cyan", width=50)
-                files_table.add_column("Size", style="grey50", width=10)
-                files_table.add_column("Modified", style="grey50", width=20)
-
-                for json_file in json_files[:20]:  # Limit to 20 files
-                    stat = json_file.stat()
-                    size_kb = stat.st_size / 1024
-                    from datetime import datetime
-                    modified = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
-                    files_table.add_row(json_file.name, f"{size_kb:.1f} KB", modified)
-
-                console.print(files_table)
-                if len(json_files) > 20:
-                    console.print(f"[grey50]... and {len(json_files) - 20} more files[/grey50]")
-                console.print(f"[grey50]Path: {metadata_dir}[/grey50]")
-
-        # Show export files (centralized exports directory)
-        exports_dir = workspace_path / "exports"
-        if exports_dir.exists():
-            export_files = sorted(
-                [f for f in exports_dir.iterdir() if f.is_file() and f.suffix in {".csv", ".tsv", ".xlsx"}],
-                key=lambda x: x.stat().st_mtime,
-                reverse=True
-            )
-            if export_files:
-                console.print("\n[bold white]📤 Export Files:[/bold white]")
-                exports_table = Table(box=box.SIMPLE, border_style="green", show_header=True)
-                exports_table.add_column("File", style="green", width=50)
-                exports_table.add_column("Size", style="grey50", width=10)
-                exports_table.add_column("Modified", style="grey50", width=20)
-
-                for export_file in export_files[:15]:  # Limit to 15 files
-                    stat = export_file.stat()
-                    size_kb = stat.st_size / 1024
-                    from datetime import datetime
-                    modified = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
-                    exports_table.add_row(export_file.name, f"{size_kb:.1f} KB", modified)
-
-                console.print(exports_table)
-                if len(export_files) > 15:
-                    console.print(f"[grey50]... and {len(export_files) - 15} more files[/grey50]")
-                console.print(f"[grey50]Path: {exports_dir}[/grey50]")
-
-        # Check for deprecated export location and warn user
-        old_exports_dir = workspace_path / "metadata" / "exports"
-        if old_exports_dir.exists():
-            old_files = list(old_exports_dir.glob("*"))
-            if old_files:
-                console.print("\n[bold yellow]⚠️  Deprecated Export Location Detected[/bold yellow]")
-                console.print(f"[yellow]Found {len(old_files)} file(s) in old location: {old_exports_dir}[/yellow]")
-                console.print("[yellow]New exports go to: workspace/exports/[/yellow]")
-                console.print("[grey50]Migration: mv workspace/metadata/exports/* workspace/exports/[/grey50]")
+            console.print(f"[yellow]Unknown metadata subcommand: {subcommand}[/yellow]")
+            console.print("[cyan]Available: list, clear[/cyan]")
+            return None
 
     elif cmd.startswith("/workspace"):
         # Workspace management commands

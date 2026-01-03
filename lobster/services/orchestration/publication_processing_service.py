@@ -1328,23 +1328,59 @@ class PublicationProcessingService:
             )
 
             # FIX: Determine final status including paywall and handoff readiness
+            # CRITICAL INVARIANT: research_agent NEVER sets COMPLETED status
+            # COMPLETED is ONLY set by metadata_assistant after harmonization
             if is_paywalled:
                 final_status = PublicationStatus.PAYWALLED.value
                 handoff_status = None  # Don't set handoff for paywalled
+                logger.debug(
+                    f"Entry {entry_id}: Setting status=PAYWALLED (paywall detected)"
+                )
             elif is_ready_for_handoff:
+                # Has identifiers AND datasets AND SRA sample metadata
                 final_status = PublicationStatus.HANDOFF_READY.value
                 from lobster.core.schemas.publication_queue import HandoffStatus
 
                 handoff_status = HandoffStatus.READY_FOR_METADATA
+                logger.debug(
+                    f"Entry {entry_id}: Setting status=HANDOFF_READY "
+                    f"(identifiers={len(all_extracted_identifiers)}, "
+                    f"datasets={len(all_dataset_ids)}, sra_samples={has_sra_samples})"
+                )
             elif extracted_data:
-                # Has extracted data but NOT ready for handoff (missing SRA sample metadata)
+                # Has extracted data but NOT ready for handoff
+                # (missing identifiers OR missing SRA sample metadata)
                 # Use METADATA_ENRICHED (intermediate) - NOT COMPLETED (terminal)
                 # COMPLETED is reserved for after metadata_assistant finishes harmonization
                 final_status = PublicationStatus.METADATA_ENRICHED.value
                 handoff_status = None
+                logger.debug(
+                    f"Entry {entry_id}: Setting status=METADATA_ENRICHED "
+                    f"(extracted_data keys={list(extracted_data.keys())}, "
+                    f"workspace_files={len(workspace_keys)}, "
+                    f"identifiers_empty={not all_extracted_identifiers}, "
+                    f"datasets_empty={not all_dataset_ids})"
+                )
             else:
+                # No extraction succeeded - mark as failed
                 final_status = PublicationStatus.FAILED.value
                 handoff_status = None
+                logger.warning(
+                    f"Entry {entry_id}: Setting status=FAILED "
+                    f"(no data extracted, workspace_files={len(workspace_keys)})"
+                )
+
+            # DEFENSIVE CHECK: research_agent should NEVER set COMPLETED
+            if final_status == PublicationStatus.COMPLETED.value:
+                logger.error(
+                    f"BUG DETECTED: research_agent attempted to set COMPLETED status for {entry_id}. "
+                    f"This violates the status transition invariant. "
+                    f"Context: extracted_data={bool(extracted_data)}, "
+                    f"is_paywalled={is_paywalled}, is_ready_for_handoff={is_ready_for_handoff}"
+                )
+                # Force correction to METADATA_ENRICHED
+                final_status = PublicationStatus.METADATA_ENRICHED.value
+                logger.warning(f"Entry {entry_id}: Corrected status to METADATA_ENRICHED")
 
             # FIX: SINGLE update_status call with ALL collected data
             # This replaces 4 intermediate calls that caused O(n²) file rewrites
