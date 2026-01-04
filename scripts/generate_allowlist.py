@@ -489,6 +489,14 @@ lobster/cli_internal/utils/path_resolution.py
 lobster/cli_internal/commands/__init__.py
 lobster/cli_internal/commands/output_adapter.py
 lobster/cli_internal/commands/queue_commands.py
+lobster/cli_internal/commands/metadata_commands.py
+lobster/cli_internal/commands/workspace_commands.py
+lobster/cli_internal/commands/pipeline_commands.py
+lobster/cli_internal/commands/data_commands.py
+lobster/cli_internal/commands/config_commands.py
+lobster/cli_internal/commands/modality_commands.py
+lobster/cli_internal/commands/file_commands.py
+lobster/cli_internal/commands/visualization_commands.py
 
 
 # =============================================================================
