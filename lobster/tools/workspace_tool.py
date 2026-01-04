@@ -19,6 +19,7 @@ from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.queue_storage import atomic_write_jsonl, queue_file_lock
 from lobster.core.schemas.export_schemas import (
     get_ordered_export_columns,
+    harmonize_samples_for_export,
     infer_data_type,
 )
 from lobster.services.data_access.workspace_content_service import (
@@ -1514,13 +1515,27 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
                 enriched_samples = []
                 for sample in samples:
                     enriched = dict(sample)
-                    # Add publication context if not already present
-                    if "source_doi" not in enriched:
-                        enriched["source_doi"] = source_doi
-                    if "source_pmid" not in enriched:
-                        enriched["source_pmid"] = source_pmid
-                    if "source_entry_id" not in enriched:
-                        enriched["source_entry_id"] = source_entry_id
+
+                    # Map publication_* to source_* fields (v2.0 harmonization)
+                    # Priority: existing source_* > publication_* from sample > content_data fallback
+                    enriched["source_doi"] = (
+                        enriched.get("source_doi")
+                        or enriched.get("publication_doi")
+                        or source_doi
+                        or ""
+                    )
+                    enriched["source_pmid"] = (
+                        enriched.get("source_pmid")
+                        or enriched.get("publication_pmid")
+                        or source_pmid
+                        or ""
+                    )
+                    enriched["source_entry_id"] = (
+                        enriched.get("source_entry_id")
+                        or enriched.get("publication_entry_id")
+                        or source_entry_id
+                        or ""
+                    )
                     enriched_samples.append(enriched)
 
                 return enriched_samples
@@ -1560,21 +1575,37 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
                             samples_list, identifier, content_data
                         )
 
+                        # v2.0: Apply harmonization pipeline (column merge, disease extraction, sparse removal)
+                        harmonized_samples, harmonization_stats, provenance_log = harmonize_samples_for_export(
+                            enriched_samples,
+                            remove_sparse=True,
+                            sparse_threshold=0.05,
+                            remove_constant=True,
+                            track_provenance=True,
+                        )
+                        logger.info(
+                            f"Harmonization: {harmonization_stats['columns_before']} → "
+                            f"{harmonization_stats['columns_after']} columns, "
+                            f"disease coverage {harmonization_stats['disease_coverage_before']:.1f}% → "
+                            f"{harmonization_stats['disease_coverage_after']:.1f}%, "
+                            f"{harmonization_stats['provenance_log_size']} transformations tracked"
+                        )
+
                         # Schema-driven column ordering (v1.2.0 - export_schemas.py)
                         # Infer data type from samples (auto-detects SRA/proteomics/metabolomics)
-                        data_type = infer_data_type(enriched_samples)
+                        data_type = infer_data_type(harmonized_samples)
 
                         # Strict mode: exclude non-schema columns (MIMARKS compliance)
                         # Rich mode: include extra columns for flexibility
                         strict_export = export_mode == "strict"
                         ordered_cols = get_ordered_export_columns(
-                            samples=enriched_samples,
+                            samples=harmonized_samples,
                             data_type=data_type,
                             include_extra=not strict_export,
                         )
 
                         # Create DataFrame with schema-ordered columns
-                        df = pd.DataFrame(enriched_samples)
+                        df = pd.DataFrame(harmonized_samples)
 
                         # Deduplication by run_accession (Bug 2 fix - DataBioMix)
                         # Multiple publications can reference same BioProject/samples
@@ -1592,36 +1623,98 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
 
                         available_cols = [c for c in ordered_cols if c in df.columns]
                         df = df[available_cols]
+
+                        # v2.0: Dual-file export (ALWAYS export both strict + rich)
+                        workspace_path = Path(data_manager.workspace_path)
+                        exports_dir = _get_exports_directory(workspace_path, create=True)
+                        base_filename = workspace_service._sanitize_filename(identifier)
+
+                        # Auto-append timestamp if requested and not already present
+                        if add_timestamp and not re.search(r"\d{4}-\d{2}-\d{2}", base_filename):
+                            timestamp = datetime.now().strftime("%Y-%m-%d")
+                            base_filename = f"{base_filename}_{timestamp}"
+
+                        # Check for deprecated location
+                        _check_deprecated_export_location(workspace_path)
+
+                        # Export 1: Rich file (current df with ~90 columns)
+                        rich_file_path = exports_dir / f"{base_filename}_rich.csv"
+                        df.to_csv(rich_file_path, index=False, encoding="utf-8")
+                        logger.info(
+                            f"CSV export (rich): {len(df)} rows, {len(df.columns)} columns → {rich_file_path.name}"
+                        )
+
+                        # Export 2: Strict file (34 MIMARKS columns only)
+                        strict_cols = get_ordered_export_columns(
+                            samples=harmonized_samples,
+                            data_type=data_type,
+                            include_extra=False,  # MIMARKS only
+                        )
+                        available_strict = [c for c in strict_cols if c in df.columns]
+                        df_strict = df[available_strict]
+                        strict_file_path = exports_dir / f"{base_filename}_strict.csv"
+                        df_strict.to_csv(strict_file_path, index=False, encoding="utf-8")
+                        logger.info(
+                            f"CSV export (strict): {len(df_strict)} rows, {len(df_strict.columns)} columns → {strict_file_path.name}"
+                        )
+
+                        # Export 3: Provenance log (harmonization audit trail)
+                        if provenance_log:
+                            prov_log_path = exports_dir / f"{base_filename}_harmonization_log.tsv"
+                            prov_df = pd.DataFrame(provenance_log)
+                            prov_df.to_csv(prov_log_path, sep="\t", index=False, encoding="utf-8")
+                            logger.info(
+                                f"Provenance log: {len(provenance_log)} transformations → {prov_log_path.name}"
+                            )
+                        else:
+                            prov_log_path = None
+
+                        # Primary file path for backward compatibility (points to rich)
+                        cache_file_path = rich_file_path
+
+                        # Update metadata_store with all paths + stats + provenance (Phase 6)
+                        if identifier in data_manager.metadata_store:
+                            update_dict = {
+                                "csv_export_path": str(rich_file_path),
+                                "csv_export_filename": rich_file_path.name,
+                                "csv_export_strict_path": str(strict_file_path),
+                                "csv_export_strict_filename": strict_file_path.name,
+                                "harmonization_stats": harmonization_stats,
+                            }
+                            if prov_log_path:
+                                update_dict["provenance_log_path"] = str(prov_log_path)
+                                update_dict["provenance_log_filename"] = prov_log_path.name
+                            data_manager.metadata_store[identifier].update(update_dict)
+                            logger.info(f"Updated metadata_store['{identifier}'] with dual export paths + stats + provenance")
+
                     else:
-                        # Simple export - as-is
+                        # Simple export - as-is (no harmonization)
                         df = pd.DataFrame(samples_list)
 
-                    # Write to CSV - use centralized exports directory (v1.0+)
-                    workspace_path = Path(data_manager.workspace_path)
-                    exports_dir = _get_exports_directory(workspace_path, create=True)
-                    filename = workspace_service._sanitize_filename(identifier)
+                        workspace_path = Path(data_manager.workspace_path)
+                        exports_dir = _get_exports_directory(workspace_path, create=True)
+                        filename = workspace_service._sanitize_filename(identifier)
 
-                    # Auto-append timestamp if requested and not already present
-                    if add_timestamp and not re.search(r"\d{4}-\d{2}-\d{2}", filename):
-                        timestamp = datetime.now().strftime("%Y-%m-%d")
-                        filename = f"{filename}_{timestamp}"
+                        # Auto-append timestamp if requested and not already present
+                        if add_timestamp and not re.search(r"\d{4}-\d{2}-\d{2}", filename):
+                            timestamp = datetime.now().strftime("%Y-%m-%d")
+                            filename = f"{filename}_{timestamp}"
 
-                    cache_file_path = exports_dir / f"{filename}.csv"
+                        cache_file_path = exports_dir / f"{filename}.csv"
 
-                    # Check for deprecated location
-                    _check_deprecated_export_location(workspace_path)
+                        # Check for deprecated location
+                        _check_deprecated_export_location(workspace_path)
 
-                    df.to_csv(cache_file_path, index=False, encoding="utf-8")
-                    logger.info(
-                        f"CSV export: {samples_count} rows, {len(df.columns)} columns "
-                        f"(rich={rich_export_used}) to {cache_file_path}"
-                    )
+                        df.to_csv(cache_file_path, index=False, encoding="utf-8")
+                        logger.info(
+                            f"CSV export (simple): {samples_count} rows, {len(df.columns)} columns → {cache_file_path}"
+                        )
 
-                    # Update metadata_store with CSV path tracking (Task 4)
-                    if identifier in data_manager.metadata_store:
-                        data_manager.metadata_store[identifier]["csv_export_path"] = str(cache_file_path)
-                        data_manager.metadata_store[identifier]["csv_export_filename"] = cache_file_path.name
-                        logger.info(f"Updated metadata_store['{identifier}'] with csv_export_path")
+                        # Update metadata_store with CSV path tracking (Task 4)
+                        if identifier in data_manager.metadata_store:
+                            data_manager.metadata_store[identifier]["csv_export_path"] = str(cache_file_path)
+                            data_manager.metadata_store[identifier]["csv_export_filename"] = cache_file_path.name
+                            logger.info(f"Updated metadata_store['{identifier}'] with csv_export_path")
                 else:
                     # No samples list, fall through to normal handling
                     samples_count = None
