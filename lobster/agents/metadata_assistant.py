@@ -1876,64 +1876,36 @@ Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_
         parallel_workers: int = None,
     ) -> str:
         """
-        Process multiple publication queue entries and aggregate SAMPLE-LEVEL results.
+        Batch process publication queue entries and aggregate sample-level metadata from workspace SRA files.
 
-        **PRIMARY TOOL for batch publication queue processing**. Use this tool when:
-        - Processing multiple handoff_ready entries at once
-        - Aggregating sample-level metadata from sra_*_samples files
-        - Applying filter_criteria at the SAMPLE level (16S, host, sample_type, disease)
+        CRITICAL: Only use status_filter='handoff_ready' for filtering. handoff_ready entries contain workspace_metadata_keys
+        with sra_*_samples files ready to load. status='metadata_enriched' entries have NO workspace files (research_agent found
+        no SRA data) and will extract 0 samples. status='completed' entries are already processed by this tool. The tool silently
+        skips entries without workspace_metadata_keys, leading to unexpected 0-sample results if wrong status used.
 
-        This tool reads workspace_metadata_keys from each entry (e.g., sra_PRJNA123_samples),
-        loads the actual SAMPLE metadata (run_accession, biosample, organism, library_strategy, etc.),
-        applies filtering at the sample level using MicrobiomeFilteringService and
-        DiseaseStandardizationService, and aggregates ALL samples from ALL publications
-        into a single output.
-
-        DO NOT use execute_custom_code for initial aggregation - that tool is for
-        SECONDARY enrichment when samples are missing critical fields AFTER
-        process_metadata_queue has already completed.
+        FILTERING RULE: Only use filter_criteria when user EXPLICITLY asks to filter (e.g., "filter for 16S human fecal").
+        If user just asks to "process entries" or "aggregate samples", use filter_criteria=None to include ALL samples.
 
         Args:
-            status_filter: Queue status to filter (default: "handoff_ready")
-            filter_criteria: Natural language filter applied at SAMPLE level (e.g., "16S human fecal CRC")
-                            - "16S": Filters samples with library_strategy="AMPLICON"
-                            - "shotgun": Filters samples with library_strategy="WGS"|"WXS"|"METAGENOMIC"
-                            - "16S shotgun": Includes BOTH (OR logic) - samples matching 16S OR shotgun
-                            - "human": Filters samples with host="Homo sapiens"
-                            - "fecal": Filters samples with isolation_source containing "fecal|stool|feces"
-                            Note: WGA (Whole Genome Amplification) is excluded from shotgun (amplification bias)
-            max_entries: Maximum entries to process (None = all)
-            output_key: Workspace key for aggregated output (default: "aggregated_filtered_samples")
-            parallel_workers: Number of parallel workers (default: None = sequential).
-                             If >1 and Rich UI available, shows real-time progress bars.
-                             Falls back to sequential processing if UI unavailable.
+            status_filter: Queue status (default: 'handoff_ready' - ONLY valid choice for filtering). handoff_ready = has workspace SRA files.
+            filter_criteria: Sample-level filter (e.g., "16S human fecal CRC"). "16S"=AMPLICON, "shotgun"=WGS/WXS/METAGENOMIC (excludes WGA),
+                             "16S shotgun"=BOTH (OR logic), "human"=Homo sapiens, "fecal"=isolation_source match. None=no filter (default behavior).
+            max_entries: Max entries to process (None=all)
+            output_key: Workspace key for aggregated CSV output (default: "aggregated_filtered_samples")
+            parallel_workers: Workers for parallel processing (None=sequential, >1=parallel with Rich progress if available)
 
         Returns:
-            Processing summary with SAMPLE counts (not publication counts), validation metrics,
-            and output location for CSV export
+            Processing summary with sample counts, validation metrics, and workspace output location for CSV export
 
         Examples:
-            # Process all handoff_ready entries, filter for 16S human fecal samples
-            process_metadata_queue(
-                status_filter="handoff_ready",
-                filter_criteria="16S human fecal",
-                output_key="aggregated_16s_human_fecal_samples"
-            )
-            # Expected output: 5,000-10,000 SAMPLE rows (one per run_accession)
+            # User: "Process handoff_ready entries and aggregate all samples"
+            process_metadata_queue(status_filter="handoff_ready")
 
-            # Process all handoff_ready entries, include both 16S and shotgun
-            process_metadata_queue(
-                status_filter="handoff_ready",
-                filter_criteria="16S shotgun human",
-                output_key="aggregated_microbiome_samples"
-            )
+            # User: "Filter for 16S human fecal samples"
+            process_metadata_queue(status_filter="handoff_ready", filter_criteria="16S human fecal")
 
-            # No filtering - aggregate all samples from all entries
-            process_metadata_queue(
-                status_filter="handoff_ready",
-                filter_criteria=None,
-                output_key="all_samples_unfiltered"
-            )
+            # User: "Include both 16S and shotgun samples"
+            process_metadata_queue(status_filter="handoff_ready", filter_criteria="16S shotgun human")
         """
         try:
             from lobster.services.data_access.workspace_content_service import (

@@ -2066,7 +2066,7 @@ Could not extract content for: {identifier}
                             - "ncbi_enrich,fetch_sra_metadata": NCBI-only enrichment
             parallel_workers: Number of parallel workers (default: 1 = sequential).
                              Use 2-8 for faster processing of large queues.
-                             Higher values (>3) risk NCBI API rate limit issues.
+                             Higher values (>5) risk NCBI API rate limit issues.
             force_reprocess: Reprocess ALL entries regardless of current status (default: False).
                             When True, ignores status_filter and processes all queue entries.
                             Use for: batch re-enrichment with updated logic, comprehensive reprocessing.

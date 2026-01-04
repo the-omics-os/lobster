@@ -1371,16 +1371,14 @@ class PublicationProcessingService:
                 )
 
             # DEFENSIVE CHECK: research_agent should NEVER set COMPLETED
+            # This guard catches bugs where status_override or logic errors set completed
             if final_status == PublicationStatus.COMPLETED.value:
-                logger.error(
-                    f"BUG DETECTED: research_agent attempted to set COMPLETED status for {entry_id}. "
-                    f"This violates the status transition invariant. "
-                    f"Context: extracted_data={bool(extracted_data)}, "
-                    f"is_paywalled={is_paywalled}, is_ready_for_handoff={is_ready_for_handoff}"
+                logger.warning(
+                    f"Invalid status transition: research_agent attempted to set COMPLETED for {entry_id}. "
+                    f"Auto-correcting to METADATA_ENRICHED (research_agent must not finalize entries)"
                 )
                 # Force correction to METADATA_ENRICHED
                 final_status = PublicationStatus.METADATA_ENRICHED.value
-                logger.warning(f"Entry {entry_id}: Corrected status to METADATA_ENRICHED")
 
             # FIX: SINGLE update_status call with ALL collected data
             # This replaces 4 intermediate calls that caused O(n²) file rewrites
