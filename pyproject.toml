@@ -204,6 +204,19 @@ all = [
 [project.scripts]
 lobster = "lobster.cli:app"
 
+# =============================================================================
+# Entry Points - Service Discovery (PEP 420 compliant)
+# =============================================================================
+# IMPORTANT: Only register services that are PUBLIC (in allowlist without '!')
+# Premium services (sdk_delegation, extraction_cache, metadata services) should
+# be registered in their respective custom package's pyproject.toml
+[project.entry-points."lobster.services"]
+# Core orchestration services (public as of v2.x - see allowlist line 420)
+publication_processing = "lobster.services.orchestration.publication_processing_service:PublicationProcessingService"
+
+# Core queue data structures (public as of v2.x - see allowlist lines 427-429)
+publication_queue = "lobster.core.publication_queue:PublicationQueue"
+
 [tool.setuptools]
 # Automatically discover all packages under lobster/
 # This ensures all lobster.* subpackages are included in the distribution

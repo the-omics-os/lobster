@@ -31,8 +31,8 @@
 #    - `lobster/services/metadata/microbiome_filtering_service.py` → `lobster_custom_databiomix/services/metadata/microbiome_filtering_service.py`
 # 2. **Rewrites imports** for premium services:
 #    - `lobster.services.metadata.*` → `lobster_custom_databiomix.services.metadata.*`
-#    - `lobster.core.schemas.publication_queue` → `lobster_custom_databiomix.core.schemas.publication_queue`
 #    - `factory_function="lobster.agents.*"` → `factory_function="lobster_custom_databiomix.agents.*"`
+#    - Note: PublicationQueue imports stay as `lobster.core.schemas.publication_queue` (now public)
 # 3. **Preserves fallbacks**: Keeps `except ImportError:` fallback structure intact
 # 4. **Shows diff**: In dry-run mode, displays what would change for all 3 files
 
@@ -82,11 +82,12 @@
 # - `MicrobiomeFilteringService` ✓ (synced by this script)
 # - `MetadataFilteringService` ✓ (synced by this script)
 # - `extract_disease_with_fallback` ✓ (NEW function in metadata_filtering_service.py)
-# - `PublicationQueue` schemas ✓ (not synced - assumed to exist)
 
 # ### What Stays Unchanged (Public Lobster)
 
 # These imports remain `from lobster.*` because they're in public PyPI package:
+# - `PublicationQueue` schemas ✓ (NOW PUBLIC as of v2.x - was premium before)
+# - `PublicationProcessingService` ✓ (NOW PUBLIC as of v2.x - was premium before)
 # - `CustomCodeExecutionService` (from lobster.services.execution)
 # - `MetadataStandardizationService` (from lobster.services.metadata)
 # - `SampleMappingService` (has try/except fallback)
@@ -130,7 +131,7 @@
 #   - `lobster_custom_databiomix/services/metadata/disease_standardization_service.py` (not synced - assumed to exist)
 #   - `lobster_custom_databiomix/services/metadata/microbiome_filtering_service.py` (synced by this script)
 #   - `lobster_custom_databiomix/services/metadata/metadata_filtering_service.py` (synced by this script)
-#   - `lobster_custom_databiomix/core/schemas/publication_queue.py` (not synced - assumed to exist)
+# - Note: PublicationQueue schemas are now imported from public lobster-ai package (v2.x+)
 
 
 set -e  # Exit on error
@@ -198,29 +199,47 @@ echo "  3. microbiome_filtering_service.py"
 echo ""
 
 # ============================================================================
+# Helper function: Get file stats (lines, functions, classes)
+# ============================================================================
+get_file_stats() {
+    local file=$1
+    local lines=$(wc -l < "$file" 2>/dev/null | tr -d ' ' || echo 0)
+    local classes=$(grep -c "^class " "$file" 2>/dev/null || echo 0)
+    local functions=$(grep -c "^def " "$file" 2>/dev/null || echo 0)
+    local tools=$(grep -c "@tool" "$file" 2>/dev/null || echo 0)
+
+    echo "${lines}:${classes}:${functions}:${tools}"
+}
+
+# ============================================================================
 # Helper function: Rewrite imports for a single file
 # ============================================================================
 rewrite_imports() {
     local temp_file=$1
     local file_type=$2  # "agent" or "service"
+    local rewrite_count=0
 
     echo "  Rewriting import paths..."
 
     # Premium services that exist in custom package
+    local before=$(grep -c "from lobster\.services\.metadata\." "$temp_file" 2>/dev/null || echo 0)
     sed -i '' 's/from lobster\.services\.metadata\.disease_standardization_service/from lobster_custom_databiomix.services.metadata.disease_standardization_service/g' "$temp_file"
     sed -i '' 's/from lobster\.services\.metadata\.microbiome_filtering_service/from lobster_custom_databiomix.services.metadata.microbiome_filtering_service/g' "$temp_file"
     sed -i '' 's/from lobster\.services\.metadata\.metadata_filtering_service/from lobster_custom_databiomix.services.metadata.metadata_filtering_service/g' "$temp_file"
+    local after=$(grep -c "from lobster_custom_databiomix\.services\.metadata\." "$temp_file" 2>/dev/null || echo 0)
+    rewrite_count=$((rewrite_count + after))
 
-    # Publication queue schemas (premium)
-    sed -i '' 's/from lobster\.core\.schemas\.publication_queue/from lobster_custom_databiomix.core.schemas.publication_queue/g' "$temp_file"
+    # NOTE: Publication queue schemas are now PUBLIC (v2.x+) - no rewrite needed
+    # They remain as 'from lobster.core.schemas.publication_queue' (public package)
 
     # Agent-specific: factory function
     if [ "$file_type" = "agent" ]; then
         sed -i '' 's/factory_function="lobster\.agents\.metadata_assistant/factory_function="lobster_custom_databiomix.agents.metadata_assistant/g' "$temp_file"
+        rewrite_count=$((rewrite_count + 1))
         echo -e "    ${GREEN}✓${NC} Rewrote factory_function"
     fi
 
-    echo -e "    ${GREEN}✓${NC} Rewrote premium service imports"
+    echo -e "    ${GREEN}✓${NC} Rewrote $rewrite_count import paths"
 }
 
 # ============================================================================
@@ -232,6 +251,15 @@ if [ ! -f "$SOURCE_AGENT" ]; then
     echo -e "${RED}✗ Source not found: $SOURCE_AGENT${NC}"
     exit 1
 fi
+
+# Get file stats
+stats=$(get_file_stats "$SOURCE_AGENT")
+lines=$(echo "$stats" | cut -d':' -f1)
+classes=$(echo "$stats" | cut -d':' -f2)
+functions=$(echo "$stats" | cut -d':' -f3)
+tools=$(echo "$stats" | cut -d':' -f4)
+
+echo "  Source: $lines lines, $classes classes, $functions functions, $tools tools"
 
 cp "$SOURCE_AGENT" "$TEMP_AGENT"
 rewrite_imports "$TEMP_AGENT" "agent"
@@ -254,6 +282,14 @@ if [ ! -f "$SOURCE_METADATA_FILTERING" ]; then
     exit 1
 fi
 
+# Get file stats
+stats=$(get_file_stats "$SOURCE_METADATA_FILTERING")
+lines=$(echo "$stats" | cut -d':' -f1)
+classes=$(echo "$stats" | cut -d':' -f2)
+functions=$(echo "$stats" | cut -d':' -f3)
+
+echo "  Source: $lines lines, $classes classes, $functions functions"
+
 cp "$SOURCE_METADATA_FILTERING" "$TEMP_METADATA_FILTERING"
 rewrite_imports "$TEMP_METADATA_FILTERING" "service"
 echo ""
@@ -267,6 +303,14 @@ if [ ! -f "$SOURCE_MICROBIOME_FILTERING" ]; then
     echo -e "${RED}✗ Source not found: $SOURCE_MICROBIOME_FILTERING${NC}"
     exit 1
 fi
+
+# Get file stats
+stats=$(get_file_stats "$SOURCE_MICROBIOME_FILTERING")
+lines=$(echo "$stats" | cut -d':' -f1)
+classes=$(echo "$stats" | cut -d':' -f2)
+functions=$(echo "$stats" | cut -d':' -f3)
+
+echo "  Source: $lines lines, $classes classes, $functions functions"
 
 # Note: microbiome_filtering_service.py only imports from lobster.core (public)
 # No import rewriting needed, but copy for consistency
@@ -285,15 +329,39 @@ if [ "$DRY_RUN" = true ]; then
     echo ""
 
     echo -e "${YELLOW}[1/3] metadata_assistant.py:${NC}"
-    diff -u "$TARGET_AGENT" "$TEMP_AGENT" || true
+    diff_output=$(diff -u "$TARGET_AGENT" "$TEMP_AGENT" 2>/dev/null || true)
+    if [ -z "$diff_output" ]; then
+        echo -e "  ${GREEN}✓${NC} No changes (files identical)"
+    else
+        additions=$(echo "$diff_output" | grep -c "^+" || echo 0)
+        deletions=$(echo "$diff_output" | grep -c "^-" || echo 0)
+        echo -e "  ${YELLOW}Changes:${NC} +$additions lines, -$deletions lines"
+        echo "$diff_output"
+    fi
     echo ""
 
     echo -e "${YELLOW}[2/3] metadata_filtering_service.py:${NC}"
-    diff -u "$TARGET_METADATA_FILTERING" "$TEMP_METADATA_FILTERING" || true
+    diff_output=$(diff -u "$TARGET_METADATA_FILTERING" "$TEMP_METADATA_FILTERING" 2>/dev/null || true)
+    if [ -z "$diff_output" ]; then
+        echo -e "  ${GREEN}✓${NC} No changes (files identical)"
+    else
+        additions=$(echo "$diff_output" | grep -c "^+" || echo 0)
+        deletions=$(echo "$diff_output" | grep -c "^-" || echo 0)
+        echo -e "  ${YELLOW}Changes:${NC} +$additions lines, -$deletions lines"
+        echo "$diff_output"
+    fi
     echo ""
 
     echo -e "${YELLOW}[3/3] microbiome_filtering_service.py:${NC}"
-    diff -u "$TARGET_MICROBIOME_FILTERING" "$TEMP_MICROBIOME_FILTERING" || true
+    diff_output=$(diff -u "$TARGET_MICROBIOME_FILTERING" "$TEMP_MICROBIOME_FILTERING" 2>/dev/null || true)
+    if [ -z "$diff_output" ]; then
+        echo -e "  ${GREEN}✓${NC} No changes (files identical)"
+    else
+        additions=$(echo "$diff_output" | grep -c "^+" || echo 0)
+        deletions=$(echo "$diff_output" | grep -c "^-" || echo 0)
+        echo -e "  ${YELLOW}Changes:${NC} +$additions lines, -$deletions lines"
+        echo "$diff_output"
+    fi
     echo ""
 
     # Cleanup temp files
@@ -324,13 +392,45 @@ echo ""
 # ============================================================================
 # Summary
 # ============================================================================
-echo "Summary:"
-echo "  - Synced 3 files with DataBioMix bug fixes:"
-echo "    • metadata_assistant.py (agent)"
-echo "    • metadata_filtering_service.py (disease fallback chain)"
-echo "    • microbiome_filtering_service.py (metagenome HOST_ALIASES)"
-echo "  - Rewrote import paths for premium services"
-echo "  - Preserved public lobster imports (fallback structure intact)"
+# Calculate total stats
+total_lines=0
+total_classes=0
+total_functions=0
+total_tools=0
+
+for src in "$SOURCE_AGENT" "$SOURCE_METADATA_FILTERING" "$SOURCE_MICROBIOME_FILTERING"; do
+    stats=$(get_file_stats "$src")
+    lines=$(echo "$stats" | cut -d':' -f1)
+    classes=$(echo "$stats" | cut -d':' -f2)
+    functions=$(echo "$stats" | cut -d':' -f3)
+    tools=$(echo "$stats" | cut -d':' -f4)
+
+    total_lines=$((total_lines + lines))
+    total_classes=$((total_classes + classes))
+    total_functions=$((total_functions + functions))
+    total_tools=$((total_tools + tools))
+done
+
+echo ""
+echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}Summary${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+echo "Files synced: 3"
+echo "  • metadata_assistant.py (agent)"
+echo "  • metadata_filtering_service.py (service)"
+echo "  • microbiome_filtering_service.py (service)"
+echo ""
+echo "Total transferred:"
+echo "  • Lines:     $total_lines"
+echo "  • Classes:   $total_classes"
+echo "  • Functions: $total_functions"
+echo "  • Tools:     $total_tools"
+echo ""
+echo "Import rewrites:"
+echo "  • Premium services (lobster.services.metadata.* → lobster_custom_databiomix.*)"
+echo "  • Factory function (lobster.agents.* → lobster_custom_databiomix.agents.*)"
+echo "  • Public imports preserved (lobster.core.* unchanged)"
 echo ""
 echo "Next steps:"
 echo "  1. Review changes: cd $DATABIOMIX_ROOT && git diff"
