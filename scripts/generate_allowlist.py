@@ -87,6 +87,7 @@ AGENT_SERVICE_DEPENDENCIES = {
         "lobster/agents/unified_agent_creation_template.md",
     ],
     "machine_learning_expert_agent": [
+        "lobster/services/ml/ml_preparation_service.py",
         "lobster/services/ml/ml_transcriptomics_service_ALPHA.py",
         "lobster/services/ml/ml_proteomics_service_ALPHA.py",
     ],
@@ -177,6 +178,7 @@ lobster/core/client.py
 lobster/core/workspace.py
 lobster/core/config_resolver.py
 lobster/core/data_manager_v2.py
+lobster/core/plot_manager.py
 lobster/core/provenance.py
 lobster/core/download_queue.py
 lobster/core/queue_storage.py
@@ -538,6 +540,7 @@ ALWAYS_EXCLUDED = """
 !CLAUDE.md.backup
 !README_FULL.md
 !LOBSTER_PROJECT_SUMMARY_FOR_CLOUD_BACKEND.md
+!TEST_REPORT*.md
 !activate_claude_code.sh
 !activate_claude_code_1m.sh
 !kevin_notes_completed/**

@@ -62,8 +62,8 @@ class TestSanitizeValue:
         assert result == str(path)
 
     def test_sanitize_tuple(self):
-        """Test that tuples are converted to numpy string arrays."""
-        result = sanitize_value((1, 2, 3))
+        """Test that tuples are converted to numpy string arrays when preserve_numeric_tuples=False."""
+        result = sanitize_value((1, 2, 3), preserve_numeric_tuples=False)
         assert isinstance(result, np.ndarray)
         assert result.dtype.kind in ("U", "S", "O")  # String types
         np.testing.assert_array_equal(result, np.array(["1", "2", "3"]))
@@ -422,7 +422,7 @@ class TestRealWorldScenarios:
         assert result["parameters"]["bootstrap"] == "100"
 
     def test_transpose_info_sanitization(self):
-        """Test sanitization of transpose_info dict."""
+        """Test sanitization of transpose_info dict with preserve_numeric_tuples=False."""
         transpose_info = {
             "transpose_applied": True,
             "transpose_reason": "Quantification format",
@@ -432,7 +432,7 @@ class TestRealWorldScenarios:
             "format_specific": True,
         }
 
-        result = sanitize_value(transpose_info)
+        result = sanitize_value(transpose_info, preserve_numeric_tuples=False)
 
         assert result["transpose_applied"] == "True"  # bool → str
         # Tuples become numpy string arrays

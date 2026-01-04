@@ -116,18 +116,16 @@ class TestOverRepresentationAnalysis:
         mock_enrichr_result.results = pd.DataFrame()
         mock_gp.enrichr.return_value = mock_enrichr_result
 
-        # Mock the rate limiter
-        with patch.object(service._rate_limiter, "__enter__") as mock_enter:
-            with patch.object(service._rate_limiter, "__exit__") as mock_exit:
-                service.over_representation_analysis(
-                    adata=mock_adata,
-                    gene_list=["TP53"],
-                    databases=["GO_Biological_Process_2023"],
-                )
+        # Mock the rate limiter's wait method which is called by __enter__
+        with patch.object(service._rate_limiter, "wait", return_value=True) as mock_wait:
+            service.over_representation_analysis(
+                adata=mock_adata,
+                gene_list=["TP53"],
+                databases=["GO_Biological_Process_2023"],
+            )
 
-                # Rate limiter should be used once per database
-                assert mock_enter.call_count == 1
-                assert mock_exit.call_count == 1
+            # Rate limiter should be used once per database
+            assert mock_wait.call_count == 1
 
     @patch("lobster.services.analysis.pathway_enrichment_service.gp")
     def test_empty_results_handled_gracefully(self, mock_gp, service, mock_adata):
@@ -180,24 +178,26 @@ class TestErrorHandling:
 
     @patch("lobster.services.analysis.pathway_enrichment_service.gp")
     def test_network_error_handled_gracefully(self, mock_gp):
-        """Test that network errors provide helpful message."""
+        """Test that network errors are logged but service degrades gracefully."""
         mock_gp.enrichr.side_effect = ConnectionError("No internet")
 
         service = PathwayEnrichmentService()
         adata = ad.AnnData(X=np.random.rand(10, 5))
 
-        with pytest.raises(PathwayEnrichmentError) as exc_info:
-            service.over_representation_analysis(
-                adata=adata,
-                gene_list=["TP53"],
-                databases=["GO_Biological_Process_2023"],
-            )
+        # Service should degrade gracefully (not raise) when individual databases fail
+        result_adata, stats, ir = service.over_representation_analysis(
+            adata=adata,
+            gene_list=["TP53"],
+            databases=["GO_Biological_Process_2023"],
+        )
 
-        # Should wrap the exception with helpful context
-        assert "Pathway enrichment failed" in str(exc_info.value)
+        # Should return empty results but not crash
+        assert result_adata is not None
+        assert stats["n_significant_pathways"] == 0
+        assert stats["n_terms_total"] == 0
 
-    @patch("lobster.services.analysis.pathway_enrichment_service.gp", side_effect=ImportError)
-    def test_missing_gseapy_dependency(self, mock_gp):
+    @patch("lobster.services.analysis.pathway_enrichment_service.gp", None)
+    def test_missing_gseapy_dependency(self):
         """Test that missing gseapy raises helpful error."""
         service = PathwayEnrichmentService()
         adata = ad.AnnData(X=np.random.rand(10, 5))

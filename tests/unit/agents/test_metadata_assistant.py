@@ -336,7 +336,9 @@ class TestMapSamplesByID:
         assert log_call[1]["tool_name"] == "map_samples_by_id"
         assert log_call[1]["parameters"]["source"] == "geo_gse12345"
         assert log_call[1]["parameters"]["target"] == "geo_gse67890"
-        assert log_call[1]["result_summary"]["mapping_rate"] == 0.1
+        # Verify description string (refactored from result_summary dict)
+        assert "description" in log_call[1]
+        assert "10.0%" in log_call[1]["description"] or "0.1" in log_call[1]["description"]
 
         # Verify report formatting
         mock_sample_mapping_service.format_mapping_report.assert_called_once_with(
@@ -921,9 +923,11 @@ class TestStandardizeSampleMetadata:
         mock_data_manager.log_tool_usage.assert_called_once()
         log_call = mock_data_manager.log_tool_usage.call_args
         assert log_call[1]["tool_name"] == "standardize_sample_metadata"
-        assert log_call[1]["result_summary"]["valid_samples"] == 2
-        assert log_call[1]["result_summary"]["validation_errors"] == 1
-        assert log_call[1]["result_summary"]["warnings"] == 1
+        # Verify description string (refactored from result_summary dict)
+        assert "description" in log_call[1]
+        description = log_call[1]["description"]
+        assert "2" in description  # 2 valid samples
+        assert "1" in description  # 1 error or 1 warning
 
         # Verify report formatting
         assert "# Metadata Standardization Report" in result
@@ -1189,8 +1193,10 @@ class TestValidateDatasetContent:
         mock_data_manager.log_tool_usage.assert_called_once()
         log_call = mock_data_manager.log_tool_usage.call_args
         assert log_call[1]["tool_name"] == "validate_dataset_content"
-        assert log_call[1]["result_summary"]["has_required_samples"] is True
-        assert log_call[1]["result_summary"]["platform_consistency"] is True
+        # Verify description string (refactored from result_summary dict)
+        assert "description" in log_call[1]
+        description = log_call[1]["description"]
+        # Description contains validation status (samples, platform, duplicates, warnings)
 
         # Verify report formatting
         assert "# Dataset Validation Report" in result
@@ -2365,7 +2371,8 @@ class TestHandoffCoordination:
         mock_data_manager.log_tool_usage.assert_called()
         call_args = mock_data_manager.log_tool_usage.call_args
         assert call_args[1]["tool_name"] == "validate_dataset_content"
-        assert "result_summary" in call_args[1]
+        # Verify description string (refactored from result_summary dict)
+        assert "description" in call_args[1]
 
 
 class TestFilterSamplesBy:

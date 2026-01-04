@@ -274,25 +274,19 @@ class TestAgentClientQueryProcessing:
     ):
         """Test query processing with reasoning enabled."""
         mock_graph = Mock()
+
+        # Create mock AIMessage with content_blocks attribute (normalized format)
+        mock_message = Mock(spec=AIMessage)
+        mock_message.content = "placeholder"
+        mock_message.content_blocks = [
+            {"type": "reasoning", "reasoning": "I need to analyze this data"},
+            {"type": "text", "text": "I'll help you analyze your data."},
+        ]
+
         mock_graph.stream.return_value = [
             {
                 "supervisor": {
-                    "messages": [
-                        AIMessage(
-                            content=[
-                                {
-                                    "type": "reasoning_content",
-                                    "reasoning_content": {
-                                        "text": "I need to analyze this data"
-                                    },
-                                },
-                                {
-                                    "type": "text",
-                                    "text": "I'll help you analyze your data.",
-                                },
-                            ]
-                        )
-                    ]
+                    "messages": [mock_message]
                 }
             }
         ]
@@ -315,25 +309,19 @@ class TestAgentClientQueryProcessing:
     ):
         """Test query processing with reasoning disabled."""
         mock_graph = Mock()
+
+        # Create mock AIMessage with content_blocks attribute (normalized format)
+        mock_message = Mock(spec=AIMessage)
+        mock_message.content = "placeholder"
+        mock_message.content_blocks = [
+            {"type": "reasoning", "reasoning": "I need to analyze this data"},
+            {"type": "text", "text": "I'll help you analyze your data."},
+        ]
+
         mock_graph.stream.return_value = [
             {
                 "supervisor": {
-                    "messages": [
-                        AIMessage(
-                            content=[
-                                {
-                                    "type": "reasoning_content",
-                                    "reasoning_content": {
-                                        "text": "I need to analyze this data"
-                                    },
-                                },
-                                {
-                                    "type": "text",
-                                    "text": "I'll help you analyze your data.",
-                                },
-                            ]
-                        )
-                    ]
+                    "messages": [mock_message]
                 }
             }
         ]
@@ -968,35 +956,38 @@ class TestErrorHandlingAndEdgeCases:
             data_manager=mock_data_manager_v2, workspace_path=temp_workspace
         )
 
-        # Test string content
-        result = client._extract_content_from_message("Simple string content")
+        # Test string content - wrap in AIMessage
+        msg1 = AIMessage(content="Simple string content")
+        result = client._extract_content_from_message(msg1)
         assert result == "Simple string content"
 
-        # Test list content with text blocks
-        list_content = [
+        # Test content_blocks with reasoning enabled
+        msg2 = Mock(spec=AIMessage)
+        msg2.content = "placeholder"
+        msg2.content_blocks = [
             {"type": "text", "text": "Main response"},
-            {
-                "type": "reasoning_content",
-                "reasoning_content": {"text": "Thinking process"},
-            },
+            {"type": "reasoning", "reasoning": "Thinking process"},
         ]
         client.enable_reasoning = True
-        result = client._extract_content_from_message(list_content)
-        assert "[Thinking: Thinking process]" in result
-        assert "Main response" in result
+        result = client._extract_content_from_message(msg2)
+        # When reasoning is enabled, result is a dict with reasoning/text/combined keys
+        assert isinstance(result, dict)
+        assert "[Thinking: Thinking process]" in result["combined"]
+        assert "Main response" in result["combined"]
+        assert result["reasoning"] == "[Thinking: Thinking process]"
+        assert result["text"] == "Main response"
 
-        # Test list content with reasoning disabled
+        # Test content_blocks with reasoning disabled
         client.enable_reasoning = False
-        result = client._extract_content_from_message(list_content)
+        result = client._extract_content_from_message(msg2)
+        # When reasoning is disabled, result is a plain string
+        assert isinstance(result, str)
         assert "[Thinking:" not in result
         assert "Main response" in result
 
-        # Test empty content
-        result = client._extract_content_from_message("")
-        assert result == ""
-
-        # Test None content
-        result = client._extract_content_from_message(None)
+        # Test empty content - wrap in AIMessage
+        msg3 = AIMessage(content="")
+        result = client._extract_content_from_message(msg3)
         assert result == ""
 
     def test_workspace_permissions_error(self, mock_create_bioinformatics_graph):
@@ -1304,20 +1295,19 @@ class TestParametrizedScenarios:
     ):
         """Test behavior with reasoning enabled/disabled."""
         mock_graph = Mock()
+
+        # Create mock AIMessage with content_blocks attribute (normalized format)
+        mock_message = Mock(spec=AIMessage)
+        mock_message.content = "placeholder"
+        mock_message.content_blocks = [
+            {"type": "reasoning", "reasoning": "Thinking..."},
+            {"type": "text", "text": "Response text"},
+        ]
+
         mock_graph.stream.return_value = [
             {
                 "supervisor": {
-                    "messages": [
-                        AIMessage(
-                            content=[
-                                {
-                                    "type": "reasoning_content",
-                                    "reasoning_content": {"text": "Thinking..."},
-                                },
-                                {"type": "text", "text": "Response text"},
-                            ]
-                        )
-                    ]
+                    "messages": [mock_message]
                 }
             }
         ]

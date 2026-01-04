@@ -303,20 +303,27 @@ class TestAgentAPI:
 
 
 class TestCustomAgentOverride:
-    """Test that custom agents can override core agents."""
+    """Test that custom agent name collisions are detected and raise errors."""
 
     @patch("lobster.core.component_registry.ComponentRegistry._load_entry_point_group")
     def test_custom_agents_override_core(self, mock_load_ep, fresh_registry):
-        """Custom agents should override core agents if names conflict."""
+        """Custom agents with same names as core agents should raise ComponentConflictError."""
+        # Import the error type
+        from lobster.core.component_registry import ComponentConflictError
+
         # Create a custom agent with same name as core agent
         custom_research = Mock(name="research_agent", display_name="Custom Research Agent")
         fresh_registry._custom_agents["research_agent"] = custom_research
         fresh_registry._loaded = True
 
-        all_agents = fresh_registry.list_agents()
+        # Should raise error due to name collision
+        with pytest.raises(ComponentConflictError) as exc_info:
+            fresh_registry.list_agents()
 
-        # The custom version should take precedence
-        assert all_agents["research_agent"] is custom_research
+        # Verify error message contains useful information
+        error_msg = str(exc_info.value)
+        assert "research_agent" in error_msg
+        assert "collision" in error_msg.lower()
 
 
 # =============================================================================

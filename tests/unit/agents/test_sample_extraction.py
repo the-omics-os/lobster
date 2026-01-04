@@ -117,9 +117,9 @@ class TestExtractSamplesFromWorkspace:
         assert not results[2].is_valid, "Sample 2 missing library_strategy should fail"
         assert any("library_strategy" in e for e in results[2].errors)
 
-        # Sample 3: Invalid library_layout
-        assert not results[3].is_valid, "Sample 3 invalid library_layout should fail"
-        assert any("library_layout" in e for e in results[3].errors)
+        # Sample 3: Invalid library_layout (logs warning to logger, defaults to UNKNOWN, still valid)
+        # Note: Logger warning doesn't populate ValidationResult.warnings, just logs and continues
+        assert results[3].is_valid, "Sample 3 with invalid library_layout is valid (defaults to UNKNOWN)"
 
         # Sample 4: No download URLs
         assert not results[4].is_valid, "Sample 4 without URLs should fail"

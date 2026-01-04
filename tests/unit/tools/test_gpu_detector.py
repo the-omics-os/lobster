@@ -78,7 +78,7 @@ class TestGPUDetector:
 
             recommendation = GPUDetector.get_hardware_recommendation()
 
-            assert recommendation["profile"] == "scvi-gpu"
+            assert recommendation["profile"] == "ml-gpu"
             assert recommendation["device"] == "cuda"
             assert "RTX 3080" in recommendation["info"]
 
@@ -94,7 +94,7 @@ class TestGPUDetector:
 
             recommendation = GPUDetector.get_hardware_recommendation()
 
-            assert recommendation["profile"] == "scvi-mac"
+            assert recommendation["profile"] == "ml-mps"
             assert recommendation["device"] == "mps"
             assert "Apple Silicon" in recommendation["info"]
 
@@ -110,7 +110,7 @@ class TestGPUDetector:
 
             recommendation = GPUDetector.get_hardware_recommendation()
 
-            assert recommendation["profile"] == "scvi-cpu"
+            assert recommendation["profile"] == "ml-cpu"
             assert recommendation["device"] == "cpu"
             assert "No GPU detected" in recommendation["info"]
 
@@ -124,10 +124,10 @@ class TestGPUDetector:
             # Mock torch and scvi as available
             mock_spec.return_value = MagicMock()
             mock_hardware.return_value = {
-                "profile": "scvi-cpu",
+                "profile": "ml-cpu",
                 "device": "cpu",
                 "info": "No GPU detected",
-                "command": "pip install torch scvi-tools",
+                "command": "pip install lobster-ai[ml]",
             }
 
             availability = GPUDetector.check_scvi_availability()
@@ -147,10 +147,10 @@ class TestGPUDetector:
             # Mock torch and scvi as not available
             mock_spec.return_value = None
             mock_hardware.return_value = {
-                "profile": "scvi-cpu",
+                "profile": "ml-cpu",
                 "device": "cpu",
                 "info": "No GPU detected",
-                "command": "pip install torch scvi-tools",
+                "command": "pip install lobster-ai[ml]",
             }
 
             availability = GPUDetector.check_scvi_availability()

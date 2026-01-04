@@ -346,15 +346,17 @@ class TestDownloadWithRetry:
 
         assert success is True
         assert temp_file.exists()
-        # Should have slept once (2^2 = 4 seconds after first failure)
-        mock_sleep.assert_called_once_with(4)
+        # Should have slept once (2^2 = 4 seconds ± 20% jitter after first failure)
+        mock_sleep.assert_called_once()
+        delay = mock_sleep.call_args[0][0]
+        assert 3.2 <= delay <= 4.8, f"Retry delay should be 4s ± 20%, got {delay}"
 
     @patch("time.sleep")
     @patch("ftplib.FTP")
     def test_retry_exponential_backoff(
         self, mock_ftp_class, mock_sleep, geo_manager, temp_file
     ):
-        """Test exponential backoff delays (2s, 4s, 8s)."""
+        """Test exponential backoff delays with jitter (base 2^n ± 20%)."""
         mock_ftp = MagicMock()
         mock_ftp_class.return_value = mock_ftp
 
@@ -370,9 +372,13 @@ class TestDownloadWithRetry:
             )
 
         assert success is False
-        # Should have slept with exponential backoff: 2^2=4s, 2^3=8s
+        # Should have slept with exponential backoff: 2^2=4s, 2^3=8s (with jitter ±20%)
         assert mock_sleep.call_count == 2
-        mock_sleep.assert_has_calls([call(4), call(8)])
+
+        # Check base delays with jitter tolerance (base ± 20%)
+        call_args = [call[0][0] for call in mock_sleep.call_args_list]
+        assert 3.2 <= call_args[0] <= 4.8, f"First retry delay should be 4s ± 20%, got {call_args[0]}"
+        assert 6.4 <= call_args[1] <= 9.6, f"Second retry delay should be 8s ± 20%, got {call_args[1]}"
 
     @patch("time.sleep")
     @patch("ftplib.FTP")

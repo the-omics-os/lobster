@@ -18,6 +18,7 @@ from lobster.agents.state import MachineLearningExpertState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.services.ml.ml_preparation_service import MLPreparationService
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -82,9 +83,10 @@ def machine_learning_expert(
 
             ml_ready_modalities = []
 
+            ml_service = MLPreparationService()
             for mod_name in modalities:
                 adata = data_manager.get_modality(mod_name)
-                mod_type = data_manager._detect_modality_type(mod_name)
+                mod_type = ml_service._detect_modality_type(mod_name)
 
                 # Check if modality matches requested type
                 if modality_type != "all":

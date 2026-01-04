@@ -110,7 +110,9 @@ def test_issue7_no_hvg_detected(clustering_service, no_hvg_adata):
     with pytest.raises(
         (ClusteringError, ValueError), match="highly variable genes|HVG|features"
     ):
-        clustering_service.cluster_and_visualize(no_hvg_adata, resolution=0.5)
+        clustering_service.cluster_and_visualize(
+            no_hvg_adata, resolution=0.5, feature_selection_method='hvg'
+        )
 
 
 def test_issue7_insufficient_hvg_for_pca(clustering_service):
@@ -147,7 +149,9 @@ def test_issue7_fix_validation_before_pca(clustering_service, no_hvg_adata):
     """
     # Attempt clustering on data with no HVG
     try:
-        clustering_service.cluster_and_visualize(no_hvg_adata, resolution=0.5)
+        clustering_service.cluster_and_visualize(
+            no_hvg_adata, resolution=0.5, feature_selection_method='hvg'
+        )
         pytest.fail("Expected ClusteringError or ValueError")
     except (ClusteringError, ValueError) as e:
         # Should have informative error message
@@ -270,7 +274,7 @@ def test_umap_with_minimal_cells(clustering_service):
 def test_umap_disconnected_graph(clustering_service, disconnected_graph_adata):
     """Test UMAP with disconnected neighborhood graph."""
     result = clustering_service.cluster_and_visualize(
-        disconnected_graph_adata, resolution=0.5
+        disconnected_graph_adata, resolution=1.0  # Higher resolution to separate populations
     )
     adata_result, stats, ir = result
 

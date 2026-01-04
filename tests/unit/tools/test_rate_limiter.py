@@ -42,40 +42,65 @@ def rate_limiter_no_redis():
 class TestGetRedisClient:
     """Tests for get_redis_client() function."""
 
+    def setup_method(self):
+        """Reset Redis pool before each test."""
+        from lobster.tools.rate_limiter import reset_redis_pool
+        reset_redis_pool()
+
+    def teardown_method(self):
+        """Reset Redis pool after each test."""
+        from lobster.tools.rate_limiter import reset_redis_pool
+        reset_redis_pool()
+
     @patch.dict(os.environ, {"REDIS_HOST": "localhost", "REDIS_PORT": "6379"})
-    @patch("redis.Redis")
-    def test_successful_connection(self, mock_redis):
+    @patch("lobster.tools.rate_limiter._create_connection_pool")
+    def test_successful_connection(self, mock_create_pool):
         """Test successful Redis connection."""
+        # Mock connection pool
+        mock_pool = Mock()
+        mock_create_pool.return_value = mock_pool
+
+        # Mock Redis client
         mock_client = Mock()
         mock_client.ping.return_value = True
-        mock_redis.return_value = mock_client
 
-        client = get_redis_client()
+        with patch("redis.Redis", return_value=mock_client):
+            client = get_redis_client()
 
         assert client is not None
-        mock_client.ping.assert_called_once()
+        mock_create_pool.assert_called_once()
 
-    @patch("redis.Redis")
-    def test_connection_failure(self, mock_redis):
+    @patch("lobster.tools.rate_limiter._create_connection_pool")
+    def test_connection_failure(self, mock_create_pool):
         """Test graceful handling of connection failure."""
-        mock_redis.side_effect = ConnectionError("Connection refused")
+        # Mock pool creation failure
+        mock_create_pool.return_value = None
 
         client = get_redis_client()
 
         assert client is None
 
     @patch.dict(os.environ, {"REDIS_HOST": "custom-host", "REDIS_PORT": "6380"})
-    @patch("redis.Redis")
-    def test_custom_host_port(self, mock_redis):
+    @patch("redis.ConnectionPool")
+    def test_custom_host_port(self, mock_pool_class):
         """Test Redis connection with custom host and port."""
+        from lobster.tools.rate_limiter import reset_redis_pool
+        reset_redis_pool()  # Ensure clean state
+
+        # Mock connection pool
+        mock_pool = Mock()
+        mock_pool_class.return_value = mock_pool
+
+        # Mock successful ping
         mock_client = Mock()
         mock_client.ping.return_value = True
-        mock_redis.return_value = mock_client
 
-        get_redis_client()
+        with patch("redis.Redis", return_value=mock_client):
+            get_redis_client()
 
-        mock_redis.assert_called_once()
-        call_kwargs = mock_redis.call_args[1]
+        # Verify pool was created with correct host/port
+        mock_pool_class.assert_called_once()
+        call_kwargs = mock_pool_class.call_args[1]
         assert call_kwargs["host"] == "custom-host"
         assert call_kwargs["port"] == 6380
 
