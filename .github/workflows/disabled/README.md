@@ -4,6 +4,13 @@ This directory contains workflows that have been disabled to optimize GitHub Act
 
 ## Disabled Workflows
 
+### Cross-Platform Installation Tests (Disabled: 2025-01-05)
+
+- **platform-tests.yml** - Cross-platform installation tests (Ubuntu, macOS, Windows)
+  - **Reason**: Not needed yet; will re-enable when preparing for multi-platform release
+  - **Coverage**: Tests installation on 5 OS versions × 3 Python versions = 15 combinations
+  - **Re-enable when**: Planning official Windows/macOS support
+
 ### Wiki Validation Workflows (Disabled: 2025-01-17)
 
 These workflows validated wiki documentation but were disabled to reduce costs by ~40%:
@@ -36,15 +43,14 @@ python scripts/lint_wiki_markdown.py
 
 - **sync-monitor.yml** - Redundant (sync-to-public.yml already handles synchronization)
 
-## Active Workflows (9 workflows)
+## Active Workflows (8 workflows)
 
 Critical workflows still running:
 - ✅ ci-basic.yml
 - ✅ docker.yml
 - ✅ release.yml
+- ✅ publish-pypi.yml
 - ✅ sync-to-public.yml
 - ✅ pr-validation-basic.yml
-- ✅ platform-tests.yml
-- ✅ sync-wikis.yml
 - ✅ dependency-updates.yml
 - ✅ api-integration-tests.yml

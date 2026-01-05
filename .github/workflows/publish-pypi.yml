@@ -289,7 +289,7 @@ jobs:
           -c constraints-cpu.txt
 
         # Verify imports work
-        python -c "import lobster; print(f'✅ Lobster version: {lobster.__version__}')"
+        python -c "from lobster.version import __version__; print(f'✅ Lobster version: {__version__}')"
 
         # Verify CLI is available
         lobster --help
@@ -386,7 +386,7 @@ jobs:
                     ${{ env.PACKAGE_NAME }}==${{ steps.version.outputs.version }}
 
         # Verify it works
-        python -c "import lobster; print(f'Installed version: {lobster.__version__}')"
+        python -c "from lobster.version import __version__; print(f'Installed version: {__version__}')"
         lobster --help
 
         echo "✅ Package successfully installed from TestPyPI!"
@@ -485,7 +485,7 @@ jobs:
           -c constraints-cpu.txt
 
         # Verify it works
-        python -c "import lobster; print(f'Installed version: {lobster.__version__}')"
+        python -c "from lobster.version import __version__; print(f'Installed version: {__version__}')"
         lobster --help
 
         echo "✅ Package successfully installed from PyPI!"
