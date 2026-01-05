@@ -72,15 +72,13 @@ AGENT_SERVICE_DEPENDENCIES = {
         "lobster/services/data_access/proteomics_parsers/olink_parser.py",
     ],
     "metadata_assistant": [
-        "lobster/services/orchestration/publication_processing_service.py",
+        # NOTE: publication_processing_service moved to ALWAYS_INCLUDED (entry point in pyproject.toml)
         "lobster/services/metadata/identifier_provenance_service.py",
         "lobster/services/metadata/microbiome_filtering_service.py",
         "lobster/services/metadata/disease_standardization_service.py",
         "lobster/services/metadata/sample_mapping_service.py",
         "lobster/services/metadata/metadata_filtering_service.py",  # Natural language filter parsing
-        "lobster/core/schemas/publication_queue.py",
-        "lobster/core/publication_queue.py",
-        "lobster/core/ris_parser.py",
+        # NOTE: publication_queue moved to ALWAYS_INCLUDED (shared with research_agent)
     ],
     "custom_feature_agent": [
         "lobster/services/execution/sdk_delegation_service.py",
@@ -208,8 +206,13 @@ lobster/core/schemas/database_mappings.py
 lobster/core/schemas/download_queue.py
 lobster/core/schemas/download_urls.py
 lobster/core/schemas/export_schemas.py
+lobster/core/schemas/publication_queue.py
 lobster/core/schemas/sra.py
 lobster/core/schemas/validation.py
+
+# Publication queue (shared infrastructure - used by research_agent FREE tier)
+lobster/core/publication_queue.py
+lobster/core/ris_parser.py
 
 # Adapters (data loading)
 lobster/core/adapters/__init__.py
@@ -388,8 +391,9 @@ lobster/services/execution/execution_context_builder.py
 # ML - Open Core (just init)
 lobster/services/ml/__init__.py
 
-# Orchestration - Open Core (just init)
+# Orchestration - Open Core
 lobster/services/orchestration/__init__.py
+lobster/services/orchestration/publication_processing_service.py
 
 # Templates - Open Core
 lobster/services/templates/__init__.py

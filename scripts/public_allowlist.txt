@@ -6,7 +6,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2026-01-05 11:29:16
+# Generated: 2026-01-05 12:15:53
 # =============================================================================
 
 
@@ -107,8 +107,13 @@ lobster/core/schemas/database_mappings.py
 lobster/core/schemas/download_queue.py
 lobster/core/schemas/download_urls.py
 lobster/core/schemas/export_schemas.py
+lobster/core/schemas/publication_queue.py
 lobster/core/schemas/sra.py
 lobster/core/schemas/validation.py
+
+# Publication queue (shared infrastructure - used by research_agent FREE tier)
+lobster/core/publication_queue.py
+lobster/core/ris_parser.py
 
 # Adapters (data loading)
 lobster/core/adapters/__init__.py
@@ -287,8 +292,9 @@ lobster/services/execution/execution_context_builder.py
 # ML - Open Core (just init)
 lobster/services/ml/__init__.py
 
-# Orchestration - Open Core (just init)
+# Orchestration - Open Core
 lobster/services/orchestration/__init__.py
+lobster/services/orchestration/publication_processing_service.py
 
 # Templates - Open Core
 lobster/services/templates/__init__.py
@@ -427,15 +433,11 @@ lobster/agents/visualization_expert.py
 !lobster/services/ml/ml_transcriptomics_service_ALPHA.py
 !lobster/services/ml/ml_proteomics_service_ALPHA.py
 !lobster/agents/metadata_assistant.py
-!lobster/services/orchestration/publication_processing_service.py
 !lobster/services/metadata/identifier_provenance_service.py
 !lobster/services/metadata/microbiome_filtering_service.py
 !lobster/services/metadata/disease_standardization_service.py
 !lobster/services/metadata/sample_mapping_service.py
 !lobster/services/metadata/metadata_filtering_service.py
-!lobster/core/schemas/publication_queue.py
-!lobster/core/publication_queue.py
-!lobster/core/ris_parser.py
 !lobster/agents/protein_structure_visualization_expert.py
 !lobster/agents/proteomics/proteomics_expert.py
 !lobster/services/analysis/proteomics_analysis_service.py

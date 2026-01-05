@@ -226,7 +226,7 @@ python -m build
 # 5. Bump version
 # Edit pyproject.toml: version = "2.0.7"
 
-# 6. Upload to S3 (use {customer}/latest/ structure)
+# 6. Upload to S3 (use {customer}/latest/ structure), account: lobster-license-packages-649207544517
 AWS_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
 aws s3 cp dist/lobster_custom_databiomix-2.0.7-py3-none-any.whl \
   s3://lobster-license-packages-${AWS_ACCOUNT}/databiomix/latest/lobster_custom_databiomix-2.0.7-py3-none-any.whl
