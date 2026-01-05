@@ -415,6 +415,7 @@ lobster/tools/geo_downloader.py
 lobster/tools/geo_parser.py
 lobster/tools/docling_service.py.backup
 lobster/tools/todo_tools.py
+lobster/tools/custom_code_tool.py
 
 # Providers
 lobster/tools/providers/__init__.py
