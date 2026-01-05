@@ -57,12 +57,18 @@ def mock_data_manager_v2():
     # Mock basic properties
     mock_dm.modalities = {}
     mock_dm.metadata_store = {}
-    mock_dm.latest_plots = []
     mock_dm.tool_usage_history = []
     mock_dm.workspace_path = Path("/tmp/test_workspace")
     mock_dm.data_dir = Path("/tmp/test_workspace/data")
     mock_dm.exports_dir = Path("/tmp/test_workspace/exports")
     mock_dm.cache_dir = Path("/tmp/test_workspace/cache")
+
+    # Mock plot_manager (extracted service)
+    mock_plot_manager = Mock()
+    mock_plot_manager.latest_plots = []
+    mock_plot_manager.get_latest_plots.return_value = ([], {}, None)
+    mock_dm.plot_manager = mock_plot_manager
+    mock_dm.latest_plots = mock_plot_manager.latest_plots  # Property access
 
     # Mock methods with realistic behavior
     mock_dm.list_modalities.return_value = list(mock_dm.modalities.keys())
@@ -75,7 +81,6 @@ def mock_data_manager_v2():
         "total_cells": 1000,
         "total_features": 2000,
     }
-    mock_dm.get_latest_plots.return_value = []
     mock_dm.get_workspace_status.return_value = {
         "workspace_path": str(mock_dm.workspace_path),
         "modalities": len(mock_dm.modalities),
@@ -379,9 +384,11 @@ class TestAgentClientQueryProcessing:
     ):
         """Test query response when data manager has data and plots."""
         mock_data_manager_v2.has_data.return_value = True
-        mock_data_manager_v2.get_latest_plots.return_value = [
-            {"name": "umap", "path": "/tmp/umap.html"}
-        ]
+        mock_data_manager_v2.plot_manager.get_latest_plots.return_value = (
+            [{"name": "umap", "path": "/tmp/umap.html"}],
+            {},
+            None,
+        )
 
         client = AgentClient(
             data_manager=mock_data_manager_v2, workspace_path=temp_workspace
@@ -1157,7 +1164,16 @@ class TestClientIntegrationScenarios:
         """Test a complete analysis workflow through the client."""
         # Setup mock responses
         mock_data_manager_v2.has_data.return_value = True
-        mock_data_manager_v2.get_latest_plots.return_value = [
+        mock_data_manager_v2.plot_manager.get_latest_plots.return_value = (
+            [
+                {"name": "qc_plot", "path": "/tmp/qc.html"},
+                {"name": "umap_plot", "path": "/tmp/umap.html"},
+            ],
+            {},
+            None,
+        )
+        # Also update the latest_plots property for backward compatibility checks
+        mock_data_manager_v2.plot_manager.latest_plots = [
             {"name": "qc_plot", "path": "/tmp/qc.html"},
             {"name": "umap_plot", "path": "/tmp/umap.html"},
         ]
