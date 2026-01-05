@@ -72,8 +72,7 @@ AGENT_SERVICE_DEPENDENCIES = {
         "lobster/services/data_access/proteomics_parsers/olink_parser.py",
     ],
     "metadata_assistant": [
-        # NOTE: publication_processing_service moved to ALWAYS_INCLUDED (entry point in pyproject.toml)
-        "lobster/services/metadata/identifier_provenance_service.py",
+        # NOTE: publication_processing_service and its deps moved to ALWAYS_INCLUDED
         "lobster/services/metadata/microbiome_filtering_service.py",
         "lobster/services/metadata/disease_standardization_service.py",
         "lobster/services/metadata/sample_mapping_service.py",
@@ -368,6 +367,7 @@ lobster/services/metadata/metadata_standardization_service.py
 lobster/services/metadata/metadata_validation_service.py
 lobster/services/metadata/manual_annotation_service.py
 lobster/services/metadata/sample_grouping_service.py
+lobster/services/metadata/identifier_provenance_service.py
 
 # Protocol extraction - Open Core
 lobster/services/metadata/protocol_extraction/__init__.py
