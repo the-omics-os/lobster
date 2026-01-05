@@ -1675,18 +1675,49 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
 
                         # Update metadata_store with all paths + stats + provenance (Phase 6)
                         if identifier in data_manager.metadata_store:
+                            # Convert lists to tuples for hashable storage (Bug 5 fix)
+                            def make_hashable(obj):
+                                """Recursively convert lists to tuples for hashable storage."""
+                                if isinstance(obj, list):
+                                    return tuple(make_hashable(item) for item in obj)
+                                elif isinstance(obj, dict):
+                                    return {k: make_hashable(v) for k, v in obj.items()}
+                                return obj
+
                             update_dict = {
                                 "csv_export_path": str(rich_file_path),
                                 "csv_export_filename": rich_file_path.name,
                                 "csv_export_strict_path": str(strict_file_path),
                                 "csv_export_strict_filename": strict_file_path.name,
-                                "harmonization_stats": harmonization_stats,
+                                "harmonization_stats": make_hashable(harmonization_stats),
                             }
                             if prov_log_path:
                                 update_dict["provenance_log_path"] = str(prov_log_path)
                                 update_dict["provenance_log_filename"] = prov_log_path.name
                             data_manager.metadata_store[identifier].update(update_dict)
                             logger.info(f"Updated metadata_store['{identifier}'] with dual export paths + stats + provenance")
+
+                        # Build success response and return (don't continue to normal path)
+                        response = f"""## CSV Export Complete (Dual-File v2.0)
+
+**Identifier**: {identifier}
+**Samples**: {len(df)} rows
+**Harmonization**: {harmonization_stats['columns_before']} → {harmonization_stats['columns_after']} columns
+**Disease Coverage**: {harmonization_stats['disease_coverage_before']:.1f}% → {harmonization_stats['disease_coverage_after']:.1f}%
+
+**Files Created**:
+1. **Rich Export**: {rich_file_path.name} ({len(df.columns)} columns)
+2. **Strict Export**: {strict_file_path.name} ({len(df_strict.columns)} columns)
+3. **Provenance Log**: {prov_log_path.name if prov_log_path else 'N/A'} ({harmonization_stats['provenance_log_size']} transformations)
+
+**Location**: {exports_dir}
+
+**Next Steps**:
+- Use files for downstream analysis
+- Check harmonization_log.tsv for transformation audit trail
+- Use strict.csv for MIMARKS-compliant submissions
+"""
+                        return response
 
                     else:
                         # Simple export - as-is (no harmonization)

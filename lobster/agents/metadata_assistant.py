@@ -2784,6 +2784,7 @@ Operating Principles
 	-	WRONG: process_metadata_queue(output_key='None')
 	-	CORRECT: process_metadata_queue()
 	-	CORRECT: process_metadata_queue(max_entries=10)
+	-	CORRECT: process_metadata_queue(max_entries=0)
 	-	CORRECT: process_metadata_queue(filter_criteria="16S human fecal")
 	-	CORRECT: process_metadata_queue(status_filter="handoff_ready", output_key="filtered_samples")
 
@@ -2804,7 +2805,7 @@ Operating Principles
 Tool Selection Priority
 For publication queue processing requests, follow this decision tree:
 
-	1.	Batch Publication Queue Processing (ALWAYS START HERE)
+	1.	Publication Queue Processing (ALWAYS START HERE)
 
 	Use process_metadata_queue when request involves:
 	- "process publication queue" or "process handoff_ready entries"
@@ -2863,7 +2864,7 @@ For publication queue processing requests, follow this decision tree:
 
 **Export Anti-Patterns to AVOID**:
 
-❌ **Anti-Pattern 1: Unnecessary execute_custom_code Before Export**
+**Anti-Pattern 1: Unnecessary execute_custom_code Before Export**
 ```
 process_metadata_queue(output_key='aggregated_samples')
     ↓ (SKIP THIS STEP!)
@@ -2877,7 +2878,7 @@ write_to_workspace(output_format='csv')
 - Sparse column removal (655 → 90 columns)
 - Provenance tracking (audit trail TSV)
 
-✅ **CORRECT Pattern: Direct Export**
+**CORRECT Pattern: Direct Export**
 ```
 process_metadata_queue(output_key='aggregated_samples')
     ↓ (DIRECT - NO INTERMEDIATE STEP)
@@ -2889,9 +2890,9 @@ write_to_workspace(
 )
 ```
 **Result**: 3 files created in exports/:
-- {identifier}_rich.csv (~90 columns, all relevant data)
-- {identifier}_strict.csv (34 MIMARKS columns)
-- {identifier}_harmonization_log.tsv (audit trail)
+- {{identifier}}_rich.csv (~90 columns, all relevant data)
+- {{identifier}}_strict.csv (34 MIMARKS columns)
+- {{identifier}}_harmonization_log.tsv (audit trail)
 
 **When to Use execute_custom_code**:
 - ONLY if field coverage <70% after process_metadata_queue
@@ -2949,10 +2950,10 @@ filter_samples_by
 	-	Compute retention percentage and per-field coverage for the filtered subset.
 	-	Persist the filtered subset under a new key (for example metadata_GSE12345_samples_filtered_16S_human_fecal) and return that key.
 
-process_metadata_queue (PRIMARY TOOL for batch processing)
+process_metadata_queue (PRIMARY TOOL for processing)
 	-	Purpose: Process multiple publication queue entries and aggregate SAMPLE-LEVEL results.
 	-	When to use:
-	-	Batch processing of handoff_ready entries
+	-	processing of handoff_ready entries
 	-	Aggregating sample metadata from multiple publications
 	-	Applying 16S/shotgun filtering at sample level
 	-	Creating export-ready aggregated datasets
@@ -2973,7 +2974,7 @@ process_metadata_queue (PRIMARY TOOL for batch processing)
 	```
 	-	**After process_metadata_queue Returns**:
 	```
-	✅ NEXT STEP: Export directly (no intermediate code needed)
+	NEXT STEP: Export directly (no intermediate code needed)
 	write_to_workspace(
 	    identifier='aggregated_16s_samples',
 	    workspace='metadata',
