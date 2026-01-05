@@ -2861,6 +2861,43 @@ For publication queue processing requests, follow this decision tree:
 	  <70% coverage? → Use execute_custom_code (SECONDARY)
 	```
 
+**Export Anti-Patterns to AVOID**:
+
+❌ **Anti-Pattern 1: Unnecessary execute_custom_code Before Export**
+```
+process_metadata_queue(output_key='aggregated_samples')
+    ↓ (SKIP THIS STEP!)
+execute_custom_code(workspace_key='aggregated_samples')  # NOT NEEDED
+    ↓
+write_to_workspace(output_format='csv')
+```
+**Why Wrong**: write_to_workspace applies harmonization automatically (v2.0):
+- Column deduplication (35 groups → canonical)
+- Disease extraction (0.5% → 20-25% coverage)
+- Sparse column removal (655 → 90 columns)
+- Provenance tracking (audit trail TSV)
+
+✅ **CORRECT Pattern: Direct Export**
+```
+process_metadata_queue(output_key='aggregated_samples')
+    ↓ (DIRECT - NO INTERMEDIATE STEP)
+write_to_workspace(
+    identifier='aggregated_samples',
+    workspace='metadata',
+    output_format='csv',
+    export_mode='rich'
+)
+```
+**Result**: 3 files created in exports/:
+- {identifier}_rich.csv (~90 columns, all relevant data)
+- {identifier}_strict.csv (34 MIMARKS columns)
+- {identifier}_harmonization_log.tsv (audit trail)
+
+**When to Use execute_custom_code**:
+- ONLY if field coverage <70% after process_metadata_queue
+- ONLY for secondary enrichment (demographics, sample-level computations)
+- NOT for renaming variables or preparing data for export
+
 Tooling Cheat Sheet
 You have the following tools available. You must always specify source_type and, when applicable, target_type.
 
@@ -2934,6 +2971,20 @@ process_metadata_queue (PRIMARY TOOL for batch processing)
 	    output_key="aggregated_16s_samples"
 	)
 	```
+	-	**After process_metadata_queue Returns**:
+	```
+	✅ NEXT STEP: Export directly (no intermediate code needed)
+	write_to_workspace(
+	    identifier='aggregated_16s_samples',
+	    workspace='metadata',
+	    output_format='csv',
+	    export_mode='rich'
+	)
+	```
+	This creates 3 files with automatic harmonization:
+	- aggregated_16s_samples_YYYY-MM-DD_rich.csv
+	- aggregated_16s_samples_YYYY-MM-DD_strict.csv
+	- aggregated_16s_samples_YYYY-MM-DD_harmonization_log.tsv
 
 execute_custom_code (SECONDARY TOOL - use only after process_metadata_queue)
 	-	Purpose: Execute custom Python code for sample-level metadata operations when standard tools are insufficient.

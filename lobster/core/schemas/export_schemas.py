@@ -1067,16 +1067,16 @@ def harmonize_samples_for_export(
         stats["unmapped_disease_samples"] = len(result) - disease_after
 
     # Step 3: Remove sparse columns
-    stats["sparse_removed"] = set()
+    stats["sparse_removed"] = []
     if remove_sparse:
         result, sparse_removed = remove_sparse_columns(result, threshold=sparse_threshold)
-        stats["sparse_removed"] = sparse_removed
+        stats["sparse_removed"] = sorted(list(sparse_removed))  # Convert set to list for JSON
 
     # Step 4: Remove constant columns
-    stats["constant_removed"] = set()
+    stats["constant_removed"] = []
     if remove_constant:
         result, constant_removed = remove_constant_columns(result)
-        stats["constant_removed"] = constant_removed
+        stats["constant_removed"] = sorted(list(constant_removed))  # Convert set to list for JSON
 
     # Count columns after
     all_cols_after: Set[str] = set()

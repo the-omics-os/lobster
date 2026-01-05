@@ -195,6 +195,41 @@ class CustomCodeExecutionService:
         self.context_builder = ExecutionContextBuilder(data_manager)
         logger.debug("Initialized CustomCodeExecutionService")
 
+    def _resolve_workspace_key_path(self, key: str) -> Optional[Path]:
+        """
+        Resolve workspace_key to actual file path in workspace subdirectories.
+
+        Searches in priority order: metadata/ → data/ → literature/ → root (backward compat)
+        Follows DRY principle by using workspace structure knowledge.
+
+        Args:
+            key: Workspace key identifier
+
+        Returns:
+            Path to file if found, None otherwise
+
+        Example:
+            >>> service._resolve_workspace_key_path("harmonized_publication_metadata")
+            Path(".lobster_workspace/metadata/harmonized_publication_metadata.json")
+        """
+        workspace_path = Path(self.data_manager.workspace_path)
+
+        # Search workspace subdirectories in priority order
+        search_dirs = ["metadata", "data", "literature", ""]  # "" = root (backward compat)
+
+        for subdir in search_dirs:
+            base_path = workspace_path / subdir if subdir else workspace_path
+
+            # Try both .json and .csv extensions
+            for ext in [".json", ".csv"]:
+                file_path = base_path / f"{key}{ext}"
+                if file_path.exists():
+                    logger.debug(f"Resolved workspace_key '{key}' → {file_path.relative_to(workspace_path)}")
+                    return file_path
+
+        logger.warning(f"workspace_key '{key}' not found in any subdirectory")
+        return None
+
     def execute(
         self,
         code: str,
@@ -264,12 +299,23 @@ class CustomCodeExecutionService:
                 adata = self.data_manager.get_modality(modality_name)
                 adata.write_h5ad(modality_path)
 
+        # Step 2.5: Resolve workspace_key paths (Bug fix - Gemini Option C)
+        resolved_paths = {}
+        if workspace_keys:
+            for key in workspace_keys:
+                resolved_path = self._resolve_workspace_key_path(key)
+                if resolved_path:
+                    resolved_paths[key] = str(resolved_path)
+                else:
+                    logger.warning(f"workspace_key '{key}' not found, will be unavailable in code")
+
         # Step 3: Build execution context (now just metadata for subprocess)
         exec_context = {
             "modality_name": modality_name,
             "workspace_path": self.data_manager.workspace_path,
             "load_workspace_files": load_workspace_files,
             "workspace_keys": workspace_keys,
+            "resolved_paths": resolved_paths,  # NEW: Pass resolved paths to subprocess
             "timeout": timeout,
         }
 
@@ -484,44 +530,55 @@ except Exception as e:
         if load_workspace_files:
             # Determine if selective loading is enabled
             if workspace_keys:
-                # Selective loading: only load specified keys
-                keys_str = repr(workspace_keys)  # Convert list to Python literal
-                setup_code += f"""
-# Selective workspace file loading (token-efficient mode)
-import pandas as pd
+                # v2.0: Use pre-resolved paths from main process (Gemini Option C - DRY principle)
+                resolved_paths_dict = context.get("resolved_paths", {})
+                paths_str = repr(resolved_paths_dict)  # {'key': '/full/path/to/file.json', ...}
 
-# Only load specified keys to avoid token overflow
-workspace_keys = {keys_str}
+                setup_code += f"""
+# Selective workspace file loading with pre-resolved paths (v2.0)
+import pandas as pd
+import json
+
+resolved_paths = {paths_str}
 loaded_files = []
 
-for key in workspace_keys:
-    # Try JSON first
-    json_path = WORKSPACE / f'{{key}}.json'
-    if json_path.exists():
-        try:
-            with open(json_path) as f:
-                globals()[key] = json.load(f)
-                loaded_files.append(f'{{key}}.json')
-        except Exception as e:
-            print(f"Warning: Could not load {{json_path.name}}: {{e}}")
+for key, file_path_str in resolved_paths.items():
+    file_path = Path(file_path_str)
+
+    if not file_path.exists():
+        print(f"Warning: Resolved path does not exist: {{file_path}}")
         continue
 
-    # Try CSV
-    csv_path = WORKSPACE / f'{{key}}.csv'
-    if csv_path.exists():
-        try:
-            globals()[key] = pd.read_csv(csv_path)
-            loaded_files.append(f'{{key}}.csv')
-        except Exception as e:
-            print(f"Warning: Could not load {{csv_path.name}}: {{e}}")
-        continue
+    try:
+        if file_path.suffix == '.json':
+            with open(file_path) as f:
+                content = json.load(f)
 
-    print(f"Warning: workspace_key '{{key}}' not found as .json or .csv")
+                # Memory optimization: load samples only for large files (Bug 3 fix)
+                file_size = file_path.stat().st_size
+                if isinstance(content, dict) and 'samples' in content and file_size > 100_000_000:
+                    # Large file (>100MB): load samples list only
+                    globals()[key] = content['samples']
+                    print(f"Loaded {{key}}: {{len(content['samples'])}} samples (large file optimization)")
+                else:
+                    # Small file: load full content
+                    globals()[key] = content
+                    print(f"Loaded {{key}} from {{file_path.parent.name}}/{{file_path.name}}")
+
+                loaded_files.append(f"{{key}} ({{file_path.parent.name}}/{{file_path.name}})")
+
+        elif file_path.suffix == '.csv':
+            globals()[key] = pd.read_csv(file_path)
+            loaded_files.append(f"{{key}} ({{file_path.parent.name}}/{{file_path.name}})")
+            print(f"Loaded {{key}}: {{len(globals()[key])}} rows from CSV")
+
+    except Exception as e:
+        print(f"Error loading {{key}} from {{file_path}}: {{e}}")
 
 if loaded_files:
-    print(f"Selective loading: {{len(loaded_files)}} files loaded ({{', '.join(loaded_files)}})")
+    print(f"✓ Loaded {{len(loaded_files)}} workspace keys successfully")
 else:
-    print(f"Warning: No files loaded for workspace_keys={{workspace_keys}}")
+    print(f"Warning: No workspace keys loaded (resolved_paths={{list(resolved_paths.keys())}})")
 
 # Convenience imports
 workspace_path = WORKSPACE

@@ -1427,6 +1427,7 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
                 "literature": ContentType.PUBLICATION,
                 "data": ContentType.DATASET,
                 "metadata": ContentType.METADATA,
+                "exports": ContentType.EXPORTS,
             }
 
             if workspace not in workspace_to_content_type:
@@ -2286,6 +2287,7 @@ def create_delete_from_workspace_tool(data_manager: DataManagerV2):
                     "literature": ContentType.PUBLICATION,
                     "data": ContentType.DATASET,
                     "metadata": ContentType.METADATA,
+                    "exports": ContentType.EXPORTS,
                 }
 
                 if workspace not in workspace_to_content_type:
