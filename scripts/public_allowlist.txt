@@ -6,7 +6,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2026-01-05 12:49:18
+# Generated: 2026-01-06 16:57:14
 # =============================================================================
 
 
@@ -162,6 +162,8 @@ lobster/config/workspace_config.py
 lobster/config/global_config.py
 lobster/config/constants.py
 lobster/config/base_config.py
+lobster/config/model_service.py
+lobster/config/ollama_service.py
 lobster/config/README_CONFIGURATION.md
 lobster/config/README_THINKING.md
 
@@ -356,7 +358,7 @@ lobster/tools/archive/publication_service.py
 
 
 # =============================================================================
-# UI COMPONENTS (Always Open-Core - Rich CLI only)
+# UI COMPONENTS (Always Open-Core - Rich CLI + Textual Dashboard)
 # =============================================================================
 lobster/ui/__init__.py
 lobster/ui/themes.py
@@ -370,7 +372,32 @@ lobster/ui/components/status_display.py
 lobster/ui/components/parallel_workers_progress.py
 lobster/ui/components/multi_progress.py
 
-# NOTE: Textual UI (lobster dashboard) is EXCLUDED - see ALWAYS_EXCLUDED section
+# Textual UI (interactive dashboard)
+lobster/ui/os_app.py
+lobster/ui/commands.py
+lobster/ui/screens/__init__.py
+lobster/ui/screens/analysis_screen.py
+lobster/ui/callbacks/__init__.py
+lobster/ui/callbacks/textual_callback.py
+lobster/ui/services/__init__.py
+lobster/ui/services/error_service.py
+lobster/ui/widgets/__init__.py
+lobster/ui/widgets/status_bar.py
+lobster/ui/widgets/chat_message.py
+lobster/ui/widgets/query_prompt.py
+lobster/ui/widgets/modality_list.py
+lobster/ui/widgets/data_hub.py
+lobster/ui/widgets/results_display.py
+lobster/ui/widgets/plot_preview.py
+lobster/ui/widgets/queue_status_bar.py
+lobster/ui/widgets/queue_panel.py
+lobster/ui/widgets/error_modal.py
+lobster/ui/widgets/activity_log.py
+lobster/ui/widgets/system_info.py
+lobster/ui/widgets/token_usage_panel.py
+lobster/ui/widgets/adapters_panel.py
+lobster/ui/widgets/agents_panel.py
+lobster/ui/widgets/connections_panel.py
 
 
 # =============================================================================
@@ -395,17 +422,25 @@ lobster/utils/deviance.py
 lobster/cli_internal/__init__.py
 lobster/cli_internal/utils/__init__.py
 lobster/cli_internal/utils/path_resolution.py
+
+# Commands - Split into light/heavy for performance (v0.4.0.7+)
 lobster/cli_internal/commands/__init__.py
 lobster/cli_internal/commands/output_adapter.py
-lobster/cli_internal/commands/queue_commands.py
-lobster/cli_internal/commands/metadata_commands.py
-lobster/cli_internal/commands/workspace_commands.py
-lobster/cli_internal/commands/pipeline_commands.py
-lobster/cli_internal/commands/data_commands.py
-lobster/cli_internal/commands/config_commands.py
-lobster/cli_internal/commands/modality_commands.py
-lobster/cli_internal/commands/file_commands.py
-lobster/cli_internal/commands/visualization_commands.py
+
+# Light commands (fast startup, <100ms)
+lobster/cli_internal/commands/light/__init__.py
+lobster/cli_internal/commands/light/queue_commands.py
+lobster/cli_internal/commands/light/metadata_commands.py
+lobster/cli_internal/commands/light/workspace_commands.py
+lobster/cli_internal/commands/light/pipeline_commands.py
+lobster/cli_internal/commands/light/config_commands.py
+lobster/cli_internal/commands/light/file_commands.py
+
+# Heavy commands (data-intensive, lazy-loaded)
+lobster/cli_internal/commands/heavy/__init__.py
+lobster/cli_internal/commands/heavy/data_commands.py
+lobster/cli_internal/commands/heavy/modality_commands.py
+lobster/cli_internal/commands/heavy/visualization_commands.py
 
 
 # =============================================================================
@@ -459,18 +494,6 @@ lobster/agents/visualization_expert.py
 # =============================================================================
 # ALWAYS EXCLUDED (Regardless of Tier)
 # =============================================================================
-
-# Textual UI (lobster dashboard command) - Private feature
-!lobster/ui/os_app.py
-!lobster/ui/screens/**
-!lobster/ui/widgets/status_bar.py
-!lobster/ui/widgets/chat_message.py
-!lobster/ui/widgets/query_prompt.py
-!lobster/ui/widgets/modality_list.py
-!lobster/ui/widgets/data_hub.py
-!lobster/ui/widgets/results_display.py
-!lobster/ui/widgets/plot_preview.py
-!lobster/ui/widgets/queue_status_bar.py
 
 # Server/API code (private infrastructure)
 !lobster/api/**
