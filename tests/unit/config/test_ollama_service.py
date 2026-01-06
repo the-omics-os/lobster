@@ -188,19 +188,18 @@ class TestOllamaService:
         assert result is None
 
     def test_suggest_model_for_agent_high_complexity(self):
-        """Test model suggestion for high-complexity agents."""
+        """Test model suggestion for high-complexity agents (FREE tier)."""
         assert OllamaService.suggest_model_for_agent("supervisor") == "large"
-        assert (
-            OllamaService.suggest_model_for_agent("custom_feature_agent") == "large"
-        )
+        # Note: custom_feature_agent is PREMIUM (loaded via plugin), returns "small" in FREE tier
 
     def test_suggest_model_for_agent_medium_complexity(self):
-        """Test model suggestion for medium-complexity agents."""
+        """Test model suggestion for medium-complexity agents (FREE tier)."""
         assert (
             OllamaService.suggest_model_for_agent("transcriptomics_expert")
             == "medium"
         )
-        assert OllamaService.suggest_model_for_agent("proteomics_expert") == "medium"
+        assert OllamaService.suggest_model_for_agent("de_analysis_expert") == "medium"
+        # Note: proteomics_expert is PREMIUM (loaded via plugin), returns "small" in FREE tier
 
     def test_suggest_model_for_agent_low_complexity(self):
         """Test model suggestion for low-complexity agents."""

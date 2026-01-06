@@ -238,17 +238,16 @@ class OllamaService:
             >>> suggestion = OllamaService.suggest_model_for_agent("supervisor")
             >>> print(suggestion)  # "large"
         """
-        # High-complexity agents need larger models
+        # High-complexity agents need larger models (FREE tier only)
+        # Premium agents (custom_feature_agent, machine_learning_expert_agent,
+        # proteomics_expert, etc.) get model recommendations from custom packages.
         high_complexity = [
             "supervisor",
-            "custom_feature_agent",
-            "machine_learning_expert",
         ]
 
-        # Medium-complexity agents
+        # Medium-complexity agents (FREE tier only)
         medium_complexity = [
             "transcriptomics_expert",
-            "proteomics_expert",
             "de_analysis_expert",
         ]
 

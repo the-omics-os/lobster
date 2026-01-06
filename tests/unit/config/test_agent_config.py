@@ -49,7 +49,12 @@ def test_print_current_config_filters_by_tier_free(monkeypatch):
 
 
 def test_print_current_config_show_all_ignores_tier(monkeypatch):
-    """Test that print_current_config with show_all=True shows all agents regardless of tier."""
+    """Test that print_current_config with show_all=True shows all configured agents.
+
+    Note: Premium agents (metadata_assistant, proteomics_expert, etc.) are loaded via
+    component_registry from lobster-premium or lobster-custom-* packages, not from
+    agent_config.py. This test verifies FREE tier agents in the base package.
+    """
     # Mock license tier as 'free'
     monkeypatch.setattr(
         "lobster.core.license_manager.get_current_tier", lambda: "free"
@@ -69,21 +74,26 @@ def test_print_current_config_show_all_ignores_tier(monkeypatch):
     # Verify license tier is displayed
     assert "License Tier: Free" in output
 
-    # Verify free tier agents are shown
+    # Verify free tier agents are shown (these are in agent_config.py)
     assert "research_agent" in output.lower()
     assert "data_expert_agent" in output.lower()
+    assert "transcriptomics_expert" in output.lower()
+    assert "visualization_expert_agent" in output.lower()
 
-    # Verify premium agents ARE shown with show_all=True
-    assert "metadata_assistant" in output.lower()
-    assert "proteomics_expert" in output.lower()
-    assert "machine_learning_expert_agent" in output.lower()
+    # Premium agents are NOT in agent_config.py (loaded via plugins)
+    # They will only appear when premium packages are installed
 
     # Verify no summary message is shown (since show_all=True)
     assert "premium agents hidden" not in output
 
 
 def test_print_current_config_premium_tier_shows_all(monkeypatch):
-    """Test that premium tier users see all premium agents (but not enterprise-only)."""
+    """Test that premium tier shows all FREE tier agents from agent_config.py.
+
+    Note: Premium agents (metadata_assistant, proteomics_expert, etc.) are loaded via
+    component_registry from lobster-premium packages. Without the premium package
+    installed, only FREE tier agents are visible even at premium tier.
+    """
     # Mock license tier as 'premium'
     monkeypatch.setattr(
         "lobster.core.license_manager.get_current_tier", lambda: "premium"
@@ -103,26 +113,21 @@ def test_print_current_config_premium_tier_shows_all(monkeypatch):
     # Verify license tier is displayed
     assert "License Tier: Premium" in output
 
-    # Verify free tier agents are shown
+    # Verify free tier agents are shown (these are in agent_config.py)
     assert "research_agent" in output.lower()
     assert "data_expert_agent" in output.lower()
+    assert "transcriptomics_expert" in output.lower()
+    assert "visualization_expert_agent" in output.lower()
 
-    # Verify premium agents ARE shown for premium tier
-    assert "metadata_assistant" in output.lower()
-    assert "proteomics_expert" in output.lower()
-    assert "machine_learning_expert_agent" in output.lower()
-    assert "protein_structure_visualization_expert_agent" in output.lower()
-
-    # Verify summary shows 10 agents (premium includes free + 4 premium-only)
-    assert "10 agents available for premium tier" in output
-
-    # Note: Some system/enterprise agents (assistant, supervisor, custom_feature_agent)
-    # may still be filtered out even at premium tier
-    assert "agents hidden" in output  # Some filtering occurs
+    # Note: Premium agents would appear here only when premium packages are installed
 
 
 def test_print_current_config_enterprise_tier_shows_all(monkeypatch):
-    """Test that enterprise tier users see all agents."""
+    """Test that enterprise tier shows all FREE tier agents from agent_config.py.
+
+    Note: Enterprise tier enables the wildcard ("*") for agents, but actual premium
+    agents must be loaded via component_registry from lobster-custom-* packages.
+    """
     # Mock license tier as 'enterprise'
     monkeypatch.setattr(
         "lobster.core.license_manager.get_current_tier", lambda: "enterprise"
@@ -142,14 +147,13 @@ def test_print_current_config_enterprise_tier_shows_all(monkeypatch):
     # Verify license tier is displayed
     assert "License Tier: Enterprise" in output
 
-    # Verify all agents are shown (wildcard in enterprise tier)
+    # Verify free tier agents are shown (these are in agent_config.py)
     assert "research_agent" in output.lower()
     assert "data_expert_agent" in output.lower()
-    assert "metadata_assistant" in output.lower()
-    assert "proteomics_expert" in output.lower()
+    assert "transcriptomics_expert" in output.lower()
+    assert "visualization_expert_agent" in output.lower()
 
-    # Verify no summary message for enterprise (no agents filtered)
-    assert "premium agents hidden" not in output
+    # Note: Premium/custom agents would appear here when custom packages are installed
 
 
 def test_print_current_config_consistent_across_profiles(monkeypatch):
