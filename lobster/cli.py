@@ -568,8 +568,6 @@ def extract_available_commands() -> Dict[str, str]:
         "/config model <name> --save": "Switch Ollama model and persist to workspace",
         "/clear": "Clear screen",
         "/exit": "Exit the chat",
-        # Deprecated commands
-        "/load": "[DEPRECATED] Use /queue load instead",
     }
 
     # Try to extract dynamically as fallback, but use static definitions as primary
@@ -616,36 +614,77 @@ if PROMPT_TOOLKIT_AVAILABLE:
         def get_completions(
             self, document: Document, complete_event: CompleteEvent
         ) -> Iterable[Completion]:
-            """Generate command completions."""
+            """Generate hierarchical command completions.
+
+            Implements depth-aware filtering to show only relevant commands:
+            - Typing "/" → shows top-level commands (/help, /config, /queue)
+            - Typing "/config " → shows subcommands (provider, model, show)
+            - Typing "/config model " → shows model names
+
+            This prevents overwhelming users with nested subcommands at the top level.
+            """
             text_before_cursor = document.text_before_cursor.lstrip()
 
             # Only complete if we're typing a command (starts with /)
             if not text_before_cursor.startswith("/"):
                 return
 
-            # Extract the command being typed (from / until space or end)
-            command_part = (
-                text_before_cursor.split()[0]
-                if " " in text_before_cursor
-                else text_before_cursor
-            )
-
             # Get available commands (cached)
             commands = self._get_cached_commands()
 
-            # Generate completions
+            # Analyze input structure for hierarchical filtering
+            has_trailing_space = text_before_cursor.endswith(" ")
+            typed_text = text_before_cursor.rstrip()  # Remove trailing space for analysis
+            typed_parts = typed_text.split() if typed_text else []
+            current_depth = len(typed_parts)
+
+            # Determine target depth for completions
+            if has_trailing_space:
+                # User typed "/config " (with space) → show next level subcommands
+                # Target depth: current_depth + 1 (e.g., depth 1 → show depth 2)
+                target_depth = current_depth + 1
+                prefix_match = typed_text + " "  # Must start with "/config "
+            else:
+                # User typed "/conf" (no space) → complete current level
+                # Target depth: current_depth (e.g., depth 1 → complete depth 1)
+                target_depth = current_depth
+                prefix_match = typed_text  # Must start with "/conf"
+
+            # Generate completions with depth filtering
             for cmd, description in commands.items():
-                if cmd.lower().startswith(command_part.lower()):
-                    # Escape HTML special characters to prevent XML parsing errors
-                    escaped_cmd = html.escape(cmd)
-                    escaped_desc = html.escape(description)
-                    yield Completion(
-                        text=cmd,
-                        start_position=-len(command_part),
-                        display=HTML(f"<ansired>{escaped_cmd}</ansired>"),
-                        display_meta=HTML(f"<dim>{escaped_desc}</dim>"),
-                        style="class:completion.command",
-                    )
+                # Calculate command depth (number of space-separated parts)
+                cmd_depth = len(cmd.split())
+
+                # Apply hierarchical filter: only show commands at target depth
+                if cmd_depth != target_depth:
+                    continue
+
+                # Apply prefix filter: command must start with what user typed
+                if not cmd.lower().startswith(prefix_match.lower()):
+                    continue
+
+                # Calculate completion text and cursor position
+                if has_trailing_space:
+                    # Show only the next part (e.g., "provider" from "/config provider")
+                    completion_text = cmd[len(prefix_match):]  # Extract remaining part
+                    start_position = 0
+                else:
+                    # Show full command and replace from beginning of current word
+                    completion_text = cmd
+                    current_word = typed_parts[-1] if typed_parts else ""
+                    start_position = -len(current_word)
+
+                # Escape HTML special characters to prevent XML parsing errors
+                escaped_cmd = html.escape(completion_text)
+                escaped_desc = html.escape(description)
+
+                yield Completion(
+                    text=completion_text,
+                    start_position=start_position,
+                    display=HTML(f"<ansired>{escaped_cmd}</ansired>"),
+                    display_meta=HTML(f"<dim>{escaped_desc}</dim>"),
+                    style="class:completion.command",
+                )
 
         def _get_cached_commands(self) -> Dict[str, str]:
             """Get commands with caching."""
@@ -2843,150 +2882,40 @@ def config_test(
         raise typer.Exit(1)
 
 
-@app.command()
-def config_show():
-    """Display current configuration with masked secrets."""
-    console.print()
-    console.print(
-        Panel.fit(
-            f"[bold {LobsterTheme.PRIMARY_ORANGE}]⚙️  Current Configuration[/bold {LobsterTheme.PRIMARY_ORANGE}]",
-            border_style=LobsterTheme.PRIMARY_ORANGE,
-            padding=(0, 2),
-        )
-    )
-    console.print()
+@app.command(name="config")
+def config_command(
+    workspace: Optional[str] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace directory to use",
+    ),
+):
+    """Display current LLM configuration (provider, models, config files).
 
-    # Check .env file
-    env_file = Path.cwd() / ".env"
-    if not env_file.exists():
-        console.print(f"[red]❌ No .env file found in current directory[/red]")
-        console.print(f"[dim]Run 'lobster init' to create configuration[/dim]")
+    This command shows:
+    - Current LLM provider and profile
+    - Configuration file locations
+    - Per-agent model assignments
+    - Available config commands
+    """
+    from lobster.core.workspace import resolve_workspace
+    from lobster.core.client import AgentClient
+
+    # Resolve workspace path
+    workspace_path = resolve_workspace(workspace, create=False)
+
+    # Create minimal client for config access
+    try:
+        client = AgentClient(workspace_path=str(workspace_path))
+        output = ConsoleOutputAdapter(console)
+
+        # Use unified config_show implementation from config_commands.py
+        config_show(client, output)
+    except Exception as e:
+        console.print(f"[red]❌ Error displaying configuration: {str(e)}[/red]")
+        console.print(f"[dim]Run 'lobster init' if not yet configured[/dim]")
         raise typer.Exit(1)
-
-    console.print(f"[dim]Configuration file:[/dim] {env_file}")
-    console.print()
-
-    # Load environment variables
-    from dotenv import load_dotenv
-
-    load_dotenv()
-
-    def mask_secret(value: Optional[str], show_chars: int = 4) -> str:
-        """Mask a secret value, showing only first few characters."""
-        if not value:
-            return "[dim]Not set[/dim]"
-        if len(value) <= show_chars:
-            return "[yellow]" + "*" * len(value) + "[/yellow]"
-        return f"[yellow]{value[:show_chars]}{'*' * (len(value) - show_chars)}[/yellow]"
-
-    # Create configuration table
-    table = Table(
-        title=None, box=box.SIMPLE, show_header=True, header_style="bold cyan"
-    )
-    table.add_column("Setting", style="cyan", no_wrap=True)
-    table.add_column("Value", style="white")
-
-    # LLM Provider
-    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
-    bedrock_access = os.environ.get("AWS_BEDROCK_ACCESS_KEY")
-    bedrock_secret = os.environ.get("AWS_BEDROCK_SECRET_ACCESS_KEY")
-    llm_provider = os.environ.get("LOBSTER_LLM_PROVIDER")
-    ollama_model = os.environ.get("OLLAMA_DEFAULT_MODEL")
-
-    table.add_row("", "")  # Spacing
-    table.add_row("[bold]LLM Provider", "")
-
-    # Show detected provider first
-    from lobster.config.llm_factory import LLMFactory
-
-    provider = LLMFactory.detect_provider()
-    if provider:
-        table.add_row("  [dim]Detected Provider[/dim]", f"[green]{provider.value}[/green]")
-
-    # Anthropic API
-    if anthropic_key:
-        table.add_row("  ANTHROPIC_API_KEY", mask_secret(anthropic_key))
-    else:
-        table.add_row("  ANTHROPIC_API_KEY", "[dim]Not set[/dim]")
-
-    # AWS Bedrock
-    if bedrock_access or bedrock_secret:
-        table.add_row("  AWS_BEDROCK_ACCESS_KEY", mask_secret(bedrock_access))
-        table.add_row("  AWS_BEDROCK_SECRET_ACCESS_KEY", mask_secret(bedrock_secret))
-    else:
-        table.add_row("  AWS_BEDROCK_ACCESS_KEY", "[dim]Not set[/dim]")
-        table.add_row("  AWS_BEDROCK_SECRET_ACCESS_KEY", "[dim]Not set[/dim]")
-
-    # Ollama - use provider_setup module
-    if llm_provider == "ollama" or provider and provider.value == "ollama":
-        table.add_row("  LOBSTER_LLM_PROVIDER", "[green]ollama[/green]")
-
-        # Get Ollama status using provider_setup
-        ollama_status = provider_setup.get_ollama_status()
-
-        if ollama_status.running:
-            table.add_row("  [dim]Ollama Status[/dim]", "[green]✓ Running[/green]")
-            if ollama_status.models:
-                model_count = len(ollama_status.models)
-                table.add_row(
-                    "  [dim]Available Models[/dim]", f"[cyan]{model_count} model(s)[/cyan]"
-                )
-        else:
-            table.add_row("  [dim]Ollama Status[/dim]", "[yellow]Not running[/yellow]")
-
-        if ollama_model:
-            table.add_row("  OLLAMA_DEFAULT_MODEL", f"[yellow]{ollama_model}[/yellow]")
-        else:
-            table.add_row(
-                "  OLLAMA_DEFAULT_MODEL", "[dim]llama3:8b-instruct (default)[/dim]"
-            )
-    else:
-        table.add_row("  LOBSTER_LLM_PROVIDER", "[dim]Not set (using cloud)[/dim]")
-
-    # NCBI API (optional)
-    table.add_row("", "")  # Spacing
-    table.add_row("[bold]NCBI API (Optional)", "")
-
-    ncbi_key = os.environ.get("NCBI_API_KEY")
-    ncbi_email = os.environ.get("NCBI_EMAIL")
-
-    table.add_row("  NCBI_API_KEY", mask_secret(ncbi_key))
-    if ncbi_email:
-        table.add_row("  NCBI_EMAIL", f"[yellow]{ncbi_email}[/yellow]")
-    else:
-        table.add_row("  NCBI_EMAIL", "[dim]Not set[/dim]")
-
-    console.print(table)
-    console.print()
-
-    # Status
-    from lobster.config.llm_factory import LLMFactory
-
-    provider = LLMFactory.detect_provider()
-
-    if provider:
-        console.print(
-            Panel.fit(
-                f"[green]✅ Configuration looks valid[/green]\n\n"
-                f"Primary provider: [bold]{provider.value}[/bold]\n"
-                f"Run [bold {LobsterTheme.PRIMARY_ORANGE}]lobster config test[/bold {LobsterTheme.PRIMARY_ORANGE}] to verify connectivity",
-                border_style="green",
-                padding=(1, 2),
-            )
-        )
-    else:
-        console.print(
-            Panel.fit(
-                "[red]❌ No LLM provider configured[/red]\n\n"
-                "Please configure one of:\n"
-                "  • Claude API (ANTHROPIC_API_KEY)\n"
-                "  • AWS Bedrock (AWS_BEDROCK credentials)\n"
-                "  • Ollama (local, LOBSTER_LLM_PROVIDER=ollama)\n\n"
-                f"Run: [bold {LobsterTheme.PRIMARY_ORANGE}]lobster init[/bold {LobsterTheme.PRIMARY_ORANGE}]",
-                border_style="red",
-                padding=(1, 2),
-            )
-        )
 
 
 @app.command()
@@ -4613,7 +4542,9 @@ def _execute_command(cmd: str, client: "AgentClient") -> Optional[str]:
             summary_table.add_column("Value", style="green")
 
             summary_table.add_row("Session ID", token_usage["session_id"])
-            summary_table.add_row("Provider", f"{'🦙 Ollama (Local)' if is_ollama else current_provider.capitalize()}")
+            # Handle None provider gracefully
+            provider_display = "🦙 Ollama (Local)" if is_ollama else (current_provider.capitalize() if current_provider else "Unknown")
+            summary_table.add_row("Provider", provider_display)
             summary_table.add_row(
                 "Total Input Tokens", f"{token_usage['total_input_tokens']:,}"
             )
@@ -4977,7 +4908,7 @@ when they are started by agents or analysis workflows.
             # Also show workspace tree if it exists
             from lobster.core.workspace import resolve_workspace
 
-            workspace_path = resolve_workspace(explicit_path=workspace, create=False)
+            workspace_path = resolve_workspace(explicit_path=client.workspace_path, create=False)
             if workspace_path.exists():
                 console_manager.print()  # Add spacing
                 workspace_tree = create_workspace_tree(workspace_path)
@@ -4997,7 +4928,12 @@ when they are started by agents or analysis workflows.
         # Use shared command implementation (unified with dashboard)
         output = ConsoleOutputAdapter(console)
         parts = cmd.split()
-        subcommand = parts[1] if len(parts) > 1 else "info"
+
+        # Default to showing status summary when no args (like /config and /queue)
+        if len(parts) == 1:
+            return workspace_status(client, output)
+
+        subcommand = parts[1]
 
         if subcommand == "list":
             force_refresh = "--refresh" in cmd.lower()
@@ -5011,8 +4947,12 @@ when they are started by agents or analysis workflows.
         elif subcommand == "remove":
             modality_name = parts[2] if len(parts) > 2 else None
             return workspace_remove(client, output, modality_name)
-        else:
+        elif subcommand == "status":
             return workspace_status(client, output)
+        else:
+            console.print(f"[yellow]Unknown workspace subcommand: {subcommand}[/yellow]")
+            console.print("[cyan]Available: status, list, info, load, remove[/cyan]")
+            return None
 
     elif cmd.startswith("/queue"):
         # Use shared command implementation (unified with dashboard)
@@ -5067,139 +5007,6 @@ when they are started by agents or analysis workflows.
         output = ConsoleOutputAdapter(console)
         filename = cmd[6:].strip()
         return file_read(client, output, filename, current_directory, PathResolver)
-
-    elif cmd.startswith("/load "):
-        # DEPRECATED: Use /queue load instead
-        console.print("[yellow]⚠️  Deprecation Warning: /load is deprecated.[/yellow]")
-        console.print("[yellow]   Use /queue load <file> for queue operations[/yellow]")
-        console.print("[yellow]   Use /workspace load <file> for data files[/yellow]\n")
-
-        # Load publication list from .ris file
-        filename = cmd[6:].strip()
-
-        # BUG FIX #6: Use PathResolver for secure path resolution
-        resolver = PathResolver(
-            current_directory=current_directory,
-            workspace_path=(
-                client.data_manager.workspace_path
-                if hasattr(client, "data_manager")
-                else None
-            ),
-        )
-        resolved = resolver.resolve(filename, search_workspace=True, must_exist=False)
-
-        if not resolved.is_safe:
-            console.print(f"[red]❌ Security error: {resolved.error}[/red]")
-            return None
-
-        file_path = resolved.path
-
-        # Validate file extension
-        if not file_path.suffix.lower() in [".ris", ".txt"]:
-            console_manager.print_error_panel(
-                f"Invalid file type: {file_path.suffix}",
-                "Only .ris or .txt files are supported for /load command",
-            )
-            return None
-
-        # Check if file exists
-        if not file_path.exists():
-            console_manager.print_error_panel(
-                f"File not found: {file_path}",
-                f"Searched in: {current_directory}",
-            )
-            return None
-
-        console.print(
-            f"[cyan]📚 Loading publication list from: {file_path.name}[/cyan]\n"
-        )
-
-        try:
-            with create_progress(client_arg=client) as progress:
-                task = progress.add_task(
-                    "[cyan]Parsing .ris file and creating queue entries...",
-                    total=None,
-                )
-
-                # Load publications into queue
-                result = client.load_publication_list(
-                    file_path=str(file_path),
-                    priority=5,  # Default priority
-                    schema_type="general",  # Default schema
-                    extraction_level="methods",  # Default extraction level
-                )
-
-                progress.remove_task(task)
-
-            # Display results
-            if result["added_count"] > 0:
-                console.print(
-                    f"[green]✅ Successfully loaded {result['added_count']} publications[/green]\n"
-                )
-
-                console.print("[cyan]📊 Load Summary:[/cyan]")
-                console.print(
-                    f"  • Added to queue: [bold]{result['added_count']}[/bold] publications"
-                )
-                if result["skipped_count"] > 0:
-                    console.print(
-                        f"  • Skipped: [yellow]{result['skipped_count']}[/yellow] entries (malformed or invalid)"
-                    )
-                console.print(
-                    f"  • Status: [bold]PENDING[/bold] (ready for processing)"
-                )
-                console.print(f"  • Queue file: publication_queue.jsonl\n")
-
-                console.print("[cyan]💡 Next steps:[/cyan]")
-                console.print(
-                    "  • View queue: [white]get_content_from_workspace(workspace='publication_queue')[/white]"
-                )
-                console.print(
-                    "  • Process queue: Ask the research agent to process pending publications\n"
-                )
-
-                if result.get("errors") and len(result["errors"]) > 0:
-                    console.print(
-                        f"[yellow]⚠️  {len(result['errors'])} error(s) occurred during parsing:[/yellow]"
-                    )
-                    for i, error in enumerate(
-                        result["errors"][:3], 1
-                    ):  # Show first 3 errors
-                        console.print(f"  {i}. {error}")
-                    if len(result["errors"]) > 3:
-                        console.print(f"  ... and {len(result['errors']) - 3} more")
-
-                # Return summary for conversation history
-                return f"Loaded {result['added_count']} publications from {file_path.name} into publication queue (skipped {result['skipped_count']})"
-            else:
-                console.print(
-                    f"[bold red on white] ⚠️  Error [/bold red on white] "
-                    f"[red]No publications could be loaded from file[/red]"
-                )
-                if result.get("errors"):
-                    console.print(f"\n[yellow]Errors:[/yellow]")
-                    for error in result["errors"][:5]:
-                        console.print(f"  • {error}")
-                return None
-
-        except FileNotFoundError as e:
-            console_manager.print_error_panel(
-                f"File not found: {str(e)}",
-                "Check the file path and try again",
-            )
-            return None
-        except ValueError as e:
-            console_manager.print_error_panel(
-                f"Invalid file format: {str(e)}",
-                "Ensure the file is a valid .ris format",
-            )
-            return None
-        except Exception as e:
-            console_manager.print_error_panel(
-                f"Failed to load publication list: {str(e)}",
-                "Check the file format and try again",
-            )
-            return None
 
     elif cmd.startswith("/archive"):
         # Use shared command implementation (unified with dashboard)
