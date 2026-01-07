@@ -191,6 +191,7 @@ class TestAgentClientIntegration:
         """Test session export functionality."""
         mock_data_manager = Mock(spec=DataManagerV2)
         mock_data_manager.has_data.return_value = False
+        mock_data_manager.workspace_path = temp_integration_workspace
         mock_data_manager.get_workspace_status.return_value = {
             "workspace_path": str(temp_integration_workspace),
             "modalities": 0,

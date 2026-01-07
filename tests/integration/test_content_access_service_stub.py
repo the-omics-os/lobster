@@ -27,12 +27,12 @@ class TestProviderRegistryInitialization:
         return ContentAccessService(data_manager)
 
     def test_all_providers_registered(self, service):
-        """Test that all 5 providers are registered correctly."""
+        """Test that all providers are registered correctly."""
         all_providers = service.registry.get_all_providers()
 
-        # Should have exactly 5 providers (Phase 1)
-        assert len(all_providers) == 5, (
-            f"Expected 5 providers, got {len(all_providers)}: "
+        # Should have 9 providers (expanded from Phase 1)
+        assert len(all_providers) == 9, (
+            f"Expected 9 providers, got {len(all_providers)}: "
             f"{[type(p).__name__ for p in all_providers]}"
         )
 
@@ -42,7 +42,11 @@ class TestProviderRegistryInitialization:
             "AbstractProvider",
             "PubMedProvider",
             "GEOProvider",
+            "SRAProvider",
             "PMCProvider",
+            "PRIDEProvider",
+            "MassIVEProvider",
+            "BioRxivMedRxivProvider",
             "WebpageProvider",
         }
 
@@ -120,7 +124,6 @@ class TestProviderRegistryInitialization:
     def test_get_provider_for_capability_priority_ordering(self, service):
         """Test that providers are returned in correct priority order."""
         # Test GET_FULL_CONTENT capability
-        # Should return PMCProvider (priority 10) before WebpageProvider (priority 50)
         fulltext_providers = service.registry.get_providers_for_capability(
             ProviderCapability.GET_FULL_CONTENT
         )
@@ -130,33 +133,21 @@ class TestProviderRegistryInitialization:
             len(fulltext_providers) >= 2
         ), "Need at least 2 providers to test priority ordering"
 
-        # First provider should be PMCProvider (priority 10)
-        assert type(fulltext_providers[0]).__name__ == "PMCProvider", (
-            f"Expected PMCProvider first (priority 10), "
-            f"got {type(fulltext_providers[0]).__name__} "
-            f"(priority {fulltext_providers[0].priority})"
-        )
-
-        # Second provider should be WebpageProvider (priority 50)
-        assert type(fulltext_providers[1]).__name__ == "WebpageProvider", (
-            f"Expected WebpageProvider second (priority 50), "
-            f"got {type(fulltext_providers[1]).__name__} "
-            f"(priority {fulltext_providers[1].priority})"
-        )
-
-        # Verify priorities are correct
-        assert (
-            fulltext_providers[0].priority == 10
-        ), "PMCProvider should have priority 10"
-        assert (
-            fulltext_providers[1].priority == 50
-        ), "WebpageProvider should have priority 50"
-
         # Verify priorities are in ascending order (lower = higher priority)
         priorities = [p.priority for p in fulltext_providers]
         assert priorities == sorted(
             priorities
         ), f"Providers not sorted by priority: {priorities}"
+
+        # Verify expected providers are present
+        provider_names = {type(p).__name__ for p in fulltext_providers}
+        assert "PMCProvider" in provider_names, "PMCProvider should support full content"
+        assert "WebpageProvider" in provider_names, "WebpageProvider should support full content"
+
+        # Verify PMCProvider comes before WebpageProvider (priority 10 < 50)
+        pmc_index = next(i for i, p in enumerate(fulltext_providers) if type(p).__name__ == "PMCProvider")
+        webpage_index = next(i for i, p in enumerate(fulltext_providers) if type(p).__name__ == "WebpageProvider")
+        assert pmc_index < webpage_index, "PMCProvider should have higher priority than WebpageProvider"
 
     def test_high_priority_providers(self, service):
         """Test that high-priority providers (priority 10) are registered."""
@@ -165,10 +156,10 @@ class TestProviderRegistryInitialization:
         # Count providers with priority 10 (high priority)
         high_priority_providers = [p for p in all_providers if p.priority == 10]
 
-        # Should have 4 high-priority providers:
-        # AbstractProvider, PubMedProvider, GEOProvider, PMCProvider
-        assert len(high_priority_providers) == 4, (
-            f"Expected 4 high-priority providers (priority 10), "
+        # Should have 7 high-priority providers (expanded from original 4):
+        # AbstractProvider, PubMedProvider, GEOProvider, SRAProvider, PMCProvider, PRIDEProvider, BioRxivMedRxivProvider
+        assert len(high_priority_providers) == 7, (
+            f"Expected 7 high-priority providers (priority 10), "
             f"got {len(high_priority_providers)}: "
             f"{[type(p).__name__ for p in high_priority_providers]}"
         )
@@ -178,7 +169,10 @@ class TestProviderRegistryInitialization:
             "AbstractProvider",
             "PubMedProvider",
             "GEOProvider",
+            "SRAProvider",
             "PMCProvider",
+            "PRIDEProvider",
+            "BioRxivMedRxivProvider",
         }
 
         assert high_priority_names == expected_high_priority, (

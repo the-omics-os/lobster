@@ -245,7 +245,7 @@ def test_empty_download_queue(agent_client):
 
     result = get_workspace_content.invoke({"workspace": "download_queue"})
 
-    assert "empty" in result.lower()
+    assert "no items" in result.lower() or "empty" in result.lower()
 
 
 @pytest.mark.integration

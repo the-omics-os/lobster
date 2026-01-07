@@ -1462,7 +1462,7 @@ class TestExportDocumentation:
         dm.modalities["test_mod"] = test_data
 
         fig = go.Figure()
-        dm.add_plot(plot=fig, title="Test Plot")
+        dm.plot_manager.add_plot(plot=fig, title="Test Plot")
 
         with (
             patch.object(test_data, "write_h5ad"),
@@ -2066,7 +2066,7 @@ class TestIntegrationScenarios:
 
         # Create plots
         fig = go.Figure()
-        dm.add_plot(fig, "QC Plot", "quality_service")
+        dm.plot_manager.add_plot(fig, "QC Plot", "quality_service")
 
         # Save processed data
         dm.save_modality("sc_data", "processed_data.h5ad")
@@ -2168,7 +2168,7 @@ class TestIntegrationScenarios:
         operations = [
             lambda: dm.modalities.update({"mod1": Mock()}),
             lambda: dm.log_tool_usage("tool1", {}),
-            lambda: dm.add_plot(go.Figure(), "Plot 1"),
+            lambda: dm.plot_manager.add_plot(go.Figure(), "Plot 1"),
             lambda: dm.modalities.update({"mod2": Mock()}),
             lambda: dm.log_tool_usage("tool2", {}),
         ]
@@ -2225,7 +2225,7 @@ class TestIntegrationScenarios:
 
             if i % 10 == 0:  # Add plot every 10 operations
                 fig = go.Figure()
-                dm.add_plot(fig, f"Plot {i//10}")
+                dm.plot_manager.add_plot(fig, f"Plot {i//10}")
 
         # Test that history is maintained appropriately
         assert len(dm.provenance.activities) == 100

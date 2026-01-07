@@ -19,7 +19,7 @@ research_agent tools (write_to_workspace, get_content_from_workspace)
                     ↓
           DataManagerV2 workspace directory
                     ↓
-         literature/  data/  metadata/  (JSON files)
+         literature/  data/  metadata/  exports/  (JSON/CSV files)
 ```
 
 ## Architecture
@@ -30,15 +30,21 @@ research_agent tools (write_to_workspace, get_content_from_workspace)
 from lobster.tools.workspace_content_service import ContentType
 
 class ContentType(str, Enum):
-    PUBLICATION = "publication"  # Research papers (PubMed, PMC, bioRxiv)
-    DATASET = "dataset"          # GEO, SRA, PRIDE datasets
-    METADATA = "metadata"        # Sample mappings, validation results, QC reports
+    PUBLICATION = "publication"      # Research papers (PubMed, PMC, bioRxiv)
+    DATASET = "dataset"              # GEO, SRA, PRIDE datasets
+    METADATA = "metadata"            # Sample mappings, validation results, QC reports
+    EXPORTS = "exports"              # Analysis results and data exports
+    DOWNLOAD_QUEUE = "download_queue"    # Download queue entries (JSONL)
+    PUBLICATION_QUEUE = "publication_queue"  # Publication queue entries (JSONL)
 ```
 
 **Workspace Directory Mapping:**
 - `ContentType.PUBLICATION` → `workspace/literature/*.json`
 - `ContentType.DATASET` → `workspace/data/*.json`
 - `ContentType.METADATA` → `workspace/metadata/*.json`
+- `ContentType.EXPORTS` → `workspace/exports/*.*`
+- `ContentType.DOWNLOAD_QUEUE` → `workspace/.lobster/queues/download_queue.jsonl`
+- `ContentType.PUBLICATION_QUEUE` → `workspace/.lobster/queues/publication_queue.jsonl`
 
 ### Retrieval Levels (Enum)
 

@@ -321,26 +321,33 @@ Show directory tree view of current location and workspace.
 Displays nested folder structure with file counts and sizes.
 
 #### `/read <file>`
-Load and analyze files from workspace or current directory.
+View and inspect file contents (text files, code, configs). This is for **inspection only** - it does not load data for analysis.
 
 ```
-/read data.h5ad                    # Load single file
-/read *.h5ad                       # Load all H5AD files
-/read data/*.csv                   # Load CSVs from data folder
-/read sample_*.h5ad                # Pattern matching
+/read config.yaml                  # View configuration file
+/read results.csv                  # Preview CSV contents
+/read script.py                    # View code with syntax highlighting
+/read *.json                       # View all JSON files (glob pattern)
 ```
 
 **Supported Patterns**:
 - `*`: Match any characters
 - `?`: Match single character
 - `[abc]`: Match any of a, b, or c
-- `**`: Recursive directory matching
 
 **Features**:
 - Tab completion for file names
-- Automatic format detection
-- Batch loading with progress tracking
-- Format conversion on-the-fly
+- Syntax highlighting for code files
+- Binary file detection (shows file info instead)
+- File size limits (10MB for text display)
+- Glob pattern support for multiple files
+
+**When to Use**:
+- Use `/read` to **inspect** file contents before loading
+- Use `/workspace load <file>` to **load data** for analysis
+- Use natural language ("load my_data.h5ad") to **load data** for analysis
+
+> **Note**: `/read` is view-only. For data files (H5AD, large CSV), it shows file info and suggests using `/workspace load` instead.
 
 #### `/archive <file>`
 Load data from compressed archives containing bioinformatics data.
@@ -380,9 +387,10 @@ Load data from compressed archives containing bioinformatics data.
 # - Result: 94,371 cells × 32,738 genes
 ```
 
-**When to Use `/archive` vs `/read`**:
+**When to Use `/archive` vs `/workspace load`**:
 - Use `/archive` for: Compressed archives with multiple samples or nested structures
-- Use `/read` for: Individual data files (H5AD, CSV, Excel)
+- Use `/workspace load` for: Individual data files already in workspace
+- Use natural language ("load my_data.h5ad") for: New files not yet in workspace
 
 #### `/open <file>`
 Open file or folder in system default application.
