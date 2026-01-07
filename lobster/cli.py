@@ -5076,7 +5076,18 @@ when they are started by agents or analysis workflows.
                 return None
 
         elif subcommand == "list":
-            return queue_list(client, output)
+            # Determine queue type from additional parameters
+            queue_type = "publication"  # default
+            if len(parts) > 2:
+                if parts[2] == "download":
+                    queue_type = "download"
+                elif parts[2] == "publication":
+                    queue_type = "publication"
+                else:
+                    console.print(f"[yellow]Unknown queue type: {parts[2]}[/yellow]")
+                    console.print("[cyan]Usage: /queue list [download|publication][/cyan]")
+                    return None
+            return queue_list(client, output, queue_type=queue_type)
 
         elif subcommand == "clear":
             # Determine queue type from additional parameters
