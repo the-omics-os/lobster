@@ -46,8 +46,9 @@ class LobsterCommands(Provider):
         yield DiscoveryHit("Pipeline: List notebooks", self._cmd_pipeline_list, "Show saved notebooks")
 
         # System commands
-        yield DiscoveryHit("Status: Show system status", self._cmd_status, "System and session info")
-        yield DiscoveryHit("Status: Show token usage", self._cmd_tokens, "Token usage and costs")
+        yield DiscoveryHit("Session: Show session status", self._cmd_session, "Current session info")
+        yield DiscoveryHit("Status: Show installation status", self._cmd_status, "Tier, packages, and agents")
+        yield DiscoveryHit("Tokens: Show token usage", self._cmd_tokens, "Token usage and costs")
         yield DiscoveryHit("Workspace: Show info", self._cmd_workspace, "Workspace details")
 
         # Actions
@@ -70,7 +71,8 @@ class LobsterCommands(Provider):
             ("queue publications", "Publication queue status", self._cmd_queue_publications),
             ("pipeline export", "Export as Jupyter notebook", self._cmd_pipeline_export),
             ("pipeline list", "List saved notebooks", self._cmd_pipeline_list),
-            ("status", "System status", self._cmd_status),
+            ("session", "Session status", self._cmd_session),
+            ("status", "Installation status", self._cmd_status),
             ("tokens", "Token usage", self._cmd_tokens),
             ("workspace", "Workspace info", self._cmd_workspace),
             ("save", "Save session", self._cmd_save),
@@ -306,29 +308,109 @@ class LobsterCommands(Provider):
 
         self._show_result("\n".join(lines))
 
-    async def _cmd_status(self) -> None:
-        """Show system status."""
+    async def _cmd_session(self) -> None:
+        """Show current session status."""
         if not self.client:
             self.app.notify("No client available", severity="error")
             return
 
-        from lobster.core.license_manager import get_current_tier
         from lobster.config.llm_factory import LLMFactory
+        from lobster.config.agent_config import get_agent_configurator
 
-        tier = get_current_tier()
+        # Get session info
+        status = self.client.get_status()
         provider = LLMFactory.get_current_provider() or "unknown"
-        session_id = self.client.session_id
-        workspace = self.client.workspace_path.name
-        n_datasets = len(self.client.data_manager.available_datasets)
+        configurator = get_agent_configurator()
+        current_mode = configurator.get_current_profile()
 
         lines = [
-            "**System Status:**\n",
-            f"- Session: `{session_id}`",
-            f"- Workspace: `{workspace}`",
-            f"- Tier: {tier}",
+            "**Session Status:**\n",
+            f"- Session ID: `{status['session_id']}`",
+            f"- Mode: {current_mode}",
+            f"- Messages: {status['message_count']}",
+            f"- Workspace: `{status['workspace']}`",
             f"- Provider: {provider}",
-            f"- Datasets loaded: {n_datasets}",
+            f"- Data loaded: {'✓' if status['has_data'] else '✗'}",
         ]
+
+        # Add data summary if available
+        if status['has_data'] and status.get('data_summary'):
+            summary = status['data_summary']
+            lines.append(f"- Data shape: {summary.get('shape', 'N/A')}")
+            lines.append(f"- Memory usage: {summary.get('memory_usage', 'N/A')}")
+
+        self._show_result("\n".join(lines))
+
+    async def _cmd_status(self) -> None:
+        """Show installation status (tier, packages, agents)."""
+        if not self.client:
+            self.app.notify("No client available", severity="error")
+            return
+
+        from lobster.core.license_manager import get_entitlement_status
+        from lobster.core.plugin_loader import get_installed_packages
+        from lobster.config.agent_registry import get_worker_agents
+        from lobster.config.subscription_tiers import is_agent_available
+
+        # Get entitlement status
+        try:
+            entitlement = get_entitlement_status()
+        except ImportError:
+            entitlement = {"tier": "free", "tier_display": "Free", "source": "default"}
+
+        # Get installed packages
+        try:
+            packages = get_installed_packages()
+        except ImportError:
+            packages = {"lobster-ai": "unknown"}
+
+        # Get available agents
+        try:
+            worker_agents = get_worker_agents()
+            tier = entitlement.get("tier", "free")
+            available = [name for name in worker_agents if is_agent_available(name, tier)]
+            restricted = [name for name in worker_agents if not is_agent_available(name, tier)]
+        except ImportError:
+            available = []
+            restricted = []
+
+        # Build output
+        tier_display = entitlement.get("tier_display", "Free")
+        tier_emoji = {"free": "🆓", "premium": "⭐", "enterprise": "🏢"}.get(
+            entitlement.get("tier", "free"), "🆓"
+        )
+
+        lines = [
+            "**Installation Status:**\n",
+            f"- Tier: {tier_emoji} {tier_display}",
+            f"- Source: {entitlement.get('source', 'default')}",
+        ]
+
+        if entitlement.get("expires_at"):
+            days = entitlement.get("days_until_expiry")
+            if days is not None and days < 30:
+                lines.append(f"- ⚠️ Expires in {days} days")
+            else:
+                lines.append(f"- Expires: {entitlement.get('expires_at')}")
+
+        lines.append(f"\n**Installed Packages ({len(packages)}):**")
+        for pkg_name, version in packages.items():
+            status_icon = "✓" if version not in ["missing", "dev"] else ("✗" if version == "missing" else "⚡")
+            lines.append(f"- {status_icon} {pkg_name}: {version}")
+
+        if available:
+            lines.append(f"\n**Available Agents ({len(available)}):**")
+            for agent in sorted(available)[:5]:  # Show first 5
+                lines.append(f"- {agent}")
+            if len(available) > 5:
+                lines.append(f"- ... and {len(available) - 5} more")
+
+        if restricted:
+            lines.append(f"\n**Premium Agents ({len(restricted)}):**")
+            for agent in sorted(restricted)[:3]:  # Show first 3
+                lines.append(f"- {agent} (upgrade required)")
+            if len(restricted) > 3:
+                lines.append(f"- ... and {len(restricted) - 3} more")
 
         self._show_result("\n".join(lines))
 

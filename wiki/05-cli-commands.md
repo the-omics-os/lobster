@@ -105,18 +105,40 @@ Display comprehensive help with all available commands.
 
 Shows categorized list of commands with descriptions and examples.
 
+#### `/session`
+Show current session status including conversation state and loaded data.
+
+```
+/session
+```
+
+**Output includes**:
+- Session ID
+- Mode/profile (development, production, ultra, godmode)
+- Message count in conversation
+- Workspace path
+- Data loaded status (✓/✗)
+- Data shape (rows × columns) if data is loaded
+- Memory usage if data is loaded
+
 #### `/status`
-Show current system status including session info, loaded data, and agent configurations.
+Show installation status, subscription tier, installed packages, and available agents.
 
 ```
 /status
 ```
 
 **Output includes**:
-- Session ID and mode
-- Loaded data summary
-- Memory usage
-- Workspace location
+- Initialization status (.env configuration)
+- LLM provider detection
+- Subscription tier (🆓 Free, ⭐ Premium, 🏢 Enterprise)
+- License source and expiration
+- Installed packages table
+- Available agents for your tier
+- Premium agents (upgrade required)
+- Enabled features
+
+**Note**: This command shows the same information as the CLI `lobster status` command.
 
 #### `/input-features`
 Display available input features and navigation capabilities.
@@ -651,10 +673,13 @@ lobster config list-models
 # List available testing profiles
 lobster config list-profiles
 
-# Test specific configuration
+# Test current provider connectivity (auto-detects provider)
+lobster config test
+
+# Test specific configuration profile
 lobster config test --profile production
 
-# Test specific agent
+# Test specific agent in a profile
 lobster config test --profile production --agent transcriptomics_expert
 
 # Create custom configuration interactively

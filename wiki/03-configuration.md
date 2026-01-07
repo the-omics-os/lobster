@@ -631,6 +631,37 @@ lobster config model
 - Configuration files status
 - License tier and available agents
 
+### Testing Your Configuration
+
+The `lobster config test` command validates your LLM provider connectivity:
+
+```bash
+# Auto-detect and test current provider
+lobster config test
+
+# Test specific configuration profile
+lobster config test --profile production
+
+# Test specific agent in a profile
+lobster config test --profile production --agent transcriptomics_expert
+```
+
+**Auto-detection behavior (when no `--profile` is specified):**
+
+1. Detects your currently configured provider from:
+   - `LOBSTER_LLM_PROVIDER` environment variable, or
+   - Auto-detection (Ollama → Anthropic → Bedrock → Gemini)
+
+2. Tests basic connectivity with a simple API call
+
+3. Displays clear success/failure message with provider name
+
+**Profile-based testing (when `--profile` is specified):**
+
+- Tests all agents configured in that profile
+- Validates model configurations and API access
+- Useful for testing custom profile setups
+
 ### Advanced Options
 
 ```bash

@@ -203,7 +203,7 @@ EOF
 lobster chat
 
 # 3. Verify Bedrock connection
-🦞 You: "/status"  # Check which provider is active
+🦞 You: "/session"  # Check which provider is active
 ```
 
 #### Contact Support
@@ -1403,7 +1403,7 @@ export LOBSTER_CLOUD_KEY="your-api-key"
 echo $LOBSTER_CLOUD_KEY
 
 # Test cloud connectivity
-🦞 You: "/status"  # Should show cloud mode if working
+🦞 You: "/session"  # Should show provider and session info
 ```
 
 #### Switch to Local Mode
@@ -2540,7 +2540,7 @@ aws s3 ls
 ```bash
 lobster chat
 > "Use S3 backend for storage"
-> /status  # Should show S3 backend active
+> /session  # Should show session info with loaded data
 ```
 
 ### Issue: S3 Bucket Permissions
@@ -2681,7 +2681,7 @@ lobster chat
 ```bash
 # If S3 unavailable, switch to local
 > "Use local filesystem backend"
-> /status  # Verify backend changed
+> /session  # Verify session workspace
 ```
 
 ---

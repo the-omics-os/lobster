@@ -448,7 +448,8 @@ class AnalysisScreen(Screen):
 
 **General:**
 - `/help` - Show this help
-- `/status` - Show session status
+- `/session` - Show session status
+- `/status` - Show tier, packages, and agents
 - `/clear` - Clear conversation
 - `/exit` - Exit dashboard
 
@@ -472,13 +473,97 @@ class AnalysisScreen(Screen):
 - Press **ESC** to quit"""
             results.append_system_message(help_text)
 
-        elif cmd == "/status":
+        elif cmd == "/session":
             status = self.client.get_status()
+            from lobster.config.agent_config import get_agent_configurator
+            from lobster.config.llm_factory import LLMFactory
+
+            configurator = get_agent_configurator()
+            current_mode = configurator.get_current_profile()
+            provider = LLMFactory.get_current_provider() or "unknown"
+
             status_text = f"""**Session Status:**
 - Session ID: `{status.get('session_id', 'N/A')}`
+- Mode: {current_mode}
+- Messages: {status.get('message_count', 0)}
+- Provider: {provider}
 - Modalities: {len(status.get('modalities', []))}
 - Plots: {len(self.client.data_manager.latest_plots)}
 - Workspace: `{self.client.data_manager.workspace_path}`"""
+
+            # Add data summary if available
+            if status.get('has_data') and status.get('data_summary'):
+                summary = status['data_summary']
+                status_text += f"\n- Data shape: {summary.get('shape', 'N/A')}"
+                status_text += f"\n- Memory usage: {summary.get('memory_usage', 'N/A')}"
+
+            results.append_system_message(status_text)
+
+        elif cmd == "/status":
+            from lobster.core.license_manager import get_entitlement_status
+            from lobster.core.plugin_loader import get_installed_packages
+            from lobster.config.agent_registry import get_worker_agents
+            from lobster.config.subscription_tiers import is_agent_available
+
+            # Get entitlement status
+            try:
+                entitlement = get_entitlement_status()
+            except ImportError:
+                entitlement = {"tier": "free", "tier_display": "Free", "source": "default"}
+
+            # Get installed packages
+            try:
+                packages = get_installed_packages()
+            except ImportError:
+                packages = {"lobster-ai": "unknown"}
+
+            # Get available agents
+            try:
+                worker_agents = get_worker_agents()
+                tier = entitlement.get("tier", "free")
+                available = [name for name in worker_agents if is_agent_available(name, tier)]
+                restricted = [name for name in worker_agents if not is_agent_available(name, tier)]
+            except ImportError:
+                available = []
+                restricted = []
+
+            tier_display = entitlement.get("tier_display", "Free")
+            tier_emoji = {"free": "🆓", "premium": "⭐", "enterprise": "🏢"}.get(
+                entitlement.get("tier", "free"), "🆓"
+            )
+
+            status_text = f"""**Installation Status:**
+
+**Subscription:**
+- Tier: {tier_emoji} {tier_display}
+- Source: {entitlement.get('source', 'default')}"""
+
+            if entitlement.get("expires_at"):
+                days = entitlement.get("days_until_expiry")
+                if days is not None and days < 30:
+                    status_text += f"\n- ⚠️ Expires in {days} days"
+
+            status_text += f"\n\n**Packages ({len(packages)}):**"
+            for pkg_name, version in list(packages.items())[:5]:  # Show first 5
+                icon = "✓" if version not in ["missing", "dev"] else ("✗" if version == "missing" else "⚡")
+                status_text += f"\n- {icon} {pkg_name}: {version}"
+            if len(packages) > 5:
+                status_text += f"\n- ... and {len(packages) - 5} more"
+
+            if available:
+                status_text += f"\n\n**Available Agents ({len(available)}):**"
+                for agent in sorted(available)[:5]:
+                    status_text += f"\n- {agent}"
+                if len(available) > 5:
+                    status_text += f"\n- ... and {len(available) - 5} more"
+
+            if restricted:
+                status_text += f"\n\n**Premium Agents ({len(restricted)}):** (upgrade required)"
+                for agent in sorted(restricted)[:3]:
+                    status_text += f"\n- {agent}"
+                if len(restricted) > 3:
+                    status_text += f"\n- ... and {len(restricted) - 3} more"
+
             results.append_system_message(status_text)
 
         elif cmd == "/data":

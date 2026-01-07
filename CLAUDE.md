@@ -1043,7 +1043,8 @@ Useful CLI commands:
 
 | Category | Commands |
 |----------|----------|
-| Help | `/help`, `/status`, `/modes` |
+| Help | `/help`, `/modes` |
+| Session | `/session` (conversation state), `/status` (tier/packages/agents) |
 | Data | `/data`, `/files`, `/read <file>` |
 | Workspace | `/workspace`, `/workspace list`, `/workspace load <name>` |
 | Plots | `/plots` |

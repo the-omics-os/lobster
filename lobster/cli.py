@@ -519,7 +519,8 @@ def extract_available_commands() -> Dict[str, str]:
     # Static command definitions with descriptions (extracted from help text)
     command_descriptions = {
         "/help": "Show this help message",
-        "/status": "Show system status",
+        "/session": "Show current session status",
+        "/status": "Show subscription tier, packages, and agents",
         "/input-features": "Show input capabilities and navigation features",
         "/dashboard": "Switch to interactive dashboard (Textual UI)",
         "/status-panel": "Show comprehensive system status panel",
@@ -2520,8 +2521,168 @@ def _get_matrix_info(matrix) -> Dict[str, Any]:
     return info
 
 
-def display_status(client: "AgentClient"):
-    """Display current system status with enhanced orange theming."""
+def _display_status_info():
+    """
+    Display subscription tier, installed packages, and available agents.
+
+    Shared implementation for both 'lobster status' CLI command and '/status' chat command.
+    This function is client-independent and shows installation/license information.
+    """
+    from rich.table import Table
+
+    console.print()
+    console.print(
+        Panel.fit(
+            f"[bold {LobsterTheme.PRIMARY_ORANGE}]🦞 Lobster Status[/bold {LobsterTheme.PRIMARY_ORANGE}]",
+            border_style=LobsterTheme.PRIMARY_ORANGE,
+            padding=(0, 2),
+        )
+    )
+    console.print()
+
+    # Check initialization status
+    env_file = Path.cwd() / ".env"
+    is_initialized = env_file.exists()
+
+    if is_initialized:
+        console.print("[bold]Initialization:[/bold] ✅ Configured")
+        # Try to detect provider from .env
+        try:
+            from dotenv import dotenv_values
+            env_vars = dotenv_values(env_file)
+            provider = env_vars.get("LOBSTER_LLM_PROVIDER")
+            if provider:
+                console.print(f"[dim]Provider: {provider}[/dim]")
+            else:
+                # Auto-detect from available keys
+                if env_vars.get("ANTHROPIC_API_KEY"):
+                    console.print("[dim]Provider: anthropic (auto-detected)[/dim]")
+                elif env_vars.get("AWS_BEDROCK_ACCESS_KEY"):
+                    console.print("[dim]Provider: bedrock (auto-detected)[/dim]")
+                elif env_vars.get("OLLAMA_BASE_URL"):
+                    console.print("[dim]Provider: ollama (auto-detected)[/dim]")
+        except Exception:
+            pass  # Silently skip if dotenv not available
+        console.print(f"[dim]Config file: {env_file}[/dim]")
+    else:
+        console.print("[bold]Initialization:[/bold] ❌ Not configured")
+        console.print(
+            Panel.fit(
+                "[yellow]⚠️  Lobster is not initialized yet[/yellow]\n\n"
+                f"Run: [bold {LobsterTheme.PRIMARY_ORANGE}]lobster init[/bold {LobsterTheme.PRIMARY_ORANGE}]\n\n"
+                "[dim]This will configure your LLM provider (Anthropic/Bedrock/Ollama)[/dim]",
+                border_style="yellow",
+                padding=(1, 2),
+            )
+        )
+
+    console.print()
+
+    # Get entitlement status
+    try:
+        from lobster.core.license_manager import get_entitlement_status
+
+        entitlement = get_entitlement_status()
+    except ImportError:
+        entitlement = {"tier": "free", "tier_display": "Free", "source": "default"}
+
+    # Get installed packages
+    try:
+        from lobster.core.plugin_loader import get_installed_packages
+
+        packages = get_installed_packages()
+    except ImportError:
+        packages = {"lobster-ai": "unknown"}
+
+    # Get available agents
+    try:
+        from lobster.config.agent_registry import get_worker_agents
+        from lobster.config.subscription_tiers import is_agent_available
+
+        worker_agents = get_worker_agents()
+        tier = entitlement.get("tier", "free")
+        available = [name for name in worker_agents if is_agent_available(name, tier)]
+        restricted = [
+            name for name in worker_agents if not is_agent_available(name, tier)
+        ]
+    except ImportError:
+        available = []
+        restricted = []
+        tier = "free"
+
+    # Subscription tier section
+    tier_display = entitlement.get("tier_display", "Free")
+    tier_emoji = {"free": "🆓", "premium": "⭐", "enterprise": "🏢"}.get(
+        entitlement.get("tier", "free"), "🆓"
+    )
+
+    console.print(f"[bold]Subscription Tier:[/bold] {tier_emoji} {tier_display}")
+    console.print(f"[dim]Source: {entitlement.get('source', 'default')}[/dim]")
+
+    if entitlement.get("expires_at"):
+        days = entitlement.get("days_until_expiry")
+        if days is not None and days < 30:
+            console.print(f"[yellow]⚠️  License expires in {days} days[/yellow]")
+        else:
+            console.print(f"[dim]Expires: {entitlement.get('expires_at')}[/dim]")
+
+    if entitlement.get("warnings"):
+        for warning in entitlement["warnings"]:
+            console.print(f"[red]⚠️  {warning}[/red]")
+
+    console.print()
+
+    # Installed packages table
+    console.print("[bold]Installed Packages:[/bold]")
+    pkg_table = Table(box=box.ROUNDED, border_style="cyan", show_header=True)
+    pkg_table.add_column("Package", style="white")
+    pkg_table.add_column("Version", style="cyan")
+    pkg_table.add_column("Status", style="green")
+
+    for pkg_name, version in packages.items():
+        if version == "missing":
+            status_str = "[red]Missing[/red]"
+        elif version == "dev":
+            status_str = "[yellow]Development[/yellow]"
+        else:
+            status_str = "[green]Installed[/green]"
+        pkg_table.add_row(pkg_name, version, status_str)
+
+    console.print(pkg_table)
+    console.print()
+
+    # Available agents
+    if available:
+        console.print(f"[bold]Available Agents ({len(available)}):[/bold]")
+        agent_list = ", ".join(sorted(available))
+        console.print(f"[green]{agent_list}[/green]")
+        console.print()
+
+    # Restricted agents (upgrade prompt)
+    if restricted:
+        console.print(f"[bold]Premium Agents ({len(restricted)}):[/bold]")
+        restricted_list = ", ".join(sorted(restricted))
+        console.print(f"[dim]{restricted_list}[/dim]")
+        console.print()
+        console.print(
+            Panel.fit(
+                f"[yellow]⭐ Upgrade to Premium to unlock {len(restricted)} additional agents[/yellow]\n"
+                f"[dim]Visit https://omics-os.com/pricing or run 'lobster activate <code>'[/dim]",
+                border_style="yellow",
+                padding=(0, 2),
+            )
+        )
+
+    # Features
+    features = entitlement.get("features", [])
+    if features:
+        console.print()
+        console.print("[bold]Enabled Features:[/bold]")
+        console.print(f"[cyan]{', '.join(features)}[/cyan]")
+
+
+def display_session(client: "AgentClient"):
+    """Display current session status with enhanced orange theming."""
     status = client.get_status()
 
     # Get current mode/profile
@@ -2544,7 +2705,7 @@ def display_status(client: "AgentClient"):
         status_data["memory_usage"] = summary.get("memory_usage", "N/A")
 
     # Use the themed status panel
-    console_manager.print_status_panel(status_data, "System Status")
+    console_manager.print_status_panel(status_data, "Session Status")
 
 
 def _show_workspace_prompt(client):
@@ -2689,17 +2850,19 @@ def config_test(
     try:
         from lobster.config.llm_factory import LLMFactory, LLMProvider
 
-        provider = LLMFactory.detect_provider()
+        workspace_path = Path.cwd() / ".lobster_workspace"
+        provider = LLMFactory.get_current_provider(workspace_path=workspace_path)
         if provider is None:
             test_results["checks"]["llm_provider"]["message"] = "No API keys found"
             test_results["checks"]["llm_provider"]["hint"] = "Set ANTHROPIC_API_KEY, AWS_BEDROCK_ACCESS_KEY, or run Ollama"
             log("❌ No LLM provider configured", "red")
         else:
-            test_results["checks"]["llm_provider"]["provider"] = provider.value
-            log(f"  Detected provider: {provider.value}", "yellow")
+            # provider is a string, not an enum
+            test_results["checks"]["llm_provider"]["provider"] = provider
+            log(f"  Detected provider: {provider}", "yellow")
 
             # Provider-specific pre-checks for Ollama
-            if provider == LLMProvider.OLLAMA:
+            if provider == "ollama":
                 ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
                 log(f"  Checking Ollama server at {ollama_url}...", "yellow")
                 try:
@@ -2729,11 +2892,14 @@ def config_test(
             # Test LLM connectivity
             if provider is not None:
                 try:
-                    if provider == LLMProvider.OLLAMA:
+                    # provider is a string
+                    if provider == "ollama":
                         test_config = {"model_id": "", "temperature": 1.0, "max_tokens": 50}
-                    elif provider == LLMProvider.ANTHROPIC_DIRECT:
+                    elif provider == "anthropic":
                         test_config = {"model_id": "claude-3-5-haiku-20241022", "temperature": 1.0, "max_tokens": 50}
-                    else:  # Bedrock
+                    elif provider == "gemini":
+                        test_config = {"model_id": "gemini-2.0-flash-exp", "temperature": 1.0, "max_tokens": 50}
+                    else:  # bedrock
                         test_config = {"model_id": "us.anthropic.claude-3-5-haiku-20241022-v1:0", "temperature": 1.0, "max_tokens": 50}
 
                     test_llm = LLMFactory.create_llm(test_config, "config_test")
@@ -2742,7 +2908,7 @@ def config_test(
 
                     test_results["checks"]["llm_provider"]["status"] = "pass"
                     test_results["checks"]["llm_provider"]["message"] = "Connected"
-                    log(f"✅ {provider.value} API: Connected", "green")
+                    log(f"✅ {provider} API: Connected", "green")
                 except Exception as e:
                     error_msg = str(e)
                     if "invalid_api_key" in error_msg.lower() or "authentication" in error_msg.lower():
@@ -2756,7 +2922,7 @@ def config_test(
 
                     test_results["checks"]["llm_provider"]["message"] = error_msg[:100]
                     test_results["checks"]["llm_provider"]["hint"] = hint
-                    log(f"❌ {provider.value} API: {error_msg[:60]}", "red")
+                    log(f"❌ {provider} API: {error_msg[:60]}", "red")
     except Exception as e:
         test_results["checks"]["llm_provider"]["message"] = str(e)[:100]
         log(f"❌ LLM Provider test failed: {e}", "red")
@@ -2921,157 +3087,7 @@ def config_command(
 @app.command()
 def status():
     """Display subscription tier, installed packages, and available agents."""
-    from rich.table import Table
-
-    console.print()
-    console.print(
-        Panel.fit(
-            f"[bold {LobsterTheme.PRIMARY_ORANGE}]🦞 Lobster Status[/bold {LobsterTheme.PRIMARY_ORANGE}]",
-            border_style=LobsterTheme.PRIMARY_ORANGE,
-            padding=(0, 2),
-        )
-    )
-    console.print()
-
-    # Check initialization status
-    env_file = Path.cwd() / ".env"
-    is_initialized = env_file.exists()
-
-    if is_initialized:
-        console.print("[bold]Initialization:[/bold] ✅ Configured")
-        # Try to detect provider from .env
-        try:
-            from dotenv import dotenv_values
-            env_vars = dotenv_values(env_file)
-            provider = env_vars.get("LOBSTER_LLM_PROVIDER")
-            if provider:
-                console.print(f"[dim]Provider: {provider}[/dim]")
-            else:
-                # Auto-detect from available keys
-                if env_vars.get("ANTHROPIC_API_KEY"):
-                    console.print("[dim]Provider: anthropic (auto-detected)[/dim]")
-                elif env_vars.get("AWS_BEDROCK_ACCESS_KEY"):
-                    console.print("[dim]Provider: bedrock (auto-detected)[/dim]")
-                elif env_vars.get("OLLAMA_BASE_URL"):
-                    console.print("[dim]Provider: ollama (auto-detected)[/dim]")
-        except Exception:
-            pass  # Silently skip if dotenv not available
-        console.print(f"[dim]Config file: {env_file}[/dim]")
-    else:
-        console.print("[bold]Initialization:[/bold] ❌ Not configured")
-        console.print(
-            Panel.fit(
-                "[yellow]⚠️  Lobster is not initialized yet[/yellow]\n\n"
-                f"Run: [bold {LobsterTheme.PRIMARY_ORANGE}]lobster init[/bold {LobsterTheme.PRIMARY_ORANGE}]\n\n"
-                "[dim]This will configure your LLM provider (Anthropic/Bedrock/Ollama)[/dim]",
-                border_style="yellow",
-                padding=(1, 2),
-            )
-        )
-
-    console.print()
-
-    # Get entitlement status
-    try:
-        from lobster.core.license_manager import get_entitlement_status
-
-        entitlement = get_entitlement_status()
-    except ImportError:
-        entitlement = {"tier": "free", "tier_display": "Free", "source": "default"}
-
-    # Get installed packages
-    try:
-        from lobster.core.plugin_loader import get_installed_packages
-
-        packages = get_installed_packages()
-    except ImportError:
-        packages = {"lobster-ai": "unknown"}
-
-    # Get available agents
-    try:
-        from lobster.config.agent_registry import get_worker_agents
-        from lobster.config.subscription_tiers import is_agent_available
-
-        worker_agents = get_worker_agents()
-        tier = entitlement.get("tier", "free")
-        available = [name for name in worker_agents if is_agent_available(name, tier)]
-        restricted = [
-            name for name in worker_agents if not is_agent_available(name, tier)
-        ]
-    except ImportError:
-        available = []
-        restricted = []
-        tier = "free"
-
-    # Subscription tier section
-    tier_display = entitlement.get("tier_display", "Free")
-    tier_emoji = {"free": "🆓", "premium": "⭐", "enterprise": "🏢"}.get(
-        entitlement.get("tier", "free"), "🆓"
-    )
-
-    console.print(f"[bold]Subscription Tier:[/bold] {tier_emoji} {tier_display}")
-    console.print(f"[dim]Source: {entitlement.get('source', 'default')}[/dim]")
-
-    if entitlement.get("expires_at"):
-        days = entitlement.get("days_until_expiry")
-        if days is not None and days < 30:
-            console.print(f"[yellow]⚠️  License expires in {days} days[/yellow]")
-        else:
-            console.print(f"[dim]Expires: {entitlement.get('expires_at')}[/dim]")
-
-    if entitlement.get("warnings"):
-        for warning in entitlement["warnings"]:
-            console.print(f"[red]⚠️  {warning}[/red]")
-
-    console.print()
-
-    # Installed packages table
-    console.print("[bold]Installed Packages:[/bold]")
-    pkg_table = Table(box=box.ROUNDED, border_style="cyan", show_header=True)
-    pkg_table.add_column("Package", style="white")
-    pkg_table.add_column("Version", style="cyan")
-    pkg_table.add_column("Status", style="green")
-
-    for pkg_name, version in packages.items():
-        if version == "missing":
-            status_str = "[red]Missing[/red]"
-        elif version == "dev":
-            status_str = "[yellow]Development[/yellow]"
-        else:
-            status_str = "[green]Installed[/green]"
-        pkg_table.add_row(pkg_name, version, status_str)
-
-    console.print(pkg_table)
-    console.print()
-
-    # Available agents
-    if available:
-        console.print(f"[bold]Available Agents ({len(available)}):[/bold]")
-        agent_list = ", ".join(sorted(available))
-        console.print(f"[green]{agent_list}[/green]")
-        console.print()
-
-    # Restricted agents (upgrade prompt)
-    if restricted:
-        console.print(f"[bold]Premium Agents ({len(restricted)}):[/bold]")
-        restricted_list = ", ".join(sorted(restricted))
-        console.print(f"[dim]{restricted_list}[/dim]")
-        console.print()
-        console.print(
-            Panel.fit(
-                f"[yellow]⭐ Upgrade to Premium to unlock {len(restricted)} additional agents[/yellow]\n"
-                f"[dim]Visit https://omics-os.com/pricing or run 'lobster activate <code>'[/dim]",
-                border_style="yellow",
-                padding=(0, 2),
-            )
-        )
-
-    # Features
-    features = entitlement.get("features", [])
-    if features:
-        console.print()
-        console.print("[bold]Enabled Features:[/bold]")
-        console.print(f"[cyan]{', '.join(features)}[/cyan]")
+    _display_status_info()
 
 
 @app.command()
@@ -4495,7 +4511,8 @@ def _execute_command(cmd: str, client: "AgentClient") -> Optional[str]:
 
 [bold white]Key Commands:[/bold white]
 
-[{LobsterTheme.PRIMARY_ORANGE}]/status[/{LobsterTheme.PRIMARY_ORANGE}]       [grey50]-[/grey50] System status
+[{LobsterTheme.PRIMARY_ORANGE}]/session[/{LobsterTheme.PRIMARY_ORANGE}]      [grey50]-[/grey50] Current session status
+[{LobsterTheme.PRIMARY_ORANGE}]/status[/{LobsterTheme.PRIMARY_ORANGE}]       [grey50]-[/grey50] Subscription tier & agents
 [{LobsterTheme.PRIMARY_ORANGE}]/data[/{LobsterTheme.PRIMARY_ORANGE}]         [grey50]-[/grey50] Current data summary
 [{LobsterTheme.PRIMARY_ORANGE}]/workspace[/{LobsterTheme.PRIMARY_ORANGE}]    [grey50]-[/grey50] Workspace info
 [{LobsterTheme.PRIMARY_ORANGE}]/plots[/{LobsterTheme.PRIMARY_ORANGE}]        [grey50]-[/grey50] List generated plots
@@ -4516,8 +4533,12 @@ def _execute_command(cmd: str, client: "AgentClient") -> Optional[str]:
         output = ConsoleOutputAdapter(console)
         return data_summary(client, output)
 
+    elif cmd == "/session":
+        display_session(client)
+
     elif cmd == "/status":
-        display_status(client)
+        # Display subscription tier, packages, and agents (replicates CLI 'lobster status')
+        _display_status_info()
 
     elif cmd == "/tokens":
         # Display token usage and cost information
@@ -5699,12 +5720,121 @@ def show_config(
 
 @config_app.command(name="test")
 def test(
-    profile: str = typer.Option(..., "--profile", "-p", help="Profile to test"),
+    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile to test (optional, auto-detects if not provided)"),
     agent: Optional[str] = typer.Option(
         None, "--agent", "-a", help="Specific agent to test"
     ),
 ):
-    """Test a specific configuration."""
+    """Test LLM provider connectivity and configuration.
+
+    If no --profile is specified, auto-detects the currently configured provider
+    and tests basic connectivity. With --profile, tests the full agent configuration.
+    """
+    # Load .env file for provider detection
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    # If no profile specified, test current provider connectivity
+    if not profile:
+        console.print()
+        console.print(
+            Panel.fit(
+                f"[bold {LobsterTheme.PRIMARY_ORANGE}]🔍 Testing LLM Provider[/bold {LobsterTheme.PRIMARY_ORANGE}]",
+                border_style=LobsterTheme.PRIMARY_ORANGE,
+                padding=(0, 2),
+            )
+        )
+        console.print()
+
+        from lobster.config.providers import ProviderRegistry
+        from lobster.config.llm_factory import LLMFactory
+
+        # Auto-detect current provider (use ProviderRegistry directly)
+        try:
+            # Get list of configured providers
+            configured = ProviderRegistry.get_configured_providers()
+
+            if not configured:
+                console.print("[red]❌ No LLM provider configured[/red]")
+                console.print("[yellow]💡 Run 'lobster init' to configure a provider[/yellow]")
+                raise typer.Exit(1)
+
+            # Check environment variable first
+            import os
+            explicit_provider = os.getenv("LOBSTER_LLM_PROVIDER")
+            if explicit_provider and explicit_provider in [p.name for p in configured]:
+                provider = explicit_provider
+            else:
+                # Use first configured provider
+                provider = configured[0].name
+
+            if provider is None:
+                console.print("[red]❌ No LLM provider configured[/red]")
+                console.print("[yellow]💡 Run 'lobster init' to configure a provider[/yellow]")
+                raise typer.Exit(1)
+
+            # provider is a string, not an enum
+            console.print(f"[cyan]Detected provider:[/cyan] {provider}")
+            console.print()
+
+            # Test provider connectivity
+            console.print("[yellow]Testing API connectivity...[/yellow]")
+
+            try:
+                # Get provider object and create model directly (bypass ConfigResolver)
+                from lobster.config.providers import get_provider
+                provider_obj = get_provider(provider)
+
+                if not provider_obj:
+                    raise Exception(f"Provider '{provider}' not found in registry")
+
+                # Get default model for provider
+                default_model = provider_obj.get_default_model()
+
+                # Create test model directly via provider
+                test_llm = provider_obj.create_chat_model(
+                    model_id=default_model,
+                    temperature=1.0,
+                    max_tokens=50
+                )
+
+                response = test_llm.invoke("Reply with just 'ok'")
+
+                console.print()
+                console.print(
+                    Panel.fit(
+                        f"[bold green]✅ Provider Test Successful[/bold green]\n\n"
+                        f"Provider: [cyan]{provider}[/cyan]\n"
+                        f"Status: [green]Connected[/green]\n\n"
+                        f"Your {provider} provider is working correctly.\n"
+                        f"Run [bold {LobsterTheme.PRIMARY_ORANGE}]lobster chat[/bold {LobsterTheme.PRIMARY_ORANGE}] to start analyzing!",
+                        border_style="green",
+                        padding=(1, 2),
+                    )
+                )
+                return True
+
+            except Exception as e:
+                error_msg = str(e)
+                console.print()
+                console.print(
+                    Panel.fit(
+                        f"[bold red]❌ Provider Test Failed[/bold red]\n\n"
+                        f"Provider: [cyan]{provider}[/cyan]\n"
+                        f"Error: [red]{error_msg[:100]}[/red]\n\n"
+                        f"[yellow]💡 Check your API keys in .env file[/yellow]\n"
+                        f"Run [bold {LobsterTheme.PRIMARY_ORANGE}]lobster init --force[/bold {LobsterTheme.PRIMARY_ORANGE}] to reconfigure",
+                        border_style="red",
+                        padding=(1, 2),
+                    )
+                )
+                raise typer.Exit(1)
+
+        except Exception as e:
+            console.print(f"[red]❌ Error: {str(e)}[/red]")
+            raise typer.Exit(1)
+
+    # Profile-based testing (original functionality)
     try:
         configurator = initialize_configurator(profile=profile)
 
