@@ -7,8 +7,11 @@ This guide covers all aspects of configuring Lobster AI, from basic API key setu
 The easiest way to configure Lobster AI is using the interactive wizard:
 
 ```bash
-# Launch interactive configuration wizard
+# Workspace-specific configuration (default)
 lobster init
+
+# Global configuration for all workspaces (v0.4+)
+lobster init --global
 
 # Test your configuration
 lobster config test
@@ -16,6 +19,23 @@ lobster config test
 # View your configuration (secrets masked)
 lobster config show
 ```
+
+### What's New in v0.4: External Workspaces
+
+You can now work with data in **any directory** without per-directory setup:
+
+```bash
+# Set global defaults once
+lobster init --global
+
+# Use any workspace - just works!
+lobster chat --workspace ~/Documents/project1
+lobster chat --workspace ~/Desktop/quick_analysis
+lobster query "cluster cells" --workspace /tmp/test_data
+```
+
+**Before v0.4:** Each workspace needed its own `.env` file
+**After v0.4:** Global config (`~/.config/lobster/providers.json`) provides defaults
 
 For advanced configuration options, continue reading below.
 
@@ -139,23 +159,32 @@ LOBSTER_LLM_PROVIDER=gemini
 
 **Note**: Gemini 3.0+ models require `temperature=1.0` (lower values can cause issues).
 
-### Provider Auto-Detection
+### Configuration Resolution Priority (v0.4+)
 
-Lobster AI automatically detects which provider to use based on available configuration in this priority order:
+Lobster AI uses a **5-layer priority hierarchy** for provider configuration:
 
-1. **Explicit override**: `LOBSTER_LLM_PROVIDER` environment variable
-2. **Ollama detection**: If Ollama server is running (http://localhost:11434)
-3. **Anthropic API**: If `ANTHROPIC_API_KEY` is set
-4. **AWS Bedrock**: If `AWS_BEDROCK_ACCESS_KEY` and `AWS_BEDROCK_SECRET_ACCESS_KEY` are set
-5. **Google Gemini**: If `GOOGLE_API_KEY` is set
+1. **Runtime CLI flags**: `--provider` (highest priority, overrides everything)
+2. **Workspace config**: `.lobster_workspace/provider_config.json` (project-specific)
+3. **Global user config**: `~/.config/lobster/providers.json` (user-wide defaults)
+4. **Environment variable**: `LOBSTER_LLM_PROVIDER` (temporary override)
+5. **FAIL**: Requires explicit configuration (no auto-detection)
 
 **Force a specific provider:**
-```env
-LOBSTER_LLM_PROVIDER=ollama      # Local LLM
-LOBSTER_LLM_PROVIDER=anthropic   # Claude API
-LOBSTER_LLM_PROVIDER=bedrock     # AWS Bedrock
-LOBSTER_LLM_PROVIDER=gemini      # Google Gemini
+```bash
+# Runtime override (highest priority)
+lobster chat --provider anthropic
+
+# Global defaults (applies to all workspaces)
+lobster init --global
+
+# Environment variable (temporary override)
+export LOBSTER_LLM_PROVIDER=ollama
+
+# Workspace-specific (project defaults)
+lobster init  # Creates .env + provider_config.json
 ```
+
+**Model resolution** follows the same hierarchy plus provider defaults.
 
 ### Running Multiple Sessions with Different Providers
 
@@ -246,11 +275,17 @@ cd project2 && lobster chat  # Auto-uses Claude
 When multiple configurations exist, Lobster uses this resolution order:
 
 ```
-1. CLI flag (--provider)                      [Coming Soon]
-2. Workspace config (.lobster_workspace/config.json)  [Coming Soon]
-3. Environment variable (LOBSTER_LLM_PROVIDER)        [Current]
-4. Auto-detection (Ollama → Anthropic → Bedrock)     [Current]
+1. Runtime CLI flag (--provider)                           [✅ v0.4+]
+2. Workspace config (.lobster_workspace/provider_config.json)  [✅ Current]
+3. Global user config (~/.config/lobster/providers.json)      [✅ v0.4+]
+4. Environment variable (LOBSTER_LLM_PROVIDER)                [✅ Current]
+5. FAIL with diagnostic message                               [✅ v0.4+]
 ```
+
+**Key improvements in v0.4:**
+- Added global user config for user-wide defaults
+- External workspaces now inherit from global config
+- Better error diagnostics showing what was checked
 
 #### Practical Example: Development Workflow
 
@@ -586,8 +621,11 @@ LOBSTER_SSL_CERT_PATH=
 The recommended way to configure Lobster AI:
 
 ```bash
-# Launch interactive configuration wizard
+# Workspace-specific configuration (default)
 lobster init
+
+# Global configuration for all workspaces (v0.4+)
+lobster init --global
 
 # The wizard will:
 # 1. Prompt you to choose LLM provider:
@@ -600,8 +638,58 @@ lobster init
 #    - Ollama: Check installation, list available models
 #    - Gemini: Collect Google API key, select model (Pro/Flash)
 # 3. Optionally configure NCBI API key
-# 4. Save configuration to .env file in current directory
+# 4. Save configuration:
+#    - Workspace mode: .env + .lobster_workspace/provider_config.json
+#    - Global mode: ~/.config/lobster/providers.json
 ```
+
+**When to use `--global`:**
+- Set user-wide defaults that apply to all workspaces
+- Enable seamless use of external workspaces without per-workspace setup
+- Ideal for users who want consistent settings across projects
+
+**Global config location (platform-specific):**
+- **Linux/macOS**: `~/.config/lobster/providers.json` (CLI convention)
+- **Windows**: `%APPDATA%\lobster\providers.json` (e.g., `C:\Users\Name\AppData\Roaming\lobster\providers.json`)
+
+### External Workspaces (v0.4+)
+
+External workspaces allow you to work with data in any directory without per-directory configuration:
+
+```bash
+# Step 1: Set global defaults (one-time)
+lobster init --global
+
+# Step 2: Use any workspace seamlessly
+lobster chat --workspace ~/Documents/project1
+lobster chat --workspace ~/Desktop/analysis
+lobster query "analyze data" --workspace /tmp/quick_test
+
+# All workspaces inherit from your global config!
+```
+
+**How it works:**
+1. You run `lobster init --global` to set user-wide provider defaults
+2. When you use `--workspace` with a directory that has no config:
+   - Lobster checks `.lobster_workspace/provider_config.json` (not found)
+   - Falls back to global config (platform-specific location)
+   - Uses your defaults seamlessly
+
+**Global config locations:**
+- Linux/macOS: `~/.config/lobster/providers.json`
+- Windows: `%APPDATA%\lobster\providers.json`
+
+**Override for specific workspace:**
+```bash
+cd ~/special_project
+lobster init  # Creates workspace-specific config
+lobster chat  # Uses workspace config (overrides global)
+```
+
+**Best practices:**
+- Use global config for your typical setup (e.g., Ollama for privacy)
+- Use workspace config only when a project needs different settings
+- Store API keys in environment variables (not in config files)
 
 ### Configuration Commands
 
@@ -667,11 +755,16 @@ lobster config test --profile production --agent transcriptomics_expert
 ```bash
 # Reconfigure (creates timestamped backup of existing .env)
 lobster init --force
+lobster init --global --force
 
 # Non-interactive mode for CI/CD and automation
 
-# Option 1: Claude API
+# Option 1: Claude API (workspace)
 lobster init --non-interactive \
+  --anthropic-key=sk-ant-xxx
+
+# Option 1b: Claude API (global defaults)
+lobster init --global --non-interactive \
   --anthropic-key=sk-ant-xxx
 
 # Option 2: AWS Bedrock
@@ -679,8 +772,8 @@ lobster init --non-interactive \
   --bedrock-access-key=AKIA... \
   --bedrock-secret-key=xxx
 
-# Option 3: Ollama (Local)
-lobster init --non-interactive \
+# Option 3: Ollama (Local) - Global
+lobster init --global --non-interactive \
   --use-ollama
 
 # Ollama with custom model
@@ -688,8 +781,8 @@ lobster init --non-interactive \
   --use-ollama \
   --ollama-model=mixtral:8x7b-instruct
 
-# Option 4: Google Gemini
-lobster init --non-interactive \
+# Option 4: Google Gemini - Global
+lobster init --global --non-interactive \
   --gemini-key=your-google-api-key
 
 # Gemini with specific model
@@ -702,6 +795,12 @@ lobster init --non-interactive \
   --anthropic-key=sk-ant-xxx \
   --ncbi-key=your-ncbi-key
 ```
+
+**Global vs Workspace Configuration:**
+- `lobster init` (default): Creates `.env` + workspace config in current directory
+- `lobster init --global`: Creates `~/.config/lobster/providers.json` for all workspaces
+- Global config is ideal for users who want consistent settings across all projects
+- Workspace config overrides global config (project-specific needs)
 
 ### Manual Configuration
 
@@ -825,25 +924,45 @@ class GlobalProviderConfig(ProviderConfigBase):
     # Fields: default_provider, anthropic_default_model, bedrock_default_model, etc.
 ```
 
-### Configuration Priority System
+### Configuration Priority System (v0.4+)
 
-Lobster AI uses a **6-level priority system** for configuration resolution:
+Lobster AI uses a **5-layer priority system** for configuration resolution:
 
 ```
-1. Runtime overrides (highest priority)
-   ↓
-2. Workspace config (.lobster_workspace/.config.yaml)
-   ↓
-3. Global config (~/.lobster/global_config.yaml)
-   ↓
-4. Environment variables (.env)
-   ↓
-5. Auto-detection (e.g., Ollama server check)
-   ↓
-6. Defaults (lowest priority)
+1. Runtime CLI flags (highest priority)
+   ↓  --provider, --model
+2. Workspace config
+   ↓  .lobster_workspace/provider_config.json
+3. Global user config
+   ↓  ~/.config/lobster/providers.json
+4. Environment variable
+   ↓  LOBSTER_LLM_PROVIDER
+5. FAIL with diagnostic message (lowest priority)
+   ↓  No auto-detection, no silent defaults
 ```
 
-**Implementation**: `lobster/core/config_resolver.py` imports from `constants.py` and resolves configuration using the priority chain.
+**Implementation**: `lobster/core/config_resolver.py`
+
+**Design Philosophy:**
+- **No auto-detection**: Prevents unexpected costs from accidental API usage
+- **Explicit configuration**: Users must consciously choose a provider
+- **Diagnostic errors**: Shows exactly what was checked when config is missing
+- **Multiple layers**: Supports workspace overrides and global defaults
+
+**Example diagnostic error:**
+```
+❌ No provider configured.
+
+Checked (in priority order):
+  ✗ Runtime flag: --provider not provided
+  ✗ Workspace config: .lobster_workspace/provider_config.json (not found)
+  ✗ Global config: ~/.config/lobster/providers.json (not found)
+  ✗ Environment: LOBSTER_LLM_PROVIDER (not set)
+
+Quick Setup:
+  lobster init              # Configure this workspace
+  lobster init --global     # Set global defaults for all workspaces
+```
 
 ### Adding a New Provider (Developer Guide)
 
@@ -891,8 +1010,61 @@ The constants pattern ensures that provider validation automatically includes th
 
 ## Troubleshooting Configuration
 
+### Diagnostic Error Messages (v0.4+)
+
+When provider configuration is missing, Lobster now shows **exactly what was checked**:
+
+```
+❌ No provider configured.
+
+Checked (in priority order):
+  ✗ Runtime flag: --provider not provided
+  ✗ Workspace config: /path/to/workspace/provider_config.json (not found)
+  ✗ Global config: ~/.config/lobster/providers.json (not found)
+  ✗ Environment: LOBSTER_LLM_PROVIDER (not set)
+
+Quick Setup:
+  lobster init              # Configure this workspace
+  lobster init --global     # Set global defaults for all workspaces
+
+Or set environment variable:
+  export LOBSTER_LLM_PROVIDER=anthropic
+```
+
+This makes troubleshooting much easier - you can see which configuration sources were checked and why they failed.
+
+### Common Issues
+
+**Issue: "No provider configured" in external workspace**
+```bash
+# Solution: Set global defaults (one-time)
+lobster init --global
+# Now all external workspaces work automatically
+```
+
+**Issue: Wrong provider being used**
+```bash
+# Check priority order - workspace overrides global
+lobster config show-config  # See which config is active
+
+# Force specific provider for this session
+lobster chat --provider anthropic
+```
+
+**Issue: Invalid environment variable**
+```bash
+# v0.4+ raises explicit error for invalid values
+export LOBSTER_LLM_PROVIDER=typo
+lobster chat
+# Error: Invalid provider 'typo' in LOBSTER_LLM_PROVIDER
+```
+
+### Configuration Commands
+
 -   Use `lobster config show` to see your current configuration with masked secrets.
+-   Use `lobster config show-config` to see runtime resolution (provider, models, sources).
 -   Use `lobster config test` to validate API connectivity and test your configuration.
 -   Use `lobster init --force` to reconfigure (creates a backup of your existing .env file).
+-   Use `lobster init --global` to set user-wide defaults for all workspaces.
 -   Run `lobster chat --debug` for verbose configuration loading information.
 -   If you see "No configuration found" errors, run `lobster init` to create your .env file.
