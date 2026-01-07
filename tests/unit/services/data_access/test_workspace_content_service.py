@@ -88,6 +88,7 @@ class TestContentTypeEnum:
             "publication",
             "dataset",
             "metadata",
+            "exports",
             "download_queue",
             "publication_queue",
         }

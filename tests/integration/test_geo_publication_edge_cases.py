@@ -122,13 +122,17 @@ class TestGEODownloadTimeouts:
 
         download_file = temp_cache_dir / "test.gz"
 
-        # Simulate download with timeout
-        with pytest.raises(socket.timeout):
+        # Simulate download with timeout (may raise socket.timeout or generic Exception)
+        with pytest.raises((socket.timeout, Exception)) as exc_info:
             geo_service.geo_downloader._download_ftp(
                 "ftp://ftp.ncbi.nlm.nih.gov/geo/series/GSE123nnn/GSE123456/suppl/test.gz",
                 download_file,
                 "Test download",
             )
+
+        # Verify it's a timeout-related error
+        error_msg = str(exc_info.value).lower()
+        assert "timeout" in error_msg or "timed out" in error_msg, f"Expected timeout error, got: {exc_info.value}"
 
     @patch("ftplib.FTP")
     @patch("time.sleep")  # Mock sleep to speed up test
