@@ -2895,7 +2895,6 @@ write_to_workspace(
 - {{identifier}}_harmonization_log.tsv (audit trail)
 
 **When to Use execute_custom_code**:
-- ONLY if field coverage <70% after process_metadata_queue
 - ONLY for secondary enrichment (demographics, sample-level computations)
 - NOT for renaming variables or preparing data for export
 
