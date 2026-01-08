@@ -6,7 +6,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2026-01-08 00:46:34
+# Generated: 2026-01-08 12:23:14
 # =============================================================================
 
 
@@ -555,4 +555,7 @@ lobster/agents/visualization_expert.py
 
 # Premium extraction cache
 !lobster/core/extraction_cache.py
+
+# Premium configuration (entry point configs for custom packages)
+!lobster/config/premium_agent_configs.py
 

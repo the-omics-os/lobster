@@ -236,7 +236,7 @@ def metadata_assistant(
         Compiled LangGraph agent with metadata tools
     """
     settings = get_settings()
-    model_params = settings.get_agent_llm_params("assistant")
+    model_params = settings.get_agent_llm_params("metadata_assistant")
     llm = create_llm("metadata_assistant", model_params, workspace_path=workspace_path)
 
     # Normalize callbacks to a flat list (fix double-nesting bug)

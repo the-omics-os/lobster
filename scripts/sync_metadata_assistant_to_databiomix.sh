@@ -5,13 +5,14 @@
 
 ## Purpose
 
-# Automatically sync metadata pipeline files (3 files) from the private `lobster` package
+# Automatically sync metadata pipeline files (4 files) from the private `lobster` package
 # to the custom `lobster-custom-databiomix` package with proper import path rewriting.
 #
 # Files synced:
 # 1. metadata_assistant.py (agent)
 # 2. metadata_filtering_service.py (service with disease fallback chain)
 # 3. microbiome_filtering_service.py (service with metagenome HOST_ALIASES)
+# 4. premium_agent_configs.py → agent_configs.py (LLM config for metadata_assistant)
 
 # ## Usage
 
@@ -25,10 +26,11 @@
 
 # ## What It Does
 
-# 1. **Copies 3 files**:
+# 1. **Copies 4 files**:
 #    - `lobster/agents/metadata_assistant.py` → `lobster_custom_databiomix/agents/metadata_assistant.py`
 #    - `lobster/services/metadata/metadata_filtering_service.py` → `lobster_custom_databiomix/services/metadata/metadata_filtering_service.py`
 #    - `lobster/services/metadata/microbiome_filtering_service.py` → `lobster_custom_databiomix/services/metadata/microbiome_filtering_service.py`
+#    - `lobster/config/premium_agent_configs.py` → `lobster_custom_databiomix/config/agent_configs.py`
 # 2. **Rewrites imports** for premium services:
 #    - `lobster.services.metadata.*` → `lobster_custom_databiomix.services.metadata.*`
 #    - `factory_function="lobster.agents.*"` → `factory_function="lobster_custom_databiomix.agents.*"`
@@ -157,10 +159,14 @@ TARGET_METADATA_FILTERING="$DATABIOMIX_ROOT/lobster_custom_databiomix/services/m
 SOURCE_MICROBIOME_FILTERING="$LOBSTER_ROOT/lobster/services/metadata/microbiome_filtering_service.py"
 TARGET_MICROBIOME_FILTERING="$DATABIOMIX_ROOT/lobster_custom_databiomix/services/metadata/microbiome_filtering_service.py"
 
+SOURCE_CONFIG="$LOBSTER_ROOT/lobster/config/premium_agent_configs.py"
+TARGET_CONFIG="$DATABIOMIX_ROOT/lobster_custom_databiomix/config/agent_configs.py"
+
 # Temp files
 TEMP_AGENT="/tmp/metadata_assistant_sync_$$.py"
 TEMP_METADATA_FILTERING="/tmp/metadata_filtering_sync_$$.py"
 TEMP_MICROBIOME_FILTERING="/tmp/microbiome_filtering_sync_$$.py"
+TEMP_CONFIG="/tmp/premium_agent_configs_sync_$$.py"
 
 # Check if dry-run mode
 DRY_RUN=false
@@ -171,7 +177,7 @@ fi
 
 # Verify all source files exist
 echo "Verifying source files..."
-for src in "$SOURCE_AGENT" "$SOURCE_METADATA_FILTERING" "$SOURCE_MICROBIOME_FILTERING"; do
+for src in "$SOURCE_AGENT" "$SOURCE_METADATA_FILTERING" "$SOURCE_MICROBIOME_FILTERING" "$SOURCE_CONFIG"; do
     if [ ! -f "$src" ]; then
         echo -e "${RED}✗ Source file not found: $src${NC}"
         exit 1
@@ -182,7 +188,7 @@ echo ""
 
 # Verify target directories exist
 echo "Verifying target directories..."
-for tgt in "$TARGET_AGENT" "$TARGET_METADATA_FILTERING" "$TARGET_MICROBIOME_FILTERING"; do
+for tgt in "$TARGET_AGENT" "$TARGET_METADATA_FILTERING" "$TARGET_MICROBIOME_FILTERING" "$TARGET_CONFIG"; do
     TARGET_DIR="$(dirname "$tgt")"
     if [ ! -d "$TARGET_DIR" ]; then
         echo -e "${RED}✗ Target directory not found: $TARGET_DIR${NC}"
@@ -192,10 +198,11 @@ done
 echo -e "${GREEN}✓${NC} All target directories found"
 echo ""
 
-echo "Syncing DataBioMix bug fixes (3 files)..."
+echo "Syncing DataBioMix bug fixes (4 files)..."
 echo "  1. metadata_assistant.py"
 echo "  2. metadata_filtering_service.py"
 echo "  3. microbiome_filtering_service.py"
+echo "  4. premium_agent_configs.py → agent_configs.py"
 echo ""
 
 # ============================================================================
@@ -245,7 +252,7 @@ rewrite_imports() {
 # ============================================================================
 # Step 1: Sync metadata_assistant.py (Agent)
 # ============================================================================
-echo -e "${YELLOW}[1/3] Syncing metadata_assistant.py${NC}"
+echo -e "${YELLOW}[1/4] Syncing metadata_assistant.py${NC}"
 
 if [ ! -f "$SOURCE_AGENT" ]; then
     echo -e "${RED}✗ Source not found: $SOURCE_AGENT${NC}"
@@ -275,7 +282,7 @@ echo ""
 # ============================================================================
 # Step 2: Sync metadata_filtering_service.py (Service)
 # ============================================================================
-echo -e "${YELLOW}[2/3] Syncing metadata_filtering_service.py${NC}"
+echo -e "${YELLOW}[2/4] Syncing metadata_filtering_service.py${NC}"
 
 if [ ! -f "$SOURCE_METADATA_FILTERING" ]; then
     echo -e "${RED}✗ Source not found: $SOURCE_METADATA_FILTERING${NC}"
@@ -297,7 +304,7 @@ echo ""
 # ============================================================================
 # Step 3: Sync microbiome_filtering_service.py (Service)
 # ============================================================================
-echo -e "${YELLOW}[3/3] Syncing microbiome_filtering_service.py${NC}"
+echo -e "${YELLOW}[3/4] Syncing microbiome_filtering_service.py${NC}"
 
 if [ ! -f "$SOURCE_MICROBIOME_FILTERING" ]; then
     echo -e "${RED}✗ Source not found: $SOURCE_MICROBIOME_FILTERING${NC}"
@@ -319,6 +326,30 @@ echo -e "  ${GREEN}✓${NC} No import rewrites needed (uses public lobster.core 
 echo ""
 
 # ============================================================================
+# Step 4: Sync premium_agent_configs.py → agent_configs.py (Config)
+# ============================================================================
+echo -e "${YELLOW}[4/4] Syncing premium_agent_configs.py → agent_configs.py${NC}"
+
+if [ ! -f "$SOURCE_CONFIG" ]; then
+    echo -e "${RED}✗ Source not found: $SOURCE_CONFIG${NC}"
+    exit 1
+fi
+
+# Get file stats
+stats=$(get_file_stats "$SOURCE_CONFIG")
+lines=$(echo "$stats" | cut -d':' -f1)
+classes=$(echo "$stats" | cut -d':' -f2)
+functions=$(echo "$stats" | cut -d':' -f3)
+
+echo "  Source: $lines lines, $classes classes, $functions functions"
+
+# Note: premium_agent_configs.py only imports from lobster.config (public)
+# No import rewriting needed - config imports stay as 'lobster.config.*'
+cp "$SOURCE_CONFIG" "$TEMP_CONFIG"
+echo -e "  ${GREEN}✓${NC} No import rewrites needed (uses public lobster.config only)"
+echo ""
+
+# ============================================================================
 # Dry-run mode: Show diffs
 # ============================================================================
 if [ "$DRY_RUN" = true ]; then
@@ -328,7 +359,7 @@ if [ "$DRY_RUN" = true ]; then
     echo -e "${YELLOW}========================================${NC}"
     echo ""
 
-    echo -e "${YELLOW}[1/3] metadata_assistant.py:${NC}"
+    echo -e "${YELLOW}[1/4] metadata_assistant.py:${NC}"
     diff_output=$(diff -u "$TARGET_AGENT" "$TEMP_AGENT" 2>/dev/null || true)
     if [ -z "$diff_output" ]; then
         echo -e "  ${GREEN}✓${NC} No changes (files identical)"
@@ -340,7 +371,7 @@ if [ "$DRY_RUN" = true ]; then
     fi
     echo ""
 
-    echo -e "${YELLOW}[2/3] metadata_filtering_service.py:${NC}"
+    echo -e "${YELLOW}[2/4] metadata_filtering_service.py:${NC}"
     diff_output=$(diff -u "$TARGET_METADATA_FILTERING" "$TEMP_METADATA_FILTERING" 2>/dev/null || true)
     if [ -z "$diff_output" ]; then
         echo -e "  ${GREEN}✓${NC} No changes (files identical)"
@@ -352,7 +383,7 @@ if [ "$DRY_RUN" = true ]; then
     fi
     echo ""
 
-    echo -e "${YELLOW}[3/3] microbiome_filtering_service.py:${NC}"
+    echo -e "${YELLOW}[3/4] microbiome_filtering_service.py:${NC}"
     diff_output=$(diff -u "$TARGET_MICROBIOME_FILTERING" "$TEMP_MICROBIOME_FILTERING" 2>/dev/null || true)
     if [ -z "$diff_output" ]; then
         echo -e "  ${GREEN}✓${NC} No changes (files identical)"
@@ -364,8 +395,20 @@ if [ "$DRY_RUN" = true ]; then
     fi
     echo ""
 
+    echo -e "${YELLOW}[4/4] premium_agent_configs.py → agent_configs.py:${NC}"
+    diff_output=$(diff -u "$TARGET_CONFIG" "$TEMP_CONFIG" 2>/dev/null || true)
+    if [ -z "$diff_output" ]; then
+        echo -e "  ${GREEN}✓${NC} No changes (files identical)"
+    else
+        additions=$(echo "$diff_output" | grep -c "^+" || echo 0)
+        deletions=$(echo "$diff_output" | grep -c "^-" || echo 0)
+        echo -e "  ${YELLOW}Changes:${NC} +$additions lines, -$deletions lines"
+        echo "$diff_output"
+    fi
+    echo ""
+
     # Cleanup temp files
-    rm "$TEMP_AGENT" "$TEMP_METADATA_FILTERING" "$TEMP_MICROBIOME_FILTERING"
+    rm "$TEMP_AGENT" "$TEMP_METADATA_FILTERING" "$TEMP_MICROBIOME_FILTERING" "$TEMP_CONFIG"
     exit 0
 fi
 
@@ -382,8 +425,11 @@ echo -e "${GREEN}✓${NC} Applied metadata_filtering_service.py"
 cp "$TEMP_MICROBIOME_FILTERING" "$TARGET_MICROBIOME_FILTERING"
 echo -e "${GREEN}✓${NC} Applied microbiome_filtering_service.py"
 
+cp "$TEMP_CONFIG" "$TARGET_CONFIG"
+echo -e "${GREEN}✓${NC} Applied premium_agent_configs.py → agent_configs.py"
+
 # Cleanup temp files
-rm "$TEMP_AGENT" "$TEMP_METADATA_FILTERING" "$TEMP_MICROBIOME_FILTERING"
+rm "$TEMP_AGENT" "$TEMP_METADATA_FILTERING" "$TEMP_MICROBIOME_FILTERING" "$TEMP_CONFIG"
 
 echo ""
 echo -e "${GREEN}✓ Sync complete!${NC}"
@@ -398,7 +444,7 @@ total_classes=0
 total_functions=0
 total_tools=0
 
-for src in "$SOURCE_AGENT" "$SOURCE_METADATA_FILTERING" "$SOURCE_MICROBIOME_FILTERING"; do
+for src in "$SOURCE_AGENT" "$SOURCE_METADATA_FILTERING" "$SOURCE_MICROBIOME_FILTERING" "$SOURCE_CONFIG"; do
     stats=$(get_file_stats "$src")
     lines=$(echo "$stats" | cut -d':' -f1)
     classes=$(echo "$stats" | cut -d':' -f2)
@@ -416,10 +462,11 @@ echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Summary${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
-echo "Files synced: 3"
+echo "Files synced: 4"
 echo "  • metadata_assistant.py (agent)"
 echo "  • metadata_filtering_service.py (service)"
 echo "  • microbiome_filtering_service.py (service)"
+echo "  • premium_agent_configs.py → agent_configs.py (LLM config)"
 echo ""
 echo "Total transferred:"
 echo "  • Lines:     $total_lines"
@@ -430,10 +477,10 @@ echo ""
 echo "Import rewrites:"
 echo "  • Premium services (lobster.services.metadata.* → lobster_custom_databiomix.*)"
 echo "  • Factory function (lobster.agents.* → lobster_custom_databiomix.agents.*)"
-echo "  • Public imports preserved (lobster.core.* unchanged)"
+echo "  • Public imports preserved (lobster.core.*, lobster.config.* unchanged)"
 echo ""
 echo "Next steps:"
 echo "  1. Review changes: cd $DATABIOMIX_ROOT && git diff"
-echo "  2. Test imports:   python -c 'from lobster_custom_databiomix.agents.metadata_assistant import metadata_assistant'"
+echo "  2. Test imports:   python -c 'from lobster_custom_databiomix.config.agent_configs import METADATA_ASSISTANT_CONFIG'"
 echo "  3. Run tests:      cd $DATABIOMIX_ROOT && pytest tests/unit/ -v"
-echo "  4. Commit:         cd $DATABIOMIX_ROOT && git add . && git commit -m 'fix: sync DataBioMix metadata pipeline bug fixes'"
+echo "  4. Commit:         cd $DATABIOMIX_ROOT && git add . && git commit -m 'fix: sync DataBioMix metadata pipeline and LLM config'"

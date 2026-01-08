@@ -616,6 +616,9 @@ ALWAYS_EXCLUDED = """
 # Premium extraction cache
 !lobster/core/extraction_cache.py
 
+# Premium configuration (entry point configs for custom packages)
+!lobster/config/premium_agent_configs.py
+
 """
 
 
