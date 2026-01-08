@@ -263,6 +263,7 @@ lobster/config/base_config.py
 lobster/config/model_service.py
 lobster/config/ollama_service.py
 lobster/config/ssl_setup.py
+lobster/config/version_check.py
 lobster/config/README_CONFIGURATION.md
 lobster/config/README_THINKING.md
 
