@@ -20,7 +20,7 @@ from lobster.config.agent_registry import AgentRegistryConfig
 AGENT_CONFIG = AgentRegistryConfig(
     name="metadata_assistant",
     display_name="Metadata Assistant",
-    description="Handles cross-dataset metadata operations including sample ID mapping (exact/fuzzy/pattern/metadata strategies), metadata standardization using Pydantic schemas (transcriptomics/proteomics), dataset completeness validation (samples, conditions, controls, duplicates, platform), and sample metadata reading in multiple formats. Specialized in metadata harmonization for multi-omics integration and publication queue processing.",
+    description="Handles cross-dataset metadata operations including sample ID mapping (exact/fuzzy/pattern/metadata strategies), metadata standardization using Pydantic schemas (transcriptomics/proteomics), dataset completeness validation (samples, conditions, controls, duplicates, platform), sample metadata reading in multiple formats, and disease enrichment from publication context when SRA metadata is incomplete. Specialized in metadata harmonization for multi-omics integration and publication queue processing.",
     factory_function="lobster.agents.metadata_assistant.metadata_assistant",
     handoff_tool_name="handoff_to_metadata_assistant",
     handoff_tool_description="Assign metadata operations (cross-dataset sample mapping, metadata standardization to Pydantic schemas, dataset validation before download, metadata reading/formatting, publication queue filtering) to the metadata assistant",
@@ -31,6 +31,7 @@ AGENT_CONFIG = AgentRegistryConfig(
 # =============================================================================
 import json
 import logging
+import re
 from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime
@@ -207,6 +208,416 @@ def _convert_list_to_dict(samples_list: list, key_field: str = "run_accession") 
         s.get(key_field, f"sample_{i}"): s
         for i, s in enumerate(samples_list)
     }
+
+
+# =========================================================================
+# Disease Enrichment Helpers (Phase 1)
+# =========================================================================
+
+DISEASE_EXTRACTION_PROMPT_TEMPLATE = """You are a biomedical information extraction expert analyzing a microbiome study.
+
+PUBLICATION TITLE: {publication_title}
+SAMPLE COUNT: {sample_count} samples
+
+{text_content}
+
+TASK: Identify the PRIMARY disease or condition studied in these samples.
+
+CRITICAL RULES:
+1. Focus on the actual condition of the SAMPLES, not what's being compared or referenced
+2. If multiple conditions exist (e.g., CRC patients vs healthy controls), identify the DISEASE condition (CRC)
+3. If study compares multiple diseases EQUALLY (e.g., UC vs CD comparison study), return "unknown" (mixed study)
+4. If samples are from healthy controls ONLY, return "healthy"
+5. Look for explicit statements: "patients with X", "X cohort", "diagnosed with X"
+
+STANDARD TERMS (use EXACTLY as shown):
+- "crc" → colorectal cancer, colon cancer, rectal cancer, CRC, colorectal carcinoma
+- "uc" → ulcerative colitis, UC, colitis ulcerosa
+- "cd" → Crohn's disease, Crohn's, CD, Crohn disease
+- "healthy" → healthy controls, healthy volunteers, non-diseased, control subjects
+- "unknown" → cannot determine, mixed conditions, insufficient information
+
+OUTPUT FORMAT (JSON only, no markdown):
+{{
+  "disease": "one of: crc, uc, cd, healthy, unknown",
+  "confidence": 0.0-1.0 (float),
+  "evidence": "Brief quote or description supporting classification (max 200 chars)",
+  "reasoning": "Explain why you chose this term (max 300 chars)"
+}}
+
+CONFIDENCE SCORING GUIDE:
+- 1.0: Explicit statement ("50 CRC patients recruited")
+- 0.9: Clear context ("colorectal cancer cohort study")
+- 0.8: Strong inference ("tumor samples from colon cancer patients")
+- 0.7: Weak inference ("IBD patients" without UC/CD specification)
+- <0.7: Ambiguous or insufficient information
+
+EXAMPLES:
+Input: "We recruited 50 patients with colorectal cancer and 30 healthy controls"
+Output: {{"disease": "crc", "confidence": 0.95, "evidence": "50 patients with colorectal cancer", "reasoning": "Explicit CRC patient recruitment"}}
+
+Input: "Fecal samples from UC patients undergoing remission therapy"
+Output: {{"disease": "uc", "confidence": 0.92, "evidence": "UC patients undergoing therapy", "reasoning": "Clear UC patient cohort"}}
+
+Input: "Comparison of gut microbiome in UC, CD, and healthy controls"
+Output: {{"disease": "unknown", "confidence": 0.0, "evidence": "Mixed study: UC, CD, healthy", "reasoning": "Three equal groups, no primary disease"}}
+
+Input: "16S sequencing of fecal microbiota"
+Output: {{"disease": "unknown", "confidence": 0.0, "evidence": "No disease information provided", "reasoning": "Methods only, no cohort description"}}
+
+Return ONLY valid JSON, no additional text or formatting.
+"""
+
+
+def _phase1_column_rescan(samples: List[Dict]) -> tuple:
+    """
+    Re-scan ALL columns in sample metadata for disease keywords.
+
+    Returns:
+        Tuple of (enriched_count, detailed_log)
+    """
+    enriched_count = 0
+    log = []
+
+    # Disease keyword mappings (case-insensitive)
+    disease_keywords = {
+        'crc': ['colorectal', 'colon_cancer', 'colon cancer', 'rectal_cancer', 'crc'],
+        'uc': ['ulcerative', 'uc_', 'colitis_ulcerosa', 'ulcerative_colitis'],
+        'cd': ['crohn', 'cd_', 'crohns', 'crohns_disease'],
+        'healthy': ['healthy', 'control', 'non_ibd', 'non-ibd', 'non_diseased']
+    }
+
+    for sample in samples:
+        if sample.get('disease'):
+            continue  # Already has disease, skip
+
+        # Check ALL columns (not just standard ones)
+        for col_name, col_value in sample.items():
+            if not col_value:
+                continue
+
+            col_str = str(col_value).lower()
+
+            # Try each disease mapping
+            for disease, keywords in disease_keywords.items():
+                for keyword in keywords:
+                    if keyword in col_str:
+                        sample['disease'] = disease
+                        sample['disease_original'] = str(col_value)
+                        sample['disease_source'] = f'column_remapped:{col_name}'
+                        sample['disease_confidence'] = 1.0
+                        sample['enrichment_timestamp'] = datetime.now().isoformat()
+
+                        enriched_count += 1
+                        log.append(f"  - Sample {sample.get('run_accession', 'unknown')}: "
+                                 f"Found '{disease}' in column '{col_name}' (value: {col_value})")
+                        break
+
+                if sample.get('disease'):
+                    break  # Found disease, move to next sample
+
+            if sample.get('disease'):
+                break  # Found disease, move to next sample
+
+    return enriched_count, log
+
+
+def _extract_disease_with_llm(
+    llm: Any,
+    abstract_text: Optional[str],
+    methods_text: Optional[str],
+    publication_title: str,
+    sample_count: int
+) -> Dict[str, Any]:
+    """
+    Extract disease from publication text using LLM with structured output.
+
+    Args:
+        llm: LLM instance (from self.llm or create_llm())
+        abstract_text: Publication abstract (if available)
+        methods_text: Methods section (if available)
+        publication_title: Paper title for context
+        sample_count: Number of samples in this publication
+
+    Returns:
+        Dict with:
+        {
+            "disease": "crc",
+            "confidence": 0.92,
+            "evidence": "Abstract states: recruited 50 CRC patients",
+            "source": "abstract" or "methods"
+        }
+    """
+    import re
+
+    # Combine available text
+    text_content = ""
+    source = "none"
+
+    if abstract_text:
+        text_content = f"ABSTRACT:\n{abstract_text[:2000]}\n\n"
+        source = "abstract"
+
+    if methods_text:
+        text_content += f"METHODS:\n{methods_text[:2000]}"
+        if source == "none":
+            source = "methods"
+        else:
+            source = "abstract+methods"
+
+    if not text_content:
+        return {"disease": "unknown", "confidence": 0.0, "evidence": "No text available", "source": "none"}
+
+    # Create extraction prompt using template
+    prompt = DISEASE_EXTRACTION_PROMPT_TEMPLATE.format(
+        publication_title=publication_title,
+        sample_count=sample_count,
+        text_content=text_content
+    )
+
+    # Call LLM
+    try:
+        response = llm.invoke([
+            {"role": "system", "content": "You are a biomedical information extraction expert. Return valid JSON only."},
+            {"role": "user", "content": prompt}
+        ])
+
+        # Parse JSON response
+        response_text = response.content if hasattr(response, 'content') else str(response)
+
+        # Extract JSON from response (handle markdown code blocks)
+        json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(1)
+        else:
+            # Try direct JSON parse
+            json_str = response_text.strip()
+
+        result = json.loads(json_str)
+
+        # Validate structure
+        if 'disease' not in result or 'confidence' not in result:
+            logger.warning(f"LLM returned invalid structure: {result}")
+            return {"disease": "unknown", "confidence": 0.0, "evidence": "Invalid LLM response", "source": source}
+
+        # Validate disease is in standard terms
+        valid_diseases = ['crc', 'uc', 'cd', 'healthy', 'unknown']
+        if result['disease'] not in valid_diseases:
+            logger.warning(f"LLM returned invalid disease: {result['disease']}")
+            return {"disease": "unknown", "confidence": 0.0, "evidence": "Invalid disease term", "source": source}
+
+        result['source'] = source
+        return result
+
+    except Exception as e:
+        logger.error(f"LLM extraction failed: {e}")
+        return {"disease": "unknown", "confidence": 0.0, "evidence": f"Extraction error: {str(e)}", "source": source}
+
+
+def _phase2_llm_abstract_extraction(
+    samples: List[Dict],
+    data_manager: DataManagerV2,
+    confidence_threshold: float,
+    llm: Any
+) -> tuple:
+    """
+    Extract disease from publication abstracts using LLM.
+    Groups samples by publication to avoid redundant LLM calls.
+
+    Returns:
+        Tuple of (enriched_count, detailed_log)
+    """
+    enriched_count = 0
+    log = []
+
+    # Group samples by publication
+    pub_groups = defaultdict(list)
+    for sample in samples:
+        if not sample.get('disease'):
+            pub_id = sample.get('publication_entry_id')
+            if pub_id:
+                pub_groups[pub_id].append(sample)
+
+    log.append(f"  - Grouped samples by publication: {len(pub_groups)} publications to process")
+
+    # Process each publication
+    for pub_id, pub_samples in pub_groups.items():
+        # Load cached abstract
+        metadata_path = data_manager.workspace_path / "metadata" / f"{pub_id}_metadata.json"
+
+        if not metadata_path.exists():
+            log.append(f"  - {pub_id}: No cached metadata (skipping {len(pub_samples)} samples)")
+            continue
+
+        try:
+            with open(metadata_path) as f:
+                metadata = json.load(f)
+                abstract_text = metadata.get("content", "")
+        except (json.JSONDecodeError, IOError) as e:
+            log.append(f"  - {pub_id}: Error reading metadata file ({e})")
+            continue
+
+        if not abstract_text:
+            log.append(f"  - {pub_id}: Empty abstract (skipping {len(pub_samples)} samples)")
+            continue
+
+        # Extract disease using LLM
+        disease_info = _extract_disease_with_llm(
+            llm=llm,
+            abstract_text=abstract_text,
+            methods_text=None,
+            publication_title=pub_samples[0].get('publication_title', 'Unknown'),
+            sample_count=len(pub_samples)
+        )
+
+        # Check confidence
+        if disease_info['confidence'] < confidence_threshold:
+            log.append(f"  - {pub_id}: Low confidence {disease_info['confidence']:.2f} "
+                     f"(threshold: {confidence_threshold}, skipping {len(pub_samples)} samples)")
+            continue
+
+        # Apply to all samples from this publication
+        for sample in pub_samples:
+            sample['disease'] = disease_info['disease']
+            sample['disease_original'] = disease_info.get('evidence', '')[:100]
+            sample['disease_source'] = 'abstract_llm'
+            sample['disease_confidence'] = disease_info['confidence']
+            sample['disease_evidence'] = disease_info.get('evidence', '')[:200]
+            sample['enrichment_timestamp'] = datetime.now().isoformat()
+            enriched_count += 1
+
+        log.append(f"  - {pub_id}: Extracted '{disease_info['disease']}' "
+                 f"(confidence: {disease_info['confidence']:.2f}, "
+                 f"enriched {len(pub_samples)} samples)")
+
+    return enriched_count, log
+
+
+def _phase3_llm_methods_extraction(
+    samples: List[Dict],
+    data_manager: DataManagerV2,
+    confidence_threshold: float,
+    llm: Any
+) -> tuple:
+    """
+    Extract disease from publication methods sections using LLM.
+    Only processes samples still missing disease after Phase 2.
+
+    Returns:
+        Tuple of (enriched_count, detailed_log)
+    """
+    enriched_count = 0
+    log = []
+
+    # Group remaining samples by publication
+    pub_groups = defaultdict(list)
+    for sample in samples:
+        if not sample.get('disease'):
+            pub_id = sample.get('publication_entry_id')
+            if pub_id:
+                pub_groups[pub_id].append(sample)
+
+    if not pub_groups:
+        return 0, ["  - No samples need methods extraction"]
+
+    log.append(f"  - Processing methods for {len(pub_groups)} publications")
+
+    # Process each publication
+    for pub_id, pub_samples in pub_groups.items():
+        # Load cached methods
+        methods_path = data_manager.workspace_path / "metadata" / f"{pub_id}_methods.json"
+
+        if not methods_path.exists():
+            log.append(f"  - {pub_id}: No cached methods (skipping)")
+            continue
+
+        try:
+            with open(methods_path) as f:
+                methods_data = json.load(f)
+                methods_text = methods_data.get("methods_text", "")
+        except (json.JSONDecodeError, IOError) as e:
+            log.append(f"  - {pub_id}: Error reading methods file ({e})")
+            continue
+
+        if not methods_text:
+            log.append(f"  - {pub_id}: Empty methods section (skipping)")
+            continue
+
+        # Extract disease from methods
+        disease_info = _extract_disease_with_llm(
+            llm=llm,
+            abstract_text=None,
+            methods_text=methods_text,
+            publication_title=pub_samples[0].get('publication_title', 'Unknown'),
+            sample_count=len(pub_samples)
+        )
+
+        if disease_info['confidence'] < confidence_threshold:
+            log.append(f"  - {pub_id}: Low confidence {disease_info['confidence']:.2f} (skipping)")
+            continue
+
+        # Apply to samples
+        for sample in pub_samples:
+            sample['disease'] = disease_info['disease']
+            sample['disease_original'] = disease_info.get('evidence', '')[:100]
+            sample['disease_source'] = 'methods_llm'
+            sample['disease_confidence'] = disease_info['confidence']
+            sample['disease_evidence'] = disease_info.get('evidence', '')[:200]
+            sample['enrichment_timestamp'] = datetime.now().isoformat()
+            enriched_count += 1
+
+        log.append(f"  - {pub_id}: Extracted '{disease_info['disease']}' from methods "
+                 f"(confidence: {disease_info['confidence']:.2f}, "
+                 f"enriched {len(pub_samples)} samples)")
+
+    return enriched_count, log
+
+
+def _phase4_manual_mappings(
+    samples: List[Dict],
+    manual_mappings: Dict[str, str]
+) -> tuple:
+    """
+    Apply user-provided disease mappings by publication ID.
+
+    Args:
+        samples: List of sample dicts
+        manual_mappings: Dict mapping publication_entry_id to disease
+            Example: {"pub_queue_doi_10_1234": "crc", "pub_queue_pmid_5678": "uc"}
+
+    Returns:
+        Tuple of (enriched_count, detailed_log)
+    """
+    if not manual_mappings:
+        return 0, ["  - No manual mappings provided"]
+
+    enriched_count = 0
+    log = []
+
+    for sample in samples:
+        if sample.get('disease'):
+            continue  # Already has disease
+
+        pub_id = sample.get('publication_entry_id')
+        if pub_id in manual_mappings:
+            disease = manual_mappings[pub_id]
+
+            # Validate disease is in standard terms
+            if disease not in ['crc', 'uc', 'cd', 'healthy', 'unknown']:
+                log.append(f"  - Warning: Invalid disease '{disease}' for {pub_id}, skipping")
+                continue
+
+            sample['disease'] = disease
+            sample['disease_original'] = 'manual_mapping'
+            sample['disease_source'] = 'manual_override'
+            sample['disease_confidence'] = 1.0
+            sample['enrichment_timestamp'] = datetime.now().isoformat()
+            enriched_count += 1
+
+    if enriched_count > 0:
+        log.append(f"  - Applied manual mappings: {enriched_count} samples enriched")
+
+    return enriched_count, log
 
 
 def metadata_assistant(
@@ -1379,7 +1790,30 @@ def metadata_assistant(
                                     logger.warning(f"Disease validation warning: {error_msg}")
                     except ValueError as e:
                         if "Insufficient disease data" in str(e):
-                            return f"❌ Disease validation failed:\n{str(e)}"
+                            # Extract coverage percentage
+                            coverage_match = re.search(r'(\d+\.\d+)% coverage', str(e))
+                            coverage = float(coverage_match.group(1)) if coverage_match else 0.0
+
+                            return f"""❌ Disease validation failed: {coverage:.1f}% coverage < 50% threshold
+
+I can attempt automatic enrichment to improve coverage. Would you like me to:
+
+1. **Auto-enrich** (recommended): Extract disease from publication abstracts/methods using LLM
+   Command: enrich_samples_with_disease(workspace_key="{workspace_key}", enrichment_mode="hybrid")
+
+2. **Manual mapping**: Provide disease for each publication
+   Command: enrich_samples_with_disease(
+       workspace_key="{workspace_key}",
+       enrichment_mode="manual",
+       manual_mappings='{{"pub_queue_doi_10_1234": "crc", "pub_queue_pmid_5678": "uc"}}'
+   )
+
+3. **Preview first** (recommended): Test enrichment without saving
+   Command: enrich_samples_with_disease(workspace_key="{workspace_key}", dry_run=True)
+
+4. **Lower threshold** (not recommended): min_disease_coverage={coverage/100:.2f}
+
+Which approach would you prefer?"""
                         else:
                             raise
                 else:
@@ -2238,19 +2672,31 @@ Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_
                             )
                         except ValueError as e:
                             if "Insufficient disease data" in str(e):
-                                error_msg = f"Disease validation failed: {str(e)}"
-                                logger.error(f"Entry {entry.entry_id}: {error_msg}")
-                                # Mark entry as failed
-                                queue.update_status(
-                                    entry.entry_id,
-                                    entry.status,
-                                    handoff_status=HandoffStatus.METADATA_FAILED,
-                                    error=error_msg,
-                                )
-                                failed_entries.append((entry.entry_id, error_msg))
-                                stats["failed"] += 1
-                                stats["processed"] += 1
-                                continue
+                                # Extract coverage percentage from error message
+                                coverage_match = re.search(r'(\d+\.\d+)% coverage', str(e))
+                                coverage = float(coverage_match.group(1)) if coverage_match else 0.0
+
+                                # Count cached publications (for cost/time estimate)
+                                pub_groups = defaultdict(set)
+                                for sample in entry_samples:
+                                    pub_id = sample.get('publication_entry_id')
+                                    if pub_id:
+                                        pub_groups[pub_id].add(pub_id)
+
+                                num_pubs = len(pub_groups)
+                                estimated_cost = num_pubs * 0.003
+                                estimated_time = num_pubs * 2
+
+                                # Return to supervisor with suggestion (DON'T auto-enrich)
+                                return f"""❌ Disease validation failed: {coverage:.1f}% coverage < 50% threshold
+
+I can attempt automatic enrichment to extract disease from publication abstracts/methods.
+
+**Estimated improvement**: +30-60% coverage (based on {num_pubs} cached publications)
+**Cost**: ~${estimated_cost:.2f} (LLM calls)
+**Time**: ~{estimated_time}s
+
+Should I proceed with automatic enrichment?"""
                             else:
                                 raise
 
@@ -2562,6 +3008,233 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
         except Exception as e:
             logger.error(f"Error updating status: {e}")
             return f"❌ Error updating status: {str(e)}"
+
+    @tool
+    def enrich_samples_with_disease(
+        workspace_key: str,
+        enrichment_mode: str = "hybrid",
+        manual_mappings: Optional[str] = None,
+        confidence_threshold: float = 0.8,
+        auto_retry_validation: bool = True,
+        dry_run: bool = False
+    ) -> str:
+        """
+        Enrich samples with missing disease annotation using cached publication context.
+
+        Use this tool when disease validation fails (<50% coverage) to automatically
+        extract disease information from publication abstracts/methods, or to apply
+        user-provided disease mappings.
+
+        Args:
+            workspace_key: Metadata workspace key containing samples to enrich.
+                Typically "aggregated_filtered_samples" from process_metadata_queue.
+                Can also be specific dataset keys like "sra_PRJNA123456_samples".
+
+            enrichment_mode: Strategy for enrichment (default: "hybrid")
+                - "column_scan": Only re-scan dataset metadata columns for missed fields
+                - "llm_auto": Only use LLM extraction from cached publications
+                - "manual": Only apply provided manual_mappings
+                - "hybrid": Try all phases sequentially (recommended)
+
+            manual_mappings: JSON string mapping publication IDs to diseases.
+                Example: '{"pub_queue_doi_10_1234": "crc", "pub_queue_pmid_5678": "uc"}'
+                Used in "manual" or "hybrid" mode as fallback.
+
+            confidence_threshold: Minimum LLM confidence (0.0-1.0) to accept extraction.
+                Default: 0.8 (high confidence required).
+                Lower values accept more extractions but with higher error risk.
+
+            auto_retry_validation: If True, automatically re-run disease validation
+                after enrichment to check if 50% threshold is now met.
+                If False, only enrich and report statistics.
+
+            dry_run: If True, preview enrichment results without saving changes.
+                Useful for testing enrichment logic before applying.
+
+        Returns:
+            Enrichment report with:
+            - Phase-by-phase results (samples enriched per phase)
+            - Coverage improvement (before → after)
+            - Confidence distribution
+            - Validation result (if auto_retry enabled)
+            - Publication-level breakdown
+            - Samples still missing disease (if any)
+
+        Example usage:
+            # Automatic enrichment (recommended)
+            enrich_samples_with_disease(
+                workspace_key="aggregated_filtered_samples",
+                enrichment_mode="hybrid"
+            )
+
+            # Manual mappings only
+            enrich_samples_with_disease(
+                workspace_key="aggregated_filtered_samples",
+                enrichment_mode="manual",
+                manual_mappings='{"pub_queue_doi_10_1234": "crc", "pub_queue_pmid_5678": "uc"}'
+            )
+
+            # Preview without saving
+            enrich_samples_with_disease(
+                workspace_key="aggregated_filtered_samples",
+                enrichment_mode="hybrid",
+                dry_run=True
+            )
+        """
+        # Step 1: Load samples from workspace
+        if workspace_key not in data_manager.metadata_store:
+            return f"❌ Workspace key '{workspace_key}' not found in metadata_store"
+
+        workspace_data = data_manager.metadata_store[workspace_key]
+        samples = workspace_data.get('samples', [])
+
+        if not samples:
+            return f"❌ No samples found in workspace key '{workspace_key}'"
+
+        # Step 2: Calculate initial coverage
+        initial_count = sum(1 for s in samples if s.get('disease'))
+        initial_coverage = (initial_count / len(samples)) * 100 if samples else 0
+
+        # Step 3: Parse manual mappings
+        mappings_dict = {}
+        if manual_mappings:
+            try:
+                mappings_dict = json.loads(manual_mappings)
+            except json.JSONDecodeError as e:
+                return f"❌ Invalid manual_mappings JSON: {e}"
+
+        # Step 4: Run enrichment phases
+        report = [
+            f"## Disease Enrichment Report",
+            f"**Workspace Key**: {workspace_key}",
+            f"**Total Samples**: {len(samples)}",
+            f"**Initial Coverage**: {initial_coverage:.1f}% ({initial_count}/{len(samples)})",
+            f"**Mode**: {enrichment_mode}",
+            f"**Dry Run**: {dry_run}",
+            f"",
+            f"### Enrichment Phases",
+            f""
+        ]
+
+        total_enriched = 0
+
+        # Make a copy of samples for dry_run to avoid modifying original
+        working_samples = [s.copy() for s in samples] if dry_run else samples
+
+        # Phase 1: Column re-scan (always run unless manual-only mode)
+        if enrichment_mode in ["column_scan", "hybrid"]:
+            report.append("#### Phase 1: Column Re-scan")
+            count, log = _phase1_column_rescan(working_samples)
+            total_enriched += count
+            report.extend(log)
+            report.append(f"**Phase 1 Result**: +{count} samples")
+            report.append("")
+
+        # Phase 2: LLM abstract extraction (unless manual-only mode)
+        if enrichment_mode in ["llm_auto", "hybrid"]:
+            report.append("#### Phase 2: LLM Abstract Extraction")
+            count, log = _phase2_llm_abstract_extraction(
+                working_samples,
+                data_manager,
+                confidence_threshold,
+                llm
+            )
+            total_enriched += count
+            report.extend(log)
+            report.append(f"**Phase 2 Result**: +{count} samples")
+            report.append("")
+
+            # Phase 3: LLM methods extraction (only if hybrid and still low coverage)
+            current_coverage = ((initial_count + total_enriched) / len(samples)) * 100
+            if current_coverage < 50.0 and enrichment_mode == "hybrid":
+                report.append("#### Phase 3: LLM Methods Extraction (triggered by low coverage)")
+                count, log = _phase3_llm_methods_extraction(
+                    working_samples,
+                    data_manager,
+                    confidence_threshold,
+                    llm
+                )
+                total_enriched += count
+                report.extend(log)
+                report.append(f"**Phase 3 Result**: +{count} samples")
+                report.append("")
+
+        # Phase 4: Manual mappings
+        if enrichment_mode in ["manual", "hybrid"] and mappings_dict:
+            report.append("#### Phase 4: Manual Mappings")
+            count, log = _phase4_manual_mappings(
+                working_samples,
+                mappings_dict
+            )
+            total_enriched += count
+            report.extend(log)
+            report.append(f"**Phase 4 Result**: +{count} samples")
+            report.append("")
+
+        # Step 5: Calculate final coverage
+        final_count = sum(1 for s in working_samples if s.get('disease'))
+        final_coverage = (final_count / len(samples)) * 100 if samples else 0
+        improvement = final_coverage - initial_coverage
+
+        report.append(f"### Summary")
+        report.append(f"**Initial Coverage**: {initial_coverage:.1f}% ({initial_count} samples)")
+        report.append(f"**Final Coverage**: {final_coverage:.1f}% ({final_count} samples)")
+        report.append(f"**Improvement**: +{improvement:.1f}% (+{total_enriched} samples)")
+        report.append(f"**Validation Threshold**: 50.0%")
+        report.append("")
+
+        # Step 6: Save enriched samples (if not dry_run)
+        if not dry_run and total_enriched > 0:
+            # Update metadata_store with enriched samples
+            data_manager.metadata_store[workspace_key] = workspace_data
+            report.append("✅ **Changes saved** to metadata_store")
+
+            # Also save to workspace file
+            try:
+                from lobster.services.data_access.workspace_content_service import (
+                    ContentType,
+                    MetadataContent,
+                    WorkspaceContentService
+                )
+
+                workspace_service = WorkspaceContentService(data_manager)
+                content = MetadataContent(
+                    identifier=workspace_key,
+                    content_type="enriched_samples",
+                    description=f"Disease-enriched samples: +{total_enriched} samples",
+                    data=workspace_data,
+                    source="metadata_assistant",
+                    cached_at=datetime.now().isoformat(),
+                )
+                workspace_service.write_content(content, ContentType.METADATA)
+                report.append("✅ **Changes saved** to workspace/metadata/")
+            except Exception as e:
+                logger.warning(f"Failed to save to workspace file: {e}")
+                report.append(f"⚠️ **Warning**: Saved to metadata_store but workspace save failed: {e}")
+
+            report.append("")
+        elif dry_run:
+            report.append("ℹ️ **Dry run**: Changes NOT saved (preview only)")
+            report.append("")
+
+        # Step 7: Auto-retry validation (if enabled and not dry_run)
+        if auto_retry_validation and not dry_run and total_enriched > 0:
+            report.append("### Re-validation")
+
+            if final_coverage >= 50.0:
+                report.append(f"✅ **Validation PASSED**: {final_coverage:.1f}% coverage ≥ 50% threshold")
+                report.append("You can now proceed with filtering using this enriched dataset.")
+            else:
+                missing_count = len(samples) - final_count
+                report.append(f"❌ **Validation FAILED**: {final_coverage:.1f}% coverage < 50% threshold")
+                report.append(f"**Samples still missing disease**: {missing_count}")
+                report.append("")
+                report.append("**Next Steps**:")
+                report.append("  1. Provide manual mappings for remaining publications")
+                report.append(f"  2. Lower threshold: min_disease_coverage={final_coverage/100:.2f}")
+                report.append("  3. Skip disease filtering (omit disease terms from filter_criteria)")
+
+        return "\n".join(report)
 
     # Helper functions for queue processing
     def _extract_samples_from_workspace(
@@ -2956,6 +3629,7 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
         process_metadata_entry,
         process_metadata_queue,
         update_metadata_status,
+        enrich_samples_with_disease,
         # Shared workspace tools
         get_content_from_workspace,
         write_to_workspace,
@@ -2984,15 +3658,13 @@ Hierarchy: supervisor > research agent == data expert >> metadata assistant.
 Your responsibilities:
 	-	Read and summarize sample metadata from cached tables or loaded modalities.
 	-	Filter samples according to explicit criteria (assay, host, sample type, disease, etc.).
-	-	Standardize metadata into requested schemas (for example transcriptomics, microbiome).
+	-	Standardize metadata into requested schemas (transcriptomics, proteomics, microbiome).
 	-	Map samples across datasets based on IDs or metadata.
 	-	Validate dataset content and report quality metrics and limitations.
-	-	MANUAL ENRICHMENT: Enrich samples with missing critical fields (disease, age, sex, tissue) by:
-		- Reading publication metadata (title, abstract, methods sections)
-		- Extracting demographics and disease context from publication text
-		- Propagating publication-level metadata to individual samples
-		- Using execute_custom_code for study-specific enrichment logic
-		- Documenting enrichment source with _source fields (e.g., disease_source="inferred_from_publication_PMID12345")
+	-	Enrich samples with missing disease annotation using enrich_samples_with_disease tool:
+		- 4-phase hierarchy: column re-scan → LLM abstract → LLM methods → manual mappings
+		- Triggered when disease validation fails (<50% coverage threshold)
+		- Full provenance tracking (disease_source, disease_confidence, disease_evidence)
 
 You are not responsible for:
 	-	Discovering or searching for datasets or publications.
@@ -3018,13 +3690,13 @@ Operating Principles
 	3.	Follow instructions exactly
 
 	-	Parse all filter criteria provided by the research agent or data expert into structured constraints:
-	-	assay or technology (for example 16S, shotgun, RNA-seq),
-	-	host organism,
-	-	sample type (fecal, ileum, saliva, tumor, PBMC, etc.),
-	-	disease or condition,
-	-	timepoints and other specified variables (for example responders vs non-responders).
+	-	assay or technology (16S, shotgun, RNA-seq)
+	-	amplicon region (V4, V3-V4, full-length) [v0.5.0+]
+	-	host organism (Human, Mouse)
+	-	sample type (fecal_stool, gut_luminal_content, gut_mucosal_biopsy, oral, skin) [v0.5.0+]
+	-	disease or condition (crc, uc, cd, healthy)
 	-	Do not broaden, relax, or reinterpret the requested criteria.
-	-	If the requested filters would eliminate nearly all samples or lead to unusable results, report this clearly and suggest what additional data or different filters might be needed, but you still do not change the criteria yourself.
+	-	If filters would eliminate nearly all samples, report clearly and suggest alternatives, but never change criteria yourself.
 
 	4.	Structured, data-rich outputs
 
@@ -3062,7 +3734,7 @@ Operating Principles
 	-	CORRECT: process_metadata_queue()
 	-	CORRECT: process_metadata_queue(max_entries=10)
 	-	CORRECT: process_metadata_queue(max_entries=0)
-	-	CORRECT: process_metadata_queue(filter_criteria="16S human fecal")
+	-	CORRECT: process_metadata_queue(filter_criteria="16S V4 human fecal_stool CRC")
 	-	CORRECT: process_metadata_queue(status_filter="handoff_ready", output_key="filtered_samples")
 
 	7.	Efficient Workspace Navigation
@@ -3101,331 +3773,122 @@ For publication queue processing requests, follow this decision tree:
 	```
 	process_metadata_queue(
 	    status_filter="handoff_ready",
-	    filter_criteria="16S human fecal",
-	    output_key="aggregated_samples"
+	    filter_criteria="16S V4 human fecal_stool CRC",
+	    output_key="aggregated_samples",
+	    parallel_workers=4  # For >50 entries
 	)
 	```
 
-	2.	Sample Enrichment (ONLY AFTER process_metadata_queue)
+	2.	Disease Enrichment (WHEN VALIDATION FAILS)
 
-	Use execute_custom_code ONLY when:
-	- process_metadata_queue completed successfully
-	- BUT output has low field coverage (disease <50%, age <30%, etc.)
-	- AND publication text contains the missing information
+	Use enrich_samples_with_disease when:
+	- Disease validation fails (<50% coverage threshold)
+	- Supervisor confirms enrichment should proceed
+	- Need to extract disease from publication abstracts/methods
 
-	This tool:
-	- Reads publication text (pub_queue_*_metadata.json)
-	- Extracts demographics via regex
-	- Propagates to individual samples
-	- Used for SECONDARY enrichment, NOT primary aggregation
+	This tool (4-phase hierarchy):
+	- Phase 1: Column re-scan (checks ALL columns for missed disease fields)
+	- Phase 2: LLM abstract extraction (extracts from cached publication abstracts)
+	- Phase 3: LLM methods extraction (if still <50% after Phase 2)
+	- Phase 4: Manual mappings (user-provided JSON as fallback)
 
 	Example:
 	```
-	execute_custom_code(
-	    workspace_key="sra_prjna123_samples",
-	    python_code="for s in samples: s['disease'] = 'ibd'"
+	enrich_samples_with_disease(
+	    workspace_key="aggregated_filtered_samples",
+	    enrichment_mode="hybrid",
+	    confidence_threshold=0.8
 	)
 	```
 
 	Decision Flow:
 	```
-	User: "process queue + filter + export"
+	process_metadata_queue → Disease validation fails (<50%)
 	         ↓
-	  Use process_metadata_queue (PRIMARY)
+	  Ask supervisor for permission
 	         ↓
-	  Check field coverage in output
+	  enrich_samples_with_disease (hybrid mode)
 	         ↓
-	  ≥70% coverage? → Export to CSV (DONE)
-	  <70% coverage? → Use execute_custom_code (SECONDARY)
+	  Re-validate → ≥50%? → Continue filtering
+	  Re-validate → <50%? → Suggest manual mappings
 	```
 
-**Export Anti-Patterns to AVOID**:
+	3.	Custom Code Execution (LAST RESORT)
 
-**Anti-Pattern 1: Unnecessary execute_custom_code Before Export**
+	Use execute_custom_code ONLY when:
+	- Standard tools insufficient (complex study-specific logic)
+	- Non-disease enrichment (age, sex, tissue from publication)
+	- Custom calculations not covered by standard tools
+
+	NOT for:
+	- Disease enrichment (use enrich_samples_with_disease instead)
+	- CSV export preparation (write_to_workspace handles automatically)
+
+Behavioral Rules for Modern Features (v0.5.1+)
+
+	1.	Disease Validation Thresholds
+	- Minimum coverage: 50% of samples must have disease annotation
+	- Confidence threshold: 0.8 for LLM-extracted diseases (configurable)
+	- When validation fails: Ask supervisor for enrichment permission
+	- After enrichment: Auto-retry validation if coverage improves
+
+	2.	Amplicon Region Syntax
+	Filter criteria supports explicit amplicon regions:
+	- "16S V4 human fecal_stool" → enforces V4 region only
+	- "16S V3-V4 mouse gut_mucosal_biopsy" → enforces V3-V4
+	- Valid regions: V1-V9, V3-V4, V4-V5, V1-V9, full-length
+	- Prevents mixing regions (systematic bias in diversity estimates)
+
+	3.	Sample Type Categories (v0.5.0+)
+	Modern categories (biologically distinct):
+	- fecal_stool (distal colon, passed stool)
+	- gut_luminal_content (intestinal lumen, not passed)
+	- gut_mucosal_biopsy (tissue-associated microbiome)
+	- gut_lavage (bowel prep artifacts)
+	- oral, skin (unchanged)
+
+	Legacy aliases work with deprecation warnings:
+	- "fecal" → "fecal_stool" (warning logged)
+	- "luminal" → "gut_luminal_content"
+	- "biopsy" → "gut_mucosal_biopsy"
+	- "gut" → ValueError (too ambiguous)
+
+	4.	Parallel Processing
+	For process_metadata_queue with >50 entries:
+	- Use parallel_workers=4 for optimal performance
+	- Batch flush reduces I/O by 20x
+	- Rich progress UI shows real-time status
+
+	5.	Quality Flags Interpretation
+	Quality flags are SOFT filters (don't auto-exclude):
+	- MISSING_HEALTH_STATUS: Expected (70-85% of SRA samples)
+	- NON_HUMAN_HOST: Should recommend exclusion
+	- CONTROL_SAMPLE: Analyze separately from experimental samples
+	- User decides final inclusion based on flags
+
+Export Best Practice
+**CORRECT Pattern**: Direct export after aggregation
 ```
 process_metadata_queue(output_key='aggregated_samples')
-    ↓ (SKIP THIS STEP!)
-execute_custom_code(workspace_key='aggregated_samples')  # NOT NEEDED
-    ↓
-write_to_workspace(output_format='csv')
+         ↓
+write_to_workspace(identifier='aggregated_samples', output_format='csv', export_mode='rich')
 ```
-**Why Wrong**: write_to_workspace applies harmonization automatically (v2.0):
-- Column deduplication (35 groups → canonical)
-- Disease extraction (0.5% → 20-25% coverage)
-- Sparse column removal (655 → 90 columns)
-- Provenance tracking (audit trail TSV)
+**Result**: 3 harmonized files in exports/ (rich CSV, strict CSV, audit TSV)
 
-**CORRECT Pattern: Direct Export**
-```
-process_metadata_queue(output_key='aggregated_samples')
-    ↓ (DIRECT - NO INTERMEDIATE STEP)
-write_to_workspace(
-    identifier='aggregated_samples',
-    workspace='metadata',
-    output_format='csv',
-    export_mode='rich'
-)
-```
-**Result**: 3 files created in exports/:
-- {{identifier}}_rich.csv (~90 columns, all relevant data)
-- {{identifier}}_strict.csv (34 MIMARKS columns)
-- {{identifier}}_harmonization_log.tsv (audit trail)
+**Anti-Pattern**: Using execute_custom_code for export preparation (NOT NEEDED - write_to_workspace handles harmonization)
 
-**When to Use execute_custom_code**:
-- ONLY for secondary enrichment (demographics, sample-level computations)
-- NOT for renaming variables or preparing data for export
+Quality Improvement Workflow (v0.5.1+)
 
-Tooling Cheat Sheet
-You have the following tools available. You must always specify source_type and, when applicable, target_type.
+When disease coverage is low after aggregation:
+	1.	Assessment: Check coverage in process_metadata_queue report
+	2.	Enrichment: If <50%, validation fails → use enrich_samples_with_disease
+	3.	Re-validation: Tool auto-retries validation after enrichment
+	4.	Decision: ≥50% → proceed; <50% → manual mappings or lower threshold
 
-map_samples_by_id
-	-	Purpose: map samples between two datasets using exact, fuzzy, pattern, and/or metadata-based matching strategies.
-	-	Inputs: identifiers or metadata_store/modality keys for the two datasets; matching strategy hints; source_type and target_type.
-	-	Behavior:
-	-	Compute mapping rate and mapping counts.
-	-	Report confidence distribution for mappings.
-	-	Identify and list unmapped samples by side.
-	-	Suggest an appropriate integration level (sample-level vs cohort-level) based on mapping quality.
-
-read_sample_metadata
-	-	Purpose: read and summarize sample metadata from metadata_store or a modality.
-	-	Modes:
-	-	summary: coverage overview and basic statistics,
-	-	detailed: JSON-like or record-level summary,
-	-	schema: structured table view.
-	-	Behavior:
-	-	Compute per-field coverage for fields such as sample_id, condition, tissue, age, sex, batch, and others as available.
-	-	Highlight missing critical fields or patterns of missingness.
-
-standardize_sample_metadata
-	-	Purpose: convert metadata to a requested schema (for example transcriptomics or microbiome).
-	-	Inputs: source metadata key, source_type, target schema name, optional controlled vocabularies.
-	-	Behavior:
-	-	Map original fields to schema fields and normalize vocabularies where possible.
-	-	Report validation errors and warnings.
-	-	Persist standardized metadata with a new key (for example standardized_GSE12345_transcriptomics) and return that key.
-
-validate_dataset_content
-	-	Purpose: validate dataset content at the sample-metadata level.
-	-	Behavior:
-	-	Confirm sample counts and check for duplicates.
-	-	Check coverage for key conditions (for example case vs control, responder vs non-responder).
-	-	Check for presence and quality of controls if requested.
-	-	Classify each check as PASS or FAIL and assign severity.
-	-	Provide an overall recommendation consistent with qualitative severity.
-
-filter_samples_by
-	-	Purpose: filter samples using microbiome- and omics-aware filters such as:
-	-	16S detection flags and microbiome-specific metrics,
-	-	host organism validation,
-	-	sample type (fecal, ileum, saliva, tumor, etc.),
-	-	disease or condition labels,
-	-	any other filters specified by the research agent or data expert.
-	-	Behavior:
-	-	Compute original and retained sample counts.
-	-	Compute retention percentage and per-field coverage for the filtered subset.
-	-	Persist the filtered subset under a new key (for example metadata_GSE12345_samples_filtered_16S_human_fecal) and return that key.
-
-process_metadata_queue (PRIMARY TOOL for processing)
-	-	Purpose: Process multiple publication queue entries and aggregate SAMPLE-LEVEL results.
-	-	When to use:
-	-	processing of handoff_ready entries
-	-	Aggregating sample metadata from multiple publications
-	-	Applying 16S/shotgun filtering at sample level
-	-	Creating export-ready aggregated datasets
-	-	Behavior:
-	-	Reads workspace_metadata_keys (sra_*_samples files) from all entries
-	-	Extracts SAMPLE metadata (run_accession, biosample, organism, library_strategy, host, etc.)
-	-	Applies filter_criteria at SAMPLE level (16S, host, sample_type, disease)
-	-	Validates with SRASampleSchema + quality scoring
-	-	Aggregates ALL samples into single metadata_store key
-	-	Outputs: 5,000-10,000+ SAMPLE rows (not publication rows)
-	-	Example:
-	```
-	process_metadata_queue(
-	    status_filter="handoff_ready",
-	    filter_criteria="16S human fecal",
-	    output_key="aggregated_16s_samples"
-	)
-	```
-	-	**After process_metadata_queue Returns**:
-	```
-	NEXT STEP: Export directly (no intermediate code needed)
-	write_to_workspace(
-	    identifier='aggregated_16s_samples',
-	    workspace='metadata',
-	    output_format='csv',
-	    export_mode='rich'
-	)
-	```
-	This creates 3 files with automatic harmonization:
-	- aggregated_16s_samples_YYYY-MM-DD_rich.csv
-	- aggregated_16s_samples_YYYY-MM-DD_strict.csv
-	- aggregated_16s_samples_YYYY-MM-DD_harmonization_log.tsv
-
-execute_custom_code (SECONDARY TOOL - use only after process_metadata_queue)
-	-	Purpose: Execute custom Python code for sample-level metadata operations when standard tools are insufficient.
-	-	When to use:
-	-	ONLY AFTER process_metadata_queue completed
-	-	When samples have low field coverage (disease <50%, age <30%)
-	-	When publication text contains missing demographics
-	-	Use Cases:
-	-	Update sample metadata fields manually (post-aggregation enrichment)
-	-	Extract information from publication text using regex
-	-	Perform custom calculations on sample data
-	-	Review and modify flagged samples before export
-	-	**MANUAL ENRICHMENT**: Propagate publication-level metadata to samples missing critical fields (SECONDARY step)
-	-	Available in Namespace:
-	-	WORKSPACE: Path to workspace directory (pathlib.Path)
-	-	OUTPUT_DIR: Path to centralized exports directory (workspace/exports/) - USE FOR ALL CSV/TSV EXPORTS
-	-	workspace_path: Alias for WORKSPACE (string path)
-	-	Auto-loaded CSV/JSON files from workspace/metadata/ (including samples files)
-	-	publication_queue: Publication queue entries
-	-	All JSON files loaded as Python dicts with sanitized names (dots/dashes → underscores)
-	-	File Output Convention (v1.0+):
-	-	When exporting data to CSV/TSV/Excel, ALWAYS use OUTPUT_DIR:
-	-	```python
-	-	df.to_csv(OUTPUT_DIR / "my_results.csv")  # Saves to workspace/exports/
-	-	```
-	-	This ensures all exports go to a single, predictable location for easy user discovery
-	-	DO NOT save files directly to WORKSPACE root or other subdirectories
-	-	Persisting Changes:
-	-	To save filtered samples for export, return a dict with:
-	-	'samples': list of sample dicts to persist
-	-	'output_key': key name for metadata_store (enables write_to_workspace export)
-	-	Example workflow:
-	-	Use get_content_from_workspace(identifier="pub_queue_..._methods") to review publication
-	-	Use execute_custom_code to filter/update samples based on findings
-	-	Use write_to_workspace to export the cleaned samples to CSV
-
-MANUAL ENRICHMENT WORKFLOW:
-When research_agent requests manual enrichment of publication queue entries with missing critical fields (disease, age, sex, tissue), follow this workflow:
-
-Step 1: Assess Metadata Completeness
-	-	Use get_content_from_workspace(workspace="publication_queue") to list entries
-	-	For target entry: read workspace_metadata_keys to get samples
-	-	Calculate field coverage: disease, age, sex, tissue, host, sample_type, isolation_source
-	-	Identify which fields need enrichment (coverage <50%)
-
-Step 2: Extract Context from Publication
-	-	Use get_content_from_workspace(identifier="publication_PMID...", level="metadata") for publication title/abstract
-	-	Use get_content_from_workspace(identifier="pub_queue_..._methods", workspace="metadata") for methods section (if available)
-	-	Extract relevant demographics:
-		- Disease: From title (e.g., "inflammatory bowel disease patients" → disease="ibd")
-		- Age range: From methods (e.g., "participants aged 45-65" → age_min=45, age_max=65)
-		- Sex distribution: From methods (e.g., "60% male, 40% female")
-		- Sample type: From methods (e.g., "fecal samples collected" → sample_type="fecal")
-
-Step 3: Propagate to Samples via execute_custom_code
-	-	Write custom code to enrich samples (use execute_custom_code tool):
-		- **ALWAYS specify workspace_key parameter** to load only the target file (avoids token overflow)
-		- Read samples from the loaded workspace key variable
-		- Iterate through samples and add missing fields
-		- Document enrichment source for traceability
-		- Return dict with 'samples' list and 'output_key' for persistence
-	-	Example: Enrich 409 samples with disease="ibd" from publication title
-		```python
-		execute_custom_code(
-		    workspace_key="sra_prjna834801_samples",  # CRITICAL: Only load this file
-		    python_code=" ""
-		    samples = sra_prjna834801_samples['samples']
-		    for s in samples:
-		        if not s.get('disease'):
-		            s['disease'] = 'ibd'
-		            s['disease_source'] = 'inferred_from_publication_title'
-		    result = {{'samples': samples, 'output_key': 'sra_prjna834801_samples_enriched'}}
-		    "" "
-		)
-		```
-		- All samples missing disease get disease="ibd"
-		- Add disease_source="inferred_from_publication_title"
-		- Return result dict for metadata_store persistence
-
-Step 4: Report Enrichment Results
-	-	Calculate improvement: field coverage before → after
-	-	Report metrics:
-		- Samples enriched: X/Y (Z%)
-		- Fields improved: [disease: 0% → 100%, sample_type: 0% → 100%]
-		- Enrichment source: [publication_title, methods_section]
-	-	Recommendation: "proceed" if ≥70% overall completeness achieved
-
-Step 5: Export or Hand Back
-	-	If requested: write_to_workspace(identifier="pub_queue_X_samples_enriched", output_format="csv")
-	-	Or: store in metadata_store for further processing
-	-	Update publication queue status if needed
-
-**When to Use Manual Enrichment**:
-	-	Use AUTOMATIC extraction (filter_samples_by with disease extraction): When disease data exists at sample-level in SRA (host_phenotype, *_disease flags)
-	-	Use MANUAL enrichment (execute_custom_code): When disease data is MISSING at sample-level but exists in publication context
-	-	Trigger: research_agent explicitly requests "manual enrichment" or "enrich from publication"
-	-	Expected improvement: 0% disease coverage → 100% (if publication context is clear)
-	-	Limitation: Requires conservative extraction - follow these inference rules:
-		✓ Extract EXPLICIT statements from publication text (disease names, age ranges, sex distributions)
-		✓ Map terms to standard vocabularies (e.g., "inflammatory bowel disease" → "ibd")
-		✓ Preserve ranges as ranges (age_min=45, age_max=65) rather than single values
-		✗ Do NOT calculate midpoints/averages unless publication explicitly states them
-		✗ Do NOT infer sample-level variation (all samples get same publication-level value)
-		✗ Do NOT extrapolate missing fields from unrelated statements
-		- Always document source with _source fields (REQUIRED format: field_source="inferred_from_publication_PMID12345")
-
-**Common Manual Enrichment Patterns**:
-	1.	Publication title contains disease: "Gut microbiome in Parkinson's Disease patients" → all samples get disease="parkinsons", disease_source="inferred_from_publication_title"
-	2.	Methods section has demographics: "Participants aged 50-70, 65% female" → all samples get age_min=50, age_max=70, sex_distribution="65% female", demographic_source="inferred_from_methods"
-	3.	Study inclusion criteria: "IBD patients with active disease" → all samples get disease="ibd", disease_activity="active", disease_source="inferred_from_inclusion_criteria"
-	4.	Sample type inference: "Fecal samples collected at baseline" → all samples get sample_type="fecal", sample_type_source="inferred_from_methods"
-
-**ITERATIVE QUALITY IMPROVEMENT WORKFLOW** (v1.2.0 - Proactive Quality Optimization):
-After process_metadata_queue completes with mixed quality results (some entries 0% disease, others 100%), you should PROACTIVELY identify and improve low-quality entries through iterative refinement:
-
-Step 1: Assess Per-Entry Completeness (Identify Gaps)
-	-	Use get_content_from_workspace(workspace="publication_queue") to list all processed entries
-	-	For each entry with workspace_metadata_keys (sra_*_samples files):
-		- Use read_sample_metadata(source="sra_PRJXXX_samples", source_type="metadata_store", return_format="summary")
-		- Calculate per-field coverage: organism%, host%, disease%, age%, sex%, tissue%, sample_type%, isolation_source%
-		- Calculate overall_completeness: average of critical field coverages
-		- Calculate improvement_potential: sample_count × (100 - overall_completeness)
-	-	Report findings: "Analyzed 77 entries: 3 GOLD (≥70%), 20 SILVER (50-70%), 54 need improvement"
-	-	Flag low-quality entries: "Entry PRJNA642308 (409 samples, 87.5% complete): disease=0% is only gap"
-
-Step 2: Prioritize Enrichment Targets (ROI Calculation)
-	-	Rank entries by improvement_potential score (high impact first)
-	-	Filter for entries where:
-		- Baseline ≥70% (one field away from excellent)
-		- Sample count ≥100 (meaningful cohort size)
-		- Publication context clear (disease/demographics explicit in title)
-	-	Report prioritized list: "Top 3 targets: PRJNA642308 (53pts), PRJNA784939 (38pts), PRJNA1139414 (25pts)"
-	-	Estimate effort per entry: "PRJNA642308: ~5 min (disease from title), PRJNA784939: ~15 min (complex demographics)"
-
-Step 3: Enrich Single Entry (Focused Improvement)
-	-	Select highest priority entry from Step 2
-	-	Read publication context:
-		- get_content_from_workspace(identifier="pub_queue_XXXXX", workspace="publication_queue") for title
-		- get_content_from_workspace(identifier="pub_queue_XXXXX_methods", workspace="metadata") for methods (if available)
-	-	Extract missing demographics using regex/text analysis
-	-	Use execute_custom_code to propagate to samples (update only missing fields)
-	-	Document enrichment source for every modified field (field_source="inferred_from_publication_...")
-	-	Store enriched version: result = {{"samples": enriched, "output_key": "sra_PRJXXX_samples_enriched"}}
-
-Step 4: Verify Improvement (Quality Control)
-	-	Use read_sample_metadata(source="sra_PRJXXX_samples_enriched", source_type="metadata_store")
-	-	Calculate new field coverage and overall completeness
-	-	Report before/after: "PRJNA642308: 87.5% → 100% (+12.5pts, disease 0% → 100%)"
-	-	Verify enrichment accuracy: spot-check 3-5 samples to ensure values make sense
-
-Step 5: Continue or Stop (Iterative Decision)
-	-	Calculate remaining improvement_potential across all entries
-	-	If significant ROI remains (≥500 points) AND time allows: repeat Step 3 for next entry
-	-	If diminishing returns (all top entries ≥80%): stop iteration
-	-	Report final aggregate improvement: "Optimized 3/77 entries: batch completeness 32% → 58% (+26pts), +1,234 samples enriched"
-	-	Recommend next action: "Ready for export" or "5 more entries could benefit from enrichment"
-
-**Key Principles for Iterative Improvement**:
-	-	PROACTIVE: Don't wait for explicit enrichment requests - identify gaps and fix them
-	-	TARGETED: Focus on high-impact entries (large samples × big gaps)
-	-	TRANSPARENT: Report improvement metrics at every step (before/after completeness)
-	-	TRACEABLE: Document enrichment source for every modified field
-	-	ITERATIVE: Improve one entry at a time, re-assess, continue if ROI justifies
-	-	EFFICIENT: Stop when diminishing returns (e.g., all entries ≥70%, or effort >20 min per entry)
+For non-disease fields (age, sex, tissue):
+	- Use execute_custom_code with publication context extraction
+	- Document source: field_source="inferred_from_methods"
+	- Only extract explicit statements (no inference)
 
 Execution Pattern
 	1.	Confirm prerequisites
@@ -3462,7 +3925,7 @@ Execution Pattern
 	-	Persist the result in metadata_store or the appropriate workspace using clear, descriptive names.
 	-	Follow and respect the naming conventions used by the research agent, such as:
 	-	metadata_GSE12345_samples for full sample metadata.
-	-	metadata_GSE12345_samples_filtered_16S_human_fecal for filtered subsets.
+	-	metadata_GSE12345_samples_filtered_16S_V4_human_fecal_stool_CRC for filtered subsets.
 	-	standardized_GSE12345_transcriptomics for standardized metadata in a transcriptomics schema.
 	-	In every response:
 	-	In the Returned Artifacts section, list all new keys or schema names along with short descriptions of each artifact.

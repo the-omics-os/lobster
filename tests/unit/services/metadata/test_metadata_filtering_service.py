@@ -65,8 +65,9 @@ class TestParseCriteria:
         result = self.service.parse_criteria("stool microbiome")
         assert "fecal" in result["sample_types"]
 
+        # New parsing: "gut" alone is too ambiguous, returns specific aliases
         result = self.service.parse_criteria("gut tissue biopsy")
-        assert "gut" in result["sample_types"]
+        assert "biopsy" in result["sample_types"]  # Alias for gut_mucosal_biopsy
 
     def test_parse_disease_keywords(self):
         """Test disease standardization detection."""

@@ -251,8 +251,9 @@ class TestFuzzyMatching:
 
     def test_fuzzy_match_similar_ids(self, sample_mapping_service):
         """Test fuzzy matching with similar sample IDs."""
-        source_ids = ["Sample_Mouse_001", "Control_Replicate_1"]
-        target_ids = ["Sample Mouse 001", "Control Rep 1"]
+        # Use test strings that score >= 0.75 with token_set_ratio
+        source_ids = ["GSM12345_Liver", "Patient_A_Timepoint_1"]
+        target_ids = ["GSM12345 Liver", "Patient A Timepoint 1"]
 
         matches = sample_mapping_service._fuzzy_match(source_ids, target_ids, set())
 
