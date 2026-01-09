@@ -24,7 +24,45 @@ class DiseaseStandardizationService:
     - Provenance tracking for all transformations
     """
 
+    # Exclusion configuration: prevents false positives from fuzzy matching
+    # Uses allow-list approach for ambiguous terms (Gemini-recommended architecture)
+    # Separates universally-blocked phrases from context-dependent ambiguous words
+    DISEASE_EXCLUSION_CONFIG = {
+        "healthy": {
+            # 1. Universally blocked substrings (always invalid)
+            "block_substrings": [
+                "negative control",
+                "positive control",
+                "technical control",
+                "disease control",
+                "control group",
+                "normal tissue",
+                "normal flora",
+                "normal distribution",
+                "normal development",
+            ],
+            # 2. Ambiguous terms requiring context validation (allow-list approach)
+            "ambiguous_terms": {
+                "control": {
+                    # Block if EXACTLY "control" (no context)
+                    "block_exact": ["control"],
+                    # Allow only these specific compound phrases
+                    "allowed_phrases": ["healthy control", "normal control"],
+                },
+                "normal": {
+                    # Block if EXACTLY "normal" (no context)
+                    "block_exact": ["normal"],
+                    # Allow only in this valid compound context
+                    "allowed_phrases": ["normal control"],
+                },
+            },
+        },
+    }
+
     # Standard disease mappings (case-insensitive)
+    # NOTE: Generic terms removed to prevent misclassification
+    # (e.g., "lung adenocarcinoma" should NOT map to CRC)
+    # Trade-off: False negatives < False positives for scientific validity
     DISEASE_MAPPINGS = {
         # Colorectal Cancer (CRC)
         "crc": [
@@ -35,10 +73,8 @@ class DiseaseStandardizationService:
             "colorectal carcinoma",
             "colon carcinoma",
             "rectal carcinoma",
-            "adenocarcinoma",
-            "tumor",
-            "tumour",
-            "cancer",
+            # Removed generic terms: "adenocarcinoma", "tumor", "tumour", "cancer"
+            # These caused false positives (lung cancer → CRC)
         ],
         # Ulcerative Colitis (UC)
         "uc": ["uc", "ulcerative colitis", "colitis ulcerosa", "ulcerative_colitis"],
@@ -53,21 +89,31 @@ class DiseaseStandardizationService:
             "crohn",
         ],
         # Healthy Controls
+        # NOTE: Generic terms removed to prevent misclassification
+        # (e.g., "negative control" should NOT map to healthy)
+        # Trade-off: False negatives < False positives for scientific validity
         "healthy": [
             "healthy",
-            "control",
-            "normal",
+            "healthy control",
+            "healthy volunteer",
+            "healthy donor",
+            "healthy subject",
+            "normal control",
             "non-ibd",
             "non ibd",
             "non-diseased",
             "non diseased",
-            "healthy control",
-            "normal control",
-            "ctrl",
+            "disease-free",
+            "disease free",
+            # REMOVED: "control" - too generic (matches negative/positive/technical controls)
+            # REMOVED: "normal" - too generic (matches "normal tissue" in tumor studies)
+            # REMOVED: "ctrl" - abbreviation too ambiguous without context
         ],
     }
 
     # Sample type mappings
+    # NOTE: Generic terms (biopsy, tissue, mucosa) require organ context
+    # to prevent false positives (e.g., "liver biopsy" → gut)
     SAMPLE_TYPE_MAPPINGS = {
         "fecal": ["fecal", "feces", "stool", "faecal", "faeces", "fecal sample"],
         "gut": [
@@ -77,10 +123,20 @@ class DiseaseStandardizationService:
             "colonic",
             "rectal",
             "ileal",
-            "biopsy",
-            "tissue",
-            "mucosal",
-            "mucosa",
+            # Organ-specific biopsy/tissue terms
+            "gut biopsy",
+            "colon biopsy",
+            "rectal biopsy",
+            "intestinal biopsy",
+            "gut tissue",
+            "colon tissue",
+            "intestinal tissue",
+            "colonic mucosa",
+            "rectal mucosa",
+            "intestinal mucosa",
+            # REMOVED: "biopsy" - too generic (could be liver, lung, breast)
+            # REMOVED: "tissue" - too generic (could be any tissue)
+            # REMOVED: "mucosal", "mucosa" - need organ context
         ],
     }
 
@@ -263,7 +319,7 @@ class DiseaseStandardizationService:
         self, value: str, mappings: Dict[str, List[str]]
     ) -> Tuple[str, str]:
         """
-        5-level fuzzy matching strategy.
+        5-level fuzzy matching strategy with exclusion pattern checking.
 
         Args:
             value: Input string to match
@@ -280,6 +336,35 @@ class DiseaseStandardizationService:
             - unmapped: No match found (returns original value)
         """
         normalized_value = self._normalize_term(value)
+
+        # Check exclusion patterns first (prevent false positives)
+        # Uses allow-list approach for ambiguous terms (Gemini-recommended)
+        for category, config in self.DISEASE_EXCLUSION_CONFIG.items():
+            # 1. Check universally blocked substrings first (fast path)
+            for phrase in config.get("block_substrings", []):
+                normalized_phrase = self._normalize_term(phrase)
+                if normalized_phrase in normalized_value:
+                    return value, "unmapped"
+
+            # 2. Handle ambiguous terms with allow-list validation
+            for term, term_config in config.get("ambiguous_terms", {}).items():
+                if term in normalized_value:
+                    # Block if exact match to standalone ambiguous term
+                    if normalized_value in term_config.get("block_exact", []):
+                        return value, "unmapped"
+
+                    # Check if compound phrase is in allow-list
+                    is_allowed = False
+                    for allowed_phrase in term_config.get("allowed_phrases", []):
+                        normalized_allowed = self._normalize_term(allowed_phrase)
+                        if normalized_allowed in normalized_value:
+                            is_allowed = True
+                            break
+
+                    if not is_allowed:
+                        # Contains ambiguous term in non-allowed context
+                        # (e.g., "IBS control", "normal flora")
+                        return value, "unmapped"
 
         # Level 1: Exact match
         for standard, variants in mappings.items():

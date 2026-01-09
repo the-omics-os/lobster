@@ -692,3 +692,98 @@ print(f"Disease completeness: {completeness_before*100:.1f}% → {completeness_a
 **Enrichment Workflow Viability**: ✅ **PRODUCTION READY**
 
 **No new tools needed** - existing toolkit is sufficient for manual enrichment with publication context.
+
+---
+
+## Understanding Study vs Publication Provenance
+
+### Key Identifiers
+
+| Field | Type | Purpose | Example | Use For |
+|-------|------|---------|---------|---------|
+| `study_accession` | SRA Study | Batch effect correction | SRP001, PRJNA12345 | **ComBat-seq, PERMANOVA** |
+| `source_entry_id` | Publication | Literature tracking | pub_queue_doi_10_1234 | Citation management |
+| `source_doi` | Publication | Paper reference | 10.1038/... | Citation, full-text retrieval |
+| `source_pmid` | Publication | PubMed link | 12345678 | Literature search |
+
+### Critical: Use `study_accession` for Batch Correction
+
+**Why?**
+- Technical batches = sequencing center + protocol + temporal cohort
+- `study_accession` (SRP*) represents a SINGLE biological study with consistent conditions
+- Papers cite studies, but studies define technical batches
+
+**Example Scenario:**
+```
+Study SRP001 (Broad Institute, 2020, MiSeq V4)
+  ├── Cited by Paper A (Nature 2021) - "Diet affects microbiome"
+  └── Cited by Paper B (Cell 2022) - "Meta-analysis of 100 studies"
+
+For batch correction:
+  ✓ Group by: SRP001 (same technical batch)
+  ✗ Group by: Paper A vs Paper B (different citation contexts, NOT technical batches)
+```
+
+### Batch Effect Correction in R
+
+```r
+library(sva)
+library(phyloseq)
+
+# Read exported CSV
+metadata <- read.csv("harmonized_samples.csv")
+
+# ComBat-seq correction (batch = study)
+batch <- factor(metadata$study_accession)
+condition <- factor(metadata$disease)
+
+# Adjust count matrix
+adjusted_counts <- ComBat_seq(
+  counts = count_matrix,
+  batch = batch,
+  group = condition
+)
+```
+
+### Batch Effect Correction in Python
+
+```python
+import pandas as pd
+from combat.pycombat import pycombat
+
+# Read exported CSV
+metadata = pd.read_csv("harmonized_samples.csv")
+
+# ComBat correction
+adjusted_data = pycombat(
+    data=count_matrix,
+    batch=metadata['study_accession'].values,  # Use study, not source_*
+    mod=pd.get_dummies(metadata['disease'], drop_first=True)
+)
+```
+
+### PERMANOVA (Assess Batch Effects)
+
+```r
+library(vegan)
+
+# Test if study explains microbiome variation
+permanova_result <- adonis2(
+  distance_matrix ~ disease + study_accession,
+  data = metadata,
+  permutations = 999
+)
+
+# If study_accession is significant → batch effects present
+# Apply correction before disease-based analysis
+```
+
+### When to Worry About Batch Effects
+
+Lobster's `process_metadata_queue` now provides automatic warnings:
+
+1. **Studies in Multiple Publications**: May indicate overlapping datasets
+2. **Dominant Study (>50%)**: Single study drives results → pseudo-replication
+3. **Imbalanced Sizes (CV > 1.5)**: Stratified analysis recommended
+
+**If warnings appear**: Always perform batch correction before differential abundance or diversity analysis.

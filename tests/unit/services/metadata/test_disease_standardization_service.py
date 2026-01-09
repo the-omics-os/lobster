@@ -29,8 +29,8 @@ def sample_metadata():
                 "Ulcerative Colitis",  # UC - exact match
                 "Crohn's Disease",  # CD - exact match
                 "Healthy Control",  # Healthy - contains match
-                "tumor",  # CRC - contains match
-                "Normal",  # Healthy - exact match
+                "tumor",  # Unmapped (generic term removed from CRC mappings)
+                "Healthy volunteer",  # Healthy - exact match (changed from "Normal" which is now unmapped)
                 "Unknown Disease",  # Unmapped
             ],
             "sample_type": [
@@ -84,26 +84,148 @@ class TestDiseaseStandardization:
 
         result, stats, ir = service.standardize_disease_terms(metadata, "disease")
 
-        # "cancer" should match CRC (variant: "colorectal cancer")
-        # "colitis" should match UC (variant: "ulcerative colitis")
-        # "tumor" should match CRC (variant: "tumor")
+        # "cancer" should match CRC (reverse contains: "colon cancer" contains "cancer")
+        # "colitis" should match UC (reverse contains: "ulcerative colitis" contains "colitis")
+        # "tumor" is UNMAPPED (generic term removed and no variant contains "tumor")
         assert "crc" in result["disease"].tolist()
         assert "uc" in result["disease"].tolist()
+        assert result["disease"].tolist().count("crc") == 1
+        assert result["disease"].tolist().count("uc") == 1
+        assert stats["mapping_stats"]["unmapped"] == 1  # Only "tumor" unmapped
+        assert stats["mapping_stats"]["reverse_contains_matches"] == 2
 
     def test_token_match(self, service):
         """Test token-based matching."""
         metadata = pd.DataFrame(
             {
                 "disease": [
-                    "rectal adenocarcinoma",  # Should match CRC (tokens: rectal, cancer)
-                    "colon tumor",  # Should match CRC (tokens: colon, tumor)
+                    "rectal adenocarcinoma",  # Should match CRC (token: rectal)
+                    "colon tumor",  # Should match CRC (token: colon from "colon cancer")
                 ]
             }
         )
 
         result, stats, ir = service.standardize_disease_terms(metadata, "disease")
 
+        # Both should map to CRC via anatomical tokens (rectal, colon)
+        # "rectal" appears in "rectal cancer" variant
+        # "colon" appears in "colon cancer" variant
+        assert result["disease"].iloc[0] == "crc"
+        assert result["disease"].iloc[1] == "crc"
         assert all(d == "crc" for d in result["disease"])
+        assert stats["mapping_stats"]["token_matches"] == 2
+        assert stats["mapping_stats"]["unmapped"] == 0
+
+    def test_lung_cancer_not_mapped_to_crc(self, service):
+        """Regression test: lung cancer should NOT map to CRC after generic term removal."""
+        metadata = pd.DataFrame(
+            {
+                "disease": [
+                    "lung adenocarcinoma",
+                    "breast tumor",
+                    "glioblastoma",  # Replaced "pancreatic cancer" (which has "cancer" token)
+                    "liver tumour",
+                ]
+            }
+        )
+
+        result, stats, ir = service.standardize_disease_terms(metadata, "disease")
+
+        # All should be unmapped - no overlapping tokens with CRC variants
+        # "cancer"/"adenocarcinoma" removed from CRC mappings, but still present in variants
+        # like "colon cancer", so terms with "cancer" token would match via Level 4
+        # These terms have NO token overlap with CRC, so they remain unmapped
+        assert "crc" not in result["disease"].tolist()
+        assert stats["mapping_stats"]["unmapped"] == 4
+
+        # Original values should be preserved for unmapped terms
+        assert "lung adenocarcinoma" in result["disease"].tolist()
+        assert "breast tumor" in result["disease"].tolist()
+        assert "glioblastoma" in result["disease"].tolist()
+        assert "liver tumour" in result["disease"].tolist()
+
+    def test_control_terms_not_mapped_to_healthy(self, service):
+        """Regression test: generic 'control' terms should NOT map to healthy.
+
+        Scientific justification:
+        - "control" alone is ambiguous (negative/positive/technical/disease controls)
+        - Only compound terms like "healthy control" should map to healthy
+        - This prevents misclassification of extraction blanks, mock communities,
+          and disease control groups as healthy samples.
+        """
+        metadata = pd.DataFrame(
+            {
+                "disease": [
+                    "negative control",    # Extraction blank - NOT a healthy sample
+                    "positive control",    # Mock community - NOT a healthy sample
+                    "disease control",     # Disease control group - NOT healthy
+                    "IBS control",         # IBS disease control - NOT healthy
+                    "technical control",   # Technical control - NOT a health status
+                    "control",             # Ambiguous - should NOT map to healthy
+                ]
+            }
+        )
+
+        result, stats, ir = service.standardize_disease_terms(metadata, "disease")
+
+        # None of these should map to "healthy"
+        assert result["disease"].tolist().count("healthy") == 0
+        # All should remain unmapped (original values preserved)
+        assert "negative control" in result["disease"].tolist()
+        assert "positive control" in result["disease"].tolist()
+        assert "disease control" in result["disease"].tolist()
+
+    def test_normal_terms_not_mapped_to_healthy(self, service):
+        """Regression test: generic 'normal' terms should NOT map to healthy.
+
+        Scientific justification:
+        - "normal tissue" in tumor studies refers to adjacent non-tumor tissue
+        - "normal flora" refers to microbiome composition, not health status
+        - Only explicit health terms should map to healthy
+        """
+        metadata = pd.DataFrame(
+            {
+                "disease": [
+                    "normal tissue",        # Adjacent normal in tumor studies
+                    "normal flora",         # Microbiome term, not health status
+                    "normal distribution",  # Statistics term (edge case)
+                    "normal",               # Ambiguous - should NOT map to healthy
+                ]
+            }
+        )
+
+        result, stats, ir = service.standardize_disease_terms(metadata, "disease")
+
+        # None of these should map to "healthy"
+        assert result["disease"].tolist().count("healthy") == 0
+        # Original values should be preserved
+        assert "normal tissue" in result["disease"].tolist()
+        assert "normal flora" in result["disease"].tolist()
+
+    def test_healthy_compound_terms_still_match(self, service):
+        """Verify that explicit healthy compound terms still map correctly.
+
+        After removing generic "control" and "normal", these compound terms
+        should still correctly map to "healthy".
+        """
+        metadata = pd.DataFrame(
+            {
+                "disease": [
+                    "healthy control",       # ✓ Should map to healthy
+                    "healthy volunteer",     # ✓ Should map to healthy
+                    "healthy donor",         # ✓ Should map to healthy
+                    "normal control",        # ✓ Should map to healthy (compound term)
+                    "non-diseased",          # ✓ Should map to healthy
+                    "disease-free",          # ✓ Should map to healthy
+                ]
+            }
+        )
+
+        result, stats, ir = service.standardize_disease_terms(metadata, "disease")
+
+        # All should map to "healthy"
+        assert all(d == "healthy" for d in result["disease"])
+        assert stats["mapping_stats"]["unmapped"] == 0
 
     def test_unmapped_terms(self, service):
         """Test handling of unmapped terms."""

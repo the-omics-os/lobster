@@ -1,26 +1,22 @@
 """
-Metadata Filtering Service for Natural Language Filter Criteria.
+Metadata filtering service with semantic understanding.
 
-This service handles parsing and applying natural language filter criteria
-to sample metadata. It supports sequencing type filters (16S, shotgun),
-host organism filters, sample type filters, and disease standardization.
+Parses natural language filter criteria and applies sequential filters:
+- Disease extraction and standardization
+- Sequencing method (16S, shotgun, ITS)
+- Amplicon region (V4, V3-V4, full-length)
+- Host organism (fuzzy matching)
+- Sample type (fecal_stool, gut_luminal_content, gut_mucosal_biopsy, oral, skin)
 
-Extracted from metadata_assistant.py for cleaner separation of concerns.
-
-Supported filters (add new ones by extending parse_criteria + apply_filters):
-- Sequencing: 16S amplicon, shotgun/WGS/metagenomic
-- Host: human, mouse (extensible)
-- Sample type: fecal/stool, gut/tissue/biopsy
-- Disease: CRC, UC, CD, cancer, colitis, crohn, healthy, control
-
-Future filters (add when customer requests):
-- Organism taxonomy
-- Sequencing device/platform
-- Analysis method
-- Gene panels
+Supported filter criteria syntax:
+    "16S V4 human fecal_stool CRC"  (explicit, recommended)
+    "16S human fecal CRC"            (legacy, uses aliases with warnings)
+    "shotgun mouse gut_luminal_content"
+    "16S V3-V4 human gut_mucosal_biopsy UC CD"
 """
 
 import logging
+import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -153,13 +149,30 @@ class MetadataFilteringService:
                 "check_shotgun": bool,
                 "host_organisms": List[str],
                 "sample_types": List[str],
-                "standardize_disease": bool
+                "standardize_disease": bool,
+                "amplicon_region": Optional[str]
             }
         """
         criteria_lower = criteria.lower()
 
         # Check for 16S amplicon
         check_16s = "16s" in criteria_lower or "amplicon" in criteria_lower
+
+        # Check for amplicon region specification
+        amplicon_region = None
+        region_match = re.search(
+            r'\b(V\d+(?:-V\d+)?|full-length)\b',
+            criteria_lower,
+            re.IGNORECASE
+        )
+        if region_match:
+            amplicon_region = region_match.group(1)
+            # Normalize to standard format
+            if amplicon_region.lower() == "full-length":
+                amplicon_region = "full-length"
+            else:
+                # Ensure proper V capitalization (V4, V3-V4)
+                amplicon_region = amplicon_region.upper()
 
         # Check for shotgun metagenomic
         check_shotgun = (
@@ -175,20 +188,39 @@ class MetadataFilteringService:
         if "mouse" in criteria_lower or "mus musculus" in criteria_lower:
             host_organisms.append("Mouse")
 
-        # Check for sample types
+        # Check for sample types (supports new + legacy syntax)
         sample_types = []
-        if (
-            "fecal" in criteria_lower
-            or "stool" in criteria_lower
-            or "feces" in criteria_lower
-        ):
-            sample_types.append("fecal")
-        if (
-            "gut" in criteria_lower
-            or "tissue" in criteria_lower
-            or "biopsy" in criteria_lower
-        ):
-            sample_types.append("gut")
+
+        # New explicit categories (preferred)
+        if "fecal_stool" in criteria_lower or "fecal stool" in criteria_lower:
+            sample_types.append("fecal_stool")
+        elif "fecal" in criteria_lower or "stool" in criteria_lower or "feces" in criteria_lower:
+            # Legacy alias (with deprecation warning in service)
+            sample_types.append("fecal")  # Will be resolved to fecal_stool
+
+        if "gut_luminal_content" in criteria_lower or "gut luminal" in criteria_lower:
+            sample_types.append("gut_luminal_content")
+        elif "luminal" in criteria_lower:
+            sample_types.append("luminal")  # Alias
+
+        if "gut_mucosal_biopsy" in criteria_lower or "gut mucosal" in criteria_lower or "mucosal biopsy" in criteria_lower:
+            sample_types.append("gut_mucosal_biopsy")
+        elif "biopsy" in criteria_lower and "gut" not in sample_types:
+            sample_types.append("biopsy")  # Alias
+
+        if "gut_lavage" in criteria_lower or "gut lavage" in criteria_lower:
+            sample_types.append("gut_lavage")
+        elif "lavage" in criteria_lower:
+            sample_types.append("gut_lavage")  # Direct mapping
+
+        # "gut" alone is NOT parsed - too ambiguous
+        # If user wants gut samples, they must specify luminal OR biopsy OR lavage
+
+        # Keep existing (unchanged)
+        if "oral" in criteria_lower or "saliva" in criteria_lower:
+            sample_types.append("oral")
+        if "skin" in criteria_lower:
+            sample_types.append("skin")
 
         # Always enable disease extraction for microbiome studies (Bug 3 fix - DataBioMix)
         # Disease metadata is valuable even if not explicitly requested in filter criteria
@@ -201,6 +233,9 @@ class MetadataFilteringService:
             "host_organisms": host_organisms,
             "sample_types": sample_types,
             "standardize_disease": standardize_disease,
+            "amplicon_region": amplicon_region,  # NEW: Amplicon region filter (V4, V3-V4, etc.)
+            "min_disease_coverage": 0.5,  # Default: 50% threshold for disease-based meta-analysis
+            "strict_disease_validation": True,  # Default: fail hard on insufficient coverage
         }
 
     def apply_filters(
@@ -238,7 +273,10 @@ class MetadataFilteringService:
         # Apply disease extraction + standardization if requested
         if parsed_criteria.get("standardize_disease") and filtered and self.disease_service:
             filtered, disease_stats = self._apply_disease_filter(
-                filtered, study_context
+                filtered,
+                study_context,
+                min_disease_coverage=parsed_criteria.get("min_disease_coverage", 0.5),
+                strict_disease_validation=parsed_criteria.get("strict_disease_validation", True)
             )
             if disease_stats.get("applied"):
                 filter_steps.append(f"disease_standardization({disease_stats.get('rate', 0):.1f}%)")
@@ -251,6 +289,45 @@ class MetadataFilteringService:
                 check_shotgun=parsed_criteria.get("check_shotgun", False),
             )
             filter_steps.append(f"sequencing({seq_stats['retained']}/{seq_stats['input']})")
+
+        # Apply amplicon region validation (if 16S specified)
+        if parsed_criteria.get("check_16s") and parsed_criteria.get("amplicon_region"):
+            samples_before = len(filtered)
+            amplicon_stats = {"applied": False, "retained": 0, "input": samples_before}
+
+            allowed_regions = [parsed_criteria["amplicon_region"]]  # Single region required
+            failed_samples = []
+            passed_samples = []
+
+            for sample in filtered:
+                result_dict, validation_stats, _ = self.microbiome_service.validate_amplicon_region(
+                    sample,
+                    allowed_regions=allowed_regions,
+                    strict=True,  # Always strict for region validation
+                    confidence_threshold=0.7
+                )
+
+                if validation_stats["is_valid"]:
+                    # Add detected region to sample metadata
+                    sample["amplicon_region_detected"] = validation_stats.get("detected_region")
+                    sample["amplicon_region_confidence"] = validation_stats.get("confidence", 0.0)
+                    passed_samples.append(sample)
+                else:
+                    failed_samples.append(sample)
+
+            filtered = passed_samples
+            amplicon_stats["applied"] = True
+            amplicon_stats["retained"] = len(passed_samples)
+            amplicon_stats["rejected"] = len(failed_samples)
+
+            filter_steps.append(
+                f"amplicon({amplicon_stats['retained']}/{amplicon_stats['input']})"
+            )
+
+            logger.debug(
+                f"After amplicon region filter ({parsed_criteria['amplicon_region']}): "
+                f"{amplicon_stats['retained']}/{amplicon_stats['input']} samples retained"
+            )
 
         # Apply host organism filter
         if parsed_criteria.get("host_organisms"):
@@ -285,8 +362,24 @@ class MetadataFilteringService:
         self,
         samples: List[Dict[str, Any]],
         study_context: Optional[Dict] = None,
+        min_disease_coverage: float = 0.5,
+        strict_disease_validation: bool = True,
     ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-        """Apply disease extraction and standardization."""
+        """
+        Apply disease extraction and standardization with validation.
+
+        Args:
+            samples: List of sample dictionaries
+            study_context: Optional publication metadata for disease inference
+            min_disease_coverage: Minimum disease coverage rate (0.0-1.0) required for analysis
+            strict_disease_validation: If True, raise ValueError on insufficient coverage
+
+        Returns:
+            Tuple of (filtered_samples, stats_dict)
+
+        Raises:
+            ValueError: If strict_disease_validation=True and coverage < min_disease_coverage
+        """
         if not samples or not self.disease_service:
             return samples, {"applied": False}
 
@@ -301,6 +394,32 @@ class MetadataFilteringService:
             standardized_df, stats, _ = self.disease_service.standardize_disease_terms(
                 df, disease_column=disease_col
             )
+
+            # Validate disease coverage after standardization
+            coverage_rate = stats.get("standardization_rate", 0) / 100.0
+            total_samples = stats.get("total_samples", len(samples))
+            mapping_stats = stats.get("mapping_stats", {})
+            mapped_samples = total_samples - mapping_stats.get("unmapped", total_samples)
+
+            # Check if coverage meets minimum threshold
+            if min_disease_coverage > 0.0 and coverage_rate < min_disease_coverage:
+                error_msg = (
+                    f"❌ Insufficient disease data: {coverage_rate*100:.1f}% coverage "
+                    f"({mapped_samples}/{total_samples} samples) is below the required "
+                    f"{min_disease_coverage*100:.0f}% threshold for disease-based meta-analysis.\n\n"
+                    f"Recommendations:\n"
+                    f"  1. Use different datasets with better disease annotations\n"
+                    f"  2. Manually enrich samples using publication metadata (execute_custom_code)\n"
+                    f"  3. Lower threshold with min_disease_coverage={coverage_rate:.2f} (not recommended)\n"
+                    f"  4. Skip disease filtering by omitting disease terms from filter_criteria"
+                )
+
+                if strict_disease_validation:
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
+                else:
+                    logger.warning(error_msg)
+
             filtered = standardized_df.to_dict("records")
             logger.debug(
                 f"Disease extraction + standardization applied: "
@@ -431,6 +550,8 @@ class MetadataFilteringService:
             active_filters = []
             if parsed_criteria.get("check_16s"):
                 active_filters.append("16S amplicon")
+            if parsed_criteria.get("amplicon_region"):
+                active_filters.append(f"region: {parsed_criteria['amplicon_region']}")
             if parsed_criteria.get("check_shotgun"):
                 active_filters.append("shotgun/WGS")
             if parsed_criteria.get("host_organisms"):
@@ -462,6 +583,7 @@ class MetadataFilteringService:
             parameters={
                 "check_16s": parsed_criteria.get("check_16s", False),
                 "check_shotgun": parsed_criteria.get("check_shotgun", False),
+                "amplicon_region": parsed_criteria.get("amplicon_region"),
                 "host_organisms": parsed_criteria.get("host_organisms", []),
                 "sample_types": parsed_criteria.get("sample_types", []),
                 "standardize_disease": parsed_criteria.get("standardize_disease", False),
@@ -469,6 +591,7 @@ class MetadataFilteringService:
             parameter_schema={
                 "check_16s": {"type": "boolean", "description": "Filter for 16S amplicon data"},
                 "check_shotgun": {"type": "boolean", "description": "Filter for shotgun/WGS data"},
+                "amplicon_region": {"type": "string", "description": "Required amplicon region (V4, V3-V4, etc.)"},
                 "host_organisms": {"type": "array", "items": {"type": "string"}, "description": "Allowed host organisms"},
                 "sample_types": {"type": "array", "items": {"type": "string"}, "description": "Allowed sample types"},
                 "standardize_disease": {"type": "boolean", "description": "Apply disease term standardization"},

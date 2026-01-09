@@ -31,6 +31,7 @@ AGENT_CONFIG = AgentRegistryConfig(
 # =============================================================================
 import json
 import logging
+from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -1142,39 +1143,72 @@ def metadata_assistant(
 
     @tool
     def filter_samples_by(
-        workspace_key: str, filter_criteria: str, strict: bool = True
+        workspace_key: str,
+        filter_criteria: str,
+        strict: bool = True,
+        min_disease_coverage: float = 0.5,
+        strict_disease_validation: bool = True,
     ) -> str:
         """
         Filter samples by multi-modal criteria (16S amplicon + host organism + sample type + disease).
 
         Use this tool when you need to filter workspace metadata by microbiome-specific criteria:
         - 16S amplicon sequencing detection (platform, library_strategy, assay_type)
+        - Amplicon region validation (V4, V3-V4, V1-V9, full-length)
         - Host organism validation (human, mouse with fuzzy matching)
         - Sample type filtering (fecal vs tissue/biopsy)
         - Disease standardization (CRC, UC, CD, healthy controls)
 
         This tool applies filters IN SEQUENCE (composition pattern):
         1. Check if 16S amplicon (if requested)
-        2. Validate host organism (if requested)
-        3. Filter by sample type (if requested)
-        4. Standardize disease terms (if requested)
+        2. Validate amplicon region (if region specified)
+        3. Validate host organism (if requested)
+        4. Filter by sample type (if requested)
+        5. Standardize disease terms (if requested)
+
+        Filter Criteria Syntax:
+            Basic: "16S human fecal CRC"
+            With region: "16S V4 human fecal CRC"
+            With region: "16S V3-V4 mouse gut UC"
+
+            Supported regions: V1-V9, V3-V4, V4-V5, V1-V9, full-length
 
         Args:
             workspace_key: Key for workspace metadata (e.g., "geo_gse123456")
-            filter_criteria: Natural language criteria (e.g., "16S human fecal CRC")
+            filter_criteria: Natural language criteria (e.g., "16S V4 human fecal CRC")
             strict: Use strict matching for 16S detection (default: True)
+            min_disease_coverage: Minimum disease coverage rate (0.0-1.0).
+                Default 0.5 (50%). Set to 0.0 to disable validation.
+            strict_disease_validation: If True, raise error when coverage is low.
+                If False, log warning but continue. Default True.
 
         Returns:
             Formatted markdown report with filtering results, retention rate, and filtered metadata summary
 
         Examples:
-            # Filter for human fecal 16S samples
-            filter_samples_by(workspace_key="geo_gse123456",
-                            filter_criteria="16S human fecal")
+            # Default: Fail if <50% disease coverage
+            filter_samples_by(workspace_key="geo_gse123456", filter_criteria="16S human fecal CRC")
 
-            # Filter for mouse gut tissue with disease standardization
-            filter_samples_by(workspace_key="geo_gse789012",
-                            filter_criteria="16S mouse gut CRC UC CD healthy")
+            # Enforce specific amplicon region
+            filter_samples_by(workspace_key="geo_gse123456", filter_criteria="16S V4 human fecal CRC")
+
+            # Region detection (V3-V4 only)
+            filter_samples_by(workspace_key="geo_gse123456", filter_criteria="16S V3-V4 human fecal")
+
+            # Permissive: Warn but continue
+            filter_samples_by(workspace_key="geo_gse123456",
+                            filter_criteria="16S human fecal",
+                            strict_disease_validation=False)
+
+            # Lower threshold: Fail if <30% coverage
+            filter_samples_by(workspace_key="geo_gse123456",
+                            filter_criteria="16S human fecal",
+                            min_disease_coverage=0.3)
+
+            # Disable validation entirely
+            filter_samples_by(workspace_key="geo_gse123456",
+                            filter_criteria="16S human fecal",
+                            min_disease_coverage=0.0)
         """
         # Check if microbiome services are available
         if not MICROBIOME_FEATURES_AVAILABLE:
@@ -1317,17 +1351,37 @@ def metadata_assistant(
 
                 if disease_col:
                     # Apply standardization to extracted disease column
-                    standardized, stats, ir = (
-                        disease_standardization_service.standardize_disease_terms(
-                            current_metadata, disease_column=disease_col
+                    try:
+                        standardized, stats, ir = (
+                            disease_standardization_service.standardize_disease_terms(
+                                current_metadata, disease_column=disease_col
+                            )
                         )
-                    )
-                    current_metadata = standardized
-                    irs.append(ir)
-                    stats_list.append(stats)
-                    logger.debug(
-                        f"Disease extraction + standardization complete: {stats['standardization_rate']:.1f}% mapped"
-                    )
+                        current_metadata = standardized
+                        irs.append(ir)
+                        stats_list.append(stats)
+                        logger.debug(
+                            f"Disease extraction + standardization complete: {stats['standardization_rate']:.1f}% mapped"
+                        )
+
+                        # Validate disease coverage if requested (pass parameters through)
+                        if min_disease_coverage > 0:
+                            disease_coverage = stats.get("standardization_rate", 0) / 100.0
+                            if disease_coverage < min_disease_coverage:
+                                error_msg = (
+                                    f"Insufficient disease data coverage: {disease_coverage*100:.1f}% "
+                                    f"(required: {min_disease_coverage*100:.1f}%). "
+                                    f"Consider using min_disease_coverage=0.0 to disable validation."
+                                )
+                                if strict_disease_validation:
+                                    return f"❌ Disease validation failed:\n{error_msg}"
+                                else:
+                                    logger.warning(f"Disease validation warning: {error_msg}")
+                    except ValueError as e:
+                        if "Insufficient disease data" in str(e):
+                            return f"❌ Disease validation failed:\n{str(e)}"
+                        else:
+                            raise
                 else:
                     logger.warning(
                         "Disease standardization requested but no disease information found in metadata"
@@ -1353,6 +1407,8 @@ def metadata_assistant(
                     "workspace_key": workspace_key,
                     "filter_criteria": filter_criteria,
                     "strict": strict,
+                    "min_disease_coverage": min_disease_coverage,
+                    "strict_disease_validation": strict_disease_validation,
                     "parsed_criteria": parsed_criteria,
                 },
                 description=f"Filtered {original_count}→{final_count} samples ({retention_rate:.1f}% retention), {len(irs)} filters applied",
@@ -1407,6 +1463,8 @@ def metadata_assistant(
         entry_id: str,
         filter_criteria: str = None,
         standardize_schema: str = None,
+        min_disease_coverage: float = 0.5,
+        strict_disease_validation: bool = True,
     ) -> str:
         """
         Process a single publication queue entry for metadata filtering/standardization.
@@ -1414,13 +1472,49 @@ def metadata_assistant(
         Reads workspace_metadata_keys from the entry, applies filters if specified,
         and stores results back to harmonization_metadata.
 
+        Filter Criteria Syntax:
+            Basic: "16S human fecal CRC"
+            With region: "16S V4 human fecal CRC"
+            With region: "16S V3-V4 mouse gut UC"
+
+            Supported regions: V1-V9, V3-V4, V4-V5, V1-V9, full-length
+
         Args:
             entry_id: Publication queue entry ID
-            filter_criteria: Optional natural language filter (e.g., "16S human fecal")
+            filter_criteria: Optional natural language filter (e.g., "16S V4 human fecal")
             standardize_schema: Optional schema to standardize to (e.g., "microbiome")
+            min_disease_coverage: Minimum disease coverage rate (0.0-1.0).
+                Default 0.5 (50%). Set to 0.0 to disable validation.
+            strict_disease_validation: If True, raise error when coverage is low.
+                If False, log warning but continue. Default True.
 
         Returns:
             Processing summary with sample counts and filtered metadata location
+
+        Examples:
+            # Default: Fail if <50% disease coverage
+            process_metadata_entry(entry_id="pub_123", filter_criteria="16S human fecal")
+
+            # Enforce specific amplicon region
+            process_metadata_entry(entry_id="pub_123", filter_criteria="16S V4 human fecal CRC")
+
+            # Region detection (V3-V4 only)
+            process_metadata_entry(entry_id="pub_123", filter_criteria="16S V3-V4 human fecal")
+
+            # Permissive: Warn but continue
+            process_metadata_entry(entry_id="pub_123",
+                                  filter_criteria="16S human fecal",
+                                  strict_disease_validation=False)
+
+            # Lower threshold: Fail if <30% coverage
+            process_metadata_entry(entry_id="pub_123",
+                                  filter_criteria="16S human fecal",
+                                  min_disease_coverage=0.3)
+
+            # Disable validation entirely
+            process_metadata_entry(entry_id="pub_123",
+                                  filter_criteria="16S human fecal",
+                                  min_disease_coverage=0.0)
         """
         try:
             queue = data_manager.publication_queue
@@ -1518,15 +1612,33 @@ def metadata_assistant(
                     f"Applying filter criteria to {len(all_samples)} samples: '{filter_criteria}'"
                 )
                 parsed = metadata_filtering_service.parse_criteria(filter_criteria)
+                # Add disease validation parameters
+                parsed["min_disease_coverage"] = min_disease_coverage
+                parsed["strict_disease_validation"] = strict_disease_validation
                 # Pass disease_extractor with fallback chain (Bug 3 fix - DataBioMix)
                 metadata_filtering_service.disease_extractor = extract_disease_with_fallback
-                all_samples, filter_stats, _ = metadata_filtering_service.apply_filters(
-                    all_samples, parsed
-                )
-                logger.debug(
-                    f"After filtering: {len(all_samples)} samples retained "
-                    f"({filter_stats.get('retention_rate', 0):.1f}%)"
-                )
+                try:
+                    all_samples, filter_stats, _ = metadata_filtering_service.apply_filters(
+                        all_samples, parsed
+                    )
+                    logger.debug(
+                        f"After filtering: {len(all_samples)} samples retained "
+                        f"({filter_stats.get('retention_rate', 0):.1f}%)"
+                    )
+                except ValueError as e:
+                    if "Insufficient disease data" in str(e):
+                        error_msg = f"Disease validation failed: {str(e)}"
+                        logger.error(f"Entry {entry_id}: {error_msg}")
+                        # Mark as METADATA_FAILED
+                        queue.update_status(
+                            entry_id,
+                            entry.status,
+                            handoff_status=HandoffStatus.METADATA_FAILED,
+                            error=error_msg,
+                        )
+                        return f"❌ {error_msg}"
+                    else:
+                        raise
 
             samples_after = len(all_samples)
 
@@ -1598,11 +1710,17 @@ def metadata_assistant(
             logger.error(f"Error processing entry {entry_id}: {e}")
             return f"❌ Error processing entry: {str(e)}"
 
-    def _process_single_entry_for_queue(entry, filter_criteria):
+    def _process_single_entry_for_queue(entry, filter_criteria, min_disease_coverage, strict_disease_validation):
         """
         Process a single entry and return (entry_samples, entry_stats, failed_reason).
 
         Extracted for reuse in both sequential and parallel processing.
+
+        Args:
+            entry: Publication queue entry
+            filter_criteria: Filter criteria string
+            min_disease_coverage: Minimum disease coverage threshold
+            strict_disease_validation: Whether to fail on low coverage
 
         Returns:
             Tuple of (entry_samples: List, entry_stats: Dict, failed_reason: Optional[str])
@@ -1648,12 +1766,23 @@ def metadata_assistant(
             if filter_criteria and entry_samples and metadata_filtering_service:
                 samples_before_filter = len(entry_samples)
                 parsed = metadata_filtering_service.parse_criteria(filter_criteria)
+                # Add disease validation parameters
+                parsed["min_disease_coverage"] = min_disease_coverage
+                parsed["strict_disease_validation"] = strict_disease_validation
                 metadata_filtering_service.disease_extractor = extract_disease_with_fallback
-                entry_samples, _, _ = metadata_filtering_service.apply_filters(entry_samples, parsed)
-                logger.debug(
-                    f"Entry {entry.entry_id}: Filter applied - "
-                    f"{len(entry_samples)}/{samples_before_filter} samples retained"
-                )
+                try:
+                    entry_samples, _, _ = metadata_filtering_service.apply_filters(entry_samples, parsed)
+                    logger.debug(
+                        f"Entry {entry.entry_id}: Filter applied - "
+                        f"{len(entry_samples)}/{samples_before_filter} samples retained"
+                    )
+                except ValueError as e:
+                    if "Insufficient disease data" in str(e):
+                        error_msg = f"Disease validation failed: {str(e)}"
+                        logger.error(f"Entry {entry.entry_id}: {error_msg}")
+                        return [], {"extracted": samples_extracted, "valid": samples_valid}, error_msg
+                    else:
+                        raise
 
             # Add publication context
             for sample in entry_samples:
@@ -1677,7 +1806,7 @@ def metadata_assistant(
             logger.error(error_msg, exc_info=True)
             return [], {}, error_msg
 
-    def _process_queue_with_progress(entries, filter_criteria, output_key, parallel_workers):
+    def _process_queue_with_progress(entries, filter_criteria, output_key, parallel_workers, min_disease_coverage, strict_disease_validation):
         """Process queue entries in parallel with Rich progress visualization."""
         if not PROGRESS_UI_AVAILABLE:
             logger.warning("Progress UI not available, cannot use parallel processing")
@@ -1761,7 +1890,7 @@ def metadata_assistant(
                         # Process entry
                         entry_start = time.time()
                         entry_samples, entry_stats, failed_reason = _process_single_entry_for_queue(
-                            entry, filter_criteria
+                            entry, filter_criteria, min_disease_coverage, strict_disease_validation
                         )
 
                         elapsed = time.time() - entry_start
@@ -1874,6 +2003,8 @@ Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_
         max_entries: int = None,
         output_key: str = "aggregated_filtered_samples",
         parallel_workers: int = None,
+        min_disease_coverage: float = 0.5,
+        strict_disease_validation: bool = True,
     ) -> str:
         """
         Batch process publication queue entries and aggregate sample-level metadata from workspace SRA files.
@@ -1886,13 +2017,25 @@ Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_
         FILTERING RULE: Only use filter_criteria when user EXPLICITLY asks to filter (e.g., "filter for 16S human fecal").
         If user just asks to "process entries" or "aggregate samples", use filter_criteria=None to include ALL samples.
 
+        Filter Criteria Syntax:
+            Basic: "16S human fecal CRC"
+            With region: "16S V4 human fecal CRC"
+            With region: "16S V3-V4 mouse gut UC"
+
+            Supported regions: V1-V9, V3-V4, V4-V5, V1-V9, full-length
+
         Args:
             status_filter: Queue status (default: 'handoff_ready' - ONLY valid choice for filtering). handoff_ready = has workspace SRA files.
-            filter_criteria: Sample-level filter (e.g., "16S human fecal CRC"). "16S"=AMPLICON, "shotgun"=WGS/WXS/METAGENOMIC (excludes WGA),
-                             "16S shotgun"=BOTH (OR logic), "human"=Homo sapiens, "fecal"=isolation_source match. None=no filter (default behavior).
+            filter_criteria: Sample-level filter (e.g., "16S V4 human fecal CRC"). "16S"=AMPLICON, "shotgun"=WGS/WXS/METAGENOMIC (excludes WGA),
+                             "16S shotgun"=BOTH (OR logic), "V4"=amplicon region, "human"=Homo sapiens, "fecal"=isolation_source match.
+                             None=no filter (default behavior).
             max_entries: Max entries to process (None=all)
             output_key: Workspace key for aggregated CSV output (default: "aggregated_filtered_samples")
             parallel_workers: Workers for parallel processing (None=sequential, >1=parallel with Rich progress if available)
+            min_disease_coverage: Minimum disease coverage rate (0.0-1.0).
+                Default 0.5 (50%). Set to 0.0 to disable validation.
+            strict_disease_validation: If True, raise error when coverage is low.
+                If False, log warning but continue. Default True.
 
         Returns:
             Processing summary with sample counts, validation metrics, and workspace output location for CSV export
@@ -1901,11 +2044,29 @@ Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_
             # User: "Process handoff_ready entries and aggregate all samples"
             process_metadata_queue(status_filter="handoff_ready")
 
-            # User: "Filter for 16S human fecal samples"
+            # User: "Filter for 16S human fecal samples" (default: fail if <50% disease coverage)
             process_metadata_queue(status_filter="handoff_ready", filter_criteria="16S human fecal")
 
-            # User: "Include both 16S and shotgun samples"
-            process_metadata_queue(status_filter="handoff_ready", filter_criteria="16S shotgun human")
+            # User: "Filter for specific amplicon region"
+            process_metadata_queue(status_filter="handoff_ready", filter_criteria="16S V4 human fecal CRC")
+
+            # User: "Filter V3-V4 region only"
+            process_metadata_queue(status_filter="handoff_ready", filter_criteria="16S V3-V4 human fecal")
+
+            # User: "Filter with permissive disease validation"
+            process_metadata_queue(status_filter="handoff_ready",
+                                 filter_criteria="16S human fecal",
+                                 strict_disease_validation=False)
+
+            # User: "Filter with lower disease threshold"
+            process_metadata_queue(status_filter="handoff_ready",
+                                 filter_criteria="16S human fecal",
+                                 min_disease_coverage=0.3)
+
+            # User: "Disable disease validation entirely"
+            process_metadata_queue(status_filter="handoff_ready",
+                                 filter_criteria="16S human fecal",
+                                 min_disease_coverage=0.0)
         """
         try:
             from lobster.services.data_access.workspace_content_service import (
@@ -1932,7 +2093,8 @@ Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_
                     f"{parallel_workers} workers, Rich UI enabled"
                 )
                 return _process_queue_with_progress(
-                    entries, filter_criteria, output_key, parallel_workers
+                    entries, filter_criteria, output_key, parallel_workers,
+                    min_disease_coverage, strict_disease_validation
                 )
             elif parallel_workers and parallel_workers > 1 and not PROGRESS_UI_AVAILABLE:
                 logger.warning(
@@ -2062,14 +2224,35 @@ Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_
                     if filter_criteria and entry_samples and metadata_filtering_service:
                         samples_before_filter = len(entry_samples)
                         parsed = metadata_filtering_service.parse_criteria(filter_criteria)
+                        # Add disease validation parameters
+                        parsed["min_disease_coverage"] = min_disease_coverage
+                        parsed["strict_disease_validation"] = strict_disease_validation
                         metadata_filtering_service.disease_extractor = extract_disease_with_fallback
-                        entry_samples, _, _ = metadata_filtering_service.apply_filters(
-                            entry_samples, parsed
-                        )
-                        logger.debug(
-                            f"Entry {entry.entry_id}: Filter applied - "
-                            f"{len(entry_samples)}/{samples_before_filter} samples retained"
-                        )
+                        try:
+                            entry_samples, _, _ = metadata_filtering_service.apply_filters(
+                                entry_samples, parsed
+                            )
+                            logger.debug(
+                                f"Entry {entry.entry_id}: Filter applied - "
+                                f"{len(entry_samples)}/{samples_before_filter} samples retained"
+                            )
+                        except ValueError as e:
+                            if "Insufficient disease data" in str(e):
+                                error_msg = f"Disease validation failed: {str(e)}"
+                                logger.error(f"Entry {entry.entry_id}: {error_msg}")
+                                # Mark entry as failed
+                                queue.update_status(
+                                    entry.entry_id,
+                                    entry.status,
+                                    handoff_status=HandoffStatus.METADATA_FAILED,
+                                    error=error_msg,
+                                )
+                                failed_entries.append((entry.entry_id, error_msg))
+                                stats["failed"] += 1
+                                stats["processed"] += 1
+                                continue
+                            else:
+                                raise
 
                     stats["total_after_filter"] += len(entry_samples)
 
@@ -2121,6 +2304,75 @@ Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_
                     failed_entries.append((entry.entry_id, error_msg))
                     stats["failed"] += 1
                     stats["processed"] += 1
+
+            # Compute study-level statistics for batch effect awareness
+            study_stats = defaultdict(int)
+            study_to_publications = defaultdict(set)
+
+            for sample in all_samples:
+                study_id = sample.get("study_accession", "unknown")
+                pub_id = sample.get("publication_entry_id", "unknown")
+
+                study_stats[study_id] += 1
+                study_to_publications[study_id].add(pub_id)
+
+            # Identify potential batch effect risks
+            total_samples = len(all_samples)
+            warnings = []
+
+            # Skip warnings if no samples or no valid study IDs
+            if total_samples == 0 or not study_stats:
+                warnings = []
+                study_stats = {}
+                multi_pub_studies = {}
+            else:
+                # Warning 1: Studies spanning multiple publications
+                multi_pub_studies = {
+                    study_id: len(pubs)
+                    for study_id, pubs in study_to_publications.items()
+                    if len(pubs) > 1
+                }
+
+                if multi_pub_studies:
+                    study_list = ", ".join([f"{s} ({n} pubs)" for s, n in list(multi_pub_studies.items())[:3]])
+                    warnings.append(
+                        f"⚠️ {len(multi_pub_studies)} studies appear in multiple publications: {study_list}. "
+                        f"This may indicate overlapping datasets or batch effects."
+                    )
+
+                # Warning 2: Dominant study (>50% of samples)
+                dominant_studies = {
+                    study_id: count
+                    for study_id, count in study_stats.items()
+                    if count > total_samples * 0.5
+                }
+
+                if dominant_studies:
+                    for study_id, count in dominant_studies.items():
+                        pct = (count / total_samples) * 100
+                        warnings.append(
+                            f"⚠️ Study {study_id} dominates dataset: {count}/{total_samples} samples ({pct:.1f}%). "
+                            f"Consider batch effect correction using study_accession field."
+                        )
+
+                # Warning 3: Highly imbalanced study sizes (coefficient of variation > 1.5)
+                if len(study_stats) > 1:
+                    counts = list(study_stats.values())
+                    mean_count = sum(counts) / len(counts)
+                    variance = sum((x - mean_count) ** 2 for x in counts) / len(counts)
+                    std_dev = variance ** 0.5
+                    cv = std_dev / mean_count if mean_count > 0 else 0
+
+                    if cv > 1.5:
+                        warnings.append(
+                            f"⚠️ Highly imbalanced study sizes (CV={cv:.2f}). "
+                            f"Range: {min(counts)}-{max(counts)} samples per study. "
+                            f"Consider stratified analysis or batch correction."
+                        )
+
+                # Log all warnings
+                for warning in warnings:
+                    logger.warning(warning)
 
             # Store aggregated results to workspace
             if all_samples:
@@ -2210,6 +2462,31 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
 **Retention Rate**: {retention:.1f}%
 **Validation**: {stats['validation_errors']} errors, {stats['validation_warnings']} warnings
 **Output Key**: {output_key}
+"""
+
+            # Add study-level statistics section
+            if study_stats:
+                response += "\n## Study-Level Statistics\n"
+                response += f"**Unique Studies**: {len(study_stats)}\n"
+                if study_stats:
+                    study_counts = list(study_stats.values())
+                    avg_samples = sum(study_counts) / len(study_counts)
+                    response += f"**Samples Per Study**: {min(study_counts)}-{max(study_counts)} (avg: {avg_samples:.1f})\n"
+                response += f"**Studies in Multiple Publications**: {len(multi_pub_studies)}\n"
+                response += "\n## Batch Effect Warnings\n"
+
+                # Append warnings if any
+                if warnings:
+                    for warning in warnings:
+                        response += f"\n{warning}\n"
+                else:
+                    response += "\n✅ No major batch effect risks detected.\n"
+
+                response += """
+## Recommendations
+- Use **study_accession** field for batch effect correction in downstream analysis
+- Consider PERMANOVA or ComBat-seq for batch adjustment
+- Stratify analyses by study if imbalanced
 """
 
             # Add failed entries section if any
