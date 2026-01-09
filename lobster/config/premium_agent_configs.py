@@ -5,7 +5,7 @@ These configurations are loaded via entry points (lobster.agent_configs)
 and merged into the LobsterAgentConfigurator at runtime.
 
 This file is synced to custom packages (e.g., lobster-custom-databiomix)
-via scripts/sync_metadata_assistant_to_databiomix.sh.
+via scripts/sync_to_databiomix.py.
 
 Custom packages should register these configs in their pyproject.toml:
 
