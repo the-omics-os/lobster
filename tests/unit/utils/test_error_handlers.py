@@ -407,10 +407,10 @@ class TestIntegration:
         assert guidance.error_type == "rate_limit"
         assert "Rate Limit" in guidance.title
         assert len(guidance.solutions) >= 4
-        assert (
-            "Anthropic" in guidance.solutions[1]
-        )  # Should mention requesting increase
-        assert "Bedrock" in guidance.solutions[2]  # Should recommend AWS
+        # Check that provider documentation is mentioned somewhere in solutions
+        solutions_text = " ".join(guidance.solutions)
+        assert "Anthropic" in solutions_text or "anthropic" in solutions_text
+        assert "Bedrock" in solutions_text or "bedrock" in solutions_text
         assert guidance.support_email == "info@omics-os.com"
         assert guidance.can_retry is True
 

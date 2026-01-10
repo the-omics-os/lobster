@@ -47,6 +47,17 @@ from lobster.core.analysis_ir import AnalysisStep
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.interfaces.validator import ValidationResult
 
+# Graceful fallback: Import premium DiseaseOntologyService if available
+# Public version (lobster-local) will use hardcoded fallback
+try:
+    from lobster.services.metadata.disease_ontology_service import (
+        DiseaseOntologyService,
+    )
+
+    HAS_ONTOLOGY_SERVICE = True
+except ImportError:
+    HAS_ONTOLOGY_SERVICE = False
+
 # Publication queue schemas - try local package first (for public lobster-ai with custom packages),
 # then fall back to base lobster (for private lobster or premium installations)
 try:
@@ -273,51 +284,87 @@ def _phase1_column_rescan(samples: List[Dict]) -> tuple:
     """
     Re-scan ALL columns in sample metadata for disease keywords.
 
+    Premium version: Uses DiseaseOntologyService.match_disease() API (Phase 2 compatible)
+    Public version: Uses hardcoded disease_keywords dict (fallback)
+
     Returns:
         Tuple of (enriched_count, detailed_log)
     """
     enriched_count = 0
     log = []
 
-    # Disease keyword mappings (case-insensitive)
-    disease_keywords = {
-        'crc': ['colorectal', 'colon_cancer', 'colon cancer', 'rectal_cancer', 'crc'],
-        'uc': ['ulcerative', 'uc_', 'colitis_ulcerosa', 'ulcerative_colitis'],
-        'cd': ['crohn', 'cd_', 'crohns', 'crohns_disease'],
-        'healthy': ['healthy', 'control', 'non_ibd', 'non-ibd', 'non_diseased']
-    }
+    if HAS_ONTOLOGY_SERVICE:
+        # Premium version: Use centralized ontology service
+        # (Phase 1: keywords, Phase 2: embeddings)
+        ontology = DiseaseOntologyService.get_instance()
 
-    for sample in samples:
-        if sample.get('disease'):
-            continue  # Already has disease, skip
+        for sample in samples:
+            if sample.get('disease'):
+                continue  # Already has disease, skip
 
-        # Check ALL columns (not just standard ones)
-        for col_name, col_value in sample.items():
-            if not col_value:
-                continue
+            # Check ALL columns (not just standard ones)
+            for col_name, col_value in sample.items():
+                if not col_value:
+                    continue
 
-            col_str = str(col_value).lower()
+                col_str = str(col_value)
 
-            # Try each disease mapping
-            for disease, keywords in disease_keywords.items():
-                for keyword in keywords:
-                    if keyword in col_str:
-                        sample['disease'] = disease
-                        sample['disease_original'] = str(col_value)
-                        sample['disease_source'] = f'column_remapped:{col_name}'
-                        sample['disease_confidence'] = 1.0
-                        sample['enrichment_timestamp'] = datetime.now().isoformat()
+                # Use match_disease() API (Phase 2 compatible)
+                matches = ontology.match_disease(col_str, k=1, min_confidence=0.7)
+                if matches:
+                    best_match = matches[0]
+                    sample['disease'] = best_match.disease_id
+                    sample['disease_original'] = col_str
+                    sample['disease_source'] = f'column_remapped:{col_name}'
+                    sample['disease_confidence'] = best_match.confidence
+                    sample['disease_match_type'] = best_match.match_type
+                    sample['enrichment_timestamp'] = datetime.now().isoformat()
 
-                        enriched_count += 1
-                        log.append(f"  - Sample {sample.get('run_accession', 'unknown')}: "
-                                 f"Found '{disease}' in column '{col_name}' (value: {col_value})")
-                        break
+                    enriched_count += 1
+                    log.append(f"  - Sample {sample.get('run_accession', 'unknown')}: "
+                             f"Found '{best_match.disease_id}' ({best_match.name}) "
+                             f"in column '{col_name}' (value: {col_value})")
+                    break  # Found disease, move to next sample
+    else:
+        # Public version (lobster-local): Use hardcoded fallback
+        disease_keywords = {
+            'crc': ['colorectal', 'colon_cancer', 'colon cancer', 'rectal_cancer', 'crc'],
+            'uc': ['ulcerative', 'uc_', 'colitis_ulcerosa', 'ulcerative_colitis'],
+            'cd': ['crohn', 'cd_', 'crohns', 'crohns_disease'],
+            'healthy': ['healthy', 'control', 'non_ibd', 'non-ibd', 'non_diseased']
+        }
+
+        for sample in samples:
+            if sample.get('disease'):
+                continue  # Already has disease, skip
+
+            # Check ALL columns (not just standard ones)
+            for col_name, col_value in sample.items():
+                if not col_value:
+                    continue
+
+                col_str = str(col_value).lower()
+
+                # Try each disease mapping
+                for disease, keywords in disease_keywords.items():
+                    for keyword in keywords:
+                        if keyword in col_str:
+                            sample['disease'] = disease
+                            sample['disease_original'] = str(col_value)
+                            sample['disease_source'] = f'column_remapped:{col_name}'
+                            sample['disease_confidence'] = 1.0
+                            sample['enrichment_timestamp'] = datetime.now().isoformat()
+
+                            enriched_count += 1
+                            log.append(f"  - Sample {sample.get('run_accession', 'unknown')}: "
+                                     f"Found '{disease}' in column '{col_name}' (value: {col_value})")
+                            break
+
+                    if sample.get('disease'):
+                        break  # Found disease, move to next sample
 
                 if sample.get('disease'):
                     break  # Found disease, move to next sample
-
-            if sample.get('disease'):
-                break  # Found disease, move to next sample
 
     return enriched_count, log
 

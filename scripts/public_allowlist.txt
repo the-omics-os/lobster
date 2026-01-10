@@ -6,7 +6,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2026-01-08 23:07:38
+# Generated: 2026-01-11 00:45:16
 # =============================================================================
 
 
@@ -110,6 +110,7 @@ lobster/core/schemas/export_schemas.py
 lobster/core/schemas/publication_queue.py
 lobster/core/schemas/sra.py
 lobster/core/schemas/validation.py
+lobster/core/schemas/ontology.py
 
 # Publication queue (shared infrastructure - used by research_agent FREE tier)
 lobster/core/publication_queue.py
@@ -168,6 +169,9 @@ lobster/config/ssl_setup.py
 lobster/config/version_check.py
 lobster/config/README_CONFIGURATION.md
 lobster/config/README_THINKING.md
+
+# Ontology configuration (Phase 1: open-core JSON, Phase 2: premium embeddings)
+lobster/config/disease_ontology.json
 
 # Provider system (v0.4.0+ architecture)
 lobster/config/providers/__init__.py
@@ -271,6 +275,7 @@ lobster/services/data_management/concatenation_service.py
 lobster/services/metadata/__init__.py
 lobster/services/metadata/metadata_standardization_service.py
 lobster/services/metadata/metadata_validation_service.py
+lobster/services/metadata/disease_ontology_service.py  # Phase 1 infrastructure (shared by premium agents)
 lobster/services/metadata/manual_annotation_service.py
 lobster/services/metadata/sample_grouping_service.py
 lobster/services/metadata/identifier_provenance_service.py

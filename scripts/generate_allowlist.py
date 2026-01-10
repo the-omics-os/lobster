@@ -75,6 +75,7 @@ AGENT_SERVICE_DEPENDENCIES = {
         # NOTE: publication_processing_service and its deps moved to ALWAYS_INCLUDED
         "lobster/services/metadata/microbiome_filtering_service.py",
         "lobster/services/metadata/disease_standardization_service.py",
+        # NOTE: disease_ontology_service.py moved to ALWAYS_INCLUDED (shared infrastructure)
         "lobster/services/metadata/sample_mapping_service.py",
         "lobster/services/metadata/metadata_filtering_service.py",  # Natural language filter parsing
         # NOTE: publication_queue moved to ALWAYS_INCLUDED (shared with research_agent)
@@ -208,6 +209,7 @@ lobster/core/schemas/export_schemas.py
 lobster/core/schemas/publication_queue.py
 lobster/core/schemas/sra.py
 lobster/core/schemas/validation.py
+lobster/core/schemas/ontology.py
 
 # Publication queue (shared infrastructure - used by research_agent FREE tier)
 lobster/core/publication_queue.py
@@ -266,6 +268,9 @@ lobster/config/ssl_setup.py
 lobster/config/version_check.py
 lobster/config/README_CONFIGURATION.md
 lobster/config/README_THINKING.md
+
+# Ontology configuration (Phase 1: open-core JSON, Phase 2: premium embeddings)
+lobster/config/disease_ontology.json
 
 # Provider system (v0.4.0+ architecture)
 lobster/config/providers/__init__.py
@@ -369,6 +374,7 @@ lobster/services/data_management/concatenation_service.py
 lobster/services/metadata/__init__.py
 lobster/services/metadata/metadata_standardization_service.py
 lobster/services/metadata/metadata_validation_service.py
+lobster/services/metadata/disease_ontology_service.py  # Phase 1 infrastructure (shared by premium agents)
 lobster/services/metadata/manual_annotation_service.py
 lobster/services/metadata/sample_grouping_service.py
 lobster/services/metadata/identifier_provenance_service.py

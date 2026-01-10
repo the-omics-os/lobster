@@ -11,6 +11,20 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import pandas as pd
 
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+# Graceful fallback: Import premium DiseaseOntologyService if available
+# Public version (lobster-local) will use hardcoded fallback
+try:
+    from lobster.services.metadata.disease_ontology_service import (
+        DiseaseOntologyService,
+    )
+
+    HAS_ONTOLOGY_SERVICE = True
+except ImportError:
+    HAS_ONTOLOGY_SERVICE = False
 
 
 class DiseaseStandardizationService:
@@ -59,11 +73,18 @@ class DiseaseStandardizationService:
         },
     }
 
-    # Standard disease mappings (case-insensitive)
+    # Standard disease mappings - loaded from DiseaseOntologyService (premium)
+    # or fallback to hardcoded mappings (public lobster-local)
+    # See lobster/config/disease_ontology.json for the single source of truth
     # NOTE: Generic terms removed to prevent misclassification
     # (e.g., "lung adenocarcinoma" should NOT map to CRC)
     # Trade-off: False negatives < False positives for scientific validity
-    DISEASE_MAPPINGS = {
+    # REMOVED: "control" - too generic (matches negative/positive/technical controls)
+    # REMOVED: "normal" - too generic (matches "normal tissue" in tumor studies)
+    # REMOVED: "ctrl" - abbreviation too ambiguous without context
+
+    # Fallback for public version (when DiseaseOntologyService not available)
+    _DISEASE_MAPPINGS_FALLBACK = {
         # Colorectal Cancer (CRC)
         "crc": [
             "crc",
@@ -73,11 +94,19 @@ class DiseaseStandardizationService:
             "colorectal carcinoma",
             "colon carcinoma",
             "rectal carcinoma",
-            # Removed generic terms: "adenocarcinoma", "tumor", "tumour", "cancer"
-            # These caused false positives (lung cancer → CRC)
+            "colorectal",
+            "colon_cancer",
+            "rectal_cancer",
         ],
         # Ulcerative Colitis (UC)
-        "uc": ["uc", "ulcerative colitis", "colitis ulcerosa", "ulcerative_colitis"],
+        "uc": [
+            "uc",
+            "ulcerative colitis",
+            "colitis ulcerosa",
+            "ulcerative_colitis",
+            "ulcerative",
+            "uc_",
+        ],
         # Crohn's Disease (CD)
         "cd": [
             "cd",
@@ -87,11 +116,10 @@ class DiseaseStandardizationService:
             "crohn's",
             "crohns",
             "crohn",
+            "cd_",
+            "crohns_disease",
         ],
         # Healthy Controls
-        # NOTE: Generic terms removed to prevent misclassification
-        # (e.g., "negative control" should NOT map to healthy)
-        # Trade-off: False negatives < False positives for scientific validity
         "healthy": [
             "healthy",
             "healthy control",
@@ -101,15 +129,16 @@ class DiseaseStandardizationService:
             "normal control",
             "non-ibd",
             "non ibd",
+            "non_ibd",
             "non-diseased",
             "non diseased",
+            "non_diseased",
             "disease-free",
             "disease free",
-            # REMOVED: "control" - too generic (matches negative/positive/technical controls)
-            # REMOVED: "normal" - too generic (matches "normal tissue" in tumor studies)
-            # REMOVED: "ctrl" - abbreviation too ambiguous without context
         ],
     }
+
+    DISEASE_MAPPINGS: Dict[str, List[str]] = {}  # Populated in __init__
 
     # Sample type mappings
     # NOTE: Generic terms (biopsy, tissue, mucosa) require organ context
@@ -142,6 +171,19 @@ class DiseaseStandardizationService:
 
     def __init__(self):
         """Initialize the disease standardization service."""
+        # Load disease mappings from centralized ontology service (Phase 1)
+        # Graceful fallback: Use premium service if available, otherwise use hardcoded fallback
+        if HAS_ONTOLOGY_SERVICE:
+            # Premium version: Load from DiseaseOntologyService
+            # See lobster/config/disease_ontology.json for the single source of truth
+            ontology = DiseaseOntologyService.get_instance()
+            self.DISEASE_MAPPINGS = ontology.get_standardization_variants()
+            logger.debug("Using DiseaseOntologyService (premium)")
+        else:
+            # Public version (lobster-local): Use hardcoded fallback
+            self.DISEASE_MAPPINGS = self._DISEASE_MAPPINGS_FALLBACK
+            logger.debug("Using hardcoded disease mappings (public fallback)")
+
         # Build reverse lookup for faster matching
         self._reverse_disease_map = {}
         for standard_term, variants in self.DISEASE_MAPPINGS.items():

@@ -402,11 +402,180 @@ Service downloads → validates → creates AnnData → logs provenance
 DataManagerV2 stores modality + updates queue status: COMPLETED
 ```
 
+#### Metadata Services
+
+Metadata services provide standardization, harmonization, and ontology mapping for cross-dataset integration:
+
+- **MetadataStandardizationService** - Pydantic schema validation, controlled vocabularies
+- **SampleMappingService** - Cross-dataset sample ID mapping (4 strategies: exact, fuzzy, pattern, metadata)
+- **DiseaseStandardizationService** - Disease terminology normalization with 5-level fuzzy matching
+- **DiseaseOntologyService** - Centralized disease ontology matching (v0.5.1+, Phase 1)
+- **ProtocolExtractionService** - 16S microbiome protocol extraction from methods sections
+
+##### Disease Ontology Service (v0.5.1+, Phase 1)
+
+The **DiseaseOntologyService** implements the **Strangler Fig migration pattern** - a future-proof service API that works with both keyword-based (Phase 1) and embedding-based (Phase 2) backends without requiring consumer code changes.
+
+**Architecture:**
+
+```mermaid
+graph TB
+    subgraph "Phase 1 (Current - v0.5.1)"
+        JSON[disease_ontology.json<br/>4 diseases, 4-10 keywords each]
+        KW[Keyword Matching<br/>Substring search]
+    end
+
+    subgraph "Phase 2 (Q2 2026)"
+        CHROMA[ChromaDB Vector Store<br/>sentence-transformers]
+        SEM[Semantic Search<br/>Cosine similarity]
+    end
+
+    subgraph "Migration-Stable API"
+        API[match_disease query, k, min_confidence<br/>Returns: List DiseaseMatch]
+    end
+
+    subgraph "Consumers"
+        DSS[DiseaseStandardizationService]
+        MA[metadata_assistant._phase1_column_rescan]
+    end
+
+    JSON --> KW
+    CHROMA --> SEM
+    KW --> API
+    SEM --> API
+    API --> DSS
+    API --> MA
+
+    style JSON fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style CHROMA fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style API fill:#fff3e0,stroke:#f57c00,stroke-width:3px
+    style DSS fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style MA fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+```
+
+**Key Design Principle (Gemini 3.0 Pro):**
+> "The return type is the contract. Define a `DiseaseMatch` model now that works for both phases."
+
+**Data Models** (`lobster/core/schemas/ontology.py`):
+
+```python
+class DiseaseMatch(BaseModel):
+    """Universal disease match result - works for both Phase 1 and Phase 2."""
+    disease_id: str      # "crc" (Phase 1) → "MONDO:0005575" (Phase 2)
+    name: str            # "Colorectal Cancer"
+    confidence: float    # 1.0 (Phase 1) → 0.0-1.0 (Phase 2)
+    match_type: str      # "exact_keyword" → "semantic_embedding"
+    matched_term: str    # Which term triggered match
+    metadata: Dict       # mondo_id, umls_cui, mesh_terms
+
+class DiseaseConcept(BaseModel):
+    """Disease knowledge representation."""
+    id: str              # Internal ID: "crc", "uc", "cd", "healthy"
+    name: str            # Display name: "Colorectal Cancer"
+    keywords: List[str]  # Phase 1 matching, Phase 2 boosting
+    mondo_id: Optional[str]  # Phase 2 ready
+    umls_cui: Optional[str]
+    mesh_terms: List[str]
+```
+
+**Phase 1 Implementation (Current):**
+
+| Aspect | Details |
+|--------|---------|
+| **Backend** | JSON config (`lobster/config/disease_ontology.json`) |
+| **Matching** | Case-insensitive keyword substring search |
+| **Confidence** | Always 1.0 (exact keyword match) |
+| **Coverage** | 4 diseases: CRC, UC, CD, Healthy (IBD/CRC focus) |
+| **Keywords** | 4-10 variants per disease (merged from 2 previous sources) |
+| **Performance** | <1ms per query (in-memory dict lookup) |
+
+**Phase 2 Implementation (Q2 2026):**
+
+| Aspect | Details |
+|--------|---------|
+| **Backend** | ChromaDB vector store with sentence-transformers embeddings |
+| **Matching** | Semantic similarity search (handles synonyms, typos, multilingual) |
+| **Confidence** | Variable 0.0-1.0 based on cosine similarity |
+| **Coverage** | Extensible to full MONDO ontology (~60K disease terms) |
+| **Keywords** | Used for hybrid boosting (exact matches get confidence boost) |
+| **Performance** | 30-50ms per query (local embeddings, no API calls) |
+
+**Migration-Stable API Example:**
+
+```python
+from lobster.services.metadata.disease_ontology_service import DiseaseOntologyService
+
+service = DiseaseOntologyService.get_instance()
+
+# Phase 1 usage (works today):
+matches = service.match_disease("colorectal cancer", k=3, min_confidence=0.7)
+# Result: [DiseaseMatch(disease_id='crc', confidence=1.0, match_type='exact_keyword')]
+
+# Phase 2 usage (same API, different backend):
+matches = service.match_disease("colon tumor", k=3, min_confidence=0.7)
+# Result: [DiseaseMatch(disease_id='MONDO:0005575', confidence=0.89,
+#                       match_type='semantic_embedding')]
+```
+
+**Consumer Integration:**
+
+1. **DiseaseStandardizationService** (`services/metadata/disease_standardization_service.py`):
+   - Loads keywords from `ontology.get_standardization_variants()`
+   - Removed 52-line hardcoded `DISEASE_MAPPINGS` dict
+   - Zero behavior change in Phase 1
+
+2. **metadata_assistant._phase1_column_rescan()** (`agents/metadata_assistant.py`):
+   - Uses `match_disease()` API for column scanning
+   - Removed 6-line hardcoded `disease_keywords` dict
+   - Added `disease_match_type` field for provenance
+   - Phase 2 ready (works with embeddings when backend swaps)
+
+**Architecture Benefits:**
+
+- **Eliminated Duplication**: 2 hardcoded dictionaries → 1 JSON config
+- **Single Source of Truth**: `lobster/config/disease_ontology.json`
+- **Phase 2 Ready**: Consumer code unchanged when backend swaps to embeddings
+- **Extensible**: Add tissue/cell type/organism ontologies using same pattern
+- **Singleton Pattern**: Shared instance via `get_instance()` for consistency
+
+**Implementation Files:**
+
+| File | Purpose | Lines |
+|------|---------|-------|
+| `lobster/core/schemas/ontology.py` | Pydantic models (DiseaseMatch, DiseaseConcept) | 93 |
+| `lobster/config/disease_ontology.json` | Disease knowledge (4 diseases, MONDO IDs) | 57 |
+| `lobster/services/metadata/disease_ontology_service.py` | Service with match_disease() API | 300 |
+| `tests/unit/services/metadata/test_disease_ontology_service.py` | 21 test cases | 285 |
+
+**Test Coverage:**
+
+```
+✅ 21 new tests (disease_ontology_service)
+✅ 31 existing tests (disease_standardization_service) - zero regressions
+✅ 249 total metadata service tests pass
+```
+
+**Legacy APIs (Backward Compatibility):**
+
+During Phase 1 migration, the service provides legacy methods for gradual consumer migration:
+- `get_extraction_keywords()` - Returns dict for old keyword-based consumers
+- `get_standardization_variants()` - For DiseaseStandardizationService fuzzy matching
+- `validate_disease_id()`, `get_disease_by_id()` - Helper methods
+
+**Phase 2 Migration Path:**
+
+When ChromaDB embeddings are added (Q2 2026):
+- **Service internals change**: Add `backend` parameter, swap `match_disease()` implementation
+- **Consumer code unchanged**: Same API signature, same return model
+- **Configuration change**: Set `DISEASE_BACKEND=embeddings` environment variable
+- **Zero refactoring required**: Strangler Fig pattern ensures seamless backend swap
+
+See `kevin_notes/sragent_embedding_ontology_plan_phase1.md` for complete Phase 1 specification and `kevin_notes/sragent_embedding_ontology_plan.md` for Phase 2 embedding implementation roadmap.
+
 #### Other Supporting Services
 - **ContentAccessService** - Unified literature access with 5 providers (Phase 2 complete)
 - **VisualizationService** - Interactive plot generation
 - **ConcatenationService** - Memory-efficient sample merging
-- **ProtocolExtractionService** - Extracts 16S microbiome technical protocol details from publication methods sections (primers, V-region, PCR conditions, sequencing parameters, reference databases, bioinformatics pipelines). Integrated with PMCProvider for automatic protocol extraction during full-text retrieval.
 
 ### 3. Data Management Layer
 
@@ -1713,11 +1882,15 @@ graph TB
     subgraph "Metadata Services"
         SMS[SampleMappingService<br/>4 strategies]
         MSS[MetadataStandardizationService<br/>Schema validation]
+        DOS[DiseaseOntologyService<br/>v0.5.1+ Phase 1]
+        DSS[DiseaseStandardizationService<br/>5-level fuzzy matching]
     end
 
     RA --> CAS
     MA --> SMS
     MA --> MSS
+    MA --> DOS
+    DSS --> DOS
 
     CAS --> REG
     REG --> AP

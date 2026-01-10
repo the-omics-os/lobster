@@ -32,6 +32,8 @@ IMPORT_REWRITES = [
     # Premium metadata services (exist in custom package)
     (r"from lobster\.services\.metadata\.disease_standardization_service",
      f"from {DST_PKG}.services.metadata.disease_standardization_service"),
+    (r"from lobster\.services\.metadata\.disease_ontology_service",
+     f"from {DST_PKG}.services.metadata.disease_ontology_service"),
     (r"from lobster\.services\.metadata\.microbiome_filtering_service",
      f"from {DST_PKG}.services.metadata.microbiome_filtering_service"),
     (r"from lobster\.services\.metadata\.metadata_filtering_service",
