@@ -668,22 +668,22 @@ class TestRegistryPersistenceLoading:
         agent_names = get_all_agent_names()
 
         # Check for expected FREE TIER agents (base package only)
-        # Premium agents (metadata_assistant, machine_learning_expert, proteomics_expert)
-        # are loaded via plugin system from lobster-premium or lobster-custom-* packages
+        # Premium agents (metadata_assistant, machine_learning_expert, proteomics_expert,
+        # protein_structure_visualization_expert_agent) are loaded via plugin system
+        # from lobster-premium or lobster-custom-* packages
         expected_agents = [
             "data_expert_agent",
-            "transcriptomics_expert",
+            "research_agent",
+            "transcriptomics_expert",  # Unified single-cell + bulk RNA-seq
+            "visualization_expert_agent",
             "annotation_expert",  # Sub-agent of transcriptomics_expert
             "de_analysis_expert",  # Sub-agent of transcriptomics_expert
-            "research_agent",
-            "visualization_expert_agent",
-            "protein_structure_visualization_expert_agent",
         ]
 
         for expected_agent in expected_agents:
             assert (
                 expected_agent in agent_names
-            ), f"Expected agent {expected_agent} not found"
+            ), f"Expected agent {expected_agent} not found in {agent_names}"
 
     def test_registry_agent_properties(self):
         """Test properties of registered agents."""
