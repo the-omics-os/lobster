@@ -4591,11 +4591,11 @@ def chat(
                     provider_icon = provider_icons.get(current_provider, "⚪")
 
                     if current_provider == "ollama":
-                        # Ollama is free - show provider, FREE, and token count
-                        token_prefix = f"[dim grey42]{provider_icon} {current_provider} · FREE · {tokens:,}t[/dim grey42] "
+                        # Ollama is free - show icon, FREE, and token count
+                        token_prefix = f"[dim grey42]{provider_icon} · FREE · {tokens:,}t[/dim grey42] "
                     else:
-                        # Cloud providers - show provider, cost, and token count
-                        token_prefix = f"[dim grey42]{provider_icon} {current_provider} · ${cost:.4f} · {tokens:,}t[/dim grey42] "
+                        # Cloud providers - show icon, cost, and token count
+                        token_prefix = f"[dim grey42]{provider_icon} · ${cost:.4f} · {tokens:,}t[/dim grey42] "
             except Exception:
                 pass
 
