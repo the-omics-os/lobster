@@ -2486,14 +2486,22 @@ Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_
         parallel_workers: int = None,
         min_disease_coverage: float = 0.5,
         strict_disease_validation: bool = True,
+        reprocess_completed: bool = False,
     ) -> str:
         """
         Batch process publication queue entries and aggregate sample-level metadata from workspace SRA files.
 
-        CRITICAL: Only use status_filter='handoff_ready' for filtering. handoff_ready entries contain workspace_metadata_keys
-        with sra_*_samples files ready to load. status='metadata_enriched' entries have NO workspace files (research_agent found
-        no SRA data) and will extract 0 samples. status='completed' entries are already processed by this tool. The tool silently
-        skips entries without workspace_metadata_keys, leading to unexpected 0-sample results if wrong status used.
+        CRITICAL: status_filter behavior by status type:
+        - 'handoff_ready' (DEFAULT): Entries with workspace_metadata_keys (sra_*_samples files) ready for aggregation
+        - 'metadata_enriched': Entries WITHOUT workspace files (research_agent found no SRA data) - CANNOT be processed (0 samples)
+        - 'completed': Already processed entries - CAN be reprocessed with reprocess_completed=True
+
+        The tool silently skips entries without workspace_metadata_keys, leading to 0-sample results if wrong status used.
+
+        REPROCESSING: Use reprocess_completed=True to re-process entries that were already completed. This is useful when:
+        - You want to apply different filter_criteria to previously processed entries
+        - Enrichment was performed and you want to re-filter with updated disease annotations
+        - You need to regenerate the aggregated output with different parameters
 
         FILTERING RULE: Only use filter_criteria when user EXPLICITLY asks to filter (e.g., "filter for 16S human fecal").
         If user just asks to "process entries" or "aggregate samples", use filter_criteria=None to include ALL samples.
@@ -2506,7 +2514,8 @@ Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_
             Supported regions: V1-V9, V3-V4, V4-V5, V1-V9, full-length
 
         Args:
-            status_filter: Queue status (default: 'handoff_ready' - ONLY valid choice for filtering). handoff_ready = has workspace SRA files.
+            status_filter: Queue status (default: 'handoff_ready'). Use 'completed' with reprocess_completed=True
+                to re-process already processed entries.
             filter_criteria: Sample-level filter (e.g., "16S V4 human fecal CRC"). "16S"=AMPLICON, "shotgun"=WGS/WXS/METAGENOMIC (excludes WGA),
                              "16S shotgun"=BOTH (OR logic), "V4"=amplicon region, "human"=Homo sapiens, "fecal"=isolation_source match.
                              None=no filter (default behavior).
@@ -2517,6 +2526,10 @@ Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_
                 Default 0.5 (50%). Set to 0.0 to disable validation.
             strict_disease_validation: If True, raise error when coverage is low.
                 If False, log warning but continue. Default True.
+            reprocess_completed: If True, also include entries with status='completed' for reprocessing.
+                Useful for re-running with different filter_criteria or after enrichment.
+                When status_filter='completed', this flag enables processing of completed entries.
+                Default: False.
 
         Returns:
             Processing summary with sample counts, validation metrics, and workspace output location for CSV export
@@ -2548,6 +2561,16 @@ Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_
             process_metadata_queue(status_filter="handoff_ready",
                                  filter_criteria="16S human fecal",
                                  min_disease_coverage=0.0)
+
+            # User: "Re-process completed entries with new filter"
+            process_metadata_queue(status_filter="completed",
+                                 reprocess_completed=True,
+                                 filter_criteria="16S V4 human fecal CRC")
+
+            # User: "Re-process everything (handoff_ready + completed)"
+            process_metadata_queue(status_filter="handoff_ready",
+                                 reprocess_completed=True,
+                                 filter_criteria="16S human fecal")
         """
         try:
             from lobster.services.data_access.workspace_content_service import (
@@ -2556,14 +2579,50 @@ Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_
             )
 
             queue = data_manager.publication_queue
-            entries = queue.list_entries(
-                status=PublicationStatus(status_filter.lower())
-            )
+
+            # Handle reprocess_completed logic
+            status_lower = status_filter.lower()
+
+            if status_lower == "completed" and not reprocess_completed:
+                # User is trying to process completed entries without explicit flag
+                return (
+                    "⚠️ Cannot process 'completed' entries without reprocess_completed=True.\n\n"
+                    "Completed entries have already been processed. To re-process them:\n"
+                    "```\n"
+                    "process_metadata_queue(\n"
+                    "    status_filter=\"completed\",\n"
+                    "    reprocess_completed=True,\n"
+                    f"    filter_criteria=\"{filter_criteria or '16S human fecal'}\"\n"
+                    ")\n"
+                    "```"
+                )
+
+            # Get entries based on status_filter
+            entries = queue.list_entries(status=PublicationStatus(status_lower))
+
+            # If reprocess_completed=True and not already filtering by completed,
+            # also include completed entries
+            if reprocess_completed and status_lower != "completed":
+                completed_entries = queue.list_entries(
+                    status=PublicationStatus.COMPLETED
+                )
+                # Merge, avoiding duplicates
+                entry_ids = {e.entry_id for e in entries}
+                for ce in completed_entries:
+                    if ce.entry_id not in entry_ids:
+                        entries.append(ce)
+
+                logger.info(
+                    f"Reprocess mode enabled: {len(entries)} total entries "
+                    f"(including {len(completed_entries)} completed)"
+                )
 
             if max_entries:
                 entries = entries[:max_entries]
 
             if not entries:
+                if reprocess_completed:
+                    return f"No entries found with status '{status_filter}' or 'completed'"
                 logger.info(f"No entries found with status '{status_filter}'")
                 return f"No entries found with status '{status_filter}'"
 
@@ -3783,6 +3842,7 @@ Operating Principles
 	-	CORRECT: process_metadata_queue(max_entries=0)
 	-	CORRECT: process_metadata_queue(filter_criteria="16S V4 human fecal_stool CRC")
 	-	CORRECT: process_metadata_queue(status_filter="handoff_ready", output_key="filtered_samples")
+	-	CORRECT: process_metadata_queue(status_filter="completed", reprocess_completed=True)
 
 	7.	Efficient Workspace Navigation
 
@@ -3808,6 +3868,8 @@ For publication queue processing requests, follow this decision tree:
 	- "aggregate samples from publications"
 	- "filter 16S" or "filter shotgun" or "filter microbiome samples"
 	- "create export table" or "export to CSV"
+	- "re-process completed entries" or "reprocess with new filter"
+	- "apply different filter to already processed data"
 
 	This tool:
 	- Reads workspace_metadata_keys (sra_*_samples files) from ALL entries
@@ -3823,6 +3885,29 @@ For publication queue processing requests, follow this decision tree:
 	    filter_criteria="16S V4 human fecal_stool CRC",
 	    output_key="aggregated_samples",
 	    parallel_workers=4  # For >50 entries
+	)
+	```
+
+	REPROCESSING COMPLETED ENTRIES:
+	Use reprocess_completed=True when:
+	- User wants to apply different filter_criteria to already processed entries
+	- After enrichment, need to re-filter with updated disease annotations
+	- Need to regenerate output with different parameters
+
+	Examples:
+	```
+	# Re-process only completed entries with new filter
+	process_metadata_queue(
+	    status_filter="completed",
+	    reprocess_completed=True,
+	    filter_criteria="16S V4 human fecal_stool CRC"
+	)
+
+	# Re-process everything (handoff_ready + completed)
+	process_metadata_queue(
+	    status_filter="handoff_ready",
+	    reprocess_completed=True,
+	    filter_criteria="16S human fecal_stool"
 	)
 	```
 
@@ -3856,8 +3941,21 @@ For publication queue processing requests, follow this decision tree:
 	         ↓
 	  enrich_samples_with_disease (hybrid mode)
 	         ↓
-	  Re-validate → ≥50%? → Continue filtering
+	  Re-validate → ≥50%? → process_metadata_queue(reprocess_completed=True)
 	  Re-validate → <50%? → Suggest manual mappings
+	```
+
+	Common Reprocessing Workflow:
+	```
+	Initial: process_metadata_queue(status_filter="handoff_ready")
+	         ↓
+	  Disease enrichment: enrich_samples_with_disease()
+	         ↓
+	  Reprocess: process_metadata_queue(
+	      status_filter="completed",
+	      reprocess_completed=True,
+	      filter_criteria="16S human fecal_stool CRC"
+	  )
 	```
 
 	3.	Custom Code Execution (LAST RESORT)

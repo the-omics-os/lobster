@@ -673,11 +673,12 @@ def process_entries(
                 task, description=f"[{idx}/{len(entries_with_indices)}] {title}"
             )
             start = time.time()
-            response = service.process_entry(
+            outcome = service.process_entry(
                 entry_id=entry.entry_id,
                 extraction_tasks=extraction_tasks,
             )
             elapsed = time.time() - start
+            response = outcome.response_markdown  # For backward compat
             updated_entry = service.data_manager.publication_queue.get_entry(
                 entry.entry_id
             )

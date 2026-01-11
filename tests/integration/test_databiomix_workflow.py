@@ -356,10 +356,11 @@ class TestPublicationProcessing:
         data_manager.publication_queue.add_entry(entry)
 
         # Process with identifier resolution, NCBI enrichment, and SRA fetch
-        result = publication_service.process_entry(
+        outcome = publication_service.process_entry(
             entry_id="test_databiomix_sra_001",
             extraction_tasks="resolve_identifiers,ncbi_enrich,fetch_sra_metadata",
         )
+        result = outcome.response_markdown
 
         # Verify processing result
         assert (
@@ -434,10 +435,11 @@ class TestPublicationProcessing:
         data_manager.publication_queue.add_entry(entry)
 
         # Process with identifier resolution only
-        result = publication_service.process_entry(
+        outcome = publication_service.process_entry(
             entry_id="test_identifier_resolution_001",
             extraction_tasks="resolve_identifiers",
         )
+        result = outcome.response_markdown
 
         # Verify resolution result
         assert "test_identifier_resolution_001" in result
@@ -644,10 +646,11 @@ class TestEdgeCases:
         self, data_manager, publication_service
     ):
         """Test that processing nonexistent entry returns error message."""
-        result = publication_service.process_entry(
+        outcome = publication_service.process_entry(
             entry_id="nonexistent_entry_12345",
             extraction_tasks="resolve_identifiers",
         )
+        result = outcome.response_markdown
 
         assert "Error" in result or "not found" in result.lower()
         assert "nonexistent_entry_12345" in result
