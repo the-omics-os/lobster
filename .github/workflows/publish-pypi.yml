@@ -302,11 +302,13 @@ jobs:
         python -c "from lobster.agents.visualization_expert import visualization_expert; print('✅ Visualization expert available')"
 
         # Verify private agents are NOT available (proteomics is PREMIUM tier)
-        if python -c "from lobster.agents.proteomics import proteomics_expert" 2>/dev/null; then
+        # Note: The __init__.py exports proteomics_expert=None for graceful degradation,
+        # so we must check that it's actually a callable function, not None
+        if python -c "from lobster.agents.proteomics import proteomics_expert; assert proteomics_expert is not None and callable(proteomics_expert)" 2>/dev/null; then
           echo "❌ ERROR: Private proteomics agent should not be in public package!"
           exit 1
         fi
-        echo "✅ Private agents correctly excluded"
+        echo "✅ Private agents correctly excluded (proteomics_expert is None as expected)"
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
