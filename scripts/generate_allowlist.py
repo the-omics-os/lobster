@@ -40,7 +40,14 @@ from lobster.config.subscription_tiers import SUBSCRIPTION_TIERS
 
 AGENT_FILE_MAPPING = {
     # FREE tier agents
-    "research_agent": "lobster/agents/research/research_agent.py",
+    "research_agent": [
+        # Modular structure (refactored Nov 2024)
+        "lobster/agents/research/__init__.py",
+        "lobster/agents/research/state.py",
+        "lobster/agents/research/config.py",
+        "lobster/agents/research/prompts.py",
+        "lobster/agents/research/research_agent.py",
+    ],
     "data_expert_agent": [
         # Modular structure (refactored from monolithic file)
         "lobster/agents/data_expert/__init__.py",
@@ -174,7 +181,6 @@ docs_p/
 # =============================================================================
 # DEVELOPMENT FILES
 # =============================================================================
-.pre-commit-config.yaml
 pytest.ini
 .gitignore
 Makefile

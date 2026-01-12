@@ -6,7 +6,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2026-01-12 01:58:58
+# Generated: 2026-01-12 12:48:27
 # =============================================================================
 
 
@@ -55,7 +55,6 @@ docs_p/
 # =============================================================================
 # DEVELOPMENT FILES
 # =============================================================================
-.pre-commit-config.yaml
 pytest.ini
 .gitignore
 Makefile
@@ -192,14 +191,6 @@ lobster/agents/graph.py
 lobster/agents/draw_graph.py
 lobster/agents/supervisor.py
 
-# Data Expert Agent (modular structure)
-lobster/agents/data_expert/__init__.py
-lobster/agents/data_expert/state.py
-lobster/agents/data_expert/config.py
-lobster/agents/data_expert/prompts.py
-lobster/agents/data_expert/data_expert.py
-lobster/agents/data_expert/assistant.py
-
 # LangGraph supervisor
 lobster/agents/langgraph_supervisor/__init__.py
 lobster/agents/langgraph_supervisor/agent_name.py
@@ -279,8 +270,6 @@ lobster/services/data_access/geo/utils/__init__.py
 lobster/services/data_management/__init__.py
 lobster/services/data_management/modality_management_service.py
 lobster/services/data_management/concatenation_service.py
-lobster/services/data_management/modality_detection_service.py
-lobster/services/data_management/strategy_recommendation_service.py
 
 # Metadata - Open Core
 lobster/services/metadata/__init__.py
@@ -481,8 +470,14 @@ lobster/agents/data_expert/config.py
 lobster/agents/data_expert/prompts.py
 lobster/agents/data_expert/data_expert.py
 lobster/agents/data_expert/assistant.py
+lobster/services/data_management/modality_detection_service.py
+lobster/services/data_management/strategy_recommendation_service.py
 lobster/agents/transcriptomics/de_analysis_expert.py
-lobster/agents/research_agent.py
+lobster/agents/research/__init__.py
+lobster/agents/research/state.py
+lobster/agents/research/config.py
+lobster/agents/research/prompts.py
+lobster/agents/research/research_agent.py
 lobster/agents/transcriptomics/transcriptomics_expert.py
 lobster/agents/visualization_expert.py
 
