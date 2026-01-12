@@ -311,7 +311,8 @@ lobster/config/providers/gemini_provider.py
 # =============================================================================
 # AGENT INFRASTRUCTURE (Always Open-Core)
 # =============================================================================
-lobster/agents/__init__.py
+# Note: lobster/agents/__init__.py intentionally REMOVED for PEP 420 namespace packages
+# This allows custom packages (lobster-custom-*) to contribute agents via filesystem
 lobster/agents/state.py
 lobster/agents/graph.py
 lobster/agents/draw_graph.py

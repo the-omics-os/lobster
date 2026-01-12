@@ -6,7 +6,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2026-01-12 12:48:27
+# Generated: 2026-01-12 14:33:51
 # =============================================================================
 
 
@@ -185,7 +185,8 @@ lobster/config/providers/gemini_provider.py
 # =============================================================================
 # AGENT INFRASTRUCTURE (Always Open-Core)
 # =============================================================================
-lobster/agents/__init__.py
+# Note: lobster/agents/__init__.py intentionally REMOVED for PEP 420 namespace packages
+# This allows custom packages (lobster-custom-*) to contribute agents via filesystem
 lobster/agents/state.py
 lobster/agents/graph.py
 lobster/agents/draw_graph.py

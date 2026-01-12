@@ -295,13 +295,14 @@ jobs:
         lobster --help
 
         # Verify FREE tier agents are available (these are synced to lobster-local)
-        python -c "from lobster.agents import supervisor; print('✅ Supervisor agent available')"
-        python -c "from lobster.agents import research_agent; print('✅ Research agent available')"
-        python -c "from lobster.agents import data_expert; print('✅ Data expert agent available')"
-        python -c "from lobster.agents import visualization_expert; print('✅ Visualization expert available')"
+        # Note: Using direct import paths for PEP 420 namespace package compatibility
+        python -c "import lobster.agents.supervisor; print('✅ Supervisor module available')"
+        python -c "from lobster.agents.research import research_agent; print('✅ Research agent available')"
+        python -c "from lobster.agents.data_expert import data_expert; print('✅ Data expert agent available')"
+        python -c "from lobster.agents.visualization_expert import visualization_expert; print('✅ Visualization expert available')"
 
-        # Verify private agents are NOT available
-        if python -c "from lobster.agents import ms_proteomics_expert" 2>/dev/null; then
+        # Verify private agents are NOT available (proteomics is PREMIUM tier)
+        if python -c "from lobster.agents.proteomics import proteomics_expert" 2>/dev/null; then
           echo "❌ ERROR: Private proteomics agent should not be in public package!"
           exit 1
         fi
