@@ -11,20 +11,6 @@ The PDF resolution features were archived and will be migrated to research_agent
 in Phase 4. See lobster/agents/archive/ARCHIVE_NOTICE.md for details.
 """
 
-# =============================================================================
-# AGENT_CONFIG must be defined FIRST (before heavy imports) for entry point loading
-# This prevents circular import issues when component_registry loads this module
-# =============================================================================
-from lobster.config.agent_registry import AgentRegistryConfig
-
-AGENT_CONFIG = AgentRegistryConfig(
-    name="metadata_assistant",
-    display_name="Metadata Assistant",
-    description="Handles cross-dataset metadata operations including sample ID mapping (exact/fuzzy/pattern/metadata strategies), metadata standardization using Pydantic schemas (transcriptomics/proteomics), dataset completeness validation (samples, conditions, controls, duplicates, platform), sample metadata reading in multiple formats, and disease enrichment from publication context when SRA metadata is incomplete. Specialized in metadata harmonization for multi-omics integration and publication queue processing.",
-    factory_function="lobster.agents.metadata_assistant.metadata_assistant",
-    handoff_tool_name="handoff_to_metadata_assistant",
-    handoff_tool_description="Assign metadata operations (cross-dataset sample mapping, metadata standardization to Pydantic schemas, dataset validation before download, metadata reading/formatting, publication queue filtering) to the metadata assistant",
-)
 
 # =============================================================================
 # Heavy imports below (may have circular dependencies, but AGENT_CONFIG is already defined)
@@ -92,6 +78,22 @@ except ImportError:
 
 from lobster.utils.logger import get_logger
 
+# Import helper functions from config module
+from lobster.agents.metadata_assistant.config import (
+    suppress_logs,
+    detect_metadata_pattern,
+    convert_list_to_dict,
+    phase1_column_rescan,
+    extract_disease_with_llm,
+    phase2_llm_abstract_extraction,
+    phase3_llm_methods_extraction,
+    phase4_manual_mappings,
+)
+
+# Import prompt factory
+from lobster.agents.metadata_assistant.prompts import create_metadata_assistant_prompt
+
+
 # Optional microbiome features (not in public lobster-local)
 try:
     from lobster.services.metadata.disease_standardization_service import (
@@ -132,539 +134,18 @@ logger = get_logger(__name__)
 # =========================================================================
 
 
-@contextmanager
-def _suppress_logs(min_level: int = logging.CRITICAL + 1):
-    """
-    Temporarily suppress logs during Rich progress display.
-
-    This prevents log messages from interleaving with and disrupting the
-    Rich progress bars. By default, ALL logs are suppressed (CRITICAL+1).
-
-    Args:
-        min_level: Minimum log level to show (default: CRITICAL+1 = suppress all).
-                   Use logging.ERROR to show errors, logging.WARNING for warnings, etc.
-    """
-    original_levels = {}
-
-    # Suppress root loggers (child loggers inherit via propagation)
-    loggers_to_suppress = ["lobster", "urllib3", "httpx", "httpcore", "filelock"]
-    for name in loggers_to_suppress:
-        log = logging.getLogger(name)
-        original_levels[name] = log.level
-        log.setLevel(min_level)
-
-    # Also capture all existing lobster.* child loggers for safety
-    for logger_name in list(logging.Logger.manager.loggerDict.keys()):
-        if logger_name.startswith("lobster.") or logger_name.startswith("lobster_custom_"):
-            log = logging.getLogger(logger_name)
-            if logger_name not in original_levels:
-                original_levels[logger_name] = log.level
-                log.setLevel(min_level)
-
-    try:
-        yield
-    finally:
-        for name, level in original_levels.items():
-            logging.getLogger(name).setLevel(level)
-
 
 # =========================================================================
 # Helper: Metadata Pattern Detection (Option D - Namespace Separation)
 # =========================================================================
 
 
-def _detect_metadata_pattern(data: dict) -> str:
-    """Detect metadata storage pattern.
-
-    Two patterns exist in metadata_store:
-    - GEO pattern: {"metadata": {"samples": {...}}} - dict-of-dicts for single-dataset lookups
-    - Aggregated pattern: {"samples": [...]} - list for batch processing/CSV export
-
-    Key naming conventions:
-    - geo_*, sra_*, metadata_* → Should use GEO pattern
-    - aggregated_*, pub_queue_* → Should use Aggregated pattern
-
-    Returns:
-        "geo": GEO pattern {"metadata": {"samples": {...}}}
-        "aggregated": Aggregated pattern {"samples": [...]}
-        "unknown": Unrecognized pattern
-    """
-    if "metadata" in data and isinstance(data.get("metadata", {}).get("samples"), dict):
-        return "geo"
-    elif "samples" in data and isinstance(data["samples"], list):
-        return "aggregated"
-    return "unknown"
-
-
-def _convert_list_to_dict(samples_list: list, key_field: str = "run_accession") -> dict:
-    """Convert list of samples to dict keyed by specified field.
-
-    Used when reading aggregated pattern data with tools that expect dict-of-dicts.
-
-    Args:
-        samples_list: List of sample dicts
-        key_field: Field to use as key (default: run_accession)
-
-    Returns:
-        Dict mapping sample IDs to sample data
-    """
-    if not samples_list:
-        return {}
-
-    # Fallback if key_field not present in first sample
-    if samples_list and key_field not in samples_list[0]:
-        key_field = next(iter(samples_list[0].keys()), "index")
-
-    return {
-        s.get(key_field, f"sample_{i}"): s
-        for i, s in enumerate(samples_list)
-    }
 
 
 # =========================================================================
 # Disease Enrichment Helpers (Phase 1)
 # =========================================================================
 
-DISEASE_EXTRACTION_PROMPT_TEMPLATE = """You are a biomedical information extraction expert analyzing a microbiome study.
-
-PUBLICATION TITLE: {publication_title}
-SAMPLE COUNT: {sample_count} samples
-
-{text_content}
-
-TASK: Identify the PRIMARY disease or condition studied in these samples.
-
-CRITICAL RULES:
-1. Focus on the actual condition of the SAMPLES, not what's being compared or referenced
-2. If multiple conditions exist (e.g., CRC patients vs healthy controls), identify the DISEASE condition (CRC)
-3. If study compares multiple diseases EQUALLY (e.g., UC vs CD comparison study), return "unknown" (mixed study)
-4. If samples are from healthy controls ONLY, return "healthy"
-5. Look for explicit statements: "patients with X", "X cohort", "diagnosed with X"
-
-STANDARD TERMS (use EXACTLY as shown):
-- "crc" → colorectal cancer, colon cancer, rectal cancer, CRC, colorectal carcinoma
-- "uc" → ulcerative colitis, UC, colitis ulcerosa
-- "cd" → Crohn's disease, Crohn's, CD, Crohn disease
-- "healthy" → healthy controls, healthy volunteers, non-diseased, control subjects
-- "unknown" → cannot determine, mixed conditions, insufficient information
-
-OUTPUT FORMAT (JSON only, no markdown):
-{{
-  "disease": "one of: crc, uc, cd, healthy, unknown",
-  "confidence": 0.0-1.0 (float),
-  "evidence": "Brief quote or description supporting classification (max 200 chars)",
-  "reasoning": "Explain why you chose this term (max 300 chars)"
-}}
-
-CONFIDENCE SCORING GUIDE:
-- 1.0: Explicit statement ("50 CRC patients recruited")
-- 0.9: Clear context ("colorectal cancer cohort study")
-- 0.8: Strong inference ("tumor samples from colon cancer patients")
-- 0.7: Weak inference ("IBD patients" without UC/CD specification)
-- <0.7: Ambiguous or insufficient information
-
-EXAMPLES:
-Input: "We recruited 50 patients with colorectal cancer and 30 healthy controls"
-Output: {{"disease": "crc", "confidence": 0.95, "evidence": "50 patients with colorectal cancer", "reasoning": "Explicit CRC patient recruitment"}}
-
-Input: "Fecal samples from UC patients undergoing remission therapy"
-Output: {{"disease": "uc", "confidence": 0.92, "evidence": "UC patients undergoing therapy", "reasoning": "Clear UC patient cohort"}}
-
-Input: "Comparison of gut microbiome in UC, CD, and healthy controls"
-Output: {{"disease": "unknown", "confidence": 0.0, "evidence": "Mixed study: UC, CD, healthy", "reasoning": "Three equal groups, no primary disease"}}
-
-Input: "16S sequencing of fecal microbiota"
-Output: {{"disease": "unknown", "confidence": 0.0, "evidence": "No disease information provided", "reasoning": "Methods only, no cohort description"}}
-
-Return ONLY valid JSON, no additional text or formatting.
-"""
-
-
-def _phase1_column_rescan(samples: List[Dict]) -> tuple:
-    """
-    Re-scan ALL columns in sample metadata for disease keywords.
-
-    Premium version: Uses DiseaseOntologyService.match_disease() API (Phase 2 compatible)
-    Public version: Uses hardcoded disease_keywords dict (fallback)
-
-    Returns:
-        Tuple of (enriched_count, detailed_log)
-    """
-    enriched_count = 0
-    log = []
-
-    if HAS_ONTOLOGY_SERVICE:
-        # Premium version: Use centralized ontology service
-        # (Phase 1: keywords, Phase 2: embeddings)
-        ontology = DiseaseOntologyService.get_instance()
-
-        for sample in samples:
-            if sample.get('disease'):
-                continue  # Already has disease, skip
-
-            # Check ALL columns (not just standard ones)
-            for col_name, col_value in sample.items():
-                if not col_value:
-                    continue
-
-                col_str = str(col_value)
-
-                # Use match_disease() API (Phase 2 compatible)
-                matches = ontology.match_disease(col_str, k=1, min_confidence=0.7)
-                if matches:
-                    best_match = matches[0]
-                    sample['disease'] = best_match.disease_id
-                    sample['disease_original'] = col_str
-                    sample['disease_source'] = f'column_remapped:{col_name}'
-                    sample['disease_confidence'] = best_match.confidence
-                    sample['disease_match_type'] = best_match.match_type
-                    sample['enrichment_timestamp'] = datetime.now().isoformat()
-
-                    enriched_count += 1
-                    log.append(f"  - Sample {sample.get('run_accession', 'unknown')}: "
-                             f"Found '{best_match.disease_id}' ({best_match.name}) "
-                             f"in column '{col_name}' (value: {col_value})")
-                    break  # Found disease, move to next sample
-    else:
-        # Public version (lobster-local): Use hardcoded fallback
-        disease_keywords = {
-            'crc': ['colorectal', 'colon_cancer', 'colon cancer', 'rectal_cancer', 'crc'],
-            'uc': ['ulcerative', 'uc_', 'colitis_ulcerosa', 'ulcerative_colitis'],
-            'cd': ['crohn', 'cd_', 'crohns', 'crohns_disease'],
-            'healthy': ['healthy', 'control', 'non_ibd', 'non-ibd', 'non_diseased']
-        }
-
-        for sample in samples:
-            if sample.get('disease'):
-                continue  # Already has disease, skip
-
-            # Check ALL columns (not just standard ones)
-            for col_name, col_value in sample.items():
-                if not col_value:
-                    continue
-
-                col_str = str(col_value).lower()
-
-                # Try each disease mapping
-                for disease, keywords in disease_keywords.items():
-                    for keyword in keywords:
-                        if keyword in col_str:
-                            sample['disease'] = disease
-                            sample['disease_original'] = str(col_value)
-                            sample['disease_source'] = f'column_remapped:{col_name}'
-                            sample['disease_confidence'] = 1.0
-                            sample['enrichment_timestamp'] = datetime.now().isoformat()
-
-                            enriched_count += 1
-                            log.append(f"  - Sample {sample.get('run_accession', 'unknown')}: "
-                                     f"Found '{disease}' in column '{col_name}' (value: {col_value})")
-                            break
-
-                    if sample.get('disease'):
-                        break  # Found disease, move to next sample
-
-                if sample.get('disease'):
-                    break  # Found disease, move to next sample
-
-    return enriched_count, log
-
-
-def _extract_disease_with_llm(
-    llm: Any,
-    abstract_text: Optional[str],
-    methods_text: Optional[str],
-    publication_title: str,
-    sample_count: int
-) -> Dict[str, Any]:
-    """
-    Extract disease from publication text using LLM with structured output.
-
-    Args:
-        llm: LLM instance (from self.llm or create_llm())
-        abstract_text: Publication abstract (if available)
-        methods_text: Methods section (if available)
-        publication_title: Paper title for context
-        sample_count: Number of samples in this publication
-
-    Returns:
-        Dict with:
-        {
-            "disease": "crc",
-            "confidence": 0.92,
-            "evidence": "Abstract states: recruited 50 CRC patients",
-            "source": "abstract" or "methods"
-        }
-    """
-    import re
-
-    # Combine available text
-    text_content = ""
-    source = "none"
-
-    if abstract_text:
-        text_content = f"ABSTRACT:\n{abstract_text[:2000]}\n\n"
-        source = "abstract"
-
-    if methods_text:
-        text_content += f"METHODS:\n{methods_text[:2000]}"
-        if source == "none":
-            source = "methods"
-        else:
-            source = "abstract+methods"
-
-    if not text_content:
-        return {"disease": "unknown", "confidence": 0.0, "evidence": "No text available", "source": "none"}
-
-    # Create extraction prompt using template
-    prompt = DISEASE_EXTRACTION_PROMPT_TEMPLATE.format(
-        publication_title=publication_title,
-        sample_count=sample_count,
-        text_content=text_content
-    )
-
-    # Call LLM
-    try:
-        response = llm.invoke([
-            {"role": "system", "content": "You are a biomedical information extraction expert. Return valid JSON only."},
-            {"role": "user", "content": prompt}
-        ])
-
-        # Parse JSON response
-        response_text = response.content if hasattr(response, 'content') else str(response)
-
-        # Extract JSON from response (handle markdown code blocks)
-        json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
-        if json_match:
-            json_str = json_match.group(1)
-        else:
-            # Try direct JSON parse
-            json_str = response_text.strip()
-
-        result = json.loads(json_str)
-
-        # Validate structure
-        if 'disease' not in result or 'confidence' not in result:
-            logger.warning(f"LLM returned invalid structure: {result}")
-            return {"disease": "unknown", "confidence": 0.0, "evidence": "Invalid LLM response", "source": source}
-
-        # Validate disease is in standard terms
-        valid_diseases = ['crc', 'uc', 'cd', 'healthy', 'unknown']
-        if result['disease'] not in valid_diseases:
-            logger.warning(f"LLM returned invalid disease: {result['disease']}")
-            return {"disease": "unknown", "confidence": 0.0, "evidence": "Invalid disease term", "source": source}
-
-        result['source'] = source
-        return result
-
-    except Exception as e:
-        logger.error(f"LLM extraction failed: {e}")
-        return {"disease": "unknown", "confidence": 0.0, "evidence": f"Extraction error: {str(e)}", "source": source}
-
-
-def _phase2_llm_abstract_extraction(
-    samples: List[Dict],
-    data_manager: DataManagerV2,
-    confidence_threshold: float,
-    llm: Any
-) -> tuple:
-    """
-    Extract disease from publication abstracts using LLM.
-    Groups samples by publication to avoid redundant LLM calls.
-
-    Returns:
-        Tuple of (enriched_count, detailed_log)
-    """
-    enriched_count = 0
-    log = []
-
-    # Group samples by publication
-    pub_groups = defaultdict(list)
-    for sample in samples:
-        if not sample.get('disease'):
-            pub_id = sample.get('publication_entry_id')
-            if pub_id:
-                pub_groups[pub_id].append(sample)
-
-    log.append(f"  - Grouped samples by publication: {len(pub_groups)} publications to process")
-
-    # Process each publication
-    for pub_id, pub_samples in pub_groups.items():
-        # Load cached abstract
-        metadata_path = data_manager.workspace_path / "metadata" / f"{pub_id}_metadata.json"
-
-        if not metadata_path.exists():
-            log.append(f"  - {pub_id}: No cached metadata (skipping {len(pub_samples)} samples)")
-            continue
-
-        try:
-            with open(metadata_path) as f:
-                metadata = json.load(f)
-                abstract_text = metadata.get("content", "")
-        except (json.JSONDecodeError, IOError) as e:
-            log.append(f"  - {pub_id}: Error reading metadata file ({e})")
-            continue
-
-        if not abstract_text:
-            log.append(f"  - {pub_id}: Empty abstract (skipping {len(pub_samples)} samples)")
-            continue
-
-        # Extract disease using LLM
-        disease_info = _extract_disease_with_llm(
-            llm=llm,
-            abstract_text=abstract_text,
-            methods_text=None,
-            publication_title=pub_samples[0].get('publication_title', 'Unknown'),
-            sample_count=len(pub_samples)
-        )
-
-        # Check confidence
-        if disease_info['confidence'] < confidence_threshold:
-            log.append(f"  - {pub_id}: Low confidence {disease_info['confidence']:.2f} "
-                     f"(threshold: {confidence_threshold}, skipping {len(pub_samples)} samples)")
-            continue
-
-        # Apply to all samples from this publication
-        for sample in pub_samples:
-            sample['disease'] = disease_info['disease']
-            sample['disease_original'] = disease_info.get('evidence', '')[:100]
-            sample['disease_source'] = 'abstract_llm'
-            sample['disease_confidence'] = disease_info['confidence']
-            sample['disease_evidence'] = disease_info.get('evidence', '')[:200]
-            sample['enrichment_timestamp'] = datetime.now().isoformat()
-            enriched_count += 1
-
-        log.append(f"  - {pub_id}: Extracted '{disease_info['disease']}' "
-                 f"(confidence: {disease_info['confidence']:.2f}, "
-                 f"enriched {len(pub_samples)} samples)")
-
-    return enriched_count, log
-
-
-def _phase3_llm_methods_extraction(
-    samples: List[Dict],
-    data_manager: DataManagerV2,
-    confidence_threshold: float,
-    llm: Any
-) -> tuple:
-    """
-    Extract disease from publication methods sections using LLM.
-    Only processes samples still missing disease after Phase 2.
-
-    Returns:
-        Tuple of (enriched_count, detailed_log)
-    """
-    enriched_count = 0
-    log = []
-
-    # Group remaining samples by publication
-    pub_groups = defaultdict(list)
-    for sample in samples:
-        if not sample.get('disease'):
-            pub_id = sample.get('publication_entry_id')
-            if pub_id:
-                pub_groups[pub_id].append(sample)
-
-    if not pub_groups:
-        return 0, ["  - No samples need methods extraction"]
-
-    log.append(f"  - Processing methods for {len(pub_groups)} publications")
-
-    # Process each publication
-    for pub_id, pub_samples in pub_groups.items():
-        # Load cached methods
-        methods_path = data_manager.workspace_path / "metadata" / f"{pub_id}_methods.json"
-
-        if not methods_path.exists():
-            log.append(f"  - {pub_id}: No cached methods (skipping)")
-            continue
-
-        try:
-            with open(methods_path) as f:
-                methods_data = json.load(f)
-                methods_text = methods_data.get("methods_text", "")
-        except (json.JSONDecodeError, IOError) as e:
-            log.append(f"  - {pub_id}: Error reading methods file ({e})")
-            continue
-
-        if not methods_text:
-            log.append(f"  - {pub_id}: Empty methods section (skipping)")
-            continue
-
-        # Extract disease from methods
-        disease_info = _extract_disease_with_llm(
-            llm=llm,
-            abstract_text=None,
-            methods_text=methods_text,
-            publication_title=pub_samples[0].get('publication_title', 'Unknown'),
-            sample_count=len(pub_samples)
-        )
-
-        if disease_info['confidence'] < confidence_threshold:
-            log.append(f"  - {pub_id}: Low confidence {disease_info['confidence']:.2f} (skipping)")
-            continue
-
-        # Apply to samples
-        for sample in pub_samples:
-            sample['disease'] = disease_info['disease']
-            sample['disease_original'] = disease_info.get('evidence', '')[:100]
-            sample['disease_source'] = 'methods_llm'
-            sample['disease_confidence'] = disease_info['confidence']
-            sample['disease_evidence'] = disease_info.get('evidence', '')[:200]
-            sample['enrichment_timestamp'] = datetime.now().isoformat()
-            enriched_count += 1
-
-        log.append(f"  - {pub_id}: Extracted '{disease_info['disease']}' from methods "
-                 f"(confidence: {disease_info['confidence']:.2f}, "
-                 f"enriched {len(pub_samples)} samples)")
-
-    return enriched_count, log
-
-
-def _phase4_manual_mappings(
-    samples: List[Dict],
-    manual_mappings: Dict[str, str]
-) -> tuple:
-    """
-    Apply user-provided disease mappings by publication ID.
-
-    Args:
-        samples: List of sample dicts
-        manual_mappings: Dict mapping publication_entry_id to disease
-            Example: {"pub_queue_doi_10_1234": "crc", "pub_queue_pmid_5678": "uc"}
-
-    Returns:
-        Tuple of (enriched_count, detailed_log)
-    """
-    if not manual_mappings:
-        return 0, ["  - No manual mappings provided"]
-
-    enriched_count = 0
-    log = []
-
-    for sample in samples:
-        if sample.get('disease'):
-            continue  # Already has disease
-
-        pub_id = sample.get('publication_entry_id')
-        if pub_id in manual_mappings:
-            disease = manual_mappings[pub_id]
-
-            # Validate disease is in standard terms
-            if disease not in ['crc', 'uc', 'cd', 'healthy', 'unknown']:
-                log.append(f"  - Warning: Invalid disease '{disease}' for {pub_id}, skipping")
-                continue
-
-            sample['disease'] = disease
-            sample['disease_original'] = 'manual_mapping'
-            sample['disease_source'] = 'manual_override'
-            sample['disease_confidence'] = 1.0
-            sample['enrichment_timestamp'] = datetime.now().isoformat()
-            enriched_count += 1
-
-    if enriched_count > 0:
-        log.append(f"  - Applied manual mappings: {enriched_count} samples enriched")
-
-    return enriched_count, log
 
 
 def metadata_assistant(
@@ -837,12 +318,12 @@ def metadata_assistant(
                     cached = data_manager.metadata_store[identifier]
 
                     # Detect pattern (Option D: Namespace Separation)
-                    pattern = _detect_metadata_pattern(cached)
+                    pattern = detect_metadata_pattern(cached)
 
                     if pattern == "geo":
                         samples_dict = cached["metadata"]["samples"]
                     elif pattern == "aggregated":
-                        samples_dict = _convert_list_to_dict(cached["samples"])
+                        samples_dict = convert_list_to_dict(cached["samples"])
                     else:
                         raise ValueError(
                             f"Unrecognized metadata pattern in '{identifier}'. "
@@ -988,14 +469,14 @@ def metadata_assistant(
                         )
 
                 # Detect pattern (Option D: Namespace Separation)
-                pattern = _detect_metadata_pattern(cached)
+                pattern = detect_metadata_pattern(cached)
 
                 if pattern == "geo":
                     # GEO pattern: {"metadata": {"samples": {...}}}
                     samples_dict = cached["metadata"]["samples"]
                 elif pattern == "aggregated":
                     # Aggregated pattern: {"samples": [...]} - convert list to dict
-                    samples_dict = _convert_list_to_dict(cached["samples"])
+                    samples_dict = convert_list_to_dict(cached["samples"])
                     logger.debug(f"Converted aggregated pattern ({len(cached['samples'])} samples) to dict for '{source}'")
                 else:
                     return f"❌ Error: Unrecognized metadata pattern in '{source}'. Expected 'metadata.samples' dict or 'samples' list."
@@ -1043,9 +524,21 @@ def metadata_assistant(
                 return "\n".join(summary)
             elif return_format == "detailed":
                 logger.info(f"Detailed metadata extracted for {source}")
+                # Cap output to prevent token explosion (50 samples max by default)
+                MAX_SAMPLES = 50
+                if len(sample_df) > MAX_SAMPLES:
+                    truncated_df = sample_df.head(MAX_SAMPLES)
+                    output = json.dumps(truncated_df.to_dict(orient="records"), indent=2)
+                    return f"⚠️ Output truncated to {MAX_SAMPLES}/{len(sample_df)} samples. Use filter_samples_by to narrow results.\n\n{output}"
                 return json.dumps(sample_df.to_dict(orient="records"), indent=2)
             elif return_format == "schema":
                 logger.info(f"Metadata schema extracted for {source}")
+                # Cap output to prevent token explosion (50 samples max by default)
+                MAX_SAMPLES = 50
+                if len(sample_df) > MAX_SAMPLES:
+                    truncated_df = sample_df.head(MAX_SAMPLES)
+                    output = truncated_df.to_markdown(index=True)
+                    return f"⚠️ Output truncated to {MAX_SAMPLES}/{len(sample_df)} samples. Use filter_samples_by to narrow results.\n\n{output}"
                 return sample_df.to_markdown(index=True)
             else:
                 return f"❌ Invalid return_format '{return_format}'"
@@ -1274,12 +767,12 @@ def metadata_assistant(
                 cached_metadata = data_manager.metadata_store[source]
 
                 # Detect pattern (Option D: Namespace Separation)
-                pattern = _detect_metadata_pattern(cached_metadata)
+                pattern = detect_metadata_pattern(cached_metadata)
 
                 if pattern == "geo":
                     samples_dict = cached_metadata["metadata"]["samples"]
                 elif pattern == "aggregated":
-                    samples_dict = _convert_list_to_dict(cached_metadata["samples"])
+                    samples_dict = convert_list_to_dict(cached_metadata["samples"])
                 else:
                     return (
                         f"❌ Error: Unrecognized metadata pattern in '{source}'. "
@@ -1608,65 +1101,28 @@ def metadata_assistant(
         strict_disease_validation: bool = True,
     ) -> str:
         """
-        Filter samples by multi-modal criteria (16S amplicon + host organism + sample type + disease).
+        Filter samples by microbiome criteria (16S/shotgun, host, sample type, disease).
 
-        Use this tool when you need to filter workspace metadata by microbiome-specific criteria:
-        - 16S amplicon sequencing detection (platform, library_strategy, assay_type)
-        - Amplicon region validation (V4, V3-V4, V1-V9, full-length)
-        - Host organism validation (human, mouse with fuzzy matching)
-        - Sample type filtering (fecal vs tissue/biopsy)
-        - Disease standardization (CRC, UC, CD, healthy controls)
+        Filter Criteria Syntax (CANONICAL - other tools reference this):
+            "16S human fecal CRC"           - Basic: amplicon + host + sample_type + disease
+            "16S V4 human fecal CRC"        - With region: V4, V3-V4, V1-V9, full-length
+            "shotgun human gut UC"          - WGS/WXS/METAGENOMIC (excludes WGA)
+            "16S shotgun human fecal"       - Both types (OR logic)
 
-        This tool applies filters IN SEQUENCE (composition pattern):
-        1. Check if 16S amplicon (if requested)
-        2. Validate amplicon region (if region specified)
-        3. Validate host organism (if requested)
-        4. Filter by sample type (if requested)
-        5. Standardize disease terms (if requested)
-
-        Filter Criteria Syntax:
-            Basic: "16S human fecal CRC"
-            With region: "16S V4 human fecal CRC"
-            With region: "16S V3-V4 mouse gut UC"
-
-            Supported regions: V1-V9, V3-V4, V4-V5, V1-V9, full-length
+        Filters apply in sequence: amplicon → region → host → sample_type → disease
 
         Args:
-            workspace_key: Key for workspace metadata (e.g., "geo_gse123456")
-            filter_criteria: Natural language criteria (e.g., "16S V4 human fecal CRC")
-            strict: Use strict matching for 16S detection (default: True)
-            min_disease_coverage: Minimum disease coverage rate (0.0-1.0).
-                Default 0.5 (50%). Set to 0.0 to disable validation.
-            strict_disease_validation: If True, raise error when coverage is low.
-                If False, log warning but continue. Default True.
+            workspace_key: Metadata workspace key (e.g., "geo_gse123456")
+            filter_criteria: Natural language criteria string
+            strict: Strict 16S matching (default: True)
+            min_disease_coverage: Min disease rate 0.0-1.0 (default: 0.5)
+            strict_disease_validation: Fail on low coverage (default: True)
 
         Returns:
-            Formatted markdown report with filtering results, retention rate, and filtered metadata summary
+            Filtering report with retention rate and summary
 
-        Examples:
-            # Default: Fail if <50% disease coverage
-            filter_samples_by(workspace_key="geo_gse123456", filter_criteria="16S human fecal CRC")
-
-            # Enforce specific amplicon region
+        Example:
             filter_samples_by(workspace_key="geo_gse123456", filter_criteria="16S V4 human fecal CRC")
-
-            # Region detection (V3-V4 only)
-            filter_samples_by(workspace_key="geo_gse123456", filter_criteria="16S V3-V4 human fecal")
-
-            # Permissive: Warn but continue
-            filter_samples_by(workspace_key="geo_gse123456",
-                            filter_criteria="16S human fecal",
-                            strict_disease_validation=False)
-
-            # Lower threshold: Fail if <30% coverage
-            filter_samples_by(workspace_key="geo_gse123456",
-                            filter_criteria="16S human fecal",
-                            min_disease_coverage=0.3)
-
-            # Disable validation entirely
-            filter_samples_by(workspace_key="geo_gse123456",
-                            filter_criteria="16S human fecal",
-                            min_disease_coverage=0.0)
         """
         # Check if microbiome services are available
         if not MICROBIOME_FEATURES_AVAILABLE:
@@ -1698,7 +1154,7 @@ def metadata_assistant(
             if not isinstance(workspace_data, dict):
                 return f"❌ Error: Unexpected workspace data format (expected dict)"
 
-            pattern = _detect_metadata_pattern(workspace_data)
+            pattern = detect_metadata_pattern(workspace_data)
 
             if pattern == "geo":
                 # GEO pattern: {"metadata": {"samples": {...}}}
@@ -1950,52 +1406,18 @@ Which approach would you prefer?"""
         """
         Process a single publication queue entry for metadata filtering/standardization.
 
-        Reads workspace_metadata_keys from the entry, applies filters if specified,
-        and stores results back to harmonization_metadata.
-
-        Filter Criteria Syntax:
-            Basic: "16S human fecal CRC"
-            With region: "16S V4 human fecal CRC"
-            With region: "16S V3-V4 mouse gut UC"
-
-            Supported regions: V1-V9, V3-V4, V4-V5, V1-V9, full-length
-
         Args:
             entry_id: Publication queue entry ID
-            filter_criteria: Optional natural language filter (e.g., "16S V4 human fecal")
-            standardize_schema: Optional schema to standardize to (e.g., "microbiome")
-            min_disease_coverage: Minimum disease coverage rate (0.0-1.0).
-                Default 0.5 (50%). Set to 0.0 to disable validation.
-            strict_disease_validation: If True, raise error when coverage is low.
-                If False, log warning but continue. Default True.
+            filter_criteria: Filter string. Syntax: see filter_samples_by docstring. None=no filter.
+            standardize_schema: Optional schema (e.g., "microbiome")
+            min_disease_coverage: Min disease rate 0.0-1.0 (default: 0.5)
+            strict_disease_validation: Fail on low coverage (default: True)
 
         Returns:
             Processing summary with sample counts and filtered metadata location
 
-        Examples:
-            # Default: Fail if <50% disease coverage
-            process_metadata_entry(entry_id="pub_123", filter_criteria="16S human fecal")
-
-            # Enforce specific amplicon region
+        Example:
             process_metadata_entry(entry_id="pub_123", filter_criteria="16S V4 human fecal CRC")
-
-            # Region detection (V3-V4 only)
-            process_metadata_entry(entry_id="pub_123", filter_criteria="16S V3-V4 human fecal")
-
-            # Permissive: Warn but continue
-            process_metadata_entry(entry_id="pub_123",
-                                  filter_criteria="16S human fecal",
-                                  strict_disease_validation=False)
-
-            # Lower threshold: Fail if <30% coverage
-            process_metadata_entry(entry_id="pub_123",
-                                  filter_criteria="16S human fecal",
-                                  min_disease_coverage=0.3)
-
-            # Disable validation entirely
-            process_metadata_entry(entry_id="pub_123",
-                                  filter_criteria="16S human fecal",
-                                  min_disease_coverage=0.0)
         """
         try:
             queue = data_manager.publication_queue
@@ -2178,13 +1600,20 @@ Which approach would you prefer?"""
 **Filter**: {filter_criteria or 'None'}
 **Validation**: {total_errors} errors, {total_warnings} warnings
 """
-            # Include validation messages if there are issues
+            # Include validation messages if there are issues (cap at 5 to prevent token explosion)
             if total_errors > 0 or total_warnings > 0:
                 response += "\n### Validation Summary\n"
+                MAX_VALIDATION_KEYS = 5
+                shown_count = 0
                 for idx, vr in enumerate(all_validation_results):
                     if vr.has_errors or vr.has_warnings:
+                        if shown_count >= MAX_VALIDATION_KEYS:
+                            remaining = sum(1 for v in all_validation_results[idx:] if v.has_errors or v.has_warnings)
+                            response += f"\n⚠️ ...and {remaining} more workspace keys with issues (truncated)\n"
+                            break
                         response += f"\n**Workspace key {idx+1}**:\n"
                         response += vr.format_messages(include_info=False) + "\n"
+                        shown_count += 1
 
             return response
         except Exception as e:
@@ -2345,7 +1774,7 @@ Which approach would you prefer?"""
         start_time = time.time()
         effective_workers = min(parallel_workers, len(entries))
 
-        with _suppress_logs():
+        with suppress_logs():
             with parallel_workers_progress(effective_workers, len(entries)) as progress:
 
                 def worker_func(worker_id: int):
@@ -2489,88 +1918,28 @@ Use `write_to_workspace(identifier="{output_key}", workspace="metadata", output_
         reprocess_completed: bool = False,
     ) -> str:
         """
-        Batch process publication queue entries and aggregate sample-level metadata from workspace SRA files.
+        Batch process publication queue entries and aggregate sample-level metadata.
 
-        CRITICAL: status_filter behavior by status type:
-        - 'handoff_ready' (DEFAULT): Entries with workspace_metadata_keys (sra_*_samples files) ready for aggregation
-        - 'metadata_enriched': Entries WITHOUT workspace files (research_agent found no SRA data) - CANNOT be processed (0 samples)
-        - 'completed': Already processed entries - CAN be reprocessed with reprocess_completed=True
-
-        The tool silently skips entries without workspace_metadata_keys, leading to 0-sample results if wrong status used.
-
-        REPROCESSING: Use reprocess_completed=True to re-process entries that were already completed. This is useful when:
-        - You want to apply different filter_criteria to previously processed entries
-        - Enrichment was performed and you want to re-filter with updated disease annotations
-        - You need to regenerate the aggregated output with different parameters
-
-        FILTERING RULE: Only use filter_criteria when user EXPLICITLY asks to filter (e.g., "filter for 16S human fecal").
-        If user just asks to "process entries" or "aggregate samples", use filter_criteria=None to include ALL samples.
-
-        Filter Criteria Syntax:
-            Basic: "16S human fecal CRC"
-            With region: "16S V4 human fecal CRC"
-            With region: "16S V3-V4 mouse gut UC"
-
-            Supported regions: V1-V9, V3-V4, V4-V5, V1-V9, full-length
+        CRITICAL status_filter behavior:
+        - 'handoff_ready' (DEFAULT): Entries with sra_*_samples workspace files
+        - 'metadata_enriched': NO workspace files - will return 0 samples
+        - 'completed': Use with reprocess_completed=True to re-process
 
         Args:
-            status_filter: Queue status (default: 'handoff_ready'). Use 'completed' with reprocess_completed=True
-                to re-process already processed entries.
-            filter_criteria: Sample-level filter (e.g., "16S V4 human fecal CRC"). "16S"=AMPLICON, "shotgun"=WGS/WXS/METAGENOMIC (excludes WGA),
-                             "16S shotgun"=BOTH (OR logic), "V4"=amplicon region, "human"=Homo sapiens, "fecal"=isolation_source match.
-                             None=no filter (default behavior).
-            max_entries: Max entries to process (None=all)
-            output_key: Workspace key for aggregated CSV output (default: "aggregated_filtered_samples")
-            parallel_workers: Workers for parallel processing (None=sequential, >1=parallel with Rich progress if available)
-            min_disease_coverage: Minimum disease coverage rate (0.0-1.0).
-                Default 0.5 (50%). Set to 0.0 to disable validation.
-            strict_disease_validation: If True, raise error when coverage is low.
-                If False, log warning but continue. Default True.
-            reprocess_completed: If True, also include entries with status='completed' for reprocessing.
-                Useful for re-running with different filter_criteria or after enrichment.
-                When status_filter='completed', this flag enables processing of completed entries.
-                Default: False.
+            status_filter: Queue status (default: 'handoff_ready')
+            filter_criteria: Sample filter. Syntax: see filter_samples_by docstring. None=no filter.
+            max_entries: Max entries (None=all)
+            output_key: Workspace key for output CSV
+            parallel_workers: >1 for parallel processing
+            min_disease_coverage: Min coverage rate 0.0-1.0 (default 0.5)
+            strict_disease_validation: Fail on low coverage (default True)
+            reprocess_completed: Re-process completed entries (default False)
 
         Returns:
-            Processing summary with sample counts, validation metrics, and workspace output location for CSV export
+            Processing summary with sample counts and workspace output location
 
-        Examples:
-            # User: "Process handoff_ready entries and aggregate all samples"
-            process_metadata_queue(status_filter="handoff_ready")
-
-            # User: "Filter for 16S human fecal samples" (default: fail if <50% disease coverage)
-            process_metadata_queue(status_filter="handoff_ready", filter_criteria="16S human fecal")
-
-            # User: "Filter for specific amplicon region"
-            process_metadata_queue(status_filter="handoff_ready", filter_criteria="16S V4 human fecal CRC")
-
-            # User: "Filter V3-V4 region only"
-            process_metadata_queue(status_filter="handoff_ready", filter_criteria="16S V3-V4 human fecal")
-
-            # User: "Filter with permissive disease validation"
-            process_metadata_queue(status_filter="handoff_ready",
-                                 filter_criteria="16S human fecal",
-                                 strict_disease_validation=False)
-
-            # User: "Filter with lower disease threshold"
-            process_metadata_queue(status_filter="handoff_ready",
-                                 filter_criteria="16S human fecal",
-                                 min_disease_coverage=0.3)
-
-            # User: "Disable disease validation entirely"
-            process_metadata_queue(status_filter="handoff_ready",
-                                 filter_criteria="16S human fecal",
-                                 min_disease_coverage=0.0)
-
-            # User: "Re-process completed entries with new filter"
-            process_metadata_queue(status_filter="completed",
-                                 reprocess_completed=True,
-                                 filter_criteria="16S V4 human fecal CRC")
-
-            # User: "Re-process everything (handoff_ready + completed)"
-            process_metadata_queue(status_filter="handoff_ready",
-                                 reprocess_completed=True,
-                                 filter_criteria="16S human fecal")
+        Example:
+            process_metadata_queue(filter_criteria="16S V4 human fecal CRC")
         """
         try:
             from lobster.services.data_access.workspace_content_service import (
@@ -3125,67 +2494,24 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
         dry_run: bool = False
     ) -> str:
         """
-        Enrich samples with missing disease annotation using cached publication context.
+        Enrich samples with missing disease annotation from publication context.
 
-        Use this tool when disease validation fails (<50% coverage) to automatically
-        extract disease information from publication abstracts/methods, or to apply
-        user-provided disease mappings.
+        Use when disease validation fails (<50% coverage). Extracts from abstracts/methods
+        or applies manual mappings.
 
         Args:
-            workspace_key: Metadata workspace key containing samples to enrich.
-                Typically "aggregated_filtered_samples" from process_metadata_queue.
-                Can also be specific dataset keys like "sra_PRJNA123456_samples".
-
-            enrichment_mode: Strategy for enrichment (default: "hybrid")
-                - "column_scan": Only re-scan dataset metadata columns for missed fields
-                - "llm_auto": Only use LLM extraction from cached publications
-                - "manual": Only apply provided manual_mappings
-                - "hybrid": Try all phases sequentially (recommended)
-
-            manual_mappings: JSON string mapping publication IDs to diseases.
-                Example: '{"pub_queue_doi_10_1234": "crc", "pub_queue_pmid_5678": "uc"}'
-                Used in "manual" or "hybrid" mode as fallback.
-
-            confidence_threshold: Minimum LLM confidence (0.0-1.0) to accept extraction.
-                Default: 0.8 (high confidence required).
-                Lower values accept more extractions but with higher error risk.
-
-            auto_retry_validation: If True, automatically re-run disease validation
-                after enrichment to check if 50% threshold is now met.
-                If False, only enrich and report statistics.
-
-            dry_run: If True, preview enrichment results without saving changes.
-                Useful for testing enrichment logic before applying.
+            workspace_key: Metadata workspace key (e.g., "aggregated_filtered_samples")
+            enrichment_mode: "column_scan"|"llm_auto"|"manual"|"hybrid" (default: hybrid)
+            manual_mappings: JSON mapping pub IDs to diseases (e.g., '{"pub_queue_doi_10_1234": "crc"}')
+            confidence_threshold: Min LLM confidence 0.0-1.0 (default: 0.8)
+            auto_retry_validation: Re-run validation after enrichment (default: True)
+            dry_run: Preview without saving (default: False)
 
         Returns:
-            Enrichment report with:
-            - Phase-by-phase results (samples enriched per phase)
-            - Coverage improvement (before → after)
-            - Confidence distribution
-            - Validation result (if auto_retry enabled)
-            - Publication-level breakdown
-            - Samples still missing disease (if any)
+            Enrichment report: coverage improvement, per-phase results, validation status
 
-        Example usage:
-            # Automatic enrichment (recommended)
-            enrich_samples_with_disease(
-                workspace_key="aggregated_filtered_samples",
-                enrichment_mode="hybrid"
-            )
-
-            # Manual mappings only
-            enrich_samples_with_disease(
-                workspace_key="aggregated_filtered_samples",
-                enrichment_mode="manual",
-                manual_mappings='{"pub_queue_doi_10_1234": "crc", "pub_queue_pmid_5678": "uc"}'
-            )
-
-            # Preview without saving
-            enrich_samples_with_disease(
-                workspace_key="aggregated_filtered_samples",
-                enrichment_mode="hybrid",
-                dry_run=True
-            )
+        Example:
+            enrich_samples_with_disease(workspace_key="aggregated_filtered_samples")
         """
         # Step 1: Load samples from workspace
         if workspace_key not in data_manager.metadata_store:
@@ -3230,7 +2556,7 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
         # Phase 1: Column re-scan (always run unless manual-only mode)
         if enrichment_mode in ["column_scan", "hybrid"]:
             report.append("#### Phase 1: Column Re-scan")
-            count, log = _phase1_column_rescan(working_samples)
+            count, log = phase1_column_rescan(working_samples)
             total_enriched += count
             report.extend(log)
             report.append(f"**Phase 1 Result**: +{count} samples")
@@ -3239,7 +2565,7 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
         # Phase 2: LLM abstract extraction (unless manual-only mode)
         if enrichment_mode in ["llm_auto", "hybrid"]:
             report.append("#### Phase 2: LLM Abstract Extraction")
-            count, log = _phase2_llm_abstract_extraction(
+            count, log = phase2_llm_abstract_extraction(
                 working_samples,
                 data_manager,
                 confidence_threshold,
@@ -3254,7 +2580,7 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
             current_coverage = ((initial_count + total_enriched) / len(samples)) * 100
             if current_coverage < 50.0 and enrichment_mode == "hybrid":
                 report.append("#### Phase 3: LLM Methods Extraction (triggered by low coverage)")
-                count, log = _phase3_llm_methods_extraction(
+                count, log = phase3_llm_methods_extraction(
                     working_samples,
                     data_manager,
                     confidence_threshold,
@@ -3268,7 +2594,7 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
         # Phase 4: Manual mappings
         if enrichment_mode in ["manual", "hybrid"] and mappings_dict:
             report.append("#### Phase 4: Manual Mappings")
-            count, log = _phase4_manual_mappings(
+            count, log = phase4_manual_mappings(
                 working_samples,
                 mappings_dict
             )
@@ -3750,400 +3076,8 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
     # System Prompt
     # =========================================================================
 
-    system_prompt = """Identity and Role
-You are the Metadata Assistant – an internal sample metadata and harmonization copilot. You never interact with end users or the supervisor. You only respond to instructions from:
-	-	the research agent, and
-	-	the data expert.
 
-<your environment>
-You are a langgraph agent in a supervisor-multi-agent architecture within the open-core python package called 'lobster-ai' (referred as lobster) developed by the company Omics-OS (www.omics-os.com) founded by Kevin Yar.
-</your environment>
-
-Hierarchy: supervisor > research agent == data expert >> metadata assistant.
-
-Your responsibilities:
-	-	Read and summarize sample metadata from cached tables or loaded modalities.
-	-	Filter samples according to explicit criteria (assay, host, sample type, disease, etc.).
-	-	Standardize metadata into requested schemas (transcriptomics, proteomics, microbiome).
-	-	Map samples across datasets based on IDs or metadata.
-	-	Validate dataset content and report quality metrics and limitations.
-	-	Enrich samples with missing disease annotation using enrich_samples_with_disease tool:
-		- 4-phase hierarchy: column re-scan → LLM abstract → LLM methods → manual mappings
-		- Triggered when disease validation fails (<50% coverage threshold)
-		- Full provenance tracking (disease_source, disease_confidence, disease_evidence)
-
-You are not responsible for:
-	-	Discovering or searching for datasets or publications.
-	-	Downloading files or loading data into modalities.
-	-	Running omics analyses (QC, alignment, normalization, clustering, DE).
-	-	Changing or relaxing the user's filters or criteria.
-
-Operating Principles
-	1.	Strict source_type and target_type
-
-	-	Every tool call you make must explicitly specify source_type and, where applicable, target_type.
-	-	Allowed values are “metadata_store” and “modality”.
-	-	“metadata_store” refers to cached metadata tables and artifacts (for example keys such as metadata_GSE12345_samples or metadata_GSE12345_samples_filtered_16S_human_fecal).
-	-	“modality” refers to already loaded data modalities provided by the data expert.
-	-	If an instruction does not clearly indicate which source_type and target_type you should use, you must treat this as a missing prerequisite and fail fast with an explanation.
-
-	2.	Trust cache first
-
-	-	Prefer operating on cached metadata in metadata_store or workspace keys provided by the research agent or data expert.
-	-	Only operate on modalities when explicitly instructed to use source_type=“modality”.
-	-	Never attempt to discover new datasets, publications, or files.
-
-	3.	Follow instructions exactly
-
-	-	Parse all filter criteria provided by the research agent or data expert into structured constraints:
-	-	assay or technology (16S, shotgun, RNA-seq)
-	-	amplicon region (V4, V3-V4, full-length) [v0.5.0+]
-	-	host organism (Human, Mouse)
-	-	sample type (fecal_stool, gut_luminal_content, gut_mucosal_biopsy, oral, skin) [v0.5.0+]
-	-	disease or condition (crc, uc, cd, healthy)
-	-	Do not broaden, relax, or reinterpret the requested criteria.
-	-	If filters would eliminate nearly all samples, report clearly and suggest alternatives, but never change criteria yourself.
-
-	4.	Structured, data-rich outputs
-
-	-	All responses must use a consistent, compact sectioned format so the research agent and data expert can parse results reliably:
-	-	Status: short code or phrase (for example success, partial, failed).
-	-	Summary: 2–4 sentences describing what you did and the main outcome.
-	-	Metrics: explicit numbers and percentages (for example mapping rate, field coverage, sample retention, confidence).
-	-	Key Findings: a small set of bullet-like lines or short paragraphs highlighting the most important technical observations.
-	-	Recommendation: one of “proceed”, “proceed with caveats”, or “stop”, plus a brief rationale.
-	-	Returned Artifacts: list of workspace or metadata_store keys, schema names, or other identifiers that downstream agents should use next.
-	-	Use concise language; avoid verbose narrative and speculation.
-
-	5.	Never overstep
-
-	-	Do not:
-	-	search for datasets or publications,
-	-	download or load any files,
-	-	run omics analyses (QC, normalization, clustering, DE).
-	-	If instructions require data that is missing (for example a workspace key that does not exist or a modality that is not loaded), fail fast:
-	-	Clearly state which key, modality, or parameter is missing.
-	-	Explain what the research agent or data expert must cache or load next to allow you to proceed.
-
-	6.	Parameter Type Conventions
-
-	CRITICAL: When calling tools with optional parameters:
-	-	To skip an optional parameter, OMIT it entirely from the tool call.
-	-	DO NOT pass string values like 'null', 'None', 'undefined', or empty strings for omitted parameters.
-	-	Integer parameters (max_entries, limit, offset) must be actual integers or omitted completely.
-	-	String parameters must be actual non-empty strings or omitted completely.
-
-	Examples:
-	-	WRONG: process_metadata_queue(max_entries='null')
-	-	WRONG: process_metadata_queue(filter_criteria='null')
-	-	WRONG: process_metadata_queue(output_key='None')
-	-	CORRECT: process_metadata_queue()
-	-	CORRECT: process_metadata_queue(max_entries=10)
-	-	CORRECT: process_metadata_queue(max_entries=0)
-	-	CORRECT: process_metadata_queue(filter_criteria="16S V4 human fecal_stool CRC")
-	-	CORRECT: process_metadata_queue(status_filter="handoff_ready", output_key="filtered_samples")
-	-	CORRECT: process_metadata_queue(status_filter="completed", reprocess_completed=True)
-
-	7.	Efficient Workspace Navigation
-
-	CRITICAL: Avoid context overflow when discovering metadata keys:
-	-	NEVER call get_content_from_workspace(workspace="metadata") without filters (returns 1000+ items)
-	-	ALWAYS use the pattern parameter to narrow scope: get_content_from_workspace(workspace="metadata", pattern="aggregated_*")
-	-	Parse output_key from tool responses (e.g., "**Output Key**: my_samples") and use directly
-	-	For targeted discovery, use execute_custom_code to list metadata_store keys
-
-	Examples:
-	-	WRONG: get_content_from_workspace(workspace="metadata") # Returns 1294 items!
-	-	CORRECT: get_content_from_workspace(workspace="metadata", pattern="aggregated_*") # Returns ~50 items
-	-	CORRECT: get_content_from_workspace(workspace="metadata", pattern="sra_prjna*") # Returns ~10 items
-	-	CORRECT: execute_custom_code(python_code="result = {{'keys': [k for k in metadata_store.keys() if 'aggregated' in k]}}") # Targeted discovery
-
-Tool Selection Priority
-For publication queue processing requests, follow this decision tree:
-
-	1.	Publication Queue Processing (ALWAYS START HERE)
-
-	Use process_metadata_queue when request involves:
-	- "process publication queue" or "process handoff_ready entries"
-	- "aggregate samples from publications"
-	- "filter 16S" or "filter shotgun" or "filter microbiome samples"
-	- "create export table" or "export to CSV"
-	- "re-process completed entries" or "reprocess with new filter"
-	- "apply different filter to already processed data"
-
-	This tool:
-	- Reads workspace_metadata_keys (sra_*_samples files) from ALL entries
-	- Aggregates SAMPLE-LEVEL metadata (run_accession, biosample, organism, etc.)
-	- Applies filter_criteria at SAMPLE level using MicrobiomeFilteringService
-	- Validates with SRASampleSchema + quality scoring
-	- Outputs 5,000-10,000+ sample rows ready for CSV export
-
-	Example:
-	```
-	process_metadata_queue(
-	    status_filter="handoff_ready",
-	    filter_criteria="16S V4 human fecal_stool CRC",
-	    output_key="aggregated_samples",
-	    parallel_workers=4  # For >50 entries
-	)
-	```
-
-	REPROCESSING COMPLETED ENTRIES:
-	Use reprocess_completed=True when:
-	- User wants to apply different filter_criteria to already processed entries
-	- After enrichment, need to re-filter with updated disease annotations
-	- Need to regenerate output with different parameters
-
-	Examples:
-	```
-	# Re-process only completed entries with new filter
-	process_metadata_queue(
-	    status_filter="completed",
-	    reprocess_completed=True,
-	    filter_criteria="16S V4 human fecal_stool CRC"
-	)
-
-	# Re-process everything (handoff_ready + completed)
-	process_metadata_queue(
-	    status_filter="handoff_ready",
-	    reprocess_completed=True,
-	    filter_criteria="16S human fecal_stool"
-	)
-	```
-
-	2.	Disease Enrichment (WHEN VALIDATION FAILS)
-
-	Use enrich_samples_with_disease when:
-	- Disease validation fails (<50% coverage threshold)
-	- Supervisor confirms enrichment should proceed
-	- Need to extract disease from publication abstracts/methods
-
-	This tool (4-phase hierarchy):
-	- Phase 1: Column re-scan (checks ALL columns for missed disease fields)
-	- Phase 2: LLM abstract extraction (extracts from cached publication abstracts)
-	- Phase 3: LLM methods extraction (if still <50% after Phase 2)
-	- Phase 4: Manual mappings (user-provided JSON as fallback)
-
-	Example:
-	```
-	enrich_samples_with_disease(
-	    workspace_key="aggregated_filtered_samples",
-	    enrichment_mode="hybrid",
-	    confidence_threshold=0.8
-	)
-	```
-
-	Decision Flow:
-	```
-	process_metadata_queue → Disease validation fails (<50%)
-	         ↓
-	  Ask supervisor for permission
-	         ↓
-	  enrich_samples_with_disease (hybrid mode)
-	         ↓
-	  Re-validate → ≥50%? → process_metadata_queue(reprocess_completed=True)
-	  Re-validate → <50%? → Suggest manual mappings
-	```
-
-	Common Reprocessing Workflow:
-	```
-	Initial: process_metadata_queue(status_filter="handoff_ready")
-	         ↓
-	  Disease enrichment: enrich_samples_with_disease()
-	         ↓
-	  Reprocess: process_metadata_queue(
-	      status_filter="completed",
-	      reprocess_completed=True,
-	      filter_criteria="16S human fecal_stool CRC"
-	  )
-	```
-
-	3.	Custom Code Execution (LAST RESORT)
-
-	Use execute_custom_code ONLY when:
-	- Standard tools insufficient (complex study-specific logic)
-	- Non-disease enrichment (age, sex, tissue from publication)
-	- Custom calculations not covered by standard tools
-
-	NOT for:
-	- Disease enrichment (use enrich_samples_with_disease instead)
-	- CSV export preparation (write_to_workspace handles automatically)
-
-Behavioral Rules for Modern Features (v0.5.1+)
-
-	1.	Disease Validation Thresholds
-	- Minimum coverage: 50% of samples must have disease annotation
-	- Confidence threshold: 0.8 for LLM-extracted diseases (configurable)
-	- When validation fails: Ask supervisor for enrichment permission
-	- After enrichment: Auto-retry validation if coverage improves
-
-	2.	Amplicon Region Syntax
-	Filter criteria supports explicit amplicon regions:
-	- "16S V4 human fecal_stool" → enforces V4 region only
-	- "16S V3-V4 mouse gut_mucosal_biopsy" → enforces V3-V4
-	- Valid regions: V1-V9, V3-V4, V4-V5, V1-V9, full-length
-	- Prevents mixing regions (systematic bias in diversity estimates)
-
-	3.	Sample Type Categories (v0.5.0+)
-	Modern categories (biologically distinct):
-	- fecal_stool (distal colon, passed stool)
-	- gut_luminal_content (intestinal lumen, not passed)
-	- gut_mucosal_biopsy (tissue-associated microbiome)
-	- gut_lavage (bowel prep artifacts)
-	- oral, skin (unchanged)
-
-	Legacy aliases work with deprecation warnings:
-	- "fecal" → "fecal_stool" (warning logged)
-	- "luminal" → "gut_luminal_content"
-	- "biopsy" → "gut_mucosal_biopsy"
-	- "gut" → ValueError (too ambiguous)
-
-	4.	Parallel Processing
-	For process_metadata_queue with >50 entries:
-	- Use parallel_workers=4 for optimal performance
-	- Batch flush reduces I/O by 20x
-	- Rich progress UI shows real-time status
-
-	5.	Quality Flags Interpretation
-	Quality flags are SOFT filters (don't auto-exclude):
-	- MISSING_HEALTH_STATUS: Expected (70-85% of SRA samples)
-	- NON_HUMAN_HOST: Should recommend exclusion
-	- CONTROL_SAMPLE: Analyze separately from experimental samples
-	- User decides final inclusion based on flags
-
-Export Best Practice
-**CORRECT Pattern**: Direct export after aggregation
-```
-process_metadata_queue(output_key='aggregated_samples')
-         ↓
-write_to_workspace(identifier='aggregated_samples', output_format='csv', export_mode='rich')
-```
-**Result**: 3 harmonized files in exports/ (rich CSV, strict CSV, audit TSV)
-
-**Anti-Pattern**: Using execute_custom_code for export preparation (NOT NEEDED - write_to_workspace handles harmonization)
-
-Quality Improvement Workflow (v0.5.1+)
-
-When disease coverage is low after aggregation:
-	1.	Assessment: Check coverage in process_metadata_queue report
-	2.	Enrichment: If <50%, validation fails → use enrich_samples_with_disease
-	3.	Re-validation: Tool auto-retries validation after enrichment
-	4.	Decision: ≥50% → proceed; <50% → manual mappings or lower threshold
-
-For non-disease fields (age, sex, tissue):
-	- Use execute_custom_code with publication context extraction
-	- Document source: field_source="inferred_from_methods"
-	- Only extract explicit statements (no inference)
-
-Execution Pattern
-	1.	Confirm prerequisites
-
-	-	For every incoming instruction from the research agent or data expert:
-	-	Check that all referenced workspace or metadata_store keys exist.
-	-	Check that any referenced modalities exist when source_type=“modality” is requested.
-	-	Check that required parameters are present:
-	-	source_type,
-	-	target_type (when applicable),
-	-	the filter criteria or target schema names,
-	-	identifiers and keys for the datasets involved.
-	-	If any prerequisite is missing:
-	-	Respond with:
-	-	Status: failed.
-	-	Summary: explicitly state which key, modality, or parameter is missing.
-	-	Metrics: only if applicable; otherwise minimal.
-	-	Key Findings: list specific missing prerequisites.
-	-	Recommendation: stop, and describe what the research agent or data expert must do to fix the issue.
-	-	Returned Artifacts: existing keys if they are relevant, otherwise empty.
-
-	2.	Execute requested tools
-
-	-	For complex pipelines:
-	-	Chain operations (for example filter_samples_by → standardize_sample_metadata → validate_dataset_content) in the requested order.
-	-	Pass along the output keys from one step as inputs to the next step.
-	-	For multi-step filtering:
-	-	Run filter_samples_by in stages for each group of criteria, referencing the previous stage’s key as the new source.
-	-	Track which filters are responsible for the largest reductions in sample count.
-
-	3.	Persist outputs
-
-	-	Whenever a tool produces new metadata or derived subsets:
-	-	Persist the result in metadata_store or the appropriate workspace using clear, descriptive names.
-	-	Follow and respect the naming conventions used by the research agent, such as:
-	-	metadata_GSE12345_samples for full sample metadata.
-	-	metadata_GSE12345_samples_filtered_16S_V4_human_fecal_stool_CRC for filtered subsets.
-	-	standardized_GSE12345_transcriptomics for standardized metadata in a transcriptomics schema.
-	-	In every response:
-	-	In the Returned Artifacts section, list all new keys or schema names along with short descriptions of each artifact.
-
-	4.	Close with explicit recommendations
-
-	-	Every response must end with:
-	-	A Recommendation value:
-	-	proceed: the data is suitable for the intended next analysis or integration.
-	-	proceed with caveats: the data is usable but with important limitations you describe clearly.
-	-	stop: major problems make the requested next step unsafe, misleading, or impossible.
-	-	Next-step guidance, such as:
-	-	ready for standardization,
-	-	ready for sample-level integration,
-	-	cohort-level integration recommended due to mapping/coverage issues,
-	-	needs additional age or sex metadata,
-	-	research agent should refine dataset selection,
-	-	data expert should download or reload data after specific conditions are met.
-
-Quality Bars and Shared Thresholds
-You must align your thresholds and semantics with those used by the research agent so the system behaves consistently.
-
-Field coverage
-	-	Report coverage per field (for example sample_id, condition, tissue, age, sex, batch).
-	-	Flag any required field with coverage <80% as a significant limitation.
-	-	Describe how missing fields affect analysis (for example missing batch or age fields may limit correction for confounders).
-	-	Your Recommendation must reflect the impact of coverage gaps.
-
-Filtering
-	-	Always report:
-	-	Original number of samples and retained number of samples.
-	-	Retention percentage.
-	-	Point out which filters caused the largest drops.
-	-	If retention is very low (for example <30% of original samples), consider recommending:
-	-	alternative filter strategies, or
-	-	alternative datasets, depending on the instruction. 
-	-	You still must not change any criteria yourself; instead, explain the consequences and required changes back to the research agent or data expert.
-
-Validation semantics
-	-	For validate_dataset_content and related quality checks:
-	-	Mark each check (sample counts, condition coverage, duplicates, controls) as PASS or FAIL.
-	-	Assign severity (minor, moderate, major) that corresponds to the practical impact:
-	-	issues analogous to “CRITICAL” at the dataset level should push you toward a stop recommendation,
-	-	moderate issues toward proceed with caveats,
-	-	minor issues toward proceed.
-	-	Make it clear why you recommend proceed, proceed with caveats, or stop.
-
-Interaction with the Research Agent and Data Expert
-	-	Research agent:
-	-	Will primarily send you instructions referencing metadata_store keys and workspace names it has created (for example metadata_GSE12345_samples, metadata_GSE67890_samples_filtered_case_control, standardized_GSE12345_transcriptomics).
-	-	Uses your Metrics, Key Findings, Recommendation, and Returned Artifacts to:
-	-	decide whether sample-level or cohort-level integration is appropriate,
-	-	advise the supervisor on whether datasets are ready for download and analysis by the data expert,
-	-	determine whether additional metadata processing is required.
-	-	Be precise and quantitative in your Metrics and Key Findings to support these decisions.
-	-	Data expert:
-	-	May request validations or transformations on modalities or newly loaded datasets.
-	-	Will often use source_type=“modality” and target_type set to either “modality” or “metadata_store”, depending on whether results should be persisted back to metadata_store.
-	-	Your structured outputs help the data expert decide whether to proceed with integration or specific analyses.
-
-Style
-	-	No user-facing dialog:
-	-	Never speak directly to the end user or the supervisor.
-	-	Never ask clarifying questions; instead, fail fast when prerequisites are missing and explain what is needed.
-	-	Respond only to the research agent and data expert.
-	-	Stay concise and data-focused:
-	-	Use short sentences.
-	-	Emphasize metrics, coverage, mapping rates, and concrete observations.
-	-	Avoid speculation; base statements only on the data you have seen.
-	-	Always respect and preserve filter criteria received from upstream agents; you may warn about their consequences, but you never alter them.
-
-todays date: {current_date}
-"""
+    system_prompt = create_metadata_assistant_prompt()
 
     formatted_prompt = system_prompt.format(current_date=datetime.today().isoformat())
 

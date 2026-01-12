@@ -124,7 +124,7 @@ cd /Users/tyo/GITHUB/omics-os/lobster
 python scripts/sync_to_custom.py --package databiomix
 
 # Output:
-# ✓ Copied: lobster/agents/metadata_assistant.py
+# ✓ Copied: lobster/agents/metadata_assistant/
 # ✓ Copied: lobster/agents/proteomics/proteomics_expert.py
 # ... (21 files total)
 # Files copied: 21
@@ -211,7 +211,7 @@ aws s3 cp dist/lobster_custom_biotechco-1.0.0-py3-none-any.whl \
 **Scenario:** You fixed a bug in metadata_assistant.py and need to push to all customers
 
 ```bash
-# 1. Make changes in lobster/lobster/agents/metadata_assistant.py
+# 1. Make changes in lobster/lobster/agents/metadata_assistant/
 # 2. Test locally
 
 # 3. Sync to DataBioMix
@@ -258,7 +258,7 @@ aws s3 ls s3://lobster-license-packages-${AWS_ACCOUNT}/databiomix/latest/
 
 ```text
 # PREMIUM AGENTS (4)
-lobster/agents/metadata_assistant.py
+lobster/agents/metadata_assistant/
 lobster/agents/machine_learning_expert.py
 lobster/agents/protein_structure_visualization_expert.py
 lobster/agents/proteomics/proteomics_expert.py
@@ -494,7 +494,7 @@ cd /Users/tyo/GITHUB/omics-os/lobster
 python scripts/sync_to_custom.py --package databiomix --dry-run
 
 # Expected output:
-# [DRY-RUN] Would copy: lobster/agents/metadata_assistant.py
+# [DRY-RUN] Would copy: lobster/agents/metadata_assistant/
 # ... (21 files)
 # Files copied: 21
 # Files skipped: 165869
@@ -589,7 +589,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'lobster/agents/metadata_assistant.py'
+      - 'lobster/agents/metadata_assistant/'
       - 'lobster/agents/proteomics/**'
       - 'lobster/services/metadata/**'
 

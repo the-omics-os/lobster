@@ -88,7 +88,7 @@ python scripts/sync_to_custom.py --package databiomix
 ```
 
 **Files synced for DataBioMix**:
-- `lobster/agents/metadata_assistant.py`
+- `lobster/agents/metadata_assistant/`
 - `lobster/services/metadata/*` (sample_mapping, disease_standardization, microbiome_filtering)
 - `lobster/services/orchestration/publication_processing_service.py`
 

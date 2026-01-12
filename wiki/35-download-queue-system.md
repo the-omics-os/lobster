@@ -928,14 +928,14 @@ data_manager.download_queue.add_entry(entry)
 - [Data Management (Wiki 20)](20-data-management.md) - Data management patterns
 
 ### Developer Documentation
-- Data Expert Agent - See agent implementation in `lobster/agents/data_expert.py`
+- Data Expert Agent - See agent implementation in `lobster/agents/data_expert/`
 - Research Agent - See agent implementation in `lobster/agents/research_agent.py`
 - Pydantic Schemas - See schema definitions in `lobster/core/schemas/`
 
 ### Code References
 - `lobster/core/download_queue.py` - Queue implementation (342 lines)
 - `lobster/core/schemas/download_queue.py` - Schema definitions
-- `lobster/agents/data_expert.py` - Queue consumer
+- `lobster/agents/data_expert/data_expert.py` - Queue consumer
 - `lobster/agents/research_agent.py` - Queue producer
 - `lobster/tools/workspace_content_service.py` - Queue access tool
 
@@ -1921,7 +1921,7 @@ class SchemaType(str, Enum):
 - [Publication Intelligence Deep Dive (Wiki 37)](37-publication-intelligence-deep-dive.md) - Publication extraction details
 
 ### Developer Documentation
-- Data Expert Agent - See agent implementation in `lobster/agents/data_expert.py`
+- Data Expert Agent - See agent implementation in `lobster/agents/data_expert/`
 - Research Agent - See agent implementation in `lobster/agents/research_agent.py`
 - Pydantic Schemas - See schema definitions in `lobster/core/schemas/`
 
@@ -1930,7 +1930,7 @@ class SchemaType(str, Enum):
 **Download Queue**:
 - `lobster/core/download_queue.py` - Queue implementation (342 lines)
 - `lobster/core/schemas/download_queue.py` - Schema definitions
-- `lobster/agents/data_expert.py` - Queue consumer
+- `lobster/agents/data_expert/data_expert.py` - Queue consumer
 - `lobster/agents/research_agent.py` - Queue producer
 - `lobster/tools/workspace_content_service.py` - Queue access tool
 

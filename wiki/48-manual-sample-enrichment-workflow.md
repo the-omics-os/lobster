@@ -673,7 +673,7 @@ print(f"Disease completeness: {completeness_before*100:.1f}% → {completeness_a
 
 ### Code References
 - `lobster/tools/workspace_tool.py` (lines 44-516) - get_content_from_workspace implementation
-- `lobster/agents/metadata_assistant.py` (lines 722-860) - _extract_disease_from_raw_fields helper
+- `lobster/agents/metadata_assistant/` (lines 722-860) - _extract_disease_from_raw_fields helper
 - `lobster/agents/research_agent.py` (lines 1426-1580) - read_full_publication with PMC/PDF fallback
 - `lobster/services/execution/custom_code_execution_service.py` - execute_custom_code implementation
 

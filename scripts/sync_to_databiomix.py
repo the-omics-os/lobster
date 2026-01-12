@@ -42,6 +42,13 @@ IMPORT_REWRITES = [
      f"from {DST_PKG}.services.metadata.sample_mapping_service"),
     (r"from lobster\.services\.metadata\.identifier_provenance_service",
      f"from {DST_PKG}.services.metadata.identifier_provenance_service"),
+    # Metadata assistant module imports (new folder structure)
+    (r"from lobster\.agents\.metadata_assistant\.config",
+     f"from {DST_PKG}.agents.metadata_assistant.config"),
+    (r"from lobster\.agents\.metadata_assistant\.prompts",
+     f"from {DST_PKG}.agents.metadata_assistant.prompts"),
+    (r"from lobster\.agents\.metadata_assistant\.metadata_assistant",
+     f"from {DST_PKG}.agents.metadata_assistant.metadata_assistant"),
     # Agent factory function
     (r'factory_function="lobster\.agents\.metadata_assistant',
      f'factory_function="{DST_PKG}.agents.metadata_assistant'),
@@ -142,11 +149,12 @@ def discover_sync_files() -> list[FileMapping]:
     """
     Auto-discover files that exist in BOTH lobster and databiomix.
 
-    Strategy: Scan databiomix for .py files, find matching source in lobster.
+    Strategy: Scan lobster source for .py files, check if destination exists or should be created.
+    Handles both single files and folder structures (e.g., agents/metadata_assistant/).
     """
     mappings = []
 
-    # Directories to scan in databiomix (relative to package root)
+    # Directories to scan in lobster source (relative to package root)
     scan_dirs = [
         "agents",
         "services/metadata",
@@ -158,27 +166,29 @@ def discover_sync_files() -> list[FileMapping]:
     lobster_pkg = LOBSTER_ROOT / SRC_PKG
 
     for scan_dir in scan_dirs:
-        dst_dir = databiomix_pkg / scan_dir
-        if not dst_dir.exists():
+        src_dir = lobster_pkg / scan_dir
+        if not src_dir.exists():
             continue
 
-        for dst_file in dst_dir.glob("*.py"):
-            if dst_file.name.startswith("_"):
-                continue  # Skip __init__.py, etc.
-            if dst_file.name.endswith(".backup"):
+        # Use recursive glob to handle folder structures
+        for src_file in src_dir.glob("**/*.py"):
+            if src_file.name.endswith(".backup"):
                 continue
 
-            # Find corresponding source file
-            relative = str(dst_file.relative_to(databiomix_pkg))
+            # Find corresponding destination file
+            relative = str(src_file.relative_to(lobster_pkg))
 
-            # Handle config rename: agent_configs.py <- premium_agent_configs.py
-            if relative == "config/agent_configs.py":
-                src_file = lobster_pkg / "config" / "premium_agent_configs.py"
+            # Handle config rename: agent_configs.py -> premium_agent_configs.py (source)
+            if relative == "config/premium_agent_configs.py":
+                dst_file = databiomix_pkg / "config" / "agent_configs.py"
+                relative = "config/agent_configs.py"
             else:
-                src_file = lobster_pkg / relative
+                dst_file = databiomix_pkg / relative
 
-            if src_file.exists():
-                needs_rewrite = dst_file.name not in NO_REWRITE_FILES
+            # Only include if destination exists OR it's part of metadata_assistant folder
+            # (to handle migration from single file to folder structure)
+            if dst_file.exists() or "metadata_assistant" in relative:
+                needs_rewrite = src_file.name not in NO_REWRITE_FILES
                 mappings.append(FileMapping(
                     src=src_file,
                     dst=dst_file,

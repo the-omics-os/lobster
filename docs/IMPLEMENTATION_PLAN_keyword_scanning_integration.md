@@ -792,7 +792,7 @@ lobster query "process metadata queue for DataBioMix with filter: 16S human feca
 | File | Purpose |
 |------|---------|
 | `lobster/services/metadata/disease_standardization_service.py` | Reference for disease categories and exclusion patterns |
-| `lobster/agents/metadata_assistant.py` (lines 272-322) | Source of keyword scanning logic to port |
+| `lobster/agents/metadata_assistant/` (lines 272-322) | Source of keyword scanning logic to port |
 | `lobster/services/metadata/microbiome_filtering_service.py` | Reference for sample type keywords |
 
 ---

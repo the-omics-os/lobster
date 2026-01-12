@@ -9,7 +9,7 @@
 
 ### Agent Implementations
 - `/Users/tyo/GITHUB/omics-os/lobster/lobster/agents/research_agent.py` - Creates HANDOFF_READY entries
-- `/Users/tyo/GITHUB/omics-os/lobster/lobster/agents/metadata_assistant.py` - Processes queue, requests permissions
+- `/Users/tyo/GITHUB/omics-os/lobster/lobster/agents/metadata_assistant/` - Processes queue, requests permissions (modular folder structure)
 
 ### Data Sharing
 - `/Users/tyo/GITHUB/omics-os/lobster/lobster/tools/workspace_tool.py` - Unified workspace access
@@ -42,7 +42,7 @@ is_ready_for_handoff = (
 # → Status transitions to HANDOFF_READY
 ```
 
-### 3. Permission Request (metadata_assistant.py:2693-2699)
+### 3. Permission Request (metadata_assistant/metadata_assistant.py)
 ```python
 permission_request = f"""
 Disease validation failed: {coverage:.1f}% (required: 50%)

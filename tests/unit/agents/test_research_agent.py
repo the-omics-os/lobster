@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from lobster.agents.research_agent import research_agent
+from lobster.agents.research import research_agent
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.data_access.content_access_service import ContentAccessService
 from lobster.tools.providers.base_provider import PublicationMetadata
@@ -158,7 +158,7 @@ class TestResearchAgentCore:
         """Test agent creation with callback handler."""
         mock_callback = Mock()
 
-        with patch("lobster.agents.research_agent.create_llm") as mock_create_llm:
+        with patch("lobster.agents.research.research_agent.create_llm") as mock_create_llm:
             mock_llm = Mock()
             mock_llm.with_config.return_value = Mock()
             mock_create_llm.return_value = mock_llm
@@ -200,14 +200,14 @@ class TestResearchAgentIntegration:
 
     def test_agent_configuration(self, mock_data_manager, mock_content_access_service):
         """Test agent configuration and setup."""
-        with patch("lobster.agents.research_agent.get_settings") as mock_settings:
+        with patch("lobster.agents.research.research_agent.get_settings") as mock_settings:
             mock_settings_instance = Mock()
             mock_settings_instance.get_agent_llm_params.return_value = {
                 "temperature": 0.1
             }
             mock_settings.return_value = mock_settings_instance
 
-            with patch("lobster.agents.research_agent.create_llm") as mock_create_llm:
+            with patch("lobster.agents.research.research_agent.create_llm") as mock_create_llm:
                 mock_llm = Mock()
                 mock_create_llm.return_value = mock_llm
 
@@ -306,7 +306,7 @@ class TestErrorHandling:
 
     def test_agent_creation_with_llm_error(self, mock_data_manager):
         """Test agent creation when LLM creation fails."""
-        with patch("lobster.agents.research_agent.create_llm") as mock_create_llm:
+        with patch("lobster.agents.research.research_agent.create_llm") as mock_create_llm:
             mock_create_llm.side_effect = Exception("LLM creation failed")
 
             with pytest.raises(Exception):
@@ -373,7 +373,7 @@ class TestConfiguration:
 
     def test_settings_integration(self, mock_data_manager, mock_content_access_service):
         """Test integration with settings system."""
-        with patch("lobster.agents.research_agent.get_settings") as mock_get_settings:
+        with patch("lobster.agents.research.research_agent.get_settings") as mock_get_settings:
             mock_settings = Mock()
             mock_settings.get_agent_llm_params.return_value = {
                 "temperature": 0.1,
@@ -445,8 +445,8 @@ class TestContentAccessIntegration:
     """
 
     @patch("lobster.services.data_access.content_access_service.ContentAccessService")
-    @patch("lobster.agents.research_agent.create_react_agent")
-    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.agents.research.research_agent.create_react_agent")
+    @patch("lobster.agents.research.research_agent.create_llm")
     def test_content_access_service_initialization(
         self,
         mock_create_llm,
@@ -471,8 +471,8 @@ class TestContentAccessIntegration:
         assert agent is not None
 
     @patch("lobster.services.data_access.content_access_service.ContentAccessService")
-    @patch("lobster.agents.research_agent.create_react_agent")
-    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.agents.research.research_agent.create_react_agent")
+    @patch("lobster.agents.research.research_agent.create_llm")
     def test_search_literature_with_content_service(
         self,
         mock_create_llm,
@@ -511,8 +511,8 @@ class TestContentAccessIntegration:
         assert len(results["results"]) == 2
 
     @patch("lobster.services.data_access.content_access_service.ContentAccessService")
-    @patch("lobster.agents.research_agent.create_react_agent")
-    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.agents.research.research_agent.create_react_agent")
+    @patch("lobster.agents.research.research_agent.create_llm")
     def test_get_abstract_via_content_service(
         self,
         mock_create_llm,
@@ -547,8 +547,8 @@ class TestContentAccessIntegration:
         assert result["response_time"] < 1.0
 
     @patch("lobster.services.data_access.content_access_service.ContentAccessService")
-    @patch("lobster.agents.research_agent.create_react_agent")
-    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.agents.research.research_agent.create_react_agent")
+    @patch("lobster.agents.research.research_agent.create_llm")
     def test_three_tier_cascade_mock(
         self,
         mock_create_llm,
@@ -606,8 +606,8 @@ class TestContentAccessRealAPI:
     """
 
     @pytest.mark.skip(reason="Requires real API access - run with pytest -m real_api")
-    @patch("lobster.agents.research_agent.create_react_agent")
-    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.agents.research.research_agent.create_react_agent")
+    @patch("lobster.agents.research.research_agent.create_llm")
     def test_real_literature_search(
         self, mock_create_llm, mock_create_agent, mock_data_manager
     ):
@@ -658,8 +658,8 @@ class TestContentAccessRealAPI:
         time.sleep(0.5)
 
     @pytest.mark.skip(reason="Requires real API access - run with pytest -m real_api")
-    @patch("lobster.agents.research_agent.create_react_agent")
-    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.agents.research.research_agent.create_react_agent")
+    @patch("lobster.agents.research.research_agent.create_llm")
     def test_real_abstract_retrieval(
         self, mock_create_llm, mock_create_agent, mock_data_manager
     ):
@@ -716,8 +716,8 @@ class TestMetadataAssistantHandoff:
     - metadata_assistant returns structured reports
     """
 
-    @patch("lobster.agents.research_agent.create_react_agent")
-    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.agents.research.research_agent.create_react_agent")
+    @patch("lobster.agents.research.research_agent.create_llm")
     @patch("lobster.services.data_access.content_access_service.ContentAccessService")
     def test_handoff_for_sample_mapping(
         self,
@@ -761,8 +761,8 @@ class TestMetadataAssistantHandoff:
         tool_names = {t.name for t in tools}
         assert "delegate_to_metadata_assistant" in tool_names
 
-    @patch("lobster.agents.research_agent.create_react_agent")
-    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.agents.research.research_agent.create_react_agent")
+    @patch("lobster.agents.research.research_agent.create_llm")
     @patch("lobster.services.data_access.content_access_service.ContentAccessService")
     def test_delegation_for_metadata_standardization(
         self,
@@ -810,8 +810,8 @@ class TestMetadataAssistantHandoff:
         # Verify agent created with delegation capability
         assert agent is not None
 
-    @patch("lobster.agents.research_agent.create_react_agent")
-    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.agents.research.research_agent.create_react_agent")
+    @patch("lobster.agents.research.research_agent.create_llm")
     @patch("lobster.services.data_access.content_access_service.ContentAccessService")
     def test_delegation_message_format(
         self,
@@ -878,8 +878,8 @@ class TestFilterTypeCoercion:
     Solution: Accept Union[str, Dict[str, Any], None] with type coercion.
     """
 
-    @patch("lobster.agents.research_agent.create_react_agent")
-    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.agents.research.research_agent.create_react_agent")
+    @patch("lobster.agents.research.research_agent.create_llm")
     @patch("lobster.services.data_access.content_access_service.ContentAccessService")
     def test_fast_dataset_search_with_dict_filters(
         self,
@@ -927,8 +927,8 @@ class TestFilterTypeCoercion:
         call_args = mock_content_service.discover_datasets.call_args[1]
         assert call_args["filters"] == {"organism": "Homo sapiens"}
 
-    @patch("lobster.agents.research_agent.create_react_agent")
-    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.agents.research.research_agent.create_react_agent")
+    @patch("lobster.agents.research.research_agent.create_llm")
     @patch("lobster.services.data_access.content_access_service.ContentAccessService")
     def test_fast_dataset_search_with_string_filters(
         self,
@@ -974,8 +974,8 @@ class TestFilterTypeCoercion:
         call_args = mock_content_service.discover_datasets.call_args[1]
         assert call_args["filters"] == {"organism": "Homo sapiens"}
 
-    @patch("lobster.agents.research_agent.create_react_agent")
-    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.agents.research.research_agent.create_react_agent")
+    @patch("lobster.agents.research.research_agent.create_llm")
     @patch("lobster.services.data_access.content_access_service.ContentAccessService")
     def test_fast_dataset_search_with_invalid_json_string(
         self,
@@ -1014,8 +1014,8 @@ class TestFilterTypeCoercion:
         assert "Error" in result
         assert "Invalid filters JSON format" in result
 
-    @patch("lobster.agents.research_agent.create_react_agent")
-    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.agents.research.research_agent.create_react_agent")
+    @patch("lobster.agents.research.research_agent.create_llm")
     @patch("lobster.services.data_access.content_access_service.ContentAccessService")
     def test_fast_dataset_search_with_invalid_type(
         self,
@@ -1051,8 +1051,8 @@ class TestFilterTypeCoercion:
         assert "Error" in result
         assert "filters must be dict or JSON string" in result
 
-    @patch("lobster.agents.research_agent.create_react_agent")
-    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.agents.research.research_agent.create_react_agent")
+    @patch("lobster.agents.research.research_agent.create_llm")
     @patch("lobster.services.data_access.content_access_service.ContentAccessService")
     def test_search_literature_with_dict_filters(
         self,
@@ -1098,8 +1098,8 @@ class TestFilterTypeCoercion:
         call_args = mock_content_service.search_literature.call_args[1]
         assert call_args["filters"] == {"date_range": {"start": "2020", "end": "2024"}}
 
-    @patch("lobster.agents.research_agent.create_react_agent")
-    @patch("lobster.agents.research_agent.create_llm")
+    @patch("lobster.agents.research.research_agent.create_react_agent")
+    @patch("lobster.agents.research.research_agent.create_llm")
     @patch("lobster.services.data_access.content_access_service.ContentAccessService")
     def test_search_literature_with_string_filters(
         self,

@@ -42,7 +42,7 @@ tests/
 │   │   ├── test_client.py
 │   │   └── test_adapters.py
 │   ├── agents/                # AI agent functionality
-│   │   ├── test_data_expert.py
+│   │   ├── test_data_expert.py (tests agents/data_expert/ module)
 │   │   └── test_transcriptomics_expert.py
 │   ├── services/              # Analysis services (7+ files)
 │   │   ├── test_quality_service.py

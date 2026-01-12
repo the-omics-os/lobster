@@ -632,7 +632,7 @@ AGENT_REGISTRY: Dict[str, AgentConfig] = {
         name='research_agent',
         display_name='Research Agent',
         description='Handles literature discovery, dataset identification, and method extraction from publications. Replaces deprecated method_expert_agent.',
-        factory_function='lobster.agents.research_agent.research_agent',
+        factory_function='lobster.agents.research.research_agent.research_agent',
         handoff_tool_name='handoff_to_research_agent',
         handoff_tool_description='Assign literature search, dataset discovery, PDF extraction, and method extraction tasks to the research agent'
     ),
@@ -830,14 +830,14 @@ This centralized approach ensures professional, maintainable, and error-free age
 
 ### Overview
 
-The **ConcatenationService** is a critical architectural improvement that eliminates code duplication and provides memory-efficient, modality-agnostic concatenation of biological samples. This service addresses the code redundancy problem that existed between `data_expert.py` and `geo_service.py`.
+The **ConcatenationService** is a critical architectural improvement that eliminates code duplication and provides memory-efficient, modality-agnostic concatenation of biological samples. This service addresses the code redundancy problem that existed between `data_expert/data_expert.py` and `geo_service.py`.
 
 ### Architecture Pattern
 
 ```mermaid
 graph TB
     subgraph "Before: Code Duplication Problem"
-        DE_OLD[data_expert.py<br/>concatenate_samples()<br/>200+ lines of code]
+        DE_OLD[data_expert/data_expert.py<br/>concatenate_samples()<br/>200+ lines of code]
         GEO_OLD[geo_service.py<br/>_concatenate_stored_samples()<br/>300+ lines of code]
         DUPLICATION[❌ 450+ lines of duplicated logic<br/>❌ Memory inefficiency<br/>❌ Maintenance overhead]
 
@@ -854,7 +854,7 @@ graph TB
         end
 
         subgraph "Refactored Clients"
-            DE_NEW[data_expert.py<br/>concatenate_samples()<br/>30 lines (delegates to service)]
+            DE_NEW[data_expert/data_expert.py<br/>concatenate_samples()<br/>30 lines (delegates to service)]
             GEO_NEW[geo_service.py<br/>_concatenate_stored_samples()<br/>20 lines (delegates to service)]
         end
 
@@ -880,7 +880,7 @@ graph TB
 ### Key Benefits
 
 #### **🎯 Code Reduction**
-- **data_expert.py**: 200+ lines → 30 lines (**85% reduction**)
+- **data_expert/data_expert.py**: 200+ lines → 30 lines (**85% reduction**)
 - **geo_service.py**: 300+ lines → 20 lines (**93% reduction**)
 - **Total elimination**: **450+ lines of duplicated code**
 

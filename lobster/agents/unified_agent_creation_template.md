@@ -345,9 +345,777 @@ When you complete your task, inform the user and suggest returning to the superv
 
 ---
 
-### 3.3 Service Class (3-Tuple Pattern)
+### 3.3 Agent Folder Structure & Modularity
 
-**File**: `lobster/tools/{{SERVICE_MODULE}}.py`
+**Purpose**: Organize complex agents into modular folder structures for better maintainability.
+
+#### Decision Matrix: Single File vs Folder
+
+| Criterion | Single File (`agent.py`) | Folder (`agent/`) |
+|-----------|-------------------------|-------------------|
+| Agent complexity | <500 LOC | >500 LOC |
+| Number of tools | <8 tools | >8 tools |
+| Sub-agents | No sub-agents | Parent + sub-agents |
+| Platform variants | Single platform | Multiple platforms (MS/Affinity, SC/Bulk) |
+| Shared logic | Minimal | Significant (shared_tools, detection) |
+
+#### Single-Agent Folder Pattern (e.g., proteomics)
+
+```
+agents/{{AGENT_NAME}}/
+├── __init__.py              # Module exports with graceful degradation
+├── state.py                 # {{AgentName}}State class
+├── config.py                # Platform/data type detection + defaults
+├── prompts.py               # System prompt functions
+└── {{AGENT_NAME}}_expert.py # Agent factory + tools
+```
+
+**Example** (`agents/proteomics/`):
+```python
+# prompts.py
+def create_proteomics_expert_prompt() -> str:
+    return f"""<Identity_And_Role>
+    You are the Proteomics Expert...
+    </Identity_And_Role>
+
+    Today's date: {date.today()}
+    """
+
+# config.py
+@dataclass
+class PlatformConfig:
+    platform_type: str
+    display_name: str
+    # ... platform-specific defaults
+
+def detect_platform_type(adata: AnnData) -> str:
+    # Detection logic based on data characteristics
+    pass
+
+# {{AGENT_NAME}}_expert.py
+from lobster.agents.{{AGENT_NAME}}.prompts import create_{{AGENT_NAME}}_expert_prompt
+from lobster.agents.{{AGENT_NAME}}.config import detect_platform_type
+
+def {{AGENT_NAME}}_expert(data_manager, ...):
+    # ... initialize services
+    # ... define tools
+    system_prompt = create_{{AGENT_NAME}}_expert_prompt()
+    return create_react_agent(llm, tools, prompt=system_prompt, ...)
+```
+
+#### Multi-Agent Folder Pattern (e.g., transcriptomics)
+
+```
+agents/{{AGENT_NAME}}/
+├── __init__.py              # Module exports
+├── state.py                 # All state classes (Parent + Sub-agents)
+├── config.py                # Data type detection + QC defaults
+├── prompts.py               # ALL prompts (parent + sub-agents)
+├── shared_tools.py          # Shared tool factories
+├── {{AGENT_NAME}}_expert.py # Parent agent factory
+├── {{SUB_AGENT_1}}_expert.py # Sub-agent 1 factory
+└── {{SUB_AGENT_2}}_expert.py # Sub-agent 2 factory
+```
+
+**Example** (`agents/transcriptomics/`):
+```python
+# prompts.py - ALL prompts in one file
+def create_transcriptomics_expert_prompt() -> str:
+    return f"""<Identity_And_Role>
+    You are the Transcriptomics Expert (parent orchestrator)...
+    </Identity_And_Role>
+
+    <Delegation_Protocol>
+    MANDATORY: When annotation requested, INVOKE handoff_to_annotation_expert IMMEDIATELY.
+    </Delegation_Protocol>
+
+    Today's date: {date.today()}
+    """
+
+def create_annotation_expert_prompt() -> str:
+    return f"""<Role>
+    You handle annotation tasks delegated by transcriptomics_expert...
+    </Role>
+
+    Today's date: {date.today()}
+    """
+
+def create_de_analysis_expert_prompt() -> str:
+    return f"""<Role>
+    You handle DE analysis tasks delegated by transcriptomics_expert...
+    </Role>
+
+    Today's date: {date.today()}
+    """
+
+# config.py - Detection + defaults
+def detect_data_type(adata: AnnData) -> Literal["single_cell", "bulk"]:
+    # Heuristic-based detection
+    pass
+
+def get_qc_defaults(data_type: str) -> Dict[str, Any]:
+    # Return data-type-specific defaults
+    pass
+
+# {{AGENT_NAME}}_expert.py (parent)
+from lobster.agents.{{AGENT_NAME}}.prompts import create_{{AGENT_NAME}}_expert_prompt
+from lobster.agents.{{AGENT_NAME}}.config import detect_data_type
+
+def {{AGENT_NAME}}_expert(data_manager, delegation_tools=None, ...):
+    # Parent has delegation_tools parameter
+    system_prompt = create_{{AGENT_NAME}}_expert_prompt()
+    tools = direct_tools + (delegation_tools or [])
+    return create_react_agent(llm, tools, prompt=system_prompt, ...)
+
+# {{SUB_AGENT}}_expert.py (child)
+from lobster.agents.{{AGENT_NAME}}.prompts import create_{{SUB_AGENT}}_expert_prompt
+
+def {{SUB_AGENT}}_expert(data_manager, delegation_tools=None, ...):
+    # Sub-agent can optionally accept delegation_tools for further delegation
+    system_prompt = create_{{SUB_AGENT}}_expert_prompt()
+    return create_react_agent(llm, tools, prompt=system_prompt, ...)
+```
+
+---
+
+### 3.4 prompts.py Pattern
+
+**File**: `lobster/agents/{{AGENT_FOLDER}}/prompts.py`
+
+```python
+"""
+System prompts for {{DOMAIN}} agents.
+
+This module contains all system prompts used by the {{DOMAIN}} agent(s).
+Prompts are defined as functions to allow dynamic content (e.g., date).
+"""
+
+from datetime import date
+
+
+def create_{{AGENT_NAME}}_expert_prompt() -> str:
+    """
+    Create the system prompt for the {{AGENT_NAME}} expert agent.
+
+    Prompt Sections:
+    - <Identity_And_Role>: Agent identity and core capabilities
+    - <{{DETECTION_TYPE}}>: Platform/data type detection logic (if applicable)
+    - <Your_Tools>: Categorized tool documentation
+    - <Standard_Workflows>: Step-by-step pseudo-code examples
+    - <Best_Practices>: Scientific considerations and warnings
+    - <Communication_Style>: Response formatting guidelines
+    - <Important_Rules>: Non-negotiable rules and constraints
+    - <Delegation_Protocol>: (Parent agents only) Mandatory invocation rules
+
+    Returns:
+        Formatted system prompt string
+    """
+    return f"""<Identity_And_Role>
+You are the {{DISPLAY_NAME}} Expert, specialized in {{DOMAIN_DESCRIPTION}}.
+
+<Core_Capabilities>
+- {{CAPABILITY_1}}
+- {{CAPABILITY_2}}
+- {{CAPABILITY_3}}
+</Core_Capabilities>
+</Identity_And_Role>
+
+<{{DETECTION_TYPE}}>
+{{DETECTION_LOGIC_DESCRIPTION}}
+
+**Detection Signals:**
+- {{SIGNAL_1}}
+- {{SIGNAL_2}}
+- {{SIGNAL_3}}
+
+**Defaults Applied:**
+| Parameter | Type A | Type B |
+|-----------|--------|--------|
+| {{PARAM_1}} | {{VALUE_A}} | {{VALUE_B}} |
+| {{PARAM_2}} | {{VALUE_A}} | {{VALUE_B}} |
+
+</{{DETECTION_TYPE}}>
+
+<Your_Tools>
+
+## {{TOOL_CATEGORY_1}}:
+1. **{{TOOL_1}}** - {{TOOL_1_DESCRIPTION}}
+2. **{{TOOL_2}}** - {{TOOL_2_DESCRIPTION}}
+
+## {{TOOL_CATEGORY_2}}:
+3. **{{TOOL_3}}** - {{TOOL_3_DESCRIPTION}}
+4. **{{TOOL_4}}** - {{TOOL_4_DESCRIPTION}}
+
+</Your_Tools>
+
+<Standard_Workflows>
+
+## {{WORKFLOW_TYPE_1}} Workflow
+
+\```
+1. {{STEP_1}}
+2. {{STEP_2}}
+3. {{STEP_3}}
+\```
+
+## {{WORKFLOW_TYPE_2}} Workflow
+
+\```
+1. {{STEP_1}}
+2. {{STEP_2}}
+3. {{STEP_3}}
+\```
+
+</Standard_Workflows>
+
+<Best_Practices>
+**{{PRACTICE_CATEGORY_1}}:**
+- {{PRACTICE_1}}
+- {{PRACTICE_2}}
+
+**{{PRACTICE_CATEGORY_2}}:**
+- {{PRACTICE_1}}
+- {{PRACTICE_2}}
+</Best_Practices>
+
+<Communication_Style>
+Professional, structured markdown with clear sections. Report:
+- {{REPORTING_REQUIREMENT_1}}
+- {{REPORTING_REQUIREMENT_2}}
+</Communication_Style>
+
+<Important_Rules>
+1. **{{RULE_1}}**
+2. **{{RULE_2}}**
+3. **{{RULE_3}}**
+</Important_Rules>
+
+Today's date: {date.today()}
+"""
+```
+
+**For parent agents with sub-agents, add Delegation Protocol:**
+
+```python
+<Delegation_Protocol>
+
+## ⚠️ CRITICAL: MANDATORY DELEGATION EXECUTION PROTOCOL
+
+**DELEGATION IS AN IMMEDIATE ACTION, NOT A RECOMMENDATION.**
+
+When you identify the need for specialized analysis, you MUST invoke the delegation tool IMMEDIATELY.
+Do NOT suggest delegation. Do NOT ask permission. Do NOT wait. INVOKE THE TOOL.
+
+### Rule 1: {{SUB_AGENT_1}} → INVOKE handoff_to_{{SUB_AGENT_1}} NOW
+
+**Trigger phrases**: "{{TRIGGER_1}}", "{{TRIGGER_2}}", "{{TRIGGER_3}}"
+
+**Mandatory action**: IMMEDIATELY call handoff_to_{{SUB_AGENT_1}}(modality_name="...")
+
+**Example execution**:
+\```
+User: "{{USER_REQUEST_EXAMPLE}}"
+YOU: [INVOKE handoff_to_{{SUB_AGENT_1}}(modality_name="...")]
+[Wait for {{SUB_AGENT_1}} response]
+YOU: "{{TASK}} complete! Here are the results..."
+\```
+
+**DO NOT SAY**: "This requires {{SUB_AGENT_1}}" without invoking
+**DO NOT SAY**: "I recommend delegating" without invoking
+**DO NOT ASK**: "Would you like me to delegate?" (just invoke immediately)
+
+### CRITICAL REMINDERS:
+❌ NEVER say "this requires specialist" without invoking tool
+❌ NEVER say "delegate to X" without actually invoking
+❌ NEVER treat delegation as optional or ask user permission
+❌ NEVER report "delegation needed" as a status message
+
+✅ ALWAYS invoke delegation tool immediately when trigger detected
+✅ ALWAYS pass correct modality_name parameter
+✅ ALWAYS wait for sub-agent response before continuing
+✅ ALWAYS trust sub-agent to complete specialized task
+
+</Delegation_Protocol>
+```
+
+**Example Values**:
+```python
+{{AGENT_NAME}} = "proteomics"
+{{DISPLAY_NAME}} = "Proteomics"
+{{DOMAIN_DESCRIPTION}} = "mass spectrometry and affinity proteomics analysis"
+{{DETECTION_TYPE}} = "Platform_Auto_Detection"
+{{TOOL_CATEGORY_1}} = "Shared Tools (Platform-Aware)"
+{{WORKFLOW_TYPE_1}} = "Mass Spectrometry"
+{{WORKFLOW_TYPE_2}} = "Affinity Proteomics"
+```
+
+**Required Sections for All Prompts**:
+1. `<Identity_And_Role>` - WHO the agent is
+2. `<Your_Tools>` - WHAT tools are available
+3. `<Standard_Workflows>` - HOW to use tools (step-by-step)
+4. `<Important_Rules>` - NON-NEGOTIABLE constraints
+
+**Optional Sections**:
+- `<Platform_Auto_Detection>` or `<Data_Type_Detection>` - Auto-detection logic
+- `<Delegation_Protocol>` - Parent agents only
+- `<Best_Practices>` - Scientific considerations
+- `<Communication_Style>` - Response formatting
+
+---
+
+### 3.5 config.py Pattern
+
+**File**: `lobster/agents/{{AGENT_FOLDER}}/config.py`
+
+**Purpose**: Platform/data type detection logic and configuration dataclasses.
+
+```python
+"""
+Configuration for {{DOMAIN}} analysis.
+
+This module defines {{PLATFORM_OR_DATA_TYPE}} detection and defaults.
+Extracted for modularity and reusability.
+"""
+
+from dataclasses import dataclass, field
+from typing import Any, Dict, Literal, Optional
+
+import anndata
+from lobster.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+__all__ = [
+    "{{CONFIG_CLASS}}",
+    "{{CONFIGS_DICT}}",
+    "detect_{{TYPE}}",
+    "get_{{TYPE}}_config",
+    "get_{{TYPE}}_defaults",  # If applicable
+]
+
+
+@dataclass
+class {{CONFIG_CLASS}}:
+    """Configuration for a {{DOMAIN}} {{TYPE}} type."""
+
+    {{TYPE}}_type: str  # e.g., "mass_spec" or "affinity", "single_cell" or "bulk"
+    display_name: str
+    description: str
+
+    # Type-specific thresholds
+    {{THRESHOLD_1}}: float
+    {{THRESHOLD_2}}: float
+
+    # Analysis defaults
+    default_{{PARAM_1}}: {{TYPE_1}}
+    default_{{PARAM_2}}: {{TYPE_2}}
+
+    # Type-specific attributes
+    {{TYPE}}_specific: Dict[str, Any] = field(default_factory=dict)
+
+    def get_qc_defaults(self) -> Dict[str, Any]:
+        """Get default QC parameters for this {{TYPE}}."""
+        return {
+            "{{PARAM_1}}": self.{{PARAM_1}},
+            "{{PARAM_2}}": self.{{PARAM_2}},
+        }
+
+
+# Configuration registry
+{{CONFIGS_DICT}}: Dict[str, {{CONFIG_CLASS}}] = {
+    "{{TYPE_A}}": {{CONFIG_CLASS}}(
+        {{TYPE}}_type="{{TYPE_A}}",
+        display_name="{{TYPE_A_DISPLAY}}",
+        description="{{TYPE_A_DESCRIPTION}}",
+        {{THRESHOLD_1}}={{VALUE_A_1}},
+        {{THRESHOLD_2}}={{VALUE_A_2}},
+        default_{{PARAM_1}}={{DEFAULT_A_1}},
+        default_{{PARAM_2}}={{DEFAULT_A_2}},
+        {{TYPE}}_specific={
+            "{{SPECIFIC_PARAM_1}}": {{VALUE}},
+        },
+    ),
+    "{{TYPE_B}}": {{CONFIG_CLASS}}(
+        {{TYPE}}_type="{{TYPE_B}}",
+        display_name="{{TYPE_B_DISPLAY}}",
+        description="{{TYPE_B_DESCRIPTION}}",
+        {{THRESHOLD_1}}={{VALUE_B_1}},
+        {{THRESHOLD_2}}={{VALUE_B_2}},
+        default_{{PARAM_1}}={{DEFAULT_B_1}},
+        default_{{PARAM_2}}={{DEFAULT_B_2}},
+        {{TYPE}}_specific={
+            "{{SPECIFIC_PARAM_1}}": {{VALUE}},
+        },
+    ),
+}
+
+
+def detect_{{TYPE}}(
+    adata: anndata.AnnData,
+    force_type: Optional[str] = None,
+) -> str:
+    """
+    Auto-detect {{TYPE}} type from data characteristics.
+
+    Detection logic:
+    1. Check for {{TYPE_A}}-specific metadata columns
+    2. Check for {{TYPE_B}}-specific metadata columns
+    3. Analyze data characteristics (e.g., missing values, observation count)
+    4. Check for platform hints in metadata
+
+    Args:
+        adata: AnnData object with {{DOMAIN}} data
+        force_type: Override detection with specific type
+
+    Returns:
+        str: "{{TYPE_A}}" or "{{TYPE_B}}"
+    """
+    if force_type:
+        if force_type not in {{CONFIGS_DICT}}:
+            raise ValueError(
+                f"Unknown {{TYPE}} type: {force_type}. "
+                f"Choose from: {list({{CONFIGS_DICT}}.keys())}"
+            )
+        return force_type
+
+    detection_scores = {"{{TYPE_A}}": 0, "{{TYPE_B}}": 0}
+
+    # 1. Check for type-specific columns
+    {{TYPE_A}}_columns = ["{{COL_1}}", "{{COL_2}}"]
+    {{TYPE_A}}_col_count = sum(1 for col in {{TYPE_A}}_columns if col in adata.var.columns)
+    detection_scores["{{TYPE_A}}"] += {{TYPE_A}}_col_count * 2
+
+    {{TYPE_B}}_columns = ["{{COL_3}}", "{{COL_4}}"]
+    {{TYPE_B}}_col_count = sum(1 for col in {{TYPE_B}}_columns if col in adata.var.columns)
+    detection_scores["{{TYPE_B}}"] += {{TYPE_B}}_col_count * 2
+
+    # 2. Analyze data characteristics
+    # ... detection logic based on data patterns
+
+    # Return type with higher score
+    if detection_scores["{{TYPE_B}}"] > detection_scores["{{TYPE_A}}"]:
+        return "{{TYPE_B}}"
+    else:
+        return "{{TYPE_A}}"
+
+
+def get_{{TYPE}}_config({{TYPE}}_type: str) -> {{CONFIG_CLASS}}:
+    """
+    Get the configuration for a specific {{TYPE}} type.
+
+    Args:
+        {{TYPE}}_type: "{{TYPE_A}}" or "{{TYPE_B}}"
+
+    Returns:
+        {{CONFIG_CLASS}} for the specified {{TYPE}}
+    """
+    if {{TYPE}}_type not in {{CONFIGS_DICT}}:
+        raise ValueError(
+            f"Unknown {{TYPE}} type: {{{TYPE}}_type}. "
+            f"Choose from: {list({{CONFIGS_DICT}}.keys())}"
+        )
+    return {{CONFIGS_DICT}}[{{TYPE}}_type]
+```
+
+**Example Values**:
+```python
+# Proteomics example
+{{CONFIG_CLASS}} = "PlatformConfig"
+{{CONFIGS_DICT}} = "PLATFORM_CONFIGS"
+{{TYPE}} = "platform"
+{{TYPE_A}} = "mass_spec"
+{{TYPE_B}} = "affinity"
+{{THRESHOLD_1}} = "max_missing_per_sample"
+{{THRESHOLD_2}} = "cv_threshold"
+
+# Transcriptomics example
+{{CONFIG_CLASS}} = "DataTypeConfig"  # (implicit - uses dicts directly)
+{{TYPE}} = "data_type"
+{{TYPE_A}} = "single_cell"
+{{TYPE_B}} = "bulk"
+{{THRESHOLD_1}} = "min_genes"
+{{THRESHOLD_2}} = "max_genes"
+```
+
+---
+
+### 3.6 Multi-Agent Delegation Protocol
+
+**Purpose**: Define mandatory delegation rules for parent agents with sub-agents.
+
+#### Parent Agent Registry Entry
+
+```python
+# In config/agent_registry.py
+"{{PARENT_AGENT}}_expert": AgentRegistryConfig(
+    name="{{PARENT_AGENT}}_expert",
+    display_name="{{PARENT_DISPLAY_NAME}} Expert",
+    description="Parent orchestrator for {{DOMAIN}} analysis",
+    factory_function="lobster.agents.{{PARENT_AGENT}}.{{PARENT_AGENT}}_expert.{{PARENT_AGENT}}_expert",
+    handoff_tool_name="handoff_to_{{PARENT_AGENT}}_expert",
+    handoff_tool_description="Delegate for {{DOMAIN}} analysis",
+    # CRITICAL: Specify child agents for automatic delegation tool creation
+    child_agents=["{{SUB_AGENT_1}}_expert", "{{SUB_AGENT_2}}_expert"],
+),
+
+"{{SUB_AGENT_1}}_expert": AgentRegistryConfig(
+    name="{{SUB_AGENT_1}}_expert",
+    display_name="{{SUB_AGENT_1_DISPLAY}} Expert",
+    description="Sub-agent for {{SUB_AGENT_1_TASK}}",
+    factory_function="lobster.agents.{{PARENT_AGENT}}.{{SUB_AGENT_1}}_expert.{{SUB_AGENT_1}}_expert",
+    handoff_tool_name="handoff_to_{{SUB_AGENT_1}}_expert",
+    handoff_tool_description="Delegate when {{SUB_AGENT_1_CONDITION}}",
+),
+```
+
+#### Delegation Protocol in Parent Prompt
+
+**MANDATORY sections in parent agent prompt**:
+
+```
+<Delegation_Protocol>
+
+## ⚠️ CRITICAL: MANDATORY DELEGATION EXECUTION PROTOCOL
+
+**DELEGATION IS AN IMMEDIATE ACTION, NOT A RECOMMENDATION.**
+
+When you identify the need for specialized analysis, you MUST invoke the delegation tool IMMEDIATELY.
+Do NOT suggest delegation. Do NOT ask permission. Do NOT wait. INVOKE THE TOOL.
+
+### Rule 1: {{SUB_AGENT_1_TASK}} → INVOKE handoff_to_{{SUB_AGENT_1}}_expert NOW
+
+**Trigger phrases**: "{{TRIGGER_1}}", "{{TRIGGER_2}}", "{{TRIGGER_3}}"
+
+**After completing**: {{PREREQUISITE_CONDITION}}
+
+**Mandatory action**: IMMEDIATELY call handoff_to_{{SUB_AGENT_1}}_expert(modality_name="...")
+
+**Example execution**:
+\```
+User: "{{USER_REQUEST}}"
+YOU: [INVOKE handoff_to_{{SUB_AGENT_1}}_expert(modality_name="{{MODALITY_EXAMPLE}}")]
+[Wait for {{SUB_AGENT_1}}_expert response]
+YOU: "{{TASK}} complete! Here are the results..."
+\```
+
+**DO NOT SAY**: "This requires {{SUB_AGENT_1}} specialist" without invoking
+**DO NOT SAY**: "I recommend delegating to {{SUB_AGENT_1}}_expert" without invoking
+**DO NOT ASK**: "Would you like me to delegate?" (just invoke immediately)
+
+### CRITICAL REMINDERS:
+❌ NEVER say "this requires specialist" without invoking tool
+❌ NEVER say "delegate to X" without actually invoking
+❌ NEVER treat delegation as optional or ask user permission
+❌ NEVER report "delegation needed" as a status message
+
+✅ ALWAYS invoke delegation tool immediately when trigger detected
+✅ ALWAYS pass correct modality_name parameter
+✅ ALWAYS wait for sub-agent response before continuing
+✅ ALWAYS trust sub-agent to complete specialized task
+
+</Delegation_Protocol>
+```
+
+#### Sub-Agent Prompt Pattern
+
+Sub-agent prompts are SIMPLER - no delegation protocol needed (unless they have their own children):
+
+```python
+def create_{{SUB_AGENT}}_expert_prompt() -> str:
+    """Create the system prompt for the {{SUB_AGENT}} expert sub-agent."""
+    return f"""
+You are a specialized sub-agent for {{SUB_AGENT_TASK}} in {{DOMAIN}} workflows.
+
+<Role>
+You handle all {{SUB_AGENT_TASK}}-related tasks.
+You are called by the parent {{PARENT_AGENT}}_expert via delegation tools.
+You report results back to the parent agent, not directly to users.
+</Role>
+
+<Available Tools>
+## {{TOOL_CATEGORY}}:
+- `{{TOOL_1}}`: {{TOOL_1_DESCRIPTION}}
+- `{{TOOL_2}}`: {{TOOL_2_DESCRIPTION}}
+</Available Tools>
+
+<Important Guidelines>
+1. **Validate modality existence** before operations
+2. **Log all operations** with provenance tracking
+3. **Report results to parent agent**
+</Important Guidelines>
+
+Today's date: {date.today()}
+""".strip()
+```
+
+**Example Values**:
+```python
+# Transcriptomics parent + sub-agents
+{{PARENT_AGENT}} = "transcriptomics"
+{{SUB_AGENT_1}} = "annotation"
+{{SUB_AGENT_2}} = "de_analysis"
+{{TRIGGER_1}} = "annotate"
+{{TRIGGER_2}} = "cell type"
+{{USER_REQUEST}} = "Annotate the cell types in this dataset"
+{{TASK}} = "Cell type annotation"
+```
+
+---
+
+### 3.7 Shared Tools Factory Pattern
+
+**File**: `lobster/agents/{{AGENT_FOLDER}}/shared_tools.py`
+
+**Purpose**: Tool factories for logic shared across parent and sub-agents.
+
+```python
+"""
+Shared tools for {{DOMAIN}} analysis.
+
+This module provides tools that are shared by multiple agents.
+Tools auto-detect {{TYPE}} and use appropriate defaults.
+"""
+
+from typing import Any, Callable, Dict, List
+
+from langchain_core.tools import tool
+
+from lobster.agents.{{AGENT_FOLDER}}.config import detect_{{TYPE}}, get_{{TYPE}}_defaults
+from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.services.{{SERVICE_CATEGORY}}.{{SERVICE_MODULE}} import {{SERVICE_CLASS}}
+from lobster.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def create_shared_tools(
+    data_manager: DataManagerV2,
+    {{SERVICE_VAR_1}}: {{SERVICE_CLASS_1}},
+    {{SERVICE_VAR_2}}: {{SERVICE_CLASS_2}},
+) -> List[Callable]:
+    """
+    Create shared {{DOMAIN}} tools with auto-detection.
+
+    These tools are shared between {{AGENT_TYPE_1}} and {{AGENT_TYPE_2}} agents.
+    Each tool auto-detects the {{TYPE}} and applies appropriate defaults.
+
+    Args:
+        data_manager: DataManagerV2 instance for modality management
+        {{SERVICE_VAR_1}}: {{SERVICE_CLASS_1}} instance
+        {{SERVICE_VAR_2}}: {{SERVICE_CLASS_2}} instance
+
+    Returns:
+        List of tool functions to be added to agent tools
+    """
+    # Analysis results storage (shared across tools)
+    analysis_results: Dict[str, Any] = {"summary": "", "details": {}}
+
+    @tool
+    def {{SHARED_TOOL_NAME}}(
+        modality_name: str,
+        {{PARAM_1}}: Optional[{{PARAM_1_TYPE}}] = None,
+    ) -> str:
+        """
+        {{TOOL_DESCRIPTION}}.
+
+        Auto-detects {{TYPE}} and applies appropriate defaults.
+
+        Args:
+            modality_name: Name of the modality to analyze
+            {{PARAM_1}}: {{PARAM_1_DESCRIPTION}} (uses {{TYPE}}-specific default if None)
+
+        Returns:
+            Formatted result string
+        """
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                return (
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            # Get modality and auto-detect {{TYPE}}
+            adata = data_manager.get_modality(modality_name)
+            {{TYPE}} = detect_{{TYPE}}(adata)
+            defaults = get_{{TYPE}}_defaults({{TYPE}})
+
+            # Apply defaults for unspecified parameters
+            {{PARAM_1}} = {{PARAM_1}} if {{PARAM_1}} is not None else defaults["{{PARAM_1}}"]
+
+            # Delegate to service
+            result_adata, stats, ir = {{SERVICE_VAR_1}}.{{SERVICE_METHOD}}(
+                adata, {{PARAM_1}}={{PARAM_1}}
+            )
+
+            # Store result
+            new_name = f"{modality_name}_{{SUFFIX}}"
+            data_manager.modalities[new_name] = result_adata
+
+            # Log with IR
+            data_manager.log_tool_usage(
+                tool_name="{{SHARED_TOOL_NAME}}",
+                parameters={"modality_name": modality_name, "{{PARAM_1}}": {{PARAM_1}}},
+                description=f"{{OPERATION}} for {{{TYPE}}}",
+                ir=ir,
+            )
+
+            return f"{{OPERATION}} complete: {new_name}"
+
+        except Exception as e:
+            logger.error(f"Error in {{SHARED_TOOL_NAME}}: {e}")
+            return f"Error: {str(e)}"
+
+    # Return list of shared tools
+    return [{{SHARED_TOOL_NAME}}]
+```
+
+**Usage in Parent Agent**:
+```python
+# In {{PARENT_AGENT}}_expert.py
+from lobster.agents.{{AGENT_FOLDER}}.shared_tools import create_shared_tools
+
+def {{PARENT_AGENT}}_expert(data_manager, ...):
+    # Initialize services
+    quality_service = QualityService()
+    preprocessing_service = PreprocessingService()
+
+    # Get shared tools
+    shared_tools = create_shared_tools(
+        data_manager, quality_service, preprocessing_service
+    )
+
+    # Define parent-specific tools
+    parent_specific_tools = [...]
+
+    # Combine tools
+    direct_tools = shared_tools + parent_specific_tools
+    tools = direct_tools + (delegation_tools or [])
+
+    return create_react_agent(llm, tools, ...)
+```
+
+**Usage in Sub-Agent**:
+```python
+# In {{SUB_AGENT}}_expert.py
+from lobster.agents.{{AGENT_FOLDER}}.shared_tools import create_shared_tools
+
+def {{SUB_AGENT}}_expert(data_manager, ...):
+    # Sub-agents can also use shared tools
+    shared_tools = create_shared_tools(data_manager, quality_service, preprocessing_service)
+
+    # Define sub-agent-specific tools
+    sub_agent_tools = [...]
+
+    tools = shared_tools + sub_agent_tools
+    return create_react_agent(llm, tools, ...)
+```
+
+---
+
+### 3.8 Service Class (3-Tuple Pattern)
+
+**File**: `lobster/services/{{SERVICE_CATEGORY}}/{{SERVICE_MODULE}}.py`
 
 ```python
 """{{SERVICE_DESCRIPTION}}."""
@@ -601,7 +1369,7 @@ print(f"{{OPERATION_NAME}} complete: {adata.n_obs} samples, {adata.n_vars} featu
 
 ---
 
-### 3.4 Provider Class (External Data Source)
+### 3.9 Provider Class (External Data Source)
 
 **File**: `lobster/tools/providers/{{PROVIDER_MODULE}}.py`
 
@@ -922,7 +1690,7 @@ class {{PROVIDER_CLASS}}(BasePublicationProvider):
 
 ---
 
-### 3.5 Adapter Class (Format Loading)
+### 3.10 Adapter Class (Format Loading)
 
 **File**: `lobster/core/adapters/{{ADAPTER_MODULE}}.py`
 
@@ -1144,7 +1912,7 @@ class {{ADAPTER_CLASS}}(BaseAdapter):
 
 ---
 
-### 3.6 Schema Definition
+### 3.11 Schema Definition
 
 **File**: `lobster/core/schemas/{{SCHEMA_MODULE}}.py`
 

@@ -29,7 +29,7 @@ import pandas as pd
 # from lobster.agents.supervisor import supervisor_agent
 # from lobster.agents.data_expert import data_expert_agent
 # from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
-# from lobster.agents.research_agent import research_agent
+# from lobster.agents.research import research_agent
 
 # from tests.mock_data.factories import SingleCellDataFactory, BulkRNASeqDataFactory
 # from tests.mock_data.base import SMALL_DATASET_CONFIG, LARGE_DATASET_CONFIG
@@ -187,7 +187,7 @@ class TestBasicAgentWorkflows:
         ]
         state["current_agent"] = "research_agent"
 
-        with patch("lobster.agents.research_agent.research_agent") as mock_research:
+        with patch("lobster.agents.research.research_agent.research_agent") as mock_research:
             mock_research.return_value = {
                 "messages": state["messages"]
                 + [
@@ -344,7 +344,7 @@ class TestComplexMultiAgentWorkflows:
         ]
         research_state["current_agent"] = "research_agent"
 
-        with patch("lobster.agents.research_agent.research_agent") as mock_research:
+        with patch("lobster.agents.research.research_agent.research_agent") as mock_research:
             mock_research.return_value = {
                 "messages": research_state["messages"]
                 + [
@@ -433,7 +433,7 @@ class TestComplexMultiAgentWorkflows:
 
             if task["agent"] == "research_agent":
                 with patch(
-                    "lobster.agents.research_agent.research_agent"
+                    "lobster.agents.research.research_agent.research_agent"
                 ) as mock_agent:
                     # Different response based on task type
                     if "Extract" in task["task"]:
@@ -520,7 +520,7 @@ class TestComplexMultiAgentWorkflows:
         research_state = recovery_result.copy()
         research_state["current_agent"] = "research_agent"
 
-        with patch("lobster.agents.research_agent.research_agent") as mock_research:
+        with patch("lobster.agents.research.research_agent.research_agent") as mock_research:
             mock_research.return_value = {
                 "messages": research_state["messages"]
                 + [
@@ -610,7 +610,7 @@ class TestAgentCommunication:
         research_state = mock_workflow_state.copy()
         research_state["shared_data"] = shared_data
 
-        with patch("lobster.agents.research_agent.research_agent") as mock_research:
+        with patch("lobster.agents.research.research_agent.research_agent") as mock_research:
             mock_research.return_value = {
                 "shared_data": {
                     **shared_data,
@@ -1020,8 +1020,8 @@ class TestMetadataAssistantCoordination:
     and dataset validation.
     """
 
-    @patch("lobster.agents.research_agent.research_agent")
-    @patch("lobster.agents.metadata_assistant.metadata_assistant")
+    @patch("lobster.agents.research.research_agent.research_agent")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.metadata_assistant")
     def test_research_to_metadata_assistant_handoff(
         self, mock_metadata_assistant, mock_research, mock_workflow_state
     ):
@@ -1112,7 +1112,7 @@ Use exact and pattern matching strategies. Return mapping report with:
         assert "✅ Sample Mapping Complete" in metadata_result["messages"][0]["content"]
         assert "Recommendation" in metadata_result["messages"][0]["content"]
 
-    @patch("lobster.agents.metadata_assistant.metadata_assistant")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.metadata_assistant")
     def test_metadata_assistant_sample_mapping_workflow(
         self, mock_metadata_assistant, mock_workflow_state
     ):
@@ -1183,7 +1183,7 @@ Use exact and pattern matching strategies. Return mapping report with:
         assert "✅" in result["messages"][-1]["content"]
         assert "Recommendation" in result["messages"][-1]["content"]
 
-    @patch("lobster.agents.metadata_assistant.metadata_assistant")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.metadata_assistant")
     def test_metadata_assistant_standardization_workflow(
         self, mock_metadata_assistant, mock_workflow_state
     ):
@@ -1260,7 +1260,7 @@ Use exact and pattern matching strategies. Return mapping report with:
         assert "Metadata Standardization Report" in result["messages"][-1]["content"]
 
     @patch("lobster.agents.supervisor.supervisor_agent")
-    @patch("lobster.agents.metadata_assistant.metadata_assistant")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.metadata_assistant")
     def test_supervisor_coordinates_metadata_operation(
         self, mock_metadata_assistant, mock_supervisor, mock_workflow_state
     ):

@@ -13,7 +13,7 @@ The **ConcatenationService** represents a major architectural improvement that e
 ```mermaid
 graph TB
     subgraph "Before: Code Duplication Problem"
-        DE_OLD[data_expert.py<br/>📄 200+ lines duplicated logic]
+        DE_OLD[data_expert/data_expert.py<br/>📄 200+ lines duplicated logic]
         GEO_OLD[geo_service.py<br/>📄 300+ lines duplicated logic]
         PROBLEM[❌ 450+ lines of duplication<br/>❌ Memory inefficiency<br/>❌ Maintenance overhead]
 

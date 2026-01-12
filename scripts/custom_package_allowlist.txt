@@ -11,7 +11,12 @@
 # =============================================================================
 # PREMIUM AGENTS (4 agents - NOT in free tier)
 # =============================================================================
-lobster/agents/metadata_assistant.py
+# Metadata assistant (folder structure)
+lobster/agents/metadata_assistant/__init__.py
+lobster/agents/metadata_assistant/config.py
+lobster/agents/metadata_assistant/prompts.py
+lobster/agents/metadata_assistant/metadata_assistant.py
+
 lobster/agents/machine_learning_expert.py
 lobster/agents/protein_structure_visualization_expert.py
 lobster/agents/proteomics/proteomics_expert.py
@@ -67,7 +72,12 @@ lobster/services/data_access/protein_structure_fetch_service.py
 # Free tier agents - in base package
 !lobster/agents/supervisor.py
 !lobster/agents/research_agent.py
-!lobster/agents/data_expert.py
+!lobster/agents/data_expert/__init__.py
+!lobster/agents/data_expert/state.py
+!lobster/agents/data_expert/config.py
+!lobster/agents/data_expert/prompts.py
+!lobster/agents/data_expert/data_expert.py
+!lobster/agents/data_expert/assistant.py
 !lobster/agents/singlecell_expert.py
 !lobster/agents/bulk_rnaseq_expert.py
 

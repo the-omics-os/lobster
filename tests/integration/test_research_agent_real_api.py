@@ -42,7 +42,7 @@ from pathlib import Path
 
 import pytest
 
-from lobster.agents.research_agent import research_agent
+from lobster.agents.research import research_agent
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.utils.logger import get_logger

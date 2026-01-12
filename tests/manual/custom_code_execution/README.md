@@ -679,7 +679,7 @@ result = safe_attack_demo()
 ### Service Implementation
 
 - `lobster/services/execution/custom_code_execution_service.py` - Target service
-- `lobster/agents/data_expert.py` - Integration point (execute_custom_code tool)
+- `lobster/agents/data_expert/data_expert.py` - Integration point (execute_custom_code tool)
 - `lobster/core/data_manager_v2.py` - Workspace management
 
 ### Security Best Practices

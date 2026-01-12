@@ -634,7 +634,7 @@ process_metadata_queue(...) → Validation fails
 
 #### Tool: enrich_samples_with_disease()
 
-**Location**: `lobster/agents/metadata_assistant.py` (lines 3013-3238)
+**Location**: `lobster/agents/metadata_assistant/` (lines 3013-3238)
 
 **Signature**:
 ```python
@@ -1071,7 +1071,7 @@ if domain_lower in ("new_domain", "alias1", "alias2"):
 
 ### metadata_assistant.filter_samples_by Tool
 
-**Location**: `lobster/agents/metadata_assistant.py` (lines 695-890)
+**Location**: `lobster/agents/metadata_assistant/` (lines 695-890)
 
 Natural language tool for multi-criteria filtering using sequential composition pattern.
 
@@ -1896,7 +1896,7 @@ entry.harmonization_metadata = {
 - `lobster/core/schemas/sra.py` - SRA sample validation schema (330 lines)
 - `lobster/services/metadata/microbiome_filtering_service.py` - 16S + host validation (545 lines)
 - `lobster/services/metadata/disease_standardization_service.py` - Disease mapping + sample type filter (414 lines)
-- `lobster/agents/metadata_assistant.py` - Queue processing tools with validation (lines 934-1380)
+- `lobster/agents/metadata_assistant/` - Queue processing tools with validation (lines 934-1380)
 
 **Protocol Extraction Package** (NEW v1.2.0):
 - `lobster/services/metadata/protocol_extraction/__init__.py` - Factory: `get_protocol_service(domain)`
@@ -1915,7 +1915,7 @@ entry.harmonization_metadata = {
 
 ### Developer Documentation
 - Research Agent - Publication processing (`lobster/agents/research_agent.py`)
-- Metadata Assistant - Harmonization agent (`lobster/agents/metadata_assistant.py`)
+- Metadata Assistant - Harmonization agent (`lobster/agents/metadata_assistant/`)
 - Pydantic Schemas - Validation logic (`lobster/core/schemas/`)
 
 ---

@@ -40,14 +40,22 @@ from lobster.config.subscription_tiers import SUBSCRIPTION_TIERS
 
 AGENT_FILE_MAPPING = {
     # FREE tier agents
-    "research_agent": "lobster/agents/research_agent.py",
-    "data_expert_agent": "lobster/agents/data_expert.py",
+    "research_agent": "lobster/agents/research/research_agent.py",
+    "data_expert_agent": [
+        # Modular structure (refactored from monolithic file)
+        "lobster/agents/data_expert/__init__.py",
+        "lobster/agents/data_expert/state.py",
+        "lobster/agents/data_expert/config.py",
+        "lobster/agents/data_expert/prompts.py",
+        "lobster/agents/data_expert/data_expert.py",
+        "lobster/agents/data_expert/assistant.py",
+    ],
     "transcriptomics_expert": "lobster/agents/transcriptomics/transcriptomics_expert.py",
     "visualization_expert_agent": "lobster/agents/visualization_expert.py",
     "annotation_expert": "lobster/agents/transcriptomics/annotation_expert.py",
     "de_analysis_expert": "lobster/agents/transcriptomics/de_analysis_expert.py",
     # PREMIUM tier agents
-    "metadata_assistant": "lobster/agents/metadata_assistant.py",
+    "metadata_assistant": "lobster/agents/metadata_assistant/metadata_assistant.py",
     "proteomics_expert": "lobster/agents/proteomics/proteomics_expert.py",
     "machine_learning_expert_agent": "lobster/agents/machine_learning_expert.py",
     "protein_structure_visualization_expert_agent": "lobster/agents/protein_structure_visualization_expert.py",
@@ -57,13 +65,19 @@ AGENT_FILE_MAPPING = {
 
 # Services tied to specific agents (premium services for premium agents)
 AGENT_SERVICE_DEPENDENCIES = {
+    "data_expert_agent": [
+        # New services created during modular refactoring
+        "lobster/services/data_management/modality_detection_service.py",
+        "lobster/services/data_management/strategy_recommendation_service.py",
+    ],
     "proteomics_expert": [
         "lobster/services/analysis/proteomics_analysis_service.py",
         "lobster/services/analysis/proteomics_differential_service.py",
         "lobster/services/quality/proteomics_quality_service.py",
         "lobster/services/quality/proteomics_preprocessing_service.py",
         "lobster/services/visualization/proteomics_visualization_service.py",
-        "lobster/agents/proteomics/platform_config.py",
+        "lobster/agents/proteomics/config.py",
+        "lobster/agents/proteomics/prompts.py",
         # Proteomics parsers (premium feature)
         "lobster/services/data_access/proteomics_parsers/__init__.py",
         "lobster/services/data_access/proteomics_parsers/base_parser.py",
@@ -72,6 +86,12 @@ AGENT_SERVICE_DEPENDENCIES = {
         "lobster/services/data_access/proteomics_parsers/olink_parser.py",
     ],
     "metadata_assistant": [
+        # Module files (folder structure)
+        "lobster/agents/metadata_assistant/__init__.py",
+        "lobster/agents/metadata_assistant/config.py",
+        "lobster/agents/metadata_assistant/prompts.py",
+        "lobster/agents/metadata_assistant/metadata_assistant.py",
+        # Service dependencies
         # NOTE: publication_processing_service and its deps moved to ALWAYS_INCLUDED
         "lobster/services/metadata/microbiome_filtering_service.py",
         "lobster/services/metadata/disease_standardization_service.py",
@@ -290,7 +310,6 @@ lobster/agents/state.py
 lobster/agents/graph.py
 lobster/agents/draw_graph.py
 lobster/agents/supervisor.py
-lobster/agents/data_expert_assistant.py
 
 # LangGraph supervisor
 lobster/agents/langgraph_supervisor/__init__.py
@@ -306,6 +325,8 @@ lobster/agents/archive/research_agent_assistant.py
 # Transcriptomics module structure
 lobster/agents/transcriptomics/__init__.py
 lobster/agents/transcriptomics/state.py
+lobster/agents/transcriptomics/config.py
+lobster/agents/transcriptomics/prompts.py
 lobster/agents/transcriptomics/shared_tools.py
 
 # Proteomics module structure (just structure, not experts)
@@ -655,7 +676,16 @@ def generate_agent_section() -> str:
     free_agents = get_free_tier_agents()
     for agent in sorted(free_agents):
         if agent in AGENT_FILE_MAPPING:
-            lines.append(AGENT_FILE_MAPPING[agent])
+            agent_files = AGENT_FILE_MAPPING[agent]
+            # Handle both string and list values (for modular agents)
+            if isinstance(agent_files, list):
+                lines.extend(agent_files)
+            else:
+                lines.append(agent_files)
+            # Also include service dependencies for FREE agents
+            if agent in AGENT_SERVICE_DEPENDENCIES:
+                for service in AGENT_SERVICE_DEPENDENCIES[agent]:
+                    lines.append(service)
 
     lines.append("")
     lines.append("# PREMIUM tier agents (EXCLUDED from public package)")
@@ -663,7 +693,13 @@ def generate_agent_section() -> str:
     premium_only = get_premium_only_agents()
     for agent in sorted(premium_only):
         if agent in AGENT_FILE_MAPPING:
-            lines.append(f"!{AGENT_FILE_MAPPING[agent]}")
+            agent_files = AGENT_FILE_MAPPING[agent]
+            # Handle both string and list values (for modular agents)
+            if isinstance(agent_files, list):
+                for file_path in agent_files:
+                    lines.append(f"!{file_path}")
+            else:
+                lines.append(f"!{agent_files}")
             # Also exclude dependent services
             if agent in AGENT_SERVICE_DEPENDENCIES:
                 for service in AGENT_SERVICE_DEPENDENCIES[agent]:

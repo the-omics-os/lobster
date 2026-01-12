@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lobster.agents.research_agent import research_agent
+from lobster.agents.research import research_agent
 from lobster.core.data_manager_v2 import DataManagerV2
 
 # ===============================================================================
@@ -72,7 +72,7 @@ def sample_dataset():
 def mock_content_access_service():
     """Mock ContentAccessService for literature tools."""
     with patch(
-        "lobster.agents.research_agent.ContentAccessService"
+        "lobster.agents.research.research_agent.ContentAccessService"
     ) as MockContentService:
         mock_service = MockContentService.return_value
 
@@ -150,7 +150,7 @@ def mock_content_access_service():
 @pytest.fixture
 def mock_geo_service():
     """Mock GEOService for dataset metadata validation."""
-    with patch("lobster.agents.research_agent.GEOService") as MockGEOService:
+    with patch("lobster.agents.research.research_agent.GEOService") as MockGEOService:
         mock_service = MockGEOService.return_value
 
         # Mock fetch_metadata_only

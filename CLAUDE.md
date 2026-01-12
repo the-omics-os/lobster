@@ -234,13 +234,43 @@ lobster/
 │  └─ README.md            # Integration overview
 ├─ agents/                  # Supervisor + specialist agents + graph
 │  ├─ supervisor.py
-│  ├─ research_agent.py
-│  ├─ metadata_assistant.py
-│  ├─ data_expert.py
-│  ├─ singlecell_expert.py
-│  ├─ bulk_rnaseq_expert.py
-│  ├─ ms_proteomics_expert.py
-│  ├─ affinity_proteomics_expert.py
+│  ├─ research/             # Modular structure (refactored Nov 2024)
+│  │  ├─ __init__.py
+│  │  ├─ state.py
+│  │  ├─ config.py
+│  │  ├─ prompts.py
+│  │  └─ research_agent.py
+│  ├─ metadata_assistant/   # Modular structure (refactored Dec 2024)
+│  │  ├─ __init__.py
+│  │  ├─ config.py
+│  │  ├─ prompts.py
+│  │  └─ metadata_assistant.py
+│  ├─ data_expert/          # Modular structure (refactored Jan 2026)
+│  │  ├─ __init__.py
+│  │  ├─ state.py
+│  │  ├─ config.py
+│  │  ├─ prompts.py
+│  │  ├─ data_expert.py
+│  │  └─ assistant.py
+│  ├─ transcriptomics/      # Modular structure (refactored Nov 2024)
+│  │  ├─ __init__.py
+│  │  ├─ state.py
+│  │  ├─ config.py
+│  │  ├─ prompts.py
+│  │  ├─ shared_tools.py
+│  │  ├─ transcriptomics_expert.py
+│  │  ├─ annotation_expert.py
+│  │  └─ de_analysis_expert.py
+│  ├─ proteomics/           # Modular structure (refactored Nov 2024)
+│  │  ├─ __init__.py
+│  │  ├─ state.py
+│  │  ├─ config.py
+│  │  ├─ prompts.py
+│  │  └─ proteomics_expert.py
+│  ├─ machine_learning_expert.py
+│  ├─ protein_structure_visualization_expert.py
+│  ├─ visualization_expert.py
+│  ├─ custom_feature_agent.py
 │  └─ graph.py              # create_bioinformatics_graph(...)
 │
 ├─ core/                    # Client, data, provenance, backends
@@ -310,6 +340,8 @@ lobster/
 │  │  └─ docling_service.py
 │  ├─ data_management/      # Data management & organization
 │  │  ├─ modality_management_service.py
+│  │  ├─ modality_detection_service.py    # Rule-based platform detection (refactored Jan 2026)
+│  │  ├─ strategy_recommendation_service.py # Download strategy selection (refactored Jan 2026)
 │  │  └─ concatenation_service.py
 │  ├─ metadata/             # Metadata operations
 │  │  ├─ metadata_standardization_service.py
@@ -358,7 +390,7 @@ lobster/
 | Global Config | `config/global_config.py` | Global config (inherits ProviderConfigBase, uses `_default_model` suffix) |
 | Client | `core/client.py`, `core/api_client.py` | local vs cloud clients |
 | Graph | `agents/graph.py` | `create_bioinformatics_graph()` |
-| Agents | `agents/*.py` | supervisor + specialists |
+| Agents | `agents/*/` | supervisor + specialists (modular folders with config, prompts, state) |
 | Data | `core/data_manager_v2.py` | modality/workspace orchestration |
 | Provenance | `core/provenance.py` | W3C‑PROV tracking |
 | Queue | `core/download_queue.py` | download orchestration |
@@ -369,6 +401,8 @@ lobster/
 | H5AD Utils | `core/utils/h5ad_utils.py` | H5AD file validation, compression, optimization (v3.4.2+) |
 | Services | `services/*/*.py` | stateless analysis (organized by function) |
 | Services | `services/data_management/modality_management_service.py` | Modality CRUD with provenance (5 methods) |
+| Services | `services/data_management/modality_detection_service.py` | Rule-based platform detection (extracted Jan 2026) |
+| Services | `services/data_management/strategy_recommendation_service.py` | Download strategy selection (extracted Jan 2026) |
 | Download | `tools/download_orchestrator.py` | Central router for database-specific downloads (9-step execution) |
 | Download | `services/data_access/geo_download_service.py` | GEO database download service (IDownloadService impl) |
 | GEO | `services/data_access/geo/` | Modular GEO package (downloader, parser, strategy, constants) |
@@ -386,16 +420,21 @@ lobster/
 
 ### 3.3 Agent Roles (summary)
 
-| Agent | Main Focus |
-|-------|------------|
-| `supervisor` | route user intents to specialists, manage handoffs |
-| `research_agent` | literature & dataset discovery, URL extraction, workspace caching, publication queue processing |
-| `metadata_assistant` | ID mapping, schema‑based validation, harmonization, **publication queue filtering** (3 tools: process_metadata_entry, process_metadata_queue, update_metadata_status) |
-| `data_expert` | **ZERO ONLINE ACCESS**: execute downloads from pre-validated queue entries (research_agent creates), load local files via adapter system, manage modalities with ModalityManagementService (5 CRUD tools), retry failed downloads with strategy overrides, queue monitoring & troubleshooting |
-| `singlecell_expert` | scRNA‑seq: QC, clustering, pseudobulk, trajectories, markers |
-| `bulk_rnaseq_expert` | bulk RNA‑seq import + DE (pyDESeq2, formula designs) |
-| `ms_proteomics_expert` | DDA/DIA workflows, missing values, normalization |
-| `affinity_proteomics_expert` | Olink/antibody arrays, NPX, CV, panel harmonization |
+**Note**: Most agents now use a modular folder structure (refactored Nov 2024 - Jan 2026) with `config.py`, `prompts.py`, `state.py`, and main agent file. See `agents/unified_agent_creation_template.md` for the standard pattern.
+
+| Agent | Main Focus | Structure |
+|-------|------------|-----------|
+| `supervisor` | route user intents to specialists, manage handoffs | Single file (legacy) |
+| `research_agent` | literature & dataset discovery, URL extraction, workspace caching, publication queue processing | Modular folder |
+| `metadata_assistant` | ID mapping, schema‑based validation, harmonization, **publication queue filtering** (3 tools: process_metadata_entry, process_metadata_queue, update_metadata_status) | Modular folder |
+| `data_expert` | **ZERO ONLINE ACCESS**: execute downloads from pre-validated queue entries (research_agent creates), load local files via adapter system, manage modalities with ModalityManagementService (5 CRUD tools), retry failed downloads with strategy overrides, queue monitoring & troubleshooting | Modular folder (with assistant.py) |
+| `transcriptomics_expert` | scRNA‑seq: QC, clustering, pseudobulk, trajectories, markers (parent agent with 2 sub-agents) | Modular folder |
+| `annotation_expert` | Cell type annotation (sub-agent of transcriptomics_expert) | Modular folder |
+| `de_analysis_expert` | Differential expression analysis (sub-agent of transcriptomics_expert) | Modular folder |
+| `proteomics_expert` | DDA/DIA workflows, missing values, normalization | Modular folder |
+| `machine_learning_expert` | ML-based predictions and modeling (PREMIUM) | Single file (legacy) |
+| `protein_structure_visualization_expert` | Protein structure visualization (PREMIUM) | Single file (legacy) |
+| `visualization_expert` | General-purpose plotting and visualization | Single file (legacy) |
 
 ### 3.4 Deployment & Infrastructure
 
@@ -451,12 +490,13 @@ lobster-local (PUBLIC PACKAGE)
 1. **Do NOT edit `pyproject.toml`** – all dependency changes go through humans. **Exception**: ML extras (`torch`, `scvi-tools`) are now optional (PREMIUM tier). Install with `pip install lobster-ai[ml]`.
 2. **Prefer editing existing files** over adding new ones.
 3. **Use `config/agent_registry.py`** for agents – do not hand‑edit `graph.py` with new agents.
-4. **Keep services stateless**: pure functions on `AnnData` / data + 3‑tuple return.
-5. **Use professional modality naming** (see 4.6).
-6. **Ensure both local and cloud clients work** (CLI must behave identically).
-7. **Preserve CLI backward compatibility** where reasonable.
-8. **Maintain scientific correctness** – no "quick hacks" that break analysis rigor.
-9. **Use component_registry for premium features** – NO `try/except ImportError` or `sys.modules` injection (see 4.5).
+4. **Follow modular agent structure** – new agents MUST use folder pattern (see `agents/unified_agent_creation_template.md`): `__init__.py`, `config.py`, `prompts.py`, `state.py`, main agent file.
+5. **Keep services stateless**: pure functions on `AnnData` / data + 3‑tuple return.
+6. **Use professional modality naming** (see 4.6).
+7. **Ensure both local and cloud clients work** (CLI must behave identically).
+8. **Preserve CLI backward compatibility** where reasonable.
+9. **Maintain scientific correctness** – no "quick hacks" that break analysis rigor.
+10. **Use component_registry for premium features** – NO `try/except ImportError` or `sys.modules` injection (see 4.5).
 
 ### 4.2 Service Pattern (3‑tuple)
 
@@ -674,6 +714,27 @@ Adding a new agent should be **registry‑only** wherever possible. For premium-
   - **Benefits**: Single source of truth, ~245 lines of duplicated code eliminated, follows workspace_tool.py pattern
   - **Rule**: Do NOT define inline `execute_custom_code` in agents; always use factory
 
+- **Modular Agent Structure Pattern** (`agents/*/`): standardized folder organization (v2.6+, unified Jan 2026)
+  - **Pattern**: Each agent lives in a dedicated folder with 4-6 standard files
+  - **Files**: `__init__.py`, `config.py`, `prompts.py`, `state.py` (optional), main agent file, assistant/tools (optional)
+  - **Benefits**: Clear separation of concerns, easier testing, reusable prompts, consistent structure
+  - **Template**: `agents/unified_agent_creation_template.md` (comprehensive guide)
+  - **Refactored agents**: research_agent (Nov 2024), transcriptomics experts (Nov 2024), proteomics_expert (Nov 2024), metadata_assistant (Dec 2024), data_expert (Jan 2026)
+  - **Rule**: New agents MUST follow this pattern (see template for complete structure)
+
+- **Data Management Services Pattern** (`services/data_management/`): specialized services extracted from agents (v2.6+)
+  - **ModalityDetectionService** (`modality_detection_service.py`): Rule-based platform detection from file patterns
+    - Uses platform registry from `services/data_access/geo/constants.py`
+    - Returns platform type, confidence score, detection metadata
+    - Follows 3-tuple pattern (result, stats, ir)
+  - **StrategyRecommendationService** (`strategy_recommendation_service.py`): Configuration-driven download strategy selection
+    - Analyzes platform characteristics, sample counts, file availability
+    - Returns recommended strategy with reasoning and alternatives
+    - Follows 3-tuple pattern (result, stats, ir)
+  - **Origin**: Extracted from `data_expert_assistant.py` during modular refactoring (Jan 2026)
+  - **Benefits**: Testable in isolation, reusable across agents, consistent provenance tracking
+  - **Rule**: Agent business logic should be extracted to services when reusable
+
 ### 4.6 Download Architecture (Queue-Based Pattern)
 
 **Problem**: data_expert had online access, could fetch metadata/URLs directly, breaking single-responsibility principle.
@@ -735,7 +796,7 @@ modality_name, stats = orchestrator.execute_download(entry_id)
 
 **Key Files**:
 - `services/orchestration/publication_processing_service.py` - Queue processing with auto-status
-- `agents/metadata_assistant.py` - 3 tools (process_metadata_entry, process_metadata_queue, update_metadata_status)
+- `agents/metadata_assistant/metadata_assistant.py` - 3 tools (process_metadata_entry, process_metadata_queue, update_metadata_status)
 - `tools/workspace_tool.py` - Unified workspace tools (v2.6+: adapter pattern for all workspace types)
 - `core/schemas/publication_queue.py` - PublicationQueueEntry with handoff fields
 

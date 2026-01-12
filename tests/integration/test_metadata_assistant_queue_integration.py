@@ -131,12 +131,12 @@ class TestMetadataAssistantQueueIntegration:
     """Integration tests for metadata_assistant updating publication queue."""
 
     @pytest.mark.integration
-    @patch("lobster.agents.metadata_assistant.create_react_agent")
-    @patch("lobster.agents.metadata_assistant.create_llm")
-    @patch("lobster.agents.metadata_assistant.get_settings")
-    @patch("lobster.agents.metadata_assistant.MetadataStandardizationService")
-    @patch("lobster.agents.metadata_assistant.SampleMappingService")
-    @patch("lobster.agents.metadata_assistant.MicrobiomeFilteringService")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.create_react_agent")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.create_llm")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.get_settings")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.SampleMappingService")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.MicrobiomeFilteringService")
     def test_process_entry_updates_harmonization_metadata(
         self,
         mock_microbiome_class,
@@ -207,11 +207,11 @@ class TestMetadataAssistantQueueIntegration:
         assert "stats" in harmonization
 
     @pytest.mark.integration
-    @patch("lobster.agents.metadata_assistant.create_react_agent")
-    @patch("lobster.agents.metadata_assistant.create_llm")
-    @patch("lobster.agents.metadata_assistant.get_settings")
-    @patch("lobster.agents.metadata_assistant.MetadataStandardizationService")
-    @patch("lobster.agents.metadata_assistant.SampleMappingService")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.create_react_agent")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.create_llm")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.get_settings")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.SampleMappingService")
     def test_process_queue_updates_all_entries(
         self,
         mock_mapping_class,
@@ -280,11 +280,11 @@ class TestMetadataAssistantQueueIntegration:
         assert "aggregated_samples" in integration_data_manager.metadata_store
 
     @pytest.mark.integration
-    @patch("lobster.agents.metadata_assistant.create_react_agent")
-    @patch("lobster.agents.metadata_assistant.create_llm")
-    @patch("lobster.agents.metadata_assistant.get_settings")
-    @patch("lobster.agents.metadata_assistant.MetadataStandardizationService")
-    @patch("lobster.agents.metadata_assistant.SampleMappingService")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.create_react_agent")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.create_llm")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.get_settings")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.SampleMappingService")
     @patch("lobster.tools.workspace_tool.WorkspaceContentService")
     def test_write_to_workspace_creates_csv(
         self,
@@ -368,9 +368,9 @@ class TestSharedWorkspaceToolsIntegration:
     """Test shared workspace tools across agents."""
 
     @pytest.mark.integration
-    @patch("lobster.agents.research_agent.create_react_agent")
-    @patch("lobster.agents.research_agent.create_llm")
-    @patch("lobster.agents.research_agent.get_settings")
+    @patch("lobster.agents.research.research_agent.create_react_agent")
+    @patch("lobster.agents.research.research_agent.create_llm")
+    @patch("lobster.agents.research.research_agent.get_settings")
     def test_research_agent_has_write_to_workspace(
         self,
         mock_settings,
@@ -379,7 +379,7 @@ class TestSharedWorkspaceToolsIntegration:
         integration_data_manager,
     ):
         """Verify research_agent can use write_to_workspace."""
-        from lobster.agents.research_agent import research_agent
+        from lobster.agents.research import research_agent
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -402,11 +402,11 @@ class TestSharedWorkspaceToolsIntegration:
         assert "get_content_from_workspace" in tool_names
 
     @pytest.mark.integration
-    @patch("lobster.agents.metadata_assistant.create_react_agent")
-    @patch("lobster.agents.metadata_assistant.create_llm")
-    @patch("lobster.agents.metadata_assistant.get_settings")
-    @patch("lobster.agents.metadata_assistant.MetadataStandardizationService")
-    @patch("lobster.agents.metadata_assistant.SampleMappingService")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.create_react_agent")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.create_llm")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.get_settings")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.SampleMappingService")
     def test_metadata_assistant_has_write_to_workspace(
         self,
         mock_mapping_class,
@@ -448,11 +448,11 @@ class TestQueueStatusTransitions:
     """Test queue status transitions during metadata processing."""
 
     @pytest.mark.integration
-    @patch("lobster.agents.metadata_assistant.create_react_agent")
-    @patch("lobster.agents.metadata_assistant.create_llm")
-    @patch("lobster.agents.metadata_assistant.get_settings")
-    @patch("lobster.agents.metadata_assistant.MetadataStandardizationService")
-    @patch("lobster.agents.metadata_assistant.SampleMappingService")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.create_react_agent")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.create_llm")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.get_settings")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.SampleMappingService")
     def test_handoff_ready_to_metadata_complete(
         self,
         mock_mapping_class,
@@ -503,11 +503,11 @@ class TestWorkspaceToQueueRoundtrip:
     """Test complete roundtrip: workspace → processing → queue update."""
 
     @pytest.mark.integration
-    @patch("lobster.agents.metadata_assistant.create_react_agent")
-    @patch("lobster.agents.metadata_assistant.create_llm")
-    @patch("lobster.agents.metadata_assistant.get_settings")
-    @patch("lobster.agents.metadata_assistant.MetadataStandardizationService")
-    @patch("lobster.agents.metadata_assistant.SampleMappingService")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.create_react_agent")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.create_llm")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.get_settings")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.SampleMappingService")
     def test_complete_workflow(
         self,
         mock_mapping_class,

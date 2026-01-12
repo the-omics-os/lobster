@@ -27,7 +27,7 @@ import pandas as pd
 # Note: Proteomics imports commented out since module is skipped (in development)
 # from lobster.agents.proteomics import proteomics_expert
 from lobster.agents.data_expert import data_expert
-from lobster.agents.research_agent import research_agent
+from lobster.agents.research import research_agent
 from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
 from lobster.core.client import AgentClient
 from lobster.core.data_manager_v2 import DataManagerV2

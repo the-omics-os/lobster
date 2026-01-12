@@ -10,7 +10,11 @@
 # =============================================================================
 # METADATA ASSISTANT AGENT (DataBioMix's primary agent)
 # =============================================================================
-lobster/agents/metadata_assistant.py
+# Metadata assistant (folder structure)
+lobster/agents/metadata_assistant/__init__.py
+lobster/agents/metadata_assistant/config.py
+lobster/agents/metadata_assistant/prompts.py
+lobster/agents/metadata_assistant/metadata_assistant.py
 
 # =============================================================================
 # METADATA ASSISTANT DEPENDENCIES
@@ -55,7 +59,12 @@ lobster/core/ris_parser.py
 # Free tier agents - in base package
 !lobster/agents/supervisor.py
 !lobster/agents/research_agent.py
-!lobster/agents/data_expert.py
+!lobster/agents/data_expert/__init__.py
+!lobster/agents/data_expert/state.py
+!lobster/agents/data_expert/config.py
+!lobster/agents/data_expert/prompts.py
+!lobster/agents/data_expert/data_expert.py
+!lobster/agents/data_expert/assistant.py
 !lobster/agents/transcriptomics/**
 
 # Build files - custom package has its own
