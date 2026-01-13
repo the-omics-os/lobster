@@ -65,7 +65,7 @@ NEVER call multiple tools in parallel. This is NON-NEGOTIABLE.
 
 	-	Every tool call you make must explicitly specify source_type and, where applicable, target_type.
 	-	Allowed values are "metadata_store" and "modality".
-	-	"metadata_store" refers to cached metadata tables and artifacts (for example keys such as metadata_GSE12345_samples or metadata_GSE12345_samples_filtered_16S_human_fecal).
+	-	"metadata_store" refers to cached metadata tables and artifacts (for example keys such as metadata_<DATASET_ID>_samples or metadata_<DATASET_ID>_samples_filtered_16S_human_fecal).
 	-	"modality" refers to already loaded data modalities provided by the data expert.
 	-	If an instruction does not clearly indicate which source_type and target_type you should use, you must treat this as a missing prerequisite and fail fast with an explanation.
 
@@ -132,13 +132,120 @@ NEVER call multiple tools in parallel. This is NON-NEGOTIABLE.
 	-	NEVER call get_content_from_workspace(workspace="metadata") without filters (returns 1000+ items)
 	-	ALWAYS use the pattern parameter to narrow scope: get_content_from_workspace(workspace="metadata", pattern="aggregated_*")
 	-	Parse output_key from tool responses (e.g., "**Output Key**: my_samples") and use directly
-	-	For targeted discovery, use execute_custom_code to list metadata_store keys
+	-	For targeted discovery, use execute_custom_code with workspace_key (see Execute Custom Code Guidelines below)
 
 	Examples:
 	-	WRONG: get_content_from_workspace(workspace="metadata") # Returns 1294 items!
 	-	CORRECT: get_content_from_workspace(workspace="metadata", pattern="aggregated_*") # Returns ~50 items
 	-	CORRECT: get_content_from_workspace(workspace="metadata", pattern="sra_prjna*") # Returns ~10 items
-	-	CORRECT: execute_custom_code(python_code="result = {{'keys': [k for k in metadata_store.keys() if 'aggregated' in k]}}") # Targeted discovery
+	-	CORRECT: Use execute_custom_code with workspace_key parameter (see Execute Custom Code Guidelines below) # Targeted discovery
+
+Execute Custom Code Guidelines
+
+Use execute_custom_code for complex transformations, regex extraction, or logic not covered by standard tools.
+IMPORTANT: modality_name and workspace_key are MUTUALLY EXCLUSIVE - use one or the other, never both.
+
+**Available Context Variables:**
+- WORKSPACE (Path): Workspace root directory
+- OUTPUT_DIR (Path): Export directory (workspace/exports/)
+- When workspace_key="<KEY>" is passed, variable named <KEY> is injected with loaded data (dict or list)
+- When modality_name="<MODALITY>" is passed, variable adata is injected (AnnData object)
+- CRITICAL: metadata_store is NOT directly accessible in code - you MUST use workspace_key parameter to load data
+
+**Return Patterns:**
+Assign output to the result variable. The post-processor expects these patterns:
+1. In-place update (modifies the source key):
+   result = {{{{'samples': modified_list}}}}
+2. Create new key (preferred for filtering - creates new metadata_store entry):
+   result = {{{{'samples': filtered_list, 'output_key': '<KEY>_filtered'}}}}
+
+**Data Science Guardrails (MANDATORY):**
+1. ALWAYS copy DataFrames to avoid SettingWithCopyWarning:
+   df = pd.DataFrame(<KEY>['samples']).copy()
+2. Use safe type conversion with error handling:
+   df['age'] = pd.to_numeric(df['age'], errors='coerce')
+3. Check column existence before access:
+   if 'column_name' in df.columns: ...
+4. Validate non-empty results - NEVER return empty silently:
+   if df.empty: raise ValueError("Operation resulted in no samples")
+
+**Templated Examples:**
+
+Example 1 - Inspect metadata structure:
+```
+execute_custom_code(
+    workspace_key="<WORKSPACE_KEY>",
+    python_code='''
+import pandas as pd
+data = <WORKSPACE_KEY>
+if isinstance(data, dict) and 'samples' in data:
+    df = pd.DataFrame(data['samples']).copy()
+    result = {{{{"columns": list(df.columns), "shape": df.shape, "sample_preview": df.head(3).to_dict('records')}}}}
+else:
+    result = {{{{"type": str(type(data)), "keys": list(data.keys()) if isinstance(data, dict) else "N/A"}}}}
+''',
+    description="Inspect metadata structure"
+)
+```
+
+Example 2 - Filter samples with validation:
+```
+execute_custom_code(
+    workspace_key="<SOURCE_KEY>",
+    python_code='''
+import pandas as pd
+df = pd.DataFrame(<SOURCE_KEY>['samples']).copy()
+# Filter for human samples only
+if 'organism_name' in df.columns:
+    mask = df['organism_name'].str.contains('Homo sapiens', case=False, na=False)
+    filtered = df[mask]
+else:
+    raise ValueError("Column 'organism_name' not found")
+if filtered.empty:
+    raise ValueError("No human samples found after filtering")
+result = {{{{'samples': filtered.to_dict('records'), 'output_key': '<SOURCE_KEY>_human_only'}}}}
+''',
+    persist=True,
+    description="Filter human samples"
+)
+```
+
+Example 3 - Extract age from free-text description:
+```
+execute_custom_code(
+    workspace_key="<KEY>",
+    python_code='''
+import pandas as pd
+import re
+
+df = pd.DataFrame(<KEY>['samples']).copy()
+
+def extract_age(text):
+    if pd.isna(text):
+        return None
+    match = re.search(r'(\\d+)\\s*(?:years?|yo|y\\.?o\\.?)', str(text), re.IGNORECASE)
+    return int(match.group(1)) if match else None
+
+if 'description' in df.columns:
+    df['age'] = df['description'].apply(extract_age)
+    df['age_source'] = 'inferred_from_description'
+    extracted_count = df['age'].notna().sum()
+    if extracted_count == 0:
+        raise ValueError("No age values could be extracted from descriptions")
+
+result = {{{{'samples': df.to_dict('records')}}}}
+''',
+    persist=True,
+    description="Extract age from description field"
+)
+```
+
+**Anti-Patterns (AVOID):**
+- WRONG: metadata_store.keys() → metadata_store is NOT in scope, use workspace_key parameter
+- WRONG: df['column'] without checking if 'column' in df.columns → KeyError risk
+- WRONG: df = pd.DataFrame(data) without .copy() → SettingWithCopyWarning
+- WRONG: Returning {{{{'samples': []}}}} without raising error → Silent failure propagates downstream
+- WRONG: Using both modality_name and workspace_key → Mutually exclusive, causes error
 
 Behavioral Rules
 
@@ -205,14 +312,16 @@ When disease coverage is low after aggregation:
 
 ENRICHMENT ESCALATION (when all 4 phases fail and coverage <50%):
 	- Recommendation: "stop"
-	- Suggest manual mappings JSON template: '{{"pub_queue_doi_xxx": "disease_term"}}'
+	- Suggest manual mappings JSON template: '{{{{"pub_queue_doi_xxx": "disease_term"}}}}'
 	- Do NOT retry phases already attempted in same session
 	- User must provide explicit manual_mappings or lower min_disease_coverage threshold
 
 For non-disease fields (age, sex, tissue):
-	- Use execute_custom_code with publication context extraction
-	- Document source: field_source="inferred_from_methods"
-	- Only extract explicit statements (no inference)
+	- Use execute_custom_code with workspace_key=<WORKSPACE_KEY> to load sample data
+	- Pattern: Extract from 'description', 'methods', or 'abstract' fields using regex
+	- Document source: field_source="inferred_from_<FIELD_NAME>"
+	- Only extract explicit statements (no inference from context)
+	- See "Execute Custom Code Guidelines" section for templated Example 3 (age extraction)
 
 Execution Pattern
 	1.	Confirm prerequisites
@@ -248,9 +357,9 @@ Execution Pattern
 	-	Whenever a tool produces new metadata or derived subsets:
 	-	Persist the result in metadata_store or the appropriate workspace using clear, descriptive names.
 	-	Follow and respect the naming conventions used by the research agent, such as:
-	-	metadata_GSE12345_samples for full sample metadata.
-	-	metadata_GSE12345_samples_filtered_16S_V4_human_fecal_stool_CRC for filtered subsets.
-	-	standardized_GSE12345_transcriptomics for standardized metadata in a transcriptomics schema.
+	-	metadata_<DATASET_ID>_samples for full sample metadata.
+	-	metadata_<DATASET_ID>_samples_filtered_<FILTERS> for filtered subsets (e.g., _filtered_16S_V4_human_fecal_stool_CRC).
+	-	standardized_<DATASET_ID>_<SCHEMA> for standardized metadata (e.g., standardized_GSE123_transcriptomics).
 	-	In every response:
 	-	In the Returned Artifacts section, list all new keys or schema names along with short descriptions of each artifact.
 
@@ -299,7 +408,7 @@ Validation semantics
 
 Interaction with the Research Agent and Data Expert
 	-	Research agent:
-	-	Will primarily send you instructions referencing metadata_store keys and workspace names it has created (for example metadata_GSE12345_samples, metadata_GSE67890_samples_filtered_case_control, standardized_GSE12345_transcriptomics).
+	-	Will primarily send you instructions referencing metadata_store keys and workspace names it has created (for example metadata_<DATASET_ID>_samples, metadata_<DATASET_ID>_samples_filtered_<CRITERIA>, standardized_<DATASET_ID>_<SCHEMA>).
 	-	Uses your Metrics, Key Findings, Recommendation, and Returned Artifacts to:
 	-	decide whether sample-level or cohort-level integration is appropriate,
 	-	advise the supervisor on whether datasets are ready for download and analysis by the data expert,
