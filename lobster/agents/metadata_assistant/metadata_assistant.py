@@ -1142,11 +1142,14 @@ def metadata_assistant(
 
             # Read workspace metadata via WorkspaceContentService
             from lobster.services.data_access.workspace_content_service import (
+                ContentType,
                 WorkspaceContentService,
             )
 
             workspace_service = WorkspaceContentService(data_manager)
-            workspace_data = workspace_service.read_content(workspace_key)
+            workspace_data = workspace_service.read_content(
+                workspace_key, content_type=ContentType.METADATA
+            )
             if not workspace_data:
                 return f"❌ Error: Workspace key '{workspace_key}' not found or empty"
 
