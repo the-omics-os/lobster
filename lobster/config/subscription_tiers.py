@@ -57,9 +57,10 @@ SUBSCRIPTION_TIERS: Dict[str, Dict[str, Any]] = {
             "visualization_expert_agent",
             "annotation_expert",
             "de_analysis_expert",
-            # Premium-only agents (4) - NOT synced to lobster-local
+            # Premium-only agents (5) - NOT synced to lobster-local
             "metadata_assistant",  # Publication queue filtering, ID mapping
             "proteomics_expert",  # MS proteomics (DDA/DIA)
+            "genomics_expert",  # Genomics analysis and interpretation
             "machine_learning_expert_agent",
             "protein_structure_visualization_expert_agent",
         ],

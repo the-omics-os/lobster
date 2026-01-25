@@ -425,6 +425,20 @@ class DataManagerV2:
                 ProteomicsAdapter(data_type="affinity", strict_validation=False),
             )
 
+        # Genomics adapters (PREMIUM tier - optional)
+        try:
+            from lobster.core.adapters.genomics.vcf_adapter import VCFAdapter
+            from lobster.core.adapters.genomics.plink_adapter import PLINKAdapter
+
+            self.register_adapter("genomics_wgs", VCFAdapter(strict_validation=False))
+            self.register_adapter("genomics_snp_array", PLINKAdapter(strict_validation=False))
+
+            GENOMICS_AVAILABLE = True
+            logger.debug("Genomics adapters registered")
+        except ImportError:
+            GENOMICS_AVAILABLE = False
+            logger.debug("Genomics adapters not available")
+
     def _auto_load_modalities(self) -> None:
         """
         Auto-load existing H5AD modalities from workspace data directory.

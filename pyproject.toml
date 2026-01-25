@@ -117,6 +117,12 @@ ml = [
     "torch>=2.0.0",
     "torchvision>=0.15.0",
 ]
+genomics = [
+    "cyvcf2>=0.30.0",
+    "bed-reader>=0.2.0",
+    "sgkit>=0.7.0",
+    "pygenebe>=0.1.0",
+]
 dev = [
     # Core testing framework
     "pytest>=7.0.0",

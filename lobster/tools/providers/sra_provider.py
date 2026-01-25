@@ -201,12 +201,11 @@ class SRAProvider(BasePublicationProvider):
             logger.debug("Quality filters disabled in config")
             return query
 
-        # Base quality filters (apply to all modalities)
+        # Base quality query (no invalid Access/Properties filters)
         quality_query = query
-        quality_query += ' AND "public"[Access]'
-        quality_query += ' AND "has data"[Properties]'
 
-        # Modality-specific filters
+        # Modality-specific filters using VALID SRA field qualifiers
+        # Valid fields: ACCN, ORGN, STRA, SRC, LAY, PLAT (from NCBIQueryBuilder)
         if modality_hint:
             hint_lower = modality_hint.lower()
 
@@ -216,17 +215,17 @@ class SRAProvider(BasePublicationProvider):
                 or "singlecell" in hint_lower
             ):
                 # scRNA-seq: prefer paired-end Illumina for quality
-                quality_query += ' AND "library layout paired"[Filter]'
-                quality_query += ' AND "platform illumina"[Filter]'
+                quality_query += ' AND "PAIRED"[LAY]'       # Use [LAY] for layout
+                quality_query += ' AND "ILLUMINA"[PLAT]'    # Use [PLAT] for platform
                 logger.debug("Applied scRNA-seq quality filters")
 
             elif "bulk" in hint_lower and "rna" in hint_lower:
-                # Bulk RNA-seq: just base filters (already applied)
+                # Bulk RNA-seq: no additional filters needed
                 logger.debug("Applied bulk RNA-seq quality filters (base only)")
 
             elif "amplicon" in hint_lower or "16s" in hint_lower:
                 # Amplicon (16S): ensure AMPLICON strategy
-                quality_query += ' AND "strategy amplicon"[Filter]'
+                quality_query += ' AND "AMPLICON"[STRA]'    # Use [STRA] for strategy
                 logger.debug("Applied amplicon/16S quality filters")
 
         logger.debug(f"Quality filters applied: {query} → {quality_query}")

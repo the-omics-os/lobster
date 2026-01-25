@@ -88,6 +88,16 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
         handoff_tool_description=None,
         supervisor_accessible=False,  # Only via transcriptomics_expert
     ),
+    # === NEW: Genomics Expert (parent agent) ===
+    "genomics_expert": AgentRegistryConfig(
+        name="genomics_expert",
+        display_name="Genomics Expert",
+        description="WGS and SNP array analysis: VCF/PLINK loading, QC (call rate, MAF, HWE), GWAS, variant annotation",
+        factory_function="lobster.agents.genomics.genomics_expert.genomics_expert",
+        handoff_tool_name="handoff_to_genomics_expert",
+        handoff_tool_description="Assign genomics analysis tasks: WGS/SNP array QC, GWAS, variant annotation, genotype filtering",
+        supervisor_accessible=True,
+    ),
     # =========================================================================
     # VISUALIZATION AGENTS
     # =========================================================================
