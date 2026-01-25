@@ -6,7 +6,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2026-01-24 20:04:09
+# Generated: 2026-01-24 20:28:43
 # =============================================================================
 
 
@@ -483,6 +483,17 @@ lobster/agents/transcriptomics/transcriptomics_expert.py
 lobster/agents/visualization_expert.py
 
 # PREMIUM tier agents (EXCLUDED from public package)
+!lobster/agents/genomics/__init__.py
+!lobster/agents/genomics/config.py
+!lobster/agents/genomics/prompts.py
+!lobster/agents/genomics/genomics_expert.py
+!lobster/core/schemas/genomics.py
+!lobster/core/adapters/genomics/__init__.py
+!lobster/core/adapters/genomics/vcf_adapter.py
+!lobster/core/adapters/genomics/plink_adapter.py
+!lobster/services/quality/genomics_quality_service.py
+!lobster/services/analysis/gwas_service.py
+!lobster/services/analysis/variant_annotation_service.py
 !lobster/agents/machine_learning_expert.py
 !lobster/services/ml/ml_preparation_service.py
 !lobster/services/ml/ml_transcriptomics_service_ALPHA.py

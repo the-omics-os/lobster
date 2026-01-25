@@ -64,6 +64,13 @@ AGENT_FILE_MAPPING = {
     # PREMIUM tier agents
     "metadata_assistant": "lobster/agents/metadata_assistant/metadata_assistant.py",
     "proteomics_expert": "lobster/agents/proteomics/proteomics_expert.py",
+    "genomics_expert": [
+        # Modular structure (genomics implementation Jan 2026)
+        "lobster/agents/genomics/__init__.py",
+        "lobster/agents/genomics/config.py",
+        "lobster/agents/genomics/prompts.py",
+        "lobster/agents/genomics/genomics_expert.py",
+    ],
     "machine_learning_expert_agent": "lobster/agents/machine_learning_expert.py",
     "protein_structure_visualization_expert_agent": "lobster/agents/protein_structure_visualization_expert.py",
     # ENTERPRISE agents (loaded via plugin system, not in main repo)
@@ -106,6 +113,18 @@ AGENT_SERVICE_DEPENDENCIES = {
         "lobster/services/metadata/sample_mapping_service.py",
         "lobster/services/metadata/metadata_filtering_service.py",  # Natural language filter parsing
         # NOTE: publication_queue moved to ALWAYS_INCLUDED (shared with research_agent)
+    ],
+    "genomics_expert": [
+        # Genomics-specific schemas
+        "lobster/core/schemas/genomics.py",
+        # Genomics adapters
+        "lobster/core/adapters/genomics/__init__.py",
+        "lobster/core/adapters/genomics/vcf_adapter.py",
+        "lobster/core/adapters/genomics/plink_adapter.py",
+        # Genomics services
+        "lobster/services/quality/genomics_quality_service.py",
+        "lobster/services/analysis/gwas_service.py",
+        "lobster/services/analysis/variant_annotation_service.py",
     ],
     "custom_feature_agent": [
         "lobster/services/execution/sdk_delegation_service.py",
