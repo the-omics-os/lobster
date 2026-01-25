@@ -610,6 +610,13 @@ ALWAYS_EXCLUDED = """
 !kevin_notes_completed/**
 !kevin_notes/**
 
+# Customer-specific validation reports (DataBioMix engagement - Jan 2026)
+!BUG_INVESTIGATION_SUMMARY*.md
+!HANDOFF_PRODUCTION_READINESS*.md
+!REGRESSION_TEST_REPORT*.md
+!SCIENTIFIC_VALIDATION_REPORT*.md
+!SIMULATION_EVALUATION_REPORT*.md
+
 # Scripts (sync infrastructure is private)
 !scripts/**
 

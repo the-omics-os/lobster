@@ -6,7 +6,7 @@
 # DO NOT EDIT MANUALLY - Edit subscription_tiers.py instead
 #
 # Source of Truth: lobster/config/subscription_tiers.py
-# Generated: 2026-01-12 14:33:51
+# Generated: 2026-01-24 20:04:09
 # =============================================================================
 
 
@@ -538,9 +538,9 @@ lobster/agents/visualization_expert.py
 !kevin_notes_completed/**
 !kevin_notes/**
 
-# Customer-specific validation reports (private)
+# Customer-specific validation reports (DataBioMix engagement - Jan 2026)
 !BUG_INVESTIGATION_SUMMARY*.md
-!HANDOFF_PRODUCTION_READINESS.md
+!HANDOFF_PRODUCTION_READINESS*.md
 !REGRESSION_TEST_REPORT*.md
 !SCIENTIFIC_VALIDATION_REPORT*.md
 !SIMULATION_EVALUATION_REPORT*.md
