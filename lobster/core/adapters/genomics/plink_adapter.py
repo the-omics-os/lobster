@@ -100,9 +100,27 @@ class PLINKAdapter(BaseAdapter):
             # Open PLINK files with bed-reader
             bed = open_bed(str(bed_path), count_A1=count_A1)
 
-            # Get metadata from .fam and .bim files
-            fam_data = bed.fam
-            bim_data = bed.bim
+            # Build metadata DataFrames from bed-reader properties
+            # bed-reader doesn't expose .fam and .bim as DataFrames,
+            # but provides individual properties that we construct into DataFrames
+            # Column names match bed-reader's internal naming convention
+            fam_data = pd.DataFrame({
+                0: bed.fid,      # Family ID
+                1: bed.iid,      # Individual ID
+                2: bed.father,   # Father ID
+                3: bed.mother,   # Mother ID
+                4: bed.sex,      # Sex (1=male, 2=female, 0=unknown)
+                5: bed.pheno,    # Phenotype
+            })
+
+            bim_data = pd.DataFrame({
+                0: bed.chromosome,   # Chromosome
+                1: bed.sid,          # SNP ID
+                2: bed.cm_position,  # Genetic distance (cM)
+                3: bed.bp_position,  # Physical position (bp)
+                4: bed.allele_1,     # Allele 1
+                5: bed.allele_2,     # Allele 2
+            })
 
             # Resolve indices for filtering
             sample_idx = None
