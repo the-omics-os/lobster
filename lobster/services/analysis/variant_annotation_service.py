@@ -182,7 +182,7 @@ class VariantAnnotationService:
             )
 
             logger.info(
-                f"Annotation completed: {stats['variants_annotated']}/{stats['total_variants']} "
+                f"Annotation completed: {stats['n_variants_annotated']}/{stats['n_variants']} "
                 f"variants annotated ({stats['annotation_rate_pct']:.1f}%)"
             )
 
@@ -482,8 +482,15 @@ class VariantAnnotationService:
         assembly_map = {"hg38": "GRCh38", "hg19": "GRCh37"}
         assembly = assembly_map[genome_build]
 
-        # Ensembl VEP REST API endpoint
-        base_url = "https://rest.ensembl.org"
+        # Ensembl VEP REST API endpoint - use build-specific server
+        # GRCh37/hg19 requires the dedicated grch37 server
+        # GRCh38/hg38 uses the main rest.ensembl.org server
+        if genome_build == "hg19":
+            base_url = "https://grch37.rest.ensembl.org"
+            logger.info(f"Using GRCh37 VEP server for genome build {genome_build}")
+        else:
+            base_url = "https://rest.ensembl.org"
+            logger.info(f"Using GRCh38 VEP server for genome build {genome_build}")
 
         # Initialize annotations list
         all_annotations = []
@@ -492,7 +499,7 @@ class VariantAnnotationService:
         n_variants = len(var_df)
         rate_limit_delay = 1.0 / 15  # 15 requests per second
 
-        for idx, row in var_df.iterrows():
+        for i, (idx, row) in enumerate(var_df.iterrows()):
             variant_id = row["variant_id"]
 
             # Check cache
@@ -506,8 +513,17 @@ class VariantAnnotationService:
             ref = row["ref"]
             alt = row["alt"]
 
-            # Construct VEP URL
-            url = f"{base_url}/vep/human/region/{chrom}:{pos}-{pos}/{alt}?"
+            # Skip variants with non-standard alleles (CNVs like <CN0>, <DEL>, etc.)
+            if alt.startswith("<") or ref.startswith("<"):
+                logger.debug(f"Skipping non-standard allele variant: {variant_id}")
+                continue
+
+            # Construct VEP URL - format: {chrom}:{start}-{end}:{strand}/{alt}
+            # For SNPs: start == end (single position)
+            # For indels: end = start + len(ref) - 1 (span the entire reference allele)
+            # strand=1 (forward)
+            end_pos = pos + len(ref) - 1
+            url = f"{base_url}/vep/human/region/{chrom}:{pos}-{end_pos}:1/{alt}"
 
             # Retry logic
             for attempt in range(retry_attempts):
@@ -558,8 +574,8 @@ class VariantAnnotationService:
             time.sleep(rate_limit_delay)
 
             # Progress logging
-            if (idx + 1) % 100 == 0:
-                logger.info(f"Annotated {idx + 1}/{n_variants} variants")
+            if (i + 1) % 100 == 0:
+                logger.info(f"Annotated {i + 1}/{n_variants} variants")
 
         # Convert to DataFrame
         if not all_annotations:
@@ -598,15 +614,23 @@ class VariantAnnotationService:
             "polyphen_score": None,
         }
 
-        # Extract from first transcript consequence
+        # Extract from VEP response
         if vep_data and isinstance(vep_data, list) and len(vep_data) > 0:
             variant_data = vep_data[0]
+
+            # Always extract most_severe_consequence (works for all variants including intergenic)
+            most_severe = variant_data.get("most_severe_consequence")
+            if most_severe:
+                annotation["consequence"] = most_severe
+
+            # Extract from transcript consequences (if available - not for intergenic)
             transcript_consequences = variant_data.get("transcript_consequences", [])
 
             if transcript_consequences:
                 tc = transcript_consequences[0]
                 annotation["gene_symbol"] = tc.get("gene_symbol")
                 annotation["gene_id"] = tc.get("gene_id")
+                # Use detailed consequence from transcript if available
                 annotation["consequence"] = ",".join(tc.get("consequence_terms", []))
                 annotation["biotype"] = tc.get("biotype")
 
@@ -619,11 +643,18 @@ class VariantAnnotationService:
             # Colocated variants (for gnomAD, ClinVar)
             colocated = variant_data.get("colocated_variants", [])
             for cv in colocated:
-                # gnomAD allele frequency
+                # gnomAD allele frequency - check multiple possible keys
                 if "frequencies" in cv:
                     freqs = cv["frequencies"]
+                    # Try gnomad first, then general af
                     if "gnomad" in freqs:
                         annotation["gnomad_af"] = freqs["gnomad"].get("af")
+                    else:
+                        # Get first alt allele frequency
+                        for allele, freq_data in freqs.items():
+                            if isinstance(freq_data, dict) and "af" in freq_data:
+                                annotation["gnomad_af"] = freq_data["af"]
+                                break
 
                 # ClinVar significance
                 if "clin_sig" in cv:
@@ -695,10 +726,12 @@ class VariantAnnotationService:
         """
         total_variants = adata.n_vars
 
-        # Count annotated variants (those with gene_symbol)
+        # Count annotated variants (those with consequence - includes intergenic)
+        # Note: gene_symbol is only present for genic variants, not intergenic
+        # Using consequence as the indicator since ALL VEP responses include it
         variants_annotated = (
-            adata.var["gene_symbol"].notna().sum()
-            if "gene_symbol" in adata.var.columns
+            adata.var["consequence"].notna().sum()
+            if "consequence" in adata.var.columns
             else 0
         )
 
@@ -733,9 +766,9 @@ class VariantAnnotationService:
             "analysis_type": "variant_annotation",
             "annotation_source": annotation_source,
             "genome_build": genome_build,
-            "total_variants": total_variants,
-            "variants_annotated": int(variants_annotated),
-            "variants_unannotated": int(total_variants - variants_annotated),
+            "n_variants": total_variants,
+            "n_variants_annotated": int(variants_annotated),
+            "n_variants_unannotated": int(total_variants - variants_annotated),
             "annotation_rate_pct": float(annotation_rate_pct),
             "top_consequences": consequence_counts,
             "top_biotypes": biotype_counts,

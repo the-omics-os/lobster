@@ -173,8 +173,9 @@ run_phase1() {
     fi
 
     # Test 1.2: VCF Loading - Region Filter
+    # Note: Uses Ensembl format "22" not UCSC "chr22"
     if run_test "1.2" "genomics_test_1_2" \
-        "Load the VCF file test_data/genomics/chr22.vcf.gz with region filter 'chr22:16000000-17000000' as 'test_vcf_region'. How many variants are in this 1Mb region compared to the full file?"; then
+        "Load the VCF file test_data/genomics/chr22.vcf.gz with region filter '22:16000000-17000000' as 'test_vcf_region'. How many variants are in this 1Mb region compared to the full file?"; then
         ((passed++))
     else
         ((failed++))

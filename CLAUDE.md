@@ -43,6 +43,7 @@ Users interact via natural language to:
 |--------|-------------------------|
 | **Single‑Cell RNA‑seq** | QC, clustering, cell type annotation, trajectory, pseudobulk |
 | **Bulk RNA‑seq** | Kallisto/Salmon import, DE with pyDESeq2, formula‑based designs |
+| **Genomics/DNA** | VCF/PLINK loading, GWAS (linear/logistic), PCA (population structure), variant annotation (Ensembl VEP), QC (call rate, MAF, HWE) |
 | **Mass Spec Proteomics** | DDA/DIA, missing value handling, peptide→protein, normalization |
 | **Affinity Proteomics** | Olink / antibody arrays, NPX handling, CV analysis |
 | **Multi‑Omics (future)** | MuData‑based cross‑modality analysis |
@@ -51,8 +52,8 @@ Users interact via natural language to:
 
 ### 1.3 Data & Storage
 
-- **Inputs**: CSV, Excel, H5AD, 10X MTX, Kallisto (abundance.tsv), Salmon (quant.sf), MaxQuant, Spectronaut, Olink NPX  
-- **Repositories**: GEO, SRA, ENA (PRIDE/massIVE/Uniprot planned)  
+- **Inputs**: CSV, Excel, H5AD, 10X MTX, Kallisto (abundance.tsv), Salmon (quant.sf), MaxQuant, Spectronaut, Olink NPX, VCF (.vcf, .vcf.gz, .bcf), PLINK (.bed/.bim/.fam)
+- **Repositories**: GEO, SRA, ENA (PRIDE/massIVE/Uniprot planned)
 - **Storage**: H5AD (single), MuData (multi‑modal), JSONL queues, S3‑ready backends  
 
 ### 1.4 Design Principles
@@ -267,6 +268,10 @@ lobster/
 │  │  ├─ config.py
 │  │  ├─ prompts.py
 │  │  └─ proteomics_expert.py
+│  ├─ genomics/             # Modular structure (added Jan 2026)
+│  │  ├─ __init__.py
+│  │  ├─ prompts.py
+│  │  └─ genomics_expert.py # VCF/PLINK loading, GWAS, PCA, variant annotation
 │  ├─ machine_learning_expert.py
 │  ├─ protein_structure_visualization_expert.py
 │  ├─ visualization_expert.py
@@ -312,12 +317,15 @@ lobster/
 │  │  ├─ scvi_embedding_service.py
 │  │  ├─ proteomics_analysis_service.py
 │  │  ├─ proteomics_differential_service.py
-│  │  └─ structure_analysis_service.py
+│  │  ├─ structure_analysis_service.py
+│  │  ├─ gwas_service.py              # GWAS linear/logistic regression, Lambda GC
+│  │  └─ variant_annotation_service.py # Ensembl VEP annotations
 │  ├─ quality/              # Quality control & preprocessing
 │  │  ├─ quality_service.py
 │  │  ├─ preprocessing_service.py
 │  │  ├─ proteomics_quality_service.py
-│  │  └─ proteomics_preprocessing_service.py
+│  │  ├─ proteomics_preprocessing_service.py
+│  │  └─ genomics_quality_service.py  # Call rate, MAF, HWE, het z-scores
 │  ├─ visualization/        # Visualization services
 │  │  ├─ visualization_service.py
 │  │  ├─ bulk_visualization_service.py
@@ -432,6 +440,7 @@ lobster/
 | `annotation_expert` | Cell type annotation (sub-agent of transcriptomics_expert) | Modular folder |
 | `de_analysis_expert` | Differential expression analysis (sub-agent of transcriptomics_expert) | Modular folder |
 | `proteomics_expert` | DDA/DIA workflows, missing values, normalization | Modular folder |
+| `genomics_expert` | WGS/SNP array: VCF/PLINK loading, QC (call rate, MAF, HWE), GWAS (linear/logistic), PCA (population structure), variant annotation (Ensembl VEP) | Modular folder |
 | `machine_learning_expert` | ML-based predictions and modeling (PREMIUM) | Single file (legacy) |
 | `protein_structure_visualization_expert` | Protein structure visualization (PREMIUM) | Single file (legacy) |
 | `visualization_expert` | General-purpose plotting and visualization | Single file (legacy) |
@@ -954,7 +963,7 @@ Lobster supports FREE, PREMIUM, and ENTERPRISE tiers. Features/agents can be gat
 2. **Dependencies**: Copy ALL transitive dependencies (check imports recursively)
 3. **Versioning**: Track lobster-ai version (e.g., `0.3.4.1` for lobster-ai 0.3.4.x)
 4. **Testing**: Test in clean environment with fresh `lobster-ai` install
-5. **Entry points**: Register services + agents in `pyproject.toml` (see 4.5 Component Registry pattern)
+5. **Entry points**: Register services + agents in `pyproject.toml` (see 4.5 Component Registry pattern) using PEP 420
 6. **AGENT_CONFIG**: Define at module top (before heavy imports) to avoid circular imports
 7. **Package structure**: Add `namespaces = true` to `[tool.setuptools.packages.find]`
 
@@ -1006,6 +1015,7 @@ from lobster.core.data_manager_v2 import DataManagerV2
 | Language | Python 3.11+ (typing, async/await) |
 | Data structures | AnnData, MuData |
 | Bioinformatics | Scanpy, PyDESeq2 |
+| Genomics | cyvcf2 (VCF), bed-reader (PLINK), sgkit (GWAS/PCA), pygenebe (annotation) |
 | ML (optional) | **PyTorch, scVI-tools** (install with `pip install lobster-ai[ml]`) |
 | CLI | Typer, Rich, prompt_toolkit |
 | Visualization | Plotly |

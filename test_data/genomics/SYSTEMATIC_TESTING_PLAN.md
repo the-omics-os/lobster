@@ -96,8 +96,10 @@ lobster query --session-id genomics_test_1_1 \
 **Command:**
 ```bash
 lobster query --session-id genomics_test_1_2 \
-  "Load the VCF file test_data/genomics/chr22.vcf.gz with region filter 'chr22:16000000-17000000' as 'test_vcf_region'. How many variants are in this 1Mb region?"
+  "Load the VCF file test_data/genomics/chr22.vcf.gz with region filter '22:16000000-17000000' as 'test_vcf_region'. How many variants are in this 1Mb region?"
 ```
+
+**Note:** The VCF uses Ensembl chromosome naming format ("22") not UCSC format ("chr22").
 
 **Expected Results:**
 - Variants: Should be ~10-15% of full file (region-specific)
@@ -105,7 +107,7 @@ lobster query --session-id genomics_test_1_2 \
 
 **Scientific Validation:**
 - Chr22 has ~35Mb total, so 1Mb = ~3% should give proportional variants
-- Region must be correctly parsed (chr22:16000000-17000000)
+- Region must be correctly parsed (22:16000000-17000000 in Ensembl format)
 
 **Pass Criteria:**
 - [ ] Variant count < total variants

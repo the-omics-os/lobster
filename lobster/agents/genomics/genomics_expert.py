@@ -91,6 +91,7 @@ def genomics_expert(
         region: Optional[str] = None,
         samples: Optional[str] = None,
         filter_pass: bool = True,
+        max_variants: Optional[int] = 100000,
     ) -> str:
         """
         Load VCF file for whole genome sequencing data.
@@ -101,12 +102,13 @@ def genomics_expert(
             region: Optional genomic region (e.g., "chr1:1000-2000")
             samples: Optional comma-separated sample IDs (e.g., "Sample1,Sample2")
             filter_pass: Only load PASS variants (default True)
+            max_variants: Maximum number of variants to load (default 100,000; None = unlimited)
 
         Returns:
             str: Summary of loaded data with dimensions and QC statistics
 
         Example:
-            load_vcf("/data/ukbb.vcf.gz", "ukbb_chr1", filter_pass=True)
+            load_vcf("/data/ukbb.vcf.gz", "ukbb_chr1", filter_pass=True, max_variants=50000)
         """
         try:
             logger.info(f"Loading VCF file: {file_path} as '{modality_name}'")
@@ -125,6 +127,7 @@ def genomics_expert(
                 region=region,
                 samples=sample_list,
                 filter_pass=filter_pass,
+                max_variants=max_variants,
             )
 
             # Store in data manager
@@ -144,15 +147,21 @@ def genomics_expert(
                     "region": region,
                     "samples": sample_list,
                     "filter_pass": filter_pass,
+                    "max_variants": max_variants,
                 },
                 description=f"Loaded VCF file: {n_samples} samples × {n_variants} variants",
             )
+
+            # Check if variants were truncated
+            truncation_note = ""
+            if max_variants is not None:
+                truncation_note = f"\n- Max variants limit: {max_variants:,} (variants may be truncated)"
 
             response = f"""Successfully loaded VCF file: '{modality_name}'
 
 **Data Summary:**
 - Samples: {n_samples:,}
-- Variants: {n_variants:,}
+- Variants: {n_variants:,}{truncation_note}
 - Genotype layer: {'Yes' if has_gt else 'No'}
 - Source file: {file_path}
 - Region filter: {region if region else 'None (whole genome)'}
@@ -769,7 +778,7 @@ Lambda GC > 1.1 suggests uncorrected population structure.
     @tool
     def annotate_variants(
         modality_name: str,
-        annotation_source: str = "ensembl",
+        annotation_source: str = "ensembl_vep",
         genome_build: str = "GRCh38",
     ) -> str:
         """
@@ -780,7 +789,7 @@ Lambda GC > 1.1 suggests uncorrected population structure.
 
         Args:
             modality_name: Name of modality with GWAS results
-            annotation_source: "ensembl" (VEP REST API) or "pygenebe" (if installed)
+            annotation_source: "ensembl_vep" (Ensembl VEP REST API) or "pygenebe" (if installed)
             genome_build: "GRCh38" or "GRCh37"
 
         Returns:
