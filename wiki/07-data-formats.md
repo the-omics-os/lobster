@@ -204,19 +204,101 @@ ENSG00000002,WASH7P,unprocessed_pseudogene,chr1
 - **Description**: Peptide-level quantification
 - **Usage**: For peptide-level analysis or filtering
 
-#### Spectronaut Output
+#### Spectronaut Output (Biognosys)
 
-**CSV/Excel Format**
-- **Structure**: Protein or peptide quantification matrix
-- **Key Columns**:
-  - Protein/peptide identifiers
-  - Sample quantifications
-  - Quality metrics (CV, detection frequency)
+**Description**: Spectronaut is a leading commercial software for DIA-MS (Data-Independent Acquisition) proteomics analysis. Lobster AI provides comprehensive support for both Spectronaut export formats with automatic format detection.
+
+**Supported Formats**: `.tsv`, `.txt`, `.csv`, `.xls`, `.xlsx`
+
+**Format 1: Long Format (Recommended)**
+```
+R.FileName	PG.ProteinGroups	PG.Genes	PG.Quantity	PG.Qvalue
+Sample1.raw	P12345	EGFR	1234567.8	0.001
+Sample1.raw	P67890;P67891	KRAS	987654.3	0.002
+Sample2.raw	P12345	EGFR	1456789.2	0.001
+Sample2.raw	P67890;P67891	KRAS	1098765.4	0.003
+```
+
+**Key Columns**:
+- `R.FileName` / `Run` / `File.Name`: Sample identifier (with .raw, .d, .wiff extensions)
+- `PG.ProteinGroups`: Semicolon-separated protein IDs (protein groups)
+- `PG.Genes`: Gene symbols (semicolon-separated for protein groups)
+- `PG.Quantity`: Linear-scale protein abundance (NOT log-transformed)
+- `PG.Qvalue`: FDR-corrected Q-value at protein group level
+- `PG.Normalised` / `PG.NormalizedQuantity`: Alternative quantification columns
+
+**Format 2: Matrix Format**
+```
+PG.ProteinGroups	PG.Genes	Sample1	Sample2	Sample3
+P12345	EGFR	1234567.8	1456789.2	1678901.3
+P67890	KRAS	987654.3	1098765.4	1209876.5
+```
+
+**Parser Features**:
+- **Automatic Format Detection**: Distinguishes between long and matrix formats
+- **Q-value Filtering**: Configurable FDR threshold (default: 0.01 = 1% FDR)
+- **Log2 Transformation**: Optional with configurable pseudocount (default: 1.0)
+- **Sample Name Cleaning**: Removes file extensions (.raw, .d, .wiff, .wiff2, .mzML)
+- **Protein Group Handling**: Extracts representative protein ID from semicolon-separated groups
+- **Gene Symbol Indexing**: Uses gene symbols as row names for biologist-friendly output
+- **Contaminant Filtering**: Detects CON__, KERATIN, TRYP_ patterns
+- **Reverse Hit Filtering**: Identifies decoy database hits (REV__, _rev patterns)
+- **Missing Value Handling**: Zeros converted to NaN (consistent across formats)
+- **Aggregation Methods**: sum, mean, median, max for precursor-to-protein rollup
 
 **Loading**:
 ```bash
-/read spectronaut_results.csv
+# Basic loading with defaults
+/read spectronaut_report.tsv
+
+# Advanced: Custom Q-value threshold and log transformation
+"Load spectronaut_report.tsv with Q-value threshold of 0.05 and apply log2 transformation"
+
+# Matrix format
+/read spectronaut_matrix.csv
 ```
+
+**Parser Parameters** (when requesting through natural language):
+- `qvalue_threshold`: Maximum Q-value for filtering (default: 0.01)
+- `quantity_column`: Which quantification column to use ("auto", "PG.Quantity", "PG.Normalised")
+- `log_transform`: Apply log2 transformation (default: True)
+- `pseudocount`: Value added before log transformation (default: 1.0)
+- `use_genes_as_index`: Use gene symbols as var index (default: True)
+- `filter_contaminants`: Remove contaminant proteins (default: True)
+- `filter_reverse`: Remove reverse/decoy hits (default: True)
+- `aggregation_method`: Precursor aggregation ("sum", "mean", "median", "max")
+
+**Output Structure** (AnnData):
+- **X**: Intensity matrix (samples × proteins), float32, NaN for missing
+- **obs**: Sample metadata (sample_name)
+- **var**: Protein metadata
+  - `protein_groups`: Full protein group string
+  - `protein_id`: Representative protein ID
+  - `gene_symbols`: Gene symbol string
+  - `n_precursors`: Precursor count (long format only)
+  - `mean_q_value`: Mean Q-value
+  - `is_contaminant`: Contaminant flag
+  - `is_reverse`: Reverse/decoy flag
+- **uns**: Parsing metadata (format_type, qvalue_threshold, etc.)
+
+**Common Use Cases**:
+
+```bash
+# Biognosys pilot workflow - strict filtering
+"Load biognosys_spectronaut.tsv with Q-value threshold 0.01, log2 transform, and remove contaminants"
+
+# Exploratory analysis - relaxed filtering
+"Load spectronaut_results.tsv with Q-value 0.05, no contaminant filtering"
+
+# Matrix format with custom normalization
+"Load spectronaut_matrix.xlsx using PG.Normalised column without log transformation"
+```
+
+**Quality Control Notes**:
+- **Q-values**: Values >1.0 are automatically filtered (invalid)
+- **Missing Values**: 0-50% typical for DIA-MS, higher indicates issues
+- **Sample Correlations**: Should be >0.75 for good technical reproducibility
+- **Dynamic Range**: Typically 4-6 orders of magnitude after log2 transformation
 
 #### Generic Proteomics Format
 

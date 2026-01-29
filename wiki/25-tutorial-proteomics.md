@@ -214,6 +214,69 @@ Generated MS Proteomics Visualizations:
 - comprehensive_proteomics_dashboard.html: Multi-panel interactive dashboard
 ```
 
+### Alternative: Spectronaut DIA-MS Analysis
+
+If you're using Spectronaut (Biognosys) instead of MaxQuant, Lobster AI provides native support for both long-format and matrix-format Spectronaut exports.
+
+**Step 2a: Load Spectronaut Data**
+
+```bash
+🦞 You: "Load the Spectronaut DIA proteomics data from spectronaut_report.tsv. Apply Q-value filtering at 0.01 and log2 transformation."
+```
+
+**Expected Output:**
+```
+🦞 Lobster: I'll load your Spectronaut DIA-MS data with automatic format detection...
+
+✓ Detected Spectronaut long format file
+✓ Identified sample column: R.FileName
+✓ Using quantity column: PG.Quantity (linear scale)
+✓ Applied Q-value filtering (threshold = 0.01)
+✓ Removed 347 rows with Q-value > 0.01
+✓ Log2 transformation applied (pseudocount = 1.0)
+✓ Detected 24 samples from cleaned filenames
+✓ Identified 2,634 protein groups
+✓ Filtered contaminants: 45 proteins (CON__, KERATIN patterns)
+✓ Filtered reverse hits: 12 proteins (REV__ patterns)
+✓ Stored as modality: 'spectronaut_dia_proteomics'
+
+Spectronaut DIA-MS Dataset Summary:
+- Samples: 24 (treatment n=12, control n=12)
+- Proteins: 2,577 protein groups (after filtering)
+- Missing values: 38.4% (typical for DIA-MS)
+- Q-value filtered: 347 protein measurements removed
+- Data type: DIA-MS quantification (log2-transformed)
+- Platform: Spectronaut (Biognosys)
+- Contaminants removed: 45 proteins
+- Reverse hits removed: 12 proteins
+```
+
+**Key Advantages of Spectronaut Parser**:
+- **Automatic Format Detection**: Handles both long-format and matrix-format exports
+- **Built-in Q-value Filtering**: FDR control at protein group level
+- **Protein Group Support**: Correctly handles semicolon-separated protein IDs
+- **Sample Name Cleaning**: Removes .raw, .d, .wiff file extensions automatically
+- **Gene Symbol Indexing**: Uses gene names for biologist-friendly output
+
+**Alternative Loading Options**:
+
+```bash
+# Matrix format with custom parameters
+🦞 You: "Load spectronaut_matrix.xlsx using PG.Normalised column with Q-value threshold 0.05"
+
+# Long format with relaxed filtering for exploratory analysis
+🦞 You: "Load spectronaut_report.csv with Q-value 0.05 and keep contaminants for QC review"
+
+# Without log transformation (for downstream tools requiring linear scale)
+🦞 You: "Load spectronaut_data.tsv without log transformation"
+```
+
+After loading Spectronaut data, continue with the same workflow:
+- **Step 3**: Quality Control (same QC metrics apply)
+- **Step 4**: Preprocessing (already includes log2 transformation)
+- **Step 5**: Differential Expression (same statistical methods)
+- **Step 6**: Visualization (same plotting functions)
+
 ## Part 2: Affinity Proteomics Analysis
 
 ### Tutorial Dataset: Olink Panel
