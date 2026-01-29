@@ -20,10 +20,11 @@ Example usage:
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import anndata
 
+from lobster.core.analysis_ir import AnalysisStep
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -83,14 +84,20 @@ class ProteomicsParser(ABC):
         self.version = version
         logger.debug(f"Initialized {self.name} parser v{self.version}")
 
+    # Type alias for parser return types (backward compatible)
+    ParseResult = Union[
+        Tuple[anndata.AnnData, Dict[str, Any]],  # Legacy 2-tuple
+        Tuple[anndata.AnnData, Dict[str, Any], Optional[AnalysisStep]],  # New 3-tuple with IR
+    ]
+
     @abstractmethod
     def parse(
         self,
         file_path: str,
         **kwargs,
-    ) -> Tuple[anndata.AnnData, Dict[str, Any]]:
+    ) -> "ProteomicsParser.ParseResult":
         """
-        Parse proteomics output file into AnnData with statistics.
+        Parse proteomics output file into AnnData with statistics and provenance.
 
         This is the main entry point for converting vendor-specific formats
         into standardized AnnData objects. Implementations should handle
@@ -113,6 +120,9 @@ class ProteomicsParser(ABC):
                     - intensity_type: Type of intensity values used
                     - parser_name: Name of parser used
                     - parser_version: Version of parser
+                - Optional[AnalysisStep]: Provenance IR for notebook export (new in v2.0)
+                    When provided, enables reproducible notebook generation via /pipeline export.
+                    Legacy parsers may return 2-tuple for backward compatibility.
 
         Raises:
             FileValidationError: If file format is invalid
@@ -126,6 +136,8 @@ class ProteomicsParser(ABC):
             ...     intensity_type="lfq",
             ...     filter_contaminants=True
             ... )
+            >>> # New pattern with provenance:
+            >>> adata, stats, ir = parser.parse("report.tsv")
         """
         pass
 
@@ -235,6 +247,61 @@ class ProteomicsParser(ABC):
         }
         stats.update(extra_stats)
         return stats
+
+    def _create_parse_ir(
+        self,
+        file_path: str,
+        parameters: Dict[str, Any],
+        code_template: str,
+        imports: List[str],
+        description: Optional[str] = None,
+    ) -> AnalysisStep:
+        """
+        Create AnalysisStep IR for provenance tracking and notebook export.
+
+        This helper method standardizes IR creation across all parsers,
+        enabling reproducible notebook generation via /pipeline export.
+
+        Args:
+            file_path: Path to the parsed file
+            parameters: Dictionary of parsing parameters used
+            code_template: Jinja2 template for reproducible code
+            imports: List of import statements required
+            description: Optional description (auto-generated if not provided)
+
+        Returns:
+            AnalysisStep: Provenance IR for this parsing operation
+
+        Example:
+            >>> ir = self._create_parse_ir(
+            ...     file_path="data.tsv",
+            ...     parameters={"qvalue_threshold": 0.01},
+            ...     code_template="parser.parse('{{ file_path }}')",
+            ...     imports=["from lobster.services... import Parser"]
+            ... )
+        """
+        if description is None:
+            description = f"Parse {self.name} proteomics data from {Path(file_path).name}"
+
+        return AnalysisStep(
+            operation=f"{self.name}.parse",
+            tool_name=f"{self.__class__.__name__}.parse",
+            description=description,
+            library="lobster",
+            code_template=code_template,
+            imports=imports,
+            parameters={"file_path": str(file_path), **parameters},
+            parameter_schema={
+                "file_path": {
+                    "type": "str",
+                    "description": "Path to proteomics output file",
+                }
+            },
+            input_entities=[
+                {"name": Path(file_path).name, "type": f"{self.name}_report"}
+            ],
+            output_entities=[{"name": "adata", "type": "AnnData"}],
+        )
 
     def __repr__(self) -> str:
         """String representation for debugging."""

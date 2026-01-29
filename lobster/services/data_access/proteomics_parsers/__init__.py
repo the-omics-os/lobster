@@ -8,6 +8,7 @@ downstream analysis with Lobster's proteomics services.
 Supported Formats:
     - MaxQuant proteinGroups.txt (DDA mass spectrometry)
     - DIA-NN report.tsv/report.parquet (DIA mass spectrometry)
+    - Spectronaut report.tsv/.csv/.xlsx (DIA mass spectrometry, Biognosys)
     - Olink NPX files .csv/.xlsx (affinity proteomics)
 
 Parser Design:
@@ -23,7 +24,7 @@ AnnData Convention:
     - uns: analysis-wide metadata
 
 Example usage:
-    >>> from lobster.services.data_access.proteomics_parsers import MaxQuantParser, DIANNParser, OlinkParser
+    >>> from lobster.services.data_access.proteomics_parsers import MaxQuantParser, DIANNParser, SpectronautParser, OlinkParser
     >>>
     >>> # Parse MaxQuant output
     >>> mq_parser = MaxQuantParser()
@@ -37,6 +38,12 @@ Example usage:
     ...     adata, stats = diann_parser.parse("report.tsv", quantity_column="Precursor.Normalised")
     ...     print(f"DIA-NN: {adata.n_obs} samples, {adata.n_vars} proteins")
     >>>
+    >>> # Parse Spectronaut output (Biognosys DIA)
+    >>> spectronaut_parser = SpectronautParser()
+    >>> if spectronaut_parser.validate_file("spectronaut_report.tsv"):
+    ...     adata, stats = spectronaut_parser.parse("spectronaut_report.tsv", qvalue_threshold=0.01)
+    ...     print(f"Spectronaut: {adata.n_obs} samples, {adata.n_vars} proteins")
+    >>>
     >>> # Parse Olink NPX output
     >>> olink_parser = OlinkParser()
     >>> if olink_parser.validate_file("olink_npx_data.csv"):
@@ -47,6 +54,7 @@ Auto-detection:
     >>> from lobster.services.data_access.proteomics_parsers import get_parser_for_file
     >>> parser = get_parser_for_file("proteinGroups.txt")  # Returns MaxQuantParser
     >>> parser = get_parser_for_file("report.parquet")     # Returns DIANNParser
+    >>> parser = get_parser_for_file("spectronaut.tsv")    # Returns SpectronautParser
     >>> parser = get_parser_for_file("olink_npx.csv")      # Returns OlinkParser
 """
 
@@ -61,6 +69,9 @@ from lobster.services.data_access.proteomics_parsers.maxquant_parser import (
     MaxQuantParser,
 )
 from lobster.services.data_access.proteomics_parsers.olink_parser import OlinkParser
+from lobster.services.data_access.proteomics_parsers.spectronaut_parser import (
+    SpectronautParser,
+)
 
 __all__ = [
     # Base classes and exceptions
@@ -71,6 +82,7 @@ __all__ = [
     # Parser implementations
     "MaxQuantParser",
     "DIANNParser",
+    "SpectronautParser",
     "OlinkParser",
     # Utility functions
     "get_parser_for_file",
@@ -88,11 +100,12 @@ def get_available_parsers() -> dict:
     Example:
         >>> parsers = get_available_parsers()
         >>> print(list(parsers.keys()))
-        ['maxquant', 'diann', 'olink']
+        ['maxquant', 'diann', 'spectronaut', 'olink']
     """
     return {
         "maxquant": MaxQuantParser,
         "diann": DIANNParser,
+        "spectronaut": SpectronautParser,
         "olink": OlinkParser,
     }
 
@@ -120,11 +133,15 @@ def get_parser_for_file(file_path: str) -> ProteomicsParser:
         >>> parser = get_parser_for_file("report.parquet")
         >>> isinstance(parser, DIANNParser)
         True
+        >>> parser = get_parser_for_file("spectronaut_report.tsv")
+        >>> isinstance(parser, SpectronautParser)
+        True
     """
     # Try parsers in order of specificity
     parser_classes = [
         MaxQuantParser,  # Try MaxQuant first (most specific - proteinGroups.txt)
         OlinkParser,  # Olink second (specific - NPX/Assay/UniProt columns)
+        SpectronautParser,  # Spectronaut third (PG.* column patterns from Biognosys)
         DIANNParser,  # DIA-NN last (more general column names)
     ]
 
