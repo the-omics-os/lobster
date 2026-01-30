@@ -449,6 +449,257 @@ Perform differential protein expression analysis.
 - `method` (str): Statistical method ('limma', 't-test', 'wilcoxon')
 - `adjust_method` (str): Multiple testing correction method
 
+## Metadata Services
+
+### ClinicalMetadataService
+
+**Location**: `lobster/services/metadata/clinical_metadata_service.py`
+
+Service for processing clinical trial metadata following RECIST 1.1 standards. Designed for immunotherapy trials with iRECIST support and DCR (Disease Control Rate) grouping.
+
+```python
+class ClinicalMetadataService:
+    """Service for processing and validating clinical trial metadata."""
+```
+
+**Introduced**: Gap 5 (v2.7+) for Biognosys pilot
+**Test Coverage**: 42 unit tests, 145 schema tests
+
+**Key Features**:
+- RECIST 1.1 + iRECIST response normalization (CR, PR, SD, PD, NE, iCR, iPR, iSD, iPD, iUPD)
+- ORR vs DCR grouping strategies (configurable for different clinical endpoints)
+- Timepoint parsing (C1D1, C2D8, Baseline, EOT)
+- Survival endpoint handling (PFS/OS with event indicators)
+
+**Scientific Validation (v3.5.0)**:
+- ✅ iRECIST-compliant for immunotherapy trials
+- ✅ Removed ambiguous 'resp' → 'PR' mapping (returns None)
+- ✅ Removed numeric sex encoding (1/0/2 → requires explicit M/F)
+- ✅ DCR grouping: Configurable ORR (CR+PR vs SD+PD) or DCR (CR+PR+SD vs PD)
+
+#### Methods
+
+##### __init__
+
+```python
+def __init__(self, data_manager: DataManagerV2, cycle_length_days: int = 21) -> None
+```
+
+Initialize service with cycle length configuration.
+
+**Parameters:**
+- `data_manager` (DataManagerV2): Data manager instance
+- `cycle_length_days` (int): Days per treatment cycle (default: 21 for standard 3-week cycles)
+
+##### process_sample_metadata
+
+```python
+def process_sample_metadata(
+    self,
+    metadata_df: pd.DataFrame,
+    column_mapping: Optional[Dict[str, str]] = None,
+    validate: bool = True
+) -> Tuple[pd.DataFrame, Dict[str, Any], AnalysisStep]
+```
+
+Process and validate clinical sample metadata with RECIST normalization.
+
+**Parameters:**
+- `metadata_df` (pd.DataFrame): Input DataFrame with clinical metadata
+- `column_mapping` (Optional[Dict]): Map input columns to standard schema names
+- `validate` (bool): Whether to validate via ClinicalSample Pydantic schema
+
+**Returns:**
+- `Tuple[pd.DataFrame, Dict, AnalysisStep]`:
+  - **pd.DataFrame**: Processed metadata with normalized fields
+  - **Dict**: Statistics (total_samples, validation_rate, response_distribution)
+  - **AnalysisStep**: W3C-PROV provenance (exportable=False)
+
+**Example:**
+```python
+from lobster.services.metadata import ClinicalMetadataService
+
+service = ClinicalMetadataService(data_manager, cycle_length_days=21)
+
+# Process with validation
+processed_df, stats, ir = service.process_sample_metadata(
+    metadata_df,
+    column_mapping={'Sample_ID': 'sample_id', 'RECIST': 'response_status'}
+)
+
+print(f"Validated {stats['validation_rate']:.1f}% samples")
+```
+
+##### create_responder_groups
+
+```python
+def create_responder_groups(
+    self,
+    metadata_df: pd.DataFrame,
+    response_column: str = "response_status",
+    sample_id_column: str = "sample_id",
+    grouping_strategy: str = "orr",
+) -> Tuple[Dict[str, List[str]], Dict[str, Any], AnalysisStep]
+```
+
+Create response-based sample groups for clinical endpoints.
+
+**Grouping Strategies** (NEW in v3.5.0):
+- **ORR (Objective Response Rate)** - default:
+  - `responder`: CR, PR (tumor shrinkage)
+  - `non_responder`: SD, PD (no shrinkage)
+- **DCR (Disease Control Rate)** - for immunotherapy:
+  - `disease_control`: CR, PR, SD (tumor controlled)
+  - `progressive`: PD only
+
+**Parameters:**
+- `metadata_df` (pd.DataFrame): DataFrame with RECIST response codes
+- `response_column` (str): Column with response status
+- `sample_id_column` (str): Sample identifier column
+- `grouping_strategy` (str): "orr" (default) or "dcr"
+
+**Returns:**
+- `Tuple[Dict[str, List[str]], Dict, AnalysisStep]`:
+  - **Dict[str, List[str]]**: Groups dict with sample ID lists
+  - **Dict**: Statistics (counts, percentages, grouping_strategy)
+  - **AnalysisStep**: Provenance IR
+
+**Example:**
+```python
+# ORR grouping (standard)
+groups, stats, ir = service.create_responder_groups(
+    metadata_df, grouping_strategy="orr"
+)
+print(f"Responders: {stats['responder_count']}")
+print(f"Non-responders: {stats['non_responder_count']}")
+
+# DCR grouping (immunotherapy trials)
+groups, stats, ir = service.create_responder_groups(
+    metadata_df, grouping_strategy="dcr"
+)
+print(f"Disease control: {stats['disease_control_count']}")
+print(f"Progressive: {stats['progressive_count']}")
+print(f"DCR: {stats['disease_control_rate']:.1f}%")
+```
+
+##### get_timepoint_samples
+
+```python
+def get_timepoint_samples(
+    self,
+    metadata_df: pd.DataFrame,
+    timepoint: str,
+    timepoint_column: str = "timepoint",
+    sample_id_column: str = "sample_id",
+) -> Tuple[List[str], Dict[str, Any], AnalysisStep]
+```
+
+Get sample IDs for a specific clinical trial timepoint.
+
+**Supported Formats**:
+- Cycle/Day: `C1D1`, `C2D8`, `Cycle 3 Day 15`
+- Week/Day: `W1D1`, `Week 2 Day 5`
+- Special: `Baseline`, `Screening`, `EOT` (End of Treatment)
+
+**Parameters:**
+- `metadata_df` (pd.DataFrame): DataFrame with timepoint data
+- `timepoint` (str): Timepoint to filter (case-insensitive)
+- `timepoint_column` (str): Column with timepoint strings
+- `sample_id_column` (str): Sample identifier column
+
+**Returns:**
+- `Tuple[List[str], Dict, AnalysisStep]`:
+  - **List[str]**: Sample IDs matching the timepoint
+  - **Dict**: Statistics (timepoint, matched_samples, match_rate)
+  - **AnalysisStep**: Provenance IR
+
+**Example:**
+```python
+# Get baseline samples
+baseline_ids, stats, ir = service.get_timepoint_samples(metadata_df, "Baseline")
+
+# Get cycle 2 day 1 samples
+c2d1_ids, stats, ir = service.get_timepoint_samples(metadata_df, "C2D1")
+```
+
+##### filter_by_response_and_timepoint
+
+```python
+def filter_by_response_and_timepoint(
+    self,
+    metadata_df: pd.DataFrame,
+    response_group: Optional[str] = None,
+    timepoint: Optional[str] = None,
+    response_column: str = "response_status",
+    timepoint_column: str = "timepoint",
+    sample_id_column: str = "sample_id",
+) -> Tuple[List[str], Dict[str, Any], AnalysisStep]
+```
+
+Combined filtering by response group AND timepoint.
+
+**Parameters:**
+- `response_group` (Optional[str]): "responder", "non_responder", or None (all)
+- `timepoint` (Optional[str]): Timepoint string or None (all)
+- Other parameters same as above
+
+**Returns:**
+- `Tuple[List[str], Dict, AnalysisStep]`: Filtered sample IDs, statistics, IR
+
+**Example:**
+```python
+# Get responders at baseline
+ids, stats, ir = service.filter_by_response_and_timepoint(
+    metadata_df, response_group="responder", timepoint="Baseline"
+)
+```
+
+#### Integration with Proteomics
+
+**Common Workflow**:
+```python
+# 1. Load proteomics data
+adata = data_manager.get_modality("biognosys_proteomics")
+
+# 2. Process clinical metadata
+clinical_service = ClinicalMetadataService(data_manager)
+processed, stats, ir = clinical_service.process_sample_metadata(adata.obs)
+
+# 3. Create responder groups (DCR for immunotherapy)
+groups, stats, ir = clinical_service.create_responder_groups(
+    processed, grouping_strategy="dcr"
+)
+
+# 4. Filter proteomics by response
+responder_adata = adata[groups["disease_control"], :]
+progressive_adata = adata[groups["progressive"], :]
+```
+
+#### Scientific Notes
+
+**iRECIST vs RECIST 1.1**:
+- Service uses **iRECIST guidelines** for immunotherapy trials
+- Synonyms supported: `iCR`, `iPR`, `iSD`, `iPD`, `iCPD`, `iUPD`
+- `iUPD` (Unconfirmed Progressive Disease) maps to `PD` for grouping
+
+**Breaking Change (v3.5.0)**:
+- ⚠️ `'resp'` no longer maps to `'PR'` (was ambiguous - could mean "responder" group or "response")
+- ⚠️ Numeric sex encoding removed (`1`, `0`, `2` return `None` with warning)
+- ✅ Use explicit labels: `'M'`, `'F'`, `'Male'`, `'Female'`
+
+**DCR Rationale**:
+- FDA accepts Disease Control Rate (CR+PR+SD) as valid endpoint for immunotherapy
+- ORR (CR+PR) underestimates benefit in trials where SD represents tumor control
+- DCR strategy recommended for NSCLC checkpoint inhibitor trials
+
+#### See Also
+
+- **Schema Reference**: `lobster.core.schemas.clinical_schema` - ClinicalSample Pydantic model
+- **Related Services**: MetadataStandardizationService, DiseaseStandardizationService
+- **Use Case**: Biognosys pilot (SAKK17/18 NSCLC clinical trial)
+- **Tests**: `tests/unit/services/metadata/test_clinical_metadata_service.py`
+- **Implementation Notes**: `TODO_gap_5.md` (Gap 5 deliverable)
+
 ## Utility Services
 
 ### GEOService
