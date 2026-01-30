@@ -117,6 +117,11 @@ ml = [
     "torch>=2.0.0",
     "torchvision>=0.15.0",
 ]
+azure = [
+    # Azure AI provider for enterprise customers
+    # Enables Azure AI Foundry models (GPT-4o, DeepSeek R1, Cohere, Phi, Mistral)
+    "langchain-azure-ai>=0.1.0",
+]
 genomics = [
     "cyvcf2>=0.30.0",
     "bed-reader>=0.2.0",
@@ -180,6 +185,8 @@ all = [
     "scvi-tools>=1.4.0",
     "torch>=2.0.0",
     "torchvision>=0.15.0",
+    # Azure AI provider
+    "langchain-azure-ai>=0.1.0",
     # Dev tools
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",

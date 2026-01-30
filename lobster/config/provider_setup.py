@@ -239,6 +239,44 @@ def create_gemini_config(api_key: str) -> ProviderConfig:
     )
 
 
+def create_azure_config(endpoint: str, credential: str) -> ProviderConfig:
+    """
+    Create configuration for Azure AI.
+
+    Args:
+        endpoint: Azure AI Foundry endpoint URL
+        credential: Azure API key or credential
+
+    Returns:
+        ProviderConfig with environment variables
+    """
+    if not endpoint or not endpoint.strip():
+        return ProviderConfig(
+            provider_type="azure",
+            env_vars={},
+            success=False,
+            message="Endpoint URL cannot be empty",
+        )
+
+    if not credential or not credential.strip():
+        return ProviderConfig(
+            provider_type="azure",
+            env_vars={},
+            success=False,
+            message="API credential cannot be empty",
+        )
+
+    return ProviderConfig(
+        provider_type="azure",
+        env_vars={
+            "LOBSTER_LLM_PROVIDER": "azure",
+            "AZURE_AI_ENDPOINT": endpoint.strip(),
+            "AZURE_AI_CREDENTIAL": credential.strip(),
+        },
+        success=True,
+    )
+
+
 # =============================================================================
 # Installation Instructions
 # =============================================================================

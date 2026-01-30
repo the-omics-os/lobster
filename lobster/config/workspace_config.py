@@ -101,6 +101,11 @@ class WorkspaceProviderConfig(ProviderConfigBase):
         description="Gemini model (e.g., 'gemini-3-pro-preview', 'gemini-3-flash-preview')"
     )
 
+    azure_model: Optional[str] = Field(
+        None,
+        description="Azure AI model (e.g., 'gpt-4o', 'deepseek-r1', 'phi-4')"
+    )
+
     ollama_host: str = Field(
         "http://localhost:11434",
         description="Ollama server URL"
@@ -230,6 +235,7 @@ class WorkspaceProviderConfig(ProviderConfigBase):
         self.bedrock_model = None
         self.ollama_model = None
         self.gemini_model = None
+        self.azure_model = None
         self.ollama_host = "http://localhost:11434"
         self.per_agent_providers = {}
         self.per_agent_models = {}

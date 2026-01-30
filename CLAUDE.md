@@ -67,7 +67,7 @@ Users interact via natural language to:
 
 ### 1.5 LLM Provider System
 
-Lobster supports **4 LLM providers** via modular, testable architecture:
+Lobster supports **5 LLM providers** via modular, testable architecture:
 
 | Provider | Type | Setup | Use Case |
 |----------|------|-------|----------|
@@ -75,6 +75,7 @@ Lobster supports **4 LLM providers** via modular, testable architecture:
 | **Anthropic Direct** | Cloud | API key | Fastest, best quality |
 | **AWS Bedrock** | Cloud | AWS credentials | Enterprise, compliance |
 | **Google Gemini** | Cloud | Google API key | Multimodal, long context |
+| **Azure AI** | Cloud | Endpoint + credential | Enterprise Azure, multi-model |
 
 **Architecture** (separation of concerns):
 ```
@@ -93,7 +94,7 @@ CLI (cli.py)                 → Logic (provider_setup.py)      → Factory (llm
 - `lobster/config/base_config.py`: **v0.4.0+** - Abstract base class for config validation (Pydantic)
 - `lobster/cli.py`: User-facing commands (`lobster init`, `lobster config-show`)
 
-**Auto-detection priority**: Explicit `LOBSTER_LLM_PROVIDER` → Ollama (if running) → Anthropic → Bedrock → Gemini
+**Auto-detection priority**: Explicit `LOBSTER_LLM_PROVIDER` → Ollama (if running) → Anthropic → Bedrock → Gemini → Azure
 
 **User configuration**: Via `lobster init` wizard (recommended) or manual `.env` editing.
 

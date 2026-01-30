@@ -4074,10 +4074,11 @@ def init(
         console.print("  [cyan]2[/cyan] - AWS Bedrock - Production, enterprise use")
         console.print("  [cyan]3[/cyan] - Ollama (Local) - Privacy, zero cost, offline")
         console.print("  [cyan]4[/cyan] - Google Gemini - Latest models with thinking support")
+        console.print("  [cyan]5[/cyan] - Azure AI - Enterprise Azure deployments")
         console.print()
 
         provider = Prompt.ask(
-            "[bold white]Choose provider[/bold white]", choices=["1", "2", "3", "4"], default="1"
+            "[bold white]Choose provider[/bold white]", choices=["1", "2", "3", "4", "5"], default="1"
         )
 
         env_lines = []
@@ -4263,6 +4264,40 @@ def init(
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "gemini"
                 console.print("[green]✓ Gemini provider configured[/green]")
+
+        elif provider == "5":
+            # Azure AI setup
+            console.print("\n[bold white]🔑 Azure AI Configuration[/bold white]")
+            console.print(
+                "You'll need Azure AI Foundry endpoint and API credential.\n"
+            )
+            console.print("Get these from: [link]https://ai.azure.com/[/link]")
+            console.print("1. Create/open an Azure AI project")
+            console.print("2. Deploy a model (e.g., gpt-4o, deepseek-r1)")
+            console.print("3. Copy endpoint URL and API key from deployment\n")
+
+            endpoint = Prompt.ask(
+                "[bold white]Enter your Azure AI endpoint[/bold white]",
+                default="https://your-project.inference.ai.azure.com/"
+            )
+            credential = Prompt.ask(
+                "[bold white]Enter your Azure API credential[/bold white]",
+                password=True
+            )
+
+            if not endpoint.strip() or not credential.strip():
+                console.print("[red]❌ Azure endpoint and credential cannot be empty[/red]")
+                raise typer.Exit(1)
+
+            config = provider_setup.create_azure_config(endpoint, credential)
+            if config.success:
+                for key, value in config.env_vars.items():
+                    env_lines.append(f"{key}={value}")
+                config_dict["provider"] = "azure"
+                console.print("[green]✓ Azure AI provider configured[/green]")
+            else:
+                console.print(f"[red]❌ Configuration failed: {config.message}[/red]")
+                raise typer.Exit(1)
 
         # Profile selection (only for Anthropic/Bedrock providers)
         profile_to_write = None

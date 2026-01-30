@@ -38,6 +38,7 @@ class LLMProvider(Enum):
     BEDROCK_ANTHROPIC = "bedrock"
     OLLAMA = "ollama"
     GEMINI = "gemini"
+    AZURE = "azure"
 
 
 class LLMFactory:

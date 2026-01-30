@@ -42,12 +42,13 @@ def test_provider_registry_initialization():
     # Trigger initialization
     providers = ProviderRegistry.get_provider_names()
 
-    # Should have all 4 providers registered
+    # Should have all 5 providers registered
     assert "anthropic" in providers
     assert "bedrock" in providers
     assert "ollama" in providers
     assert "gemini" in providers
-    assert len(providers) == 4
+    assert "azure" in providers
+    assert len(providers) == 5
 
 
 def test_get_provider():
@@ -297,6 +298,165 @@ def test_provider_registry_includes_gemini():
     """Test that Gemini is registered in ProviderRegistry."""
     providers = ProviderRegistry.get_provider_names()
     assert "gemini" in providers
+
+
+# =============================================================================
+# Azure Provider Tests
+# =============================================================================
+
+
+def test_azure_provider_basic():
+    """Test AzureProvider basic properties."""
+    provider = get_provider("azure")
+    assert provider is not None
+    assert provider.name == "azure"
+    assert "Azure" in provider.display_name
+
+
+def test_azure_provider_is_configured():
+    """Test Azure configuration detection."""
+    provider = get_provider("azure")
+
+    # Without any credentials
+    with patch.dict(os.environ, {}, clear=True):
+        assert not provider.is_configured()
+
+    # With only credential (missing endpoint)
+    with patch.dict(os.environ, {"AZURE_AI_CREDENTIAL": "test-key"}, clear=True):
+        assert not provider.is_configured()
+
+    # With only endpoint (missing credential)
+    with patch.dict(
+        os.environ, {"AZURE_AI_ENDPOINT": "https://test.inference.ai.azure.com/"}, clear=True
+    ):
+        assert not provider.is_configured()
+
+    # With both new-style env vars
+    with patch.dict(
+        os.environ,
+        {
+            "AZURE_AI_CREDENTIAL": "test-key",
+            "AZURE_AI_ENDPOINT": "https://test.inference.ai.azure.com/",
+        },
+        clear=True,
+    ):
+        assert provider.is_configured()
+
+    # With legacy Azure OpenAI env vars
+    with patch.dict(
+        os.environ,
+        {
+            "AZURE_OPENAI_API_KEY": "test-key",
+            "AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com/",
+        },
+        clear=True,
+    ):
+        assert provider.is_configured()
+
+
+def test_azure_provider_list_models():
+    """Test Azure model listing."""
+    provider = get_provider("azure")
+    models = provider.list_models()
+
+    assert len(models) >= 5  # GPT, DeepSeek, Cohere, Phi, Mistral
+    assert all(isinstance(m, ModelInfo) for m in models)
+    assert all(m.provider == "azure" for m in models)
+
+    # Check default model exists
+    default_models = [m for m in models if m.is_default]
+    assert len(default_models) == 1
+    assert "gpt-4o" in default_models[0].name
+
+    # Verify multi-provider models exist
+    model_names = [m.name for m in models]
+    assert "gpt-4o" in model_names
+    assert "deepseek-r1" in model_names
+    assert "phi-4" in model_names
+
+
+def test_azure_provider_get_default_model():
+    """Test Azure default model selection."""
+    provider = get_provider("azure")
+    default = provider.get_default_model()
+
+    assert default is not None
+    assert default == "gpt-4o"
+
+
+def test_azure_provider_validate_model():
+    """Test Azure model validation."""
+    provider = get_provider("azure")
+
+    # Known models
+    assert provider.validate_model("gpt-4o")
+    assert provider.validate_model("deepseek-r1")
+    assert provider.validate_model("phi-4")
+
+    # Unknown models also return True (for future compatibility)
+    assert provider.validate_model("future-model-2025")
+
+
+@patch("langchain_azure_ai.chat_models.AzureAIChatCompletionsModel")
+def test_azure_provider_create_chat_model(mock_azure_chat):
+    """Test Azure chat model creation."""
+    mock_azure_chat.return_value = MagicMock()
+
+    with patch.dict(
+        os.environ,
+        {
+            "AZURE_AI_CREDENTIAL": "test-key",
+            "AZURE_AI_ENDPOINT": "https://test.inference.ai.azure.com/",
+        },
+        clear=True,
+    ):
+        provider = get_provider("azure")
+        llm = provider.create_chat_model("gpt-4o", temperature=0.7)
+
+        mock_azure_chat.assert_called_once()
+        call_kwargs = mock_azure_chat.call_args.kwargs
+        assert call_kwargs["model_name"] == "gpt-4o"
+        assert call_kwargs["temperature"] == 0.7
+        assert call_kwargs["api_version"] == "2024-05-01-preview"
+        assert "endpoint" in call_kwargs
+        assert "credential" in call_kwargs
+
+
+def test_azure_provider_create_chat_model_missing_credential():
+    """Test Azure chat model raises error without credential."""
+    with patch.dict(
+        os.environ,
+        {"AZURE_AI_ENDPOINT": "https://test.inference.ai.azure.com/"},
+        clear=True,
+    ):
+        provider = get_provider("azure")
+        with pytest.raises(ValueError, match="credential not found"):
+            provider.create_chat_model("gpt-4o")
+
+
+def test_azure_provider_create_chat_model_missing_endpoint():
+    """Test Azure chat model raises error without endpoint."""
+    with patch.dict(os.environ, {"AZURE_AI_CREDENTIAL": "test-key"}, clear=True):
+        provider = get_provider("azure")
+        with pytest.raises(ValueError, match="endpoint not found"):
+            provider.create_chat_model("gpt-4o")
+
+
+def test_azure_provider_configuration_help():
+    """Test Azure configuration help contains expected info."""
+    provider = get_provider("azure")
+    help_text = provider.get_configuration_help()
+
+    assert "AZURE_AI_ENDPOINT" in help_text
+    assert "AZURE_AI_CREDENTIAL" in help_text
+    assert "gpt-4o" in help_text
+    assert "deepseek" in help_text.lower()
+
+
+def test_provider_registry_includes_azure():
+    """Test that Azure is registered in ProviderRegistry."""
+    providers = ProviderRegistry.get_provider_names()
+    assert "azure" in providers
 
 
 # =============================================================================
@@ -620,6 +780,7 @@ def test_llm_provider_enum_still_exists():
     assert LLMProvider.BEDROCK_ANTHROPIC.value == "bedrock"
     assert LLMProvider.OLLAMA.value == "ollama"
     assert LLMProvider.GEMINI.value == "gemini"
+    assert LLMProvider.AZURE.value == "azure"
 
 
 def test_create_llm_convenience_function():

@@ -47,6 +47,8 @@ For advanced configuration options, continue reading below.
   - [Ollama (Local)](#ollama-local---new-)
   - [Claude API (Cloud)](#claude-api-cloud)
   - [AWS Bedrock (Cloud)](#aws-bedrock-cloud)
+  - [Google Gemini (Cloud)](#google-gemini-cloud-)
+  - [Azure AI (Cloud)](#azure-ai-cloud-)
   - [Provider Auto-Detection](#provider-auto-detection)
   - [Running Multiple Sessions with Different Providers](#running-multiple-sessions-with-different-providers)
 - [Model Profiles](#model-profiles)
@@ -68,6 +70,8 @@ You must configure at least one Large Language Model (LLM) provider:
 **Cloud Providers (require API keys):**
 - `ANTHROPIC_API_KEY`: For using Claude models via Anthropic Direct API
 - `AWS_BEDROCK_ACCESS_KEY` and `AWS_BEDROCK_SECRET_ACCESS_KEY`: For using models via AWS Bedrock
+- `GOOGLE_API_KEY`: For using Gemini models via Google AI Studio
+- `AZURE_AI_ENDPOINT` and `AZURE_AI_CREDENTIAL`: For using Azure AI Foundry models
 
 **Local Provider (no API keys needed):**
 - `LOBSTER_LLM_PROVIDER=ollama`: For using local models via Ollama (requires Ollama installation)
@@ -85,7 +89,7 @@ Details on these variables are provided in the sections below.
 
 ## API Key Management
 
-Lobster AI supports **four LLM providers**: three cloud-based and one local. Choose the provider that best fits your needs:
+Lobster AI supports **five LLM providers**: four cloud-based and one local. Choose the provider that best fits your needs:
 
 ### Ollama (Local) - NEW! 🏠
 
@@ -158,6 +162,43 @@ LOBSTER_LLM_PROVIDER=gemini
 - `gemini-3-flash-preview` - Fastest, free tier available ($0.50 input / $3.00 output)
 
 **Note**: Gemini 3.0+ models require `temperature=1.0` (lower values can cause issues).
+
+### Azure AI (Cloud) 🔷
+
+**Best for**: Enterprise customers with existing Azure infrastructure, Azure compliance requirements, multi-model access.
+
+**Configuration:**
+```env
+AZURE_AI_ENDPOINT=https://your-project.inference.ai.azure.com/
+AZURE_AI_CREDENTIAL=your-api-key
+AZURE_AI_API_VERSION=2024-05-01-preview  # Optional
+LOBSTER_LLM_PROVIDER=azure
+```
+
+**Get your credentials**: https://ai.azure.com/
+1. Create/open an Azure AI Foundry project
+2. Deploy a model (GPT-4o, DeepSeek R1, Cohere, Phi, Mistral)
+3. Copy endpoint URL and API key from deployment details
+
+**Available Models:**
+- `gpt-4o` - OpenAI GPT-4o (recommended default) ($5.00 input / $15.00 output per million tokens)
+- `deepseek-r1` - DeepSeek R1 reasoning model ($0.55 input / $2.19 output)
+- `gpt-4-turbo` - OpenAI GPT-4 Turbo ($10.00 input / $30.00 output)
+- `cohere-command-r-plus` - Cohere Command R+ ($3.00 input / $15.00 output)
+- `phi-4` - Microsoft Phi-4 small model ($0.07 input / $0.14 output)
+- `mistral-large` - Mistral Large ($4.00 input / $12.00 output)
+
+**Key Features:**
+- Access to multiple model providers through single Azure account
+- Enterprise compliance (HIPAA, SOC2, ISO 27001)
+- Data stays within your Azure tenant
+- Supports custom model deployments
+
+**Legacy Environment Variables** (backward compatibility):
+```env
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_API_KEY=your-api-key
+```
 
 ### Configuration Resolution Priority (v0.4+)
 

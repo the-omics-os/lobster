@@ -203,11 +203,13 @@ class GlobalProviderConfig(ProviderConfigBase):
     by workspace-specific configurations.
 
     Attributes:
-        default_provider: Default LLM provider (bedrock | anthropic | ollama | gemini)
+        default_provider: Default LLM provider (bedrock | anthropic | ollama | gemini | azure)
         default_profile: Default agent configuration profile
         anthropic_default_model: Default Anthropic model for all projects
         bedrock_default_model: Default Bedrock model for all projects
         ollama_default_model: Default Ollama model for all projects
+        gemini_default_model: Default Gemini model for all projects
+        azure_default_model: Default Azure AI model for all projects
         ollama_default_host: Default Ollama server URL
 
     Example:
@@ -256,6 +258,11 @@ class GlobalProviderConfig(ProviderConfigBase):
     gemini_default_model: Optional[str] = Field(
         None,
         description="Default Gemini model (e.g., 'gemini-3-pro-preview')"
+    )
+
+    azure_default_model: Optional[str] = Field(
+        None,
+        description="Default Azure AI model (e.g., 'gpt-4o', 'deepseek-r1', 'phi-4')"
     )
 
     ollama_default_host: str = Field(
@@ -369,6 +376,7 @@ class GlobalProviderConfig(ProviderConfigBase):
         self.bedrock_default_model = None
         self.ollama_default_model = None
         self.gemini_default_model = None
+        self.azure_default_model = None
         self.ollama_default_host = "http://localhost:11434"
         logger.info("Reset global config to defaults")
 

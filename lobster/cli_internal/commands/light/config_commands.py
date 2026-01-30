@@ -419,7 +419,7 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
             return None
 
         # Provider-specific table title
-        provider_icons = {"anthropic": "🤖", "bedrock": "☁️", "ollama": "🦙", "gemini": "✨"}
+        provider_icons = {"anthropic": "🤖", "bedrock": "☁️", "ollama": "🦙", "gemini": "✨", "azure": "🔷"}
         icon = provider_icons.get(current_provider, "🤖")
         title = f"{icon} Available {current_provider.capitalize()} Models"
 

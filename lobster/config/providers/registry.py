@@ -190,6 +190,11 @@ class ProviderRegistry:
         except ImportError:
             logger.debug("GeminiProvider not available")
 
+        try:
+            from lobster.config.providers import azure_provider  # noqa: F401
+        except ImportError:
+            logger.debug("AzureProvider not available (langchain-azure-ai not installed)")
+
         cls._initialized = True
 
     @classmethod

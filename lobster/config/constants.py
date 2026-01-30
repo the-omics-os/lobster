@@ -8,7 +8,7 @@ All other modules should import from here rather than defining their own lists.
 from typing import Final, List
 
 # Valid LLM providers - add new providers here ONLY
-VALID_PROVIDERS: Final[List[str]] = ["anthropic", "bedrock", "ollama", "gemini"]
+VALID_PROVIDERS: Final[List[str]] = ["anthropic", "bedrock", "ollama", "gemini", "azure"]
 
 # Valid agent configuration profiles
 VALID_PROFILES: Final[List[str]] = [
@@ -25,4 +25,5 @@ PROVIDER_DISPLAY_NAMES: Final[dict] = {
     "bedrock": "AWS Bedrock",
     "ollama": "Ollama (Local)",
     "gemini": "Google Gemini",
+    "azure": "Azure AI",
 }
