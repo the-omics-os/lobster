@@ -1493,3 +1493,242 @@ class ProteomicsVisualizationService:
                 logger.error(f"Failed to save plot '{name}': {e}")
 
         return saved_files
+
+    def create_kaplan_meier_curve(
+        self,
+        adata: anndata.AnnData,
+        survival_curves: Optional[Dict[str, Any]] = None,
+        show_confidence_intervals: bool = True,
+        show_at_risk_table: bool = True,
+        show_censoring_marks: bool = True,
+        title: Optional[str] = None,
+        color_palette: Optional[List[str]] = None,
+    ) -> Tuple[go.Figure, Dict[str, Any]]:
+        """
+        Create Kaplan-Meier survival curves with confidence intervals.
+
+        Integrates with ProteomicsSurvivalService to visualize survival analysis results.
+
+        Args:
+            adata: AnnData with kaplan_meier results in uns
+            survival_curves: Pre-computed survival curves dict (if None, uses adata.uns)
+            show_confidence_intervals: Show 95% CI bands
+            show_at_risk_table: Add at-risk table annotation
+            show_censoring_marks: Show censoring tick marks on curves
+            title: Custom plot title
+            color_palette: Custom colors for groups
+
+        Returns:
+            Tuple[go.Figure, Dict[str, Any]]: KM curve figure and statistics
+
+        Example:
+            # After running survival analysis
+            from lobster.services.analysis.proteomics_survival_service import ProteomicsSurvivalService
+            survival_service = ProteomicsSurvivalService()
+            adata_km, stats, _ = survival_service.kaplan_meier_analysis(
+                adata, duration_col="PFS_days", event_col="PFS_event", protein="EGFR"
+            )
+
+            # Visualize
+            vis_service = ProteomicsVisualizationService()
+            fig, plot_stats = vis_service.create_kaplan_meier_curve(adata_km)
+        """
+        try:
+            logger.info("Creating Kaplan-Meier survival curve visualization")
+
+            # Get survival curves data
+            if survival_curves is None:
+                if "kaplan_meier" not in adata.uns:
+                    raise ProteomicsVisualizationError(
+                        "No Kaplan-Meier results in adata.uns. Run kaplan_meier_analysis first."
+                    )
+                km_data = adata.uns["kaplan_meier"]
+                survival_curves = km_data["survival_curves"]
+                log_rank_p = km_data.get("log_rank_p_value")
+                protein = km_data.get("protein", "")
+            else:
+                log_rank_p = None
+                protein = ""
+
+            # Default colors (survival analysis convention: red for high risk, blue for low risk)
+            if color_palette is None:
+                color_palette = ["#377EB8", "#E41A1C", "#4DAF4A", "#984EA3"]  # Blue, Red, Green, Purple
+
+            fig = go.Figure()
+
+            # Plot each group's survival curve
+            for i, (group_name, curve_data) in enumerate(survival_curves.items()):
+                color = color_palette[i % len(color_palette)]
+                timeline = curve_data["timeline"]
+                survival_func = curve_data["survival_function"]
+                n_samples = curve_data.get("n_samples", "N/A")
+
+                # Main survival curve (step function)
+                fig.add_trace(go.Scatter(
+                    x=timeline,
+                    y=survival_func,
+                    mode="lines",
+                    line=dict(color=color, width=2, shape="hv"),
+                    name=f"{group_name} (n={n_samples})",
+                    legendgroup=group_name,
+                    hovertemplate=(
+                        f"Group: {group_name}<br>"
+                        "Time: %{x:.0f} days<br>"
+                        "Survival: %{y:.2%}<extra></extra>"
+                    ),
+                ))
+
+                # Confidence intervals
+                if show_confidence_intervals and "confidence_lower" in curve_data:
+                    conf_lower = curve_data["confidence_lower"]
+                    conf_upper = curve_data["confidence_upper"]
+
+                    # Parse color to RGBA for transparency
+                    if color.startswith("#"):
+                        # Convert hex to RGB
+                        r = int(color[1:3], 16)
+                        g = int(color[3:5], 16)
+                        b = int(color[5:7], 16)
+                        fill_color = f"rgba({r},{g},{b},0.2)"
+                    else:
+                        fill_color = f"rgba(100,100,100,0.2)"
+
+                    # Create confidence band (using fill between upper and lower)
+                    # Upper boundary
+                    fig.add_trace(go.Scatter(
+                        x=timeline,
+                        y=conf_upper,
+                        mode="lines",
+                        line=dict(width=0),
+                        showlegend=False,
+                        legendgroup=group_name,
+                        hoverinfo="skip",
+                    ))
+
+                    # Lower boundary with fill to upper
+                    fig.add_trace(go.Scatter(
+                        x=timeline,
+                        y=conf_lower,
+                        mode="lines",
+                        line=dict(width=0),
+                        fill="tonexty",
+                        fillcolor=fill_color,
+                        showlegend=False,
+                        legendgroup=group_name,
+                        hoverinfo="skip",
+                    ))
+
+                # Censoring marks (small vertical ticks at censoring times)
+                if show_censoring_marks and "censoring_times" in curve_data:
+                    censoring_times = curve_data["censoring_times"]
+                    # Get survival probability at censoring times by interpolation
+                    # For simplicity, mark at the nearest timeline point
+                    for cens_time in censoring_times:
+                        # Find nearest timeline index
+                        idx = np.searchsorted(timeline, cens_time)
+                        if idx >= len(timeline):
+                            idx = len(timeline) - 1
+                        surv_at_cens = survival_func[idx] if idx < len(survival_func) else survival_func[-1]
+                        fig.add_trace(go.Scatter(
+                            x=[cens_time],
+                            y=[surv_at_cens],
+                            mode="markers",
+                            marker=dict(symbol="line-ns", size=8, color=color, line=dict(width=2)),
+                            showlegend=False,
+                            legendgroup=group_name,
+                            hovertemplate=f"Censored at {cens_time:.0f} days<extra></extra>",
+                        ))
+
+            # Add log-rank p-value annotation
+            if log_rank_p is not None:
+                p_text = f"p < 0.001" if log_rank_p < 0.001 else f"p = {log_rank_p:.3f}"
+                fig.add_annotation(
+                    x=0.95, y=0.95,
+                    xref="paper", yref="paper",
+                    text=f"Log-rank {p_text}",
+                    showarrow=False,
+                    font=dict(size=12),
+                    bgcolor="white",
+                    bordercolor="black",
+                    borderwidth=1,
+                    borderpad=4,
+                )
+
+            # Add at-risk table if requested
+            if show_at_risk_table:
+                # Create annotation with at-risk numbers at key time points
+                time_points = []
+                max_time = max(max(curve_data["timeline"]) for curve_data in survival_curves.values())
+                time_intervals = np.linspace(0, max_time, min(6, int(max_time / 100) + 1))
+
+                at_risk_text = "<b>Number at Risk</b><br>"
+                for group_name, curve_data in survival_curves.items():
+                    at_risk_text += f"{group_name}: "
+                    n_at_risk = curve_data.get("n_at_risk", [])
+                    timeline = curve_data["timeline"]
+                    if n_at_risk:
+                        # Sample at key time points
+                        risk_vals = []
+                        for t in time_intervals:
+                            idx = np.searchsorted(timeline, t)
+                            if idx >= len(n_at_risk):
+                                idx = len(n_at_risk) - 1
+                            risk_vals.append(str(n_at_risk[idx]) if idx < len(n_at_risk) else "0")
+                        at_risk_text += " → ".join(risk_vals)
+                    at_risk_text += "<br>"
+
+                fig.add_annotation(
+                    x=0.5, y=-0.15,
+                    xref="paper", yref="paper",
+                    text=at_risk_text,
+                    showarrow=False,
+                    font=dict(size=10),
+                    align="left",
+                )
+
+            # Update layout
+            plot_title = title or f"Kaplan-Meier Survival Curves" + (f" - {protein}" if protein else "")
+            fig.update_layout(
+                title=dict(text=plot_title, x=0.5),
+                xaxis_title="Time (days)",
+                yaxis_title="Survival Probability",
+                yaxis=dict(range=[0, 1.05], tickformat=".0%"),
+                xaxis=dict(range=[0, None]),
+                legend=dict(
+                    x=0.7, y=0.95,
+                    bgcolor="rgba(255,255,255,0.8)",
+                    bordercolor="black",
+                    borderwidth=1,
+                ),
+                width=self.default_width,
+                height=self.default_height,
+                template="plotly_white",
+                margin=dict(b=120 if show_at_risk_table else 50),  # Extra margin for at-risk table
+            )
+
+            # Statistics
+            stats = {
+                "plot_type": "kaplan_meier_curve",
+                "n_groups": len(survival_curves),
+                "groups": list(survival_curves.keys()),
+                "log_rank_p_value": log_rank_p,
+                "protein": protein,
+                "show_confidence_intervals": show_confidence_intervals,
+                "show_at_risk_table": show_at_risk_table,
+            }
+
+            # Add median survival times if available
+            median_survivals = {}
+            for group_name, curve_data in survival_curves.items():
+                if "median_survival" in curve_data:
+                    median_survivals[group_name] = curve_data["median_survival"]
+            if median_survivals:
+                stats["median_survival_by_group"] = median_survivals
+
+            logger.info(f"Kaplan-Meier curve created for {len(survival_curves)} groups")
+
+            return fig, stats
+
+        except Exception as e:
+            logger.error(f"Error creating Kaplan-Meier curve: {e}")
+            raise ProteomicsVisualizationError(f"Failed to create KM curve: {str(e)}")
