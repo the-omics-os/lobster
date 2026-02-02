@@ -1,0 +1,21 @@
+Your task is to split the CLAUDE.md file in this project into a modular structure to reduce context pollution.
+
+Step 1: Backup the original file with cp CLAUDE.md CLAUDE.md.backup
+
+Step 2: Analyze the current file. Run wc -l CLAUDE.md and grep -n "^## " CLAUDE.md to understand its size and structure.
+
+Step 3: Create the docs directory with mkdir -p .claude/docs
+
+Step 4: Identify what to KEEP INLINE (needed every session): project overview, hard rules, quick commands, personality/identity, documentation navigation. These stay in the main file.
+
+Step 5: Identify what to EXTRACT (needed sometimes): detailed architecture, file structure reference, development patterns, tooling/environment setup. Each becomes a separate file in .claude/docs/
+
+Step 6: Create extracted docs. For each category, write a focused self-contained doc in .claude/docs/ containing only the detailed content for that topic. Name them clearly: architecture.md, code-layout.md, development-rules.md, tooling.md or similar names matching your project.
+
+Step 7: Rewrite the main CLAUDE.md to under 300 lines. Keep only the inline content identified in step 4. Replace extracted sections with a 2-3 line summary plus an @import reference like "For details: @.claude/docs/architecture.md"
+
+Step 8: Add a Documentation Navigation section with a table showing: Document path, When to load it, Example tasks that trigger loading. End with "Decision rule: If unsure, load the doc."
+
+Step 9: Verify with wc -l CLAUDE.md (should be under 300) and ls -la .claude/docs/ (should show your extracted docs).
+
+Target outcome: Main CLAUDE.md under 300 lines containing only universally-needed content. Detailed reference docs in .claude/docs/ loaded on-demand via @imports. Clear trigger conditions telling future agents when to load each doc.
