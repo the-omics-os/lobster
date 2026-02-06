@@ -8,6 +8,17 @@ and flexible validation that supports both strict and permissive modes.
 from .download_queue import DownloadQueueEntry, DownloadStatus, StrategyConfig
 from .ontology import DiseaseConcept, DiseaseMatch, DiseaseOntologyConfig
 
+# Vector search schemas
+from .search import (
+    SearchBackend,
+    EmbeddingProvider,
+    SearchResult,
+    SearchResponse,
+    OntologyMatch,
+    LiteratureMatch,
+    VectorSearchConfig,
+)
+
 # Clinical trial metadata (RECIST 1.1, timepoints)
 from .clinical_schema import (
     RECIST_RESPONSES,
@@ -30,6 +41,14 @@ __all__ = [
     "DiseaseConcept",
     "DiseaseMatch",
     "DiseaseOntologyConfig",
+    # Vector search schemas
+    "SearchBackend",
+    "EmbeddingProvider",
+    "SearchResult",
+    "SearchResponse",
+    "OntologyMatch",
+    "LiteratureMatch",
+    "VectorSearchConfig",
     # Clinical schema exports
     "RECIST_RESPONSES",
     "RESPONDER_GROUP",
