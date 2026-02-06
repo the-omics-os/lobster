@@ -37,6 +37,13 @@ from lobster.core.queue_storage import atomic_write_json, queue_file_lock
 from lobster.core.utils.h5ad_utils import validate_for_h5ad
 from lobster.core.workspace import resolve_workspace
 
+# Two-Tier State Management (BioAgents-inspired)
+from lobster.core.schemas.state import (
+    RequestState,
+    SessionState,
+    StateManager,
+)
+
 # Import for IR support (TYPE_CHECKING to avoid circular import)
 if TYPE_CHECKING:
     from anndata import AnnData
@@ -230,6 +237,13 @@ class DataManagerV2:
         self._auto_scan_on_access = auto_scan
         self.session_data: Optional[Dict] = None
         self.session_id = str(datetime.now().timestamp())  # Unique session ID
+
+        # Two-Tier State Management (BioAgents-inspired)
+        # - Tier 1 (RequestState): Transient, per-request, discarded after processing
+        # - Tier 2 (SessionState): Persistent, per-session, saved to .session_state.json
+        self._state_manager = StateManager(str(self.workspace_path))
+        self._session_state: Optional[SessionState] = None
+        self._request_state: Optional[RequestState] = None
 
         # Cache workspace scan results with 30-second TTL (Time To Live)
         self._available_datasets_cache: Optional[Dict[str, Dict]] = None
@@ -1345,6 +1359,172 @@ class DataManagerV2:
                     return activity
 
         return None
+
+    # =========================================================================
+    # TWO-TIER STATE MANAGEMENT (BioAgents-inspired)
+    # =========================================================================
+    # Tier 1: RequestState - Transient, per-request, discarded after processing
+    # Tier 2: SessionState - Persistent, per-session, saved to .session_state.json
+
+    def start_request(
+        self,
+        request_id: Optional[str] = None,
+        source: str = "cli",
+        **kwargs,
+    ) -> RequestState:
+        """
+        Start a new request, creating transient state (Tier 1).
+
+        This method should be called at the beginning of each user request
+        (query or chat message). The request state tracks timing and intermediate
+        results that are discarded after the request completes.
+
+        Args:
+            request_id: Unique request ID (auto-generated if not provided)
+            source: Request source ("cli", "api", "cloud")
+            **kwargs: Additional RequestState fields
+
+        Returns:
+            RequestState: New transient request state
+        """
+        import uuid
+
+        request_id = request_id or str(uuid.uuid4())
+        self._request_state = self._state_manager.start_request(
+            request_id=request_id,
+            session_id=self.session_id,
+            source=source,
+            **kwargs,
+        )
+        return self._request_state
+
+    @property
+    def request_state(self) -> Optional[RequestState]:
+        """
+        Current request state (Tier 1).
+
+        Returns None between requests.
+        """
+        return self._request_state
+
+    def end_request(self) -> Dict[str, Any]:
+        """
+        End the current request and save session state.
+
+        This method:
+        1. Saves the persistent SessionState to disk
+        2. Returns timing summary from RequestState
+        3. Discards the transient RequestState
+
+        Returns:
+            Dict with timing summary (request_id, total_duration_ms, steps, etc.)
+        """
+        # Save persistent state
+        if self._session_state is not None:
+            self._state_manager.save_session(self._session_state)
+
+        # Get timing summary and discard transient state
+        summary = self._state_manager.end_request()
+        self._request_state = None
+        return summary
+
+    @property
+    def session_state(self) -> SessionState:
+        """
+        Persistent session state (Tier 2).
+
+        Lazily loads or creates session state on first access.
+        """
+        if self._session_state is None:
+            self._session_state = self._state_manager.load_session(
+                session_id=self.session_id,
+                objective="",
+            )
+        return self._session_state
+
+    def init_session_state(self, objective: str = "") -> SessionState:
+        """
+        Initialize or reset session state with a new objective.
+
+        Args:
+            objective: The research objective/question
+
+        Returns:
+            SessionState: The initialized session state
+        """
+        self._session_state = self._state_manager.load_session(
+            session_id=self.session_id,
+            objective=objective,
+        )
+        return self._session_state
+
+    def add_insight(self, insight: str) -> None:
+        """
+        Add an insight to the session state (persisted).
+
+        Insights are accumulated across requests and saved to disk.
+        Maximum 10 insights are kept (oldest removed when exceeded).
+
+        Args:
+            insight: The insight to add
+        """
+        self.session_state.add_insight(insight)
+
+    def update_hypothesis(self, hypothesis: str) -> None:
+        """
+        Update the current hypothesis in session state (persisted).
+
+        Args:
+            hypothesis: The new hypothesis
+        """
+        self.session_state.update_hypothesis(hypothesis)
+
+    def get_key_insights(self) -> List[str]:
+        """
+        Get accumulated key insights from session state.
+
+        Returns:
+            List of insight strings (max 10)
+        """
+        return self.session_state.key_insights
+
+    def get_current_hypothesis(self) -> Optional[str]:
+        """
+        Get the current hypothesis from session state.
+
+        Returns:
+            Current hypothesis string or None
+        """
+        return self.session_state.current_hypothesis
+
+    def save_session_state(self) -> None:
+        """
+        Explicitly save session state to disk.
+
+        Normally called automatically by end_request(), but can be
+        called explicitly for immediate persistence.
+        """
+        if self._session_state is not None:
+            self._state_manager.save_session(self._session_state)
+            logger.debug("Session state saved explicitly")
+
+    def get_session_context(self) -> Dict[str, Any]:
+        """
+        Get session context summary for agent prompts.
+
+        Returns:
+            Dictionary with key context information including:
+            - objective, current_objective
+            - key_insights (last 5)
+            - current_hypothesis, methodology
+            - iteration count, convergence status
+            - loaded modalities
+        """
+        return self.session_state.get_context_summary()
+
+    # =========================================================================
+    # END TWO-TIER STATE MANAGEMENT
+    # =========================================================================
 
     def save_processed_data(
         self,
