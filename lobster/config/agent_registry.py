@@ -88,6 +88,16 @@ AGENT_REGISTRY: Dict[str, AgentRegistryConfig] = {
         handoff_tool_description=None,
         supervisor_accessible=False,  # Only via transcriptomics_expert
     ),
+    # === NEW: Hypothesis Expert (research synthesis agent) ===
+    "hypothesis_expert": AgentRegistryConfig(
+        name="hypothesis_expert",
+        display_name="Hypothesis Expert",
+        description="Synthesizes research findings into novel, evidence-linked scientific hypotheses with citations in (claim)[DOI] format",
+        factory_function="lobster.agents.hypothesis_expert.hypothesis_expert.hypothesis_expert",
+        handoff_tool_name="handoff_to_hypothesis_expert",
+        handoff_tool_description="Delegate hypothesis generation: synthesize research findings into formal hypotheses, generate novel research directions from literature/analysis, create testable hypotheses after exploratory analysis, update/refine existing hypotheses with new evidence",
+        supervisor_accessible=True,
+    ),
     # === NEW: Genomics Expert (parent agent) ===
     "genomics_expert": AgentRegistryConfig(
         name="genomics_expert",

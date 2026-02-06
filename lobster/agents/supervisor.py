@@ -352,6 +352,20 @@ def _build_workflow_section(active_agents: List[str], config: SupervisorConfig) 
       2. Appropriate expert (transcriptomics_expert, proteomics_expert, etc.) performs QC & preprocessing.
       3. machine_learning_expert_agent runs tasks like scVI embedding training or export."""
 
+    if "hypothesis_expert" in active_agents:
+        section += """
+
+    **Hypothesis Generation Workflow:**
+    - After gathering evidence from literature and/or analysis:
+      1. research_agent searches literature and caches findings in workspace.
+      2. Domain experts (transcriptomics_expert, etc.) run analyses and store results.
+      3. hypothesis_expert synthesizes evidence into formal hypothesis.
+      4. Hypothesis uses (claim)[DOI or URL] citation format for literature claims.
+    - Triggers for hypothesis_expert delegation:
+      - "generate hypothesis", "synthesize findings", "propose research direction"
+      - "what hypothesis can we form", "create testable hypothesis"
+      - After completing literature review + analysis, user asks for synthesis"""
+
     # Add download queue coordination pattern if both agents are present
     if "research_agent" in active_agents and "data_expert_agent" in active_agents:
         section += """
