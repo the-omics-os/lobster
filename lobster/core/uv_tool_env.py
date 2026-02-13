@@ -52,14 +52,20 @@ def detect_uv_tool_env() -> UvToolEnvInfo | None:
     tool_name = tool_section.get("name", "lobster-ai")
 
     # Extract installed package names from requirements list
+    # Format varies by uv version:
+    #   Old: ["lobster-ai==1.0.0", "lobster-transcriptomics>=0.1"]
+    #   New: [{ name = "lobster-ai", extras = ["full"] }]
     requirements = tool_section.get("requirements", [])
     packages: list[str] = []
     for req in requirements:
-        # req looks like: "lobster-ai==1.0.0" or "lobster-transcriptomics>=0.1"
-        # Extract just the package name (before any version specifier)
-        name = req
-        for sep in (">=", "<=", "==", "!=", "~=", ">", "<", "["):
-            name = name.split(sep)[0]
+        if isinstance(req, dict):
+            # New uv format: {name: "pkg", extras: [...], ...}
+            name = req.get("name", "")
+        else:
+            # Old uv format: "pkg==1.0.0" or "pkg>=0.1"
+            name = req
+            for sep in (">=", "<=", "==", "!=", "~=", ">", "<", "["):
+                name = name.split(sep)[0]
         name = name.strip()
         if name:
             packages.append(name)
