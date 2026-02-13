@@ -1,0 +1,172 @@
+name: Docker Build & Publish
+
+# ==============================================================================
+# TRIGGER STRATEGY: Avoid double-builds during releases
+# ==============================================================================
+# - Tags (v*.*.*): Build + Publish to Docker Hub (production)
+# - Pull Requests: Build + Test only (no publish)
+# - Manual Dispatch: For ad-hoc builds
+#
+# NOTE: We do NOT trigger on push to main to avoid double-builds:
+#   Release flow: push commit → push tag → both would trigger workflow
+#   With this config: only tag push triggers workflow (once)
+# ==============================================================================
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:  # Allow manual triggering
+
+env:
+  DOCKER_REGISTRY: docker.io
+  IMAGE_NAME: omicsos/lobster
+
+jobs:
+  # ============================================================================
+  # Job 1: Build and Test Docker Images
+  # ============================================================================
+  build-and-test:
+    name: Build & Test Docker Images
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Free up disk space
+        run: |
+          docker system prune -af --volumes
+          df -h
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build CLI Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          load: true
+          tags: ${{ env.IMAGE_NAME }}:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Test CLI functionality
+      - name: Test CLI --help
+        run: docker run --rm ${{ env.IMAGE_NAME }}:test --help
+
+      - name: Test CLI query command
+        run: docker run --rm ${{ env.IMAGE_NAME }}:test query --help
+
+      # Security scanning with Trivy
+      - name: Run Trivy security scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:test
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # ============================================================================
+  # Job 2: Publish to Docker Hub (only on tags)
+  # ============================================================================
+  publish:
+    name: Publish to Docker Hub
+    needs: build-and-test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Build and push CLI image (multi-arch)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+
+      # NOTE: GitHub Release creation is handled by release.yml (private repo)
+      # and public-release.yml (public repo). Removed duplicate release creation
+      # to avoid multiple releases per tag push.
+
+      - name: Publish summary
+        run: |
+          echo "## Docker Image Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image**: \`${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Pull Commands" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "# or" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # Job 3: Test docker-compose Configuration (DISABLED)
+  # ============================================================================
+  # NOTE: docker-compose.yml is PRIVATE - not synced to lobster-local
+  # This test job is commented out since docker-compose is for internal use only
+  #
+  # test-compose:
+  #   name: Test docker-compose
+  #   needs: build-and-test
+  #   runs-on: ubuntu-latest
+  #
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Create dummy .env file
+  #       run: |
+  #         cat > .env << EOF
+  #         ANTHROPIC_API_KEY=dummy-key-for-testing
+  #         EOF
+  #
+  #     - name: Validate docker-compose.yml
+  #       run: docker-compose config
+  #
+  #     - name: Test docker-compose build
+  #       run: docker-compose build lobster-cli
+  #
+  #     - name: Test CLI via docker-compose
+  #       run: docker-compose run --rm lobster-cli --help

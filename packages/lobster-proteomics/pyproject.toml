@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lobster-proteomics"
+version = "1.0.0"
+description = "Proteomics agent for Lobster AI (DDA/DIA mass spectrometry, affinity platforms)"
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+authors = [
+    {name = "Omics-OS", email = "info@omics-os.com"}
+]
+keywords = ["bioinformatics", "proteomics", "mass-spectrometry", "DDA", "DIA", "Olink", "SomaScan", "lobster-ai"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
+requires-python = ">=3.12"
+dependencies = [
+    "lobster-ai~=1.0.0",
+]
+
+[project.optional-dependencies]
+network-analysis = [
+    "networkx>=3.0",
+]
+
+[project.urls]
+Homepage = "https://omics-os.com"
+Documentation = "https://docs.omics-os.com"
+Repository = "https://github.com/the-omics-os/lobster"
+
+[project.entry-points."lobster.agents"]
+proteomics_expert = "lobster.agents.proteomics.proteomics_expert:AGENT_CONFIG"
+
+[project.entry-points."lobster.states"]
+ProteomicsExpertState = "lobster.agents.proteomics.state:ProteomicsExpertState"
+
+[tool.setuptools]
+packages.find = {where = ["."], include = ["lobster*"], namespaces = true}
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]

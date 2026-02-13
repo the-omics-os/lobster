@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lobster-transcriptomics"
+version = "1.0.0"
+description = "Transcriptomics agents for Lobster AI - single-cell and bulk RNA-seq analysis"
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+authors = [
+    {name = "Omics-OS", email = "info@omics-os.com"}
+]
+keywords = [
+    "bioinformatics",
+    "single-cell",
+    "RNA-seq",
+    "transcriptomics",
+    "scRNA-seq",
+    "bulk-rnaseq",
+    "differential-expression",
+    "cell-type-annotation"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+requires-python = ">=3.12"
+dependencies = [
+    "lobster-ai~=1.0.0",
+    "scanpy",
+    "leidenalg",
+]
+
+[project.optional-dependencies]
+doublet-detection = [
+    "scrublet>=0.2.3",
+]
+
+[project.urls]
+Homepage = "https://omics-os.com"
+Documentation = "https://docs.omics-os.com"
+Repository = "https://github.com/the-omics-os/lobster"
+
+[project.entry-points."lobster.agents"]
+transcriptomics_expert = "lobster.agents.transcriptomics.transcriptomics_expert:AGENT_CONFIG"
+annotation_expert = "lobster.agents.transcriptomics.annotation_expert:AGENT_CONFIG"
+de_analysis_expert = "lobster.agents.transcriptomics.de_analysis_expert:AGENT_CONFIG"
+
+[project.entry-points."lobster.states"]
+TranscriptomicsExpertState = "lobster.agents.transcriptomics.state:TranscriptomicsExpertState"
+AnnotationExpertState = "lobster.agents.transcriptomics.state:AnnotationExpertState"
+DEAnalysisExpertState = "lobster.agents.transcriptomics.state:DEAnalysisExpertState"
+
+[tool.setuptools]
+packages.find = {where = ["."], include = ["lobster*"], namespaces = true}
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]

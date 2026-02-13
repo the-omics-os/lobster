@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lobster-genomics"
+version = "1.0.0"
+description = "Genomics agent for Lobster AI (VCF, PLINK, GWAS, variant annotation)"
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+authors = [
+    {name = "Omics-OS", email = "info@omics-os.com"}
+]
+keywords = ["bioinformatics", "genomics", "GWAS", "VCF", "PLINK", "variant-annotation", "lobster-ai"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
+requires-python = ">=3.12"
+dependencies = [
+    "lobster-ai~=1.0.0",
+    "xarray",
+    "sgkit>=0.7.0",
+    "statsmodels>=0.14.0",
+    "genebe>=0.2.0",
+]
+
+[project.urls]
+Homepage = "https://omics-os.com"
+Documentation = "https://docs.omics-os.com"
+Repository = "https://github.com/the-omics-os/lobster"
+
+[project.entry-points."lobster.agents"]
+genomics_expert = "lobster.agents.genomics.genomics_expert:AGENT_CONFIG"
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]
+
+# PEP 420 namespace packages - do NOT create __init__.py in lobster/ or lobster/agents/
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lobster*"]
+namespaces = true

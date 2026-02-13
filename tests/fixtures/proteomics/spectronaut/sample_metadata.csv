@@ -1,0 +1,11 @@
+sample_name,condition,batch,timepoint
+Sample1,control,batch1,T0
+Sample2,treatment,batch1,T0
+Sample3,control,batch1,T24
+Sample4,treatment,batch1,T24
+Sample5,control,batch2,T0
+Sample6,treatment,batch2,T0
+Sample7,control,batch2,T24
+Sample8,treatment,batch2,T24
+Sample9,control,batch3,T0
+Sample10,treatment,batch3,T0

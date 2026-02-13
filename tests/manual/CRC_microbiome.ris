@@ -1,0 +1,1111 @@
+TY  - JOUR
+TI  - Custom scoring based on ecological topology of gut microbiota associated with cancer immunotherapy outcome
+AU  - Derosa, Lisa
+AU  - Iebba, Valerio
+AU  - Silva, Carolina Alves Costa
+AU  - Piccinno, Gianmarco
+AU  - Wu, Guojun
+AU  - Lordello, Leonardo
+AU  - Routy, Bertrand
+AU  - Zhao, Naisi
+AU  - Thelemaque, Cassandra
+AU  - Birebent, Roxanne
+AU  - Marmorino, Federica
+AU  - Fidelle, Marine
+AU  - Messaoudene, Meriem
+AU  - Thomas, Andrew Maltez
+AU  - Zalcman, Gerard
+AU  - Friard, Sylvie
+AU  - Mazieres, Julien
+AU  - Audigier-Valette, Clarisse
+AU  - Sibilot, Denis Moro-
+AU  - Goldwasser, François
+AU  - Scherpereel, Arnaud
+AU  - Pegliasco, Hervé
+AU  - Ghiringhelli, François
+AU  - Bouchard, Nicole
+AU  - Sow, Cissé
+AU  - Darik, Ines
+AU  - Zoppi, Silvia
+AU  - Ly, Pierre
+AU  - Reni, Anna
+AU  - Daillère, Romain
+AU  - Deutsch, Eric
+AU  - Lee, Karla A.
+AU  - Bolte, Laura A.
+AU  - Björk, Johannes R.
+AU  - Weersma, Rinse K.
+AU  - Barlesi, Fabrice
+AU  - Padilha, Lucas
+AU  - Finzel, Ana
+AU  - Isaksen, Morten L.
+AU  - Escudier, Bernard
+AU  - Albiges, Laurence
+AU  - Planchard, David
+AU  - André, Fabrice
+AU  - Cremolini, Chiara
+AU  - Martinez, Stéphanie
+AU  - Besse, Benjamin
+AU  - Zhao, Liping
+AU  - Segata, Nicola
+AU  - Wojcik, Jérôme
+AU  - Kroemer, Guido
+AU  - Zitvogel, Laurence
+T2  - Cell
+DA  - 2024/06/20/
+PY  - 2024
+DO  - 10.1016/j.cell.2024.05.029
+DP  - www.cell.com
+VL  - 187
+IS  - 13
+SP  - 3373
+EP  - 3389.e16
+J2  - Cell
+LA  - English
+SN  - 0092-8674, 1097-4172
+UR  - https://www.cell.com/cell/abstract/S0092-8674(24)00538-5
+Y2  - 2025/01/09/09:22:37
+L2  - http://www.ncbi.nlm.nih.gov/pubmed/38906102
+KW  - metagenomics
+KW  - microbiome
+KW  - cancer
+KW  - gut microbiota
+KW  - immunotherapy
+KW  - Akkermansia muciniphila
+KW  - biomarker
+KW  - immune-checkpoint blockade
+KW  - PD-(L)1
+KW  - TOPOSCORE
+ER  - 
+
+TY  - JOUR
+TI  - Elucidation of the Bovine Intramammary Bacteriome and Resistome from healthy cows of Swiss dairy farms in the Canton Tessin
+AU  - Romanò, Alicia
+AU  - Ivanovic, Ivana
+AU  - Segessemann, Tina
+AU  - Vazquez Rojo, Laura
+AU  - Widmer, Jérôme
+AU  - Egger, Lotti
+AU  - Dreier, Matthias
+AU  - Sesso, Lorenzo
+AU  - Vaccani, Michael
+AU  - Schuler, Martin
+AU  - Frei, Daniel
+AU  - Frey, Juerg
+AU  - Ahrens, Christian H.
+AU  - Steiner, Adrian
+AU  - Graber, Hans Ulrich
+T2  - Frontiers in Microbiology
+AB  - Healthy, untreated cows of nine dairy herds from the Swiss Canton Tessin were analyzed three times within one year to identify the most abundant species of the intramammary bacteriome. Aseptically collected milk samples were cultured and bacteria identified using MALDI-TOF. Of 256 cows analyzed, 96% were bacteriologically positive and 80% of the 1,024 quarters were positive for at least one bacterial species. 84.5% of the quarters were healthy with somatic cell counts (SCC) &lt; 200,000 cells/mL, whereas 15.5% of the quarters showed a subclinical mastitis (SCC ≥ 200,000 cells/mL). We could assign 1,288 isolates to 104 different bacterial species including 23 predominant species. Non-
+              aureus
+              staphylococci and mammaliicocci (NASM) were most prevalent (14 different species; 73.5% quarters).
+              Staphylococcus xylosus
+              and
+              Mammaliicoccus sciuri
+              accounted for 74.7% of all NASM isolates. To describe the intramammary resistome, 350 isolates of the predominant species were selected and subjected to short-read whole genome sequencing (WGS) and phenotypic antibiotic resistance profiling. While complete genomes of eight type strains were available, the remaining 15 were
+              de novo
+              assembled with long reads as a resource for the community. The 23 complete genomes served for reference-based assembly of the Illumina WGS data. Both chromosomes and mobile genetic elements were examined for antibiotic resistance genes (ARGs) using in-house and online software tools. ARGs were then correlated with phenotypic antibiotic resistance data from minimum inhibitory concentration (MIC). Phenotypic and genomic antimicrobial resistance was isolate-specific. Resistance to clindamycin and oxacillin was most frequently observed (65 and 30%) in
+              Staphylococcus xylosus
+              but could not be linked to chromosomal or plasmid-borne ARGs. However, in several cases, the observed antimicrobial resistance could be explained by the presence of mobile genetic elements like
+              tetK
+              carried on small plasmids. This represents a possible mechanism of transfer between non-pathogenic bacteria and pathogens of the mammary gland within and between herds. The-to our knowledge-most extensive bacteriome reported and the first attempt to link it with the resistome promise to profoundly affect veterinary bacteriology in the future and are highly relevant in a One Health context, in particular for mastitis, the treatment of which still heavily relies on antibiotics.
+DA  - 2023/07/31/
+PY  - 2023
+DO  - 10.3389/fmicb.2023.1183018
+DP  - DOI.org (Crossref)
+VL  - 14
+SP  - 1183018
+J2  - Front. Microbiol.
+SN  - 1664-302X
+UR  - https://www.frontiersin.org/articles/10.3389/fmicb.2023.1183018/full
+Y2  - 2024/10/14/11:04:19
+L1  - https://www.frontiersin.org/articles/10.3389/fmicb.2023.1183018/pdf
+ER  - 
+
+TY  - JOUR
+TI  - Development of a High-Throughput Microfluidic qPCR System for the Quantitative Determination of Quality-Relevant Bacteria in Cheese
+AU  - Dreier, Matthias
+AU  - Berthoud, Hélène
+AU  - Shani, Noam
+AU  - Wechsler, Daniel
+AU  - Junier, Pilar
+T2  - Frontiers in Microbiology
+AB  - <p>The composition of the cheese microbiome has an important impact on the sensorial quality and safety of cheese. Therefore, much effort has been made to investigate the microbial community composition of cheese. Quantitative real-time polymerase chain reaction (qPCR) is a well-established method for detecting and quantifying bacteria. High-throughput qPCR (HT-qPCR) using microfluidics brings further advantages by providing fast results and by decreasing the cost per sample. We have developed a HT-qPCR approach for the rapid and cost-efficient quantification of microbial species in cheese by designing qPCR assays targeting 24 species/subspecies commonly found in cheese. Primer pairs were evaluated on the Biomark (Fluidigm) microfluidic HT-qPCR system using DNA from single strains and from artificial mock communities. The qPCR assays worked efficiently under identical PCR conditions, and the validation showed satisfying inclusivity, exclusivity, and amplification efficiencies. Preliminary results obtained from the HT-qPCR analysis of DNA samples of model cheeses made with the addition of adjunct cultures confirmed the potential of the microfluidic HT-qPCR system to screen for selected bacterial species in the cheese microbiome. HT-qPCR data of DNA samples of two downgraded commercial cheeses showed that this approach provides valuable information that can help to identify the microbial origin of quality defects. This newly developed HT-qPCR system is a promising approach that will allow simultaneous monitoring of quality-relevant species in fermented foods with high bacterial diversity, thereby opening up new perspectives for the control and assurance of high product quality.</p>
+DA  - 2021/01/07/
+PY  - 2021
+DO  - 10.3389/fmicb.2020.619166
+DP  - Frontiers
+VL  - 11
+J2  - Front. Microbiol.
+LA  - English
+SN  - 1664-302X
+UR  - https://www.frontiersin.org/journals/microbiology/articles/10.3389/fmicb.2020.619166/full
+Y2  - 2024/07/09/13:59:39
+L1  - https://www.frontiersin.org/articles/10.3389/fmicb.2020.619166/pdf
+KW  - microbial community composition
+KW  - Food Microbiology
+KW  - Fluidigm
+KW  - cheese microbiome
+KW  - fermented food
+KW  - microfluidic
+KW  - real-time qPCR
+KW  - Cheese quality
+ER  - 
+
+TY  - JOUR
+TI  - SpeciesPrimer: a bioinformatics pipeline dedicated to the design of qPCR primers for the quantification of bacterial species
+AU  - Dreier, Matthias
+AU  - Berthoud, Hélène
+AU  - Shani, Noam
+AU  - Wechsler, Daniel
+AU  - Junier, Pilar
+T2  - PeerJ
+AB  - Background Quantitative real-time PCR (qPCR) is a well-established method for detecting and quantifying bacteria, and it is progressively replacing culture-based diagnostic methods in food microbiology. High-throughput qPCR using microfluidics brings further advantages by providing faster results, decreasing the costs per sample and reducing errors due to automatic distribution of samples and reagents. In order to develop a high-throughput qPCR approach for the rapid and cost-efficient quantification of microbial species in complex systems such as fermented foods (for instance, cheese), the preliminary setup of qPCR assays working efficiently under identical PCR conditions is required. Identification of target-specific nucleotide sequences and design of specific primers are the most challenging steps in this process. To date, most available tools for primer design require either laborious manual manipulation or high-performance computing systems. Results We developed the SpeciesPrimer pipeline for automated high-throughput screening of species-specific target regions and the design of dedicated primers. Using SpeciesPrimer, specific primers were designed for four bacterial species of importance in cheese quality control, namely Enterococcus faecium, Enterococcus faecalis, Pediococcus acidilactici and Pediococcus pentosaceus. Selected primers were first evaluated in silico and subsequently in vitro using DNA from pure cultures of a variety of strains found in dairy products. Specific qPCR assays were developed and validated, satisfying the criteria of inclusivity, exclusivity and amplification efficiencies. Conclusion In this work, we present the SpeciesPrimer pipeline, a tool to design species-specific primers for the detection and quantification of bacterial species. We use SpeciesPrimer to design qPCR assays for four bacterial species and describe a workflow to evaluate the designed primers. SpeciesPrimer facilitates efficient primer design for species-specific quantification, paving the way for a fast and accurate quantitative investigation of microbial communities.
+DA  - 2020/02/18/
+PY  - 2020
+DO  - 10.7717/peerj.8544
+DP  - peerj.com
+VL  - 8
+SP  - e8544
+J2  - PeerJ
+LA  - en
+SN  - 2167-8359
+ST  - SpeciesPrimer
+UR  - https://peerj.com/articles/8544
+Y2  - 2024/07/09/14:11:17
+L1  - https://peerj.com/articles/8544.pdf
+ER  - 
+
+TY  - JOUR
+TI  - Characterization of Clostridium tyrobutyricum Strains Using Three Different Typing Techniques
+AU  - Burtscher, Johanna
+AU  - Küller, Franziska
+AU  - Dreier, Matthias
+AU  - Arias-Roth, Emmanuelle
+AU  - Drissner, David
+AU  - Domig, Konrad J.
+T2  - Microorganisms
+AB  - Clostridium tyrobutyricum is well known as one of the main causative agents of severe cheese spoilage. The metabolism of this anaerobic bacterium during ripening leads to textural and sensory defects in cheese and consequential loss of product value. The potential to induce cheese spoilage, however, may vary among different strains of the same species. Therefore, a better understanding of the intra-species diversity of C. tyrobutyricum may be of practical relevance for the dairy industry. In the present study, we compared the ability of three typing techniques to differentiate 95 C. tyrobutyricum strains on the subspecies level: (1) repetitive element palindromic PCR (rep-PCR) fingerprinting combined with conventional agarose gel electrophoresis, (2) hexaplex-PCR followed by an automated capillary electrophoresis and (3) matrix-assisted laser desorption ionization-time of flight mass spectrometry (MALDI-TOF MS) typing. MALDI-TOF MS fingerprinting provided only moderate reproducibility and low discriminatory power. Both PCR-based methods were highly reproducible and discriminative, with hexaplex-PCR fingerprinting being slightly more discriminative than rep-PCR typing. Overall, a high intra-species diversity was observed among the tested strains, indicating that further investigations on the strain level may be of interest.
+DA  - 2020/07//
+PY  - 2020
+DO  - 10.3390/microorganisms8071057
+DP  - www.mdpi.com
+VL  - 8
+IS  - 7
+SP  - 1057
+LA  - en
+SN  - 2076-2607
+UR  - https://www.mdpi.com/2076-2607/8/7/1057
+Y2  - 2024/09/12/18:50:50
+L1  - https://www.mdpi.com/2076-2607/8/7/1057/pdf?version=1594892286
+KW  - cheese
+KW  - fingerprinting
+KW  - MALDI-TOF MS
+KW  - spoilage
+KW  - typing
+KW  - <i>Clostridium tyrobutyricum</i>
+ER  - 
+
+TY  - JOUR
+TI  - Selective enrichment of the raw milk microbiota in cheese production: Concept of a natural adjunct milk culture
+AU  - Bettera, Luca
+AU  - Dreier, Matthias
+AU  - Schmidt, Remo S.
+AU  - Gatti, Monica
+AU  - Berthoud, Hélène
+AU  - Bachmann, Hans-Peter
+T2  - Frontiers in Microbiology
+AB  - <p>In cheese production, microorganisms are usually added at the beginning of the process as primary starters to drive curd acidification, while secondary microorganisms, with other pro-technological features important for cheese ripening, are added as selected cultures. This research aimed to investigate the possibilities of influencing and selecting the raw milk microbiota using artisanal traditional methods, providing a simple method to produce a natural supplementary culture. We investigated the production of an enriched raw milk whey culture (eRWC), a natural adjunct microbial culture produced from mixing an enriched raw milk (eRM) with a natural whey culture (NWC). The raw milk was enriched by spontaneous fermentation for 21 d at 10°C. Three milk enrichment protocols were tested: heat treatment before incubation, heat treatment plus salt addition, and no treatment. The eRMs were then co-fermented with NWC (ratio of 1:10) at 38°C for 6 h (young eRWC) and 22 h (old eRWC). Microbial diversity during cultures’ preparation was evaluated through the determination of colony forming units on selective growth media, and next-generation sequencing (16S rRNA gene amplicon sequencing). The enrichment step increased the streptococci and lactobacilli but reduced microbial richness and diversity of the eRMs. Although the lactic acid bacteria viable count was not significantly different between the eRWCs, they harbored higher microbial richness and diversity than NWC. Natural adjunct cultures were then tested in cheese making trials, following the microbial development, and assessing the chemical quality of the 120 d ripened cheeses. The use of eRWCs slowed the curd acidification in the first hours of cheese making but the pH 24 h after production settled to equal values for all the cheeses. Although the use of diverse eRWCs contributed to having a richer and more diverse microbiota in the early stages of cheese making, their effect decreased over time during ripening, showing an inferior effect to the raw milk microbiota. Even if more research is needed, the optimization of such a tool could be an alternative to the practice of isolating, geno-pheno-typing, and formulating mixed-defined-strain adjunct cultures that require knowledge and facilities not always available for artisanal cheese makers.</p>
+DA  - 2023/04/26/
+PY  - 2023
+DO  - 10.3389/fmicb.2023.1154508
+DP  - Frontiers
+VL  - 14
+J2  - Front. Microbiol.
+LA  - English
+SN  - 1664-302X
+ST  - Selective enrichment of the raw milk microbiota in cheese production
+UR  - https://www.frontiersin.org/journals/microbiology/articles/10.3389/fmicb.2023.1154508/full
+Y2  - 2024/05/23/11:13:09
+L1  - https://www.frontiersin.org/articles/10.3389/fmicb.2023.1154508/pdf
+KW  - microbial communities
+KW  - fermented food
+KW  - Cheese quality
+KW  - Natural milk culture
+KW  - NSLAB
+KW  - raw milk cheese
+ER  - 
+
+TY  - JOUR
+TI  - High-throughput qPCR and 16S rRNA gene amplicon sequencing as complementary methods for the investigation of the cheese microbiota
+AU  - Dreier, Matthias
+AU  - Meola, Marco
+AU  - Berthoud, Hélène
+AU  - Shani, Noam
+AU  - Wechsler, Daniel
+AU  - Junier, Pilar
+T2  - BMC Microbiology
+AB  - Next-generation sequencing (NGS) methods and especially 16S rRNA gene amplicon sequencing have become indispensable tools in microbial ecology. While they have opened up new possibilities for studying microbial communities, they also have one drawback, namely providing only relative abundances and thus compositional data. Quantitative PCR (qPCR) has been used for years for the quantification of bacteria. However, this method requires the development of specific primers and has a low throughput. The constraint of low throughput has recently been overcome by the development of high-throughput qPCR (HT-qPCR), which allows for the simultaneous detection of the most prevalent bacteria in moderately complex systems, such as cheese and other fermented dairy foods. In the present study, the performance of the two approaches, NGS and HT-qPCR, was compared by analyzing the same DNA samples from 21 Raclette du Valais protected designation of origin (PDO) cheeses. Based on the results obtained, the differences, accuracy, and usefulness of the two approaches were studied in detail.
+DA  - 2022/02/07/
+PY  - 2022
+DO  - 10.1186/s12866-022-02451-y
+DP  - BioMed Central
+VL  - 22
+IS  - 1
+SP  - 48
+J2  - BMC Microbiology
+SN  - 1471-2180
+UR  - https://doi.org/10.1186/s12866-022-02451-y
+Y2  - 2024/07/09/13:53:43
+L1  - https://bmcmicrobiol.biomedcentral.com/counter/pdf/10.1186/s12866-022-02451-y
+L2  - https://bmcmicrobiol.biomedcentral.com/articles/10.1186/s12866-022-02451-y
+ER  - 
+
+TY  - JOUR
+TI  - ggtree: an r package for visualization and annotation of phylogenetic trees with their covariates and other associated data
+AU  - Yu, Guangchuang
+AU  - Smith, David K.
+AU  - Zhu, Huachen
+AU  - Guan, Yi
+AU  - Lam, Tommy Tsan-Yuk
+T2  - Methods in Ecology and Evolution
+AB  - We present an r package, ggtree, which provides programmable visualization and annotation of phylogenetic trees. ggtree can read more tree file formats than other softwares, including newick, nexus, NHX, phylip and jplace formats, and support visualization of phylo, multiphylo, phylo4, phylo4d, obkdata and phyloseq tree objects defined in other r packages. It can also extract the tree/branch/node-specific and other data from the analysis outputs of beast, epa, hyphy, paml, phylodog, pplacer, r8s, raxml and revbayes software, and allows using these data to annotate the tree. The package allows colouring and annotation of a tree by numerical/categorical node attributes, manipulating a tree by rotating, collapsing and zooming out clades, highlighting user selected clades or operational taxonomic units and exploration of a large tree by zooming into a selected portion. A two-dimensional tree can be drawn by scaling the tree width based on an attribute of the nodes. A tree can be annotated with an associated numerical matrix (as a heat map), multiple sequence alignment, subplots or silhouette images. The package ggtree is released under the artistic-2.0 license. The source code and documents are freely available through bioconductor (http://www.bioconductor.org/packages/ggtree).
+DA  - 2017///
+PY  - 2017
+DO  - 10.1111/2041-210X.12628
+DP  - Wiley Online Library
+VL  - 8
+IS  - 1
+SP  - 28
+EP  - 36
+LA  - en
+SN  - 2041-210X
+ST  - ggtree
+UR  - https://onlinelibrary.wiley.com/doi/abs/10.1111/2041-210X.12628
+Y2  - 2024/09/17/08:36:33
+L1  - https://onlinelibrary.wiley.com/doi/pdfdirect/10.1111/2041-210X.12628
+L2  - https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.12628
+KW  - visualization
+KW  - annotation
+KW  - bioconductor
+KW  - evolution
+KW  - phylogeny
+KW  - r package
+ER  - 
+
+TY  - JOUR
+TI  - Gut Microbiome Wellness Index 2 enhances health status prediction from gut microbiome taxonomic profiles
+AU  - Chang, Daniel
+AU  - Gupta, Vinod K.
+AU  - Hur, Benjamin
+AU  - Cobo-López, Sergio
+AU  - Cunningham, Kevin Y.
+AU  - Han, Nam Soo
+AU  - Lee, Insuk
+AU  - Kronzer, Vanessa L.
+AU  - Teigen, Levi M.
+AU  - Karnatovskaia, Lioudmila V.
+AU  - Longbrake, Erin E.
+AU  - Davis, John M.
+AU  - Nelson, Heidi
+AU  - Sung, Jaeyun
+T2  - Nature Communications
+AB  - Recent advancements in translational gut microbiome research have revealed its crucial role in shaping predictive healthcare applications. Herein, we introduce the Gut Microbiome Wellness Index 2 (GMWI2), an enhanced version of our original GMWI prototype, designed as a standardized disease-agnostic health status indicator based on gut microbiome taxonomic profiles. Our analysis involves pooling existing 8069 stool shotgun metagenomes from 54 published studies across a global demographic landscape (spanning 26 countries and six continents) to identify gut taxonomic signals linked to disease presence or absence. GMWI2 achieves a cross-validation balanced accuracy of 80% in distinguishing healthy (no disease) from non-healthy (diseased) individuals and surpasses 90% accuracy for samples with higher confidence (i.e., outside the “reject option”). This performance exceeds that of the original GMWI model and traditional species-level α-diversity indices, indicating a more robust gut microbiome signature for differentiating between healthy and non-healthy phenotypes across multiple diseases. When assessed through inter-study validation and external validation cohorts, GMWI2 maintains an average accuracy of nearly 75%. Furthermore, by reevaluating previously published datasets, GMWI2 offers new insights into the effects of diet, antibiotic exposure, and fecal microbiota transplantation on gut health. Available as an open-source command-line tool, GMWI2 represents a timely, pivotal resource for evaluating health using an individual’s unique gut microbial composition.
+DA  - 2024/08/28/
+PY  - 2024
+DO  - 10.1038/s41467-024-51651-9
+DP  - www.nature.com
+VL  - 15
+IS  - 1
+SP  - 7447
+J2  - Nat Commun
+LA  - en
+SN  - 2041-1723
+UR  - https://www.nature.com/articles/s41467-024-51651-9
+Y2  - 2024/09/13/15:43:57
+L1  - https://www.nature.com/articles/s41467-024-51651-9.pdf
+KW  - Applied microbiology
+KW  - Predictive markers
+KW  - Predictive medicine
+ER  - 
+
+TY  - ELEC
+TI  - Evaluating the Efficiency of 16S-ITS-23S operon Sequencing: A Comparison of Primer Pairs, Sequencing Platforms, and Taxonomic Classifiers | Research Square
+UR  - https://www.researchsquare.com/article/rs-4006805/v1
+Y2  - 2024/09/13/10:50:53
+L1  - https://www.researchsquare.com/article/rs-4006805/v1.pdf
+L2  - https://www.researchsquare.com/article/rs-4006805/v1
+ER  - 
+
+TY  - ELEC
+TI  - Nonlinear dynamics of multi-omics profiles during human aging | Nature Aging
+UR  - https://www.nature.com/articles/s43587-024-00692-2
+Y2  - 2024/08/14/15:59:14
+L2  - https://www.nature.com/articles/s43587-024-00692-2
+ER  - 
+
+TY  - JOUR
+TI  - Towards unified reporting of genome sequencing results in clinical microbiology
+AU  - Mutschler, Eugenio
+AU  - Roloff, Tim
+AU  - Neves, Aitana
+AU  - Aamot, Hege Vangstein
+AU  - Rodriguez-Sanchez, Belén
+AU  - Ramirez, Mario
+AU  - Rossen, John
+AU  - Couto, Natacha
+AU  - Novais, Ângela
+AU  - Howden, Benjamin P.
+AU  - Brisse, Sylvain
+AU  - Reuter, Sandra
+AU  - Nolte, Oliver
+AU  - Egli, Adrian
+AU  - Seth-Smith, Helena M. B.
+T2  - PeerJ
+AB  - Whole genome sequencing (WGS) has become a vital tool in clinical microbiology, playing an important role in outbreak investigations, molecular surveillance, and identification of bacterial species, resistance mechanisms and virulence factors. However, the complexity of WGS data presents challenges in interpretation and reporting, requiring tailored strategies to enhance efficiency and impact. This study explores the diverse needs of key stakeholders in healthcare, including clinical management, laboratory work, public surveillance and epidemiology, infection prevention and control, and academic research, regarding WGS-based reporting of clinically relevant bacterial species. In order to determine preferences regarding WGS reports, human-centered design approach was employed, involving an online survey and a subsequent workshop with stakeholders. The survey gathered responses from 64 participants representing the above mentioned healthcare sectors across geographical regions. Key findings include the identification of barriers related to data accessibility, integration with patient records, and the complexity of interpreting WGS results. As the participants designed their ideal report using nine pre-defined sections of a typical WGS report, differences in needs regarding report structure and content across stakeholders became evident. The workshop discussions further highlighted the need to feature critical findings and quality metrics prominently in reports, as well as the demand for flexible report designs. Commonalities were observed across stakeholder-specific reporting templates, such as the uniform ranking of certain report sections, but preferences regarding the depth of content within these sections varied. Using these findings, we suggest stakeholder-specific structures which should be considered when designing customized reporting templates. In conclusion, this study underscores the importance of tailoring WGS-based reports of clinically relevant bacteria to meet the distinct needs of diverse healthcare stakeholders. The evolving landscape of digital reporting increases the opportunities with respect to WGS reporting and its utility in managing infectious diseases and public health surveillance.
+DA  - 2024/08/08/
+PY  - 2024
+DO  - 10.7717/peerj.17673
+DP  - peerj.com
+VL  - 12
+SP  - e17673
+J2  - PeerJ
+LA  - en
+SN  - 2167-8359
+UR  - https://peerj.com/articles/17673
+Y2  - 2024/08/08/20:15:41
+L1  - https://peerj.com/articles/17673.pdf
+ER  - 
+
+TY  - JOUR
+TI  - Detection of hidden antibiotic resistance through real-time genomics
+AU  - Sauerborn, Ela
+AU  - Corredor, Nancy Carolina
+AU  - Reska, Tim
+AU  - Perlas, Albert
+AU  - Vargas da Fonseca Atum, Samir
+AU  - Goldman, Nick
+AU  - Wantia, Nina
+AU  - Prazeres da Costa, Clarissa
+AU  - Foster-Nyarko, Ebenezer
+AU  - Urban, Lara
+T2  - Nature Communications
+AB  - Real-time genomics through nanopore sequencing holds the promise of fast antibiotic resistance prediction directly in the clinical setting. However, concerns about the accuracy of genomics-based resistance predictions persist, particularly when compared to traditional, clinically established diagnostic methods. Here, we leverage the case of a multi-drug resistant Klebsiella pneumoniae infection to demonstrate how real-time genomics can enhance the accuracy of antibiotic resistance profiling in complex infection scenarios. Our results show that unlike established diagnostics, nanopore sequencing data analysis can accurately detect low-abundance plasmid-mediated resistance, which often remains undetected by conventional methods. This capability has direct implications for clinical practice, where such “hidden” resistance profiles can critically influence treatment decisions. Consequently, the rapid, in situ application of real-time genomics holds significant promise for improving clinical decision-making and patient outcomes.
+DA  - 2024/06/28/
+PY  - 2024
+DO  - 10.1038/s41467-024-49851-4
+DP  - www.nature.com
+VL  - 15
+IS  - 1
+SP  - 5494
+J2  - Nat Commun
+LA  - en
+SN  - 2041-1723
+UR  - https://www.nature.com/articles/s41467-024-49851-4
+Y2  - 2024/07/18/07:43:24
+L1  - https://www.nature.com/articles/s41467-024-49851-4.pdf
+KW  - Antimicrobial resistance
+KW  - Bacterial genetics
+KW  - Bacterial infection
+KW  - Medical genomics
+ER  - 
+
+TY  - JOUR
+TI  - Progesterone Increases Bifidobacterium Relative Abundance during Late Pregnancy
+AU  - Nuriel-Ohayon, Meital
+AU  - Neuman, Hadar
+AU  - Ziv, Oren
+AU  - Belogolovski, Anna
+AU  - Barsheshet, Yiftah
+AU  - Bloch, Naamah
+AU  - Uzan, Atara
+AU  - Lahav, Roey
+AU  - Peretz, Avi
+AU  - Frishman, Sigal
+AU  - Hod, Moshe
+AU  - Hadar, Eran
+AU  - Louzoun, Yoram
+AU  - Avni, Orly
+AU  - Koren, Omry
+T2  - Cell Reports
+DA  - 2019/04/16/
+PY  - 2019
+DO  - 10.1016/j.celrep.2019.03.075
+DP  - www.cell.com
+VL  - 27
+IS  - 3
+SP  - 730
+EP  - 736.e3
+J2  - Cell Reports
+LA  - English
+SN  - 2211-1247
+UR  - https://www.cell.com/cell-reports/abstract/S2211-1247(19)30405-X
+Y2  - 2024/06/24/16:48:33
+L1  - http://www.cell.com/article/S221112471930405X/pdf
+L2  - http://www.ncbi.nlm.nih.gov/pubmed/30995472
+KW  - 16S rRNA
+KW  - microbiome
+KW  - gut microbiota
+KW  - Bifidobacterium
+KW  - pregnancy
+KW  - progesterone
+ER  - 
+
+TY  - GEN
+TI  - Delving into ChatGPT usage in academic writing through excess vocabulary
+AU  - Kobak, Dmitry
+AU  - Márquez, Rita González
+AU  - Horvát, Emőke-Ágnes
+AU  - Lause, Jan
+AB  - Recent large language models (LLMs) can generate and revise text with human-level performance, and have been widely commercialized in systems like ChatGPT. These models come with clear limitations: they can produce inaccurate information, reinforce existing biases, and be easily misused. Yet, many scientists have been using them to assist their scholarly writing. How wide-spread is LLM usage in the academic literature currently? To answer this question, we use an unbiased, large-scale approach, free from any assumptions on academic LLM usage. We study vocabulary changes in 14 million PubMed abstracts from 2010–2024, and show how the appearance of LLMs led to an abrupt increase in the frequency of certain style words. Our analysis based on excess words usage suggests that at least 10% of 2024 abstracts were processed with LLMs. This lower bound differed across disciplines, countries, and journals, and was as high as 30% for some PubMed sub-corpora. We show that the appearance of LLM-based writing assistants has had an unprecedented impact in the scientific literature, surpassing the effect of major world events such as the Covid pandemic.
+DA  - 2024/06/11/
+PY  - 2024
+DP  - arXiv.org
+LA  - en
+PB  - arXiv
+UR  - http://arxiv.org/abs/2406.07016
+Y2  - 2024/06/24/07:37:01
+L1  - https://arxiv.org/pdf/2406.07016
+KW  - Computer Science - Artificial Intelligence
+KW  - Computer Science - Computation and Language
+KW  - Computer Science - Computers and Society
+KW  - Computer Science - Digital Libraries
+KW  - Computer Science - Social and Information Networks
+ER  - 
+
+TY  - GEN
+TI  - Broad diversity of human gut bacteria accessible via a traceable strain deposition system
+AU  - Hitch, Thomas C. A.
+AU  - Masson, Johannes M.
+AU  - Pauvert, Charlie
+AU  - Bosch, Johanna
+AU  - Nüchtern, Selina
+AU  - Treichel, Nicole
+AU  - Baloh, Marko
+AU  - Razavi, Soheila
+AU  - Afrizal, Afrizal
+AU  - Kousetzi, Ntana
+AU  - Aguirre, Andrea M.
+AU  - Wylensek, David
+AU  - Coates, Amy
+AU  - Jennings, Susan A. V.
+AU  - Panyot, Atscharah
+AU  - Viehof, Alina
+AU  - Schmitz, Matthias A.
+AU  - Stuhrmann, Maximilian
+AU  - Deis, Evelyn C.
+AU  - Bisdorf, Kevin
+AU  - Cramer, Thorsten
+AU  - Lissin, Artur
+AU  - Schober, Isabel
+AU  - Witte, Julius
+AU  - Riedel, Thomas
+AU  - Wende, Marie
+AU  - Winter, Katrin A.
+AU  - Riva, Alessandra
+AU  - Trinh, Stefanie
+AU  - Mitchell, Laura
+AU  - Hartman, Jonathan
+AU  - Berry, David
+AU  - Seitz, Jochen
+AU  - Bossert, Lukas C.
+AU  - Allers, Thorsten
+AU  - Strowig, Till
+AU  - Abt, Birte
+AU  - Reimer, Lorenz C.
+AU  - Overmann, Jörg
+AU  - Clavel, Thomas
+AB  - Numerous bacteria in the human gut microbiome remains unknown and/or have yet to be cultured. While collections of human gut bacteria have been published, none are publicly accessible. This is partly due to issues with the deposition of strains to public culture collections. We address these key issues (microbial unknowns, lack of public access to isolates) by proposing a framework that facilitates large-scale submission of isolates, exemplified by a rich collection of human gut isolates that is taxonomically described, functionally novel, and made publicly available. An innovative bulk strain submission system was established by large-scale generation and curation of persistent strain identifiers (https://straininfo.dsmz.de). This was used to create the Human intestinal Bacterial Collection (www.hibc.rwth-aachen.de), which contains 340 strains representing 198 species within 29 families and 7 phyla, of which 32 previously unknown taxa are taxonomically described and named. These included three butyrate- producing species of Faecalibacterium and new dominant species associated with health and inflammatory bowel disease. Plasmids were identified to be prolific within the HiBC isolates, with almost half (46%) of strains containing one or more plasmids (up to 6). Megaplasmids were identified within two strains, one of them is globally present within multiple Bacteroidales species. The strain submission framework and public collection of easily searchable and available gut bacterial isolates presented here will facilitate the work of many by enabling functional studies.
+DA  - 2024/06/20/
+PY  - 2024
+DO  - 10.1101/2024.06.20.599854
+DP  - bioRxiv
+LA  - en
+PB  - bioRxiv
+UR  - https://www.biorxiv.org/content/10.1101/2024.06.20.599854v1
+Y2  - 2024/06/24/07:27:58
+L1  - https://www.biorxiv.org/content/biorxiv/early/2024/06/20/2024.06.20.599854.full.pdf
+ER  - 
+
+TY  - JOUR
+TI  - How low can you go? Short-read polishing of Oxford Nanopore bacterial genome assemblies
+AU  - Bouras, George
+AU  - Judd, Louise M.
+AU  - Edwards, Robert A.
+AU  - Vreugde, Sarah
+AU  - Stinear, Timothy P.
+AU  - Wick, Ryan R.
+T2  - Microbial Genomics
+AB  - It is now possible to assemble near-perfect bacterial genomes using Oxford Nanopore Technologies (ONT) long reads, but short-read polishing is usually required for perfection. However, the effect of short-read depth on polishing performance is not well understood. Here, we introduce Pypolca (with default and careful parameters) and Polypolish v0.6.0 (with a new careful parameter). We then show that: (1) all polishers other than Pypolca-careful, Polypolish-default and Polypolish-careful commonly introduce false-positive errors at low read depth; (2) most of the benefit of short-read polishing occurs by 25× depth; (3) Polypolish-careful almost never introduces false-positive errors at any depth; and (4) Pypolca-careful is the single most effective polisher. Overall, we recommend the following polishing strategies: Polypolish-careful alone when depth is very low (&lt;5×), Polypolish-careful and Pypolca-careful when depth is low (5–25×), and Polypolish-default and Pypolca-careful when depth is sufficient (&gt;25×).
+DA  - 2024///
+PY  - 2024
+DO  - 10.1099/mgen.0.001254
+DP  - Microbiology Society Journals
+VL  - 10
+IS  - 6
+SP  - 001254
+SN  - 2057-5858
+ST  - How low can you go?
+UR  - https://www.microbiologyresearch.org/content/journal/mgen/10.1099/mgen.0.001254
+Y2  - 2024/06/24/07:26:33
+L1  - https://www.microbiologyresearch.org/deliver/fulltext/mgen/10/6/mgen001254.pdf?itemId=%2Fcontent%2Fjournal%2Fmgen%2F10.1099%2Fmgen.0.001254&mimeType=pdf&containerItemId=content/journal/mgen
+ER  - 
+
+TY  - JOUR
+TI  - Strain tracking in complex microbiomes using synteny analysis reveals per-species modes of evolution
+AU  - Enav, Hagay
+AU  - Paz, Inbal
+AU  - Ley, Ruth E.
+T2  - Nature Biotechnology
+AB  - Microbial species diversify into strains through single-nucleotide mutations and structural changes, such as recombination, insertions and deletions. Most strain-comparison methods quantify differences in single-nucleotide polymorphisms (SNPs) and are insensitive to structural changes. However, recombination is an important driver of phenotypic diversification in many species, including human pathogens. We introduce SynTracker, a tool that compares microbial strains using genome synteny—the order of sequence blocks in homologous genomic regions—in pairs of metagenomic assemblies or genomes. Genome synteny is a rich source of genomic information untapped by current strain-comparison tools. SynTracker has low sensitivity to SNPs, has no database requirement and is robust to sequencing errors. It outperforms existing tools when tracking strains in metagenomic data and is particularly suited for phages, plasmids and other low-data contexts. Applied to single-species datasets and human gut metagenomes, SynTracker, combined with an SNP-based tool, detects strains enriched in either point mutations or structural changes, providing insights into microbial evolution in situ.
+DA  - 2024/06/19/
+PY  - 2024
+DO  - 10.1038/s41587-024-02276-2
+DP  - www.nature.com
+SP  - 1
+EP  - 11
+J2  - Nat Biotechnol
+LA  - en
+SN  - 1546-1696
+UR  - https://www.nature.com/articles/s41587-024-02276-2
+Y2  - 2024/06/24/07:25:58
+L1  - https://www.nature.com/articles/s41587-024-02276-2.pdf
+KW  - Bioinformatics
+KW  - Bacterial genomics
+KW  - Genome informatics
+ER  - 
+
+TY  - JOUR
+TI  - How successful are AI-discovered drugs in clinical trials? A first analysis and emerging lessons
+AU  - KP Jayatunga, Madura
+AU  - Ayers, Margaret
+AU  - Bruens, Lotte
+AU  - Jayanth, Dhruv
+AU  - Meier, Christoph
+T2  - Drug Discovery Today
+AB  - AI techniques are making inroads into the field of drug discovery. As a result, a growing number of drugs and vaccines have been discovered using AI. However, questions remain about the success of these molecules in clinical trials. To address these questions, we conducted a first analysis of the clinical pipelines of AI-native Biotech companies. In Phase I we find AI-discovered molecules have an 80–90% success rate, substantially higher than historic industry averages. This suggests, we argue, that AI is highly capable of designing or identifying molecules with drug-like properties. In Phase II the success rate is ∼40%, albeit on a limited sample size, comparable to historic industry averages. Our findings highlight early signs of the clinical potential of AI-discovered molecules.
+DA  - 2024/06/01/
+PY  - 2024
+DO  - 10.1016/j.drudis.2024.104009
+DP  - ScienceDirect
+VL  - 29
+IS  - 6
+SP  - 104009
+J2  - Drug Discovery Today
+SN  - 1359-6446
+ST  - How successful are AI-discovered drugs in clinical trials?
+UR  - https://www.sciencedirect.com/science/article/pii/S135964462400134X
+Y2  - 2024/06/19/17:09:23
+KW  - AI drug discovery
+KW  - AI drug in clinical trials
+KW  - AI-discovered drug
+KW  - AI-native Biotech
+KW  - Clinical trial success rate
+ER  - 
+
+TY  - GEN
+TI  - Computing in the Life Sciences: From Early Algorithms to Modern AI
+AU  - Donkor, Samuel A.
+AU  - Walsh, Matthew E.
+AU  - Titus, Alexander J.
+AB  - Computing in the life sciences has undergone a transformative evolution, from early computational models in the 1950s to the applications of artificial intelligence (AI) and machine learning (ML) seen today. This paper highlights key milestones and technological advancements through the historical development of computing in the life sciences. The discussion includes the inception of computational models for biological processes, the advent of bioinformatics tools, and the integration of AI/ML in modern life sciences research. Attention is given to AI-enabled tools used in the life sciences, such as scientific large language models and bio-AI tools, examining their capabilities, limitations, and impact to biological risk. This paper seeks to clarify and establish essential terminology and concepts to ensure informed decision-making and effective communication across disciplines.
+DA  - 2024/06/17/
+PY  - 2024
+DP  - arXiv.org
+PB  - arXiv
+ST  - Computing in the Life Sciences
+UR  - http://arxiv.org/abs/2406.12108
+Y2  - 2024/06/19/17:07:49
+L1  - https://arxiv.org/pdf/2406.12108.pdf
+L2  - http://arxiv.org/abs/2406.12108
+N1  - Comment: 51 pages, 4 figures, 10 tables
+KW  - Computer Science - Artificial Intelligence
+KW  - Quantitative Biology - Other Quantitative Biology
+ER  - 
+
+TY  - ELEC
+TI  - PGBA_public / GenoFig · GitLab
+T2  - GitLab
+AB  - GenoFig is a tool for graphical vizualisation of annotated genetic regions, and homologous regions comparison. It was designed to be as easy to use as possible for biologists.
+DA  - 2024/05/23/
+PY  - 2024
+LA  - de
+UR  - https://forgemia.inra.fr/public-pgba/genofig
+Y2  - 2024/06/17/16:24:22
+L2  - https://forgemia.inra.fr/public-pgba/genofig/-/tree/main?ref_type=heads
+ER  - 
+
+TY  - COMP
+TI  - biologger/speciesprimer
+AU  - Matthias Dreier
+AB  - The SpeciesPrimer pipeline is intended to help researchers finding specific primer pairs for the detection and quantification of bacterial species in complex ecosystems.
+DA  - 2024/12/14/T19:11:29Z
+PY  - 2024
+DP  - GitHub
+LA  - Python
+UR  - https://github.com/biologger/speciesprimer
+Y2  - 2025/03/03/14:23:17
+KW  - pcr
+KW  - qpcr
+KW  - bioinformatics-pipeline
+KW  - bioinformatics-tool
+KW  - docker-container
+KW  - primer-design
+ER  - 
+
+TY  - JOUR
+TI  - Noninvasive, microbiome-based diagnosis of inflammatory bowel disease
+AU  - Zheng, Jiaying
+AU  - Sun, Qianru
+AU  - Zhang, Mengjing
+AU  - Liu, Chengyu
+AU  - Su, Qi
+AU  - Zhang, Lin
+AU  - Xu, Zhilu
+AU  - Lu, Wenqi
+AU  - Ching, Jessica
+AU  - Tang, Whitney
+AU  - Cheung, Chun Pan
+AU  - Hamilton, Amy L.
+AU  - Wilson O’Brien, Amy L.
+AU  - Wei, Shu Chen
+AU  - Bernstein, Charles N.
+AU  - Rubin, David T.
+AU  - Chang, Eugene B.
+AU  - Morrison, Mark
+AU  - Kamm, Michael A.
+AU  - Chan, Francis K. L.
+AU  - Zhang, Jingwan
+AU  - Ng, Siew C.
+T2  - Nature Medicine
+AB  - Despite recent progress in our understanding of the association between the gut microbiome and inflammatory bowel disease (IBD), the role of microbiome biomarkers in IBD diagnosis remains underexplored. Here we developed a microbiome-based diagnostic test for IBD. By utilization of metagenomic data from 5,979 fecal samples with and without IBD from different geographies and ethnicities, we identified microbiota alterations in IBD and selected ten and nine bacterial species for construction of diagnostic models for ulcerative colitis and Crohn’s disease, respectively. These diagnostic models achieved areas under the curve >0.90 for distinguishing IBD from controls in the discovery cohort, and maintained satisfactory performance in transethnic validation cohorts from eight populations. We further developed a multiplex droplet digital polymerase chain reaction test targeting selected IBD-associated bacterial species, and models based on this test showed numerically higher performance than fecal calprotectin in discriminating ulcerative colitis and Crohn’s disease from controls. Here we discovered universal IBD-associated bacteria and show the potential applicability of a multibacteria biomarker panel as a noninvasive tool for IBD diagnosis.
+DA  - 2024/12//
+PY  - 2024
+DO  - 10.1038/s41591-024-03280-4
+DP  - www.nature.com
+VL  - 30
+IS  - 12
+SP  - 3555
+EP  - 3567
+J2  - Nat Med
+LA  - en
+SN  - 1546-170X
+UR  - https://www.nature.com/articles/s41591-024-03280-4
+Y2  - 2025/02/28/14:21:12
+KW  - Inflammatory bowel disease
+KW  - Diagnostic markers
+ER  - 
+
+TY  - JOUR
+TI  - Classification and review of free PCR primer design software
+AU  - Guo, Jingwen
+AU  - Starr, David
+AU  - Guo, Huazhang
+T2  - Bioinformatics
+AB  - Polymerase chain reaction (PCR) has been a revolutionary biomedical advancement. However, for PCR to be appropriately used, one must spend a significant amount of effort on PCR primer design. Carefully designed PCR primers not only increase sensitivity and specificity, but also decrease effort spent on experimental optimization. Computer software removes the human element by performing and automating the complex and rigorous calculations required in PCR primer design. Classification and review of the available software options and their capabilities should be a valuable resource for any PCR application.This article focuses on currently available free PCR primer design software and their major functions (https://pcrprimerdesign.github.io/). The software are classified according to their PCR applications, such as Sanger sequencing, reverse transcription quantitative PCR, single nucleotide polymorphism detection, splicing variant detection, methylation detection, microsatellite detection, multiplex PCR and targeted next generation sequencing, and conserved/degenerate primers to clone orthologous genes from related species, new gene family members in the same species, or to detect a group of related pathogens. Each software is summarized to provide a technical review of their capabilities and utilities.
+DA  - 2021/04/01/
+PY  - 2021
+DO  - 10.1093/bioinformatics/btaa910
+DP  - Silverchair
+VL  - 36
+IS  - 22-23
+SP  - 5263
+EP  - 5268
+J2  - Bioinformatics
+SN  - 1367-4803
+UR  - https://doi.org/10.1093/bioinformatics/btaa910
+Y2  - 2025/02/24/14:17:25
+L1  - https://academic.oup.com/bioinformatics/article-pdf/36/22-23/5263/50716041/btaa910.pdf
+L2  - https://academic.oup.com/bioinformatics/article/36/22-23/5263/5939999?login=false
+ER  - 
+
+TY  - ELEC
+TI  - In Vitro Diagnostics - Switzerland | Market Forecast
+AU  - Statista
+T2  - Statista
+AB  - The In Vitro Diagnostics market in Switzerland is projected to grow by 3.16% (2025-2029) resulting in a market volume of US$0.94bn in 2029.
+DA  - 2024///
+PY  - 2024
+LA  - en
+UR  - https://www.statista.com/outlook/hmo/medical-technology/in-vitro-diagnostics/switzerland
+Y2  - 2025/02/11/13:17:52
+L2  - https://www.statista.com/outlook/hmo/medical-technology/in-vitro-diagnostics/switzerland
+ER  - 
+
+TY  - ELEC
+TI  - Microbial Identification Market Analysis and Forecast to 2033: Type, Product, Services, Technology, Application, End User, Component, Process, Device, Stage
+AU  - Global Information, Inc
+DA  - 2025///
+PY  - 2025
+UR  - https://www.giiresearch.com/report/gis1632981-microbial-identification-market-analysis-forecast.html
+Y2  - 2025/02/13/14:01:08
+L2  - https://www.giiresearch.com/report/gis1632981-microbial-identification-market-analysis-forecast.html
+ER  - 
+
+TY  - ELEC
+TI  - Clinical Microbiology Market Market Growth, Drivers, and Opportunities
+AU  - MarketsandMarkets
+T2  - MarketsandMarkets
+AB  - The global clinical microbiology market, valued at US$4.8B in 2023, is forecasted to grow at a 6.5% CAGR, reaching US$5.0B by 2024 and US$6.9B by 2029.
+DA  - 2024///
+PY  - 2024
+LA  - en
+UR  - https://www.marketsandmarkets.com/Market-Reports/microbiology-testing-market-219135367.html
+Y2  - 2025/02/20/14:27:00
+L2  - https://www.marketsandmarkets.com/Market-Reports/microbiology-testing-market-219135367.html
+ER  - 
+
+TY  - JOUR
+TI  - ResFinder – an open online resource for identification of antimicrobial resistance genes in next-generation sequencing data and prediction of phenotypes from genotypes
+AU  - Florensa, Alfred Ferrer
+AU  - Kaas, Rolf Sommer
+AU  - Clausen, Philip Thomas Lanken Conradsen
+AU  - Aytan-Aktug, Derya
+AU  - Aarestrup, Frank M.
+T2  - Microbial Genomics
+AB  - Antimicrobial resistance (AMR) is one of the most important health threats globally. The ability to accurately identify resistant bacterial isolates and the individual antimicrobial resistance genes (ARGs) is essential for understanding the evolution and emergence of AMR and to provide appropriate treatment. The rapid developments in next-generation sequencing technologies have made this technology available to researchers and microbiologists at routine laboratories around the world. However, tools available for those with limited experience with bioinformatics are lacking, especially to enable researchers and microbiologists in low- and middle-income countries (LMICs) to perform their own studies. The CGE-tools (Center for Genomic Epidemiology) including ResFinder (https://cge.cbs.dtu.dk/services/ResFinder/) was developed to provide freely available easy to use online bioinformatic tools allowing inexperienced researchers and microbiologists to perform simple bioinformatic analyses. The main purpose was and is to provide these solutions for people involved in frontline diagnosis especially in LMICs. Since its original publication in 2012, ResFinder has undergone a number of improvements including improvement of the code and databases, inclusion of point mutations for selected bacterial species and predictions of phenotypes also for selected species. As of 28 September 2021, 820 803 analyses have been performed using ResFinder from 61 776 IP-addresses in 171 countries. ResFinder clearly fulfills a need for several people around the globe and we hope to be able to continue to provide this service free of charge in the future. We also hope and expect to provide further improvements including phenotypic predictions for additional bacterial species.
+DA  - 2022///
+PY  - 2022
+DO  - 10.1099/mgen.0.000748
+DP  - Microbiology Society Journals
+VL  - 8
+IS  - 1
+SP  - 000748
+SN  - 2057-5858
+UR  - https://www.microbiologyresearch.org/content/journal/mgen/10.1099/mgen.0.000748
+Y2  - 2025/02/11/15:07:01
+L1  - https://www.microbiologyresearch.org/deliver/fulltext/mgen/8/1/mgen000748.pdf?itemId=%2Fcontent%2Fjournal%2Fmgen%2F10.1099%2Fmgen.0.000748&mimeType=pdf&containerItemId=content/journal/mgen
+ER  - 
+
+TY  - ELEC
+TI  - ResFinder – an open online resource for identification of antimicrobial resistance genes in next-generation sequencing data and prediction of phenotypes from genotypes | Microbiology Society
+UR  - https://www.microbiologyresearch.org/content/journal/mgen/10.1099/mgen.0.000748
+Y2  - 2025/02/11/14:46:29
+L2  - https://www.microbiologyresearch.org/content/journal/mgen/10.1099/mgen.0.000748
+ER  - 
+
+TY  - JOUR
+TI  - VFDB 2022: a general classification scheme for bacterial virulence factors
+AU  - Liu, Bo
+AU  - Zheng, Dandan
+AU  - Zhou, Siyu
+AU  - Chen, Lihong
+AU  - Yang, Jian
+T2  - Nucleic Acids Research
+AB  - The virulence factor database (VFDB, http://www.mgc.ac.cn/VFs/) is dedicated to presenting a comprehensive knowledge base and a versatile analysis platform for bacterial virulence factors (VFs). Recent developments in sequencing technologies have led to increasing demands to analyze potential VFs within microbiome data that always consist of many different bacteria. Nevertheless, the current classification of VFs from various pathogens is based on different schemes, which create a chaotic situation and form a barrier for the easy application of the VFDB dataset for future panbacterial metagenomic analyses. Therefore, based on extensive literature mining, we recently proposed a general category of bacterial VFs in the database and reorganized the VFDB dataset accordingly. Thus, all known bacterial VFs from 32 genera of common bacterial pathogens collected in the VFDB are well grouped into 14 basal categories along with over 100 subcategories in a hierarchical architecture. The new coherent and well-defined VFDB dataset will be feasible and applicable for future panbacterial analysis in terms of virulence factors. In addition, we introduced a redesigned JavaScript-independent web interface for the VFDB website to make the database readily accessible to all users with various client settings worldwide.
+DA  - 2022/01/07/
+PY  - 2022
+DO  - 10.1093/nar/gkab1107
+DP  - Silverchair
+VL  - 50
+IS  - D1
+SP  - D912
+EP  - D917
+J2  - Nucleic Acids Research
+SN  - 0305-1048
+ST  - VFDB 2022
+UR  - https://doi.org/10.1093/nar/gkab1107
+Y2  - 2025/02/11/14:45:41
+L1  - https://academic.oup.com/nar/article-pdf/50/D1/D912/42057657/gkab1107.pdf
+L2  - https://academic.oup.com/nar/article/50/D1/D912/6446532?login=false
+ER  - 
+
+TY  - JOUR
+TI  - CARD 2020: antibiotic resistome surveillance with the comprehensive antibiotic resistance database
+AU  - Alcock, Brian P.
+AU  - Raphenya, Amogelang R.
+AU  - Lau, Tammy T. Y.
+AU  - Tsang, Kara K.
+AU  - Bouchard, Mégane
+AU  - Edalatmand, Arman
+AU  - Huynh, William
+AU  - Nguyen, Anna-Lisa V.
+AU  - Cheng, Annie A.
+AU  - Liu, Sihan
+AU  - Min, Sally Y.
+AU  - Miroshnichenko, Anatoly
+AU  - Tran, Hiu-Ki
+AU  - Werfalli, Rafik E.
+AU  - Nasir, Jalees A.
+AU  - Oloni, Martins
+AU  - Speicher, David J.
+AU  - Florescu, Alexandra
+AU  - Singh, Bhavya
+AU  - Faltyn, Mateusz
+AU  - Hernandez-Koutoucheva, Anastasia
+AU  - Sharma, Arjun N.
+AU  - Bordeleau, Emily
+AU  - Pawlowski, Andrew C.
+AU  - Zubyk, Haley L.
+AU  - Dooley, Damion
+AU  - Griffiths, Emma
+AU  - Maguire, Finlay
+AU  - Winsor, Geoff L.
+AU  - Beiko, Robert G.
+AU  - Brinkman, Fiona S. L.
+AU  - Hsiao, William W. L.
+AU  - Domselaar, Gary V.
+AU  - McArthur, Andrew G.
+T2  - Nucleic Acids Research
+AB  - The Comprehensive Antibiotic Resistance Database (CARD; https://card.mcmaster.ca) is a curated resource providing reference DNA and protein sequences, detection models and bioinformatics tools on the molecular basis of bacterial antimicrobial resistance (AMR). CARD focuses on providing high-quality reference data and molecular sequences within a controlled vocabulary, the Antibiotic Resistance Ontology (ARO), designed by the CARD biocuration team to integrate with software development efforts for resistome analysis and prediction, such as CARD's Resistance Gene Identifier (RGI) software. Since 2017, CARD has expanded through extensive curation of reference sequences, revision of the ontological structure, curation of over 500 new AMR detection models, development of a new classification paradigm and expansion of analytical tools. Most notably, a new Resistomes & Variants module provides analysis and statistical summary of in silico predicted resistance variants from 82 pathogens and over 100 000 genomes. By adding these resistance variants to CARD, we are able to summarize predicted resistance using the information included in CARD, identify trends in AMR mobility and determine previously undescribed and novel resistance variants. Here, we describe updates and recent expansions to CARD and its biocuration process, including new resources for community biocuration of AMR molecular reference data.
+DA  - 2020/01/08/
+PY  - 2020
+DO  - 10.1093/nar/gkz935
+DP  - PubMed
+VL  - 48
+IS  - D1
+SP  - D517
+EP  - D525
+J2  - Nucleic Acids Res
+LA  - eng
+SN  - 1362-4962
+ST  - CARD 2020
+L1  - https://academic.oup.com/nar/article-pdf/48/D1/D517/31697411/gkz935.pdf
+L2  - http://www.ncbi.nlm.nih.gov/pubmed/31665441
+KW  - Bacteria
+KW  - Software
+KW  - Bacterial Proteins
+KW  - Databases, Genetic
+KW  - Drug Resistance, Bacterial
+KW  - Genes, Bacterial
+ER  - 
+
+TY  - ELEC
+TI  - Molecular Diagnostics Market Growth, Drivers, and Opportunities
+UR  - https://www.marketsandmarkets.com/Market-Reports/molecular-diagnostic-market-833.html
+Y2  - 2025/02/11/13:32:38
+L2  - https://www.marketsandmarkets.com/Market-Reports/molecular-diagnostic-market-833.html
+ER  - 
+
+TY  - ELEC
+TI  - Accurate prediction of colorectal cancer diagnosis using machine learning based on immunohistochemistry pathological images | Scientific Reports
+UR  - https://www.nature.com/articles/s41598-024-76083-9
+Y2  - 2025/02/10/16:10:44
+L2  - https://www.nature.com/articles/s41598-024-76083-9
+ER  - 
+
+TY  - JOUR
+TI  - International consensus statement on microbiome testing in clinical practice
+AU  - Porcari, Serena
+AU  - Mullish, Benjamin H
+AU  - Asnicar, Francesco
+AU  - Ng, Siew C
+AU  - Zhao, Liping
+AU  - Hansen, Richard
+AU  - O'Toole, Paul W
+AU  - Raes, Jeroen
+AU  - Hold, Georgina
+AU  - Putignani, Lorenza
+AU  - Hvas, Christian Lodberg
+AU  - Zeller, Georg
+AU  - Koren, Omry
+AU  - Tun, Hein
+AU  - Valles-Colomer, Mireia
+AU  - Collado, Maria Carmen
+AU  - Fischer, Monika
+AU  - Allegretti, Jessica
+AU  - Iqbal, Tariq
+AU  - Chassaing, Benoit
+AU  - Keller, Josbert
+AU  - Baunwall, Simon Mark
+AU  - Abreu, Maria
+AU  - Barbara, Giovanni
+AU  - Zhang, Faming
+AU  - Ponziani, Francesca Romana
+AU  - Costello, Sam P
+AU  - Paramsothy, Sudarshan
+AU  - Kao, Dina
+AU  - Kelly, Colleen
+AU  - Kupcinskas, Juozas
+AU  - Youngster, Ilan
+AU  - Franceschi, Francesco
+AU  - Khanna, Sahil
+AU  - Vehreschild, Maria
+AU  - Link, Alexander
+AU  - De Maio, Flavio
+AU  - Pasolli, Edoardo
+AU  - Miguez, Aitor Blanco
+AU  - Brigidi, Patrizia
+AU  - Posteraro, Brunella
+AU  - Scaldaferri, Franco
+AU  - Stojanovic, Mirjana Rajilic
+AU  - Megraud, Francis
+AU  - Malfertheiner, Peter
+AU  - Masucci, Luca
+AU  - Arumugam, Manimozhiyan
+AU  - Kaakoush, Nadeem
+AU  - Segal, Eran
+AU  - Bajaj, Jasmohan
+AU  - Leong, Rupert
+AU  - Cryan, John
+AU  - Weersma, Rinse K
+AU  - Knight, Robert
+AU  - Guarner, Francisco
+AU  - Shanahan, Fergus
+AU  - Cani, Patrice D
+AU  - Elinav, Eran
+AU  - Sanguinetti, Maurizio
+AU  - de Vos, Willem M
+AU  - El-Omar, Emad
+AU  - Dorè, Joel
+AU  - Marchesi, Julian
+AU  - Tilg, Herbert
+AU  - Sokol, Harry
+AU  - Segata, Nicola
+AU  - Cammarota, Giovanni
+AU  - Gasbarrini, Antonio
+AU  - Ianiro, Gianluca
+T2  - The Lancet Gastroenterology & Hepatology
+AB  - There is growing interest in the potential exploitation of the gut microbiome as a diagnostic tool in medicine, but evidence supporting its clinical usefulness is scarce. An increasing number of commercial providers offer direct-to-consumer microbiome diagnostic tests without any consensus on their regulation or any proven value in clinical practice, which could result in considerable waste of individual and health-care resources and potential drawbacks in the clinical management of patients. We convened an international multidisciplinary expert panel to standardise best practices of microbiome testing for clinical implementation, including recommendations on general principles and minimum requirements for their provision, indications, pre-testing protocols, method of analyses, reporting of results, and potential clinical value. We also evaluated current knowledge gaps and future directions in this field. We aimed to establish a framework to regulate the provision of microbiome testing and minimise the use of inappropriate tests and pave the way for the evidence-based development and use of human microbiome diagnostics in clinical medicine.
+DA  - 2025/02/01/
+PY  - 2025
+DO  - 10.1016/S2468-1253(24)00311-X
+DP  - ScienceDirect
+VL  - 10
+IS  - 2
+SP  - 154
+EP  - 167
+J2  - The Lancet Gastroenterology & Hepatology
+SN  - 2468-1253
+UR  - https://www.sciencedirect.com/science/article/pii/S246812532400311X
+Y2  - 2025/02/10/15:50:31
+L2  - https://www.sciencedirect.com/science/article/abs/pii/S246812532400311X
+ER  - 
+
+TY  - JOUR
+TI  - qPCR primer design revisited
+AU  - Bustin, Stephen
+AU  - Huggett, Jim
+T2  - Biomolecular Detection and Quantification
+AB  - Primers are arguably the single most critical components of any PCR assay, as their properties control the exquisite specificity and sensitivity that make this method uniquely powerful. Consequently, poor design combined with failure to optimise reaction conditions is likely to result in reduced technical precision and false positive or negative detection of amplification targets. Despite the framework provided by the MIQE guidelines and the accessibility of wide-ranging support from peer-reviewed publications, books and online sources as well as commercial companies, the design of many published assays continues to be less than optimal: primers often lack intended specificity, can form dimers, compete with template secondary structures at the primer binding sites or hybridise only within a narrow temperature range. We present an overview of the main steps in the primer design workflow, with data that illustrate some of the unexpected variability that often occurs when theory is translated into practice. We also strongly urge researchers to report as much information about their assays as possible in their publications.
+DA  - 2017/12/01/
+PY  - 2017
+DO  - 10.1016/j.bdq.2017.11.001
+DP  - ScienceDirect
+VL  - 14
+SP  - 19
+EP  - 28
+J2  - Biomolecular Detection and Quantification
+SN  - 2214-7535
+UR  - https://www.sciencedirect.com/science/article/pii/S221475351730181X
+Y2  - 2025/02/10/14:15:59
+L1  - https://europepmc.org/articles/pmc5702850?pdf=render
+L2  - https://www.sciencedirect.com/science/article/pii/S221475351730181X
+KW  - Real-time PCR
+KW  - Assay design
+KW  - MIQE
+KW  - Oligonucleotides
+ER  - 
+
+TY  - JOUR
+TI  - Molecular detection and identification of Aspergillus spp. from clinical samples using real-time PCR
+AU  - Ramírez, Mercedes
+AU  - Castro, Carmen
+AU  - Palomares, José Carlos
+AU  - Torres, Ma José
+AU  - Aller, Ana Isabel
+AU  - Ruiz, Maite
+AU  - Aznar, Javier
+AU  - Martín-Mazuelos, Estrella
+T2  - Mycoses
+AB  - Summary The definite and rapid diagnosis of invasive aspergillosis is necessary because of the high mortality caused. The objective of this study was to evaluate a real-time PCR assay to detect Aspergillus spp. in clinical samples, based on the Light Cycler technology. Specificity was assessed by using DNA extracted from pathogenic and non-pathogenic bacteria/fungi from Spanish Collection including: two Aspergillus flavus, four Aspergillus fumigatus, two Aspergillus nidulans, two Aspergillus niger and two Aspergillus terreus isolates. The analytical sensitivity was evaluated with different inocula (101?105 conidia?ml?1), and serially diluted DNA of A.?fumigatus. To assess clinical applicability, samples from patients at risk were analysed. Species identification was determined by analysing the melting curves. Reactions using genomic DNA from other species of different genera than Aspergillus were negative (specificity: 100%). Analytical sensitivity was 60?fg using DNA and 5?20 conidia using conidial suspensions. The linear range was from 60 to 6???107?fg. The Tm ranged from 67.34 to 70.7?°C for the different Aspergillus spp. studied. Nine hundred and forty-eight consecutive blood samples from 127 patients were processed. In total, 10 (1%) of 948 samples from blood samples were PCR-positive. The real-time PCR assay provides a high sensitivity and specificity for detection of fungal DNA and rapidly identifies most of clinically relevant Aspergillus species.
+DA  - 2009/03//
+PY  - 2009
+DO  - 10.1111/j.1439-0507.2008.01548.x
+DP  - onlinelibrary.wiley.com (Atypon)
+VL  - 52
+IS  - 2
+SP  - 129
+EP  - 134
+SN  - 0933-7407
+UR  - https://onlinelibrary.wiley.com/doi/10.1111/j.1439-0507.2008.01548.x
+Y2  - 2025/02/10/14:13:05
+KW  - real-time PCR
+KW  - Aspergillus spp.
+KW  - Invasive fungal infection
+ER  - 
+
+TY  - JOUR
+TI  - Rapid and sensitive detection of viable <i>Listeria monocytogenes</i> in food products by a filtration-based protocol and qPCR
+AU  - Garrido-Maestu, Alejandro
+AU  - Azinheiro, Sarah
+AU  - Carvalho, Joana
+AU  - Prado, Marta
+T2  - Food Microbiology
+AB  - Listeria monocytogenes continues to be one of the most important foodborne pathogens worldwide, either due to its incidence and/or to its high mortality rate. In the present study, a filtration-based protocol was applied for the screening of viable bacteria. Additionally, a complete method (enrichment, filtration, DNA extraction and real-time PCR detection) was evaluated in order to determine the capacity of this protocol to detect viable L. monocytogenes in food samples. A new multiplex qPCR detection system was designed, including an internal amplification control, both targets were detected with hydrolysis probes. It was demonstrated that the method could reliably detect this pathogen, reaching a limit of detection of 9.5 cfu/25 g. The evaluation of the relative sensitivity, specificity, accuracy, positive and negative predictive values, as well as the index kappa of concordance obtained values higher than 90.0% after 24 h sample enrichment. Furthermore, it was demonstrated that with a secondary enrichment step, the limit of the detection could be further decreased to 4.6 cfu/25 g without significantly affecting the performance parameters. The present study demonstrates the reliability of the proposed methodology for the detection of viable L. monocytogenes, and the possibility of its direct implementation for routine analyses in the food industry.
+DA  - 2018/08/01/
+PY  - 2018
+DO  - 10.1016/j.fm.2018.02.004
+DP  - ScienceDirect
+VL  - 73
+SP  - 254
+EP  - 263
+J2  - Food Microbiology
+SN  - 0740-0020
+UR  - https://www.sciencedirect.com/science/article/pii/S0740002017304112
+Y2  - 2025/02/10/14:10:31
+L2  - https://www.sciencedirect.com/science/article/abs/pii/S0740002017304112?via%3Dihub
+KW  - Real-time PCR
+KW  - Filtration
+KW  - Viable bacteria
+ER  - 
+
+TY  - JOUR
+TI  - Development of a new real-time quantitative PCR assay for the detection of Staphylococcus aureus genotype B in cow milk, targeting the new gene adlb
+AU  - Sartori, C.
+AU  - Boss, R.
+AU  - Ivanovic, I.
+AU  - Graber, H. U.
+T2  - Journal of Dairy Science
+DA  - 2017/10/01/
+PY  - 2017
+DO  - 10.3168/jds.2017-12820
+DP  - www.journalofdairyscience.org
+VL  - 100
+IS  - 10
+SP  - 7834
+EP  - 7845
+J2  - Journal of Dairy Science
+LA  - English
+SN  - 0022-0302
+UR  - https://www.journalofdairyscience.org/article/S0022-0302(17)30701-4/fulltext
+Y2  - 2025/02/10/14:06:46
+L1  - http://www.journalofdairyscience.org/article/S0022030217307014/pdf
+L2  - http://www.ncbi.nlm.nih.gov/pubmed/28755929
+KW  - milk
+KW  - diagnostics
+KW  - mastitis
+KW  - real-time quantitative PCR
+KW  - Staphylococcus aureus
+ER  - 
+
+TY  - JOUR
+TI  - Development of 23 individual TaqMan® real-time PCR assays for identifying common foodborne pathogens using a single set of amplification conditions
+AU  - Cremonesi, Paola
+AU  - Pisani, Laura Francesca
+AU  - Lecchi, Cristina
+AU  - Ceciliani, Fabrizio
+AU  - Martino, Pieranna
+AU  - Bonastre, Armand Sanchez
+AU  - Karus, Avo
+AU  - Balzaretti, Claudia
+AU  - Castiglioni, Bianca
+T2  - Food Microbiology
+AB  - Most of the acute intestinal diseases are caused by foodborne pathogens with infants and elderly people being at major risk. The aim of this study was to develop a procedure to simultaneously detect 20 foodborne pathogens in complex alimentary matrices such as milk, cheese and meat. The list of targets include, among the others, Listeria spp., Salmonella spp., Shigella spp., Escherichia coli spp., Campylobacter spp., Clostridium spp. and Staphylococcus aureus. The accuracy of detection was determined by using ATCC strains as positive and negative controls. The achieved sensitivity of each of assays was 1 pg of genomic DNA, which was equivalent to ∼1 cfu. The working ranges of the TaqMan® Real-time PCR assays, when used quantitatively on cheese and meat samples inoculated with serial dilution of Listeria spp., Listeria monocytogenes, S. aureus, Salmonella enterica, Shigella boydii, E. coli O157:H7, Bacillus cereus, Campylobacter coli, Yersinia enterocolitica, Enterobacter sakazakii and Pseudomonas aeruginosa was 108 cfu/g to 104 cfu/g. No matrix interferences were observed.
+DA  - 2014/10/01/
+PY  - 2014
+DO  - 10.1016/j.fm.2014.04.007
+DP  - ScienceDirect
+VL  - 43
+SP  - 35
+EP  - 40
+J2  - Food Microbiology
+SN  - 0740-0020
+UR  - https://www.sciencedirect.com/science/article/pii/S0740002014000823
+Y2  - 2025/02/10/14:06:36
+L2  - https://www.sciencedirect.com/science/article/abs/pii/S0740002014000823?via%3Dihub
+KW  - Cheese
+KW  - Foodborne pathogens
+KW  - Meat
+KW  - TaqMan real-time quantitative PCR
+ER  - 

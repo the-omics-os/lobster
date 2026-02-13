@@ -1,0 +1,100 @@
+# =============================================================================
+# GitHub Release Workflow
+# =============================================================================
+# Creates a GitHub Release with build artifacts when a version tag is pushed.
+# PyPI publishing is handled separately by publish-packages.yml.
+# =============================================================================
+
+name: Create GitHub Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  PACKAGE_NAME: lobster-ai
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Extract version
+      id: version
+      run: |
+        VERSION="${GITHUB_REF#refs/tags/}"
+        VERSION_NUM="${VERSION#v}"
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "version_number=$VERSION_NUM" >> $GITHUB_OUTPUT
+        echo "Building release for version: $VERSION"
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Build core package
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine
+        python -m build
+        twine check dist/*
+        echo "Build artifacts:"
+        ls -lh dist/
+
+    - name: Generate release notes
+      run: |
+        cat > release_notes.md << 'NOTES'
+        ## Installation
+
+        ```bash
+        # Core only
+        pip install lobster-ai==${{ steps.version.outputs.version_number }}
+
+        # With all public agents
+        pip install "lobster-ai[full]==${{ steps.version.outputs.version_number }}"
+        ```
+
+        ## Packages in this release
+
+        | Package | Install |
+        |---------|---------|
+        | lobster-ai (core) | `pip install lobster-ai` |
+        | lobster-transcriptomics | `pip install lobster-transcriptomics` |
+        | lobster-research | `pip install lobster-research` |
+        | lobster-visualization | `pip install lobster-visualization` |
+        | lobster-proteomics | `pip install lobster-proteomics` |
+        | lobster-genomics | `pip install lobster-genomics` |
+
+        ## Links
+
+        - [PyPI](https://pypi.org/project/lobster-ai/${{ steps.version.outputs.version_number }}/)
+        - [Documentation](https://docs.omics-os.com)
+        - [Source](https://github.com/the-omics-os/lobster)
+        NOTES
+
+    - name: Create GitHub Release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+
+        PRERELEASE_FLAG=""
+        if [[ "$VERSION" == *"alpha"* ]] || [[ "$VERSION" == *"beta"* ]] || [[ "$VERSION" == *"rc"* ]]; then
+          PRERELEASE_FLAG="--prerelease"
+        fi
+
+        gh release create "$VERSION" \
+          --title "Lobster AI $VERSION" \
+          --notes-file release_notes.md \
+          $PRERELEASE_FLAG \
+          dist/*.whl \
+          dist/*.tar.gz

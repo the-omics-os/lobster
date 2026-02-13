@@ -1,0 +1,443 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lobster-ai"
+dynamic = ["version"]
+authors = [
+    {name = "Omics-OS", email = "info@omics-os.com"}
+]
+description = "Multi-Agent Bioinformatics Analysis System powered by LangGraph"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Healthcare Industry",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Environment :: Console",
+    "Framework :: FastAPI",
+]
+keywords = ["bioinformatics", "RNA-seq", "single-cell", "AI", "machine-learning", "data-analysis", "genomics"]
+dependencies = [
+    # Core data
+    "pandas>=1.5.0",
+    "numpy>=1.23.0",
+    "scipy>=1.10.0",
+    "scikit-learn>=1.3.0",
+    "anndata>=0.9.0",
+    "mudata>=0.2.0",
+    "h5py>=3.9.0",
+    "tables>=3.8.0",
+    # Agent framework (only langchain-core, provider packages are extras)
+    "langchain-core>=0.3.79",
+    "langgraph>=1.0.5",
+    # CLI
+    "rich>=12.0.0",
+    "typer>=0.7.0",
+    "python-dotenv>=1.0.0",
+    "prompt-toolkit>=3.0.52",
+    # Visualization
+    "plotly>=5.0.0",
+    "matplotlib>=3.7.0",
+    "kaleido>=0.2.0",
+    # Bioinformatics
+    "biopython>=1.81",
+    "llvmlite>=0.44.0",
+    "statsmodels>=0.14.0",
+    "gseapy>=1.1.0",
+    # Data I/O
+    "openpyxl>=3.1.0",
+    "pyreadr>=0.4.0",
+    "xmltodict>=0.13.0",
+    "lxml>=4.9.0",
+    # HTTP
+    "requests>=2.31.0",
+    "httpx>=0.27.0",
+    # Jupyter notebook support for pipeline replay
+    "nbformat>=5.9.0",
+    "papermill>=2.4.0",
+    # Utilities
+    "packaging>=25.0",
+    "tabulate>=0.9.0",
+    "tomli_w>=1.0",
+    "psutil>=7.0.0",
+]
+
+[project.optional-dependencies]
+# =============================================================================
+# LLM Providers (one required, installed via `lobster init`)
+# =============================================================================
+anthropic = ["langchain-anthropic>=0.3.20"]
+bedrock = ["langchain-aws>=0.1.0", "boto3>=1.26.0"]
+ollama = ["langchain-ollama>=0.3.10", "ollama>=0.6.0"]
+gemini = ["langchain-google-genai>=4.1.2"]
+all-providers = ["lobster-ai[anthropic,bedrock,ollama,gemini,azure]"]
+
+# =============================================================================
+# Document Intelligence (optional, installed via `lobster init`)
+# =============================================================================
+docling = ["docling>=2.60.0", "docling-core>=2.50.0"]
+
+# =============================================================================
+# Server mode
+# =============================================================================
+server = ["fastapi>=0.100.0", "uvicorn>=0.23.0", "python-multipart>=0.0.20"]
+
+# =============================================================================
+# Terminal UI
+# =============================================================================
+tui = ["textual>=6.7.1"]
+
+# =============================================================================
+# Observability
+# =============================================================================
+observability = ["langfuse>=3.2.6", "redis>=6.4.0"]
+
+# =============================================================================
+# Extended data access
+# =============================================================================
+extended-data = [
+    "polars>=1.32.3",
+    "pysradb>=2.5.1",
+    "cloudscraper>=1.2.71",
+    "rispy>=0.10.0",
+    "GEOparse",
+]
+
+# =============================================================================
+# Domain-specific extras (heavy compiled dependencies)
+# =============================================================================
+transcriptomics = [
+    "scanpy>=1.11.4",
+    "leidenalg>=0.9.0",
+    "scrublet>=0.2.3",
+    "igraph>=0.10.4",
+    "scikit-misc>=0.5.1",
+]
+bulk-rnaseq = [
+    "pydeseq2>=0.5.2",
+]
+genomics = [
+    "cyvcf2>=0.30.0",
+    "bed-reader>=0.2.0",
+    "sgkit>=0.7.0",
+]
+ml = [
+    "scvi-tools>=1.4.0",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "accelerate>=1.0.0",
+]
+
+# =============================================================================
+# Infrastructure extras
+# =============================================================================
+azure = [
+    "langchain-azure-ai>=0.1.0",
+    "azure-ai-agents>=1.0.0b1",
+    "azure-ai-inference>=1.0.0b1",
+    "azure-ai-projects>=1.0.0b1",
+    "azure-identity>=1.25.0",
+    "azure-search-documents>=11.6.0",
+    "azure-storage-blob>=12.28.0",
+]
+
+# =============================================================================
+# Convenience meta-extras
+# =============================================================================
+scrna = [
+    "lobster-ai[transcriptomics]",
+]
+# What `lobster init` typically installs for a researcher
+recommended = ["lobster-ai[anthropic,tui,extended-data]"]
+# Everything (replicates pre-optimization behavior, minus docling)
+batteries = ["lobster-ai[all-providers,server,tui,observability,extended-data]"]
+full = [
+    # Public agent packages + recommended extras
+    "lobster-transcriptomics~=1.0.0",
+    "lobster-research~=1.0.0",
+    "lobster-visualization~=1.0.0",
+    "lobster-genomics~=1.0.0",
+    "lobster-proteomics~=1.0.0",
+    "lobster-ai[recommended]",
+]
+
+# =============================================================================
+# Development extras
+# =============================================================================
+dev = [
+    # Core testing framework
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-xdist>=3.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-mock>=3.10.0",
+    "pytest-benchmark>=4.0.0",
+    "pytest-timeout>=2.1.0",
+    "pytest-html>=3.2.0",
+    "pytest-json-report>=1.5.0",
+
+    # Mock and test data generation
+    "factory-boy>=3.2.0",
+    "responses>=0.25.8",
+    "httpretty>=1.1.4",
+    "freezegun>=1.2.0",
+    "faker>=19.0.0",
+
+    # Mock services for testing
+    "moto>=4.1.0",
+    "fakeredis>=2.10.0",
+    "ftputil>=5.0.4",
+
+    # Performance and memory profiling
+    "memory-profiler>=0.60.0",
+    "psutil>=5.9.0",
+
+    # Code quality and formatting
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "pylint>=2.17.0",
+    "mypy>=1.0.0",
+    "bandit>=1.7.0",
+    "ruff>=0.0.300",
+
+    # Development tools
+    "pre-commit>=3.0.0",
+    "bumpversion>=0.6.0",
+    "twine>=4.0.0",
+    "build>=0.10.0",
+
+    # Documentation
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.0.0",
+
+    # Additional utilities
+    "langfuse>=2.0.0",
+    "tabulate>=0.9.0",
+
+    # Architecture validation (Kraken Phase 1)
+    "import-linter>=2.1",
+    "pipdeptree>=2.25",
+]
+all = [
+    # Complete installation: all domain extras + dev tools
+    "lobster-ai[transcriptomics,bulk-rnaseq,genomics,ml,azure,batteries,dev]",
+]
+
+[project.urls]
+"Homepage" = "https://www.omics-os.com"
+"Bug Tracker" = "https://github.com/the-omics-os/lobster/issues"
+"Documentation" = "https://github.com/the-omics-os/lobster.wiki"
+"Source Code" = "https://github.com/the-omics-os/lobster"
+
+[project.scripts]
+lobster = "lobster.cli:app"
+
+# =============================================================================
+# Entry Points - Service Discovery (PEP 420 compliant)
+# =============================================================================
+# IMPORTANT: Only register services that are PUBLIC (in allowlist without '!')
+# Premium services (sdk_delegation, extraction_cache, metadata services) should
+# be registered in their respective custom package's pyproject.toml
+[project.entry-points."lobster.services"]
+# Core orchestration services (public as of v2.x - see allowlist line 420)
+publication_processing = "lobster.services.orchestration.publication_processing_service:PublicationProcessingService"
+
+# Core queue data structures (public as of v2.x - see allowlist lines 427-429)
+publication_queue = "lobster.core.publication_queue:PublicationQueue"
+
+# =============================================================================
+# Agent Entry Points - Now in Separate Packages
+# =============================================================================
+# Agent entry points have been moved to their respective packages:
+# - lobster-transcriptomics (transcriptomics_expert, annotation_expert, de_analysis_expert)
+# - lobster-research (research_agent, data_expert_agent)
+# - lobster-visualization (visualization_expert_agent)
+# - lobster-metadata (metadata_assistant)
+# - lobster-structural-viz (protein_structure_visualization_expert)
+# - lobster-genomics (genomics_expert)
+# - lobster-proteomics (proteomics_expert)
+# - lobster-ml (machine_learning_expert)
+#
+# Install: pip install lobster-ai[full] for all agents
+
+# =============================================================================
+# uv Workspace Configuration (Kraken Phase 1-6)
+# =============================================================================
+# Enables monorepo package management for modular agent packages.
+# Premium packages (Phase 6 extraction):
+#   - lobster-genomics: VCF/PLINK, GWAS, variant annotation
+#   - lobster-proteomics: MS (DDA/DIA), affinity platforms (Olink, SomaScan)
+#   - lobster-ml: Feature engineering, data splitting, scVI embeddings
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+# Declare workspace members for [full] extra dependencies
+lobster-ai = { workspace = true }
+lobster-transcriptomics = { workspace = true }
+lobster-research = { workspace = true }
+lobster-visualization = { workspace = true }
+lobster-genomics = { workspace = true }
+lobster-proteomics = { workspace = true }
+# Private packages (still in workspace for local dev)
+lobster-metadata = { workspace = true }
+lobster-structural-viz = { workspace = true }
+lobster-ml = { workspace = true }
+
+[tool.setuptools.packages.find]
+# Core lobster-ai package discovery with extracted agent exclusions
+# Agents have been moved to separate packages in packages/
+where = ["."]
+include = ["lobster*"]
+namespaces = true
+exclude = [
+    # Extracted FREE tier agent packages (now in packages/)
+    "lobster.agents.transcriptomics*",
+    "lobster.agents.research*",
+    "lobster.agents.data_expert*",
+    "lobster.agents.visualization_expert*",
+    "lobster.agents.metadata_assistant*",
+    "lobster.agents.protein_structure_visualization_expert*",
+    # Extracted PREMIUM tier agent packages
+    "lobster.agents.genomics*",
+    "lobster.agents.proteomics*",
+    "lobster.agents.machine_learning_expert*",
+
+    # Extracted services (Phase 11.1)
+    # Transcriptomics services
+    "lobster.services.analysis.enhanced_singlecell_service",
+    "lobster.services.analysis.differential_formula_service",
+    "lobster.services.analysis.pseudobulk_service",
+    "lobster.services.quality.preprocessing_service",
+    "lobster.services.quality.quality_service",
+    "lobster.services.metadata.manual_annotation_service",
+    "lobster.services.visualization.bulk_visualization_service",
+    "lobster.services.templates.annotation_templates",
+
+    # Proteomics services
+    "lobster.services.analysis.proteomics_analysis_service",
+    "lobster.services.analysis.proteomics_differential_service",
+    "lobster.services.analysis.proteomics_network_service",
+    "lobster.services.analysis.proteomics_survival_service",
+    "lobster.services.quality.proteomics_preprocessing_service",
+    "lobster.services.quality.proteomics_quality_service",
+    "lobster.services.visualization.proteomics_visualization_service",
+    "lobster.services.data_access.parsers.spectronaut_parser",
+    "lobster.services.data_access.parsers.diann_parser",
+    "lobster.services.data_access.parsers.maxquant_parser",
+    "lobster.services.data_access.parsers.olink_parser",
+
+    # Genomics services
+    "lobster.services.analysis.gwas_service",
+    "lobster.services.analysis.variant_annotation_service",
+    "lobster.services.quality.genomics_quality_service",
+
+    # ML services
+    "lobster.services.ml.ml_preparation_service",
+    "lobster.services.ml.ml_transcriptomics_service_ALPHA",
+    "lobster.services.ml.ml_proteomics_service_ALPHA",
+    "lobster.services.analysis.scvi_embedding_service",
+
+    # Structural-viz services
+    "lobster.services.analysis.structure_analysis_service",
+    "lobster.services.visualization.pymol_visualization_service",
+    "lobster.services.visualization.chimerax_visualization_service_ALPHA",
+    "lobster.services.data_access.protein_structure_fetch_service",
+
+    # Visualization services
+    "lobster.services.visualization.visualization_service",
+
+    # Metadata services
+    "lobster.services.metadata.disease_ontology_service",
+    "lobster.services.metadata.disease_standardization_service",
+    "lobster.services.metadata.metadata_filtering_service",
+    "lobster.services.metadata.metadata_standardization_service",
+    "lobster.services.metadata.microbiome_filtering_service",
+    "lobster.services.metadata.sample_mapping_service",
+    "lobster.services.metadata.sample_grouping_service",
+    "lobster.services.metadata.clinical_metadata_service",
+
+    # Research services
+    "lobster.services.data_management.modality_detection_service",
+]
+# Core keeps: supervisor, graph.py, state, services, tools, config, prompts
+
+[tool.setuptools.dynamic]
+version = {attr = "lobster.version.__version__"}
+
+[tool.setuptools.package-data]
+lobster = ["**/*.json", "**/*.yaml", "**/*.yml"]
+
+# Development tools configurations
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=lobster",
+    "--cov-report=term-missing",
+    "--cov-report=html:htmlcov",
+    "--cov-report=xml:coverage.xml",
+    "--cov-fail-under=85",
+    "--durations=10",
+    "--tb=short",
+]
+markers = [
+    "unit: Unit tests for individual components",
+    "integration: Integration tests for multi-component workflows",
+    "system: System tests for complete workflows",
+    "performance: Performance and benchmarking tests",
+    "slow: Tests that take more than 30 seconds",
+    "requires_api: Tests that require external API access",
+    "real_api: Tests that make real API calls to external services (PubMed, GEO, etc.)",
+    "requires_gpu: Tests that require GPU resources",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:pkg_resources.*",
+    "ignore::PendingDeprecationWarning",
+    "ignore::UserWarning:anndata.*",
+]
+minversion = "7.0"
+timeout = 300
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[tool.bumpversion]
+current_version = "0.3.3"
+commit = true
+tag = true
+
+[dependency-groups]
+dev = [
+    "psutil>=7.0.0",
+    "pytest-asyncio>=1.1.0",
+    "pytest-cov>=6.2.1",
+]
