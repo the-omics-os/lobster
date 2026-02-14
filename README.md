@@ -33,14 +33,12 @@ irm https://install.lobsterbio.com/windows | iex
 
 **Manual** (any platform):
 ```bash
-uv tool install --python 3.13 'lobster-ai[full,anthropic]'
+uv tool install 'lobster-ai[full,anthropic]'
 lobster init
 lobster chat
 ```
 
-> Lobster AI requires Python 3.12 or 3.13. The `--python` flag ensures uv uses a compatible version.
-
-Or with pip (inside a Python 3.12/3.13 virtualenv):
+Or with pip:
 ```bash
 pip install 'lobster-ai[full]'
 lobster init
@@ -67,13 +65,13 @@ Lobster AI uses a modular architecture. Install exactly the agents you need.
 
 **Add individual agents** (uv tool installs):
 ```bash
-uv tool install --python 3.13 lobster-ai --with lobster-proteomics --with lobster-genomics
+uv tool install lobster-ai --with lobster-proteomics --with lobster-genomics
 ```
 Or run `lobster init --force` to interactively select agents — it generates the command for you.
 
 **Install everything:**
 ```bash
-uv tool install --python 3.13 'lobster-ai[full,anthropic]'   # uv tool (recommended)
+uv tool install 'lobster-ai[full,anthropic]'   # uv tool (recommended)
 pip install 'lobster-ai[full]'                  # pip
 ```
 
@@ -196,7 +194,7 @@ make format && make lint
 source .venv/bin/activate
 
 # Test as end user (uv tool install)
-uv tool install --python 3.13 'lobster-ai[full,anthropic]'
+uv tool install 'lobster-ai[full,anthropic]'
 ```
 
 **Environment variables (will be created during init):**

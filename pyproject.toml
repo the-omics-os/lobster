@@ -10,7 +10,7 @@ authors = [
 ]
 description = "Multi-Agent Bioinformatics Analysis System powered by LangGraph"
 readme = "README.md"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.12"
 license = "AGPL-3.0-or-later"
 license-files = ["LICENSE"]
 classifiers = [
