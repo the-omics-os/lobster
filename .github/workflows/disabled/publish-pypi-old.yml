@@ -1,0 +1,632 @@
+# ==============================================================================
+# DEPRECATED: This workflow is replaced by publish-packages.yml
+# ==============================================================================
+# Reason: Kraken refactoring moved from monolithic to multi-package distribution
+# New workflow: .github/workflows/publish-packages.yml
+# Date: 2026-02-09
+#
+# This file is kept for historical reference only. DO NOT USE.
+# ==============================================================================
+
+name: "[DEPRECATED] Publish to PyPI (Old Monolithic)"
+
+# ==============================================================================
+# ARCHITECTURE: Artifact-Based Sync-and-Build Pipeline
+# ==============================================================================
+# Problem: Race condition between sync-to-public push and build-package clone
+#   - sync-to-public pushes to lobster-local
+#   - build-package clones lobster-local
+#   - GitHub CDN propagation can cause build to fetch stale code
+#
+# Solution: Decouple jobs via workflow artifacts (industry best practice)
+#   - sync-to-public archives synced source code as artifact
+#   - build-package downloads artifact instead of cloning
+#   - Eliminates dependency on git propagation timing
+#   - 100% reliability (no race condition possible)
+#
+# Reference: Gemini collaboration analysis (2025-01)
+# ==============================================================================
+
+# DISABLED: No automatic triggers - this workflow should not run
+# To run manually for historical testing, uncomment the workflow_dispatch section
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_deprecated:
+        description: 'WARNING: This workflow is DEPRECATED. Use publish-packages.yml instead. Type "I understand" to proceed.'
+        required: true
+        type: string
+      version:
+        description: 'Version to publish (e.g., 0.2.0 - without v prefix)'
+        required: true
+        type: string
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - testpypi
+          - pypi
+
+env:
+  PACKAGE_NAME: lobster-ai
+  PUBLIC_REPO_URL: git@github.com:the-omics-os/lobster-local.git
+
+jobs:
+  # =====================================================================
+  # Step 1: Sync to Public Repository
+  # =====================================================================
+  sync-to-public:
+    name: Sync to lobster-local
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      public_commit_sha: ${{ steps.get_sha.outputs.sha }}
+
+    steps:
+    - name: Checkout private repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for sync
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+
+    - name: Configure SSH for deployment
+      env:
+        SSH_PRIVATE_KEY: ${{ secrets.PUBLIC_REPO_DEPLOY_KEY }}
+      run: |
+        mkdir -p ~/.ssh
+        echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+        chmod 600 ~/.ssh/id_ed25519
+        ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+    - name: Free disk space
+      run: |
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo apt-get clean
+
+    - name: Install dependencies (CPU-only PyTorch via constraints)
+      run: |
+        # CRITICAL: Use constraints file to enforce CPU-only torch in SAME command
+        # Pre-installing torch separately does NOT work (pip resolves fresh)
+        pip install -e . \
+          --extra-index-url https://download.pytorch.org/whl/cpu \
+          -c constraints-cpu.txt
+
+    - name: Validate allowlist matches subscription_tiers.py
+      run: |
+        # Ensure allowlist is generated from subscription_tiers.py (single source of truth)
+        # This prevents premium code from accidentally shipping in the public package
+        python scripts/generate_allowlist.py --validate
+
+    - name: Sync to public repository and capture temp directory
+      id: sync
+      env:
+        PRESERVE_SYNC_DIR: 'true'
+      run: |
+        # Run sync with temp directory preservation
+        SYNC_OUTPUT=$(python scripts/sync_to_public.py \
+          --repo ${{ env.PUBLIC_REPO_URL }} \
+          --branch main 2>&1)
+
+        echo "$SYNC_OUTPUT"
+
+        # Extract temp directory path from output
+        SYNC_DIR=$(echo "$SYNC_OUTPUT" | grep "SYNC_DIR_PATH=" | sed 's/.*SYNC_DIR_PATH=//')
+
+        if [ -z "$SYNC_DIR" ]; then
+          echo "❌ ERROR: Could not extract sync directory path"
+          exit 1
+        fi
+
+        echo "sync_dir=$SYNC_DIR" >> $GITHUB_OUTPUT
+        echo "✅ Captured sync directory: $SYNC_DIR"
+
+    - name: Get commit SHA and archive source code
+      id: get_sha
+      run: |
+        SYNC_DIR="${{ steps.sync.outputs.sync_dir }}"
+
+        if [ ! -d "$SYNC_DIR" ]; then
+          echo "❌ ERROR: Sync directory does not exist: $SYNC_DIR"
+          exit 1
+        fi
+
+        cd "$SYNC_DIR"
+
+        # Capture commit SHA
+        SHA=$(git rev-parse HEAD)
+        echo "sha=$SHA" >> $GITHUB_OUTPUT
+        echo "✅ Commit SHA: $SHA"
+
+        # Create archive excluding .git directory (reduces size)
+        tar --exclude='.git' -czf /tmp/source-code.tar.gz .
+
+        SIZE=$(du -h /tmp/source-code.tar.gz | cut -f1)
+        echo "✅ Archived source code: $SIZE"
+
+        # Clean up temp directory now that we have the archive
+        cd /tmp
+        rm -rf "$SYNC_DIR"
+        echo "✅ Cleaned up temporary sync directory"
+
+    - name: Upload source code artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: public-source-code
+        path: /tmp/source-code.tar.gz
+        retention-days: 1
+        compression-level: 0  # Already compressed as .tar.gz
+
+  # =====================================================================
+  # Step 2: Build Package from Synced Source Artifact (Race-Condition-Free)
+  # =====================================================================
+  # Uses workflow artifact from sync-to-public instead of git clone.
+  # This eliminates the race condition where GitHub's CDN might not have
+  # propagated the sync-to-public push before build-package clones.
+  # =====================================================================
+  build-package:
+    name: Build Package from lobster-local
+    needs: [sync-to-public]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - name: Download source code artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: public-source-code
+
+    - name: Extract source code
+      run: |
+        mkdir lobster-local
+        tar -xzf source-code.tar.gz -C lobster-local
+        cd lobster-local
+
+        # Verify we have the expected commit SHA
+        EXPECTED_SHA="${{ needs.sync-to-public.outputs.public_commit_sha }}"
+        echo "✅ Building from synced source (commit: $EXPECTED_SHA)"
+        echo "✅ This eliminates git propagation race conditions"
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine setuptools-scm wheel
+
+    - name: Extract version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/v}"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "📦 Building version: $VERSION"
+
+    - name: Build package
+      working-directory: lobster-local
+      run: |
+        echo "Building package from public code..."
+        python -m build
+
+        echo "Build artifacts:"
+        ls -lh dist/
+
+    - name: Verify package integrity
+      working-directory: lobster-local
+      run: |
+        echo "Checking package with twine..."
+        twine check dist/*
+
+        echo "Inspecting wheel contents..."
+        unzip -l dist/*.whl | head -100
+
+    - name: Verify package size
+      working-directory: lobster-local
+      run: |
+        SIZE=$(du -sm dist/*.whl | cut -f1)
+        echo "📦 Package size: ${SIZE}MB"
+
+        if [ $SIZE -gt 500 ]; then
+          echo "❌ ERROR: Package too large (${SIZE}MB > 500MB)"
+          echo "This may indicate CUDA dependencies were included by mistake."
+          echo "Expected size: <200MB for CPU-only package"
+          exit 1
+        else
+          echo "✅ Package size is reasonable (${SIZE}MB < 500MB)"
+        fi
+
+    - name: Verify no private code in package
+      working-directory: lobster-local
+      run: |
+        echo "🔍 Verifying no premium/private code in package..."
+
+        # Extract wheel to temp directory
+        mkdir -p /tmp/package-check
+        unzip -q dist/*.whl -d /tmp/package-check
+
+        # Check for excluded files/modules
+        PRIVATE_PATTERNS=(
+          "ms_proteomics_expert"
+          "affinity_proteomics_expert"
+          "custom_feature_agent"
+          "proteomics_analysis_service"
+          "proteomics_preprocessing_service"
+          "api/server"
+          "cdk/"
+        )
+
+        for pattern in "${PRIVATE_PATTERNS[@]}"; do
+          if find /tmp/package-check -name "*${pattern}*" | grep -q .; then
+            echo "❌ ERROR: Found private code pattern: $pattern"
+            find /tmp/package-check -name "*${pattern}*"
+            exit 1
+          fi
+        done
+
+        echo "✅ No private code detected in package"
+
+    - name: Free disk space
+      run: |
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo apt-get clean
+        df -h
+
+    - name: Test installation (CPU-only PyTorch via constraints)
+      working-directory: lobster-local
+      run: |
+        echo "Testing package installation with CPU-only PyTorch..."
+
+        # Verify constraints file was synced (it should be in lobster-local)
+        if [ ! -f "constraints-cpu.txt" ]; then
+          echo "WARNING: constraints-cpu.txt not found, creating inline..."
+          cat > constraints-cpu.txt << 'EOF'
+        torch==2.5.1+cpu
+        torchvision==0.20.1+cpu
+        torchaudio==2.5.1+cpu
+        EOF
+        fi
+
+        # Install with CPU constraints in SAME command (critical!)
+        pip install dist/*.whl \
+          --extra-index-url https://download.pytorch.org/whl/cpu \
+          -c constraints-cpu.txt
+
+        # Verify imports work
+        python -c "from lobster.version import __version__; print(f'✅ Lobster version: {__version__}')"
+
+        # Verify CLI is available
+        lobster --help
+
+        # Verify FREE tier agents are available (these are synced to lobster-local)
+        # Note: Using direct import paths for PEP 420 namespace package compatibility
+        python -c "import lobster.agents.supervisor; print('✅ Supervisor module available')"
+        python -c "from lobster.agents.research import research_agent; print('✅ Research agent available')"
+        python -c "from lobster.agents.data_expert import data_expert; print('✅ Data expert agent available')"
+        python -c "from lobster.agents.visualization_expert import visualization_expert; print('✅ Visualization expert available')"
+
+        # Verify private agents are NOT available (proteomics is PREMIUM tier)
+        # Note: The __init__.py exports proteomics_expert=None for graceful degradation,
+        # so we must check that it's actually a callable function, not None
+        if python -c "from lobster.agents.proteomics import proteomics_expert; assert proteomics_expert is not None and callable(proteomics_expert)" 2>/dev/null; then
+          echo "❌ ERROR: Private proteomics agent should not be in public package!"
+          exit 1
+        fi
+        echo "✅ Private agents correctly excluded (proteomics_expert is None as expected)"
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist-packages-${{ steps.version.outputs.version }}
+        path: lobster-local/dist/
+        retention-days: 30
+
+  # =====================================================================
+  # Step 3: Publish to TestPyPI
+  # =====================================================================
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: [build-package]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.inputs.environment == 'testpypi'
+    continue-on-error: true  # Don't block PyPI release if TestPyPI fails
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/${{ env.PACKAGE_NAME }}/
+    timeout-minutes: 10
+
+    permissions:
+      id-token: write  # REQUIRED for Trusted Publishing (OIDC)
+      contents: read
+
+    steps:
+    - name: Extract version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/v}"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: dist-packages-${{ steps.version.outputs.version }}
+        path: dist/
+
+    - name: Publish to TestPyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        repository-url: https://test.pypi.org/legacy/
+        # Uses Trusted Publishing (OIDC) - no API token needed
+        skip-existing: true
+        verbose: true
+
+    - name: Wait for package to be available
+      run: |
+        echo "⏳ Waiting 30 seconds for TestPyPI to process package..."
+        sleep 30
+
+    - name: Free disk space
+      run: |
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo apt-get clean
+
+    - name: Checkout repository for constraints file
+      uses: actions/checkout@v4
+      with:
+        sparse-checkout: |
+          constraints-cpu.txt
+        sparse-checkout-cone-mode: false
+
+    - name: Test installation from TestPyPI (CPU-only PyTorch)
+      run: |
+        echo "📦 Testing installation from TestPyPI with CPU-only PyTorch..."
+
+        # Install with constraints in SAME command (critical!)
+        pip install --index-url https://test.pypi.org/simple/ \
+                    --extra-index-url https://pypi.org/simple \
+                    --extra-index-url https://download.pytorch.org/whl/cpu \
+                    -c constraints-cpu.txt \
+                    ${{ env.PACKAGE_NAME }}==${{ steps.version.outputs.version }}
+
+        # Verify it works
+        python -c "from lobster.version import __version__; print(f'Installed version: {__version__}')"
+        lobster --help
+
+        echo "✅ Package successfully installed from TestPyPI!"
+
+    - name: Comment on PR (if applicable)
+      if: github.event_name == 'push'
+      run: |
+        echo "✅ Package published to TestPyPI"
+        echo "Test installation:"
+        echo "pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ${{ env.PACKAGE_NAME }}==${{ steps.version.outputs.version }}"
+
+  # =====================================================================
+  # Step 4: Manual Approval Gate
+  # =====================================================================
+  approve-production:
+    name: Approve Production Release
+    needs: [build-package]  # Depend on build, not TestPyPI
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.inputs.environment == 'pypi'
+    environment:
+      name: pypi-approval
+    timeout-minutes: 1440  # 24 hours for manual approval
+
+    steps:
+    - name: Manual approval required
+      run: |
+        echo "🚦 Manual approval required to publish to production PyPI"
+        echo "Review the TestPyPI release before approving"
+
+  # =====================================================================
+  # Step 5: Publish to Production PyPI
+  # =====================================================================
+  publish-pypi:
+    name: Publish to Production PyPI
+    needs: [approve-production]
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'push' && needs.approve-production.result == 'success') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'pypi')
+    environment:
+      name: pypi
+      url: https://pypi.org/project/${{ env.PACKAGE_NAME }}/
+    timeout-minutes: 10
+
+    permissions:
+      id-token: write  # REQUIRED for Trusted Publishing (OIDC)
+      contents: read
+
+    steps:
+    - name: Extract version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/v}"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: dist-packages-${{ steps.version.outputs.version }}
+        path: dist/
+
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        # Uses Trusted Publishing (OIDC) - no API token needed
+        verbose: true
+
+    - name: Wait for package to be available
+      run: |
+        echo "⏳ Waiting 60 seconds for PyPI to process package..."
+        sleep 60
+
+    - name: Free disk space
+      run: |
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo apt-get clean
+
+    - name: Checkout repository for constraints file
+      uses: actions/checkout@v4
+      with:
+        sparse-checkout: |
+          constraints-cpu.txt
+        sparse-checkout-cone-mode: false
+
+    - name: Test installation from PyPI (CPU-only PyTorch)
+      run: |
+        echo "📦 Testing installation from production PyPI with CPU-only PyTorch..."
+
+        # Install with constraints in SAME command (critical!)
+        pip install ${{ env.PACKAGE_NAME }}==${{ steps.version.outputs.version }} \
+          --extra-index-url https://download.pytorch.org/whl/cpu \
+          -c constraints-cpu.txt
+
+        # Verify it works
+        python -c "from lobster.version import __version__; print(f'Installed version: {__version__}')"
+        lobster --help
+
+        echo "✅ Package successfully installed from PyPI!"
+
+  # =====================================================================
+  # Step 6: Push Tag to Public Repository (Triggers public-release.yml)
+  # =====================================================================
+  # Pushes the version tag to lobster-local using deploy key.
+  # This triggers the public-release.yml workflow in lobster-local,
+  # which creates the GitHub release using the repo's native GITHUB_TOKEN.
+  #
+  # Architecture:
+  #   - No PAT required (eliminates WIKI_SYNC_PAT dependency)
+  #   - Uses existing PUBLIC_REPO_DEPLOY_KEY (already configured)
+  #   - lobster-local owns its own release creation
+  # =====================================================================
+  push-tag-to-public:
+    name: Push Tag to lobster-local
+    needs: [publish-pypi]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    timeout-minutes: 5
+
+    steps:
+    - name: Extract version
+      id: version
+      run: |
+        VERSION="${GITHUB_REF#refs/tags/}"
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Pushing tag: $VERSION"
+
+    - name: Configure SSH for deployment
+      env:
+        SSH_PRIVATE_KEY: ${{ secrets.PUBLIC_REPO_DEPLOY_KEY }}
+      run: |
+        mkdir -p ~/.ssh
+        echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+        chmod 600 ~/.ssh/id_ed25519
+        ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+    - name: Push tag to lobster-local
+      run: |
+        TAG="${{ steps.version.outputs.version }}"
+        PUBLIC_REPO="git@github.com:the-omics-os/lobster-local.git"
+
+        # Check if tag already exists
+        if git ls-remote --tags "$PUBLIC_REPO" | grep -q "refs/tags/$TAG"; then
+          echo "Tag $TAG already exists in lobster-local"
+          echo "Skipping tag push (release may already exist)"
+        else
+          # Get the latest commit SHA from lobster-local main branch
+          COMMIT_SHA=$(git ls-remote "$PUBLIC_REPO" refs/heads/main | cut -f1)
+
+          if [ -z "$COMMIT_SHA" ]; then
+            echo "ERROR: Could not get commit SHA from lobster-local"
+            exit 1
+          fi
+
+          echo "Creating tag $TAG at commit $COMMIT_SHA"
+
+          # Clone minimal repo to create tag
+          git clone --depth 1 --branch main "$PUBLIC_REPO" /tmp/lobster-local
+          cd /tmp/lobster-local
+
+          git config user.name "omics-os-bot"
+          git config user.email "bot@omics-os.com"
+
+          # Create and push the tag
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+          echo "Tag $TAG pushed to lobster-local"
+          echo "This triggers: https://github.com/the-omics-os/lobster-local/actions"
+        fi
+
+  # =====================================================================
+  # Step 7: Summary
+  # =====================================================================
+  summary:
+    name: Release Summary
+    runs-on: ubuntu-latest
+    needs: [sync-to-public, build-package, publish-pypi, push-tag-to-public]
+    if: always()
+
+    steps:
+    - name: Extract version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/v}"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Generate summary
+      run: |
+        echo "## 📦 PyPI Release Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Package**: ${{ env.PACKAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Sync to Public**: ${{ needs.sync-to-public.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Build**: ${{ needs.build-package.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **TestPyPI**: ${{ needs.publish-testpypi.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Production PyPI**: ${{ needs.publish-pypi.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Tag Push (triggers release)**: ${{ needs.push-tag-to-public.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [[ "${{ needs.publish-pypi.result }}" == "success" ]]; then
+          echo "### ✅ Release Successful!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Package is now available at:" >> $GITHUB_STEP_SUMMARY
+          echo "- **PyPI**: https://pypi.org/project/${{ env.PACKAGE_NAME }}/" >> $GITHUB_STEP_SUMMARY
+          echo "- **TestPyPI**: https://test.pypi.org/project/${{ env.PACKAGE_NAME }}/" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Install with:" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "pip install ${{ env.PACKAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+        elif [[ "${{ needs.publish-testpypi.result }}" == "success" ]]; then
+          echo "### 🟡 TestPyPI Release Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Awaiting manual approval for production PyPI release" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "### ❌ Release Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Please review the job outputs above for details." >> $GITHUB_STEP_SUMMARY
+        fi

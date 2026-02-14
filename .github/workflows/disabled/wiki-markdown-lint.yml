@@ -1,0 +1,91 @@
+name: Wiki Markdown Lint
+
+on:
+  push:
+    paths:
+      - 'wiki/**'
+      - 'scripts/lint_wiki_markdown.py'
+  pull_request:
+    paths:
+      - 'wiki/**'
+      - 'scripts/lint_wiki_markdown.py'
+  schedule:
+    # Run weekly on Wednesdays at 10am UTC
+    - cron: '0 10 * * 3'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  lint-markdown:
+    runs-on: ubuntu-latest
+    name: Lint Markdown Files
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run markdown linter
+        id: lint_markdown
+        run: |
+          python scripts/lint_wiki_markdown.py --verbose --output wiki-markdown-lint-report.md
+        continue-on-error: true
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: markdown-lint-report
+          path: wiki-markdown-lint-report.md
+          retention-days: 30
+
+      - name: Check for critical errors
+        id: check_errors
+        run: |
+          if grep -q "Errors: 0" wiki-markdown-lint-report.md; then
+            echo "No critical errors found"
+            echo "has_errors=false" >> $GITHUB_OUTPUT
+          else
+            echo "Critical errors found"
+            echo "has_errors=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && steps.check_errors.outputs.has_errors == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('wiki-markdown-lint-report.md', 'utf8');
+
+            // Extract summary and errors only for PR comment
+            const lines = report.split('\n');
+            const summaryStart = lines.findIndex(l => l.includes('## Summary'));
+            const errorsStart = lines.findIndex(l => l.includes('## Errors'));
+            const warningsStart = lines.findIndex(l => l.includes('## Warnings'));
+
+            let summary = lines.slice(summaryStart, errorsStart).join('\n');
+            let errors = '';
+
+            if (errorsStart >= 0) {
+              const endIndex = warningsStart >= 0 ? warningsStart : lines.length;
+              errors = lines.slice(errorsStart, endIndex).join('\n');
+            }
+
+            const truncatedReport = `${summary}\n\n${errors}`.substring(0, 60000);
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Wiki Markdown Lint Results\n\n${truncatedReport}\n\n*Full report available in workflow artifacts*`
+            });
+
+      - name: Fail if critical errors found
+        if: steps.check_errors.outputs.has_errors == 'true'
+        run: |
+          echo "::error::Critical markdown errors detected"
+          exit 1
