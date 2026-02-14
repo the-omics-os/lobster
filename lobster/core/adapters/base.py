@@ -135,6 +135,30 @@ class BaseAdapter(IModalityAdapter):
         except Exception as e:
             raise ValueError(f"Failed to load Excel data from {path}: {e}")
 
+    def _load_parquet_data(self, path: Union[str, Path], **kwargs) -> pd.DataFrame:
+        """
+        Load data from Parquet file.
+
+        Args:
+            path: Path to Parquet file
+            **kwargs: Additional pandas.read_parquet parameters
+
+        Returns:
+            pd.DataFrame: Loaded data
+        """
+        try:
+            import pyarrow.parquet  # noqa: F401 — validate availability
+        except ImportError:
+            raise ImportError(
+                "pyarrow is required to load parquet files: pip install pyarrow"
+            )
+        try:
+            df = pd.read_parquet(path, **kwargs)
+            self.logger.info(f"Loaded parquet data from {path}: shape {df.shape}")
+            return df
+        except Exception as e:
+            raise ValueError(f"Failed to load parquet data from {path}: {e}")
+
     def _load_h5ad_data(self, path: Union[str, Path]) -> anndata.AnnData:
         """
         Load data from H5AD file.
@@ -356,8 +380,7 @@ class BaseAdapter(IModalityAdapter):
         Returns:
             List[str]: List of supported file extensions
         """
-        # Match the expected format list from tests
-        return ["csv", "tsv", "xlsx", "h5ad"]
+        return ["csv", "tsv", "xlsx", "h5ad", "parquet"]
 
     def preprocess_data(self, adata: anndata.AnnData, **kwargs) -> anndata.AnnData:
         """
@@ -493,6 +516,8 @@ class BaseAdapter(IModalityAdapter):
             return self._load_csv_data(path, **kwargs)
         elif format_type in ["xlsx", "xls", "excel"]:
             return self._load_excel_data(path, **kwargs)
+        elif format_type == "parquet":
+            return self._load_parquet_data(path, **kwargs)
         else:
             raise ValueError(f"Unsupported file format: {format_type}")
 
@@ -563,6 +588,9 @@ class BaseAdapter(IModalityAdapter):
                     df = self._load_excel_data(
                         path, index_col=kwargs.get("index_col", 0)
                     )
+                    adata = self._create_anndata_from_dataframe(df, **kwargs)
+                elif format_type == "parquet":
+                    df = self._load_parquet_data(path)
                     adata = self._create_anndata_from_dataframe(df, **kwargs)
                 else:
                     raise ValueError(f"Unsupported file format: {format_type}")

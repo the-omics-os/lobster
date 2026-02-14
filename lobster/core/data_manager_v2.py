@@ -234,9 +234,9 @@ class DataManagerV2:
         self.modalities: Dict[str, "AnnData"] = {}
 
         # Track modality sources and dirty state for efficient auto-save
-        self._modality_sources: Dict[
-            str, Path
-        ] = {}  # modality_name -> source file path
+        self._modality_sources: Dict[str, Path] = (
+            {}
+        )  # modality_name -> source file path
         self._modality_dirty: set = set()  # modalities modified since load
 
         # Workspace restoration attributes
@@ -442,8 +442,8 @@ class DataManagerV2:
 
         # Genomics adapters (PREMIUM tier - optional)
         try:
-            from lobster.core.adapters.genomics.vcf_adapter import VCFAdapter
             from lobster.core.adapters.genomics.plink_adapter import PLINKAdapter
+            from lobster.core.adapters.genomics.vcf_adapter import VCFAdapter
 
             self.register_adapter("genomics_wgs", VCFAdapter(strict_validation=False))
             self.register_adapter(
@@ -456,47 +456,88 @@ class DataManagerV2:
             GENOMICS_AVAILABLE = False
             logger.debug("Genomics adapters not available")
 
+    def _resolve_adapter_for_file(self, file_path: Path):
+        """Resolve the best adapter for a file based on extension.
+
+        Returns (adapter_name, adapter_instance) or None if no adapter matches.
+
+        Strategy:
+        - h5ad: return None (handled by direct anndata.read_h5ad, faster)
+        - Unambiguous format (only one adapter supports it): use that adapter
+        - Ambiguous format (multiple adapters): use a BaseAdapter for generic loading
+        """
+        ext = file_path.suffix.lower().lstrip(".")
+        # Compound extensions
+        if file_path.name.endswith(".vcf.gz"):
+            ext = "vcf.gz"
+
+        if ext == "h5ad":
+            return None  # Caller handles h5ad directly
+
+        # Find all adapters that support this extension
+        matching = []
+        for name, adapter in self.adapters.items():
+            if ext in adapter.get_supported_formats():
+                matching.append((name, adapter))
+
+        if len(matching) == 1:
+            return matching[0]
+        elif len(matching) > 1:
+            # Ambiguous — use BaseAdapter for generic loading
+            return ("generic", BaseAdapter())
+
+        # No registered adapter, but BaseAdapter might handle it
+        generic = BaseAdapter()
+        if ext in generic.get_supported_formats():
+            return ("generic", generic)
+
+        return None
+
     def _auto_load_modalities(self) -> None:
         """
-        Auto-load existing H5AD modalities from workspace data directory.
+        Auto-load existing modalities from workspace data directory.
 
-        BUG009 FIX: Enables session persistence by loading previously saved modalities
-        when DataManagerV2 is initialized. This allows users to continue multi-step
-        workflows across separate lobster query/chat sessions.
+        Loads H5AD files (via anndata.read_h5ad) and tabular files
+        (CSV, TSV, parquet, XLSX) via the adapter system.
 
         Behavior:
-        - Scans workspace/data/ directory for .h5ad files
-        - Loads each file into self.modalities dict (key = filename without extension)
-        - Skips files >2GB (memory safety - user must explicitly load large files)
+        - Scans workspace/data/ for all supported file formats
+        - H5AD files loaded first (they take precedence over same-stem tabular files)
+        - Tabular files: 500MB size guard (expand significantly in memory)
+        - Skips H5AD files >2GB (memory safety)
         - Silently skips corrupted/incompatible files (logs warning)
-        - Performance: Lazy loading on __init__ (happens once per session)
-
-        Example:
-            Session 1: lobster query "Analyze GSE123, create filtered modality"
-                       → Saves: workspace/data/gse123_filtered.h5ad
-            Session 2: lobster query "Cluster the filtered GSE123 data"
-                       → Auto-loads: gse123_filtered from workspace
-                       → Analysis continues seamlessly
         """
         if not self.data_dir.exists():
             return
 
+        # --- Phase 1: Collect all loadable files ---
         h5ad_files = list(self.data_dir.glob("*.h5ad"))
-        if not h5ad_files:
+
+        scannable = self._get_scannable_extensions()
+        tabular_to_scan = self._TABULAR_FORMATS & scannable
+
+        tabular_files = []
+        for ext in sorted(tabular_to_scan):
+            tabular_files.extend(self.data_dir.glob(f"*.{ext}"))
+
+        if not h5ad_files and not tabular_files:
             return
 
+        total_files = len(h5ad_files) + len(tabular_files)
         logger.info(
-            f"Auto-loading {len(h5ad_files)} existing modalities from workspace..."
+            f"Auto-loading from workspace: {len(h5ad_files)} h5ad, "
+            f"{len(tabular_files)} tabular ({total_files} total)..."
         )
 
         loaded_count = 0
         skipped_large = 0
+        skipped_failed = 0
         corrupted_autosaves_cleaned = 0
         corrupted_regular_files = []
 
+        # --- Phase 2: H5AD files first (existing logic, byte-for-byte) ---
         for h5ad_file in h5ad_files:
             try:
-                # Safety: Skip very large files (>2GB) - user must explicitly load
                 file_size_gb = h5ad_file.stat().st_size / (1024**3)
                 if file_size_gb > 2.0:
                     skipped_large += 1
@@ -506,19 +547,16 @@ class DataManagerV2:
                     )
                     continue
 
-                modality_name = h5ad_file.stem  # Filename without .h5ad extension
+                modality_name = h5ad_file.stem
 
-                # Skip if modality already exists (prevent overwriting)
                 if modality_name in self.modalities:
                     logger.debug(f"Modality '{modality_name}' already loaded, skipping")
                     continue
 
-                # Load AnnData object
                 import anndata
 
                 adata = anndata.read_h5ad(h5ad_file)
 
-                # Ensure lineage metadata exists (create synthetic for legacy files)
                 from lobster.core.lineage import ensure_lineage, has_lineage
 
                 if not has_lineage(adata):
@@ -528,8 +566,6 @@ class DataManagerV2:
                     )
 
                 self.modalities[modality_name] = adata
-
-                # Track source for efficient auto-save (skip re-saving unchanged autosaves)
                 self._modality_sources[modality_name] = h5ad_file
 
                 loaded_count += 1
@@ -538,11 +574,8 @@ class DataManagerV2:
                 )
 
             except Exception:
-                # Handle corrupted files differently based on type
                 is_autosave = h5ad_file.name.endswith("_autosave.h5ad")
-
                 if is_autosave:
-                    # Autosave files are transient - clean up corrupted ones silently
                     try:
                         h5ad_file.unlink()
                         corrupted_autosaves_cleaned += 1
@@ -552,15 +585,69 @@ class DataManagerV2:
                             f"Could not remove corrupted autosave {h5ad_file.name}: {unlink_err}"
                         )
                 else:
-                    # Regular files may contain important data - track for summary warning
                     corrupted_regular_files.append(h5ad_file.name)
                 continue
 
+        # --- Phase 3: Non-H5AD tabular files ---
+        tabular_size_limit_mb = 500
+
+        for data_file in tabular_files:
+            try:
+                modality_name = data_file.stem
+
+                # H5AD autosave takes precedence — skip if already loaded
+                if modality_name in self.modalities:
+                    logger.debug(
+                        f"Modality '{modality_name}' already loaded (h5ad precedence), skipping {data_file.name}"
+                    )
+                    continue
+
+                file_size_mb = data_file.stat().st_size / 1e6
+                if file_size_mb > tabular_size_limit_mb:
+                    skipped_large += 1
+                    logger.debug(
+                        f"Skipped large tabular file {data_file.name} ({file_size_mb:.0f} MB > {tabular_size_limit_mb}MB threshold)"
+                    )
+                    continue
+
+                resolved = self._resolve_adapter_for_file(data_file)
+                if resolved is None:
+                    logger.debug(f"No adapter found for {data_file.name}, skipping")
+                    skipped_failed += 1
+                    continue
+
+                adapter_name, adapter = resolved
+                adata = adapter.from_source(data_file)
+
+                # Guard: skip files that produced no numeric variables (e.g. text-only CSV)
+                if adata.n_vars == 0:
+                    skipped_failed += 1
+                    logger.debug(
+                        f"Skipped {data_file.name}: no numeric variables after loading"
+                    )
+                    continue
+
+                self.modalities[modality_name] = adata
+                # Track source but do NOT mark dirty — this is the unchanged original
+                self._modality_sources[modality_name] = data_file
+
+                loaded_count += 1
+                logger.debug(
+                    f"Auto-loaded '{modality_name}' via {adapter_name}: "
+                    f"{adata.n_obs} obs × {adata.n_vars} vars"
+                )
+
+            except Exception as e:
+                skipped_failed += 1
+                logger.warning(f"Could not auto-load {data_file.name}: {e}")
+                continue
+
+        # --- Summary logging ---
         if loaded_count > 0:
             logger.info(f"Auto-loaded {loaded_count} modalities from workspace")
         if skipped_large > 0:
             logger.info(
-                f"Skipped {skipped_large} large files (>2GB). Use load_modality tool to load explicitly."
+                f"Skipped {skipped_large} large files. Use load_modality tool to load explicitly."
             )
         if corrupted_autosaves_cleaned > 0:
             logger.info(
@@ -2843,12 +2930,76 @@ https://github.com/OmicsOS/lobster
         logger.info(f"Data package created: {zip_filename}")
         return str(zip_filename)
 
+    # Formats that are scanned/loaded as tabular data (not h5ad, not specialized binary)
+    _TABULAR_FORMATS = frozenset({"csv", "tsv", "parquet", "xlsx"})
+
+    def _get_scannable_extensions(self) -> set:
+        """Derive scannable file extensions from registered adapters."""
+        extensions = set()
+        for adapter in self.adapters.values():
+            for fmt in adapter.get_supported_formats():
+                extensions.add(fmt)
+        # Always include these common formats even if no adapter explicitly declares them
+        extensions.update({"h5ad", "csv", "tsv", "parquet"})
+        return extensions
+
+    def _extract_tabular_metadata(self, file_path: Path) -> dict:
+        """Extract lightweight metadata from a tabular file (CSV/TSV/parquet/Excel).
+
+        Reads only headers and file stats — does not load the full dataset into memory.
+        For CSV/TSV files >50 MB, shape extraction is skipped to avoid unbounded I/O.
+        """
+        stat = file_path.stat()
+        ext = file_path.suffix.lower().lstrip(".")
+        file_size_mb = stat.st_size / 1e6
+        base_meta = {
+            "path": str(file_path),
+            "size_mb": file_size_mb,
+            "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            "type": ext,
+        }
+
+        # Try to extract shape cheaply per format
+        shape = (0, 0)
+        try:
+            if ext == "parquet":
+                import pyarrow.parquet as pq
+
+                meta = pq.read_metadata(file_path)
+                schema = pq.read_schema(file_path)
+                shape = (meta.num_rows, len(schema))
+            elif ext in ("csv", "tsv"):
+                # Skip full-file line counting for large files (>50 MB)
+                if file_size_mb > 50:
+                    # Header-only: get column count, estimate rows from file size
+                    with open(file_path, "r") as f:
+                        header = f.readline()
+                    sep = "\t" if ext == "tsv" or "\t" in header else ","
+                    n_cols = len(header.split(sep))
+                    # Rough estimate: avg line ~100 bytes
+                    estimated_rows = max(0, int(stat.st_size / 100) - 1)
+                    shape = (estimated_rows, max(0, n_cols - 1))
+                else:
+                    with open(file_path, "r") as f:
+                        header = f.readline()
+                        n_lines = sum(1 for _ in f)  # count remaining lines
+                    sep = "\t" if ext == "tsv" or "\t" in header else ","
+                    n_cols = len(header.split(sep))
+                    shape = (max(0, n_lines), max(0, n_cols - 1))
+        except ImportError as e:
+            logger.debug(f"Missing dependency for {file_path.name} metadata: {e}")
+        except Exception as e:
+            logger.debug(f"Could not extract shape from {file_path.name}: {e}")
+
+        base_meta["shape"] = shape
+        return base_meta
+
     def _scan_workspace(self) -> Dict[str, Dict]:
         """
         Scan workspace for available datasets without loading them.
 
-        BUG FIX #2: Modified to return dict instead of modifying self.available_datasets directly,
-        enabling proper caching in get_available_datasets() method.
+        Discovers H5AD files (via h5py for efficient metadata reading) and tabular
+        files (CSV, TSV, parquet, XLSX) via lightweight header inspection.
 
         Returns:
             Dict mapping dataset names to their metadata
@@ -2862,19 +3013,16 @@ https://github.com/OmicsOS/lobster
 
             corrupted_autosaves_cleaned = 0
 
+            # --- H5AD files: existing h5py-based metadata extraction (unchanged) ---
             for h5ad_file in data_dir.glob("*.h5ad"):
                 try:
-                    # Use h5py for efficient metadata extraction
                     import h5py
 
                     with h5py.File(h5ad_file, "r") as f:
-                        # Extract basic metadata - handle both dense and sparse matrices per AnnData spec
                         if "X" in f:
                             if isinstance(f["X"], h5py.Dataset):
-                                # Dense matrix - has shape attribute
                                 shape = f["X"].shape
                             elif isinstance(f["X"], h5py.Group):
-                                # Sparse matrix (CSR/CSC) - shape is in attributes per AnnData spec
                                 shape = (
                                     tuple(f["X"].attrs["shape"])
                                     if "shape" in f["X"].attrs
@@ -2896,11 +3044,8 @@ https://github.com/OmicsOS/lobster
                             "type": "h5ad",
                         }
                 except Exception as e:
-                    # Handle corrupted files gracefully
                     is_autosave = h5ad_file.name.endswith("_autosave.h5ad")
-
                     if is_autosave:
-                        # Autosave files are transient - clean up corrupted ones silently
                         try:
                             h5ad_file.unlink()
                             corrupted_autosaves_cleaned += 1
@@ -2908,15 +3053,28 @@ https://github.com/OmicsOS/lobster
                                 f"Removed corrupted autosave during scan: {h5ad_file.name}"
                             )
                         except OSError:
-                            pass  # Silently ignore if can't delete
+                            pass
                     else:
-                        # Regular files - log at debug level during scan (warning already shown during load)
                         logger.debug(f"Could not scan {h5ad_file.name}: {e}")
 
             if corrupted_autosaves_cleaned > 0:
                 logger.debug(
                     f"Scan cleaned up {corrupted_autosaves_cleaned} corrupted autosave file(s)"
                 )
+
+            # --- Non-H5AD tabular files ---
+            scannable = self._get_scannable_extensions()
+            tabular_to_scan = self._TABULAR_FORMATS & scannable
+
+            for ext in sorted(tabular_to_scan):
+                for data_file in data_dir.glob(f"*.{ext}"):
+                    stem = data_file.stem
+                    if stem in datasets:
+                        continue  # h5ad takes precedence
+                    try:
+                        datasets[stem] = self._extract_tabular_metadata(data_file)
+                    except Exception as e:
+                        logger.debug(f"Could not scan {data_file.name}: {e}")
 
             # Update self.available_datasets for backward compatibility
             self.available_datasets = datasets

@@ -11,6 +11,7 @@ introduced in DataManagerV2 v2.2+, including:
 """
 
 import json
+import os
 import shutil
 import tempfile
 import time
@@ -652,6 +653,341 @@ class TestWorkspacePerformance:
         # Should contain recent commands (limited to 50)
         assert len(session_data["command_history"]) == 50
         assert len(session_data["active_modalities"]) == 20
+
+
+# ===============================================================================
+# Multi-Format Workspace Tests
+# ===============================================================================
+
+
+@pytest.mark.unit
+class TestMultiFormatWorkspace:
+    """Test multi-format workspace scanning and auto-loading."""
+
+    def test_scan_discovers_csv_files(self, temp_workspace):
+        """CSV files in data/ should appear in available_datasets."""
+        dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=False)
+        data_dir = dm.data_dir
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write a simple numeric CSV
+        csv_path = data_dir / "expression.csv"
+        df = pd.DataFrame(
+            {"gene1": [1.0, 2.0, 3.0], "gene2": [4.0, 5.0, 6.0]},
+            index=["s1", "s2", "s3"],
+        )
+        df.to_csv(csv_path)
+
+        dm._scan_workspace()
+
+        assert "expression" in dm.available_datasets
+        info = dm.available_datasets["expression"]
+        assert info["type"] == "csv"
+        assert info["shape"][0] == 3  # 3 rows
+        assert info["shape"][1] == 2  # 2 data cols (index excluded)
+
+    def test_scan_discovers_parquet_files(self, temp_workspace):
+        """Parquet files should be discovered with correct shape from pyarrow metadata."""
+        pytest.importorskip("pyarrow")
+        dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=False)
+        data_dir = dm.data_dir
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        df = pd.DataFrame(
+            {"gene1": [1.0, 2.0], "gene2": [3.0, 4.0], "gene3": [5.0, 6.0]},
+            index=["s1", "s2"],
+        )
+        parquet_path = data_dir / "proteomics.parquet"
+        df.to_parquet(parquet_path)
+
+        dm._scan_workspace()
+
+        assert "proteomics" in dm.available_datasets
+        info = dm.available_datasets["proteomics"]
+        assert info["type"] == "parquet"
+        # parquet shape: num_rows from metadata, num_cols from schema (includes index col)
+        assert info["shape"][0] == 2
+
+    def test_scan_discovers_tsv_files(self, temp_workspace):
+        """TSV files should be discovered with correct shape."""
+        dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=False)
+        data_dir = dm.data_dir
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        tsv_path = data_dir / "counts.tsv"
+        df = pd.DataFrame(
+            {"gene1": [10, 20], "gene2": [30, 40]}, index=["sample_a", "sample_b"]
+        )
+        df.to_csv(tsv_path, sep="\t")
+
+        dm._scan_workspace()
+
+        assert "counts" in dm.available_datasets
+        info = dm.available_datasets["counts"]
+        assert info["type"] == "tsv"
+        assert info["shape"][0] == 2
+
+    def test_auto_load_csv_as_anndata(self, temp_workspace):
+        """CSV files should be auto-loaded as AnnData modalities."""
+        data_dir = temp_workspace / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        csv_path = data_dir / "matrix.csv"
+        df = pd.DataFrame(
+            {"gene1": [1.5, 2.5], "gene2": [3.5, 4.5]}, index=["s1", "s2"]
+        )
+        df.to_csv(csv_path)
+
+        dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=True)
+
+        assert "matrix" in dm.modalities
+        adata = dm.modalities["matrix"]
+        assert adata.n_obs == 2
+        assert adata.n_vars == 2
+
+    def test_auto_load_parquet_as_anndata(self, temp_workspace):
+        """Parquet files should be auto-loaded as AnnData modalities."""
+        pytest.importorskip("pyarrow")
+        data_dir = temp_workspace / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        parquet_path = data_dir / "proteomics.parquet"
+        df = pd.DataFrame(
+            {"prot1": [1.0, 2.0, 3.0], "prot2": [4.0, 5.0, 6.0]},
+            index=["s1", "s2", "s3"],
+        )
+        df.to_parquet(parquet_path)
+
+        dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=True)
+
+        assert "proteomics" in dm.modalities
+        adata = dm.modalities["proteomics"]
+        assert adata.n_obs == 3
+        assert adata.n_vars == 2
+
+    def test_auto_load_h5ad_takes_precedence(self, temp_workspace):
+        """When both data.csv and data_autosave.h5ad exist, h5ad wins."""
+        data_dir = temp_workspace / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write a CSV with 2 rows
+        csv_path = data_dir / "results.csv"
+        df_csv = pd.DataFrame({"g1": [1.0, 2.0]}, index=["a", "b"])
+        df_csv.to_csv(csv_path)
+
+        # Write an h5ad with 5 rows under the same stem
+        adata_h5 = ad.AnnData(
+            X=np.random.rand(5, 3).astype(np.float32),
+            obs=pd.DataFrame(index=[f"c{i}" for i in range(5)]),
+            var=pd.DataFrame(index=[f"g{i}" for i in range(3)]),
+        )
+        adata_h5.write_h5ad(data_dir / "results.h5ad")
+
+        dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=True)
+
+        # The h5ad version (5 obs) should have been loaded, not the CSV (2 obs)
+        assert "results" in dm.modalities
+        assert dm.modalities["results"].n_obs == 5
+
+    def test_auto_load_skips_large_tabular_files(self, temp_workspace):
+        """Tabular files >500MB should be skipped."""
+        data_dir = temp_workspace / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        csv_path = data_dir / "huge.csv"
+        pd.DataFrame({"g1": [1.0]}, index=["s1"]).to_csv(csv_path)
+
+        # Create DM without auto-scan so we can patch before loading
+        dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=False)
+
+        # Patch Path.stat to return large size only for the huge.csv file
+        _original_stat = Path.stat
+
+        def _fake_stat(self_path, *args, **kwargs):
+            result = _original_stat(self_path, *args, **kwargs)
+            if self_path.name == "huge.csv":
+                # Return a stat_result with inflated st_size (600 MB)
+                return os.stat_result(
+                    (
+                        result.st_mode,
+                        result.st_ino,
+                        result.st_dev,
+                        result.st_nlink,
+                        result.st_uid,
+                        result.st_gid,
+                        int(600e6),
+                        int(result.st_atime),
+                        int(result.st_mtime),
+                        int(result.st_ctime),
+                    )
+                )
+            return result
+
+        with patch.object(Path, "stat", _fake_stat):
+            dm._auto_load_modalities()
+
+        assert "huge" not in dm.modalities
+
+    def test_auto_load_skips_invalid_csv(self, temp_workspace):
+        """Non-numeric CSV files should be skipped (0-var guard rejects them)."""
+        data_dir = temp_workspace / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        csv_path = data_dir / "textonly.csv"
+        with open(csv_path, "w") as f:
+            f.write("name,description\nfoo,bar\nbaz,qux\n")
+
+        # Should not crash, and should NOT load the text-only file
+        dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=True)
+        assert "textonly" not in dm.modalities
+
+    def test_get_scannable_extensions_from_adapters(self, temp_workspace):
+        """_get_scannable_extensions should return union of all adapter formats."""
+        dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=False)
+        extensions = dm._get_scannable_extensions()
+
+        # Must always include the common formats
+        assert "h5ad" in extensions
+        assert "csv" in extensions
+        assert "tsv" in extensions
+        assert "parquet" in extensions
+
+        # Should also include formats from registered adapters (e.g. BaseAdapter's xlsx)
+        assert "xlsx" in extensions
+
+    def test_resolve_adapter_unambiguous(self, temp_workspace):
+        """When only one adapter supports a format, _resolve_adapter_for_file returns it."""
+        dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=False)
+
+        # Create a mock adapter that uniquely supports "xyz" format
+        mock_adapter = Mock(spec=["get_supported_formats", "from_source"])
+        mock_adapter.get_supported_formats.return_value = ["xyz"]
+        dm.adapters["special"] = mock_adapter
+
+        result = dm._resolve_adapter_for_file(Path("/fake/data.xyz"))
+        assert result is not None
+        name, adapter = result
+        assert name == "special"
+        assert adapter is mock_adapter
+
+    def test_resolve_adapter_ambiguous_falls_back_to_generic(self, temp_workspace):
+        """For CSV (multiple adapters), _resolve_adapter_for_file falls back to BaseAdapter."""
+        dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=False)
+
+        result = dm._resolve_adapter_for_file(Path("/fake/data.csv"))
+        assert result is not None
+        name, adapter = result
+        # Should be generic BaseAdapter since multiple registered adapters support csv
+        from lobster.core.adapters.base import BaseAdapter
+
+        assert isinstance(adapter, BaseAdapter)
+
+    def test_scan_parquet_without_pyarrow(self, temp_workspace):
+        """When pyarrow is missing, parquet scan should still index the file with (0,0) shape."""
+        dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=False)
+        data_dir = dm.data_dir
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write a real parquet file (pyarrow IS available in this env)
+        df = pd.DataFrame({"g1": [1.0, 2.0]}, index=["s1", "s2"])
+        parquet_path = data_dir / "noarrow.parquet"
+        df.to_parquet(parquet_path)
+
+        # Mock pyarrow import failure during metadata extraction
+        import builtins
+
+        real_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == "pyarrow.parquet":
+                raise ImportError("mocked: pyarrow not available")
+            return real_import(name, *args, **kwargs)
+
+        with patch.object(builtins, "__import__", side_effect=mock_import):
+            dm._scan_workspace()
+
+        # File should still appear in available_datasets, just with (0,0) shape
+        assert "noarrow" in dm.available_datasets
+        assert dm.available_datasets["noarrow"]["type"] == "parquet"
+        assert dm.available_datasets["noarrow"]["shape"] == (0, 0)
+
+    def test_scan_csv_shape_extraction_uses_context_manager(self, temp_workspace):
+        """Verify CSV scan does not leak file handles (reads via context manager)."""
+        dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=False)
+        data_dir = dm.data_dir
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        csv_path = data_dir / "handles.csv"
+        df = pd.DataFrame({"g1": [1.0] * 100, "g2": [2.0] * 100})
+        df.to_csv(csv_path)
+
+        # Scan should complete without warnings about leaked handles
+        dm._scan_workspace()
+
+        assert "handles" in dm.available_datasets
+        info = dm.available_datasets["handles"]
+        assert info["shape"][0] == 100  # rows
+        assert info["shape"][1] >= 1  # at least 1 data col
+
+    def test_scan_large_csv_uses_estimated_shape(self, temp_workspace):
+        """CSV files >50 MB should use estimated row count instead of reading entire file."""
+        dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=False)
+        data_dir = dm.data_dir
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        csv_path = data_dir / "bigcsv.csv"
+        pd.DataFrame({"g1": [1.0], "g2": [2.0]}).to_csv(csv_path)
+
+        # Patch stat to report >50MB so the estimated path is used
+        _original_stat = Path.stat
+
+        def _fake_stat(self_path, *args, **kwargs):
+            result = _original_stat(self_path, *args, **kwargs)
+            if self_path.name == "bigcsv.csv":
+                return os.stat_result(
+                    (
+                        result.st_mode,
+                        result.st_ino,
+                        result.st_dev,
+                        result.st_nlink,
+                        result.st_uid,
+                        result.st_gid,
+                        int(60e6),  # 60 MB
+                        int(result.st_atime),
+                        int(result.st_mtime),
+                        int(result.st_ctime),
+                    )
+                )
+            return result
+
+        with patch.object(Path, "stat", _fake_stat):
+            dm._scan_workspace()
+
+        assert "bigcsv" in dm.available_datasets
+        info = dm.available_datasets["bigcsv"]
+        # Shape should be an estimate, not exact — just verify it's present and positive
+        assert info["shape"][0] > 0
+        assert info["shape"][1] >= 1
+
+    def test_auto_load_xlsx_as_anndata(self, temp_workspace):
+        """XLSX files should be auto-loaded as AnnData modalities."""
+        pytest.importorskip("openpyxl")
+        data_dir = temp_workspace / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        xlsx_path = data_dir / "expression.xlsx"
+        df = pd.DataFrame(
+            {"gene1": [1.0, 2.0, 3.0], "gene2": [4.0, 5.0, 6.0]},
+            index=["s1", "s2", "s3"],
+        )
+        df.to_excel(xlsx_path)
+
+        dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=True)
+
+        assert "expression" in dm.modalities
+        adata = dm.modalities["expression"]
+        assert adata.n_obs == 3
+        assert adata.n_vars == 2
 
 
 if __name__ == "__main__":

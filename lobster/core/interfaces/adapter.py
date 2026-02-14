@@ -126,6 +126,7 @@ class IModalityAdapter(ABC):
                 ".xls": "excel",
                 ".mtx": "mtx",
                 ".h5mu": "h5mu",
+                ".parquet": "parquet",
             }
 
             return format_mapping.get(extension)
