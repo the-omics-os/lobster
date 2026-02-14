@@ -31,6 +31,7 @@ from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.config.supervisor_config import SupervisorConfig
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.tools.custom_code_tool import create_execute_custom_code_tool
 from lobster.tools.todo_tools import create_todo_tools
 from lobster.tools.workspace_tool import (
     create_delete_from_workspace_tool,
@@ -525,6 +526,22 @@ def create_bioinformatics_graph(
     get_content_from_workspace = create_get_content_from_workspace_tool(data_manager)
     delete_from_workspace = create_delete_from_workspace_tool(data_manager)
 
+    # Create execute_custom_code tool for supervisor fallback
+    # This gives the supervisor a code execution escape hatch for tasks that
+    # no domain agent handles (e.g., cross-modal regression, reading adata.uns,
+    # loading non-h5ad formats like parquet/CSV directly)
+    from lobster.services.execution.custom_code_execution_service import (
+        CustomCodeExecutionService,
+    )
+
+    supervisor_code_service = CustomCodeExecutionService(data_manager)
+    execute_custom_code = create_execute_custom_code_tool(
+        data_manager=data_manager,
+        custom_code_service=supervisor_code_service,
+        agent_name="supervisor",
+        post_processor=None,
+    )
+
     logger.debug(f"Supervisor-accessible agents: {supervisor_accessible_names}")
     logger.debug(
         f"Total agents created: {len(created_agents)}, "
@@ -542,16 +559,14 @@ def create_bioinformatics_graph(
     write_todos, read_todos = create_todo_tools()
 
     # Combine all tools for the supervisor
-    all_supervisor_tools = (
-        agent_tools  # Tools to invoke sub-agents
-        + [
-            list_available_modalities,
-            get_content_from_workspace,
-            delete_from_workspace,
-            write_todos,  # Planning tools
-            read_todos,
-        ]
-    )
+    all_supervisor_tools = agent_tools + [  # Tools to invoke sub-agents
+        list_available_modalities,
+        get_content_from_workspace,
+        delete_from_workspace,
+        write_todos,  # Planning tools
+        read_todos,
+        execute_custom_code,  # Fallback code execution
+    ]
 
     # ==========================================================================
     # Create supervisor using simple Tool Calling pattern

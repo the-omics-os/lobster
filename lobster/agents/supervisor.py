@@ -137,7 +137,10 @@ def _build_tools_section() -> str:
 **list_available_modalities**: Use this to inform your decisions about analysis steps and agent delegation. You can use this tool if a user asks to do something with a loaded modality where the responsibility (which sub-agent) or intention is not clear.
 **get_content_from_workspace**: Retrieve cached content from workspace with unified behavior across all workspace types (literature, data, metadata, queues). Use this to list cached items or retrieve specific content at different detail levels. Supports filtering by workspace category and status. See tool description for examples.
 **write_todos**: Create and update task planning list for multi-step operations. Use BEFORE starting complex tasks (3+ steps, multi-agent coordination, publication queue processing). Maintains exactly ONE task "in_progress" at a time. Mark completed immediately after finishing each task. See <Planning & Task Decomposition> section for detailed usage.
-**read_todos**: Check current todo list status. Use when you need to review your plan or remind yourself of pending tasks. Current todos are visible in your state context."""
+**read_todos**: Check current todo list status. Use when you need to review your plan or remind yourself of pending tasks. Current todos are visible in your state context.
+**execute_custom_code**: FALLBACK code execution tool. Use ONLY when no domain agent can handle the task. Runs Python in a sandboxed subprocess with access to loaded modalities (as `adata`), workspace files, and scientific libraries (pandas, numpy, scipy, scanpy, anndata, sklearn, etc.).
+    When to use: Cross-modal analysis no single agent covers, reading adata.uns data, loading non-h5ad files (parquet, CSV), custom computations outside any agent's domain, quick data inspection before delegation.
+    When NOT to use (delegate instead): standard scRNA-seq → transcriptomics_expert, literature/datasets → research_agent, downloads → data_expert, visualization → visualization_expert, ML/survival → machine_learning_expert."""
 
 
 def _build_agents_section(active_agents: List[str], config: SupervisorConfig) -> str:
@@ -224,6 +227,16 @@ This request involves:
     - For feature ranking: "Which genes best predict the outcome?"
     → **Delegate to machine_learning_expert** (routes to feature_selection_expert or survival_analysis_expert internally)
     → Do NOT route feature selection to transcriptomics_expert — transcriptomics handles DE and pathway enrichment only
+
+**Code Execution Fallback (execute_custom_code)**:
+    When NO domain agent covers the task, use your execute_custom_code tool directly:
+    - Cross-modal analysis (e.g., correlating transcriptomics with proteomics features)
+    - Cell-cell communication scoring or custom prediction tasks
+    - Reading adata.uns keys that standard tools don't expose
+    - Loading parquet/CSV files that weren't auto-loaded as modalities
+    - Any custom Python computation that doesn't fit a domain agent
+    → Use execute_custom_code with modality_name to access loaded AnnData, or without to work with workspace files
+    → Always try delegating to a domain agent first — use code execution only as a last resort
 """
     # REMOVED: due to too much tokens and not enough value
     # # Add agent-specific delegation rules
@@ -255,13 +268,13 @@ This request involves:
 #        - Fast dataset discovery (GEO, SRA) with advanced filtering (organism, date range, platform, supplementary file types).
 #        - Extract computational methods and parameters from publications via automatic PDF resolution and parsing.
 #        - Fetch and validate dataset metadata including URLs, sample information, and availability for download operations.
-#        - CRITICAL QUEUE WORKFLOW: Validate dataset → create queue entry (status: PENDING) → supervisor extracts entry_id → data_expert executes download via execute_download_from_queue(entry_id).
+#        - CRITICAL QUEUE WORKFLOW: Validate dataset → create queue entry (status: PENDING) → supervisor extracts entry_id → data_expert executes download via execute_download_from_queue(entry_id). Supports GEO, PRIDE, SRA, and MassIVE.
 #        - Find related entries across resources (dataset ↔ publication, sample ↔ dataset, publication ↔ publication).
 #        - Extract publication metadata and bibliographic information for literature management and citation.
 #        - PUBLICATION QUEUE MANAGEMENT: Process batch literature imports (RIS from Zotero/Mendeley/EndNote), extract metadata/methods/identifiers from queued publications, manage queue status (PENDING → EXTRACTING → COMPLETED/FAILED), handle error recovery and retry strategies for failed extractions.""",
 #         "data_expert_agent": """       - ZERO ONLINE ACCESS: Cannot fetch metadata, query external databases (GEO/SRA/PRIDE), or extract URLs - all online operations delegated to research_agent.
 #        - Execute downloads from download queue ONLY after research_agent has validated and created queue entry (status: PENDING).
-#        - CRITICAL QUEUE WORKFLOW: research_agent validates → creates queue entry → supervisor extracts entry_id from response → data_expert executes via execute_download_from_queue(entry_id).
+#        - CRITICAL QUEUE WORKFLOW: research_agent validates/prepares → creates queue entry → supervisor extracts entry_id from response → data_expert executes via execute_download_from_queue(entry_id). Works for all databases (GEO, PRIDE, SRA, MassIVE).
 #        - Monitor queue status with get_queue_status() and retry failed downloads with strategy overrides (MATRIX_FIRST, H5_FIRST, SUPPLEMENTARY_FIRST).
 #        - Load local data files using adapter system (transcriptomics_single_cell, transcriptomics_bulk, proteomics_ms, proteomics_affinity).
 #        - Manage modalities with 5 tools: list_available_modalities (check loaded data), inspect_modality (examine structure), remove_modality (cleanup), validate_modality_compatibility (integration checks), concatenate_samples (merge datasets).
@@ -373,9 +386,10 @@ def _build_workflow_section(active_agents: List[str], config: SupervisorConfig) 
         section += """
 
     **Download Queue Coordination (v2.4+):**
-    - For GEO/SRA dataset downloads, you MUST coordinate via download queue:
-      1. Delegate to research_agent: validate_dataset_metadata(dataset_id, add_to_queue=True)
-      2. Extract entry_id from research_agent response (format: "queue_GSEXXXXX_abc123")
+    - For dataset downloads from ANY supported database (GEO, PRIDE, SRA, MassIVE), coordinate via download queue:
+      1. For GEO: research_agent.validate_dataset_metadata(dataset_id, add_to_queue=True)
+         For PRIDE/SRA/MassIVE: research_agent.prepare_dataset_download(accession="PXD063610")
+      2. Extract entry_id from research_agent response (format: "queue_{accession}_{hex8}")
       3. Query queue status if needed: get_content_from_workspace(workspace="download_queue", status_filter="PENDING")
       4. Confirm with user before downloading
       5. Delegate to data_expert_agent: execute_download_from_queue(entry_id="<extracted_id>")
@@ -531,8 +545,9 @@ def _build_examples_section() -> str:
     return """<Example Delegation Patterns>
 
 **Queue Download Pattern (v2.4+ - CRITICAL):**
-research_agent.validate_dataset_metadata(dataset_id, add_to_queue=True) → extract entry_id (format: "queue_GSEXXXXX_abc123") → confirm with user → data_expert.execute_download_from_queue(entry_id)
-- NEVER skip queue validation; ALWAYS extract entry_id before data_expert handoff
+GEO: research_agent.validate_dataset_metadata(dataset_id, add_to_queue=True) → extract entry_id → confirm → data_expert.execute_download_from_queue(entry_id)
+PRIDE/SRA/MassIVE: research_agent.prepare_dataset_download(accession="PXD063610") → extract entry_id → confirm → data_expert.execute_download_from_queue(entry_id)
+- NEVER skip queue preparation; ALWAYS extract entry_id before data_expert handoff
 
 **Literature & Methods Pattern:**
 research_agent.search_literature() or .fast_dataset_search() → present results → research_agent.extract_methods(DOI) for parameters
