@@ -67,51 +67,47 @@ Running `lobster init` will guide this process and generate the command.
 | **Machine learning** | [docs.omics-os.com/docs/agents/ml](https://docs.omics-os.com/raw/docs/agents/ml.md) |
 | **Getting started** | [docs.omics-os.com/docs/getting-started](https://docs.omics-os.com/raw/docs/getting-started.md) |
 
-## Interaction Modes
+## How to Invoke Lobster
 
-### Interactive Chat
+All interaction happens via `lobster query`. Describe what you want in natural language.
+Use `--session-id` to maintain context across multiple queries (loaded data persists).
+
 ```bash
-lobster chat                          # Start interactive session
-lobster chat --workspace ./myproject  # Custom workspace
-lobster chat --reasoning              # Enable detailed reasoning
+# Start a session with a workspace
+lobster query --workspace ./my_analysis --session-id "proj1" "Download GSE109564"
+
+# Continue in the same session (data and context carry over)
+lobster query --session-id "proj1" "Run quality control"
+lobster query --session-id "proj1" "Cluster the cells and find marker genes"
+
+# Use 'latest' to continue the most recent session
+lobster query --session-id latest "Compare hepatocytes vs stellate cells"
 ```
 
-### Single Query
+### Key Flags
+
+| Flag | Purpose |
+|------|---------|
+| `--session-id <id>` | Session continuity (required for multi-step analysis) |
+| `--session-id latest` | Continue the most recent session |
+| `--workspace <path>` | Set workspace directory (default: `.lobster_workspace/`) |
+| `--json` | Machine-readable JSON output on stdout |
+| `--reasoning` | Enable detailed agent reasoning |
+| `--output <file>` | Save response to file |
+
+### JSON Output (for parsing results)
+
 ```bash
-lobster query "Your request"
-lobster query --session-id latest "Follow-up request"
+lobster query --session-id latest --json "What data is loaded?" | jq .response
+lobster query --session-id latest --json "List workspace files" | jq .response
 ```
 
-## Core Patterns
+### System Commands (no session needed)
 
-### Natural Language (Primary)
-Just describe what you want:
-```
-"Download GSE109564 and run quality control"
-"Cluster the cells and find marker genes"
-"Compare hepatocytes vs stellate cells"
-```
-
-### Slash Commands (System Operations)
-```
-/data                    # Show loaded data info
-/files                   # List workspace files
-/workspace list          # List available datasets
-/workspace load 1        # Load dataset by index
-/plots                   # Show generated visualizations
-/save                    # Save current session
-/status                  # Show system status
-/help                    # All commands
-```
-
-### Session Continuity
 ```bash
-# Start named session
-lobster query --session-id "my_analysis" "Load GSE109564"
-
-# Continue with context
-lobster query --session-id latest "Now cluster the cells"
-lobster query --session-id latest "Find markers for cluster 3"
+lobster status              # Check config, installed agents, tier
+lobster agents list         # List installed agent packages
+lobster config-test --json  # Verify configuration
 ```
 
 ## Agent System
@@ -142,21 +138,22 @@ Details and hierarchy: [references/agents.md](references/agents.md)
 You describe what you want; Lobster handles the routing. A typical multi-step analysis
 uses several agents in sequence:
 
-```
-"Search PubMed for liver fibrosis scRNA-seq datasets"
-  -> Research Agent searches, finds GSE IDs, queues download
+```bash
+lobster query --workspace ./liver_study --session-id "liver" \
+  "Search PubMed for liver fibrosis scRNA-seq datasets"
+  # -> Research Agent searches, finds GSE IDs, queues download
 
-"Download the top dataset"
-  -> Data Expert executes queued download, loads data
+lobster query --session-id "liver" "Download the top dataset"
+  # -> Data Expert executes queued download, loads data
 
-"Run QC, filter, normalize, and cluster"
-  -> Transcriptomics Expert runs full pipeline
+lobster query --session-id "liver" "Run QC, filter, normalize, and cluster"
+  # -> Transcriptomics Expert runs full pipeline
 
-"Find biomarkers for fibrotic vs healthy cells"
-  -> ML Expert -> Feature Selection Expert
+lobster query --session-id "liver" "Find biomarkers for fibrotic vs healthy cells"
+  # -> ML Expert -> Feature Selection Expert
 
-"Create UMAP and export results"
-  -> Visualization Expert + file export
+lobster query --session-id "liver" "Create UMAP and export marker genes to CSV"
+  # -> Visualization Expert + file export
 ```
 
 **Key constraint:** Research Agent is the only agent with internet access.
@@ -175,60 +172,64 @@ All other agents operate on data already loaded in memory.
 | `.csv` | Exported tables |
 | `.json` | Metadata, provenance |
 
-**Managing outputs**:
-```
-/files              # List all outputs
-/plots              # View visualizations
-/open results.html  # Open in browser
-/read summary.csv   # Preview file contents
+**Checking outputs**:
+```bash
+lobster query --session-id latest "What data is currently loaded?"
+lobster query --session-id latest "List all files in the workspace"
+lobster query --session-id latest "Show me the generated plots"
+ls .lobster_workspace/        # Direct filesystem inspection
 ```
 
 ## Typical Workflows
 
+All queries below assume an active session (`--session-id`). Shown as just the
+query string for readability.
+
 ### Single-Cell RNA-seq
-```
-"Download GSE109564 from GEO"           # Research + Data Expert
-"Run quality control"                    # Transcriptomics Expert
-"Filter, normalize, and cluster"         # Transcriptomics Expert
-"Identify cell types"                    # Annotation Expert
-"Find DE genes between T cells and macrophages"  # DE Analysis Expert
-"Create UMAP colored by cell type"       # Visualization Expert
+```bash
+lobster query -w ./scrna --session-id "sc" "Download GSE109564 from GEO"
+lobster query --session-id "sc" "Run quality control"
+lobster query --session-id "sc" "Filter, normalize, and cluster"
+lobster query --session-id "sc" "Identify cell types"
+lobster query --session-id "sc" "Find DE genes between T cells and macrophages"
+lobster query --session-id "sc" "Create UMAP colored by cell type"
+lobster query --session-id "sc" "Export marker genes to CSV"
 ```
 Details: [references/single-cell-workflow.md](references/single-cell-workflow.md)
 
 ### Bulk RNA-seq
-```
-"Load counts.csv with metadata from metadata.csv"
-"Run differential expression: treatment vs control"
-"Show volcano plot and top DE genes"
-"Run GO enrichment on upregulated genes"
+```bash
+lobster query -w ./rnaseq --session-id "bulk" "Load counts.csv with metadata from metadata.csv"
+lobster query --session-id "bulk" "Run differential expression: treatment vs control"
+lobster query --session-id "bulk" "Show volcano plot and top DE genes"
+lobster query --session-id "bulk" "Run GO enrichment on upregulated genes"
 ```
 Details: [references/bulk-rnaseq-workflow.md](references/bulk-rnaseq-workflow.md)
 
 ### Genomics [alpha]
-```
-"Load the VCF file and assess quality"
-"Filter samples, then filter variants"       # Order enforced
-"Run GWAS with phenotype column 'disease'"
-"Annotate significant variants"
+```bash
+lobster query -w ./gwas --session-id "gen" "Load the VCF file and assess quality"
+lobster query --session-id "gen" "Filter samples, then filter variants"
+lobster query --session-id "gen" "Run GWAS with phenotype column 'disease'"
+lobster query --session-id "gen" "Annotate significant variants"
 ```
 Details: [docs.omics-os.com/docs/agents/genomics](https://docs.omics-os.com/raw/docs/agents/genomics.md)
 
 ### Proteomics [alpha]
-```
-"Load the MaxQuant proteinGroups.txt"        # Auto-detects MS platform
-"Run quality control"
-"Filter and normalize"
-"Find differentially abundant proteins: treatment vs control"
+```bash
+lobster query -w ./prot --session-id "prot" "Load the MaxQuant proteinGroups.txt"
+lobster query --session-id "prot" "Run quality control"
+lobster query --session-id "prot" "Filter and normalize"
+lobster query --session-id "prot" "Find differentially abundant proteins: treatment vs control"
 ```
 Details: [docs.omics-os.com/docs/agents/proteomics](https://docs.omics-os.com/raw/docs/agents/proteomics.md)
 
 ### Machine Learning [alpha]
-```
-"Prepare the scRNA-seq data for ML"
-"Find the top 100 biomarkers with stability selection"
-"Build a Cox survival model"
-"Export features for PyTorch"
+```bash
+lobster query --session-id latest "Prepare the scRNA-seq data for ML"
+lobster query --session-id latest "Find the top 100 biomarkers with stability selection"
+lobster query --session-id latest "Build a Cox survival model"
+lobster query --session-id latest "Export features for PyTorch"
 ```
 Details: [docs.omics-os.com/docs/agents/ml](https://docs.omics-os.com/raw/docs/agents/ml.md)
 
@@ -236,11 +237,11 @@ Details: [docs.omics-os.com/docs/agents/ml](https://docs.omics-os.com/raw/docs/a
 
 | Issue | Check |
 |-------|-------|
-| Lobster not responding | `lobster config-test` |
-| No data loaded | `/data` to verify, `/workspace list` to see available |
-| Analysis fails | Try with `--reasoning` flag |
-| Missing outputs | Check `/files` and workspace directory |
-| Agent not available | `lobster agents list` to check installed packages |
+| Lobster not responding | `lobster config-test --json` |
+| No data loaded | `lobster query --session-id latest "What data is loaded?"` |
+| Analysis fails | Add `--reasoning` flag to the query |
+| Missing outputs | `ls .lobster_workspace/` or ask "List workspace files" |
+| Agent not available | `lobster agents list` |
 
 ## Documentation
 

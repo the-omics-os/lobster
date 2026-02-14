@@ -2,6 +2,11 @@
 
 Complete reference for Lobster AI command-line interface.
 
+> **Agent note:** Agents interact with Lobster via `lobster query --session-id <id> "request"`.
+> Slash commands (`/data`, `/files`, etc.) are only available inside interactive `lobster chat`
+> sessions. When running programmatically, use natural language queries instead --
+> e.g., `lobster query --session-id latest "What data is loaded?"` instead of `/data`.
+
 ## Installation & Setup
 
 ### Install (new users)
@@ -161,14 +166,17 @@ lobster chat --workspace ./project-b    # Session B (separate)
 ## Output Formats
 
 ```bash
-# Default (interactive output)
+# Default (interactive Rich output)
 lobster query "Analyze data"
 
 # Save to file
 lobster query --output results.md "Generate report"
 
-# JSON output (for scripting)
-lobster query --format json "Get statistics"
+# JSON output (for programmatic/agent consumption)
+lobster query --json "Get statistics"
+# Returns: {"success": true, "response": "...", "session_id": "...", ...}
+# All Rich UI output goes to stderr; only JSON on stdout
+# Pipe-friendly: lobster query --json "..." | jq .response
 ```
 
 ## Configuration Commands

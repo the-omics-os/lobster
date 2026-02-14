@@ -17,21 +17,17 @@ Complete workflow for analyzing single-cell RNA-seq data with Lobster AI.
 
 **From local file**:
 ```
-/workspace load my_data.h5ad
-```
-Or:
-```
 "Load the single-cell data from my_data.h5ad"
 ```
 
 **From 10X Genomics**:
 ```
-/archive filtered_feature_bc_matrix.tar.gz
+"Load the 10X data from filtered_feature_bc_matrix.tar.gz"
 ```
 
 **Verify data loaded**:
 ```
-/data
+"What data is currently loaded?"
 ```
 
 ## Step 2: Quality Assessment
@@ -49,7 +45,7 @@ Or:
 
 **View QC plots**:
 ```
-/plots
+"Show me the QC plots"
 ```
 
 ## Step 3: Filtering & Preprocessing
@@ -154,42 +150,32 @@ Or:
 
 **Save session**:
 ```
-/save
+"Save the current session"
 ```
 
 ## Complete Example Session
 
 ```bash
-lobster chat --workspace ./tumor_analysis
+lobster query -w ./tumor_analysis --session-id "tumor" \
+  "Download GSE109564 - tumor-infiltrating immune cells"
 
-> "Download GSE109564 - tumor-infiltrating immune cells"
-# Downloads and loads data
+lobster query --session-id "tumor" "Run quality control"
 
-> "Run quality control"
-# Generates QC metrics and plots
+lobster query --session-id "tumor" "Show me the QC plots"
 
-> /plots
-# View QC visualizations
+lobster query --session-id "tumor" "Filter low-quality cells and normalize"
 
-> "Filter low-quality cells and normalize"
-# Preprocessing
+lobster query --session-id "tumor" "Cluster cells and create UMAP"
 
-> "Cluster cells and create UMAP"
-# Dimensionality reduction + clustering
+lobster query --session-id "tumor" "Identify cell types using immune cell markers"
 
-> "Identify cell types using immune cell markers"
-# Annotation
+lobster query --session-id "tumor" \
+  "Find differentially expressed genes between CD8 T cells and Tregs"
 
-> "Find differentially expressed genes between CD8 T cells and Tregs"
-# DE analysis
+lobster query --session-id "tumor" \
+  "Create publication-ready UMAP and export DE results"
 
-> "Create publication-ready UMAP and export DE results"
-# Final outputs
-
-> /files
-# Check generated files
-
-> /save
+lobster query --session-id "tumor" "List all files in the workspace"
 ```
 
 ## Common Variations
@@ -217,7 +203,7 @@ lobster chat --workspace ./tumor_analysis
 ## Tips
 
 1. **Start with QC**: Always assess quality before filtering
-2. **Check intermediate results**: Use `/data` and `/plots` frequently
+2. **Check intermediate results**: Ask "What data is loaded?" and "Show me the plots" between steps
 3. **Be specific**: "resolution 0.5" not just "cluster"
-4. **Use session continuity**: `--session-id latest` for follow-ups
-5. **Save often**: `/save` preserves your progress
+4. **Use session continuity**: `--session-id` for multi-step workflows
+5. **Inspect outputs**: `ls .lobster_workspace/` to see generated files

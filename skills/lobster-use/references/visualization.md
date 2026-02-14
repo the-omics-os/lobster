@@ -7,11 +7,11 @@ Creating publication-quality visualizations with Lobster AI.
 **Agent**: Visualization Expert (automatic routing)
 **Output formats**: HTML (interactive), PNG (publication), PDF (vector)
 
-## Quick Commands
+## Checking Visualizations
 
 ```
-/plots                    # List all generated visualizations
-/open plot.html           # Open in browser
+"Show me the generated plots"
+"List all visualization files in the workspace"
 ```
 
 ## Dimensionality Reduction Plots
@@ -162,8 +162,7 @@ Creating publication-quality visualizations with Lobster AI.
 ### Interactive HTML
 ```
 "Save as interactive HTML"
-/plots
-/open visualization.html
+"Show me the generated plots"
 ```
 
 ### Publication PNG
@@ -184,25 +183,19 @@ Creating publication-quality visualizations with Lobster AI.
 ## Complete Visualization Session
 
 ```bash
-> "Create comprehensive visualization of the single-cell analysis"
+lobster query --session-id latest \
+  "Create comprehensive visualization of the single-cell analysis"
+# Generates: UMAP, cell type proportions, marker dot plot, QC violins
 
-# Lobster generates:
-# - UMAP with clusters
-# - Cell type proportions
-# - Top marker dot plot
-# - QC violin plots
+lobster query --session-id latest "Show me the generated plots"
 
-> /plots
-# Lists all generated figures
+lobster query --session-id latest \
+  "Add UMAP colored by specific markers: CD3D, CD14, CD19"
 
-> "Add UMAP colored by specific markers: CD3D, CD14, CD19"
-# Gene expression overlay
+lobster query --session-id latest \
+  "Export all figures as publication-ready PNGs"
 
-> "Export all figures as publication-ready PNGs"
-# High-resolution export
-
-> /files
-# Check exported files
+lobster query --session-id latest "List all files in the workspace"
 ```
 
 ## Tips

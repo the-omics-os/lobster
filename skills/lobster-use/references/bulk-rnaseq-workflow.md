@@ -22,12 +22,12 @@ Complete workflow for differential expression analysis with bulk RNA-seq data.
 
 **From Kallisto/Salmon**:
 ```
-/archive kallisto_results.tar.gz
+"Load the Kallisto results from kallisto_results.tar.gz"
 ```
 
 **Verify**:
 ```
-/data
+"What data is currently loaded?"
 ```
 
 ## Step 2: Experimental Design
@@ -158,34 +158,26 @@ Complete workflow for differential expression analysis with bulk RNA-seq data.
 ## Complete Example Session
 
 ```bash
-lobster chat --workspace ./rnaseq_analysis
+lobster query -w ./rnaseq_analysis --session-id "bulk" \
+  "Load counts.csv - it has gene IDs as rows and samples as columns"
 
-> "Load counts.csv - it has gene IDs as rows and samples as columns"
-# Loads count matrix
+lobster query --session-id "bulk" \
+  "The metadata.csv file has sample info with a 'condition' column"
 
-> "The metadata.csv file has sample info with a 'condition' column"
-# Adds experimental design
+lobster query --session-id "bulk" "Run sample QC and show PCA"
 
-> "Run sample QC and show PCA"
-# Quality assessment
+lobster query --session-id "bulk" "Show me the QC and PCA plots"
 
-> /plots
-# View PCA and QC plots
+lobster query --session-id "bulk" \
+  "Perform differential expression: treated vs control"
 
-> "Perform differential expression: treated vs control"
-# DE analysis with DESeq2
+lobster query --session-id "bulk" "Show volcano plot and top 20 DE genes"
 
-> "Show volcano plot and top 20 DE genes"
-# Visualize results
+lobster query --session-id "bulk" "Run GO enrichment on upregulated genes"
 
-> "Run GO enrichment on upregulated genes"
-# Pathway analysis
+lobster query --session-id "bulk" "Export DE results and volcano plot"
 
-> "Export DE results and volcano plot"
-# Save outputs
-
-> /files
-# Check generated files
+lobster query --session-id "bulk" "List all files in the workspace"
 ```
 
 ## Complex Designs

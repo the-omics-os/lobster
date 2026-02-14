@@ -271,7 +271,7 @@ operate on loaded modalities in memory.
 ## Checking Available Agents
 
 ```bash
-lobster status          # CLI
-/status                 # In chat
-lobster agents list     # List installed agent packages
+lobster status              # Check config, installed agents, tier
+lobster agents list         # List installed agent packages
+lobster config-test --json  # Verify configuration
 ```
