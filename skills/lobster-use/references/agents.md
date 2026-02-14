@@ -1,199 +1,277 @@
 # Available Agents
 
-Lobster AI uses specialist agents for different analysis domains. The Supervisor
-automatically routes your queries to the right agent.
+## Contents
+- [Agent hierarchy](#agent-hierarchy)
+- [Core agents](#core-agents)
+- [Domain agents](#domain-agents)
+- [Sub-agents](#sub-agents)
+- [Internal agents](#internal-agents)
+- [Multi-agent coordination](#multi-agent-coordination)
+- [Checking available agents](#checking-available-agents)
 
-## Free Tier Agents
+## Agent Hierarchy
+
+```
+Supervisor (routes all queries)
+├── Research Agent          (online: literature, datasets)
+├── Data Expert             (offline: downloads, file loading)
+├── Transcriptomics Expert
+│   ├── Annotation Expert       (sub-agent)
+│   └── DE Analysis Expert      (sub-agent)
+├── Visualization Expert
+├── Proteomics Expert       [alpha]
+├── Genomics Expert         [alpha]
+├── ML Expert               [alpha]
+│   ├── Feature Selection Expert    (sub-agent)
+│   └── Survival Analysis Expert    (sub-agent)
+├── Metadata Assistant      (internal)
+└── Protein Structure Viz Expert
+```
+
+## Core Agents
+
+### Supervisor
+**Package:** `lobster-ai` (core)
+Routes queries to the right specialist. You never interact with it directly.
+
+---
 
 ### Research Agent
-**Package**: `lobster-research`
+**Package:** `lobster-research` | **Access:** Online only (PubMed, GEO, PMC, SRA)
 
-**Capabilities**:
-- PubMed literature search
-- GEO dataset discovery
-- Paper metadata extraction
-- Full-text analysis (when available)
+Searches literature, discovers datasets, extracts accession numbers from papers.
+The only agent with internet access. Queues downloads for Data Expert.
 
-**Example queries**:
+**Example queries:**
 ```
-"Search PubMed for CRISPR papers"
+"Search PubMed for CRISPR screens in cancer"
 "Find GEO datasets for liver single-cell"
-"Extract accession numbers from recent papers"
+"Extract accession numbers from recent fibrosis papers"
 ```
+
+**Docs:** [docs.omics-os.com/docs/agents/research](https://docs.omics-os.com/docs/agents/research)
 
 ---
 
 ### Data Expert
-**Package**: `lobster-research`
+**Package:** `lobster-research` | **Access:** Offline only (local files, queued downloads)
 
-**Capabilities**:
-- Load data files (H5AD, CSV, 10X)
-- Download from GEO/SRA
-- Format conversion
-- Data validation
+Executes downloads queued by Research Agent, loads files (H5AD, CSV, 10X, VCF, PLINK),
+manages modalities. Has zero internet access -- only processes local data.
 
-**Example queries**:
+**Example queries:**
 ```
 "Load my_data.h5ad"
 "Download GSE109564"
 "Convert counts.csv to AnnData format"
 ```
 
+**Docs:** [docs.omics-os.com/docs/agents/research](https://docs.omics-os.com/docs/agents/research)
+
 ---
 
+### Visualization Expert
+**Package:** `lobster-visualization`
+
+Plotly-based visualizations: UMAP, heatmaps, volcano plots, violin plots, dot plots.
+Outputs HTML (interactive) and PNG (publication).
+
+**Example queries:**
+```
+"Create UMAP colored by cell type"
+"Generate heatmap of top 50 DE genes"
+"Make publication-ready volcano plot"
+```
+
+**Docs:** [docs.omics-os.com/docs/agents/visualization](https://docs.omics-os.com/docs/agents/visualization)
+
+## Domain Agents
+
 ### Transcriptomics Expert
-**Package**: `lobster-transcriptomics`
+**Package:** `lobster-transcriptomics`
 
-**Capabilities**:
-- Single-cell RNA-seq analysis
-- Quality control
-- Clustering
-- Marker gene identification
+Single-cell RNA-seq: QC, filtering, normalization, clustering, marker genes, trajectory.
+Delegates to Annotation Expert and DE Analysis Expert for specialized tasks.
 
-**Example queries**:
+**Example queries:**
 ```
 "Run quality control on the single-cell data"
 "Cluster cells and find markers"
-"Perform dimensionality reduction"
+"Perform trajectory analysis"
+```
+
+**Docs:** [docs.omics-os.com/docs/agents/transcriptomics](https://docs.omics-os.com/docs/agents/transcriptomics)
+
+---
+
+### Proteomics Expert [alpha]
+**Package:** `lobster-proteomics`
+
+Mass spectrometry (DDA/DIA) and affinity platform (Olink/SomaScan) analysis.
+Auto-detects platform type from data characteristics. 10 tools: shared QC/normalization/DE
+plus MS-specific peptide mapping and affinity-specific antibody validation and plate correction.
+
+**Example queries:**
+```
+"Analyze the MaxQuant output"
+"Find differentially abundant proteins"
+"Run quality control on the Olink data"
+```
+
+**Docs:** [docs.omics-os.com/docs/agents/proteomics](https://docs.omics-os.com/docs/agents/proteomics)
+
+---
+
+### Genomics Expert [alpha]
+**Package:** `lobster-genomics`
+
+VCF (WGS) and PLINK (SNP array) analysis. QC, sample/variant filtering, PCA,
+GWAS, variant annotation. 10 tools. Enforces filtering order: samples first, then variants.
+
+**Example queries:**
+```
+"Load the VCF file and run quality control"
+"Run GWAS with the phenotype data"
+"Annotate significant variants"
+```
+
+**Docs:** [docs.omics-os.com/docs/agents/genomics](https://docs.omics-os.com/docs/agents/genomics)
+
+---
+
+### ML Expert [alpha]
+**Package:** `lobster-ml`
+
+ML data preparation, scVI embeddings, train/test splits, framework export (NumPy, PyTorch,
+TensorFlow, CSV). Routes to Feature Selection Expert and Survival Analysis Expert for
+specialized workflows. 7 direct tools.
+
+**Example queries:**
+```
+"Prepare the data for machine learning"
+"Generate scVI embeddings"
+"Export features for PyTorch training"
+```
+
+**Docs:** [docs.omics-os.com/docs/agents/ml](https://docs.omics-os.com/docs/agents/ml)
+
+## Sub-Agents
+
+These are not directly accessible -- their parent agent delegates to them automatically.
+
+### Annotation Expert
+**Package:** `lobster-transcriptomics` | **Parent:** Transcriptomics Expert
+
+Cell type annotation using marker genes, reference datasets, or LLM-assisted identification.
+
+**Example queries:**
+```
+"Identify cell types in each cluster"
+"Annotate using known liver cell markers"
+"Run GO enrichment on upregulated genes"
 ```
 
 ---
 
 ### DE Analysis Expert
-**Package**: `lobster-transcriptomics`
+**Package:** `lobster-transcriptomics` | **Parent:** Transcriptomics Expert
 
-**Capabilities**:
-- Differential expression analysis
-- Statistical testing (DESeq2, limma)
-- Multiple comparison handling
-- Complex experimental designs
+Differential expression with pyDESeq2. Handles single-cell pseudobulk and bulk RNA-seq.
+Supports complex designs (multi-factor, interaction, time series).
 
-**Example queries**:
+**Example queries:**
 ```
 "Run differential expression: treatment vs control"
 "Compare cell types for DE genes"
-"Find genes with FDR < 0.05"
+"Find genes with FDR < 0.05 and |log2FC| > 1"
 ```
 
 ---
 
-### Annotation Expert
-**Package**: `lobster-transcriptomics`
+### Feature Selection Expert [alpha]
+**Package:** `lobster-ml` | **Parent:** ML Expert
 
-**Capabilities**:
-- Cell type annotation
-- Gene set enrichment
-- Pathway analysis
-- Functional annotation
+Biomarker discovery via stability selection, LASSO, and variance filtering.
+Includes pathway enrichment on selected features (INDRA API). 6 tools.
 
-**Example queries**:
+**Example queries:**
 ```
-"Identify cell types in each cluster"
-"Run GO enrichment on upregulated genes"
-"Annotate using known liver markers"
+"Find the top biomarkers that distinguish treatment from control"
+"Run stability selection with 100 features"
+"What pathways are enriched in the selected genes?"
 ```
 
 ---
 
-### Visualization Expert
-**Package**: `lobster-visualization`
+### Survival Analysis Expert [alpha]
+**Package:** `lobster-ml` | **Parent:** ML Expert
 
-**Capabilities**:
-- UMAP/t-SNE plots
-- Heatmaps
-- Volcano plots
-- Publication-ready figures
+Cox proportional hazards, risk threshold optimization, Kaplan-Meier curves.
+Requires time-to-event and binary event columns. 6 tools.
 
-**Example queries**:
+**Example queries:**
 ```
-"Create UMAP colored by cell type"
-"Generate heatmap of top DE genes"
-"Make publication-ready volcano plot"
+"Build a survival model using the clinical features"
+"Optimize the risk threshold for patient stratification"
+"Generate Kaplan-Meier curves by treatment arm"
 ```
+
+## Internal Agents
+
+### Metadata Assistant
+**Package:** `lobster-metadata`
+
+Sample ID mapping, metadata standardization, dataset validation, disease enrichment.
+Primarily used in automated pipelines (publication queue processing). 9 tools.
+Users rarely interact with it directly -- Supervisor routes metadata tasks automatically.
+
+**Docs:** [docs.omics-os.com/docs/agents/metadata](https://docs.omics-os.com/docs/agents/metadata)
 
 ---
 
-## Premium Tier Agents
+### Protein Structure Visualization Expert
+**Package:** `lobster-structural-viz`
 
-### Proteomics Expert
-**Package**: `lobster-proteomics`
+Fetches structures from RCSB PDB, creates 3D visualizations with PyMOL, performs
+structural analysis (RMSD, secondary structure), links structures to expression data.
+Requires local PyMOL installation. 5 tools.
 
-**Capabilities**:
-- Mass spectrometry data analysis
-- DDA/DIA workflows
-- Protein quantification
-- PTM analysis
-
-**Example queries**:
+**Example queries:**
 ```
-"Analyze the MaxQuant output"
-"Find differentially abundant proteins"
-"Detect phosphorylation sites"
+"Fetch the structure for PDB ID 1AKE"
+"Visualize the protein with highlighted active site residues"
+"Compare these two structures by RMSD"
 ```
 
----
+**Docs:** [docs.omics-os.com/docs/agents/structural-viz](https://docs.omics-os.com/docs/agents/structural-viz)
 
-### Genomics Expert
-**Package**: `lobster-genomics`
+## Multi-Agent Coordination
 
-**Capabilities**:
-- VCF/BCF parsing
-- Variant annotation
-- GWAS analysis
-- Population genetics
+You describe what you want; Lobster routes automatically. A typical multi-step session
+uses several agents in sequence without you needing to specify which:
 
-**Example queries**:
 ```
-"Analyze the VCF file for variants"
-"Run GWAS with the phenotype data"
-"Annotate variants with functional impact"
-```
+"Search PubMed for liver fibrosis scRNA-seq datasets"
+  -> Research Agent (searches, finds GSE IDs, queues download)
 
----
+"Download the best dataset"
+  -> Data Expert (executes queued download, loads H5AD)
 
-### ML Expert
-**Package**: `lobster-ml`
+"Run QC, filter, normalize, and cluster"
+  -> Transcriptomics Expert (full preprocessing pipeline)
 
-**Capabilities**:
-- Embedding generation
-- Classification models
-- Clustering optimization
-- Feature selection
-
-**Example queries**:
-```
-"Generate scVI embeddings"
-"Train a classifier for cell types"
-"Optimize clustering parameters"
+"Find biomarkers for fibrotic vs healthy cells"
+  -> ML Expert -> Feature Selection Expert (stability selection)
 ```
 
----
+**Key constraint:** Research Agent is the only agent with internet access.
+Data Expert only processes local files and queued downloads. All other agents
+operate on loaded modalities in memory.
 
 ## Checking Available Agents
 
 ```bash
-# Command line
-lobster status
-
-# In chat
-/status
+lobster status          # CLI
+/status                 # In chat
+lobster agents list     # List installed agent packages
 ```
-
-Shows:
-- Your subscription tier
-- Installed agent packages
-- Available agents for your tier
-- Premium agents (upgrade required)
-
-## Agent Routing
-
-You don't need to specify which agent to use — the Supervisor routes automatically:
-
-```
-"Cluster the cells"           → Transcriptomics Expert
-"Search PubMed"               → Research Agent
-"Create a heatmap"            → Visualization Expert
-"Run differential expression" → DE Analysis Expert
-```
-
-For ambiguous queries, Supervisor will ask for clarification.
