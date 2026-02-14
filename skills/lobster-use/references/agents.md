@@ -49,7 +49,7 @@ The only agent with internet access. Queues downloads for Data Expert.
 "Extract accession numbers from recent fibrosis papers"
 ```
 
-**Docs:** [docs.omics-os.com/docs/agents/research](https://docs.omics-os.com/docs/agents/research)
+**Docs:** [docs.omics-os.com/docs/agents/research](https://docs.omics-os.com/raw/docs/agents/research.md)
 
 ---
 
@@ -66,7 +66,7 @@ manages modalities. Has zero internet access -- only processes local data.
 "Convert counts.csv to AnnData format"
 ```
 
-**Docs:** [docs.omics-os.com/docs/agents/research](https://docs.omics-os.com/docs/agents/research)
+**Docs:** [docs.omics-os.com/docs/agents/research](https://docs.omics-os.com/raw/docs/agents/research.md)
 
 ---
 
@@ -83,7 +83,7 @@ Outputs HTML (interactive) and PNG (publication).
 "Make publication-ready volcano plot"
 ```
 
-**Docs:** [docs.omics-os.com/docs/agents/visualization](https://docs.omics-os.com/docs/agents/visualization)
+**Docs:** [docs.omics-os.com/docs/agents/visualization](https://docs.omics-os.com/raw/docs/agents/visualization.md)
 
 ## Domain Agents
 
@@ -100,7 +100,7 @@ Delegates to Annotation Expert and DE Analysis Expert for specialized tasks.
 "Perform trajectory analysis"
 ```
 
-**Docs:** [docs.omics-os.com/docs/agents/transcriptomics](https://docs.omics-os.com/docs/agents/transcriptomics)
+**Docs:** [docs.omics-os.com/docs/agents/transcriptomics](https://docs.omics-os.com/raw/docs/agents/transcriptomics.md)
 
 ---
 
@@ -118,7 +118,7 @@ plus MS-specific peptide mapping and affinity-specific antibody validation and p
 "Run quality control on the Olink data"
 ```
 
-**Docs:** [docs.omics-os.com/docs/agents/proteomics](https://docs.omics-os.com/docs/agents/proteomics)
+**Docs:** [docs.omics-os.com/docs/agents/proteomics](https://docs.omics-os.com/raw/docs/agents/proteomics.md)
 
 ---
 
@@ -135,7 +135,7 @@ GWAS, variant annotation. 10 tools. Enforces filtering order: samples first, the
 "Annotate significant variants"
 ```
 
-**Docs:** [docs.omics-os.com/docs/agents/genomics](https://docs.omics-os.com/docs/agents/genomics)
+**Docs:** [docs.omics-os.com/docs/agents/genomics](https://docs.omics-os.com/raw/docs/agents/genomics.md)
 
 ---
 
@@ -153,7 +153,7 @@ specialized workflows. 7 direct tools.
 "Export features for PyTorch training"
 ```
 
-**Docs:** [docs.omics-os.com/docs/agents/ml](https://docs.omics-os.com/docs/agents/ml)
+**Docs:** [docs.omics-os.com/docs/agents/ml](https://docs.omics-os.com/raw/docs/agents/ml.md)
 
 ## Sub-Agents
 
@@ -225,7 +225,7 @@ Sample ID mapping, metadata standardization, dataset validation, disease enrichm
 Primarily used in automated pipelines (publication queue processing). 9 tools.
 Users rarely interact with it directly -- Supervisor routes metadata tasks automatically.
 
-**Docs:** [docs.omics-os.com/docs/agents/metadata](https://docs.omics-os.com/docs/agents/metadata)
+**Docs:** [docs.omics-os.com/docs/agents/metadata](https://docs.omics-os.com/raw/docs/agents/metadata.md)
 
 ---
 
@@ -243,7 +243,7 @@ Requires local PyMOL installation. 5 tools.
 "Compare these two structures by RMSD"
 ```
 
-**Docs:** [docs.omics-os.com/docs/agents/structural-viz](https://docs.omics-os.com/docs/agents/structural-viz)
+**Docs:** [docs.omics-os.com/docs/agents/structural-viz](https://docs.omics-os.com/raw/docs/agents/structural-viz.md)
 
 ## Multi-Agent Coordination
 

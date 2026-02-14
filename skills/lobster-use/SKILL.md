@@ -1,29 +1,25 @@
 ---
 name: lobster-use
 description: |
-  Analyze biological data using Lobster AI — single-cell RNA-seq, bulk RNA-seq,
-  literature mining, dataset discovery, quality control, and visualization.
-  
-  USE THIS SKILL WHEN:
-  - Analyzing single-cell or bulk RNA-seq data
-  - Searching PubMed/GEO for papers or datasets
-  - Running quality control on biological data
-  - Clustering cells, finding markers, differential expression
-  - Creating publication-quality visualizations
-  - Working with H5AD, CSV, 10X, GEO/SRA accessions
-  
+  Runs bioinformatics analysis with Lobster AI -- single-cell RNA-seq, bulk RNA-seq,
+  genomics (VCF/GWAS), proteomics (mass spec), machine learning (feature selection,
+  survival analysis), literature search, dataset discovery, and visualization.
+  Use when working with biological data, omics analysis, or bioinformatics tasks.
+  Covers: H5AD, CSV, VCF, PLINK, 10X formats, GEO/SRA accessions.
+
   TRIGGER PHRASES: "analyze cells", "search PubMed", "download GEO", "run QC",
   "cluster", "find markers", "differential expression", "UMAP", "volcano plot",
-  "single-cell", "RNA-seq", "bioinformatics"
-  
+  "single-cell", "RNA-seq", "VCF", "GWAS", "proteomics", "mass spec",
+  "feature selection", "survival analysis", "biomarker", "bioinformatics"
+
   ASSUMES: Lobster is installed and configured. For setup issues, tell user to
   run `lobster config-test` and fix any errors before proceeding.
 ---
 
 # Lobster AI Usage Guide
 
-Lobster AI is a multi-agent bioinformatics platform. You interact via natural language
-or slash commands — Lobster routes to specialist agents automatically.
+Lobster AI is a multi-agent bioinformatics platform. Users describe analyses in natural
+language -- Lobster routes to specialist agents automatically.
 
 ## Installation
 
@@ -60,12 +56,16 @@ Running `lobster init` will guide this process and generate the command.
 
 | Task | Reference |
 |------|-----------|
+| **All agents & hierarchy** | [references/agents.md](references/agents.md) |
 | **CLI commands** | [references/cli-commands.md](references/cli-commands.md) |
 | **Single-cell analysis** | [references/single-cell-workflow.md](references/single-cell-workflow.md) |
 | **Bulk RNA-seq analysis** | [references/bulk-rnaseq-workflow.md](references/bulk-rnaseq-workflow.md) |
 | **Literature & datasets** | [references/research-workflow.md](references/research-workflow.md) |
 | **Visualization** | [references/visualization.md](references/visualization.md) |
-| **Available agents** | [references/agents.md](references/agents.md) |
+| **Genomics (VCF/GWAS)** | [docs.omics-os.com/docs/agents/genomics](https://docs.omics-os.com/raw/docs/agents/genomics.md) |
+| **Proteomics (MS/affinity)** | [docs.omics-os.com/docs/agents/proteomics](https://docs.omics-os.com/raw/docs/agents/proteomics.md) |
+| **Machine learning** | [docs.omics-os.com/docs/agents/ml](https://docs.omics-os.com/raw/docs/agents/ml.md) |
+| **Getting started** | [docs.omics-os.com/docs/getting-started](https://docs.omics-os.com/raw/docs/getting-started.md) |
 
 ## Interaction Modes
 
@@ -116,20 +116,51 @@ lobster query --session-id latest "Find markers for cluster 3"
 
 ## Agent System
 
-Lobster routes to specialist agents automatically:
+Lobster routes to specialist agents automatically. 14 agents across 8 packages:
 
-| Agent | Handles |
-|-------|---------|
-| **Supervisor** | Routes queries, coordinates agents |
-| **Research Agent** | PubMed search, GEO discovery, paper extraction |
-| **Data Expert** | File loading, format conversion, downloads |
-| **Transcriptomics Expert** | scRNA-seq: QC, clustering, markers |
-| **DE Analysis Expert** | Differential expression, statistical testing |
-| **Annotation Expert** | Cell type annotation, gene set enrichment |
-| **Visualization Expert** | UMAP, heatmaps, volcano plots |
-| **Proteomics Expert** | Mass spec analysis [alpha] |
-| **Genomics Expert** | VCF, GWAS, variant analysis [alpha] |
-| **ML Expert** | Embeddings, classification [alpha] |
+| Agent | Package | Handles |
+|-------|---------|---------|
+| **Supervisor** | lobster-ai | Routes queries, coordinates agents |
+| **Research Agent** | lobster-research | PubMed search, GEO/SRA discovery, paper extraction |
+| **Data Expert** | lobster-research | File loading, downloads, format conversion |
+| **Transcriptomics Expert** | lobster-transcriptomics | scRNA-seq: QC, clustering, markers, trajectory |
+| **Annotation Expert** | lobster-transcriptomics | Cell type annotation, gene set enrichment |
+| **DE Analysis Expert** | lobster-transcriptomics | Differential expression, statistical testing |
+| **Visualization Expert** | lobster-visualization | UMAP, heatmaps, volcano plots, dot plots |
+| **Metadata Assistant** | lobster-metadata | ID mapping, metadata standardization |
+| **Proteomics Expert** | lobster-proteomics | Mass spec & affinity platform analysis [alpha] |
+| **Genomics Expert** | lobster-genomics | VCF, PLINK, GWAS, variant annotation [alpha] |
+| **ML Expert** | lobster-ml | ML prep, scVI embeddings, data export [alpha] |
+| **Feature Selection Expert** | lobster-ml | Stability, LASSO, variance filtering [alpha] |
+| **Survival Analysis Expert** | lobster-ml | Cox models, Kaplan-Meier, risk stratification [alpha] |
+| **Protein Structure Viz** | lobster-structural-viz | PDB fetch, PyMOL visualization, RMSD |
+
+Details and hierarchy: [references/agents.md](references/agents.md)
+
+## How Multi-Agent Coordination Works
+
+You describe what you want; Lobster handles the routing. A typical multi-step analysis
+uses several agents in sequence:
+
+```
+"Search PubMed for liver fibrosis scRNA-seq datasets"
+  -> Research Agent searches, finds GSE IDs, queues download
+
+"Download the top dataset"
+  -> Data Expert executes queued download, loads data
+
+"Run QC, filter, normalize, and cluster"
+  -> Transcriptomics Expert runs full pipeline
+
+"Find biomarkers for fibrotic vs healthy cells"
+  -> ML Expert -> Feature Selection Expert
+
+"Create UMAP and export results"
+  -> Visualization Expert + file export
+```
+
+**Key constraint:** Research Agent is the only agent with internet access.
+All other agents operate on data already loaded in memory.
 
 ## Workspace & Outputs
 
@@ -152,34 +183,54 @@ Lobster routes to specialist agents automatically:
 /read summary.csv   # Preview file contents
 ```
 
-## Typical Workflow
+## Typical Workflows
 
-```bash
-# 1. Start session
-lobster chat --workspace ./my_analysis
-
-# 2. Load or download data
-"Download GSE109564 from GEO"
-# or
-/workspace load my_data.h5ad
-
-# 3. Quality control
-"Run quality control and show me the metrics"
-
-# 4. Analysis
-"Filter low-quality cells, normalize, and cluster"
-
-# 5. Interpretation
-"Identify cell types and find marker genes"
-
-# 6. Visualization
-"Create UMAP colored by cell type"
-/plots
-
-# 7. Export
-"Export marker genes to CSV"
-/save
+### Single-Cell RNA-seq
 ```
+"Download GSE109564 from GEO"           # Research + Data Expert
+"Run quality control"                    # Transcriptomics Expert
+"Filter, normalize, and cluster"         # Transcriptomics Expert
+"Identify cell types"                    # Annotation Expert
+"Find DE genes between T cells and macrophages"  # DE Analysis Expert
+"Create UMAP colored by cell type"       # Visualization Expert
+```
+Details: [references/single-cell-workflow.md](references/single-cell-workflow.md)
+
+### Bulk RNA-seq
+```
+"Load counts.csv with metadata from metadata.csv"
+"Run differential expression: treatment vs control"
+"Show volcano plot and top DE genes"
+"Run GO enrichment on upregulated genes"
+```
+Details: [references/bulk-rnaseq-workflow.md](references/bulk-rnaseq-workflow.md)
+
+### Genomics [alpha]
+```
+"Load the VCF file and assess quality"
+"Filter samples, then filter variants"       # Order enforced
+"Run GWAS with phenotype column 'disease'"
+"Annotate significant variants"
+```
+Details: [docs.omics-os.com/docs/agents/genomics](https://docs.omics-os.com/raw/docs/agents/genomics.md)
+
+### Proteomics [alpha]
+```
+"Load the MaxQuant proteinGroups.txt"        # Auto-detects MS platform
+"Run quality control"
+"Filter and normalize"
+"Find differentially abundant proteins: treatment vs control"
+```
+Details: [docs.omics-os.com/docs/agents/proteomics](https://docs.omics-os.com/raw/docs/agents/proteomics.md)
+
+### Machine Learning [alpha]
+```
+"Prepare the scRNA-seq data for ML"
+"Find the top 100 biomarkers with stability selection"
+"Build a Cox survival model"
+"Export features for PyTorch"
+```
+Details: [docs.omics-os.com/docs/agents/ml](https://docs.omics-os.com/raw/docs/agents/ml.md)
 
 ## Troubleshooting Quick Reference
 
@@ -189,13 +240,14 @@ lobster chat --workspace ./my_analysis
 | No data loaded | `/data` to verify, `/workspace list` to see available |
 | Analysis fails | Try with `--reasoning` flag |
 | Missing outputs | Check `/files` and workspace directory |
+| Agent not available | `lobster agents list` to check installed packages |
 
 ## Documentation
 
 Online docs: **docs.omics-os.com**
 
 Key sections:
-- Guides → CLI Commands
-- Guides → Data Analysis Workflows
-- Tutorials → Single-Cell RNA-seq
-- Agents → Package documentation
+- Getting Started -> Installation & Configuration
+- Guides -> CLI Commands, Data Formats
+- Tutorials -> Single-Cell, Bulk RNA-seq, Proteomics
+- Agents -> Per-agent documentation (all 14 agents)
