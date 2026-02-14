@@ -15,55 +15,56 @@ It's re-exported via __getattr__ for backward compatibility.
 # NOTE: output_adapter is NOT imported here to avoid triggering __init__.py
 # when light commands import it. It's available via __getattr__ below.
 
-# Light commands (from light/ subdirectory)
-from lobster.cli_internal.commands.light.queue_commands import (
-    show_queue_status,
-    queue_load_file,
-    queue_list,
-    queue_clear,
-    queue_export,
-    queue_import,
-    QueueFileTypeNotSupported,
+from lobster.cli_internal.commands.light.config_commands import (
+    config_model_list,
+    config_model_switch,
+    config_provider_list,
+    config_provider_switch,
+    config_show,
+)
+from lobster.cli_internal.commands.light.file_commands import (
+    archive_queue,
+    file_read,
 )
 from lobster.cli_internal.commands.light.metadata_commands import (
+    metadata_clear,
+    metadata_clear_all,
+    metadata_clear_exports,
+    metadata_exports,
+    metadata_list,
     metadata_overview,
     metadata_publications,
     metadata_samples,
     metadata_workspace,
-    metadata_exports,
-    metadata_list,
-    metadata_clear,
-    metadata_clear_exports,
-    metadata_clear_all,
-)
-from lobster.cli_internal.commands.light.workspace_commands import (
-    workspace_list,
-    workspace_info,
-    workspace_load,
-    workspace_remove,
-    workspace_status,
 )
 from lobster.cli_internal.commands.light.pipeline_commands import (
     pipeline_export,
+    pipeline_info,
     pipeline_list,
     pipeline_run,
-    pipeline_info,
-)
-from lobster.cli_internal.commands.light.file_commands import (
-    file_read,
-    archive_queue,
-)
-from lobster.cli_internal.commands.light.config_commands import (
-    config_show,
-    config_provider_list,
-    config_provider_switch,
-    config_model_list,
-    config_model_switch,
 )
 from lobster.cli_internal.commands.light.purge_commands import (
-    purge,
-    discover_purge_targets,
     PurgeScope,
+    discover_purge_targets,
+    purge,
+)
+
+# Light commands (from light/ subdirectory)
+from lobster.cli_internal.commands.light.queue_commands import (
+    QueueFileTypeNotSupported,
+    queue_clear,
+    queue_export,
+    queue_import,
+    queue_list,
+    queue_load_file,
+    show_queue_status,
+)
+from lobster.cli_internal.commands.light.workspace_commands import (
+    workspace_info,
+    workspace_list,
+    workspace_load,
+    workspace_remove,
+    workspace_status,
 )
 
 # ============================================================================

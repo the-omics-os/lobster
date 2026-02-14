@@ -8,9 +8,9 @@ handles the actual formatting for Rich Console (CLI) or ResultsDisplay (Dashboar
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
+from rich import box
 from rich.console import Console
 from rich.table import Table
-from rich import box
 
 
 class OutputAdapter(ABC):
@@ -148,7 +148,10 @@ class JsonOutputAdapter(OutputAdapter):
     def confirm(self, question: str) -> bool:
         """Non-interactive: always returns False."""
         self.messages.append(
-            {"text": f"Confirmation skipped (non-interactive): {self._strip_markup(question)}", "style": "warning"}
+            {
+                "text": f"Confirmation skipped (non-interactive): {self._strip_markup(question)}",
+                "style": "warning",
+            }
         )
         return False
 
@@ -171,6 +174,7 @@ class JsonOutputAdapter(OutputAdapter):
     def _strip_markup(text: str) -> str:
         """Strip Rich markup tags from text."""
         import re
+
         return re.sub(r"\[/?[^\]]+\]", "", text)
 
 
