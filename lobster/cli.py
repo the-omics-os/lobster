@@ -556,6 +556,44 @@ def _backup_command_to_file(
         return False
 
 
+# ============================================================================
+# Lightweight client for `lobster command` (no LLM, no graph)
+# ============================================================================
+
+
+class CommandClient:
+    """Minimal client providing only what shared command functions need.
+
+    Skips AgentClient's expensive graph/LLM initialization. Provides
+    data_manager, workspace_path, session_id, and publication_queue —
+    the only attributes accessed by shared commands in cli_internal/commands/.
+    """
+
+    def __init__(self, workspace_path: Path):
+        from lobster.core.data_manager_v2 import DataManagerV2
+
+        self.workspace_path = workspace_path
+        self.session_id = "command"
+        self.data_manager = DataManagerV2(workspace_path=workspace_path)
+        self.messages: list = []
+        self.graph = None
+        self.token_tracker = None
+        self._publication_queue_ref = None
+        self._publication_queue_unavailable = False
+
+    @property
+    def publication_queue(self):
+        if self._publication_queue_unavailable:
+            return None
+        if self._publication_queue_ref is None:
+            pq = getattr(self.data_manager, "publication_queue", None)
+            if pq is None:
+                self._publication_queue_unavailable = True
+                return None
+            self._publication_queue_ref = pq
+        return self._publication_queue_ref
+
+
 def check_for_missing_slash_command(user_input: str) -> Optional[str]:
     """Check if user input matches a command without the leading slash."""
     if not user_input or user_input.startswith("/"):
@@ -7210,6 +7248,13 @@ def query(
         "--stream/--no-stream",
         help="Enable real-time text streaming (default: on)",
     ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        "-j",
+        is_flag=True,
+        help="Output result as JSON for programmatic consumption. Suppresses all Rich formatting.",
+    ),
 ):
     """
     Send a single query to the agent system.
@@ -7218,11 +7263,21 @@ def query(
       lobster query "follow up question" --session-id latest
       lobster query "follow up question" --session-id session_20241208_150000
 
+    Use --json for machine-readable output (no Rich formatting):
+      lobster query "analyze data" --json | jq .response
+
     Agent reasoning is shown by default. Use --no-reasoning to disable.
     """
+    # In JSON mode, redirect Rich console to stderr so only JSON hits stdout
+    if json_output:
+        console.file = sys.stderr
+
     # Check for configuration
     env_file = Path.cwd() / ".env"
     if not env_file.exists():
+        if json_output:
+            print(json.dumps({"success": False, "error": "No configuration found. Run 'lobster init' first."}))
+            raise typer.Exit(1)
         console.print("[red]❌ No configuration found. Run 'lobster init' first.[/red]")
         raise typer.Exit(1)
 
@@ -7244,13 +7299,15 @@ def query(
                 # Sort by modification time (most recent first)
                 session_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
                 session_file_to_load = session_files[0]
-                console.print(
-                    f"[cyan]📂 Loading latest session: {session_file_to_load.name}[/cyan]"
-                )
+                if not json_output:
+                    console.print(
+                        f"[cyan]📂 Loading latest session: {session_file_to_load.name}[/cyan]"
+                    )
             else:
-                console.print(
-                    "[yellow]⚠️  No previous sessions found - creating new session[/yellow]"
-                )
+                if not json_output:
+                    console.print(
+                        "[yellow]⚠️  No previous sessions found - creating new session[/yellow]"
+                    )
         else:
             # Explicit session ID provided
             # Try with session_ prefix first
@@ -7264,7 +7321,8 @@ def query(
             else:
                 # Session file doesn't exist - use this session_id for new session
                 session_id_for_client = session_id
-                console.print(f"[cyan]📂 Creating new session: {session_id}[/cyan]")
+                if not json_output:
+                    console.print(f"[cyan]📂 Creating new session: {session_id}[/cyan]")
 
     # Initialize client with custom session_id if new session
     client = init_client(
@@ -7282,33 +7340,58 @@ def query(
     if session_file_to_load:
         try:
             load_result = client.load_session(session_file_to_load)
-            console.print(
-                f"[green]✓ Loaded {load_result['messages_loaded']} "
-                f"previous messages[/green]"
-            )
-            if load_result.get("original_session_id"):
+            if not json_output:
                 console.print(
-                    f"[dim]  Original session: "
-                    f"{load_result['original_session_id']}[/dim]"
+                    f"[green]✓ Loaded {load_result['messages_loaded']} "
+                    f"previous messages[/green]"
                 )
+                if load_result.get("original_session_id"):
+                    console.print(
+                        f"[dim]  Original session: "
+                        f"{load_result['original_session_id']}[/dim]"
+                    )
         except Exception as e:
-            console.print(f"[red]❌ Failed to load session: {e}[/red]")
-            console.print("[yellow]   Creating new session instead[/yellow]")
+            if not json_output:
+                console.print(f"[red]❌ Failed to load session: {e}[/red]")
+                console.print("[yellow]   Creating new session instead[/yellow]")
 
     # Process query
-    # Determine if streaming is appropriate
-    use_streaming = stream and should_show_progress(client)
-
-    if use_streaming:
-        result = _display_streaming_response(client, question, console)
-    elif should_show_progress(client):
-        with console.status("[red]🦞 Processing query...[/red]"):
-            result = client.query(question)
-    else:
-        # In verbose/reasoning mode, no progress indication
+    if json_output:
+        # JSON mode: no streaming, no Rich output, no spinners
         result = client.query(question)
+    else:
+        # Determine if streaming is appropriate
+        use_streaming = stream and should_show_progress(client)
 
-    # Display or save result
+        if use_streaming:
+            result = _display_streaming_response(client, question, console)
+        elif should_show_progress(client):
+            with console.status("[red]🦞 Processing query...[/red]"):
+                result = client.query(question)
+        else:
+            # In verbose/reasoning mode, no progress indication
+            result = client.query(question)
+
+    # JSON output mode: emit structured JSON and exit
+    if json_output:
+        json_result = {
+            "success": result.get("success", False),
+            "response": result.get("response", ""),
+            "session_id": getattr(client, "session_id", None),
+        }
+        if result.get("success"):
+            json_result["last_agent"] = result.get("last_agent")
+            token_usage = result.get("token_usage")
+            if not token_usage and hasattr(client, "token_tracker") and client.token_tracker:
+                token_usage = client.token_tracker.get_summary() if hasattr(client.token_tracker, "get_summary") else None
+            if token_usage:
+                json_result["token_usage"] = token_usage
+        else:
+            json_result["error"] = result.get("error", "Unknown error")
+        print(json.dumps(json_result))
+        return
+
+    # Display or save result (Rich mode)
     if result["success"]:
         if output:
             output.write_text(result["response"])
@@ -7354,6 +7437,228 @@ def query(
         )
 
     _maybe_print_timings(client, "Query")
+
+
+# ============================================================================
+# lobster command — fast programmatic slash command access
+# ============================================================================
+
+
+def _command_files(client, output) -> Optional[str]:
+    """List workspace files via OutputAdapter (standalone version of /files)."""
+    workspace_files = client.data_manager.list_workspace_files()
+
+    if not any(workspace_files.values()):
+        output.print("No files in workspace", style="info")
+        return None
+
+    from datetime import datetime
+
+    for category, files in workspace_files.items():
+        if files:
+            files_sorted = sorted(files, key=lambda f: f["modified"], reverse=True)
+            rows = []
+            for f in files_sorted:
+                size_kb = f["size"] / 1024
+                mod_time = datetime.fromtimestamp(f["modified"]).strftime("%Y-%m-%d %H:%M")
+                rows.append([f["name"], f"{size_kb:.1f} KB", mod_time, Path(f["path"]).parent.name])
+
+            output.print_table({
+                "title": f"{category.title()} Files",
+                "columns": [
+                    {"name": "Name", "style": "bold white"},
+                    {"name": "Size", "style": "grey74"},
+                    {"name": "Modified", "style": "grey50"},
+                    {"name": "Path", "style": "dim grey50"},
+                ],
+                "rows": rows,
+            })
+
+    total = sum(len(v) for v in workspace_files.values())
+    return f"Listed {total} workspace files"
+
+
+_UNKNOWN_COMMAND = object()  # Sentinel for unrecognized commands
+
+
+def _dispatch_command(cmd_str: str, client, output):
+    """Route a command string to the appropriate shared command function.
+
+    Returns the command's summary string (may be None for valid commands with
+    no data), or the _UNKNOWN_COMMAND sentinel if the command is unrecognized.
+    """
+    from lobster.cli_internal.commands import (
+        workspace_status,
+        workspace_list,
+        workspace_info,
+        show_queue_status,
+        queue_list,
+        metadata_overview,
+        metadata_publications,
+        metadata_samples,
+        metadata_workspace,
+        metadata_exports,
+        metadata_list,
+        pipeline_list,
+        pipeline_info,
+        config_show,
+        data_summary,
+        modalities_list,
+        modality_describe,
+        plots_list,
+    )
+
+    parts = cmd_str.strip().split(None, 2)
+    base = parts[0] if parts else ""
+    sub = parts[1] if len(parts) > 1 else None
+    args = parts[2] if len(parts) > 2 else None
+
+    if base == "data":
+        return data_summary(client, output)
+
+    elif base == "workspace":
+        if sub == "list":
+            return workspace_list(client, output)
+        elif sub == "info" and args:
+            return workspace_info(client, output, args)
+        else:
+            return workspace_status(client, output)
+
+    elif base == "files":
+        return _command_files(client, output)
+
+    elif base == "plots":
+        return plots_list(client, output)
+
+    elif base == "modalities":
+        return modalities_list(client, output)
+
+    elif base == "describe":
+        name = sub  # "describe <name>" — name is the second token
+        return modality_describe(client, output, name)
+
+    elif base == "queue":
+        if sub == "list":
+            queue_type = args if args else "publication"
+            return queue_list(client, output, queue_type=queue_type)
+        else:
+            return show_queue_status(client, output)
+
+    elif base == "metadata":
+        if sub == "publications":
+            return metadata_publications(client, output)
+        elif sub == "samples":
+            return metadata_samples(client, output)
+        elif sub == "workspace":
+            return metadata_workspace(client, output)
+        elif sub == "exports":
+            return metadata_exports(client, output)
+        elif sub == "list":
+            return metadata_list(client, output)
+        else:
+            return metadata_overview(client, output)
+
+    elif base == "pipeline":
+        if sub == "list":
+            return pipeline_list(client, output)
+        elif sub == "info":
+            return pipeline_info(client, output)
+        else:
+            return pipeline_list(client, output)
+
+    elif base == "config":
+        return config_show(client, output)
+
+    else:
+        available = [
+            "data", "files", "workspace", "workspace list", "workspace info <sel>",
+            "plots", "modalities", "describe <name>", "queue", "queue list [type]",
+            "metadata", "metadata publications", "metadata samples",
+            "metadata workspace", "metadata exports", "metadata list",
+            "pipeline list", "pipeline info", "config",
+        ]
+        output.print(f"Unknown command: {cmd_str}", style="error")
+        output.print("Available commands: " + ", ".join(available), style="info")
+        return _UNKNOWN_COMMAND
+
+
+@app.command(name="command")
+def command_cmd(
+    cmd: str = typer.Argument(help='Command to execute, e.g. "data", "workspace list", "files"'),
+    workspace: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace directory. Default: ./.lobster_workspace",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        "-j",
+        is_flag=True,
+        help="Output as JSON for programmatic consumption",
+    ),
+):
+    """
+    Execute workspace commands without an LLM session.
+
+    Fast (~300ms) access to slash commands like /data, /files, /workspace list.
+    No API keys or LLM provider required.
+
+    \b
+    Examples:
+      lobster command data
+      lobster command "workspace list"
+      lobster command files --json
+      lobster command "metadata publications" --json -w ./my_project
+    """
+    # Strip leading / if user types it out of habit
+    cmd_str = cmd.lstrip("/").strip()
+    if not cmd_str:
+        console.print("[red]No command specified.[/red]")
+        raise typer.Exit(1)
+
+    # In JSON mode, redirect Rich console to stderr
+    if json_output:
+        console.file = sys.stderr
+
+    try:
+        workspace_path = resolve_workspace(explicit_path=workspace, create=True)
+        cmd_client = CommandClient(workspace_path)
+
+        if json_output:
+            from lobster.cli_internal.commands import JsonOutputAdapter
+
+            output = JsonOutputAdapter()
+        else:
+            from lobster.cli_internal.commands import ConsoleOutputAdapter
+
+            output = ConsoleOutputAdapter(console)
+
+        result = _dispatch_command(cmd_str, cmd_client, output)
+        success = result is not _UNKNOWN_COMMAND
+
+        if json_output:
+            envelope: Dict[str, Any] = {
+                "success": success,
+                "command": cmd_str,
+                "data": output.to_dict(),
+            }
+            if result is not _UNKNOWN_COMMAND and result is not None:
+                envelope["summary"] = result
+            print(json.dumps(envelope))
+
+    except Exception as e:
+        if json_output:
+            print(json.dumps({
+                "success": False,
+                "command": cmd_str,
+                "error": str(e),
+                "error_type": type(e).__name__,
+            }))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
 
 
 @app.command()

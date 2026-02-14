@@ -58,6 +58,7 @@ Running `lobster init` will guide this process and generate the command.
 |------|-----------|
 | **All agents & hierarchy** | [references/agents.md](references/agents.md) |
 | **CLI commands** | [references/cli-commands.md](references/cli-commands.md) |
+| **Fast workspace inspection** | [references/cli-commands.md#programmatic-command-access](references/cli-commands.md#programmatic-command-access) |
 | **Single-cell analysis** | [references/single-cell-workflow.md](references/single-cell-workflow.md) |
 | **Bulk RNA-seq analysis** | [references/bulk-rnaseq-workflow.md](references/bulk-rnaseq-workflow.md) |
 | **Literature & datasets** | [references/research-workflow.md](references/research-workflow.md) |

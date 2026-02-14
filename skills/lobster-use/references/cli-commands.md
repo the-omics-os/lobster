@@ -2,10 +2,10 @@
 
 Complete reference for Lobster AI command-line interface.
 
-> **Agent note:** Agents interact with Lobster via `lobster query --session-id <id> "request"`.
-> Slash commands (`/data`, `/files`, etc.) are only available inside interactive `lobster chat`
-> sessions. When running programmatically, use natural language queries instead --
-> e.g., `lobster query --session-id latest "What data is loaded?"` instead of `/data`.
+> **Agent note:** For workspace inspection, prefer `lobster command <cmd> --json` — it's fast
+> (~300ms), needs no LLM/API keys, and returns structured JSON. Use `lobster query` only for
+> analysis tasks that require the agent system.
+> See [Programmatic Command Access](#programmatic-command-access) below.
 
 ## Installation & Setup
 
@@ -200,6 +200,77 @@ lobster status
 | Ctrl+D | Exit (same as /quit) |
 | Ctrl+L | Clear screen |
 | Ctrl+R | Search command history |
+
+## Programmatic Command Access
+
+`lobster command` executes workspace slash commands **without starting an LLM session**.
+No API keys needed. Returns in ~300ms.
+
+```bash
+# Console mode (Rich tables, same output as /data in chat)
+lobster command data
+lobster command "workspace list"
+lobster command files
+
+# JSON mode (structured, for agents and scripts)
+lobster command data --json
+lobster command "workspace list" --json | jq '.data.tables[0].rows'
+lobster command "metadata publications" --json -w ./my_project
+
+# Leading / is stripped automatically
+lobster command /data --json
+```
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `data` | Current dataset info (shape, columns, stats) |
+| `files` | List workspace files organized by category |
+| `workspace` | Show workspace status |
+| `workspace list` | List all datasets with status |
+| `workspace info <sel>` | Detailed info for a dataset by index or name |
+| `plots` | List generated visualizations |
+| `modalities` | Show detailed modality information |
+| `describe <name>` | Statistical summary of a modality |
+| `queue` | Download and publication queue status |
+| `queue list [type]` | List queued items (default: publication) |
+| `metadata` | Smart metadata overview |
+| `metadata publications` | Publication queue breakdown |
+| `metadata samples` | Sample statistics and disease coverage |
+| `metadata workspace` | File inventory across storage locations |
+| `metadata exports` | Export files with categories |
+| `metadata list` | Detailed metadata list |
+| `pipeline list` | List available notebooks |
+| `pipeline info` | Notebook details |
+| `config` | Current configuration |
+
+### JSON Output Schema
+
+```json
+{
+  "success": true,
+  "command": "workspace list",
+  "data": {
+    "tables": [{"title": "...", "columns": ["..."], "rows": [["..."]]}],
+    "messages": [{"text": "...", "style": "info"}]
+  },
+  "summary": "Listed 3 available datasets"
+}
+```
+
+### Agent Best Practice
+
+```bash
+# Check what data is loaded (fast, no tokens burned)
+lobster command data --json -w .lobster_workspace | jq '.data'
+
+# List workspace files
+lobster command files --json -w .lobster_workspace | jq '.data.tables'
+
+# Then use lobster query only for actual analysis
+lobster query --session-id latest "Cluster the cells and find markers"
+```
 
 ## Examples
 

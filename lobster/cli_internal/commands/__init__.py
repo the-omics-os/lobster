@@ -82,6 +82,10 @@ _LAZY_IMPORTS = {
         "lobster.cli_internal.commands.output_adapter",
         "DashboardOutputAdapter",
     ),
+    "JsonOutputAdapter": (
+        "lobster.cli_internal.commands.output_adapter",
+        "JsonOutputAdapter",
+    ),
     # Heavy data commands
     "data_summary": (
         "lobster.cli_internal.commands.heavy.data_commands",
@@ -152,6 +156,7 @@ __all__ = [
     "OutputAdapter",
     "ConsoleOutputAdapter",
     "DashboardOutputAdapter",
+    "JsonOutputAdapter",
     # Queue commands (light)
     "show_queue_status",
     "queue_load_file",

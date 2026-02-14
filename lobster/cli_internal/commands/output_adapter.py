@@ -119,6 +119,61 @@ class ConsoleOutputAdapter(OutputAdapter):
         self.console.print(syntax)
 
 
+class JsonOutputAdapter(OutputAdapter):
+    """OutputAdapter that collects structured data for JSON serialization."""
+
+    def __init__(self):
+        self.messages: list[dict] = []
+        self.tables: list[dict] = []
+        self._code_blocks: list[dict] = []
+
+    def print(self, message: str, style: Optional[str] = None) -> None:
+        """Collect message text, stripping Rich markup."""
+        clean = self._strip_markup(message)
+        entry = {"text": clean}
+        if style:
+            entry["style"] = style
+        self.messages.append(entry)
+
+    def print_table(self, table_data: Dict[str, Any]) -> None:
+        """Extract columns and rows into a serializable dict."""
+        columns = [col["name"] for col in table_data.get("columns", [])]
+        rows = table_data.get("rows", [])
+        entry: Dict[str, Any] = {"columns": columns, "rows": rows}
+        title = table_data.get("title")
+        if title:
+            entry["title"] = self._strip_markup(title)
+        self.tables.append(entry)
+
+    def confirm(self, question: str) -> bool:
+        """Non-interactive: always returns False."""
+        self.messages.append(
+            {"text": f"Confirmation skipped (non-interactive): {self._strip_markup(question)}", "style": "warning"}
+        )
+        return False
+
+    def print_code_block(self, code: str, language: str = "python") -> None:
+        """Collect code blocks."""
+        self._code_blocks.append({"code": code, "language": language})
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Return collected data, omitting empty keys."""
+        result: Dict[str, Any] = {}
+        if self.tables:
+            result["tables"] = self.tables
+        if self.messages:
+            result["messages"] = self.messages
+        if self._code_blocks:
+            result["code_blocks"] = self._code_blocks
+        return result
+
+    @staticmethod
+    def _strip_markup(text: str) -> str:
+        """Strip Rich markup tags from text."""
+        import re
+        return re.sub(r"\[/?[^\]]+\]", "", text)
+
+
 class DashboardOutputAdapter(OutputAdapter):
     """OutputAdapter for Textual ResultsDisplay (Dashboard mode)."""
 
