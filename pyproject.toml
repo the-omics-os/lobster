@@ -36,7 +36,6 @@ dependencies = [
     "anndata>=0.9.0",
     "mudata>=0.2.0",
     "h5py>=3.9.0",
-    "tables>=3.8.0",
     # Agent framework (only langchain-core, provider packages are extras)
     "langchain-core>=0.3.79",
     "langgraph>=1.0.5",
@@ -85,6 +84,11 @@ all-providers = ["lobster-ai[anthropic,bedrock,ollama,gemini,azure]"]
 # Document Intelligence (optional, installed via `lobster init`)
 # =============================================================================
 docling = ["docling>=2.60.0", "docling-core>=2.50.0"]
+
+# =============================================================================
+# Legacy HDF5 support via PyTables (pandas read_hdf)
+# =============================================================================
+hdf5 = ["tables>=3.8.0"]
 
 # =============================================================================
 # Server mode

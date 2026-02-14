@@ -361,9 +361,16 @@ class TranscriptomicsAdapter(BaseAdapter):
             adata = anndata.read_h5ad(path)
             return adata
         except Exception:
-            # Fallback to pandas HDF5
-            key = kwargs.get("key", "expression_data")
-            df = pd.read_hdf(path, key=key)
+            # Fallback to pandas HDF5 (requires PyTables)
+            try:
+                key = kwargs.get("key", "expression_data")
+                df = pd.read_hdf(path, key=key)
+            except ImportError:
+                raise ImportError(
+                    "This HDF5 file requires PyTables for pandas.read_hdf(). "
+                    "Install with: pip install 'lobster-ai[hdf5]' "
+                    "or: uv pip install tables"
+                )
             transpose = kwargs.get("transpose", True)
             return self._create_anndata_from_dataframe(df, transpose=transpose)
 

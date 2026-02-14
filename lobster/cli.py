@@ -16,6 +16,16 @@ if sys.version_info >= (3, 13):
     except RuntimeError:
         pass  # Already set
 
+# Runtime Python version guard — catch unsupported versions early with a clear message
+if sys.version_info < (3, 12) or sys.version_info >= (3, 14):
+    print(
+        f"Error: Lobster AI requires Python 3.12 or 3.13. "
+        f"Found Python {sys.version_info.major}.{sys.version_info.minor}.\n"
+        f"Fix: uv tool install --python 3.13 lobster-ai",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
 import html
 import os
 import random
