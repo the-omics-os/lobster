@@ -1145,31 +1145,35 @@ def change_mode(new_mode: str, current_client: "AgentClient") -> "AgentClient":
 # Available Agent Packages (static registry for init flow)
 # =============================================================================
 # These are the official lobster-* packages that can be installed.
-# Format: (package_name, description, agents_provided)
+# Format: (package_name, description, agents_provided, published_on_pypi)
 
 AVAILABLE_AGENT_PACKAGES = [
     (
         "lobster-research",
         "Literature search & data discovery",
         ["research_agent", "data_expert_agent"],
+        True,
     ),
     (
         "lobster-transcriptomics",
         "Single-cell & bulk RNA-seq analysis",
         ["transcriptomics_expert", "annotation_expert", "de_analysis_expert"],
+        True,
     ),
     (
         "lobster-visualization",
         "Data visualization & plotting",
         ["visualization_expert_agent"],
+        True,
     ),
     (
         "lobster-metadata",
         "Metadata filtering & standardization",
         ["metadata_assistant"],
+        False,
     ),
-    ("lobster-genomics", "Genomics/DNA analysis (VCF, GWAS)", ["genomics_expert"]),
-    ("lobster-proteomics", "Mass spec proteomics analysis", ["proteomics_expert"]),
+    ("lobster-genomics", "Genomics/DNA analysis (VCF, GWAS)", ["genomics_expert"], True),
+    ("lobster-proteomics", "Mass spec proteomics analysis", ["proteomics_expert"], True),
     (
         "lobster-ml",
         "Machine learning & feature selection",
@@ -1178,11 +1182,13 @@ AVAILABLE_AGENT_PACKAGES = [
             "feature_selection_expert",
             "survival_analysis_expert",
         ],
+        False,
     ),
     (
         "lobster-structural-viz",
         "Protein structure visualization",
         ["protein_structure_visualization_expert"],
+        False,
     ),
 ]
 
@@ -1249,12 +1255,17 @@ def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
     table.add_column("Package", style="white")
     table.add_column("Description", style="dim")
     table.add_column("Agents", style="yellow")
-    table.add_column("Status", style="green", width=10)
+    table.add_column("Status", style="green", width=12)
 
-    for i, (pkg_name, desc, agents) in enumerate(AVAILABLE_AGENT_PACKAGES, 1):
+    for i, (pkg_name, desc, agents, published) in enumerate(AVAILABLE_AGENT_PACKAGES, 1):
         # Check if this package's agents are installed
         is_installed = any(a in installed_agent_names for a in agents)
-        status = "[green]installed[/green]" if is_installed else ""
+        if is_installed:
+            status = "[green]installed[/green]"
+        elif not published:
+            status = "[dim]coming soon[/dim]"
+        else:
+            status = ""
         agents_str = ", ".join(agents[:2])  # Show first 2 agents
         if len(agents) > 2:
             agents_str += f" +{len(agents) - 2}"
@@ -1298,10 +1309,10 @@ def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
     all_agents = []
 
     for idx in sorted(selected_indices):
-        pkg_name, _, agents = AVAILABLE_AGENT_PACKAGES[idx - 1]
+        pkg_name, _, agents, published = AVAILABLE_AGENT_PACKAGES[idx - 1]
         # Check if already installed
         is_installed = any(a in installed_agent_names for a in agents)
-        if not is_installed:
+        if not is_installed and published:
             packages_to_install.append(pkg_name)
         all_agents.extend(agents)
 
@@ -4355,6 +4366,9 @@ def _uv_tool_env_handoff(
         "protein_structure_visualization_expert": "lobster-structural-viz",
     }
 
+    # Only include packages that are published on public PyPI
+    _published_packages = {pkg for pkg, _, _, pub in AVAILABLE_AGENT_PACKAGES if pub}
+
     with_packages: list[str] = []
     if selected_agents:
         needed = set()
@@ -4362,10 +4376,10 @@ def _uv_tool_env_handoff(
             pkg = agent_to_package.get(agent)
             if pkg:
                 needed.add(pkg)
-        # Only include packages not already in the receipt
+        # Only include packages not already in the receipt AND published on PyPI
         already = {p.lower().replace("-", "_") for p in info.installed_packages}
         for pkg in needed:
-            if pkg.lower().replace("-", "_") not in already:
+            if pkg.lower().replace("-", "_") not in already and pkg in _published_packages:
                 with_packages.append(pkg)
 
     # If nothing new to install, skip
@@ -4387,12 +4401,17 @@ def _uv_tool_env_handoff(
 
     if Confirm.ask("  Run this now?", default=True):
         console.print("[dim]  Running uv tool install...[/dim]")
-        result = _sp.run(cmd)
+        result = _sp.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
             console.print("[green]  ✓ Packages installed successfully.[/green]")
             console.print("[dim]  Restart lobster to use the new packages.[/dim]")
         else:
             console.print("[red]  ✗ Installation failed.[/red]")
+            # Show a concise failure reason instead of the full resolver dump
+            for line in (result.stderr or "").splitlines():
+                if "Because" in line or "not found" in line or "No solution" in line:
+                    console.print(f"  [dim]{line.strip()}[/dim]")
+                    break
             console.print(f"  [dim]Run manually: {cmd_str}[/dim]")
         sys.exit(result.returncode)
     else:
