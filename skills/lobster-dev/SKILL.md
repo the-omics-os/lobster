@@ -4,10 +4,14 @@ description: |
   Develop, extend, and contribute to Lobster AI — the multi-agent bioinformatics engine.
   Use when working on Lobster codebase, creating agents/services, understanding architecture,
   fixing bugs, adding features, or contributing to the open-source project.
-  
+
+  IMPORTANT: Before creating new agents or packages, ALWAYS follow the planning
+  workflow first (see "Before You Build").
+
   Trigger phrases: "add agent", "create service", "extend lobster", "contribute",
   "understand architecture", "how does X work in lobster", "fix bug", "add feature",
-  "write tests", "lobster development", "agent development", "bioinformatics code"
+  "write tests", "lobster development", "agent development", "bioinformatics code",
+  "build a new agent for", "add support for", "create plugin", "new domain"
 ---
 
 # Lobster AI Development Guide
@@ -19,12 +23,32 @@ This skill teaches you how to work with, extend, and contribute to the codebase.
 
 | Task | Documentation |
 |------|---------------|
+| **Planning new capabilities** | [references/planning-workflow.md](references/planning-workflow.md) |
+| **Domain knowledge (bioSkills)** | [references/bioskills-bridge.md](references/bioskills-bridge.md) |
 | **Architecture overview** | [references/architecture.md](references/architecture.md) |
 | **Creating new agents** | [references/creating-agents.md](references/creating-agents.md) |
 | **Creating new services** | [references/creating-services.md](references/creating-services.md) |
 | **Code layout & finding files** | [references/code-layout.md](references/code-layout.md) |
 | **Testing patterns** | [references/testing.md](references/testing.md) |
 | **CLI reference** | [references/cli.md](references/cli.md) |
+
+## Before You Build
+
+**STOP.** Before creating any new agent, service, or package, follow this workflow.
+
+| Phase | Purpose |
+|-------|---------|
+| 1. Understand Need | Structured Q&A -- what domain, workflow, tools, data formats |
+| 2. Check What Exists | Dynamically scan Lobster packages + core services for overlap |
+| 3. Find Domain Knowledge | Dynamically discover relevant bioSkills for the domain |
+| 4. Present Findings | Show developer what exists vs. what's missing |
+| 5. Recommend Approach | Extend existing vs. new package vs. service-only vs. not Lobster |
+| 6. Build & Test | Apply lobster-dev patterns with domain knowledge |
+
+**Full workflow details:** [references/planning-workflow.md](references/planning-workflow.md)
+
+**Skip this if:** fixing a bug, adding a tool to an existing agent, or working
+on core infrastructure. This workflow is for NEW capabilities only.
 
 ## Critical Rules
 
