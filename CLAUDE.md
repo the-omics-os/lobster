@@ -330,6 +330,7 @@ Skills teach coding agents (Claude Code, Codex, Gemini CLI, OpenClaw) how to use
 skills/
 ├── lobster-use/       # For end users
 │   ├── SKILL.md                  # Triggers: "analyze cells", "search PubMed", "RNA-seq"
+│   ├── MANIFEST                  # File list for installer (one filename per line)
 │   └── references/
 │       ├── cli-commands.md       # CLI and slash commands
 │       ├── single-cell-workflow.md
@@ -339,11 +340,14 @@ skills/
 │       └── agents.md             # Agent capabilities
 └── lobster-dev/                  # For developers/contributors
     ├── SKILL.md                  # Triggers: "create agent", "extend lobster", "add service"
+    ├── MANIFEST                  # File list for installer (one filename per line)
     └── references/
         ├── architecture.md       # System architecture + data flow
+        ├── bioskills-bridge.md   # Domain knowledge discovery via bioSkills
         ├── creating-agents.md    # Agent creation guide
         ├── creating-services.md  # Service 3-tuple pattern
         ├── code-layout.md        # Where files live
+        ├── planning-workflow.md  # 6-phase planning workflow for new capabilities
         ├── testing.md            # Testing patterns
         └── cli.md                # CLI internals
 ```
@@ -355,13 +359,27 @@ Users install skills via:
 curl -fsSL https://skills.lobsterbio.com | bash
 ```
 
-The installer is served by a Lambda function that also tracks download analytics. It downloads skill files from `raw.githubusercontent.com/the-omics-os/lobster/main/skills/...` and installs to the user's coding agent skills directory (`~/.claude/skills/`, `~/.agents/skills/`, etc.).
+The installer is **manifest-driven**: it fetches `MANIFEST` files from the repo at runtime to discover which files to download. This means adding new skill reference files only requires updating the `MANIFEST` in this repo — no Lambda redeploy needed.
 
-**Infrastructure:** Lambda `skill-downloads` + DynamoDB `skill-downloads` in us-east-1. See `../lobster-cloud/CLAUDE.md` → "Skill Downloads Service" for details.
+**How it works:**
+1. Lambda serves the bash installer script (embedded in `lambda_function.py`)
+2. Bash script fetches `skills/<skill-name>/MANIFEST` from `raw.githubusercontent.com`
+3. Each line in MANIFEST = one file to download
+4. Falls back to just `SKILL.md` if MANIFEST fetch fails
 
-**Installer script sources:**
+**Infrastructure:** Lambda `skill-downloads` + DynamoDB `skill-downloads` in us-east-1.
+
+**Installer script sources (must stay in sync):**
 - Lambda (serves script): `../lobster-cloud/infrastructure/skill-downloads/lambda_function.py`
 - Landing page copy: `../landing_lobster/public/skill`
+
+**Deploy updated installer script:**
+```bash
+cd ../lobster-cloud/infrastructure/skill-downloads
+zip -j function.zip lambda_function.py
+aws lambda update-function-code --function-name skill-downloads \
+  --zip-file fileb://function.zip --region us-east-1
+```
 
 **Download analytics:** `curl -s https://skills.lobsterbio.com/stats | jq .total`
 
@@ -377,13 +395,23 @@ When modifying Lobster's code in ways that affect how users or developers intera
 | Service patterns, 3-tuple contract | `lobster-dev/references/creating-services.md` |
 | Package structure, file locations | `lobster-dev/references/code-layout.md` |
 | Test fixtures, testing approach | `lobster-dev/references/testing.md` |
+| Planning workflow for new domains | `lobster-dev/references/planning-workflow.md` |
+| bioSkills bridge / domain discovery | `lobster-dev/references/bioskills-bridge.md` |
+
+### Adding a New Reference File to an Existing Skill
+
+1. Create the file in `skills/<skill-name>/references/`
+2. Add the filename to `skills/<skill-name>/MANIFEST`
+3. Push to `main` — users re-running the installer get the new file automatically
 
 ### Adding a New Skill
 
 1. Create `skills/<skill-name>/SKILL.md` with frontmatter (`name`, `description` with trigger phrases)
 2. Add `references/` for detailed docs (keep SKILL.md <500 lines)
-3. Add the file list to the installer script (`../landing_lobster/public/skill`)
-4. Push to `main` — users re-running the installer get the new skill
+3. Create `skills/<skill-name>/MANIFEST` listing all files (one per line)
+4. Add the skill to the `SKILLS` array in the installer script (Lambda + landing page copy)
+5. Redeploy Lambda (see Deploy section above)
+6. Push to `main` — users re-running the installer get the new skill
 
 ### Skill Format (AgentSkills Standard)
 
