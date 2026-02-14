@@ -26,6 +26,7 @@ dependencies = [
     "sgkit>=0.7.0",
     "statsmodels>=0.14.0",
     "genebe>=0.2.0",
+    "cyvcf2>=0.30.0",
 ]
 
 [project.urls]

@@ -26,6 +26,11 @@ if sys.version_info < (3, 12):
     )
     raise SystemExit(1)
 
+# Suppress harmless Pydantic v1 deprecation warning from langchain_core on Python 3.14+
+import warnings
+
+warnings.filterwarnings("ignore", message="Core Pydantic V1 functionality", category=UserWarning)
+
 import html
 import os
 import random
