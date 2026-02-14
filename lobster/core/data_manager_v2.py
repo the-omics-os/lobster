@@ -9,6 +9,7 @@ flexible multi-omics data analysis with complete provenance tracking.
 import json
 import logging
 import os
+import re
 import tempfile
 import threading
 import time
@@ -754,6 +755,32 @@ class DataManagerV2:
         self.adapters[name] = adapter
         logger.debug(f"Registered adapter: {name} ({adapter.__class__.__name__})")
 
+    def _normalize_adapter_name(self, adapter: str) -> str:
+        """Normalize adapter names for tolerant registry lookup."""
+        normalized = adapter.lower().strip()
+        normalized = normalized.replace(" ", "_").replace("-", "_")
+        normalized = re.sub(r"_+", "_", normalized)
+        return normalized.strip("_")
+
+    def _resolve_adapter_name(self, adapter: str) -> str:
+        """Resolve aliases and normalized names to a registered adapter key."""
+        if adapter in self.adapters:
+            return adapter
+
+        normalized_adapter = self._normalize_adapter_name(adapter)
+        alias_map = {
+            "single_cell_rna_seq": "transcriptomics_single_cell",
+            "singlecell_rnaseq": "transcriptomics_single_cell",
+            "scrna": "transcriptomics_single_cell",
+            "scrna_seq": "transcriptomics_single_cell",
+        }
+
+        resolved_adapter = alias_map.get(normalized_adapter, normalized_adapter)
+        if resolved_adapter in self.adapters:
+            return resolved_adapter
+
+        raise ValueError(f"Adapter '{adapter}' not registered")
+
     def load_modality(
         self,
         name: str,
@@ -778,10 +805,8 @@ class DataManagerV2:
         Raises:
             ValueError: If adapter is not registered or validation fails
         """
-        if adapter not in self.adapters:
-            raise ValueError(f"Adapter '{adapter}' not registered")
-
-        adapter_instance = self.adapters[adapter]
+        resolved_adapter = self._resolve_adapter_name(adapter)
+        adapter_instance = self.adapters[resolved_adapter]
 
         # Load data using adapter
         if not _is_anndata_instance(source):
@@ -815,7 +840,7 @@ class DataManagerV2:
                 entity_type="modality_data",
                 metadata={
                     "modality_name": name,
-                    "adapter": adapter,
+                    "adapter": resolved_adapter,
                     "shape": adata.shape,
                 },
             )
@@ -835,10 +860,10 @@ class DataManagerV2:
                 parameters={
                     "name": name,
                     "source": source_path,
-                    "adapter": adapter,
+                    "adapter": resolved_adapter,
                     **kwargs,
                 },
-                description=f"Loaded modality '{name}' using {adapter} adapter",
+                description=f"Loaded modality '{name}' using {resolved_adapter} adapter",
                 ir=loading_ir,
             )
 
@@ -846,7 +871,7 @@ class DataManagerV2:
             adata = self.provenance.add_to_anndata(adata)
 
         logger.info(
-            f"Loaded modality '{name}': {adata.shape} using adapter '{adapter}'"
+            f"Loaded modality '{name}': {adata.shape} using adapter '{resolved_adapter}'"
         )
         return adata
 
