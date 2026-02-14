@@ -9,12 +9,15 @@ adapters, validation components, and download services.
 from .adapter import IModalityAdapter
 from .backend import IDataBackend
 from .download_service import IDownloadService
+from .queue_preparer import IQueuePreparer, QueuePreparationResult
 from .validator import IValidator, ValidationResult
 
 __all__ = [
     "IDataBackend",
     "IModalityAdapter",
     "IDownloadService",
+    "IQueuePreparer",
     "IValidator",
+    "QueuePreparationResult",
     "ValidationResult",
 ]

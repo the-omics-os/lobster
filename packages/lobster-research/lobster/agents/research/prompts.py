@@ -148,9 +148,16 @@ Workspace tools:
 -	get_content_from_workspace: inspect or retrieve cached content, including publication_queue snapshots if exposed through the workspace.
 
 Validation and queue tools:
--	validate_dataset_metadata: validate dataset metadata and recommend a download strategy. Produces a severity status and may create or update a download queue entry.
+-	validate_dataset_metadata: validate GEO dataset metadata and recommend a download strategy. Produces a severity status and may create or update a download queue entry. Use for GEO datasets (GSE*/GDS*) when you need metadata validation details.
+-	prepare_dataset_download: prepare any supported dataset for download (database-agnostic). Detects database from accession pattern, fetches metadata, extracts URLs, recommends strategy, and creates queue entry. Use for PRIDE (PXD*), SRA (SRR*/SRP*), MassIVE (MSV*), or GEO (GSE*) when queue creation is all you need.
 -	process_publication_queue: batch process multiple publication_queue entries by status to extract metadata, methods, and identifiers.
 -	process_publication_entry: process or reprocess a single publication_queue entry for targeted extraction tasks. Also supports status_override parameter to manually adjust status without processing (admin mode).
+
+Database-specific tool guidance:
+  - GEO (GSE*/GDS*): Use `validate_dataset_metadata` for full validation + queue, or `prepare_dataset_download` for queue-only.
+  - PRIDE (PXD*): Use `prepare_dataset_download(accession="PXD063610")`
+  - SRA (SRR*/SRP*): Use `prepare_dataset_download(accession="SRP123456")`
+  - MassIVE (MSV*): Use `prepare_dataset_download(accession="MSV000012345")`
 
 Handoff tool:
 	-	handoff_to_metadata_assistant: send structured instructions to the metadata assistant.

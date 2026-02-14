@@ -173,6 +173,20 @@ def research_agent(
             logger.debug("Lazy-loaded MetadataValidationService")
         return _metadata_validator
 
+    _queue_preparation_service = None
+
+    def get_queue_preparation_service():
+        """Lazy loader for QueuePreparationService."""
+        nonlocal _queue_preparation_service
+        if _queue_preparation_service is None:
+            from lobster.services.data_access.queue_preparation_service import (
+                QueuePreparationService,
+            )
+
+            _queue_preparation_service = QueuePreparationService(data_manager)
+            logger.debug("Lazy-loaded QueuePreparationService")
+        return _queue_preparation_service
+
     # Premium feature - only instantiate if available
     publication_processing_service = None
     if HAS_PUBLICATION_PROCESSING:
@@ -863,130 +877,17 @@ def research_agent(
                             f"Adding cached dataset {identifier} to download queue"
                         )
 
-                        # Import GEOProvider
-                        from lobster.tools.providers.geo_provider import GEOProvider
-
-                        geo_provider = GEOProvider(data_manager)
-
-                        # Extract URLs using cached metadata (returns DownloadUrlResult)
-                        url_data = geo_provider.get_download_urls(identifier)
-
-                        if url_data.error:
-                            logger.warning(
-                                f"URL extraction warning for {identifier}: {url_data.error}"
-                            )
-
-                        # Extract strategy config for cached datasets
-                        assistant = get_data_expert()
-
-                        # Check if strategy_config already exists in cached data
-                        cached_strategy_config = cached_data.get("strategy_config")
-                        if not cached_strategy_config:
-                            # Extract it now and persist
-                            try:
-                                logger.info(
-                                    f"Extracting strategy for cached dataset {identifier}"
-                                )
-                                cached_strategy_config = (
-                                    assistant.extract_strategy_config(
-                                        metadata, identifier
-                                    )
-                                )
-
-                                if cached_strategy_config:
-                                    # Persist to metadata_store
-                                    data_manager._store_geo_metadata(
-                                        geo_id=identifier,
-                                        metadata=metadata,
-                                        stored_by="research_agent_cached",
-                                        strategy_config=(
-                                            cached_strategy_config.model_dump()
-                                            if hasattr(
-                                                cached_strategy_config, "model_dump"
-                                            )
-                                            else cached_strategy_config
-                                        ),
-                                    )
-
-                                    # Analyze and create recommended strategy
-                                    analysis = assistant.analyze_download_strategy(
-                                        cached_strategy_config, metadata
-                                    )
-                                    recommended_strategy = _create_recommended_strategy(
-                                        cached_strategy_config,
-                                        analysis,
-                                        metadata,
-                                        url_data,
-                                    )
-                                else:
-                                    # Fallback strategy
-                                    recommended_strategy = _create_fallback_strategy(
-                                        url_data, metadata
-                                    )
-                            except Exception as e:
-                                logger.warning(
-                                    f"Strategy extraction failed for cached {identifier}: {e}"
-                                )
-                                recommended_strategy = _create_fallback_strategy(
-                                    url_data, metadata
-                                )
-                        else:
-                            # Use existing strategy config
-                            analysis = assistant.analyze_download_strategy(
-                                cached_strategy_config, metadata
-                            )
-                            recommended_strategy = _create_recommended_strategy(
-                                cached_strategy_config, analysis, metadata, url_data
-                            )
-
-                        # Create DownloadQueueEntry
-                        entry_id = f"queue_{identifier}_{uuid.uuid4().hex[:8]}"
-
-                        # Reconstruct validation result for cached datasets
-                        # Cached = previously validated successfully
-                        cached_validation = MetadataValidationConfig(
-                            has_required_fields=True,
-                            missing_fields=[],
-                            available_fields={},
-                            sample_count_by_field={},
-                            total_samples=metadata.get(
-                                "n_samples", len(metadata.get("samples", {}))
-                            ),
-                            field_coverage={},
-                            recommendation="proceed",
-                            confidence_score=1.0,
-                            warnings=[],
-                        )
-
-                        queue_entry = DownloadQueueEntry(
-                            entry_id=entry_id,
-                            dataset_id=identifier,
-                            database="geo",
-                            priority=5,
-                            status=DownloadStatus.PENDING,
-                            metadata=metadata,
-                            validation_result=cached_validation.__dict__,
-                            matrix_url=url_data.matrix_url,
-                            raw_urls=url_data.get_raw_urls_as_strings(),
-                            supplementary_urls=url_data.get_supplementary_urls_as_strings(),
-                            h5_url=url_data.h5_url,
-                            created_at=datetime.now(),
-                            updated_at=datetime.now(),
-                            recommended_strategy=recommended_strategy,  # Use actual strategy
-                            downloaded_by=None,
-                            modality_name=None,
-                            error_log=[],
-                        )
-
-                        # Add to download queue
-                        data_manager.download_queue.add_entry(queue_entry)
+                        service = get_queue_preparation_service()
+                        result = service.prepare(identifier)
+                        data_manager.download_queue.add_entry(result.queue_entry)
 
                         logger.info(
-                            f"Successfully added cached dataset {identifier} to download queue with entry_id: {entry_id}"
+                            f"Successfully added cached dataset {identifier} to download queue "
+                            f"with entry_id: {result.queue_entry.entry_id}"
                         )
 
                         # Update queue_entries list for response building
-                        queue_entries = [queue_entry]
+                        queue_entries = [result.queue_entry]
 
                     except Exception as e:
                         logger.error(
@@ -1105,120 +1006,18 @@ def research_agent(
                                 )
 
                             try:
-                                # Import GEOProvider
-                                from lobster.tools.providers.geo_provider import (
-                                    GEOProvider,
-                                )
+                                service = get_queue_preparation_service()
+                                result = service.prepare(identifier)
+                                queue_entry = result.queue_entry
 
-                                geo_provider = GEOProvider(data_manager)
+                                # Enrich with validation data from this flow
+                                queue_entry.validation_result = validation_result.__dict__
+                                queue_entry.validation_status = validation_status
 
-                                # Extract URLs (returns DownloadUrlResult)
-                                url_data = geo_provider.get_download_urls(identifier)
-
-                                # Check for URL extraction errors
-                                if url_data.error:
-                                    logger.warning(
-                                        f"URL extraction warning for {identifier}: {url_data.error}"
-                                    )
-
-                                # NEW: Extract strategy using data_expert_assistant
-                                logger.info(
-                                    f"Extracting download strategy for {identifier}"
-                                )
-                                assistant = get_data_expert()
-
-                                # Extract file config using LLM (~2-5s)
-                                try:
-                                    strategy_config = assistant.extract_strategy_config(
-                                        metadata, identifier
-                                    )
-
-                                    if strategy_config:
-                                        # CRITICAL FIX: Persist strategy_config to metadata_store
-                                        # This enables geo_service.py to find file-level details
-                                        logger.info(
-                                            f"Persisting strategy_config to metadata_store for {identifier}"
-                                        )
-                                        data_manager._store_geo_metadata(
-                                            geo_id=identifier,
-                                            metadata=metadata,
-                                            stored_by="research_agent_validate",
-                                            strategy_config=(
-                                                strategy_config.model_dump()
-                                                if hasattr(
-                                                    strategy_config, "model_dump"
-                                                )
-                                                else strategy_config
-                                            ),
-                                        )
-
-                                        # Analyze and generate recommendations
-                                        analysis = assistant.analyze_download_strategy(
-                                            strategy_config, metadata
-                                        )
-
-                                        # Convert to download_queue.StrategyConfig
-                                        recommended_strategy = (
-                                            _create_recommended_strategy(
-                                                strategy_config,
-                                                analysis,
-                                                metadata,
-                                                url_data,
-                                            )
-                                        )
-                                        logger.info(
-                                            f"Strategy recommendation for {identifier}: {recommended_strategy.strategy_name} "
-                                            f"(confidence: {recommended_strategy.confidence:.2f})"
-                                        )
-                                    else:
-                                        # Fallback: URL-based strategy
-                                        logger.warning(
-                                            f"LLM strategy extraction failed for {identifier}, using URL-based fallback"
-                                        )
-                                        recommended_strategy = (
-                                            _create_fallback_strategy(
-                                                url_data, metadata
-                                            )
-                                        )
-                                except Exception as e:
-                                    # Graceful fallback on any error
-                                    logger.warning(
-                                        f"Strategy extraction error for {identifier}: {e}, using URL-based fallback"
-                                    )
-                                    recommended_strategy = _create_fallback_strategy(
-                                        url_data, metadata
-                                    )
-
-                                # Create DownloadQueueEntry
-                                entry_id = f"queue_{identifier}_{uuid.uuid4().hex[:8]}"
-
-                                queue_entry = DownloadQueueEntry(
-                                    entry_id=entry_id,
-                                    dataset_id=identifier,
-                                    database="geo",
-                                    priority=5,  # Default priority
-                                    status=DownloadStatus.PENDING,
-                                    # Metadata from validation
-                                    metadata=metadata,
-                                    validation_result=validation_result.__dict__,
-                                    validation_status=validation_status,  # NEW
-                                    # URLs from GEOProvider (DownloadUrlResult)
-                                    matrix_url=url_data.matrix_url,
-                                    raw_urls=url_data.get_raw_urls_as_strings(),
-                                    supplementary_urls=url_data.get_supplementary_urls_as_strings(),
-                                    h5_url=url_data.h5_url,
-                                    # Timestamps
-                                    created_at=datetime.now(),
-                                    updated_at=datetime.now(),
-                                    # Strategy recommendation from data_expert_assistant
-                                    recommended_strategy=recommended_strategy,  # NEW (no longer None!)
-                                    downloaded_by=None,
-                                    modality_name=None,
-                                    error_log=[],
-                                )
-
-                                # Add to download queue
                                 data_manager.download_queue.add_entry(queue_entry)
+
+                                entry_id = queue_entry.entry_id
+                                recommended_strategy = queue_entry.recommended_strategy
 
                                 logger.info(
                                     f"Added {identifier} to download queue with entry_id: {entry_id}"
@@ -1229,16 +1028,11 @@ def research_agent(
                                 report += f"✅ Dataset '{identifier}' validated and added to queue\n"
                                 report += f"- **Entry ID**: `{entry_id}`\n"
                                 report += f"- **Validation status**: {validation_status.value}\n"
-                                report += f"- **Recommended strategy**: {recommended_strategy.strategy_name} (confidence: {recommended_strategy.confidence:.2f})\n"
-                                report += f"- **Rationale**: {recommended_strategy.rationale}\n"
-                                report += f"- **Files found**: {url_data.file_count}\n"
-                                if url_data.matrix_url:
-                                    report += "- **Matrix file**: Available\n"
-                                supplementary_urls = (
-                                    url_data.get_supplementary_urls_as_strings()
-                                )
-                                if supplementary_urls:
-                                    report += f"- **Supplementary files**: {len(supplementary_urls)} file(s)\n"
+                                if recommended_strategy:
+                                    report += f"- **Recommended strategy**: {recommended_strategy.strategy_name} (confidence: {recommended_strategy.confidence:.2f})\n"
+                                    report += f"- **Rationale**: {recommended_strategy.rationale}\n"
+                                if result.url_data:
+                                    report += f"- **Files found**: {result.url_data.file_count}\n"
 
                                 # Add warnings if validation status has warnings
                                 if (
@@ -1250,9 +1044,7 @@ def research_agent(
                                     )
                                     if warnings:
                                         report += "\n⚠️ **Warnings**:\n"
-                                        for warning in warnings[
-                                            :3
-                                        ]:  # Show max 3 warnings
+                                        for warning in warnings[:3]:
                                             report += f"  - {warning}\n"
 
                                 report += "\n**Next steps**:\n"
@@ -1270,10 +1062,11 @@ def research_agent(
                     else:
                         return f"Error: Failed to validate metadata for {identifier}"
                 else:
-                    logger.info(
-                        f"Currently only GEO metadata can be retrieved. {identifier} doesnt seem to be a GEO identifier"
+                    # Non-GEO identifier — suggest using prepare_dataset_download
+                    return (
+                        f"GEO metadata validation is only available for GEO identifiers (GSE*/GDS*). "
+                        f"For '{identifier}', use `prepare_dataset_download(accession='{identifier}')` instead."
                     )
-                    return f"Currently only GEO metadata can be retrieved. {identifier} doesnt seem to be a GEO identifier"
 
             except Exception as e:
                 logger.error(f"Error accessing dataset {identifier}: {e}")
@@ -1282,6 +1075,114 @@ def research_agent(
         except Exception as e:
             logger.error(f"Error in metadata validation: {e}")
             return f"Error validating dataset metadata: {str(e)}"
+
+    @tool
+    def prepare_dataset_download(accession: str, priority: int = 5) -> str:
+        """
+        Prepare any supported dataset for download (database-agnostic).
+
+        Detects the database from the accession pattern, fetches metadata,
+        extracts download URLs, recommends a strategy, and creates a
+        DownloadQueueEntry. Works for GEO (GSE*), PRIDE (PXD*),
+        SRA (SRR*/SRP*), and MassIVE (MSV*) datasets.
+
+        Use this tool for:
+        - PRIDE datasets (PXD*) — proteomics
+        - SRA datasets (SRR*/SRP*) — sequencing data
+        - MassIVE datasets (MSV*) — mass spectrometry
+        - GEO datasets (GSE*) — when you just need queue creation without
+          full GEO metadata validation (use validate_dataset_metadata for
+          GEO if you need validation details)
+
+        Args:
+            accession: Dataset accession (e.g., "PXD063610", "GSE180759",
+                      "SRP123456", "MSV000012345")
+            priority: Download priority, 1=highest, 10=lowest (default: 5)
+
+        Returns:
+            Report with entry_id, strategy, and next steps for data_expert handoff
+
+        Examples:
+            prepare_dataset_download(accession="PXD063610")
+            prepare_dataset_download(accession="SRP123456", priority=3)
+            prepare_dataset_download(accession="MSV000012345")
+        """
+        try:
+            service = get_queue_preparation_service()
+
+            # Check for existing queue entry (dedup)
+            existing = [
+                entry
+                for entry in data_manager.download_queue.list_entries()
+                if entry.dataset_id == accession
+            ]
+            if existing:
+                entry = existing[0]
+                return (
+                    f"Dataset '{accession}' is already in the download queue.\n"
+                    f"- **Entry ID**: `{entry.entry_id}`\n"
+                    f"- **Status**: {entry.status}\n"
+                    f"- **Database**: {entry.database}\n\n"
+                    f"To proceed, hand off to data_expert with entry_id: `{entry.entry_id}`"
+                )
+
+            # Detect database
+            database = service.detect_database(accession)
+            if database is None:
+                return (
+                    f"Cannot detect database for accession '{accession}'. "
+                    f"Supported databases: {', '.join(service.list_supported_databases())}. "
+                    f"Check the accession format."
+                )
+
+            # Prepare queue entry
+            result = service.prepare(accession, database=database, priority=priority)
+
+            # Add to download queue
+            data_manager.download_queue.add_entry(result.queue_entry)
+
+            entry = result.queue_entry
+            strategy = entry.recommended_strategy
+
+            # Build response
+            report_parts = [
+                f"## Download Prepared: {accession}",
+                "",
+                f"**Database**: {entry.database.upper()}",
+                f"**Entry ID**: `{entry.entry_id}`",
+                f"**Status**: {entry.status}",
+            ]
+
+            if strategy:
+                report_parts.extend([
+                    f"**Strategy**: {strategy.strategy_name} "
+                    f"(confidence: {strategy.confidence:.2f})",
+                    f"**Rationale**: {strategy.rationale}",
+                ])
+
+            if result.url_data:
+                report_parts.append(
+                    f"**Files found**: {result.url_data.file_count}"
+                )
+
+            report_parts.extend([
+                "",
+                "**Next steps**:",
+                "1. Supervisor can query queue: "
+                "`get_content_from_workspace(workspace='download_queue')`",
+                f"2. Hand off to data_expert with entry_id: `{entry.entry_id}`",
+            ])
+
+            logger.info(
+                f"Prepared {accession} for download: {entry.entry_id} "
+                f"(database={database})"
+            )
+
+            return "\n".join(report_parts)
+
+        except Exception as e:
+            logger.error(f"Failed to prepare download for {accession}: {e}")
+            return f"Error preparing download for '{accession}': {str(e)}"
 
     @tool
     def extract_methods(identifier: str, focus: str = None) -> str:
@@ -2142,240 +2043,6 @@ Could not extract content for: {identifier}
     write_to_workspace = create_write_to_workspace_tool(data_manager)
     get_content_from_workspace = create_get_content_from_workspace_tool(data_manager)
 
-    # ============================================================
-    # Helper Methods: Strategy Mapping
-    # ============================================================
-
-    def _create_recommended_strategy(
-        strategy_config,  # data_expert_assistant.StrategyConfig
-        analysis: dict,
-        metadata: dict,
-        url_data,  # DownloadUrlResult from GEOProvider.get_download_urls()
-    ) -> StrategyConfig:
-        """
-        Convert data_expert_assistant analysis to download_queue.StrategyConfig.
-
-        Args:
-            strategy_config: File-level strategy from extract_strategy_config()
-            analysis: Analysis dict from analyze_download_strategy()
-            metadata: GEO metadata dictionary
-            url_data: DownloadUrlResult from GEOProvider.get_download_urls()
-
-        Returns:
-            StrategyConfig for DownloadQueueEntry.recommended_strategy
-        """
-        # Determine primary strategy based on file availability
-        if analysis.get("has_h5ad", False):
-            strategy_name = "H5_FIRST"
-            confidence = 0.95
-            rationale = f"H5AD file available with optimal single-file structure ({url_data.file_count} total files)"
-        elif analysis.get("has_processed_matrix", False):
-            strategy_name = "MATRIX_FIRST"
-            confidence = 0.85
-            rationale = f"Processed matrix available ({strategy_config.processed_matrix_name if hasattr(strategy_config, 'processed_matrix_name') else 'unknown'})"
-        elif analysis.get("has_raw_matrix", False) or analysis.get(
-            "raw_data_available", False
-        ):
-            strategy_name = "SAMPLES_FIRST"
-            confidence = 0.75
-            rationale = "Raw data available for full preprocessing control"
-        else:
-            strategy_name = "AUTO"
-            confidence = 0.50
-            rationale = "No clear optimal strategy detected, using auto-detection"
-
-        # Determine concatenation strategy based on sample count
-        n_samples = metadata.get("n_samples", metadata.get("sample_count", 0))
-        platform = metadata.get("platform", "")
-
-        if n_samples < 20 and platform:
-            concatenation_strategy = "union"
-            use_intersecting_genes_only = False
-        elif n_samples >= 20:
-            concatenation_strategy = "intersection"
-            use_intersecting_genes_only = True
-        else:
-            concatenation_strategy = "auto"
-            use_intersecting_genes_only = None
-
-        # Determine execution parameters based on file count
-        file_count = url_data.file_count
-        if file_count > 100:
-            timeout = 7200  # 2 hours
-            max_retries = 5
-        elif file_count > 20:
-            timeout = 3600  # 1 hour
-            max_retries = 3
-        else:
-            timeout = 1800  # 30 minutes
-            max_retries = 3
-
-        return StrategyConfig(
-            strategy_name=strategy_name,
-            concatenation_strategy=concatenation_strategy,
-            confidence=confidence,
-            rationale=rationale,
-            strategy_params={
-                "use_intersecting_genes_only": use_intersecting_genes_only
-            },
-            execution_params={
-                "timeout": timeout,
-                "max_retries": max_retries,
-                "verify_checksum": True,
-                "resume_enabled": False,
-            },
-        )
-
-    def _is_single_cell_dataset(metadata: dict) -> bool:
-        """
-        Detect if dataset is single-cell based on metadata.
-
-        Args:
-            metadata: GEO metadata dictionary
-
-        Returns:
-            bool: True if dataset appears to be single-cell
-        """
-        # Check various metadata fields for single-cell indicators
-        single_cell_keywords = [
-            "single-cell",
-            "single cell",
-            "scRNA-seq",
-            "10x",
-            "10X",
-            "droplet",
-            "Drop-seq",
-            "Smart-seq",
-            "CEL-seq",
-            "inDrop",
-            "single nuclei",
-            "snRNA-seq",
-            "scATAC-seq",
-            "Chromium",
-        ]
-
-        # Check title, summary, overall_design, and type fields
-        text_fields = [
-            metadata.get("title", ""),
-            metadata.get("summary", ""),
-            metadata.get("overall_design", ""),
-            metadata.get("type", ""),
-            metadata.get("description", ""),
-        ]
-
-        for field in text_fields:
-            if any(
-                keyword.lower() in field.lower() for keyword in single_cell_keywords
-            ):
-                return True
-
-        # Check platform for single-cell platforms
-        platform = metadata.get("platform", "")
-        if any(kw in platform for kw in ["10X", "Chromium", "GPL24676", "GPL24247"]):
-            return True
-
-        # Check for specific single-cell library strategies
-        library_strategy = metadata.get("library_strategy", "")
-        if "single" in library_strategy.lower() or "10x" in library_strategy.lower():
-            return True
-
-        return False
-
-    def _create_fallback_strategy(
-        url_data,  # DownloadUrlResult from GEOProvider.get_download_urls()
-        metadata: dict,
-    ) -> StrategyConfig:
-        """
-        Create fallback strategy when LLM extraction fails.
-        Uses data-type aware URL-based heuristics for strategy recommendation.
-
-        Args:
-            url_data: DownloadUrlResult from GEOProvider.get_download_urls()
-            metadata: GEO metadata dictionary
-
-        Returns:
-            StrategyConfig with data-type aware strategy
-        """
-        # Detect if dataset is single-cell
-        is_single_cell = _is_single_cell_dataset(metadata)
-
-        # URL-based strategy detection with data-type awareness
-        if url_data.h5_url:
-            # H5AD files are typically single-cell optimized
-            strategy_name = "H5_FIRST"
-            confidence = 0.90
-            rationale = "H5AD file URL found (single-cell optimized format)"
-
-        elif is_single_cell and url_data.raw_files and len(url_data.raw_files) > 0:
-            # For single-cell with raw files, check if they're MTX files
-            raw_urls = url_data.get_raw_urls_as_strings()
-            has_mtx = any(
-                "mtx" in url.lower() or "matrix" in url.lower() for url in raw_urls
-            )
-
-            if has_mtx:
-                # MTX files at series level should use RAW_FIRST
-                strategy_name = "RAW_FIRST"
-                confidence = 0.80
-                rationale = f"Single-cell dataset with MTX files detected ({len(url_data.raw_files)} raw files)"
-            else:
-                # Other raw files for single-cell might still need SAMPLES_FIRST
-                strategy_name = "SAMPLES_FIRST"
-                confidence = 0.70
-                rationale = f"Single-cell dataset with raw data files ({len(url_data.raw_files)} files)"
-
-        elif url_data.matrix_url:
-            # Matrix files could be bulk or single-cell
-            if is_single_cell:
-                strategy_name = "MATRIX_FIRST"
-                confidence = 0.70
-                rationale = (
-                    "Single-cell dataset with matrix file (may be processed data)"
-                )
-            else:
-                strategy_name = "MATRIX_FIRST"
-                confidence = 0.75
-                rationale = "Matrix file URL found (bulk RNA-seq or processed data)"
-
-        elif url_data.raw_files and len(url_data.raw_files) > 0:
-            # Non-single-cell datasets with raw URLs
-            strategy_name = "SAMPLES_FIRST"
-            confidence = 0.65
-            rationale = f"Raw data URLs found ({len(url_data.raw_files)} files, bulk RNA-seq likely)"
-
-        else:
-            # No clear pattern detected
-            strategy_name = "AUTO"
-            confidence = 0.50
-            rationale = "No clear file pattern detected, using auto-detection"
-
-        # Add data type info to rationale
-        data_type_info = (
-            " (single-cell dataset)" if is_single_cell else " (bulk/unknown dataset)"
-        )
-        rationale += data_type_info
-
-        # Simple concatenation strategy
-        n_samples = metadata.get("n_samples", metadata.get("sample_count", 0))
-        if n_samples >= 20:
-            concatenation_strategy = "intersection"
-        else:
-            concatenation_strategy = "auto"
-
-        return StrategyConfig(
-            strategy_name=strategy_name,
-            concatenation_strategy=concatenation_strategy,
-            confidence=confidence,
-            rationale=rationale,
-            strategy_params={"use_intersecting_genes_only": None},
-            execution_params={
-                "timeout": 3600,
-                "max_retries": 3,
-                "verify_checksum": True,
-                "resume_enabled": False,
-            },
-        )
-
     base_tools = [
         # --------------------------------
         # Literature discovery tools (3 tools)
@@ -2397,11 +2064,11 @@ Could not extract content for: {identifier}
         write_to_workspace,
         get_content_from_workspace,
         # --------------------------------
-        # System tools (1 tool)
+        # System tools (2 tools)
         validate_dataset_metadata,
+        prepare_dataset_download,  # Multi-database queue preparation (GEO, PRIDE, SRA, MassIVE)
         # --------------------------------
-        # Total: 11 tools (3 discovery + 4 content + 2 pub queue + 2 workspace + 1 system)
-        # Phase 8 complete: Merged update_publication_status into process_publication_entry (tool count reduction)
+        # Total: 13 tools (3 discovery + 4 content + 2 pub queue + 2 workspace + 2 system)
     ]
 
     tools = base_tools
