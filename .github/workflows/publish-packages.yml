@@ -6,9 +6,9 @@
 #
 # Architecture:
 # - Direct publishing from uv workspace packages
-# - 9 packages built (core + 8 agent packages)
-# - 6 public packages published to both PyPI and TestPyPI
-# - 3 private packages published to TestPyPI only (metadata, ml, structural-viz)
+# - 6 public packages built and published to PyPI + TestPyPI
+# - 3 private packages (metadata, ml, structural-viz) are .gitignore'd and built
+#   separately; their build/publish failures never block public packages
 # - OIDC Trusted Publishing with per-package environments (monorepo pattern)
 # - Tag-based triggers: v*.*.* for PyPI, v*.*.*-test for TestPyPI
 # - Manual dispatch for re-publishing (e.g., after adding new publishers)
@@ -103,8 +103,10 @@ jobs:
           echo "Version validated: $VERSION"
 
   # ===========================================================================
-  # Step 2: Build All Packages (always build all 9)
+  # Step 2a: Build Public Packages (PyPI + TestPyPI)
   # ===========================================================================
+  # Public packages are tracked in git and always buildable.
+  # All public publish jobs depend on this.
   build:
     name: Build ${{ matrix.package.name }}
     needs: validate-version
@@ -113,7 +115,6 @@ jobs:
       fail-fast: false
       matrix:
         package:
-          # --- Public packages (PyPI + TestPyPI) ---
           - name: lobster-ai
             path: "."
           - name: lobster-transcriptomics
@@ -126,13 +127,6 @@ jobs:
             path: "packages/lobster-proteomics"
           - name: lobster-genomics
             path: "packages/lobster-genomics"
-          # --- Private packages (TestPyPI only) ---
-          - name: lobster-metadata
-            path: "packages/lobster-metadata"
-          - name: lobster-ml
-            path: "packages/lobster-ml"
-          - name: lobster-structural-viz
-            path: "packages/lobster-structural-viz"
 
     steps:
       - uses: actions/checkout@v4
@@ -162,6 +156,78 @@ jobs:
           twine check ${{ matrix.package.path }}/dist/*
 
       - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.package.name }}
+          path: ${{ matrix.package.path }}/dist/
+          retention-days: 7
+
+  # ===========================================================================
+  # Step 2b: Build Private Packages (TestPyPI only)
+  # ===========================================================================
+  # Private packages (metadata, ml, structural-viz) are .gitignore'd and only
+  # exist locally. This job only runs on TestPyPI tags and its failure never
+  # blocks public package publishing.
+  build-private:
+    name: Build ${{ matrix.package.name }} (private)
+    needs: validate-version
+    if: needs.validate-version.outputs.is_test == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - name: lobster-metadata
+            path: "packages/lobster-metadata"
+          - name: lobster-ml
+            path: "packages/lobster-ml"
+          - name: lobster-structural-viz
+            path: "packages/lobster-structural-viz"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check package exists
+        id: check
+        run: |
+          if [ -f "${{ matrix.package.path }}/pyproject.toml" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "WARNING: ${{ matrix.package.path }} not found in repo (private packages are .gitignore'd)"
+            echo "To publish private packages, temporarily add them to the repo or use a separate workflow."
+          fi
+
+      - name: Install uv
+        if: steps.check.outputs.exists == 'true'
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.6.0"
+
+      - name: Set up Python
+        if: steps.check.outputs.exists == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build package
+        if: steps.check.outputs.exists == 'true'
+        run: |
+          echo "Building ${{ matrix.package.name }}..."
+          cd ${{ matrix.package.path }}
+          uv build --out-dir dist/
+          echo "Build artifacts:"
+          ls -lh dist/
+
+      - name: Verify package with twine
+        if: steps.check.outputs.exists == 'true'
+        run: |
+          pip install twine
+          echo "Checking ${{ matrix.package.name }} with twine..."
+          twine check ${{ matrix.package.path }}/dist/*
+
+      - name: Upload build artifact
+        if: steps.check.outputs.exists == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.package.name }}
@@ -316,8 +382,12 @@ jobs:
 
   publish-lobster-metadata:
     name: Publish lobster-metadata (TestPyPI only)
-    needs: [validate-version, build, publish-lobster-ai]
-    if: needs.validate-version.outputs.is_test == 'true'
+    needs: [validate-version, build-private, publish-lobster-ai]
+    if: |
+      always() &&
+      needs.validate-version.outputs.is_test == 'true' &&
+      needs.build-private.result == 'success' &&
+      needs.publish-lobster-ai.result == 'success'
     runs-on: ubuntu-latest
     environment:
       name: testpypi-lobster-metadata
@@ -339,8 +409,12 @@ jobs:
 
   publish-lobster-ml:
     name: Publish lobster-ml (TestPyPI only)
-    needs: [validate-version, build, publish-lobster-ai]
-    if: needs.validate-version.outputs.is_test == 'true'
+    needs: [validate-version, build-private, publish-lobster-ai]
+    if: |
+      always() &&
+      needs.validate-version.outputs.is_test == 'true' &&
+      needs.build-private.result == 'success' &&
+      needs.publish-lobster-ai.result == 'success'
     runs-on: ubuntu-latest
     environment:
       name: testpypi-lobster-ml
@@ -362,8 +436,12 @@ jobs:
 
   publish-lobster-structural-viz:
     name: Publish lobster-structural-viz (TestPyPI only)
-    needs: [validate-version, build, publish-lobster-ai]
-    if: needs.validate-version.outputs.is_test == 'true'
+    needs: [validate-version, build-private, publish-lobster-ai]
+    if: |
+      always() &&
+      needs.validate-version.outputs.is_test == 'true' &&
+      needs.build-private.result == 'success' &&
+      needs.publish-lobster-ai.result == 'success'
     runs-on: ubuntu-latest
     environment:
       name: testpypi-lobster-structural-viz
