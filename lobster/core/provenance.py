@@ -165,6 +165,46 @@ class ProvenanceTracker:
         with open(self._metadata_file, "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2)
 
+    @property
+    def provenance_path(self) -> Optional[Path]:
+        """
+        Path to provenance.jsonl file, or None if persistence disabled.
+
+        Enables external consumers (e.g., cloud S3 sync) to locate the
+        provenance file without knowing internal naming conventions.
+
+        Returns:
+            Path to provenance.jsonl when session_dir is set, None otherwise
+        """
+        return self._provenance_file
+
+    def get_summary(self) -> Dict[str, Any]:
+        """
+        Return compact provenance statistics for API responses.
+
+        Designed for cloud consumption without serializing full activity list.
+        Recomputes on each call (stateless, simple).
+
+        Returns:
+            Dict with keys:
+            - activity_count: int
+            - tools_used: list[str] (unique activity types)
+            - agents_used: list[str] (unique agent names)
+            - has_ir: bool (any activity has non-None IR)
+            - can_export_notebook: bool (alias for has_ir)
+        """
+        tools_used = list(set(a["type"] for a in self.activities))
+        agents_used = list(set(a["agent"] for a in self.activities))
+        has_ir = any(a.get("ir") is not None for a in self.activities)
+
+        return {
+            "activity_count": len(self.activities),
+            "tools_used": tools_used,
+            "agents_used": agents_used,
+            "has_ir": has_ir,
+            "can_export_notebook": has_ir,
+        }
+
     def create_activity(
         self,
         activity_type: str,
