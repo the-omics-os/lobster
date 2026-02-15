@@ -74,20 +74,23 @@ class ProvenanceTracker:
             self._metadata_file = None
             self._created_at = None
 
-    def _load_from_disk(self) -> None:
+    def _load_from_disk(self, path: Optional[Path] = None) -> None:
         """
         Load activities from JSONL file.
 
         Implements line-independent recovery: corrupt lines are skipped with
         warnings, remaining activities are loaded. Empty files handled gracefully.
 
-        This method is called automatically during __init__ when session_dir
-        is provided.
+        Args:
+            path: Optional explicit path to load from. If None, uses self._provenance_file.
+                  This allows loading from a different session's provenance file
+                  during session restoration.
         """
-        if not self._provenance_file or not self._provenance_file.exists():
+        target_path = path or self._provenance_file
+        if not target_path or not target_path.exists():
             return  # Empty file or no file = no activities
 
-        with open(self._provenance_file, "r", encoding="utf-8") as f:
+        with open(target_path, "r", encoding="utf-8") as f:
             for line_num, line in enumerate(f, start=1):
                 line = line.strip()
                 if not line:
