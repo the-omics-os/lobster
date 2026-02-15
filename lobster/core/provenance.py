@@ -3,12 +3,18 @@ Provenance tracking utilities for the modular DataManager architecture.
 
 This module provides W3C-PROV-like provenance tracking for complete
 reproducibility and audit trail of data processing operations.
+
+Supports optional disk persistence via session_dir parameter for
+cross-session notebook export and crash recovery.
 """
 
 import datetime
 import hashlib
+import json
 import logging
+import os
 import uuid
+import warnings
 from pathlib import Path
 
 # Import for IR support (TYPE_CHECKING to avoid circular import)
@@ -32,18 +38,84 @@ class ProvenanceTracker:
     to provide a complete audit trail and enable reproducibility.
     """
 
-    def __init__(self, namespace: str = "lobster"):
+    def __init__(
+        self,
+        namespace: str = "lobster",
+        session_dir: Optional[Union[str, Path]] = None,
+    ):
         """
         Initialize the provenance tracker.
 
         Args:
             namespace: Namespace for provenance identifiers
+            session_dir: Optional path to session directory for disk persistence.
+                        When provided, activities are persisted to provenance.jsonl
+                        and restored on init. When None, persistence is disabled
+                        (backward compatible default).
         """
         self.namespace = namespace
         self.activities: List[Dict[str, Any]] = []
         self.entities: Dict[str, Dict[str, Any]] = {}
         self.agents: Dict[str, Dict[str, Any]] = {}
         self.logger = logger
+
+        # Disk persistence attributes
+        if session_dir is not None:
+            self.session_dir: Optional[Path] = Path(session_dir)
+            self.session_dir.mkdir(parents=True, exist_ok=True)
+            self._provenance_file: Optional[Path] = self.session_dir / "provenance.jsonl"
+            self._metadata_file: Optional[Path] = self.session_dir / "metadata.json"
+            self._created_at = datetime.datetime.now(datetime.timezone.utc)
+            # Load existing activities from disk
+            self._load_from_disk()
+        else:
+            self.session_dir = None
+            self._provenance_file = None
+            self._metadata_file = None
+            self._created_at = None
+
+    def _load_from_disk(self) -> None:
+        """
+        Load activities from JSONL file.
+
+        Implements line-independent recovery: corrupt lines are skipped with
+        warnings, remaining activities are loaded. Empty files handled gracefully.
+
+        This method is called automatically during __init__ when session_dir
+        is provided.
+        """
+        if not self._provenance_file or not self._provenance_file.exists():
+            return  # Empty file or no file = no activities
+
+        with open(self._provenance_file, "r", encoding="utf-8") as f:
+            for line_num, line in enumerate(f, start=1):
+                line = line.strip()
+                if not line:
+                    continue  # Skip empty lines
+
+                try:
+                    data = json.loads(line)
+                    version = data.pop("v", None)
+                    if version != 1:
+                        warnings.warn(
+                            f"Skipping provenance line {line_num}: "
+                            f"unknown schema version {version}"
+                        )
+                        continue
+
+                    # Reconstruct AnalysisStep from IR dict if present
+                    if data.get("ir") is not None:
+                        from lobster.core.analysis_ir import AnalysisStep
+
+                        data["ir"] = AnalysisStep.from_dict(data["ir"])
+
+                    self.activities.append(data)
+
+                except (json.JSONDecodeError, Exception) as e:
+                    warnings.warn(
+                        f"Skipping corrupt provenance line {line_num}: {e}"
+                    )
+                    continue  # Line-independent recovery
 
     def create_activity(
         self,
