@@ -2721,9 +2721,28 @@ class AgentClient(BaseClient):
         self.metadata["original_created_at"] = loaded_metadata.get("created_at")
         self.metadata["message_count_loaded"] = len(self.messages)
 
+        # Restore provenance from original session directory
+        provenance_restored = 0
+        if loaded_session_id and self.data_manager.provenance:
+            original_session_dir = (
+                self.workspace_path / ".lobster" / "sessions" / loaded_session_id
+            )
+            prov_file = original_session_dir / "provenance.jsonl"
+            if prov_file.exists():
+                try:
+                    self.data_manager.provenance._load_from_disk(prov_file)
+                    provenance_restored = len(self.data_manager.provenance.activities)
+                    logger.debug(
+                        f"Restored {provenance_restored} provenance activities "
+                        f"from {prov_file}"
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not restore provenance: {e}")
+                    # Continue - session is functional without provenance
+
         logger.info(
             f"Loaded session from {session_path} "
-            f"({len(self.messages)} messages restored, session_id={self.session_id})"
+            f"({len(self.messages)} messages, {provenance_restored} provenance activities)"
         )
 
         return {
@@ -2731,6 +2750,7 @@ class AgentClient(BaseClient):
             "messages_loaded": len(self.messages),
             "original_session_id": loaded_session_id,
             "created_at": loaded_metadata.get("created_at"),
+            "provenance_restored": provenance_restored,
         }
 
     def _save_session_json(self) -> Optional[Path]:
@@ -2755,7 +2775,15 @@ class AgentClient(BaseClient):
                 "token_usage": self.get_token_usage(),
                 "exported_at": datetime.now().isoformat(),
                 "lobster_version": self._get_version(),
-                "schema_version": "1.0",
+                "provenance": {
+                    "session_dir": str(self._session_dir) if self._session_dir else None,
+                    "activity_count": (
+                        len(self.data_manager.provenance.activities)
+                        if self.data_manager.provenance
+                        else 0
+                    ),
+                },
+                "schema_version": "1.1",
             }
 
             with open(session_path, "w") as f:
