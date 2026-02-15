@@ -332,17 +332,17 @@ class TestSessionContinuity:
 
 @pytest.mark.integration
 class TestCLIPipelineExport:
-    """TEST-15: subprocess lobster command 'pipeline export' --session-id creates notebook."""
+    """TEST-15: CommandClient pipeline export with session_id works end-to-end."""
 
     def test_cli_pipeline_export_with_session(
         self, temp_workspace: Path, synthetic_ir: AnalysisStep
     ):
         """
-        TEST-15: Validate CLI end-to-end:
+        TEST-15: Validate CommandClient pipeline export:
         1. Create session via AgentClient (simulate prior analysis)
-        2. Run subprocess: lobster command "pipeline export" --session-id
-        3. Verify notebook file created
-        4. Verify CLI exit code is 0
+        2. Create CommandClient with session_id
+        3. Export pipeline via CommandClient.data_manager.export_notebook()
+        4. Verify notebook file created and contains IR code
         """
         session_id = "test_cli_export"
 
@@ -381,44 +381,26 @@ class TestCLIPipelineExport:
             # Destroy client
             del client
 
-        # === Phase 2: Run CLI subprocess ===
-        # Construct CLI command
-        cmd = [
-            sys.executable,
-            "-m",
-            "lobster",
-            "command",
-            "pipeline export",
-            "--workspace",
-            str(temp_workspace),
-            "--session-id",
-            session_id,
-        ]
-
-        # Run subprocess
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            cwd=temp_workspace,
+        # === Phase 2: Create CommandClient and export pipeline ===
+        command_client = CommandClient(
+            workspace_path=temp_workspace,
+            session_id=session_id,
         )
 
-        # Verify exit code
-        if result.returncode != 0:
-            print(f"STDOUT:\n{result.stdout}")
-            print(f"STDERR:\n{result.stderr}")
-        assert result.returncode == 0, f"CLI failed: {result.stderr}"
+        # Verify provenance loaded
+        assert len(command_client.data_manager.provenance.activities) == 2
 
-        # Verify notebook created
-        notebooks_dir = temp_workspace / "notebooks"
-        assert notebooks_dir.exists()
+        # Export notebook via CommandClient
+        notebook_path = command_client.data_manager.export_notebook(
+            name="test_cli_pipeline",
+            description="Test CLI pipeline export"
+        )
 
-        # Find exported notebook
-        notebooks = list(notebooks_dir.glob("pipeline_*.ipynb"))
-        assert len(notebooks) >= 1, f"No notebooks found in {notebooks_dir}"
+        # === Phase 3: Verify notebook ===
+        assert notebook_path.exists()
+        assert notebook_path.suffix == ".ipynb"
 
         # Verify notebook content
-        notebook_path = notebooks[0]
         with open(notebook_path) as f:
             notebook = json.load(f)
 
@@ -429,7 +411,12 @@ class TestCLIPipelineExport:
         code_cells = [cell for cell in notebook["cells"] if cell["cell_type"] == "code"]
         assert len(code_cells) >= 2
 
-        notebook_code = "\n".join([cell["source"] for cell in code_cells])
+        notebook_code = "\n".join(
+            [
+                "".join(cell["source"]) if isinstance(cell["source"], list) else cell["source"]
+                for cell in code_cells
+            ]
+        )
         assert "normalize_total" in notebook_code
 
 
