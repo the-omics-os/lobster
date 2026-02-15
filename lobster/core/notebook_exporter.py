@@ -259,11 +259,12 @@ class NotebookExporter:
         pairs = []
 
         for activity in activities:
-            ir_dict = activity.get("ir")
+            ir_obj = activity.get("ir")
 
-            if ir_dict is not None and isinstance(ir_dict, dict):
+            if ir_obj is not None and isinstance(ir_obj, dict):
+                # IR is a dict - deserialize to AnalysisStep (in-memory provenance)
                 try:
-                    ir = AnalysisStep.from_dict(ir_dict)
+                    ir = AnalysisStep.from_dict(ir_obj)
                     if ir.exportable:
                         pairs.append((activity, ir))
                         logger.debug(f"Included exportable IR: {ir.operation}")
@@ -274,6 +275,13 @@ class NotebookExporter:
                         f"Failed to deserialize IR for activity "
                         f"{activity.get('type')}: {e}"
                     )
+            elif ir_obj is not None and isinstance(ir_obj, AnalysisStep):
+                # IR is already an AnalysisStep (loaded from disk)
+                if ir_obj.exportable:
+                    pairs.append((activity, ir_obj))
+                    logger.debug(f"Included exportable IR: {ir_obj.operation}")
+                else:
+                    logger.debug(f"Filtered non-exportable IR: {ir_obj.operation}")
             else:
                 # Activity has no IR - provenance-only (e.g., orchestration)
                 logger.debug(
