@@ -207,6 +207,7 @@ class DataManagerV2:
         default_backend: str = "h5ad",
         workspace_path: Optional[Union[str, Path]] = None,
         enable_provenance: bool = True,
+        session_dir: Optional[Union[str, Path]] = None,
         console=None,
         auto_scan: bool = True,
     ):
@@ -218,6 +219,8 @@ class DataManagerV2:
             workspace_path: Optional workspace directory for data storage.
                 Resolution order: explicit path > LOBSTER_WORKSPACE env var > cwd/.lobster_workspace
             enable_provenance: Whether to enable provenance tracking
+            session_dir: Optional path to session directory for provenance persistence.
+                When provided, provenance is persisted to disk and survives process restarts.
             console: Optional Rich console instance for progress tracking
             auto_scan: Whether to automatically scan workspace for available datasets
         """
@@ -226,6 +229,7 @@ class DataManagerV2:
             explicit_path=workspace_path, create=True
         )
         self.enable_provenance = enable_provenance
+        self._session_dir = Path(session_dir) if session_dir else None
         self.console = console  # Store console for progress tracking in tools
 
         # Core storage
@@ -282,7 +286,11 @@ class DataManagerV2:
         self.adata: Optional["AnnData"] = None  # Legacy AnnData reference
 
         # Provenance tracking
-        self.provenance = ProvenanceTracker() if enable_provenance else None
+        self.provenance = (
+            ProvenanceTracker(session_dir=self._session_dir)
+            if enable_provenance
+            else None
+        )
 
         # Notebook-based pipeline support (lazy initialization to avoid circular imports)
         self._notebook_exporter = None
@@ -1559,9 +1567,9 @@ class DataManagerV2:
         # Clear modalities from memory
         self.modalities.clear()
 
-        # Reset provenance
+        # Reset provenance (preserve session_dir for continued persistence)
         if self.provenance:
-            self.provenance = ProvenanceTracker()
+            self.provenance = ProvenanceTracker(session_dir=self._session_dir)
 
         logger.info("Cleared workspace")
 
@@ -1583,9 +1591,9 @@ class DataManagerV2:
         # Clear modalities from memory
         self.modalities.clear()
 
-        # Reset provenance
+        # Reset provenance (preserve session_dir for continued persistence)
         if self.provenance:
-            self.provenance = ProvenanceTracker()
+            self.provenance = ProvenanceTracker(session_dir=self._session_dir)
 
         logger.info("Cleared workspace (via clear() alias)")
 
