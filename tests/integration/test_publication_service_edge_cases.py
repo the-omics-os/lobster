@@ -224,13 +224,11 @@ class TestPublicationContentExtractionFailures:
     @patch("lobster.tools.providers.pubmed_provider.Entrez")
     def test_empty_abstract_content(self, mock_entrez, content_access_service):
         """Test handling of publications with empty abstract."""
-        mock_fetch_handle = StringIO(
-            """<DocumentSummary uid="12345678">
+        mock_fetch_handle = StringIO("""<DocumentSummary uid="12345678">
                 <Title>Test Publication</Title>
                 <PubDate>2023</PubDate>
                 <AuthorList></AuthorList>
-            </DocumentSummary>"""
-        )
+            </DocumentSummary>""")
         mock_entrez.efetch.return_value = mock_fetch_handle
 
         result = content_access_service.extract_metadata(
@@ -546,13 +544,11 @@ class TestGEODatasetLookupFailures:
         mock_entrez.esearch.return_value = mock_search_handle
 
         # Mock metadata with 0 samples
-        mock_fetch_handle = StringIO(
-            """<DocumentSummary uid="200123456">
+        mock_fetch_handle = StringIO("""<DocumentSummary uid="200123456">
                 <Accession>GSE123456</Accession>
                 <title>Test Dataset</title>
                 <n_samples>0</n_samples>
-            </DocumentSummary>"""
-        )
+            </DocumentSummary>""")
         mock_entrez.efetch.return_value = mock_fetch_handle
 
         result = content_access_service.discover_datasets(
@@ -621,12 +617,10 @@ class TestPublicationWorkflowEdgeCases:
     ):
         """Test finding datasets from paper with no associated GEO data."""
         # Paper exists
-        mock_fetch_handle = StringIO(
-            """<DocumentSummary uid="12345678">
+        mock_fetch_handle = StringIO("""<DocumentSummary uid="12345678">
                 <Title>Test Paper</Title>
                 <PubDate>2023</PubDate>
-            </DocumentSummary>"""
-        )
+            </DocumentSummary>""")
         mock_pubmed_entrez.efetch.return_value = mock_fetch_handle
 
         # But no GEO datasets linked

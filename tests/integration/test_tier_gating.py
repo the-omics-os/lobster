@@ -12,17 +12,17 @@ Plan: 07-03
 """
 
 import inspect
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from lobster.config.subscription_tiers import (
+    SUBSCRIPTION_TIERS,
     TierRestrictedError,
     check_tier_access,
-    is_tier_at_least,
     is_agent_available,
-    SUBSCRIPTION_TIERS,
+    is_tier_at_least,
 )
-
 
 # =============================================================================
 # FIXTURES
@@ -46,7 +46,9 @@ def mock_premium_tier():
 @pytest.fixture
 def mock_enterprise_tier():
     """Mock get_current_tier() to return 'enterprise'."""
-    with patch("lobster.core.license_manager.get_current_tier", return_value="enterprise"):
+    with patch(
+        "lobster.core.license_manager.get_current_tier", return_value="enterprise"
+    ):
         yield
 
 
@@ -134,7 +136,9 @@ class TestAllAgentsFreeAtFreeTier:
             "machine_learning_expert_agent",
         ]
         for agent in agents:
-            assert is_agent_available(agent, "free"), f"{agent} not available at free tier"
+            assert is_agent_available(
+                agent, "free"
+            ), f"{agent} not available at free tier"
 
 
 class TestTierRestrictedErrorContent:
@@ -236,8 +240,8 @@ class TestGenomicsExpertFree:
     def test_ml_expert_agent_config_is_free(self):
         """Verify ML expert AGENT_CONFIG has tier_requirement='free'."""
         from lobster.agents.machine_learning.config import (
-            ML_EXPERT_CONFIG,
             FEATURE_SELECTION_EXPERT_CONFIG,
+            ML_EXPERT_CONFIG,
             SURVIVAL_ANALYSIS_EXPERT_CONFIG,
         )
 
@@ -258,7 +262,9 @@ class TestEdgeCases:
         assert is_tier_at_least("unknown", "free")  # unknown >= free
         assert not is_tier_at_least("unknown", "premium")
 
-    def test_enterprise_bypasses_even_enterprise_requirement(self, mock_enterprise_tier):
+    def test_enterprise_bypasses_even_enterprise_requirement(
+        self, mock_enterprise_tier
+    ):
         """Enterprise user can access even enterprise-only features."""
         check_tier_access("custom_agent", required_tier="enterprise")
 
@@ -275,9 +281,9 @@ class TestIntegrationWithComponentRegistry:
 
             if agent_config:
                 tier_req = getattr(agent_config, "tier_requirement", "free")
-                assert tier_req == "free", (
-                    f"genomics_expert tier_requirement should be 'free', got '{tier_req}'"
-                )
+                assert (
+                    tier_req == "free"
+                ), f"genomics_expert tier_requirement should be 'free', got '{tier_req}'"
         except Exception:
             pytest.skip("component_registry not available")
 

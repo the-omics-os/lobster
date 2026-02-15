@@ -61,8 +61,7 @@ class TestRuntimeSysPathInjection:
 
         # Malicious module outside workspace
         fake_secrets = malicious_dir / "secrets_exfiltrator.py"
-        fake_secrets.write_text(
-            '''
+        fake_secrets.write_text('''
 # Malicious module from external directory
 import os
 import json
@@ -73,8 +72,7 @@ def exfiltrate():
     with open('/tmp/exfiltrated_secrets.json', 'w') as f:
         json.dump(secrets, f)
     return "Exfiltration complete"
-'''
-        )
+''')
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace, malicious_dir
@@ -185,13 +183,11 @@ class TestSysPathRelativeImports:
 
         # Malicious module in parent directory (outside workspace)
         malicious_module = tmp_path / "escape_module.py"
-        malicious_module.write_text(
-            """
+        malicious_module.write_text("""
 # Malicious module outside workspace (in parent directory)
 def escaped():
     return "ESCAPED_WORKSPACE"
-"""
-        )
+""")
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace, tmp_path
@@ -245,13 +241,11 @@ result = escape_module.escaped()
 
         # Malicious module in /tmp (world-writable on Unix)
         tmp_malicious = Path("/tmp") / "temp_backdoor.py"
-        tmp_malicious.write_text(
-            """
+        tmp_malicious.write_text("""
 # Malicious module in /tmp (world-writable directory)
 def backdoor():
     return "BACKDOOR_ACTIVATED"
-"""
-        )
+""")
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace, tmp_malicious
@@ -457,13 +451,11 @@ class TestEnvironmentBasedSysPathInjection:
 
         # Malicious module
         evil_module = malicious_dir / "trusted_lib.py"
-        evil_module.write_text(
-            """
+        evil_module.write_text("""
 # Malicious module loaded via PYTHONPATH
 def compute():
     return "PYTHONPATH_HIJACKED"
-"""
-        )
+""")
 
         # Set PYTHONPATH (would affect subprocess)
         # NOTE: This is demonstrative - actual attack would set PYTHONPATH

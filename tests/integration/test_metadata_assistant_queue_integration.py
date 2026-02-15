@@ -134,9 +134,13 @@ class TestMetadataAssistantQueueIntegration:
     @patch("lobster.agents.metadata_assistant.metadata_assistant.create_react_agent")
     @patch("lobster.agents.metadata_assistant.metadata_assistant.create_llm")
     @patch("lobster.agents.metadata_assistant.metadata_assistant.get_settings")
-    @patch("lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService")
+    @patch(
+        "lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService"
+    )
     @patch("lobster.agents.metadata_assistant.metadata_assistant.SampleMappingService")
-    @patch("lobster.agents.metadata_assistant.metadata_assistant.MicrobiomeFilteringService")
+    @patch(
+        "lobster.agents.metadata_assistant.metadata_assistant.MicrobiomeFilteringService"
+    )
     def test_process_entry_updates_harmonization_metadata(
         self,
         mock_microbiome_class,
@@ -210,7 +214,9 @@ class TestMetadataAssistantQueueIntegration:
     @patch("lobster.agents.metadata_assistant.metadata_assistant.create_react_agent")
     @patch("lobster.agents.metadata_assistant.metadata_assistant.create_llm")
     @patch("lobster.agents.metadata_assistant.metadata_assistant.get_settings")
-    @patch("lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService")
+    @patch(
+        "lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService"
+    )
     @patch("lobster.agents.metadata_assistant.metadata_assistant.SampleMappingService")
     def test_process_queue_updates_all_entries(
         self,
@@ -283,7 +289,9 @@ class TestMetadataAssistantQueueIntegration:
     @patch("lobster.agents.metadata_assistant.metadata_assistant.create_react_agent")
     @patch("lobster.agents.metadata_assistant.metadata_assistant.create_llm")
     @patch("lobster.agents.metadata_assistant.metadata_assistant.get_settings")
-    @patch("lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService")
+    @patch(
+        "lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService"
+    )
     @patch("lobster.agents.metadata_assistant.metadata_assistant.SampleMappingService")
     @patch("lobster.tools.workspace_tool.WorkspaceContentService")
     def test_write_to_workspace_creates_csv(
@@ -405,7 +413,9 @@ class TestSharedWorkspaceToolsIntegration:
     @patch("lobster.agents.metadata_assistant.metadata_assistant.create_react_agent")
     @patch("lobster.agents.metadata_assistant.metadata_assistant.create_llm")
     @patch("lobster.agents.metadata_assistant.metadata_assistant.get_settings")
-    @patch("lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService")
+    @patch(
+        "lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService"
+    )
     @patch("lobster.agents.metadata_assistant.metadata_assistant.SampleMappingService")
     def test_metadata_assistant_has_write_to_workspace(
         self,
@@ -451,7 +461,9 @@ class TestQueueStatusTransitions:
     @patch("lobster.agents.metadata_assistant.metadata_assistant.create_react_agent")
     @patch("lobster.agents.metadata_assistant.metadata_assistant.create_llm")
     @patch("lobster.agents.metadata_assistant.metadata_assistant.get_settings")
-    @patch("lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService")
+    @patch(
+        "lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService"
+    )
     @patch("lobster.agents.metadata_assistant.metadata_assistant.SampleMappingService")
     def test_handoff_ready_to_metadata_complete(
         self,
@@ -506,7 +518,9 @@ class TestWorkspaceToQueueRoundtrip:
     @patch("lobster.agents.metadata_assistant.metadata_assistant.create_react_agent")
     @patch("lobster.agents.metadata_assistant.metadata_assistant.create_llm")
     @patch("lobster.agents.metadata_assistant.metadata_assistant.get_settings")
-    @patch("lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService")
+    @patch(
+        "lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService"
+    )
     @patch("lobster.agents.metadata_assistant.metadata_assistant.SampleMappingService")
     def test_complete_workflow(
         self,

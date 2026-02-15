@@ -59,8 +59,7 @@ class TestCriticalStdlibShadowing:
 
         # Malicious subprocess that logs all commands
         fake_subprocess = workspace / "subprocess.py"
-        fake_subprocess.write_text(
-            '''
+        fake_subprocess.write_text('''
 # Malicious subprocess replacement that logs all commands
 import sys
 
@@ -80,8 +79,7 @@ def run(cmd, **kwargs):
 PIPE = -1
 STDOUT = -2
 DEVNULL = -3
-'''
-        )
+''')
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -153,8 +151,7 @@ result = "subprocess accessed"
 
         # Malicious sys module
         fake_sys = workspace / "sys.py"
-        fake_sys.write_text(
-            '''
+        fake_sys.write_text('''
 # Malicious sys module that intercepts system configuration
 import builtins
 
@@ -180,8 +177,7 @@ stdout = _StdoutInterceptor()
 def exit(code=0):
     """Fake exit that doesn't actually exit"""
     builtins.print(f"FAKE EXIT: {code}")
-'''
-        )
+''')
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -245,21 +241,18 @@ class TestSerializationShadowing:
 
         # Create fake config file with secrets
         config_file = workspace / "config.json"
-        config_file.write_text(
-            """
+        config_file.write_text("""
 {
     "api_key": "sk-secret-key-12345",
     "database_url": "postgresql://user:password@localhost/db",
     "aws_access_key": "AKIA...",
     "aws_secret_key": "wJalrXUtn..."
 }
-"""
-        )
+""")
 
         # Malicious json module that exfiltrates all parsed data
         fake_json = workspace / "json.py"
-        fake_json.write_text(
-            '''
+        fake_json.write_text('''
 # Malicious json that steals all parsed credentials
 import json as _real_json
 
@@ -290,8 +283,7 @@ def load(fp, **kwargs):
 dumps = _real_json.dumps
 dump = _real_json.dump
 JSONDecodeError = _real_json.JSONDecodeError
-'''
-        )
+''')
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -362,8 +354,7 @@ result = "Config loaded"
         workspace.mkdir()
 
         fake_pickle = workspace / "pickle.py"
-        fake_pickle.write_text(
-            '''
+        fake_pickle.write_text('''
 # Malicious pickle that injects code into unpickled objects
 import pickle as _real_pickle
 
@@ -394,8 +385,7 @@ def load(file, **kwargs):
 # Proxy other functions
 dumps = _real_pickle.dumps
 dump = _real_pickle.dump
-'''
-        )
+''')
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -471,8 +461,7 @@ class TestFileSystemShadowing:
         workspace.mkdir()
 
         fake_io = workspace / "io.py"
-        fake_io.write_text(
-            '''
+        fake_io.write_text('''
 # Malicious io module that corrupts all file writes
 import io as _real_io
 
@@ -503,8 +492,7 @@ def open(file, mode='r', **kwargs):
 # Proxy other classes
 StringIO = _real_io.StringIO
 BytesIO = _real_io.BytesIO
-'''
-        )
+''')
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -572,8 +560,7 @@ result = "File written"
         workspace.mkdir()
 
         fake_tempfile = workspace / "tempfile.py"
-        fake_tempfile.write_text(
-            '''
+        fake_tempfile.write_text('''
 # Malicious tempfile that creates predictable temp files
 import tempfile as _real_tempfile
 import os
@@ -606,8 +593,7 @@ def mkdtemp(**kwargs):
 gettempdir = _real_tempfile.gettempdir
 TemporaryFile = _real_tempfile.TemporaryFile
 NamedTemporaryFile = _real_tempfile.NamedTemporaryFile
-'''
-        )
+''')
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -681,8 +667,7 @@ class TestLobsterInternalShadowing:
         workspace.mkdir()
 
         fake_pathlib = workspace / "pathlib.py"
-        fake_pathlib.write_text(
-            '''
+        fake_pathlib.write_text('''
 # Malicious pathlib that breaks Lobster's file operations
 from pathlib import Path as _RealPath
 
@@ -711,8 +696,7 @@ class Path(_RealPath):
 
 # Must export PurePath, PosixPath etc for compatibility
 from pathlib import PurePath, PosixPath, WindowsPath
-'''
-        )
+''')
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace

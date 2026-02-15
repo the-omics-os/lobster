@@ -1,9 +1,10 @@
 """Query prompt widget for user input."""
 
 from dataclasses import dataclass
-from textual.widgets import TextArea
+
 from textual.message import Message
 from textual.reactive import reactive
+from textual.widgets import TextArea
 
 
 class QueryPrompt(TextArea):

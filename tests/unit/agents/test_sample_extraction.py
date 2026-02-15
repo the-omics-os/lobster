@@ -124,7 +124,9 @@ class TestExtractSamplesFromWorkspace:
 
         # Sample 3: Invalid library_layout (logs warning to logger, defaults to UNKNOWN, still valid)
         # Note: Logger warning doesn't populate ValidationResult.warnings, just logs and continues
-        assert results[3].is_valid, (
+        assert results[
+            3
+        ].is_valid, (
             "Sample 3 with invalid library_layout is valid (defaults to UNKNOWN)"
         )
 
@@ -134,9 +136,9 @@ class TestExtractSamplesFromWorkspace:
 
         # Sample 5: AMPLICON without env_medium (WARNING only, still valid)
         assert results[5].is_valid, "Sample 5 should be valid (warnings allowed)"
-        assert len(results[5].warnings) > 0, (
-            "Should have warning about missing env_medium"
-        )
+        assert (
+            len(results[5].warnings) > 0
+        ), "Should have warning about missing env_medium"
 
     def test_empty_samples_array(self):
         """Gracefully handle empty samples array."""

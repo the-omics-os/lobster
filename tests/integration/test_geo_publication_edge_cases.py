@@ -132,7 +132,9 @@ class TestGEODownloadTimeouts:
 
         # Verify it's a timeout-related error
         error_msg = str(exc_info.value).lower()
-        assert "timeout" in error_msg or "timed out" in error_msg, f"Expected timeout error, got: {exc_info.value}"
+        assert (
+            "timeout" in error_msg or "timed out" in error_msg
+        ), f"Expected timeout error, got: {exc_info.value}"
 
     @patch("ftplib.FTP")
     @patch("time.sleep")  # Mock sleep to speed up test

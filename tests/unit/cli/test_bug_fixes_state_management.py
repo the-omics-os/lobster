@@ -97,9 +97,9 @@ class TestBug1ArchiveStateRace:
 
         # Old bug: client._last_archive_cache would exist
         # New fix: client has no _last_archive_cache attribute
-        assert not hasattr(client, "_last_archive_cache"), (
-            "Client should not have cache state"
-        )
+        assert not hasattr(
+            client, "_last_archive_cache"
+        ), "Client should not have cache state"
 
 
 class TestBug5QueueTransactionSafety:
@@ -199,9 +199,9 @@ class TestBug5QueueTransactionSafety:
         temp_file = queue_file.with_suffix(".tmp")
 
         # After successful write, temp file should not exist
-        assert not temp_file.exists(), (
-            "Temp file should be cleaned up after atomic write"
-        )
+        assert (
+            not temp_file.exists()
+        ), "Temp file should be cleaned up after atomic write"
 
         # Original file should be complete and valid
         assert queue_file.exists()

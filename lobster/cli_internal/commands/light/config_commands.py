@@ -85,8 +85,8 @@ def _build_agent_composition(
     Returns:
         Tuple of (config_source_description, installed_count, total_count)
     """
-    from lobster.config.workspace_agent_config import WorkspaceAgentConfig
     from lobster.config.agent_presets import expand_preset, get_preset_description
+    from lobster.config.workspace_agent_config import WorkspaceAgentConfig
     from lobster.core.component_registry import component_registry
 
     # Load workspace agent config
@@ -211,14 +211,14 @@ def config_show(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
     Returns:
         Summary string for conversation history, or None
     """
-    from lobster.core.config_resolver import ConfigResolver
-    from lobster.config.global_config import CONFIG_DIR as GLOBAL_CONFIG_DIR
-    from lobster.config.workspace_config import WorkspaceProviderConfig
-    from lobster.config.settings import get_settings
     from lobster.config.agent_registry import AGENT_REGISTRY
-    from lobster.core.license_manager import get_current_tier
-    from lobster.config.subscription_tiers import is_agent_available
+    from lobster.config.global_config import CONFIG_DIR as GLOBAL_CONFIG_DIR
     from lobster.config.providers import get_provider
+    from lobster.config.settings import get_settings
+    from lobster.config.subscription_tiers import is_agent_available
+    from lobster.config.workspace_config import WorkspaceProviderConfig
+    from lobster.core.config_resolver import ConfigResolver
+    from lobster.core.license_manager import get_current_tier
 
     # Create resolver
     resolver = ConfigResolver(workspace_path=Path(client.workspace_path))
@@ -551,8 +551,8 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
         Summary string for conversation history, or None
     """
     from lobster.config.model_service import ModelServiceFactory
-    from lobster.core.config_resolver import ConfigResolver
     from lobster.config.workspace_config import WorkspaceProviderConfig
+    from lobster.core.config_resolver import ConfigResolver
 
     # Get current provider
     workspace_path = Path(client.workspace_path)
@@ -668,8 +668,8 @@ def config_model_switch(
         Summary string for conversation history, or None
     """
     from lobster.config.model_service import ModelServiceFactory
-    from lobster.core.config_resolver import ConfigResolver
     from lobster.config.workspace_config import WorkspaceProviderConfig
+    from lobster.core.config_resolver import ConfigResolver
 
     # Get current provider
     workspace_path = Path(client.workspace_path)

@@ -5,6 +5,12 @@ This module provides the core exception hierarchy and shared functionality
 for the Lobster AI system following a structured approach to error handling.
 """
 
+from lobster.config.global_config import GlobalProviderConfig
+from lobster.config.workspace_config import WorkspaceProviderConfig
+
+# Import configuration classes
+from lobster.core.config_resolver import ConfigResolver
+
 # Import new exceptions from exceptions module
 from lobster.core.exceptions import (
     DataOrientationError,
@@ -14,11 +20,6 @@ from lobster.core.exceptions import (
     UnsupportedFormatError,
     UnsupportedPlatformError,
 )
-
-# Import configuration classes
-from lobster.core.config_resolver import ConfigResolver
-from lobster.config.global_config import GlobalProviderConfig
-from lobster.config.workspace_config import WorkspaceProviderConfig
 
 
 class DataManagerError(LobsterCoreError):

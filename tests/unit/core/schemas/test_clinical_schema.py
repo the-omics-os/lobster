@@ -457,9 +457,9 @@ class TestClinicalSampleModel:
         # Numeric values should return None
         for numeric_value in ["0", "1", "2"]:
             sample = ClinicalSample(sample_id="S001", sex=numeric_value)
-            assert sample.sex is None, (
-                f"Numeric sex value '{numeric_value}' should return None"
-            )
+            assert (
+                sample.sex is None
+            ), f"Numeric sex value '{numeric_value}' should return None"
 
         # Check that a warning was logged
         assert any(

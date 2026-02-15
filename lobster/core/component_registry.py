@@ -32,9 +32,9 @@ Usage:
     all_configs = component_registry.list_agent_configs()
 """
 
-import sys
-import logging
 import importlib.metadata
+import logging
+import sys
 from typing import Any, Dict, Optional, Type
 
 logger = logging.getLogger(__name__)
@@ -57,6 +57,7 @@ def check_plugin_compatibility(package_name: str) -> tuple[bool, str]:
     """
     try:
         from packaging import version
+
         from lobster.version import __version__ as current_version
 
         # Get package dependencies

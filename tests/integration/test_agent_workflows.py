@@ -187,7 +187,9 @@ class TestBasicAgentWorkflows:
         ]
         state["current_agent"] = "research_agent"
 
-        with patch("lobster.agents.research.research_agent.research_agent") as mock_research:
+        with patch(
+            "lobster.agents.research.research_agent.research_agent"
+        ) as mock_research:
             mock_research.return_value = {
                 "messages": state["messages"]
                 + [
@@ -344,7 +346,9 @@ class TestComplexMultiAgentWorkflows:
         ]
         research_state["current_agent"] = "research_agent"
 
-        with patch("lobster.agents.research.research_agent.research_agent") as mock_research:
+        with patch(
+            "lobster.agents.research.research_agent.research_agent"
+        ) as mock_research:
             mock_research.return_value = {
                 "messages": research_state["messages"]
                 + [
@@ -520,7 +524,9 @@ class TestComplexMultiAgentWorkflows:
         research_state = recovery_result.copy()
         research_state["current_agent"] = "research_agent"
 
-        with patch("lobster.agents.research.research_agent.research_agent") as mock_research:
+        with patch(
+            "lobster.agents.research.research_agent.research_agent"
+        ) as mock_research:
             mock_research.return_value = {
                 "messages": research_state["messages"]
                 + [
@@ -610,7 +616,9 @@ class TestAgentCommunication:
         research_state = mock_workflow_state.copy()
         research_state["shared_data"] = shared_data
 
-        with patch("lobster.agents.research.research_agent.research_agent") as mock_research:
+        with patch(
+            "lobster.agents.research.research_agent.research_agent"
+        ) as mock_research:
             mock_research.return_value = {
                 "shared_data": {
                     **shared_data,

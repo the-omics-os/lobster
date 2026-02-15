@@ -88,9 +88,9 @@ class TestInterfaceCompliance:
     def test_all_backends_implement_interface(self):
         """Test that all backends implement IDataBackend interface."""
         for name, backend in self.backends.items():
-            assert isinstance(backend, IDataBackend), (
-                f"{name} backend must implement IDataBackend"
-            )
+            assert isinstance(
+                backend, IDataBackend
+            ), f"{name} backend must implement IDataBackend"
 
     def test_all_backends_have_required_methods(self):
         """Test that all backends have required interface methods."""
@@ -105,12 +105,12 @@ class TestInterfaceCompliance:
 
         for name, backend in self.backends.items():
             for method in required_methods:
-                assert hasattr(backend, method), (
-                    f"{name} backend missing method: {method}"
-                )
-                assert callable(getattr(backend, method)), (
-                    f"{name} backend {method} is not callable"
-                )
+                assert hasattr(
+                    backend, method
+                ), f"{name} backend missing method: {method}"
+                assert callable(
+                    getattr(backend, method)
+                ), f"{name} backend {method} is not callable"
 
     def test_all_backends_have_optional_methods(self):
         """Test that all backends have optional interface methods."""
@@ -118,12 +118,12 @@ class TestInterfaceCompliance:
 
         for name, backend in self.backends.items():
             for method in optional_methods:
-                assert hasattr(backend, method), (
-                    f"{name} backend missing optional method: {method}"
-                )
-                assert callable(getattr(backend, method)), (
-                    f"{name} backend {method} is not callable"
-                )
+                assert hasattr(
+                    backend, method
+                ), f"{name} backend missing optional method: {method}"
+                assert callable(
+                    getattr(backend, method)
+                ), f"{name} backend {method} is not callable"
 
     def test_exists_method_consistency(self):
         """Test that exists method behaves consistently across backends."""
@@ -131,17 +131,17 @@ class TestInterfaceCompliance:
 
         for name, backend in self.backends.items():
             # Non-existent file should return False
-            assert backend.exists("nonexistent_file.h5ad") is False, (
-                f"{name} backend exists() failed for non-existent file"
-            )
+            assert (
+                backend.exists("nonexistent_file.h5ad") is False
+            ), f"{name} backend exists() failed for non-existent file"
 
             # Skip actual file creation for base backend (it's a mock)
             if name != "base":
                 # Create file and test existence
                 backend.save(self.test_adata, test_file)
-                assert backend.exists(test_file) is True, (
-                    f"{name} backend exists() failed for existing file"
-                )
+                assert (
+                    backend.exists(test_file) is True
+                ), f"{name} backend exists() failed for existing file"
 
     def test_get_storage_info_structure(self):
         """Test that get_storage_info returns consistent structure."""
@@ -149,40 +149,40 @@ class TestInterfaceCompliance:
 
         for name, backend in self.backends.items():
             info = backend.get_storage_info()
-            assert isinstance(info, dict), (
-                f"{name} backend get_storage_info() must return dict"
-            )
+            assert isinstance(
+                info, dict
+            ), f"{name} backend get_storage_info() must return dict"
 
             # Check for required keys from base interface
             for key in required_keys:
-                assert key in info, (
-                    f"{name} backend get_storage_info() missing key: {key}"
-                )
+                assert (
+                    key in info
+                ), f"{name} backend get_storage_info() missing key: {key}"
 
             # Check backend_type is a string
-            assert isinstance(info["backend_type"], str), (
-                f"{name} backend_type must be string"
-            )
+            assert isinstance(
+                info["backend_type"], str
+            ), f"{name} backend_type must be string"
 
             # Check capabilities is a list
-            assert isinstance(info["capabilities"], list), (
-                f"{name} capabilities must be list"
-            )
+            assert isinstance(
+                info["capabilities"], list
+            ), f"{name} capabilities must be list"
 
     def test_supports_format_method(self):
         """Test that supports_format method works consistently."""
         for name, backend in self.backends.items():
             # Test with known formats
             result = backend.supports_format("h5ad")
-            assert isinstance(result, bool), (
-                f"{name} backend supports_format() must return bool"
-            )
+            assert isinstance(
+                result, bool
+            ), f"{name} backend supports_format() must return bool"
 
             # Test case insensitivity
             result_upper = backend.supports_format("H5AD")
-            assert isinstance(result_upper, bool), (
-                f"{name} backend supports_format() case handling failed"
-            )
+            assert isinstance(
+                result_upper, bool
+            ), f"{name} backend supports_format() case handling failed"
 
     def test_validate_path_method(self):
         """Test that validate_path method works consistently."""
@@ -193,9 +193,9 @@ class TestInterfaceCompliance:
                 try:
                     result = backend.validate_path(test_path)
                     # Should return a path-like object
-                    assert result is not None, (
-                        f"{name} backend validate_path() returned None"
-                    )
+                    assert (
+                        result is not None
+                    ), f"{name} backend validate_path() returned None"
                 except ValueError:
                     # ValueError is acceptable for invalid paths
                     pass
@@ -211,15 +211,15 @@ class TestInterfaceCompliance:
             for test_file in test_files:
                 # Save and check existence
                 backend.save(self.test_adata, test_file)
-                assert backend.exists(test_file), (
-                    f"{name} backend path handling failed for {test_file}"
-                )
+                assert backend.exists(
+                    test_file
+                ), f"{name} backend path handling failed for {test_file}"
 
                 # Clean up
                 backend.delete(test_file)
-                assert not backend.exists(test_file), (
-                    f"{name} backend delete failed for {test_file}"
-                )
+                assert not backend.exists(
+                    test_file
+                ), f"{name} backend delete failed for {test_file}"
 
     def test_error_handling_consistency(self):
         """Test that error handling is consistent across backends."""
@@ -252,12 +252,12 @@ class TestInterfaceCompliance:
         ]
 
         for method in mudata_specific_methods:
-            assert hasattr(mudata_backend, method), (
-                f"MuData backend missing method: {method}"
-            )
-            assert callable(getattr(mudata_backend, method)), (
-                f"MuData backend {method} is not callable"
-            )
+            assert hasattr(
+                mudata_backend, method
+            ), f"MuData backend missing method: {method}"
+            assert callable(
+                getattr(mudata_backend, method)
+            ), f"MuData backend {method} is not callable"
 
     def test_compression_support_consistency(self):
         """Test compression support consistency."""
@@ -286,9 +286,9 @@ class TestInterfaceCompliance:
             backend.save(self.test_adata, test_file)
 
             metadata = backend.get_metadata(test_file)
-            assert isinstance(metadata, dict), (
-                f"{name} backend get_metadata() must return dict"
-            )
+            assert isinstance(
+                metadata, dict
+            ), f"{name} backend get_metadata() must return dict"
 
             for key in expected_keys:
                 assert key in metadata, f"{name} backend metadata missing key: {key}"
@@ -312,20 +312,20 @@ class TestInterfaceCompliance:
 
             # List all files
             all_files = backend.list_files(self.temp_dir)
-            assert isinstance(all_files, list), (
-                f"{name} backend list_files() must return list"
-            )
+            assert isinstance(
+                all_files, list
+            ), f"{name} backend list_files() must return list"
 
             # List with pattern
             h5ad_files = backend.list_files(self.temp_dir, "*.h5ad")
-            assert isinstance(h5ad_files, list), (
-                f"{name} backend list_files() with pattern must return list"
-            )
+            assert isinstance(
+                h5ad_files, list
+            ), f"{name} backend list_files() with pattern must return list"
 
             # H5AD pattern should return fewer or equal files
-            assert len(h5ad_files) <= len(all_files), (
-                f"{name} backend pattern filtering failed"
-            )
+            assert len(h5ad_files) <= len(
+                all_files
+            ), f"{name} backend pattern filtering failed"
 
 
 if __name__ == "__main__":

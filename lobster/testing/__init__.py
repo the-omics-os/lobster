@@ -34,10 +34,10 @@ Example - Contract testing:
     >>> # Run with pytest - validates plugin API compliance
 """
 
-from lobster.testing.mock_data_manager import MockDataManager, MockProvenanceTracker
-from lobster.testing.mock_llm import MockLLM, MockLLMResponse
 from lobster.testing.contract_mixins import AgentContractTestMixin
 from lobster.testing.fixtures import create_test_workspace
+from lobster.testing.mock_data_manager import MockDataManager, MockProvenanceTracker
+from lobster.testing.mock_llm import MockLLM, MockLLMResponse
 
 __all__ = [
     # Mock objects

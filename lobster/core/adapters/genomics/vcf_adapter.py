@@ -265,9 +265,9 @@ class VCFAdapter(BaseAdapter):
 
             # Add VCF header metadata to uns
             vcf_metadata = {
-                "fileformat": vcf.raw_header.split("\n")[0]
-                if vcf.raw_header
-                else "VCFv4.2",
+                "fileformat": (
+                    vcf.raw_header.split("\n")[0] if vcf.raw_header else "VCFv4.2"
+                ),
                 "source": str(source_path),
                 "n_samples": n_samples,
                 "n_variants": n_variants,

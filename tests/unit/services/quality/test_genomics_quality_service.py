@@ -18,7 +18,6 @@ from anndata import AnnData
 from lobster.core.analysis_ir import AnalysisStep
 from lobster.services.quality.genomics_quality_service import GenomicsQualityService
 
-
 # ===============================================================================
 # Fixtures
 # ===============================================================================
@@ -296,9 +295,9 @@ class TestSampleFiltering:
         )
 
         # Some samples should be removed (we created 10 with 50% missing)
-        assert adata_filtered.n_obs < adata_qc.n_obs, (
-            "Expected some samples to be filtered"
-        )
+        assert (
+            adata_filtered.n_obs < adata_qc.n_obs
+        ), "Expected some samples to be filtered"
         assert stats["samples_removed"] > 0
 
     def test_filter_samples_removes_heterozygosity_outliers(
@@ -328,9 +327,9 @@ class TestSampleFiltering:
             assert stats["samples_removed"] > 0
         else:
             # If no removal, verify het_z_scores were at least calculated
-            assert (adata_qc.obs["het_z_score"].iloc[:5].abs() > 2.0).any(), (
-                "Outlier samples should have |z-score| > 2.0"
-            )
+            assert (
+                adata_qc.obs["het_z_score"].iloc[:5].abs() > 2.0
+            ).any(), "Outlier samples should have |z-score| > 2.0"
 
     def test_filter_samples_preserves_passing_samples(
         self, genomics_service, perfect_quality_adata
@@ -395,15 +394,15 @@ class TestVariantFiltering:
         adata_filtered, stats, ir = genomics_service.filter_variants(adata_qc)
 
         # Should keep only variants that passed QC
-        assert adata_filtered.n_vars == n_pass_qc, (
-            f"Should keep {n_pass_qc} variants that passed QC, got {adata_filtered.n_vars}"
-        )
+        assert (
+            adata_filtered.n_vars == n_pass_qc
+        ), f"Should keep {n_pass_qc} variants that passed QC, got {adata_filtered.n_vars}"
 
         # All retained variants should have qc_pass=True
         if adata_filtered.n_vars > 0:
-            assert adata_filtered.var["qc_pass"].all(), (
-                "All filtered variants should have qc_pass=True"
-            )
+            assert adata_filtered.var[
+                "qc_pass"
+            ].all(), "All filtered variants should have qc_pass=True"
 
     def test_filter_variants_removes_low_call_rate(
         self, genomics_service, high_missing_adata
@@ -437,15 +436,15 @@ class TestVariantFiltering:
         adata_filtered, stats, ir = genomics_service.filter_variants(adata_qc)
 
         # Should keep only variants that passed QC
-        assert adata_filtered.n_vars == n_pass_qc, (
-            f"Should keep {n_pass_qc} variants that passed QC, got {adata_filtered.n_vars}"
-        )
+        assert (
+            adata_filtered.n_vars == n_pass_qc
+        ), f"Should keep {n_pass_qc} variants that passed QC, got {adata_filtered.n_vars}"
 
         # All retained variants should have qc_pass=True
         if adata_filtered.n_vars > 0:
-            assert adata_filtered.var["qc_pass"].all(), (
-                "All filtered variants should have qc_pass=True"
-            )
+            assert adata_filtered.var[
+                "qc_pass"
+            ].all(), "All filtered variants should have qc_pass=True"
 
 
 # ===============================================================================
@@ -703,6 +702,7 @@ class TestServiceAdapterIntegration:
     def test_qc_workflow_with_vcf_adapter(self, genomics_service):
         """Test complete QC workflow starting from VCF."""
         from pathlib import Path
+
         from lobster.core.adapters.genomics.vcf_adapter import VCFAdapter
 
         # Load VCF
@@ -734,6 +734,7 @@ class TestServiceAdapterIntegration:
     def test_qc_workflow_with_plink_adapter(self, genomics_service):
         """Test complete QC workflow starting from PLINK."""
         from pathlib import Path
+
         from lobster.core.adapters.genomics.plink_adapter import PLINKAdapter
 
         # Load PLINK

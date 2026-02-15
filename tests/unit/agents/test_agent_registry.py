@@ -681,9 +681,9 @@ class TestRegistryPersistenceLoading:
         ]
 
         for expected_agent in expected_agents:
-            assert expected_agent in agent_names, (
-                f"Expected agent {expected_agent} not found in {agent_names}"
-            )
+            assert (
+                expected_agent in agent_names
+            ), f"Expected agent {expected_agent} not found in {agent_names}"
 
     def test_registry_agent_properties(self):
         """Test properties of registered agents."""
@@ -695,20 +695,20 @@ class TestRegistryPersistenceLoading:
             assert config.name, f"Agent missing name: {config}"
             assert config.display_name, f"Agent {config.name} missing display_name"
             assert config.description, f"Agent {config.name} missing description"
-            assert config.factory_function, (
-                f"Agent {config.name} missing factory_function"
-            )
+            assert (
+                config.factory_function
+            ), f"Agent {config.name} missing factory_function"
             # handoff_tool_name and handoff_tool_description are optional
 
             # Names should be valid
-            assert config.name.isidentifier() or "_" in config.name, (
-                f"Invalid agent name: {config.name}"
-            )
+            assert (
+                config.name.isidentifier() or "_" in config.name
+            ), f"Invalid agent name: {config.name}"
 
             # Factory function should be importable path
-            assert "." in config.factory_function, (
-                f"Invalid factory function: {config.factory_function}"
-            )
+            assert (
+                "." in config.factory_function
+            ), f"Invalid factory function: {config.factory_function}"
 
     def test_registry_modification_isolation(self, temp_agent_registry):
         """Test that registry modifications are properly isolated."""
@@ -855,9 +855,9 @@ class TestRegistryErrorHandling:
 
         # All results should be consistent (same number of agents)
         agent_counts = [result[1] for result in results]
-        assert len(set(agent_counts)) == 1, (
-            "Inconsistent agent counts in concurrent access"
-        )
+        assert (
+            len(set(agent_counts)) == 1
+        ), "Inconsistent agent counts in concurrent access"
 
 
 if __name__ == "__main__":

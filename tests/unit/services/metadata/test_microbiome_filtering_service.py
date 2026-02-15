@@ -316,9 +316,9 @@ class TestHostOrganism:
 
         for metadata in field_variations:
             result, stats, ir = service.validate_host_organism(metadata)
-            assert stats["is_valid"] is True, (
-                f"Failed for field: {list(metadata.keys())[0]}"
-            )
+            assert (
+                stats["is_valid"] is True
+            ), f"Failed for field: {list(metadata.keys())[0]}"
 
     def test_stats_structure_host(self, service):
         """Test stats dictionary structure for host validation."""

@@ -1,7 +1,8 @@
 """Chat message bubble widget for user/agent messages."""
 
-from textual.widgets import Static, Markdown as TextualMarkdown
 from textual.reactive import reactive
+from textual.widgets import Markdown as TextualMarkdown
+from textual.widgets import Static
 
 
 class ChatMessage(Static):

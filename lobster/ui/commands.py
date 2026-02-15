@@ -5,10 +5,10 @@ Wraps CLI functionality for use in the Textual UI.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from textual.command import Provider, Hits, Hit, DiscoveryHit
+from textual.command import DiscoveryHit, Hit, Hits, Provider
 
 if TYPE_CHECKING:
     from lobster.core.client import AgentClient
@@ -226,11 +226,11 @@ class LobsterCommands(Provider):
             self.app.notify("No client available", severity="error")
             return
 
-        from lobster.ui.widgets import ResultsDisplay
         from lobster.cli_internal.commands import (
-            metadata_overview,
             DashboardOutputAdapter,
+            metadata_overview,
         )
+        from lobster.ui.widgets import ResultsDisplay
 
         try:
             results = self.app.query_one(ResultsDisplay)
@@ -245,11 +245,11 @@ class LobsterCommands(Provider):
             self.app.notify("No client available", severity="error")
             return
 
-        from lobster.ui.widgets import ResultsDisplay
         from lobster.cli_internal.commands import (
-            metadata_publications,
             DashboardOutputAdapter,
+            metadata_publications,
         )
+        from lobster.ui.widgets import ResultsDisplay
 
         try:
             results = self.app.query_one(ResultsDisplay)
@@ -264,11 +264,11 @@ class LobsterCommands(Provider):
             self.app.notify("No client available", severity="error")
             return
 
-        from lobster.ui.widgets import ResultsDisplay
         from lobster.cli_internal.commands import (
-            metadata_samples,
             DashboardOutputAdapter,
+            metadata_samples,
         )
+        from lobster.ui.widgets import ResultsDisplay
 
         try:
             results = self.app.query_one(ResultsDisplay)
@@ -283,11 +283,11 @@ class LobsterCommands(Provider):
             self.app.notify("No client available", severity="error")
             return
 
-        from lobster.ui.widgets import ResultsDisplay
         from lobster.cli_internal.commands import (
-            metadata_workspace,
             DashboardOutputAdapter,
+            metadata_workspace,
         )
+        from lobster.ui.widgets import ResultsDisplay
 
         try:
             results = self.app.query_one(ResultsDisplay)
@@ -302,11 +302,11 @@ class LobsterCommands(Provider):
             self.app.notify("No client available", severity="error")
             return
 
-        from lobster.ui.widgets import ResultsDisplay
         from lobster.cli_internal.commands import (
-            metadata_exports,
             DashboardOutputAdapter,
+            metadata_exports,
         )
+        from lobster.ui.widgets import ResultsDisplay
 
         try:
             results = self.app.query_one(ResultsDisplay)
@@ -395,8 +395,8 @@ class LobsterCommands(Provider):
             self.app.notify("No client available", severity="error")
             return
 
-        import subprocess
         import platform
+        import subprocess
 
         plots_dir = self.client.workspace_path / "plots"
         plots_dir.mkdir(exist_ok=True)
@@ -503,8 +503,8 @@ class LobsterCommands(Provider):
             self.app.notify("No client available", severity="error")
             return
 
-        from lobster.config.llm_factory import LLMFactory
         from lobster.config.agent_config import get_agent_configurator
+        from lobster.config.llm_factory import LLMFactory
 
         # Get session info
         status = self.client.get_status()
@@ -536,10 +536,10 @@ class LobsterCommands(Provider):
             self.app.notify("No client available", severity="error")
             return
 
-        from lobster.core.license_manager import get_entitlement_status
-        from lobster.core.plugin_loader import get_installed_packages
         from lobster.config.agent_registry import get_worker_agents
         from lobster.config.subscription_tiers import is_agent_available
+        from lobster.core.license_manager import get_entitlement_status
+        from lobster.core.plugin_loader import get_installed_packages
 
         # Get entitlement status
         try:

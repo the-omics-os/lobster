@@ -208,14 +208,16 @@ class MetadataOverviewService:
                     set(s.get("bioproject", "") for s in samples if s.get("bioproject"))
                 ),
                 "has_aggregated": True,
-                "retention_rate": round(
-                    stats.get("total_after_filter", len(samples))
-                    / stats.get("total_extracted", len(samples))
-                    * 100,
-                    1,
-                )
-                if stats.get("total_extracted")
-                else 0,
+                "retention_rate": (
+                    round(
+                        stats.get("total_after_filter", len(samples))
+                        / stats.get("total_extracted", len(samples))
+                        * 100,
+                        1,
+                    )
+                    if stats.get("total_extracted")
+                    else 0
+                ),
             }
 
         # Fallback: count samples from sra_*_samples files in metadata_store
@@ -258,9 +260,11 @@ class MetadataOverviewService:
             "bioproject_count": bioproject_count,
             "has_aggregated": False,
             "sources": sources[:20],  # Limit for display
-            "message": "Run metadata filtering to generate aggregated statistics"
-            if total_samples > 0
-            else "No sample metadata found. Process publications first.",
+            "message": (
+                "Run metadata filtering to generate aggregated statistics"
+                if total_samples > 0
+                else "No sample metadata found. Process publications first."
+            ),
         }
 
     def get_workspace_inventory(self) -> Dict[str, Any]:

@@ -2,9 +2,9 @@
 
 from dataclasses import dataclass
 
-from textual.widgets import ListView, ListItem, Label
 from textual.message import Message
 from textual.reactive import reactive
+from textual.widgets import Label, ListItem, ListView
 
 
 @dataclass

@@ -13,14 +13,15 @@ Tests verify:
 import inspect
 import logging
 from pathlib import Path
-import pytest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from lobster.agents.graph import (
-    create_bioinformatics_graph,
-    GraphMetadata,
     AgentInfo,
+    GraphMetadata,
     _create_lazy_delegation_tool,
+    create_bioinformatics_graph,
 )
 from lobster.config.workspace_agent_config import WorkspaceAgentConfig
 
@@ -52,7 +53,9 @@ class TestGraphCompositionPhase5:
         """Verify create_bioinformatics_graph accepts enabled_agents list."""
         sig = inspect.signature(create_bioinformatics_graph)
         assert "enabled_agents" in sig.parameters, "enabled_agents parameter missing"
-        assert sig.parameters["enabled_agents"].default is None, "enabled_agents should default to None"
+        assert (
+            sig.parameters["enabled_agents"].default is None
+        ), "enabled_agents should default to None"
 
     def test_graph_accepts_config_object_at_runtime(self, mock_data_manager):
         """Verify config object can be passed at runtime without error."""
@@ -88,7 +91,9 @@ class TestGraphCompositionPhase5:
 
         # Verify excluded agents are NOT in metadata (any agent not in enabled list)
         for agent_info in metadata.available_agents:
-            assert agent_info.name in enabled, f"Unexpected agent {agent_info.name} in metadata"
+            assert (
+                agent_info.name in enabled
+            ), f"Unexpected agent {agent_info.name} in metadata"
 
     def test_graph_filters_agents_by_config_object(self, mock_data_manager):
         """Verify graph creates only enabled agents via config object."""
@@ -131,7 +136,7 @@ class TestGraphCompositionPhase5:
         log_capture = io.StringIO()
         handler = stdlib_logging.StreamHandler(log_capture)
         handler.setLevel(stdlib_logging.DEBUG)
-        handler.setFormatter(stdlib_logging.Formatter('%(message)s'))
+        handler.setFormatter(stdlib_logging.Formatter("%(message)s"))
 
         graph_logger = stdlib_logging.getLogger("lobster.agents.graph")
         original_level = graph_logger.level
@@ -149,7 +154,9 @@ class TestGraphCompositionPhase5:
 
         # Check logs for single pass marker
         log_text = log_capture.getvalue().lower()
-        assert "single pass" in log_text, f"Expected '[single pass]' in logs, got: {log_text[:500]}"
+        assert (
+            "single pass" in log_text
+        ), f"Expected '[single pass]' in logs, got: {log_text[:500]}"
 
     def test_graph_no_recreation_logs(self, mock_data_manager, caplog):
         """Verify agents are NOT re-created (no two-pass pattern)."""
@@ -161,8 +168,12 @@ class TestGraphCompositionPhase5:
 
         # Check NO re-creation logs exist
         log_text = caplog.text.lower()
-        assert "re-created" not in log_text, "Found re-creation logs - two-pass not eliminated"
-        assert "recreated" not in log_text, "Found recreated logs - two-pass not eliminated"
+        assert (
+            "re-created" not in log_text
+        ), "Found re-creation logs - two-pass not eliminated"
+        assert (
+            "recreated" not in log_text
+        ), "Found recreated logs - two-pass not eliminated"
 
     # =========================================================================
     # GRAPH-04: Factory functions receive standardized parameters
@@ -181,7 +192,9 @@ class TestGraphCompositionPhase5:
     def test_factory_functions_accept_delegation_tools(self):
         """Verify factory functions can accept delegation_tools parameter."""
         # Factory functions are named after the agent
-        from lobster.agents.transcriptomics.transcriptomics_expert import transcriptomics_expert
+        from lobster.agents.transcriptomics.transcriptomics_expert import (
+            transcriptomics_expert,
+        )
 
         sig = inspect.signature(transcriptomics_expert)
         assert "delegation_tools" in sig.parameters, "delegation_tools param missing"
@@ -213,6 +226,7 @@ class TestGraphCompositionPhase5:
     def test_graph_source_code_uses_component_registry(self):
         """Verify graph.py imports and uses component_registry."""
         import lobster.agents.graph as graph_module
+
         source = inspect.getsource(graph_module.create_bioinformatics_graph)
 
         # Should import from component_registry
@@ -229,7 +243,7 @@ class TestGraphCompositionPhase5:
         tool = _create_lazy_delegation_tool(
             agent_name="test_child",
             agents_dict=agents_dict,
-            description="Test child agent"
+            description="Test child agent",
         )
 
         assert tool is not None
@@ -239,8 +253,9 @@ class TestGraphCompositionPhase5:
         # Invoke tool - should return graceful message since agent not in dict
         result = tool.invoke("test task")
         # The message contains "not available" - check case-insensitively
-        assert "not available" in result.lower() or "is not available" in result, \
-            f"Expected 'not available' in: {result}"
+        assert (
+            "not available" in result.lower() or "is not available" in result
+        ), f"Expected 'not available' in: {result}"
 
     def test_lazy_delegation_tool_resolves_after_creation(self):
         """Verify lazy tool resolves agent after it's added to dict."""
@@ -249,7 +264,7 @@ class TestGraphCompositionPhase5:
         tool = _create_lazy_delegation_tool(
             agent_name="test_child",
             agents_dict=agents_dict,
-            description="Test child agent"
+            description="Test child agent",
         )
 
         # First invocation - agent not yet created
@@ -258,21 +273,23 @@ class TestGraphCompositionPhase5:
 
         # Now add agent to dict (simulating creation)
         mock_agent = MagicMock()
-        mock_agent.invoke.return_value = {"messages": [MagicMock(content="Success from child")]}
+        mock_agent.invoke.return_value = {
+            "messages": [MagicMock(content="Success from child")]
+        }
         agents_dict["test_child"] = mock_agent
 
         # Second invocation - should now work
         result_after = tool.invoke("test task")
-        assert result_after == "Success from child", f"Expected 'Success from child', got: {result_after}"
+        assert (
+            result_after == "Success from child"
+        ), f"Expected 'Success from child', got: {result_after}"
 
     def test_lazy_delegation_tool_closure_captures_dict_reference(self):
         """Verify tool captures dict by reference, not by value."""
         agents_dict = {}
 
         tool = _create_lazy_delegation_tool(
-            agent_name="child",
-            agents_dict=agents_dict,
-            description="Test"
+            agent_name="child", agents_dict=agents_dict, description="Test"
         )
 
         # Verify tool was created with tool decorator
@@ -308,7 +325,9 @@ class TestGraphCompositionPhase5:
         )
 
         assert graph is not None, "Graph should not be None"
-        assert isinstance(metadata, GraphMetadata), "Second element should be GraphMetadata"
+        assert isinstance(
+            metadata, GraphMetadata
+        ), "Second element should be GraphMetadata"
 
     def test_metadata_has_required_attributes(self, mock_data_manager):
         """Verify GraphMetadata has all required attributes."""

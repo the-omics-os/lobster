@@ -573,8 +573,8 @@ def test_llm_factory_fails_without_config(tmp_path):
 @patch("langchain_anthropic.ChatAnthropic")
 def test_llm_factory_with_valid_config(mock_chat, tmp_path):
     """Test that LLMFactory creates LLM with valid configuration."""
-    from lobster.config.workspace_config import WorkspaceProviderConfig
     from lobster.config.llm_factory import LLMFactory
+    from lobster.config.workspace_config import WorkspaceProviderConfig
 
     # Mock return value
     mock_chat.return_value = MagicMock()
@@ -627,8 +627,8 @@ def test_llm_factory_get_available_providers():
 @patch("langchain_anthropic.ChatAnthropic")
 def test_end_to_end_provider_selection(mock_chat, tmp_path):
     """Test complete workflow from config to LLM creation."""
-    from lobster.config.workspace_config import WorkspaceProviderConfig
     from lobster.config.llm_factory import create_llm
+    from lobster.config.workspace_config import WorkspaceProviderConfig
 
     # Mock return value
     mock_chat.return_value = MagicMock()
@@ -661,8 +661,8 @@ def test_end_to_end_provider_selection(mock_chat, tmp_path):
 @patch("langchain_anthropic.ChatAnthropic")
 def test_runtime_override_priority(mock_chat, tmp_path):
     """Test that runtime overrides beat workspace config."""
-    from lobster.config.workspace_config import WorkspaceProviderConfig
     from lobster.config.llm_factory import create_llm
+    from lobster.config.workspace_config import WorkspaceProviderConfig
 
     # Mock return value
     mock_chat.return_value = MagicMock()

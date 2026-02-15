@@ -89,7 +89,7 @@ def mock_kallisto_data(tmp_path):
             fold_changes = np.where(
                 np.random.rand(100) < 0.5,
                 np.random.uniform(0.25, 0.5, 100),  # Downregulated
-                np.random.uniform(2.5, 4.0, 100),    # Upregulated
+                np.random.uniform(2.5, 4.0, 100),  # Upregulated
             )
             treatment_effect[de_genes] = fold_changes
             expression = baseline_expression * treatment_effect
@@ -353,7 +353,9 @@ class TestPyDESeq2Analysis:
         # Note: With synthetic data and small sample size, we may not find significant genes
         # The test verifies the pipeline works, not biological significance
         assert results_df["padj"].notna().any(), "Should have calculated p-values"
-        assert results_df["log2FoldChange"].notna().any(), "Should have log fold changes"
+        assert (
+            results_df["log2FoldChange"].notna().any()
+        ), "Should have log fold changes"
 
         # Optional: check if any genes are significant (may be 0 with synthetic data)
         significant_genes = results_df[results_df["padj"] < 0.05]

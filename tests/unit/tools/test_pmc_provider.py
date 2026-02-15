@@ -235,7 +235,7 @@ class TestPMCIDResolution:
     def test_get_pmc_id_from_doi(self, pmc_provider, sample_pmc_id_response):
         """Test PMC ID resolution from DOI (converts to PMID first)."""
         import json
-        from unittest.mock import patch, Mock
+        from unittest.mock import Mock, patch
 
         # Mock the metadata extraction to return PMID
         mock_metadata = Mock()

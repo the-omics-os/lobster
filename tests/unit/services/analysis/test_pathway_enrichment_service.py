@@ -1,14 +1,15 @@
 """Unit tests for PathwayEnrichmentService."""
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-import pandas as pd
+from unittest.mock import MagicMock, Mock, patch
+
 import anndata as ad
 import numpy as np
+import pandas as pd
+import pytest
 
 from lobster.services.analysis.pathway_enrichment_service import (
-    PathwayEnrichmentService,
     PathwayEnrichmentError,
+    PathwayEnrichmentService,
 )
 
 

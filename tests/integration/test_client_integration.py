@@ -181,7 +181,7 @@ class TestAgentClientIntegration:
 
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=_mock_create_graph_return(mock_graph)
+            return_value=_mock_create_graph_return(mock_graph),
         ):
             client = AgentClient(workspace_path=temp_integration_workspace)
 
@@ -222,7 +222,7 @@ class TestAgentClientIntegration:
 
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=_mock_create_graph_return(Mock())
+            return_value=_mock_create_graph_return(Mock()),
         ):
             client = AgentClient(
                 data_manager=mock_data_manager,
@@ -259,7 +259,7 @@ class TestAgentClientIntegration:
 
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=_mock_create_graph_return(mock_graph)
+            return_value=_mock_create_graph_return(mock_graph),
         ):
             client = AgentClient(workspace_path=temp_integration_workspace)
 
@@ -412,7 +412,7 @@ class TestClientPerformanceIntegration:
 
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=_mock_create_graph_return(mock_graph)
+            return_value=_mock_create_graph_return(mock_graph),
         ):
             client = AgentClient(workspace_path=temp_integration_workspace)
 
@@ -450,7 +450,7 @@ class TestClientPerformanceIntegration:
         """Test handling of large files."""
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=_mock_create_graph_return(Mock())
+            return_value=_mock_create_graph_return(Mock()),
         ):
             client = AgentClient(workspace_path=temp_integration_workspace)
 
@@ -492,7 +492,7 @@ class TestClientPerformanceIntegration:
 
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=_mock_create_graph_return(mock_graph)
+            return_value=_mock_create_graph_return(mock_graph),
         ):
             client = AgentClient(workspace_path=temp_integration_workspace)
 
@@ -539,7 +539,7 @@ class TestClientEdgeCasesIntegration:
                 with pytest.raises(PermissionError):
                     with patch(
                         "lobster.core.client.create_bioinformatics_graph",
-                        return_value=_mock_create_graph_return(Mock())
+                        return_value=_mock_create_graph_return(Mock()),
                     ):
                         AgentClient(workspace_path=restricted_path)
 
@@ -547,7 +547,7 @@ class TestClientEdgeCasesIntegration:
         """Test handling of corrupted or invalid files."""
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=_mock_create_graph_return(Mock())
+            return_value=_mock_create_graph_return(Mock()),
         ):
             client = AgentClient(workspace_path=temp_integration_workspace)
 
@@ -576,7 +576,7 @@ class TestClientEdgeCasesIntegration:
 
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=_mock_create_graph_return(mock_graph)
+            return_value=_mock_create_graph_return(mock_graph),
         ):
             client = AgentClient(workspace_path=temp_integration_workspace)
 

@@ -141,13 +141,27 @@ class TestProviderRegistryInitialization:
 
         # Verify expected providers are present
         provider_names = {type(p).__name__ for p in fulltext_providers}
-        assert "PMCProvider" in provider_names, "PMCProvider should support full content"
-        assert "WebpageProvider" in provider_names, "WebpageProvider should support full content"
+        assert (
+            "PMCProvider" in provider_names
+        ), "PMCProvider should support full content"
+        assert (
+            "WebpageProvider" in provider_names
+        ), "WebpageProvider should support full content"
 
         # Verify PMCProvider comes before WebpageProvider (priority 10 < 50)
-        pmc_index = next(i for i, p in enumerate(fulltext_providers) if type(p).__name__ == "PMCProvider")
-        webpage_index = next(i for i, p in enumerate(fulltext_providers) if type(p).__name__ == "WebpageProvider")
-        assert pmc_index < webpage_index, "PMCProvider should have higher priority than WebpageProvider"
+        pmc_index = next(
+            i
+            for i, p in enumerate(fulltext_providers)
+            if type(p).__name__ == "PMCProvider"
+        )
+        webpage_index = next(
+            i
+            for i, p in enumerate(fulltext_providers)
+            if type(p).__name__ == "WebpageProvider"
+        )
+        assert (
+            pmc_index < webpage_index
+        ), "PMCProvider should have higher priority than WebpageProvider"
 
     def test_high_priority_providers(self, service):
         """Test that high-priority providers (priority 10) are registered."""

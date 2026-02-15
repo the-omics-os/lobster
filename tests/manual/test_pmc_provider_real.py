@@ -393,7 +393,9 @@ def generate_report(results: List[TestResult]) -> str:
         )
 
     if not any(r.table_count > 0 for r in successful_extractions):
-        report.append("- ⚠️ **No tables extracted:** Table parsing may need improvement")
+        report.append(
+            "- ⚠️ **No tables extracted:** Table parsing may need improvement"
+        )
 
     if not any(r.software_count > 0 for r in successful_extractions):
         report.append(

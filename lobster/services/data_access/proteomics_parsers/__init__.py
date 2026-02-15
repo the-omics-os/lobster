@@ -29,22 +29,30 @@ SpectronautParser = None
 OlinkParser = None
 
 try:
-    from lobster.services.data_access.maxquant_parser import MaxQuantParser  # type: ignore[assignment]
+    from lobster.services.data_access.maxquant_parser import (
+        MaxQuantParser,  # type: ignore[assignment]
+    )
 except ImportError:
     pass
 
 try:
-    from lobster.services.data_access.diann_parser import DIANNParser  # type: ignore[assignment]
+    from lobster.services.data_access.diann_parser import (
+        DIANNParser,  # type: ignore[assignment]
+    )
 except ImportError:
     pass
 
 try:
-    from lobster.services.data_access.spectronaut_parser import SpectronautParser  # type: ignore[assignment]
+    from lobster.services.data_access.spectronaut_parser import (
+        SpectronautParser,  # type: ignore[assignment]
+    )
 except ImportError:
     pass
 
 try:
-    from lobster.services.data_access.olink_parser import OlinkParser  # type: ignore[assignment]
+    from lobster.services.data_access.olink_parser import (
+        OlinkParser,  # type: ignore[assignment]
+    )
 except ImportError:
     pass
 

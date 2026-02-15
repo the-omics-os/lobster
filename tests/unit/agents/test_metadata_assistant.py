@@ -846,7 +846,9 @@ class TestReadSampleMetadata:
         mock_standardization_class.return_value = mock_metadata_standardization_service
 
         # Configure data_manager to NOT include the requested modality
-        mock_data_manager.list_modalities.return_value = []  # Empty list - modality doesn't exist
+        mock_data_manager.list_modalities.return_value = (
+            []
+        )  # Empty list - modality doesn't exist
         mock_data_manager.metadata_store = {}
 
         # Create agent
@@ -2423,7 +2425,9 @@ class TestHandoffCoordination:
         )
 
         # Verify report structure for handback to research_agent
-        assert "✅" in result or "⚠️" in result or "❌" in result  # Status icon required
+        assert (
+            "✅" in result or "⚠️" in result or "❌" in result
+        )  # Status icon required
         assert (
             "Dataset Validation Report" in result or "## " in result
         )  # Structured markdown

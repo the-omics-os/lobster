@@ -20,7 +20,6 @@ from anndata import AnnData
 from lobster.agents.genomics.genomics_expert import genomics_expert
 from lobster.core.data_manager_v2 import DataManagerV2
 
-
 # ===============================================================================
 # Mock Objects and Fixtures
 # ===============================================================================
@@ -231,9 +230,9 @@ class TestGenomicsExpertConfiguration:
         """Test that genomics_expert is registered in agent registry."""
         from lobster.config.agent_registry import AGENT_REGISTRY
 
-        assert "genomics_expert" in AGENT_REGISTRY, (
-            "genomics_expert should be in AGENT_REGISTRY"
-        )
+        assert (
+            "genomics_expert" in AGENT_REGISTRY
+        ), "genomics_expert should be in AGENT_REGISTRY"
         config = AGENT_REGISTRY["genomics_expert"]
 
         # Verify basic configuration
@@ -246,9 +245,9 @@ class TestGenomicsExpertConfiguration:
         assert config.handoff_tool_name == "handoff_to_genomics_expert"
 
         # Verify agent is supervisor-accessible
-        assert config.supervisor_accessible is True, (
-            "genomics_expert should be supervisor-accessible"
-        )
+        assert (
+            config.supervisor_accessible is True
+        ), "genomics_expert should be supervisor-accessible"
 
     def test_agent_in_premium_tier(self):
         """Test that genomics_expert is in PREMIUM tier."""
@@ -258,16 +257,16 @@ class TestGenomicsExpertConfiguration:
         premium_agents = get_tier_agents("premium")
 
         # genomics_expert should be in PREMIUM tier
-        assert "genomics_expert" in premium_agents, (
-            f"genomics_expert should be in premium tier. Found: {premium_agents}"
-        )
+        assert (
+            "genomics_expert" in premium_agents
+        ), f"genomics_expert should be in premium tier. Found: {premium_agents}"
 
     def test_agent_adapters_registered_in_data_manager(self):
         """Test that genomics adapters are registered in DataManagerV2."""
         # Check that adapter classes are importable
         try:
-            from lobster.core.adapters.genomics.vcf_adapter import VCFAdapter
             from lobster.core.adapters.genomics.plink_adapter import PLINKAdapter
+            from lobster.core.adapters.genomics.vcf_adapter import VCFAdapter
 
             assert VCFAdapter is not None
             assert PLINKAdapter is not None
@@ -349,9 +348,9 @@ class TestGenomicsExpertPrompts:
             ]
             found_count = sum(1 for term in key_terms if term.lower() in prompt.lower())
 
-            assert found_count >= 3, (
-                f"System prompt should mention genomics concepts, found {found_count}/{len(key_terms)} terms"
-            )
+            assert (
+                found_count >= 3
+            ), f"System prompt should mention genomics concepts, found {found_count}/{len(key_terms)} terms"
 
         except ImportError:
             pytest.skip("Prompts module not found")

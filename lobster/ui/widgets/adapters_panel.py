@@ -1,11 +1,11 @@
 """Adapters panel showing data format support status."""
 
 from typing import Dict, Set
+
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widgets import Static
-from rich.text import Text
-
 
 # Data format adapter registry
 ADAPTER_REGISTRY = {

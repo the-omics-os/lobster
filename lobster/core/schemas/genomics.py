@@ -8,7 +8,6 @@ PLINK data with appropriate validation rules.
 
 from typing import Any, Dict, List, Optional
 
-
 from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.schemas.validation import FlexibleValidator
 

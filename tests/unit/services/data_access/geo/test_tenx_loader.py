@@ -49,9 +49,9 @@ class TestTenXFeaturesFormatDetection:
             f.write(content)
 
         result = loader.detect_features_format(features_file)
-        assert result == "standard_10x", (
-            f"3-column format should be 'standard_10x', got {result}"
-        )
+        assert (
+            result == "standard_10x"
+        ), f"3-column format should be 'standard_10x', got {result}"
 
     def test_standard_10x_3_columns_uncompressed(self, loader, temp_dir):
         """V3 format: 3 columns uncompressed."""
@@ -71,9 +71,9 @@ class TestTenXFeaturesFormatDetection:
             f.write(content)
 
         result = loader.detect_features_format(genes_file)
-        assert result == "standard_10x", (
-            f"2-column V2 format should be 'standard_10x', got {result}"
-        )
+        assert (
+            result == "standard_10x"
+        ), f"2-column V2 format should be 'standard_10x', got {result}"
 
     def test_standard_10x_2_columns_uncompressed(self, loader, temp_dir):
         """V2 format: 2 columns uncompressed."""
@@ -93,9 +93,9 @@ class TestTenXFeaturesFormatDetection:
             f.write(content)
 
         result = loader.detect_features_format(features_file)
-        assert result == "symbols_only", (
-            f"1-column symbols should be 'symbols_only', got {result}"
-        )
+        assert (
+            result == "symbols_only"
+        ), f"1-column symbols should be 'symbols_only', got {result}"
 
     def test_ids_only_ensembl(self, loader, temp_dir):
         """Non-standard: 1 column with Ensembl IDs."""
@@ -105,9 +105,9 @@ class TestTenXFeaturesFormatDetection:
             f.write(content)
 
         result = loader.detect_features_format(features_file)
-        assert result == "ids_only", (
-            f"1-column Ensembl IDs should be 'ids_only', got {result}"
-        )
+        assert (
+            result == "ids_only"
+        ), f"1-column Ensembl IDs should be 'ids_only', got {result}"
 
     def test_ids_only_mouse_ensembl(self, loader, temp_dir):
         """Non-standard: 1 column with mouse Ensembl IDs (ENSMUSG prefix)."""
@@ -252,12 +252,12 @@ class TestTenXManualLoader:
         )
 
         assert adata is not None, "Manual parser should return AnnData"
-        assert adata.n_obs == data["n_cells"], (
-            f"Expected {data['n_cells']} cells, got {adata.n_obs}"
-        )
-        assert adata.n_vars == data["n_genes"], (
-            f"Expected {data['n_genes']} genes, got {adata.n_vars}"
-        )
+        assert (
+            adata.n_obs == data["n_cells"]
+        ), f"Expected {data['n_cells']} cells, got {adata.n_obs}"
+        assert (
+            adata.n_vars == data["n_genes"]
+        ), f"Expected {data['n_genes']} genes, got {adata.n_vars}"
 
         # Verify gene names were extracted correctly
         for gene in data["gene_names"]:
@@ -283,9 +283,9 @@ class TestTenXManualLoader:
         # Verify gene_ids column exists
         assert "gene_ids" in adata.var.columns, "var should have 'gene_ids' column"
         for gene_id in data["gene_ids"]:
-            assert gene_id in adata.var["gene_ids"].values, (
-                f"Gene ID {gene_id} should be in var['gene_ids']"
-            )
+            assert (
+                gene_id in adata.var["gene_ids"].values
+            ), f"Gene ID {gene_id} should be in var['gene_ids']"
 
     def test_manual_loader_ids_only_format(self, temp_dir, loader):
         """Manual loader handles single-column Ensembl IDs file."""
@@ -463,9 +463,9 @@ class TestTenXLoaderRegression:
         )
 
         # CRITICAL ASSERTIONS
-        assert adata.n_vars > 0, (
-            f"REGRESSION BUG: V2 format resulted in {adata.n_vars} genes!"
-        )
+        assert (
+            adata.n_vars > 0
+        ), f"REGRESSION BUG: V2 format resulted in {adata.n_vars} genes!"
         assert adata.n_vars == n_genes, f"Expected {n_genes} genes, got {adata.n_vars}"
         assert adata.n_obs == n_cells, f"Expected {n_cells} cells, got {adata.n_obs}"
 
@@ -500,9 +500,9 @@ class TestTenXLoaderRegression:
         )
 
         # CRITICAL ASSERTIONS
-        assert adata.n_vars > 0, (
-            f"REGRESSION BUG: Single-column genes resulted in {adata.n_vars} genes!"
-        )
+        assert (
+            adata.n_vars > 0
+        ), f"REGRESSION BUG: Single-column genes resulted in {adata.n_vars} genes!"
         assert adata.n_vars == n_genes
         assert adata.n_obs == n_cells
 

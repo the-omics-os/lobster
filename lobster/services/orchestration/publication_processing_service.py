@@ -1147,7 +1147,9 @@ class PublicationProcessingService:
 
                             sra_fetch_success = 0
                             sra_fetch_failed = 0
-                            sra_workspace_keys = []  # Track SRA workspace keys for handoff
+                            sra_workspace_keys = (
+                                []
+                            )  # Track SRA workspace keys for handoff
 
                             for bioproject_id in all_bioprojects:
                                 try:

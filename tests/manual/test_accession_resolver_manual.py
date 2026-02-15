@@ -27,40 +27,51 @@ import time
 from typing import Dict, List, Tuple
 
 # Add parent directory to path for imports
-sys.path.insert(0, '/Users/tyo/GITHUB/omics-os/lobster')
+sys.path.insert(0, "/Users/tyo/GITHUB/omics-os/lobster")
 
 # Direct import to avoid core/__init__.py dependency chain
 import importlib.util
+
 spec = importlib.util.spec_from_file_location(
     "accession_resolver",
-    "/Users/tyo/GITHUB/omics-os/lobster/lobster/core/identifiers/accession_resolver.py"
+    "/Users/tyo/GITHUB/omics-os/lobster/lobster/core/identifiers/accession_resolver.py",
 )
 accession_resolver_module = importlib.util.module_from_spec(spec)
 
 # Also need to import database_mappings
 spec_db = importlib.util.spec_from_file_location(
     "database_mappings",
-    "/Users/tyo/GITHUB/omics-os/lobster/lobster/core/schemas/database_mappings.py"
+    "/Users/tyo/GITHUB/omics-os/lobster/lobster/core/schemas/database_mappings.py",
 )
 database_mappings_module = importlib.util.module_from_spec(spec_db)
 
 # Load both modules
 spec_db.loader.exec_module(database_mappings_module)
-sys.modules['lobster.core.schemas.database_mappings'] = database_mappings_module
+sys.modules["lobster.core.schemas.database_mappings"] = database_mappings_module
+
 
 # Mock logger to avoid dependency
 class MockLogger:
-    def debug(self, msg): pass
-    def info(self, msg): pass
-    def warning(self, msg): pass
-    def error(self, msg): pass
+    def debug(self, msg):
+        pass
+
+    def info(self, msg):
+        pass
+
+    def warning(self, msg):
+        pass
+
+    def error(self, msg):
+        pass
+
 
 class MockLoggerModule:
     @staticmethod
     def get_logger(name):
         return MockLogger()
 
-sys.modules['lobster.utils.logger'] = MockLoggerModule()
+
+sys.modules["lobster.utils.logger"] = MockLoggerModule()
 
 # Now load accession_resolver
 spec.loader.exec_module(accession_resolver_module)
@@ -82,7 +93,6 @@ VALID_IDENTIFIERS = {
     "sra_experiment_accession": "SRX123456",
     "sra_run_accession": "SRR123456",
     "sra_sample_accession": "SRS123456",
-
     # ENA Accessions (6)
     "ena_study_accession": "ERP123456",
     "ena_experiment_accession": "ERX123456",
@@ -90,7 +100,6 @@ VALID_IDENTIFIERS = {
     "ena_sample_accession": "ERS123456",
     "bioproject_ena_accession": "PRJEB83385",
     "biosample_ena_accession": "SAMEA123456",
-
     # DDBJ Accessions (6)
     "ddbj_study_accession": "DRP123456",
     "ddbj_experiment_accession": "DRX123456",
@@ -98,28 +107,22 @@ VALID_IDENTIFIERS = {
     "ddbj_sample_accession": "DRS123456",
     "bioproject_ddbj_accession": "PRJDB12345",
     "biosample_ddbj_accession": "SAMD12345678",
-
     # GEO Accessions (4)
     "geo_accession": "GSE194247",
     "geo_sample_accession": "GSM1234567",
     "geo_platform_accession": "GPL570",
     "geo_dataset_accession": "GDS5093",
-
     # Proteomics Accessions (2)
     "pride_accession": "PXD012345",
     "massive_accession": "MSV000012345",
-
     # Metabolomics Accessions (2)
     "metabolights_accession": "MTBLS1234",
     "metabolomics_workbench_accession": "ST001234",
-
     # Metagenomics Accessions (1)
     "mgnify_accession": "MGYS00001234",
-
     # Cross-Platform Accessions (2)
     "arrayexpress_accession": "E-MTAB-12345",
     "publication_doi": "10.1038/nature12345",
-
     # EGA Accessions - Controlled Access (8)
     "ega_study_accession": "EGAS00001234567",
     "ega_dataset_accession": "EGAD50000000740",
@@ -140,7 +143,6 @@ EXPECTED_DATABASES = {
     "sra_experiment_accession": "NCBI Sequence Read Archive (Experiment)",
     "sra_run_accession": "NCBI Sequence Read Archive (Run)",
     "sra_sample_accession": "NCBI Sequence Read Archive (Sample)",
-
     # ENA
     "ena_study_accession": "ENA Sequence Read Archive (Study)",
     "ena_experiment_accession": "ENA Sequence Read Archive (Experiment)",
@@ -148,7 +150,6 @@ EXPECTED_DATABASES = {
     "ena_sample_accession": "ENA Sequence Read Archive (Sample)",
     "bioproject_ena_accession": "ENA BioProject",
     "biosample_ena_accession": "ENA BioSample",
-
     # DDBJ
     "ddbj_study_accession": "DDBJ Sequence Read Archive (Study)",
     "ddbj_experiment_accession": "DDBJ Sequence Read Archive (Experiment)",
@@ -156,28 +157,22 @@ EXPECTED_DATABASES = {
     "ddbj_sample_accession": "DDBJ Sequence Read Archive (Sample)",
     "bioproject_ddbj_accession": "DDBJ BioProject",
     "biosample_ddbj_accession": "DDBJ BioSample",
-
     # GEO
     "geo_accession": "NCBI Gene Expression Omnibus",
     "geo_sample_accession": "NCBI Gene Expression Omnibus (Sample)",
     "geo_platform_accession": "NCBI Gene Expression Omnibus (Platform)",
     "geo_dataset_accession": "NCBI Gene Expression Omnibus (Dataset)",
-
     # Proteomics
     "pride_accession": "ProteomeXchange/PRIDE",
     "massive_accession": "MassIVE",
-
     # Metabolomics
     "metabolights_accession": "MetaboLights",
     "metabolomics_workbench_accession": "Metabolomics Workbench",
-
     # Metagenomics
     "mgnify_accession": "MGnify (EBI Metagenomics)",
-
     # Cross-Platform
     "arrayexpress_accession": "ArrayExpress",
     "publication_doi": "Digital Object Identifier",
-
     # EGA
     "ega_study_accession": "European Genome-phenome Archive (Study)",
     "ega_dataset_accession": "European Genome-phenome Archive (Dataset)",
@@ -217,6 +212,7 @@ CASE_VARIANTS = [
 # Test Suite Classes
 # =============================================================================
 
+
 class TestResults:
     """Track test results with statistics."""
 
@@ -236,9 +232,9 @@ class TestResults:
         total = self.passed + self.failed
         pass_rate = (self.passed / total * 100) if total > 0 else 0
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("TEST SUMMARY")
-        print("="*80)
+        print("=" * 80)
         print(f"Total Tests: {total}")
         print(f"Passed: {self.passed} ({pass_rate:.1f}%)")
         print(f"Failed: {self.failed}")
@@ -253,9 +249,9 @@ class TestResults:
 
 def test_detect_database(results: TestResults):
     """Test detect_database() for all 37 patterns."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST: detect_database() - All 37 Patterns")
-    print("="*80)
+    print("=" * 80)
 
     resolver = get_accession_resolver()
 
@@ -269,16 +265,18 @@ def test_detect_database(results: TestResults):
         else:
             results.record_fail(
                 f"detect_database({identifier})",
-                f"Expected '{expected_db}', got '{detected_db}'"
+                f"Expected '{expected_db}', got '{detected_db}'",
             )
-            print(f"✗ {field_name}: {identifier} -> Expected '{expected_db}', got '{detected_db}'")
+            print(
+                f"✗ {field_name}: {identifier} -> Expected '{expected_db}', got '{detected_db}'"
+            )
 
 
 def test_detect_field(results: TestResults):
     """Test detect_field() for all patterns."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST: detect_field() - All Patterns")
-    print("="*80)
+    print("=" * 80)
 
     resolver = get_accession_resolver()
 
@@ -291,16 +289,18 @@ def test_detect_field(results: TestResults):
         else:
             results.record_fail(
                 f"detect_field({identifier})",
-                f"Expected '{expected_field}', got '{detected_field}'"
+                f"Expected '{expected_field}', got '{detected_field}'",
             )
-            print(f"✗ {identifier} -> Expected '{expected_field}', got '{detected_field}'")
+            print(
+                f"✗ {identifier} -> Expected '{expected_field}', got '{detected_field}'"
+            )
 
 
 def test_validate_generic(results: TestResults):
     """Test validate() without database specification."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST: validate() - Generic Validation")
-    print("="*80)
+    print("=" * 80)
 
     resolver = get_accession_resolver()
 
@@ -314,8 +314,7 @@ def test_validate_generic(results: TestResults):
             print(f"✓ {identifier} -> Valid")
         else:
             results.record_fail(
-                f"validate({identifier})",
-                f"Should be valid but returned False"
+                f"validate({identifier})", f"Should be valid but returned False"
             )
             print(f"✗ {identifier} -> Should be valid but returned False")
 
@@ -326,8 +325,8 @@ def test_validate_generic(results: TestResults):
         "GSE12",  # Too short
         "PRJNA",  # No digits
         "12345",  # No prefix
-        "",       # Empty
-        "   ",    # Whitespace only
+        "",  # Empty
+        "   ",  # Whitespace only
     ]
 
     for invalid_id in invalid_samples:
@@ -338,17 +337,16 @@ def test_validate_generic(results: TestResults):
             print(f"✓ '{invalid_id}' -> Invalid (correct)")
         else:
             results.record_fail(
-                f"validate('{invalid_id}')",
-                f"Should be invalid but returned True"
+                f"validate('{invalid_id}')", f"Should be invalid but returned True"
             )
             print(f"✗ '{invalid_id}' -> Should be invalid but returned True")
 
 
 def test_validate_with_database(results: TestResults):
     """Test validate() with database specification."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST: validate(database=...) - Database-Specific Validation")
-    print("="*80)
+    print("=" * 80)
 
     resolver = get_accession_resolver()
 
@@ -374,20 +372,24 @@ def test_validate_with_database(results: TestResults):
         if is_valid == expected:
             results.record_pass()
             status = "Valid" if is_valid else "Invalid"
-            print(f"✓ validate('{identifier}', database='{database}') -> {status} (correct)")
+            print(
+                f"✓ validate('{identifier}', database='{database}') -> {status} (correct)"
+            )
         else:
             results.record_fail(
                 f"validate('{identifier}', database='{database}')",
-                f"Expected {expected}, got {is_valid}"
+                f"Expected {expected}, got {is_valid}",
             )
-            print(f"✗ validate('{identifier}', database='{database}') -> Expected {expected}, got {is_valid}")
+            print(
+                f"✗ validate('{identifier}', database='{database}') -> Expected {expected}, got {is_valid}"
+            )
 
 
 def test_extract_all_accessions(results: TestResults):
     """Test extract_all_accessions() for text extraction."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST: extract_all_accessions() - Text Extraction")
-    print("="*80)
+    print("=" * 80)
 
     resolver = get_accession_resolver()
 
@@ -396,38 +398,38 @@ def test_extract_all_accessions(results: TestResults):
             "text": "Data available at GSE123456 and PRIDE PXD012345",
             "expected": {
                 "NCBI Gene Expression Omnibus": ["GSE123456"],
-                "ProteomeXchange/PRIDE": ["PXD012345"]
-            }
+                "ProteomeXchange/PRIDE": ["PXD012345"],
+            },
         },
         {
             "text": "Sequencing data deposited in SRP123456, SRX789012, and SRR345678",
             "expected": {
                 "NCBI Sequence Read Archive (Study)": ["SRP123456"],
                 "NCBI Sequence Read Archive (Experiment)": ["SRX789012"],
-                "NCBI Sequence Read Archive (Run)": ["SRR345678"]
-            }
+                "NCBI Sequence Read Archive (Run)": ["SRR345678"],
+            },
         },
         {
             "text": "Methods: We downloaded GSE194247 and processed with tools from 10.1038/nmeth.1234",
             "expected": {
                 "NCBI Gene Expression Omnibus": ["GSE194247"],
-                "Digital Object Identifier": ["10.1038/NMETH.1234"]
-            }
+                "Digital Object Identifier": ["10.1038/NMETH.1234"],
+            },
         },
         {
             "text": "Controlled access data: EGAS00001234567 and EGAD50000000740",
             "expected": {
                 "European Genome-phenome Archive (Study)": ["EGAS00001234567"],
-                "European Genome-phenome Archive (Dataset)": ["EGAD50000000740"]
-            }
+                "European Genome-phenome Archive (Dataset)": ["EGAD50000000740"],
+            },
         },
         {
             "text": "Multiple BioProjects: PRJNA123456, PRJEB83385, and PRJDB12345",
             "expected": {
                 "NCBI BioProject": ["PRJNA123456"],
                 "ENA BioProject": ["PRJEB83385"],
-                "DDBJ BioProject": ["PRJDB12345"]
-            }
+                "DDBJ BioProject": ["PRJDB12345"],
+            },
         },
     ]
 
@@ -447,7 +449,7 @@ def test_extract_all_accessions(results: TestResults):
         else:
             results.record_fail(
                 f"extract_all_accessions",
-                f"Text: '{text[:50]}...'\nExpected: {expected}\nGot: {extracted}"
+                f"Text: '{text[:50]}...'\nExpected: {expected}\nGot: {extracted}",
             )
             print(f"✗ Text: '{text[:50]}...'")
             print(f"  Expected: {expected}")
@@ -456,32 +458,26 @@ def test_extract_all_accessions(results: TestResults):
 
 def test_extract_accessions_by_type(results: TestResults):
     """Test extract_accessions_by_type() for simplified type extraction."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST: extract_accessions_by_type() - Simplified Type Extraction")
-    print("="*80)
+    print("=" * 80)
 
     resolver = get_accession_resolver()
 
     test_cases = [
         {
             "text": "GSE123456 and SRP789012",
-            "expected": {
-                "GEO": {"GSE123456"},
-                "SRA": {"SRP789012"}
-            }
+            "expected": {"GEO": {"GSE123456"}, "SRA": {"SRP789012"}},
         },
         {
             "text": "PXD012345 and MSV000012345",
-            "expected": {
-                "PRIDE": {"PXD012345"},
-                "MassIVE": {"MSV000012345"}
-            }
+            "expected": {"PRIDE": {"PXD012345"}, "MassIVE": {"MSV000012345"}},
         },
         {
             "text": "EGA data: EGAS00001234567, EGAD50000000740, EGAN00001234567",
             "expected": {
                 "EGA": {"EGAS00001234567", "EGAD50000000740", "EGAN00001234567"}
-            }
+            },
         },
     ]
 
@@ -500,7 +496,7 @@ def test_extract_accessions_by_type(results: TestResults):
         else:
             results.record_fail(
                 f"extract_accessions_by_type",
-                f"Expected {expected}, got {extracted_sets}"
+                f"Expected {expected}, got {extracted_sets}",
             )
             print(f"✗ '{text}'")
             print(f"  Expected: {expected}")
@@ -509,9 +505,9 @@ def test_extract_accessions_by_type(results: TestResults):
 
 def test_case_sensitivity(results: TestResults):
     """Test case-insensitive matching."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST: Case Sensitivity")
-    print("="*80)
+    print("=" * 80)
 
     resolver = get_accession_resolver()
 
@@ -528,16 +524,16 @@ def test_case_sensitivity(results: TestResults):
             else:
                 results.record_fail(
                     f"case_sensitivity({variant})",
-                    f"Should match pattern but returned None"
+                    f"Should match pattern but returned None",
                 )
                 print(f"  ✗ {variant} -> None (should match)")
 
 
 def test_whitespace_handling(results: TestResults):
     """Test handling of whitespace."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST: Whitespace Handling")
-    print("="*80)
+    print("=" * 80)
 
     resolver = get_accession_resolver()
 
@@ -557,16 +553,18 @@ def test_whitespace_handling(results: TestResults):
         else:
             results.record_fail(
                 f"whitespace_handling('{identifier_with_ws}')",
-                f"Expected '{expected_db}', got '{detected}'"
+                f"Expected '{expected_db}', got '{detected}'",
             )
-            print(f"✗ '{identifier_with_ws}' -> Expected '{expected_db}', got '{detected}'")
+            print(
+                f"✗ '{identifier_with_ws}' -> Expected '{expected_db}', got '{detected}'"
+            )
 
 
 def test_helper_methods(results: TestResults):
     """Test helper methods like is_geo_identifier(), etc."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST: Helper Methods")
-    print("="*80)
+    print("=" * 80)
 
     resolver = get_accession_resolver()
 
@@ -589,8 +587,7 @@ def test_helper_methods(results: TestResults):
             print(f"  ✓ {identifier} -> {result}")
         else:
             results.record_fail(
-                f"is_geo_identifier({identifier})",
-                f"Expected {expected}, got {result}"
+                f"is_geo_identifier({identifier})", f"Expected {expected}, got {result}"
             )
             print(f"  ✗ {identifier} -> Expected {expected}, got {result}")
 
@@ -614,8 +611,7 @@ def test_helper_methods(results: TestResults):
             print(f"  ✓ {identifier} -> {result}")
         else:
             results.record_fail(
-                f"is_sra_identifier({identifier})",
-                f"Expected {expected}, got {result}"
+                f"is_sra_identifier({identifier})", f"Expected {expected}, got {result}"
             )
             print(f"  ✗ {identifier} -> Expected {expected}, got {result}")
 
@@ -637,7 +633,7 @@ def test_helper_methods(results: TestResults):
         else:
             results.record_fail(
                 f"is_proteomics_identifier({identifier})",
-                f"Expected {expected}, got {result}"
+                f"Expected {expected}, got {result}",
             )
             print(f"  ✗ {identifier} -> Expected {expected}, got {result}")
 
@@ -660,17 +656,16 @@ def test_helper_methods(results: TestResults):
             print(f"  ✓ {identifier} -> {result}")
         else:
             results.record_fail(
-                f"is_ega_identifier({identifier})",
-                f"Expected {expected}, got {result}"
+                f"is_ega_identifier({identifier})", f"Expected {expected}, got {result}"
             )
             print(f"  ✗ {identifier} -> Expected {expected}, got {result}")
 
 
 def test_get_url(results: TestResults):
     """Test get_url() for URL generation."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST: get_url() - URL Generation")
-    print("="*80)
+    print("=" * 80)
 
     resolver = get_accession_resolver()
 
@@ -690,8 +685,7 @@ def test_get_url(results: TestResults):
             print(f"✓ {identifier} -> {url}")
         else:
             results.record_fail(
-                f"get_url({identifier})",
-                f"Expected '{expected_url}', got '{url}'"
+                f"get_url({identifier})", f"Expected '{expected_url}', got '{url}'"
             )
             print(f"✗ {identifier}")
             print(f"  Expected: {expected_url}")
@@ -700,9 +694,9 @@ def test_get_url(results: TestResults):
 
 def test_normalize_identifier(results: TestResults):
     """Test normalize_identifier() for identifier normalization."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST: normalize_identifier() - Identifier Normalization")
-    print("="*80)
+    print("=" * 80)
 
     resolver = get_accession_resolver()
 
@@ -724,7 +718,7 @@ def test_normalize_identifier(results: TestResults):
         else:
             results.record_fail(
                 f"normalize_identifier('{input_id}')",
-                f"Expected '{expected_output}', got '{normalized}'"
+                f"Expected '{expected_output}', got '{normalized}'",
             )
             print(f"✗ '{input_id}'")
             print(f"  Expected: '{expected_output}'")
@@ -733,9 +727,9 @@ def test_normalize_identifier(results: TestResults):
 
 def test_access_type(results: TestResults):
     """Test get_access_type() and is_controlled_access()."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST: Access Type Detection")
-    print("="*80)
+    print("=" * 80)
 
     resolver = get_accession_resolver()
 
@@ -759,9 +753,11 @@ def test_access_type(results: TestResults):
         else:
             results.record_fail(
                 f"get_access_type({identifier})",
-                f"Expected '{expected_type}', got '{access_type}'"
+                f"Expected '{expected_type}', got '{access_type}'",
             )
-            print(f"  ✗ {identifier} -> Expected '{expected_type}', got '{access_type}'")
+            print(
+                f"  ✗ {identifier} -> Expected '{expected_type}', got '{access_type}'"
+            )
 
     # Test is_controlled_access()
     print("\nis_controlled_access():")
@@ -783,16 +779,18 @@ def test_access_type(results: TestResults):
         else:
             results.record_fail(
                 f"is_controlled_access({identifier})",
-                f"Expected {expected_controlled}, got {is_controlled}"
+                f"Expected {expected_controlled}, got {is_controlled}",
             )
-            print(f"  ✗ {identifier} -> Expected {expected_controlled}, got {is_controlled}")
+            print(
+                f"  ✗ {identifier} -> Expected {expected_controlled}, got {is_controlled}"
+            )
 
 
 def test_extract_with_metadata(results: TestResults):
     """Test extract_accessions_with_metadata() for metadata extraction."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST: extract_accessions_with_metadata() - Metadata Extraction")
-    print("="*80)
+    print("=" * 80)
 
     resolver = get_accession_resolver()
 
@@ -804,8 +802,15 @@ def test_extract_with_metadata(results: TestResults):
     metadata_results = resolver.extract_accessions_with_metadata(text)
 
     # Check expected accessions (set comparison - order doesn't matter, DOI may include period)
-    expected_accessions = {"GSE123456", "EGAD50000000740", "PXD012345", "10.1038/NATURE12345"}
-    found_accessions = {r["accession"].rstrip('.') for r in metadata_results}  # Strip trailing periods
+    expected_accessions = {
+        "GSE123456",
+        "EGAD50000000740",
+        "PXD012345",
+        "10.1038/NATURE12345",
+    }
+    found_accessions = {
+        r["accession"].rstrip(".") for r in metadata_results
+    }  # Strip trailing periods
 
     print(f"\nText: '{text[:80]}...'")
     print(f"\nExtracted {len(metadata_results)} accessions with metadata:\n")
@@ -815,7 +820,7 @@ def test_extract_with_metadata(results: TestResults):
         print(f"    Database: {result['database']}")
         print(f"    Field: {result['field_name']}")
         print(f"    Access: {result['access_type']}")
-        if result['access_notes']:
+        if result["access_notes"]:
             print(f"    Notes: {result['access_notes'][:80]}...")
         print()
 
@@ -827,7 +832,7 @@ def test_extract_with_metadata(results: TestResults):
     else:
         results.record_fail(
             "extract_accessions_with_metadata",
-            f"Expected {expected_accessions}, found {found_accessions}"
+            f"Expected {expected_accessions}, found {found_accessions}",
         )
         print(f"✗ Expected {expected_accessions}")
         print(f"  Found: {found_accessions}")
@@ -835,15 +840,21 @@ def test_extract_with_metadata(results: TestResults):
 
 def test_performance_large_text(results: TestResults):
     """Test performance with large text blocks."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST: Performance - Large Text Blocks")
-    print("="*80)
+    print("=" * 80)
 
     resolver = get_accession_resolver()
 
     # Generate large text with embedded accessions
     large_text = "Lorem ipsum dolor sit amet. " * 1000
-    accessions = ["GSE123456", "PRJNA789012", "PXD012345", "SRP345678", "EGAS00001234567"]
+    accessions = [
+        "GSE123456",
+        "PRJNA789012",
+        "PXD012345",
+        "SRP345678",
+        "EGAS00001234567",
+    ]
 
     # Insert accessions at various positions
     positions = [100, 500, 1000, 2000, 3000]
@@ -879,22 +890,21 @@ def test_performance_large_text(results: TestResults):
     elif not all_found:
         results.record_fail(
             "performance_large_text",
-            f"Not all accessions found. Expected {accessions}, got {extracted}"
+            f"Not all accessions found. Expected {accessions}, got {extracted}",
         )
         print(f"✗ Not all accessions found")
     else:
         results.record_fail(
-            "performance_large_text",
-            f"Extraction too slow: {elapsed:.4f} seconds"
+            "performance_large_text", f"Extraction too slow: {elapsed:.4f} seconds"
         )
         print(f"✗ Extraction too slow: {elapsed:.4f} seconds")
 
 
 def test_mixed_content_extraction(results: TestResults):
     """Test extraction from mixed content with multiple database types."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST: Mixed Content Extraction")
-    print("="*80)
+    print("=" * 80)
 
     resolver = get_accession_resolver()
 
@@ -928,7 +938,7 @@ def test_mixed_content_extraction(results: TestResults):
         "European Genome-phenome Archive",
         "NCBI BioProject",
         "NCBI BioSample",
-        "Digital Object Identifier"
+        "Digital Object Identifier",
     ]
 
     found_dbs = list(extracted.keys())
@@ -942,25 +952,33 @@ def test_mixed_content_extraction(results: TestResults):
     # Check if major databases found
     all_major_found = all(
         any(exp_db in found_db for found_db in found_dbs)
-        for exp_db in ["Gene Expression", "Sequence Read", "PRIDE", "Genome-phenome", "BioProject"]
+        for exp_db in [
+            "Gene Expression",
+            "Sequence Read",
+            "PRIDE",
+            "Genome-phenome",
+            "BioProject",
+        ]
     )
 
     if all_major_found:
         results.record_pass()
-        print(f"\n✓ Successfully extracted accessions from {len(found_dbs)} database types")
+        print(
+            f"\n✓ Successfully extracted accessions from {len(found_dbs)} database types"
+        )
     else:
         results.record_fail(
             "mixed_content_extraction",
-            f"Missing some expected databases. Found: {found_dbs}"
+            f"Missing some expected databases. Found: {found_dbs}",
         )
         print(f"\n✗ Missing some expected database types")
 
 
 def test_supported_databases(results: TestResults):
     """Test get_supported_databases() and get_supported_types()."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST: Supported Databases and Types")
-    print("="*80)
+    print("=" * 80)
 
     resolver = get_accession_resolver()
 
@@ -982,7 +1000,7 @@ def test_supported_databases(results: TestResults):
     else:
         results.record_fail(
             "supported_databases",
-            f"Expected >=20 databases and >=10 types, got {len(databases)} databases and {len(types)} types"
+            f"Expected >=20 databases and >=10 types, got {len(databases)} databases and {len(types)} types",
         )
         print(f"\n✗ Expected more databases/types")
 
@@ -991,11 +1009,12 @@ def test_supported_databases(results: TestResults):
 # Main Test Runner
 # =============================================================================
 
+
 def main():
     """Run all tests and print summary."""
-    print("="*80)
+    print("=" * 80)
     print("ACCESSION RESOLVER - COMPREHENSIVE MANUAL TEST SUITE")
-    print("="*80)
+    print("=" * 80)
     print("\nTesting AccessionResolver with all 37 identifier patterns")
     print("(29 base patterns + 8 EGA patterns)")
     print()

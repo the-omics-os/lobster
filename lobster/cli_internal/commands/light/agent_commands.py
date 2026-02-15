@@ -220,8 +220,8 @@ def agents_list(
 
     CLI-03: lobster agents list shows available agents with install status and tier
     """
-    from lobster.core.component_registry import component_registry
     from lobster.config.workspace_agent_config import WorkspaceAgentConfig
+    from lobster.core.component_registry import component_registry
 
     # Resolve workspace
     workspace_path = workspace or _get_workspace_path()
@@ -343,8 +343,8 @@ def agents_install(
 
     CLI-04: lobster agents install <package> installs via uv pip
     """
-    from lobster.core.component_registry import component_registry
     from lobster.config.workspace_agent_config import WorkspaceAgentConfig
+    from lobster.core.component_registry import component_registry
 
     # Resolve workspace
     workspace_path = workspace or _get_workspace_path()
@@ -417,8 +417,8 @@ def agents_uninstall(
     Removes the package via uv pip uninstall, then removes all agents
     from the package from the workspace config.toml enabled list.
     """
-    from lobster.core.component_registry import component_registry
     from lobster.config.workspace_agent_config import WorkspaceAgentConfig
+    from lobster.core.component_registry import component_registry
 
     # Resolve workspace
     workspace_path = workspace or _get_workspace_path()

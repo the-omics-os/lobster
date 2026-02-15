@@ -1,11 +1,12 @@
 """Token usage panel showing session costs and token consumption."""
 
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Vertical
-from textual.widgets import Static
 from textual.reactive import reactive
-from rich.text import Text
+from textual.widgets import Static
 
 
 class TokenUsagePanel(Vertical):

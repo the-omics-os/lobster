@@ -208,9 +208,9 @@ class TestStandardizeMetadata:
         assert len(result.warnings) > 0
         # Check for organism warnings in any format
         organism_warnings = [w for w in result.warnings if "organism" in w.lower()]
-        assert len(organism_warnings) > 0, (
-            f"Expected organism warnings but got: {result.warnings}"
-        )
+        assert (
+            len(organism_warnings) > 0
+        ), f"Expected organism warnings but got: {result.warnings}"
 
     def test_standardize_with_missing_required_fields(
         self, metadata_standardization_service, mock_data_manager

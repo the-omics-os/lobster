@@ -4,10 +4,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import List, Optional
+
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.widgets import Static
-from rich.text import Text
 
 
 class ActivityType(Enum):

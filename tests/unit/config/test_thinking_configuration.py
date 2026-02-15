@@ -19,7 +19,6 @@ from lobster.config.agent_config import (
     ThinkingConfig,
 )
 
-
 # Mark all tests to skip auto_config
 pytestmark = pytest.mark.no_auto_config
 
@@ -358,9 +357,9 @@ class TestBedrockThinkingIntegration:
 
         for preset_name, model_config in configurator.MODEL_PRESETS.items():
             if "claude-4" in preset_name or "claude-3" in preset_name:
-                assert model_config.supports_thinking is True, (
-                    f"Model {preset_name} should support thinking"
-                )
+                assert (
+                    model_config.supports_thinking is True
+                ), f"Model {preset_name} should support thinking"
 
 
 class TestGeminiThinkingIntegration:
@@ -425,8 +424,8 @@ class TestThinkingEndToEndFlow:
     @patch("lobster.config.providers.get_provider")
     def test_bedrock_thinking_flow(self, mock_get_provider, mock_config_resolver):
         """Test thinking config flows from agent_config → llm_factory → bedrock_provider."""
-        from lobster.config.llm_factory import LLMFactory
         from lobster.config.agent_config import LobsterAgentConfigurator, ThinkingConfig
+        from lobster.config.llm_factory import LLMFactory
 
         # Setup mocks
         mock_resolver = Mock()
@@ -468,9 +467,9 @@ class TestThinkingEndToEndFlow:
         call_kwargs = mock_provider.create_chat_model.call_args[1]
 
         # CRITICAL: Verify thinking config was passed through
-        assert "thinking" in call_kwargs, (
-            "Thinking config was not passed to provider.create_chat_model()"
-        )
+        assert (
+            "thinking" in call_kwargs
+        ), "Thinking config was not passed to provider.create_chat_model()"
         assert call_kwargs["thinking"]["budget_tokens"] == 5000
 
     @patch("lobster.core.config_resolver.ConfigResolver")
@@ -557,8 +556,8 @@ class TestSettingsThinkingIntegration:
 
     def test_settings_passes_through_thinking_config(self):
         """Test that Settings.get_agent_llm_params() preserves thinking configuration."""
-        from lobster.config.settings import Settings
         from lobster.config.agent_config import ThinkingConfig
+        from lobster.config.settings import Settings
 
         # Create settings with test profile
         settings = Settings()
@@ -566,9 +565,9 @@ class TestSettingsThinkingIntegration:
         # Enable thinking for supervisor
         agent_name = "supervisor"
         thinking_config = ThinkingConfig(enabled=True, budget_tokens=3000)
-        settings.agent_configurator._agent_configs[
-            agent_name
-        ].thinking_config = thinking_config
+        settings.agent_configurator._agent_configs[agent_name].thinking_config = (
+            thinking_config
+        )
 
         # Get params
         params = settings.get_agent_llm_params(agent_name)

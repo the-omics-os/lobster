@@ -740,9 +740,9 @@ class TestSpectronautParserCriticalEdgeCases:
             nan_count_long = np.isnan(adata_long.X).sum()
             nan_count_matrix = np.isnan(adata_matrix.X).sum()
 
-            assert nan_count_long == nan_count_matrix, (
-                f"Inconsistent NaN handling: long={nan_count_long}, matrix={nan_count_matrix}"
-            )
+            assert (
+                nan_count_long == nan_count_matrix
+            ), f"Inconsistent NaN handling: long={nan_count_long}, matrix={nan_count_matrix}"
         finally:
             os.unlink(long_path)
             os.unlink(matrix_path)

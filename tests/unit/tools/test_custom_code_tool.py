@@ -5,8 +5,9 @@ Tests the factory pattern for creating agent-specific execute_custom_code tools
 with unified signature and optional post-processing hooks.
 """
 
-import pytest
 from unittest.mock import MagicMock, call
+
+import pytest
 
 from lobster.core.analysis_ir import AnalysisStep
 from lobster.tools.custom_code_tool import (

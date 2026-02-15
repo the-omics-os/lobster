@@ -106,7 +106,9 @@ class TestTokenExtraction:
         """Test extraction from response_metadata (Bedrock alternative)."""
         # Mock an LLMResult with response_metadata using MagicMock
         result = MagicMock(spec=LLMResult)
-        result.generations = []  # Empty generations, will check response_metadata instead
+        result.generations = (
+            []
+        )  # Empty generations, will check response_metadata instead
         result.llm_output = {}
         result.response_metadata = {
             "usage": {"input_tokens": 3000, "output_tokens": 1200}
@@ -157,7 +159,9 @@ class TestModelNameExtraction:
         """Test extraction from response_metadata."""
         # Mock an LLMResult with response_metadata using MagicMock
         result = MagicMock(spec=LLMResult)
-        result.generations = []  # Empty generations, will check response_metadata instead
+        result.generations = (
+            []
+        )  # Empty generations, will check response_metadata instead
         result.llm_output = {}
         result.response_metadata = {"model_id": "bedrock-model"}
 

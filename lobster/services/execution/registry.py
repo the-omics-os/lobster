@@ -15,6 +15,8 @@ Examples:
     ... )
 """
 
+# SDK Delegation Service (premium feature - graceful fallback if unavailable)
+from lobster.core.component_registry import component_registry
 from lobster.services.execution.custom_code_execution_service import (
     CodeExecutionError,
     CodeValidationError,
@@ -23,9 +25,6 @@ from lobster.services.execution.custom_code_execution_service import (
 from lobster.services.execution.execution_context_builder import (
     ExecutionContextBuilder,
 )
-
-# SDK Delegation Service (premium feature - graceful fallback if unavailable)
-from lobster.core.component_registry import component_registry
 
 SDKDelegationService = component_registry.get_service("sdk_delegation")
 HAS_SDK_DELEGATION = SDKDelegationService is not None

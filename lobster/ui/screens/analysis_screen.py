@@ -1,60 +1,60 @@
 """Main analysis screen with cockpit-style layout."""
 
-from typing import Optional
 from functools import partial
+from typing import Optional
 
-from textual.screen import Screen
-from textual.containers import Horizontal, Vertical
-from textual.widgets import Header, Footer
-from textual.worker import Worker
-from textual.binding import Binding
 from textual import on
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical
+from textual.screen import Screen
+from textual.widgets import Footer, Header
+from textual.worker import Worker
 
-from lobster.core.client import AgentClient
-from lobster.core.license_manager import get_current_tier
-from lobster.config.llm_factory import LLMFactory
-from lobster.config.settings import get_settings
-from lobster.ui.widgets import (
-    QueryPrompt,
-    DataHub,
-    DataHubModalitySelected,
-    ResultsDisplay,
-    PlotPreview,
-    StatusBar,
-    SystemInfoPanel,
-    QueuePanel,
-    QueueStatusBar,
-    ConnectionsPanel,
-    AgentsPanel,
-    AdaptersPanel,
-    TokenUsagePanel,
-    ActivityLogPanel,
-)
-from lobster.ui.widgets.status_bar import get_friendly_model_name
-from lobster.ui.widgets.modality_list import ModalitySelected
-from lobster.ui.callbacks import TextualCallbackHandler
-from lobster.ui.services import ErrorService, ErrorCategory
-from lobster.services.data_management.modality_management_service import (
-    ModalityManagementService,
-)
 from lobster.cli_internal.commands import (
     DashboardOutputAdapter,
-    show_queue_status,
-    queue_load_file,
-    queue_list,
-    queue_clear,
-    queue_export,
     QueueFileTypeNotSupported,
+    metadata_clear,
+    metadata_clear_all,
+    metadata_clear_exports,
+    metadata_exports,
+    metadata_list,
     metadata_overview,
     metadata_publications,
     metadata_samples,
     metadata_workspace,
-    metadata_exports,
-    metadata_list,
-    metadata_clear,
-    metadata_clear_exports,
-    metadata_clear_all,
+    queue_clear,
+    queue_export,
+    queue_list,
+    queue_load_file,
+    show_queue_status,
 )
+from lobster.config.llm_factory import LLMFactory
+from lobster.config.settings import get_settings
+from lobster.core.client import AgentClient
+from lobster.core.license_manager import get_current_tier
+from lobster.services.data_management.modality_management_service import (
+    ModalityManagementService,
+)
+from lobster.ui.callbacks import TextualCallbackHandler
+from lobster.ui.services import ErrorCategory, ErrorService
+from lobster.ui.widgets import (
+    ActivityLogPanel,
+    AdaptersPanel,
+    AgentsPanel,
+    ConnectionsPanel,
+    DataHub,
+    DataHubModalitySelected,
+    PlotPreview,
+    QueryPrompt,
+    QueuePanel,
+    QueueStatusBar,
+    ResultsDisplay,
+    StatusBar,
+    SystemInfoPanel,
+    TokenUsagePanel,
+)
+from lobster.ui.widgets.modality_list import ModalitySelected
+from lobster.ui.widgets.status_bar import get_friendly_model_name
 
 
 class AnalysisScreen(Screen):
@@ -338,8 +338,8 @@ class AnalysisScreen(Screen):
         Args:
             filepath: Absolute path to file in workspace
         """
-        from pathlib import Path
         import logging
+        from pathlib import Path
 
         logger = logging.getLogger(__name__)
 
@@ -522,10 +522,10 @@ class AnalysisScreen(Screen):
             results.append_system_message(status_text)
 
         elif cmd == "/status":
-            from lobster.core.license_manager import get_entitlement_status
-            from lobster.core.plugin_loader import get_installed_packages
             from lobster.config.agent_registry import get_worker_agents
             from lobster.config.subscription_tiers import is_agent_available
+            from lobster.core.license_manager import get_entitlement_status
+            from lobster.core.plugin_loader import get_installed_packages
 
             # Get entitlement status
             try:

@@ -83,9 +83,9 @@ class TestModalityAdapterConcreteMethods:
 
         for filepath, expected in test_cases:
             result = adapter.detect_format(filepath)
-            assert result == expected, (
-                f"Failed for {filepath}: expected {expected}, got {result}"
-            )
+            assert (
+                result == expected
+            ), f"Failed for {filepath}: expected {expected}, got {result}"
 
     def test_detect_format_with_path_objects(self):
         """Test format detection with Path objects."""

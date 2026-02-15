@@ -22,7 +22,6 @@ import pytest
 from lobster.core.client import AgentClient
 from lobster.core.data_manager_v2 import DataManagerV2
 
-
 # ===============================================================================
 # Test Configuration
 # ===============================================================================
@@ -57,14 +56,20 @@ def check_api_keys():
 
     # Check for at least one LLM provider
     has_anthropic = os.getenv("ANTHROPIC_API_KEY")
-    has_bedrock = os.getenv("AWS_BEDROCK_ACCESS_KEY") and os.getenv("AWS_BEDROCK_SECRET_ACCESS_KEY")
+    has_bedrock = os.getenv("AWS_BEDROCK_ACCESS_KEY") and os.getenv(
+        "AWS_BEDROCK_SECRET_ACCESS_KEY"
+    )
 
     if not (has_anthropic or has_bedrock):
-        pytest.skip("Missing LLM provider API keys (ANTHROPIC_API_KEY or AWS_BEDROCK_*)")
+        pytest.skip(
+            "Missing LLM provider API keys (ANTHROPIC_API_KEY or AWS_BEDROCK_*)"
+        )
 
     # NCBI key optional but recommended
     if not os.getenv("NCBI_API_KEY"):
-        pytest.warn(pytest.PytestWarning("NCBI_API_KEY not set - rate limits will be slower"))
+        pytest.warn(
+            pytest.PytestWarning("NCBI_API_KEY not set - rate limits will be slower")
+        )
 
 
 # ===============================================================================
@@ -85,8 +90,9 @@ class TestGenomicsDatasetDiscovery:
         )
 
         response = result.get("response", "")
-        assert "1000" in response or "genome" in response.lower(), \
-            "Should find 1000 Genomes publications"
+        assert (
+            "1000" in response or "genome" in response.lower()
+        ), "Should find 1000 Genomes publications"
 
     def test_discover_gwas_datasets_geo(self, agent_client, check_api_keys):
         """Test discovering GWAS datasets in GEO."""
@@ -96,8 +102,9 @@ class TestGenomicsDatasetDiscovery:
 
         response = result.get("response", "")
         # Should find genomics datasets
-        assert "GSE" in response or "dataset" in response.lower(), \
-            "Should discover GEO datasets"
+        assert (
+            "GSE" in response or "dataset" in response.lower()
+        ), "Should discover GEO datasets"
 
 
 # ===============================================================================
@@ -111,7 +118,12 @@ class TestGenomicsDataLoading:
 
     def test_load_vcf_via_agent(self, agent_client):
         """Test loading VCF file via genomics agent."""
-        vcf_path = Path(__file__).parent.parent.parent / "test_data" / "genomics" / "chr22.vcf.gz"
+        vcf_path = (
+            Path(__file__).parent.parent.parent
+            / "test_data"
+            / "genomics"
+            / "chr22.vcf.gz"
+        )
         if not vcf_path.exists():
             pytest.skip(f"Test VCF not found: {vcf_path}")
 
@@ -120,17 +132,27 @@ class TestGenomicsDataLoading:
         )
 
         response = result.get("response", "")
-        assert "test_chr22" in response or "loaded" in response.lower() or "success" in response.lower(), \
-            f"VCF loading should succeed. Response: {response}"
+        assert (
+            "test_chr22" in response
+            or "loaded" in response.lower()
+            or "success" in response.lower()
+        ), f"VCF loading should succeed. Response: {response}"
 
         # Verify modality was created
         modalities = agent_client.data_manager.list_modalities()
-        assert any("test_chr22" in m or "chr22" in m for m in modalities), \
-            f"Modality should be created. Available: {modalities}"
+        assert any(
+            "test_chr22" in m or "chr22" in m for m in modalities
+        ), f"Modality should be created. Available: {modalities}"
 
     def test_load_plink_via_agent(self, agent_client):
         """Test loading PLINK files via genomics agent."""
-        plink_prefix = Path(__file__).parent.parent.parent / "test_data" / "genomics" / "plink_test" / "test_chr22"
+        plink_prefix = (
+            Path(__file__).parent.parent.parent
+            / "test_data"
+            / "genomics"
+            / "plink_test"
+            / "test_chr22"
+        )
         if not Path(str(plink_prefix) + ".bed").exists():
             pytest.skip(f"Test PLINK not found: {plink_prefix}.bed")
 
@@ -139,13 +161,17 @@ class TestGenomicsDataLoading:
         )
 
         response = result.get("response", "")
-        assert "test_plink" in response or "loaded" in response.lower() or "success" in response.lower(), \
-            f"PLINK loading should succeed. Response: {response}"
+        assert (
+            "test_plink" in response
+            or "loaded" in response.lower()
+            or "success" in response.lower()
+        ), f"PLINK loading should succeed. Response: {response}"
 
         # Verify modality was created
         modalities = agent_client.data_manager.list_modalities()
-        assert any("test_plink" in m or "plink" in m for m in modalities), \
-            f"Modality should be created. Available: {modalities}"
+        assert any(
+            "test_plink" in m or "plink" in m for m in modalities
+        ), f"Modality should be created. Available: {modalities}"
 
 
 # ===============================================================================
@@ -159,7 +185,12 @@ class TestGenomicsQCWorkflow:
 
     def test_qc_workflow_vcf(self, agent_client):
         """Test complete QC workflow: load → assess → filter."""
-        vcf_path = Path(__file__).parent.parent.parent / "test_data" / "genomics" / "chr22.vcf.gz"
+        vcf_path = (
+            Path(__file__).parent.parent.parent
+            / "test_data"
+            / "genomics"
+            / "chr22.vcf.gz"
+        )
         if not vcf_path.exists():
             pytest.skip(f"Test VCF not found: {vcf_path}")
 
@@ -173,19 +204,23 @@ class TestGenomicsQCWorkflow:
         result2 = agent_client.query(
             "Assess quality for qc_test with UK Biobank thresholds"
         )
-        assert "quality" in result2.get("response", "").lower() or "qc" in result2.get("response", "").lower()
+        assert (
+            "quality" in result2.get("response", "").lower()
+            or "qc" in result2.get("response", "").lower()
+        )
 
         # Step 3: Filter samples
-        result3 = agent_client.query(
-            "Filter samples in qc_test_qc with call rate 0.95"
-        )
+        result3 = agent_client.query("Filter samples in qc_test_qc with call rate 0.95")
         assert "filter" in result3.get("response", "").lower()
 
         # Step 4: Filter variants
         result4 = agent_client.query(
             "Filter variants with MAF 0.01 and HWE p-value 1e-10"
         )
-        assert "filter" in result4.get("response", "").lower() or "variant" in result4.get("response", "").lower()
+        assert (
+            "filter" in result4.get("response", "").lower()
+            or "variant" in result4.get("response", "").lower()
+        )
 
 
 # ===============================================================================
@@ -200,7 +235,12 @@ class TestGenomicsGWASWorkflow:
 
     def test_gwas_simple(self, agent_client):
         """Test basic GWAS analysis."""
-        vcf_path = Path(__file__).parent.parent.parent / "test_data" / "genomics" / "chr22.vcf.gz"
+        vcf_path = (
+            Path(__file__).parent.parent.parent
+            / "test_data"
+            / "genomics"
+            / "chr22.vcf.gz"
+        )
         if not vcf_path.exists():
             pytest.skip(f"Test VCF not found: {vcf_path}")
 
@@ -221,11 +261,20 @@ class TestGenomicsGWASWorkflow:
             )
 
             response = result.get("response", "")
-            assert "gwas" in response.lower() or "association" in response.lower() or "lambda" in response.lower()
+            assert (
+                "gwas" in response.lower()
+                or "association" in response.lower()
+                or "lambda" in response.lower()
+            )
 
     def test_pca_analysis(self, agent_client):
         """Test PCA for population structure."""
-        vcf_path = Path(__file__).parent.parent.parent / "test_data" / "genomics" / "chr22.vcf.gz"
+        vcf_path = (
+            Path(__file__).parent.parent.parent
+            / "test_data"
+            / "genomics"
+            / "chr22.vcf.gz"
+        )
         if not vcf_path.exists():
             pytest.skip(f"Test VCF not found: {vcf_path}")
 
@@ -233,12 +282,14 @@ class TestGenomicsGWASWorkflow:
         agent_client.query(f"Load VCF {vcf_path} with max 100 variants as pca_test")
 
         # Run PCA
-        result = agent_client.query(
-            "Calculate PCA for pca_test with 10 components"
-        )
+        result = agent_client.query("Calculate PCA for pca_test with 10 components")
 
         response = result.get("response", "")
-        assert "pca" in response.lower() or "component" in response.lower() or "variance" in response.lower()
+        assert (
+            "pca" in response.lower()
+            or "component" in response.lower()
+            or "variance" in response.lower()
+        )
 
 
 # ===============================================================================
@@ -255,9 +306,16 @@ class TestSupervisorHandoffToGenomics:
     Uses 'admin superuser' mode to bypass routing decisions and directly test handoffs.
     """
 
-    def test_supervisor_routes_vcf_loading_to_genomics(self, agent_client, check_api_keys):
+    def test_supervisor_routes_vcf_loading_to_genomics(
+        self, agent_client, check_api_keys
+    ):
         """Test that supervisor routes VCF loading requests to genomics_expert."""
-        vcf_path = Path(__file__).parent.parent.parent / "test_data" / "genomics" / "chr22.vcf.gz"
+        vcf_path = (
+            Path(__file__).parent.parent.parent
+            / "test_data"
+            / "genomics"
+            / "chr22.vcf.gz"
+        )
         if not vcf_path.exists():
             pytest.skip(f"Test VCF not found: {vcf_path}")
 
@@ -268,14 +326,23 @@ class TestSupervisorHandoffToGenomics:
 
         response = result.get("response", "")
         # Should complete successfully
-        assert result.get("success", False) or "loaded" in response.lower() or "success" in response.lower()
+        assert (
+            result.get("success", False)
+            or "loaded" in response.lower()
+            or "success" in response.lower()
+        )
 
     def test_supervisor_routes_gwas_to_genomics(self, agent_client, check_api_keys):
         """Test that supervisor routes GWAS requests to genomics_expert."""
         # First create a genomics modality programmatically
         from lobster.core.adapters.genomics.vcf_adapter import VCFAdapter
 
-        vcf_path = Path(__file__).parent.parent.parent / "test_data" / "genomics" / "chr22.vcf.gz"
+        vcf_path = (
+            Path(__file__).parent.parent.parent
+            / "test_data"
+            / "genomics"
+            / "chr22.vcf.gz"
+        )
         if not vcf_path.exists():
             pytest.skip(f"Test VCF not found: {vcf_path}")
 
@@ -297,7 +364,12 @@ class TestSupervisorHandoffToGenomics:
 
         response = result.get("response", "")
         # Should complete or at least attempt GWAS
-        assert "gwas" in response.lower() or "association" in response.lower() or "lambda" in response.lower() or "error" in response.lower()
+        assert (
+            "gwas" in response.lower()
+            or "association" in response.lower()
+            or "lambda" in response.lower()
+            or "error" in response.lower()
+        )
 
 
 # ===============================================================================
@@ -312,7 +384,12 @@ class TestGenomicsStress:
 
     def test_large_vcf_loading(self):
         """Test loading large VCF file."""
-        vcf_path = Path(__file__).parent.parent.parent / "test_data" / "genomics" / "chr22.vcf.gz"
+        vcf_path = (
+            Path(__file__).parent.parent.parent
+            / "test_data"
+            / "genomics"
+            / "chr22.vcf.gz"
+        )
         if not vcf_path.exists():
             pytest.skip(f"Test VCF not found: {vcf_path}")
 
@@ -329,10 +406,16 @@ class TestGenomicsStress:
     def test_gwas_medium_dataset(self):
         """Test GWAS on medium-sized dataset (1000 variants)."""
         from pathlib import Path
+
         from lobster.core.adapters.genomics.vcf_adapter import VCFAdapter
         from lobster.services.analysis.gwas_service import GWASService
 
-        vcf_path = Path(__file__).parent.parent.parent / "test_data" / "genomics" / "chr22.vcf.gz"
+        vcf_path = (
+            Path(__file__).parent.parent.parent
+            / "test_data"
+            / "genomics"
+            / "chr22.vcf.gz"
+        )
         if not vcf_path.exists():
             pytest.skip(f"Test VCF not found: {vcf_path}")
 

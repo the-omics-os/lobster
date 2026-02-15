@@ -10,8 +10,8 @@ Pattern:
 3. Missing/uninstalled children are silently excluded (graceful degradation)
 """
 
-from typing import Any, Callable, Dict, List, Optional, Set
 import logging
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from langchain_core.tools import tool
 

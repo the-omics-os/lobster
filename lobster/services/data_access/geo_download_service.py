@@ -336,9 +336,7 @@ class GEODownloadService(IDownloadService):
             "concatenation_strategy": (
                 "intersection"
                 if use_intersecting_genes_only
-                else "union"
-                if use_intersecting_genes_only is False
-                else "auto"
+                else "union" if use_intersecting_genes_only is False else "auto"
             ),
             "download_message": download_message,
         }

@@ -292,7 +292,7 @@ class TestTokenTrackingMocked:
 
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=(mock_graph, _create_mock_metadata())
+            return_value=(mock_graph, _create_mock_metadata()),
         ):
             client = AgentClient(workspace_path=temp_workspace)
 

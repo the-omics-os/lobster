@@ -4122,8 +4122,9 @@ The actual expression data download will be much faster now that metadata is pre
                 for file_type, score in file_classification.items():
                     if score > 0:  # Only consider positive scores
                         # Keep track of best score for each file type
-                        if file_type not in classified_files or score > file_scores.get(
-                            file_type, 0
+                        if (
+                            file_type not in classified_files
+                            or score > file_scores.get(file_type, 0)
                         ):
                             classified_files[file_type] = url
                             file_scores[file_type] = score

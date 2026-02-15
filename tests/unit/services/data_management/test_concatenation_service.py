@@ -195,7 +195,9 @@ class TestConcatenationService:
         """Test concatenation from modality names."""
         # Mock modality loading
         mock_data_manager.get_modality.side_effect = sample_anndata_objects
-        mock_data_manager.list_modalities.return_value = []  # Output modality doesn't exist
+        mock_data_manager.list_modalities.return_value = (
+            []
+        )  # Output modality doesn't exist
 
         service = ConcatenationService(mock_data_manager)
 

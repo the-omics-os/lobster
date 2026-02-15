@@ -38,22 +38,22 @@ def test_parameter_signatures():
     # Check validate_dataset_metadata
     if "def validate_dataset_metadata(" in source:
         # Extract the function signature
-        lines = source.split('\n')
+        lines = source.split("\n")
         for i, line in enumerate(lines):
-            if 'def validate_dataset_metadata(' in line:
+            if "def validate_dataset_metadata(" in line:
                 # Get function signature (may span multiple lines)
                 sig_lines = []
                 j = i
-                while j < len(lines) and ('-> str:' not in lines[j]):
+                while j < len(lines) and ("-> str:" not in lines[j]):
                     sig_lines.append(lines[j])
                     j += 1
                 sig_lines.append(lines[j])  # Include the return type line
 
-                signature = '\n'.join(sig_lines)
+                signature = "\n".join(sig_lines)
                 print(f"\nFound signature:\n{signature}\n")
 
                 # Check for identifier parameter
-                if 'identifier: str' in signature:
+                if "identifier: str" in signature:
                     print("✓ PASSED: Uses 'identifier: str' parameter")
                     test1_pass = True
                 else:
@@ -61,7 +61,7 @@ def test_parameter_signatures():
                     test1_pass = False
 
                 # Check for old accession parameter
-                if 'accession: str' in signature:
+                if "accession: str" in signature:
                     print("✗ FAILED: Old 'accession' parameter still exists!")
                     test1_pass = False
                 else:
@@ -81,22 +81,22 @@ def test_parameter_signatures():
 
     # Check extract_methods
     if "def extract_methods(" in source:
-        lines = source.split('\n')
+        lines = source.split("\n")
         for i, line in enumerate(lines):
-            if 'def extract_methods(' in line:
+            if "def extract_methods(" in line:
                 # Get function signature
                 sig_lines = []
                 j = i
-                while j < len(lines) and ('-> str:' not in lines[j]):
+                while j < len(lines) and ("-> str:" not in lines[j]):
                     sig_lines.append(lines[j])
                     j += 1
                 sig_lines.append(lines[j])
 
-                signature = '\n'.join(sig_lines)
+                signature = "\n".join(sig_lines)
                 print(f"\nFound signature:\n{signature}\n")
 
                 # Check for identifier parameter
-                if 'identifier: str' in signature:
+                if "identifier: str" in signature:
                     print("✓ PASSED: Uses 'identifier: str' parameter")
                     test2_pass = True
                 else:
@@ -104,7 +104,7 @@ def test_parameter_signatures():
                     test2_pass = False
 
                 # Check for old url_or_pmid parameter
-                if 'url_or_pmid: str' in signature:
+                if "url_or_pmid: str" in signature:
                     print("✗ FAILED: Old 'url_or_pmid' parameter still exists!")
                     test2_pass = False
                 else:
@@ -123,22 +123,26 @@ def test_parameter_signatures():
     print("=" * 80)
 
     # Check system prompt includes parameter naming convention
-    if '<parameter naming convention>' in source:
-        print("\n✓ PASSED: System prompt includes '<parameter naming convention>' section")
+    if "<parameter naming convention>" in source:
+        print(
+            "\n✓ PASSED: System prompt includes '<parameter naming convention>' section"
+        )
         test3_pass = True
 
         # Check for specific content
-        if 'External identifiers' in source and 'Internal queue IDs' in source:
-            print("✓ PASSED: Convention includes both external and internal ID guidance")
+        if "External identifiers" in source and "Internal queue IDs" in source:
+            print(
+                "✓ PASSED: Convention includes both external and internal ID guidance"
+            )
         else:
             print("✗ WARNING: Convention section may be incomplete")
 
-        if 'identifier` parameter' in source:
+        if "identifier` parameter" in source:
             print("✓ PASSED: Mentions 'identifier' parameter")
         else:
             print("✗ WARNING: Doesn't explicitly mention 'identifier' parameter")
 
-        if 'entry_id` parameter' in source:
+        if "entry_id` parameter" in source:
             print("✓ PASSED: Mentions 'entry_id' parameter")
         else:
             print("✗ WARNING: Doesn't explicitly mention 'entry_id' parameter")

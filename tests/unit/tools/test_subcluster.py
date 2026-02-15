@@ -374,9 +374,9 @@ def test_label_prefix_format(clustering_service, clustered_adata):
     for label in sub_labels.unique():
         parts = label.split(".")
         assert len(parts) == 2, f"Label {label} should be in 'parent.sub' format"
-        assert parts[0] == cluster_to_refine[0], (
-            f"Prefix should be {cluster_to_refine[0]}"
-        )
+        assert (
+            parts[0] == cluster_to_refine[0]
+        ), f"Prefix should be {cluster_to_refine[0]}"
         assert parts[1].isdigit(), f"Sub-cluster ID should be numeric"
 
 

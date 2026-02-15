@@ -1074,9 +1074,7 @@ def harmonize_disease_field(
         id_col = (
             "run_accession"
             if "run_accession" in df.columns
-            else "biosample"
-            if "biosample" in df.columns
-            else None
+            else "biosample" if "biosample" in df.columns else None
         )
 
         # Build log for samples where disease was extracted
@@ -1198,7 +1196,9 @@ def harmonize_samples_for_export(
         known_canonical = set(COLUMN_ALIASES.keys())
         stats["unmapped_columns"] = sorted(
             list(all_cols_after_step1 - known_canonical)
-        )[:50]  # First 50
+        )[
+            :50
+        ]  # First 50
         stats["unmapped_columns_count"] = len(all_cols_after_step1 - known_canonical)
 
         # Samples where disease extraction failed

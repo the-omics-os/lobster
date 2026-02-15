@@ -428,9 +428,9 @@ class TestRegistryCompleteness:
         for field_name, accession in DATABASE_ACCESSION_REGISTRY.items():
             assert len(accession.example) > 0
             # Example should validate against pattern
-            assert validate_accession(field_name, accession.example), (
-                f"Example for {field_name} ({accession.example}) does not validate"
-            )
+            assert validate_accession(
+                field_name, accession.example
+            ), f"Example for {field_name} ({accession.example}) does not validate"
 
 
 if __name__ == "__main__":

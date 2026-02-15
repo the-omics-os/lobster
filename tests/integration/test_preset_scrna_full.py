@@ -7,12 +7,13 @@ Verifies that the scrna-full preset:
 3. GraphMetadata contains expected agent names
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from lobster.config.agent_presets import expand_preset, AGENT_PRESETS
-from lobster.agents.graph import create_bioinformatics_graph, GraphMetadata
+import pytest
+
+from lobster.agents.graph import GraphMetadata, create_bioinformatics_graph
+from lobster.config.agent_presets import AGENT_PRESETS, expand_preset
 
 
 class TestScrnaFullPresetExpansion:
@@ -35,17 +36,23 @@ class TestScrnaFullPresetExpansion:
     def test_scrna_full_contains_annotation_expert(self):
         """scrna-full includes annotation_expert for cell type annotation."""
         agents = expand_preset("scrna-full")
-        assert "annotation_expert" in agents, "scrna-full should include annotation_expert"
+        assert (
+            "annotation_expert" in agents
+        ), "scrna-full should include annotation_expert"
 
     def test_scrna_full_contains_de_analysis_expert(self):
         """scrna-full includes de_analysis_expert for differential expression."""
         agents = expand_preset("scrna-full")
-        assert "de_analysis_expert" in agents, "scrna-full should include de_analysis_expert"
+        assert (
+            "de_analysis_expert" in agents
+        ), "scrna-full should include de_analysis_expert"
 
     def test_scrna_full_contains_metadata_assistant(self):
         """scrna-full includes metadata_assistant for metadata management."""
         agents = expand_preset("scrna-full")
-        assert "metadata_assistant" in agents, "scrna-full should include metadata_assistant"
+        assert (
+            "metadata_assistant" in agents
+        ), "scrna-full should include metadata_assistant"
 
     def test_scrna_full_has_exactly_7_agents(self):
         """scrna-full should have exactly 7 agents."""
@@ -57,9 +64,13 @@ class TestScrnaFullPresetExpansion:
         agents = expand_preset("scrna-full")
 
         # These should NOT be in full single-cell preset
-        assert "proteomics_expert" not in agents, "scrna-full should not include proteomics"
+        assert (
+            "proteomics_expert" not in agents
+        ), "scrna-full should not include proteomics"
         assert "genomics_expert" not in agents, "scrna-full should not include genomics"
-        assert "machine_learning_expert_agent" not in agents, "scrna-full should not include ML"
+        assert (
+            "machine_learning_expert_agent" not in agents
+        ), "scrna-full should not include ML"
 
     def test_scrna_full_has_description(self):
         """scrna-full preset has a human-readable description."""

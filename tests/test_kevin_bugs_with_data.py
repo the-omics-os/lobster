@@ -143,31 +143,27 @@ def main():
     print("\n" + "=" * 70)
     print("INSTRUCTIONS FOR RUNNING TESTS:")
     print("=" * 70)
-    print(
-        """
+    print("""
 1. Ensure environment variables are set:
    - AWS_BEDROCK_ACCESS_KEY
    - AWS_BEDROCK_SECRET_ACCESS_KEY
    - NCBI_API_KEY (optional, for higher rate limits)
 
 2. Run each test command manually in a terminal:
-"""
-    )
+""")
 
     for i, cmd in enumerate(commands, 1):
         print(f"\n   Test {i}: {cmd['name']}")
         print(f"   $ {cmd['command']}")
 
-    print(
-        """
+    print("""
 3. Evaluate results based on expected outcomes:
    - Bug #2: Check if datasets download without "No variables" error
    - Bug #3: Verify orientation is samples × genes (not genes × samples)
    - Bug #7: Monitor for FTP timeouts and HTTP fallback behavior
 
 4. Document results in bug_verification_report.md
-"""
-    )
+""")
 
     # Save test commands to a shell script
     script_path = Path("run_kevin_tests.sh")
@@ -194,19 +190,16 @@ def main():
     # Create a Python test runner
     runner_path = Path("run_kevin_tests.py")
     with open(runner_path, "w") as f:
-        f.write(
-            """#!/usr/bin/env python3
+        f.write("""#!/usr/bin/env python3
 import subprocess
 import sys
 import time
 
 tests = [
-"""
-        )
+""")
         for cmd in commands:
             f.write(f"    {repr(cmd)},\n")
-        f.write(
-            """]
+        f.write("""]
 
 def run_test(test_info):
     print(f"\\n{'='*60}")
@@ -254,8 +247,7 @@ if __name__ == "__main__":
     passed = sum(1 for _, s in results if s)
     print(f"\\nTotal: {passed}/{len(results)} tests passed")
     sys.exit(0 if passed == len(results) else 1)
-"""
-        )
+""")
 
     runner_path.chmod(0o755)
     print(f"✅ Python test runner saved to: {runner_path}")

@@ -109,9 +109,9 @@ def test_geo_search_formatted_output_no_invalid_accessions(geo_provider):
     )
 
     # Should NOT have GDSbrowser URLs with raw UIDs (bug pattern)
-    assert "GDSbrowser?acc=GDS200" not in formatted, (
-        "Should not generate URLs with invalid GDS-prefixed UIDs"
-    )
+    assert (
+        "GDSbrowser?acc=GDS200" not in formatted
+    ), "Should not generate URLs with invalid GDS-prefixed UIDs"
 
     # Should have proper GEO URLs
     assert (
@@ -130,6 +130,7 @@ def test_geo_search_handles_summary_failure_gracefully(geo_provider, monkeypatch
     When summaries cannot be retrieved, should show clear error instead of
     invalid accessions.
     """
+
     # Mock get_dataset_summaries to return empty list (simulating API failure)
     def mock_get_summaries(search_result):
         return []
@@ -148,19 +149,19 @@ def test_geo_search_handles_summary_failure_gracefully(geo_provider, monkeypatch
     formatted = geo_provider.format_geo_search_results(search_result, query)
 
     # Should contain error message
-    assert "Error" in formatted or "⚠️" in formatted, (
-        "Should show error message when summaries unavailable"
-    )
+    assert (
+        "Error" in formatted or "⚠️" in formatted
+    ), "Should show error message when summaries unavailable"
 
     # Should NOT contain invalid GDS-prefixed UIDs
-    assert "GDS200" not in formatted, (
-        "Should not fall back to invalid UID-based accessions"
-    )
+    assert (
+        "GDS200" not in formatted
+    ), "Should not fall back to invalid UID-based accessions"
 
     # Should suggest actions
-    assert "Try again" in formatted or "Refine" in formatted, (
-        "Should suggest remediation steps"
-    )
+    assert (
+        "Try again" in formatted or "Refine" in formatted
+    ), "Should suggest remediation steps"
 
 
 @pytest.mark.real_api

@@ -80,9 +80,9 @@ class TestDEGFiltering:
         assert len(result) == 3, "Should return 3-tuple"
 
         adata_result, stats, ir = result
-        assert isinstance(adata_result, anndata.AnnData), (
-            "First element should be AnnData"
-        )
+        assert isinstance(
+            adata_result, anndata.AnnData
+        ), "First element should be AnnData"
         assert isinstance(stats, dict), "Second element should be dict"
         assert isinstance(ir, AnalysisStep), "Third element should be AnalysisStep"
 
@@ -158,9 +158,9 @@ class TestDEGFiltering:
         lenient_total = stats_lenient["total_genes_filtered"]
         strict_total = stats_strict["total_genes_filtered"]
 
-        assert strict_total >= lenient_total, (
-            f"Strict filtering should remove at least as many genes as lenient (strict: {strict_total}, lenient: {lenient_total})"
-        )
+        assert (
+            strict_total >= lenient_total
+        ), f"Strict filtering should remove at least as many genes as lenient (strict: {strict_total}, lenient: {lenient_total})"
 
     def test_stats_dict_structure(self, service, clustered_adata):
         """Test that stats dict has correct structure with filtering info."""
@@ -195,15 +195,15 @@ class TestDEGFiltering:
         assert len(groups) == 3, "Should have 3 clusters"
 
         for group in groups:
-            assert group in stats["pre_filter_counts"], (
-                f"Missing pre-filter count for {group}"
-            )
-            assert group in stats["post_filter_counts"], (
-                f"Missing post-filter count for {group}"
-            )
-            assert group in stats["filtered_counts"], (
-                f"Missing filtered count for {group}"
-            )
+            assert (
+                group in stats["pre_filter_counts"]
+            ), f"Missing pre-filter count for {group}"
+            assert (
+                group in stats["post_filter_counts"]
+            ), f"Missing post-filter count for {group}"
+            assert (
+                group in stats["filtered_counts"]
+            ), f"Missing filtered count for {group}"
 
     def test_filtered_counts_consistency(self, service, clustered_adata):
         """Test that pre/post/filtered counts are consistent."""
@@ -217,14 +217,14 @@ class TestDEGFiltering:
             filtered = stats["filtered_counts"][group]
 
             # Basic math: pre = post + filtered
-            assert pre == post + filtered, (
-                f"Inconsistent counts for {group}: {pre} != {post} + {filtered}"
-            )
+            assert (
+                pre == post + filtered
+            ), f"Inconsistent counts for {group}: {pre} != {post} + {filtered}"
 
             # Post-filter count should not exceed pre-filter
-            assert post <= pre, (
-                f"Post-filter count ({post}) > pre-filter count ({pre}) for {group}"
-            )
+            assert (
+                post <= pre
+            ), f"Post-filter count ({post}) > pre-filter count ({pre}) for {group}"
 
     def test_ir_provenance(self, service, clustered_adata):
         """Test that AnalysisStep IR is properly created."""
@@ -237,12 +237,12 @@ class TestDEGFiltering:
         )
 
         # Check IR structure
-        assert ir.operation == "find_marker_genes_with_filtering", (
-            "Wrong operation name"
-        )
-        assert ir.tool_name == "EnhancedSingleCellService.find_marker_genes", (
-            "Wrong tool name"
-        )
+        assert (
+            ir.operation == "find_marker_genes_with_filtering"
+        ), "Wrong operation name"
+        assert (
+            ir.tool_name == "EnhancedSingleCellService.find_marker_genes"
+        ), "Wrong tool name"
         assert "scanpy" in ir.library.lower(), "Missing scanpy in library"
 
         # Check code template contains both steps
@@ -257,9 +257,9 @@ class TestDEGFiltering:
 
         # Check parameter schema
         assert ir.parameter_schema is not None, "Missing parameter schema"
-        assert "min_fold_change" in ir.parameter_schema, (
-            "Missing min_fold_change in schema"
-        )
+        assert (
+            "min_fold_change" in ir.parameter_schema
+        ), "Missing min_fold_change in schema"
         assert "min_pct" in ir.parameter_schema, "Missing min_pct in schema"
         assert "max_out_pct" in ir.parameter_schema, "Missing max_out_pct in schema"
 
@@ -385,9 +385,9 @@ class TestHelperMethods:
 
     def test_create_marker_genes_ir_exists(self, service):
         """Test that IR creation method exists."""
-        assert hasattr(service, "_create_marker_genes_ir"), (
-            "Missing _create_marker_genes_ir method"
-        )
+        assert hasattr(
+            service, "_create_marker_genes_ir"
+        ), "Missing _create_marker_genes_ir method"
 
 
 if __name__ == "__main__":

@@ -654,7 +654,9 @@ class TestSchemaEvolution:
         old_style_transcriptomics = ad.AnnData(X=np.random.randint(0, 100, (50, 200)))
         old_style_transcriptomics.obs["n_genes"] = (
             old_style_transcriptomics.X > 0
-        ).sum(axis=1)  # Old field name
+        ).sum(
+            axis=1
+        )  # Old field name
 
         validator = TranscriptomicsSchema.create_validator()
 

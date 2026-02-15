@@ -12,17 +12,17 @@ Validation is structural (parses correctly, expected steps present).
 """
 
 import json
-import pytest
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
-from datetime import datetime
 
 import nbformat
+import pytest
 from nbformat import NotebookNode
 
-from lobster.core.provenance import ProvenanceTracker
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.notebook_exporter import NotebookExporter
+from lobster.core.provenance import ProvenanceTracker
 
 
 class SimulatedProvenance:
@@ -47,7 +47,7 @@ print("QC metrics calculated")""",
                     papermill_injectable=False,
                     default_value=["mt"],
                     required=False,
-                    description="Variables to calculate QC metrics for"
+                    description="Variables to calculate QC metrics for",
                 )
             },
             input_entities=["adata"],
@@ -76,7 +76,7 @@ print("Normalization complete")""",
                     papermill_injectable=True,
                     default_value=1e4,
                     required=False,
-                    description="Target sum for normalization"
+                    description="Target sum for normalization",
                 )
             },
             input_entities=["adata"],
@@ -105,22 +105,22 @@ print("Clustering complete")""",
                     papermill_injectable=True,
                     default_value=15,
                     required=False,
-                    description="Number of neighbors for graph"
+                    description="Number of neighbors for graph",
                 ),
                 "n_pcs": ParameterSpec(
                     param_type="int",
                     papermill_injectable=True,
                     default_value=50,
                     required=False,
-                    description="Number of PCs to use"
+                    description="Number of PCs to use",
                 ),
                 "resolution": ParameterSpec(
                     param_type="float",
                     papermill_injectable=True,
                     default_value=1.0,
                     required=False,
-                    description="Clustering resolution"
-                )
+                    description="Clustering resolution",
+                ),
             },
             input_entities=["adata"],
             output_entities=["adata"],
@@ -148,15 +148,15 @@ print("UMAP computed and plotted")""",
                     papermill_injectable=True,
                     default_value=0.5,
                     required=False,
-                    description="Minimum distance for UMAP"
+                    description="Minimum distance for UMAP",
                 ),
                 "spread": ParameterSpec(
                     param_type="float",
                     papermill_injectable=True,
                     default_value=1.0,
                     required=False,
-                    description="Spread parameter for UMAP"
-                )
+                    description="Spread parameter for UMAP",
+                ),
             },
             input_entities=["adata"],
             output_entities=["adata", "figure"],
@@ -184,15 +184,15 @@ print("Differential expression analysis complete")""",
                     papermill_injectable=True,
                     default_value="wilcoxon",
                     required=False,
-                    description="Statistical test method"
+                    description="Statistical test method",
                 ),
                 "n_genes": ParameterSpec(
                     param_type="int",
                     papermill_injectable=True,
                     default_value=25,
                     required=False,
-                    description="Number of top genes to plot"
-                )
+                    description="Number of top genes to plot",
+                ),
             },
             input_entities=["adata"],
             output_entities=["adata"],
@@ -240,23 +240,20 @@ class TestProvenanceExportStructure:
         activities = [
             SimulatedProvenance.create_provenance_activity(
                 SimulatedProvenance.create_transcriptomics_qc_ir(),
-                "transcriptomics_expert"
+                "transcriptomics_expert",
             ),
             SimulatedProvenance.create_provenance_activity(
-                SimulatedProvenance.create_normalization_ir(),
-                "transcriptomics_expert"
+                SimulatedProvenance.create_normalization_ir(), "transcriptomics_expert"
             ),
             SimulatedProvenance.create_provenance_activity(
-                SimulatedProvenance.create_clustering_ir(),
-                "transcriptomics_expert"
+                SimulatedProvenance.create_clustering_ir(), "transcriptomics_expert"
             ),
             SimulatedProvenance.create_provenance_activity(
                 SimulatedProvenance.create_visualization_umap_ir(),
-                "visualization_expert_agent"
+                "visualization_expert_agent",
             ),
             SimulatedProvenance.create_provenance_activity(
-                SimulatedProvenance.create_de_analysis_ir(),
-                "de_analysis_expert"
+                SimulatedProvenance.create_de_analysis_ir(), "de_analysis_expert"
             ),
         ]
 
@@ -323,8 +320,7 @@ class TestProvenanceExportStructure:
 
         # Find imports cell (should contain "import")
         import_cells = [
-            c for c in notebook.cells
-            if c.cell_type == "code" and "import" in c.source
+            c for c in notebook.cells if c.cell_type == "code" and "import" in c.source
         ]
 
         assert len(import_cells) > 0, "Should have at least one imports cell"
@@ -341,7 +337,8 @@ class TestProvenanceExportStructure:
 
         # Find parameters cell by tag
         param_cells = [
-            c for c in notebook.cells
+            c
+            for c in notebook.cells
             if "tags" in c.metadata and "parameters" in c.metadata.get("tags", [])
         ]
 
@@ -369,21 +366,19 @@ class TestProvenanceExportMultiAgent:
             # transcriptomics_expert
             SimulatedProvenance.create_provenance_activity(
                 SimulatedProvenance.create_transcriptomics_qc_ir(),
-                "transcriptomics_expert"
+                "transcriptomics_expert",
             ),
             SimulatedProvenance.create_provenance_activity(
-                SimulatedProvenance.create_normalization_ir(),
-                "transcriptomics_expert"
+                SimulatedProvenance.create_normalization_ir(), "transcriptomics_expert"
             ),
             # visualization_expert_agent
             SimulatedProvenance.create_provenance_activity(
                 SimulatedProvenance.create_visualization_umap_ir(),
-                "visualization_expert_agent"
+                "visualization_expert_agent",
             ),
             # de_analysis_expert
             SimulatedProvenance.create_provenance_activity(
-                SimulatedProvenance.create_de_analysis_ir(),
-                "de_analysis_expert"
+                SimulatedProvenance.create_de_analysis_ir(), "de_analysis_expert"
             ),
         ]
 
@@ -452,9 +447,15 @@ class TestProvenanceExportMultiAgent:
 
         # Operations should appear in provenance order
         # QC before normalization before UMAP before DE
-        qc_pos = code_text.find("qc_metrics") if "qc_metrics" in code_text else code_text.find("QC")
+        qc_pos = (
+            code_text.find("qc_metrics")
+            if "qc_metrics" in code_text
+            else code_text.find("QC")
+        )
         norm_pos = code_text.find("normalize")
-        umap_pos = code_text.find("umap") if "umap" in code_text else code_text.find("UMAP")
+        umap_pos = (
+            code_text.find("umap") if "umap" in code_text else code_text.find("UMAP")
+        )
 
         # QC should come before normalization
         if qc_pos != -1 and norm_pos != -1:
@@ -479,15 +480,12 @@ class TestProvenanceExportMetadata:
         tracker = ProvenanceTracker(namespace="simple_test")
         tracker.activities = [
             SimulatedProvenance.create_provenance_activity(
-                SimulatedProvenance.create_normalization_ir(),
-                "transcriptomics_expert"
+                SimulatedProvenance.create_normalization_ir(), "transcriptomics_expert"
             )
         ]
         return tracker
 
-    def test_notebook_has_lobster_metadata(
-        self, mock_data_manager, simple_provenance
-    ):
+    def test_notebook_has_lobster_metadata(self, mock_data_manager, simple_provenance):
         """Notebook has lobster-specific metadata."""
         exporter = NotebookExporter(simple_provenance, mock_data_manager)
         output_path = exporter.export(name="test_metadata")
@@ -512,9 +510,7 @@ class TestProvenanceExportMetadata:
         assert "ir_statistics" in lobster_meta
         assert "n_irs_extracted" in lobster_meta["ir_statistics"]
 
-    def test_notebook_contains_session_id(
-        self, mock_data_manager, simple_provenance
-    ):
+    def test_notebook_contains_session_id(self, mock_data_manager, simple_provenance):
         """Notebook references original session ID."""
         exporter = NotebookExporter(simple_provenance, mock_data_manager)
         output_path = exporter.export(name="test_session")
@@ -551,8 +547,7 @@ class TestProvenanceExportEdgeCases:
         tracker = ProvenanceTracker(namespace="test")
         tracker.activities = [
             SimulatedProvenance.create_provenance_activity(
-                SimulatedProvenance.create_normalization_ir(),
-                "test_agent"
+                SimulatedProvenance.create_normalization_ir(), "test_agent"
             )
         ]
         exporter = NotebookExporter(tracker, mock_data_manager)
@@ -581,7 +576,7 @@ class TestProvenanceExportEdgeCases:
         tracker.activities = [
             SimulatedProvenance.create_provenance_activity(
                 SimulatedProvenance.create_normalization_ir(),  # exportable
-                "transcriptomics_expert"
+                "transcriptomics_expert",
             ),
             {
                 "id": "test:internal",
@@ -623,9 +618,7 @@ class TestSimulatedProvenanceHelpers:
     def test_create_provenance_activity_contains_ir(self):
         """Helper creates activity with embedded IR."""
         ir = SimulatedProvenance.create_normalization_ir()
-        activity = SimulatedProvenance.create_provenance_activity(
-            ir, "test_agent"
-        )
+        activity = SimulatedProvenance.create_provenance_activity(ir, "test_agent")
 
         assert "ir" in activity
         assert activity["ir"]["operation"] == ir.operation

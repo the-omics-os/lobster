@@ -47,11 +47,13 @@ def test_workspace_literature():
 
         print("\nAttempting to write publication to literature workspace...")
         try:
-            result = write_tool.invoke({
-                "identifier": "PMID_12345678",
-                "workspace": "literature",
-                "output_format": "json",
-            })
+            result = write_tool.invoke(
+                {
+                    "identifier": "PMID_12345678",
+                    "workspace": "literature",
+                    "output_format": "json",
+                }
+            )
 
             if "Error" in result and "requires PublicationContent" in result:
                 print(f"✗ FAILED: Model mismatch error still exists!")
@@ -97,11 +99,13 @@ def test_workspace_data():
 
         print("\nAttempting to write dataset to data workspace...")
         try:
-            result = write_tool.invoke({
-                "identifier": "GSE123456",
-                "workspace": "data",
-                "output_format": "json",
-            })
+            result = write_tool.invoke(
+                {
+                    "identifier": "GSE123456",
+                    "workspace": "data",
+                    "output_format": "json",
+                }
+            )
 
             if "Error" in result and "requires DatasetContent" in result:
                 print(f"✗ FAILED: Model mismatch error still exists!")
@@ -142,12 +146,14 @@ def test_workspace_metadata():
 
         print("\nAttempting to write metadata to metadata workspace...")
         try:
-            result = write_tool.invoke({
-                "identifier": "custom_mapping",
-                "workspace": "metadata",
-                "content_type": "metadata",  # Fixed: must be 'metadata' not 'sample_mapping'
-                "output_format": "json",
-            })
+            result = write_tool.invoke(
+                {
+                    "identifier": "custom_mapping",
+                    "workspace": "metadata",
+                    "content_type": "metadata",  # Fixed: must be 'metadata' not 'sample_mapping'
+                    "output_format": "json",
+                }
+            )
 
             if "Error" in result:
                 print(f"✗ FAILED: {result[:200]}")
@@ -188,11 +194,13 @@ def test_workspace_data_flat_structure():
 
         print("\nAttempting to write flat-structure dataset...")
         try:
-            result = write_tool.invoke({
-                "identifier": "GSE999999",
-                "workspace": "data",
-                "output_format": "json",
-            })
+            result = write_tool.invoke(
+                {
+                    "identifier": "GSE999999",
+                    "workspace": "data",
+                    "output_format": "json",
+                }
+            )
 
             if "Error" in result:
                 print(f"✗ FAILED: {result[:200]}")

@@ -356,9 +356,9 @@ class TestValidateForH5ad:
 
         # Should flag numeric values in non-provenance contexts
         numeric_warnings = [issue for issue in issues if "Numeric value" in issue]
-        assert len(numeric_warnings) > 0, (
-            "Expected warnings for numeric values in user metadata"
-        )
+        assert (
+            len(numeric_warnings) > 0
+        ), "Expected warnings for numeric values in user metadata"
 
 
 class TestRealWorldScenarios:

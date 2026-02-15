@@ -89,9 +89,9 @@ class TestConfidenceScoring:
         assert len(result) == 3, "Should return 3-tuple"
 
         adata_result, stats, ir = result
-        assert isinstance(adata_result, anndata.AnnData), (
-            "First element should be AnnData"
-        )
+        assert isinstance(
+            adata_result, anndata.AnnData
+        ), "First element should be AnnData"
         assert isinstance(stats, dict), "Second element should be dict"
         assert isinstance(ir, AnalysisStep), "Third element should be AnalysisStep"
 
@@ -133,9 +133,9 @@ class TestConfidenceScoring:
 
         # With synthetic signatures, confidence scores should be reasonable (not zero)
         mean_confidence = confidence.mean()
-        assert mean_confidence > 0.2, (
-            f"Expected reasonable mean confidence, got {mean_confidence:.3f}"
-        )
+        assert (
+            mean_confidence > 0.2
+        ), f"Expected reasonable mean confidence, got {mean_confidence:.3f}"
 
         # Verify some cells have decent confidence
         high_conf_count = (confidence > 0.3).sum()
@@ -172,9 +172,9 @@ class TestConfidenceScoring:
         # With clear signatures, entropy should be relatively low
         mean_entropy = entropy.mean()
         max_entropy = np.log(3)  # Maximum entropy for 3 cell types
-        assert mean_entropy < max_entropy, (
-            f"Mean entropy {mean_entropy:.3f} should be < max {max_entropy:.3f}"
-        )
+        assert (
+            mean_entropy < max_entropy
+        ), f"Mean entropy {mean_entropy:.3f} should be < max {max_entropy:.3f}"
 
     def test_quality_categories(self, service, simple_adata, reference_markers):
         """Test that quality flags are correctly categorized."""
@@ -186,14 +186,14 @@ class TestConfidenceScoring:
 
         # Check valid categories
         valid_categories = {"high", "medium", "low"}
-        assert set(quality.unique()).issubset(valid_categories), (
-            f"Invalid quality categories: {set(quality.unique())}"
-        )
+        assert set(quality.unique()).issubset(
+            valid_categories
+        ), f"Invalid quality categories: {set(quality.unique())}"
 
         # Verify all cells have a quality category
-        assert len(quality) == len(simple_adata), (
-            "All cells should have quality assignment"
-        )
+        assert len(quality) == len(
+            simple_adata
+        ), "All cells should have quality assignment"
 
         # Quality categories should be distributed (at least 2 categories present)
         assert len(quality.unique()) >= 1, "Should have at least one quality category"
@@ -215,9 +215,9 @@ class TestConfidenceScoring:
             q = quality.iloc[i]
 
             if c > 0.5 and e < 0.8:
-                assert q == "high", (
-                    f"Cell {i}: conf={c:.2f}, ent={e:.2f} should be HIGH, got {q}"
-                )
+                assert (
+                    q == "high"
+                ), f"Cell {i}: conf={c:.2f}, ent={e:.2f} should be HIGH, got {q}"
             elif c > 0.3 and e < 1.0:
                 assert q in [
                     "high",
@@ -256,9 +256,9 @@ class TestConfidenceScoring:
 
         # Counts should sum to total cells
         total = quality_dist["high"] + quality_dist["medium"] + quality_dist["low"]
-        assert total == len(simple_adata), (
-            f"Quality counts {total} != cell count {len(simple_adata)}"
-        )
+        assert total == len(
+            simple_adata
+        ), f"Quality counts {total} != cell count {len(simple_adata)}"
 
     def test_ir_provenance(self, service, simple_adata, reference_markers):
         """Test that AnalysisStep IR is properly created."""
@@ -267,28 +267,28 @@ class TestConfidenceScoring:
         )
 
         # Check IR structure
-        assert ir.operation == "annotate_cell_types_with_confidence", (
-            "Wrong operation name"
-        )
-        assert ir.tool_name == "EnhancedSingleCellService.annotate_cell_types", (
-            "Wrong tool name"
-        )
+        assert (
+            ir.operation == "annotate_cell_types_with_confidence"
+        ), "Wrong operation name"
+        assert (
+            ir.tool_name == "EnhancedSingleCellService.annotate_cell_types"
+        ), "Wrong tool name"
         assert "scanpy + scipy" in ir.library, "Missing library info"
 
         # Check code template exists and mentions confidence
         assert ir.code_template is not None, "Missing code template"
-        assert "confidence" in ir.code_template.lower(), (
-            "Code template should mention confidence"
-        )
+        assert (
+            "confidence" in ir.code_template.lower()
+        ), "Code template should mention confidence"
 
         # Check parameters
         assert "reference_markers" in ir.parameters, "Missing reference_markers in IR"
 
         # Check parameter schema
         assert ir.parameter_schema is not None, "Missing parameter schema"
-        assert "reference_markers" in ir.parameter_schema, (
-            "Missing reference_markers in schema"
-        )
+        assert (
+            "reference_markers" in ir.parameter_schema
+        ), "Missing reference_markers in schema"
 
     def test_default_markers_used_when_none_provided(self, service, simple_adata):
         """Test that default markers are used when reference_markers=None."""
@@ -302,22 +302,22 @@ class TestConfidenceScoring:
         assert isinstance(ir, AnalysisStep)
 
         # Service should use default markers, so confidence columns SHOULD be created
-        assert "cell_type_confidence" in adata_result.obs.columns, (
-            "Should create confidence column using default markers"
-        )
-        assert "annotation_quality" in adata_result.obs.columns, (
-            "Should create quality column using default markers"
-        )
+        assert (
+            "cell_type_confidence" in adata_result.obs.columns
+        ), "Should create confidence column using default markers"
+        assert (
+            "annotation_quality" in adata_result.obs.columns
+        ), "Should create quality column using default markers"
 
         # Stats should have confidence metrics
-        assert "confidence_mean" in stats, (
-            "Should have confidence_mean when using default markers"
-        )
+        assert (
+            "confidence_mean" in stats
+        ), "Should have confidence_mean when using default markers"
 
         # Verify default markers were used (10 cell types in default markers)
-        assert stats["n_marker_sets"] == 10, (
-            "Should use 10 default marker sets from service.cell_type_markers"
-        )
+        assert (
+            stats["n_marker_sets"] == 10
+        ), "Should use 10 default marker sets from service.cell_type_markers"
 
     def test_sparse_matrix_support(self, service, reference_markers):
         """Test that confidence scoring works with sparse matrices."""
@@ -355,15 +355,15 @@ class TestHelperMethods:
 
     def test_calculate_per_cell_confidence_exists(self, service):
         """Test that helper method exists."""
-        assert hasattr(service, "_calculate_per_cell_confidence"), (
-            "Missing _calculate_per_cell_confidence method"
-        )
+        assert hasattr(
+            service, "_calculate_per_cell_confidence"
+        ), "Missing _calculate_per_cell_confidence method"
 
     def test_create_annotation_ir_exists(self, service):
         """Test that IR creation method exists."""
-        assert hasattr(service, "_create_annotation_ir"), (
-            "Missing _create_annotation_ir method"
-        )
+        assert hasattr(
+            service, "_create_annotation_ir"
+        ), "Missing _create_annotation_ir method"
 
 
 if __name__ == "__main__":

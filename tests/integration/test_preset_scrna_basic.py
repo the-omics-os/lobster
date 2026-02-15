@@ -7,12 +7,13 @@ Verifies that the scrna-basic preset:
 3. GraphMetadata contains expected agent names
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from lobster.config.agent_presets import expand_preset, AGENT_PRESETS
-from lobster.agents.graph import create_bioinformatics_graph, GraphMetadata
+import pytest
+
+from lobster.agents.graph import GraphMetadata, create_bioinformatics_graph
+from lobster.config.agent_presets import AGENT_PRESETS, expand_preset
 
 
 class TestScrnaBasicPresetExpansion:
@@ -32,17 +33,23 @@ class TestScrnaBasicPresetExpansion:
     def test_scrna_basic_contains_data_expert(self):
         """scrna-basic includes data_expert_agent for data loading."""
         agents = expand_preset("scrna-basic")
-        assert "data_expert_agent" in agents, "scrna-basic should include data_expert_agent"
+        assert (
+            "data_expert_agent" in agents
+        ), "scrna-basic should include data_expert_agent"
 
     def test_scrna_basic_contains_transcriptomics_expert(self):
         """scrna-basic includes transcriptomics_expert for scRNA-seq analysis."""
         agents = expand_preset("scrna-basic")
-        assert "transcriptomics_expert" in agents, "scrna-basic should include transcriptomics_expert"
+        assert (
+            "transcriptomics_expert" in agents
+        ), "scrna-basic should include transcriptomics_expert"
 
     def test_scrna_basic_contains_visualization_expert(self):
         """scrna-basic includes visualization_expert_agent for plotting."""
         agents = expand_preset("scrna-basic")
-        assert "visualization_expert_agent" in agents, "scrna-basic should include visualization_expert_agent"
+        assert (
+            "visualization_expert_agent" in agents
+        ), "scrna-basic should include visualization_expert_agent"
 
     def test_scrna_basic_has_exactly_4_agents(self):
         """scrna-basic should have exactly 4 agents."""
@@ -54,11 +61,21 @@ class TestScrnaBasicPresetExpansion:
         agents = expand_preset("scrna-basic")
 
         # These should NOT be in basic preset
-        assert "annotation_expert" not in agents, "basic preset should not include annotation_expert"
-        assert "de_analysis_expert" not in agents, "basic preset should not include de_analysis_expert"
-        assert "metadata_assistant" not in agents, "basic preset should not include metadata_assistant"
-        assert "proteomics_expert" not in agents, "basic preset should not include proteomics_expert"
-        assert "genomics_expert" not in agents, "basic preset should not include genomics_expert"
+        assert (
+            "annotation_expert" not in agents
+        ), "basic preset should not include annotation_expert"
+        assert (
+            "de_analysis_expert" not in agents
+        ), "basic preset should not include de_analysis_expert"
+        assert (
+            "metadata_assistant" not in agents
+        ), "basic preset should not include metadata_assistant"
+        assert (
+            "proteomics_expert" not in agents
+        ), "basic preset should not include proteomics_expert"
+        assert (
+            "genomics_expert" not in agents
+        ), "basic preset should not include genomics_expert"
 
     def test_scrna_basic_has_description(self):
         """scrna-basic preset has a human-readable description."""

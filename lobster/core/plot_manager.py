@@ -195,12 +195,16 @@ class PlotManager:
                         current_dataset_info = {
                             "data_shape": adata.shape,
                             "modality_name": target_name,
-                            "n_obs": adata.n_obs
-                            if hasattr(adata, "n_obs")
-                            else adata.shape[0],
-                            "n_vars": adata.n_vars
-                            if hasattr(adata, "n_vars")
-                            else adata.shape[1],
+                            "n_obs": (
+                                adata.n_obs
+                                if hasattr(adata, "n_obs")
+                                else adata.shape[0]
+                            ),
+                            "n_vars": (
+                                adata.n_vars
+                                if hasattr(adata, "n_vars")
+                                else adata.shape[1]
+                            ),
                         }
 
             # Create enhanced title with context

@@ -5,23 +5,22 @@ Provides consistent error display, categorization, and recovery patterns.
 Inspired by Dolphie's ManualException and Elia's notification patterns.
 """
 
+import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Callable, Any
-import re
+from typing import Any, Callable, Optional
 
 from textual.app import App
 from textual.message import Message
 
 from lobster.ui.widgets.error_modal import (
-    ErrorModal,
-    ErrorContext,
-    ErrorSeverity,
-    ConnectionErrorModal,
     AgentErrorModal,
+    ConnectionErrorModal,
     DataErrorModal,
+    ErrorContext,
+    ErrorModal,
+    ErrorSeverity,
 )
-
 
 # Error notification timeout constants (like Elia)
 ERROR_TIMEOUT = 10
@@ -151,7 +150,7 @@ class ErrorService:
         """
         # Try structured parsing first for LLM errors
         try:
-            from lobster.utils.error_handlers import get_structured_parser, ErrorType
+            from lobster.utils.error_handlers import ErrorType, get_structured_parser
 
             parser = get_structured_parser()
             parsed = parser.parse(error_msg)
