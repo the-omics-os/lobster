@@ -306,7 +306,7 @@ class TestSessionContinuity:
 
             # Verify load_session result
             assert result["success"] is True
-            assert result["session_id"] == session_id
+            assert result["original_session_id"] == session_id
             assert result["provenance_restored"] == 3
 
             # Verify provenance restored
