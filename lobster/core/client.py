@@ -92,13 +92,23 @@ class AgentClient(BaseClient):
             explicit_path=workspace_path, create=True
         )
 
+        # Compute session directory for provenance persistence
+        self._session_dir = (
+            self.workspace_path / ".lobster" / "sessions" / self.session_id
+        )
+
         # Initialize DataManagerV2
         if data_manager is None:
+            # Create session directory for provenance persistence
+            self._session_dir.mkdir(parents=True, exist_ok=True)
+
             from rich.console import Console
 
             console = Console() if custom_callbacks else None
             self.data_manager = DataManagerV2(
-                workspace_path=self.workspace_path, console=console
+                workspace_path=self.workspace_path,
+                session_dir=self._session_dir,
+                console=console,
             )
             logger.info("Initialized with DataManagerV2 (modular multi-omics)")
         else:
