@@ -7642,8 +7642,10 @@ def _dispatch_command(cmd_str: str, client, output):
         metadata_workspace,
         modalities_list,
         modality_describe,
+        pipeline_export,
         pipeline_info,
         pipeline_list,
+        pipeline_run,
         plots_list,
         queue_clear,
         queue_export,
@@ -7742,35 +7744,64 @@ def _dispatch_command(cmd_str: str, client, output):
 
     # --- Pipeline ---
     #
-    # Note: `pipeline export` and `pipeline run` require in-memory provenance
-    # (AnalysisStep IR chain) which is only available in a live AgentClient session.
-    # CommandClient creates a fresh DataManagerV2 with empty provenance, so these
-    # commands will always fail with "no activities". Use `lobster chat` or
-    # `lobster query` for pipeline export/run within the same session as the analysis.
+    # `pipeline export` and `pipeline run` require provenance (AnalysisStep IR chain).
+    # With session_id support, provenance can be loaded from disk via CommandClient.
+    # Check provenance availability and delegate to existing functions if present.
     #
-    # `pipeline list` and `pipeline info` are read-only and work fine here.
+    # `pipeline list` and `pipeline info` are read-only and work without provenance.
 
     elif base == "pipeline":
         if sub == "export":
-            output.print(
-                "Pipeline export requires in-memory provenance from a live analysis session.",
-                style="error",
-            )
-            output.print(
-                "Use 'lobster chat' and run '/pipeline export' within the same session as your analysis.",
-                style="info",
-            )
-            return None
+            # Check if provenance available (may be loaded from session_dir)
+            prov = getattr(client.data_manager, "provenance", None)
+
+            if not prov or not prov.activities:
+                # No provenance - provide guidance
+                output.print(
+                    "Pipeline export requires a session with analysis history.",
+                    style="error",
+                )
+                output.print(
+                    "Usage: lobster command 'pipeline export' --session-id <id>",
+                    style="info",
+                )
+
+                # List available sessions if any exist
+                sessions_dir = client.workspace_path / ".lobster" / "sessions"
+                if sessions_dir.exists():
+                    sessions = sorted(
+                        [d.name for d in sessions_dir.iterdir() if d.is_dir()]
+                    )
+                    if sessions:
+                        output.print(
+                            f"Available sessions: {', '.join(sessions[:5])}"
+                            + (" ..." if len(sessions) > 5 else ""),
+                            style="info",
+                        )
+
+                return None
+
+            # Provenance loaded - delegate to existing function
+            return pipeline_export(client, output)
+
         elif sub == "run":
-            output.print(
-                "Pipeline run requires a live analysis session with notebook executor.",
-                style="error",
-            )
-            output.print(
-                "Use 'lobster chat' and run '/pipeline run' within the same session.",
-                style="info",
-            )
-            return None
+            # Similar check for pipeline run
+            prov = getattr(client.data_manager, "provenance", None)
+
+            if not prov or not prov.activities:
+                output.print(
+                    "Pipeline run requires a session with analysis history.",
+                    style="error",
+                )
+                output.print(
+                    "Usage: lobster command 'pipeline run <notebook>' --session-id <id>",
+                    style="info",
+                )
+                return None
+
+            # Provenance loaded - delegate to existing function
+            return pipeline_run(client, output)
+
         elif sub == "info":
             return pipeline_info(client, output)
         else:
