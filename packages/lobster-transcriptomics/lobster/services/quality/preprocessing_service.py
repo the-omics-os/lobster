@@ -617,6 +617,181 @@ print(f"Top 10 genes: {adata.var_names[adata.var['highly_deviant']].tolist()[:10
         logger.debug(f"Created IR for deviance feature selection: {ir.operation}")
         return ir
 
+    def select_features_hvg(
+        self,
+        adata: anndata.AnnData,
+        n_top_genes: int = 2000,
+        flavor: str = "seurat",
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
+        """
+        Select highly variable genes using scanpy's HVG method.
+
+        This method identifies genes with high cell-to-cell variation, which are
+        most informative for downstream analysis. Unlike deviance-based selection,
+        HVG works on normalized/log-transformed data and uses dispersion-based
+        statistics.
+
+        Args:
+            adata: AnnData object (should be normalized/log-transformed for best results)
+            n_top_genes: Number of top variable genes to select (default: 2000)
+            flavor: HVG flavor ('seurat', 'cell_ranger', 'seurat_v3').
+                    'seurat' (default): normalized dispersion, works on log-normalized data.
+                    'seurat_v3': variance-stabilizing transformation, works on raw counts.
+
+        Returns:
+            Tuple[AnnData, Dict, AnalysisStep]:
+                - AnnData with 'highly_variable' column in .var
+                - Statistics dictionary with feature selection metrics
+                - AnalysisStep IR for notebook export
+
+        Raises:
+            PreprocessingError: If feature selection fails
+        """
+        try:
+            logger.debug(
+                f"Starting HVG feature selection (n_top_genes={n_top_genes}, flavor={flavor})"
+            )
+
+            # Create working copy
+            adata_processed = adata.copy()
+            original_n_genes = adata_processed.n_vars
+
+            # Scientific check: detect raw counts vs normalized data
+            # HVG (seurat/cell_ranger flavors) expects log-normalized data
+            warning = None
+            if flavor in ("seurat", "cell_ranger"):
+                if hasattr(adata_processed.X, "toarray"):
+                    max_val = adata_processed.X.max()
+                else:
+                    max_val = adata_processed.X.max()
+
+                if max_val > 50:
+                    warning = (
+                        f"Data appears to contain raw counts (max value: {max_val:.0f}). "
+                        f"HVG with flavor='{flavor}' works best on log-normalized data. "
+                        "Consider running filter_and_normalize_modality() first, or use "
+                        "method='deviance' which works directly on raw counts."
+                    )
+                    logger.warning(warning)
+
+            # Run HVG selection
+            # Adjust n_top_genes if it exceeds available genes
+            effective_n_top = min(n_top_genes, adata_processed.n_vars)
+            sc.pp.highly_variable_genes(
+                adata_processed,
+                n_top_genes=effective_n_top,
+                flavor=flavor,
+            )
+
+            # Calculate statistics
+            n_selected = int(adata_processed.var["highly_variable"].sum())
+            selected_genes = adata_processed.var_names[
+                adata_processed.var["highly_variable"]
+            ].tolist()
+
+            processing_stats = {
+                "analysis_type": "hvg_feature_selection",
+                "method": "hvg",
+                "flavor": flavor,
+                "n_top_genes_requested": n_top_genes,
+                "n_features_selected": n_selected,
+                "original_n_genes": original_n_genes,
+                "selection_rate": (n_selected / original_n_genes) * 100
+                if original_n_genes > 0
+                else 0.0,
+                "top_10_genes": selected_genes[:10],
+            }
+
+            if warning:
+                processing_stats["warning"] = warning
+
+            logger.info(
+                f"HVG feature selection completed: {n_selected}/{original_n_genes} genes selected "
+                f"({processing_stats['selection_rate']:.1f}%)"
+            )
+
+            # Create IR for notebook export
+            ir = self._create_hvg_selection_ir(
+                n_top_genes=n_top_genes,
+                flavor=flavor,
+            )
+
+            return adata_processed, processing_stats, ir
+
+        except Exception as e:
+            logger.exception(f"Error in HVG feature selection: {e}")
+            raise PreprocessingError(f"HVG feature selection failed: {str(e)}")
+
+    def _create_hvg_selection_ir(
+        self,
+        n_top_genes: int,
+        flavor: str,
+    ) -> AnalysisStep:
+        """
+        Create Intermediate Representation for HVG feature selection.
+
+        Args:
+            n_top_genes: Number of top variable genes to select
+            flavor: HVG flavor used
+
+        Returns:
+            AnalysisStep with HVG code template
+        """
+        parameter_schema = {
+            "n_top_genes": ParameterSpec(
+                param_type="int",
+                papermill_injectable=True,
+                default_value=n_top_genes,
+                required=False,
+                validation_rule="n_top_genes > 0",
+                description="Number of top highly variable genes to select",
+            ),
+            "flavor": ParameterSpec(
+                param_type="str",
+                papermill_injectable=True,
+                default_value=flavor,
+                required=False,
+                validation_rule="flavor in ('seurat', 'cell_ranger', 'seurat_v3')",
+                description="HVG selection flavor",
+            ),
+        }
+
+        code_template = """# Highly variable gene selection
+# Using scanpy's HVG method (flavor={{ flavor }})
+
+sc.pp.highly_variable_genes(
+    adata,
+    n_top_genes={{ n_top_genes }},
+    flavor='{{ flavor }}',
+)
+
+n_hvg = adata.var['highly_variable'].sum()
+print(f"Selected {n_hvg} highly variable genes out of {adata.n_vars} total genes")
+print(f"Top 10 HVGs: {adata.var_names[adata.var['highly_variable']].tolist()[:10]}")
+"""
+
+        return AnalysisStep(
+            operation="scanpy.pp.highly_variable_genes",
+            tool_name="select_features_hvg",
+            description=f"Select top {n_top_genes} highly variable genes using {flavor} method",
+            library="scanpy",
+            code_template=code_template,
+            imports=["import scanpy as sc"],
+            parameters={
+                "n_top_genes": n_top_genes,
+                "flavor": flavor,
+            },
+            parameter_schema=parameter_schema,
+            input_entities=["adata"],
+            output_entities=["adata"],
+            execution_context={
+                "method": "highly_variable_genes",
+                "flavor": flavor,
+            },
+            validates_on_export=True,
+            requires_validation=False,
+        )
+
     def integrate_and_batch_correct(self, *args, **kwargs):
         """
         DEPRECATED: This method is non-functional and has been removed.

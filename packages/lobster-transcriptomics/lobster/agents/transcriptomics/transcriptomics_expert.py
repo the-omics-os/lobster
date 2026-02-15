@@ -115,9 +115,10 @@ def transcriptomics_expert(
     clustering_service = ClusteringService()
     enhanced_service = EnhancedSingleCellService()
 
-    # Get shared tools (QC, preprocessing, analysis summary)
+    # Get shared tools (QC, preprocessing, feature selection, PCA, embedding, analysis summary)
     shared_tools = create_shared_tools(
-        data_manager, quality_service, preprocessing_service
+        data_manager, quality_service, preprocessing_service,
+        clustering_service=clustering_service,
     )
 
     # Analysis results storage (for clustering tools)

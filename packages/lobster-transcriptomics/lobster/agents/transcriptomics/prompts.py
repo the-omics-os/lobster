@@ -64,21 +64,39 @@ Based on detection, appropriate defaults are applied:
 3. **filter_and_normalize_modality** - Filter and normalize with appropriate defaults
 4. **create_analysis_summary** - Generate comprehensive analysis report
 
+### Composable Preprocessing Tools (Step-by-step control)
+5. **select_highly_variable_genes** - Standalone feature selection
+   - method="deviance" (default): Works on RAW COUNTS, run BEFORE normalization
+   - method="hvg": Works on NORMALIZED data, run AFTER filter_and_normalize
+   - n_top_genes: Number of genes to select (default: 2000)
+   - flavor: HVG flavor when method="hvg" ('seurat', 'cell_ranger', 'seurat_v3')
+
+6. **run_pca** - Standalone PCA dimensionality reduction
+   - Stores adata.raw BEFORE scaling (critical for marker gene fold-change)
+   - n_comps: Number of components (default: 30, auto-reduced for small datasets)
+   - scale_data: Whether to scale before PCA (default: True)
+   - use_highly_variable: Subset to selected features (default: True)
+
+7. **compute_neighbors_and_embed** - Standalone neighbor graph + UMAP/tSNE
+   - Requires PCA to be computed first
+   - embedding_method: 'umap' (default) or 'tsne'
+   - n_neighbors, n_pcs: Auto-adjusted for small datasets
+
 ### Clustering Tools (Single-cell specific)
-5. **cluster_modality** - Perform Leiden clustering with UMAP visualization
+8. **cluster_modality** - Perform FULL Leiden clustering pipeline (HVG → normalize → scale → PCA → neighbors → Leiden → UMAP → markers)
    - Supports multi-resolution testing with `resolutions` parameter
    - Can use custom embeddings (e.g., `use_rep="X_scvi"`)
    - Handles batch correction for multi-sample data
 
-6. **subcluster_cells** - Re-cluster specific cell subsets for finer resolution
+9. **subcluster_cells** - Re-cluster specific cell subsets for finer resolution
    - Refine heterogeneous clusters without affecting others
    - Supports multi-resolution sub-clustering
 
-7. **evaluate_clustering_quality** - Compute silhouette, Davies-Bouldin, Calinski-Harabasz scores
+10. **evaluate_clustering_quality** - Compute silhouette, Davies-Bouldin, Calinski-Harabasz scores
    - Helps determine optimal clustering resolution
    - Identifies problematic clusters
 
-8. **find_marker_genes_for_clusters** - Identify differentially expressed marker genes
+11. **find_marker_genes_for_clusters** - Identify differentially expressed marker genes
    - Uses Wilcoxon test by default
    - Supports filtering by fold-change, expression percentage, specificity
 
@@ -175,7 +193,9 @@ User Request
 |
 +-- QC/Preprocessing? --> Handle directly (assess_data_quality, filter_and_normalize)
 |
-+-- Clustering/UMAP? --> Handle directly (cluster_modality, evaluate_clustering_quality)
++-- Specific preprocessing step? (HVGs, PCA, UMAP only) --> Composable tools
+|
++-- Full clustering/analysis? --> Handle directly (cluster_modality)
 |
 +-- Marker genes for clusters? --> Handle directly (find_marker_genes_for_clusters)
 |
@@ -197,7 +217,32 @@ Do NOT describe delegation, do NOT ask permission - execute the tool call.
 
 <Standard_Workflows>
 
-## Single-Cell Analysis Workflow
+## Composable Pipeline (for step-by-step control)
+
+Use composable tools when the user asks for a SPECIFIC preprocessing step (e.g., "identify HVGs", "run PCA", "compute UMAP").
+
+### Deviance path (raw counts — recommended):
+```
+1. select_highly_variable_genes(modality, method="deviance")  # on raw counts
+2. filter_and_normalize_modality(modality_hvg_selected)       # normalize after
+3. run_pca(modality_hvg_selected_filtered_normalized)
+4. compute_neighbors_and_embed(modality_..._pca)
+```
+
+### HVG path (normalized data):
+```
+1. filter_and_normalize_modality(modality)                    # normalize first
+2. select_highly_variable_genes(modality_filtered_normalized, method="hvg")
+3. run_pca(modality_filtered_normalized_hvg_selected)
+4. compute_neighbors_and_embed(modality_..._pca)
+```
+
+### When to use composable vs cluster_modality:
+- User asks for a SPECIFIC step (HVGs, PCA, UMAP only) → composable tools
+- User asks to "cluster", "analyze", or run full pipeline → cluster_modality
+- Batch correction needed → cluster_modality only
+
+## Single-Cell Analysis Workflow (Full Pipeline)
 
 ### Step 1: QC and Preprocessing (You handle)
 ```

@@ -31,6 +31,7 @@ def create_shared_tools(
     data_manager: DataManagerV2,
     quality_service: QualityService,
     preprocessing_service: PreprocessingService,
+    clustering_service=None,
 ) -> List[Callable]:
     """
     Create shared transcriptomics tools with auto-detection.
@@ -43,6 +44,8 @@ def create_shared_tools(
         data_manager: DataManagerV2 instance for modality management
         quality_service: QualityService instance for QC operations
         preprocessing_service: PreprocessingService for filtering/normalization
+        clustering_service: Optional ClusteringService for PCA/embedding tools.
+            If None, PCA and embedding tools are not included.
 
     Returns:
         List of tool functions to be added to agent tools
@@ -643,10 +646,296 @@ Proceed with filtering and normalization for downstream analysis."""
             logger.error(f"Error creating analysis summary: {e}")
             return f"Error creating analysis summary: {str(e)}"
 
+    # -------------------------
+    # FEATURE SELECTION TOOL
+    # -------------------------
+    @tool
+    def select_highly_variable_genes(
+        modality_name: str,
+        method: str = "deviance",
+        n_top_genes: int = 2000,
+        flavor: str = "seurat",
+    ) -> str:
+        """
+        Select highly variable or highly deviant genes for downstream analysis.
+
+        This is a STANDALONE feature selection tool. Use it when the user asks
+        specifically for HVG/feature selection WITHOUT full clustering.
+        For full clustering pipelines, use cluster_modality() instead.
+
+        Supports two methods:
+        - "deviance" (default, recommended): Binomial deviance from multinomial null.
+          Works on RAW COUNTS. Run BEFORE normalization.
+        - "hvg": Traditional highly variable genes (scanpy).
+          Works on NORMALIZED data. Run AFTER filter_and_normalize_modality().
+
+        Args:
+            modality_name: Name of the modality to process
+            method: Feature selection method ('deviance' or 'hvg').
+            n_top_genes: Number of top genes to select (default: 2000)
+            flavor: HVG flavor, only used when method='hvg' ('seurat', 'cell_ranger', 'seurat_v3')
+
+        Returns:
+            Formatted report with selected genes and next-step guidance
+        """
+        try:
+            if modality_name not in data_manager.list_modalities():
+                return (
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+            logger.info(
+                f"Selecting features for '{modality_name}' using method='{method}' "
+                f"(n_top_genes={n_top_genes})"
+            )
+
+            if method == "deviance":
+                adata_result, stats, ir = preprocessing_service.select_features_deviance(
+                    adata, n_top_genes=n_top_genes
+                )
+            elif method == "hvg":
+                adata_result, stats, ir = preprocessing_service.select_features_hvg(
+                    adata, n_top_genes=n_top_genes, flavor=flavor
+                )
+            else:
+                return (
+                    f"Unknown method '{method}'. Use 'deviance' (recommended, on raw counts) "
+                    f"or 'hvg' (on normalized data)."
+                )
+
+            # Store as new modality
+            result_name = f"{modality_name}_hvg_selected"
+            data_manager.store_modality(
+                name=result_name,
+                adata=adata_result,
+                parent_name=modality_name,
+                step_summary=f"Feature selection ({method}): {stats['n_features_selected']} genes selected",
+            )
+
+            data_manager.log_tool_usage(
+                tool_name="select_highly_variable_genes",
+                parameters={
+                    "modality_name": modality_name,
+                    "method": method,
+                    "n_top_genes": n_top_genes,
+                    "flavor": flavor,
+                },
+                description=f"Selected {stats['n_features_selected']} features using {method}",
+                ir=ir,
+            )
+
+            # Build response
+            response = f"""Feature selection complete for '{modality_name}'!
+
+**Method**: {method}{f" (flavor={flavor})" if method == "hvg" else " (binomial deviance)"}
+**Genes selected**: {stats['n_features_selected']} / {stats['original_n_genes']} ({stats['selection_rate']:.1f}%)
+**Top 10 genes**: {', '.join(stats['top_10_genes'])}"""
+
+            if stats.get("warning"):
+                response += f"\n\n**Warning**: {stats['warning']}"
+
+            response += f"\n\n**New modality created**: '{result_name}'"
+
+            # Next-step guidance based on method
+            if method == "deviance":
+                response += (
+                    "\n\n**Next steps**: filter_and_normalize_modality() → run_pca()"
+                )
+            else:
+                response += "\n\n**Next steps**: run_pca() for dimensionality reduction"
+
+            analysis_results["details"]["feature_selection"] = response
+            return response
+
+        except Exception as e:
+            logger.error(f"Error in feature selection: {e}")
+            return f"Error selecting features: {str(e)}"
+
+    # -------------------------
+    # PCA TOOL
+    # -------------------------
+    @tool
+    def run_pca(
+        modality_name: str,
+        n_comps: int = 30,
+        scale_data: bool = True,
+        use_highly_variable: bool = True,
+    ) -> str:
+        """
+        Run PCA dimensionality reduction as a standalone step.
+
+        Performs scaling (optional) and PCA. Stores adata.raw BEFORE scaling
+        so downstream marker gene analysis can access unscaled expression values.
+
+        Prerequisites: Feature selection should be applied first
+        (select_highly_variable_genes or filter_and_normalize_modality).
+
+        Args:
+            modality_name: Name of the modality to process
+            n_comps: Number of principal components (default: 30)
+            scale_data: Whether to scale data before PCA (default: True)
+            use_highly_variable: Whether to subset to selected features (default: True)
+
+        Returns:
+            Formatted PCA report with variance explained and next-step guidance
+        """
+        if clustering_service is None:
+            return (
+                "Error: PCA tool requires clustering_service. "
+                "This tool is not available in the current configuration."
+            )
+
+        try:
+            if modality_name not in data_manager.list_modalities():
+                return (
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+            logger.info(f"Running PCA for '{modality_name}' (n_comps={n_comps})")
+
+            adata_result, stats, ir = clustering_service.run_pca(
+                adata,
+                n_comps=n_comps,
+                scale_data=scale_data,
+                use_highly_variable=use_highly_variable,
+            )
+
+            result_name = f"{modality_name}_pca"
+            data_manager.store_modality(
+                name=result_name,
+                adata=adata_result,
+                parent_name=modality_name,
+                step_summary=f"PCA: {stats['n_comps_computed']} components, {stats['variance_explained']}% variance",
+            )
+
+            data_manager.log_tool_usage(
+                tool_name="run_pca",
+                parameters={
+                    "modality_name": modality_name,
+                    "n_comps": n_comps,
+                    "scale_data": scale_data,
+                    "use_highly_variable": use_highly_variable,
+                },
+                description=f"PCA with {stats['n_comps_computed']} components on {modality_name}",
+                ir=ir,
+            )
+
+            response = f"""PCA complete for '{modality_name}'!
+
+**Components computed**: {stats['n_comps_computed']}
+**Variance explained**: {stats['variance_explained']}%
+**Features used**: {stats['n_features_used']}
+**Data scaled**: {stats['scaled']}
+
+**New modality created**: '{result_name}'
+
+**Next steps**: compute_neighbors_and_embed() for UMAP/tSNE visualization"""
+
+            analysis_results["details"]["pca"] = response
+            return response
+
+        except Exception as e:
+            logger.error(f"Error in PCA: {e}")
+            return f"Error running PCA: {str(e)}"
+
+    # -------------------------
+    # NEIGHBORS + EMBEDDING TOOL
+    # -------------------------
+    @tool
+    def compute_neighbors_and_embed(
+        modality_name: str,
+        n_neighbors: int = 15,
+        n_pcs: int = 30,
+        embedding_method: str = "umap",
+    ) -> str:
+        """
+        Compute neighborhood graph and embedding (UMAP or tSNE) as a standalone step.
+
+        Prerequisites: PCA must be computed first (run_pca or cluster_modality).
+
+        Args:
+            modality_name: Name of the modality to process
+            n_neighbors: Number of neighbors for KNN graph (default: 15)
+            n_pcs: Number of PCs for neighbor computation (default: 30)
+            embedding_method: Embedding method ('umap' or 'tsne', default: 'umap')
+
+        Returns:
+            Formatted embedding report with next-step guidance
+        """
+        if clustering_service is None:
+            return (
+                "Error: Embedding tool requires clustering_service. "
+                "This tool is not available in the current configuration."
+            )
+
+        try:
+            if modality_name not in data_manager.list_modalities():
+                return (
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+            logger.info(
+                f"Computing neighbors + {embedding_method} for '{modality_name}'"
+            )
+
+            adata_result, stats, ir = clustering_service.compute_neighbors_and_embed(
+                adata,
+                n_neighbors=n_neighbors,
+                n_pcs=n_pcs,
+                embedding_method=embedding_method,
+            )
+
+            result_name = f"{modality_name}_embedded"
+            data_manager.store_modality(
+                name=result_name,
+                adata=adata_result,
+                parent_name=modality_name,
+                step_summary=f"{embedding_method.upper()} embedding computed",
+            )
+
+            data_manager.log_tool_usage(
+                tool_name="compute_neighbors_and_embed",
+                parameters={
+                    "modality_name": modality_name,
+                    "n_neighbors": n_neighbors,
+                    "n_pcs": n_pcs,
+                    "embedding_method": embedding_method,
+                },
+                description=f"Computed neighbors + {embedding_method} on {modality_name}",
+                ir=ir,
+            )
+
+            response = f"""Neighbors + {embedding_method.upper()} embedding complete for '{modality_name}'!
+
+**Neighbors**: {stats['n_neighbors_used']}
+**PCs used**: {stats['n_pcs_used']}
+**Embedding**: {embedding_method.upper()} ({stats['embedding_shape'][0]} x {stats['embedding_shape'][1]})
+
+**New modality created**: '{result_name}'
+
+**Next steps**: Use cluster_modality() for Leiden clustering, or visualize directly"""
+
+            analysis_results["details"]["embedding"] = response
+            return response
+
+        except Exception as e:
+            logger.error(f"Error in neighbors/embedding: {e}")
+            return f"Error computing neighbors/embedding: {str(e)}"
+
     # Return list of tools
-    return [
+    tools = [
         check_data_status,
         assess_data_quality,
         filter_and_normalize_modality,
+        select_highly_variable_genes,
         create_analysis_summary,
     ]
+    if clustering_service is not None:
+        tools.extend([run_pca, compute_neighbors_and_embed])
+    return tools

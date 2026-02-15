@@ -324,6 +324,414 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
             requires_validation=False,
         )
 
+    # =========================================================================
+    # COMPOSABLE PIPELINE METHODS
+    # =========================================================================
+
+    def run_pca(
+        self,
+        adata: anndata.AnnData,
+        n_comps: int = 30,
+        scale_data: bool = True,
+        use_highly_variable: bool = True,
+        svd_solver: str = "arpack",
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
+        """
+        Run PCA dimensionality reduction as a standalone step.
+
+        This method performs scaling (optional) and PCA on the input data.
+        It stores adata.raw BEFORE scaling so that downstream tools like
+        find_marker_genes_for_clusters can access unscaled expression values
+        for fold-change calculations.
+
+        Args:
+            adata: AnnData object (should have feature selection applied, e.g. highly_variable)
+            n_comps: Number of principal components to compute (default: 30)
+            scale_data: Whether to scale data before PCA (default: True)
+            use_highly_variable: Whether to subset to highly variable/deviant genes (default: True)
+            svd_solver: SVD solver for PCA ('arpack', 'randomized', 'auto')
+
+        Returns:
+            Tuple[AnnData, Dict, AnalysisStep]:
+                - AnnData with X_pca in obsm and pca info in uns
+                - Statistics dictionary
+                - AnalysisStep IR for notebook export
+
+        Raises:
+            ClusteringError: If PCA fails
+        """
+        try:
+            logger.info(
+                f"Running standalone PCA (n_comps={n_comps}, scale={scale_data}, "
+                f"use_highly_variable={use_highly_variable})"
+            )
+
+            adata_processed = adata.copy()
+
+            # Determine which features to use
+            feature_col = None
+            if use_highly_variable:
+                if "highly_variable" in adata_processed.var.columns:
+                    feature_col = "highly_variable"
+                elif "highly_deviant" in adata_processed.var.columns:
+                    feature_col = "highly_deviant"
+                else:
+                    logger.warning(
+                        "No 'highly_variable' or 'highly_deviant' column found in var. "
+                        "Using all genes for PCA."
+                    )
+
+            # Store raw data BEFORE scaling — required for downstream
+            # find_marker_genes_for_clusters which uses adata.raw for fold-change
+            adata_processed.raw = adata_processed.copy()
+
+            # Subset to selected features for PCA computation
+            if feature_col is not None:
+                n_selected = int(adata_processed.var[feature_col].sum())
+                if n_selected == 0:
+                    raise ClusteringError(
+                        f"No features selected by '{feature_col}'. "
+                        "Run feature selection first."
+                    )
+                adata_selected = adata_processed[:, adata_processed.var[feature_col]].copy()
+                logger.info(f"Subset to {n_selected} features via '{feature_col}'")
+            else:
+                adata_selected = adata_processed.copy()
+
+            # Scale data
+            if scale_data:
+                logger.info("Scaling data (max_value=10)")
+                sc.pp.scale(adata_selected, max_value=10)
+
+            # Validate n_comps against data dimensions
+            n_features = adata_selected.n_vars
+            n_cells = adata_selected.n_obs
+            max_pcs = min(n_cells - 1, n_features - 1)
+
+            actual_n_comps = n_comps
+            if n_comps > max_pcs:
+                actual_n_comps = max(1, max_pcs)
+                if actual_n_comps < 1:
+                    raise ClusteringError(
+                        f"Insufficient data for PCA: {n_cells} cells and {n_features} features. "
+                        "Need at least 2 of each."
+                    )
+                logger.warning(
+                    f"Reduced n_comps from {n_comps} to {actual_n_comps} "
+                    f"(data has {n_cells} cells, {n_features} features)"
+                )
+
+            # Run PCA
+            logger.info(f"Computing PCA with {actual_n_comps} components")
+            sc.tl.pca(adata_selected, svd_solver=svd_solver, n_comps=actual_n_comps)
+
+            # Transfer PCA results back to full adata
+            adata_processed.obsm["X_pca"] = adata_selected.obsm["X_pca"]
+            if "pca" in adata_selected.uns:
+                adata_processed.uns["pca"] = adata_selected.uns["pca"]
+
+            # Compute statistics
+            variance_ratio = adata_processed.uns.get("pca", {}).get("variance_ratio", [])
+            total_variance = float(np.sum(variance_ratio) * 100) if len(variance_ratio) > 0 else 0.0
+
+            stats = {
+                "analysis_type": "pca",
+                "n_comps_requested": n_comps,
+                "n_comps_computed": actual_n_comps,
+                "variance_explained": round(total_variance, 2),
+                "n_features_used": adata_selected.n_vars,
+                "scaled": scale_data,
+                "feature_column": feature_col,
+                "svd_solver": svd_solver,
+            }
+
+            logger.info(
+                f"PCA completed: {actual_n_comps} components, "
+                f"{total_variance:.1f}% variance explained"
+            )
+
+            ir = self._create_pca_ir(
+                n_comps=actual_n_comps,
+                scale_data=scale_data,
+                use_highly_variable=use_highly_variable,
+                svd_solver=svd_solver,
+            )
+
+            return adata_processed, stats, ir
+
+        except ClusteringError:
+            raise
+        except Exception as e:
+            logger.exception(f"Error in PCA: {e}")
+            raise ClusteringError(f"PCA failed: {str(e)}")
+
+    def _create_pca_ir(
+        self,
+        n_comps: int,
+        scale_data: bool,
+        use_highly_variable: bool,
+        svd_solver: str,
+    ) -> AnalysisStep:
+        """Create IR for standalone PCA operation."""
+        parameter_schema = {
+            "n_comps": ParameterSpec(
+                param_type="int",
+                papermill_injectable=True,
+                default_value=n_comps,
+                required=False,
+                validation_rule="n_comps > 0",
+                description="Number of principal components",
+            ),
+            "scale_data": ParameterSpec(
+                param_type="bool",
+                papermill_injectable=True,
+                default_value=scale_data,
+                required=False,
+                validation_rule=None,
+                description="Whether to scale data before PCA",
+            ),
+        }
+
+        code_template = """# PCA dimensionality reduction
+# Store raw data before scaling (needed for marker gene fold-change)
+adata.raw = adata.copy()
+
+{% if use_highly_variable %}# Subset to selected features
+if 'highly_variable' in adata.var.columns:
+    adata_pca = adata[:, adata.var['highly_variable']].copy()
+elif 'highly_deviant' in adata.var.columns:
+    adata_pca = adata[:, adata.var['highly_deviant']].copy()
+else:
+    adata_pca = adata.copy()
+{% else %}adata_pca = adata.copy()
+{% endif %}
+{% if scale_data %}# Scale data
+sc.pp.scale(adata_pca, max_value=10)
+{% endif %}
+# Run PCA
+sc.tl.pca(adata_pca, svd_solver='{{ svd_solver }}', n_comps={{ n_comps }})
+
+# Transfer PCA results back
+adata.obsm['X_pca'] = adata_pca.obsm['X_pca']
+if 'pca' in adata_pca.uns:
+    adata.uns['pca'] = adata_pca.uns['pca']
+
+variance_explained = sum(adata.uns['pca']['variance_ratio']) * 100
+print(f"PCA complete: {{ n_comps }} components, {variance_explained:.1f}% variance explained")
+"""
+
+        return AnalysisStep(
+            operation="scanpy.tl.pca",
+            tool_name="run_pca",
+            description=f"PCA with {n_comps} components (scaled={scale_data})",
+            library="scanpy",
+            code_template=code_template,
+            imports=["import scanpy as sc", "import numpy as np"],
+            parameters={
+                "n_comps": n_comps,
+                "scale_data": scale_data,
+                "use_highly_variable": use_highly_variable,
+                "svd_solver": svd_solver,
+            },
+            parameter_schema=parameter_schema,
+            input_entities=["adata"],
+            output_entities=["adata"],
+            execution_context={
+                "operation_type": "dimensionality_reduction",
+                "method": "pca",
+            },
+            validates_on_export=True,
+            requires_validation=False,
+        )
+
+    def compute_neighbors_and_embed(
+        self,
+        adata: anndata.AnnData,
+        n_neighbors: int = 15,
+        n_pcs: int = 30,
+        embedding_method: str = "umap",
+        use_rep: Optional[str] = None,
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
+        """
+        Compute neighborhood graph and embedding (UMAP or tSNE) as a standalone step.
+
+        Args:
+            adata: AnnData object with PCA computed (X_pca in obsm)
+            n_neighbors: Number of neighbors for KNN graph (default: 15)
+            n_pcs: Number of PCs to use for neighbor computation (default: 30)
+            embedding_method: Embedding method ('umap' or 'tsne', default: 'umap')
+            use_rep: Representation key in obsm to use (default: None = 'X_pca')
+
+        Returns:
+            Tuple[AnnData, Dict, AnalysisStep]:
+                - AnnData with embedding coordinates in obsm and neighbor graph
+                - Statistics dictionary
+                - AnalysisStep IR for notebook export
+
+        Raises:
+            ClusteringError: If computation fails
+        """
+        try:
+            logger.info(
+                f"Computing neighbors and {embedding_method} embedding "
+                f"(n_neighbors={n_neighbors}, n_pcs={n_pcs})"
+            )
+
+            adata_processed = adata.copy()
+
+            # Validate that PCA or use_rep exists
+            rep_key = use_rep or "X_pca"
+            if rep_key not in adata_processed.obsm:
+                raise ClusteringError(
+                    f"Representation '{rep_key}' not found in adata.obsm. "
+                    f"Available keys: {list(adata_processed.obsm.keys())}. "
+                    "Run run_pca() first to compute PCA coordinates."
+                )
+
+            # Auto-adjust n_neighbors for small datasets
+            actual_n_neighbors = n_neighbors
+            if adata_processed.n_obs <= n_neighbors:
+                actual_n_neighbors = max(2, adata_processed.n_obs - 1)
+                logger.warning(
+                    f"Adjusted n_neighbors from {n_neighbors} to {actual_n_neighbors} "
+                    f"(dataset has {adata_processed.n_obs} observations)"
+                )
+
+            # Auto-adjust n_pcs if exceeds available PCs
+            available_pcs = adata_processed.obsm[rep_key].shape[1]
+            actual_n_pcs = min(n_pcs, available_pcs)
+            if actual_n_pcs < n_pcs:
+                logger.warning(
+                    f"Adjusted n_pcs from {n_pcs} to {actual_n_pcs} "
+                    f"(only {available_pcs} components available)"
+                )
+
+            # Compute neighborhood graph
+            logger.info("Computing neighborhood graph")
+            sc.pp.neighbors(
+                adata_processed,
+                n_neighbors=actual_n_neighbors,
+                n_pcs=actual_n_pcs,
+                use_rep=rep_key,
+            )
+
+            # Compute embedding
+            embedding_method_lower = embedding_method.lower()
+            if embedding_method_lower == "umap":
+                logger.info("Computing UMAP embedding")
+                sc.tl.umap(adata_processed)
+                embedding_key = "X_umap"
+            elif embedding_method_lower == "tsne":
+                logger.info("Computing tSNE embedding")
+                sc.tl.tsne(adata_processed, use_rep=rep_key, n_pcs=actual_n_pcs)
+                embedding_key = "X_tsne"
+            else:
+                raise ClusteringError(
+                    f"Unknown embedding method: '{embedding_method}'. "
+                    "Use 'umap' or 'tsne'."
+                )
+
+            # Compute statistics
+            embedding_shape = adata_processed.obsm[embedding_key].shape
+
+            stats = {
+                "analysis_type": "neighbors_and_embed",
+                "n_neighbors_used": actual_n_neighbors,
+                "n_pcs_used": actual_n_pcs,
+                "embedding_method": embedding_method_lower,
+                "embedding_key": embedding_key,
+                "embedding_shape": list(embedding_shape),
+                "use_rep": rep_key,
+            }
+
+            logger.info(
+                f"Neighbors + {embedding_method_lower} completed: "
+                f"embedding shape {embedding_shape}"
+            )
+
+            ir = self._create_neighbors_embed_ir(
+                n_neighbors=actual_n_neighbors,
+                n_pcs=actual_n_pcs,
+                embedding_method=embedding_method_lower,
+                use_rep=rep_key,
+            )
+
+            return adata_processed, stats, ir
+
+        except ClusteringError:
+            raise
+        except Exception as e:
+            logger.exception(f"Error in neighbors/embedding: {e}")
+            raise ClusteringError(f"Neighbors/embedding failed: {str(e)}")
+
+    def _create_neighbors_embed_ir(
+        self,
+        n_neighbors: int,
+        n_pcs: int,
+        embedding_method: str,
+        use_rep: str,
+    ) -> AnalysisStep:
+        """Create IR for neighborhood graph and embedding computation."""
+        parameter_schema = {
+            "n_neighbors": ParameterSpec(
+                param_type="int",
+                papermill_injectable=True,
+                default_value=n_neighbors,
+                required=False,
+                validation_rule="n_neighbors > 0",
+                description="Number of neighbors for KNN graph",
+            ),
+            "n_pcs": ParameterSpec(
+                param_type="int",
+                papermill_injectable=True,
+                default_value=n_pcs,
+                required=False,
+                validation_rule="n_pcs > 0",
+                description="Number of PCs for neighbor computation",
+            ),
+        }
+
+        if embedding_method == "umap":
+            embed_code = """# Compute UMAP embedding
+sc.tl.umap(adata)
+print(f"UMAP computed: {adata.obsm['X_umap'].shape}")
+"""
+        else:
+            embed_code = """# Compute tSNE embedding
+sc.tl.tsne(adata, use_rep='{{ use_rep }}', n_pcs={{ n_pcs }})
+print(f"tSNE computed: {adata.obsm['X_tsne'].shape}")
+"""
+
+        code_template = f"""# Compute neighborhood graph and embedding
+sc.pp.neighbors(adata, n_neighbors={{{{ n_neighbors }}}}, n_pcs={{{{ n_pcs }}}}, use_rep='{{{{ use_rep }}}}')
+print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{{{ n_pcs }}}})")
+
+{embed_code}"""
+
+        return AnalysisStep(
+            operation=f"scanpy.pp.neighbors+scanpy.tl.{embedding_method}",
+            tool_name="compute_neighbors_and_embed",
+            description=f"Compute KNN graph (k={n_neighbors}) and {embedding_method.upper()} embedding",
+            library="scanpy",
+            code_template=code_template,
+            imports=["import scanpy as sc"],
+            parameters={
+                "n_neighbors": n_neighbors,
+                "n_pcs": n_pcs,
+                "embedding_method": embedding_method,
+                "use_rep": use_rep,
+            },
+            parameter_schema=parameter_schema,
+            input_entities=["adata"],
+            output_entities=["adata"],
+            execution_context={
+                "operation_type": "embedding",
+                "method": embedding_method,
+            },
+            validates_on_export=True,
+            requires_validation=False,
+        )
+
     def cluster_and_visualize(
         self,
         adata: anndata.AnnData,

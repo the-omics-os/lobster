@@ -1111,3 +1111,102 @@ class TestMethodIntegration:
 
         # Output shapes should be similar (same filtering)
         assert processed_log1p.shape[0] == processed_sct.shape[0]
+
+
+# ===============================================================================
+# Test HVG Feature Selection
+# ===============================================================================
+
+
+@pytest.fixture
+def normalized_adata():
+    """Create normalized AnnData suitable for HVG selection."""
+    n_obs, n_vars = 200, 500
+    np.random.seed(42)
+    X = np.random.negative_binomial(5, 0.3, size=(n_obs, n_vars)).astype(np.float32)
+
+    adata = ad.AnnData(X=X)
+    adata.obs_names = [f"Cell_{i}" for i in range(n_obs)]
+    adata.var_names = [f"Gene_{i}" for i in range(n_vars)]
+
+    # Normalize (HVG seurat flavor expects log-normalized data)
+    sc.pp.normalize_total(adata, target_sum=1e4)
+    sc.pp.log1p(adata)
+    return adata
+
+
+@pytest.fixture
+def raw_count_adata():
+    """Create raw count AnnData (NOT normalized) for testing warnings."""
+    n_obs, n_vars = 200, 500
+    np.random.seed(42)
+    X = np.random.negative_binomial(5, 0.3, size=(n_obs, n_vars)).astype(np.float32)
+
+    adata = ad.AnnData(X=X)
+    adata.obs_names = [f"Cell_{i}" for i in range(n_obs)]
+    adata.var_names = [f"Gene_{i}" for i in range(n_vars)]
+    return adata
+
+
+@pytest.mark.unit
+class TestSelectFeaturesHVG:
+    """Test HVG-based feature selection functionality."""
+
+    def test_hvg_default_params(self, preprocessing_service, normalized_adata):
+        """Test HVG selection with default parameters on normalized data."""
+        adata_result, stats, ir = preprocessing_service.select_features_hvg(
+            normalized_adata
+        )
+
+        # Check 3-tuple return
+        assert isinstance(adata_result, ad.AnnData)
+        assert isinstance(stats, dict)
+        assert isinstance(ir, AnalysisStep)
+
+        # Check highly_variable column created
+        assert "highly_variable" in adata_result.var.columns
+        assert stats["n_features_selected"] > 0
+        assert stats["n_features_selected"] <= 2000
+        assert stats["method"] == "hvg"
+        assert stats["flavor"] == "seurat"
+
+    def test_hvg_raw_data_warning(self, preprocessing_service, raw_count_adata):
+        """Test that raw count data produces a warning in stats."""
+        adata_result, stats, ir = preprocessing_service.select_features_hvg(
+            raw_count_adata
+        )
+
+        # Should have warning about raw counts
+        assert "warning" in stats
+        assert "raw counts" in stats["warning"].lower() or "log-normalized" in stats["warning"].lower()
+
+    def test_hvg_ir_structure(self, preprocessing_service, normalized_adata):
+        """Test IR structure for HVG selection."""
+        _, _, ir = preprocessing_service.select_features_hvg(normalized_adata)
+
+        assert ir.operation == "scanpy.pp.highly_variable_genes"
+        assert ir.tool_name == "select_features_hvg"
+        assert ir.library == "scanpy"
+        assert "{{" in ir.code_template
+        assert "n_top_genes" in ir.code_template
+        assert ir.parameter_schema is not None
+        assert "n_top_genes" in ir.parameter_schema
+        assert "flavor" in ir.parameter_schema
+
+    def test_hvg_custom_n_top_genes(self, preprocessing_service, normalized_adata):
+        """Test HVG selection with custom n_top_genes."""
+        adata_result, stats, _ = preprocessing_service.select_features_hvg(
+            normalized_adata, n_top_genes=500
+        )
+
+        assert stats["n_top_genes_requested"] == 500
+        assert stats["n_features_selected"] <= 500
+
+    def test_hvg_top_10_genes_in_stats(self, preprocessing_service, normalized_adata):
+        """Test that top 10 genes are included in stats."""
+        _, stats, _ = preprocessing_service.select_features_hvg(normalized_adata)
+
+        assert "top_10_genes" in stats
+        assert isinstance(stats["top_10_genes"], list)
+        assert len(stats["top_10_genes"]) <= 10
+        assert len(stats["top_10_genes"]) > 0
