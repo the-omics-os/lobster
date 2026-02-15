@@ -7539,6 +7539,54 @@ def _command_files(client, output) -> Optional[str]:
     return f"Listed {total} workspace files"
 
 
+def _command_save(client, output, force: bool = False) -> Optional[str]:
+    """Save workspace state via OutputAdapter (standalone version of /save)."""
+    modality_count = len(client.data_manager.modalities)
+    if modality_count == 0:
+        output.print("Nothing to save (no data loaded)", style="info")
+        return "No data to save"
+
+    saved_items = client.data_manager.auto_save_state(force=force)
+    if saved_items:
+        actual_saves = [item for item in saved_items if "Skipped" not in item]
+        skipped_count = len(saved_items) - len(actual_saves)
+        for item in actual_saves:
+            output.print(f"Saved: {item}", style="info")
+        if skipped_count > 0:
+            output.print(
+                f"Skipped {skipped_count} unchanged modalities", style="info"
+            )
+        return f"Saved {len(actual_saves)} items, skipped {skipped_count} unchanged"
+    else:
+        output.print("All modalities already up-to-date", style="info")
+        return "All modalities already up-to-date"
+
+
+def _command_restore(client, output, pattern: str = "recent") -> Optional[str]:
+    """Restore workspace state via OutputAdapter (standalone version of /restore)."""
+    if not hasattr(client.data_manager, "restore_session"):
+        output.print("Restore not available for this client", style="error")
+        return None
+
+    try:
+        result = client.data_manager.restore_session(pattern=pattern)
+        restored = result.get("restored", [])
+        skipped = result.get("skipped", [])
+        if restored:
+            for item in restored:
+                name = item if isinstance(item, str) else item.get("name", str(item))
+                output.print(f"Restored: {name}", style="info")
+        if skipped:
+            output.print(f"Skipped {len(skipped)} items", style="info")
+        if not restored and not skipped:
+            output.print("Nothing to restore", style="info")
+            return "Nothing to restore"
+        return f"Restored {len(restored)} datasets"
+    except Exception as e:
+        output.print(f"Restore failed: {e}", style="error")
+        return None
+
+
 _UNKNOWN_COMMAND = object()  # Sentinel for unrecognized commands
 
 
@@ -7549,8 +7597,13 @@ def _dispatch_command(cmd_str: str, client, output):
     no data), or the _UNKNOWN_COMMAND sentinel if the command is unrecognized.
     """
     from lobster.cli_internal.commands import (
+        config_model_list,
+        config_provider_list,
         config_show,
         data_summary,
+        export_data,
+        file_read,
+        metadata_clear,
         metadata_exports,
         metadata_list,
         metadata_overview,
@@ -7559,34 +7612,45 @@ def _dispatch_command(cmd_str: str, client, output):
         metadata_workspace,
         modalities_list,
         modality_describe,
+        pipeline_export,
         pipeline_info,
         pipeline_list,
+        pipeline_run,
         plots_list,
+        queue_clear,
+        queue_export,
         queue_list,
         show_queue_status,
         workspace_info,
         workspace_list,
+        workspace_load,
+        workspace_remove,
         workspace_status,
     )
+    from lobster.cli_internal.utils.path_resolution import PathResolver
 
     parts = cmd_str.strip().split(None, 2)
     base = parts[0] if parts else ""
     sub = parts[1] if len(parts) > 1 else None
     args = parts[2] if len(parts) > 2 else None
 
+    # --- Data & files ---
+
     if base == "data":
         return data_summary(client, output)
 
-    elif base == "workspace":
-        if sub == "list":
-            return workspace_list(client, output)
-        elif sub == "info" and args:
-            return workspace_info(client, output, args)
-        else:
-            return workspace_status(client, output)
-
     elif base == "files":
         return _command_files(client, output)
+
+    elif base == "read":
+        filename = sub
+        if args:
+            filename = f"{sub} {args}"
+        if not filename:
+            output.print("Usage: read <file|pattern>", style="error")
+            return None
+        current_directory = Path(client.workspace_path)
+        return file_read(client, output, filename, current_directory, PathResolver)
 
     elif base == "plots":
         return plots_list(client, output)
@@ -7598,12 +7662,39 @@ def _dispatch_command(cmd_str: str, client, output):
         name = sub  # "describe <name>" — name is the second token
         return modality_describe(client, output, name)
 
+    # --- Workspace ---
+
+    elif base == "workspace":
+        if sub == "list":
+            return workspace_list(client, output)
+        elif sub == "info" and args:
+            return workspace_info(client, output, args)
+        elif sub == "load" and args:
+            current_directory = Path(client.workspace_path)
+            return workspace_load(
+                client, output, args, current_directory, PathResolver
+            )
+        elif sub == "remove" and args:
+            return workspace_remove(client, output, args)
+        else:
+            return workspace_status(client, output)
+
+    # --- Queue ---
+
     elif base == "queue":
         if sub == "list":
             queue_type = args if args else "publication"
             return queue_list(client, output, queue_type=queue_type)
+        elif sub == "clear":
+            queue_type = args if args else "publication"
+            return queue_clear(client, output, queue_type=queue_type)
+        elif sub == "export":
+            queue_type = args if args else "publication"
+            return queue_export(client, output, queue_type=queue_type)
         else:
             return show_queue_status(client, output)
+
+    # --- Metadata ---
 
     elif base == "metadata":
         if sub == "publications":
@@ -7616,41 +7707,82 @@ def _dispatch_command(cmd_str: str, client, output):
             return metadata_exports(client, output)
         elif sub == "list":
             return metadata_list(client, output)
+        elif sub == "clear":
+            return metadata_clear(client, output)
         else:
             return metadata_overview(client, output)
 
+    # --- Pipeline ---
+
     elif base == "pipeline":
-        if sub == "list":
-            return pipeline_list(client, output)
+        if sub == "export":
+            name = args.split(None, 1)[0] if args else None
+            description = args.split(None, 1)[1] if args and " " in args else None
+            return pipeline_export(client, output, name, description)
+        elif sub == "run":
+            # args = "<notebook> [modality]"
+            run_parts = args.split(None, 1) if args else []
+            notebook_name = run_parts[0] if run_parts else None
+            input_modality = run_parts[1] if len(run_parts) > 1 else None
+            return pipeline_run(client, output, notebook_name, input_modality)
         elif sub == "info":
             return pipeline_info(client, output)
         else:
+            # Default to list (covers "pipeline list" and bare "pipeline")
             return pipeline_list(client, output)
 
+    # --- Save & restore ---
+
+    elif base == "save":
+        force_save = sub == "--force" or args == "--force" if sub or args else False
+        return _command_save(client, output, force=force_save)
+
+    elif base == "restore":
+        pattern = sub if sub else "recent"
+        return _command_restore(client, output, pattern=pattern)
+
+    # --- Export ---
+
+    elif base == "export":
+        include_png = True
+        force_resave = False
+        flag_str = f"{sub or ''} {args or ''}".strip()
+        if "--no-png" in flag_str:
+            include_png = False
+        if "--force" in flag_str:
+            force_resave = True
+        return export_data(
+            client, output, include_png=include_png, force_resave=force_resave
+        )
+
+    # --- Config ---
+
     elif base == "config":
-        return config_show(client, output)
+        if sub == "provider":
+            if args == "list" or args is None:
+                return config_provider_list(client, output)
+        elif sub == "model":
+            if args == "list" or args is None:
+                return config_model_list(client, output)
+        else:
+            return config_show(client, output)
 
     else:
         available = [
             "data",
             "files",
-            "workspace",
-            "workspace list",
-            "workspace info <sel>",
+            "read <file>",
+            "workspace [list|info|load|remove]",
             "plots",
             "modalities",
             "describe <name>",
-            "queue",
-            "queue list [type]",
-            "metadata",
-            "metadata publications",
-            "metadata samples",
-            "metadata workspace",
-            "metadata exports",
-            "metadata list",
-            "pipeline list",
-            "pipeline info",
-            "config",
+            "queue [list|clear|export]",
+            "metadata [publications|samples|workspace|exports|list|clear]",
+            "pipeline [list|info|export|run]",
+            "save [--force]",
+            "restore [pattern]",
+            "export [--no-png] [--force]",
+            "config [provider list|model list]",
         ]
         output.print(f"Unknown command: {cmd_str}", style="error")
         output.print("Available commands: " + ", ".join(available), style="info")

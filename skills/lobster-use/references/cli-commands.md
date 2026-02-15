@@ -225,25 +225,45 @@ lobster command /data --json
 
 | Command | Description |
 |---------|-------------|
+| **Data & Files** | |
 | `data` | Current dataset info (shape, columns, stats) |
 | `files` | List workspace files organized by category |
-| `workspace` | Show workspace status |
-| `workspace list` | List all datasets with status |
-| `workspace info <sel>` | Detailed info for a dataset by index or name |
+| `read <file>` | View file contents (text, code, data preview) |
 | `plots` | List generated visualizations |
 | `modalities` | Show detailed modality information |
 | `describe <name>` | Statistical summary of a modality |
+| **Workspace** | |
+| `workspace` | Show workspace status |
+| `workspace list` | List all datasets with status |
+| `workspace info <sel>` | Detailed info for a dataset by index or name |
+| `workspace load <sel>` | Load a dataset by index, pattern, or file path |
+| `workspace remove <sel>` | Remove a dataset from workspace |
+| **Queue** | |
 | `queue` | Download and publication queue status |
 | `queue list [type]` | List queued items (default: publication) |
+| `queue clear [type]` | Clear queue entries |
+| `queue export [type]` | Export queue to CSV |
+| **Metadata** | |
 | `metadata` | Smart metadata overview |
 | `metadata publications` | Publication queue breakdown |
 | `metadata samples` | Sample statistics and disease coverage |
 | `metadata workspace` | File inventory across storage locations |
 | `metadata exports` | Export files with categories |
 | `metadata list` | Detailed metadata list |
+| `metadata clear` | Clear metadata entries |
+| **Pipeline** | |
 | `pipeline list` | List available notebooks |
 | `pipeline info` | Notebook details |
+| `pipeline export [name] [desc]` | Export session as Jupyter notebook |
+| `pipeline run [notebook] [modality]` | Run a saved notebook with new data |
+| **State** | |
+| `save [--force]` | Save all modalities to workspace |
+| `restore [pattern]` | Restore datasets from disk (default: recent) |
+| `export [--no-png] [--force]` | Export session data + plots to workspace/exports/ |
+| **Config** | |
 | `config` | Current configuration |
+| `config provider list` | List available LLM providers |
+| `config model list` | List available models |
 
 ### JSON Output Schema
 
