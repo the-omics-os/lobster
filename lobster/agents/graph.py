@@ -345,7 +345,8 @@ def create_bioinformatics_graph(
     if agent_filter is None:
         from lobster.config.subscription_tiers import is_agent_available
 
-        agent_filter = lambda name, config: is_agent_available(name, subscription_tier)
+        def agent_filter(name, config):
+            return is_agent_available(name, subscription_tier)
     logger.debug("Creating bioinformatics multi-agent graph")
 
     # Get model configuration for the supervisor

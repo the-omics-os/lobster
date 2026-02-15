@@ -452,7 +452,7 @@ class MassIVEDownloadService(IDownloadService):
                         if file_size
                         else "Size unknown"
                     )
-                except:
+                except Exception:
                     file_size = None
 
                 # Download

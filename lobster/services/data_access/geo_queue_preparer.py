@@ -16,7 +16,6 @@ from lobster.core.interfaces.queue_preparer import IQueuePreparer
 from lobster.utils.logger import get_logger
 
 if TYPE_CHECKING:
-    from lobster.core.data_manager_v2 import DataManagerV2
     from lobster.core.schemas.download_queue import StrategyConfig
     from lobster.core.schemas.download_urls import DownloadUrlResult
 
@@ -316,7 +315,9 @@ class GEOQueuePreparer(IQueuePreparer):
         if isinstance(strategy_config, dict):
             get = strategy_config.get
         else:
-            get = lambda k, d=None: getattr(strategy_config, k, d)
+
+            def get(k, d=None):
+                return getattr(strategy_config, k, d)
 
         has_h5ad = bool(url_data.h5_url) or any(
             f.filename.endswith((".h5ad", ".h5")) for f in url_data.primary_files

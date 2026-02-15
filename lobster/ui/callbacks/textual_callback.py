@@ -276,11 +276,8 @@ class TextualCallbackHandler(BaseCallbackHandler):
         if not self.current_agent:
             return
 
-        # Calculate duration
-        duration_ms = None
+        # Clean up start time
         if self.current_agent in self.start_times:
-            delta = datetime.now() - self.start_times[self.current_agent]
-            duration_ms = delta.total_seconds() * 1000
             del self.start_times[self.current_agent]
 
         # Extract token usage if available

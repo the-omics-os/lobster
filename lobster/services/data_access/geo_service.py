@@ -2341,13 +2341,6 @@ class GEOService:
         # This guarantees metadata availability for all code paths (including early returns)
         if geo_id not in self.data_manager.metadata_store:
             logger.debug(f"Storing minimal metadata for {geo_id} before validation")
-            minimal_metadata = {
-                "geo_id": geo_id,
-                "title": metadata.get("title", ""),
-                "summary": metadata.get("summary", ""),
-                "status": "validating",  # Indicate validation in progress
-                "timestamp": datetime.now().isoformat(),
-            }
 
             # Use helper method for consistent structure
             self.data_manager._store_geo_metadata(

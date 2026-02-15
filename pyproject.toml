@@ -444,3 +444,11 @@ dev = [
     "pytest-asyncio>=1.1.0",
     "pytest-cov>=6.2.1",
 ]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+ignore = [
+    "E402",  # module-import-not-at-top-of-file (intentional lazy loading)
+]

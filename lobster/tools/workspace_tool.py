@@ -683,7 +683,6 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                 for file_info in export_files:
                     # Extract file metadata
                     file_name = file_info.get("name", "unknown")
-                    file_path = file_info.get("path")
                     file_size = file_info.get("size", 0)
                     modified_time = file_info.get("modified", "unknown")
                     category = file_info.get("category", "unknown")
@@ -931,7 +930,7 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                                     time_ago = f"{time_diff.seconds // 60}m ago"
                                 else:
                                     time_ago = "just now"
-                            except:
+                            except Exception:
                                 time_ago = "unknown"
 
                             response += f'- **{entry["entry_id"]}**: "{title_short}" ({entry["status"]}) - Updated {time_ago}\n'

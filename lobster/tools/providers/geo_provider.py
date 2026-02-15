@@ -518,7 +518,6 @@ class GEOProvider(BasePublicationProvider):
         # Retry logic for backend errors (NCBI search backend failures)
         retry = 0
         sleep_time = self.config.sleep_time
-        last_error = None
 
         while retry <= self.config.max_retry:
             # Execute request with retry logic
@@ -539,7 +538,6 @@ class GEOProvider(BasePublicationProvider):
                         "Search Backend failed" in error_msg
                         or "Database is not supported" in error_msg
                     ):
-                        last_error = error_msg
                         if retry < self.config.max_retry:
                             logger.warning(
                                 f"NCBI backend error (attempt {retry + 1}/{self.config.max_retry + 1}): {error_msg}. "

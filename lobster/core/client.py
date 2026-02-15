@@ -2379,7 +2379,7 @@ class AgentClient(BaseClient):
         try:
             # Validate provider
             try:
-                provider = LLMProvider(provider_name)
+                LLMProvider(provider_name)  # Validates provider name
             except ValueError:
                 valid_providers = ", ".join([p.value for p in LLMProvider])
                 return {

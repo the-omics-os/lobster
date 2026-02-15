@@ -60,10 +60,7 @@ class ConnectionsPanel(Vertical):
 
     def _check_connections(self) -> None:
         """Check database connectivity."""
-        import os
-
         ncbi_ok = True  # NCBI is publicly accessible
-        has_ncbi_key = bool(os.environ.get("NCBI_API_KEY"))
 
         for name, config in DATABASE_REGISTRY.items():
             check_type = config["check"]

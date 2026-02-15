@@ -6,7 +6,9 @@
 #
 # Architecture:
 # - Direct publishing from uv workspace packages
-# - 6 packages (core + 5 agent packages) built and published
+# - 9 packages built (core + 8 agent packages)
+# - 6 public packages published to both PyPI and TestPyPI
+# - 3 private packages published to TestPyPI only (metadata, ml, structural-viz)
 # - OIDC Trusted Publishing with per-package environments (monorepo pattern)
 # - Tag-based triggers: v*.*.* for PyPI, v*.*.*-test for TestPyPI
 # - Manual dispatch for re-publishing (e.g., after adding new publishers)
@@ -101,7 +103,7 @@ jobs:
           echo "Version validated: $VERSION"
 
   # ===========================================================================
-  # Step 2: Build All Packages
+  # Step 2: Build All Packages (always build all 9)
   # ===========================================================================
   build:
     name: Build ${{ matrix.package.name }}
@@ -111,6 +113,7 @@ jobs:
       fail-fast: false
       matrix:
         package:
+          # --- Public packages (PyPI + TestPyPI) ---
           - name: lobster-ai
             path: "."
           - name: lobster-transcriptomics
@@ -123,6 +126,13 @@ jobs:
             path: "packages/lobster-proteomics"
           - name: lobster-genomics
             path: "packages/lobster-genomics"
+          # --- Private packages (TestPyPI only) ---
+          - name: lobster-metadata
+            path: "packages/lobster-metadata"
+          - name: lobster-ml
+            path: "packages/lobster-ml"
+          - name: lobster-structural-viz
+            path: "packages/lobster-structural-viz"
 
     steps:
       - uses: actions/checkout@v4
@@ -163,8 +173,11 @@ jobs:
   # ===========================================================================
   # PyPI requires unique (owner, repo, workflow, environment) for each Trusted Publisher.
   # For monorepos, we use per-package environments: pypi-{package-name}
+  #
+  # Public packages: publish to PyPI or TestPyPI (based on tag)
+  # Private packages: publish to TestPyPI only (skipped on production tags)
 
-  # --- Core Package ---
+  # --- Core Package (public) ---
   publish-lobster-ai:
     name: Publish lobster-ai
     needs: [validate-version, build]
@@ -187,7 +200,7 @@ jobs:
           skip-existing: true
           verbose: true
 
-  # --- Agent Packages ---
+  # --- Public Agent Packages (PyPI + TestPyPI) ---
   publish-lobster-transcriptomics:
     name: Publish lobster-transcriptomics
     needs: [validate-version, build, publish-lobster-ai]
@@ -298,6 +311,78 @@ jobs:
           skip-existing: true
           verbose: true
 
+  # --- Private Agent Packages (TestPyPI ONLY) ---
+  # These packages are skipped on production PyPI tags.
+
+  publish-lobster-metadata:
+    name: Publish lobster-metadata (TestPyPI only)
+    needs: [validate-version, build, publish-lobster-ai]
+    if: needs.validate-version.outputs.is_test == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi-lobster-metadata
+      url: https://test.pypi.org/project/lobster-metadata/
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-lobster-metadata
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist/
+          skip-existing: true
+          verbose: true
+
+  publish-lobster-ml:
+    name: Publish lobster-ml (TestPyPI only)
+    needs: [validate-version, build, publish-lobster-ai]
+    if: needs.validate-version.outputs.is_test == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi-lobster-ml
+      url: https://test.pypi.org/project/lobster-ml/
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-lobster-ml
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist/
+          skip-existing: true
+          verbose: true
+
+  publish-lobster-structural-viz:
+    name: Publish lobster-structural-viz (TestPyPI only)
+    needs: [validate-version, build, publish-lobster-ai]
+    if: needs.validate-version.outputs.is_test == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi-lobster-structural-viz
+      url: https://test.pypi.org/project/lobster-structural-viz/
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-lobster-structural-viz
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist/
+          skip-existing: true
+          verbose: true
+
   # ===========================================================================
   # Step 4: Verify Installation (TestPyPI only)
   # ===========================================================================
@@ -311,6 +396,9 @@ jobs:
       - publish-lobster-visualization
       - publish-lobster-proteomics
       - publish-lobster-genomics
+      - publish-lobster-metadata
+      - publish-lobster-ml
+      - publish-lobster-structural-viz
     if: needs.validate-version.outputs.is_test == 'true'
     runs-on: ubuntu-latest
 
@@ -337,23 +425,29 @@ jobs:
           python -c "from lobster.version import __version__; print(f'Version: {__version__}')"
           lobster --help
 
-      - name: Test full installation
+      - name: Test full installation with all agent packages
         run: |
           VERSION="${{ needs.validate-version.outputs.version }}"
 
-          echo "Installing lobster-ai[full]==$VERSION from TestPyPI..."
+          echo "Installing all agent packages from TestPyPI..."
           pip install --index-url https://test.pypi.org/simple/ \
                       --extra-index-url https://pypi.org/simple \
-                      "lobster-ai[full]==$VERSION"
+                      "lobster-ai[full]==$VERSION" \
+                      lobster-metadata \
+                      lobster-ml \
+                      lobster-structural-viz
 
           python -c "
           from lobster.core.component_registry import component_registry
           agents = component_registry.list_agents()
           print(f'Discovered {len(agents)} agents:')
-          for agent in agents:
+          for agent in sorted(agents):
               print(f'  - {agent}')
-          assert len(agents) >= 5, f'Expected at least 5 agents with [full], found {len(agents)}'
-          print('SUCCESS: Agent packages installed and discovered')
+          # With all 8 packages: 13 agents expected
+          # (3 transcriptomics + 2 research + 1 viz + 1 metadata + 1 genomics
+          #  + 1 proteomics + 3 ml + 1 structural-viz = 13)
+          assert len(agents) >= 11, f'Expected at least 11 agents with all packages, found {len(agents)}'
+          print('SUCCESS: All agent packages installed and discovered')
           "
 
   # ===========================================================================
@@ -370,6 +464,9 @@ jobs:
       - publish-lobster-visualization
       - publish-lobster-proteomics
       - publish-lobster-genomics
+      - publish-lobster-metadata
+      - publish-lobster-ml
+      - publish-lobster-structural-viz
     if: always()
     runs-on: ubuntu-latest
 
@@ -386,7 +483,7 @@ jobs:
           echo "**Target:** $TARGET" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          echo "### Package Status" >> $GITHUB_STEP_SUMMARY
+          echo "### Public Packages (PyPI + TestPyPI)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Package | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
@@ -397,6 +494,17 @@ jobs:
           echo "| lobster-proteomics | ${{ needs.publish-lobster-proteomics.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| lobster-genomics | ${{ needs.publish-lobster-genomics.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "$IS_TEST" == "true" ]]; then
+            echo "### Private Packages (TestPyPI only)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Package | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
+            echo "| lobster-metadata | ${{ needs.publish-lobster-metadata.result }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| lobster-ml | ${{ needs.publish-lobster-ml.result }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| lobster-structural-viz | ${{ needs.publish-lobster-structural-viz.result }} |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
 
           if [[ "$IS_TEST" == "true" ]]; then
             echo "### Install from TestPyPI" >> $GITHUB_STEP_SUMMARY

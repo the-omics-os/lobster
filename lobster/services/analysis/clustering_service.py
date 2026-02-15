@@ -783,7 +783,6 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
                 adata.raw = adata.copy()
 
                 # Step 3: Subset to selected features
-                total_genes = adata.n_vars
                 if n_selected == 0:
                     raise ClusteringError(
                         "No highly deviant genes detected. This typically indicates:\n"

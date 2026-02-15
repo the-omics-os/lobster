@@ -236,11 +236,9 @@ class AgentCapabilityExtractor:
                 # ── StructuredTool path ──────────────────────────────────────
                 if hasattr(tool_obj, "name"):
                     tool_name = tool_obj.name
-                    description = getattr(tool_obj, "description", "")
                     func = tool_obj.func
                 else:  # fallback to plain function
                     tool_name = getattr(tool_obj, "_tool_name", tool_obj.__name__)
-                    description = getattr(tool_obj, "__doc__", "") or ""
                     func = tool_obj
 
                 doc_info = cls._parse_docstring(func.__doc__ or "")

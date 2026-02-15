@@ -450,10 +450,10 @@ class DataManagerV2:
                 "genomics_snp_array", PLINKAdapter(strict_validation=False)
             )
 
-            GENOMICS_AVAILABLE = True
+            _GENOMICS_AVAILABLE = True
             logger.debug("Genomics adapters registered")
         except ImportError:
-            GENOMICS_AVAILABLE = False
+            _GENOMICS_AVAILABLE = False
             logger.debug("Genomics adapters not available")
 
     def _resolve_adapter_for_file(self, file_path: Path):

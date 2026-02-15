@@ -1286,7 +1286,7 @@ class GEOParser:
                                 for s in obs_data
                             ]
                             break
-                    except:
+                    except Exception:
                         continue
 
                 if obs_names is None:
@@ -1309,7 +1309,7 @@ class GEOParser:
                                 for s in var_data
                             ]
                             break
-                    except:
+                    except Exception:
                         continue
 
                 if var_names is None:

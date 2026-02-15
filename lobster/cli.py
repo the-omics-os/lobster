@@ -1639,7 +1639,6 @@ def _perform_agent_selection_non_interactive(
 def _perform_agent_selection_interactive(workspace_path: Path) -> tuple[list[str], str]:
     """Handle interactive agent selection. Returns (selected_agents, preset_name or None)."""
     from rich.console import Console
-    from rich.prompt import Prompt
 
     console = Console()
 
@@ -2730,8 +2729,6 @@ def _dna_agent_loading_phase(
         "G": (255, 193, 7),  # Guanine - gold
         "C": (41, 121, 255),  # Cytosine - blue
     }
-    lobster_orange = (228, 92, 71)
-
     total_agents = len(agent_names)
     loaded_count = 0
     start_time = time.time()
@@ -3633,7 +3630,6 @@ def config_test(
                         log("❌ Ollama: No models installed", "red")
                         provider = None
                     else:
-                        model_names = [m.get("name", "unknown") for m in models[:3]]
                         log(f"  Ollama server: Running ({len(models)} models)", "green")
                 except requests.exceptions.ConnectionError:
                     test_results["checks"]["llm_provider"][
@@ -3684,7 +3680,7 @@ def config_test(
                         test_config, "config_test", workspace_path=workspace_path
                     )
                     log("  Testing API connectivity...", "yellow")
-                    response = test_llm.invoke("Reply with just 'ok'")
+                    test_llm.invoke("Reply with just 'ok'")
 
                     test_results["checks"]["llm_provider"]["status"] = "pass"
                     test_results["checks"]["llm_provider"]["message"] = "Connected"
@@ -7225,7 +7221,7 @@ def dashboard_command(
         from lobster.ui.os_app import run_lobster_os
 
         run_lobster_os(workspace)
-    except ImportError as e:
+    except ImportError:
         console.print(
             "[yellow]TUI mode requires the textual package.[/yellow]\n"
             "Install with: [bold]pip install lobster-ai[tui][/bold]\n"
@@ -8203,7 +8199,7 @@ def test(
                     model_id=default_model, temperature=1.0, max_tokens=50
                 )
 
-                response = test_llm.invoke("Reply with just 'ok'")
+                test_llm.invoke("Reply with just 'ok'")
 
                 console.print()
                 console.print(
