@@ -7846,6 +7846,12 @@ def command_cmd(
         "-w",
         help="Workspace directory. Default: ./.lobster_workspace",
     ),
+    session_id: Optional[str] = typer.Option(
+        None,
+        "--session-id",
+        "-s",
+        help="Session ID to load. Use 'latest' for most recent. Defaults to last session if not specified.",
+    ),
     json_output: bool = typer.Option(
         False,
         "--json",
@@ -7857,15 +7863,15 @@ def command_cmd(
     """
     Execute workspace commands without an LLM session.
 
-    Fast (~300ms) access to slash commands like /data, /files, /workspace list.
-    No API keys or LLM provider required.
+    Supports --session-id for accessing session-specific data like provenance.
+    Defaults to most recent session when available.
 
     \b
     Examples:
       lobster command data
-      lobster command "workspace list"
+      lobster command "pipeline export" --session-id exp1
+      lobster command "pipeline list" -s latest
       lobster command files --json
-      lobster command "metadata publications" --json -w ./my_project
     """
     # Strip leading / if user types it out of habit
     cmd_str = cmd.lstrip("/").strip()
@@ -7879,7 +7885,47 @@ def command_cmd(
 
     try:
         workspace_path = resolve_workspace(explicit_path=workspace, create=True)
-        cmd_client = CommandClient(workspace_path)
+
+        # Resolve session_id: None or "latest" both resolve to most recent session
+        resolved_session_id = None
+
+        if session_id and session_id != "latest":
+            # Explicit session ID provided
+            resolved_session_id = session_id
+        else:
+            # session_id is None or "latest" - resolve to most recent session
+            sessions_dir = workspace_path / ".lobster" / "sessions"
+
+            if sessions_dir.exists():
+                # Find all session directories, sort by mtime (most recent first)
+                session_dirs = sorted(
+                    [d for d in sessions_dir.iterdir() if d.is_dir()],
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True,
+                )
+
+                if session_dirs:
+                    resolved_session_id = session_dirs[0].name
+                    # Show resolved session
+                    from datetime import datetime
+
+                    last_activity = datetime.fromtimestamp(
+                        session_dirs[0].stat().st_mtime
+                    )
+                    console.print(
+                        f"Using session: {resolved_session_id} "
+                        f"(last activity: {last_activity.strftime('%Y-%m-%d %H:%M')})"
+                    )
+
+            # If no sessions found (either no directory or empty)
+            if not resolved_session_id:
+                console.print("No sessions found in workspace.")
+                console.print(
+                    "Create one with: lobster query '...' --session-id <name>"
+                )
+                raise typer.Exit(1)
+
+        cmd_client = CommandClient(workspace_path, session_id=resolved_session_id)
 
         if json_output:
             from lobster.cli_internal.commands import JsonOutputAdapter
