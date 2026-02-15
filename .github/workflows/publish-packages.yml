@@ -396,10 +396,12 @@ jobs:
       - publish-lobster-visualization
       - publish-lobster-proteomics
       - publish-lobster-genomics
-      - publish-lobster-metadata
-      - publish-lobster-ml
-      - publish-lobster-structural-viz
-    if: needs.validate-version.outputs.is_test == 'true'
+    # Only run on TestPyPI. Does NOT depend on private publish jobs so
+    # the workflow graph is never blocked by skipped/failed private packages.
+    if: |
+      always() &&
+      needs.validate-version.outputs.is_test == 'true' &&
+      needs.publish-lobster-ai.result == 'success'
     runs-on: ubuntu-latest
 
     steps:
@@ -425,17 +427,14 @@ jobs:
           python -c "from lobster.version import __version__; print(f'Version: {__version__}')"
           lobster --help
 
-      - name: Test full installation with all agent packages
+      - name: Test public agent packages
         run: |
           VERSION="${{ needs.validate-version.outputs.version }}"
 
-          echo "Installing all agent packages from TestPyPI..."
+          echo "Installing lobster-ai[full]==$VERSION from TestPyPI..."
           pip install --index-url https://test.pypi.org/simple/ \
                       --extra-index-url https://pypi.org/simple \
-                      "lobster-ai[full]==$VERSION" \
-                      lobster-metadata \
-                      lobster-ml \
-                      lobster-structural-viz
+                      "lobster-ai[full]==$VERSION"
 
           python -c "
           from lobster.core.component_registry import component_registry
@@ -443,11 +442,28 @@ jobs:
           print(f'Discovered {len(agents)} agents:')
           for agent in sorted(agents):
               print(f'  - {agent}')
-          # With all 8 packages: 13 agents expected
-          # (3 transcriptomics + 2 research + 1 viz + 1 metadata + 1 genomics
-          #  + 1 proteomics + 3 ml + 1 structural-viz = 13)
-          assert len(agents) >= 11, f'Expected at least 11 agents with all packages, found {len(agents)}'
-          print('SUCCESS: All agent packages installed and discovered')
+          assert len(agents) >= 5, f'Expected at least 5 agents with [full], found {len(agents)}'
+          print('SUCCESS: Public agent packages installed and discovered')
+          "
+
+      - name: Test private agent packages (best-effort)
+        continue-on-error: true
+        run: |
+          echo "Installing private packages from TestPyPI (best-effort)..."
+          pip install --index-url https://test.pypi.org/simple/ \
+                      --extra-index-url https://pypi.org/simple \
+                      lobster-metadata lobster-ml lobster-structural-viz || true
+
+          python -c "
+          from lobster.core.component_registry import component_registry
+          agents = component_registry.list_agents()
+          print(f'Total agents discovered: {len(agents)}')
+          for agent in sorted(agents):
+              print(f'  - {agent}')
+          if len(agents) >= 11:
+              print('SUCCESS: All agent packages (public + private) installed')
+          else:
+              print(f'PARTIAL: {len(agents)} agents found (some private packages may not have published)')
           "
 
   # ===========================================================================
@@ -464,9 +480,8 @@ jobs:
       - publish-lobster-visualization
       - publish-lobster-proteomics
       - publish-lobster-genomics
-      - publish-lobster-metadata
-      - publish-lobster-ml
-      - publish-lobster-structural-viz
+    # Only depend on public packages so production PyPI runs are never
+    # blocked by skipped private-package jobs.
     if: always()
     runs-on: ubuntu-latest
 
@@ -498,11 +513,13 @@ jobs:
           if [[ "$IS_TEST" == "true" ]]; then
             echo "### Private Packages (TestPyPI only)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Package | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "| Package | Target |" >> $GITHUB_STEP_SUMMARY
             echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
-            echo "| lobster-metadata | ${{ needs.publish-lobster-metadata.result }} |" >> $GITHUB_STEP_SUMMARY
-            echo "| lobster-ml | ${{ needs.publish-lobster-ml.result }} |" >> $GITHUB_STEP_SUMMARY
-            echo "| lobster-structural-viz | ${{ needs.publish-lobster-structural-viz.result }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| lobster-metadata | TestPyPI |" >> $GITHUB_STEP_SUMMARY
+            echo "| lobster-ml | TestPyPI |" >> $GITHUB_STEP_SUMMARY
+            echo "| lobster-structural-viz | TestPyPI |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "*Private packages publish independently — check their job status above.*" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
@@ -518,3 +535,32 @@ jobs:
             echo "pip install lobster-ai[full]  # with all public agents" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
+
+  # ===========================================================================
+  # Step 6: Trigger Omics-OS Cloud Deployment
+  # ===========================================================================
+  trigger-cloud-deploy:
+    name: Trigger Cloud Deploy
+    needs:
+      - validate-version
+      - publish-lobster-ai
+    # Only fire when core package published successfully
+    if: needs.publish-lobster-ai.result == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Wait for PyPI index propagation
+        run: sleep 60
+
+      - name: Dispatch to lobster-cloud
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.LOBSTER_CLOUD_DEPLOY_TOKEN }}
+          repository: the-omics-os/lobster-cloud
+          event-type: lobster-packages-published
+          client-payload: >-
+            {
+              "version": "${{ needs.validate-version.outputs.version }}",
+              "is_test": "${{ needs.validate-version.outputs.is_test }}",
+              "source_run": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
