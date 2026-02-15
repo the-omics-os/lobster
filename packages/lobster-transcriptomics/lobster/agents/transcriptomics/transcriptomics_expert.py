@@ -71,6 +71,8 @@ def transcriptomics_expert(
     agent_name: str = "transcriptomics_expert",
     delegation_tools: list = None,
     workspace_path: Optional[Path] = None,
+    provider_override: Optional[str] = None,
+    model_override: Optional[str] = None,
 ):
     """
     Factory function for transcriptomics expert parent agent.
@@ -91,7 +93,11 @@ def transcriptomics_expert(
     settings = get_settings()
     model_params = settings.get_agent_llm_params("transcriptomics_expert")
     llm = create_llm(
-        "transcriptomics_expert", model_params, workspace_path=workspace_path
+        "transcriptomics_expert",
+        model_params,
+        provider_override=provider_override,
+        model_override=model_override,
+        workspace_path=workspace_path,
     )
 
     # Normalize callbacks to a flat list (fix double-nesting bug)

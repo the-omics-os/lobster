@@ -1,15 +1,14 @@
 """Status bar widget showing system status (queues, model, provider)."""
 
-from textual.app import ComposeResult
-from textual.containers import Horizontal
-from textual.widgets import Static
-from textual.reactive import reactive
-
-from rich.text import Text
-from rich.console import RenderableType
-
 import re
 from typing import Any
+
+from rich.console import RenderableType
+from rich.text import Text
+from textual.app import ComposeResult
+from textual.containers import Horizontal
+from textual.reactive import reactive
+from textual.widgets import Static
 
 DEFAULT_ACCENT = "#CC2C18"
 COLOR_RE = re.compile(r"Color\((\d+),\s*(\d+),\s*(\d+)\)")

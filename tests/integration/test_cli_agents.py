@@ -71,7 +71,9 @@ class TestAgentsList:
 
         # Verify output contains known agent names
         output = stdout + stderr  # Rich output may go to stderr
-        assert "research_agent" in output or "Name" in output, f"No agents found in output: {output[:500]}"
+        assert (
+            "research_agent" in output or "Name" in output
+        ), f"No agents found in output: {output[:500]}"
 
     def test_agents_list_shows_columns(self):
         """lobster agents list shows Name, Package, Tier, Enabled columns."""
@@ -88,7 +90,9 @@ class TestAgentsInfo:
 
     def test_agents_info_known_agent(self):
         """lobster agents info shows details for research_agent."""
-        returncode, stdout, stderr = run_lobster_command(["agents", "info", "research_agent"])
+        returncode, stdout, stderr = run_lobster_command(
+            ["agents", "info", "research_agent"]
+        )
         assert returncode == 0, f"Command failed: {stderr}"
 
         output = stdout + stderr
@@ -97,7 +101,9 @@ class TestAgentsInfo:
 
     def test_agents_info_shows_tier(self):
         """lobster agents info displays tier information."""
-        returncode, stdout, stderr = run_lobster_command(["agents", "info", "research_agent"])
+        returncode, stdout, stderr = run_lobster_command(
+            ["agents", "info", "research_agent"]
+        )
         assert returncode == 0, f"Command failed: {stderr}"
 
         output = stdout + stderr
@@ -105,7 +111,9 @@ class TestAgentsInfo:
 
     def test_agents_info_unknown_agent(self):
         """lobster agents info shows error for nonexistent agent."""
-        returncode, stdout, stderr = run_lobster_command(["agents", "info", "nonexistent_agent_xyz"])
+        returncode, stdout, stderr = run_lobster_command(
+            ["agents", "info", "nonexistent_agent_xyz"]
+        )
         # Should exit with non-zero code for unknown agent
         assert returncode != 0 or "not found" in (stdout + stderr).lower()
 
@@ -115,7 +123,9 @@ class TestAgentsInstall:
 
     def test_agents_install_help(self):
         """lobster agents install --help works."""
-        returncode, stdout, stderr = run_lobster_command(["agents", "install", "--help"])
+        returncode, stdout, stderr = run_lobster_command(
+            ["agents", "install", "--help"]
+        )
         assert returncode == 0, f"Command failed: {stderr}"
 
         output = stdout + stderr
@@ -187,7 +197,9 @@ class TestAgentConfigEndpoint:
 
         original = os.environ.get("OMICS_OS_SUGGEST_ENDPOINT")
         try:
-            os.environ["OMICS_OS_SUGGEST_ENDPOINT"] = "http://localhost:9999/nonexistent"
+            os.environ["OMICS_OS_SUGGEST_ENDPOINT"] = (
+                "http://localhost:9999/nonexistent"
+            )
 
             from lobster.config.agent_config_endpoint import suggest_agents
 
@@ -213,22 +225,40 @@ class TestTomlExportExists:
     def test_toml_export_file_exists(self):
         """React Flow TOML export file exists in lobster-cloud."""
         # Path relative to workspace root
-        toml_export_path = Path(__file__).parents[3] / "lobster-cloud" / "app" / "src" / "components" / "agent-composer" / "toml-export.tsx"
+        toml_export_path = (
+            Path(__file__).parents[3]
+            / "lobster-cloud"
+            / "app"
+            / "src"
+            / "components"
+            / "agent-composer"
+            / "toml-export.tsx"
+        )
 
         # Also try absolute path
         if not toml_export_path.exists():
-            toml_export_path = Path("/Users/tyo/omics-os/lobster-cloud/app/src/components/agent-composer/toml-export.tsx")
+            toml_export_path = Path(
+                "/Users/tyo/omics-os/lobster-cloud/app/src/components/agent-composer/toml-export.tsx"
+            )
 
-        assert toml_export_path.exists(), f"toml-export.tsx not found at {toml_export_path}"
+        assert (
+            toml_export_path.exists()
+        ), f"toml-export.tsx not found at {toml_export_path}"
 
     def test_toml_export_contains_generate_function(self):
         """toml-export.tsx contains generateTomlConfig function."""
-        toml_export_path = Path("/Users/tyo/omics-os/lobster-cloud/app/src/components/agent-composer/toml-export.tsx")
+        toml_export_path = Path(
+            "/Users/tyo/omics-os/lobster-cloud/app/src/components/agent-composer/toml-export.tsx"
+        )
 
         if toml_export_path.exists():
             content = toml_export_path.read_text()
-            assert "generateTomlConfig" in content, "generateTomlConfig function not found"
-            assert 'config_version = "1.0"' in content, "TOML config_version format not found"
+            assert (
+                "generateTomlConfig" in content
+            ), "generateTomlConfig function not found"
+            assert (
+                'config_version = "1.0"' in content
+            ), "TOML config_version format not found"
 
 
 class TestPhase8SuccessCriteria:
@@ -252,25 +282,37 @@ class TestPhase8SuccessCriteria:
 
         output = stdout + stderr
         # Should show agent table with tier
-        assert "agents installed" in output.lower() or "Name" in output, "SC2 FAIL: No agent table"
+        assert (
+            "agents installed" in output.lower() or "Name" in output
+        ), "SC2 FAIL: No agent table"
 
     def test_criterion_3_agents_install(self):
         """SC3: lobster agents install installs specified agent package via pip."""
-        returncode, stdout, stderr = run_lobster_command(["agents", "install", "--help"])
+        returncode, stdout, stderr = run_lobster_command(
+            ["agents", "install", "--help"]
+        )
         assert returncode == 0, f"SC3 FAIL: Command failed: {stderr}"
 
         output = stdout + stderr
-        assert "package" in output.lower(), "SC3 FAIL: install command not showing package argument"
+        assert (
+            "package" in output.lower()
+        ), "SC3 FAIL: install command not showing package argument"
 
     def test_criterion_4_agents_info(self):
         """SC4: lobster agents info displays agent details (tier, dependencies, description)."""
-        returncode, stdout, stderr = run_lobster_command(["agents", "info", "research_agent"])
+        returncode, stdout, stderr = run_lobster_command(
+            ["agents", "info", "research_agent"]
+        )
         assert returncode == 0, f"SC4 FAIL: Command failed: {stderr}"
 
         output = stdout + stderr
         assert "Tier" in output or "tier" in output.lower(), "SC4 FAIL: Tier not shown"
         # Dependencies shown as "none" or list
-        assert "Dependencies" in output or "dependencies" in output.lower() or "none" in output.lower(), "SC4 FAIL: Dependencies not shown"
+        assert (
+            "Dependencies" in output
+            or "dependencies" in output.lower()
+            or "none" in output.lower()
+        ), "SC4 FAIL: Dependencies not shown"
 
     def test_criterion_5_config_show(self):
         """SC5: lobster config show displays active agent composition from config."""
@@ -283,7 +325,7 @@ class TestPhase8SuccessCriteria:
     def test_criterion_6_llm_assisted_config(self):
         """SC6: LLM-assisted config generates valid TOML from natural language description."""
         # Test that suggest_agents function exists and is callable
-        from lobster.config.agent_config_endpoint import suggest_agents, TIMEOUT_SECONDS
+        from lobster.config.agent_config_endpoint import TIMEOUT_SECONDS, suggest_agents
 
         assert callable(suggest_agents), "SC6 FAIL: suggest_agents not callable"
         assert TIMEOUT_SECONDS == 30, "SC6 FAIL: Timeout should be 30 seconds"
@@ -294,14 +336,20 @@ class TestPhase8SuccessCriteria:
 
     def test_criterion_7_react_flow_toml_export(self):
         """SC7: React Flow UI exports valid TOML config compatible with CLI."""
-        toml_export_path = Path("/Users/tyo/omics-os/lobster-cloud/app/src/components/agent-composer/toml-export.tsx")
+        toml_export_path = Path(
+            "/Users/tyo/omics-os/lobster-cloud/app/src/components/agent-composer/toml-export.tsx"
+        )
 
         assert toml_export_path.exists(), f"SC7 FAIL: toml-export.tsx not found"
 
         content = toml_export_path.read_text()
         assert "generateTomlConfig" in content, "SC7 FAIL: generateTomlConfig not found"
-        assert 'config_version = "1.0"' in content, "SC7 FAIL: config_version format missing"
-        assert "enabled =" in content or "preset =" in content, "SC7 FAIL: enabled/preset format missing"
+        assert (
+            'config_version = "1.0"' in content
+        ), "SC7 FAIL: config_version format missing"
+        assert (
+            "enabled =" in content or "preset =" in content
+        ), "SC7 FAIL: enabled/preset format missing"
 
 
 # =============================================================================
@@ -326,7 +374,9 @@ class TestAgentCommandsModule:
 
     def test_get_agents_for_package_exists(self):
         """_get_agents_for_package helper function exists."""
-        from lobster.cli_internal.commands.light.agent_commands import _get_agents_for_package
+        from lobster.cli_internal.commands.light.agent_commands import (
+            _get_agents_for_package,
+        )
 
         assert callable(_get_agents_for_package)
 

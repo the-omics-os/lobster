@@ -120,12 +120,12 @@ class TestLoadQuantificationFilesReturnType:
         )
 
         # Validate orientation
-        assert adata.n_obs == len(sample_names), (
-            f"Expected {len(sample_names)} samples (obs), got {adata.n_obs}"
-        )
-        assert adata.n_vars == n_genes, (
-            f"Expected {n_genes} genes (vars), got {adata.n_vars}"
-        )
+        assert adata.n_obs == len(
+            sample_names
+        ), f"Expected {len(sample_names)} samples (obs), got {adata.n_obs}"
+        assert (
+            adata.n_vars == n_genes
+        ), f"Expected {n_genes} genes (vars), got {adata.n_vars}"
         assert adata.n_obs < adata.n_vars, "Bulk RNA-seq: samples should be < genes"
 
     def test_anndata_has_metadata(self, geo_service, mock_kallisto_dataset):
@@ -164,9 +164,9 @@ class TestLoadQuantificationFilesReturnType:
         final_modalities = set(geo_service.data_manager.list_modalities())
         new_modalities = final_modalities - initial_modalities
 
-        assert len(new_modalities) == 0, (
-            f"Should NOT store in data_manager, but added: {new_modalities}"
-        )
+        assert (
+            len(new_modalities) == 0
+        ), f"Should NOT store in data_manager, but added: {new_modalities}"
 
     def test_returns_none_on_failure(self, geo_service, tmp_path):
         """Test that method returns None on failure (not exception)."""
@@ -277,9 +277,9 @@ class TestNamingConventionConsistency:
         modalities = geo_service.data_manager.list_modalities()
 
         # Should NOT have "{gse_id}_quantification" pattern
-        assert "GSE123456_quantification" not in modalities, (
-            "Should NOT use legacy naming pattern"
-        )
+        assert (
+            "GSE123456_quantification" not in modalities
+        ), "Should NOT use legacy naming pattern"
 
     def test_standard_naming_expected(self):
         """Test that standard naming pattern is expected: geo_{gse_id}_{adapter}."""
@@ -290,9 +290,9 @@ class TestNamingConventionConsistency:
         expected_pattern = f"geo_{gse_id.lower()}_{adapter}"
 
         # This is what download_dataset() will use
-        assert expected_pattern == "geo_gse123456_transcriptomics_bulk", (
-            "Standard naming pattern should be used"
-        )
+        assert (
+            expected_pattern == "geo_gse123456_transcriptomics_bulk"
+        ), "Standard naming pattern should be used"
 
 
 # ===============================================================================
@@ -319,9 +319,9 @@ class TestPhase4ArchitectureRegression:
 
         # The return type should mention AnnData
         return_type_str = str(hints["return"])
-        assert "AnnData" in return_type_str or "anndata" in return_type_str, (
-            f"Return type should be AnnData, got: {return_type_str}"
-        )
+        assert (
+            "AnnData" in return_type_str or "anndata" in return_type_str
+        ), f"Return type should be AnnData, got: {return_type_str}"
 
     def test_no_direct_storage_in_method(self, geo_service, mock_kallisto_dataset):
         """Test that _load_quantification_files() does not directly store results."""
@@ -341,9 +341,9 @@ class TestPhase4ArchitectureRegression:
         # Verify no storage occurred
         final_count = len(geo_service.data_manager.list_modalities())
 
-        assert final_count == initial_count, (
-            "Method should NOT store results directly in data_manager"
-        )
+        assert (
+            final_count == initial_count
+        ), "Method should NOT store results directly in data_manager"
 
 
 if __name__ == "__main__":

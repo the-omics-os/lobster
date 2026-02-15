@@ -5,15 +5,16 @@ Tests metadata_list, metadata_clear, metadata_clear_exports, and metadata_clear_
 functions using mock client and output adapter.
 """
 
-from unittest.mock import MagicMock, PropertyMock
 from pathlib import Path
+from unittest.mock import MagicMock, PropertyMock
+
 import pytest
 
 from lobster.cli_internal.commands import (
-    metadata_list,
     metadata_clear,
-    metadata_clear_exports,
     metadata_clear_all,
+    metadata_clear_exports,
+    metadata_list,
 )
 from lobster.cli_internal.commands.output_adapter import OutputAdapter
 

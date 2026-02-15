@@ -125,7 +125,7 @@ class TestClientMemoryLeaks:
 
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=_mock_create_graph_return(mock_graph)
+            return_value=_mock_create_graph_return(mock_graph),
         ):
             clients = []
 
@@ -168,7 +168,7 @@ class TestClientMemoryLeaks:
 
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=_mock_create_graph_return(mock_graph)
+            return_value=_mock_create_graph_return(mock_graph),
         ):
             client = AgentClient(workspace_path=temp_perf_workspace)
 
@@ -206,7 +206,7 @@ class TestClientMemoryLeaks:
         """Test memory usage during file operations."""
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=_mock_create_graph_return(Mock())
+            return_value=_mock_create_graph_return(Mock()),
         ):
             client = AgentClient(workspace_path=temp_perf_workspace)
 
@@ -253,7 +253,7 @@ class TestClientPerformanceBenchmarks:
 
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=_mock_create_graph_return(mock_graph)
+            return_value=_mock_create_graph_return(mock_graph),
         ):
             client = AgentClient(workspace_path=temp_perf_workspace)
 
@@ -288,7 +288,7 @@ class TestClientPerformanceBenchmarks:
 
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=_mock_create_graph_return(mock_graph)
+            return_value=_mock_create_graph_return(mock_graph),
         ):
             client = AgentClient(workspace_path=temp_perf_workspace)
 
@@ -333,7 +333,7 @@ class TestClientPerformanceBenchmarks:
         """Benchmark file operations performance."""
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=_mock_create_graph_return(Mock())
+            return_value=_mock_create_graph_return(Mock()),
         ):
             client = AgentClient(workspace_path=temp_perf_workspace)
 
@@ -390,7 +390,7 @@ class TestClientPerformanceBenchmarks:
 
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=_mock_create_graph_return(mock_graph)
+            return_value=_mock_create_graph_return(mock_graph),
         ):
             client = AgentClient(workspace_path=temp_perf_workspace)
 
@@ -433,7 +433,7 @@ class TestResourceCleanup:
 
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=_mock_create_graph_return(mock_graph)
+            return_value=_mock_create_graph_return(mock_graph),
         ):
             # Create multiple clients
             for i in range(20):
@@ -470,7 +470,7 @@ class TestResourceCleanup:
 
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=_mock_create_graph_return(mock_graph)
+            return_value=_mock_create_graph_return(mock_graph),
         ):
             clients = []
 
@@ -508,7 +508,7 @@ class TestResourceCleanup:
         """Test that file handles are properly closed."""
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=_mock_create_graph_return(Mock())
+            return_value=_mock_create_graph_return(Mock()),
         ):
             client = AgentClient(workspace_path=temp_perf_workspace)
 

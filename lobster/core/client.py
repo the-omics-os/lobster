@@ -26,10 +26,10 @@ from lobster.core.archive_utils import (
     ArchiveInspector,
     ContentDetector,
 )
-from lobster.core.data_manager_v2 import DataManagerV2
 
 # Import component registry (lazy - don't trigger load_components at import time)
 from lobster.core.component_registry import component_registry
+from lobster.core.data_manager_v2 import DataManagerV2
 
 # Extraction cache manager loaded lazily to avoid triggering all agent imports at startup
 _ExtractionCacheManager = None
@@ -2379,7 +2379,7 @@ class AgentClient(BaseClient):
         try:
             # Validate provider
             try:
-                provider = LLMProvider(provider_name)
+                LLMProvider(provider_name)  # Validates provider name
             except ValueError:
                 valid_providers = ", ".join([p.value for p in LLMProvider])
                 return {

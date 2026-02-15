@@ -156,7 +156,6 @@ def is_10x_folder(path: Path) -> bool:
         return False
 
     # Look for standard 10x files
-    expected_files = {"matrix.mtx", "barcodes.tsv", "features.tsv", "genes.tsv"}
     found_files = {f.name for f in path.iterdir() if f.is_file()}
 
     # Also check for .gz versions

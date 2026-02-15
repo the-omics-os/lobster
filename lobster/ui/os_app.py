@@ -31,8 +31,8 @@ from textual.binding import Binding
 
 from lobster.core.client import AgentClient
 from lobster.core.workspace import resolve_workspace
-from lobster.ui.screens import AnalysisScreen
 from lobster.ui.commands import LobsterCommands
+from lobster.ui.screens import AnalysisScreen
 
 
 class LobsterOS(App):

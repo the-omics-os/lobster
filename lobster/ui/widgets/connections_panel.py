@@ -1,11 +1,11 @@
 """Connections panel showing database connectivity status."""
 
 from typing import Dict
+
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widgets import Static
-from rich.text import Text
-
 
 # Database registry with colors for visual distinction
 DATABASE_REGISTRY = {
@@ -60,10 +60,7 @@ class ConnectionsPanel(Vertical):
 
     def _check_connections(self) -> None:
         """Check database connectivity."""
-        import os
-
         ncbi_ok = True  # NCBI is publicly accessible
-        has_ncbi_key = bool(os.environ.get("NCBI_API_KEY"))
 
         for name, config in DATABASE_REGISTRY.items():
             check_type = config["check"]

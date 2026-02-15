@@ -479,7 +479,7 @@ class ProvenanceTracker:
 
     def _get_software_versions(self) -> Dict[str, str]:
         """Get versions of key software packages."""
-        from importlib.metadata import version, PackageNotFoundError
+        from importlib.metadata import PackageNotFoundError, version
 
         versions = {}
 

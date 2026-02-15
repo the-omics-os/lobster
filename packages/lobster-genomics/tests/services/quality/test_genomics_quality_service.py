@@ -460,7 +460,7 @@ class TestStatisticalAccuracy:
     def test_call_rate_calculation(self, genomics_service):
         """Test call rate calculation accuracy."""
         # Create data with known missing pattern
-        n_samples, n_variants = 10, 5
+        _n_samples, n_variants = 10, 5
         genotypes = np.array(
             [
                 [0, 1, 2, -1, 0],  # Sample 1: 80% call rate (4/5)

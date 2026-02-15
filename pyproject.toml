@@ -165,13 +165,22 @@ recommended = ["lobster-ai[anthropic,tui,extended-data]"]
 # Everything (replicates pre-optimization behavior, minus docling)
 batteries = ["lobster-ai[all-providers,server,tui,observability,extended-data]"]
 full = [
-    # Public agent packages + recommended extras
-    "lobster-transcriptomics~=1.0.0",
+    # Public agent packages (with optional extras for completeness)
+    "lobster-transcriptomics[doublet-detection]~=1.0.0",
     "lobster-research~=1.0.0",
     "lobster-visualization~=1.0.0",
     "lobster-genomics~=1.0.0",
-    "lobster-proteomics~=1.0.0",
-    "lobster-ai[recommended]",
+    "lobster-proteomics[network-analysis]~=1.0.0",
+    # All LLM providers (anthropic, bedrock, ollama, gemini, azure)
+    "lobster-ai[all-providers]",
+    # Domain deps not fully covered by agent packages alone
+    "lobster-ai[transcriptomics,bulk-rnaseq,genomics]",
+    # Document intelligence (PDF/document parsing)
+    "lobster-ai[docling]",
+    # Legacy HDF5 support (pandas read_hdf)
+    "lobster-ai[hdf5]",
+    # TUI + extended data access
+    "lobster-ai[tui,extended-data]",
 ]
 
 # =============================================================================
@@ -443,4 +452,12 @@ dev = [
     "psutil>=7.0.0",
     "pytest-asyncio>=1.1.0",
     "pytest-cov>=6.2.1",
+]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+ignore = [
+    "E402",  # module-import-not-at-top-of-file (intentional lazy loading)
 ]

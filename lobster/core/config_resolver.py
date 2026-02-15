@@ -37,7 +37,11 @@ from typing import Optional, Tuple
 # Environment variable for provider override
 LOBSTER_LLM_PROVIDER_ENV = "LOBSTER_LLM_PROVIDER"
 
-from lobster.config.constants import VALID_PROVIDERS, VALID_PROFILES
+from lobster.config.constants import (
+    DEPRECATED_PROFILE_ALIASES,
+    VALID_PROFILES,
+    VALID_PROVIDERS,
+)
 from lobster.config.global_config import GlobalProviderConfig
 from lobster.config.workspace_config import WorkspaceProviderConfig
 
@@ -344,6 +348,14 @@ class ConfigResolver:
         """
         # Layer 1: Runtime override
         if runtime_override:
+            # Check for deprecated aliases first
+            if runtime_override in DEPRECATED_PROFILE_ALIASES:
+                new_name = DEPRECATED_PROFILE_ALIASES[runtime_override]
+                logger.warning(
+                    f"Profile '{runtime_override}' is deprecated, "
+                    f"using '{new_name}' instead. Please update your configuration."
+                )
+                return (new_name, f"runtime flag --profile (alias: {runtime_override})")
             if runtime_override in VALID_PROFILES:
                 return (runtime_override, "runtime flag --profile")
             else:
@@ -357,6 +369,13 @@ class ConfigResolver:
             if WorkspaceProviderConfig.exists(self.workspace_path):
                 profile = self.workspace_config.profile
                 if profile:
+                    if profile in DEPRECATED_PROFILE_ALIASES:
+                        new_name = DEPRECATED_PROFILE_ALIASES[profile]
+                        logger.warning(
+                            f"Workspace profile '{profile}' is deprecated, "
+                            f"using '{new_name}'. Update provider_config.json."
+                        )
+                        profile = new_name
                     return (profile, "workspace config")
 
         # Layer 3: Global user config
@@ -364,6 +383,13 @@ class ConfigResolver:
             if GlobalProviderConfig.exists():
                 profile = self.global_config.default_profile
                 if profile:
+                    if profile in DEPRECATED_PROFILE_ALIASES:
+                        new_name = DEPRECATED_PROFILE_ALIASES[profile]
+                        logger.warning(
+                            f"Global profile '{profile}' is deprecated, "
+                            f"using '{new_name}'. Update ~/.config/lobster/."
+                        )
+                        profile = new_name
                     return (profile, "global user config")
 
         # Layer 4: Default (profiles have reasonable default)

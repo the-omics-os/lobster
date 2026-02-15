@@ -164,7 +164,9 @@ class TestVisualizationStateManagement:
 class TestVisualizationTools:
     """Test individual visualization tools with UUID tracking."""
 
-    @pytest.mark.skip(reason="Superseded by isolated tests in test_plot_manager.py (37 tests)")
+    @pytest.mark.skip(
+        reason="Superseded by isolated tests in test_plot_manager.py (37 tests)"
+    )
     @patch("lobster.tools.visualization_service.SingleCellVisualizationService")
     @patch("lobster.config.settings.get_settings")
     def test_create_umap_plot_with_uuid(
@@ -196,7 +198,9 @@ class TestVisualizationTools:
         # Test successful execution path
         assert mock_data_manager.list_modalities.return_value is not None
 
-    @pytest.mark.skip(reason="Superseded by isolated tests in test_plot_manager.py (37 tests)")
+    @pytest.mark.skip(
+        reason="Superseded by isolated tests in test_plot_manager.py (37 tests)"
+    )
     @patch("lobster.tools.visualization_service.SingleCellVisualizationService")
     def test_create_qc_plots_with_state_persistence(
         self, mock_viz_service, mock_data_manager, sample_adata
@@ -220,7 +224,9 @@ class TestVisualizationTools:
         # Verify method was called with correct parameters
         mock_data_manager.add_visualization_record.assert_called_with(plot_id, metadata)
 
-    @pytest.mark.skip(reason="Superseded by isolated tests in test_plot_manager.py (37 tests)")
+    @pytest.mark.skip(
+        reason="Superseded by isolated tests in test_plot_manager.py (37 tests)"
+    )
     def test_violin_plot_gene_validation(self, mock_data_manager, sample_adata):
         """Test violin plot gene validation logic."""
         # Setup test data
@@ -298,7 +304,9 @@ class TestErrorHandling:
         assert "not found" in expected_error
         assert nonexistent_modality in expected_error
 
-    @pytest.mark.skip(reason="Superseded by isolated tests in test_plot_manager.py (37 tests)")
+    @pytest.mark.skip(
+        reason="Superseded by isolated tests in test_plot_manager.py (37 tests)"
+    )
     def test_visualization_service_error_handling(
         self, mock_data_manager, sample_adata
     ):
@@ -455,7 +463,9 @@ class TestBackwardCompatibility:
 class TestIntegrationWorkflows:
     """Test end-to-end integration workflows."""
 
-    @pytest.mark.skip(reason="Mock-based test, functionality verified by isolated tests")
+    @pytest.mark.skip(
+        reason="Mock-based test, functionality verified by isolated tests"
+    )
     @patch("lobster.config.settings.get_settings")
     def test_agent_initialization(self, mock_settings, mock_data_manager):
         """Test that visualization expert agent initializes properly."""
@@ -597,7 +607,9 @@ class TestVisualizationParameters:
 class TestEndToEndWorkflows:
     """Test complete visualization workflows."""
 
-    @pytest.mark.skip(reason="Superseded by isolated tests in test_plot_manager.py (37 tests)")
+    @pytest.mark.skip(
+        reason="Superseded by isolated tests in test_plot_manager.py (37 tests)"
+    )
     @patch("lobster.tools.visualization_service.SingleCellVisualizationService")
     @patch("lobster.config.settings.get_settings")
     def test_complete_umap_workflow(
@@ -635,7 +647,9 @@ class TestEndToEndWorkflows:
         mock_data_manager.plot_manager.add_visualization_record(plot_id, {})
 
         # 5. Save plots (returns 3-tuple)
-        saved_files, stats, ir = mock_data_manager.plot_manager.save_plots_to_workspace()
+        saved_files, stats, ir = (
+            mock_data_manager.plot_manager.save_plots_to_workspace()
+        )
         assert len(saved_files) > 0
 
         # Verify all steps were called

@@ -10,8 +10,9 @@ Tests validate all 5 success criteria:
 """
 
 import logging
-import pytest
 from pathlib import Path
+
+import pytest
 
 
 class TestConfigFileTOML:
@@ -23,10 +24,10 @@ class TestConfigFileTOML:
 
         # Create TOML config (top-level keys, no nested [agents] section)
         config_path = tmp_path / "config.toml"
-        config_path.write_text('''
+        config_path.write_text("""
 config_version = "1.0"
 enabled = ["research_agent", "data_expert_agent"]
-''')
+""")
 
         config = WorkspaceAgentConfig.load(tmp_path)
         assert config.config_version == "1.0"
@@ -45,7 +46,9 @@ enabled = ["research_agent", "data_expert_agent"]
         """Config can be saved and reloaded correctly."""
         from lobster.config.workspace_agent_config import WorkspaceAgentConfig
 
-        config = WorkspaceAgentConfig(enabled=["research_agent", "transcriptomics_expert"])
+        config = WorkspaceAgentConfig(
+            enabled=["research_agent", "transcriptomics_expert"]
+        )
         config.save(tmp_path)
 
         loaded = WorkspaceAgentConfig.load(tmp_path)
@@ -61,7 +64,7 @@ class TestPerAgentSettings:
         from lobster.config.workspace_agent_config import WorkspaceAgentConfig
 
         config_path = tmp_path / "config.toml"
-        config_path.write_text('''
+        config_path.write_text("""
 config_version = "1.0"
 enabled = ["research_agent"]
 
@@ -69,7 +72,7 @@ enabled = ["research_agent"]
 model = "claude-4-5-sonnet"
 thinking_preset = "standard"
 temperature = 0.7
-''')
+""")
 
         config = WorkspaceAgentConfig.load(tmp_path)
         settings = config.agent_settings.get("research_agent")
@@ -80,17 +83,17 @@ temperature = 0.7
 
     def test_per_agent_settings_via_resolver(self, tmp_path: Path):
         """AgentConfigResolver returns per-agent settings."""
-        from lobster.config.workspace_agent_config import WorkspaceAgentConfig
         from lobster.config.agent_config_resolver import AgentConfigResolver
+        from lobster.config.workspace_agent_config import WorkspaceAgentConfig
 
         config_path = tmp_path / "config.toml"
-        config_path.write_text('''
+        config_path.write_text("""
 config_version = "1.0"
 enabled = ["research_agent"]
 
 [agent_settings.research_agent]
 model = "custom-model"
-''')
+""")
 
         resolver = AgentConfigResolver(tmp_path)
         settings = resolver.get_agent_settings("research_agent")
@@ -107,14 +110,16 @@ class TestPriorityResolution:
 
         # Create TOML with different agents
         config_path = tmp_path / "config.toml"
-        config_path.write_text('''
+        config_path.write_text("""
 enabled = ["transcriptomics_expert"]
-''')
+""")
 
         resolver = AgentConfigResolver(tmp_path)
 
         # Runtime override should take priority
-        agents, source = resolver.resolve_enabled_agents(runtime_agents=["research_agent"])
+        agents, source = resolver.resolve_enabled_agents(
+            runtime_agents=["research_agent"]
+        )
         assert agents == ["research_agent"]
         assert "runtime" in source
 
@@ -123,9 +128,9 @@ enabled = ["transcriptomics_expert"]
         from lobster.config.agent_config_resolver import AgentConfigResolver
 
         config_path = tmp_path / "config.toml"
-        config_path.write_text('''
+        config_path.write_text("""
 enabled = ["transcriptomics_expert"]
-''')
+""")
 
         resolver = AgentConfigResolver(tmp_path)
         agents, source = resolver.resolve_enabled_agents(runtime_preset="scrna-basic")
@@ -137,9 +142,9 @@ enabled = ["transcriptomics_expert"]
         from lobster.config.agent_config_resolver import AgentConfigResolver
 
         config_path = tmp_path / "config.toml"
-        config_path.write_text('''
+        config_path.write_text("""
 enabled = ["research_agent"]
-''')
+""")
 
         resolver = AgentConfigResolver(tmp_path)
         agents, source = resolver.resolve_enabled_agents()
@@ -202,13 +207,13 @@ class TestAgentPresets:
 
     def test_preset_in_toml_config(self, tmp_path: Path):
         """Preset specified in TOML is expanded correctly."""
-        from lobster.config.workspace_agent_config import WorkspaceAgentConfig
         from lobster.config.agent_config_resolver import AgentConfigResolver
+        from lobster.config.workspace_agent_config import WorkspaceAgentConfig
 
         config_path = tmp_path / "config.toml"
-        config_path.write_text('''
+        config_path.write_text("""
 preset = "scrna-basic"
-''')
+""")
 
         config = WorkspaceAgentConfig.load(tmp_path)
         assert config.preset == "scrna-basic"
@@ -226,10 +231,12 @@ class TestValidationErrorMessages:
         """Config validates enabled agents against ComponentRegistry."""
         from lobster.config.workspace_agent_config import WorkspaceAgentConfig
 
-        config = WorkspaceAgentConfig(enabled=[
-            "research_agent",  # Should be installed
-            "nonexistent_agent_xyz",  # Not installed
-        ])
+        config = WorkspaceAgentConfig(
+            enabled=[
+                "research_agent",  # Should be installed
+                "nonexistent_agent_xyz",  # Not installed
+            ]
+        )
 
         with caplog.at_level(logging.WARNING):
             valid, missing = config.validate_enabled_agents()
@@ -293,7 +300,7 @@ class TestProviderSettings:
         from lobster.config.workspace_agent_config import WorkspaceAgentConfig
 
         config_path = tmp_path / "config.toml"
-        config_path.write_text('''
+        config_path.write_text("""
 [lobster]
 config_version = "1.0"
 
@@ -304,24 +311,26 @@ ollama_host = "http://localhost:11434"
 [provider.models]
 anthropic = "claude-sonnet-4-20250514"
 ollama = "llama3:70b-instruct"
-''')
+""")
 
         config = WorkspaceAgentConfig.load(tmp_path)
         assert config.has_provider_settings() is True
         assert config.provider_settings.default == "anthropic"
         assert config.provider_settings.ollama_host == "http://localhost:11434"
-        assert config.provider_settings.models["anthropic"] == "claude-sonnet-4-20250514"
+        assert (
+            config.provider_settings.models["anthropic"] == "claude-sonnet-4-20250514"
+        )
 
     def test_provider_settings_via_resolver(self, tmp_path: Path):
         """AgentConfigResolver exposes provider settings."""
         from lobster.config.agent_config_resolver import AgentConfigResolver
 
         config_path = tmp_path / "config.toml"
-        config_path.write_text('''
+        config_path.write_text("""
 [provider]
 default = "ollama"
 ollama_host = "http://gpu-server:11434"
-''')
+""")
 
         resolver = AgentConfigResolver(tmp_path)
         provider = resolver.get_provider_settings()
@@ -335,9 +344,9 @@ ollama_host = "http://gpu-server:11434"
 
         # Create TOML without provider section
         config_path = tmp_path / "config.toml"
-        config_path.write_text('''
+        config_path.write_text("""
 enabled = ["research_agent"]
-''')
+""")
 
         resolver = AgentConfigResolver(tmp_path)
         provider = resolver.get_provider_settings()

@@ -24,6 +24,7 @@ except ImportError:
 
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.schemas.download_urls import DownloadFile, DownloadUrlResult
 from lobster.tools.providers.base_provider import (
     BasePublicationProvider,
     DatasetType,
@@ -39,7 +40,6 @@ from lobster.tools.providers.geo_utils import (
 from lobster.tools.providers.ncbi_query_builder import (
     GEOQueryBuilder,
 )
-from lobster.core.schemas.download_urls import DownloadFile, DownloadUrlResult
 from lobster.utils.logger import get_logger
 from lobster.utils.ssl_utils import create_ssl_context, handle_ssl_error
 
@@ -518,7 +518,6 @@ class GEOProvider(BasePublicationProvider):
         # Retry logic for backend errors (NCBI search backend failures)
         retry = 0
         sleep_time = self.config.sleep_time
-        last_error = None
 
         while retry <= self.config.max_retry:
             # Execute request with retry logic
@@ -539,7 +538,6 @@ class GEOProvider(BasePublicationProvider):
                         "Search Backend failed" in error_msg
                         or "Database is not supported" in error_msg
                     ):
-                        last_error = error_msg
                         if retry < self.config.max_retry:
                             logger.warning(
                                 f"NCBI backend error (attempt {retry + 1}/{self.config.max_retry + 1}): {error_msg}. "

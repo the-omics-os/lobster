@@ -478,10 +478,6 @@ class VariantAnnotationService:
                 "requests library not installed. Install with: pip install requests"
             )
 
-        # Map genome build to Ensembl assembly
-        assembly_map = {"hg38": "GRCh38", "hg19": "GRCh37"}
-        assembly = assembly_map[genome_build]
-
         # Ensembl VEP REST API endpoint - use build-specific server
         # GRCh37/hg19 requires the dedicated grch37 server
         # GRCh38/hg38 uses the main rest.ensembl.org server

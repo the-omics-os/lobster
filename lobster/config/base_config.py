@@ -11,7 +11,11 @@ from typing import Optional
 
 from pydantic import BaseModel, model_validator
 
-from lobster.config.constants import VALID_PROVIDERS, VALID_PROFILES
+from lobster.config.constants import (
+    DEPRECATED_PROFILE_ALIASES,
+    VALID_PROFILES,
+    VALID_PROVIDERS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +54,17 @@ class ProviderConfigBase(BaseModel, abc.ABC):
                         f"Must be one of: {', '.join(VALID_PROVIDERS)}"
                     )
 
-        # Validate profile fields
+        # Validate profile fields (with deprecated alias resolution)
         for field in ["profile", "default_profile"]:
             if field in data and data[field]:
+                # Auto-resolve deprecated aliases
+                if data[field] in DEPRECATED_PROFILE_ALIASES:
+                    old_name = data[field]
+                    data[field] = DEPRECATED_PROFILE_ALIASES[old_name]
+                    logger.warning(
+                        f"Profile '{old_name}' is deprecated, "
+                        f"auto-mapped to '{data[field]}'."
+                    )
                 if data[field] not in VALID_PROFILES:
                     raise ValueError(
                         f"Invalid profile: '{data[field]}'. "

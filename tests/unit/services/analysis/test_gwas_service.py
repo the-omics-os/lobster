@@ -20,7 +20,6 @@ from anndata import AnnData
 from lobster.core.analysis_ir import AnalysisStep
 from lobster.services.analysis.gwas_service import GWASService
 
-
 # ===============================================================================
 # Fixtures
 # ===============================================================================
@@ -257,9 +256,9 @@ class TestGWASAnalysis:
         pvalues = adata_gwas.var["gwas_pvalue"].values
         qvalues = adata_gwas.var["gwas_qvalue"].values
 
-        assert (qvalues >= pvalues).all() or np.allclose(qvalues, pvalues), (
-            "q-values should be ≥ p-values for FDR correction"
-        )
+        assert (qvalues >= pvalues).all() or np.allclose(
+            qvalues, pvalues
+        ), "q-values should be ≥ p-values for FDR correction"
 
     def test_run_gwas_no_covariates(self, gwas_service, simple_gwas_adata):
         """Test GWAS without covariates."""
@@ -342,15 +341,15 @@ class TestPCAAnalysis:
 
         # First PC should explain >3% variance for stratified data (lenient threshold)
         pc1_variance = cumulative_var[0] if len(cumulative_var) > 0 else 0
-        assert pc1_variance > 0.03, (
-            f"PC1 should explain >3% variance for stratified data, got {pc1_variance:.3f}"
-        )
+        assert (
+            pc1_variance > 0.03
+        ), f"PC1 should explain >3% variance for stratified data, got {pc1_variance:.3f}"
 
         # Last cumulative value is total variance
         total_variance = cumulative_var[-1] if len(cumulative_var) > 0 else 0
-        assert total_variance > 0.15, (
-            f"Top 10 PCs should explain >15% variance, got {total_variance:.3f}"
-        )
+        assert (
+            total_variance > 0.15
+        ), f"Top 10 PCs should explain >15% variance, got {total_variance:.3f}"
 
     def test_calculate_pca_stats_structure(self, gwas_service, simple_gwas_adata):
         """Test that PCA stats dict has expected structure."""
@@ -428,9 +427,9 @@ class TestLambdaGCCalculation:
 
         # Lambda GC should be elevated due to stratification
         lambda_gc = stats["lambda_gc"]
-        assert lambda_gc > 1.0, (
-            f"Lambda GC should be elevated for stratified data, got {lambda_gc}"
-        )
+        assert (
+            lambda_gc > 1.0
+        ), f"Lambda GC should be elevated for stratified data, got {lambda_gc}"
 
     def test_lambda_gc_interpretation(self, gwas_service, simple_gwas_adata):
         """Test that Lambda GC interpretation is provided."""
@@ -614,6 +613,7 @@ class TestGWASServiceIntegration:
     def test_gwas_with_vcf_data(self, gwas_service):
         """Test GWAS workflow with VCF-loaded data."""
         from pathlib import Path
+
         from lobster.core.adapters.genomics.vcf_adapter import VCFAdapter
 
         vcf_path = (
@@ -641,9 +641,9 @@ class TestGWASServiceIntegration:
         )
 
         # Verify results (allow for edge case filtering)
-        assert adata_gwas.n_vars >= 90, (
-            f"Expected ~100 variants, got {adata_gwas.n_vars}"
-        )
+        assert (
+            adata_gwas.n_vars >= 90
+        ), f"Expected ~100 variants, got {adata_gwas.n_vars}"
         assert adata_gwas.n_vars <= 100, f"Should not exceed max_variants"
         assert stats["n_variants_tested"] >= 90
         assert "gwas_pvalue" in adata_gwas.var.columns
@@ -651,6 +651,7 @@ class TestGWASServiceIntegration:
     def test_pca_with_vcf_data(self, gwas_service):
         """Test PCA with VCF-loaded data."""
         from pathlib import Path
+
         from lobster.core.adapters.genomics.vcf_adapter import VCFAdapter
         from lobster.services.analysis.gwas_service import GWASError
 
@@ -679,9 +680,9 @@ class TestGWASServiceIntegration:
             # For 1000 Genomes, PC1 should explain >5% (strong population structure)
             cumulative_var = stats["cumulative_variance_explained"]
             pc1_variance = cumulative_var[0] if len(cumulative_var) > 0 else 0
-            assert pc1_variance > 0.05, (
-                f"PC1 should explain >5% variance for 1000 Genomes, got {pc1_variance:.1%}"
-            )
+            assert (
+                pc1_variance > 0.05
+            ), f"PC1 should explain >5% variance for 1000 Genomes, got {pc1_variance:.1%}"
 
         except GWASError as e:
             # SVD convergence failure is known issue with small datasets + Dask

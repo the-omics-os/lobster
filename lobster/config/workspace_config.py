@@ -54,7 +54,7 @@ class WorkspaceProviderConfig(ProviderConfigBase):
         ollama_host: Ollama server URL (default: http://localhost:11434)
         per_agent_providers: Provider override per agent (e.g., {"supervisor": "ollama"})
         per_agent_models: Model override per agent (e.g., {"supervisor": "llama3:70b"})
-        profile: Agent configuration profile (development | production | ultra | godmode | hybrid)
+        profile: Agent configuration profile (development | production | performance | max | hybrid)
 
     Example:
         >>> config = WorkspaceProviderConfig(
@@ -117,7 +117,7 @@ class WorkspaceProviderConfig(ProviderConfigBase):
 
     profile: str = Field(
         "production",
-        description="Agent configuration profile (development | production | ultra | godmode | hybrid)",
+        description="Agent configuration profile (development | production | performance | max | hybrid)",
     )
 
     def save(self, workspace_path: Path) -> None:

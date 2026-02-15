@@ -4,12 +4,11 @@ import os
 import platform
 from typing import Optional
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Vertical
-from textual.widgets import Static
 from textual.reactive import reactive
-
-from rich.text import Text
+from textual.widgets import Static
 
 
 def _get_memory_info() -> tuple[float, float]:

@@ -13,8 +13,9 @@ These tests ensure correct detection of 10X Genomics V2 (genes.tsv) vs V3 (featu
 formats, preventing regression of the zero-genes bug.
 """
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from lobster.core.archive_utils import (
     ArchiveContentType,
@@ -72,32 +73,32 @@ class TestContentDetector10XFormats:
     def test_v3_format_detection_uncompressed(self, v3_10x_directory: Path):
         """V3 format (features.tsv) is correctly identified."""
         result = ContentDetector.detect_content_type(v3_10x_directory)
-        assert result == ArchiveContentType.TEN_X_MTX, (
-            f"V3 format (features.tsv) should be detected as TEN_X_MTX, got {result}"
-        )
+        assert (
+            result == ArchiveContentType.TEN_X_MTX
+        ), f"V3 format (features.tsv) should be detected as TEN_X_MTX, got {result}"
 
     def test_v3_format_detection_compressed(self, v3_10x_directory_compressed: Path):
         """V3 format with .gz compression is correctly identified."""
         result = ContentDetector.detect_content_type(v3_10x_directory_compressed)
-        assert result == ArchiveContentType.TEN_X_MTX, (
-            f"V3 compressed format should be detected as TEN_X_MTX, got {result}"
-        )
+        assert (
+            result == ArchiveContentType.TEN_X_MTX
+        ), f"V3 compressed format should be detected as TEN_X_MTX, got {result}"
 
     # --- V2 Format Tests ---
 
     def test_v2_format_detection_uncompressed(self, v2_10x_directory: Path):
         """V2 format (genes.tsv) is correctly identified."""
         result = ContentDetector.detect_content_type(v2_10x_directory)
-        assert result == ArchiveContentType.TEN_X_MTX, (
-            f"V2 format (genes.tsv) should be detected as TEN_X_MTX, got {result}"
-        )
+        assert (
+            result == ArchiveContentType.TEN_X_MTX
+        ), f"V2 format (genes.tsv) should be detected as TEN_X_MTX, got {result}"
 
     def test_v2_format_detection_compressed(self, v2_10x_directory_compressed: Path):
         """V2 format with .gz compression is correctly identified."""
         result = ContentDetector.detect_content_type(v2_10x_directory_compressed)
-        assert result == ArchiveContentType.TEN_X_MTX, (
-            f"V2 compressed format should be detected as TEN_X_MTX, got {result}"
-        )
+        assert (
+            result == ArchiveContentType.TEN_X_MTX
+        ), f"V2 compressed format should be detected as TEN_X_MTX, got {result}"
 
     # --- Nested Directory Tests ---
 
@@ -111,9 +112,9 @@ class TestContentDetector10XFormats:
         (nested_dir / "barcodes.tsv.gz").write_bytes(b"mock")
 
         result = ContentDetector.detect_content_type(tmp_path)
-        assert result == ArchiveContentType.TEN_X_MTX, (
-            f"Nested V2 GEO pattern should be detected, got {result}"
-        )
+        assert (
+            result == ArchiveContentType.TEN_X_MTX
+        ), f"Nested V2 GEO pattern should be detected, got {result}"
 
     def test_nested_v3_sample_pattern(self, tmp_path: Path):
         """V3 format in nested sample directory structure."""
@@ -124,9 +125,9 @@ class TestContentDetector10XFormats:
         (nested_dir / "barcodes.tsv.gz").write_bytes(b"mock")
 
         result = ContentDetector.detect_content_type(tmp_path)
-        assert result == ArchiveContentType.TEN_X_MTX, (
-            f"Nested V3 sample pattern should be detected, got {result}"
-        )
+        assert (
+            result == ArchiveContentType.TEN_X_MTX
+        ), f"Nested V3 sample pattern should be detected, got {result}"
 
     # --- Incomplete 10X Tests ---
 
@@ -139,9 +140,9 @@ class TestContentDetector10XFormats:
         # matrix.mtx is missing
 
         result = ContentDetector.detect_content_type(tmp_path)
-        assert result != ArchiveContentType.TEN_X_MTX, (
-            f"Incomplete 10X (missing matrix) should NOT be TEN_X_MTX, got {result}"
-        )
+        assert (
+            result != ArchiveContentType.TEN_X_MTX
+        ), f"Incomplete 10X (missing matrix) should NOT be TEN_X_MTX, got {result}"
 
     def test_incomplete_10x_missing_features(self, tmp_path: Path):
         """Incomplete 10X without features/genes file is NOT detected as 10X."""
@@ -152,9 +153,9 @@ class TestContentDetector10XFormats:
         # features.tsv or genes.tsv is missing
 
         result = ContentDetector.detect_content_type(tmp_path)
-        assert result != ArchiveContentType.TEN_X_MTX, (
-            f"Incomplete 10X (missing features) should NOT be TEN_X_MTX, got {result}"
-        )
+        assert (
+            result != ArchiveContentType.TEN_X_MTX
+        ), f"Incomplete 10X (missing features) should NOT be TEN_X_MTX, got {result}"
 
     def test_incomplete_10x_missing_barcodes(self, tmp_path: Path):
         """Incomplete 10X without barcodes file is NOT detected as 10X."""
@@ -165,9 +166,9 @@ class TestContentDetector10XFormats:
         # barcodes.tsv is missing
 
         result = ContentDetector.detect_content_type(tmp_path)
-        assert result != ArchiveContentType.TEN_X_MTX, (
-            f"Incomplete 10X (missing barcodes) should NOT be TEN_X_MTX, got {result}"
-        )
+        assert (
+            result != ArchiveContentType.TEN_X_MTX
+        ), f"Incomplete 10X (missing barcodes) should NOT be TEN_X_MTX, got {result}"
 
 
 class TestContentDetectorOtherFormats:
@@ -212,30 +213,30 @@ class TestContentDetectorOtherFormats:
     def test_kallisto_quant_detection(self, kallisto_directory: Path):
         """Kallisto quantification files are correctly identified."""
         result = ContentDetector.detect_content_type(kallisto_directory)
-        assert result == ArchiveContentType.KALLISTO_QUANT, (
-            f"Kallisto directory should be detected as KALLISTO_QUANT, got {result}"
-        )
+        assert (
+            result == ArchiveContentType.KALLISTO_QUANT
+        ), f"Kallisto directory should be detected as KALLISTO_QUANT, got {result}"
 
     def test_salmon_quant_detection(self, salmon_directory: Path):
         """Salmon quantification files are correctly identified."""
         result = ContentDetector.detect_content_type(salmon_directory)
-        assert result == ArchiveContentType.SALMON_QUANT, (
-            f"Salmon directory should be detected as SALMON_QUANT, got {result}"
-        )
+        assert (
+            result == ArchiveContentType.SALMON_QUANT
+        ), f"Salmon directory should be detected as SALMON_QUANT, got {result}"
 
     def test_geo_raw_detection(self, geo_raw_directory: Path):
         """GEO RAW files (GSM*.txt.gz) are correctly identified."""
         result = ContentDetector.detect_content_type(geo_raw_directory)
-        assert result == ArchiveContentType.GEO_RAW, (
-            f"GEO RAW directory should be detected as GEO_RAW, got {result}"
-        )
+        assert (
+            result == ArchiveContentType.GEO_RAW
+        ), f"GEO RAW directory should be detected as GEO_RAW, got {result}"
 
     def test_generic_expression_detection(self, generic_expression_directory: Path):
         """Generic expression matrix (CSV >100KB) is correctly identified."""
         result = ContentDetector.detect_content_type(generic_expression_directory)
-        assert result == ArchiveContentType.GENERIC_EXPRESSION, (
-            f"Generic expression should be detected as GENERIC_EXPRESSION, got {result}"
-        )
+        assert (
+            result == ArchiveContentType.GENERIC_EXPRESSION
+        ), f"Generic expression should be detected as GENERIC_EXPRESSION, got {result}"
 
     def test_unknown_format_detection(self, tmp_path: Path):
         """Unknown file collection returns UNKNOWN."""
@@ -243,16 +244,16 @@ class TestContentDetectorOtherFormats:
         (tmp_path / "another.abc").write_bytes(b"unknown")
 
         result = ContentDetector.detect_content_type(tmp_path)
-        assert result == ArchiveContentType.UNKNOWN, (
-            f"Unknown files should be detected as UNKNOWN, got {result}"
-        )
+        assert (
+            result == ArchiveContentType.UNKNOWN
+        ), f"Unknown files should be detected as UNKNOWN, got {result}"
 
     def test_empty_directory_detection(self, tmp_path: Path):
         """Empty directory returns UNKNOWN."""
         result = ContentDetector.detect_content_type(tmp_path)
-        assert result == ArchiveContentType.UNKNOWN, (
-            f"Empty directory should be detected as UNKNOWN, got {result}"
-        )
+        assert (
+            result == ArchiveContentType.UNKNOWN
+        ), f"Empty directory should be detected as UNKNOWN, got {result}"
 
 
 class TestArchiveInspectorManifestDetection:
@@ -272,9 +273,9 @@ class TestArchiveInspectorManifestDetection:
 
         inspector = ArchiveInspector()
         result = inspector.detect_content_type_from_manifest(manifest)
-        assert result == ArchiveContentType.TEN_X_MTX, (
-            f"V3 manifest should be detected as TEN_X_MTX, got {result}"
-        )
+        assert (
+            result == ArchiveContentType.TEN_X_MTX
+        ), f"V3 manifest should be detected as TEN_X_MTX, got {result}"
 
     def test_manifest_v2_detection(self):
         """V2 format detected from manifest (genes.tsv)."""
@@ -290,9 +291,9 @@ class TestArchiveInspectorManifestDetection:
 
         inspector = ArchiveInspector()
         result = inspector.detect_content_type_from_manifest(manifest)
-        assert result == ArchiveContentType.TEN_X_MTX, (
-            f"V2 manifest should be detected as TEN_X_MTX, got {result}"
-        )
+        assert (
+            result == ArchiveContentType.TEN_X_MTX
+        ), f"V2 manifest should be detected as TEN_X_MTX, got {result}"
 
     def test_manifest_kallisto_detection(self):
         """Kallisto format detected from manifest."""
@@ -309,9 +310,9 @@ class TestArchiveInspectorManifestDetection:
 
         inspector = ArchiveInspector()
         result = inspector.detect_content_type_from_manifest(manifest)
-        assert result == ArchiveContentType.KALLISTO_QUANT, (
-            f"Kallisto manifest should be detected as KALLISTO_QUANT, got {result}"
-        )
+        assert (
+            result == ArchiveContentType.KALLISTO_QUANT
+        ), f"Kallisto manifest should be detected as KALLISTO_QUANT, got {result}"
 
     def test_manifest_salmon_detection(self):
         """Salmon format detected from manifest."""
@@ -326,9 +327,9 @@ class TestArchiveInspectorManifestDetection:
 
         inspector = ArchiveInspector()
         result = inspector.detect_content_type_from_manifest(manifest)
-        assert result == ArchiveContentType.SALMON_QUANT, (
-            f"Salmon manifest should be detected as SALMON_QUANT, got {result}"
-        )
+        assert (
+            result == ArchiveContentType.SALMON_QUANT
+        ), f"Salmon manifest should be detected as SALMON_QUANT, got {result}"
 
     def test_manifest_geo_raw_detection(self):
         """GEO RAW format detected from manifest."""
@@ -343,9 +344,9 @@ class TestArchiveInspectorManifestDetection:
 
         inspector = ArchiveInspector()
         result = inspector.detect_content_type_from_manifest(manifest)
-        assert result == ArchiveContentType.GEO_RAW, (
-            f"GEO RAW manifest should be detected as GEO_RAW, got {result}"
-        )
+        assert (
+            result == ArchiveContentType.GEO_RAW
+        ), f"GEO RAW manifest should be detected as GEO_RAW, got {result}"
 
 
 class TestContentDetectorKallistoSalmon:

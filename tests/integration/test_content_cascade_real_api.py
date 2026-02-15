@@ -113,7 +113,7 @@ class TestPMCFastPath:
         # Verify successful extraction
         assert result is not None
         # Check for content in any of the expected keys (API format may vary)
-        content_keys = ['content', 'methods_markdown', 'methods_text', 'full_text']
+        content_keys = ["content", "methods_markdown", "methods_text", "full_text"]
         has_content = any(key in result for key in content_keys)
         assert has_content, f"No content found. Keys: {list(result.keys())}"
 
@@ -143,7 +143,7 @@ class TestPMCFastPath:
 
         # Verify structured content elements
         # Check for content in any of the expected keys (API format may vary)
-        content_keys = ['content', 'methods_markdown', 'methods_text', 'full_text']
+        content_keys = ["content", "methods_markdown", "methods_text", "full_text"]
         has_content = any(key in result for key in content_keys)
         assert has_content, f"No content found. Keys: {list(result.keys())}"
 
@@ -233,7 +233,10 @@ class TestWebpageFallback:
         # Verify successful extraction
         assert result is not None
         # Check for content in any of the expected keys (API format changed)
-        has_content = any(key in result for key in ['content', 'methods_markdown', 'methods_text', 'full_text'])
+        has_content = any(
+            key in result
+            for key in ["content", "methods_markdown", "methods_text", "full_text"]
+        )
         assert has_content, f"No content found in result. Keys: {list(result.keys())}"
 
         # Webpage extraction: 2-5s target (allow up to 10s with network)
@@ -250,12 +253,14 @@ class TestWebpageFallback:
 
         # Verify content quality - get content from any available key
         content = ""
-        for key in ['content', 'methods_markdown', 'methods_text', 'full_text']:
+        for key in ["content", "methods_markdown", "methods_text", "full_text"]:
             if key in result and result[key]:
                 content = str(result[key])
                 break
 
-        assert len(content) > 500, f"Webpage content too short (got {len(content)} chars)"
+        assert (
+            len(content) > 500
+        ), f"Webpage content too short (got {len(content)} chars)"
 
         # Should extract text, not just HTML tags
         assert "<html>" not in content.lower(), "Raw HTML not cleaned"
@@ -285,11 +290,14 @@ class TestWebpageFallback:
             pytest.skip(f"Service unavailable: {result.get('error', 'Unknown error')}")
 
         # Check for content in any of the expected keys (API format may vary)
-        has_content = any(key in result for key in ['content', 'methods_markdown', 'methods_text', 'full_text'])
+        has_content = any(
+            key in result
+            for key in ["content", "methods_markdown", "methods_text", "full_text"]
+        )
         assert has_content, f"No content found. Keys: {list(result.keys())}"
         # Verify content is not empty (check all possible content keys)
         content_found = False
-        for key in ['content', 'methods_markdown', 'methods_text', 'full_text']:
+        for key in ["content", "methods_markdown", "methods_text", "full_text"]:
             if key in result and result[key] and len(str(result[key])) > 0:
                 content_found = True
                 break
@@ -353,10 +361,15 @@ class TestPDFFallback:
 
         # Check if service returned an error (external service unavailable)
         if "error" in result:
-            pytest.skip(f"PDF service unavailable: {result.get('error', 'Unknown error')}")
+            pytest.skip(
+                f"PDF service unavailable: {result.get('error', 'Unknown error')}"
+            )
 
         # Check for content in any of the expected keys (API format may vary)
-        has_content = any(key in result for key in ['content', 'methods_markdown', 'methods_text', 'full_text'])
+        has_content = any(
+            key in result
+            for key in ["content", "methods_markdown", "methods_text", "full_text"]
+        )
         assert has_content, f"No content found. Keys: {list(result.keys())}"
 
         # PDF extraction: 3-8s target (allow up to 15s with Docling overhead)
@@ -377,11 +390,13 @@ class TestPDFFallback:
 
         # Check if service returned an error (external service unavailable)
         if "error" in result:
-            pytest.skip(f"PDF service unavailable: {result.get('error', 'Unknown error')}")
+            pytest.skip(
+                f"PDF service unavailable: {result.get('error', 'Unknown error')}"
+            )
 
         # Verify content quality - get from any available key
         content = ""
-        for key in ['content', 'methods_markdown', 'methods_text', 'full_text']:
+        for key in ["content", "methods_markdown", "methods_text", "full_text"]:
             if key in result and result[key]:
                 content = str(result[key])
                 break
@@ -474,11 +489,14 @@ class TestFullCascadeIntegration:
         # Verify successful extraction via fallback
         assert result is not None
         # Check for content in any of the expected keys (API format may vary)
-        has_content = any(key in result for key in ['content', 'methods_markdown', 'methods_text', 'full_text'])
+        has_content = any(
+            key in result
+            for key in ["content", "methods_markdown", "methods_text", "full_text"]
+        )
         assert has_content, f"No content found. Keys: {list(result.keys())}"
         # Verify content is not empty (check all possible content keys)
         content_found = False
-        for key in ['content', 'methods_markdown', 'methods_text', 'full_text']:
+        for key in ["content", "methods_markdown", "methods_text", "full_text"]:
             if key in result and result[key] and len(str(result[key])) > 0:
                 content_found = True
                 break
@@ -507,11 +525,14 @@ class TestFullCascadeIntegration:
             pytest.skip(f"Service unavailable: {result.get('error', 'Unknown error')}")
 
         # Check for content in any of the expected keys (API format may vary)
-        has_content = any(key in result for key in ['content', 'methods_markdown', 'methods_text', 'full_text'])
+        has_content = any(
+            key in result
+            for key in ["content", "methods_markdown", "methods_text", "full_text"]
+        )
         assert has_content, f"No content found. Keys: {list(result.keys())}"
         # Verify content is not empty (check all possible content keys)
         content_found = False
-        for key in ['content', 'methods_markdown', 'methods_text', 'full_text']:
+        for key in ["content", "methods_markdown", "methods_text", "full_text"]:
             if key in result and result[key] and len(str(result[key])) > 0:
                 content_found = True
                 break
@@ -537,7 +558,10 @@ class TestFullCascadeIntegration:
         # Verify success
         assert result is not None
         # Check for content in any of the expected keys (API format may vary)
-        has_content = any(key in result for key in ['content', 'methods_markdown', 'methods_text', 'full_text'])
+        has_content = any(
+            key in result
+            for key in ["content", "methods_markdown", "methods_text", "full_text"]
+        )
         assert has_content, f"No content found. Keys: {list(result.keys())}"
 
         # Full cascade: <10s target (PMC attempts + fallback)
@@ -662,7 +686,15 @@ class TestFullCascadeIntegration:
                 # Check if result has content (any of the expected keys)
                 has_content = False
                 if result is not None:
-                    has_content = any(key in result for key in ['content', 'methods_markdown', 'methods_text', 'full_text'])
+                    has_content = any(
+                        key in result
+                        for key in [
+                            "content",
+                            "methods_markdown",
+                            "methods_text",
+                            "full_text",
+                        ]
+                    )
 
                 results.append(
                     {

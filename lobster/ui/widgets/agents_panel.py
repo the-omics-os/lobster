@@ -1,11 +1,12 @@
 """Agents panel showing AI agent readiness and status."""
 
 from typing import Dict, Set
+
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Vertical
-from textual.widgets import Static
 from textual.reactive import reactive
-from rich.text import Text
+from textual.widgets import Static
 
 
 class AgentsPanel(Vertical):
@@ -69,8 +70,8 @@ class AgentsPanel(Vertical):
                 AGENT_REGISTRY,
                 _ensure_plugins_loaded,
             )
-            from lobster.core.license_manager import get_current_tier
             from lobster.config.subscription_tiers import is_agent_available
+            from lobster.core.license_manager import get_current_tier
 
             # Ensure plugins are loaded before accessing AGENT_REGISTRY
             _ensure_plugins_loaded()

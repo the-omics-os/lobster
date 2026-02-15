@@ -158,13 +158,13 @@ class AgentContractTestMixin:
         """
         config = self._get_agent_config()
 
-        assert config is not None, (
-            f"Cannot check name field: AGENT_CONFIG not found in '{self.agent_module}'"
-        )
+        assert (
+            config is not None
+        ), f"Cannot check name field: AGENT_CONFIG not found in '{self.agent_module}'"
 
-        assert hasattr(config, "name"), (
-            f"AGENT_CONFIG in '{self.agent_module}' is missing 'name' field."
-        )
+        assert hasattr(
+            config, "name"
+        ), f"AGENT_CONFIG in '{self.agent_module}' is missing 'name' field."
 
         assert config.name, f"AGENT_CONFIG.name in '{self.agent_module}' is empty."
 
@@ -177,13 +177,13 @@ class AgentContractTestMixin:
         """
         config = self._get_agent_config()
 
-        assert config is not None, (
-            f"Cannot check tier_requirement: AGENT_CONFIG not found in '{self.agent_module}'"
-        )
+        assert (
+            config is not None
+        ), f"Cannot check tier_requirement: AGENT_CONFIG not found in '{self.agent_module}'"
 
-        assert hasattr(config, "tier_requirement"), (
-            f"AGENT_CONFIG in '{self.agent_module}' is missing 'tier_requirement' field."
-        )
+        assert hasattr(
+            config, "tier_requirement"
+        ), f"AGENT_CONFIG in '{self.agent_module}' is missing 'tier_requirement' field."
 
         valid_tiers = {"free", "premium", "enterprise"}
         tier = config.tier_requirement
@@ -195,9 +195,9 @@ class AgentContractTestMixin:
 
         # Optional: check expected tier if specified
         if self.expected_tier is not None:
-            assert tier == self.expected_tier, (
-                f"AGENT_CONFIG.tier_requirement is '{tier}', expected '{self.expected_tier}'"
-            )
+            assert (
+                tier == self.expected_tier
+            ), f"AGENT_CONFIG.tier_requirement is '{tier}', expected '{self.expected_tier}'"
 
     def test_all_contract_requirements(self) -> None:
         """

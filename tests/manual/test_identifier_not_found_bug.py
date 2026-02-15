@@ -35,15 +35,19 @@ def test_identifier_not_in_metadata_store():
         write_tool = create_write_to_workspace_tool(dm)
 
         print("\nAttempting to write non-existent identifier to workspace...")
-        print("Calling: write_to_workspace(identifier='GSE_NOT_EXIST', workspace='data')")
+        print(
+            "Calling: write_to_workspace(identifier='GSE_NOT_EXIST', workspace='data')"
+        )
 
         try:
-            result = write_tool.invoke({
-                "identifier": "GSE_NOT_EXIST",
-                "workspace": "data",
-                "content_type": "dataset",
-                "output_format": "json",
-            })
+            result = write_tool.invoke(
+                {
+                    "identifier": "GSE_NOT_EXIST",
+                    "workspace": "data",
+                    "content_type": "dataset",
+                    "output_format": "json",
+                }
+            )
 
             print(f"\nResult: {result}")
 
@@ -96,12 +100,14 @@ def test_valid_identifier_for_comparison():
         print("Calling: write_to_workspace(identifier='GSE_VALID', workspace='data')")
 
         try:
-            result = write_tool.invoke({
-                "identifier": "GSE_VALID",
-                "workspace": "data",
-                "content_type": "dataset",
-                "output_format": "json",
-            })
+            result = write_tool.invoke(
+                {
+                    "identifier": "GSE_VALID",
+                    "workspace": "data",
+                    "content_type": "dataset",
+                    "output_format": "json",
+                }
+            )
 
             print(f"\nResult: {result[:200]}...")
 
@@ -122,7 +128,9 @@ def main():
     print("\n" + "=" * 80)
     print("REPRODUCE: 'Identifier not found' Bug")
     print("=" * 80)
-    print("\nScenario: Calling write_to_workspace with identifier NOT in metadata_store")
+    print(
+        "\nScenario: Calling write_to_workspace with identifier NOT in metadata_store"
+    )
     print("Expected: Clear error message like 'Identifier not found'")
     print("Bug: Error message may be unclear or missing\n")
 

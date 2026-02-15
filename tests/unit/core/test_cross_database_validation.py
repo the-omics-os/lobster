@@ -361,9 +361,9 @@ class TestCrossModalityAccessions:
         ]:
             result = validate_func(basic_adata, modality=modality)
             assert not result.has_errors, f"Failed for {modality}"
-            assert any(doi in msg for msg in result.info), (
-                f"Missing info for {modality}"
-            )
+            assert any(
+                doi in msg for msg in result.info
+            ), f"Missing info for {modality}"
 
 
 @pytest.mark.unit

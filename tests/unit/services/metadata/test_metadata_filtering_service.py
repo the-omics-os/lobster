@@ -5,8 +5,9 @@ Tests the natural language criteria parsing and filter application logic
 extracted from metadata_assistant.py.
 """
 
+from unittest.mock import MagicMock, Mock
+
 import pytest
-from unittest.mock import Mock, MagicMock
 
 from lobster.services.metadata.metadata_filtering_service import (
     MetadataFilteringService,
@@ -84,9 +85,9 @@ class TestParseCriteria:
             "control",
         ]:
             result = self.service.parse_criteria(f"samples with {keyword}")
-            assert result["standardize_disease"] is True, (
-                f"Failed for keyword: {keyword}"
-            )
+            assert (
+                result["standardize_disease"] is True
+            ), f"Failed for keyword: {keyword}"
 
         # Disease extraction now ALWAYS enabled
         # Even without disease keywords, we extract disease for valuable metadata

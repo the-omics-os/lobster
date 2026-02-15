@@ -5,7 +5,6 @@ These tests verify that the service can be imported and instantiated.
 Full integration tests require genebe or network access to Ensembl VEP.
 """
 
-import pytest
 
 
 def test_service_import():

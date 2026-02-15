@@ -1,11 +1,11 @@
 """Adapters panel showing data format support status."""
 
 from typing import Dict, Set
+
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widgets import Static
-from rich.text import Text
-
 
 # Data format adapter registry
 ADAPTER_REGISTRY = {
@@ -65,19 +65,17 @@ class AdaptersPanel(Vertical):
 
     def _check_adapters(self) -> None:
         """Check which adapters are available based on imports."""
-        # Check transcriptomics adapters
-        try:
-            import anndata
+        import importlib.util
 
+        # Check transcriptomics adapters
+        if importlib.util.find_spec("anndata"):
             self._adapter_status["H5AD"] = "ok"
-        except ImportError:
+        else:
             self._adapter_status["H5AD"] = "missing"
 
-        try:
-            import scanpy
-
+        if importlib.util.find_spec("scanpy"):
             self._adapter_status["10X MTX"] = "ok"
-        except ImportError:
+        else:
             self._adapter_status["10X MTX"] = "missing"
 
         # Kallisto/Salmon use pandas - always available
@@ -85,13 +83,11 @@ class AdaptersPanel(Vertical):
         self._adapter_status["Salmon"] = "ok"
 
         # Proteomics adapters
-        try:
-            import pandas
-
+        if importlib.util.find_spec("pandas"):
             self._adapter_status["MaxQuant"] = "ok"
             self._adapter_status["Spectronaut"] = "ok"
             self._adapter_status["Olink"] = "ok"
-        except ImportError:
+        else:
             self._adapter_status["MaxQuant"] = "missing"
             self._adapter_status["Spectronaut"] = "missing"
             self._adapter_status["Olink"] = "missing"

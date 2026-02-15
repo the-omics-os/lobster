@@ -29,14 +29,16 @@ if sys.version_info < (3, 12):
 # Suppress harmless Pydantic v1 deprecation warning from langchain_core on Python 3.14+
 import warnings
 
-warnings.filterwarnings("ignore", message="Core Pydantic V1 functionality", category=UserWarning)
+warnings.filterwarnings(
+    "ignore", message="Core Pydantic V1 functionality", category=UserWarning
+)
 
 import html
 import os
 import random
 import threading
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 # Disable pandas Arrow-backed strings (pandas >=2.2 default)
 # ArrowStringArray cannot be serialized to H5AD by anndata/h5py.
@@ -79,60 +81,60 @@ if TYPE_CHECKING:
 import typer
 from rich import box
 from rich.console import Console
+from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm, Prompt
 from rich.syntax import Syntax
 from rich.table import Table
-from rich.live import Live
 from rich.text import Text
 
-from lobster.cli_internal.utils.path_resolution import (  # BUG FIX #6: Secure path resolution
-    PathResolver,
-)
 from lobster.cli_internal.commands import (
     ConsoleOutputAdapter,
-    show_queue_status,
-    queue_load_file,
-    queue_list,
-    queue_clear,
-    queue_export,
-    queue_import,
     QueueFileTypeNotSupported,
+    archive_queue,
+    config_model_list,
+    config_model_switch,
+    config_provider_list,
+    config_provider_switch,
+    config_show,
+    data_summary,
+    export_data,
+    file_read,
+    metadata_clear,
+    metadata_clear_all,
+    metadata_clear_exports,
+    metadata_exports,
+    metadata_list,
     metadata_overview,
     metadata_publications,
     metadata_samples,
     metadata_workspace,
-    metadata_exports,
-    metadata_list,
-    metadata_clear,
-    metadata_clear_exports,
-    metadata_clear_all,
-    workspace_list,
+    modalities_list,
+    modality_describe,
+    pipeline_export,
+    pipeline_info,
+    pipeline_list,
+    pipeline_run,
+    plot_show,
+    plots_list,
+    queue_clear,
+    queue_export,
+    queue_import,
+    queue_list,
+    queue_load_file,
+    show_queue_status,
     workspace_info,
+    workspace_list,
     workspace_load,
     workspace_remove,
     workspace_status,
-    pipeline_export,
-    pipeline_list,
-    pipeline_run,
-    pipeline_info,
-    data_summary,
-    file_read,
-    archive_queue,
-    config_show,
-    config_provider_list,
-    config_provider_switch,
-    config_model_list,
-    config_model_switch,
-    modalities_list,
-    modality_describe,
-    export_data,
-    plots_list,
-    plot_show,
 )
 from lobster.cli_internal.commands.light.agent_commands import agents_app
+from lobster.cli_internal.utils.path_resolution import (  # BUG FIX #6: Secure path resolution
+    PathResolver,
+)
 from lobster.config import provider_setup
 from lobster.config.agent_config import (
     LobsterAgentConfigurator,
@@ -1007,8 +1009,8 @@ if PROMPT_TOOLKIT_AVAILABLE:
                 # Show available options
                 if text == "/config model":
                     try:
-                        from lobster.config.model_service import ModelServiceFactory
                         from lobster.config.llm_factory import LLMFactory
+                        from lobster.config.model_service import ModelServiceFactory
 
                         # Get current provider (from client, not adapter)
                         current_provider = (
@@ -1068,8 +1070,8 @@ if PROMPT_TOOLKIT_AVAILABLE:
                 if text.startswith("/config model "):
                     # Provider-aware model completion
                     try:
-                        from lobster.config.model_service import ModelServiceFactory
                         from lobster.config.llm_factory import LLMFactory
+                        from lobster.config.model_service import ModelServiceFactory
 
                         # Get current provider (from client, not adapter)
                         current_provider = (
@@ -1210,8 +1212,18 @@ AVAILABLE_AGENT_PACKAGES = [
         ["metadata_assistant"],
         False,
     ),
-    ("lobster-genomics", "Genomics/DNA analysis (VCF, GWAS)", ["genomics_expert"], True),
-    ("lobster-proteomics", "Mass spec proteomics analysis", ["proteomics_expert"], True),
+    (
+        "lobster-genomics",
+        "Genomics/DNA analysis (VCF, GWAS)",
+        ["genomics_expert"],
+        True,
+    ),
+    (
+        "lobster-proteomics",
+        "Mass spec proteomics analysis",
+        ["proteomics_expert"],
+        True,
+    ),
     (
         "lobster-ml",
         "Machine learning & feature selection",
@@ -1242,9 +1254,9 @@ def _display_agent_selection_list(
     agents_dict: dict, enabled_set: set = None
 ) -> list[str]:
     """Display numbered list of agents for selection. Returns list of agent names in display order."""
+    from rich import box
     from rich.console import Console
     from rich.table import Table
-    from rich import box
 
     console = Console()
     enabled_set = enabled_set or set()
@@ -1271,10 +1283,10 @@ def _display_agent_selection_list(
 
 def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
     """Interactive agent package selection. Returns list of selected agent names."""
+    from rich import box
     from rich.console import Console
     from rich.prompt import Prompt
     from rich.table import Table
-    from rich import box
 
     console = Console()
 
@@ -1295,7 +1307,9 @@ def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
     table.add_column("Agents", style="yellow")
     table.add_column("Status", style="green", width=12)
 
-    for i, (pkg_name, desc, agents, published) in enumerate(AVAILABLE_AGENT_PACKAGES, 1):
+    for i, (pkg_name, desc, agents, published) in enumerate(
+        AVAILABLE_AGENT_PACKAGES, 1
+    ):
         # Check if this package's agents are installed
         is_installed = any(a in installed_agent_names for a in agents)
         if is_installed:
@@ -1377,7 +1391,7 @@ def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
 def _prompt_automatic_agent_selection(workspace_path: Path) -> list[str]:
     """LLM-assisted automatic agent selection. Returns list of selected agent names."""
     from rich.console import Console
-    from rich.prompt import Prompt, Confirm
+    from rich.prompt import Confirm, Prompt
 
     console = Console()
 
@@ -1548,6 +1562,7 @@ def _perform_agent_selection_non_interactive(
 ) -> tuple[list[str], str]:
     """Handle non-interactive agent selection. Returns (selected_agents, preset_name or None)."""
     from rich.console import Console
+
     from lobster.config.agent_presets import expand_preset, is_valid_preset
 
     console = Console()
@@ -1624,7 +1639,6 @@ def _perform_agent_selection_non_interactive(
 def _perform_agent_selection_interactive(workspace_path: Path) -> tuple[list[str], str]:
     """Handle interactive agent selection. Returns (selected_agents, preset_name or None)."""
     from rich.console import Console
-    from rich.prompt import Prompt
 
     console = Console()
 
@@ -1680,8 +1694,8 @@ def config_callback(
     """
     # Only run if no subcommand was invoked
     if ctx.invoked_subcommand is None:
-        from lobster.core.workspace import resolve_workspace
         from lobster.core.client import AgentClient
+        from lobster.core.workspace import resolve_workspace
 
         # Resolve workspace path
         workspace_path = resolve_workspace(workspace, create=False)
@@ -1808,8 +1822,8 @@ def init_client(
 ) -> "AgentClient":
     """Initialize either local or cloud client based on environment."""
     # Lazy imports for performance (saves ~5s startup time)
-    from lobster.core.client import AgentClient
     from lobster.config.settings import settings
+    from lobster.core.client import AgentClient
 
     global client
 
@@ -2556,8 +2570,8 @@ def _dna_helix_animation(width: int, duration: float = 0.7):
     DNA sequence animation with colorful bases (A, T, C, G) flowing across the terminal.
     Uses only capital DNA letters with biochemistry-inspired colors.
     """
-    import sys
     import math
+    import sys
 
     # DNA base colors (biochemistry-inspired)
     base_colors = {
@@ -2704,9 +2718,9 @@ def _dna_agent_loading_phase(
     Displays a progress bar made of DNA bases that fills as agents load,
     with each agent name appearing with a DNA sequencing effect.
     """
-    import sys
     import math
     import queue as queue_module
+    import sys
 
     # DNA base colors (biochemistry-inspired)
     base_colors = {
@@ -2715,8 +2729,6 @@ def _dna_agent_loading_phase(
         "G": (255, 193, 7),  # Guanine - gold
         "C": (41, 121, 255),  # Cytosine - blue
     }
-    lobster_orange = (228, 92, 71)
-
     total_agents = len(agent_names)
     loaded_count = 0
     start_time = time.time()
@@ -2854,8 +2866,8 @@ def _dna_exit_animation(width: int, duration: float = 0.5):
     Orange bar dissolves back into DNA bases, which then fade out.
     The "─ omics-os ─" brand text ALWAYS stays lobster orange.
     """
-    import sys
     import math
+    import sys
 
     # DNA base colors (biochemistry-inspired)
     base_colors = {
@@ -3389,10 +3401,12 @@ def display_session(client: "AgentClient"):
 def _show_workspace_prompt(client):
     """Display minimal oh-my-zsh style status with system information."""
     try:
-        import psutil
         import shutil
-        from lobster.core.license_manager import get_current_tier
+
+        import psutil
+
         from lobster.config.agent_registry import AGENT_REGISTRY, _ensure_plugins_loaded
+        from lobster.core.license_manager import get_current_tier
         from lobster.tools.gpu_detector import GPUDetector
 
         # Ensure plugins are loaded before accessing AGENT_REGISTRY
@@ -3584,9 +3598,9 @@ def config_test(
         provider = LLMFactory.get_current_provider(workspace_path=workspace_path)
         if provider is None:
             test_results["checks"]["llm_provider"]["message"] = "No API keys found"
-            test_results["checks"]["llm_provider"]["hint"] = (
-                "Set ANTHROPIC_API_KEY, AWS_BEDROCK_ACCESS_KEY, or run Ollama"
-            )
+            test_results["checks"]["llm_provider"][
+                "hint"
+            ] = "Set ANTHROPIC_API_KEY, AWS_BEDROCK_ACCESS_KEY, or run Ollama"
             log("❌ No LLM provider configured", "red")
         else:
             # provider is a string, not an enum
@@ -3607,30 +3621,29 @@ def config_test(
                         )
                     models = resp.json().get("models", [])
                     if not models:
-                        test_results["checks"]["llm_provider"]["message"] = (
-                            "Ollama running but no models installed"
-                        )
-                        test_results["checks"]["llm_provider"]["hint"] = (
-                            "Run: ollama pull llama3.2:3b"
-                        )
+                        test_results["checks"]["llm_provider"][
+                            "message"
+                        ] = "Ollama running but no models installed"
+                        test_results["checks"]["llm_provider"][
+                            "hint"
+                        ] = "Run: ollama pull llama3.2:3b"
                         log("❌ Ollama: No models installed", "red")
                         provider = None
                     else:
-                        model_names = [m.get("name", "unknown") for m in models[:3]]
                         log(f"  Ollama server: Running ({len(models)} models)", "green")
                 except requests.exceptions.ConnectionError:
-                    test_results["checks"]["llm_provider"]["message"] = (
-                        "Ollama server not running"
-                    )
-                    test_results["checks"]["llm_provider"]["hint"] = (
-                        "Start Ollama: ollama serve"
-                    )
+                    test_results["checks"]["llm_provider"][
+                        "message"
+                    ] = "Ollama server not running"
+                    test_results["checks"]["llm_provider"][
+                        "hint"
+                    ] = "Start Ollama: ollama serve"
                     log("❌ Ollama server not accessible", "red")
                     provider = None
                 except Exception as e:
-                    test_results["checks"]["llm_provider"]["message"] = (
-                        f"Ollama error: {str(e)[:60]}"
-                    )
+                    test_results["checks"]["llm_provider"][
+                        "message"
+                    ] = f"Ollama error: {str(e)[:60]}"
                     log(f"❌ Ollama check failed: {e}", "red")
                     provider = None
 
@@ -3667,7 +3680,7 @@ def config_test(
                         test_config, "config_test", workspace_path=workspace_path
                     )
                     log("  Testing API connectivity...", "yellow")
-                    response = test_llm.invoke("Reply with just 'ok'")
+                    test_llm.invoke("Reply with just 'ok'")
 
                     test_results["checks"]["llm_provider"]["status"] = "pass"
                     test_results["checks"]["llm_provider"]["message"] = "Connected"
@@ -4198,8 +4211,8 @@ def purge(
       lobster purge --keep-license     # Preserve your license file
       lobster purge --force            # Skip confirmation prompt
     """
-    from lobster.cli_internal.commands.output_adapter import ConsoleOutputAdapter
     from lobster.cli_internal.commands import purge as purge_cmd
+    from lobster.cli_internal.commands.output_adapter import ConsoleOutputAdapter
 
     console.print()
     console.print(
@@ -4417,7 +4430,10 @@ def _uv_tool_env_handoff(
         # Only include packages not already in the receipt AND published on PyPI
         already = {p.lower().replace("-", "_") for p in info.installed_packages}
         for pkg in needed:
-            if pkg.lower().replace("-", "_") not in already and pkg in _published_packages:
+            if (
+                pkg.lower().replace("-", "_") not in already
+                and pkg in _published_packages
+            ):
                 with_packages.append(pkg)
 
     # If nothing new to install, skip
@@ -4624,7 +4640,7 @@ def init(
     profile: Optional[str] = typer.Option(
         None,
         "--profile",
-        help="Agent profile (development, production, ultra, godmode). Only for Anthropic/Bedrock providers.",
+        help="Agent profile (development, production, performance, max). Only for Anthropic/Bedrock providers.",
     ),
     ncbi_key: Optional[str] = typer.Option(
         None, "--ncbi-key", help="NCBI API key (optional, non-interactive mode)"
@@ -4728,7 +4744,7 @@ def init(
       lobster init --non-interactive \\
         --bedrock-access-key=AKIA... \\
         --bedrock-secret-key=xxx \\
-        --profile=ultra                              # CI/CD: Bedrock with ultra profile
+        --profile=performance                        # CI/CD: Bedrock with performance profile
       lobster init --non-interactive \\
         --use-ollama                                 # CI/CD: Ollama (profile not applicable)
       lobster init --non-interactive \\
@@ -4738,6 +4754,7 @@ def init(
         --cloud-key=cloud_xxx                        # CI/CD: With cloud access
     """
     import datetime
+
     from lobster.config.global_config import GlobalProviderConfig
 
     # Determine paths based on global vs workspace mode
@@ -4878,15 +4895,31 @@ def init(
             console.print(f"[yellow]⚠️  Warning: {priority_warning}[/yellow]")
 
         # Validate profile parameter (only relevant for Anthropic/Bedrock)
-        valid_profiles = ["development", "production", "ultra", "godmode"]
+        from lobster.config.constants import (
+            DEPRECATED_PROFILE_ALIASES,
+            VALID_PROFILES,
+        )
+
+        valid_profiles = VALID_PROFILES + list(DEPRECATED_PROFILE_ALIASES.keys())
         selected_profile = None
 
         if profile:
             # Profile provided - validate it
             if profile not in valid_profiles:
                 console.print(f"[red]❌ Error: Invalid profile '{profile}'[/red]")
-                console.print(f"Valid profiles: {', '.join(valid_profiles)}")
+                console.print(
+                    f"Valid profiles: {', '.join(VALID_PROFILES)}"
+                )
                 raise typer.Exit(1)
+
+            # Resolve deprecated aliases
+            if profile in DEPRECATED_PROFILE_ALIASES:
+                new_name = DEPRECATED_PROFILE_ALIASES[profile]
+                console.print(
+                    f"[yellow]⚠️  Profile '{profile}' is deprecated, "
+                    f"using '{new_name}' instead.[/yellow]"
+                )
+                profile = new_name
 
             # Warn if profile used with Ollama (it will be ignored)
             if has_ollama and not has_anthropic and not has_bedrock:
@@ -5427,10 +5460,10 @@ def init(
                 "  [cyan]2[/cyan] - Production   (Sonnet 4 - balanced quality & speed) [recommended]"
             )
             console.print(
-                "  [cyan]3[/cyan] - Ultra        (Sonnet 4.5 - highest quality, slower)"
+                "  [cyan]3[/cyan] - Performance  (Sonnet 4.5 - highest quality, slower)"
             )
             console.print(
-                "  [cyan]4[/cyan] - Godmode      (Opus 4.1 - experimental, most expensive)"
+                "  [cyan]4[/cyan] - Max          (Opus 4.1 - most capable, most expensive)"
             )
             console.print()
             console.print(
@@ -5450,8 +5483,8 @@ def init(
             profile_map = {
                 "1": "development",
                 "2": "production",
-                "3": "ultra",
-                "4": "godmode",
+                "3": "performance",
+                "4": "max",
             }
             profile_to_write = profile_map[profile_choice]
 
@@ -5630,7 +5663,9 @@ def init(
                         # Note: License is stored in ~/.lobster/license.json, not .env
                     else:
                         error = result.get("error", "Unknown error")
-                        console.print(f"[yellow]⚠️  Activation failed: {error}[/yellow]")
+                        console.print(
+                            f"[yellow]⚠️  Activation failed: {error}[/yellow]"
+                        )
                         console.print(
                             "[dim]You can retry later with: lobster activate <code>[/dim]"
                         )
@@ -5683,8 +5718,8 @@ def init(
         # Test SSL connectivity (interactive mode)
         if not skip_ssl_test:
             from lobster.config.ssl_setup import (
-                test_ssl_connectivity,
                 prompt_ssl_fix,
+                test_ssl_connectivity,
             )
 
             console.print()
@@ -7186,7 +7221,7 @@ def dashboard_command(
         from lobster.ui.os_app import run_lobster_os
 
         run_lobster_os(workspace)
-    except ImportError as e:
+    except ImportError:
         console.print(
             "[yellow]TUI mode requires the textual package.[/yellow]\n"
             "Install with: [bold]pip install lobster-ai[tui][/bold]\n"
@@ -7276,7 +7311,14 @@ def query(
     env_file = Path.cwd() / ".env"
     if not env_file.exists():
         if json_output:
-            print(json.dumps({"success": False, "error": "No configuration found. Run 'lobster init' first."}))
+            print(
+                json.dumps(
+                    {
+                        "success": False,
+                        "error": "No configuration found. Run 'lobster init' first.",
+                    }
+                )
+            )
             raise typer.Exit(1)
         console.print("[red]❌ No configuration found. Run 'lobster init' first.[/red]")
         raise typer.Exit(1)
@@ -7382,8 +7424,16 @@ def query(
         if result.get("success"):
             json_result["last_agent"] = result.get("last_agent")
             token_usage = result.get("token_usage")
-            if not token_usage and hasattr(client, "token_tracker") and client.token_tracker:
-                token_usage = client.token_tracker.get_summary() if hasattr(client.token_tracker, "get_summary") else None
+            if (
+                not token_usage
+                and hasattr(client, "token_tracker")
+                and client.token_tracker
+            ):
+                token_usage = (
+                    client.token_tracker.get_summary()
+                    if hasattr(client.token_tracker, "get_summary")
+                    else None
+                )
             if token_usage:
                 json_result["token_usage"] = token_usage
         else:
@@ -7460,19 +7510,30 @@ def _command_files(client, output) -> Optional[str]:
             rows = []
             for f in files_sorted:
                 size_kb = f["size"] / 1024
-                mod_time = datetime.fromtimestamp(f["modified"]).strftime("%Y-%m-%d %H:%M")
-                rows.append([f["name"], f"{size_kb:.1f} KB", mod_time, Path(f["path"]).parent.name])
+                mod_time = datetime.fromtimestamp(f["modified"]).strftime(
+                    "%Y-%m-%d %H:%M"
+                )
+                rows.append(
+                    [
+                        f["name"],
+                        f"{size_kb:.1f} KB",
+                        mod_time,
+                        Path(f["path"]).parent.name,
+                    ]
+                )
 
-            output.print_table({
-                "title": f"{category.title()} Files",
-                "columns": [
-                    {"name": "Name", "style": "bold white"},
-                    {"name": "Size", "style": "grey74"},
-                    {"name": "Modified", "style": "grey50"},
-                    {"name": "Path", "style": "dim grey50"},
-                ],
-                "rows": rows,
-            })
+            output.print_table(
+                {
+                    "title": f"{category.title()} Files",
+                    "columns": [
+                        {"name": "Name", "style": "bold white"},
+                        {"name": "Size", "style": "grey74"},
+                        {"name": "Modified", "style": "grey50"},
+                        {"name": "Path", "style": "dim grey50"},
+                    ],
+                    "rows": rows,
+                }
+            )
 
     total = sum(len(v) for v in workspace_files.values())
     return f"Listed {total} workspace files"
@@ -7488,24 +7549,24 @@ def _dispatch_command(cmd_str: str, client, output):
     no data), or the _UNKNOWN_COMMAND sentinel if the command is unrecognized.
     """
     from lobster.cli_internal.commands import (
-        workspace_status,
-        workspace_list,
-        workspace_info,
-        show_queue_status,
-        queue_list,
+        config_show,
+        data_summary,
+        metadata_exports,
+        metadata_list,
         metadata_overview,
         metadata_publications,
         metadata_samples,
         metadata_workspace,
-        metadata_exports,
-        metadata_list,
-        pipeline_list,
-        pipeline_info,
-        config_show,
-        data_summary,
         modalities_list,
         modality_describe,
+        pipeline_info,
+        pipeline_list,
         plots_list,
+        queue_list,
+        show_queue_status,
+        workspace_info,
+        workspace_list,
+        workspace_status,
     )
 
     parts = cmd_str.strip().split(None, 2)
@@ -7571,11 +7632,25 @@ def _dispatch_command(cmd_str: str, client, output):
 
     else:
         available = [
-            "data", "files", "workspace", "workspace list", "workspace info <sel>",
-            "plots", "modalities", "describe <name>", "queue", "queue list [type]",
-            "metadata", "metadata publications", "metadata samples",
-            "metadata workspace", "metadata exports", "metadata list",
-            "pipeline list", "pipeline info", "config",
+            "data",
+            "files",
+            "workspace",
+            "workspace list",
+            "workspace info <sel>",
+            "plots",
+            "modalities",
+            "describe <name>",
+            "queue",
+            "queue list [type]",
+            "metadata",
+            "metadata publications",
+            "metadata samples",
+            "metadata workspace",
+            "metadata exports",
+            "metadata list",
+            "pipeline list",
+            "pipeline info",
+            "config",
         ]
         output.print(f"Unknown command: {cmd_str}", style="error")
         output.print("Available commands: " + ", ".join(available), style="info")
@@ -7584,7 +7659,9 @@ def _dispatch_command(cmd_str: str, client, output):
 
 @app.command(name="command")
 def command_cmd(
-    cmd: str = typer.Argument(help='Command to execute, e.g. "data", "workspace list", "files"'),
+    cmd: str = typer.Argument(
+        help='Command to execute, e.g. "data", "workspace list", "files"'
+    ),
     workspace: Optional[Path] = typer.Option(
         None,
         "--workspace",
@@ -7650,12 +7727,16 @@ def command_cmd(
 
     except Exception as e:
         if json_output:
-            print(json.dumps({
-                "success": False,
-                "command": cmd_str,
-                "error": str(e),
-                "error_type": type(e).__name__,
-            }))
+            print(
+                json.dumps(
+                    {
+                        "success": False,
+                        "command": cmd_str,
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    }
+                )
+            )
         else:
             console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
@@ -7807,16 +7888,16 @@ def show_config(
     ),
 ):
     """Show current runtime configuration from ConfigResolver and ProviderRegistry."""
-    from lobster.core.config_resolver import ConfigResolver, ConfigurationError
-    from lobster.config.providers import get_provider
-    from lobster.core.license_manager import get_current_tier
-    from lobster.config.subscription_tiers import (
-        is_agent_available,
-        get_tier_display_name,
-    )
     from lobster.config.agent_registry import AGENT_REGISTRY
-    from lobster.config.workspace_config import WorkspaceProviderConfig
     from lobster.config.global_config import GlobalProviderConfig
+    from lobster.config.providers import get_provider
+    from lobster.config.subscription_tiers import (
+        get_tier_display_name,
+        is_agent_available,
+    )
+    from lobster.config.workspace_config import WorkspaceProviderConfig
+    from lobster.core.config_resolver import ConfigResolver, ConfigurationError
+    from lobster.core.license_manager import get_current_tier
 
     # Resolve workspace path
     workspace_path = resolve_workspace(workspace, create=False)
@@ -8118,7 +8199,7 @@ def test(
                     model_id=default_model, temperature=1.0, max_tokens=50
                 )
 
-                response = test_llm.invoke("Reply with just 'ok'")
+                test_llm.invoke("Reply with just 'ok'")
 
                 console.print()
                 console.print(
@@ -8300,7 +8381,7 @@ NCBI_API_KEY="your-ncbi-api-key-here"
 # =============================================================================
 
 # Profile-based configuration (recommended)
-# Available profiles: development, production, ultra, godmode
+# Available profiles: development, production, performance, max
 LOBSTER_PROFILE=production
 
 # OR use custom configuration file
@@ -8345,11 +8426,11 @@ LOBSTER_CACHE_DIR=data/cache
 # Example 2: Production setup (Claude Sonnet 4 - balanced quality & speed)
 # LOBSTER_PROFILE=production
 
-# Example 3: Ultra setup (Claude Sonnet 4.5 - highest quality)
-# LOBSTER_PROFILE=ultra
+# Example 3: Performance setup (Claude Sonnet 4.5 - highest quality)
+# LOBSTER_PROFILE=performance
 
-# Example 4: Godmode setup (Claude Opus 4.1 - experimental, most expensive)
-# LOBSTER_PROFILE=godmode
+# Example 4: Max setup (Claude Opus 4.1 - most capable, most expensive)
+# LOBSTER_PROFILE=max
 """
 
     with open(".env.template", "w") as f:

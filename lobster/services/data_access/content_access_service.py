@@ -1970,7 +1970,6 @@ class ContentAccessService:
 
         parsed = urllib.parse.urlparse(decoded)
         host = (parsed.hostname or "").lower()
-        path = parsed.path or ""
 
         if "biorxiv.org" in host or "medrxiv.org" in host:
             doi_match = re.search(

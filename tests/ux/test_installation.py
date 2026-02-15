@@ -79,12 +79,12 @@ def test_skill_installer_file_arrays_match_actual_files():
     content = INSTALLER_SCRIPT.read_text()
 
     # Extract USER_SKILL_FILES array
-    user_match = re.search(r'USER_SKILL_FILES=\((.*?)\)', content, re.DOTALL)
+    user_match = re.search(r"USER_SKILL_FILES=\((.*?)\)", content, re.DOTALL)
     assert user_match, "USER_SKILL_FILES array not found"
     user_files = re.findall(r'"([^"]+)"', user_match.group(1))
 
     # Extract DEV_SKILL_FILES array
-    dev_match = re.search(r'DEV_SKILL_FILES=\((.*?)\)', content, re.DOTALL)
+    dev_match = re.search(r"DEV_SKILL_FILES=\((.*?)\)", content, re.DOTALL)
     assert dev_match, "DEV_SKILL_FILES array not found"
     dev_files = re.findall(r'"([^"]+)"', dev_match.group(1))
 
@@ -106,7 +106,10 @@ def test_skill_installer_handles_missing_directories():
     content = INSTALLER_SCRIPT.read_text()
 
     # Should have mkdir -p for references subdirectory
-    assert 'mkdir -p "${dest}/references"' in content or 'mkdir -p "$dest/references"' in content
+    assert (
+        'mkdir -p "${dest}/references"' in content
+        or 'mkdir -p "$dest/references"' in content
+    )
 
 
 @patch("subprocess.run")
@@ -146,7 +149,7 @@ def test_skills_content_lobster_use_has_valid_frontmatter():
     content = skill_file.read_text()
 
     # Extract frontmatter
-    match = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
+    match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
     assert match, "No YAML frontmatter found"
 
     frontmatter_text = match.group(1)
@@ -157,7 +160,7 @@ def test_skills_content_lobster_use_has_valid_frontmatter():
     assert "description" in frontmatter, "Missing 'description' in frontmatter"
 
     # Validate name format
-    assert re.match(r'^[a-z0-9\-]+$', frontmatter["name"]), "Invalid name format"
+    assert re.match(r"^[a-z0-9\-]+$", frontmatter["name"]), "Invalid name format"
     assert len(frontmatter["name"]) <= 64, "Name too long (>64 chars)"
 
 
@@ -169,7 +172,7 @@ def test_skills_content_lobster_dev_has_valid_frontmatter():
     content = skill_file.read_text()
 
     # Extract frontmatter
-    match = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
+    match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
     assert match, "No YAML frontmatter found"
 
     frontmatter_text = match.group(1)
@@ -180,7 +183,7 @@ def test_skills_content_lobster_dev_has_valid_frontmatter():
     assert "description" in frontmatter, "Missing 'description' in frontmatter"
 
     # Validate name format
-    assert re.match(r'^[a-z0-9\-]+$', frontmatter["name"]), "Invalid name format"
+    assert re.match(r"^[a-z0-9\-]+$", frontmatter["name"]), "Invalid name format"
     assert len(frontmatter["name"]) <= 64, "Name too long (>64 chars)"
 
 
@@ -194,7 +197,7 @@ def test_skills_content_reference_files_exist():
         content = skill_file.read_text()
 
         # Find reference file links (e.g., @references/cli-commands.md)
-        reference_links = re.findall(r'@references/([a-z\-]+\.md)', content)
+        reference_links = re.findall(r"@references/([a-z\-]+\.md)", content)
 
         for ref_file in reference_links:
             ref_path = SKILLS_DIR / skill_name / "references" / ref_file
@@ -221,18 +224,22 @@ def test_skills_content_total_file_count_matches_installer():
     content = INSTALLER_SCRIPT.read_text()
 
     # Extract file counts from arrays
-    user_match = re.search(r'USER_SKILL_FILES=\((.*?)\)', content, re.DOTALL)
+    user_match = re.search(r"USER_SKILL_FILES=\((.*?)\)", content, re.DOTALL)
     user_count = len(re.findall(r'"([^"]+)"', user_match.group(1))) if user_match else 0
 
-    dev_match = re.search(r'DEV_SKILL_FILES=\((.*?)\)', content, re.DOTALL)
+    dev_match = re.search(r"DEV_SKILL_FILES=\((.*?)\)", content, re.DOTALL)
     dev_count = len(re.findall(r'"([^"]+)"', dev_match.group(1))) if dev_match else 0
 
     # Count actual files
     user_files = list((SKILLS_DIR / "lobster-use").rglob("*.md"))
     dev_files = list((SKILLS_DIR / "lobster-dev").rglob("*.md"))
 
-    assert len(user_files) == user_count, f"User skill file count mismatch: {len(user_files)} != {user_count}"
-    assert len(dev_files) == dev_count, f"Dev skill file count mismatch: {len(dev_files)} != {dev_count}"
+    assert (
+        len(user_files) == user_count
+    ), f"User skill file count mismatch: {len(user_files)} != {user_count}"
+    assert (
+        len(dev_files) == dev_count
+    ), f"Dev skill file count mismatch: {len(dev_files)} != {dev_count}"
 
 
 # =============================================================================
@@ -248,7 +255,10 @@ def test_package_pyproject_has_entry_points_section():
 
     # Should have entry points for services (agents moved to separate packages)
     # Note: agents are now in workspace packages, so we check for services
-    assert '[project.entry-points."lobster.services"]' in content or 'project.entry-points."lobster.services"' in content
+    assert (
+        '[project.entry-points."lobster.services"]' in content
+        or 'project.entry-points."lobster.services"' in content
+    )
 
 
 def test_package_cli_entry_point_exists():
@@ -292,17 +302,24 @@ def test_package_entry_points_reference_valid_modules():
             if packages_dir.exists():
                 for package_dir in packages_dir.glob("lobster-*"):
                     package_parts = parts[1:]  # Remove 'lobster' prefix
-                    potential_paths.extend([
-                        package_dir / "lobster" / ("/".join(package_parts) + ".py"),
-                        package_dir / "lobster" / "/".join(package_parts) / "__init__.py",
-                    ])
+                    potential_paths.extend(
+                        [
+                            package_dir / "lobster" / ("/".join(package_parts) + ".py"),
+                            package_dir
+                            / "lobster"
+                            / "/".join(package_parts)
+                            / "__init__.py",
+                        ]
+                    )
 
         # At least one path should exist
         path_exists = any(p.exists() for p in potential_paths)
         if not path_exists:
             # This might be okay if the module is in a workspace package
             # Just warn instead of failing
-            pytest.skip(f"Module path not found (might be in workspace package): {module_path}")
+            pytest.skip(
+                f"Module path not found (might be in workspace package): {module_path}"
+            )
 
 
 @pytest.mark.skip(reason="Requires actual package installation")
@@ -370,8 +387,12 @@ def test_entry_point_agent_configs_exist():
 
     for ep in agent_eps:
         config = ep.load()
-        assert hasattr(config, "name"), f"Entry point {ep.name} missing AGENT_CONFIG.name"
-        assert hasattr(config, "display_name"), f"Entry point {ep.name} missing AGENT_CONFIG.display_name"
+        assert hasattr(
+            config, "name"
+        ), f"Entry point {ep.name} missing AGENT_CONFIG.name"
+        assert hasattr(
+            config, "display_name"
+        ), f"Entry point {ep.name} missing AGENT_CONFIG.display_name"
 
 
 @pytest.mark.skip(reason="Requires package installation and is slow")
@@ -389,7 +410,9 @@ def test_entry_point_loading_performance():
         config = ep.load()
         duration_ms = (time.perf_counter() - start) * 1000
 
-        assert duration_ms < 50, f"Entry point {ep.name} took {duration_ms:.1f}ms to load (>50ms)"
+        assert (
+            duration_ms < 50
+        ), f"Entry point {ep.name} took {duration_ms:.1f}ms to load (>50ms)"
 
 
 # =============================================================================
@@ -423,4 +446,4 @@ def test_cli_version_command():
 
     assert result.returncode == 0, f"CLI version failed: {result.stderr}"
     # Should contain version number
-    assert re.search(r'\d+\.\d+\.\d+', result.stdout)
+    assert re.search(r"\d+\.\d+\.\d+", result.stdout)

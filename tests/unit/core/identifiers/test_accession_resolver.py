@@ -75,9 +75,9 @@ class TestAccessionDetection:
         result = resolver.detect_database(accession)
 
         assert result is not None, f"Failed to detect database for {accession}"
-        assert expected_db_contains.lower() in result.lower(), (
-            f"Expected '{expected_db_contains}' in '{result}' for {accession}"
-        )
+        assert (
+            expected_db_contains.lower() in result.lower()
+        ), f"Expected '{expected_db_contains}' in '{result}' for {accession}"
 
     def test_detect_database_case_insensitive(self):
         """Test case-insensitive detection."""
@@ -397,9 +397,9 @@ class TestEGAIdentifiers:
         result = resolver.detect_database(accession)
 
         assert result is not None, f"Failed to detect database for {accession}"
-        assert expected_db_contains.lower() in result.lower(), (
-            f"Expected '{expected_db_contains}' in '{result}' for {accession}"
-        )
+        assert (
+            expected_db_contains.lower() in result.lower()
+        ), f"Expected '{expected_db_contains}' in '{result}' for {accession}"
 
     def test_ega_case_insensitive(self):
         """Test case-insensitive EGA detection."""

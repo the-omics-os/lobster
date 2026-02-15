@@ -29,7 +29,6 @@ from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 
 # Agent-specific imports (new modular structure)
-from lobster.agents.data_expert.assistant import DataExpertAssistant
 from lobster.agents.data_expert.prompts import create_data_expert_prompt
 from lobster.agents.data_expert.state import DataExpertState
 
@@ -62,6 +61,8 @@ def data_expert(
     agent_name: str = "data_expert_agent",
     delegation_tools: list = None,
     workspace_path: Optional[Path] = None,
+    provider_override: Optional[str] = None,
+    model_override: Optional[str] = None,
 ):
     """
     Create a multi-omics data acquisition, processing, and workspace management specialist agent.
@@ -91,7 +92,13 @@ def data_expert(
 
     settings = get_settings()
     model_params = settings.get_agent_llm_params("data_expert_agent")
-    llm = create_llm("data_expert_agent", model_params, workspace_path=workspace_path)
+    llm = create_llm(
+        "data_expert_agent",
+        model_params,
+        provider_override=provider_override,
+        model_override=model_override,
+        workspace_path=workspace_path,
+    )
 
     # Normalize callbacks to a flat list (fix double-nesting bug)
     if callback_handler and hasattr(llm, "with_config"):
@@ -101,9 +108,6 @@ def data_expert(
             else [callback_handler]
         )
         llm = llm.with_config(callbacks=callbacks)
-
-    # Initialize the assistant for LLM operations
-    assistant = DataExpertAssistant()
 
     # Initialize modality management service
     from lobster.services.data_management.modality_management_service import (
@@ -125,12 +129,9 @@ def data_expert(
 
     # Try to initialize SDK delegation service (may fail if SDK not available)
     # SDKDelegationService may be None in open-core distribution
-    sdk_delegation_service = None
-    sdk_available = False
     if SDKDelegationService is not None:
         try:
-            sdk_delegation_service = SDKDelegationService(data_manager)
-            sdk_available = True
+            SDKDelegationService(data_manager)
         except SDKDelegationError as e:
             logger.debug(f"SDK delegation not available: {e}")
         except Exception as e:

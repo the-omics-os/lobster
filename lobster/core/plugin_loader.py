@@ -199,12 +199,9 @@ def get_plugin_info() -> Dict[str, Any]:
 
 def is_premium_installed() -> bool:
     """Check if lobster-premium package is installed."""
-    try:
-        import lobster_premium
+    import importlib.util
 
-        return True
-    except ImportError:
-        return False
+    return importlib.util.find_spec("lobster_premium") is not None
 
 
 def get_custom_package_names() -> List[str]:

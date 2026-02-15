@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.core.schemas.download_urls import DownloadFile, DownloadUrlResult
+from lobster.core.schemas.download_urls import DownloadUrlResult
 from lobster.tools.providers.base_provider import (
     BasePublicationProvider,
     DatasetType,

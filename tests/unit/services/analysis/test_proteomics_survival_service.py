@@ -5,16 +5,16 @@ Tests Cox proportional hazards regression and Kaplan-Meier survival analysis
 for proteomics data.
 """
 
+import anndata
 import numpy as np
 import pandas as pd
 import pytest
-import anndata
 
 pytest.importorskip("lifelines")
 
 from lobster.services.analysis.proteomics_survival_service import (
-    ProteomicsSurvivalService,
     ProteomicsSurvivalError,
+    ProteomicsSurvivalService,
 )
 
 

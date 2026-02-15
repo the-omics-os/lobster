@@ -748,7 +748,11 @@ def test_enterprise_workflow_integration(data_manager, workspace_service):
         "SAMPLE_002",
         "SAMPLE_003",
     ]
-    assert df["normalized_id"].tolist() == ["ENT_NORM_001", "ENT_NORM_002", "ENT_NORM_003"]
+    assert df["normalized_id"].tolist() == [
+        "ENT_NORM_001",
+        "ENT_NORM_002",
+        "ENT_NORM_003",
+    ]
     assert df["source_dataset"].tolist() == ["GSE123456", "GSE123456", "GSE789012"]
 
     # Step 6: Verify workspace statistics updated

@@ -8,10 +8,11 @@ Includes caching to avoid repeated checks and graceful error handling for offlin
 import json
 import logging
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Optional, Tuple
+
 from packaging import version as pkg_version
 
 from lobster.version import __version__

@@ -16,22 +16,29 @@ Coverage includes:
 """
 
 import json
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
-from collections import defaultdict
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
 from lobster.agents.metadata_assistant.config import (
-    phase1_column_rescan as _phase1_column_rescan,
-    phase2_llm_abstract_extraction as _phase2_llm_abstract_extraction,
-    phase3_llm_methods_extraction as _phase3_llm_methods_extraction,
-    phase4_manual_mappings as _phase4_manual_mappings,
     extract_disease_with_llm as _extract_disease_with_llm,
 )
+from lobster.agents.metadata_assistant.config import (
+    phase1_column_rescan as _phase1_column_rescan,
+)
+from lobster.agents.metadata_assistant.config import (
+    phase2_llm_abstract_extraction as _phase2_llm_abstract_extraction,
+)
+from lobster.agents.metadata_assistant.config import (
+    phase3_llm_methods_extraction as _phase3_llm_methods_extraction,
+)
+from lobster.agents.metadata_assistant.config import (
+    phase4_manual_mappings as _phase4_manual_mappings,
+)
 from lobster.core.data_manager_v2 import DataManagerV2
-
 
 # =========================================================================
 # Mock Fixtures

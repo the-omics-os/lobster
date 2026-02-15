@@ -2341,13 +2341,6 @@ class GEOService:
         # This guarantees metadata availability for all code paths (including early returns)
         if geo_id not in self.data_manager.metadata_store:
             logger.debug(f"Storing minimal metadata for {geo_id} before validation")
-            minimal_metadata = {
-                "geo_id": geo_id,
-                "title": metadata.get("title", ""),
-                "summary": metadata.get("summary", ""),
-                "status": "validating",  # Indicate validation in progress
-                "timestamp": datetime.now().isoformat(),
-            }
 
             # Use helper method for consistent structure
             self.data_manager._store_geo_metadata(
@@ -4122,8 +4115,9 @@ The actual expression data download will be much faster now that metadata is pre
                 for file_type, score in file_classification.items():
                     if score > 0:  # Only consider positive scores
                         # Keep track of best score for each file type
-                        if file_type not in classified_files or score > file_scores.get(
-                            file_type, 0
+                        if (
+                            file_type not in classified_files
+                            or score > file_scores.get(file_type, 0)
                         ):
                             classified_files[file_type] = url
                             file_scores[file_type] = score

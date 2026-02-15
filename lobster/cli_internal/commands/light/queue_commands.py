@@ -5,9 +5,9 @@ Extracted from cli.py to enable reuse across interfaces.
 All commands accept OutputAdapter for UI-agnostic rendering.
 """
 
+import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
-import shutil
 
 if TYPE_CHECKING:
     from lobster.core.client import AgentClient

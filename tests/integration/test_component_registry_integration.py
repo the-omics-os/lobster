@@ -9,16 +9,16 @@ Tests that verify the ComponentRegistry works correctly with the rest of the sys
 These tests exercise real component interactions rather than mocked behavior.
 """
 
-import pytest
-from typing import Dict, Any
+from typing import Any, Dict
 
+import pytest
+
+from lobster.config.agent_registry import AGENT_REGISTRY, AgentRegistryConfig
 from lobster.core.component_registry import (
+    ComponentConflictError,
     ComponentRegistry,
     component_registry,
-    ComponentConflictError,
 )
-from lobster.config.agent_registry import AGENT_REGISTRY, AgentRegistryConfig
-
 
 # =============================================================================
 # Test Markers
@@ -66,13 +66,16 @@ class TestPluginLoaderBackwardCompatibility:
 
         # Verify core agents are present
         for agent_name in AGENT_REGISTRY.keys():
-            assert agent_name in all_agents, f"Core agent '{agent_name}' should be in list_agents()"
+            assert (
+                agent_name in all_agents
+            ), f"Core agent '{agent_name}' should be in list_agents()"
 
         # Verify all returned agents are AgentRegistryConfig or similar
         for name, config in all_agents.items():
             # Should have required attributes that AgentRegistryConfig has
-            assert hasattr(config, "name") or isinstance(config, dict), \
-                f"Agent '{name}' should have a 'name' attribute or be a dict"
+            assert hasattr(config, "name") or isinstance(
+                config, dict
+            ), f"Agent '{name}' should have a 'name' attribute or be a dict"
 
     def test_list_agents_includes_agent_registry_entries(self, fresh_registry):
         """list_agents() should include all entries from AGENT_REGISTRY."""
@@ -84,8 +87,9 @@ class TestPluginLoaderBackwardCompatibility:
 
         # All expected agents should be present
         for agent_name in expected_core_agents:
-            assert agent_name in all_agents, \
-                f"Expected core agent '{agent_name}' not found in list_agents()"
+            assert (
+                agent_name in all_agents
+            ), f"Expected core agent '{agent_name}' not found in list_agents()"
 
     def test_agent_registry_config_structure_preserved(self, fresh_registry):
         """Agent configs from AGENT_REGISTRY should preserve their structure."""
@@ -97,8 +101,9 @@ class TestPluginLoaderBackwardCompatibility:
         assert research_agent is not None, "research_agent should be in list_agents()"
 
         # Verify structure
-        assert isinstance(research_agent, AgentRegistryConfig), \
-            "Core agents should be AgentRegistryConfig instances"
+        assert isinstance(
+            research_agent, AgentRegistryConfig
+        ), "Core agents should be AgentRegistryConfig instances"
         assert research_agent.name == "research_agent"
         assert research_agent.display_name is not None
         assert research_agent.factory_function is not None
@@ -155,8 +160,9 @@ class TestCustomAgentOverride:
 
         # Should NOT contain core agents
         for core_name in AGENT_REGISTRY.keys():
-            assert core_name not in custom_agents, \
-                f"Core agent '{core_name}' should not be in list_custom_agents()"
+            assert (
+                core_name not in custom_agents
+            ), f"Core agent '{core_name}' should not be in list_custom_agents()"
 
     def test_custom_agent_preserves_core_agents(self, fresh_registry):
         """Adding a custom agent should not affect core agents."""
@@ -175,9 +181,12 @@ class TestCustomAgentOverride:
 
         # All core agents should be present and unchanged
         for core_name in AGENT_REGISTRY.keys():
-            assert core_name in all_agents, f"Core agent '{core_name}' should be present"
-            assert all_agents[core_name] is AGENT_REGISTRY[core_name], \
-                f"Core agent '{core_name}' should be unchanged"
+            assert (
+                core_name in all_agents
+            ), f"Core agent '{core_name}' should be present"
+            assert (
+                all_agents[core_name] is AGENT_REGISTRY[core_name]
+            ), f"Core agent '{core_name}' should be unchanged"
 
         # Custom agent should also be present
         assert "my_custom_agent" in all_agents
@@ -201,17 +210,20 @@ class TestServiceValidity:
         # If there are any services discovered, verify they are valid
         for service_name, module_path in services.items():
             service_class = fresh_registry.get_service(service_name)
-            assert service_class is not None, \
-                f"Service '{service_name}' should be retrievable"
+            assert (
+                service_class is not None
+            ), f"Service '{service_name}' should be retrievable"
 
             # Should be a class (has __name__)
-            assert hasattr(service_class, "__name__"), \
-                f"Service '{service_name}' should have __name__ attribute"
+            assert hasattr(
+                service_class, "__name__"
+            ), f"Service '{service_name}' should have __name__ attribute"
 
             # Module path should match
             expected_path = f"{service_class.__module__}.{service_class.__name__}"
-            assert module_path == expected_path, \
-                f"Service '{service_name}' module path mismatch"
+            assert (
+                module_path == expected_path
+            ), f"Service '{service_name}' module path mismatch"
 
     def test_service_classes_are_instantiable_pattern(self, fresh_registry):
         """Service classes should follow callable pattern (can be instantiated)."""
@@ -222,8 +234,9 @@ class TestServiceValidity:
         for service_name in services.keys():
             service_class = fresh_registry.get_service(service_name)
             # Verify it looks like a class (callable)
-            assert callable(service_class), \
-                f"Service '{service_name}' should be callable (a class)"
+            assert callable(
+                service_class
+            ), f"Service '{service_name}' should be callable (a class)"
 
 
 # =============================================================================
@@ -246,7 +259,9 @@ class TestRegistryInfo:
 
         # Custom agent count should match actual custom agents
         assert info["custom_agents"]["count"] == len(fresh_registry._custom_agents)
-        assert set(info["custom_agents"]["names"]) == set(fresh_registry._custom_agents.keys())
+        assert set(info["custom_agents"]["names"]) == set(
+            fresh_registry._custom_agents.keys()
+        )
 
         # Total agents should include core + custom
         all_agents = fresh_registry.list_agents()
@@ -315,7 +330,9 @@ class TestSingletonBehavior:
         services_count = len(component_registry._services)
 
         # Import again and verify state persisted
-        from lobster.core.component_registry import component_registry as imported_registry
+        from lobster.core.component_registry import (
+            component_registry as imported_registry,
+        )
 
         assert imported_registry._loaded == loaded_state
         assert len(imported_registry._services) == services_count
@@ -334,7 +351,9 @@ class TestErrorHandling:
         fresh_registry.load_components()
 
         # Add a test service
-        test_service = type("TestService", (), {"__name__": "TestService", "__module__": "test"})
+        test_service = type(
+            "TestService", (), {"__name__": "TestService", "__module__": "test"}
+        )
         fresh_registry._services["available_service"] = test_service
 
         with pytest.raises(ValueError) as exc_info:

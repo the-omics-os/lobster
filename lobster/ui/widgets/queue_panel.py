@@ -5,12 +5,11 @@ Design: Compact header-only display with inline counts.
 Detailed status breakdown is handled by QueueStatusBar widget.
 """
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Vertical
-from textual.widgets import Static
 from textual.reactive import reactive
-
-from rich.text import Text
+from textual.widgets import Static
 
 
 class QueuePanel(Vertical):

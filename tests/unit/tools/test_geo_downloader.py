@@ -377,12 +377,12 @@ class TestDownloadWithRetry:
 
         # Check base delays with jitter tolerance (base ± 20%)
         call_args = [call[0][0] for call in mock_sleep.call_args_list]
-        assert 3.2 <= call_args[0] <= 4.8, (
-            f"First retry delay should be 4s ± 20%, got {call_args[0]}"
-        )
-        assert 6.4 <= call_args[1] <= 9.6, (
-            f"Second retry delay should be 8s ± 20%, got {call_args[1]}"
-        )
+        assert (
+            3.2 <= call_args[0] <= 4.8
+        ), f"First retry delay should be 4s ± 20%, got {call_args[0]}"
+        assert (
+            6.4 <= call_args[1] <= 9.6
+        ), f"Second retry delay should be 8s ± 20%, got {call_args[1]}"
 
     @patch("time.sleep")
     @patch("ftplib.FTP")

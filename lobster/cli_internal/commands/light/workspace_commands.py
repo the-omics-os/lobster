@@ -5,9 +5,9 @@ Extracted from cli.py to enable reuse across interfaces.
 All commands accept OutputAdapter for UI-agnostic rendering.
 """
 
+import fnmatch
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
-import fnmatch
 
 if TYPE_CHECKING:
     from lobster.core.client import AgentClient

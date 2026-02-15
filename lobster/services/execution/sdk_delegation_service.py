@@ -155,7 +155,7 @@ class SDKDelegationService:
                             k: v
                             for k, v in list(metrics.items())[:5]  # First 5 metrics
                         }
-                except:
+                except Exception:
                     pass
 
                 return {

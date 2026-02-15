@@ -7,21 +7,20 @@ dual storage, and error handling.
 NOTE: Tests mock requests.post since we use hosted REST API, NOT Neo4j.
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
-import tempfile
 import json
+import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock, Mock, patch
 
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
 from anndata import AnnData
 
 from lobster.services.analysis.pathway_enrichment_bridge_service import (
     PathwayEnrichmentBridgeService,
     PathwayEnrichmentError,
 )
-
 
 # ============================================================
 # Fixtures

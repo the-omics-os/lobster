@@ -14,7 +14,6 @@ from lobster.core.interfaces.queue_preparer import IQueuePreparer
 from lobster.utils.logger import get_logger
 
 if TYPE_CHECKING:
-    from lobster.core.data_manager_v2 import DataManagerV2
     from lobster.core.schemas.download_queue import StrategyConfig
     from lobster.core.schemas.download_urls import DownloadUrlResult
 

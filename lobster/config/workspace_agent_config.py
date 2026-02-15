@@ -41,7 +41,7 @@ Example:
 import logging
 import tomllib
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import List, Optional, Tuple
 
 import tomli_w
 from pydantic import BaseModel, Field

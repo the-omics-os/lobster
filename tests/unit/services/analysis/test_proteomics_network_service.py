@@ -5,16 +5,16 @@ Tests WGCNA-like co-expression module identification, module eigengene
 calculation, and module-trait correlation analysis.
 """
 
+import anndata
 import numpy as np
 import pandas as pd
 import pytest
-import anndata
 
 from lobster.services.analysis.proteomics_network_service import (
-    WGCNALiteService,
-    ProteomicsNetworkError,
-    WGCNA_COLORS,
     GREY_MODULE,
+    WGCNA_COLORS,
+    ProteomicsNetworkError,
+    WGCNALiteService,
 )
 
 
@@ -135,9 +135,9 @@ class TestWGCNALiteService:
         )
 
         # Should find at least 2-3 modules given our data structure
-        assert stats["n_modules"] >= 2, (
-            f"Expected >=2 modules, got {stats['n_modules']}"
-        )
+        assert (
+            stats["n_modules"] >= 2
+        ), f"Expected >=2 modules, got {stats['n_modules']}"
 
         # Check module colors are from WGCNA palette
         module_colors = adata_modules.var["module"].unique()

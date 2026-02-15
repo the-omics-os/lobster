@@ -9,13 +9,13 @@ Tests cover:
 - Legacy lineage migration
 """
 
-import pytest
 from datetime import datetime
 from unittest.mock import MagicMock
 
 import anndata
 import numpy as np
 import pandas as pd
+import pytest
 
 from lobster.core.lineage import (
     CANONICAL_STEPS,
@@ -407,9 +407,9 @@ class TestProcessingSteps:
     def test_canonical_steps_cover_suffix_values(self):
         """Test that suffix mappings use canonical steps."""
         for suffix, step in SUFFIX_TO_STEP.items():
-            assert step in CANONICAL_STEPS, (
-                f"Step '{step}' for suffix '{suffix}' not in CANONICAL_STEPS"
-            )
+            assert (
+                step in CANONICAL_STEPS
+            ), f"Step '{step}' for suffix '{suffix}' not in CANONICAL_STEPS"
 
     def test_suffix_patterns_sorted_by_length(self):
         """Test that suffix patterns are sorted by length (longest first)."""

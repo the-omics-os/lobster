@@ -508,8 +508,10 @@ class TestEndToEndWorkflow:
         assert validation_result.has_required_samples is True
 
         # Step 3: Standardize metadata
-        standardization_result, stats, ir = standardization_service.standardize_metadata(
-            identifier="source", target_schema="transcriptomics"
+        standardization_result, stats, ir = (
+            standardization_service.standardize_metadata(
+                identifier="source", target_schema="transcriptomics"
+            )
         )
 
         assert len(standardization_result.standardized_metadata) == 10

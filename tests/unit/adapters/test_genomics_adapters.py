@@ -21,7 +21,6 @@ from anndata import AnnData
 from lobster.core.adapters.genomics.plink_adapter import PLINKAdapter
 from lobster.core.adapters.genomics.vcf_adapter import VCFAdapter
 
-
 # ===============================================================================
 # Test Data Paths
 # ===============================================================================
@@ -71,12 +70,12 @@ class TestVCFAdapterCore:
 
         # Verify structure
         assert isinstance(adata, AnnData)
-        assert adata.n_obs > 2000, (
-            f"Expected >2000 samples (1000 Genomes), got {adata.n_obs}"
-        )
-        assert adata.n_vars == 100, (
-            f"Expected 100 variants (max_variants), got {adata.n_vars}"
-        )
+        assert (
+            adata.n_obs > 2000
+        ), f"Expected >2000 samples (1000 Genomes), got {adata.n_obs}"
+        assert (
+            adata.n_vars == 100
+        ), f"Expected 100 variants (max_variants), got {adata.n_vars}"
         assert "GT" in adata.layers
         assert adata.X.shape == (adata.n_obs, 100)
 
@@ -115,9 +114,9 @@ class TestVCFAdapterCore:
         if "FILTER" in adata.var.columns:
             # Some VCFs might not have FILTER field
             filters = adata.var["FILTER"].values
-            assert all(f == "PASS" or f == "." for f in filters), (
-                f"Non-PASS variants found: {filters[filters != 'PASS']}"
-            )
+            assert all(
+                f == "PASS" or f == "." for f in filters
+            ), f"Non-PASS variants found: {filters[filters != 'PASS']}"
 
     def test_vcf_genotype_encoding(self, vcf_path):
         """Test genotype encoding (0/1/2/-1)."""
@@ -133,9 +132,9 @@ class TestVCFAdapterCore:
 
         # Check encoding range: 0=hom ref, 1=het, 2=hom alt, -1=missing
         unique_values = np.unique(gt[~np.isnan(gt)])
-        assert all(v in [-1, 0, 1, 2] for v in unique_values), (
-            f"Invalid genotype values: {unique_values}"
-        )
+        assert all(
+            v in [-1, 0, 1, 2] for v in unique_values
+        ), f"Invalid genotype values: {unique_values}"
 
     def test_vcf_sparse_matrix_conversion(self, vcf_path):
         """Test sparse matrix optimization for high sparsity data."""
@@ -149,9 +148,9 @@ class TestVCFAdapterCore:
         if hasattr(adata.X, "toarray"):
             # Sparse matrix detected
             sparsity = 1 - np.count_nonzero(adata.X.toarray()) / adata.X.size
-            assert sparsity > 0.5, (
-                f"Expected sparsity > 50% for rare variants, got {sparsity:.1%}"
-            )
+            assert (
+                sparsity > 0.5
+            ), f"Expected sparsity > 50% for rare variants, got {sparsity:.1%}"
             print(f"Sparsity: {sparsity:.1%}")
 
     def test_vcf_metadata_preservation(self, vcf_path):
@@ -286,9 +285,9 @@ class TestPLINKAdapterCore:
 
         # Check encoding range (PLINK uses NaN for missing, not -1 like VCF)
         unique_values = np.unique(gt[~np.isnan(gt)])
-        assert all(v in [0, 1, 2] for v in unique_values), (
-            f"Invalid genotype values: {unique_values}"
-        )
+        assert all(
+            v in [0, 1, 2] for v in unique_values
+        ), f"Invalid genotype values: {unique_values}"
 
     def test_plink_metadata_preservation(self, plink_prefix):
         """Test that PLINK metadata is preserved in uns."""
@@ -349,9 +348,9 @@ class TestPLINKAdapterFiltering:
         n_variants_filtered = adata_filtered.n_vars
 
         # MAF filter should reduce variants (unless all variants have MAF > 0.05)
-        assert n_variants_filtered <= n_variants_all, (
-            "MAF filter should reduce or equal variant count"
-        )
+        assert (
+            n_variants_filtered <= n_variants_all
+        ), "MAF filter should reduce or equal variant count"
         print(f"MAF filter: {n_variants_all} → {n_variants_filtered} variants")
 
 

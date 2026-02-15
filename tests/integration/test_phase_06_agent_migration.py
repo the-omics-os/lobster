@@ -12,8 +12,9 @@ Success Criteria from ROADMAP.md:
 7. Each package has README.md (serves as PyPI description and docs source)
 """
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from lobster.core.component_registry import ComponentRegistry
 
@@ -183,7 +184,9 @@ class TestTierRequirements:
             config = registry.get_agent(name)
             assert config is not None, f"Agent '{name}' should exist"
             tier = getattr(config, "tier_requirement", "free")
-            assert tier == "free", f"{name} should have tier_requirement='free', got '{tier}'"
+            assert (
+                tier == "free"
+            ), f"{name} should have tier_requirement='free', got '{tier}'"
 
 
 class TestPackageREADMEs:
@@ -219,18 +222,21 @@ class TestPromptInfrastructure:
     def test_prompt_composer_available(self):
         """PromptComposer should be importable."""
         from lobster.prompts import PromptComposer, get_prompt_composer
+
         composer = get_prompt_composer()
         assert composer is not None
 
     def test_prompt_registry_available(self):
         """PromptRegistry should be importable."""
         from lobster.prompts import PromptRegistry, get_prompt_registry
+
         registry = get_prompt_registry()
         assert registry is not None
 
     def test_shared_sections_exist(self):
         """Shared prompt sections should be loadable."""
         from lobster.prompts import PromptLoader
+
         loader = PromptLoader()
 
         sections = [
@@ -250,11 +256,13 @@ class TestHandoffBuilder:
     def test_build_handoff_tools_available(self):
         """build_handoff_tools should be importable."""
         from lobster.tools.handoff_builder import build_handoff_tools
+
         assert callable(build_handoff_tools)
 
     def test_get_unavailable_agents_available(self):
         """get_unavailable_agents should be importable."""
         from lobster.tools.handoff_builder import get_unavailable_agents
+
         assert callable(get_unavailable_agents)
 
 
@@ -263,7 +271,7 @@ class TestDynamicStateAggregation:
 
     def test_get_all_state_classes(self):
         """get_all_state_classes should return dict with core states."""
-        from lobster.agents.state import get_all_state_classes, OverallState, TodoItem
+        from lobster.agents.state import OverallState, TodoItem, get_all_state_classes
 
         states = get_all_state_classes()
 
@@ -347,8 +355,12 @@ class TestPackageEntryPoints:
             assert hasattr(config, "name")
             # Config can have either factory (callable) or factory_function (string path)
             has_factory = hasattr(config, "factory") and callable(config.factory)
-            has_factory_function = hasattr(config, "factory_function") and config.factory_function
-            assert has_factory or has_factory_function, f"Agent {name} needs factory or factory_function"
+            has_factory_function = (
+                hasattr(config, "factory_function") and config.factory_function
+            )
+            assert (
+                has_factory or has_factory_function
+            ), f"Agent {name} needs factory or factory_function"
 
     def test_package_count(self, registry):
         """Should have agents from 8 packages."""
@@ -359,7 +371,9 @@ class TestPackageEntryPoints:
             if pkg != "lobster-ai":  # Exclude core agents
                 packages.add(pkg)
 
-        assert len(packages) >= 8, f"Expected 8 packages, found {len(packages)}: {packages}"
+        assert (
+            len(packages) >= 8
+        ), f"Expected 8 packages, found {len(packages)}: {packages}"
 
 
 class TestServiceBundling:

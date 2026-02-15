@@ -14,7 +14,6 @@ if TYPE_CHECKING:
 
 from lobster.cli_internal.commands.output_adapter import OutputAdapter
 
-
 # ============================================================================
 # Helper Functions (Matrix/DataFrame Formatting)
 # ============================================================================

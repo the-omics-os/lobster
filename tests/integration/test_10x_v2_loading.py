@@ -68,16 +68,12 @@ class Test10XV2Loading:
 
         # Write genes.tsv.gz (V2 format - 2 columns: gene_id, gene_name)
         # NOTE: V3 uses features.tsv with 3 columns including feature_type
-        genes_content = "\n".join([
-            f"ENSG0000000{i}\tGene{i}" for i in range(n_genes)
-        ])
+        genes_content = "\n".join([f"ENSG0000000{i}\tGene{i}" for i in range(n_genes)])
         with gzip.open(mtx_dir / "genes.tsv.gz", "wt") as f:
             f.write(genes_content)
 
         # Write barcodes.tsv.gz
-        barcodes_content = "\n".join([
-            f"AAACCTGA-{i}" for i in range(n_cells)
-        ])
+        barcodes_content = "\n".join([f"AAACCTGA-{i}" for i in range(n_cells)])
         with gzip.open(mtx_dir / "barcodes.tsv.gz", "wt") as f:
             f.write(barcodes_content)
 
@@ -111,15 +107,11 @@ class Test10XV2Loading:
         mmwrite(str(matrix_path), sparse_matrix)
 
         # genes.tsv (V2 format - 2 columns)
-        genes_content = "\n".join([
-            f"ENSG{i:010d}\tTP53_{i}" for i in range(n_genes)
-        ])
+        genes_content = "\n".join([f"ENSG{i:010d}\tTP53_{i}" for i in range(n_genes)])
         (mtx_dir / "genes.tsv").write_text(genes_content)
 
         # barcodes.tsv
-        barcodes_content = "\n".join([
-            f"BARCODE_{i}" for i in range(n_cells)
-        ])
+        barcodes_content = "\n".join([f"BARCODE_{i}" for i in range(n_cells)])
         (mtx_dir / "barcodes.tsv").write_text(barcodes_content)
 
         return {
@@ -152,15 +144,13 @@ class Test10XV2Loading:
             mmwrite(f, sparse_matrix)
 
         # features.tsv.gz (V3 format - 3 columns)
-        features_content = "\n".join([
-            f"ENSG0000000{i}\tGene{i}\tGene Expression" for i in range(n_genes)
-        ])
+        features_content = "\n".join(
+            [f"ENSG0000000{i}\tGene{i}\tGene Expression" for i in range(n_genes)]
+        )
         with gzip.open(mtx_dir / "features.tsv.gz", "wt") as f:
             f.write(features_content)
 
-        barcodes_content = "\n".join([
-            f"AAACCTGA-{i}" for i in range(n_cells)
-        ])
+        barcodes_content = "\n".join([f"AAACCTGA-{i}" for i in range(n_cells)])
         with gzip.open(mtx_dir / "barcodes.tsv.gz", "wt") as f:
             f.write(barcodes_content)
 
@@ -205,14 +195,16 @@ class Test10XV2Loading:
         )
 
         # Verify correct dimensions
-        assert result["data_shape"][0] == expected_cells, (
-            f"Expected {expected_cells} cells, got {result['data_shape'][0]}"
-        )
-        assert actual_genes == expected_genes, (
-            f"Expected {expected_genes} genes, got {actual_genes}"
-        )
+        assert (
+            result["data_shape"][0] == expected_cells
+        ), f"Expected {expected_cells} cells, got {result['data_shape'][0]}"
+        assert (
+            actual_genes == expected_genes
+        ), f"Expected {expected_genes} genes, got {actual_genes}"
 
-        print(f"✓ V2 compressed format loaded: {result['data_shape'][0]} cells × {actual_genes} genes")
+        print(
+            f"✓ V2 compressed format loaded: {result['data_shape'][0]} cells × {actual_genes} genes"
+        )
         print(f"✓ Loading method: {result.get('loading_method', 'unknown')}")
 
     def test_v2_format_loads_with_genes_uncompressed(
@@ -230,17 +222,21 @@ class Test10XV2Loading:
 
         result = client._load_10x_from_directory(root_dir, "v2_test_uncompressed")
 
-        assert result["success"], f"V2 uncompressed loading failed: {result.get('error')}"
+        assert result[
+            "success"
+        ], f"V2 uncompressed loading failed: {result.get('error')}"
 
         actual_genes = result["data_shape"][1]
-        assert actual_genes > 0, (
-            f"REGRESSION BUG: V2 uncompressed format resulted in {actual_genes} genes!"
-        )
+        assert (
+            actual_genes > 0
+        ), f"REGRESSION BUG: V2 uncompressed format resulted in {actual_genes} genes!"
 
         assert result["data_shape"][0] == expected_cells
         assert actual_genes == expected_genes
 
-        print(f"✓ V2 uncompressed format loaded: {result['data_shape'][0]} cells × {actual_genes} genes")
+        print(
+            f"✓ V2 uncompressed format loaded: {result['data_shape'][0]} cells × {actual_genes} genes"
+        )
 
     # === FORMAT PARITY TESTS ===
 
@@ -269,7 +265,9 @@ class Test10XV2Loading:
         # Reset workspace for V3 test
         with tempfile.TemporaryDirectory() as tmpdir2:
             data_manager2 = DataManagerV2(workspace_path=Path(tmpdir2))
-            client2 = AgentClient(data_manager=data_manager2, workspace_path=Path(tmpdir2))
+            client2 = AgentClient(
+                data_manager=data_manager2, workspace_path=Path(tmpdir2)
+            )
 
             # Load V3 format
             v3_result = client2._load_10x_from_directory(
@@ -284,8 +282,12 @@ class Test10XV2Loading:
         assert v2_result["data_shape"][1] > 0, "V2 resulted in 0 genes"
         assert v3_result["data_shape"][1] > 0, "V3 resulted in 0 genes"
 
-        print(f"✓ V2 format: {v2_result['data_shape'][0]} × {v2_result['data_shape'][1]}")
-        print(f"✓ V3 format: {v3_result['data_shape'][0]} × {v3_result['data_shape'][1]}")
+        print(
+            f"✓ V2 format: {v2_result['data_shape'][0]} × {v2_result['data_shape'][1]}"
+        )
+        print(
+            f"✓ V3 format: {v3_result['data_shape'][0]} × {v3_result['data_shape'][1]}"
+        )
 
     # === MANUAL PARSER FALLBACK TESTS ===
 
@@ -303,17 +305,17 @@ class Test10XV2Loading:
 
         # Validate result
         assert df is not None, "Manual parser returned None for V2 format"
-        assert df.shape[0] == expected_cells, (
-            f"Expected {expected_cells} cells, got {df.shape[0]}"
-        )
-        assert df.shape[1] == expected_genes, (
-            f"Expected {expected_genes} genes, got {df.shape[1]}"
-        )
+        assert (
+            df.shape[0] == expected_cells
+        ), f"Expected {expected_cells} cells, got {df.shape[0]}"
+        assert (
+            df.shape[1] == expected_genes
+        ), f"Expected {expected_genes} genes, got {df.shape[1]}"
 
         # Verify gene names were extracted from 2-column format
-        assert "Gene0" in df.columns or any("Gene" in str(c) for c in df.columns), (
-            "Gene names should be extracted from V2 genes.tsv format"
-        )
+        assert "Gene0" in df.columns or any(
+            "Gene" in str(c) for c in df.columns
+        ), "Gene names should be extracted from V2 genes.tsv format"
 
         print(f"✓ Manual parser V2: {df.shape[0]} cells × {df.shape[1]} genes")
 
@@ -339,7 +341,9 @@ class Test10XV2Loading:
             mmwrite(f, sparse_matrix)
 
         # 2-column genes file (V2 format)
-        genes_2col = "ENSG001\tBRCA1\nENSG002\tTP53\nENSG003\tEGFR\nENSG004\tMYC\nENSG005\tKRAS"
+        genes_2col = (
+            "ENSG001\tBRCA1\nENSG002\tTP53\nENSG003\tEGFR\nENSG004\tMYC\nENSG005\tKRAS"
+        )
         with gzip.open(mtx_dir / "genes.tsv.gz", "wt") as f:
             f.write(genes_2col)
 
@@ -358,9 +362,9 @@ class Test10XV2Loading:
 
         # Check gene names extracted correctly
         gene_names = set(df.columns)
-        assert "BRCA1" in gene_names or any("BRCA" in str(c) for c in gene_names), (
-            "Gene symbol BRCA1 should be extracted from 2-column format"
-        )
+        assert "BRCA1" in gene_names or any(
+            "BRCA" in str(c) for c in gene_names
+        ), "Gene symbol BRCA1 should be extracted from 2-column format"
 
         print(f"✓ 2-column format parsed: {df.shape[0]} × {df.shape[1]}")
 
@@ -415,7 +419,9 @@ class Test10XV2Loading:
         assert result["data_shape"][0] == n_cells
         assert result["data_shape"][1] == n_genes
 
-        print(f"✓ Nested V2 structure: {result['data_shape'][0]} × {result['data_shape'][1]}")
+        print(
+            f"✓ Nested V2 structure: {result['data_shape'][0]} × {result['data_shape'][1]}"
+        )
 
     # === EDGE CASE TESTS ===
 
@@ -473,13 +479,15 @@ class Test10XV2Loading:
 
         # Verify modality stored
         modality_name = result["modality_name"]
-        assert modality_name in data_manager.list_modalities(), (
-            "Modality should be stored in DataManagerV2"
-        )
+        assert (
+            modality_name in data_manager.list_modalities()
+        ), "Modality should be stored in DataManagerV2"
 
         # Retrieve and verify AnnData
         adata = data_manager.get_modality(modality_name)
-        assert adata.n_vars == expected_genes, f"AnnData should have {expected_genes} genes"
+        assert (
+            adata.n_vars == expected_genes
+        ), f"AnnData should have {expected_genes} genes"
         assert adata.n_vars > 0, "CRITICAL: AnnData must NOT have 0 genes"
 
         print(f"✓ Modality '{modality_name}' stored: {adata.n_obs} × {adata.n_vars}")

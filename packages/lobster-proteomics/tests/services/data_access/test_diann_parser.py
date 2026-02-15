@@ -3,7 +3,6 @@
 Basic import and instantiation tests.
 """
 
-import pytest
 from lobster.services.data_access.diann_parser import DiaNNParser
 
 

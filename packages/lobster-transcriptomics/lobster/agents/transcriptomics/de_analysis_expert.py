@@ -84,6 +84,8 @@ def de_analysis_expert(
     agent_name: str = "de_analysis_expert",
     delegation_tools: List = None,
     workspace_path: Optional[Path] = None,
+    provider_override: Optional[str] = None,
+    model_override: Optional[str] = None,
 ):
     """
     Create differential expression analysis sub-agent.
@@ -101,7 +103,13 @@ def de_analysis_expert(
     """
     settings = get_settings()
     model_params = settings.get_agent_llm_params("de_analysis_expert")
-    llm = create_llm("de_analysis_expert", model_params, workspace_path=workspace_path)
+    llm = create_llm(
+        "de_analysis_expert",
+        model_params,
+        provider_override=provider_override,
+        model_override=model_override,
+        workspace_path=workspace_path,
+    )
 
     # Normalize callbacks to a flat list (fix double-nesting bug)
     if callback_handler and hasattr(llm, "with_config"):

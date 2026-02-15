@@ -3,13 +3,13 @@
 Simple list widget for dashboard sidebar. Use /plots command for detailed view.
 """
 
-from typing import Dict, Any, List
 from pathlib import Path
+from typing import Any, Dict, List
 
-from textual.widgets import Static, ListView, ListItem, Label
-from textual.reactive import reactive
-from textual.containers import Vertical
 from textual import on
+from textual.containers import Vertical
+from textual.reactive import reactive
+from textual.widgets import Label, ListItem, ListView, Static
 
 
 class PlotPreview(Vertical):

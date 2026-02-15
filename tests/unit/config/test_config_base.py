@@ -1,8 +1,9 @@
 """Tests for shared configuration infrastructure."""
 
 import pytest
-from lobster.config.constants import VALID_PROVIDERS, VALID_PROFILES
+
 from lobster.config.base_config import ProviderConfigBase
+from lobster.config.constants import VALID_PROFILES, VALID_PROVIDERS
 
 
 def test_valid_providers_includes_all():

@@ -21,8 +21,6 @@ AGENT_CONFIG = AgentRegistryConfig(
 
 # === Heavy imports below ===
 import json
-import uuid
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
@@ -39,9 +37,7 @@ from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.schemas.download_queue import (
-    DownloadQueueEntry,
     DownloadStatus,
-    StrategyConfig,
     ValidationStatus,
 )
 
@@ -50,7 +46,6 @@ from lobster.core.schemas.download_queue import (
 # - DataExpertAssistant: 200-400ms
 # - MetadataValidationService: 200-400ms
 from lobster.services.metadata.metadata_validation_service import (
-    MetadataValidationConfig,
     ValidationSeverity,
 )
 
@@ -80,6 +75,8 @@ def research_agent(
     delegation_tools: list = None,
     subscription_tier: str = "free",
     workspace_path: Optional[Path] = None,
+    provider_override: Optional[str] = None,
+    model_override: Optional[str] = None,
 ):
     """Create research agent using DataManagerV2 and modular publication service.
 
@@ -91,6 +88,8 @@ def research_agent(
         subscription_tier: Subscription tier for feature gating (free/premium/enterprise).
             In FREE tier, handoff to metadata_assistant is restricted.
         workspace_path: Optional workspace path for config resolution
+        provider_override: Optional explicit LLM provider (e.g., "bedrock", "anthropic")
+        model_override: Optional explicit model name override
     """
     # Import tier restrictions
     from lobster.config.subscription_tiers import get_restricted_handoffs
@@ -120,7 +119,13 @@ def research_agent(
 
     settings = get_settings()
     model_params = settings.get_agent_llm_params("research_agent")
-    llm = create_llm("research_agent", model_params, workspace_path=workspace_path)
+    llm = create_llm(
+        "research_agent",
+        model_params,
+        provider_override=provider_override,
+        model_override=model_override,
+        workspace_path=workspace_path,
+    )
 
     # Normalize callbacks to a flat list (fix double-nesting bug)
     if callback_handler and hasattr(llm, "with_config"):

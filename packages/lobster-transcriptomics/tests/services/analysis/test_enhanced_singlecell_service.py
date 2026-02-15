@@ -9,14 +9,12 @@ Test coverage target: 95%+ with meaningful tests for all operations.
 """
 
 import warnings
-from typing import Any, Dict, List, Tuple
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import anndata as ad
 import numpy as np
 import pandas as pd
 import pytest
-import scanpy as sc
 
 # Suppress scanpy warnings during tests
 warnings.filterwarnings("ignore", category=FutureWarning, module="anndata")

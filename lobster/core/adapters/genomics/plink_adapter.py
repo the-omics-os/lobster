@@ -301,7 +301,6 @@ class PLINKAdapter(BaseAdapter):
         # Genotypes: 0 (hom A1), 1 (het), 2 (hom A2), NaN (missing)
         # MAF = min(freq(A1), freq(A2))
 
-        n_samples = genotypes.shape[0]
         maf_values = []
 
         for snp_idx in range(genotypes.shape[1]):

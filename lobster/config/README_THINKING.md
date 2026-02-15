@@ -25,11 +25,11 @@ LOBSTER_PROFILE=development
 # Production profile (Claude Sonnet 4 - balanced quality & speed)
 LOBSTER_PROFILE=production
 
-# Ultra profile (Claude Sonnet 4.5 - highest quality)
-LOBSTER_PROFILE=ultra
+# Performance profile (Claude Sonnet 4.5 - highest quality)
+LOBSTER_PROFILE=performance
 
-# Godmode profile (Claude Opus 4.1 - experimental, most expensive)
-LOBSTER_PROFILE=godmode
+# Max profile (Claude Opus 4.1 - most capable, most expensive)
+LOBSTER_PROFILE=max
 ```
 
 ### 2. Environment Variable Configuration

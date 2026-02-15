@@ -2,13 +2,13 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, List
+from typing import List, Optional
 
 from textual.app import ComposeResult
-from textual.containers import Vertical, Horizontal
-from textual.screen import ModalScreen
-from textual.widgets import Static, Button
 from textual.binding import Binding
+from textual.containers import Horizontal, Vertical
+from textual.screen import ModalScreen
+from textual.widgets import Button, Static
 
 
 class ErrorSeverity(Enum):

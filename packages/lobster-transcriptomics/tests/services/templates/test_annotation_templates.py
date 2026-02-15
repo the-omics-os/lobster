@@ -2,7 +2,6 @@
 Smoke tests for annotation templates module.
 """
 
-import pytest
 
 
 def test_annotation_templates_import():

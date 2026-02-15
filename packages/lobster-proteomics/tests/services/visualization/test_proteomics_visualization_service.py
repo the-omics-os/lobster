@@ -8,22 +8,17 @@ and QC dashboards for proteomics data visualization.
 Test coverage target: 95%+ with meaningful tests for proteomics visualization operations.
 """
 
-import os
-import tempfile
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
-from unittest.mock import MagicMock, Mock, mock_open, patch
+from unittest.mock import patch
 
 import anndata as ad
 import numpy as np
-import pandas as pd
 import pytest
 
 from lobster.services.visualization.proteomics_visualization_service import (
     ProteomicsVisualizationError,
     ProteomicsVisualizationService,
 )
-from tests.mock_data.base import LARGE_DATASET_CONFIG, SMALL_DATASET_CONFIG
+from tests.mock_data.base import SMALL_DATASET_CONFIG
 from tests.mock_data.factories import ProteomicsDataFactory
 
 # ===============================================================================
@@ -368,7 +363,7 @@ class TestIntensityDistributionPlot:
         )
 
         assert fig is not None
-        assert stats["log_transformed"] == True
+        assert stats["log_transformed"] is True
 
     def test_create_intensity_distribution_plot_histogram(
         self, service, mock_adata_with_missing

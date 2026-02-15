@@ -1226,9 +1226,9 @@ class TestGeneDetectionEndToEnd:
             mt_mask = service._detect_mitochondrial_genes(adata)
             ribo_mask = service._detect_ribosomal_genes(adata)
 
-            assert mt_mask.sum() == expected_mt, (
-                f"Failed to detect {expected_mt} MT genes in {gene_names[:4]}"
-            )
-            assert ribo_mask.sum() == expected_ribo, (
-                f"Failed to detect {expected_ribo} ribo genes in {gene_names[:4]}"
-            )
+            assert (
+                mt_mask.sum() == expected_mt
+            ), f"Failed to detect {expected_mt} MT genes in {gene_names[:4]}"
+            assert (
+                ribo_mask.sum() == expected_ribo
+            ), f"Failed to detect {expected_ribo} ribo genes in {gene_names[:4]}"

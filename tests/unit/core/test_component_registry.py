@@ -13,12 +13,12 @@ Test coverage:
 4. Utility methods (get_info, reset)
 """
 
+from typing import Any, Dict
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from typing import Dict, Any
 
 from lobster.core.component_registry import ComponentRegistry, component_registry
-
 
 # =============================================================================
 # Fixtures

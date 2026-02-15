@@ -7,14 +7,14 @@ Mark with @pytest.mark.real_api to run separately.
 Run with: pytest tests/integration/ -m real_api -v
 """
 
-import pytest
 import anndata as ad
 import numpy as np
 import pandas as pd
+import pytest
 
 from lobster.services.analysis.pathway_enrichment_service import (
-    PathwayEnrichmentService,
     PathwayEnrichmentError,
+    PathwayEnrichmentService,
 )
 
 
@@ -53,7 +53,9 @@ class TestRealEnrichrAPI:
         assert enrichment_data["method"] == "gseapy.enrichr"
         assert "timestamp" in enrichment_data
 
-        print(f"✅ Real API test passed: {stats['n_significant_pathways']} pathways found")
+        print(
+            f"✅ Real API test passed: {stats['n_significant_pathways']} pathways found"
+        )
         print(f"   Genes tested: {', '.join(cancer_genes)}")
         if stats["n_significant_pathways"] > 0:
             results_df = pd.DataFrame(enrichment_data["results"])
@@ -68,7 +70,16 @@ class TestRealEnrichrAPI:
         service = ProteomicsAnalysisService()
 
         # Create mock proteomics data
-        significant_proteins = ["TP53", "EGFR", "MYC", "KRAS", "BCL2", "PIK3CA", "PTEN", "RB1"]
+        significant_proteins = [
+            "TP53",
+            "EGFR",
+            "MYC",
+            "KRAS",
+            "BCL2",
+            "PIK3CA",
+            "PTEN",
+            "RB1",
+        ]
         all_proteins = significant_proteins + [f"PROT{i}" for i in range(42)]
 
         adata = ad.AnnData(
@@ -277,4 +288,6 @@ class TestGSEA:
 
 
 if __name__ == "__main__":
-    print("Run with: pytest tests/integration/test_pathway_enrichment_integration.py -m real_api -v -s")
+    print(
+        "Run with: pytest tests/integration/test_pathway_enrichment_integration.py -m real_api -v -s"
+    )

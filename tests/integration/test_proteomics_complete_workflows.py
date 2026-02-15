@@ -798,7 +798,9 @@ class TestProteomicsEdgeCases:
 
         # Imputation should skip
         prep_service = ProteomicsPreprocessingService()
-        adata_result, stats, ir = prep_service.impute_missing_values(adata, method="knn")
+        adata_result, stats, ir = prep_service.impute_missing_values(
+            adata, method="knn"
+        )
 
         assert stats["missing_values_found"] is False
         assert stats["imputation_performed"] is False

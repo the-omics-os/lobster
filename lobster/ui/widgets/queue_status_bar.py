@@ -7,13 +7,12 @@ Reusable pattern - any future UI can consume the same statistics API.
 Status display configuration imported from schema files (single source of truth).
 """
 
-from typing import Dict, Any
+from typing import Any, Dict
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widgets import Static
-
-from rich.text import Text
 
 # Import status enums with display properties from their single source of truth
 from lobster.core.schemas.download_queue import (

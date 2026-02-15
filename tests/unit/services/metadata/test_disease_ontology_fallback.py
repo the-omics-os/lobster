@@ -33,8 +33,8 @@ class TestDiseaseStandardizationServiceFallback:
                 ]
 
             from lobster.services.metadata.disease_standardization_service import (
-                DiseaseStandardizationService,
                 HAS_ONTOLOGY_SERVICE,
+                DiseaseStandardizationService,
             )
 
             # Verify fallback is active
@@ -80,6 +80,8 @@ class TestMetadataAssistantFallback:
 
             from lobster.agents.metadata_assistant.config import (
                 HAS_ONTOLOGY_SERVICE,
+            )
+            from lobster.agents.metadata_assistant.config import (
                 phase1_column_rescan as _phase1_column_rescan,
             )
 

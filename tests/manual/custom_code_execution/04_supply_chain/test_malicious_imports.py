@@ -49,16 +49,14 @@ class TestMaliciousStandardLibraryShadowing:
 
         # Create malicious json.py that shadows stdlib
         fake_json = workspace / "json.py"
-        fake_json.write_text(
-            """
+        fake_json.write_text("""
 # Malicious json module replacement
 def loads(s):
     return {"hijacked": True, "original_data": "STOLEN"}
 
 def dumps(obj):
     return '{"hijacked": true}'
-"""
-        )
+""")
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -105,8 +103,7 @@ result = data
 
         # Malicious os.py that bypasses import blocking
         fake_os = workspace / "os.py"
-        fake_os.write_text(
-            '''
+        fake_os.write_text('''
 # Malicious os module - bypasses "from os import system" blocking
 import subprocess as _real_subprocess
 
@@ -118,8 +115,7 @@ def system(command):
 # Pretend to be safe
 def getcwd():
     return "/fake/path"
-'''
-        )
+''')
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -177,8 +173,7 @@ class TestScientificPackageShadowing:
         workspace.mkdir()
 
         fake_numpy = workspace / "numpy.py"
-        fake_numpy.write_text(
-            '''
+        fake_numpy.write_text('''
 # Malicious numpy that manipulates scientific data
 class ndarray:
     def __init__(self, data):
@@ -196,8 +191,7 @@ def array(data):
 
 def mean(data):
     return 999.99  # Always return fake statistics
-'''
-        )
+''')
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -245,8 +239,7 @@ result = np.mean(data)
         workspace.mkdir()
 
         fake_pandas = workspace / "pandas.py"
-        fake_pandas.write_text(
-            '''
+        fake_pandas.write_text('''
 # Malicious pandas that silently filters data
 class DataFrame:
     def __init__(self, data):
@@ -264,8 +257,7 @@ class DataFrame:
 def read_csv(path):
     """Always return empty DataFrame"""
     return DataFrame({})
-'''
-        )
+''')
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -324,8 +316,7 @@ class TestImportTimeCodeExecution:
 
         # __init__.py executes on import
         init_file = malicious_pkg / "__init__.py"
-        init_file.write_text(
-            """
+        init_file.write_text("""
 # Code executes immediately on import (before any function calls)
 import sys
 
@@ -335,8 +326,7 @@ with open('.PWNED', 'w') as f:
 
 # Could exfiltrate environment variables, credentials, etc.
 print("MALICIOUS: Import-time code executed")
-"""
-        )
+""")
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -389,8 +379,7 @@ result = "Import completed"
         workspace.mkdir()
 
         stealer = workspace / "config_helper.py"
-        stealer.write_text(
-            """
+        stealer.write_text("""
 # Innocent-looking config helper that steals secrets at import time
 import os
 import json
@@ -409,8 +398,7 @@ with open('.stolen_secrets.json', 'w') as f:
 # Provide innocent-looking API
 def get_config():
     return {"safe": "config"}
-"""
-        )
+""")
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -473,8 +461,7 @@ class TestTyposquattingAttacks:
 
         # Common typo: reqeusts instead of requests
         fake_requests = workspace / "reqeusts.py"
-        fake_requests.write_text(
-            """
+        fake_requests.write_text("""
 # Typosquatted requests module
 def get(url):
     print(f"MALICIOUS: Captured URL request: {url}")
@@ -483,19 +470,16 @@ def get(url):
 class FakeResponse:
     status_code = 200
     text = "HIJACKED RESPONSE"
-"""
-        )
+""")
 
         # Common typo: nmupy instead of numpy
         fake_numpy = workspace / "nmupy.py"
-        fake_numpy.write_text(
-            """
+        fake_numpy.write_text("""
 # Typosquatted numpy
 def array(data):
     print("MALICIOUS: nmupy instead of numpy")
     return [999] * len(data)
-"""
-        )
+""")
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace
@@ -584,8 +568,7 @@ class TestCrossPlatformShadowing:
 
         # Shadow pathlib (used internally by Lobster)
         fake_pathlib = workspace / "pathlib.py"
-        fake_pathlib.write_text(
-            """
+        fake_pathlib.write_text("""
 # Malicious pathlib that compromises file operations
 import os as _os
 
@@ -608,8 +591,7 @@ class Path:
 
     def __str__(self):
         return self.path
-"""
-        )
+""")
 
         dm = DataManagerV2(workspace_path=workspace)
         return CustomCodeExecutionService(dm), workspace

@@ -444,7 +444,9 @@ class TestErrorHandling:
 class TestGEOServiceIntegration:
     """Test integration with GEO service for quantification file loading."""
 
-    def test_geo_quantification_detection(self, mock_kallisto_dataset, temp_workspace, tmp_path):
+    def test_geo_quantification_detection(
+        self, mock_kallisto_dataset, temp_workspace, tmp_path
+    ):
         """Test that quantification files can be loaded through standard workflow."""
         kallisto_dir, _, _ = mock_kallisto_dataset
 

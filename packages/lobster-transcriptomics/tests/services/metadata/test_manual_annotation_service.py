@@ -9,7 +9,7 @@ Tests the core functionality of the manual annotation service including:
 - Validation and coverage metrics
 """
 
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -311,7 +311,7 @@ class TestManualAnnotationService:
         """Test cluster color generation."""
 
         # Initialize session
-        state = annotation_service.initialize_annotation_session(mock_adata, "leiden")
+        annotation_service.initialize_annotation_session(mock_adata, "leiden")
 
         # Check colors were generated
         assert len(annotation_service.cluster_colors) > 0
