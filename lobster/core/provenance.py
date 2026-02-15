@@ -117,6 +117,54 @@ class ProvenanceTracker:
                     )
                     continue  # Line-independent recovery
 
+    def _persist_activity(self, activity: Dict[str, Any]) -> None:
+        """
+        Append activity to JSONL file with crash-safe write.
+
+        Each activity is written as a single JSON line with schema version.
+        Uses fsync for durability - at most one trailing line lost on crash.
+
+        Args:
+            activity: Activity dict to persist (already has IR serialized to dict)
+        """
+        if not self._provenance_file:
+            return  # Persistence disabled
+
+        # Safety net: recreate dir if deleted during session
+        self._provenance_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Prepare line with schema version
+        line = {"v": 1, **activity}
+
+        # Crash-safe append
+        with open(self._provenance_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(line, default=str) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+
+        # Update session metadata
+        self._write_session_metadata()
+
+    def _write_session_metadata(self) -> None:
+        """
+        Write metadata.json alongside provenance.jsonl.
+
+        Contains timestamps, activity count, and software versions for
+        session discovery and debugging.
+        """
+        if not self.session_dir:
+            return
+
+        metadata = {
+            "created_at": self._created_at.isoformat() if self._created_at else None,
+            "last_modified": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "activity_count": len(self.activities),
+            "software_versions": self._get_software_versions(),
+        }
+
+        with open(self._metadata_file, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2)
+
     def create_activity(
         self,
         activity_type: str,
@@ -170,6 +218,7 @@ class ProvenanceTracker:
             activity["ir"] = None
 
         self.activities.append(activity)
+        self._persist_activity(activity)
         self.logger.debug(f"Created activity: {activity_id} ({activity_type})")
 
         return activity_id
