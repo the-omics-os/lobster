@@ -719,36 +719,69 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
         group2: str,
         test_method: str,
     ) -> List[Dict[str, Any]]:
-        """Test each protein for differential expression between two groups."""
-        results = []
+        """Test each protein for differential expression between two groups.
 
+        For limma_like method: first pass collects per-protein variances,
+        estimates empirical Bayes prior, then second pass runs moderated t-tests
+        with the shared prior (proper variance shrinkage across all proteins).
+        """
+        # First pass: collect clean data and variances for all proteins
+        protein_data = []
         for i, protein_name in enumerate(protein_names):
             g1_values = group1_data[:, i]
             g2_values = group2_data[:, i]
 
-            # Remove missing values
-            if hasattr(g1_values, "isnan"):
-                g1_clean = g1_values[~np.isnan(g1_values)]
-                g2_clean = g2_values[~np.isnan(g2_values)]
-            else:
-                g1_clean = (
-                    g1_values[g1_values > 0]
-                    if test_method != "limma_like"
-                    else g1_values
-                )
-                g2_clean = (
-                    g2_values[g2_values > 0]
-                    if test_method != "limma_like"
-                    else g2_values
-                )
+            # Remove missing values (NaN only — zeros are valid for log-transformed data)
+            g1_clean = g1_values[~np.isnan(g1_values)] if np.issubdtype(g1_values.dtype, np.floating) else g1_values
+            g2_clean = g2_values[~np.isnan(g2_values)] if np.issubdtype(g2_values.dtype, np.floating) else g2_values
 
             if len(g1_clean) < 2 or len(g2_clean) < 2:
                 continue
 
-            # Perform statistical test
-            test_result = self._perform_statistical_test(
-                g1_clean, g2_clean, test_method
+            protein_data.append((i, protein_name, g1_clean, g2_clean))
+
+        # For limma_like: estimate empirical Bayes prior from all protein variances
+        prior_variance = None
+        prior_df = None
+        if test_method == "limma_like" and len(protein_data) >= 10:
+            all_variances = []
+            all_dfs = []
+            for _, _, g1, g2 in protein_data:
+                n1, n2 = len(g1), len(g2)
+                var1 = np.var(g1, ddof=1)
+                var2 = np.var(g2, ddof=1)
+                df = n1 + n2 - 2
+                pooled_var = ((n1 - 1) * var1 + (n2 - 1) * var2) / df
+                all_variances.append(pooled_var)
+                all_dfs.append(float(df))
+
+            prior_variance, prior_df = self._estimate_prior_variance(
+                np.array(all_variances), np.array(all_dfs)
             )
+            logger.info(
+                f"Empirical Bayes prior: variance={prior_variance:.4f}, df={prior_df:.1f} "
+                f"(estimated from {len(all_variances)} proteins)"
+            )
+
+        # Second pass: run tests with prior (if limma_like) or standard tests
+        results = []
+        for i, protein_name, g1_clean, g2_clean in protein_data:
+            # Perform statistical test
+            if test_method == "limma_like" and prior_variance is not None:
+                t_stat, p_value = self._moderated_t_test(
+                    g1_clean, g2_clean,
+                    prior_variance=prior_variance,
+                    prior_df=prior_df,
+                )
+                test_result = {
+                    "statistic": float(t_stat),
+                    "p_value": float(p_value),
+                    "test_method": "limma_like",
+                }
+            else:
+                test_result = self._perform_statistical_test(
+                    g1_clean, g2_clean, test_method
+                )
 
             if test_result is not None:
                 # Calculate effect sizes and additional metrics
@@ -764,8 +797,8 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
                     "n_group2": len(g2_clean),
                     "mean_group1": float(np.mean(g1_clean)),
                     "mean_group2": float(np.mean(g2_clean)),
-                    "std_group1": float(np.std(g1_clean)),
-                    "std_group2": float(np.std(g2_clean)),
+                    "std_group1": float(np.std(g1_clean, ddof=1)),
+                    "std_group2": float(np.std(g2_clean, ddof=1)),
                     **test_result,
                     **effect_metrics,
                 }
@@ -893,7 +926,7 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
         # Remove invalid variances
         valid_mask = np.isfinite(all_variances) & (all_variances > 0) & (all_dfs > 0)
         valid_vars = all_variances[valid_mask]
-        all_dfs[valid_mask]
+        valid_dfs = all_dfs[valid_mask]
 
         if len(valid_vars) < 10:
             # Not enough proteins for reliable prior estimation
@@ -917,17 +950,52 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
 
         return float(prior_var), float(prior_df)
 
+    def _detect_log_transformed(self, values: np.ndarray) -> bool:
+        """
+        Heuristic to detect if data is likely log2-transformed.
+
+        Log2-transformed proteomics data typically has values in [0, 30] range
+        (log2 of intensities 1 to ~1 billion). Raw intensities span 10^2 to 10^8+.
+        """
+        valid = values[np.isfinite(values)]
+        if len(valid) == 0:
+            return False
+        val_range = np.ptp(valid)  # max - min
+        val_max = np.max(np.abs(valid))
+        # Log2 data: range typically < 30, max < 35
+        # Raw data: range typically > 1000, max > 1000
+        return val_max < 40 and val_range < 35
+
     def _calculate_effect_metrics(
         self, group1: np.ndarray, group2: np.ndarray
     ) -> Dict[str, float]:
-        """Calculate effect size metrics."""
+        """
+        Calculate effect size metrics.
+
+        Auto-detects whether data is log2-transformed and computes fold change
+        accordingly:
+        - Log2 data: log2FC = mean1 - mean2 (difference of logs = log of ratio)
+        - Linear data: log2FC = log2(mean1 / mean2) with data-adaptive pseudocount
+        """
         mean1, mean2 = np.mean(group1), np.mean(group2)
         std1, std2 = np.std(group1, ddof=1), np.std(group2, ddof=1)
         n1, n2 = len(group1), len(group2)
 
-        # Fold change
-        fold_change = (mean1 + 1e-8) / (mean2 + 1e-8)  # Add small pseudocount
-        log2_fold_change = np.log2(fold_change)
+        # Detect if data is log-transformed
+        all_values = np.concatenate([group1, group2])
+        is_log = self._detect_log_transformed(all_values)
+
+        if is_log:
+            # Log2 data: difference of means IS the log2 fold change
+            log2_fold_change = mean1 - mean2
+            fold_change = 2.0 ** log2_fold_change
+        else:
+            # Linear data: compute ratio with data-adaptive pseudocount
+            # Pseudocount = 1% of minimum non-zero value across both groups
+            non_zero = all_values[all_values > 0]
+            pseudocount = np.min(non_zero) * 0.01 if len(non_zero) > 0 else 1.0
+            fold_change = (mean1 + pseudocount) / (mean2 + pseudocount)
+            log2_fold_change = np.log2(fold_change)
 
         # Cohen's d (effect size)
         pooled_std = np.sqrt(((n1 - 1) * std1**2 + (n2 - 1) * std2**2) / (n1 + n2 - 2))
@@ -942,6 +1010,7 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
             "log2_fold_change": float(log2_fold_change),
             "cohens_d": float(cohens_d),
             "hedges_g": float(hedges_g),
+            "is_log_transformed": is_log,
         }
 
     def _apply_fdr_correction(
@@ -1169,11 +1238,8 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
             for i, protein_name in enumerate(protein_names):
                 protein_values = group_X[:, i]
 
-                # Remove missing values
-                if hasattr(protein_values, "isnan"):
-                    valid_mask = ~np.isnan(protein_values)
-                else:
-                    valid_mask = protein_values > 0
+                # Remove missing values (NaN only — zeros are valid for log-transformed data)
+                valid_mask = ~np.isnan(protein_values) if np.issubdtype(protein_values.dtype, np.floating) else np.ones(len(protein_values), dtype=bool)
 
                 if valid_mask.sum() < 4:  # Need at least 4 points for trend analysis
                     continue
@@ -1235,10 +1301,19 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
             # Calculate standard error of slope
             residuals = y - y_pred
             mse = np.sum(residuals**2) / (n - 2)
-            x_centered = time_points - np.mean(time_points)
-            se_slope = np.sqrt(mse / np.sum(x_centered**2))
+            x_centered = np.array(time_points) - np.mean(time_points)
+            ss_x = np.sum(x_centered**2)
+
+            # Guard against constant time points (division by zero)
+            if ss_x < 1e-10 or mse < 0:
+                return reg.coef_[0], 1.0, 0.0
+
+            se_slope = np.sqrt(mse / ss_x)
 
             # t-statistic and p-value
+            if se_slope < 1e-10:
+                return reg.coef_[0], 1.0, 0.0
+
             t_stat = reg.coef_[0] / se_slope
             p_value = 2 * (1 - stats.t.cdf(abs(t_stat), n - 2))
         else:
@@ -1295,13 +1370,10 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
         for i, protein_name in enumerate(protein_names):
             protein_values = X[:, i]
 
-            # Remove missing values
-            if hasattr(protein_values, "isnan"):
-                valid_mask = ~(np.isnan(protein_values) | np.isnan(target_values))
-            else:
-                valid_mask = (protein_values > 0) & ~np.isnan(target_values)
+            # Remove missing values (NaN only — zeros are valid for log-transformed data)
+            valid_mask = ~np.isnan(protein_values) & ~np.isnan(target_values)
 
-            if valid_mask.sum() < 4:  # Need at least 4 points for correlation
+            if valid_mask.sum() < 5:  # Need at least 5 points for meaningful correlation
                 continue
 
             valid_protein = protein_values[valid_mask]

@@ -643,6 +643,24 @@ adata_modules, _, _ = service.identify_modules(
             n_samples, n_proteins = X.shape
             protein_names = adata_modules.var_names.tolist()
 
+            # C2 FIX: Minimum sample size guard for WGCNA
+            MIN_WGCNA_SAMPLES = 15
+            if n_samples < MIN_WGCNA_SAMPLES:
+                raise ProteomicsNetworkError(
+                    f"WGCNA requires at least {MIN_WGCNA_SAMPLES} samples for reliable "
+                    f"co-expression network estimation (got {n_samples}). "
+                    f"With fewer samples, pairwise correlations are dominated by noise "
+                    f"and modules are not biologically meaningful. "
+                    f"Consider using differential expression analysis instead."
+                )
+
+            if n_samples < 30:
+                logger.warning(
+                    f"WGCNA with {n_samples} samples is underpowered. "
+                    f"Recommend n >= 30 for robust module detection. "
+                    f"Results should be interpreted cautiously."
+                )
+
             # Handle missing values with imputation
             from sklearn.impute import SimpleImputer
 
@@ -672,23 +690,30 @@ adata_modules, _, _ = service.identify_modules(
             # Handle NaN values in correlation matrix
             corr_matrix = np.nan_to_num(corr_matrix, nan=0.0)
 
-            # Apply soft thresholding if specified (WGCNA-style)
+            # C3 FIX: Apply soft thresholding — auto-pick power if not specified
             if soft_power is not None:
                 # Signed network: (0.5 + 0.5 * cor)^power
                 adjacency = np.power(0.5 + 0.5 * corr_matrix, soft_power)
+                logger.info(f"Applied soft power: {soft_power}")
             else:
-                # Use signed correlation directly
-                adjacency = 0.5 + 0.5 * corr_matrix
+                # Auto-select soft power using pick_soft_threshold
+                threshold_results = self.pick_soft_threshold(adata_modules)
+                auto_power = threshold_results.get("selected_power", DEFAULT_SOFT_POWER)
+                adjacency = np.power(0.5 + 0.5 * corr_matrix, auto_power)
+                logger.info(
+                    f"Auto-selected soft power: {auto_power} "
+                    f"(R²={threshold_results.get('r_squared_at_selected', 0):.3f})"
+                )
 
-            # Convert adjacency to distance
+            # Convert adjacency to distance (note: this is adjacency-based distance, not TOM)
             np.fill_diagonal(adjacency, 1.0)
             adjacency = np.clip(adjacency, 0, 1)
-            tom_dissimilarity = 1 - adjacency
+            adjacency_dissimilarity = 1 - adjacency
 
             # Hierarchical clustering
             logger.info("Performing hierarchical clustering...")
             # Convert to condensed distance matrix
-            condensed_dist = squareform(tom_dissimilarity, checks=False)
+            condensed_dist = squareform(adjacency_dissimilarity, checks=False)
             # Replace any invalid values
             condensed_dist = np.nan_to_num(
                 condensed_dist, nan=1.0, posinf=1.0, neginf=0.0

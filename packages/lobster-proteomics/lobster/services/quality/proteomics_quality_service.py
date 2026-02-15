@@ -1306,3 +1306,167 @@ print(f"Replicate correlation: {stats['median_replicate_correlation']:.3f}, CV: 
             "estimated_missing_blocks": missing_blocks,
             "random_missing_pattern": missing_blocks < n_samples * 0.1,
         }
+
+    def select_variable_proteins(
+        self,
+        adata: anndata.AnnData,
+        n_top_proteins: int = 500,
+        method: str = "cv",
+        min_detection_rate: float = 0.5,
+    ) -> tuple:
+        """
+        Select highly variable proteins for downstream analysis.
+
+        Analogous to highly variable gene (HVG) selection in transcriptomics.
+        Filters proteins by detection rate, then ranks by variability metric.
+
+        Args:
+            adata: AnnData object with proteomics data (samples x proteins)
+            n_top_proteins: Number of top variable proteins to select
+            method: Variability metric ('cv' for coefficient of variation,
+                    'variance' for raw variance, 'mad' for median absolute deviation)
+            min_detection_rate: Minimum fraction of non-missing samples per protein
+
+        Returns:
+            Tuple[AnnData, Dict, AnalysisStep]: AnnData with highly_variable in var,
+                selection statistics, and IR for provenance
+        """
+        logger.info(
+            f"Selecting variable proteins: method={method}, n_top={n_top_proteins}, "
+            f"min_detection={min_detection_rate}"
+        )
+
+        adata_result = adata.copy()
+        X = adata_result.X.toarray() if hasattr(adata_result.X, "toarray") else adata_result.X.copy()
+        n_samples, n_proteins = X.shape
+
+        # Step 1: Calculate detection rate per protein
+        detection_rate = 1.0 - (np.isnan(X).sum(axis=0) / n_samples)
+        passes_detection = detection_rate >= min_detection_rate
+        n_passing = int(passes_detection.sum())
+
+        logger.info(f"Proteins passing detection filter: {n_passing}/{n_proteins}")
+
+        if n_passing == 0:
+            raise ValueError(
+                f"No proteins pass detection rate filter ({min_detection_rate:.0%}). "
+                f"Try lowering min_detection_rate."
+            )
+
+        # Step 2: Compute variability metric for passing proteins
+        variability = np.full(n_proteins, np.nan)
+
+        for j in range(n_proteins):
+            if not passes_detection[j]:
+                continue
+            col = X[:, j]
+            valid = col[~np.isnan(col)]
+            if len(valid) < 2:
+                continue
+
+            if method == "cv":
+                mean_val = np.mean(valid)
+                if abs(mean_val) > 1e-10:
+                    variability[j] = np.std(valid, ddof=1) / abs(mean_val)
+                else:
+                    variability[j] = 0.0
+            elif method == "variance":
+                variability[j] = np.var(valid, ddof=1)
+            elif method == "mad":
+                variability[j] = np.median(np.abs(valid - np.median(valid)))
+            else:
+                raise ValueError(f"Unknown method '{method}'. Use 'cv', 'variance', or 'mad'.")
+
+        # Step 3: Select top N by variability
+        valid_variability = np.where(np.isnan(variability), -np.inf, variability)
+        n_select = min(n_top_proteins, n_passing)
+        top_indices = np.argsort(valid_variability)[::-1][:n_select]
+
+        # Mark highly variable
+        highly_variable = np.zeros(n_proteins, dtype=bool)
+        highly_variable[top_indices] = True
+        adata_result.var["highly_variable"] = highly_variable
+        adata_result.var["variability_score"] = variability
+        adata_result.var["detection_rate"] = detection_rate
+
+        # Get top protein names
+        top_proteins = adata_result.var_names[top_indices].tolist()
+
+        stats = {
+            "n_total": n_proteins,
+            "n_passing_detection": n_passing,
+            "n_selected": int(highly_variable.sum()),
+            "method": method,
+            "min_detection_rate": min_detection_rate,
+            "top_proteins": top_proteins[:20],
+        }
+
+        ir = AnalysisStep(
+            operation="proteomics.quality.select_variable_proteins",
+            tool_name="select_variable_proteins",
+            description=f"Select top {n_select} variable proteins using {method}",
+            library="lobster.services.quality.proteomics_quality_service",
+            code_template="""# Variable protein selection
+import numpy as np
+
+X = adata.X.toarray() if hasattr(adata.X, 'toarray') else adata.X.copy()
+n_samples, n_proteins = X.shape
+
+# Detection rate filter
+detection_rate = 1.0 - (np.isnan(X).sum(axis=0) / n_samples)
+passes = detection_rate >= {{ min_detection_rate }}
+
+# Compute variability ({{ method }})
+variability = np.full(n_proteins, np.nan)
+for j in range(n_proteins):
+    if not passes[j]:
+        continue
+    col = X[:, j]
+    valid = col[~np.isnan(col)]
+    if len(valid) < 2:
+        continue
+    mean_val = np.mean(valid)
+    variability[j] = np.std(valid, ddof=1) / abs(mean_val) if abs(mean_val) > 1e-10 else 0.0
+
+# Select top N
+valid_var = np.where(np.isnan(variability), -np.inf, variability)
+top_idx = np.argsort(valid_var)[::-1][:{{ n_top_proteins }}]
+adata.var['highly_variable'] = False
+adata.var.iloc[top_idx, adata.var.columns.get_loc('highly_variable')] = True""",
+            imports=["import numpy as np"],
+            parameters={
+                "n_top_proteins": n_top_proteins,
+                "method": method,
+                "min_detection_rate": min_detection_rate,
+            },
+            parameter_schema={
+                "n_top_proteins": ParameterSpec(
+                    param_type="int",
+                    papermill_injectable=True,
+                    default_value=500,
+                    required=False,
+                    description="Number of top variable proteins to select",
+                ),
+                "method": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="cv",
+                    required=False,
+                    validation_rule="method in ['cv', 'variance', 'mad']",
+                    description="Variability metric",
+                ),
+                "min_detection_rate": ParameterSpec(
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=0.5,
+                    required=False,
+                    validation_rule="0 <= min_detection_rate <= 1",
+                    description="Minimum fraction of non-missing samples",
+                ),
+            },
+            input_entities=["adata"],
+            output_entities=["adata_hvp"],
+        )
+
+        logger.info(f"Selected {stats['n_selected']} variable proteins")
+        return adata_result, stats, ir
