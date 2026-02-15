@@ -39,7 +39,6 @@ from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.schemas.download_queue import DownloadStatus, ValidationStatus
 
 # Service imports
-from lobster.services.data_access.geo_download_service import GEODownloadService
 from lobster.services.execution.registry import (
     CustomCodeExecutionService,
     SDKDelegationError,
@@ -230,112 +229,100 @@ Dataset: {entry.dataset_id}
                     f"Entry '{entry_id}' is currently being downloaded by another agent"
                 )
 
-            # 2. UPDATE STATUS TO IN_PROGRESS
-            data_manager.download_queue.update_status(
-                entry_id=entry_id,
-                status=DownloadStatus.IN_PROGRESS,
-                downloaded_by="data_expert",
-            )
+            # 2. BUILD STRATEGY OVERRIDE (if applicable)
+            strategy_override_dict = None
+            if entry.recommended_strategy or concatenation_strategy != "auto":
+                strategy_override_dict = {}
+                if entry.recommended_strategy:
+                    strategy_override_dict["strategy_name"] = (
+                        entry.recommended_strategy.strategy_name
+                    )
+                # Map concatenation_strategy to strategy_params
+                if concatenation_strategy != "auto":
+                    use_intersecting = concatenation_strategy == "intersection"
+                    strategy_override_dict["strategy_params"] = {
+                        "use_intersecting_genes_only": use_intersecting
+                    }
 
             logger.debug(
                 f"Starting download for {entry.dataset_id} from queue entry {entry_id}"
             )
 
-            # 3. DETERMINE DOWNLOAD STRATEGY
-            # Use recommended_strategy from entry (if set by research_agent)
-            # Otherwise use default strategy based on available URLs
-            if entry.recommended_strategy:
-                download_strategy = entry.recommended_strategy.strategy_name
-                logger.debug(f"Using recommended strategy: {download_strategy}")
-            else:
-                # Auto-determine strategy from available URLs
-                if entry.h5_url:
-                    download_strategy = "H5_FIRST"
-                elif entry.matrix_url:
-                    download_strategy = "MATRIX_FIRST"
-                elif entry.supplementary_urls:
-                    download_strategy = "SUPPLEMENTARY_FIRST"
-                else:
-                    download_strategy = "RAW_FIRST"
-                logger.debug(f"Auto-selected strategy: {download_strategy}")
-
-            # 4. EXECUTE DOWNLOAD USING GEO SERVICE
-            # Import GEO service
-            from lobster.services.data_access.geo_service import GEOService
-
-            geo_service = GEOService(data_manager=data_manager)
+            # 3. EXECUTE DOWNLOAD VIA ORCHESTRATOR
+            # DownloadOrchestrator routes to the correct service (GEO, PRIDE, SRA, MassIVE)
+            # based on the queue entry's database type, handles status management,
+            # modality storage, and provenance logging.
+            orchestrator = DownloadOrchestrator(data_manager)
 
             try:
-                # Map concatenation_strategy to use_intersecting_genes_only parameter
-                if concatenation_strategy == "auto":
-                    use_intersecting = None  # Triggers intelligent auto-detection
-                elif concatenation_strategy == "intersection":
-                    use_intersecting = True  # Inner join - only common genes
-                elif concatenation_strategy == "union":
-                    use_intersecting = False  # Outer join - all genes
-                else:
-                    logger.warning(
-                        f"Unknown concatenation_strategy '{concatenation_strategy}', defaulting to 'auto'"
-                    )
-                    use_intersecting = None
-
-                # Download using GEOService.download_dataset()
-                # Note: GEOService internally stores modality in data_manager and returns success message
-                result_message = geo_service.download_dataset(
-                    geo_id=entry.dataset_id,
-                    manual_strategy_override=download_strategy,
-                    use_intersecting_genes_only=use_intersecting,
+                modality_name, stats = orchestrator.execute_download(
+                    entry_id, strategy_override_dict
                 )
-
-                # Check if download was successful (result_message contains success indicators)
-                if "Failed" in result_message or "Error" in result_message:
-                    raise Exception(result_message)
-
-                # 5. RETRIEVE STORED MODALITY FROM DATA MANAGER
-                # GEOService stores modality with naming pattern: geo_{gse_id}_{adapter}
-                # We need to find the modality that matches our dataset_id
-                modalities = data_manager.list_modalities()
-                modality_name = None
-
-                # Look for modality matching pattern geo_{dataset_id}
-                dataset_pattern = f"geo_{entry.dataset_id.lower()}"
-                for mod_name in modalities:
-                    if mod_name.startswith(dataset_pattern):
-                        modality_name = mod_name
-                        break
-
-                if not modality_name:
-                    raise Exception(
-                        f"Modality not found after download. Expected pattern: {dataset_pattern}_*"
-                    )
 
                 result_adata = data_manager.get_modality(modality_name)
 
-                # Log provenance
-                data_manager.log_tool_usage(
-                    tool_name="execute_download_from_queue",
-                    parameters={
-                        "entry_id": entry_id,
-                        "dataset_id": entry.dataset_id,
-                        "strategy": download_strategy,
-                        "concatenation_strategy": concatenation_strategy,
-                        "force_download": force_download,
-                        "modality_name": modality_name,
-                        "n_obs": result_adata.n_obs,
-                        "n_vars": result_adata.n_vars,
-                    },
-                )
-
-                # 6. UPDATE QUEUE STATUS TO COMPLETED
-                data_manager.download_queue.update_status(
-                    entry_id=entry_id,
-                    status=DownloadStatus.COMPLETED,
-                    modality_name=modality_name,
-                )
-
                 logger.info(f"Download complete: {entry.dataset_id} → {modality_name}")
 
-                # 7. RETURN SUCCESS REPORT
+                # 4. POST-DOWNLOAD VALIDATION GATE
+                # Cross-check loaded data characteristics against expected data type
+                type_warning = ""
+                n_vars = result_adata.n_vars
+                var_names = result_adata.var_names[:20].tolist() if n_vars > 0 else []
+
+                # Detect actual modality from data characteristics
+                has_proteomics_cols = any(
+                    col in result_adata.var.columns
+                    for col in [
+                        "n_peptides",
+                        "sequence_coverage",
+                        "protein_group",
+                        "peptide_count",
+                    ]
+                )
+                has_transcriptomics_cols = any(
+                    col in result_adata.var.columns
+                    for col in ["mt", "ribo", "gene_ids", "feature_types"]
+                )
+
+                # Feature count heuristics
+                likely_proteomics = n_vars < 12000 or has_proteomics_cols
+                likely_transcriptomics = n_vars > 15000 or has_transcriptomics_cols
+
+                # Check if expected type (from database or modality name) mismatches
+                is_pride_source = entry.database.lower() == "pride"
+                modality_lower = modality_name.lower()
+                labeled_as_proteomics = (
+                    is_pride_source
+                    or "proteomics" in modality_lower
+                    or "protein" in modality_lower
+                )
+                labeled_as_transcriptomics = (
+                    "transcriptomics" in modality_lower
+                    or "rna" in modality_lower
+                )
+
+                if labeled_as_proteomics and likely_transcriptomics and not likely_proteomics:
+                    type_warning = (
+                        f"\n⚠️ **Data type mismatch detected**: Dataset was labeled as proteomics "
+                        f"but loaded data has {n_vars} features, which is characteristic of "
+                        f"transcriptomics (RNA-seq typically has 20,000-60,000 genes). "
+                        f"This may be an RNA-seq dataset, not proteomics. "
+                        f"Verify before running proteomics-specific analysis.\n"
+                    )
+                elif labeled_as_transcriptomics and likely_proteomics and not likely_transcriptomics:
+                    type_warning = (
+                        f"\n⚠️ **Data type mismatch detected**: Dataset was labeled as transcriptomics "
+                        f"but loaded data has only {n_vars} features, which may indicate "
+                        f"proteomics data (typically 500-10,000 proteins). "
+                        f"Verify before running transcriptomics-specific analysis.\n"
+                    )
+
+                if type_warning:
+                    logger.warning(
+                        f"Data type mismatch for {entry.dataset_id}: {type_warning.strip()}"
+                    )
+
+                # 5. RETURN SUCCESS REPORT
                 strategy_used = (
                     entry.recommended_strategy.strategy_name
                     if entry.recommended_strategy
@@ -347,36 +334,29 @@ Dataset: {entry.dataset_id}
 
 Dataset ID: {entry.dataset_id}
 Entry ID: {entry_id}
+Database: {entry.database}
 Modality Name: {modality_name}
 Strategy Used: {strategy_used}
-Status: {entry.status.value if hasattr(entry.status, "value") else entry.status}
 
 Samples: {result_adata.n_obs}
 Features: {result_adata.n_vars}
 Concatenation: {concatenation_strategy}
-
-You can now analyze this dataset using the single-cell or bulk RNA-seq tools.
+{type_warning}
+You can now analyze this dataset using the appropriate analysis tools.
 """
 
                 return response
 
             except Exception as download_error:
-                # 8. UPDATE QUEUE STATUS TO FAILED
-                error_msg = str(download_error)
-                data_manager.download_queue.update_status(
-                    entry_id=entry_id,
-                    status=DownloadStatus.FAILED,
-                    error=error_msg,
-                )
-
-                logger.error(f"Download failed for {entry.dataset_id}: {error_msg}")
+                logger.error(f"Download failed for {entry.dataset_id}: {download_error}")
 
                 response = f"## Download Failed: {entry.dataset_id}\n\n"
                 response += "❌ **Status**: Download failed\n"
-                response += f"- **Error**: {error_msg}\n"
+                response += f"- **Error**: {download_error}\n"
+                response += f"- **Database**: {entry.database}\n"
                 response += f"- **Queue entry**: `{entry_id}` (FAILED)\n"
                 response += "\n**Troubleshooting**:\n"
-                response += f"1. Check GEO dataset availability: {entry.dataset_id}\n"
+                response += f"1. Check dataset availability: {entry.dataset_id}\n"
                 response += "2. Verify URLs are accessible\n"
                 response += "3. Review error log in queue entry\n"
 
@@ -441,8 +421,8 @@ You can now analyze this dataset using the single-cell or bulk RNA-seq tools.
                     }
 
             # 4. INITIALIZE DOWNLOAD ORCHESTRATOR
+            # Auto-registers GEO, SRA, PRIDE, MassIVE services
             orchestrator = DownloadOrchestrator(data_manager)
-            orchestrator.register_service(GEODownloadService(data_manager))
 
             logger.info(
                 f"Retrying download for {entry.dataset_id} (entry: {entry_id})"

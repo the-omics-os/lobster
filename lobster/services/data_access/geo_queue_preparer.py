@@ -69,6 +69,101 @@ def _is_single_cell_dataset(metadata: dict) -> bool:
     return False
 
 
+def _is_proteomics_dataset(metadata: dict) -> bool:
+    """Detect if dataset is proteomics based on metadata keywords and platform.
+
+    Checks text fields, platform accessions, library strategy, and
+    characteristics_ch1 for mass spectrometry and affinity proteomics indicators.
+    """
+    # Mass spectrometry and affinity proteomics keywords
+    proteomics_keywords = [
+        "proteomics",
+        "proteome",
+        "mass spectrometry",
+        "mass spec",
+        "ms/ms",
+        "lc-ms",
+        "lc/ms",
+        "orbitrap",
+        "q-tof",
+        "qtof",
+        "maldi",
+        "triple tof",
+        "tripletof",
+        "q exactive",
+        "qexactive",
+        "tmt",
+        "itraq",
+        "silac",
+        "label-free quantification",
+        "label free quantification",
+        "lfq",
+        "dia",
+        "dda",
+        "data-independent acquisition",
+        "data-dependent acquisition",
+        "swath",
+        "olink",
+        "somascan",
+        "soma logic",
+        "proximity extension assay",
+        "protein expression",
+        "protein abundance",
+        "peptide",
+        "tandem mass",
+    ]
+
+    text_fields = [
+        metadata.get("title", ""),
+        metadata.get("summary", ""),
+        metadata.get("overall_design", ""),
+        metadata.get("type", ""),
+        metadata.get("description", ""),
+    ]
+
+    for field in text_fields:
+        if any(kw.lower() in field.lower() for kw in proteomics_keywords):
+            return True
+
+    # Check platform — known mass spectrometry and proteomics platforms
+    platform = metadata.get("platform", "")
+    ms_platforms = [
+        "Orbitrap",
+        "Q-TOF",
+        "MALDI",
+        "TripleTOF",
+        "QExactive",
+        "Lumos",
+        "Exploris",
+        "timsTOF",
+        "Olink",
+        "SomaScan",
+    ]
+    if any(kw.lower() in platform.lower() for kw in ms_platforms):
+        return True
+
+    # Check characteristics_ch1 for proteomics-specific patterns
+    samples = metadata.get("samples", {})
+    for sample in samples.values() if isinstance(samples, dict) else []:
+        chars = sample.get("characteristics_ch1", [])
+        if isinstance(chars, list):
+            chars_text = " ".join(str(c).lower() for c in chars)
+            if any(
+                pattern in chars_text
+                for pattern in [
+                    "assay: protein",
+                    "technology: ms",
+                    "instrument:",
+                    "mass spectrometer",
+                    "fractionation:",
+                    "enzyme: trypsin",
+                ]
+            ):
+                return True
+
+    return False
+
+
 def _create_recommended_strategy(
     strategy_config,
     analysis: dict,

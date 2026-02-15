@@ -1268,6 +1268,9 @@ class GEOService:
                 **enhanced_metadata,
             )
 
+            # Inject clinical metadata from GEO characteristics_ch1 into adata.obs
+            self._inject_clinical_metadata(adata, clean_geo_id)
+
             # Save to workspace
             save_path = f"{modality_name}_raw.h5ad"
             saved_file = self.data_manager.save_modality(modality_name, save_path)
@@ -3015,15 +3018,158 @@ class GEOService:
                 "alignment_percentage": 0.0,
             }
 
+    def _inject_clinical_metadata(
+        self, adata, geo_id: str
+    ) -> None:
+        """
+        Inject clinical metadata from GEO characteristics_ch1 into adata.obs.
+
+        Parses "key: value" pairs from characteristics_ch1 for each sample and
+        maps them to the corresponding observations in adata.obs.
+
+        Handles both bulk RNA-seq (obs_names are sample IDs) and single-cell
+        (sample_id column maps cells to GSM IDs).
+
+        Args:
+            adata: AnnData object to inject metadata into (mutated in-place)
+            geo_id: GEO accession ID for metadata store lookup
+        """
+        try:
+            # Get cached metadata with sample characteristics
+            stored = self.data_manager.metadata_store.get(geo_id, {})
+            metadata = stored.get("metadata", {})
+            samples = metadata.get("samples", {})
+
+            if not samples:
+                logger.debug(
+                    f"No sample metadata found for {geo_id}, skipping clinical metadata injection"
+                )
+                return
+
+            # Collect all characteristics across samples to build consistent columns
+            all_keys = set()
+            parsed_samples = {}
+            for gsm_id, sample_meta in samples.items():
+                chars = sample_meta.get("characteristics_ch1", [])
+                if not isinstance(chars, list):
+                    continue
+                parsed = {}
+                for char_str in chars:
+                    char_str = str(char_str)
+                    if ": " in char_str:
+                        key, value = char_str.split(": ", 1)
+                        key = key.strip().lower().replace(" ", "_").replace("-", "_")
+                        value = value.strip()
+                        # Skip empty values
+                        if value:
+                            parsed[key] = value
+                            all_keys.add(key)
+                if parsed:
+                    parsed_samples[gsm_id] = parsed
+
+            if not parsed_samples:
+                logger.debug(
+                    f"No parseable characteristics_ch1 found for {geo_id}"
+                )
+                return
+
+            # Skip keys that would conflict with existing obs columns
+            existing_cols = set(adata.obs.columns)
+            keys_to_inject = all_keys - existing_cols
+            conflicting = all_keys & existing_cols
+            if conflicting:
+                logger.debug(
+                    f"Skipping {len(conflicting)} conflicting columns: {conflicting}"
+                )
+
+            if not keys_to_inject:
+                logger.debug(
+                    f"All clinical metadata keys conflict with existing columns for {geo_id}"
+                )
+                return
+
+            # Determine how to map GSM IDs to obs rows
+            has_sample_id_col = "sample_id" in adata.obs.columns
+            obs_names_upper = {name.upper(): name for name in adata.obs_names}
+
+            # Build a mapping: GSM_ID -> list of obs row indices
+            gsm_to_rows = {}
+            for gsm_id in parsed_samples:
+                gsm_upper = gsm_id.upper()
+                if has_sample_id_col:
+                    # Single-cell or multi-sample: match via sample_id column
+                    mask = adata.obs["sample_id"].astype(str).str.upper() == gsm_upper
+                    matching_rows = adata.obs_names[mask].tolist()
+                    if matching_rows:
+                        gsm_to_rows[gsm_id] = matching_rows
+                # Also check obs_names directly (bulk RNA-seq)
+                if gsm_id not in gsm_to_rows:
+                    if gsm_upper in obs_names_upper:
+                        gsm_to_rows[gsm_id] = [obs_names_upper[gsm_upper]]
+
+            if not gsm_to_rows:
+                logger.debug(
+                    f"Could not map any GSM IDs to obs rows for {geo_id}. "
+                    f"GSM IDs: {list(parsed_samples.keys())[:5]}, "
+                    f"obs sample_ids: {adata.obs['sample_id'].unique()[:5].tolist() if has_sample_id_col else 'N/A'}"
+                )
+                return
+
+            # Inject clinical metadata columns
+            import numpy as np
+
+            for key in keys_to_inject:
+                adata.obs[key] = np.nan
+
+            injected_count = 0
+            for gsm_id, rows in gsm_to_rows.items():
+                parsed = parsed_samples[gsm_id]
+                for key in keys_to_inject:
+                    if key in parsed:
+                        adata.obs.loc[rows, key] = parsed[key]
+                injected_count += 1
+
+            # Try to convert numeric columns
+            for key in keys_to_inject:
+                col = adata.obs[key]
+                # Only attempt conversion if column has non-null values
+                non_null = col.dropna()
+                if len(non_null) > 0:
+                    try:
+                        converted = pd.to_numeric(non_null, errors="coerce")
+                        # If >80% of values converted successfully, keep as numeric
+                        if converted.notna().sum() / len(non_null) > 0.8:
+                            adata.obs[key] = pd.to_numeric(
+                                adata.obs[key], errors="coerce"
+                            )
+                    except (ValueError, TypeError):
+                        pass
+
+            logger.info(
+                f"Injected clinical metadata for {geo_id}: "
+                f"{len(keys_to_inject)} columns ({', '.join(sorted(keys_to_inject))}), "
+                f"{injected_count}/{len(parsed_samples)} samples mapped"
+            )
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to inject clinical metadata for {geo_id}: {e}. "
+                f"Continuing without clinical metadata."
+            )
+
     def _determine_data_type_from_metadata(self, metadata: Dict[str, Any]) -> str:
         """
-        Determine likely data type (single-cell vs bulk) from metadata.
+        Determine likely data type from metadata.
+
+        Detects proteomics, single-cell RNA-seq, and bulk RNA-seq based on
+        keyword scoring across platform info, study design, and sample
+        characteristics.
 
         Args:
             metadata: GEO metadata dictionary
 
         Returns:
-            str: Predicted data type
+            str: Predicted data type ("proteomics", "single_cell_rna_seq", or "bulk_rna_seq")
         """
         try:
             # Check platform information
@@ -3042,6 +3188,33 @@ class GEOService:
                     sample_chars.extend([str(c).lower() for c in chars])
 
             sample_text = " ".join(sample_chars)
+
+            combined_text = f"{platform_info} {overall_design} {sample_text}"
+
+            # Keywords that suggest proteomics
+            proteomics_keywords = [
+                "proteomics",
+                "proteome",
+                "mass spectrometry",
+                "mass spec",
+                "ms/ms",
+                "lc-ms",
+                "orbitrap",
+                "q-tof",
+                "maldi",
+                "tmt",
+                "itraq",
+                "silac",
+                "label-free",
+                "lfq",
+                "dia",
+                "dda",
+                "swath",
+                "olink",
+                "somascan",
+                "peptide",
+                "tandem mass",
+            ]
 
             # Keywords that suggest single-cell
             single_cell_keywords = [
@@ -3062,16 +3235,21 @@ class GEOService:
             # Keywords that suggest bulk
             bulk_keywords = ["bulk", "tissue", "whole", "total rna", "population"]
 
-            combined_text = f"{platform_info} {overall_design} {sample_text}"
-
             # Count keyword matches
+            proteomics_score = sum(
+                1 for keyword in proteomics_keywords if keyword in combined_text
+            )
             single_cell_score = sum(
                 1 for keyword in single_cell_keywords if keyword in combined_text
             )
             bulk_score = sum(1 for keyword in bulk_keywords if keyword in combined_text)
 
-            # Make prediction
-            if single_cell_score > bulk_score:
+            # Proteomics takes priority if detected (distinct modality)
+            if proteomics_score > 0 and proteomics_score >= max(
+                single_cell_score, bulk_score
+            ):
+                return "proteomics"
+            elif single_cell_score > bulk_score:
                 return "single_cell_rna_seq"
             elif bulk_score > single_cell_score:
                 return "bulk_rna_seq"
