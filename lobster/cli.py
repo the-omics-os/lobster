@@ -7612,10 +7612,8 @@ def _dispatch_command(cmd_str: str, client, output):
         metadata_workspace,
         modalities_list,
         modality_describe,
-        pipeline_export,
         pipeline_info,
         pipeline_list,
-        pipeline_run,
         plots_list,
         queue_clear,
         queue_export,
@@ -7713,18 +7711,36 @@ def _dispatch_command(cmd_str: str, client, output):
             return metadata_overview(client, output)
 
     # --- Pipeline ---
+    #
+    # Note: `pipeline export` and `pipeline run` require in-memory provenance
+    # (AnalysisStep IR chain) which is only available in a live AgentClient session.
+    # CommandClient creates a fresh DataManagerV2 with empty provenance, so these
+    # commands will always fail with "no activities". Use `lobster chat` or
+    # `lobster query` for pipeline export/run within the same session as the analysis.
+    #
+    # `pipeline list` and `pipeline info` are read-only and work fine here.
 
     elif base == "pipeline":
         if sub == "export":
-            name = args.split(None, 1)[0] if args else None
-            description = args.split(None, 1)[1] if args and " " in args else None
-            return pipeline_export(client, output, name, description)
+            output.print(
+                "Pipeline export requires in-memory provenance from a live analysis session.",
+                style="error",
+            )
+            output.print(
+                "Use 'lobster chat' and run '/pipeline export' within the same session as your analysis.",
+                style="info",
+            )
+            return None
         elif sub == "run":
-            # args = "<notebook> [modality]"
-            run_parts = args.split(None, 1) if args else []
-            notebook_name = run_parts[0] if run_parts else None
-            input_modality = run_parts[1] if len(run_parts) > 1 else None
-            return pipeline_run(client, output, notebook_name, input_modality)
+            output.print(
+                "Pipeline run requires a live analysis session with notebook executor.",
+                style="error",
+            )
+            output.print(
+                "Use 'lobster chat' and run '/pipeline run' within the same session.",
+                style="info",
+            )
+            return None
         elif sub == "info":
             return pipeline_info(client, output)
         else:
@@ -7778,7 +7794,7 @@ def _dispatch_command(cmd_str: str, client, output):
             "describe <name>",
             "queue [list|clear|export]",
             "metadata [publications|samples|workspace|exports|list|clear]",
-            "pipeline [list|info|export|run]",
+            "pipeline [list|info]",
             "save [--force]",
             "restore [pattern]",
             "export [--no-png] [--force]",

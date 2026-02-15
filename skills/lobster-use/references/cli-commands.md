@@ -254,8 +254,8 @@ lobster command /data --json
 | **Pipeline** | |
 | `pipeline list` | List available notebooks |
 | `pipeline info` | Notebook details |
-| `pipeline export [name] [desc]` | Export session as Jupyter notebook |
-| `pipeline run [notebook] [modality]` | Run a saved notebook with new data |
+| ~~`pipeline export`~~ | Requires live session — use `/pipeline export` in `lobster chat` |
+| ~~`pipeline run`~~ | Requires live session — use `/pipeline run` in `lobster chat` |
 | **State** | |
 | `save [--force]` | Save all modalities to workspace |
 | `restore [pattern]` | Restore datasets from disk (default: recent) |
