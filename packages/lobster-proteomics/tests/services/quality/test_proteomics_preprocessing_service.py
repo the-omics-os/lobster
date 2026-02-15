@@ -9,11 +9,6 @@ Test coverage target: 95%+ with meaningful tests for proteomics preprocessing op
 """
 
 # Proteomics services tests (skip marker removed - tests now active)
-import os
-import tempfile
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
-from unittest.mock import MagicMock, Mock, mock_open, patch
 
 import anndata as ad
 import numpy as np
@@ -24,7 +19,7 @@ from lobster.services.quality.proteomics_preprocessing_service import (
     ProteomicsPreprocessingError,
     ProteomicsPreprocessingService,
 )
-from tests.mock_data.base import LARGE_DATASET_CONFIG, SMALL_DATASET_CONFIG
+from tests.mock_data.base import SMALL_DATASET_CONFIG
 from tests.mock_data.factories import ProteomicsDataFactory
 
 # ===============================================================================

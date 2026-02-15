@@ -5,7 +5,7 @@ Tests the DifferentialFormulaService class functionality including R-style
 formula parsing, design matrix construction, and contrast specification.
 """
 
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -282,7 +282,6 @@ class TestDesignMatrixConstruction:
             formula_components, sample_metadata
         )
 
-        design_matrix = result["design_matrix"]
         coef_names = result["coefficient_names"]
 
         # Should include interaction term

@@ -597,7 +597,7 @@ class TestGWASParameterValidation:
             )
             # If succeeds, sgkit used default value
             assert adata_pca is not None
-            print(f"sgkit handled n_components=-1 gracefully with default")
+            print("sgkit handled n_components=-1 gracefully with default")
         except (GWASError, ValueError, AssertionError, Exception):
             pass  # Expected - invalid parameter
 
@@ -644,7 +644,7 @@ class TestGWASServiceIntegration:
         assert adata_gwas.n_vars >= 90, (
             f"Expected ~100 variants, got {adata_gwas.n_vars}"
         )
-        assert adata_gwas.n_vars <= 100, f"Should not exceed max_variants"
+        assert adata_gwas.n_vars <= 100, "Should not exceed max_variants"
         assert stats["n_variants_tested"] >= 90
         assert "gwas_pvalue" in adata_gwas.var.columns
 

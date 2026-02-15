@@ -152,12 +152,7 @@ class MaxQuantParser(ProteomicsParser):
                 logger.debug(f"Missing required columns: {missing}")
                 return False
 
-            # Check for intensity columns (either LFQ or raw)
-            has_lfq = any(col.startswith("LFQ intensity ") for col in columns)
-            has_raw = any(
-                col.startswith("Intensity ") and not col.startswith("Intensity ")
-                for col in columns
-            )
+            # Check for intensity columns
             # More permissive check for intensity columns
             intensity_cols = [
                 col

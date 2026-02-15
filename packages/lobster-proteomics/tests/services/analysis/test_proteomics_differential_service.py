@@ -9,22 +9,16 @@ Test coverage target: 95%+ with meaningful tests for proteomics differential ope
 """
 
 # Proteomics services tests (skip marker removed - tests now active)
-import os
-import tempfile
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
-from unittest.mock import MagicMock, Mock, mock_open, patch
 
 import anndata as ad
 import numpy as np
-import pandas as pd
 import pytest
 
 from lobster.services.analysis.proteomics_differential_service import (
     ProteomicsDifferentialError,
     ProteomicsDifferentialService,
 )
-from tests.mock_data.base import LARGE_DATASET_CONFIG, SMALL_DATASET_CONFIG
+from tests.mock_data.base import SMALL_DATASET_CONFIG
 from tests.mock_data.factories import ProteomicsDataFactory
 
 # ===============================================================================

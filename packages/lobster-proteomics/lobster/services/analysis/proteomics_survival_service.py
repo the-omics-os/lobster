@@ -828,7 +828,6 @@ print(f"Median survival by group: {stats['median_survival_by_group']}")""",
 
             # Perform log-rank test
             if len(kmf_results) >= 2:
-                group_keys = list(kmf_results.keys())
                 if n_groups == 2:
                     # Two-group log-rank test
                     lr_result = logrank_test(

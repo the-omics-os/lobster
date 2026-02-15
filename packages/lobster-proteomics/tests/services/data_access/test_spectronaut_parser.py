@@ -19,7 +19,6 @@ from pathlib import Path
 
 import anndata
 import numpy as np
-import pandas as pd
 import pytest
 
 from lobster.services.data_access.proteomics_parsers import (

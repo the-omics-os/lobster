@@ -1681,7 +1681,6 @@ class ProteomicsVisualizationService:
             # Add at-risk table if requested
             if show_at_risk_table:
                 # Create annotation with at-risk numbers at key time points
-                time_points = []
                 max_time = max(
                     max(curve_data["timeline"])
                     for curve_data in survival_curves.values()

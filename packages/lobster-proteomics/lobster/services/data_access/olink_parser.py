@@ -108,10 +108,10 @@ class OlinkParser(ProteomicsParser):
                 # Try comma-separated first, then tab
                 try:
                     df_header = pd.read_csv(file_path, nrows=5)
-                except:
+                except Exception:
                     try:
                         df_header = pd.read_csv(file_path, sep="\t", nrows=5)
-                    except:
+                    except Exception:
                         return False
 
             columns = set(df_header.columns)
@@ -172,7 +172,7 @@ class OlinkParser(ProteomicsParser):
             else:
                 try:
                     df = pd.read_csv(file_path)
-                except:
+                except Exception:
                     df = pd.read_csv(file_path, sep="\t")
 
             logger.info(f"Loaded {len(df)} rows, {len(df.columns)} columns")

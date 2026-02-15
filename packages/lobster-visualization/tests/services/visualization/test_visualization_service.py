@@ -15,10 +15,8 @@ Test coverage focus:
 Test coverage target: 95%+ with meaningful edge case testing.
 """
 
-import os
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
 
 import anndata as ad
 import numpy as np
@@ -874,7 +872,7 @@ def test_qc_plots_with_hemoglobin_genes(service, basic_adata):
 
 def test_qc_plots_calculates_metrics(service, basic_adata):
     """Test QC plots calculates all necessary metrics."""
-    fig = service.create_qc_plots(basic_adata)
+    service.create_qc_plots(basic_adata)
 
     # Check metrics are calculated
     assert "n_genes" in basic_adata.obs.columns

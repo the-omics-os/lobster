@@ -21,8 +21,6 @@ AGENT_CONFIG = AgentRegistryConfig(
 
 # === Heavy imports below ===
 import json
-import uuid
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
@@ -39,9 +37,7 @@ from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.schemas.download_queue import (
-    DownloadQueueEntry,
     DownloadStatus,
-    StrategyConfig,
     ValidationStatus,
 )
 
@@ -50,7 +46,6 @@ from lobster.core.schemas.download_queue import (
 # - DataExpertAssistant: 200-400ms
 # - MetadataValidationService: 200-400ms
 from lobster.services.metadata.metadata_validation_service import (
-    MetadataValidationConfig,
     ValidationSeverity,
 )
 

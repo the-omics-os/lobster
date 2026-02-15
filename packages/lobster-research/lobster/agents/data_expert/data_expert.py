@@ -29,7 +29,6 @@ from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 
 # Agent-specific imports (new modular structure)
-from lobster.agents.data_expert.assistant import DataExpertAssistant
 from lobster.agents.data_expert.prompts import create_data_expert_prompt
 from lobster.agents.data_expert.state import DataExpertState
 
@@ -110,9 +109,6 @@ def data_expert(
         )
         llm = llm.with_config(callbacks=callbacks)
 
-    # Initialize the assistant for LLM operations
-    assistant = DataExpertAssistant()
-
     # Initialize modality management service
     from lobster.services.data_management.modality_management_service import (
         ModalityManagementService,
@@ -133,12 +129,9 @@ def data_expert(
 
     # Try to initialize SDK delegation service (may fail if SDK not available)
     # SDKDelegationService may be None in open-core distribution
-    sdk_delegation_service = None
-    sdk_available = False
     if SDKDelegationService is not None:
         try:
-            sdk_delegation_service = SDKDelegationService(data_manager)
-            sdk_available = True
+            SDKDelegationService(data_manager)
         except SDKDelegationError as e:
             logger.debug(f"SDK delegation not available: {e}")
         except Exception as e:

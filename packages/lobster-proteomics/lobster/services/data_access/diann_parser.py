@@ -489,7 +489,6 @@ class DIANNParser(ProteomicsParser):
         intensity_matrix = intensity_pivot.values
 
         # Get sample order and protein order
-        samples = intensity_pivot.index.tolist()
         proteins = intensity_pivot.columns.tolist()
 
         # Build protein metadata

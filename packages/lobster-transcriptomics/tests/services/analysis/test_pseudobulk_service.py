@@ -5,7 +5,7 @@ Tests the PseudobulkService class functionality including single-cell
 to pseudobulk aggregation, validation, provenance tracking, and export.
 """
 
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import anndata as ad
 import numpy as np

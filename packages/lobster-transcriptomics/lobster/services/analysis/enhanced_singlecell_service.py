@@ -497,7 +497,6 @@ adata.obs['predicted_doublet'] = predicted_doublets
         entropy_scores = np.zeros(n_cells)
 
         # Build mean expression signatures for each cell type
-        cell_types = list(reference_markers.keys())
         signatures = {}
 
         for ct, markers in reference_markers.items():

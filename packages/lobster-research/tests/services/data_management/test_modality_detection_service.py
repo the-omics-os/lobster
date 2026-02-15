@@ -4,7 +4,6 @@ Smoke tests for ModalityDetectionService.
 Tests basic service instantiation and method availability.
 """
 
-import pytest
 
 
 class TestModalityDetectionService:
