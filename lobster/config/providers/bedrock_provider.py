@@ -128,33 +128,6 @@ class BedrockProvider(ILLMProvider):
             input_cost_per_million=1.0,
             output_cost_per_million=5.0,
         ),
-        ModelInfo(
-            name="anthropic.claude-3-opus-20240229-v1:0",
-            display_name="Claude 3 Opus (Bedrock)",
-            description="Claude 3 Opus via Bedrock (legacy)",
-            provider="bedrock",
-            context_window=200000,
-            input_cost_per_million=15.0,
-            output_cost_per_million=75.0,
-        ),
-        ModelInfo(
-            name="anthropic.claude-3-sonnet-20240229-v1:0",
-            display_name="Claude 3 Sonnet (Bedrock)",
-            description="Claude 3 Sonnet via Bedrock (legacy)",
-            provider="bedrock",
-            context_window=200000,
-            input_cost_per_million=3.0,
-            output_cost_per_million=15.0,
-        ),
-        ModelInfo(
-            name="anthropic.claude-3-haiku-20240307-v1:0",
-            display_name="Claude 3 Haiku (Bedrock)",
-            description="Claude 3 Haiku via Bedrock (legacy)",
-            provider="bedrock",
-            context_window=200000,
-            input_cost_per_million=0.25,
-            output_cost_per_million=1.25,
-        ),
     ]
 
     DEFAULT_REGION = "us-east-1"
@@ -356,9 +329,9 @@ class BedrockProvider(ILLMProvider):
             # Wrap thinking in additional_model_request_fields if not already wrapped
             if "additional_model_request_fields" not in bedrock_params:
                 bedrock_params["additional_model_request_fields"] = {}
-            bedrock_params["additional_model_request_fields"]["thinking"] = (
-                thinking_config
-            )
+            bedrock_params["additional_model_request_fields"][
+                "thinking"
+            ] = thinking_config
 
         # Pass through any remaining kwargs
         bedrock_params.update(kwargs)

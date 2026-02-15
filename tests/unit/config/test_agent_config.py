@@ -156,7 +156,7 @@ def test_print_current_config_consistent_across_profiles(monkeypatch):
     monkeypatch.setattr("lobster.core.license_manager.get_current_tier", lambda: "free")
 
     # Test with different profiles
-    for profile in ["development", "production", "ultra"]:
+    for profile in ["development", "production", "performance"]:
         configurator = LobsterAgentConfigurator(profile=profile)
 
         # Capture output

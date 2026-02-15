@@ -91,26 +91,6 @@ class AnthropicProvider(ILLMProvider):
             input_cost_per_million=1.00,
             output_cost_per_million=5.00,
         ),
-        ModelInfo(
-            name="claude-3-opus-20240229",
-            display_name="Claude 3 Opus",
-            description="Previous Opus - complex analysis (legacy)",
-            provider="anthropic",
-            context_window=200000,
-            is_default=False,
-            input_cost_per_million=15.00,
-            output_cost_per_million=75.00,
-        ),
-        ModelInfo(
-            name="claude-3-haiku-20240307",
-            display_name="Claude 3 Haiku",
-            description="Claude 3 Haiku - fast responses (legacy)",
-            provider="anthropic",
-            context_window=200000,
-            is_default=False,
-            input_cost_per_million=1.00,
-            output_cost_per_million=5.00,
-        ),
     ]
 
     @property

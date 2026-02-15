@@ -64,6 +64,8 @@ def genomics_expert(
     agent_name: str = "genomics_expert",
     delegation_tools: list = None,
     workspace_path: Optional[Path] = None,
+    provider_override: Optional[str] = None,
+    model_override: Optional[str] = None,
 ):
     """
     Factory function for genomics expert agent.
@@ -83,7 +85,13 @@ def genomics_expert(
     """
     settings = get_settings()
     model_params = settings.get_agent_llm_params("genomics_expert")
-    llm = create_llm("genomics_expert", model_params, workspace_path=workspace_path)
+    llm = create_llm(
+        "genomics_expert",
+        model_params,
+        provider_override=provider_override,
+        model_override=model_override,
+        workspace_path=workspace_path,
+    )
 
     # Normalize callbacks to a flat list
     if callback_handler and hasattr(llm, "with_config"):

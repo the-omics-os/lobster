@@ -113,20 +113,6 @@ class AnthropicModelService(BaseModelService):
             provider="anthropic",
             context_window=200000,
         ),
-        ModelInfo(
-            name="claude-3-opus-20240229",
-            display_name="Claude 3 Opus",
-            description="Previous Opus - complex analysis (legacy)",
-            provider="anthropic",
-            context_window=200000,
-        ),
-        ModelInfo(
-            name="claude-3-haiku-20240307",
-            display_name="Claude 3 Haiku",
-            description="Claude 3 Haiku - fast responses (legacy)",
-            provider="anthropic",
-            context_window=200000,
-        ),
     ]
 
     def list_models(self) -> List[ModelInfo]:
@@ -189,27 +175,6 @@ class BedrockModelService(BaseModelService):
             name="anthropic.claude-3-5-haiku-20241022-v1:0",
             display_name="Claude 3.5 Haiku (Bedrock)",
             description="Fastest Claude via Bedrock",
-            provider="bedrock",
-            context_window=200000,
-        ),
-        ModelInfo(
-            name="anthropic.claude-3-opus-20240229-v1:0",
-            display_name="Claude 3 Opus (Bedrock)",
-            description="Claude 3 Opus via Bedrock (legacy)",
-            provider="bedrock",
-            context_window=200000,
-        ),
-        ModelInfo(
-            name="anthropic.claude-3-sonnet-20240229-v1:0",
-            display_name="Claude 3 Sonnet (Bedrock)",
-            description="Claude 3 Sonnet via Bedrock (legacy)",
-            provider="bedrock",
-            context_window=200000,
-        ),
-        ModelInfo(
-            name="anthropic.claude-3-haiku-20240307-v1:0",
-            display_name="Claude 3 Haiku (Bedrock)",
-            description="Claude 3 Haiku via Bedrock (legacy)",
             provider="bedrock",
             context_window=200000,
         ),

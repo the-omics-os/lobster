@@ -4644,7 +4644,7 @@ def init(
     profile: Optional[str] = typer.Option(
         None,
         "--profile",
-        help="Agent profile (development, production, ultra, godmode). Only for Anthropic/Bedrock providers.",
+        help="Agent profile (development, production, performance, max). Only for Anthropic/Bedrock providers.",
     ),
     ncbi_key: Optional[str] = typer.Option(
         None, "--ncbi-key", help="NCBI API key (optional, non-interactive mode)"
@@ -4748,7 +4748,7 @@ def init(
       lobster init --non-interactive \\
         --bedrock-access-key=AKIA... \\
         --bedrock-secret-key=xxx \\
-        --profile=ultra                              # CI/CD: Bedrock with ultra profile
+        --profile=performance                        # CI/CD: Bedrock with performance profile
       lobster init --non-interactive \\
         --use-ollama                                 # CI/CD: Ollama (profile not applicable)
       lobster init --non-interactive \\
@@ -4899,15 +4899,31 @@ def init(
             console.print(f"[yellow]⚠️  Warning: {priority_warning}[/yellow]")
 
         # Validate profile parameter (only relevant for Anthropic/Bedrock)
-        valid_profiles = ["development", "production", "ultra", "godmode"]
+        from lobster.config.constants import (
+            DEPRECATED_PROFILE_ALIASES,
+            VALID_PROFILES,
+        )
+
+        valid_profiles = VALID_PROFILES + list(DEPRECATED_PROFILE_ALIASES.keys())
         selected_profile = None
 
         if profile:
             # Profile provided - validate it
             if profile not in valid_profiles:
                 console.print(f"[red]❌ Error: Invalid profile '{profile}'[/red]")
-                console.print(f"Valid profiles: {', '.join(valid_profiles)}")
+                console.print(
+                    f"Valid profiles: {', '.join(VALID_PROFILES)}"
+                )
                 raise typer.Exit(1)
+
+            # Resolve deprecated aliases
+            if profile in DEPRECATED_PROFILE_ALIASES:
+                new_name = DEPRECATED_PROFILE_ALIASES[profile]
+                console.print(
+                    f"[yellow]⚠️  Profile '{profile}' is deprecated, "
+                    f"using '{new_name}' instead.[/yellow]"
+                )
+                profile = new_name
 
             # Warn if profile used with Ollama (it will be ignored)
             if has_ollama and not has_anthropic and not has_bedrock:
@@ -5448,10 +5464,10 @@ def init(
                 "  [cyan]2[/cyan] - Production   (Sonnet 4 - balanced quality & speed) [recommended]"
             )
             console.print(
-                "  [cyan]3[/cyan] - Ultra        (Sonnet 4.5 - highest quality, slower)"
+                "  [cyan]3[/cyan] - Performance  (Sonnet 4.5 - highest quality, slower)"
             )
             console.print(
-                "  [cyan]4[/cyan] - Godmode      (Opus 4.1 - experimental, most expensive)"
+                "  [cyan]4[/cyan] - Max          (Opus 4.1 - most capable, most expensive)"
             )
             console.print()
             console.print(
@@ -5471,8 +5487,8 @@ def init(
             profile_map = {
                 "1": "development",
                 "2": "production",
-                "3": "ultra",
-                "4": "godmode",
+                "3": "performance",
+                "4": "max",
             }
             profile_to_write = profile_map[profile_choice]
 
@@ -8369,7 +8385,7 @@ NCBI_API_KEY="your-ncbi-api-key-here"
 # =============================================================================
 
 # Profile-based configuration (recommended)
-# Available profiles: development, production, ultra, godmode
+# Available profiles: development, production, performance, max
 LOBSTER_PROFILE=production
 
 # OR use custom configuration file
@@ -8414,11 +8430,11 @@ LOBSTER_CACHE_DIR=data/cache
 # Example 2: Production setup (Claude Sonnet 4 - balanced quality & speed)
 # LOBSTER_PROFILE=production
 
-# Example 3: Ultra setup (Claude Sonnet 4.5 - highest quality)
-# LOBSTER_PROFILE=ultra
+# Example 3: Performance setup (Claude Sonnet 4.5 - highest quality)
+# LOBSTER_PROFILE=performance
 
-# Example 4: Godmode setup (Claude Opus 4.1 - experimental, most expensive)
-# LOBSTER_PROFILE=godmode
+# Example 4: Max setup (Claude Opus 4.1 - most capable, most expensive)
+# LOBSTER_PROFILE=max
 """
 
     with open(".env.template", "w") as f:

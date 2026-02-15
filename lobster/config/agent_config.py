@@ -31,7 +31,7 @@ class ModelTier(Enum):
     LIGHTWEIGHT = "lightweight"
     STANDARD = "standard"
     HEAVY = "heavy"
-    ULTRA = "ultra"
+    PERFORMANCE = "performance"
 
 
 @dataclass
@@ -250,24 +250,24 @@ class LobsterAgentConfigurator:
             description="Claude 4 Sonnet for production",
             supports_thinking=True,
         ),
-        # Ultra Mode - Claude 4.5 Sonnet (advanced capabilities)
+        # Performance Mode - Claude 4.5 Sonnet (advanced capabilities)
         "claude-4-5-sonnet": ModelConfig(
             provider=ModelProvider.BEDROCK_ANTHROPIC,
             model_id="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
             tier=ModelTier.HEAVY,
             temperature=1.0,
             region="us-east-1",
-            description="Claude 4.5 Sonnet for ultra mode",
+            description="Claude 4.5 Sonnet for performance profile",
             supports_thinking=True,
         ),
-        # Godmode Model - Claude 4.1 Opus (most capable)
+        # Max Mode - Claude 4.1 Opus (most capable)
         "claude-4-1-opus": ModelConfig(
             provider=ModelProvider.BEDROCK_ANTHROPIC,
             model_id="us.anthropic.claude-opus-4-1-20250805-v1:0",
-            tier=ModelTier.ULTRA,
+            tier=ModelTier.PERFORMANCE,
             temperature=1.0,
             region="us-east-1",
-            description="Claude 4.1 opus for godmode",
+            description="Claude 4.1 Opus for max profile",
             supports_thinking=True,
         ),
     }
@@ -354,7 +354,7 @@ class LobsterAgentConfigurator:
             "protein_structure_visualization_expert": "claude-4-sonnet",
             "thinking": {},  # No thinking configured for production
         },
-        "ultra": {
+        "performance": {
             "supervisor": "claude-4-5-sonnet",
             "assistant": "claude-4-5-sonnet",
             # Research & data
@@ -379,9 +379,9 @@ class LobsterAgentConfigurator:
             "survival_analysis_expert": "claude-4-5-sonnet",
             # Structural viz
             "protein_structure_visualization_expert": "claude-4-5-sonnet",
-            "thinking": {},  # No thinking configured for ultra
+            "thinking": {},  # No thinking configured for performance
         },
-        "godmode": {
+        "max": {
             "supervisor": "claude-4-1-opus",
             "assistant": "claude-4-5-sonnet",
             # Research & data
@@ -406,7 +406,7 @@ class LobsterAgentConfigurator:
             "survival_analysis_expert": "claude-4-5-sonnet",
             # Structural viz
             "protein_structure_visualization_expert": "claude-4-5-sonnet",
-            "thinking": {},  # No thinking configured for godmode
+            "thinking": {},  # No thinking configured for max
         },
     }
 
@@ -562,9 +562,9 @@ class LobsterAgentConfigurator:
             if os.environ.get(env_key):
                 try:
                     temperature = float(os.environ.get(env_key))
-                    self._agent_configs[
-                        agent_name
-                    ].model_config.temperature = temperature
+                    self._agent_configs[agent_name].model_config.temperature = (
+                        temperature
+                    )
                 except ValueError:
                     pass
 
@@ -579,9 +579,9 @@ class LobsterAgentConfigurator:
                     and self._agent_configs[agent_name].model_config.supports_thinking
                 ):
                     if not self._agent_configs[agent_name].thinking_config:
-                        self._agent_configs[
-                            agent_name
-                        ].thinking_config = ThinkingConfig()
+                        self._agent_configs[agent_name].thinking_config = (
+                            ThinkingConfig()
+                        )
                     self._agent_configs[agent_name].thinking_config.enabled = True
 
             # Thinking token budget
@@ -747,11 +747,11 @@ class LobsterAgentConfigurator:
                       If False (default), filter by current license tier.
         """
         # Import license and tier utilities
-        from lobster.core.license_manager import get_current_tier
         from lobster.config.subscription_tiers import (
-            is_agent_available,
             get_tier_display_name,
+            is_agent_available,
         )
+        from lobster.core.license_manager import get_current_tier
 
         # Get current tier
         current_tier = get_current_tier()

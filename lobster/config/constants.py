@@ -20,10 +20,16 @@ VALID_PROVIDERS: Final[List[str]] = [
 VALID_PROFILES: Final[List[str]] = [
     "development",
     "production",
-    "ultra",
-    "godmode",
+    "performance",
+    "max",
     "hybrid",
 ]
+
+# Deprecated profile aliases (map old names → new names)
+DEPRECATED_PROFILE_ALIASES: Final[dict] = {
+    "ultra": "performance",
+    "godmode": "max",
+}
 
 # Provider display names for UI
 PROVIDER_DISPLAY_NAMES: Final[dict] = {

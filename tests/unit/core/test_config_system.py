@@ -18,9 +18,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from lobster.core.config_resolver import ConfigResolver
 from lobster.config.global_config import GlobalProviderConfig
 from lobster.config.workspace_config import WorkspaceProviderConfig
+from lobster.core.config_resolver import ConfigResolver
 
 # =============================================================================
 # Fixtures
@@ -99,7 +99,7 @@ class TestWorkspaceProviderConfig:
 
     def test_valid_profile_validation(self):
         """Test valid profile names."""
-        for profile in ["development", "production", "ultra", "godmode", "hybrid"]:
+        for profile in ["development", "production", "performance", "max", "hybrid"]:
             config = WorkspaceProviderConfig(profile=profile)
             assert config.profile == profile
 
@@ -129,7 +129,7 @@ class TestWorkspaceProviderConfig:
         config = WorkspaceProviderConfig(
             global_provider="ollama",
             ollama_model="llama3:70b-instruct",
-            profile="ultra",
+            profile="performance",
             per_agent_providers={"supervisor": "ollama"},
         )
 
@@ -146,7 +146,7 @@ class TestWorkspaceProviderConfig:
         # Verify values
         assert loaded_config.global_provider == "ollama"
         assert loaded_config.ollama_model == "llama3:70b-instruct"
-        assert loaded_config.profile == "ultra"
+        assert loaded_config.profile == "performance"
         assert loaded_config.per_agent_providers["supervisor"] == "ollama"
 
     def test_load_missing_file(self, temp_workspace):
@@ -191,7 +191,7 @@ class TestWorkspaceProviderConfig:
         config = WorkspaceProviderConfig(
             global_provider="ollama",
             ollama_model="llama3:70b",
-            profile="ultra",
+            profile="performance",
             per_agent_providers={"supervisor": "ollama"},
         )
 
@@ -279,7 +279,7 @@ class TestGlobalProviderConfig:
         config = GlobalProviderConfig(
             default_provider="ollama",
             ollama_default_model="llama3:70b",
-            default_profile="ultra",
+            default_profile="performance",
         )
 
         config.reset()
@@ -410,13 +410,13 @@ class TestConfigResolver:
 
     def test_resolve_profile_workspace(self, temp_workspace):
         """Test profile resolution from workspace."""
-        workspace_config = WorkspaceProviderConfig(profile="ultra")
+        workspace_config = WorkspaceProviderConfig(profile="performance")
         workspace_config.save(temp_workspace)
 
         resolver = ConfigResolver(temp_workspace)
         profile, source = resolver.resolve_profile()
 
-        assert profile == "ultra"
+        assert profile == "performance"
         assert source == "workspace config"
 
     @pytest.mark.skip(

@@ -45,6 +45,8 @@ def visualization_expert(
     agent_name: str = "visualization_expert_agent",
     delegation_tools: List = None,
     workspace_path: Optional[Path] = None,
+    provider_override: Optional[str] = None,
+    model_override: Optional[str] = None,
 ):
     """
     Create visualization expert agent with supervisor-mediated flow.
@@ -60,7 +62,11 @@ def visualization_expert(
     settings = get_settings()
     model_params = settings.get_agent_llm_params("visualization_expert_agent")
     llm = create_llm(
-        "visualization_expert_agent", model_params, workspace_path=workspace_path
+        "visualization_expert_agent",
+        model_params,
+        provider_override=provider_override,
+        model_override=model_override,
+        workspace_path=workspace_path,
     )
 
     # Normalize callbacks to a flat list (fix double-nesting bug)
