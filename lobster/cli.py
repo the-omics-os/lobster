@@ -569,19 +569,49 @@ class CommandClient:
     Skips AgentClient's expensive graph/LLM initialization. Provides
     data_manager, workspace_path, session_id, and publication_queue —
     the only attributes accessed by shared commands in cli_internal/commands/.
+
+    When session_id is provided, loads provenance from that session's directory,
+    enabling cross-session pipeline export.
     """
 
-    def __init__(self, workspace_path: Path):
+    def __init__(self, workspace_path: Path, session_id: Optional[str] = None):
         from lobster.core.data_manager_v2 import DataManagerV2
 
         self.workspace_path = workspace_path
-        self.session_id = "command"
-        self.data_manager = DataManagerV2(workspace_path=workspace_path)
+        self.session_id = session_id or "command"
+
+        # Compute session_dir if real session_id provided
+        session_dir = None
+        if session_id and session_id != "command":
+            session_dir = workspace_path / ".lobster" / "sessions" / session_id
+
+            # Verify session exists
+            if not session_dir.exists():
+                available = self._list_available_sessions(workspace_path)
+                raise FileNotFoundError(
+                    f"Session '{session_id}' not found.\n"
+                    f"Available sessions: {available}\n"
+                    f"Or list all: lobster command 'workspace list'"
+                )
+
+        self.data_manager = DataManagerV2(
+            workspace_path=workspace_path,
+            session_dir=session_dir,
+        )
         self.messages: list = []
         self.graph = None
         self.token_tracker = None
         self._publication_queue_ref = None
         self._publication_queue_unavailable = False
+
+    def _list_available_sessions(self, workspace_path: Path) -> str:
+        """List available sessions for error messages."""
+        sessions_dir = workspace_path / ".lobster" / "sessions"
+        if not sessions_dir.exists() or not list(sessions_dir.iterdir()):
+            return "none (create one with: lobster query '...' --session-id <name>)"
+
+        session_ids = sorted([d.name for d in sessions_dir.iterdir() if d.is_dir()])
+        return ", ".join(session_ids[:5]) + (" ..." if len(session_ids) > 5 else "")
 
     @property
     def publication_queue(self):
