@@ -43,7 +43,7 @@ agent_config = registry.get_agent("transcriptomics_expert")
 
 ### DataManagerV2 (`lobster/core/data_manager_v2.py`)
 
-Manages data, workspaces, and modalities.
+Manages data, workspaces, modalities, and provenance persistence.
 
 ```python
 from pathlib import Path
@@ -51,6 +51,7 @@ from lobster.core.data_manager_v2 import DataManagerV2
 
 dm = DataManagerV2(
     workspace_path=Path("./workspace"),  # Required
+    session_dir=Path("./workspace/.lobster/sessions/my_session"),  # Provenance persistence
     default_backend="local",              # "local" or "s3"
     enable_provenance=True,               # Enable W3C-PROV tracking
     auto_scan=True,                       # Auto-scan for modalities
@@ -63,16 +64,28 @@ adata = dm.get_modality("transcriptomics")
 # Store processed data
 dm.store_modality("transcriptomics_processed", processed_adata)
 
-# Log operations for provenance
+# Log operations for provenance (persisted to session_dir/provenance.jsonl)
 dm.log_tool_usage("analyze", params, stats, ir=ir)
 
 # List available modalities
 modalities = dm.list_modalities()
 ```
 
+**Session directory flow:**
+```
+CLI (init_client) or AgentClient
+  → computes session_dir = workspace/.lobster/sessions/{session_id}/
+  → passes to DataManagerV2(session_dir=...)
+    → passes to ProvenanceTracker(session_dir=...)
+      → writes provenance.jsonl (append-only, one JSON line per activity)
+      → writes metadata.json (session timestamps, activity count)
+```
+
+When `session_dir` is provided, provenance survives process exit and can be restored by a new client using the same session_id.
+
 ### Provenance (`lobster/core/provenance.py`)
 
-W3C-PROV compliant tracking for reproducibility.
+W3C-PROV compliant tracking for reproducibility. Supports optional disk persistence.
 
 ```python
 from lobster.core.provenance import AnalysisStep, ProvenanceTracker
@@ -85,8 +98,13 @@ ir = AnalysisStep(
     params={"fdr": 0.05}
 )
 
-# Track in provenance
-tracker = ProvenanceTracker()
+# Track in provenance (with disk persistence)
+tracker = ProvenanceTracker(session_dir=Path("./sessions/my_session"))
+tracker.create_activity("de_analysis", ir)
+# → Appends to ./sessions/my_session/provenance.jsonl
+
+# Without disk persistence (backward compatible)
+tracker = ProvenanceTracker()  # session_dir=None → memory only
 tracker.create_activity("de_analysis", ir)
 ```
 

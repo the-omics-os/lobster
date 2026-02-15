@@ -128,15 +128,36 @@ lobster serve --port 8080
 ### Session IDs
 
 ```bash
-# Start named session
+# Start named session (provenance persisted to disk)
 lobster query --session-id "cancer_project" "Load data"
 
-# Continue with latest
+# Continue with latest session
 lobster query --session-id latest "Next step"
 
 # Or use specific session
 lobster query --session-id "cancer_project" "Continue analysis"
 ```
+
+### Cross-Session Pipeline Export (v1.0.7+)
+
+Provenance persists to disk when using `--session-id`. Export notebooks from any terminal:
+
+```bash
+# Day 1: Run analysis
+lobster query --session-id liver_study "Download GSE109564 and run QC"
+lobster query --session-id liver_study "Cluster and find markers"
+
+# Day 2 (new terminal): Export the pipeline as a notebook
+lobster command "pipeline export" --session-id liver_study
+```
+
+**When to use `--session-id`:**
+- After closing terminal, to continue or export a previous analysis
+- For scripted/CI pipelines that export notebooks
+- When sharing reproducible workflows between sessions
+
+**Without `--session-id` after restart:**
+Pipeline export will show a guidance message — use `--session-id` to load provenance.
 
 ### Workspace Isolation
 
@@ -217,9 +238,17 @@ lobster command data --json
 lobster command "workspace list" --json | jq '.data.tables[0].rows'
 lobster command "metadata publications" --json -w ./my_project
 
+# With session loading (for pipeline export across sessions)
+lobster command "pipeline export" --session-id my_experiment
+lobster command "pipeline export" --session-id latest
+
 # Leading / is stripped automatically
 lobster command /data --json
 ```
+
+**`--session-id` flag** (v1.0.7+): Loads provenance from a previous session, enabling
+pipeline export and run from `lobster command`. Without it, pipeline commands require
+a live `lobster chat` session.
 
 ### Available Commands
 
@@ -254,8 +283,8 @@ lobster command /data --json
 | **Pipeline** | |
 | `pipeline list` | List available notebooks |
 | `pipeline info` | Notebook details |
-| ~~`pipeline export`~~ | Requires live session — use `/pipeline export` in `lobster chat` |
-| ~~`pipeline run`~~ | Requires live session — use `/pipeline run` in `lobster chat` |
+| `pipeline export` | Export reproducible Jupyter notebook (requires `--session-id`) |
+| `pipeline run` | Run exported notebook (requires `--session-id`) |
 | **State** | |
 | `save [--force]` | Save all modalities to workspace |
 | `restore [pattern]` | Restore datasets from disk (default: recent) |
