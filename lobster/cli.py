@@ -2009,10 +2009,22 @@ def init_client(
     # Resolution order: explicit --workspace > LOBSTER_WORKSPACE env var > cwd/.lobster_workspace
     workspace = resolve_workspace(explicit_path=workspace, create=True)
 
-    # Initialize DataManagerV2 with workspace support and console for progress tracking
+    # Compute session directory for provenance persistence
+    # Must match AgentClient's session_id computation so provenance files land in the right place
+    from datetime import datetime
+
+    actual_session_id = (
+        session_id or f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    )
+    session_dir = workspace / ".lobster" / "sessions" / actual_session_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+
+    # Initialize DataManagerV2 with workspace support, console, and session_dir for provenance
     from lobster.core.data_manager_v2 import DataManagerV2
 
-    data_manager = DataManagerV2(workspace_path=workspace, console=console)
+    data_manager = DataManagerV2(
+        workspace_path=workspace, console=console, session_dir=session_dir
+    )
 
     profile_timings_enabled = _resolve_profile_timings_flag(profile_timings)
     if profile_timings_enabled and hasattr(data_manager, "enable_timing"):

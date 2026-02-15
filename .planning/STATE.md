@@ -10,7 +10,7 @@
 
 **Core Value:** Provenance must survive process exit. If the user ran an analysis, they must be able to export it as a Jupyter notebook — from any session, after any restart.
 
-**Current Focus:** Phase 5 — Unit Tests
+**Current Focus:** Phase 7 — Documentation
 
 **What We're Building:** Disk-persistent provenance scoped to sessions, transforming Lobster AI's reproducibility from single-process to cross-session, crash-resilient, and cloud-ready.
 
@@ -18,14 +18,15 @@
 
 ## Current Position
 
-**Phase:** 5 of 7 — Unit Test Coverage
+**Phase:** 6 of 7 — Integration Test Coverage
 **Plan:** 1 of 1 (complete)
 **Status:** Phase complete
+**Last activity:** 2026-02-15 - Completed 06-01-PLAN.md
 
 **Progress:**
 ```
-[███████████████████████████████---] 71%
-Phase 1-5 complete, ready for Phase 6
+[█████████████████████████████████-] 86%
+Phase 1-6 complete, ready for Phase 7
 ```
 
 **Completed:**
@@ -34,11 +35,12 @@ Phase 1-5 complete, ready for Phase 6
 - Phase 3: Session JSON Schema & Continuity (Plan 1: schema 1.1, provenance restoration)
 - Phase 4: CLI Session Support (Plan 1: CommandClient + --session-id option)
 - Phase 5: Unit Test Coverage (Plan 1: 13 tests, 96.4% method coverage)
+- Phase 6: Integration Test Coverage (Plan 1: 3 tests, full workflow validation)
 
 **Next Actions:**
-1. Plan Phase 6 — Integration tests for end-to-end session persistence
-2. Write 3 integration tests covering DataManagerV2 → disk workflows
-3. Verify multi-session scenarios and cloud restore patterns
+1. Plan Phase 7 — Documentation updates
+2. Update skills/lobster-use/references/cli-commands.md with --session-id option
+3. Final verification and project completion
 
 ---
 
@@ -46,11 +48,11 @@ Phase 1-5 complete, ready for Phase 6
 
 | Metric | Target | Current | Status |
 |--------|--------|---------|--------|
-| Requirements Coverage | 100% | 100% | In Progress |
+| Requirements Coverage | 100% | 100% | Complete |
 | Phases Defined | 7 | 7 | Complete |
-| Phases Complete | 7 | 5 | In Progress |
+| Phases Complete | 7 | 6 | In Progress |
 | Unit Tests | 12 | 13 | Complete |
-| Integration Tests | 3 | 0 | Pending (Phase 6) |
+| Integration Tests | 3 | 3 | Complete |
 | Documentation Updates | 1 | 0 | Pending (Phase 7) |
 
 ---
@@ -79,6 +81,7 @@ Phase 1-5 complete, ready for Phase 6
 | 2026-02-15 | Two test classes for unit tests | TestPersistenceMechanics (core I/O) + TestApiContracts (API surface) for logical grouping |
 | 2026-02-15 | pytest tmp_path over tmpdir | Modern fixture, automatic cleanup, Path objects |
 | 2026-02-15 | Synthetic IR fixture with all fields | Complete round-trip validation without service dependencies |
+| 2026-02-15 | NotebookExporter handles both dict and AnalysisStep IR | Cross-session compatibility - IR can be dict (in-memory) or AnalysisStep (restored from disk) |
 
 ### Implementation Notes
 
@@ -99,11 +102,14 @@ Phase 1-5 complete, ready for Phase 6
 **Files created (Phase 5):**
 - `tests/unit/core/test_provenance_persistence.py` — 13 unit tests (12 required + 1 bonus)
 
+**Files created (Phase 6):**
+- `tests/integration/test_session_provenance.py` — 3 integration tests (TEST-13, TEST-14, TEST-15)
+
+**Files modified (Phase 6):**
+- `lobster/core/notebook_exporter.py` — Bug fix: handle AnalysisStep IR in addition to dict IR
+
 **Files to modify (remaining):**
 - `skills/lobster-use/references/cli-commands.md` — Documentation (Phase 7)
-
-**New files to create:**
-- `tests/integration/test_session_provenance.py` — 3 integration tests (Phase 6)
 
 **Architecture patterns established:**
 - Append-only JSONL with O(1) writes using `open("a")` + `fsync`
@@ -162,6 +168,16 @@ Phase 1-5 complete, ready for Phase 6
 - Test patterns: warnings.catch_warnings for corrupt line validation, isinstance checks for IR reconstruction
 - Edge cases covered: corrupt files, empty files, deleted directories, IR round-trip, metadata companion
 
+### Phase 6 Deliverables
+
+- `test_session_provenance.py` — 3 integration tests for full workflow validation
+- TEST-13: Full workflow - AgentClient → destroy → CommandClient → pipeline export succeeds
+- TEST-14: load_session restores provenance with correct activity count and IR objects
+- TEST-15: CommandClient with session_id enables pipeline export
+- Test runtime: 1.53s (all 3 tests, under 5s target)
+- Bug fix: NotebookExporter now handles both dict IR (in-memory) and AnalysisStep IR (restored from disk)
+- No regressions: All existing tests pass
+
 ### Active TODOs
 
 - [x] Implement ProvenanceTracker._persist_activity()
@@ -177,12 +193,12 @@ Phase 1-5 complete, ready for Phase 6
 - [x] Add `lobster command --session-id` CLI option
 - [x] Unblock pipeline export in CommandClient
 - [x] Write 13 unit tests (12 required + 1 bonus)
-- [ ] Write 3 integration tests
+- [x] Write 3 integration tests
 - [ ] Update CLI commands documentation
 
 ### Known Blockers
 
-None — Phase 5 complete, ready for Phase 6.
+None — Phase 6 complete, ready for Phase 7.
 
 ---
 
@@ -192,23 +208,23 @@ None — Phase 5 complete, ready for Phase 6.
 **Workspace:** `/Users/tyo/omics-os/lobster/.planning/`
 **Config:** depth=standard, mode=yolo, parallelization=true
 
-**Last Session:** 2026-02-15T11:32:54Z
-**Stopped at:** Completed 05-01-PLAN.md
+**Last Session:** 2026-02-15T12:03:04Z
+**Stopped at:** Completed 06-01-PLAN.md
 **Resume file:** None
 
 **Quick Resume:**
 ```bash
-# Review Phase 5 summary
-cat /Users/tyo/omics-os/lobster/.planning/phases/05-unit-test-coverage/05-01-SUMMARY.md
+# Review Phase 6 summary
+cat /Users/tyo/omics-os/lobster/.planning/phases/06-integration-test-coverage/06-01-SUMMARY.md
 
-# Plan Phase 6
-/gsd:plan-phase 6
+# Plan Phase 7
+/gsd:plan-phase 7
 ```
 
 **Context Files:**
 - PROJECT.md — What we're building, constraints, key decisions
-- REQUIREMENTS.md — 38 requirements with traceability (23/38 complete)
-- ROADMAP.md — 7 phases with success criteria (4/7 complete)
+- REQUIREMENTS.md — 38 requirements with traceability (37/38 complete)
+- ROADMAP.md — 7 phases with success criteria (6/7 complete)
 - config.json — Workflow settings
 
 ---
@@ -254,9 +270,18 @@ cat /Users/tyo/omics-os/lobster/.planning/phases/05-unit-test-coverage/05-01-SUM
 - [x] Round-trip test verifies AnalysisStep reconstruction
 - [x] No conflicts with existing test_provenance.py (66 tests pass together)
 
+**Phase 6 (Complete):**
+- [x] 3 integration tests written (TEST-13, TEST-14, TEST-15)
+- [x] TEST-13: Full workflow AgentClient → destroy → CommandClient → pipeline export succeeds
+- [x] TEST-14: load_session restores provenance with correct activity count and IR objects
+- [x] TEST-15: CommandClient with session_id enables pipeline export
+- [x] All 3 tests pass consistently (1.53s runtime)
+- [x] No regressions in existing integration tests
+- [x] Bug fix enables cross-session functionality
+
 **Before releasing:**
 - [ ] All 7 phases complete
-- [ ] 12 unit tests + 3 integration tests passing
+- [x] 13 unit tests + 3 integration tests passing
 - [ ] Documentation updated
 - [ ] `make test` passes (all existing tests unchanged)
 - [ ] Manual verification: full workflow from analysis to cross-session export
@@ -269,3 +294,4 @@ cat /Users/tyo/omics-os/lobster/.planning/phases/05-unit-test-coverage/05-01-SUM
 *Phase 3 complete: 2026-02-15*
 *Phase 4 complete: 2026-02-15*
 *Phase 5 complete: 2026-02-15*
+*Phase 6 complete: 2026-02-15*
