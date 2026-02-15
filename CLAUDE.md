@@ -184,6 +184,49 @@ lobster query --session-id latest "Download the first dataset"
 
 ---
 
+## Releasing & Publishing
+
+**IMPORTANT**: After modifying `lobster/` source code or any `packages/`, you MUST ask the user whether to publish a new release. Do NOT tag or push without explicit confirmation.
+
+### Release Checklist
+
+When the user confirms a release:
+
+1. **Bump version** in `lobster/version.py` (e.g., `1.0.6` → `1.0.7`)
+2. **Commit** the version bump
+3. **Push** to main
+4. **Tag for TestPyPI first** — always validate on TestPyPI before production:
+   ```bash
+   git tag -a v1.0.7-test -m "Release 1.0.7 (TestPyPI)"
+   git push origin v1.0.7-test
+   ```
+5. **Verify** the TestPyPI workflow succeeds at `https://github.com/the-omics-os/lobster/actions`
+6. **Ask user** to confirm production release
+7. **Tag for PyPI** (production):
+   ```bash
+   git tag -a v1.0.7 -m "Release 1.0.7"
+   git push origin v1.0.7
+   ```
+
+### What the Tags Trigger
+
+| Tag pattern | Target | Packages published | Cloud deploy |
+|-------------|--------|-------------------|--------------|
+| `v*.*.*-test` | TestPyPI | All 9 (6 public + 3 private) | Yes (TestPyPI version) |
+| `v*.*.*` | PyPI | 6 public only | Yes (production) |
+
+**Public packages**: lobster-ai, lobster-transcriptomics, lobster-research, lobster-visualization, lobster-proteomics, lobster-genomics
+**Private packages** (TestPyPI only): lobster-metadata, lobster-ml, lobster-structural-viz
+
+### Rules
+
+- **Never skip TestPyPI** — always push `-test` tag first and verify before production
+- **Never tag without user confirmation** — always ask before creating release tags
+- **Cloud auto-deploys** — pushing a tag triggers `lobster-cloud` ECS redeployment via `repository-dispatch`
+- **Version must match** — the tag version must match `lobster/version.py` or the workflow fails
+
+---
+
 ## Parallel Development with Git Worktrees
 
 Use Git worktrees to run multiple Claude Code sessions simultaneously with complete code isolation.
