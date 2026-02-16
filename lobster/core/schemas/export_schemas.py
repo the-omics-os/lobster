@@ -370,6 +370,10 @@ class ExportSchemaRegistry:
             2. Registering in this registry dict
             3. That's it! (15 min task)
         """
+        # TODO(v2): Migrate to entry-point discovery via ComponentRegistry
+        # so external omics type packages can register export schemas.
+        # Currently metabolomics is mapped below; new external types
+        # fall back to alphabetical column ordering.
         registry = {
             # SRA/Amplicon/Microbiome
             "sra_amplicon": ExportSchemaRegistry.get_sra_amplicon_export_schema,

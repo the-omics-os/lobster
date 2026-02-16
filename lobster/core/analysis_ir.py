@@ -86,7 +86,11 @@ class ParameterSpec:
         Returns:
             ParameterSpec instance
         """
-        return cls(**data)
+        import dataclasses
+
+        valid_fields = {f.name for f in dataclasses.fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in valid_fields}
+        return cls(**filtered)
 
     def __repr__(self) -> str:
         """String representation for debugging."""
@@ -175,6 +179,9 @@ class AnalysisStep:
     # Export control
     exportable: bool = True  # Whether to include in notebook export
 
+    # Helper code (shared functions injected into notebook helper cell)
+    helper_code: List[str] = field(default_factory=list)
+
     def to_dict(self) -> Dict[str, Any]:
         """
         Serialize to JSON-compatible dictionary.
@@ -229,11 +236,16 @@ class AnalysisStep:
             raise ValueError(f"Missing required fields: {missing_fields}")
 
         # Convert parameter_schema dicts back to ParameterSpec objects
+        # Only convert dicts that match ParameterSpec format (have 'param_type' field)
+        # Some IRs use JSON Schema-style dicts with 'type' instead — leave those as-is
         if "parameter_schema" in data:
-            data["parameter_schema"] = {
-                k: ParameterSpec.from_dict(v) if isinstance(v, dict) else v
-                for k, v in data["parameter_schema"].items()
-            }
+            converted = {}
+            for k, v in data["parameter_schema"].items():
+                if isinstance(v, dict) and "param_type" in v:
+                    converted[k] = ParameterSpec.from_dict(v)
+                else:
+                    converted[k] = v
+            data["parameter_schema"] = converted
 
         return cls(**data)
 
@@ -313,11 +325,15 @@ class AnalysisStep:
         Returns:
             Dictionary of injectable parameter names and current values
         """
-        return {
-            param_name: self.parameters.get(param_name, spec.default_value)
-            for param_name, spec in self.parameter_schema.items()
-            if spec.papermill_injectable
-        }
+        result = {}
+        for param_name, spec in self.parameter_schema.items():
+            if isinstance(spec, ParameterSpec):
+                if spec.papermill_injectable:
+                    result[param_name] = self.parameters.get(
+                        param_name, spec.default_value
+                    )
+            # Skip non-ParameterSpec entries (e.g., JSON Schema dicts)
+        return result
 
     def __repr__(self) -> str:
         """String representation for debugging."""
@@ -420,6 +436,31 @@ def extract_unique_imports(irs: List[AnalysisStep]) -> List[str]:
     return sorted(imports, key=import_sort_key)
 
 
+def extract_unique_helper_code(irs: List[AnalysisStep]) -> List[str]:
+    """
+    Extract and deduplicate helper code from multiple IR objects.
+
+    Preserves insertion order (unlike set-based dedup) since helpers
+    may depend on each other. Deduplication uses exact string matching.
+
+    Args:
+        irs: List of AnalysisStep objects
+
+    Returns:
+        Ordered list of unique helper code strings
+    """
+    seen: set = set()
+    helpers: List[str] = []
+
+    for ir in irs:
+        for code in ir.helper_code:
+            if code not in seen:
+                seen.add(code)
+                helpers.append(code)
+
+    return helpers
+
+
 def create_minimal_ir(
     operation: str, tool_name: str, code: str, library: str = "unknown"
 ) -> AnalysisStep:
@@ -481,11 +522,12 @@ def create_data_loading_ir(
         ),
     }
 
-    # Jinja2 template with parameter placeholder
+    # Use variable reference (not Jinja2 substitution) since input_data
+    # is a Papermill-injected parameter defined in the parameters cell
     code_template = f"""# Load input data
 import anndata as ad
 
-adata = ad.read_h5ad({{{{ {input_param_name} }}}})
+adata = ad.read_h5ad({input_param_name})
 print(f"Loaded data: {{adata.n_obs}} cells × {{adata.n_vars}} genes")
 """
 

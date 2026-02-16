@@ -598,3 +598,262 @@ class TestNotebookExporter:
                 assert path1.exists()
                 assert path2.exists()
                 assert path1 != path2
+
+    def test_has_download_activity_detects_geo(self, provenance_tracker, data_manager):
+        """Test _has_download_activity detects GEO downloads."""
+        exporter = NotebookExporter(provenance_tracker, data_manager)
+        geo_ir = AnalysisStep(
+            operation="geo_service.download_dataset",
+            tool_name="GEODownloadService.download_dataset",
+            description="Load GEO dataset",
+            library="anndata",
+            code_template='adata = ad.read_h5ad("{{ raw_file }}")',
+            imports=["import anndata as ad"],
+            parameters={"dataset_id": "GSE12345", "raw_file": "data/test_raw.h5ad"},
+            parameter_schema={},
+        )
+        pairs = [({"type": "download_dataset"}, geo_ir)]
+        assert exporter._has_download_activity(pairs) is True
+
+    def test_has_download_activity_detects_sra(self, provenance_tracker, data_manager):
+        """Test _has_download_activity detects SRA downloads."""
+        exporter = NotebookExporter(provenance_tracker, data_manager)
+        sra_ir = AnalysisStep(
+            operation="sra_download",
+            tool_name="SRADownloadService.download_dataset",
+            description="List FASTQ files",
+            library="pathlib",
+            code_template='fastq_dir = Path("{{ fastq_dir }}")',
+            imports=["from pathlib import Path"],
+            parameters={"dataset_id": "SRR123", "fastq_dir": "downloads/sra/SRR123"},
+            parameter_schema={},
+        )
+        pairs = [({"type": "download_dataset"}, sra_ir)]
+        assert exporter._has_download_activity(pairs) is True
+
+    def test_has_download_activity_false_for_analysis(
+        self, provenance_tracker, data_manager
+    ):
+        """Test _has_download_activity returns False for non-download workflows."""
+        exporter = NotebookExporter(provenance_tracker, data_manager)
+        analysis_ir = create_sample_ir(
+            "scanpy.pp.normalize_total", "normalize", "Normalize"
+        )
+        pairs = [({"type": "normalize"}, analysis_ir)]
+        assert exporter._has_download_activity(pairs) is False
+
+    def test_export_skips_generic_load_for_download_workflow(self, data_manager):
+        """Test that download workflows don't get a generic data loading cell."""
+        tracker = ProvenanceTracker()
+
+        # Add a GEO download IR activity
+        geo_ir = AnalysisStep(
+            operation="geo_service.download_dataset",
+            tool_name="GEODownloadService.download_dataset",
+            description="Load GEO dataset GSE12345",
+            library="anndata",
+            code_template='# Load GEO dataset GSE12345\nadata = ad.read_h5ad("{{ raw_file }}")\nprint(f"Loaded: {adata.shape}")',
+            imports=["import anndata as ad"],
+            parameters={"dataset_id": "GSE12345", "raw_file": "data/test_raw.h5ad"},
+            parameter_schema={},
+            exportable=True,
+        )
+        tracker.create_activity(
+            activity_type="download_dataset",
+            agent="data_expert",
+            description="Download GEO dataset",
+            ir=geo_ir,
+        )
+
+        # Add a QC IR activity
+        qc_ir = create_sample_ir("scanpy.pp.calculate_qc_metrics", "qc", "Calculate QC")
+        tracker.create_activity(
+            activity_type="quality_control",
+            agent="singlecell_expert",
+            description="QC metrics",
+            ir=qc_ir,
+        )
+
+        exporter = NotebookExporter(tracker, data_manager)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("pathlib.Path.home") as mock_home:
+                mock_home.return_value = Path(tmpdir)
+                path = exporter.export(name="download_test")
+
+                with open(path) as f:
+                    nb = nbformat.read(f, as_version=4)
+
+                # The generic load cell contains "adata = ad.read_h5ad(input_data)"
+                # It should NOT be present in download workflows
+                code_sources = [c.source for c in nb.cells if c.cell_type == "code"]
+                generic_load_present = any(
+                    "ad.read_h5ad(input_data)" in s for s in code_sources
+                )
+                assert (
+                    not generic_load_present
+                ), "Generic data loading cell should be skipped in download workflows"
+
+    def test_export_keeps_generic_load_for_local_workflow(
+        self, provenance_tracker, data_manager
+    ):
+        """Test that local file workflows keep the generic data loading cell."""
+        exporter = NotebookExporter(provenance_tracker, data_manager)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("pathlib.Path.home") as mock_home:
+                mock_home.return_value = Path(tmpdir)
+                path = exporter.export(name="local_test")
+
+                with open(path) as f:
+                    nb = nbformat.read(f, as_version=4)
+
+                # Generic load cell SHOULD be present for local file workflows
+                code_sources = [c.source for c in nb.cells if c.cell_type == "code"]
+                generic_load_present = any(
+                    "ad.read_h5ad(input_data)" in s for s in code_sources
+                )
+                assert (
+                    generic_load_present
+                ), "Generic data loading cell should be present in local file workflows"
+
+    def test_helper_cell_injected_when_helpers_present(self, data_manager):
+        """Test helper cell is injected when IRs have helper_code."""
+        tracker = ProvenanceTracker()
+
+        helper = "def annotate_qc_genes(adata):\n    pass"
+        ir_with_helper = AnalysisStep(
+            operation="scanpy.pp.calculate_qc_metrics",
+            tool_name="qc",
+            description="QC with helper",
+            library="scanpy",
+            code_template="annotate_qc_genes(adata)\nprint('done')",
+            imports=["import scanpy as sc"],
+            parameters={},
+            parameter_schema={},
+            exportable=True,
+            helper_code=[helper],
+        )
+        tracker.create_activity(
+            activity_type="quality_control",
+            agent="singlecell_expert",
+            description="QC",
+            ir=ir_with_helper,
+        )
+
+        exporter = NotebookExporter(tracker, data_manager)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("pathlib.Path.home") as mock_home:
+                mock_home.return_value = Path(tmpdir)
+                path = exporter.export(name="helper_test")
+
+                with open(path) as f:
+                    nb = nbformat.read(f, as_version=4)
+
+                # Find helper cell (should be between imports and parameters)
+                code_cells = [c for c in nb.cells if c.cell_type == "code"]
+                helper_cells = [c for c in code_cells if "Helper functions" in c.source]
+                assert len(helper_cells) == 1
+                assert "annotate_qc_genes" in helper_cells[0].source
+
+    def test_no_helper_cell_when_helpers_empty(self, provenance_tracker, data_manager):
+        """Test no helper cell when IRs have no helper_code."""
+        exporter = NotebookExporter(provenance_tracker, data_manager)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("pathlib.Path.home") as mock_home:
+                mock_home.return_value = Path(tmpdir)
+                path = exporter.export(name="no_helper_test")
+
+                with open(path) as f:
+                    nb = nbformat.read(f, as_version=4)
+
+                code_cells = [c for c in nb.cells if c.cell_type == "code"]
+                helper_cells = [c for c in code_cells if "Helper functions" in c.source]
+                assert len(helper_cells) == 0
+
+    def test_helper_dedup_across_irs(self, data_manager):
+        """Test helpers are deduplicated across multiple IRs."""
+        tracker = ProvenanceTracker()
+
+        helper = "def annotate_qc_genes(adata):\n    pass"
+
+        # Two activities with same helper
+        for i, op in enumerate(["qc", "filter"]):
+            ir = AnalysisStep(
+                operation=f"scanpy.pp.{op}",
+                tool_name=op,
+                description=f"Step {i}",
+                library="scanpy",
+                code_template=f"print('{op}')",
+                imports=["import scanpy as sc"],
+                parameters={},
+                parameter_schema={},
+                exportable=True,
+                helper_code=[helper],
+            )
+            tracker.create_activity(
+                activity_type=op,
+                agent="singlecell_expert",
+                description=f"Step {i}",
+                ir=ir,
+            )
+
+        exporter = NotebookExporter(tracker, data_manager)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("pathlib.Path.home") as mock_home:
+                mock_home.return_value = Path(tmpdir)
+                path = exporter.export(name="dedup_test")
+
+                with open(path) as f:
+                    nb = nbformat.read(f, as_version=4)
+
+                # Helper function should appear exactly once in the notebook
+                all_sources = "\n".join(c.source for c in nb.cells)
+                assert all_sources.count("def annotate_qc_genes") == 1
+
+    def test_non_exportable_irs_filtered(self, data_manager):
+        """Test that IRs with exportable=False are filtered from notebook export."""
+        tracker = ProvenanceTracker()
+
+        # Add a non-exportable IR (modality management style)
+        non_exportable_ir = AnalysisStep(
+            operation="modality_management.list_modalities",
+            tool_name="ModalityManagementService.list_modalities",
+            description="List modalities",
+            library="lobster",
+            code_template="service = ModalityManagementService(data_manager)",
+            imports=[
+                "from lobster.services.data_management.modality_management_service import ModalityManagementService"
+            ],
+            parameters={},
+            parameter_schema={},
+            exportable=False,
+        )
+        tracker.create_activity(
+            activity_type="list_modalities",
+            agent="data_expert",
+            description="List modalities",
+            ir=non_exportable_ir,
+        )
+
+        # Add an exportable IR
+        exportable_ir = create_sample_ir(
+            "scanpy.pp.normalize_total", "normalize", "Normalize"
+        )
+        tracker.create_activity(
+            activity_type="normalize",
+            agent="singlecell_expert",
+            description="Normalize",
+            ir=exportable_ir,
+        )
+
+        exporter = NotebookExporter(tracker, data_manager)
+        activities = exporter._filter_activities("successful")
+        pairs = exporter._get_exportable_activity_ir_pairs(activities)
+
+        # Only the exportable IR should remain
+        assert len(pairs) == 1
+        assert pairs[0][1].operation == "scanpy.pp.normalize_total"

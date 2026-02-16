@@ -439,7 +439,6 @@ class BaseAdapter(IModalityAdapter):
 
         return metrics
 
-    # FIXME no harcoded solutions
     def detect_data_type(self, adata: anndata.AnnData) -> str:
         """
         Attempt to detect the type of biological data.
@@ -450,15 +449,20 @@ class BaseAdapter(IModalityAdapter):
         Returns:
             str: Detected data type hint
         """
-        # This is a basic implementation - subclasses should override
-        # with modality-specific detection logic
-
-        if adata.n_vars > 10000:
-            return "likely_genomics"  # High feature count suggests genomics
-        elif adata.n_vars < 1000:
-            return "likely_proteomics"  # Lower feature count suggests proteins
-        else:
+        try:
+            from lobster.core.omics_registry import DataTypeDetector
+            results = DataTypeDetector().detect_from_data(adata)
+            if results and results[0][1] > 0.01:
+                return f"likely_{results[0][0]}"
             return "unknown"
+        except ImportError:
+            # Fallback: basic feature count heuristic
+            if adata.n_vars > 10000:
+                return "likely_genomics"
+            elif adata.n_vars < 1000:
+                return "likely_proteomics"
+            else:
+                return "unknown"
 
     def _log_operation(self, operation: str, **kwargs) -> None:
         """

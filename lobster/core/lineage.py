@@ -71,6 +71,7 @@ SUFFIX_PATTERNS = [
     "_filtered",  # 9
     "_reduced",  # 8
     "_markers",  # 8
+    "_custom",  # 7
 ]
 
 # Mapping from suffix to processing step string
@@ -90,6 +91,7 @@ SUFFIX_TO_STEP: Dict[str, str] = {
     "_pseudobulk": "pseudobulk",
     "_concatenated": "custom",
     "_autosave": "custom",
+    "_custom": "custom",
 }
 
 

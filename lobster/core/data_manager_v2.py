@@ -423,40 +423,68 @@ class DataManagerV2:
 
     def _register_default_adapters(self) -> None:
         """Register default modality adapters."""
+        # Phase 1: Discover adapters from entry points
+        try:
+            from lobster.core.component_registry import component_registry
+
+            for name, adapter_factory in component_registry.list_adapters().items():
+                try:
+                    adapter = adapter_factory()
+                    self.register_adapter(name, adapter)
+                    logger.debug(f"Registered adapter '{name}' from entry point")
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to load adapter '{name}' from entry point: {e}"
+                    )
+        except Exception as e:
+            logger.debug(f"Entry point adapter discovery skipped: {e}")
+
+        # Phase 2: Hardcoded fallbacks (only register if not already discovered)
+
         # Transcriptomics adapters
-        self.register_adapter(
-            "transcriptomics_single_cell",
-            TranscriptomicsAdapter(data_type="single_cell", strict_validation=False),
-        )
-
-        self.register_adapter(
-            "transcriptomics_bulk",
-            TranscriptomicsAdapter(data_type="bulk", strict_validation=False),
-        )
-
-        # Proteomics adapters (only if available)
-        if PROTEOMICS_AVAILABLE:
+        if "transcriptomics_single_cell" not in self.adapters:
             self.register_adapter(
-                "proteomics_ms",
-                ProteomicsAdapter(
-                    data_type="mass_spectrometry", strict_validation=False
+                "transcriptomics_single_cell",
+                TranscriptomicsAdapter(
+                    data_type="single_cell", strict_validation=False
                 ),
             )
 
+        if "transcriptomics_bulk" not in self.adapters:
             self.register_adapter(
-                "proteomics_affinity",
-                ProteomicsAdapter(data_type="affinity", strict_validation=False),
+                "transcriptomics_bulk",
+                TranscriptomicsAdapter(data_type="bulk", strict_validation=False),
             )
+
+        # Proteomics adapters (only if available)
+        if PROTEOMICS_AVAILABLE:
+            if "proteomics_ms" not in self.adapters:
+                self.register_adapter(
+                    "proteomics_ms",
+                    ProteomicsAdapter(
+                        data_type="mass_spectrometry", strict_validation=False
+                    ),
+                )
+
+            if "proteomics_affinity" not in self.adapters:
+                self.register_adapter(
+                    "proteomics_affinity",
+                    ProteomicsAdapter(data_type="affinity", strict_validation=False),
+                )
 
         # Genomics adapters (PREMIUM tier - optional)
         try:
             from lobster.core.adapters.genomics.plink_adapter import PLINKAdapter
             from lobster.core.adapters.genomics.vcf_adapter import VCFAdapter
 
-            self.register_adapter("genomics_wgs", VCFAdapter(strict_validation=False))
-            self.register_adapter(
-                "genomics_snp_array", PLINKAdapter(strict_validation=False)
-            )
+            if "genomics_wgs" not in self.adapters:
+                self.register_adapter(
+                    "genomics_wgs", VCFAdapter(strict_validation=False)
+                )
+            if "genomics_snp_array" not in self.adapters:
+                self.register_adapter(
+                    "genomics_snp_array", PLINKAdapter(strict_validation=False)
+                )
 
             _GENOMICS_AVAILABLE = True
             logger.debug("Genomics adapters registered")

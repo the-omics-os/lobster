@@ -1,10 +1,11 @@
 """
-Unified component registry for premium services and agents via entry points.
+Unified component registry for services, agents, and omics plugins via entry points.
 
 This module discovers and loads components from:
 - lobster-ai: Core agents (data_expert, research_agent, transcriptomics_expert, etc.)
 - lobster-premium: Shared premium features
 - lobster-custom-*: Customer-specific features
+- Any package advertising lobster.* entry points
 
 Components are advertised via entry points in pyproject.toml:
 
@@ -16,6 +17,18 @@ Components are advertised via entry points in pyproject.toml:
 
     [project.entry-points."lobster.agent_configs"]
     metadata_assistant = "package.module:CUSTOM_AGENT_CONFIG"
+
+    [project.entry-points."lobster.adapters"]
+    metabolomics_lc_ms = "package.module:create_lc_ms_adapter"
+
+    [project.entry-points."lobster.providers"]
+    metabolights = "package.module:MetaboLightsProvider"
+
+    [project.entry-points."lobster.download_services"]
+    metabolights = "package.module:MetaboLightsDownloadService"
+
+    [project.entry-points."lobster.queue_preparers"]
+    metabolights = "package.module:MetaboLightsQueuePreparer"
 
 Usage:
     from lobster.core.component_registry import component_registry
@@ -30,12 +43,29 @@ Usage:
     # Agent LLM Configs
     llm_config = component_registry.get_agent_config('metadata_assistant')
     all_configs = component_registry.list_agent_configs()
+
+    # Adapters (factory callables returning configured instances)
+    adapter_factory = component_registry.get_adapter('metabolomics_lc_ms')
+    adapter = adapter_factory()  # Returns configured adapter instance
+
+    # Providers, Download Services, Queue Preparers
+    provider_cls = component_registry.get_provider('metabolights')
+    dl_service_cls = component_registry.get_download_service('metabolights')
+    preparer_cls = component_registry.get_queue_preparer('metabolights')
+
+Note on factory contract:
+    - lobster.adapters entry points MUST be callables (factory functions) that
+      return configured adapter instances. Adapters often need constructor args
+      (e.g., data_type="lc_ms") that raw classes can't express.
+    - lobster.providers, lobster.download_services, lobster.queue_preparers
+      entry points should be classes that can be instantiated with no args,
+      or factory callables returning instances.
 """
 
 import importlib.metadata
 import logging
 import sys
-from typing import Any, Dict, Optional, Type
+from typing import Any, Callable, Dict, Optional, Type, Union
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +132,11 @@ class ComponentRegistry:
         self._services: Dict[str, Type[Any]] = {}
         self._agents: Dict[str, Any] = {}  # ALL AgentRegistryConfig instances
         self._custom_agent_configs: Dict[str, Any] = {}  # CustomAgentConfig instances
+        # Omics plugin groups
+        self._adapters: Dict[str, Union[Callable, Type[Any]]] = {}
+        self._providers: Dict[str, Union[Callable, Type[Any]]] = {}
+        self._download_services: Dict[str, Union[Callable, Type[Any]]] = {}
+        self._queue_preparers: Dict[str, Union[Callable, Type[Any]]] = {}
         self._loaded = False
 
     def load_components(self) -> None:
@@ -126,12 +161,22 @@ class ComponentRegistry:
             "lobster.agent_configs", self._custom_agent_configs
         )
 
+        # Omics plugin groups — adapters, providers, download services, queue preparers
+        self._load_entry_point_group("lobster.adapters", self._adapters)
+        self._load_entry_point_group("lobster.providers", self._providers)
+        self._load_entry_point_group("lobster.download_services", self._download_services)
+        self._load_entry_point_group("lobster.queue_preparers", self._queue_preparers)
+
         self._loaded = True
         logger.debug(
             f"Component discovery complete. "
             f"Services: {len(self._services)}, "
             f"Agents: {len(self._agents)}, "
-            f"Custom agent configs: {len(self._custom_agent_configs)}"
+            f"Custom agent configs: {len(self._custom_agent_configs)}, "
+            f"Adapters: {len(self._adapters)}, "
+            f"Providers: {len(self._providers)}, "
+            f"Download services: {len(self._download_services)}, "
+            f"Queue preparers: {len(self._queue_preparers)}"
         )
 
     def _load_entry_point_group(self, group: str, target_dict: Dict[str, Any]) -> None:
@@ -343,6 +388,153 @@ class ComponentRegistry:
         return dict(self._custom_agent_configs)
 
     # =========================================================================
+    # ADAPTER API (factory callables returning configured instances)
+    # =========================================================================
+
+    def get_adapter(self, name: str, required: bool = False) -> Optional[Union[Callable, Type[Any]]]:
+        """Get an adapter factory by name.
+
+        Adapters are registered as factory callables that return configured
+        instances (e.g., ``create_lc_ms_adapter() -> MetabolomicsAdapter``).
+
+        Args:
+            name: Adapter name (e.g., 'metabolomics_lc_ms')
+            required: If True, raise error when not found
+
+        Returns:
+            Callable/class if found, None otherwise
+        """
+        if not self._loaded:
+            self.load_components()
+        adapter = self._adapters.get(name)
+        if adapter is None and required:
+            raise ValueError(
+                f"Required adapter '{name}' not found. "
+                f"Available adapters: {list(self._adapters.keys())}"
+            )
+        return adapter
+
+    def has_adapter(self, name: str) -> bool:
+        """Check if an adapter is available."""
+        if not self._loaded:
+            self.load_components()
+        return name in self._adapters
+
+    def list_adapters(self) -> Dict[str, Union[Callable, Type[Any]]]:
+        """List all available adapters."""
+        if not self._loaded:
+            self.load_components()
+        return dict(self._adapters)
+
+    # =========================================================================
+    # PROVIDER API
+    # =========================================================================
+
+    def get_provider(self, name: str, required: bool = False) -> Optional[Union[Callable, Type[Any]]]:
+        """Get a provider class/factory by name.
+
+        Args:
+            name: Provider name (e.g., 'metabolights')
+            required: If True, raise error when not found
+
+        Returns:
+            Class/callable if found, None otherwise
+        """
+        if not self._loaded:
+            self.load_components()
+        provider = self._providers.get(name)
+        if provider is None and required:
+            raise ValueError(
+                f"Required provider '{name}' not found. "
+                f"Available providers: {list(self._providers.keys())}"
+            )
+        return provider
+
+    def has_provider(self, name: str) -> bool:
+        """Check if a provider is available."""
+        if not self._loaded:
+            self.load_components()
+        return name in self._providers
+
+    def list_providers(self) -> Dict[str, Union[Callable, Type[Any]]]:
+        """List all available providers."""
+        if not self._loaded:
+            self.load_components()
+        return dict(self._providers)
+
+    # =========================================================================
+    # DOWNLOAD SERVICE API
+    # =========================================================================
+
+    def get_download_service(self, name: str, required: bool = False) -> Optional[Union[Callable, Type[Any]]]:
+        """Get a download service class/factory by name.
+
+        Args:
+            name: Download service name (e.g., 'metabolights')
+            required: If True, raise error when not found
+
+        Returns:
+            Class/callable if found, None otherwise
+        """
+        if not self._loaded:
+            self.load_components()
+        svc = self._download_services.get(name)
+        if svc is None and required:
+            raise ValueError(
+                f"Required download service '{name}' not found. "
+                f"Available: {list(self._download_services.keys())}"
+            )
+        return svc
+
+    def has_download_service(self, name: str) -> bool:
+        """Check if a download service is available."""
+        if not self._loaded:
+            self.load_components()
+        return name in self._download_services
+
+    def list_download_services(self) -> Dict[str, Union[Callable, Type[Any]]]:
+        """List all available download services."""
+        if not self._loaded:
+            self.load_components()
+        return dict(self._download_services)
+
+    # =========================================================================
+    # QUEUE PREPARER API
+    # =========================================================================
+
+    def get_queue_preparer(self, name: str, required: bool = False) -> Optional[Union[Callable, Type[Any]]]:
+        """Get a queue preparer class/factory by name.
+
+        Args:
+            name: Queue preparer name (e.g., 'metabolights')
+            required: If True, raise error when not found
+
+        Returns:
+            Class/callable if found, None otherwise
+        """
+        if not self._loaded:
+            self.load_components()
+        prep = self._queue_preparers.get(name)
+        if prep is None and required:
+            raise ValueError(
+                f"Required queue preparer '{name}' not found. "
+                f"Available: {list(self._queue_preparers.keys())}"
+            )
+        return prep
+
+    def has_queue_preparer(self, name: str) -> bool:
+        """Check if a queue preparer is available."""
+        if not self._loaded:
+            self.load_components()
+        return name in self._queue_preparers
+
+    def list_queue_preparers(self) -> Dict[str, Union[Callable, Type[Any]]]:
+        """List all available queue preparers."""
+        if not self._loaded:
+            self.load_components()
+        return dict(self._queue_preparers)
+
+    # =========================================================================
     # UTILITY METHODS
     # =========================================================================
 
@@ -364,6 +556,22 @@ class ComponentRegistry:
                 "count": len(self._custom_agent_configs),
                 "names": list(self._custom_agent_configs.keys()),
             },
+            "adapters": {
+                "count": len(self._adapters),
+                "names": list(self._adapters.keys()),
+            },
+            "providers": {
+                "count": len(self._providers),
+                "names": list(self._providers.keys()),
+            },
+            "download_services": {
+                "count": len(self._download_services),
+                "names": list(self._download_services.keys()),
+            },
+            "queue_preparers": {
+                "count": len(self._queue_preparers),
+                "names": list(self._queue_preparers.keys()),
+            },
         }
 
     def reset(self) -> None:
@@ -371,6 +579,10 @@ class ComponentRegistry:
         self._services.clear()
         self._agents.clear()
         self._custom_agent_configs.clear()
+        self._adapters.clear()
+        self._providers.clear()
+        self._download_services.clear()
+        self._queue_preparers.clear()
         self._loaded = False
 
 

@@ -21,7 +21,11 @@ import nbformat
 from nbformat import NotebookNode
 from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
 
-from lobster.core.analysis_ir import AnalysisStep, extract_unique_imports
+from lobster.core.analysis_ir import (
+    AnalysisStep,
+    extract_unique_helper_code,
+    extract_unique_imports,
+)
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.provenance import ProvenanceTracker
 
@@ -132,15 +136,26 @@ class NotebookExporter:
         imports_cell = self._create_imports_cell(irs)
         notebook.cells.append(imports_cell)
 
+        # Add helper functions cell (shared across analysis steps)
+        helper_cell = self._create_helper_code_cell(irs)
+        if helper_cell:
+            notebook.cells.append(helper_cell)
+
         # Add parameters cell (Papermill-tagged)
         notebook.cells.append(self._create_parameters_cell(irs))
 
-        # Add data loading cell (critical for execution)
-        notebook.cells.append(self._create_data_loading_cell())
+        # Add data loading cell unless a download activity provides its own load
+        if not self._has_download_activity(exportable_pairs):
+            notebook.cells.append(self._create_data_loading_cell())
 
         # Convert exportable (activity, IR) pairs to code cells
         # This iterates over ONLY exportable IRs, not all activities
+        # Skip load_dataset and save_dataset since they have dedicated cells above/below
         for idx, (activity, ir) in enumerate(exportable_pairs, start=1):
+            activity_type = activity.get("type", "")
+            if activity_type in ("load_dataset", "save_dataset"):
+                continue
+
             # Add documentation cell
             notebook.cells.append(self._create_doc_cell(activity, idx))
 
@@ -220,9 +235,14 @@ class NotebookExporter:
         for activity in activities:
             ir_dict = activity.get("ir")
 
-            if ir_dict is not None and isinstance(ir_dict, dict):
+            if ir_dict is not None:
                 try:
-                    ir = AnalysisStep.from_dict(ir_dict)
+                    if isinstance(ir_dict, AnalysisStep):
+                        ir = ir_dict
+                    elif isinstance(ir_dict, dict):
+                        ir = AnalysisStep.from_dict(ir_dict)
+                    else:
+                        continue
                     # Check if this IR should be included in notebook export
                     if ir.exportable:
                         irs.append(ir)
@@ -289,6 +309,30 @@ class NotebookExporter:
                 )
 
         return pairs
+
+    def _has_download_activity(
+        self, exportable_pairs: List[Tuple[Dict[str, Any], AnalysisStep]]
+    ) -> bool:
+        """
+        Check if any exportable IR represents a download operation.
+
+        Download workflows produce their own data-loading code in the IR cell,
+        so the generic ``_create_data_loading_cell()`` should be skipped to
+        avoid loading a non-existent ``input_data`` parameter.
+
+        Args:
+            exportable_pairs: List of (activity, AnalysisStep) tuples
+
+        Returns:
+            True if a download activity is present
+        """
+        download_ops = {
+            "geo_service.download_dataset",
+            "sra_download",
+            "pride.download.download_dataset",
+            "metabolights.download.download_dataset",
+        }
+        return any(ir.operation in download_ops for _, ir in exportable_pairs)
 
     def _create_header_cell(
         self, name: str, description: str, n_irs: int
@@ -484,6 +528,31 @@ complete code generation instructions for reproducibility.
 
         return new_code_cell(imports_code)
 
+    def _create_helper_code_cell(
+        self, irs: List[AnalysisStep]
+    ) -> Optional[NotebookNode]:
+        """
+        Create helper functions cell from IR helper_code fields.
+
+        Deduplicates helper code across all IRs and combines them into
+        a single cell. Returns None if no helpers are needed.
+
+        Args:
+            irs: List of AnalysisStep objects
+
+        Returns:
+            Code cell with helper functions, or None if no helpers
+        """
+        helpers = extract_unique_helper_code(irs)
+        if not helpers:
+            return None
+
+        code = "# Helper functions (shared across analysis steps)\n\n"
+        code += "\n\n".join(helpers)
+
+        logger.debug(f"Generated helper code cell with {len(helpers)} helper(s)")
+        return new_code_cell(code)
+
     def _create_parameters_cell(self, irs: List[AnalysisStep]) -> NotebookNode:
         """
         Create Papermill parameters cell dynamically from IR schemas.
@@ -514,9 +583,15 @@ random_seed = 42              # Random seed for reproducibility
 """
 
         # Add IR-derived parameters if present
-        if injectable_params:
+        # Skip params already defined in the standard section above
+        standard_params = {"input_data", "output_prefix", "random_seed"}
+        ir_only_params = {
+            k: v for k, v in injectable_params.items() if k not in standard_params
+        }
+
+        if ir_only_params:
             code += "\n# Analysis parameters (from workflow IR)\n"
-            for param_name, param_value in sorted(injectable_params.items()):
+            for param_name, param_value in sorted(ir_only_params.items()):
                 # Format value for Python
                 if isinstance(param_value, str):
                     value_str = f'"{param_value}"'
@@ -548,10 +623,13 @@ random_seed = 42              # Random seed for reproducibility
         for activity in self.provenance.activities:
             tool_name = activity.get("type", "")
             if tool_name == "load_dataset":
-                ir_dict = activity.get("ir")
-                if ir_dict:
+                ir_obj = activity.get("ir")
+                if ir_obj:
                     try:
-                        ir = AnalysisStep.from_dict(ir_dict)
+                        if isinstance(ir_obj, AnalysisStep):
+                            ir = ir_obj
+                        else:
+                            ir = AnalysisStep.from_dict(ir_obj)
                         code = ir.render()
                         logger.debug("Using IR for data loading cell")
                         return new_code_cell(code)
@@ -579,10 +657,13 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
         for activity in reversed(self.provenance.activities):  # Check most recent first
             tool_name = activity.get("type", "")
             if tool_name == "save_dataset":
-                ir_dict = activity.get("ir")
-                if ir_dict:
+                ir_obj = activity.get("ir")
+                if ir_obj:
                     try:
-                        ir = AnalysisStep.from_dict(ir_dict)
+                        if isinstance(ir_obj, AnalysisStep):
+                            ir = ir_obj
+                        else:
+                            ir = AnalysisStep.from_dict(ir_obj)
                         code = ir.render()
                         logger.debug("Using IR for data saving cell")
                         return new_code_cell(code)
@@ -671,9 +752,12 @@ print(f"Saved processed data to: {output_path}")
                 f"pass"
             )
 
-        # Deserialize IR
+        # Deserialize IR (may already be an AnalysisStep from in-memory provenance)
         try:
-            ir = AnalysisStep.from_dict(ir_dict)
+            if isinstance(ir_dict, AnalysisStep):
+                ir = ir_dict
+            else:
+                ir = AnalysisStep.from_dict(ir_dict)
         except Exception as e:
             logger.error(f"Failed to deserialize IR: {e}")
             return new_code_cell(f"# ERROR: Failed to deserialize IR\n# {str(e)}\npass")

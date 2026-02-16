@@ -102,10 +102,14 @@ class TestRegistryInitialization:
 
         # Verify all entry point groups were loaded
         calls = mock_load_ep.call_args_list
-        assert len(calls) == 3
+        assert len(calls) == 7
         assert calls[0][0][0] == "lobster.services"
         assert calls[1][0][0] == "lobster.agents"
         assert calls[2][0][0] == "lobster.agent_configs"
+        assert calls[3][0][0] == "lobster.adapters"
+        assert calls[4][0][0] == "lobster.providers"
+        assert calls[5][0][0] == "lobster.download_services"
+        assert calls[6][0][0] == "lobster.queue_preparers"
 
 
 # =============================================================================

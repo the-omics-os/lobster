@@ -11,6 +11,7 @@ from lobster.core.analysis_ir import (
     AnalysisStep,
     ParameterSpec,
     create_minimal_ir,
+    extract_unique_helper_code,
     extract_unique_imports,
     validate_ir_list,
 )
@@ -236,6 +237,56 @@ class TestAnalysisStep:
         assert ir.execution_context == {}
         assert ir.validates_on_export is True
         assert ir.requires_validation is False
+        assert ir.helper_code == []
+
+    def test_helper_code_defaults_to_empty(self):
+        """Test helper_code defaults to empty list."""
+        ir = AnalysisStep(
+            operation="test",
+            tool_name="test",
+            description="test",
+            library="test",
+            code_template="pass",
+            imports=[],
+            parameters={},
+            parameter_schema={},
+        )
+        assert ir.helper_code == []
+
+    def test_helper_code_serialization_roundtrip(self):
+        """Test helper_code survives to_dict/from_dict round-trip."""
+        helper = "def my_helper():\n    return 42"
+        ir = AnalysisStep(
+            operation="test",
+            tool_name="test",
+            description="test",
+            library="test",
+            code_template="pass",
+            imports=[],
+            parameters={},
+            parameter_schema={},
+            helper_code=[helper],
+        )
+        ir_dict = ir.to_dict()
+        assert ir_dict["helper_code"] == [helper]
+
+        restored = AnalysisStep.from_dict(ir_dict)
+        assert restored.helper_code == [helper]
+
+    def test_helper_code_backward_compat_from_dict(self):
+        """Test from_dict with missing helper_code key (old data)."""
+        data = {
+            "operation": "test",
+            "tool_name": "test",
+            "description": "test",
+            "library": "test",
+            "code_template": "pass",
+            "imports": [],
+            "parameters": {},
+            "parameter_schema": {},
+        }
+        ir = AnalysisStep.from_dict(data)
+        assert ir.helper_code == []
 
     def test_analysis_step_missing_required_fields(self):
         """Test that missing required fields raise ValueError."""
@@ -646,3 +697,61 @@ result = process(min_genes, max_pct)
         assert "15.0" in code2
         assert "200" not in code2
         assert "20.0" not in code2
+
+
+class TestExtractUniqueHelperCode:
+    """Test extract_unique_helper_code utility."""
+
+    def _make_ir(self, helper_code=None):
+        return AnalysisStep(
+            operation="test",
+            tool_name="test",
+            description="test",
+            library="test",
+            code_template="pass",
+            imports=[],
+            parameters={},
+            parameter_schema={},
+            helper_code=helper_code or [],
+        )
+
+    def test_empty_irs(self):
+        """No IRs returns empty list."""
+        assert extract_unique_helper_code([]) == []
+
+    def test_no_helpers(self):
+        """IRs without helper_code returns empty list."""
+        ir = self._make_ir()
+        assert extract_unique_helper_code([ir]) == []
+
+    def test_single_helper(self):
+        """Single helper extracted."""
+        ir = self._make_ir(helper_code=["def foo(): pass"])
+        result = extract_unique_helper_code([ir])
+        assert result == ["def foo(): pass"]
+
+    def test_deduplication(self):
+        """Duplicate helpers across IRs are deduplicated."""
+        helper = "def annotate(): pass"
+        ir1 = self._make_ir(helper_code=[helper])
+        ir2 = self._make_ir(helper_code=[helper])
+        result = extract_unique_helper_code([ir1, ir2])
+        assert result == [helper]
+
+    def test_order_preservation(self):
+        """Order is preserved (first seen wins)."""
+        h1 = "def first(): pass"
+        h2 = "def second(): pass"
+        h3 = "def third(): pass"
+        ir1 = self._make_ir(helper_code=[h1, h2])
+        ir2 = self._make_ir(helper_code=[h2, h3])
+        result = extract_unique_helper_code([ir1, ir2])
+        assert result == [h1, h2, h3]
+
+    def test_mixed_helpers_and_empty(self):
+        """Mix of IRs with and without helpers."""
+        helper = "def helper(): pass"
+        ir1 = self._make_ir(helper_code=[helper])
+        ir2 = self._make_ir()  # no helpers
+        result = extract_unique_helper_code([ir1, ir2])
+        assert result == [helper]
