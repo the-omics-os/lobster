@@ -535,7 +535,7 @@ class TestReset:
         assert token_tracker.total_cost_usd == 0.0
         assert len(token_tracker.invocations) == 0
         assert len(token_tracker.by_agent) == 0
-        assert token_tracker.current_agent is None
+        assert token_tracker.current_agent == "supervisor"  # Reset to default
         assert token_tracker.current_tool is None
 
 
@@ -571,6 +571,7 @@ class TestRobustAgentDetection:
 
     def test_filter_model_class_names(self, token_tracker):
         """Test that model class names are filtered out."""
+        token_tracker.current_agent = None  # Clear default for isolation
         token_tracker.on_llm_start(
             serialized={"name": "ChatBedrockConverse"},
             prompts=["test"],
@@ -581,11 +582,13 @@ class TestRobustAgentDetection:
 
     def test_validate_against_registry(self, token_tracker):
         """Test that only registered agents are accepted."""
+        token_tracker.current_agent = None  # Clear default for isolation
         token_tracker.on_llm_start(
             serialized={},
             prompts=["test"],
             run_name="fake_agent_xyz",  # Not in registry
         )
+        # Unrecognized names are rejected; current_agent stays unchanged
         assert token_tracker.current_agent is None
 
     def test_maintain_state_when_no_detection(self, token_tracker):
@@ -687,7 +690,7 @@ class TestRobustAgentDetection:
     def test_reset_clears_new_state(self, token_tracker):
         """Test that reset clears run_id tracking and cache."""
         # Setup state
-        token_tracker.current_agent = "supervisor"
+        token_tracker.current_agent = "research_agent"
         token_tracker.run_to_agent = {"abc": "research_agent"}
         token_tracker.current_run_id = "abc"
         token_tracker._valid_agents = {"supervisor"}
@@ -696,7 +699,121 @@ class TestRobustAgentDetection:
         token_tracker.reset()
 
         # Verify new tracking state is cleared
-        assert token_tracker.current_agent is None
+        assert token_tracker.current_agent == "supervisor"  # Reset to default
         assert token_tracker.run_to_agent == {}
         assert token_tracker.current_run_id is None
         assert token_tracker._valid_agents is None  # Should re-fetch on next use
+
+
+class TestHandoffDetection:
+    """Test agent handoff detection in on_tool_start."""
+
+    def test_handoff_to_agent_updates_current_agent(self, token_tracker):
+        """Test that handoff_to_* tools update current_agent."""
+        token_tracker.on_tool_start(
+            serialized={"name": "handoff_to_research_agent"},
+            input_str='{"task_description": "search PubMed"}',
+        )
+        assert token_tracker.current_agent == "research_agent"
+        assert token_tracker.current_tool == "handoff_to_research_agent"
+
+    def test_handoff_to_transcriptomics(self, token_tracker):
+        """Test handoff to another agent."""
+        token_tracker.on_tool_start(
+            serialized={"name": "handoff_to_transcriptomics_expert"},
+            input_str='{"task_description": "cluster cells"}',
+        )
+        assert token_tracker.current_agent == "transcriptomics_expert"
+
+    def test_transfer_back_to_supervisor(self, token_tracker):
+        """Test transfer_back_to_supervisor restores supervisor."""
+        token_tracker.current_agent = "research_agent"
+        token_tracker.on_tool_start(
+            serialized={"name": "transfer_back_to_supervisor"},
+            input_str="",
+        )
+        assert token_tracker.current_agent == "supervisor"
+
+    def test_regular_tool_does_not_change_agent(self, token_tracker):
+        """Test that non-handoff tools don't change current_agent."""
+        token_tracker.current_agent = "research_agent"
+        token_tracker.on_tool_start(
+            serialized={"name": "search_pubmed"},
+            input_str="CRISPR",
+        )
+        assert token_tracker.current_agent == "research_agent"
+        assert token_tracker.current_tool == "search_pubmed"
+
+    def test_handoff_to_invalid_agent_ignored(self, token_tracker):
+        """Test that handoff to unknown agent is ignored."""
+        token_tracker.current_agent = "supervisor"
+        token_tracker.on_tool_start(
+            serialized={"name": "handoff_to_nonexistent_agent"},
+            input_str="",
+        )
+        # Should keep previous agent since target is not in registry
+        assert token_tracker.current_agent == "supervisor"
+
+    def test_default_agent_is_supervisor(self, token_tracker):
+        """Test that current_agent defaults to supervisor on init."""
+        fresh = TokenTrackingCallback(session_id="test")
+        assert fresh.current_agent == "supervisor"
+
+
+class TestMetadataPropagation:
+    """Test agent detection via RunnableConfig metadata (LangChain-idiomatic)."""
+
+    def test_detect_from_metadata_agent_name(self, token_tracker):
+        """Test detection from metadata['agent_name'] set in graph.py."""
+        token_tracker.current_agent = None
+        token_tracker.on_chat_model_start(
+            serialized={"name": "ChatBedrockConverse"},
+            messages=[[]],
+            tags=[],
+            metadata={"agent_name": "research_agent", "langgraph_node": "agent"},
+        )
+        assert token_tracker.current_agent == "research_agent"
+
+    def test_metadata_with_langgraph_context(self, token_tracker):
+        """Test that agent_name is extracted even with LangGraph metadata."""
+        tracker = TokenTrackingCallback(session_id="test")
+        tracker.on_chat_model_start(
+            serialized={"name": "ChatBedrockConverse"},
+            messages=[[]],
+            tags=["transcriptomics_expert"],
+            metadata={
+                "agent_name": "transcriptomics_expert",
+                "langgraph_node": "agent",
+                "langgraph_step": 3,
+            },
+            name="agent",  # LangGraph node name
+        )
+        assert tracker.current_agent == "transcriptomics_expert"
+
+    def test_full_handoff_flow(self, token_tracker):
+        """Test realistic supervisor -> sub-agent -> back flow."""
+        # 1. Supervisor runs first (default)
+        assert token_tracker.current_agent == "supervisor"
+
+        # 2. Supervisor calls handoff tool
+        token_tracker.on_tool_start(
+            serialized={"name": "handoff_to_research_agent"},
+            input_str='{"task_description": "search"}',
+        )
+        assert token_tracker.current_agent == "research_agent"
+
+        # 3. Sub-agent LLM fires with metadata
+        token_tracker.on_chat_model_start(
+            serialized={"name": "ChatBedrockConverse"},
+            messages=[[]],
+            tags=["research_agent"],
+            metadata={"agent_name": "research_agent", "langgraph_node": "agent"},
+        )
+        assert token_tracker.current_agent == "research_agent"
+
+        # 4. Transfer back
+        token_tracker.on_tool_start(
+            serialized={"name": "transfer_back_to_supervisor"},
+            input_str="",
+        )
+        assert token_tracker.current_agent == "supervisor"

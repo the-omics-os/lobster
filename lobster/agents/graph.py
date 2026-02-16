@@ -167,11 +167,14 @@ def _create_agent_tool(agent_name: str, agent, tool_name: str, description: str)
         """
         logger.debug(f"Invoking {agent_name} with task: {task_description[:100]}...")
 
-        # Pass explicit agent name in config for proper callback attribution
-        # This ensures token tracking and logging correctly attributes sub-agent activity
+        # Pass explicit agent name in config for proper callback attribution.
+        # metadata propagates to all sub-calls and is passed to handle*Start
+        # callbacks (per RunnableConfig docs). This is the most reliable
+        # mechanism for agent attribution in nested LangGraph runs.
         config = {
-            "run_name": agent_name,  # LangChain uses run_name for agent identification
-            "tags": [agent_name],  # Additional tag for tracking
+            "run_name": agent_name,
+            "tags": [agent_name],
+            "metadata": {"agent_name": agent_name},
         }
 
         # Invoke the sub-agent with the task as a user message
@@ -258,10 +261,14 @@ def _create_lazy_delegation_tool(
             f"[lazy delegation] Invoking {_name} with task: {task_description[:100]}..."
         )
 
-        # Pass explicit agent name in config for proper callback attribution
+        # Pass explicit agent name in config for proper callback attribution.
+        # metadata propagates to all sub-calls and is passed to handle*Start
+        # callbacks (per RunnableConfig docs). This is the most reliable
+        # mechanism for agent attribution in nested LangGraph runs.
         config = {
             "run_name": _name,
             "tags": [_name],
+            "metadata": {"agent_name": _name},
         }
 
         # Invoke the sub-agent with the task as a user message

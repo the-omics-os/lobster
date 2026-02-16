@@ -802,8 +802,8 @@ class TokenTrackingCallback(BaseCallbackHandler):
         # Detailed invocation log
         self.invocations: List[TokenInvocation] = []
 
-        # Track current context
-        self.current_agent: Optional[str] = None
+        # Track current context (supervisor is always the first agent to run)
+        self.current_agent: Optional[str] = "supervisor"
         self.current_tool: Optional[str] = None
 
         # Run ID tracking for hierarchy (prevents stale state)
@@ -996,16 +996,25 @@ class TokenTrackingCallback(BaseCallbackHandler):
         self, serialized: Dict[str, Any], input_str: str, **kwargs
     ) -> None:
         """
-        Track current tool context.
+        Track current tool context and detect agent handoffs.
 
-        IMPORTANT: This is where agent handoffs are detected in the main
-        callback handlers (via handoff_to_* tool names). We don't track
-        agent switches here to avoid duplication, but we do track the tool
-        for attribution in invocation logs.
+        Agent handoffs are detected from handoff_to_* tool names, mirroring
+        the pattern in TerminalCallbackHandler. This ensures token usage is
+        attributed to the correct agent even when RunnableConfig metadata
+        doesn't propagate through nested LangGraph runs.
         """
         if serialized is None:
             serialized = {}
-        self.current_tool = serialized.get("name", "unknown_tool")
+        tool_name = serialized.get("name", "unknown_tool")
+        self.current_tool = tool_name
+
+        # Detect agent handoffs (same pattern as TerminalCallbackHandler)
+        if tool_name.startswith("handoff_to_"):
+            target = tool_name.replace("handoff_to_", "")
+            if self._is_valid_agent(target):
+                self.current_agent = target
+        elif tool_name == "transfer_back_to_supervisor":
+            self.current_agent = "supervisor"
 
     def on_tool_end(self, output: str, **kwargs) -> None:
         """Clear tool context when tool completes."""
@@ -1350,7 +1359,7 @@ class TokenTrackingCallback(BaseCallbackHandler):
         self.total_cost_usd = 0.0
         self.by_agent = {}
         self.invocations = []
-        self.current_agent = None
+        self.current_agent = "supervisor"  # Supervisor is always first
         self.current_tool = None
         # Reset new tracking state
         self.run_to_agent = {}
