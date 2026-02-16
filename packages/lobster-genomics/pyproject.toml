@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lobster-genomics"
-version = "1.0.9"
+version = "1.0.10"
 description = "Genomics agent for Lobster AI (VCF, PLINK, GWAS, variant annotation)"
 readme = "README.md"
 license = "AGPL-3.0-or-later"

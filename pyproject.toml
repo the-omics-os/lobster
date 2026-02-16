@@ -52,6 +52,7 @@ dependencies = [
     "biopython>=1.81",
     "statsmodels>=0.14.0",
     "gseapy>=1.1.0",
+    "GEOparse",
     # Data I/O
     "openpyxl>=3.1.0",
     "pyreadr>=0.4.0",
@@ -114,7 +115,6 @@ extended-data = [
     "pysradb>=2.5.1",
     "cloudscraper>=1.2.71",
     "rispy>=0.10.0",
-    "GEOparse",
 ]
 
 # =============================================================================
