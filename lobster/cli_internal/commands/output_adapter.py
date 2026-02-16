@@ -59,6 +59,20 @@ class OutputAdapter(ABC):
         pass
 
     @abstractmethod
+    def prompt(self, question: str, default: str = "") -> str:
+        """
+        Prompt user for text input.
+
+        Args:
+            question: Prompt text
+            default: Default value if user presses Enter
+
+        Returns:
+            str: User input or default
+        """
+        pass
+
+    @abstractmethod
     def print_code_block(self, code: str, language: str = "python") -> None:
         """
         Print formatted code block.
@@ -105,6 +119,12 @@ class ConsoleOutputAdapter(OutputAdapter):
 
         self.console.print(table)
 
+    def prompt(self, question: str, default: str = "") -> str:
+        """Prompt user for text input using Rich Prompt."""
+        from rich.prompt import Prompt
+
+        return Prompt.ask(question, default=default, console=self.console)
+
     def confirm(self, question: str) -> bool:
         """Ask for confirmation using Rich Confirm."""
         from rich.prompt import Confirm
@@ -144,6 +164,16 @@ class JsonOutputAdapter(OutputAdapter):
         if title:
             entry["title"] = self._strip_markup(title)
         self.tables.append(entry)
+
+    def prompt(self, question: str, default: str = "") -> str:
+        """Non-interactive: return default value."""
+        self.messages.append(
+            {
+                "text": f"Prompt skipped (non-interactive): {self._strip_markup(question)} -> {default!r}",
+                "style": "warning",
+            }
+        )
+        return default
 
     def confirm(self, question: str) -> bool:
         """Non-interactive: always returns False."""
@@ -228,6 +258,18 @@ class DashboardOutputAdapter(OutputAdapter):
         markdown += header + "\n" + separator + "\n" + "\n".join(table_rows)
 
         self.results_display.append_system_message(markdown)
+
+    def prompt(self, question: str, default: str = "") -> str:
+        """
+        Dashboard doesn't support interactive prompts.
+
+        Returns default value and notifies user.
+        """
+        clean_question = self._strip_markup(question)
+        self.results_display.append_system_message(
+            f"ℹ️ Using default for '{clean_question}': {default!r}"
+        )
+        return default
 
     def confirm(self, question: str) -> bool:
         """

@@ -1863,6 +1863,31 @@ def init_client(
     # Resolve workspace (create if needed for proper config loading)
     workspace_path = resolve_workspace(explicit_path=workspace, create=True)
 
+    # Auto-inject provider config into new workspaces that lack one.
+    # When no global LOBSTER_LLM_PROVIDER env var is set and no global config exists,
+    # a new workspace would fail to resolve a provider. Copy from the CWD default
+    # workspace if available.
+    from lobster.config.workspace_config import WorkspaceProviderConfig
+    from lobster.config.global_config import GlobalProviderConfig
+
+    if not WorkspaceProviderConfig.exists(workspace_path):
+        env_provider = os.environ.get("LOBSTER_LLM_PROVIDER")
+        if not env_provider and not GlobalProviderConfig.exists():
+            # No workspace config, no global config, no env var — look for
+            # the CWD default workspace's provider_config.json to copy from
+            default_workspace = Path.cwd() / ".lobster_workspace"
+            if (
+                default_workspace != workspace_path
+                and WorkspaceProviderConfig.exists(default_workspace)
+            ):
+                source_config = WorkspaceProviderConfig.load(default_workspace)
+                if source_config.global_provider:
+                    source_config.save(workspace_path)
+                    logger.info(
+                        f"Auto-injected provider config into {workspace_path} "
+                        f"from {default_workspace}"
+                    )
+
     # Reload credentials for the target workspace
     # This ensures we load from workspace/.env (if exists) or fall back to global credentials
     settings.reload_credentials(workspace_path)
@@ -2055,16 +2080,41 @@ def init_client(
         callbacks.append(simple_callback)
 
     # Initialize client with proper data_manager connection
-    client = AgentClient(
-        data_manager=data_manager,  # Pass the configured data_manager
-        workspace_path=workspace,
-        session_id=session_id,  # Pass custom session_id if provided
-        enable_reasoning=reasoning,
-        # enable_langfuse=debug,
-        custom_callbacks=callbacks,  # Pass the proper callback
-        provider_override=provider_override,  # Pass provider override from CLI flag
-        model_override=model_override,  # Pass model override from CLI flag
-    )
+    try:
+        client = AgentClient(
+            data_manager=data_manager,  # Pass the configured data_manager
+            workspace_path=workspace,
+            session_id=session_id,  # Pass custom session_id if provided
+            enable_reasoning=reasoning,
+            # enable_langfuse=debug,
+            custom_callbacks=callbacks,  # Pass the proper callback
+            provider_override=provider_override,  # Pass provider override from CLI flag
+            model_override=model_override,  # Pass model override from CLI flag
+        )
+    except ValueError as e:
+        # Catch missing-credential errors from LLM providers and present
+        # clear, actionable instructions instead of a raw traceback.
+        error_msg = str(e)
+        resolved_provider = provider_override or "configured provider"
+        console.print(
+            f"\n[red bold]Missing credentials for provider '{resolved_provider}'[/red bold]"
+        )
+        console.print(f"[red]  {error_msg}[/red]\n")
+        console.print("[yellow]How to fix:[/yellow]")
+        console.print(
+            f"  1. [white]Add the key to the workspace .env file:[/white]\n"
+            f"     [dim]{workspace}/.env[/dim]"
+        )
+        console.print(
+            f"  2. [white]Or add to global credentials:[/white]\n"
+            f"     [dim]lobster init --global[/dim]"
+        )
+        console.print(
+            f"  3. [white]Or export in your shell:[/white]\n"
+            f"     [dim]{error_msg.split('Set it with: ')[-1] if 'Set it with: ' in error_msg else 'export <KEY>=<value>'}[/dim]"
+        )
+        console.print()
+        raise typer.Exit(code=1)
 
     client.profile_timings_enabled = profile_timings_enabled
 
@@ -7794,7 +7844,10 @@ def _dispatch_command(cmd_str: str, client, output):
                 return None
 
             # Provenance loaded - delegate to existing function
-            return pipeline_export(client, output)
+            # Pass defaults since `lobster command` may run non-interactively
+            return pipeline_export(
+                client, output, name="analysis_workflow", description=""
+            )
 
         elif sub == "run":
             # Similar check for pipeline run
