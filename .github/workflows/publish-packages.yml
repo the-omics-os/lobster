@@ -508,6 +508,7 @@ jobs:
           echo "Installing lobster-ai==$VERSION from TestPyPI..."
           uv pip install --index-url https://test.pypi.org/simple/ \
                          --extra-index-url https://pypi.org/simple \
+                         --index-strategy unsafe-best-match \
                          --system \
                          lobster-ai==$VERSION
 
@@ -521,6 +522,7 @@ jobs:
           echo "Installing lobster-ai[full]==$VERSION from TestPyPI..."
           uv pip install --index-url https://test.pypi.org/simple/ \
                          --extra-index-url https://pypi.org/simple \
+                         --index-strategy unsafe-best-match \
                          --system \
                          "lobster-ai[full]==$VERSION"
 
@@ -540,6 +542,7 @@ jobs:
           echo "Installing private packages from TestPyPI (best-effort)..."
           uv pip install --index-url https://test.pypi.org/simple/ \
                          --extra-index-url https://pypi.org/simple \
+                         --index-strategy unsafe-best-match \
                          --system \
                          lobster-metadata lobster-ml lobster-structural-viz || true
 
