@@ -409,8 +409,10 @@ class GEODownloadService(IDownloadService):
         """
         Create AnalysisStep IR for provenance tracking.
 
-        Generates intermediate representation capturing all parameters
-        and execution details for reproducibility.
+        Generates a file-load cell that reads the raw H5AD saved during download.
+        The queue-based orchestrator details are stored in execution_context for
+        traceability but not emitted as executable code (queue state doesn't exist
+        in standalone notebook environments).
 
         Args:
             geo_id: GEO accession ID
@@ -420,89 +422,57 @@ class GEODownloadService(IDownloadService):
             queue_entry_id: Queue entry ID for traceability
 
         Returns:
-            AnalysisStep: Provenance tracking object
-
-        Note:
-            The code_template uses only standard libraries as per Lobster conventions.
-            It references the DownloadOrchestrator pattern for notebook reproduction.
+            AnalysisStep: Provenance tracking object with executable file-load template
         """
-        # Build parameters dictionary
+        from lobster.core.analysis_ir import ParameterSpec
+
+        raw_file = f"data/{modality_name}_raw.h5ad"
+
         parameters = {
-            "queue_entry_id": queue_entry_id,
             "dataset_id": geo_id,
-            "database": "geo",
-            "strategy": strategy_name or "auto",
-            "use_intersecting_genes_only": use_intersecting_genes_only,
+            "raw_file": raw_file,
         }
 
-        # Build parameter schema for validation
         parameter_schema = {
-            "queue_entry_id": {
-                "type": "string",
-                "required": True,
-                "description": "Queue entry identifier for traceability",
-            },
-            "dataset_id": {
-                "type": "string",
-                "required": True,
-                "description": "GEO accession ID (e.g., GSE180759)",
-                "pattern": "^GSE\\d+$",
-            },
-            "database": {
-                "type": "string",
-                "required": True,
-                "description": "Source database (must be 'geo')",
-                "enum": ["geo"],
-            },
-            "strategy": {
-                "type": "string",
-                "optional": True,
-                "description": "Download strategy name or 'auto' for auto-detection",
-                "enum": [
-                    "auto",
-                    "H5_FIRST",
-                    "MATRIX_FIRST",
-                    "SUPPLEMENTARY_FIRST",
-                    "SAMPLES_FIRST",
-                    "RAW_FIRST",
-                ],
-            },
-            "use_intersecting_genes_only": {
-                "type": "boolean",
-                "optional": True,
-                "description": "Concatenation strategy: True=intersection, False=union, None=auto",
-            },
+            "dataset_id": ParameterSpec(
+                param_type="str",
+                papermill_injectable=True,
+                default_value=geo_id,
+                required=True,
+                description=f"GEO accession ID (e.g., {geo_id})",
+            ),
+            "raw_file": ParameterSpec(
+                param_type="str",
+                papermill_injectable=True,
+                default_value=raw_file,
+                required=True,
+                description="Path to raw H5AD file (relative to workspace root)",
+            ),
         }
 
-        # Create AnalysisStep IR
         ir = AnalysisStep(
             operation="geo_service.download_dataset",
             tool_name="GEODownloadService.download_dataset",
-            description=f"Downloaded GEO dataset {geo_id} using orchestrated download service",
-            library="lobster",
-            imports=[
-                "from lobster.tools.download_orchestrator import DownloadOrchestrator",
-                "from lobster.services.data_access.geo_download_service import GEODownloadService",
-                "from lobster.core.data_manager_v2 import DataManagerV2",
-            ],
-            code_template="""# Download GEO dataset using DownloadOrchestrator
-data_manager = DataManagerV2(workspace_dir="./workspace")
-orchestrator = DownloadOrchestrator(data_manager)
-geo_service = GEODownloadService(data_manager)
-orchestrator.register_service(geo_service)
-
-# Execute download from queue entry
-modality_name, stats = orchestrator.execute_download("{{ queue_entry_id }}")
-print(f"Downloaded: {modality_name}")
-print(f"Stats: {stats}")
-
-# Access downloaded data
-adata = data_manager.get_modality(modality_name)
+            description=f"Load GEO dataset {geo_id} from downloaded H5AD file",
+            library="anndata",
+            imports=["import anndata as ad"],
+            code_template="""# Load GEO dataset {{ dataset_id }}
+# Originally downloaded via Lobster AI DownloadOrchestrator
+# Run this notebook from the workspace root directory
+adata = ad.read_h5ad("{{ raw_file }}")
+print(f"Loaded {{ dataset_id }}: {adata.n_obs} observations × {adata.n_vars} variables")
 """,
             parameters=parameters,
             parameter_schema=parameter_schema,
-            input_entities=[queue_entry_id],
+            input_entities=[raw_file],
             output_entities=[modality_name],
+            execution_context={
+                "queue_entry_id": queue_entry_id,
+                "strategy": strategy_name or "auto",
+                "use_intersecting_genes_only": use_intersecting_genes_only,
+                "database": "geo",
+                "original_modality_name": modality_name,
+            },
         )
 
         logger.debug(f"Created AnalysisStep IR for {geo_id}")

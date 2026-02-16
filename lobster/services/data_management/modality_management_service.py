@@ -475,6 +475,7 @@ class ModalityManagementService:
         """Create provenance IR for list_modalities operation."""
         return AnalysisStep(
             operation="modality_management.list_modalities",
+            exportable=False,
             tool_name="ModalityManagementService.list_modalities",
             description=(
                 "List all available modalities"
@@ -509,6 +510,7 @@ for info in modality_info:
         """Create provenance IR for get_modality_info operation."""
         return AnalysisStep(
             operation="modality_management.get_modality_info",
+            exportable=False,
             tool_name="ModalityManagementService.get_modality_info",
             description=f"Retrieve detailed information for modality '{modality_name}'",
             library="lobster",
@@ -538,6 +540,7 @@ print(f"Layers: {', '.join(info['layers'])}")
         """Create provenance IR for remove_modality operation."""
         return AnalysisStep(
             operation="modality_management.remove_modality",
+            exportable=False,
             tool_name="ModalityManagementService.remove_modality",
             description=f"Remove modality '{modality_name}' from workspace",
             library="lobster",
@@ -567,6 +570,7 @@ if success:
         """Create provenance IR for validate_compatibility operation."""
         return AnalysisStep(
             operation="modality_management.validate_compatibility",
+            exportable=False,
             tool_name="ModalityManagementService.validate_compatibility",
             description=f"Validate compatibility between {len(modality_names)} modalities",
             library="lobster",
@@ -600,6 +604,7 @@ print(f"Recommendations: {', '.join(validation['recommendations'])}")
         """Create provenance IR for load_modality operation."""
         return AnalysisStep(
             operation="modality_management.load_modality",
+            exportable=False,
             tool_name="ModalityManagementService.load_modality",
             description=f"Load data file as modality '{modality_name}' using {adapter} adapter",
             library="lobster",

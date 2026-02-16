@@ -16,6 +16,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.utils.gene_annotation import ANNOTATE_QC_GENES_HELPER
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -1093,7 +1094,10 @@ class QualityService:
         }
 
         # Jinja2 template with parameter placeholders
-        code_template = """# Calculate QC metrics
+        code_template = """# Annotate mitochondrial and ribosomal genes (5-pattern cascade)
+annotate_qc_genes(adata)
+
+# Calculate QC metrics
 sc.pp.calculate_qc_metrics(
     adata,
     qc_vars=['mt', 'ribo'],
@@ -1142,6 +1146,7 @@ print(f"Mean mitochondrial %: {adata.obs['pct_counts_mt'].mean():.2f}")
             },
             validates_on_export=True,
             requires_validation=False,
+            helper_code=[ANNOTATE_QC_GENES_HELPER],
         )
 
         logger.debug(f"Created IR for quality assessment: {ir.operation}")

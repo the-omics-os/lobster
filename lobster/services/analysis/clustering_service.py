@@ -227,7 +227,11 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
                 "umap",
             ]
             description_method = "deviance"
-            imports = ["import scanpy as sc", "import numpy as np"]
+            imports = [
+                "import scanpy as sc",
+                "import numpy as np",
+                "from lobster.utils.deviance import calculate_deviance",
+            ]
             parameters = {
                 "resolution": resolution,
                 "n_neighbors": n_neighbors,

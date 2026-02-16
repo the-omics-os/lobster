@@ -315,28 +315,29 @@ class CustomCodeExecutionService:
         # Step 2: Ensure modality is saved to disk (subprocess needs file access)
         if modality_name and modality_name in self.data_manager.list_modalities():
             modality_path = self.data_manager.workspace_path / f"{modality_name}.h5ad"
-            if not modality_path.exists():
-                logger.debug(
-                    f"Saving modality {modality_name} to disk for subprocess access"
+            # Always save latest in-memory state (fixes stale reads when
+            # a specialized tool modified the modality since last disk save)
+            logger.debug(
+                f"Saving modality {modality_name} to disk for subprocess access"
+            )
+            # Use data_manager.save_modality() which goes through H5ADBackend
+            # with full Arrow conversion + sanitization pipeline
+            try:
+                self.data_manager.save_modality(modality_name, str(modality_path))
+            except Exception as e:
+                logger.warning(
+                    f"H5AD backend save failed ({e}), attempting direct write"
                 )
-                # Use data_manager.save_modality() which goes through H5ADBackend
-                # with full Arrow conversion + sanitization pipeline
+                adata = self.data_manager.get_modality(modality_name)
                 try:
-                    self.data_manager.save_modality(modality_name, str(modality_path))
-                except Exception as e:
-                    logger.warning(
-                        f"H5AD backend save failed ({e}), attempting direct write"
+                    from lobster.core.utils.h5ad_utils import (
+                        convert_arrow_to_standard,
                     )
-                    adata = self.data_manager.get_modality(modality_name)
-                    try:
-                        from lobster.core.utils.h5ad_utils import (
-                            convert_arrow_to_standard,
-                        )
 
-                        adata = convert_arrow_to_standard(adata)
-                    except Exception:
-                        pass
-                    adata.write_h5ad(modality_path)
+                    adata = convert_arrow_to_standard(adata)
+                except Exception:
+                    pass
+                adata.write_h5ad(modality_path)
 
         # Step 2.5: Resolve workspace_key paths (Bug fix - Gemini Option C)
         resolved_paths = {}
@@ -365,7 +366,62 @@ class CustomCodeExecutionService:
             code, exec_context
         )
 
-        # Step 4: Save large outputs to files (DeepAgents pattern)
+        # Step 4a: Detect and read back modified adata (snapshot write-back)
+        new_modality_name = None
+        write_back_error = None
+        if modality_name and exec_error is None:
+            modified_path = Path(self.data_manager.workspace_path) / ".modified_adata.h5ad"
+            if modified_path.exists():
+                try:
+                    import anndata
+
+                    modified_adata = anndata.read_h5ad(modified_path)
+
+                    # Deduplicate: _custom, _custom_2, _custom_3...
+                    new_modality_name = f"{modality_name}_custom"
+                    counter = 2
+                    while new_modality_name in self.data_manager.list_modalities():
+                        new_modality_name = f"{modality_name}_custom_{counter}"
+                        counter += 1
+
+                    # Extract change description from stdout sentinel
+                    step_summary = description
+                    if stdout_output and "__LOBSTER_CHANGES__:" in stdout_output:
+                        for line in stdout_output.splitlines():
+                            if "__LOBSTER_CHANGES__:" in line:
+                                step_summary = f"{description} ({line.split('__LOBSTER_CHANGES__:', 1)[1].strip()})"
+                                break
+
+                    self.data_manager.store_modality(
+                        name=new_modality_name,
+                        adata=modified_adata,
+                        parent_name=modality_name,
+                        step="custom",
+                        step_summary=step_summary,
+                    )
+                    logger.info(
+                        f"Stored modified adata as '{new_modality_name}' (parent: '{modality_name}')"
+                    )
+                except Exception as e:
+                    write_back_error = str(e)
+                    new_modality_name = None
+                    logger.warning(f"Adata write-back failed (non-fatal): {e}")
+                finally:
+                    try:
+                        modified_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+
+        # Strip sentinel lines from stdout (LLM shouldn't see internal signals)
+        if stdout_output:
+            stdout_output = "\n".join(
+                l
+                for l in stdout_output.splitlines()
+                if "__LOBSTER_ADATA_MODIFIED__" not in l
+                and "__LOBSTER_CHANGES__:" not in l
+            )
+
+        # Step 4b: Save large outputs to files (DeepAgents pattern)
         workspace_path = Path(self.data_manager.workspace_path)
         MAX_STDOUT_PREVIEW = 500
         MAX_STDERR_PREVIEW = 2000
@@ -380,7 +436,10 @@ class CustomCodeExecutionService:
             stdout_file_path = str(stdout_file)
             stdout_preview = (
                 stdout_output[:MAX_STDOUT_PREVIEW]
-                + f"\n\n... Output truncated at {MAX_STDOUT_PREVIEW} chars. Full output: {stdout_file_path}"
+                + f"\n\n... [OUTPUT TRUNCATED at {MAX_STDOUT_PREVIEW} chars. "
+                f"Full stdout saved to: {stdout_file_path}. "
+                "DO NOT re-execute to see the rest. "
+                "Save large outputs to a file and return a summary instead.]"
             )
         else:
             stdout_preview = stdout_output if stdout_output else ""
@@ -417,6 +476,8 @@ class CustomCodeExecutionService:
             "selective_loading": workspace_keys is not None,
             "persisted": persist,
             "error": str(exec_error) if exec_error else None,
+            "new_modality_name": new_modality_name,
+            "write_back_error": write_back_error,
         }
 
         # Step 5: Generate IR (always, but mark as non-exportable if persist=False)
@@ -429,6 +490,10 @@ class CustomCodeExecutionService:
             persist=persist,
             stats=stats,
         )
+
+        # Update IR output_entities if a new modality was created
+        if new_modality_name:
+            ir.output_entities = [new_modality_name]
 
         logger.debug(
             f"Code execution {'succeeded' if stats['success'] else 'failed'} "
@@ -630,6 +695,21 @@ try:
 except Exception as e:
     print(f"Error loading modality: {{e}}")
     adata = None
+
+# === ADATA FINGERPRINT (pre-user-code) ===
+_lobster_fp = None
+if adata is not None:
+    try:
+        _lobster_fp = {{
+            "shape": adata.shape,
+            "obs_cols": sorted(adata.obs.columns.tolist()),
+            "var_cols": sorted(adata.var.columns.tolist()),
+            "obsm_keys": sorted(adata.obsm.keys()),
+            "obsp_keys": sorted(adata.obsp.keys()),
+            "uns_keys": sorted(adata.uns.keys()),
+        }}
+    except Exception:
+        _lobster_fp = None
 """
 
         # Add workspace file loading
@@ -812,8 +892,40 @@ Path = Path
             resolved_paths=resolved_paths,
         )
 
-        # Combine setup + user code + result extraction
+        # Combine setup + user code + write-back + result extraction
         full_script = setup_code + "\n" + code + "\n\n"
+
+        # Add adata write-back epilogue (detects modifications and saves to temp file)
+        if modality_name:
+            full_script += """
+# === ADATA WRITE-BACK ===
+if _lobster_fp is not None and adata is not None:
+    try:
+        _post_fp = {
+            "shape": adata.shape,
+            "obs_cols": sorted(adata.obs.columns.tolist()),
+            "var_cols": sorted(adata.var.columns.tolist()),
+            "obsm_keys": sorted(adata.obsm.keys()),
+            "obsp_keys": sorted(adata.obsp.keys()),
+            "uns_keys": sorted(adata.uns.keys()),
+        }
+        if _lobster_fp != _post_fp:
+            import pandas as _wb_pd
+            _wb_pd.options.future.infer_string = False
+            adata.write_h5ad(WORKSPACE / '.modified_adata.h5ad')
+            print("__LOBSTER_ADATA_MODIFIED__")
+            # Report changes
+            _ch = []
+            if _lobster_fp['shape'] != _post_fp['shape']:
+                _ch.append(f"shape {_lobster_fp['shape']}->{_post_fp['shape']}")
+            for _k, _label in [('obs_cols','obs'), ('obsm_keys','obsm'), ('obsp_keys','obsp'), ('uns_keys','uns')]:
+                _new = set(_post_fp[_k]) - set(_lobster_fp[_k])
+                if _new: _ch.append(f"+{_label}: {_new}")
+            if _ch: print(f"__LOBSTER_CHANGES__:{'; '.join(_ch)}")
+    except Exception as _e:
+        print(f"Warning: adata write-back failed: {_e}")
+
+"""
 
         # Add result extraction code
         full_script += """
@@ -874,7 +986,10 @@ if 'result' in dir() and result is not None:
             # Truncate output if needed
             if len(stdout_output) > MAX_OUTPUT_LENGTH:
                 stdout_output = (
-                    stdout_output[:MAX_OUTPUT_LENGTH] + "\n... (output truncated)"
+                    stdout_output[:MAX_OUTPUT_LENGTH]
+                    + "\n\n... [STDOUT TRUNCATED at 10,000 chars. "
+                    "DO NOT re-execute to see the rest — it will truncate again. "
+                    "Save large outputs to OUTPUT_DIR / 'results.json' instead of printing them.]"
                 )
                 logger.warning(f"Stdout truncated at {MAX_OUTPUT_LENGTH} characters")
 

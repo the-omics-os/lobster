@@ -287,7 +287,7 @@ class TestSRADownloadService:
         assert "sra/ena/ddbj" in str(exc_info.value).lower()
 
     def test_create_analysis_step_ir(self, sra_service, mock_queue_entry, tmp_path):
-        """Test AnalysisStep IR creation."""
+        """Test AnalysisStep IR creation produces executable file-listing template."""
         fastq_paths = [tmp_path / "SRR001_1.fastq.gz", tmp_path / "SRR001_2.fastq.gz"]
         for f in fastq_paths:
             f.write_bytes(b"test")
@@ -310,12 +310,15 @@ class TestSRADownloadService:
         assert ir.operation == "sra_download"
         assert ir.tool_name == "SRADownloadService.download_dataset"
         assert "SRR000001" in ir.description
-        assert ir.library == "lobster"
-        assert len(ir.imports) > 0
-        assert "DownloadOrchestrator" in ir.code_template
+        assert ir.library == "pathlib"
+        assert "from pathlib import Path" in ir.imports
+        assert "fastq_dir" in ir.code_template
         assert ir.parameters["dataset_id"] == "SRR000001"
-        assert ir.parameters["database"] == "sra"
-        assert ir.parameters["verify_checksum"] is True
+        assert ir.parameters["fastq_dir"] == "downloads/sra/SRR000001"
+        # Queue/strategy details stored in execution_context for traceability
+        assert ir.execution_context["queue_entry_id"] == "test_123"
+        assert ir.execution_context["strategy"] == "FASTQ_FIRST"
+        assert ir.execution_context["verify_checksum"] is True
 
 
 class TestSRADownloadManager:

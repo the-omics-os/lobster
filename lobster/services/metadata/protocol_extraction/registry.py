@@ -30,6 +30,10 @@ def get_protocol_service(domain: str) -> IProtocolExtractionService:
     """
     Factory function to get the appropriate protocol extraction service.
 
+    TODO(v2): Migrate to entry-point discovery via ComponentRegistry
+    so external omics type packages can register protocol extraction
+    services. Currently metabolomics is not mapped — it raises ValueError.
+
     Args:
         domain: Domain identifier. Supported values:
             - "amplicon", "16s", "its", "metagenomics" → AmpliconProtocolService

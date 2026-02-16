@@ -64,6 +64,8 @@ _FIELD_TO_DATABASE = {
     "ena_study_accession": "sra",  # ERP* → routes through SRA preparer
     "ena_experiment_accession": "sra",  # ERX*
     "ena_run_accession": "sra",  # ERR*
+    "metabolights_accession": "metabolights",  # MTBLS*
+    "metabolomics_workbench_accession": "metabolomics_workbench",  # ST*
 }
 
 
@@ -102,8 +104,34 @@ class QueuePreparationService:
         """
         Register default queue preparers for all supported databases.
 
+        Phase 1: Entry-point discovery (external/plugin queue preparers)
+        Phase 2: Hardcoded defaults (GEO, PRIDE, SRA, MassIVE)
+
         Uses lazy imports with try/except to handle missing dependencies.
         """
+        # Phase 1: Discover queue preparers from entry points
+        try:
+            from lobster.core.component_registry import component_registry
+
+            for name, preparer_cls in (
+                component_registry.list_queue_preparers().items()
+            ):
+                try:
+                    preparer = preparer_cls(self.data_manager)
+                    self.register_preparer(preparer)
+                    logger.debug(
+                        f"Registered queue preparer '{name}' from entry point"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to load queue preparer '{name}' "
+                        f"from entry point: {e}"
+                    )
+        except Exception as e:
+            logger.debug(f"Entry point queue preparer discovery skipped: {e}")
+
+        # Phase 2: Hardcoded fallback preparers
+
         # GEO
         try:
             from lobster.services.data_access.geo_queue_preparer import (

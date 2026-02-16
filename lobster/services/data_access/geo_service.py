@@ -3088,38 +3088,67 @@ class GEOService:
                 )
                 return
 
-            # Determine how to map GSM IDs to obs rows
+            # Determine how to map GSM IDs to obs rows.
+            # Strategy cascade:
+            #   1. Match via sample_id column (single-cell datasets)
+            #   2. Match GSM accessions directly against obs_names (bulk)
+            #   3. Match GSM titles against obs_names (bulk with descriptive names)
+            #   4. Positional fallback when sample count == obs count (bulk)
             has_sample_id_col = "sample_id" in adata.obs.columns
             obs_names_upper = {name.upper(): name for name in adata.obs_names}
 
             # Build a mapping: GSM_ID -> list of obs row indices
             gsm_to_rows = {}
+
+            # Strategy 1 & 2: Match via sample_id column or obs_names
             for gsm_id in parsed_samples:
                 gsm_upper = gsm_id.upper()
                 if has_sample_id_col:
-                    # Single-cell or multi-sample: match via sample_id column
                     mask = adata.obs["sample_id"].astype(str).str.upper() == gsm_upper
                     matching_rows = adata.obs_names[mask].tolist()
                     if matching_rows:
                         gsm_to_rows[gsm_id] = matching_rows
-                # Also check obs_names directly (bulk RNA-seq)
                 if gsm_id not in gsm_to_rows:
                     if gsm_upper in obs_names_upper:
                         gsm_to_rows[gsm_id] = [obs_names_upper[gsm_upper]]
+
+            # Strategy 3: Match GSM titles against obs_names
+            if not gsm_to_rows:
+                for gsm_id, sample_meta in samples.items():
+                    title = str(sample_meta.get("title", "")).strip()
+                    if title and title.upper() in obs_names_upper:
+                        gsm_to_rows[gsm_id] = [obs_names_upper[title.upper()]]
+
+            # Strategy 4: Positional fallback for bulk RNA-seq
+            # When sample count matches obs count, assume same ordering
+            if not gsm_to_rows and len(parsed_samples) == adata.n_obs:
+                gsm_ids_ordered = list(parsed_samples.keys())
+                obs_names_ordered = adata.obs_names.tolist()
+                for gsm_id, obs_name in zip(gsm_ids_ordered, obs_names_ordered):
+                    gsm_to_rows[gsm_id] = [obs_name]
+                logger.info(
+                    f"Using positional mapping for {geo_id}: "
+                    f"{len(gsm_to_rows)} samples matched by order "
+                    f"(sample count == obs count == {adata.n_obs})"
+                )
 
             if not gsm_to_rows:
                 logger.debug(
                     f"Could not map any GSM IDs to obs rows for {geo_id}. "
                     f"GSM IDs: {list(parsed_samples.keys())[:5]}, "
+                    f"obs_names: {adata.obs_names[:5].tolist()}, "
                     f"obs sample_ids: {adata.obs['sample_id'].unique()[:5].tolist() if has_sample_id_col else 'N/A'}"
                 )
                 return
 
             # Inject clinical metadata columns
-            import numpy as np
-
+            # Initialize columns as object dtype to avoid FutureWarning
+            # when assigning string values to float columns. Numeric
+            # conversion happens in the post-processing step below.
             for key in keys_to_inject:
-                adata.obs[key] = np.nan
+                adata.obs[key] = pd.Series(
+                    [None] * adata.n_obs, index=adata.obs_names, dtype=object
+                )
 
             injected_count = 0
             for gsm_id, rows in gsm_to_rows.items():
@@ -3172,94 +3201,22 @@ class GEOService:
             str: Predicted data type ("proteomics", "single_cell_rna_seq", or "bulk_rna_seq")
         """
         try:
-            # Check platform information
-            platforms = metadata.get("platforms", {})
-            platform_info = str(platforms).lower()
-
-            # Check overall design
-            overall_design = str(metadata.get("overall_design", "")).lower()
-
-            # Check sample characteristics
-            samples = metadata.get("samples", {})
-            sample_chars = []
-            for sample in samples.values():
-                chars = sample.get("characteristics_ch1", [])
-                if isinstance(chars, list):
-                    sample_chars.extend([str(c).lower() for c in chars])
-
-            sample_text = " ".join(sample_chars)
-
-            combined_text = f"{platform_info} {overall_design} {sample_text}"
-
-            # Keywords that suggest proteomics
-            proteomics_keywords = [
-                "proteomics",
-                "proteome",
-                "mass spectrometry",
-                "mass spec",
-                "ms/ms",
-                "lc-ms",
-                "orbitrap",
-                "q-tof",
-                "maldi",
-                "tmt",
-                "itraq",
-                "silac",
-                "label-free",
-                "lfq",
-                "dia",
-                "dda",
-                "swath",
-                "olink",
-                "somascan",
-                "peptide",
-                "tandem mass",
-            ]
-
-            # Keywords that suggest single-cell
-            single_cell_keywords = [
-                "single cell",
-                "single-cell",
-                "scrnaseq",
-                "scrna-seq",
-                "10x",
-                "chromium",
-                "droplet",
-                "microwell",
-                "smart-seq",
-                "cell sorting",
-                "sorted cells",
-                "individual cells",
-            ]
-
-            # Keywords that suggest bulk
-            bulk_keywords = ["bulk", "tissue", "whole", "total rna", "population"]
-
-            # Count keyword matches
-            proteomics_score = sum(
-                1 for keyword in proteomics_keywords if keyword in combined_text
-            )
-            single_cell_score = sum(
-                1 for keyword in single_cell_keywords if keyword in combined_text
-            )
-            bulk_score = sum(1 for keyword in bulk_keywords if keyword in combined_text)
-
-            # Proteomics takes priority if detected (distinct modality)
-            if proteomics_score > 0 and proteomics_score >= max(
-                single_cell_score, bulk_score
-            ):
+            from lobster.core.omics_registry import DataTypeDetector
+            return DataTypeDetector().determine_data_type(metadata)
+        except ImportError:
+            # Fallback inline detection
+            combined_text = str(metadata.get("platforms", "")).lower()
+            combined_text += " " + str(metadata.get("overall_design", "")).lower()
+            proteomics_kw = ["proteomics", "mass spectrometry", "lc-ms", "orbitrap", "tmt"]
+            if any(kw in combined_text for kw in proteomics_kw):
                 return "proteomics"
-            elif single_cell_score > bulk_score:
+            sc_kw = ["single cell", "single-cell", "10x", "chromium", "droplet"]
+            if any(kw in combined_text for kw in sc_kw):
                 return "single_cell_rna_seq"
-            elif bulk_score > single_cell_score:
-                return "bulk_rna_seq"
-            else:
-                # Default to single-cell for GEO datasets (more common)
-                return "single_cell_rna_seq"
-
+            return "single_cell_rna_seq"
         except Exception as e:
             logger.warning(f"Error determining data type: {e}")
-            return "single_cell_rna_seq"  # Default
+            return "single_cell_rna_seq"
 
     def _format_metadata_summary(
         self,

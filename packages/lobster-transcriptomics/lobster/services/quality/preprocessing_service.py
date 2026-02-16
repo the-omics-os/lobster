@@ -16,6 +16,7 @@ from plotly.subplots import make_subplots
 
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.utils.deviance import calculate_deviance
+from lobster.utils.gene_annotation import ANNOTATE_QC_GENES_HELPER, annotate_qc_genes
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -218,6 +219,9 @@ class PreprocessingService:
 # - Mitochondrial content: maximum {{ max_mito_percent }}%
 # - Ribosomal content: maximum {{ max_ribo_percent }}%
 
+# Annotate mitochondrial and ribosomal genes (5-pattern cascade)
+annotate_qc_genes(adata)
+
 # Calculate QC metrics
 sc.pp.calculate_qc_metrics(adata, qc_vars=['mt', 'ribo'], percent_top=None, log1p=False, inplace=True)
 
@@ -265,6 +269,7 @@ print(f"Normalization complete (target_sum={{ target_sum }}, log1p transformed)"
             },
             validates_on_export=True,
             requires_validation=False,
+            helper_code=[ANNOTATE_QC_GENES_HELPER],
         )
 
     def filter_and_normalize_cells(
@@ -657,14 +662,11 @@ print(f"Top 10 genes: {adata.var_names[adata.var['highly_deviant']].tolist()[:10
             original_n_genes = adata_processed.n_vars
 
             # Scientific check: detect raw counts vs normalized data
-            # HVG (seurat/cell_ranger flavors) expects log-normalized data
             warning = None
-            if flavor in ("seurat", "cell_ranger"):
-                if hasattr(adata_processed.X, "toarray"):
-                    max_val = adata_processed.X.max()
-                else:
-                    max_val = adata_processed.X.max()
+            max_val = adata_processed.X.max()
 
+            if flavor in ("seurat", "cell_ranger"):
+                # seurat/cell_ranger expect log-normalized data
                 if max_val > 50:
                     warning = (
                         f"Data appears to contain raw counts (max value: {max_val:.0f}). "
@@ -673,6 +675,28 @@ print(f"Top 10 genes: {adata.var_names[adata.var['highly_deviant']].tolist()[:10
                         "method='deviance' which works directly on raw counts."
                     )
                     logger.warning(warning)
+            elif flavor == "seurat_v3":
+                # seurat_v3 expects raw counts
+                if max_val < 50:
+                    warning = (
+                        f"Data appears to be normalized (max value: {max_val:.2f}). "
+                        f"HVG with flavor='seurat_v3' expects raw count data. "
+                        "Consider using flavor='seurat' for normalized data, or use "
+                        "method='deviance' which is the recommended approach for raw counts."
+                    )
+                    logger.warning(warning)
+
+            # Filter zero-expression genes before HVG to prevent log10(0)
+            # and LOESS fit failures
+            gene_counts = np.asarray(adata_processed.X.sum(axis=0)).ravel()
+            zero_genes = gene_counts == 0
+            n_zero = int(zero_genes.sum())
+            if n_zero > 0:
+                logger.warning(
+                    f"Removing {n_zero} genes with zero expression across all cells "
+                    f"(would cause log10 errors in HVG calculation)"
+                )
+                adata_processed = adata_processed[:, ~zero_genes].copy()
 
             # Run HVG selection
             # Adjust n_top_genes if it exceeds available genes
@@ -696,9 +720,11 @@ print(f"Top 10 genes: {adata.var_names[adata.var['highly_deviant']].tolist()[:10
                 "n_top_genes_requested": n_top_genes,
                 "n_features_selected": n_selected,
                 "original_n_genes": original_n_genes,
-                "selection_rate": (n_selected / original_n_genes) * 100
-                if original_n_genes > 0
-                else 0.0,
+                "selection_rate": (
+                    (n_selected / original_n_genes) * 100
+                    if original_n_genes > 0
+                    else 0.0
+                ),
                 "top_10_genes": selected_genes[:10],
             }
 
@@ -959,20 +985,11 @@ print(f"Top 10 HVGs: {adata.var_names[adata.var['highly_variable']].tolist()[:10
         # Basic QC metrics
         sc.pp.calculate_qc_metrics(adata, percent_top=None, log1p=False, inplace=True)
 
-        # Mitochondrial genes
-        adata.var["mt"] = adata.var_names.str.startswith(
-            "MT-"
-        ) | adata.var_names.str.startswith("mt-")
+        # Annotate mitochondrial and ribosomal genes (5-pattern cascade)
+        annotate_qc_genes(adata)
+
         sc.pp.calculate_qc_metrics(
             adata, qc_vars=["mt"], percent_top=None, log1p=False, inplace=True
-        )
-
-        # Ribosomal genes
-        adata.var["ribo"] = (
-            adata.var_names.str.startswith("RPS")
-            | adata.var_names.str.startswith("RPL")
-            | adata.var_names.str.startswith("Rps")
-            | adata.var_names.str.startswith("Rpl")
         )
         sc.pp.calculate_qc_metrics(
             adata, qc_vars=["ribo"], percent_top=None, log1p=False, inplace=True

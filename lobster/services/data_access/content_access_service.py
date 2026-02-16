@@ -158,7 +158,11 @@ class ContentAccessService:
         """
         Initialize and register all publication providers.
 
-        Providers are registered in order:
+        Providers are registered in two phases:
+        Phase 1: Entry-point discovery (external/plugin providers)
+        Phase 2: Hardcoded defaults (built-in providers)
+
+        Hardcoded providers are registered in order:
         1. AbstractProvider (priority 10) - Fast abstracts
         2. PubMedProvider (priority 10) - Literature search
         3. GEOProvider (priority 10) - GEO dataset discovery
@@ -172,6 +176,25 @@ class ContentAccessService:
         Each provider is instantiated with the DataManagerV2 instance
         for provenance tracking.
         """
+        # Phase 1: Discover providers from entry points
+        try:
+            from lobster.core.component_registry import component_registry
+
+            for name, provider_cls in component_registry.list_providers().items():
+                try:
+                    provider = provider_cls(data_manager=self.data_manager)
+                    self.registry.register_provider(provider)
+                    logger.debug(
+                        f"Registered provider '{name}' from entry point"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to load provider '{name}' from entry point: {e}"
+                    )
+        except Exception as e:
+            logger.debug(f"Entry point provider discovery skipped: {e}")
+
+        # Phase 2: Hardcoded providers (built-in defaults)
         logger.debug("Initializing providers...")
 
         # 1. AbstractProvider - Fast abstract retrieval

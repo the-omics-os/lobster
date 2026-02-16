@@ -441,8 +441,9 @@ class SRADownloadService(IDownloadService):
         """
         Create AnalysisStep IR for provenance tracking.
 
-        Generates intermediate representation capturing all parameters
-        and execution details for reproducibility via Jupyter notebooks.
+        Generates a FASTQ directory listing cell instead of queue-based
+        orchestrator code. Queue state doesn't exist in standalone notebook
+        environments; the FASTQ files are already on disk.
 
         Args:
             accession: SRA accession ID
@@ -453,89 +454,62 @@ class SRADownloadService(IDownloadService):
             url_info: URL info dict from SRAProvider
 
         Returns:
-            AnalysisStep: Provenance tracking object with Jinja2 code template
+            AnalysisStep: Provenance tracking object with executable file-listing template
         """
-        # Build parameters dictionary
+        from lobster.core.analysis_ir import ParameterSpec
+
+        fastq_dir = f"downloads/sra/{accession}"
+
         parameters = {
-            "queue_entry_id": queue_entry_id,
             "dataset_id": accession,
-            "database": "sra",
-            "strategy": strategy_name,
-            "verify_checksum": verify_checksum,
-            "layout": url_info["layout"],
-            "platform": url_info["platform"],
-            "total_size_bytes": url_info["total_size_bytes"],
+            "fastq_dir": fastq_dir,
         }
 
-        # Build parameter schema
         parameter_schema = {
-            "queue_entry_id": {
-                "type": "string",
-                "required": True,
-                "description": "Queue entry identifier for traceability",
-            },
-            "dataset_id": {
-                "type": "string",
-                "required": True,
-                "description": "SRA accession ID (SRR, SRX, or SRP)",
-                "pattern": "^[SED]R[RPXS]\\d+$",
-            },
-            "database": {
-                "type": "string",
-                "required": True,
-                "description": "Source database (sra, ena, or ddbj)",
-                "enum": ["sra", "ena", "ddbj"],
-            },
-            "strategy": {
-                "type": "string",
-                "required": True,
-                "description": "Download strategy name",
-                "enum": self.SUPPORTED_STRATEGIES,
-            },
-            "verify_checksum": {
-                "type": "boolean",
-                "required": False,
-                "description": "Whether to verify MD5 checksums (default: True)",
-            },
-            "layout": {
-                "type": "string",
-                "required": False,
-                "description": "Library layout detected from metadata",
-                "enum": ["SINGLE", "PAIRED", "UNKNOWN"],
-            },
+            "dataset_id": ParameterSpec(
+                param_type="str",
+                papermill_injectable=True,
+                default_value=accession,
+                required=True,
+                description=f"SRA accession ID (e.g., {accession})",
+            ),
+            "fastq_dir": ParameterSpec(
+                param_type="str",
+                papermill_injectable=True,
+                default_value=fastq_dir,
+                required=True,
+                description="Path to FASTQ directory (relative to workspace root)",
+            ),
         }
 
-        # Create AnalysisStep IR
         ir = AnalysisStep(
             operation="sra_download",
             tool_name="SRADownloadService.download_dataset",
-            description=f"Downloaded SRA dataset {accession} as FASTQ files from ENA mirror",
-            library="lobster",
-            imports=[
-                "from lobster.tools.download_orchestrator import DownloadOrchestrator",
-                "from lobster.services.data_access.sra_download_service import SRADownloadService",
-                "from lobster.core.data_manager_v2 import DataManagerV2",
-            ],
-            code_template="""# Download SRA dataset using DownloadOrchestrator
-data_manager = DataManagerV2(workspace_dir="./workspace")
-orchestrator = DownloadOrchestrator(data_manager)
-sra_service = SRADownloadService(data_manager)
-orchestrator.register_service(sra_service)
-
-# Execute download from queue entry
-modality_name, stats = orchestrator.execute_download("{{ queue_entry_id }}")
-print(f"Downloaded: {modality_name}")
-print(f"Stats: {stats}")
-
-# Access downloaded FASTQ metadata
-adata = data_manager.get_modality(modality_name)
-fastq_files = adata.uns["fastq_files"]["paths"]
-print(f"FASTQ files: {fastq_files}")
+            description=f"List downloaded FASTQ files for SRA dataset {accession}",
+            library="pathlib",
+            imports=["from pathlib import Path"],
+            code_template="""# SRA dataset {{ dataset_id }} — FASTQ files
+# Originally downloaded via Lobster AI DownloadOrchestrator (ENA mirror)
+# Run this notebook from the workspace root directory
+fastq_dir = Path("{{ fastq_dir }}")
+fastq_files = sorted(fastq_dir.glob("*.fastq*"))
+print(f"SRA {{ dataset_id }}: {len(fastq_files)} FASTQ file(s) in {fastq_dir}")
+for f in fastq_files:
+    print(f"  {f.name}  ({f.stat().st_size / 1e6:.1f} MB)")
 """,
             parameters=parameters,
             parameter_schema=parameter_schema,
-            input_entities=[queue_entry_id],
+            input_entities=[fastq_dir],
             output_entities=[f"sra_{accession.lower()}"],
+            execution_context={
+                "queue_entry_id": queue_entry_id,
+                "strategy": strategy_name,
+                "verify_checksum": verify_checksum,
+                "layout": url_info["layout"],
+                "platform": url_info["platform"],
+                "total_size_bytes": url_info["total_size_bytes"],
+                "database": "sra",
+            },
         )
 
         logger.debug(f"Created AnalysisStep IR for {accession}")

@@ -406,3 +406,130 @@ result = add(5, 3)
 
         assert ir.execution_context["persist"] is True
         assert ir.execution_context["success"] is True
+
+    def test_adata_writeback_on_modification(self, service, mock_data_manager):
+        """Test that modifying adata creates a new _custom modality via store_modality."""
+        import anndata
+        import numpy as np
+
+        # Create a real h5ad file the subprocess can read
+        adata = anndata.AnnData(X=np.array([[1, 2], [3, 4]]))
+        h5ad_path = mock_data_manager.workspace_path / "test_modality.h5ad"
+        adata.write_h5ad(h5ad_path)
+
+        mock_data_manager.get_modality.return_value = adata
+        mock_data_manager.list_modalities.return_value = ["test_modality"]
+
+        # Code that modifies adata (adds a new obs column)
+        code = "adata.obs['new_col'] = [1, 2]"
+        result, stats, ir = service.execute(
+            code=code,
+            modality_name="test_modality",
+            persist=False,
+            description="Add new column",
+        )
+
+        assert stats["success"] is True
+        assert stats["new_modality_name"] == "test_modality_custom"
+        assert stats["write_back_error"] is None
+
+        # Verify store_modality was called with correct args
+        mock_data_manager.store_modality.assert_called_once()
+        call_kwargs = mock_data_manager.store_modality.call_args
+        assert call_kwargs.kwargs["name"] == "test_modality_custom"
+        assert call_kwargs.kwargs["parent_name"] == "test_modality"
+        assert call_kwargs.kwargs["step"] == "custom"
+
+        # IR should have the new modality as output entity
+        assert ir.output_entities == ["test_modality_custom"]
+
+    def test_adata_no_writeback_when_unmodified(self, service, mock_data_manager):
+        """Test that read-only code does NOT trigger write-back."""
+        import anndata
+        import numpy as np
+
+        adata = anndata.AnnData(X=np.array([[1, 2], [3, 4]]))
+        h5ad_path = mock_data_manager.workspace_path / "test_modality.h5ad"
+        adata.write_h5ad(h5ad_path)
+
+        mock_data_manager.get_modality.return_value = adata
+        mock_data_manager.list_modalities.return_value = ["test_modality"]
+
+        # Code that only reads adata (no modification)
+        code = "result = int(adata.n_obs)"
+        result, stats, ir = service.execute(
+            code=code,
+            modality_name="test_modality",
+            persist=False,
+        )
+
+        assert result == 2
+        assert stats["success"] is True
+        assert stats["new_modality_name"] is None
+        assert stats["write_back_error"] is None
+        mock_data_manager.store_modality.assert_not_called()
+
+    def test_adata_writeback_failure_nonfatal(self, service, mock_data_manager):
+        """Test that write-back failure is non-fatal — execution still succeeds."""
+        import anndata
+        import numpy as np
+
+        adata = anndata.AnnData(X=np.array([[1, 2], [3, 4]]))
+        h5ad_path = mock_data_manager.workspace_path / "test_modality.h5ad"
+        adata.write_h5ad(h5ad_path)
+
+        mock_data_manager.get_modality.return_value = adata
+        mock_data_manager.list_modalities.return_value = ["test_modality"]
+        mock_data_manager.store_modality.side_effect = RuntimeError("disk full")
+
+        # Code that modifies adata
+        code = "adata.obs['new_col'] = [1, 2]"
+        result, stats, ir = service.execute(
+            code=code,
+            modality_name="test_modality",
+            persist=False,
+            description="Modification with store failure",
+        )
+
+        # Execution itself should succeed
+        assert stats["success"] is True
+        # Write-back should have failed gracefully
+        assert stats["new_modality_name"] is None
+        assert stats["write_back_error"] is not None
+        assert "disk full" in stats["write_back_error"]
+
+    def test_stale_disk_fix(self, service, mock_data_manager):
+        """Test that in-memory modality is always saved to disk before subprocess."""
+        import anndata
+        import numpy as np
+
+        # Create stale h5ad on disk (old data — 1 obs)
+        old_adata = anndata.AnnData(X=np.array([[0, 0]]))
+        h5ad_path = mock_data_manager.workspace_path / "test_modality.h5ad"
+        old_adata.write_h5ad(h5ad_path)
+
+        # In-memory modality has different (newer) data — 3 obs
+        new_adata = anndata.AnnData(X=np.array([[1, 2], [3, 4], [5, 6]]))
+        mock_data_manager.get_modality.return_value = new_adata
+        mock_data_manager.list_modalities.return_value = ["test_modality"]
+
+        # Make save_modality actually write the new adata to disk
+        def _save_side_effect(name, path):
+            new_adata.write_h5ad(path)
+
+        mock_data_manager.save_modality.side_effect = _save_side_effect
+
+        # Code that reads n_obs — should see the in-memory version (3 obs), not stale disk (1 obs)
+        code = "result = int(adata.n_obs)"
+        result, stats, ir = service.execute(
+            code=code,
+            modality_name="test_modality",
+            persist=False,
+        )
+
+        assert result == 3  # From fresh in-memory state, not stale disk
+        assert stats["success"] is True
+        # save_modality should have been called to sync disk
+        mock_data_manager.save_modality.assert_called_once_with(
+            "test_modality", str(h5ad_path)
+        )

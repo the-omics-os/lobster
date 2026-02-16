@@ -28,140 +28,54 @@ logger = get_logger(__name__)
 
 
 def _is_single_cell_dataset(metadata: dict) -> bool:
-    """Detect if dataset is single-cell based on metadata keywords."""
-    single_cell_keywords = [
-        "single-cell",
-        "single cell",
-        "scRNA-seq",
-        "10x",
-        "10X",
-        "droplet",
-        "Drop-seq",
-        "Smart-seq",
-        "CEL-seq",
-        "inDrop",
-        "single nuclei",
-        "snRNA-seq",
-        "scATAC-seq",
-        "Chromium",
-    ]
+    """Detect if dataset is single-cell based on metadata keywords.
 
-    text_fields = [
-        metadata.get("title", ""),
-        metadata.get("summary", ""),
-        metadata.get("overall_design", ""),
-        metadata.get("type", ""),
-        metadata.get("description", ""),
-    ]
-
-    for field in text_fields:
-        if any(kw.lower() in field.lower() for kw in single_cell_keywords):
-            return True
-
-    platform = metadata.get("platform", "")
-    if any(kw in platform for kw in ["10X", "Chromium", "GPL24676", "GPL24247"]):
-        return True
-
-    library_strategy = metadata.get("library_strategy", "")
-    if "single" in library_strategy.lower() or "10x" in library_strategy.lower():
-        return True
-
-    return False
+    Delegates to unified DataTypeDetector from omics_registry.
+    """
+    try:
+        from lobster.core.omics_registry import DataTypeDetector
+        return DataTypeDetector().is_single_cell(metadata)
+    except ImportError:
+        # Fallback: inline detection if omics_registry not available
+        single_cell_keywords = [
+            "single-cell", "single cell", "scRNA-seq", "10x", "10X",
+            "droplet", "Drop-seq", "Smart-seq", "CEL-seq", "inDrop",
+            "single nuclei", "snRNA-seq", "scATAC-seq", "Chromium",
+        ]
+        text_fields = [
+            metadata.get("title", ""), metadata.get("summary", ""),
+            metadata.get("overall_design", ""), metadata.get("type", ""),
+            metadata.get("description", ""),
+        ]
+        for field in text_fields:
+            if any(kw.lower() in field.lower() for kw in single_cell_keywords):
+                return True
+        return False
 
 
 def _is_proteomics_dataset(metadata: dict) -> bool:
     """Detect if dataset is proteomics based on metadata keywords and platform.
 
-    Checks text fields, platform accessions, library strategy, and
-    characteristics_ch1 for mass spectrometry and affinity proteomics indicators.
+    Delegates to unified DataTypeDetector from omics_registry.
     """
-    # Mass spectrometry and affinity proteomics keywords
-    proteomics_keywords = [
-        "proteomics",
-        "proteome",
-        "mass spectrometry",
-        "mass spec",
-        "ms/ms",
-        "lc-ms",
-        "lc/ms",
-        "orbitrap",
-        "q-tof",
-        "qtof",
-        "maldi",
-        "triple tof",
-        "tripletof",
-        "q exactive",
-        "qexactive",
-        "tmt",
-        "itraq",
-        "silac",
-        "label-free quantification",
-        "label free quantification",
-        "lfq",
-        "dia",
-        "dda",
-        "data-independent acquisition",
-        "data-dependent acquisition",
-        "swath",
-        "olink",
-        "somascan",
-        "soma logic",
-        "proximity extension assay",
-        "protein expression",
-        "protein abundance",
-        "peptide",
-        "tandem mass",
-    ]
-
-    text_fields = [
-        metadata.get("title", ""),
-        metadata.get("summary", ""),
-        metadata.get("overall_design", ""),
-        metadata.get("type", ""),
-        metadata.get("description", ""),
-    ]
-
-    for field in text_fields:
-        if any(kw.lower() in field.lower() for kw in proteomics_keywords):
-            return True
-
-    # Check platform — known mass spectrometry and proteomics platforms
-    platform = metadata.get("platform", "")
-    ms_platforms = [
-        "Orbitrap",
-        "Q-TOF",
-        "MALDI",
-        "TripleTOF",
-        "QExactive",
-        "Lumos",
-        "Exploris",
-        "timsTOF",
-        "Olink",
-        "SomaScan",
-    ]
-    if any(kw.lower() in platform.lower() for kw in ms_platforms):
-        return True
-
-    # Check characteristics_ch1 for proteomics-specific patterns
-    samples = metadata.get("samples", {})
-    for sample in samples.values() if isinstance(samples, dict) else []:
-        chars = sample.get("characteristics_ch1", [])
-        if isinstance(chars, list):
-            chars_text = " ".join(str(c).lower() for c in chars)
-            if any(
-                pattern in chars_text
-                for pattern in [
-                    "assay: protein",
-                    "technology: ms",
-                    "instrument:",
-                    "mass spectrometer",
-                    "fractionation:",
-                    "enzyme: trypsin",
-                ]
-            ):
+    try:
+        from lobster.core.omics_registry import DataTypeDetector
+        return DataTypeDetector().is_proteomics(metadata)
+    except ImportError:
+        # Fallback: check main keywords only
+        proteomics_keywords = [
+            "proteomics", "proteome", "mass spectrometry", "mass spec",
+            "ms/ms", "lc-ms", "orbitrap", "tmt", "itraq", "silac",
+            "olink", "somascan",
+        ]
+        text_fields = [
+            metadata.get("title", ""), metadata.get("summary", ""),
+            metadata.get("overall_design", ""),
+        ]
+        for field in text_fields:
+            if any(kw.lower() in field.lower() for kw in proteomics_keywords):
                 return True
-
-    return False
+        return False
 
 
 def _create_recommended_strategy(
