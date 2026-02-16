@@ -10,7 +10,7 @@
 
 **Core Value:** Provenance must survive process exit. If the user ran an analysis, they must be able to export it as a Jupyter notebook — from any session, after any restart.
 
-**Current Focus:** Phase 7 — Documentation
+**Current Focus:** PROJECT COMPLETE
 
 **What We're Building:** Disk-persistent provenance scoped to sessions, transforming Lobster AI's reproducibility from single-process to cross-session, crash-resilient, and cloud-ready.
 
@@ -18,15 +18,15 @@
 
 ## Current Position
 
-**Phase:** 6 of 7 — Integration Test Coverage
+**Phase:** 7 of 7 — Documentation Update
 **Plan:** 1 of 1 (complete)
-**Status:** Phase complete
-**Last activity:** 2026-02-15 - Completed 06-01-PLAN.md
+**Status:** Project complete
+**Last activity:** 2026-02-15 - Completed 07-01-PLAN.md
 
 **Progress:**
 ```
-[█████████████████████████████████-] 86%
-Phase 1-6 complete, ready for Phase 7
+[██████████████████████████████████] 100%
+All 7 phases complete
 ```
 
 **Completed:**
@@ -36,11 +36,11 @@ Phase 1-6 complete, ready for Phase 7
 - Phase 4: CLI Session Support (Plan 1: CommandClient + --session-id option)
 - Phase 5: Unit Test Coverage (Plan 1: 13 tests, 96.4% method coverage)
 - Phase 6: Integration Test Coverage (Plan 1: 3 tests, full workflow validation)
+- Phase 7: Documentation Update (Plan 1: docs-site MDX updates, build verified)
 
 **Next Actions:**
-1. Plan Phase 7 — Documentation updates
-2. Update skills/lobster-use/references/cli-commands.md with --session-id option
-3. Final verification and project completion
+1. Project complete - ready for v1.0.7 release tag
+2. Manual verification: full workflow from analysis to cross-session export
 
 ---
 
@@ -50,10 +50,10 @@ Phase 1-6 complete, ready for Phase 7
 |--------|--------|---------|--------|
 | Requirements Coverage | 100% | 100% | Complete |
 | Phases Defined | 7 | 7 | Complete |
-| Phases Complete | 7 | 6 | In Progress |
+| Phases Complete | 7 | 7 | Complete |
 | Unit Tests | 12 | 13 | Complete |
 | Integration Tests | 3 | 3 | Complete |
-| Documentation Updates | 1 | 0 | Pending (Phase 7) |
+| Documentation Updates | 1 | 1 | Complete |
 
 ---
 
@@ -82,6 +82,7 @@ Phase 1-6 complete, ready for Phase 7
 | 2026-02-15 | pytest tmp_path over tmpdir | Modern fixture, automatic cleanup, Path objects |
 | 2026-02-15 | Synthetic IR fixture with all fields | Complete round-trip validation without service dependencies |
 | 2026-02-15 | NotebookExporter handles both dict and AnalysisStep IR | Cross-session compatibility - IR can be dict (in-memory) or AnalysisStep (restored from disk) |
+| 2026-02-15 | init_client() computes session_dir before creating DataManagerV2 | Bug fix: CLI path was bypassing provenance persistence — external data_manager had no session_dir |
 
 ### Implementation Notes
 
@@ -108,8 +109,12 @@ Phase 1-6 complete, ready for Phase 7
 **Files modified (Phase 6):**
 - `lobster/core/notebook_exporter.py` — Bug fix: handle AnalysisStep IR in addition to dict IR
 
-**Files to modify (remaining):**
-- `skills/lobster-use/references/cli-commands.md` — Documentation (Phase 7)
+**Files modified (Phase 7):**
+- `lobster/cli.py` — Bug fix: init_client() now passes session_dir to DataManagerV2 (provenance persistence was broken)
+- `skills/lobster-use/references/cli-commands.md` — Pipeline export no longer strikethrough, --session-id for lobster command, cross-session export section
+- `skills/lobster-dev/references/architecture.md` — session_dir in DataManagerV2/ProvenanceTracker examples
+- `docs-site/content/docs/guides/cli-commands.mdx` — Session Continuity subsection, /pipeline commands, --session-id examples
+- `docs-site/content/docs/guides/data-analysis-workflows.mdx` — Session-Scoped Pipeline Export subsection
 
 **Architecture patterns established:**
 - Append-only JSONL with O(1) writes using `open("a")` + `fsync`
@@ -194,11 +199,11 @@ Phase 1-6 complete, ready for Phase 7
 - [x] Unblock pipeline export in CommandClient
 - [x] Write 13 unit tests (12 required + 1 bonus)
 - [x] Write 3 integration tests
-- [ ] Update CLI commands documentation
+- [x] Update CLI commands documentation
 
 ### Known Blockers
 
-None — Phase 6 complete, ready for Phase 7.
+None — All 7 phases complete. Project finished.
 
 ---
 
@@ -208,23 +213,22 @@ None — Phase 6 complete, ready for Phase 7.
 **Workspace:** `/Users/tyo/omics-os/lobster/.planning/`
 **Config:** depth=standard, mode=yolo, parallelization=true
 
-**Last Session:** 2026-02-15T12:03:04Z
-**Stopped at:** Completed 06-01-PLAN.md
+**Last Session:** 2026-02-15T12:43:45Z
+**Stopped at:** Completed 07-01-PLAN.md (PROJECT COMPLETE)
 **Resume file:** None
 
 **Quick Resume:**
 ```bash
-# Review Phase 6 summary
-cat /Users/tyo/omics-os/lobster/.planning/phases/06-integration-test-coverage/06-01-SUMMARY.md
+# Review Phase 7 summary
+cat /Users/tyo/omics-os/lobster/.planning/phases/07-documentation-update/07-01-SUMMARY.md
 
-# Plan Phase 7
-/gsd:plan-phase 7
+# Project complete - no further phases
 ```
 
 **Context Files:**
 - PROJECT.md — What we're building, constraints, key decisions
-- REQUIREMENTS.md — 38 requirements with traceability (37/38 complete)
-- ROADMAP.md — 7 phases with success criteria (6/7 complete)
+- REQUIREMENTS.md — 38 requirements with traceability (38/38 complete)
+- ROADMAP.md — 7 phases with success criteria (7/7 complete)
 - config.json — Workflow settings
 
 ---
@@ -279,10 +283,18 @@ cat /Users/tyo/omics-os/lobster/.planning/phases/06-integration-test-coverage/06
 - [x] No regressions in existing integration tests
 - [x] Bug fix enables cross-session functionality
 
+**Phase 7 (Complete):**
+- [x] cli-commands.mdx updated with --session-id flag, Session Continuity section, /pipeline commands
+- [x] data-analysis-workflows.mdx updated with Session-Scoped Pipeline Export section
+- [x] Version markers (v1.0.7+) applied consistently across both files
+- [x] No implementation details exposed (.session.json, ProvenanceTracker, etc.)
+- [x] docs-site build passed (207 static pages, zero errors)
+- [x] Cross-references between both MDX files verified
+
 **Before releasing:**
-- [ ] All 7 phases complete
+- [x] All 7 phases complete
 - [x] 13 unit tests + 3 integration tests passing
-- [ ] Documentation updated
+- [x] Documentation updated (docs-site MDX + skill references)
 - [ ] `make test` passes (all existing tests unchanged)
 - [ ] Manual verification: full workflow from analysis to cross-session export
 
@@ -295,3 +307,4 @@ cat /Users/tyo/omics-os/lobster/.planning/phases/06-integration-test-coverage/06
 *Phase 4 complete: 2026-02-15*
 *Phase 5 complete: 2026-02-15*
 *Phase 6 complete: 2026-02-15*
+*Phase 7 complete: 2026-02-15*

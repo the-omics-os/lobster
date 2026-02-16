@@ -137,7 +137,8 @@ Users interact via natural language to:
 | Bulk RNA-seq | Kallisto/Salmon import, DE with pyDESeq2 |
 | Genomics/DNA | VCF/PLINK, GWAS, PCA, variant annotation |
 | Mass Spec Proteomics | DDA/DIA, missing values, normalization |
-| Literature Mining | PubMed/GEO search, metadata extraction |
+| Metabolomics | LC-MS, GC-MS, NMR; MetaboLights integration |
+| Literature Mining | PubMed/GEO/PRIDE/MetaboLights search, metadata extraction |
 | Machine Learning | Feature selection, survival analysis, cross-validation, SHAP interpretability |
 | Multi-Omics | MOFA integration, pathway enrichment (GO/Reactome via INDRA) |
 
@@ -272,7 +273,8 @@ git worktree remove ../lobster-feature-a # Remove when done
 
 **Key files**:
 - `agents/graph.py` – `create_bioinformatics_graph()` (config-driven, lazy delegation tools)
-- `core/component_registry.py` – Agent discovery via entry points (single source of truth)
+- `core/component_registry.py` – Agent + plugin discovery via entry points (single source of truth)
+- `core/omics_registry.py` – `OmicsTypeConfig`, `OMICS_TYPE_REGISTRY`, `DataTypeDetector` (omics type metadata)
 - `core/data_manager_v2.py` – modality/workspace orchestration
 - `core/provenance.py` – W3C-PROV tracking
 - `core/uv_tool_env.py` – uv tool environment detection and command builder
@@ -336,6 +338,54 @@ def analyze_modality(modality_name: str, **params) -> str:
 ```
 
 For detailed patterns: @.claude/docs/development-rules.md
+
+---
+
+## Omics Plugin Architecture
+
+Lobster AI uses a **plugin-based architecture** for omics type handling. New omics types self-register via Python entry points — zero changes to core required.
+
+**Two complementary registries:**
+- `OmicsTypeRegistry` (`core/omics_registry.py`) — **type metadata**: what omics types exist, detection config, preferred databases, QC thresholds
+- `ComponentRegistry` (`core/component_registry.py`) — **component instances**: adapters, providers, download services, queue preparers, agents, services
+
+**Entry point groups** (7 total):
+| Group | Discovers | Example |
+|-------|-----------|---------|
+| `lobster.agents` | Agent configs | `transcriptomics_expert` |
+| `lobster.services` | Service classes | `publication_processing` |
+| `lobster.agent_configs` | Custom LLM configs | `metadata_assistant` |
+| `lobster.adapters` | Adapter factories* | `metabolomics_lc_ms` |
+| `lobster.providers` | Provider classes | `metabolights` |
+| `lobster.download_services` | Download service classes | `metabolights` |
+| `lobster.queue_preparers` | Queue preparer classes | `metabolights` |
+
+*Adapter entry points MUST be factory callables returning configured instances (not raw classes).
+
+**Built-in omics types** (5): transcriptomics, proteomics, genomics, metabolomics, metagenomics
+
+**Data type detection**: `DataTypeDetector` class replaces 4 scattered detection functions. Old functions (`_is_single_cell_dataset`, `_is_proteomics_dataset`, etc.) are thin wrappers for backward compatibility.
+
+**Registration pattern** (all 4 sites): Entry-point discovery runs FIRST, then hardcoded fallbacks register only if the name wasn't already discovered.
+
+**Adding a new omics type** (external package):
+1. Create `OmicsTypeConfig` and register via `lobster.omics_types` entry point
+2. Create adapter factory → `lobster.adapters` entry point
+3. Create provider → `lobster.providers` entry point
+4. Create download service → `lobster.download_services` entry point
+5. Create queue preparer → `lobster.queue_preparers` entry point
+
+**Key files**:
+- `core/omics_registry.py` — `OmicsTypeConfig`, `OMICS_TYPE_REGISTRY`, `DataTypeDetector`
+- `core/component_registry.py` — All 7 entry point groups + get/list/has APIs
+- `core/adapters/metabolomics_adapter.py` — Reference metabolomics adapter (LC-MS, GC-MS, NMR)
+- `tools/providers/metabolights_provider.py` — Reference MetaboLights provider
+- `services/data_access/metabolights_download_service.py` — Reference download service + queue preparer
+
+**Future plugin targets (v2):**
+- `ExportSchemaRegistry` (`core/schemas/export_schemas.py`) — hardcoded dict
+- `ProtocolExtractionRegistry` (`services/metadata/protocol_extraction/registry.py`) — hardcoded if/elif
+- `DownloadOrchestrator` thread safety for cloud SaaS
 
 ---
 
