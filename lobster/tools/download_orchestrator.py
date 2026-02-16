@@ -38,6 +38,7 @@ Example usage:
 Thread Safety:
     This class is NOT thread-safe. If using in multi-threaded contexts,
     external synchronization is required around execute_download() calls.
+    TODO(v2): Add thread safety for cloud SaaS concurrent downloads.
 """
 
 import traceback
@@ -95,9 +96,34 @@ class DownloadOrchestrator:
         """
         Register default download services.
 
-        Auto-registers available download services (GEO, SRA, PRIDE, MassIVE).
+        Phase 1: Entry-point discovery (external/plugin download services)
+        Phase 2: Hardcoded defaults (GEO, SRA, PRIDE, MassIVE)
+
         Services are registered lazily to avoid import errors if dependencies missing.
         """
+        # Phase 1: Discover download services from entry points
+        try:
+            from lobster.core.component_registry import component_registry
+
+            for name, service_cls in (
+                component_registry.list_download_services().items()
+            ):
+                try:
+                    service = service_cls(self.data_manager)
+                    self.register_service(service)
+                    logger.debug(
+                        f"Registered download service '{name}' from entry point"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to load download service '{name}' "
+                        f"from entry point: {e}"
+                    )
+        except Exception as e:
+            logger.debug(f"Entry point download service discovery skipped: {e}")
+
+        # Phase 2: Hardcoded fallback services
+
         # Try to register GEO service
         try:
             from lobster.services.data_access.geo_download_service import (

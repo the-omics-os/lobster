@@ -23,6 +23,7 @@ class PublicationSource(Enum):
     SRA = "sra"
     PRIDE = "pride"
     MASSIVE = "massive"
+    METABOLIGHTS = "metabolights"
 
 
 class ProviderCapability:
@@ -119,6 +120,7 @@ class DatasetType(Enum):
     ENA = "ena"
     PRIDE = "pride"
     MASSIVE = "massive"
+    METABOLIGHTS = "metabolights"
 
     @classmethod
     def from_supported_database(

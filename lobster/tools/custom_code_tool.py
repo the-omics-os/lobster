@@ -139,6 +139,17 @@ def create_execute_custom_code_tool(
         RETURNING RESULTS:
         Assign to `result` variable: `result = my_computation()`
 
+        LARGE OUTPUT (>100 items or >2000 chars):
+        stdout capped at 500 chars. result capped at 8,000 chars. Truncated
+        output cannot be recovered by re-executing. Save to file instead:
+            import json
+            output_path = OUTPUT_DIR / 'my_results.json'
+            with open(output_path, 'w') as f:
+                json.dump(large_data, f)
+            result = {"saved_to": str(output_path), "count": len(large_data),
+                      "preview": large_data[:5]}
+        Do not assign large lists/dicts to result. Do not print large data.
+
         DEFENSIVE CODING REQUIRED:
         - Use data.get('key', default) instead of data['key']
         - Check `if value is not None` before .lower()/.upper()
@@ -163,6 +174,14 @@ def create_execute_custom_code_tool(
           * Included in /notebook export as executable cell
           * Code exported AS-IS (not templated) in exact workflow order
           * Use for: production workflows, data transformations, final analyses
+
+        STATE PERSISTENCE (adata write-back):
+        When you modify adata (add columns, filter cells, compute embeddings),
+        the modified adata is automatically saved as a NEW modality with suffix
+        `_custom`. The original modality is never modified.
+        Example: modality_name="geo_gse12345_clustered" + adding obs column
+        → new modality "geo_gse12345_clustered_custom" created automatically.
+        Use the new name for subsequent operations on the modified data.
 
         PERSISTING FOR METADATA OPERATIONS:
         Return dict with samples and output_key to persist to metadata_store:
@@ -367,7 +386,8 @@ def _truncate_result(result: Any, max_length: int = MAX_RESULT_LENGTH) -> tuple:
         truncated = result[: max_length - 100]  # Leave room for suffix
         return (
             f"{truncated}\n\n... [TRUNCATED: {original_length:,} chars total, "
-            f"showing first {len(truncated):,}]",
+            f"showing first {len(truncated):,}. "
+            f"Save large data to OUTPUT_DIR instead of returning it. Do NOT re-execute.]",
             True,
             original_length,
         )
@@ -389,6 +409,7 @@ def _truncate_result(result: Any, max_length: int = MAX_RESULT_LENGTH) -> tuple:
                 "_total_items": len(result),
                 "_shown_items": len(truncated_list),
                 "_original_chars": original_length,
+                "_action": "Result too large for context. Save to OUTPUT_DIR / 'results.json' and assign a summary dict to result instead. Do NOT re-execute.",
                 "items": truncated_list,
             },
             True,
@@ -397,7 +418,11 @@ def _truncate_result(result: Any, max_length: int = MAX_RESULT_LENGTH) -> tuple:
 
     elif isinstance(result, dict):
         # For dicts, try to preserve structure but truncate large values
-        truncated_dict = {"_truncated": True, "_original_chars": original_length}
+        truncated_dict = {
+            "_truncated": True,
+            "_original_chars": original_length,
+            "_action": "Dict too large for context. Save full dict to OUTPUT_DIR / 'results.json' and return summary. Do NOT re-execute.",
+        }
         current_length = 50  # Account for metadata
 
         for key, value in result.items():
@@ -433,7 +458,8 @@ def _truncate_result(result: Any, max_length: int = MAX_RESULT_LENGTH) -> tuple:
         str_result = str(result)
         if len(str_result) > max_length:
             return (
-                f"{str_result[: max_length - 100]}\n\n... [TRUNCATED: {original_length:,} chars]",
+                f"{str_result[: max_length - 100]}\n\n... [TRUNCATED: {original_length:,} chars. "
+                f"Save large data to OUTPUT_DIR instead of returning it. Do NOT re-execute.]",
                 True,
                 original_length,
             )
@@ -486,6 +512,8 @@ def _format_response(
         "stderr_full_path": stats.get("stderr_full_path"),
         "warnings": stats.get("warnings", []),
         "persisted": persist,
+        "new_modality_name": stats.get("new_modality_name"),
+        "write_back_error": stats.get("write_back_error"),
         "post_processor_message": post_processor_msg,
     }
 
