@@ -22,6 +22,34 @@ from lobster.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _check_scikit_misc_available() -> bool:
+    """Check whether scikit-misc (skmisc) is installed."""
+    try:
+        import skmisc.loess  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+def _require_scikit_misc(context: str) -> None:
+    """Raise a clear error if scikit-misc is missing.
+
+    Called before any code path that needs the ``seurat_v3`` HVG flavor.
+    """
+    if not _check_scikit_misc_available():
+        raise PreprocessingError(
+            f"The '{context}' operation requires the 'scikit-misc' package "
+            "(Seurat v3 HVG selection uses LOESS regression from scikit-misc).\n\n"
+            "Install it with:\n"
+            "  pip install 'lobster-transcriptomics[seurat-v3]'\n\n"
+            "Note: scikit-misc requires a Fortran compiler (gfortran) on platforms "
+            "without pre-built wheels (e.g. aarch64 Linux). If you cannot install "
+            "it, use flavor='seurat' (the default) which does not require "
+            "scikit-misc."
+        )
+
+
 class PreprocessingError(Exception):
     """Base exception for preprocessing operations."""
 
@@ -661,6 +689,10 @@ print(f"Top 10 genes: {adata.var_names[adata.var['highly_deviant']].tolist()[:10
             adata_processed = adata.copy()
             original_n_genes = adata_processed.n_vars
 
+            # Early check: seurat_v3 requires scikit-misc (Fortran-compiled LOESS)
+            if flavor == "seurat_v3":
+                _require_scikit_misc("select_features_hvg with flavor='seurat_v3'")
+
             # Scientific check: detect raw counts vs normalized data
             warning = None
             max_val = adata_processed.X.max()
@@ -1222,7 +1254,18 @@ print(f"Top 10 HVGs: {adata.var_names[adata.var['highly_variable']].tolist()[:10
         logger.debug(f"Finding {n_features} highly variable genes for integration")
 
         # Find highly variable genes
-        sc.pp.highly_variable_genes(adata, n_top_genes=n_features, flavor="seurat_v3")
+        # Prefer seurat_v3 (expects raw counts) but fall back to seurat if
+        # scikit-misc is not installed (it requires a Fortran compiler).
+        if _check_scikit_misc_available():
+            hvg_flavor = "seurat_v3"
+        else:
+            hvg_flavor = "seurat"
+            logger.warning(
+                "scikit-misc is not installed — falling back to flavor='seurat' "
+                "for integration feature selection. Install "
+                "'lobster-transcriptomics[seurat-v3]' for Seurat v3 HVG."
+            )
+        sc.pp.highly_variable_genes(adata, n_top_genes=n_features, flavor=hvg_flavor)
 
         # Count selected features
         n_hvg_selected = np.sum(adata.var["highly_variable"])
@@ -1233,7 +1276,7 @@ print(f"Top 10 HVGs: {adata.var_names[adata.var['highly_variable']].tolist()[:10
 
         integration_stats = {
             "n_hvg_selected": n_hvg_selected,
-            "hvg_selection_method": "seurat_v3",
+            "hvg_selection_method": hvg_flavor,
             "target_n_features": n_features,
         }
 
