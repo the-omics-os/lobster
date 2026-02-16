@@ -498,14 +498,18 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
       - name: Test core installation from TestPyPI
         run: |
           VERSION="${{ needs.validate-version.outputs.version }}"
 
           echo "Installing lobster-ai==$VERSION from TestPyPI..."
-          pip install --index-url https://test.pypi.org/simple/ \
-                      --extra-index-url https://pypi.org/simple \
-                      lobster-ai==$VERSION
+          uv pip install --index-url https://test.pypi.org/simple/ \
+                         --extra-index-url https://pypi.org/simple \
+                         --system \
+                         lobster-ai==$VERSION
 
           python -c "from lobster.version import __version__; print(f'Version: {__version__}')"
           lobster --help
@@ -515,9 +519,10 @@ jobs:
           VERSION="${{ needs.validate-version.outputs.version }}"
 
           echo "Installing lobster-ai[full]==$VERSION from TestPyPI..."
-          pip install --index-url https://test.pypi.org/simple/ \
-                      --extra-index-url https://pypi.org/simple \
-                      "lobster-ai[full]==$VERSION"
+          uv pip install --index-url https://test.pypi.org/simple/ \
+                         --extra-index-url https://pypi.org/simple \
+                         --system \
+                         "lobster-ai[full]==$VERSION"
 
           python -c "
           from lobster.core.component_registry import component_registry
@@ -533,9 +538,10 @@ jobs:
         continue-on-error: true
         run: |
           echo "Installing private packages from TestPyPI (best-effort)..."
-          pip install --index-url https://test.pypi.org/simple/ \
-                      --extra-index-url https://pypi.org/simple \
-                      lobster-metadata lobster-ml lobster-structural-viz || true
+          uv pip install --index-url https://test.pypi.org/simple/ \
+                         --extra-index-url https://pypi.org/simple \
+                         --system \
+                         lobster-metadata lobster-ml lobster-structural-viz || true
 
           python -c "
           from lobster.core.component_registry import component_registry
