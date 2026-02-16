@@ -244,6 +244,34 @@ def create_gemini_config(api_key: str) -> ProviderConfig:
     )
 
 
+def create_openai_config(api_key: str) -> ProviderConfig:
+    """
+    Create configuration for OpenAI.
+
+    Args:
+        api_key: OpenAI API key
+
+    Returns:
+        ProviderConfig with environment variables
+    """
+    if not api_key or not api_key.strip():
+        return ProviderConfig(
+            provider_type="openai",
+            env_vars={},
+            success=False,
+            message="API key cannot be empty",
+        )
+
+    return ProviderConfig(
+        provider_type="openai",
+        env_vars={
+            "LOBSTER_LLM_PROVIDER": "openai",
+            "OPENAI_API_KEY": api_key.strip(),
+        },
+        success=True,
+    )
+
+
 def create_azure_config(endpoint: str, credential: str) -> ProviderConfig:
     """
     Create configuration for Azure AI.
@@ -333,7 +361,11 @@ def get_recommended_models() -> List[Dict[str, str]]:
 
 
 def validate_provider_choice(
-    has_anthropic: bool, has_bedrock: bool, has_ollama: bool, has_gemini: bool = False
+    has_anthropic: bool,
+    has_bedrock: bool,
+    has_ollama: bool,
+    has_gemini: bool = False,
+    has_openai: bool = False,
 ) -> Tuple[bool, Optional[str]]:
     """
     Validate that at least one provider is configured.
@@ -343,11 +375,18 @@ def validate_provider_choice(
         has_bedrock: Whether Bedrock credentials are provided
         has_ollama: Whether Ollama is selected
         has_gemini: Whether Gemini API key is provided
+        has_openai: Whether OpenAI API key is provided
 
     Returns:
         Tuple of (valid: bool, error_message: Optional[str])
     """
-    if not has_anthropic and not has_bedrock and not has_ollama and not has_gemini:
+    if (
+        not has_anthropic
+        and not has_bedrock
+        and not has_ollama
+        and not has_gemini
+        and not has_openai
+    ):
         return (
             False,
             f"No provider specified. You must provide one of: {', '.join(VALID_PROVIDERS)}",
@@ -357,7 +396,11 @@ def validate_provider_choice(
 
 
 def get_provider_priority_warning(
-    has_anthropic: bool, has_bedrock: bool, has_ollama: bool, has_gemini: bool = False
+    has_anthropic: bool,
+    has_bedrock: bool,
+    has_ollama: bool,
+    has_gemini: bool = False,
+    has_openai: bool = False,
 ) -> Optional[str]:
     """
     Get warning message if multiple providers are configured.
@@ -367,23 +410,28 @@ def get_provider_priority_warning(
         has_bedrock: Whether Bedrock is configured
         has_ollama: Whether Ollama is configured
         has_gemini: Whether Gemini is configured
+        has_openai: Whether OpenAI is configured
 
     Returns:
         Optional warning message if multiple providers detected
     """
-    providers_count = sum([has_anthropic, has_bedrock, has_ollama, has_gemini])
+    providers_count = sum(
+        [has_anthropic, has_bedrock, has_ollama, has_gemini, has_openai]
+    )
 
     if providers_count <= 1:
         return None
 
-    # Return priority order message (Anthropic > Bedrock > Gemini > Ollama)
+    # Return priority order message (Anthropic > Bedrock > Gemini > OpenAI > Ollama)
     if has_anthropic:
         return "Multiple providers specified. Using Claude API (highest priority)."
     elif has_bedrock:
         return "Multiple providers specified. Using AWS Bedrock (second priority)."
     elif has_gemini:
         return "Multiple providers specified. Using Gemini (third priority)."
+    elif has_openai:
+        return "Multiple providers specified. Using OpenAI (fourth priority)."
     elif has_ollama:
-        return "Multiple providers specified. Using Ollama (fourth priority)."
+        return "Multiple providers specified. Using Ollama (fifth priority)."
 
     return None

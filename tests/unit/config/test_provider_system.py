@@ -43,13 +43,14 @@ def test_provider_registry_initialization():
     # Trigger initialization
     providers = ProviderRegistry.get_provider_names()
 
-    # Should have all 5 providers registered
+    # Should have all 6 providers registered
     assert "anthropic" in providers
     assert "bedrock" in providers
     assert "ollama" in providers
     assert "gemini" in providers
     assert "azure" in providers
-    assert len(providers) == 5
+    assert "openai" in providers
+    assert len(providers) == 6
 
 
 def test_get_provider():
@@ -77,7 +78,8 @@ def test_provider_registry_is_registered():
     assert ProviderRegistry.is_registered("anthropic")
     assert ProviderRegistry.is_registered("bedrock")
     assert ProviderRegistry.is_registered("ollama")
-    assert not ProviderRegistry.is_registered("openai")
+    assert ProviderRegistry.is_registered("openai")
+    assert not ProviderRegistry.is_registered("nonexistent_provider")
 
 
 # =============================================================================
@@ -475,6 +477,138 @@ def test_provider_registry_includes_azure():
 
 
 # =============================================================================
+# OpenAI Provider Tests
+# =============================================================================
+
+
+def test_openai_provider_basic():
+    """Test OpenAIProvider basic properties."""
+    provider = get_provider("openai")
+    assert provider is not None
+    assert provider.name == "openai"
+    assert "OpenAI" in provider.display_name
+
+
+def test_openai_provider_is_configured():
+    """Test OpenAI configuration detection."""
+    provider = get_provider("openai")
+
+    # Without API key
+    with patch.dict(os.environ, {}, clear=True):
+        assert not provider.is_configured()
+
+    # With OPENAI_API_KEY
+    with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test-key"}, clear=True):
+        assert provider.is_configured()
+
+
+def test_openai_provider_list_models():
+    """Test OpenAI model listing."""
+    provider = get_provider("openai")
+    models = provider.list_models()
+
+    assert len(models) == 5  # gpt-4o, gpt-4o-mini, o1, o1-mini, o3-mini
+    assert all(isinstance(m, ModelInfo) for m in models)
+    assert all(m.provider == "openai" for m in models)
+
+    # Check default model exists
+    default_models = [m for m in models if m.is_default]
+    assert len(default_models) == 1
+    assert default_models[0].name == "gpt-4o"
+
+
+def test_openai_provider_get_default_model():
+    """Test OpenAI default model selection."""
+    provider = get_provider("openai")
+    default = provider.get_default_model()
+
+    assert default is not None
+    assert default == "gpt-4o"
+
+
+def test_openai_provider_validate_model():
+    """Test OpenAI model validation."""
+    provider = get_provider("openai")
+
+    # Known models
+    assert provider.validate_model("gpt-4o")
+    assert provider.validate_model("gpt-4o-mini")
+    assert provider.validate_model("o1")
+    assert provider.validate_model("o3-mini")
+
+    # Unknown models
+    assert not provider.validate_model("claude-sonnet-4-20250514")
+    assert not provider.validate_model("nonexistent-model")
+
+
+@pytest.mark.skipif(
+    not importlib.util.find_spec("langchain_openai"),
+    reason="langchain-openai not installed",
+)
+@patch("langchain_openai.ChatOpenAI")
+def test_openai_provider_create_chat_model(mock_openai_chat):
+    """Test OpenAI chat model creation."""
+    mock_openai_chat.return_value = MagicMock()
+
+    with patch.dict(
+        os.environ,
+        {"OPENAI_API_KEY": "sk-test-key"},
+        clear=True,
+    ):
+        provider = get_provider("openai")
+        llm = provider.create_chat_model("gpt-4o", temperature=0.7, max_tokens=8192)
+
+        mock_openai_chat.assert_called_once()
+        call_kwargs = mock_openai_chat.call_args.kwargs
+        assert call_kwargs["model"] == "gpt-4o"
+        assert call_kwargs["temperature"] == 0.7
+        assert call_kwargs["max_tokens"] == 8192
+        assert call_kwargs["api_key"] == "sk-test-key"
+
+
+@pytest.mark.skipif(
+    not importlib.util.find_spec("langchain_openai"),
+    reason="langchain-openai not installed",
+)
+@patch("langchain_openai.ChatOpenAI")
+def test_openai_provider_create_chat_model_o1(mock_openai_chat):
+    """Test that o1 reasoning models skip temperature and max_tokens."""
+    mock_openai_chat.return_value = MagicMock()
+
+    with patch.dict(
+        os.environ,
+        {"OPENAI_API_KEY": "sk-test-key"},
+        clear=True,
+    ):
+        provider = get_provider("openai")
+        llm = provider.create_chat_model("o1", temperature=0.7, max_tokens=8192)
+
+        mock_openai_chat.assert_called_once()
+        call_kwargs = mock_openai_chat.call_args.kwargs
+        assert call_kwargs["model"] == "o1"
+        # o1 models should NOT have temperature or max_tokens
+        assert "temperature" not in call_kwargs
+        assert "max_tokens" not in call_kwargs
+
+
+def test_openai_provider_configuration_help():
+    """Test OpenAI configuration help contains expected info."""
+    provider = get_provider("openai")
+    help_text = provider.get_configuration_help()
+
+    assert "OPENAI_API_KEY" in help_text
+    assert "platform.openai.com" in help_text
+    assert "gpt-4o" in help_text
+    assert "o1" in help_text
+
+
+def test_provider_registry_includes_openai():
+    """Test that OpenAI is registered in ProviderRegistry."""
+    providers = ProviderRegistry.get_provider_names()
+    assert "openai" in providers
+
+
+# =============================================================================
 # ConfigResolver Integration Tests
 # =============================================================================
 
@@ -708,11 +842,11 @@ def test_unregistered_provider_validation():
 
     # Pydantic should reject invalid provider during model creation
     with pytest.raises(Exception) as exc_info:  # Pydantic ValidationError
-        config = WorkspaceProviderConfig(global_provider="openai")  # Not valid yet
+        config = WorkspaceProviderConfig(global_provider="invalid_fake_provider")
 
     # The error should mention invalid provider
     assert (
-        "openai" in str(exc_info.value).lower()
+        "invalid_fake_provider" in str(exc_info.value).lower()
         or "provider" in str(exc_info.value).lower()
     )
 
@@ -795,6 +929,7 @@ def test_llm_provider_enum_still_exists():
     assert LLMProvider.OLLAMA.value == "ollama"
     assert LLMProvider.GEMINI.value == "gemini"
     assert LLMProvider.AZURE.value == "azure"
+    assert LLMProvider.OPENAI.value == "openai"
 
 
 def test_create_llm_convenience_function():

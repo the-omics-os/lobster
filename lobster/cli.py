@@ -601,6 +601,7 @@ class CommandClient:
         self.messages: list = []
         self.graph = None
         self.token_tracker = None
+        self.provider_override = None
         self._publication_queue_ref = None
         self._publication_queue_unavailable = False
 
@@ -2091,6 +2092,34 @@ def init_client(
             provider_override=provider_override,  # Pass provider override from CLI flag
             model_override=model_override,  # Pass model override from CLI flag
         )
+    except ImportError as e:
+        # Catch missing LLM provider packages (e.g. langchain-aws not installed)
+        from lobster.core.uv_tool_env import is_uv_tool_env
+
+        error_msg = str(e)
+        console.print(
+            f"\n[red bold]Missing provider package[/red bold]"
+        )
+        console.print(f"[red]  {error_msg}[/red]\n")
+        console.print("[yellow]How to fix:[/yellow]")
+        # Extract the lobster-ai extra name from "pip install lobster-ai[extra]"
+        extra_name = None
+        if "lobster-ai[" in error_msg:
+            extra_name = error_msg.split("lobster-ai[")[1].split("]")[0]
+        if extra_name and is_uv_tool_env():
+            console.print(
+                f"  [white]Run:[/white] [dim]uv tool install 'lobster-ai[{extra_name}]'[/dim]"
+            )
+        elif extra_name:
+            console.print(
+                f"  [white]Run:[/white] [dim]pip install 'lobster-ai[{extra_name}]'[/dim]"
+            )
+        else:
+            console.print(
+                f"  [white]Run:[/white] [dim]lobster init[/dim] to configure your LLM provider"
+            )
+        console.print()
+        raise typer.Exit(code=1)
     except ValueError as e:
         # Catch missing-credential errors from LLM providers and present
         # clear, actionable instructions instead of a raw traceback.
@@ -4445,6 +4474,7 @@ _PROVIDER_PACKAGES = {
     "ollama": "langchain-ollama",
     "gemini": "langchain-google-genai",
     "azure": "langchain-azure-ai",
+    "openai": "langchain-openai",
 }
 
 # Map provider choice → Python import module name
@@ -4454,6 +4484,7 @@ _PROVIDER_IMPORT_NAMES = {
     "ollama": "langchain_ollama",
     "gemini": "langchain_google_genai",
     "azure": "langchain_azure_ai",
+    "openai": "langchain_openai",
 }
 
 
@@ -4729,6 +4760,9 @@ def init(
     gemini_key: Optional[str] = typer.Option(
         None, "--gemini-key", help="Google API key (non-interactive mode)"
     ),
+    openai_key: Optional[str] = typer.Option(
+        None, "--openai-key", help="OpenAI API key (non-interactive mode)"
+    ),
     profile: Optional[str] = typer.Option(
         None,
         "--profile",
@@ -4962,10 +4996,11 @@ def init(
         has_bedrock = bedrock_access_key is not None and bedrock_secret_key is not None
         has_ollama = use_ollama
         has_gemini = gemini_key is not None
+        has_openai = openai_key is not None
 
         # Validate at least one provider
         valid, error_msg = provider_setup.validate_provider_choice(
-            has_anthropic, has_bedrock, has_ollama, has_gemini
+            has_anthropic, has_bedrock, has_ollama, has_gemini, has_openai
         )
         if not valid:
             console.print(f"[red]❌ Error: {error_msg}[/red]")
@@ -4977,11 +5012,12 @@ def init(
             )
             console.print("  • Ollama (Local): --use-ollama")
             console.print("  • Google Gemini: --gemini-key=xxx")
+            console.print("  • OpenAI: --openai-key=xxx")
             raise typer.Exit(1)
 
         # Warn if multiple providers
         priority_warning = provider_setup.get_provider_priority_warning(
-            has_anthropic, has_bedrock, has_ollama, has_gemini
+            has_anthropic, has_bedrock, has_ollama, has_gemini, has_openai
         )
         if priority_warning:
             console.print(f"[yellow]⚠️  Warning: {priority_warning}[/yellow]")
@@ -5056,6 +5092,13 @@ def init(
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "gemini"
                 console.print("[green]✓ Gemini provider configured[/green]")
+        elif has_openai:
+            config = provider_setup.create_openai_config(openai_key)
+            if config.success:
+                for key, value in config.env_vars.items():
+                    env_lines.append(f"{key}={value}")
+                config_dict["provider"] = "openai"
+                console.print("[green]✓ OpenAI provider configured[/green]")
 
         # Write profile configuration (only for Anthropic/Bedrock)
         if selected_profile:
@@ -5132,6 +5175,8 @@ def init(
                 _ensure_provider_installed("ollama")
             elif has_gemini:
                 _ensure_provider_installed("gemini")
+            elif has_openai:
+                _ensure_provider_installed("openai")
 
             # Install docling if requested
             if install_docling:
@@ -5300,11 +5345,14 @@ def init(
             "  [cyan]4[/cyan] - Google Gemini - Latest models with thinking support"
         )
         console.print("  [cyan]5[/cyan] - Azure AI - Enterprise Azure deployments")
+        console.print(
+            "  [cyan]6[/cyan] - OpenAI - GPT-4o, o1 reasoning models"
+        )
         console.print()
 
         provider = Prompt.ask(
             "[bold white]Choose provider[/bold white]",
-            choices=["1", "2", "3", "4", "5"],
+            choices=["1", "2", "3", "4", "5", "6"],
             default="1",
         )
 
@@ -5315,6 +5363,7 @@ def init(
             "3": "ollama",
             "4": "gemini",
             "5": "azure",
+            "6": "openai",
         }
         if not skip_extras and not _in_uv_tool:
             _ensure_provider_installed(provider_map[provider])
@@ -5539,6 +5588,28 @@ def init(
                 console.print(f"[red]❌ Configuration failed: {config.message}[/red]")
                 raise typer.Exit(1)
 
+        elif provider == "6":
+            # OpenAI setup
+            console.print("\n[bold white]🔑 OpenAI Configuration[/bold white]")
+            console.print(
+                "Get your API key from: [link]https://platform.openai.com/api-keys[/link]\n"
+            )
+
+            api_key = Prompt.ask(
+                "[bold white]Enter your OpenAI API key[/bold white]", password=True
+            )
+
+            if not api_key.strip():
+                console.print("[red]❌ API key cannot be empty[/red]")
+                raise typer.Exit(1)
+
+            config = provider_setup.create_openai_config(api_key)
+            if config.success:
+                for key, value in config.env_vars.items():
+                    env_lines.append(f"{key}={value}")
+                config_dict["provider"] = "openai"
+                console.print("[green]✓ OpenAI provider configured[/green]")
+
         # Profile selection (only for Anthropic/Bedrock providers)
         profile_to_write = None
         if provider in ["1", "2"]:  # Anthropic or Bedrock
@@ -5586,8 +5657,8 @@ def init(
             config_dict["profile"] = profile_to_write
             console.print(f"[green]✓ Profile set to: {profile_to_write}[/green]")
 
-        elif provider in ["3", "4"]:  # Ollama or Gemini
-            # No profile needed - Ollama uses local models, Gemini uses its own models
+        elif provider in ["3", "4", "5", "6"]:  # Ollama, Gemini, Azure, or OpenAI
+            # No profile needed - these providers use their own models
             console.print(
                 "[dim]ℹ️  Note: Profile configuration not applicable for this provider[/dim]"
             )
@@ -6133,6 +6204,8 @@ def chat(
             model,
             session_id_for_client,
         )
+    except (SystemExit, typer.Exit):
+        raise  # Already handled with clean message
     except Exception as e:
         console.print(f"\n[red]✗[/red] init failed: {str(e)[:80]}")
         raise
@@ -7963,11 +8036,34 @@ def command_cmd(
     Defaults to most recent session when available.
 
     \b
+    Available commands:
+      data                     Show current data summary
+      files                    List workspace files
+      tree                     Show directory tree view
+      config                   Show current configuration
+      config provider          List available LLM providers
+      config provider <name>   Switch to specified provider
+      status                   Show tier, packages, and agents
+      workspace                Show workspace status
+      workspace list           List datasets in workspace
+      workspace load <file>    Load dataset into workspace
+      workspace remove <name>  Remove a modality
+      modalities               Show detailed modality info
+      describe <name>          Inspect a specific modality
+      metadata                 Smart metadata overview
+      queue                    Show queue status
+      plots                    List all generated plots
+      pipeline export          Export reproducible notebook
+      pipeline list            List available pipelines
+      save                     Save current state
+      export                   Export workspace to ZIP
+
+    \b
     Examples:
       lobster command data
+      lobster command config
       lobster command "pipeline export" --session-id exp1
-      lobster command "pipeline list" -s latest
-      lobster command files --json
+      lobster command "workspace list" --json
     """
     # Strip leading / if user types it out of habit
     cmd_str = cmd.lstrip("/").strip()

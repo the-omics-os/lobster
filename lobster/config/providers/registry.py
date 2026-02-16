@@ -197,6 +197,13 @@ class ProviderRegistry:
                 "AzureProvider not available (langchain-azure-ai not installed)"
             )
 
+        try:
+            from lobster.config.providers import openai_provider  # noqa: F401
+        except ImportError:
+            logger.debug(
+                "OpenAIProvider not available (langchain-openai not installed)"
+            )
+
         cls._initialized = True
 
     @classmethod

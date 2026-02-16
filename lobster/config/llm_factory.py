@@ -39,6 +39,7 @@ class LLMProvider(Enum):
     OLLAMA = "ollama"
     GEMINI = "gemini"
     AZURE = "azure"
+    OPENAI = "openai"
 
 
 class LLMFactory:

@@ -72,6 +72,7 @@ class Settings:
             "AWS_BEDROCK_SECRET_ACCESS_KEY", ""
         )
         self.ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+        self.OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
         self.NCBI_API_KEY = os.environ.get("NCBI_API_KEY", "")
         self.NCBI_EMAIL = os.environ.get("NCBI_EMAIL", "")
         # Multi-key support for parallelization (NCBI_API_KEY_1, NCBI_API_KEY_2, etc.)

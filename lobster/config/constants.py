@@ -14,6 +14,7 @@ VALID_PROVIDERS: Final[List[str]] = [
     "ollama",
     "gemini",
     "azure",
+    "openai",
 ]
 
 # Valid agent configuration profiles
@@ -38,4 +39,5 @@ PROVIDER_DISPLAY_NAMES: Final[dict] = {
     "ollama": "Ollama (Local)",
     "gemini": "Google Gemini",
     "azure": "Azure AI",
+    "openai": "OpenAI",
 }
