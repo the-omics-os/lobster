@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lobster-visualization"
-version = "1.0.8"
+version = "1.0.9"
 description = "Visualization agent for Lobster AI - publication-quality plots and interactive visualizations"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"

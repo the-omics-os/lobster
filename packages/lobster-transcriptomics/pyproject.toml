@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lobster-transcriptomics"
-version = "1.0.8"
+version = "1.0.9"
 description = "Transcriptomics agents for Lobster AI - single-cell and bulk RNA-seq analysis"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
