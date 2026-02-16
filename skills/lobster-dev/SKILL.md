@@ -26,6 +26,7 @@ This skill teaches you how to work with, extend, and contribute to the codebase.
 | **Planning new capabilities** | [references/planning-workflow.md](references/planning-workflow.md) |
 | **Domain knowledge (bioSkills)** | [references/bioskills-bridge.md](references/bioskills-bridge.md) |
 | **Architecture overview** | [references/architecture.md](references/architecture.md) |
+| **Plugin architecture (omics types, providers, adapters)** | [references/plugin-architecture.md](references/plugin-architecture.md) |
 | **Creating new agents** | [references/creating-agents.md](references/creating-agents.md) |
 | **Creating new services** | [references/creating-services.md](references/creating-services.md) |
 | **Code layout & finding files** | [references/code-layout.md](references/code-layout.md) |
@@ -162,7 +163,8 @@ from lobster.core.data_manager_v2 import DataManagerV2
 | File | Purpose |
 |------|---------|
 | `lobster/agents/graph.py` | LangGraph orchestration |
-| `lobster/core/component_registry.py` | Agent discovery |
+| `lobster/core/component_registry.py` | Agent + plugin discovery (7 entry point groups) |
+| `lobster/core/omics_registry.py` | Omics type metadata, `DataTypeDetector` |
 | `lobster/core/data_manager_v2.py` | Data/workspace management |
 | `lobster/core/provenance.py` | W3C-PROV tracking |
 | `lobster/cli.py` | CLI implementation |
@@ -197,6 +199,17 @@ See [references/creating-agents.md](references/creating-agents.md) for full guid
 4. Add unit tests
 
 See [references/creating-services.md](references/creating-services.md) for full guide.
+
+### Adding a New Omics Type (Plugin)
+
+1. Define `OmicsTypeConfig` with detection keywords, preferred databases, QC thresholds
+2. Create adapter factory functions → register via `lobster.adapters` entry point
+3. Create provider class (if new database) → register via `lobster.providers` entry point
+4. Create download service + queue preparer → register via entry points
+5. Register `OmicsTypeConfig` → `lobster.omics_types` entry point
+6. Zero core changes needed — everything via `pyproject.toml` entry points
+
+See [references/plugin-architecture.md](references/plugin-architecture.md) for full guide with code examples.
 
 ### Understanding Data Flow
 

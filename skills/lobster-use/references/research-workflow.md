@@ -5,7 +5,7 @@ How to search literature and discover datasets using Lobster AI.
 ## Overview
 
 **Agent**: Research Agent (literature) + Data Expert (loading)
-**Capabilities**: PubMed, GEO, SRA, paper full-text extraction
+**Capabilities**: PubMed, GEO, SRA, PRIDE, MassIVE, MetaboLights, paper full-text extraction
 
 ## Literature Search
 
@@ -107,6 +107,18 @@ How to search literature and discover datasets using Lobster AI.
 "Download SRP123456 from SRA"
 ```
 
+### From MetaboLights (Metabolomics)
+```
+"Search MetaboLights for liver disease metabolomics"
+"Download MTBLS1234"
+```
+
+### From PRIDE (Proteomics)
+```
+"Search PRIDE for glioblastoma proteomics"
+"Download PXD012345"
+```
+
 ## Complete Research Workflow
 
 ```bash
@@ -150,13 +162,18 @@ lobster chat --workspace ./literature_review
 
 ## Data Sources
 
-| Source | What's Available |
-|--------|------------------|
-| **GEO** | Expression datasets, metadata, processed files |
-| **SRA** | Raw sequencing data (FASTQ) |
-| **PubMed** | Paper abstracts, metadata, PMIDs |
-| **PMC** | Full-text papers (when open access) |
-| **ENA** | European sequencing archive |
+| Source | What's Available | Omics Types |
+|--------|------------------|-------------|
+| **GEO** | Expression datasets, metadata, processed files | Transcriptomics, Proteomics, Genomics |
+| **SRA** | Raw sequencing data (FASTQ) | Transcriptomics, Genomics, Metagenomics |
+| **PRIDE** | Proteomics raw + processed data | Proteomics |
+| **MassIVE** | Proteomics/metabolomics mass spec data | Proteomics |
+| **MetaboLights** | Metabolomics studies (MTBLS accessions) | Metabolomics |
+| **PubMed** | Paper abstracts, metadata, PMIDs | All |
+| **PMC** | Full-text papers (when open access) | All |
+| **ENA** | European sequencing archive | Transcriptomics, Genomics |
+
+**Full data format docs:** [docs.omics-os.com/docs/guides/data-formats](https://docs.omics-os.com/docs/guides/data-formats)
 
 ## Tips
 

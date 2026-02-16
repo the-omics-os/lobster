@@ -2,14 +2,16 @@
 name: lobster-use
 description: |
   Runs bioinformatics analysis with Lobster AI -- single-cell RNA-seq, bulk RNA-seq,
-  genomics (VCF/GWAS), proteomics (mass spec), machine learning (feature selection,
-  survival analysis), literature search, dataset discovery, and visualization.
+  genomics (VCF/GWAS), proteomics (mass spec), metabolomics (LC-MS/GC-MS/NMR),
+  machine learning (feature selection, survival analysis), literature search,
+  dataset discovery, and visualization.
   Use when working with biological data, omics analysis, or bioinformatics tasks.
-  Covers: H5AD, CSV, VCF, PLINK, 10X formats, GEO/SRA accessions.
+  Covers: H5AD, CSV, VCF, PLINK, 10X, mzML formats, GEO/SRA/PRIDE/MetaboLights accessions.
 
   TRIGGER PHRASES: "analyze cells", "search PubMed", "download GEO", "run QC",
   "cluster", "find markers", "differential expression", "UMAP", "volcano plot",
   "single-cell", "RNA-seq", "VCF", "GWAS", "proteomics", "mass spec",
+  "metabolomics", "MetaboLights", "LC-MS", "metabolite",
   "feature selection", "survival analysis", "biomarker", "bioinformatics"
 
   ASSUMES: Lobster is installed and configured. For setup issues, tell user to

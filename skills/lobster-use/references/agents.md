@@ -37,19 +37,22 @@ Routes queries to the right specialist. You never interact with it directly.
 ---
 
 ### Research Agent
-**Package:** `lobster-research` | **Access:** Online only (PubMed, GEO, PMC, SRA)
+**Package:** `lobster-research` | **Access:** Online only (PubMed, GEO, PMC, SRA, PRIDE, MassIVE, MetaboLights)
 
 Searches literature, discovers datasets, extracts accession numbers from papers.
 The only agent with internet access. Queues downloads for Data Expert.
+Routes to the right database automatically based on omics type (e.g., proteomics → PRIDE first, metabolomics → MetaboLights first).
 
 **Example queries:**
 ```
 "Search PubMed for CRISPR screens in cancer"
 "Find GEO datasets for liver single-cell"
+"Search PRIDE for glioblastoma proteomics"
+"Find metabolomics datasets for diabetes on MetaboLights"
 "Extract accession numbers from recent fibrosis papers"
 ```
 
-**Docs:** [docs.omics-os.com/docs/agents/research](https://docs.omics-os.com/raw/docs/agents/research.md)
+**Docs:** [docs.omics-os.com/docs/agents/research](https://docs.omics-os.com/docs/agents/research)
 
 ---
 

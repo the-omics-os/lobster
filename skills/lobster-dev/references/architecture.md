@@ -26,20 +26,25 @@ Results + Provenance (W3C-PROV)
 
 ### ComponentRegistry (`lobster/core/component_registry.py`)
 
-Single source of truth for agent discovery. Uses Python entry points (PEP 420).
+Single source of truth for component discovery. Uses Python entry points (PEP 420).
+Discovers 7 entry point groups: agents, services, agent_configs, adapters, providers, download_services, queue_preparers.
 
 ```python
-from lobster.core.component_registry import ComponentRegistry
+from lobster.core.component_registry import component_registry
 
-registry = ComponentRegistry()
-agents = registry.get_available_agents()
-agent_config = registry.get_agent("transcriptomics_expert")
+agents = component_registry.list_agents()
+agent_config = component_registry.get_agent("transcriptomics_expert")
+adapter = component_registry.get_adapter("metabolomics_lc_ms")  # Returns factory callable
+provider = component_registry.get_provider("metabolights")
 ```
 
-**Key methods:**
-- `get_available_agents()` — Returns all discovered agents
-- `get_agent(name)` — Get specific agent config
-- `is_agent_available(name, tier)` — Check if agent is available at tier (all official agents are free)
+**Key methods** (same pattern for all groups — get/has/list):
+- `list_agents()` / `get_agent(name)` / `has_agent(name)`
+- `list_adapters()` / `get_adapter(name)` / `has_adapter(name)`
+- `list_providers()` / `get_provider(name)` / `has_provider(name)`
+- `list_download_services()` / `list_queue_preparers()`
+
+**Full docs:** [docs.omics-os.com/docs/core/component-registry](https://docs.omics-os.com/docs/core/component-registry)
 
 ### DataManagerV2 (`lobster/core/data_manager_v2.py`)
 
@@ -187,21 +192,28 @@ See `lobster/tools/download_orchestrator.py`.
 
 ## Modality System
 
-Lobster supports multiple data types (modalities):
+Lobster supports multiple data types (modalities) via the **Omics Plugin Architecture**:
 
-- `transcriptomics` — scRNA-seq, bulk RNA-seq
-- `proteomics` — DDA/DIA mass spec
-- `genomics` — VCF, PLINK, GWAS
-- `metabolomics` — (planned)
+- `transcriptomics` — scRNA-seq, bulk RNA-seq (GEO, SRA)
+- `proteomics` — DDA/DIA mass spec, affinity (PRIDE, MassIVE, GEO)
+- `genomics` — VCF, PLINK, GWAS (GEO, SRA, dbGaP)
+- `metabolomics` — LC-MS, GC-MS, NMR (MetaboLights, Metabolomics Workbench, GEO)
+- `metagenomics` — 16S, ITS, shotgun (SRA, GEO)
 
 Each modality has:
-- Adapters for format conversion
-- Services for domain-specific analysis
+- **OmicsTypeConfig** in `OmicsTypeRegistry` — detection keywords, preferred databases, QC thresholds
+- **Adapters** for format conversion (discovered via `lobster.adapters` entry points)
+- **Providers** for database search (discovered via `lobster.providers` entry points)
+- **Download services + queue preparers** (discovered via entry points)
 - Specialized agents
+
+New omics types can be added via entry points — zero core changes needed.
+
+**Plugin guide:** [references/plugin-architecture.md](plugin-architecture.md)
+**Full docs:** [docs.omics-os.com/docs/architecture/overview](https://docs.omics-os.com/docs/architecture/overview)
 
 ## For More Details
 
-Read the source code:
 - Architecture decisions: `.planning/PROJECT.md`
-- Implementation: `lobster/core/`, `lobster/agents/`
-- Online docs: docs.omics-os.com/docs/architecture
+- Plugin architecture: [references/plugin-architecture.md](plugin-architecture.md)
+- Online docs: [docs.omics-os.com/docs/architecture](https://docs.omics-os.com/docs/architecture/overview)
