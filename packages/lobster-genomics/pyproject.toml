@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lobster-genomics"
-version = "1.0.1"
+version = "1.0.8"
 description = "Genomics agent for Lobster AI (VCF, PLINK, GWAS, variant annotation)"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -19,15 +19,22 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "lobster-ai~=1.0.0",
+    "anndata>=0.9.0",
+    "numpy>=1.23.0",
+    "pandas>=1.5.0",
+    "requests>=2.31.0",
+    "scipy>=1.10.0",
     "xarray",
     "sgkit>=0.7.0",
     "statsmodels>=0.14.0",
-    "genebe>=0.2.0",
     "cyvcf2>=0.30.0",
 ]
+
+[project.optional-dependencies]
+genebe = ["genebe>=0.2.0"]
 
 [project.urls]
 Homepage = "https://omics-os.com"

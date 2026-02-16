@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lobster-transcriptomics"
-version = "1.0.1"
+version = "1.0.8"
 description = "Transcriptomics agents for Lobster AI - single-cell and bulk RNA-seq analysis"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -29,11 +29,19 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "lobster-ai~=1.0.0",
-    "scanpy",
-    "leidenalg",
+    "anndata>=0.9.0",
+    "numpy>=1.23.0",
+    "pandas>=1.5.0",
+    "plotly>=5.0.0",
+    "scipy>=1.10.0",
+    "scanpy>=1.11.4",
+    "leidenalg>=0.9.0",
+    "igraph>=0.10.4",
+    "scikit-misc>=0.5.1",
+    "pydeseq2>=0.5.2",
 ]
 
 [project.optional-dependencies]

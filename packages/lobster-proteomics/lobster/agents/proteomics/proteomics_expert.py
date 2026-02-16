@@ -33,11 +33,6 @@ import numpy as np
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 
-from lobster.agents.proteomics.config import (
-    PlatformConfig,
-    detect_platform_type,
-    get_platform_config,
-)
 from lobster.agents.proteomics.prompts import create_proteomics_expert_prompt
 from lobster.agents.proteomics.shared_tools import create_shared_tools
 from lobster.agents.proteomics.state import ProteomicsExpertState

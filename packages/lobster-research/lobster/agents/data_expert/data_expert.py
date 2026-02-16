@@ -267,7 +267,6 @@ Dataset: {entry.dataset_id}
                 # Cross-check loaded data characteristics against expected data type
                 type_warning = ""
                 n_vars = result_adata.n_vars
-                var_names = result_adata.var_names[:20].tolist() if n_vars > 0 else []
 
                 # Detect actual modality from data characteristics
                 has_proteomics_cols = any(

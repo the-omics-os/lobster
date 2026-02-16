@@ -287,7 +287,7 @@ class OllamaProvider(ILLMProvider):
         except ImportError:
             raise ImportError(
                 "langchain-ollama package not installed. "
-                "Please run: pip install langchain-ollama"
+                "Install with: pip install lobster-ai[ollama]"
             )
 
         # Build parameters for ChatOllama

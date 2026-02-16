@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lobster-research"
-version = "1.0.1"
+version = "1.0.8"
 description = "Research agents for Lobster AI - literature discovery and data management"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -28,9 +28,11 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "lobster-ai~=1.0.0",
+    "pandas>=1.5.0",
+    "pydantic>=2.0.0",
 ]
 
 [project.urls]

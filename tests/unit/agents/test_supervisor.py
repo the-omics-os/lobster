@@ -338,8 +338,8 @@ class TestSupervisorDecisionMaking:
         # Test that create_supervisor_prompt handles ambiguous scenarios
         prompt = create_supervisor_prompt(mock_data_manager)
 
-        # Should create a prompt that guides decision making
-        assert "decision" in prompt.lower() or "clarif" in prompt.lower()
+        # Should create a prompt that guides request classification
+        assert "classify" in prompt.lower() or "clarif" in prompt.lower()
         assert len(prompt) > 0
 
     def test_context_aware_decisions(self, mock_data_manager, mock_llm):
@@ -360,7 +360,6 @@ class TestSupervisorDecisionMaking:
 
     def test_sequential_task_planning(self, mock_data_manager, mock_llm):
         """Test sequential task planning through workflow configuration."""
-        # Test that supervisor prompt includes workflow guidance
         from lobster.config.supervisor_config import SupervisorConfig
 
         config = SupervisorConfig()
@@ -373,8 +372,8 @@ class TestSupervisorDecisionMaking:
             active_agents=["data_expert_agent", "transcriptomics_expert"],
         )
 
-        # Should include workflow information
-        assert "workflow" in prompt.lower()
+        # Should include pipeline/sequential guidance and agent names
+        assert "pipeline" in prompt.lower() or "sequential" in prompt.lower()
         assert "data_expert_agent" in prompt
         assert "transcriptomics_expert" in prompt
 
@@ -390,7 +389,6 @@ class TestSupervisorWorkflowManagement:
 
     def test_workflow_initialization(self, mock_data_manager, mock_llm):
         """Test workflow initialization and tracking."""
-        # Test supervisor prompt includes workflow awareness
         from lobster.config.supervisor_config import SupervisorConfig
 
         config = SupervisorConfig()
@@ -403,8 +401,8 @@ class TestSupervisorWorkflowManagement:
             active_agents=["data_expert_agent", "transcriptomics_expert"],
         )
 
-        # Should include workflow information
-        assert "workflow" in prompt.lower()
+        # Should include pipeline/sequential guidance
+        assert "pipeline" in prompt.lower() or "sequential" in prompt.lower()
         assert len(prompt) > 0
 
     def test_workflow_progress_tracking(self, mock_data_manager, mock_llm):
@@ -432,8 +430,8 @@ class TestSupervisorWorkflowManagement:
 
         # Should include guidance for error handling
         assert len(prompt) > 0
-        # The prompt should contain decision-making guidance
-        assert "decision" in prompt.lower() or "response" in prompt.lower()
+        # The prompt should contain error handling or response guidance
+        assert "error" in prompt.lower() or "response" in prompt.lower()
 
     def test_workflow_completion(self, mock_data_manager, mock_llm):
         """Test workflow completion through supervisor response configuration."""

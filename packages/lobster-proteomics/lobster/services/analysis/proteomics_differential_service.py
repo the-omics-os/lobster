@@ -926,7 +926,6 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
         # Remove invalid variances
         valid_mask = np.isfinite(all_variances) & (all_variances > 0) & (all_dfs > 0)
         valid_vars = all_variances[valid_mask]
-        valid_dfs = all_dfs[valid_mask]
 
         if len(valid_vars) < 10:
             # Not enough proteins for reliable prior estimation

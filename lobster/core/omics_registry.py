@@ -28,9 +28,7 @@ Usage:
     # => [("proteomics", 0.85), ("transcriptomics", 0.1), ...]
 """
 
-import importlib.metadata
 import logging
-import re
 import sys
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple

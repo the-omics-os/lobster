@@ -244,7 +244,7 @@ class AnthropicProvider(ILLMProvider):
         except ImportError:
             raise ImportError(
                 "langchain-anthropic package not installed. "
-                "Install with: pip install langchain-anthropic"
+                "Install with: pip install lobster-ai[anthropic]"
             )
 
         # Validate model ID

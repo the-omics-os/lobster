@@ -2098,7 +2098,7 @@ def init_client(
 
         error_msg = str(e)
         console.print(
-            f"\n[red bold]Missing provider package[/red bold]"
+            "\n[red bold]Missing provider package[/red bold]"
         )
         console.print(f"[red]  {error_msg}[/red]\n")
         console.print("[yellow]How to fix:[/yellow]")
@@ -2116,7 +2116,7 @@ def init_client(
             )
         else:
             console.print(
-                f"  [white]Run:[/white] [dim]lobster init[/dim] to configure your LLM provider"
+                "  [white]Run:[/white] [dim]lobster init[/dim] to configure your LLM provider"
             )
         console.print()
         raise typer.Exit(code=1)
@@ -2135,8 +2135,8 @@ def init_client(
             f"     [dim]{workspace}/.env[/dim]"
         )
         console.print(
-            f"  2. [white]Or add to global credentials:[/white]\n"
-            f"     [dim]lobster init --global[/dim]"
+            "  2. [white]Or add to global credentials:[/white]\n"
+            "     [dim]lobster init --global[/dim]"
         )
         console.print(
             f"  3. [white]Or export in your shell:[/white]\n"

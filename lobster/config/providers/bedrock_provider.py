@@ -276,7 +276,7 @@ class BedrockProvider(ILLMProvider):
         except ImportError:
             raise ImportError(
                 "langchain-aws package not installed. "
-                "Please run: pip install langchain-aws"
+                "Install with: pip install lobster-ai[bedrock]"
             )
 
         # Validate model

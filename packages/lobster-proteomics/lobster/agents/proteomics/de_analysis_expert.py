@@ -246,7 +246,7 @@ def de_analysis_expert(
             )
 
             # Format response
-            response = f"## Differential Protein Expression Analysis Complete\n\n"
+            response = "## Differential Protein Expression Analysis Complete\n\n"
             response += f"**Modality**: '{modality_name}'\n"
             response += f"**Platform**: {platform_config.display_name} ({detected_platform})\n\n"
 
@@ -287,8 +287,8 @@ def de_analysis_expert(
                     response += f"- {name}: log2FC={log2fc:.2f}, FDR={padj:.2e} ({comparison})\n"
 
             response += f"\n**New modality created**: '{de_modality_name}'"
-            response += f"\n**Detailed results stored in**: adata.uns['differential_expression']"
-            response += f"\n**Volcano plot data**: adata.uns['volcano_plot_data']"
+            response += "\n**Detailed results stored in**: adata.uns['differential_expression']"
+            response += "\n**Volcano plot data**: adata.uns['volcano_plot_data']"
 
             # Sample size warning
             if min_group < 6:
@@ -403,7 +403,7 @@ def de_analysis_expert(
             )
 
             # Format response
-            response = f"## Time Course Analysis Complete\n\n"
+            response = "## Time Course Analysis Complete\n\n"
             response += f"**Modality**: '{modality_name}'\n"
             response += f"**Method**: {method}\n\n"
 
@@ -444,7 +444,7 @@ def de_analysis_expert(
                     response += f"- {name}: FDR={padj:.2e}, R2={r2:.3f}{group_str}\n"
 
             response += f"\n**New modality created**: '{tc_modality_name}'"
-            response += f"\n**Detailed results stored in**: adata.uns['time_course_analysis']"
+            response += "\n**Detailed results stored in**: adata.uns['time_course_analysis']"
 
             return response
 
@@ -543,7 +543,7 @@ def de_analysis_expert(
             )
 
             # Format response
-            response = f"## Correlation Analysis Complete\n\n"
+            response = "## Correlation Analysis Complete\n\n"
             response += f"**Modality**: '{modality_name}'\n"
             response += f"**Target variable**: {target_column}\n\n"
 
@@ -597,8 +597,8 @@ def de_analysis_expert(
                         response += f"- {name}: r={corr:.3f}, FDR={padj:.2e}\n"
 
             response += f"\n**New modality created**: '{corr_modality_name}'"
-            response += f"\n**Detailed results stored in**: adata.uns['correlation_analysis']"
-            response += f"\n**Per-protein correlations**: adata.var['correlation_with_target']"
+            response += "\n**Detailed results stored in**: adata.uns['correlation_analysis']"
+            response += "\n**Per-protein correlations**: adata.var['correlation_with_target']"
 
             return response
 

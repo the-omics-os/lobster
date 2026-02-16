@@ -68,7 +68,7 @@ def _create_connection_pool() -> Optional["redis.ConnectionPool"]:
 
     if not REDIS_AVAILABLE:
         if not _REDIS_WARNING_SHOWN:
-            logger.info(
+            logger.debug(
                 "Redis package not installed - rate limiting disabled. "
                 "Install with: pip install lobster-ai[observability]"
             )

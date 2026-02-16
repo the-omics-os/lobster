@@ -304,7 +304,7 @@ class AzureProvider(ILLMProvider):
         except ImportError:
             raise ImportError(
                 "langchain-azure-ai package not installed. "
-                "Install with: pip install -U langchain-azure-ai"
+                "Install with: pip install lobster-ai[azure]"
             )
 
         # Get configuration (support both new and legacy env vars)

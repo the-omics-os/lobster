@@ -415,10 +415,10 @@ class CustomCodeExecutionService:
         # Strip sentinel lines from stdout (LLM shouldn't see internal signals)
         if stdout_output:
             stdout_output = "\n".join(
-                l
-                for l in stdout_output.splitlines()
-                if "__LOBSTER_ADATA_MODIFIED__" not in l
-                and "__LOBSTER_CHANGES__:" not in l
+                line
+                for line in stdout_output.splitlines()
+                if "__LOBSTER_ADATA_MODIFIED__" not in line
+                and "__LOBSTER_CHANGES__:" not in line
             )
 
         # Step 4b: Save large outputs to files (DeepAgents pattern)

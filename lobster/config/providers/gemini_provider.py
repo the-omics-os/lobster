@@ -230,7 +230,7 @@ class GeminiProvider(ILLMProvider):
         except ImportError:
             raise ImportError(
                 "langchain-google-genai package not installed. "
-                "Install with: pip install langchain-google-genai"
+                "Install with: pip install lobster-ai[gemini]"
             )
 
         # Validate model ID

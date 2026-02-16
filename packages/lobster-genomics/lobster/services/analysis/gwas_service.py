@@ -62,7 +62,7 @@ class GWASService:
         self.config = config or {}
 
         if not SGKIT_AVAILABLE:
-            logger.warning(
+            logger.debug(
                 "sgkit not available. Install with: pip install sgkit\n"
                 "GWAS methods will raise GWASError if called without sgkit."
             )
