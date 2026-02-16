@@ -8,6 +8,37 @@ Prompts are defined as functions to allow dynamic content (e.g., date).
 from datetime import date
 
 
+def _build_routing_table() -> str:
+    """Build data type routing guidance from OmicsTypeRegistry.
+
+    Generates routing instructions dynamically so new omics types
+    automatically appear in agent prompts.
+    """
+    try:
+        from lobster.core.omics_registry import OMICS_TYPE_REGISTRY
+
+        lines = []
+        for name, config in OMICS_TYPE_REGISTRY.items():
+            if config.preferred_databases:
+                dbs = ", ".join(config.preferred_databases)
+                lines.append(
+                    f"  - {config.display_name}: search {dbs} (data_type=\"{name}\")"
+                )
+        if lines:
+            return "\n".join(lines)
+    except ImportError:
+        pass
+
+    # Fallback: hardcoded routing if registry unavailable
+    return (
+        "  - Transcriptomics: search geo, sra (data_type=\"transcriptomics\")\n"
+        "  - Proteomics: search pride, massive, geo (data_type=\"proteomics\")\n"
+        "  - Genomics: search geo, sra, dbgap (data_type=\"genomics\")\n"
+        "  - Metabolomics: search metabolights, metabolomics_workbench, geo (data_type=\"metabolomics\")\n"
+        "  - Metagenomics: search sra, geo (data_type=\"metagenomics\")"
+    )
+
+
 def create_research_agent_prompt() -> str:
     """
     Create the system prompt for the research agent.
@@ -77,11 +108,9 @@ NEVER call multiple tools in parallel. This is NON-NEGOTIABLE.
 - Explicitly track key filters: technology/assay, organism, disease or tissue, sample type, and required metadata fields (e.g. treatment status, clinical response, age, sex).
 3. Data type routing:
 - Match the technology/assay to the correct repository when calling fast_dataset_search:
-  - Transcriptomics (RNA-seq, microarray, scRNA-seq): data_type="geo" or data_type="sra"
-  - Proteomics (mass spectrometry, DDA, DIA, Olink, SomaScan, TMT, iTRAQ, SILAC, label-free): data_type="pride" FIRST, then data_type="geo" as fallback
-  - Genomics (WGS, WES, GWAS, variant calling): data_type="sra" or data_type="geo"
+{_build_routing_table()}
   - Multi-omics studies: search BOTH the primary repository for each modality
-- PRIDE is the primary repository for mass spectrometry proteomics data. GEO may contain some proteomics but is primarily a transcriptomics repository.
+- The databases listed first for each type are the primary repositories. Always search them in the listed order.
 - When the user asks for "proteomics" data, ALWAYS search PRIDE before GEO.
 4. Query discipline:
 - Before searching, define:

@@ -119,14 +119,13 @@ You are a langgraph agent in a supervisor-multi-agent architecture.
 def _build_admin_superuser_section() -> str:
     """build debugging section"""
     return """<Debugging>
-**ADMIN SUPERUSER MODE**: If user identifies as 'ADMIN SUPERUSER', bypass ALL confirmations and execute immediately. This is critical for debugging
+**ADMIN SUPERUSER MODE**: If user identifies as 'ADMIN SUPERUSER', bypass ALL confirmations (non interactive mode) for debugging
 BYPASS ALL confirmation requirements:
 - NO download confirmations needed
 - NO metadata preview confirmations needed
 - NO clarification questions
-- Execute all operations immediately without asking permission
 - This override applies for the entire session once ADMIN SUPERUSER is declared
-- Example: User says "ADMIN SUPERUSER: Download GSE12345" → Proceed immediately without confirmation
+- Example: User says "ADMIN SUPERUSER: Download GSE12345" → Proceed without confirmation
 </Debugging>"""
 
 
@@ -140,7 +139,7 @@ def _build_tools_section() -> str:
 **read_todos**: Check current todo list status. Use when you need to review your plan or remind yourself of pending tasks. Current todos are visible in your state context.
 **execute_custom_code**: FALLBACK code execution tool. Use ONLY when no domain agent can handle the task. Runs Python in a sandboxed subprocess with access to loaded modalities (as `adata`), workspace files, and scientific libraries (pandas, numpy, scipy, scanpy, anndata, sklearn, etc.).
     When to use: Cross-modal analysis no single agent covers, reading adata.uns data, loading non-h5ad files (parquet, CSV), custom computations outside any agent's domain, quick data inspection before delegation.
-    When NOT to use (delegate instead): standard scRNA-seq → transcriptomics_expert, literature/datasets → research_agent, downloads → data_expert, visualization → visualization_expert, ML/survival → machine_learning_expert."""
+    When NOT to use (delegate instead): when you have access to to a domain specific sub-agent that is specialized in this domain"""
 
 
 def _build_agents_section(active_agents: List[str], config: SupervisorConfig) -> str:
@@ -200,7 +199,7 @@ This request involves:
 0. Your capabilities to judge if lobster is able to solve this problem and communicate clearly with the user
 1. The research capabilities of the research agent to do an initial reserach and processing the publication_queue.
 2. The data experts download capabilities using the download_queue created by the research agent
-3. The scRNA experts QC & processing capabilities
+3. The Omics experts QC & processing capabilities
 4. The visualization experts creative toolset to make publication ready figures of the whole process
 5. and you to communicate the whole process & ensure that the user is satisfied.
 
@@ -209,132 +208,15 @@ This request involves:
     - Explaining concepts like "What is ambient RNA correction?" or "How is Leiden resolution chosen?".
     - quick lookups in the workspace like modalities, queues, data etc using your tools
 
-**Pathway Enrichment / Functional Analysis**:
-    When user requests pathway enrichment, functional enrichment, GO analysis, KEGG analysis, Reactome analysis, or gene set enrichment:
-    - Keywords: "pathway enrichment", "pathway analysis", "GO enrichment", "KEGG", "Reactome", "functional analysis", "gene set enrichment", "ORA", "GSEA"
-    - With gene list (direct or from prior analysis): "Run pathway enrichment on TP53, BRCA1, EGFR"
-    - ANY size gene list (3-100+ genes)
-    → **Delegate to transcriptomics_expert** (will route internally to de_analysis_expert for execution)
-    → Note: For proteomics proteins, delegate to proteomics_expert instead
-
-**Machine Learning / Feature Selection / Survival Analysis**:
-    When user requests feature selection, biomarker discovery, stability selection, ML models, or survival analysis:
-    - Keywords: "feature selection", "stability selection", "LASSO", "elastic net", "biomarker", "random forest importance",
-      "Cox model", "Cox regression", "survival analysis", "Kaplan-Meier", "risk stratification", "hazard ratio",
-      "cross-validation", "SHAP", "interpretability", "ML", "machine learning"
-    - For biomarker identification: "Find stable biomarkers distinguishing group A from group B"
-    - For survival prediction: "Fit a Cox model", "Generate Kaplan-Meier curves"
-    - For feature ranking: "Which genes best predict the outcome?"
-    → **Delegate to machine_learning_expert** (routes to feature_selection_expert or survival_analysis_expert internally)
-    → Do NOT route feature selection to transcriptomics_expert — transcriptomics handles DE and pathway enrichment only
-
 **Code Execution Fallback (execute_custom_code)**:
     When NO domain agent covers the task, use your execute_custom_code tool directly:
     - Cross-modal analysis (e.g., correlating transcriptomics with proteomics features)
-    - Cell-cell communication scoring or custom prediction tasks
-    - Reading adata.uns keys that standard tools don't expose
-    - Loading parquet/CSV files that weren't auto-loaded as modalities
     - Any custom Python computation that doesn't fit a domain agent
     → Use execute_custom_code with modality_name to access loaded AnnData, or without to work with workspace files
-    → Always try delegating to a domain agent first — use code execution only as a last resort
+    → Always try delegating to a domain agent first — use code execution only as a last resort or when simple enough to solve by yourself
 """
-    # REMOVED: due to too much tokens and not enough value
-    # # Add agent-specific delegation rules
-    # rule_num = 2
-    # for agent_name in active_agents:
-    #     agent_config = get_agent_registry_config(agent_name)
-    #     if agent_config:
-    #         section += f"\n\n    {rule_num}. **Delegate to {agent_name}** when the task involves:\n"
-    #         section += _get_agent_delegation_rules(agent_name, agent_config)
-    #         rule_num += 1
 
     return section
-
-
-# def _get_agent_delegation_rules(agent_name: str, agent_config) -> str:
-#     """Get delegation rules for a specific agent.
-
-#     Args:
-#         agent_name: Name of the agent
-#         agent_config: Agent configuration from registry
-
-#     Returns:
-#         str: Formatted delegation rules
-#     """
-#     # Define delegation rules for each agent based on their purpose
-#     delegation_rules = {
-#         "research_agent": """       - ALL ONLINE ACCESS: Handles all external queries (literature, datasets, metadata, URLs) - provides validated information to data_expert for offline processing.
-#        - Search scientific literature (PubMed, PMC, publishers) with automatic PMID/DOI resolution and PDF extraction.
-#        - Fast dataset discovery (GEO, SRA) with advanced filtering (organism, date range, platform, supplementary file types).
-#        - Extract computational methods and parameters from publications via automatic PDF resolution and parsing.
-#        - Fetch and validate dataset metadata including URLs, sample information, and availability for download operations.
-#        - CRITICAL QUEUE WORKFLOW: Validate dataset → create queue entry (status: PENDING) → supervisor extracts entry_id → data_expert executes download via execute_download_from_queue(entry_id). Supports GEO, PRIDE, SRA, and MassIVE.
-#        - Find related entries across resources (dataset ↔ publication, sample ↔ dataset, publication ↔ publication).
-#        - Extract publication metadata and bibliographic information for literature management and citation.
-#        - PUBLICATION QUEUE MANAGEMENT: Process batch literature imports (RIS from Zotero/Mendeley/EndNote), extract metadata/methods/identifiers from queued publications, manage queue status (PENDING → EXTRACTING → COMPLETED/FAILED), handle error recovery and retry strategies for failed extractions.""",
-#         "data_expert_agent": """       - ZERO ONLINE ACCESS: Cannot fetch metadata, query external databases (GEO/SRA/PRIDE), or extract URLs - all online operations delegated to research_agent.
-#        - Execute downloads from download queue ONLY after research_agent has validated and created queue entry (status: PENDING).
-#        - CRITICAL QUEUE WORKFLOW: research_agent validates/prepares → creates queue entry → supervisor extracts entry_id from response → data_expert executes via execute_download_from_queue(entry_id). Works for all databases (GEO, PRIDE, SRA, MassIVE).
-#        - Monitor queue status with get_queue_status() and retry failed downloads with strategy overrides (MATRIX_FIRST, H5_FIRST, SUPPLEMENTARY_FIRST).
-#        - Load local data files using adapter system (transcriptomics_single_cell, transcriptomics_bulk, proteomics_ms, proteomics_affinity).
-#        - Manage modalities with 5 tools: list_available_modalities (check loaded data), inspect_modality (examine structure), remove_modality (cleanup), validate_modality_compatibility (integration checks), concatenate_samples (merge datasets).
-#        - Questions about data structures (AnnData, Seurat, Scanpy objects) and workspace management.
-#        - Provide summaries of available data, download status, and troubleshooting guidance for failed operations.""",
-#         # "method_expert_agent": DEPRECATED v2.2+ - merged into research_agent
-#         "singlecell_expert_agent": """       - Questions about single-cell data analysis.
-#        - Performing QC on single-cell datasets (cell/gene filtering with adaptive thresholds, mitochondrial/ribosomal content checks, doublet detection via upper bounds).
-#        - Detecting/removing doublets in single-cell data.
-#        - Normalizing single-cell counts (UMI normalization).
-#        - Feature selection for single-cell data: supports 'deviance' (recommended default - works on raw counts, no normalization bias) and 'hvg' (traditional highly variable genes).
-#        - Running dimensionality reduction (PCA, UMAP, t-SNE) for single-cell data.
-#        - Clustering cells with Leiden algorithm - supports BOTH single resolution (resolution=0.5) and multi-resolution testing (resolutions=[0.25, 0.5, 1.0]) to explore clustering granularity. Uses 30 PCs and deviance-based feature selection by default. Multi-resolution mode creates separate clustering results (leiden_res0_25, leiden_res0_5, leiden_res1_0) for side-by-side comparison.
-#        - Annotating cell types and finding marker genes for single-cell clusters.
-#        - Integrating single-cell datasets with batch correction methods.
-#        - Creating visualizations for single-cell data (QC plots, UMAP plots, violin plots, feature plots, etc.).
-#        - Any analysis involving individual cells and cellular heterogeneity.""",
-#         "bulk_rnaseq_expert_agent": """       - Performing QC on bulk RNA-seq datasets (sample/gene filtering, sequencing depth checks).
-#        - Normalizing bulk RNA-seq counts (CPM, TPM normalization).
-#        - Running differential expression analysis between experimental groups.
-#        - Performing pathway enrichment analysis (GO, KEGG).
-#        - Statistical analysis of gene expression differences between conditions.
-#        - Any analysis involving sample-level comparisons and population-level effects.""",
-#         "machine_learning_expert_agent": """       - Machine learning model development and training.
-#        - Feature engineering and selection.
-#        - Data transformation for downstream ML tasks.
-#        - Model evaluation and validation.
-#        - Cross-validation and hyperparameter tuning.
-#        - scVI embedding training for single-cell data.
-#        - Predictive modeling and classification.
-#        - Dimensionality reduction for ML applications.""",
-#         "visualization_expert_agent": """       - Creating publication-quality interactive visualizations for any omics data type.
-#        - UMAP, PCA, or t-SNE dimensionality reduction plots (colored by clusters, cell types, QC metrics, genes).
-#        - Quality control plots (n_genes, total_counts, mitochondrial %, ribosomal %).
-#        - Gene/protein expression visualizations (violin plots, feature plots on UMAP, dot plots, heatmaps).
-#        - Elbow plots for determining optimal number of PCs for clustering.
-#        - Cluster composition plots showing sample/batch distribution across clusters.
-#        - Any request involving "plot", "visualize", "show", "UMAP", "heatmap", "violin", or similar visualization terms.
-#        - Note: Some analysis agents (singlecell_expert, bulk_rnaseq_expert) can create basic plots as part of their workflows, but delegate to visualization_expert for custom or publication-quality visualizations.""",
-#         #        "ms_proteomics_expert_agent": """       - Mass spectrometry proteomics data analysis (DDA/DIA workflows).
-#         #       - Database search artifact removal and protein inference.
-#         #       - Missing value pattern analysis (MNAR vs MCAR).
-#         #       - Intensity normalization (TMM, quantile, VSN).
-#         #       - Peptide-to-protein aggregation.
-#         #       - Batch effect detection and correction in proteomics data.
-#         #       - Statistical testing with multiple correction.
-#         #       - Pathway enrichment analysis for proteomics.""",
-#         #        "affinity_proteomics_expert_agent": """       - Affinity proteomics data analysis (Olink, antibody arrays).
-#         #       - NPX value processing and normalization.
-#         #       - Targeted protein panel analysis.
-#         #       - Antibody validation metrics.
-#         #       - Coefficient of variation analysis.
-#         #       - Panel comparison and harmonization.
-#         #       - Lower missing value handling (<30%).""",
-#     }
-
-#     # Return the specific rules for this agent, or a generic description if not found
-#     return delegation_rules.get(
-#         agent_name, f"       - Tasks related to {agent_config.description}"
-#     )
 
 
 def _build_workflow_section(active_agents: List[str], config: SupervisorConfig) -> str:
@@ -409,8 +291,6 @@ def _build_response_rules(config: SupervisorConfig) -> str:
         str: Response rules section
     """
     section = """<CRITICAL RESPONSE RULES>
-
-⚠️ **SEQUENTIAL TOOL EXECUTION ONLY** ⚠️
 You MUST execute tools ONE AT A TIME, waiting for each tool's result before calling the next.
 NEVER call multiple tools in parallel. This is NON-NEGOTIABLE.
 - Call ONE tool → Wait for result → Process result → Then call next tool if needed
@@ -648,21 +528,16 @@ def _build_workspace_guardrails_section() -> str:
 You have access to `get_content_from_workspace` for retrieving cached data (literature, metadata, queues).
 
 **CRITICAL: Metadata Level Warning**
-
 When accessing publication queue entries with `level='metadata'`, you may retrieve 10,000-50,000 tokens of full-text content per entry.
-
 **Safe Usage Patterns:**
-
 1. **For Queue Overview**: Use `level='brief'` to see entry summaries
    ```python
    get_content_from_workspace(identifier="all", workspace="publication_queue", level="brief")
    ```
-
 2. **For Single Entry Details**: Use specific identifier with `level='full'` or `level='metadata'`
    ```python
    get_content_from_workspace(identifier="PMID:12345", workspace="publication_queue", level="metadata")
    ```
-
 3. **For Batch Processing**: DELEGATE to research_agent or metadata_assistant instead of fetching directly
    ```python
    # Good: Let specialist handle large batches
