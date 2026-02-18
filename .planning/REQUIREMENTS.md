@@ -62,12 +62,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Disease Service Migration
 
-- [ ] **MIGR-01**: DiseaseOntologyService branches on config.backend field ("json" = keyword, "embeddings" = vector search)
-- [ ] **MIGR-02**: When backend="embeddings", match_disease() delegates to VectorSearchService.match_ontology("mondo")
-- [ ] **MIGR-03**: _convert_ontology_match() maps OntologyMatch to existing DiseaseMatch schema
-- [ ] **MIGR-04**: Keyword matching remains as fallback when vector deps not installed (with explicit logger.warning)
-- [ ] **MIGR-05**: DiseaseStandardizationService silent fallback fixed with logger.warning on ImportError
-- [ ] **MIGR-06**: Duplicate disease_ontology.json deleted from lobster/config/ (canonical stays in lobster-metadata package)
+- [x] **MIGR-01**: DiseaseOntologyService branches on config.backend field ("json" = keyword, "embeddings" = vector search)
+- [x] **MIGR-02**: When backend="embeddings", match_disease() delegates to VectorSearchService.match_ontology("mondo")
+- [x] **MIGR-03**: _convert_ontology_match() maps OntologyMatch to existing DiseaseMatch schema
+- [x] **MIGR-04**: Keyword matching remains as fallback when vector deps not installed (with explicit logger.warning)
+- [x] **MIGR-05**: DiseaseStandardizationService silent fallback fixed with logger.warning on ImportError
+- [x] **MIGR-06**: Duplicate disease_ontology.json deleted from lobster/config/ (canonical stays in lobster-metadata package)
 
 ### Agent Integration
 
@@ -90,7 +90,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **TEST-03**: Unit tests for rerankers (cross-encoder, Cohere) with mocked clients
 - [x] **TEST-04**: Unit tests for VectorSearchService orchestration, caching, config-driven switching
 - [x] **TEST-05**: Unit tests for config env var parsing and factory methods
-- [ ] **TEST-06**: Unit tests for DiseaseOntologyService Phase 2 backend swap branching
+- [x] **TEST-06**: Unit tests for DiseaseOntologyService Phase 2 backend swap branching
 - [x] **TEST-07**: Integration test with small real ChromaDB (embed -> search -> rerank full pipeline)
 - [ ] **TEST-08**: All tests use @pytest.mark.skipif for optional deps
 
@@ -171,12 +171,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DATA-04 | Phase 6 | Pending |
 | DATA-05 | Phase 6 | Pending |
 | DATA-06 | Phase 6 | Pending |
-| MIGR-01 | Phase 2 | Pending |
-| MIGR-02 | Phase 2 | Pending |
-| MIGR-03 | Phase 2 | Pending |
-| MIGR-04 | Phase 2 | Pending |
-| MIGR-05 | Phase 2 | Pending |
-| MIGR-06 | Phase 2 | Pending |
+| MIGR-01 | Phase 2 | Complete |
+| MIGR-02 | Phase 2 | Complete |
+| MIGR-03 | Phase 2 | Complete |
+| MIGR-04 | Phase 2 | Complete |
+| MIGR-05 | Phase 2 | Complete |
+| MIGR-06 | Phase 2 | Complete |
 | AGNT-01 | Phase 3 | Pending |
 | AGNT-02 | Phase 3 | Pending |
 | AGNT-03 | Phase 3 | Pending |
@@ -190,7 +190,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-03 | Phase 4 | Pending |
 | TEST-04 | Phase 2 | Complete |
 | TEST-05 | Phase 2 | Complete |
-| TEST-06 | Phase 2 | Pending |
+| TEST-06 | Phase 2 | Complete |
 | TEST-07 | Phase 2 | Complete |
 | TEST-08 | Phase 3 | Pending |
 
