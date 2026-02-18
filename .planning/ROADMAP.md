@@ -30,10 +30,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. ChromaDB cache persists across process restarts (instant second query, no re-embedding)
   3. `lobster --help` executes in <500ms (no module-level model loading)
   4. Import failures show helpful "pip install lobster-ai[vector-search]" messages
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: TBD
+- [ ] 01-01-PLAN.md -- Schemas, enums, and ABCs (BaseVectorBackend, BaseEmbedder)
+- [ ] 01-02-PLAN.md -- SapBERTEmbedder and ChromaDBBackend implementations
+- [ ] 01-03-PLAN.md -- VectorSearchConfig, VectorSearchService, and test suite (TDD)
 
 ### Phase 2: Service Integration
 **Goal**: SemanticSearchService integrates with Lobster patterns and DiseaseOntologyService completes Strangler Fig migration
@@ -117,7 +119,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/? | Not started | - |
+| 1. Foundation | 0/3 | Planning complete | - |
 | 2. Service Integration | 0/? | Not started | - |
 | 3. Agent Tooling | 0/? | Not started | - |
 | 4. Performance | 0/? | Not started | - |
