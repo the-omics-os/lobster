@@ -6,13 +6,13 @@ for semantic search across biomedical ontologies, literature, and datasets.
 
 Public API is exposed via __all__ but imports are lazy — importing this
 module does NOT load chromadb, torch, sentence-transformers, or any other
-heavy dependency. Callers import specific classes directly:
+heavy dependency. Classes are resolved on first access via __getattr__.
 
+Usage::
+
+    from lobster.core.vector import VectorSearchService, VectorSearchConfig
     from lobster.core.vector.backends.base import BaseVectorBackend
     from lobster.core.vector.embeddings.base import BaseEmbedder
-
-The VectorSearchService and VectorSearchConfig names are reserved for
-Phase 2 implementation and listed in __all__ for forward compatibility.
 """
 
 from __future__ import annotations
@@ -21,7 +21,9 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from lobster.core.vector.backends.base import BaseVectorBackend
+    from lobster.core.vector.config import VectorSearchConfig
     from lobster.core.vector.embeddings.base import BaseEmbedder
+    from lobster.core.vector.service import VectorSearchService
 
 __all__ = [
     "BaseVectorBackend",
@@ -29,3 +31,23 @@ __all__ = [
     "VectorSearchService",
     "VectorSearchConfig",
 ]
+
+
+def __getattr__(name: str):
+    if name == "VectorSearchService":
+        from lobster.core.vector.service import VectorSearchService
+
+        return VectorSearchService
+    if name == "VectorSearchConfig":
+        from lobster.core.vector.config import VectorSearchConfig
+
+        return VectorSearchConfig
+    if name == "BaseVectorBackend":
+        from lobster.core.vector.backends.base import BaseVectorBackend
+
+        return BaseVectorBackend
+    if name == "BaseEmbedder":
+        from lobster.core.vector.embeddings.base import BaseEmbedder
+
+        return BaseEmbedder
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
