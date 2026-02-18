@@ -1,310 +1,63 @@
-# Project State: Session-Scoped Provenance Persistence
-
-**Last Updated:** 2026-02-15
-**Project:** Session-Scoped Provenance Persistence
-**Schema Version:** 1.0
-
----
+# Project State
 
 ## Project Reference
 
-**Core Value:** Provenance must survive process exit. If the user ran an analysis, they must be able to export it as a Jupyter notebook — from any session, after any restart.
+See: .planning/PROJECT.md (updated 2026-02-17)
 
-**Current Focus:** PROJECT COMPLETE
-
-**What We're Building:** Disk-persistent provenance scoped to sessions, transforming Lobster AI's reproducibility from single-process to cross-session, crash-resilient, and cloud-ready.
-
----
+**Core value:** Agents can semantically match any biomedical term to the correct ontology concept with calibrated confidence scores, using zero configuration out of the box.
+**Current focus:** Phase 1 - Foundation
 
 ## Current Position
 
-**Phase:** 7 of 7 — Documentation Update
-**Plan:** 1 of 1 (complete)
-**Status:** Project complete
-**Last activity:** 2026-02-15 - Completed 07-01-PLAN.md
+Phase: 1 of 6 (Foundation)
+Plan: 0 of ? in current phase
+Status: Ready to plan
+Last activity: 2026-02-17 — Roadmap created with 6 phases covering 39 v1 requirements
 
-**Progress:**
-```
-[██████████████████████████████████] 100%
-All 7 phases complete
-```
-
-**Completed:**
-- Phase 1: Core Persistence Layer (10/10 requirements verified)
-- Phase 2: DataManagerV2 Integration (Plan 1: session_dir wiring)
-- Phase 3: Session JSON Schema & Continuity (Plan 1: schema 1.1, provenance restoration)
-- Phase 4: CLI Session Support (Plan 1: CommandClient + --session-id option)
-- Phase 5: Unit Test Coverage (Plan 1: 13 tests, 96.4% method coverage)
-- Phase 6: Integration Test Coverage (Plan 1: 3 tests, full workflow validation)
-- Phase 7: Documentation Update (Plan 1: docs-site MDX updates, build verified)
-
-**Next Actions:**
-1. Project complete - ready for v1.0.7 release tag
-2. Manual verification: full workflow from analysis to cross-session export
-
----
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
-| Metric | Target | Current | Status |
-|--------|--------|---------|--------|
-| Requirements Coverage | 100% | 100% | Complete |
-| Phases Defined | 7 | 7 | Complete |
-| Phases Complete | 7 | 7 | Complete |
-| Unit Tests | 12 | 13 | Complete |
-| Integration Tests | 3 | 3 | Complete |
-| Documentation Updates | 1 | 1 | Complete |
+**Velocity:**
+- Total plans completed: 0
+- Average duration: N/A
+- Total execution time: 0.0 hours
 
----
+**By Phase:**
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| - | - | - | - |
+
+**Recent Trend:**
+- Last 5 plans: None yet
+- Trend: N/A
+
+*Updated after each plan completion*
 
 ## Accumulated Context
 
-### Key Decisions
+### Decisions
 
-| Date | Decision | Rationale |
-|------|----------|-----------|
-| 2026-02-15 | True append (not atomic_write_jsonl) | O(1) per activity vs O(n), crash-safe with at most one corrupt trailing line |
-| 2026-02-15 | JSONL with `"v": 1` per line | Enables forward-compatible schema migration across cloud ECS deploys |
-| 2026-02-15 | Session dir inside workspace (`.lobster/sessions/{id}/`) | Keeps provenance co-located with workspace data, discoverable by path convention |
-| 2026-02-15 | `mkdir` in ProvenanceTracker (not caller) | Cloud restore recreates files but not empty dirs — ProvenanceTracker must be self-contained |
-| 2026-02-15 | `provenance_path` property (not hardcoded filename) | Cloud S3 sync needs the path without knowing internal naming |
-| 2026-02-15 | Schema version bump to "1.1" in session JSON | Old sessions (1.0) don't have provenance key — loading code can distinguish |
-| 2026-02-15 | IR restored as AnalysisStep on load | Not dicts - enables immediate notebook export without re-parsing |
-| 2026-02-15 | fsync after each write | Crash loses at most one trailing activity |
-| 2026-02-15 | session_dir as _session_dir private attribute | Prevents accidental modification, signals internal use |
-| 2026-02-15 | Directory creation in AgentClient | Explicit control over when directories are created |
-| 2026-02-15 | External data_manager bypasses session_dir wiring | Backward compatibility for users providing their own DataManagerV2 |
-| 2026-02-15 | Provenance restoration is best-effort | Session loads even if provenance fails - logged as warning but not fatal |
-| 2026-02-15 | Default session resolution: None and "latest" both resolve to most recent session | Enables immediate use without remembering session IDs |
-| 2026-02-15 | Plain text error messages for CLI | Scripting compatibility (JSON output mode) |
-| 2026-02-15 | Session display with timestamp | "Using session: {id} (last activity: {timestamp})" confirms selection |
-| 2026-02-15 | Two test classes for unit tests | TestPersistenceMechanics (core I/O) + TestApiContracts (API surface) for logical grouping |
-| 2026-02-15 | pytest tmp_path over tmpdir | Modern fixture, automatic cleanup, Path objects |
-| 2026-02-15 | Synthetic IR fixture with all fields | Complete round-trip validation without service dependencies |
-| 2026-02-15 | NotebookExporter handles both dict and AnalysisStep IR | Cross-session compatibility - IR can be dict (in-memory) or AnalysisStep (restored from disk) |
-| 2026-02-15 | init_client() computes session_dir before creating DataManagerV2 | Bug fix: CLI path was bypassing provenance persistence — external data_manager had no session_dir |
+Decisions are logged in PROJECT.md Key Decisions table.
+Recent decisions affecting current work:
 
-### Implementation Notes
+- ChromaDB as default backend — Small data (~60K vectors), zero cost, proven in SRAgent, local+cloud symmetry
+- SapBERT as default embedding — SOTA biomedical entity linking, 4M+ UMLS synonym pairs, 768d, free/local
+- Cross-encoder as default reranker — Zero API cost, offline, ~1-5s for 100 docs on CPU
+- Core location (not package) — Vector search is cross-agent infrastructure used by annotation, metadata, research
+- Augment, don't replace — Existing annotate_cell_types tool stays; new semantic tool added alongside
 
-**Files modified (Phase 1):**
-- `lobster/core/provenance.py` — Core persistence layer complete
+### Pending Todos
 
-**Files modified (Phase 2):**
-- `lobster/core/data_manager_v2.py` — session_dir parameter forwarding to ProvenanceTracker
-- `lobster/core/client.py` — Session directory computation and wiring
+None yet.
 
-**Files modified (Phase 3):**
-- `lobster/core/provenance.py` — Added path parameter to _load_from_disk()
-- `lobster/core/client.py` — Schema 1.1, provenance key in save, restoration in load
+### Blockers/Concerns
 
-**Files modified (Phase 4):**
-- `lobster/cli.py` — CommandClient session_id parameter, --session-id CLI option, provenance check in pipeline dispatch
-
-**Files created (Phase 5):**
-- `tests/unit/core/test_provenance_persistence.py` — 13 unit tests (12 required + 1 bonus)
-
-**Files created (Phase 6):**
-- `tests/integration/test_session_provenance.py` — 3 integration tests (TEST-13, TEST-14, TEST-15)
-
-**Files modified (Phase 6):**
-- `lobster/core/notebook_exporter.py` — Bug fix: handle AnalysisStep IR in addition to dict IR
-
-**Files modified (Phase 7):**
-- `lobster/cli.py` — Bug fix: init_client() now passes session_dir to DataManagerV2 (provenance persistence was broken)
-- `skills/lobster-use/references/cli-commands.md` — Pipeline export no longer strikethrough, --session-id for lobster command, cross-session export section
-- `skills/lobster-dev/references/architecture.md` — session_dir in DataManagerV2/ProvenanceTracker examples
-- `docs-site/content/docs/guides/cli-commands.mdx` — Session Continuity subsection, /pipeline commands, --session-id examples
-- `docs-site/content/docs/guides/data-analysis-workflows.mdx` — Session-Scoped Pipeline Export subsection
-
-**Architecture patterns established:**
-- Append-only JSONL with O(1) writes using `open("a")` + `fsync`
-- Line-independent recovery (corrupt lines skipped with warnings)
-- Schema versioning at JSONL line level (`"v": 1`)
-- Session JSON schema versioning (1.0 -> 1.1)
-- Path parameter pattern for cross-session file access
-- Backward compatibility via `None` defaults (zero breakage)
-- Self-contained directory creation (ProvenanceTracker handles mkdir)
-- Session directory path: `workspace/.lobster/sessions/{session_id}/`
-- Parameter wiring: AgentClient -> DataManagerV2 -> ProvenanceTracker
-- Session resolution: sort by mtime, use most recent
-- Provenance check: `getattr(client.data_manager, 'provenance', None)` + activities check
-
-### Phase 1 Deliverables
-
-- `_persist_activity()` — Appends to JSONL with fsync
-- `_load_from_disk()` — Restores activities with IR reconstruction
-- `_write_session_metadata()` — Companion metadata.json
-- `provenance_path` property — Exposes file path for external consumers
-- `get_summary()` — Compact stats for API responses
-
-### Phase 2 Deliverables
-
-- DataManagerV2 accepts `session_dir` parameter
-- DataManagerV2 forwards `session_dir` to ProvenanceTracker
-- DataManagerV2 preserves `session_dir` across `clear()` operations
-- AgentClient computes session directory: `workspace/.lobster/sessions/{session_id}/`
-- AgentClient creates session directory for internal data managers
-- External data_manager case bypasses session_dir wiring
-
-### Phase 3 Deliverables
-
-- `_load_from_disk(path)` accepts optional path parameter for cross-session restoration
-- Session JSON schema bumped to "1.1"
-- Session JSON includes `provenance` key with session_dir and activity_count
-- `load_session()` restores provenance from original session directory
-- `load_session()` returns `provenance_restored` count in result dict
-- Backward compatibility: schema 1.0 sessions load without error
-
-### Phase 4 Deliverables
-
-- CommandClient accepts `session_id` parameter for loading provenance from disk
-- CLI `--session-id/-s` option for `lobster command`
-- Auto-resolution to latest session by mtime when no session specified
-- Pipeline export/run check provenance availability instead of hardcoded rejection
-- Available sessions listed in error output
-
-### Phase 5 Deliverables
-
-- `test_provenance_persistence.py` — 13 unit tests for persistence layer
-- 96.4% average coverage for persistence methods (_persist_activity: 100%, provenance_path: 100%, get_summary: 100%, _write_session_metadata: 95.2%, _load_from_disk: 87%)
-- Test runtime: 0.20s (10x under 5s target)
-- No regressions: 66 tests pass together (53 existing + 13 new)
-- Fixtures: `session_dir` (tmp_path wrapper), `synthetic_ir` (complete AnalysisStep)
-- Test patterns: warnings.catch_warnings for corrupt line validation, isinstance checks for IR reconstruction
-- Edge cases covered: corrupt files, empty files, deleted directories, IR round-trip, metadata companion
-
-### Phase 6 Deliverables
-
-- `test_session_provenance.py` — 3 integration tests for full workflow validation
-- TEST-13: Full workflow - AgentClient → destroy → CommandClient → pipeline export succeeds
-- TEST-14: load_session restores provenance with correct activity count and IR objects
-- TEST-15: CommandClient with session_id enables pipeline export
-- Test runtime: 1.53s (all 3 tests, under 5s target)
-- Bug fix: NotebookExporter now handles both dict IR (in-memory) and AnalysisStep IR (restored from disk)
-- No regressions: All existing tests pass
-
-### Active TODOs
-
-- [x] Implement ProvenanceTracker._persist_activity()
-- [x] Implement ProvenanceTracker._load_from_disk()
-- [x] Implement ProvenanceTracker._write_session_metadata()
-- [x] Add provenance_path property
-- [x] Add get_summary() method
-- [x] Wire session_dir through DataManagerV2
-- [x] Wire session_dir through AgentClient
-- [x] Update session JSON schema to 1.1
-- [x] Implement load_session() provenance restoration
-- [x] Add CommandClient session_id parameter
-- [x] Add `lobster command --session-id` CLI option
-- [x] Unblock pipeline export in CommandClient
-- [x] Write 13 unit tests (12 required + 1 bonus)
-- [x] Write 3 integration tests
-- [x] Update CLI commands documentation
-
-### Known Blockers
-
-None — All 7 phases complete. Project finished.
-
----
+None yet.
 
 ## Session Continuity
 
-**Session ID:** Not applicable (planning phase)
-**Workspace:** `/Users/tyo/omics-os/lobster/.planning/`
-**Config:** depth=standard, mode=yolo, parallelization=true
-
-**Last Session:** 2026-02-15T12:43:45Z
-**Stopped at:** Completed 07-01-PLAN.md (PROJECT COMPLETE)
-**Resume file:** None
-
-**Quick Resume:**
-```bash
-# Review Phase 7 summary
-cat /Users/tyo/omics-os/lobster/.planning/phases/07-documentation-update/07-01-SUMMARY.md
-
-# Project complete - no further phases
-```
-
-**Context Files:**
-- PROJECT.md — What we're building, constraints, key decisions
-- REQUIREMENTS.md — 38 requirements with traceability (38/38 complete)
-- ROADMAP.md — 7 phases with success criteria (7/7 complete)
-- config.json — Workflow settings
-
----
-
-## Quality Gates
-
-**Phase 1 (Complete):**
-- [x] All Phase 1 success criteria met
-- [x] 10/10 requirements verified against codebase
-- [x] Backward compatibility validated (session_dir=None is no-op)
-- [x] No pyproject.toml changes (stdlib only)
-- [x] Crash-safe append-only writes verified
-
-**Phase 2 (Complete):**
-- [x] DataManagerV2 accepts session_dir parameter
-- [x] DataManagerV2 forwards to ProvenanceTracker
-- [x] clear() preserves session_dir
-- [x] AgentClient computes and passes session_dir
-- [x] External data_manager bypasses wiring (backward compatible)
-- [x] 168 tests pass (98 DataManagerV2 + 70 client tests)
-
-**Phase 3 (Complete):**
-- [x] _load_from_disk() accepts optional path parameter
-- [x] Session JSON saved with schema_version 1.1 and provenance key
-- [x] load_session() restores provenance from original session directory
-- [x] load_session() returns provenance_restored count
-- [x] Old schema 1.0 sessions load without error
-- [x] 1489 core tests pass (2 unrelated failures in test_lean_core.py)
-
-**Phase 4 (Complete):**
-- [x] CommandClient session_id parameter working
-- [x] CLI --session-id option available
-- [x] Pipeline export checks provenance availability
-- [x] Auto-resolution to latest session works
-- [x] Error messages include available sessions
-
-**Phase 5 (Complete):**
-- [x] 13 unit tests written (TEST-01 through TEST-12 + bonus)
-- [x] Test suite runtime <5 seconds (0.20s actual)
-- [x] Persistence method coverage >=90% (96.4% actual)
-- [x] Tests validate both session_dir=None and session_dir=Path modes
-- [x] Corrupt JSONL test verifies warning emission
-- [x] Round-trip test verifies AnalysisStep reconstruction
-- [x] No conflicts with existing test_provenance.py (66 tests pass together)
-
-**Phase 6 (Complete):**
-- [x] 3 integration tests written (TEST-13, TEST-14, TEST-15)
-- [x] TEST-13: Full workflow AgentClient → destroy → CommandClient → pipeline export succeeds
-- [x] TEST-14: load_session restores provenance with correct activity count and IR objects
-- [x] TEST-15: CommandClient with session_id enables pipeline export
-- [x] All 3 tests pass consistently (1.53s runtime)
-- [x] No regressions in existing integration tests
-- [x] Bug fix enables cross-session functionality
-
-**Phase 7 (Complete):**
-- [x] cli-commands.mdx updated with --session-id flag, Session Continuity section, /pipeline commands
-- [x] data-analysis-workflows.mdx updated with Session-Scoped Pipeline Export section
-- [x] Version markers (v1.0.7+) applied consistently across both files
-- [x] No implementation details exposed (.session.json, ProvenanceTracker, etc.)
-- [x] docs-site build passed (207 static pages, zero errors)
-- [x] Cross-references between both MDX files verified
-
-**Before releasing:**
-- [x] All 7 phases complete
-- [x] 13 unit tests + 3 integration tests passing
-- [x] Documentation updated (docs-site MDX + skill references)
-- [ ] `make test` passes (all existing tests unchanged)
-- [ ] Manual verification: full workflow from analysis to cross-session export
-
----
-
-*State initialized: 2026-02-15*
-*Phase 1 complete: 2026-02-15*
-*Phase 2 complete: 2026-02-15*
-*Phase 3 complete: 2026-02-15*
-*Phase 4 complete: 2026-02-15*
-*Phase 5 complete: 2026-02-15*
-*Phase 6 complete: 2026-02-15*
-*Phase 7 complete: 2026-02-15*
+Last session: 2026-02-17 (roadmap initialization)
+Stopped at: ROADMAP.md and STATE.md created, ready for Phase 1 planning
+Resume file: None
