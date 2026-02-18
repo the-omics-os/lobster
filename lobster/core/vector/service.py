@@ -13,6 +13,7 @@ Design:
     - Falls back to config-driven factory creation when not injected
     - Lazy initialization: no heavy deps loaded until first query
     - Distance-to-similarity conversion with clamping to [0, 1]
+    - match_ontology() provides domain-aware alias resolution and oversampling
 """
 
 from __future__ import annotations
@@ -20,8 +21,32 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from lobster.core.schemas.search import OntologyMatch
     from lobster.core.vector.backends.base import BaseVectorBackend
     from lobster.core.vector.embeddings.base import BaseEmbedder
+
+
+# ---------------------------------------------------------------------------
+# Ontology collection alias map
+# ---------------------------------------------------------------------------
+
+ONTOLOGY_COLLECTIONS: dict[str, str] = {
+    # Primary names (canonical)
+    "mondo": "mondo_v2024_01",
+    "uberon": "uberon_v2024_01",
+    "cell_ontology": "cell_ontology_v2024_01",
+    # Aliases (domain-friendly shortcuts)
+    "disease": "mondo_v2024_01",
+    "tissue": "uberon_v2024_01",
+    "cell_type": "cell_ontology_v2024_01",
+}
+"""Maps ontology names and aliases to versioned collection names.
+
+Three primary ontologies (mondo, uberon, cell_ontology) plus three
+human-friendly aliases (disease, tissue, cell_type). Agents and
+DiseaseOntologyService use aliases; the underlying query() uses
+the resolved versioned collection name.
+"""
 
 
 class VectorSearchService:
@@ -146,6 +171,77 @@ class VectorSearchService:
             results.append(self._format_results(raw, query_text=text))
 
         return results
+
+    def match_ontology(
+        self,
+        term: str,
+        ontology: str,
+        k: int = 5,
+    ) -> list[OntologyMatch]:
+        """
+        Match a biomedical term to ontology concepts with alias resolution.
+
+        Domain-aware API that wraps query() with:
+        1. Alias resolution (e.g., "disease" -> "mondo_v2024_01")
+        2. Oversampling (requests k*4 from backend for future reranking)
+        3. Typed OntologyMatch Pydantic objects as return value
+        4. Truncation to k results
+
+        This is the primary method agents and DiseaseOntologyService call
+        for semantic ontology matching.
+
+        Args:
+            term: Biomedical term to match (e.g., "heart attack", "T cell").
+            ontology: Ontology name or alias. Supported values:
+                - "mondo", "disease" -> MONDO disease ontology
+                - "uberon", "tissue" -> UBERON tissue ontology
+                - "cell_ontology", "cell_type" -> Cell Ontology
+            k: Number of results to return (default 5).
+
+        Returns:
+            list[OntologyMatch]: Ranked list of typed ontology matches,
+                truncated to k results.
+
+        Raises:
+            ValueError: If ontology name is not in ONTOLOGY_COLLECTIONS.
+
+        Example::
+
+            service = VectorSearchService()
+            matches = service.match_ontology("heart attack", "disease", k=3)
+            for m in matches:
+                print(f"{m.term} ({m.ontology_id}): {m.score}")
+        """
+        from lobster.core.schemas.search import OntologyMatch as _OntologyMatch
+
+        # Resolve ontology alias to versioned collection name
+        collection = ONTOLOGY_COLLECTIONS.get(ontology)
+        if collection is None:
+            available = ", ".join(sorted(ONTOLOGY_COLLECTIONS.keys()))
+            raise ValueError(
+                f"Unknown ontology '{ontology}'. "
+                f"Available options: {available}"
+            )
+
+        # Oversample: request k*4 from backend (for future reranking)
+        oversampled_k = k * 4
+        raw_matches = self.query(term, collection, top_k=oversampled_k)
+
+        # Convert flat dicts to typed OntologyMatch Pydantic objects
+        results: list[OntologyMatch] = []
+        for match_dict in raw_matches:
+            results.append(
+                _OntologyMatch(
+                    term=match_dict["term"],
+                    ontology_id=match_dict["ontology_id"],
+                    score=match_dict["score"],
+                    metadata=match_dict["metadata"],
+                    distance_metric=match_dict["distance_metric"],
+                )
+            )
+
+        # Truncate to requested k
+        return results[:k]
 
     def _format_results(
         self, raw: dict[str, Any], query_text: str

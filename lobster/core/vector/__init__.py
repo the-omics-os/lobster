@@ -11,6 +11,7 @@ heavy dependency. Classes are resolved on first access via __getattr__.
 Usage::
 
     from lobster.core.vector import VectorSearchService, VectorSearchConfig
+    from lobster.core.vector import ONTOLOGY_COLLECTIONS
     from lobster.core.vector.backends.base import BaseVectorBackend
     from lobster.core.vector.embeddings.base import BaseEmbedder
 """
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
 __all__ = [
     "BaseVectorBackend",
     "BaseEmbedder",
+    "ONTOLOGY_COLLECTIONS",
     "VectorSearchService",
     "VectorSearchConfig",
 ]
@@ -50,4 +52,8 @@ def __getattr__(name: str):
         from lobster.core.vector.embeddings.base import BaseEmbedder
 
         return BaseEmbedder
+    if name == "ONTOLOGY_COLLECTIONS":
+        from lobster.core.vector.service import ONTOLOGY_COLLECTIONS
+
+        return ONTOLOGY_COLLECTIONS
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
