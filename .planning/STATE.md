@@ -19,23 +19,23 @@ Progress: [████░░░░░░] 25%
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 2.5min
-- Total execution time: 0.17 hours
+- Total plans completed: 5
+- Average duration: 2.6min
+- Total execution time: 0.22 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation | 3 | 8min | 2.7min |
-| 02-service-integration | 1 | 2min | 2min |
+| 02-service-integration | 2 | 5min | 2.5min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (3min), 01-02 (2min), 01-03 (3min), 02-01 (2min)
+- Last 5 plans: 01-02 (2min), 01-03 (3min), 02-01 (2min), 02-02 (3min)
 - Trend: Stable
 
 *Updated after each plan completion*
-| Phase 02 P01 | 2min | 2 tasks | 2 files |
+| Phase 02 P02 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -64,6 +64,9 @@ Recent decisions affecting current work:
 - [02-01] Import-guarded obonet inside function body, not module level
 - [02-01] lru_cache(maxsize=3) for process-lifetime caching of parsed OBO graphs
 - [02-01] OBO edge direction convention: child -> parent (is_a), successors = parents
+- [02-02] ONTOLOGY_COLLECTIONS as module-level dict constant (not class attribute) for easy import
+- [02-02] 4x oversampling factor (k*4) for future reranking without over-fetching
+- [02-02] Lazy import of OntologyMatch inside match_ontology() to maintain zero-pydantic-at-module-level
 
 ### Pending Todos
 
@@ -75,6 +78,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-18 (Plan 02-01 execution)
-Stopped at: Completed 02-01-PLAN.md (Ontology Graph)
-Resume file: .planning/phases/02-service-integration/02-01-SUMMARY.md
+Last session: 2026-02-18 (Plan 02-02 execution)
+Stopped at: Completed 02-02-PLAN.md (match_ontology)
+Resume file: .planning/phases/02-service-integration/02-02-SUMMARY.md

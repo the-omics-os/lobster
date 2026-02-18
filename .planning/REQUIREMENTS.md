@@ -34,16 +34,16 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Search
 
-- [ ] **SRCH-01**: VectorSearchService.match_ontology(term, ontology, k) returns List[OntologyMatch] with confidence scores
-- [ ] **SRCH-02**: Two-stage pipeline: embed query -> search backend (oversample k*4) -> rerank -> return top-k
-- [ ] **SRCH-03**: ONTOLOGY_COLLECTIONS mapping resolves aliases ("disease" -> "mondo", "tissue" -> "uberon", "cell_type" -> "cell_ontology")
-- [ ] **SRCH-04**: Query results include ontology term IDs (MONDO:XXXX, UBERON:XXXX, CL:XXXX), names, and confidence scores
+- [x] **SRCH-01**: VectorSearchService.match_ontology(term, ontology, k) returns List[OntologyMatch] with confidence scores
+- [x] **SRCH-02**: Two-stage pipeline: embed query -> search backend (oversample k*4) -> rerank -> return top-k
+- [x] **SRCH-03**: ONTOLOGY_COLLECTIONS mapping resolves aliases ("disease" -> "mondo", "tissue" -> "uberon", "cell_type" -> "cell_ontology")
+- [x] **SRCH-04**: Query results include ontology term IDs (MONDO:XXXX, UBERON:XXXX, CL:XXXX), names, and confidence scores
 
 ### Schemas
 
 - [x] **SCHM-01**: SearchResult, OntologyMatch, LiteratureMatch, SearchResponse Pydantic models defined in lobster/core/schemas/search.py
 - [x] **SCHM-02**: SearchBackend, EmbeddingProvider, RerankerType enums defined
-- [ ] **SCHM-03**: OntologyMatch is compatible with existing DiseaseMatch via helper converter
+- [x] **SCHM-03**: OntologyMatch is compatible with existing DiseaseMatch via helper converter
 
 ### Ontology Graph
 
@@ -88,10 +88,10 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **TEST-01**: Unit tests for backends (ChromaDB, FAISS, pgvector stub) with mocked deps
 - [ ] **TEST-02**: Unit tests for embedding providers (SapBERT, MiniLM, OpenAI) with mocked model loading
 - [ ] **TEST-03**: Unit tests for rerankers (cross-encoder, Cohere) with mocked clients
-- [ ] **TEST-04**: Unit tests for VectorSearchService orchestration, caching, config-driven switching
-- [ ] **TEST-05**: Unit tests for config env var parsing and factory methods
+- [x] **TEST-04**: Unit tests for VectorSearchService orchestration, caching, config-driven switching
+- [x] **TEST-05**: Unit tests for config env var parsing and factory methods
 - [ ] **TEST-06**: Unit tests for DiseaseOntologyService Phase 2 backend swap branching
-- [ ] **TEST-07**: Integration test with small real ChromaDB (embed -> search -> rerank full pipeline)
+- [x] **TEST-07**: Integration test with small real ChromaDB (embed -> search -> rerank full pipeline)
 - [ ] **TEST-08**: All tests use @pytest.mark.skipif for optional deps
 
 ## v2 Requirements
@@ -155,13 +155,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RANK-01 | Phase 4 | Pending |
 | RANK-02 | Phase 4 | Pending |
 | RANK-03 | Phase 4 | Pending |
-| SRCH-01 | Phase 2 | Pending |
-| SRCH-02 | Phase 2 | Pending |
-| SRCH-03 | Phase 2 | Pending |
-| SRCH-04 | Phase 2 | Pending |
+| SRCH-01 | Phase 2 | Complete |
+| SRCH-02 | Phase 2 | Complete |
+| SRCH-03 | Phase 2 | Complete |
+| SRCH-04 | Phase 2 | Complete |
 | SCHM-01 | Phase 1 | Complete |
 | SCHM-02 | Phase 1 | Complete |
-| SCHM-03 | Phase 2 | Pending |
+| SCHM-03 | Phase 2 | Complete |
 | GRPH-01 | Phase 2 | Complete |
 | GRPH-02 | Phase 2 | Complete |
 | GRPH-03 | Phase 2 | Complete |
@@ -188,10 +188,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-01 | Phase 5 | Pending |
 | TEST-02 | Phase 4 | Pending |
 | TEST-03 | Phase 4 | Pending |
-| TEST-04 | Phase 2 | Pending |
-| TEST-05 | Phase 2 | Pending |
+| TEST-04 | Phase 2 | Complete |
+| TEST-05 | Phase 2 | Complete |
 | TEST-06 | Phase 2 | Pending |
-| TEST-07 | Phase 2 | Pending |
+| TEST-07 | Phase 2 | Complete |
 | TEST-08 | Phase 3 | Pending |
 
 **Coverage:**
