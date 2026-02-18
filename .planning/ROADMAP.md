@@ -47,10 +47,12 @@ Plans:
   3. Ontology graph provides parent/child/sibling relationships for MONDO, Uberon, Cell Ontology terms
   4. Keyword fallback works with explicit logger.warning when vector deps not installed
   5. Duplicate disease_ontology.json removed from lobster/config/ (canonical stays in lobster-metadata)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 02-01: TBD
+- [ ] 02-01-PLAN.md -- Ontology graph module (load_ontology_graph, get_neighbors, OBO_URLS)
+- [ ] 02-02-PLAN.md -- match_ontology() on VectorSearchService with ONTOLOGY_COLLECTIONS alias resolution (TDD)
+- [ ] 02-03-PLAN.md -- DiseaseOntologyService Strangler Fig migration, silent fallback fix, duplicate config deletion
 
 ### Phase 3: Agent Tooling
 **Goal**: Agents can use semantic search for cell type annotation and tissue/disease standardization
