@@ -5,6 +5,7 @@ This service extends the basic clustering functionality with doublet detection,
 cell type annotation, and advanced visualization capabilities.
 """
 
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 import anndata
@@ -333,6 +334,7 @@ adata.obs['predicted_doublet'] = predicted_doublets
     def annotate_cell_types(
         self,
         adata: anndata.AnnData,
+        cluster_key: str,
         reference_markers: Optional[Dict[str, List[str]]] = None,
     ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
@@ -340,6 +342,9 @@ adata.obs['predicted_doublet'] = predicted_doublets
 
         Args:
             adata: AnnData object with clustering results
+            cluster_key: Column name in adata.obs containing cluster assignments
+                (e.g., 'leiden', 'louvain', 'seurat_clusters', 'RNA_snn_res.1').
+                Use check_data_status() to inspect available obs columns.
             reference_markers: Optional custom marker genes dictionary
 
         Returns:
@@ -352,9 +357,11 @@ adata.obs['predicted_doublet'] = predicted_doublets
             logger.info("Starting cell type annotation using marker genes")
 
             # Validate input
-            if "leiden" not in adata.obs.columns:
+            if cluster_key not in adata.obs.columns:
+                available_cols = list(adata.obs.columns)
                 raise SingleCellError(
-                    "No clustering results found. Please run clustering first."
+                    f"Cluster column '{cluster_key}' not found in adata.obs. "
+                    f"Available columns: {available_cols}"
                 )
 
             # Create working copy
@@ -366,12 +373,12 @@ adata.obs['predicted_doublet'] = predicted_doublets
 
             # Calculate marker gene scores for each cluster
             cluster_annotations = self._calculate_marker_scores_from_adata(
-                adata_annotated, markers
+                adata_annotated, markers, cluster_key=cluster_key
             )
 
             # Determine best cell type for each cluster
             cluster_to_celltype = {}
-            for cluster_id in adata_annotated.obs["leiden"].unique():
+            for cluster_id in adata_annotated.obs[cluster_key].unique():
                 cluster_str = str(cluster_id)
                 if cluster_str in cluster_annotations:
                     best_match = max(
@@ -382,7 +389,7 @@ adata.obs['predicted_doublet'] = predicted_doublets
                     cluster_to_celltype[cluster_id] = "Unknown"
 
             # Map cluster annotations to cells
-            cell_types = adata_annotated.obs["leiden"].map(cluster_to_celltype)
+            cell_types = adata_annotated.obs[cluster_key].map(cluster_to_celltype)
             adata_annotated.obs["cell_type"] = cell_types
 
             # Calculate per-cell confidence scores
@@ -425,7 +432,7 @@ adata.obs['predicted_doublet'] = predicted_doublets
                 "analysis_type": "cell_type_annotation",
                 "markers_used": list(markers.keys()),
                 "n_marker_sets": len(markers),
-                "n_clusters": len(adata_annotated.obs["leiden"].unique()),
+                "n_clusters": len(adata_annotated.obs[cluster_key].unique()),
                 "n_cell_types_identified": n_cell_types,
                 "cluster_to_celltype": {
                     str(k): v for k, v in cluster_to_celltype.items()
@@ -458,7 +465,9 @@ adata.obs['predicted_doublet'] = predicted_doublets
             )
 
             # Create IR for provenance tracking
-            ir = self._create_annotation_ir(reference_markers=markers)
+            ir = self._create_annotation_ir(
+                reference_markers=markers, cluster_key=cluster_key
+            )
 
             return adata_annotated, annotation_stats, ir
 
@@ -571,7 +580,9 @@ adata.obs['predicted_doublet'] = predicted_doublets
         return confidence_scores, top3_predictions, entropy_scores
 
     def _create_annotation_ir(
-        self, reference_markers: Optional[Dict[str, List[str]]] = None
+        self,
+        reference_markers: Optional[Dict[str, List[str]]] = None,
+        cluster_key: str = "leiden",
     ) -> AnalysisStep:
         """Create AnalysisStep IR for cell type annotation."""
 
@@ -585,7 +596,7 @@ from scipy.stats import pearsonr, entropy
 reference_markers = {{ reference_markers }}
 
 # Calculate mean expression per cluster
-cluster_col = 'leiden'  # or user-specified
+cluster_col = '{{ cluster_key }}'
 for cluster in adata.obs[cluster_col].unique():
     cluster_mask = adata.obs[cluster_col] == cluster
     cluster_cells = adata[cluster_mask]
@@ -624,13 +635,20 @@ for cluster in adata.obs[cluster_col].unique():
                 "import numpy as np",
                 "from scipy.stats import pearsonr, entropy",
             ],
-            parameters={"reference_markers": reference_markers},
+            parameters={
+                "reference_markers": reference_markers,
+                "cluster_key": cluster_key,
+            },
             parameter_schema={
                 "reference_markers": {
                     "type": "dict",
                     "description": "Marker genes per cell type",
                     "required": False,
-                }
+                },
+                "cluster_key": {
+                    "type": "string",
+                    "description": "Column in .obs containing cluster assignments",
+                },
             },
             input_entities=["adata"],
             output_entities=["adata_annotated"],
@@ -1013,7 +1031,10 @@ sc.tl.filter_rank_genes_groups(
         )
 
     def _calculate_marker_scores_from_adata(
-        self, adata: anndata.AnnData, markers: Dict[str, List[str]]
+        self,
+        adata: anndata.AnnData,
+        markers: Dict[str, List[str]],
+        cluster_key: str = "leiden",
     ) -> Dict[str, Dict[str, float]]:
         """
         Calculate marker gene scores for each cluster from AnnData object.
@@ -1021,6 +1042,7 @@ sc.tl.filter_rank_genes_groups(
         Args:
             adata: AnnData object with clustering results
             markers: Dictionary of cell type markers
+            cluster_key: Column in .obs containing cluster assignments
 
         Returns:
             Dict[str, Dict[str, float]]: Cluster scores for each cell type
@@ -1039,11 +1061,11 @@ sc.tl.filter_rank_genes_groups(
         cluster_scores = {}
 
         # Get unique clusters
-        unique_clusters = adata.obs["leiden"].astype(str).unique()
+        unique_clusters = adata.obs[cluster_key].astype(str).unique()
 
         for cluster in unique_clusters:
             cluster_scores[cluster] = {}
-            cluster_cells = adata.obs["leiden"].astype(str) == cluster
+            cluster_cells = adata.obs[cluster_key].astype(str) == cluster
 
             for cell_type, marker_genes in markers.items():
                 # Find available markers in the dataset

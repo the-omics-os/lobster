@@ -348,6 +348,7 @@ Sub-agent invocation IS your response, not a plan for a future response.
 6. **Log all operations** with proper provenance tracking (ir parameter)
 7. **Use descriptive modality names** following the pattern: base_operation (e.g., geo_gse12345_clustered)
 8. **Delegation is an action, not a recommendation**: Never say "delegation needed" or "should delegate" - invoke the tool instead
+9. **CLUSTER COLUMN**: Before calling subcluster_cells, evaluate_clustering_quality, or find_marker_genes_for_clusters, ALWAYS call check_data_status() to identify the actual cluster column name. NEVER assume 'leiden'. Common names: 'leiden', 'louvain', 'seurat_clusters', 'RNA_snn_res.1'. Pass the column name explicitly via cluster_key/groupby parameter.
 </Important_Rules>
 
 Today's date: {date.today()}
@@ -406,6 +407,14 @@ You focus exclusively on cell type annotation tasks including:
 
 <Annotation Best Practices>
 
+**CRITICAL: Cluster Column Identification**
+Before calling annotate_cell_types, you MUST:
+1. Call check_data_status(modality_name) to see ALL obs columns
+2. Identify the column containing cluster assignments
+   (e.g., 'leiden', 'louvain', 'seurat_clusters', 'RNA_snn_res.1')
+3. Pass that column name as cluster_key to annotate_cell_types
+4. NEVER assume the column is named 'leiden' -- always inspect first
+
 **Cell Type Annotation Protocol**
 
 IMPORTANT: Built-in marker gene lists are PRELIMINARY and NOT scientifically validated.
@@ -448,6 +457,7 @@ Common debris indicators:
 5. **Document annotation decisions** in provenance logs
 6. **Consider tissue context** when suggesting cell types
 7. **Always provide confidence metrics** when available
+8. **CLUSTER COLUMN**: Before calling ANY annotation tool (manually_annotate_clusters, collapse_clusters_to_celltype, mark_clusters_as_debris, suggest_debris_clusters, apply_annotation_template), ALWAYS call check_data_status() first to identify the actual cluster column. Pass it explicitly via cluster_key. NEVER assume 'leiden'.
 
 Today's date: {date.today()}
 """.strip()

@@ -671,6 +671,33 @@ def test_create_umap_plot(clustering_service, small_adata):
     assert fig.layout.title.text == "UMAP Visualization with Leiden Clusters"
 
 
+def test_create_umap_plot_with_custom_cluster_key(clustering_service, small_adata):
+    """Test UMAP plot creation with a custom cluster key."""
+    result = clustering_service.cluster_and_visualize(small_adata, resolution=0.5)
+    adata_result, _, _ = result
+
+    # Rename leiden to seurat_clusters to simulate imported data
+    adata_result.obs["seurat_clusters"] = adata_result.obs["leiden"]
+
+    fig = clustering_service._create_umap_plot(adata_result, cluster_key="seurat_clusters")
+
+    assert fig is not None
+    assert fig.layout.title.text == "UMAP Visualization with Seurat Clusters Clusters"
+
+
+def test_create_cluster_distribution_with_custom_key(clustering_service, small_adata):
+    """Test cluster distribution plot with a custom cluster key."""
+    result = clustering_service.cluster_and_visualize(small_adata, resolution=0.5)
+    adata_result, _, _ = result
+
+    # Rename leiden to louvain to simulate imported data
+    adata_result.obs["louvain"] = adata_result.obs["leiden"]
+
+    fig = clustering_service._create_cluster_distribution_plot(adata_result, cluster_key="louvain")
+
+    assert fig is not None
+
+
 def test_create_cluster_distribution_plot(clustering_service, small_adata):
     """Test cluster distribution plot creation."""
     result = clustering_service.cluster_and_visualize(small_adata, resolution=0.5)

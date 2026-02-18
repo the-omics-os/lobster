@@ -133,13 +133,21 @@ def annotation_expert(
 
     @tool
     def annotate_cell_types(
-        modality_name: str, reference_markers: dict = None, save_result: bool = True
+        modality_name: str,
+        cluster_key: str,
+        reference_markers: dict = None,
+        save_result: bool = True,
     ) -> str:
         """
         Annotate single-cell clusters with cell types based on marker gene expression patterns.
 
+        IMPORTANT: You must specify cluster_key -- the obs column containing cluster assignments.
+        Use check_data_status(modality_name) first to inspect available obs columns.
+        Common cluster column names: 'leiden', 'louvain', 'seurat_clusters', 'RNA_snn_res.1'.
+
         Args:
             modality_name: Name of the single-cell modality with clustering results
+            cluster_key: Column name in adata.obs containing cluster assignments
             reference_markers: Custom marker genes dict (None to use defaults)
             save_result: Whether to save annotated modality
         """
@@ -159,7 +167,9 @@ def annotation_expert(
             # Use singlecell service for cell type annotation
             adata_annotated, annotation_stats, ir = (
                 singlecell_service.annotate_cell_types(
-                    adata=adata, reference_markers=reference_markers
+                    adata=adata,
+                    cluster_key=cluster_key,
+                    reference_markers=reference_markers,
                 )
             )
 
@@ -182,6 +192,7 @@ def annotation_expert(
                 tool_name="annotate_cell_types",
                 parameters={
                     "modality_name": modality_name,
+                    "cluster_key": cluster_key,
                     "reference_markers": "custom" if reference_markers else "default",
                 },
                 description=f"Annotated {annotation_stats['n_cell_types_identified']} cell types in single-cell data {modality_name}",
@@ -252,14 +263,17 @@ def annotation_expert(
 
     @tool
     def manually_annotate_clusters_interactive(
-        modality_name: str, cluster_col: str = "leiden", save_result: bool = True
+        modality_name: str, cluster_key: str, save_result: bool = True
     ) -> str:
         """
         Launch Rich terminal interface for manual cluster annotation with color synchronization.
 
+        IMPORTANT: Call check_data_status() first to identify the actual cluster column name.
+
         Args:
             modality_name: Name of clustered single-cell modality
-            cluster_col: Column containing cluster assignments
+            cluster_key: Column containing cluster assignments (REQUIRED).
+                        Common values: 'leiden', 'louvain', 'seurat_clusters'.
             save_result: Whether to save annotated modality
         """
         try:
@@ -276,17 +290,17 @@ def annotation_expert(
             )
 
             # Validate cluster column exists
-            if cluster_col not in adata.obs.columns:
-                available_cols = [
-                    col
-                    for col in adata.obs.columns
-                    if col in ["leiden", "cell_type", "louvain"]
-                ]
-                return f"Cluster column '{cluster_col}' not found. Available: {available_cols}"
+            if cluster_key not in adata.obs.columns:
+                available_cols = list(adata.obs.columns)
+                return (
+                    f"Cluster column '{cluster_key}' not found.\n\n"
+                    f"Available columns: {available_cols}\n\n"
+                    f"Use check_data_status() to identify the correct cluster column."
+                )
 
             # Initialize annotation session
             annotation_state = manual_annotation_service.initialize_annotation_session(
-                adata=adata, cluster_key=cluster_col
+                adata=adata, cluster_key=cluster_key
             )
 
             # Launch Rich terminal interface
@@ -295,7 +309,7 @@ def annotation_expert(
             # Apply annotations to data
             adata_annotated = manual_annotation_service.apply_annotations_to_adata(
                 adata=adata,
-                cluster_key=cluster_col,
+                cluster_key=cluster_key,
                 cell_type_column="cell_type_manual",
             )
 
@@ -318,7 +332,7 @@ def annotation_expert(
                 tool_name="manually_annotate_clusters_interactive",
                 parameters={
                     "modality_name": modality_name,
-                    "cluster_col": cluster_col,
+                    "cluster_key": cluster_key,
                     "n_annotations": len(cell_type_mapping),
                 },
                 description=f"Manual annotation completed for {len(cell_type_mapping)} clusters",
@@ -367,16 +381,19 @@ def annotation_expert(
     def manually_annotate_clusters(
         modality_name: str,
         annotations: dict,
-        cluster_col: str = "leiden",
+        cluster_key: str,
         save_result: bool = True,
     ) -> str:
         """
         Directly assign cell types to clusters without interactive interface.
 
+        IMPORTANT: Call check_data_status() first to identify the actual cluster column name.
+
         Args:
             modality_name: Name of clustered single-cell modality
             annotations: Dictionary mapping cluster IDs to cell type names
-            cluster_col: Column containing cluster assignments
+            cluster_key: Column containing cluster assignments (REQUIRED).
+                        Common values: 'leiden', 'louvain', 'seurat_clusters'.
             save_result: Whether to save annotated modality
         """
         try:
@@ -390,8 +407,13 @@ def annotation_expert(
             adata = data_manager.get_modality(modality_name)
 
             # Validate cluster column exists
-            if cluster_col not in adata.obs.columns:
-                return f"Cluster column '{cluster_col}' not found."
+            if cluster_key not in adata.obs.columns:
+                available_cols = list(adata.obs.columns)
+                return (
+                    f"Cluster column '{cluster_key}' not found.\n\n"
+                    f"Available columns: {available_cols}\n\n"
+                    f"Use check_data_status() to identify the correct cluster column."
+                )
 
             # Apply annotations directly
             adata_copy = adata.copy()
@@ -402,7 +424,7 @@ def annotation_expert(
 
             # Create cell type column
             adata_copy.obs["cell_type_manual"] = (
-                adata_copy.obs[cluster_col]
+                adata_copy.obs[cluster_key]
                 .astype(str)
                 .map(cell_type_mapping)
                 .fillna("Unassigned")
@@ -427,7 +449,7 @@ def annotation_expert(
                 tool_name="manually_annotate_clusters",
                 parameters={
                     "modality_name": modality_name,
-                    "cluster_col": cluster_col,
+                    "cluster_key": cluster_key,
                     "annotations": annotations,
                 },
                 description=f"Direct manual annotation of {len(annotations)} clusters",
@@ -463,17 +485,20 @@ def annotation_expert(
         modality_name: str,
         cluster_list: List[str],
         cell_type_name: str,
-        cluster_col: str = "leiden",
+        cluster_key: str,
         save_result: bool = True,
     ) -> str:
         """
         Collapse multiple clusters into a single cell type.
 
+        IMPORTANT: Call check_data_status() first to identify the actual cluster column name.
+
         Args:
             modality_name: Name of single-cell modality
             cluster_list: List of cluster IDs to collapse
             cell_type_name: New cell type name for collapsed clusters
-            cluster_col: Column containing cluster assignments
+            cluster_key: Column containing cluster assignments (REQUIRED).
+                        Common values: 'leiden', 'louvain', 'seurat_clusters'.
             save_result: Whether to save result
         """
         try:
@@ -487,7 +512,7 @@ def annotation_expert(
             adata = data_manager.get_modality(modality_name)
 
             # Validate clusters exist
-            unique_clusters = set(adata.obs[cluster_col].astype(str).unique())
+            unique_clusters = set(adata.obs[cluster_key].astype(str).unique())
             invalid_clusters = [
                 c for c in cluster_list if str(c) not in unique_clusters
             ]
@@ -503,12 +528,12 @@ def annotation_expert(
 
             # Apply collapse
             for cluster_id in cluster_list:
-                mask = adata_copy.obs[cluster_col].astype(str) == str(cluster_id)
+                mask = adata_copy.obs[cluster_key].astype(str) == str(cluster_id)
                 adata_copy.obs.loc[mask, "cell_type_manual"] = cell_type_name
 
             # Calculate statistics
             total_cells_collapsed = sum(
-                (adata_copy.obs[cluster_col].astype(str) == str(c)).sum()
+                (adata_copy.obs[cluster_key].astype(str) == str(c)).sum()
                 for c in cluster_list
             )
 
@@ -533,7 +558,7 @@ def annotation_expert(
                     "modality_name": modality_name,
                     "cluster_list": cluster_list,
                     "cell_type_name": cell_type_name,
-                    "cluster_col": cluster_col,
+                    "cluster_key": cluster_key,
                 },
                 description=f"Collapsed {len(cluster_list)} clusters into '{cell_type_name}'",
             )
@@ -563,17 +588,20 @@ def annotation_expert(
         modality_name: str,
         debris_clusters: List[str],
         remove_debris: bool = False,
-        cluster_col: str = "leiden",
+        cluster_key: str = "",
         save_result: bool = True,
     ) -> str:
         """
         Mark specified clusters as debris for quality control.
 
+        IMPORTANT: Call check_data_status() first to identify the actual cluster column name.
+
         Args:
             modality_name: Name of single-cell modality
             debris_clusters: List of cluster IDs to mark as debris
             remove_debris: Whether to remove debris clusters from data
-            cluster_col: Column containing cluster assignments
+            cluster_key: Column containing cluster assignments (REQUIRED).
+                        Common values: 'leiden', 'louvain', 'seurat_clusters'.
             save_result: Whether to save result
         """
         try:
@@ -586,8 +614,17 @@ def annotation_expert(
             # Get the modality
             adata = data_manager.get_modality(modality_name)
 
+            # Validate cluster_key provided
+            if not cluster_key:
+                available_cols = list(adata.obs.columns)
+                return (
+                    f"Error: cluster_key is required.\n\n"
+                    f"Available columns: {available_cols}\n\n"
+                    f"Use check_data_status() to identify the correct cluster column."
+                )
+
             # Validate clusters exist
-            unique_clusters = set(adata.obs[cluster_col].astype(str).unique())
+            unique_clusters = set(adata.obs[cluster_key].astype(str).unique())
             invalid_clusters = [
                 c for c in debris_clusters if str(c) not in unique_clusters
             ]
@@ -601,7 +638,7 @@ def annotation_expert(
                 adata_copy.obs["cell_type_manual"] = "Unassigned"
 
             debris_mask = (
-                adata_copy.obs[cluster_col]
+                adata_copy.obs[cluster_key]
                 .astype(str)
                 .isin([str(c) for c in debris_clusters])
             )
@@ -641,7 +678,7 @@ def annotation_expert(
                     "modality_name": modality_name,
                     "debris_clusters": debris_clusters,
                     "remove_debris": remove_debris,
-                    "cluster_col": cluster_col,
+                    "cluster_key": cluster_key,
                 },
                 description=f"Marked {len(debris_clusters)} clusters as debris ({total_debris_cells} cells)",
             )
@@ -676,17 +713,20 @@ def annotation_expert(
         min_genes: int = 200,
         max_mt_percent: float = 50,
         min_umi: int = 500,
-        cluster_col: str = "leiden",
+        cluster_key: str = "",
     ) -> str:
         """
         Get smart suggestions for potential debris clusters based on QC metrics.
+
+        IMPORTANT: Call check_data_status() first to identify the actual cluster column name.
 
         Args:
             modality_name: Name of single-cell modality
             min_genes: Minimum genes per cell threshold
             max_mt_percent: Maximum mitochondrial percentage
             min_umi: Minimum UMI count threshold
-            cluster_col: Column containing cluster assignments
+            cluster_key: Column containing cluster assignments (REQUIRED).
+                        Common values: 'leiden', 'louvain', 'seurat_clusters'.
         """
         try:
             # Validate modality exists
@@ -697,6 +737,15 @@ def annotation_expert(
 
             # Get the modality
             adata = data_manager.get_modality(modality_name)
+
+            # Validate cluster_key provided
+            if not cluster_key:
+                available_cols = list(adata.obs.columns)
+                return (
+                    f"Error: cluster_key is required.\n\n"
+                    f"Available columns: {available_cols}\n\n"
+                    f"Use check_data_status() to identify the correct cluster column."
+                )
 
             # Get suggestions using manual annotation service
             suggested_debris = manual_annotation_service.suggest_debris_clusters(
@@ -719,7 +768,7 @@ def annotation_expert(
 **Suggested Debris Clusters:**"""
 
             for cluster_id in suggested_debris[:10]:
-                cluster_mask = adata.obs[cluster_col].astype(str) == cluster_id
+                cluster_mask = adata.obs[cluster_key].astype(str) == cluster_id
                 n_cells = cluster_mask.sum()
 
                 # Get QC stats for cluster
@@ -830,17 +879,20 @@ def annotation_expert(
     def apply_annotation_template(
         modality_name: str,
         tissue_type: str,
-        cluster_col: str = "leiden",
+        cluster_key: str,
         expression_threshold: float = 0.5,
         save_result: bool = True,
     ) -> str:
         """
         Apply predefined tissue-specific annotation template to suggest cell types.
 
+        IMPORTANT: Call check_data_status() first to identify the actual cluster column name.
+
         Args:
             modality_name: Name of single-cell modality
             tissue_type: Type of tissue (pbmc, brain, lung, heart, kidney, liver, intestine, skin, tumor)
-            cluster_col: Column containing cluster assignments
+            cluster_key: Column containing cluster assignments (REQUIRED).
+                        Common values: 'leiden', 'louvain', 'seurat_clusters'.
             expression_threshold: Minimum expression for marker detection
             save_result: Whether to save annotated modality
         """
@@ -865,7 +917,7 @@ def annotation_expert(
             cluster_suggestions = template_service.apply_template_to_clusters(
                 adata=adata,
                 tissue_type=tissue_enum,
-                cluster_col=cluster_col,
+                cluster_col=cluster_key,
                 expression_threshold=expression_threshold,
             )
 
@@ -877,7 +929,7 @@ def annotation_expert(
             # Apply suggestions to data
             adata_copy = adata.copy()
             adata_copy.obs["cell_type_template"] = (
-                adata_copy.obs[cluster_col]
+                adata_copy.obs[cluster_key]
                 .astype(str)
                 .map(cluster_suggestions)
                 .fillna("Unknown")
@@ -903,7 +955,7 @@ def annotation_expert(
                 parameters={
                     "modality_name": modality_name,
                     "tissue_type": tissue_type,
-                    "cluster_col": cluster_col,
+                    "cluster_key": cluster_key,
                     "expression_threshold": expression_threshold,
                 },
                 description=f"Applied {tissue_type} template: {len(cluster_suggestions)} clusters annotated",
@@ -991,8 +1043,13 @@ def annotation_expert(
             }
 
             # Create cluster-to-celltype mapping if cluster info available
+            _known_cluster_names = {
+                "leiden", "louvain", "seurat_clusters", "cluster", "clusters",
+            }
             cluster_cols = [
-                col for col in adata.obs.columns if col in ["leiden", "louvain"]
+                col for col in adata.obs.columns
+                if col in _known_cluster_names
+                or col.startswith(("leiden_", "louvain_", "RNA_snn_res"))
             ]
             if cluster_cols:
                 cluster_col = cluster_cols[0]

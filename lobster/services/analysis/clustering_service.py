@@ -893,8 +893,9 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
             )
 
             # Compile clustering statistics
-            n_clusters = len(adata_clustered.obs["leiden"].unique())
-            cluster_counts = adata_clustered.obs["leiden"].value_counts().to_dict()
+            cluster_col = "leiden"
+            n_clusters = len(adata_clustered.obs[cluster_col].unique())
+            cluster_counts = adata_clustered.obs[cluster_col].value_counts().to_dict()
 
             clustering_stats = {
                 "analysis_type": "clustering",
@@ -959,7 +960,7 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
                 and "marker_genes" not in skip_steps
             ):
                 marker_genes = {}
-                for cluster in adata_clustered.obs["leiden"].unique():
+                for cluster in adata_clustered.obs[cluster_col].unique():
                     genes = adata_clustered.uns["rank_genes_groups"]["names"][cluster]
                     scores = adata_clustered.uns["rank_genes_groups"]["scores"][cluster]
                     marker_genes[str(cluster)] = [
@@ -1434,6 +1435,7 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
             primary_resolution = resolutions_to_test[0]
             primary_key = f"leiden_res{primary_resolution}".replace(".", "_")
             adata_selected.obs["leiden"] = adata_selected.obs[primary_key]
+            cluster_col = "leiden"
 
             self._update_progress("Leiden clustering completed")
 
@@ -1526,13 +1528,13 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
                 update_interval=15,
                 show_elapsed=True,
             ):
-                sc.tl.rank_genes_groups(adata, "leiden", method=method)
+                sc.tl.rank_genes_groups(adata, cluster_col, method=method)
 
             self._update_progress("Marker genes identified")
         else:
             logger.info("Skipping marker gene identification (demo mode)")
 
-        n_clusters = len(adata.obs["leiden"].unique())
+        n_clusters = len(adata.obs[cluster_col].unique())
         logger.info(f"Identified {n_clusters} clusters")
 
         elapsed = time.time() - start_time
@@ -1967,12 +1969,15 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
             requires_validation=False,
         )
 
-    def _create_umap_plot(self, adata: sc.AnnData) -> go.Figure:
+    def _create_umap_plot(
+        self, adata: sc.AnnData, cluster_key: str = "leiden"
+    ) -> go.Figure:
         """
         Create high-quality UMAP plot from clustering results.
 
         Args:
             adata: AnnData object with clustering results
+            cluster_key: Column in adata.obs containing cluster assignments
 
         Returns:
             go.Figure: Plotly figure with UMAP plot
@@ -1980,11 +1985,11 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
         logger.info("Creating high-quality UMAP visualization")
 
         umap_coords = adata.obsm["X_umap"]
-        clusters = adata.obs["leiden"].astype(str)
+        clusters = adata.obs[cluster_key].astype(str)
         n_cells = len(clusters)
 
         # Create a colormap similar to those in the publication
-        n_clusters = len(adata.obs["leiden"].unique())
+        n_clusters = len(adata.obs[cluster_key].unique())
         if n_clusters <= 10:
             color_map = px.colors.qualitative.Set1
         elif n_clusters <= 20:
@@ -2006,7 +2011,7 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
             x=umap_coords[:, 0],
             y=umap_coords[:, 1],
             color=clusters,
-            title="UMAP Visualization with Leiden Clusters",
+            title=f"UMAP Visualization with {cluster_key.replace('_', ' ').title()} Clusters",
             labels={"x": "UMAP_1", "y": "UMAP_2", "color": "Cluster"},
             width=1200,  # Increased from 800
             height=1000,  # Increased from 700
@@ -2023,7 +2028,7 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
 
         fig.update_layout(
             title=dict(
-                text="UMAP Visualization with Leiden Clusters",
+                text=f"UMAP Visualization with {cluster_key.replace('_', ' ').title()} Clusters",
                 font=dict(size=20, family="Arial, sans-serif"),
                 x=0.5,  # Center the title
                 xanchor="center",
@@ -2156,12 +2161,15 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
 
         return fig
 
-    def _create_cluster_distribution_plot(self, adata: sc.AnnData) -> go.Figure:
+    def _create_cluster_distribution_plot(
+        self, adata: sc.AnnData, cluster_key: str = "leiden"
+    ) -> go.Figure:
         """
         Create a high-quality cluster size distribution plot.
 
         Args:
             adata: AnnData object with clustering results
+            cluster_key: Column in adata.obs containing cluster assignments
 
         Returns:
             go.Figure: Plotly figure with cluster distribution plot
@@ -2169,7 +2177,7 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
         logger.info("Creating high-quality cluster size distribution plot")
 
         # Get cluster counts
-        cluster_counts = adata.obs["leiden"].value_counts().sort_index()
+        cluster_counts = adata.obs[cluster_key].value_counts().sort_index()
 
         # Create gradient colors for better visual appeal
         n_clusters = len(cluster_counts)
@@ -2700,6 +2708,7 @@ print(f"Sub-clustering complete: {n_subclusters} sub-clusters identified")
         batch_key: Optional[str] = None,
         demo_mode: bool = False,
         original_cell_count: Optional[int] = None,
+        cluster_key: str = "leiden",
     ) -> str:
         """
         Format clustering results report.
@@ -2711,12 +2720,13 @@ print(f"Sub-clustering complete: {n_subclusters} sub-clusters identified")
             batch_key: Batch key used for correction
             demo_mode: Whether demo mode was used
             original_cell_count: Original number of cells before subsampling
+            cluster_key: Column in adata.obs containing cluster assignments
 
         Returns:
             str: Formatted report
         """
-        n_clusters = len(adata.obs["leiden"].unique())
-        cluster_counts = adata.obs["leiden"].value_counts().to_dict()
+        n_clusters = len(adata.obs[cluster_key].unique())
+        cluster_counts = adata.obs[cluster_key].value_counts().to_dict()
 
         # Format cluster counts for display
         cluster_summary = "\n".join(
@@ -2732,7 +2742,7 @@ print(f"Sub-clustering complete: {n_subclusters} sub-clusters identified")
         marker_summary = ""
         if "rank_genes_groups" in adata.uns:
             marker_summary = "\n\n**Top Marker Genes by Cluster:**\n"
-            for cluster in sorted(adata.obs["leiden"].unique(), key=lambda x: int(x)):
+            for cluster in sorted(adata.obs[cluster_key].unique(), key=lambda x: int(x)):
                 genes = adata.uns["rank_genes_groups"]["names"][cluster][:5]
                 adata.uns["rank_genes_groups"]["scores"][cluster][:5]
                 marker_summary += f"- Cluster {cluster}: {', '.join(genes)}\n"

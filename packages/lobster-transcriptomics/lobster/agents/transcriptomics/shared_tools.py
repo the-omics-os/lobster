@@ -115,7 +115,7 @@ def create_shared_tools(
                     f"Modality '{modality_name}' ready for analysis:\n"
                     f"- **Data type**: {data_type.replace('_', ' ').title()}\n"
                     f"- **Shape**: {adata.n_obs} {obs_label} x {adata.n_vars} genes\n"
-                    f"- **Obs columns**: {list(adata.obs.columns)[:5]}...\n"
+                    f"- **Obs columns**: {list(adata.obs.columns)}\n"
                     f"- **Var columns**: {list(adata.var.columns)[:5]}...\n"
                 )
 
@@ -554,8 +554,14 @@ Proceed with filtering and normalization for downstream analysis."""
                     summary += f"- **Var columns**: {list(adata.var.columns)}\n"
 
                     # Check for analysis indicators
-                    if "leiden" in adata.obs.columns or "louvain" in adata.obs.columns:
-                        summary += "- **Clustering**: Performed\n"
+                    _known_cluster_names = {"leiden", "louvain", "seurat_clusters", "cluster"}
+                    cluster_cols = [
+                        c for c in adata.obs.columns
+                        if c in _known_cluster_names
+                        or c.startswith(("leiden_", "louvain_", "RNA_snn_res"))
+                    ]
+                    if cluster_cols:
+                        summary += f"- **Clustering**: {', '.join(cluster_cols)}\n"
                     if "cell_type" in adata.obs.columns:
                         summary += "- **Cell type annotation**: Performed\n"
                     if "qc_pass" in adata.obs.columns:
@@ -589,17 +595,15 @@ Proceed with filtering and normalization for downstream analysis."""
                             )
 
                             # Add key single-cell columns if present
+                            _sc_key_names = {
+                                "leiden", "louvain", "seurat_clusters", "cluster",
+                                "cell_type", "doublet_score", "qc_pass",
+                            }
                             key_cols = [
                                 col
                                 for col in adata.obs.columns
-                                if col
-                                in [
-                                    "leiden",
-                                    "cell_type",
-                                    "doublet_score",
-                                    "qc_pass",
-                                    "louvain",
-                                ]
+                                if col in _sc_key_names
+                                or col.startswith(("leiden_", "louvain_", "RNA_snn_res"))
                             ]
                             if key_cols:
                                 summary += f"  - Annotations: {', '.join(key_cols)}\n"

@@ -314,7 +314,7 @@ def transcriptomics_expert(
     @tool
     def subcluster_cells(
         modality_name: str,
-        cluster_key: str = "leiden",
+        cluster_key: str,
         clusters_to_refine: Optional[List[str]] = None,
         resolution: float = 0.5,
         resolutions: Optional[List[float]] = None,
@@ -331,12 +331,14 @@ def transcriptomics_expert(
         - "Refine the T cell clusters"
         - "Sub-cluster the heterogeneous populations"
 
-        IMPORTANT: This tool requires that initial clustering has already been performed
-        (i.e., the modality has a leiden column or specified cluster_key).
+        IMPORTANT: Call check_data_status() first to identify the actual cluster column name.
+        NEVER assume 'leiden' — data may use 'seurat_clusters', 'louvain', 'RNA_snn_res.1', etc.
 
         Args:
             modality_name: Name of the modality to sub-cluster
-            cluster_key: Key in adata.obs containing cluster assignments (default: "leiden")
+            cluster_key: Key in adata.obs containing cluster assignments (REQUIRED).
+                        Common values: 'leiden', 'louvain', 'seurat_clusters', 'RNA_snn_res.1'.
+                        Use check_data_status() to find the correct column name.
             clusters_to_refine: List of cluster IDs to re-cluster (e.g., ["0", "3", "5"])
                                If None, re-clusters ALL cells (full re-clustering)
             resolution: Single resolution for sub-clustering (default: 0.5)
@@ -354,18 +356,18 @@ def transcriptomics_expert(
             str: Summary of sub-clustering results including cluster sizes and new column names
 
         Examples:
-            # Sub-cluster a single cluster
-            subcluster_cells("geo_gse12345_clustered", clusters_to_refine=["0"])
+            # Sub-cluster a single cluster (after checking data status)
+            subcluster_cells("geo_gse12345_clustered", cluster_key="leiden", clusters_to_refine=["0"])
 
-            # Sub-cluster multiple clusters
-            subcluster_cells("geo_gse12345_clustered", clusters_to_refine=["0", "3", "7"])
+            # Sub-cluster with Seurat-style clusters
+            subcluster_cells("my_data", cluster_key="seurat_clusters", clusters_to_refine=["0", "3"])
 
             # Multi-resolution sub-clustering
-            subcluster_cells("geo_gse12345_clustered", clusters_to_refine=["0"],
-                            resolutions=[0.25, 0.5, 1.0])
+            subcluster_cells("geo_gse12345_clustered", cluster_key="leiden",
+                            clusters_to_refine=["0"], resolutions=[0.25, 0.5, 1.0])
 
             # Full re-clustering (all cells)
-            subcluster_cells("geo_gse12345_clustered", clusters_to_refine=None)
+            subcluster_cells("geo_gse12345_clustered", cluster_key="leiden", clusters_to_refine=None)
         """
         try:
             # Validate modality exists
@@ -506,7 +508,7 @@ Please check:
     @tool
     def evaluate_clustering_quality(
         modality_name: str,
-        cluster_key: str = "leiden",
+        cluster_key: str,
         use_rep: str = "X_pca",
         n_pcs: Optional[int] = None,
         metrics: Optional[List[str]] = None,
@@ -524,16 +526,14 @@ Please check:
         - "Which resolution gives the best separation?"
         - "Am I over-clustering or under-clustering?"
 
-        Common use cases:
-        - Validate clustering quality after initial clustering
-        - Compare multiple resolutions to select optimal one
-        - Identify problematic clusters
-        - Objectively evaluate clustering before marker gene analysis
+        IMPORTANT: Call check_data_status() first to identify the actual cluster column name.
+        NEVER assume 'leiden' — data may use 'seurat_clusters', 'louvain', 'RNA_snn_res.1', etc.
 
         Args:
             modality_name: Name of the modality to evaluate
-            cluster_key: Key in adata.obs containing cluster labels (default: "leiden")
-                        For multi-resolution results, use keys like "leiden_res0_5"
+            cluster_key: Key in adata.obs containing cluster labels (REQUIRED).
+                        Common values: 'leiden', 'louvain', 'seurat_clusters', 'leiden_res0_5'.
+                        Use check_data_status() to find the correct column name.
             use_rep: Representation to use for distance calculations (default: "X_pca")
                     Options: "X_pca", "X_umap", or any key in adata.obsm
             n_pcs: Number of PCs to use (default: None = use all available)
@@ -546,18 +546,17 @@ Please check:
 
         Examples:
             # Evaluate single clustering result
-            evaluate_clustering_quality("geo_gse12345_clustered")
+            evaluate_clustering_quality("geo_gse12345_clustered", cluster_key="leiden")
 
             # Compare multiple resolutions
             evaluate_clustering_quality("geo_gse12345_clustered", cluster_key="leiden_res0_25")
             evaluate_clustering_quality("geo_gse12345_clustered", cluster_key="leiden_res0_5")
-            evaluate_clustering_quality("geo_gse12345_clustered", cluster_key="leiden_res1_0")
 
-            # Evaluate using UMAP representation
-            evaluate_clustering_quality("geo_gse12345_clustered", use_rep="X_umap")
+            # Evaluate with Seurat-style clusters
+            evaluate_clustering_quality("my_data", cluster_key="seurat_clusters")
 
             # Compute only silhouette score
-            evaluate_clustering_quality("geo_gse12345_clustered", metrics=["silhouette"])
+            evaluate_clustering_quality("geo_gse12345_clustered", cluster_key="leiden", metrics=["silhouette"])
         """
         try:
             # Validate modality exists
@@ -574,13 +573,11 @@ Please check:
 
             # Validate cluster_key exists
             if cluster_key not in adata.obs.columns:
-                available_keys = [
-                    col for col in adata.obs.columns if "leiden" in col.lower()
-                ]
+                available_cols = list(adata.obs.columns)
                 return (
                     f"Error: Cluster key '{cluster_key}' not found in adata.obs.\n\n"
-                    f"Available clustering columns: {', '.join(available_keys)}\n\n"
-                    f"Did you run cluster_modality() first?"
+                    f"Available columns: {available_cols}\n\n"
+                    f"Use check_data_status() to identify the correct cluster column."
                 )
 
             # Call service
@@ -758,7 +755,7 @@ Please check:
     @tool
     def find_marker_genes_for_clusters(
         modality_name: str,
-        groupby: str = "leiden",
+        groupby: str,
         groups: List[str] = None,
         method: str = "wilcoxon",
         n_genes: int = 25,
@@ -770,9 +767,14 @@ Please check:
         """
         Find marker genes for single-cell clusters using differential expression analysis.
 
+        IMPORTANT: Call check_data_status() first to identify the actual cluster column name.
+        NEVER assume 'leiden' — data may use 'seurat_clusters', 'louvain', 'RNA_snn_res.1', etc.
+
         Args:
             modality_name: Name of the single-cell modality to analyze
-            groupby: Column name to group by (e.g., 'leiden', 'cell_type')
+            groupby: Column name to group by (REQUIRED).
+                    Common values: 'leiden', 'louvain', 'seurat_clusters', 'cell_type'.
+                    Use check_data_status() to find the correct column name.
             groups: Specific clusters to analyze (None for all)
             method: Statistical method ('wilcoxon', 't-test', 'logreg')
             n_genes: Number of top marker genes per cluster
@@ -799,12 +801,12 @@ Please check:
 
             # Validate groupby column exists
             if groupby not in adata.obs.columns:
-                available_columns = [
-                    col
-                    for col in adata.obs.columns
-                    if col in ["leiden", "cell_type", "louvain", "cluster"]
-                ]
-                return f"Cluster column '{groupby}' not found. Available clustering columns: {available_columns}"
+                available_columns = list(adata.obs.columns)
+                return (
+                    f"Column '{groupby}' not found in adata.obs.\n\n"
+                    f"Available columns: {available_columns}\n\n"
+                    f"Use check_data_status() to identify the correct column name."
+                )
 
             # Use singlecell service for marker gene detection
             adata_markers, marker_stats, ir = enhanced_service.find_marker_genes(

@@ -97,7 +97,13 @@ def visualization_expert(
                 available_plots.append("PCA")
             if "X_tsne" in adata.obsm:
                 available_plots.append("t-SNE")
-            if "leiden" in adata.obs.columns:
+            _known_cluster_names = {"leiden", "louvain", "seurat_clusters", "cluster"}
+            has_clusters = any(
+                c in _known_cluster_names
+                or c.startswith(("leiden_", "louvain_", "RNA_snn_res"))
+                for c in adata.obs.columns
+            )
+            if has_clusters:
                 available_plots.append("Cluster-based plots")
             if "cell_type" in adata.obs.columns:
                 available_plots.append("Cell type plots")
@@ -123,12 +129,24 @@ def visualization_expert(
     @tool
     def create_umap_plot(
         modality_name: str,
-        color_by: str = "leiden",
+        color_by: str,
         point_size: Optional[int] = None,
         title: Optional[str] = None,
         save_plot: bool = True,
     ) -> str:
-        """Create an interactive UMAP plot with proper state tracking."""
+        """Create an interactive UMAP plot with proper state tracking.
+
+        IMPORTANT: Call check_visualization_readiness() first to identify available columns.
+        NEVER assume 'leiden' — data may use 'seurat_clusters', 'louvain', 'cell_type', etc.
+
+        Args:
+            modality_name: Name of the modality to visualize
+            color_by: Column in adata.obs to color by (REQUIRED).
+                     Common values: 'leiden', 'louvain', 'seurat_clusters', 'cell_type'.
+            point_size: Size of points (auto-scaled if None)
+            title: Custom plot title
+            save_plot: Whether to save the plot
+        """
         try:
             # Validate modality
             if modality_name not in data_manager.list_modalities():
@@ -357,10 +375,20 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
     def create_violin_plot(
         modality_name: str,
         genes: List[str],
-        groupby: str = "leiden",
+        groupby: str,
         save_plot: bool = True,
     ) -> str:
-        """Create violin plots for specified genes."""
+        """Create violin plots for specified genes.
+
+        IMPORTANT: Call check_visualization_readiness() first to identify available columns.
+
+        Args:
+            modality_name: Name of the modality to visualize
+            genes: List of gene names to plot
+            groupby: Column in adata.obs to group by (REQUIRED).
+                    Common values: 'leiden', 'louvain', 'seurat_clusters', 'cell_type'.
+            save_plot: Whether to save the plot
+        """
         try:
             # Validate modality
             if modality_name not in data_manager.list_modalities():
@@ -556,12 +584,22 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
     def create_dot_plot(
         modality_name: str,
         genes: List[str],
-        groupby: str = "leiden",
+        groupby: str,
         use_raw: bool = True,
         standard_scale: str = "var",
         save_plot: bool = True,
     ) -> str:
-        """Create dot plot for marker gene expression."""
+        """Create dot plot for marker gene expression.
+
+        Args:
+            modality_name: Name of the modality to visualize
+            genes: List of gene names to plot
+            groupby: Column in adata.obs to group by (REQUIRED).
+                    Common values: 'leiden', 'louvain', 'seurat_clusters', 'cell_type'.
+            use_raw: Whether to use raw expression values
+            standard_scale: Scale direction ('var' or 'obs')
+            save_plot: Whether to save the plot
+        """
         try:
             # Validate modality
             if modality_name not in data_manager.list_modalities():
@@ -665,14 +703,25 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
     @tool
     def create_heatmap(
         modality_name: str,
+        groupby: str,
         genes: Optional[List[str]] = None,
-        groupby: str = "leiden",
         use_raw: bool = True,
         n_top_genes: int = 5,
         standard_scale: bool = True,
         save_plot: bool = True,
     ) -> str:
-        """Create heatmap of gene expression."""
+        """Create heatmap of gene expression.
+
+        Args:
+            modality_name: Name of the modality to visualize
+            groupby: Column in adata.obs to group by (REQUIRED).
+                    Common values: 'leiden', 'louvain', 'seurat_clusters', 'cell_type'.
+            genes: List of specific genes (None to use top marker genes)
+            use_raw: Whether to use raw expression values
+            n_top_genes: Number of top genes per group
+            standard_scale: Whether to standardize expression
+            save_plot: Whether to save the plot
+        """
         try:
             # Validate modality
             if modality_name not in data_manager.list_modalities():
@@ -848,12 +897,21 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
     @tool
     def create_cluster_composition_plot(
         modality_name: str,
-        cluster_col: str = "leiden",
+        cluster_col: str,
         sample_col: Optional[str] = None,
         normalize: bool = True,
         save_plot: bool = True,
     ) -> str:
-        """Create stacked bar plot showing cluster composition."""
+        """Create stacked bar plot showing cluster composition.
+
+        Args:
+            modality_name: Name of the modality to visualize
+            cluster_col: Column in adata.obs containing cluster assignments (REQUIRED).
+                        Common values: 'leiden', 'louvain', 'seurat_clusters', 'cell_type'.
+            sample_col: Column for sample grouping (optional)
+            normalize: Whether to normalize counts
+            save_plot: Whether to save the plot
+        """
         try:
             # Validate modality
             if modality_name not in data_manager.list_modalities():

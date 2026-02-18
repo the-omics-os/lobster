@@ -514,7 +514,9 @@ def test_scrublet_failure_fallback(service, simple_adata):
 
 def test_annotate_cell_types_basic(service, clustered_adata):
     """Test basic cell type annotation."""
-    result_adata, stats, _ = service.annotate_cell_types(clustered_adata)
+    result_adata, stats, _ = service.annotate_cell_types(
+        clustered_adata, cluster_key="leiden"
+    )
 
     assert "cell_type" in result_adata.obs.columns
     assert len(result_adata.obs) == len(clustered_adata.obs)
@@ -527,8 +529,8 @@ def test_annotate_cell_types_basic(service, clustered_adata):
 
 def test_annotate_requires_clustering(service, simple_adata):
     """Test annotation fails without clustering results."""
-    with pytest.raises(SingleCellError, match="No clustering results found"):
-        service.annotate_cell_types(simple_adata)
+    with pytest.raises(SingleCellError, match="not found in adata.obs"):
+        service.annotate_cell_types(simple_adata, cluster_key="leiden")
 
 
 def test_annotate_with_custom_markers(service, clustered_adata):
@@ -539,7 +541,7 @@ def test_annotate_with_custom_markers(service, clustered_adata):
     }
 
     result_adata, stats, _ = service.annotate_cell_types(
-        clustered_adata, reference_markers=custom_markers
+        clustered_adata, cluster_key="leiden", reference_markers=custom_markers
     )
 
     assert "cell_type" in result_adata.obs.columns
@@ -548,7 +550,9 @@ def test_annotate_with_custom_markers(service, clustered_adata):
 
 def test_annotate_all_clusters_assigned(service, clustered_adata):
     """Test that all clusters get cell type assignments."""
-    result_adata, stats, _ = service.annotate_cell_types(clustered_adata)
+    result_adata, stats, _ = service.annotate_cell_types(
+        clustered_adata, cluster_key="leiden"
+    )
 
     n_clusters = len(clustered_adata.obs["leiden"].unique())
     n_assigned = len(stats["cluster_to_celltype"])
@@ -558,7 +562,9 @@ def test_annotate_all_clusters_assigned(service, clustered_adata):
 
 def test_annotate_marker_scores_calculated(service, clustered_adata):
     """Test that marker scores are calculated for all clusters."""
-    result_adata, stats, _ = service.annotate_cell_types(clustered_adata)
+    result_adata, stats, _ = service.annotate_cell_types(
+        clustered_adata, cluster_key="leiden"
+    )
 
     assert "marker_scores" in stats
     marker_scores = stats["marker_scores"]
@@ -571,7 +577,9 @@ def test_annotate_marker_scores_calculated(service, clustered_adata):
 
 def test_annotate_cell_type_counts(service, clustered_adata):
     """Test cell type count statistics."""
-    result_adata, stats, _ = service.annotate_cell_types(clustered_adata)
+    result_adata, stats, _ = service.annotate_cell_types(
+        clustered_adata, cluster_key="leiden"
+    )
 
     assert "cell_type_counts" in stats
     cell_type_counts = stats["cell_type_counts"]
@@ -600,7 +608,9 @@ def test_annotate_single_cluster(service):
     )
     adata.obs["leiden"] = "0"
 
-    result_adata, stats, _ = service.annotate_cell_types(adata)
+    result_adata, stats, _ = service.annotate_cell_types(
+        adata, cluster_key="leiden"
+    )
 
     assert stats["n_clusters"] == 1
     assert len(stats["cluster_to_celltype"]) == 1
@@ -622,7 +632,9 @@ def test_annotate_no_marker_overlap(service):
     )
     adata.obs["leiden"] = np.random.choice([0, 1, 2], size=n_obs).astype(str)
 
-    result_adata, stats, _ = service.annotate_cell_types(adata)
+    result_adata, stats, _ = service.annotate_cell_types(
+        adata, cluster_key="leiden"
+    )
 
     # Should still complete, all cells might be "Unknown"
     assert "cell_type" in result_adata.obs.columns
@@ -645,7 +657,9 @@ def test_annotate_with_non_unique_obs_names(service):
     adata.obs["leiden"] = np.random.choice([0, 1], size=n_obs).astype(str)
 
     # Should handle gracefully
-    result_adata, stats, _ = service.annotate_cell_types(adata)
+    result_adata, stats, _ = service.annotate_cell_types(
+        adata, cluster_key="leiden"
+    )
     assert "cell_type" in result_adata.obs.columns
 
 
@@ -666,13 +680,17 @@ def test_annotate_with_non_unique_var_names(service):
     adata.obs["leiden"] = np.random.choice([0, 1], size=n_obs).astype(str)
 
     # Should handle gracefully
-    result_adata, stats, _ = service.annotate_cell_types(adata)
+    result_adata, stats, _ = service.annotate_cell_types(
+        adata, cluster_key="leiden"
+    )
     assert "cell_type" in result_adata.obs.columns
 
 
 def test_annotate_comprehensive_marker_coverage(service, adata_with_all_markers):
     """Test annotation with comprehensive marker coverage."""
-    result_adata, stats, _ = service.annotate_cell_types(adata_with_all_markers)
+    result_adata, stats, _ = service.annotate_cell_types(
+        adata_with_all_markers, cluster_key="leiden"
+    )
 
     # Should identify multiple cell types
     assert stats["n_cell_types_identified"] >= 3
@@ -928,7 +946,7 @@ def test_annotation_error_handling(service):
     invalid_adata = "not an anndata object"
 
     with pytest.raises(Exception):
-        service.annotate_cell_types(invalid_adata)
+        service.annotate_cell_types(invalid_adata, cluster_key="leiden")
 
 
 def test_marker_detection_error_handling(service):
@@ -964,7 +982,9 @@ def test_doublet_prediction_is_binary(service, simple_adata):
 
 def test_marker_scores_are_numeric(service, clustered_adata):
     """Test that marker scores are numeric."""
-    result_adata, stats, _ = service.annotate_cell_types(clustered_adata)
+    result_adata, stats, _ = service.annotate_cell_types(
+        clustered_adata, cluster_key="leiden"
+    )
 
     marker_scores = stats["marker_scores"]
     for cluster_scores in marker_scores.values():
@@ -1001,7 +1021,9 @@ def test_full_workflow_detect_and_annotate(service, simple_adata):
     adata_doublets.var_names = current_genes
 
     # 3. Annotate
-    adata_final, annotation_stats, _ = service.annotate_cell_types(adata_doublets)
+    adata_final, annotation_stats, _ = service.annotate_cell_types(
+        adata_doublets, cluster_key="leiden"
+    )
     assert "cell_type" in adata_final.obs.columns
     assert "doublet_score" in adata_final.obs.columns
 
@@ -1015,7 +1037,9 @@ def test_full_workflow_marker_detection(service, clustered_adata):
     assert "rank_genes_groups" in adata_markers.uns
 
     # 2. Annotate based on markers
-    adata_annotated, annotation_stats, _ = service.annotate_cell_types(adata_markers)
+    adata_annotated, annotation_stats, _ = service.annotate_cell_types(
+        adata_markers, cluster_key="leiden"
+    )
     assert "cell_type" in adata_annotated.obs.columns
 
 
@@ -1064,7 +1088,9 @@ def test_annotation_performance(service, clustered_adata):
     import time
 
     start = time.time()
-    result_adata, stats, _ = service.annotate_cell_types(clustered_adata)
+    result_adata, stats, _ = service.annotate_cell_types(
+        clustered_adata, cluster_key="leiden"
+    )
     duration = time.time() - start
 
     assert duration < 10  # Should be fast
@@ -1091,7 +1117,9 @@ def test_annotation_preserves_clustering(service, clustered_adata):
     """Test that annotation preserves clustering results."""
     original_leiden = clustered_adata.obs["leiden"].copy()
 
-    result_adata, _, _ = service.annotate_cell_types(clustered_adata)
+    result_adata, _, _ = service.annotate_cell_types(
+        clustered_adata, cluster_key="leiden"
+    )
 
     # Leiden should be preserved
     assert "leiden" in result_adata.obs.columns
@@ -1126,8 +1154,12 @@ def test_doublet_detection_reproducibility(service, simple_adata):
 
 def test_annotation_reproducibility(service, clustered_adata):
     """Test that annotation is reproducible."""
-    result1_adata, stats1, _ = service.annotate_cell_types(clustered_adata)
-    result2_adata, stats2, _ = service.annotate_cell_types(clustered_adata)
+    result1_adata, stats1, _ = service.annotate_cell_types(
+        clustered_adata, cluster_key="leiden"
+    )
+    result2_adata, stats2, _ = service.annotate_cell_types(
+        clustered_adata, cluster_key="leiden"
+    )
 
     # Should be deterministic
     pd.testing.assert_series_equal(
@@ -1135,6 +1167,41 @@ def test_annotation_reproducibility(service, clustered_adata):
         result2_adata.obs["cell_type"],
         check_names=False,
     )
+
+
+def test_annotate_with_seurat_clusters(service):
+    """Test annotation works with non-leiden cluster column names."""
+    np.random.seed(42)
+    n_obs = 100
+    n_vars = 30
+
+    X = np.random.negative_binomial(n=5, p=0.3, size=(n_obs, n_vars)).astype(np.float32)
+
+    adata = ad.AnnData(
+        X=X,
+        obs=pd.DataFrame(index=[f"Cell_{i}" for i in range(n_obs)]),
+        var=pd.DataFrame(index=["CD3D", "CD8A"] + [f"Gene_{i}" for i in range(28)]),
+    )
+    adata.obs["seurat_clusters"] = np.random.choice([0, 1, 2], size=n_obs).astype(str)
+
+    result_adata, stats, _ = service.annotate_cell_types(
+        adata, cluster_key="seurat_clusters"
+    )
+
+    assert "cell_type" in result_adata.obs.columns
+    assert stats["n_clusters"] == 3
+
+
+def test_annotate_requires_cluster_key(service, clustered_adata):
+    """Test that cluster_key is required (no default)."""
+    with pytest.raises(TypeError):
+        service.annotate_cell_types(clustered_adata)
+
+
+def test_annotate_wrong_cluster_key_shows_columns(service, clustered_adata):
+    """Test that wrong cluster_key error message shows available columns."""
+    with pytest.raises(SingleCellError, match="Available columns"):
+        service.annotate_cell_types(clustered_adata, cluster_key="nonexistent_column")
 
 
 # ===============================================================================

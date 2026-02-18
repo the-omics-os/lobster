@@ -82,7 +82,7 @@ class TestConfidenceScoring:
     ):
         """Test that annotate_cell_types returns 3-tuple (adata, stats, ir)."""
         result = service.annotate_cell_types(
-            simple_adata, reference_markers=reference_markers
+            simple_adata, cluster_key="leiden", reference_markers=reference_markers
         )
 
         assert isinstance(result, tuple), "Should return tuple"
@@ -98,7 +98,7 @@ class TestConfidenceScoring:
     def test_confidence_columns_created(self, service, simple_adata, reference_markers):
         """Test that 4 new .obs columns are created."""
         adata_result, _, _ = service.annotate_cell_types(
-            simple_adata, reference_markers=reference_markers
+            simple_adata, cluster_key="leiden", reference_markers=reference_markers
         )
 
         required_cols = [
@@ -114,7 +114,7 @@ class TestConfidenceScoring:
     def test_confidence_score_range(self, service, simple_adata, reference_markers):
         """Test that confidence scores are in valid range [0, 1]."""
         adata_result, _, _ = service.annotate_cell_types(
-            simple_adata, reference_markers=reference_markers
+            simple_adata, cluster_key="leiden", reference_markers=reference_markers
         )
 
         confidence = adata_result.obs["cell_type_confidence"]
@@ -126,7 +126,7 @@ class TestConfidenceScoring:
     def test_confidence_score_quality(self, service, simple_adata, reference_markers):
         """Test that confidence scores are reasonable for synthetic signatures."""
         adata_result, _, _ = service.annotate_cell_types(
-            simple_adata, reference_markers=reference_markers
+            simple_adata, cluster_key="leiden", reference_markers=reference_markers
         )
 
         confidence = adata_result.obs["cell_type_confidence"]
@@ -144,7 +144,7 @@ class TestConfidenceScoring:
     def test_top3_predictions_format(self, service, simple_adata, reference_markers):
         """Test that top3 predictions are comma-separated strings."""
         adata_result, _, _ = service.annotate_cell_types(
-            simple_adata, reference_markers=reference_markers
+            simple_adata, cluster_key="leiden", reference_markers=reference_markers
         )
 
         top3 = adata_result.obs["cell_type_top3"]
@@ -161,7 +161,7 @@ class TestConfidenceScoring:
     def test_entropy_values(self, service, simple_adata, reference_markers):
         """Test that entropy values are reasonable."""
         adata_result, _, _ = service.annotate_cell_types(
-            simple_adata, reference_markers=reference_markers
+            simple_adata, cluster_key="leiden", reference_markers=reference_markers
         )
 
         entropy = adata_result.obs["annotation_entropy"]
@@ -179,7 +179,7 @@ class TestConfidenceScoring:
     def test_quality_categories(self, service, simple_adata, reference_markers):
         """Test that quality flags are correctly categorized."""
         adata_result, _, _ = service.annotate_cell_types(
-            simple_adata, reference_markers=reference_markers
+            simple_adata, cluster_key="leiden", reference_markers=reference_markers
         )
 
         quality = adata_result.obs["annotation_quality"]
@@ -201,7 +201,7 @@ class TestConfidenceScoring:
     def test_quality_thresholds(self, service, simple_adata, reference_markers):
         """Test that quality categorization follows documented thresholds."""
         adata_result, _, _ = service.annotate_cell_types(
-            simple_adata, reference_markers=reference_markers
+            simple_adata, cluster_key="leiden", reference_markers=reference_markers
         )
 
         confidence = adata_result.obs["cell_type_confidence"]
@@ -234,7 +234,7 @@ class TestConfidenceScoring:
     ):
         """Test that stats dict includes confidence metrics."""
         _, stats, _ = service.annotate_cell_types(
-            simple_adata, reference_markers=reference_markers
+            simple_adata, cluster_key="leiden", reference_markers=reference_markers
         )
 
         required_keys = [
@@ -263,7 +263,7 @@ class TestConfidenceScoring:
     def test_ir_provenance(self, service, simple_adata, reference_markers):
         """Test that AnalysisStep IR is properly created."""
         _, _, ir = service.annotate_cell_types(
-            simple_adata, reference_markers=reference_markers
+            simple_adata, cluster_key="leiden", reference_markers=reference_markers
         )
 
         # Check IR structure
@@ -293,7 +293,7 @@ class TestConfidenceScoring:
     def test_default_markers_used_when_none_provided(self, service, simple_adata):
         """Test that default markers are used when reference_markers=None."""
         adata_result, stats, ir = service.annotate_cell_types(
-            simple_adata, reference_markers=None
+            simple_adata, cluster_key="leiden", reference_markers=None
         )
 
         # Should still return 3-tuple
@@ -339,7 +339,7 @@ class TestConfidenceScoring:
 
         # Should work without errors
         adata_result, stats, ir = service.annotate_cell_types(
-            adata, reference_markers=reference_markers
+            adata, cluster_key="leiden", reference_markers=reference_markers
         )
 
         # Verify confidence columns created

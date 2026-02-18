@@ -246,7 +246,7 @@ def main():
     start_time = time.time()
 
     adata_annotated, annotation_stats, annotation_ir = service.annotate_cell_types(
-        adata_markers, reference_markers=reference_markers
+        adata_markers, cluster_key="leiden", reference_markers=reference_markers
     )
 
     annotation_time = time.time() - start_time

@@ -113,7 +113,7 @@ class TestCompleteWorkflow:
 
         # Step 2: Annotate cell types with confidence scoring
         adata_annotated, annotation_stats, annotation_ir = service.annotate_cell_types(
-            adata_markers, reference_markers=reference_markers
+            adata_markers, cluster_key="leiden", reference_markers=reference_markers
         )
 
         # Verify annotation worked
@@ -146,7 +146,7 @@ class TestCompleteWorkflow:
         )
 
         adata_annotated, _, _ = service.annotate_cell_types(
-            adata_markers, reference_markers=reference_markers
+            adata_markers, cluster_key="leiden", reference_markers=reference_markers
         )
 
         # Verify preservation
@@ -167,7 +167,7 @@ class TestCompleteWorkflow:
         )
 
         adata_annotated, _, _ = service.annotate_cell_types(
-            adata_markers, reference_markers=reference_markers
+            adata_markers, cluster_key="leiden", reference_markers=reference_markers
         )
 
         # Check marker detection results
@@ -209,7 +209,7 @@ class TestCompleteWorkflow:
 
         # Step 2: Annotation should still work
         adata_annotated, annotation_stats, _ = service.annotate_cell_types(
-            adata_markers, reference_markers=reference_markers
+            adata_markers, cluster_key="leiden", reference_markers=reference_markers
         )
 
         # Verify annotation completed
@@ -227,7 +227,7 @@ class TestCompleteWorkflow:
         )
 
         adata_annotated, _, _ = service.annotate_cell_types(
-            adata_markers, reference_markers=reference_markers
+            adata_markers, cluster_key="leiden", reference_markers=reference_markers
         )
 
         # Extract confidence and quality
@@ -264,7 +264,7 @@ class TestCompleteWorkflow:
         )
 
         adata_annotated, annotation_stats, _ = service.annotate_cell_types(
-            adata_markers, reference_markers=reference_markers
+            adata_markers, cluster_key="leiden", reference_markers=reference_markers
         )
 
         # Verify marker stats consistency
@@ -287,7 +287,7 @@ class TestCompleteWorkflow:
         )
 
         _, _, annotation_ir = service.annotate_cell_types(
-            adata_markers, reference_markers=reference_markers
+            adata_markers, cluster_key="leiden", reference_markers=reference_markers
         )
 
         # Verify IR chain
@@ -320,7 +320,7 @@ class TestWorkflowEdgeCases:
 
         # Annotation without reference markers (uses defaults)
         adata_annotated, annotation_stats, _ = service.annotate_cell_types(
-            adata_markers, reference_markers=None  # Uses built-in markers
+            adata_markers, cluster_key="leiden", reference_markers=None  # Uses built-in markers
         )
 
         # Should still complete
@@ -349,7 +349,7 @@ class TestWorkflowEdgeCases:
 
         # Run annotation
         adata_annotated, annotation_stats, _ = service.annotate_cell_types(
-            adata_markers, reference_markers=reference_markers
+            adata_markers, cluster_key="leiden", reference_markers=reference_markers
         )
 
         # Verify workflow completed
