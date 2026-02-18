@@ -9,31 +9,32 @@ See: .planning/PROJECT.md (updated 2026-02-17)
 
 ## Current Position
 
-Phase: 1 of 6 (Foundation)
-Plan: 2 of 3 in current phase
-Status: Plan 01-02 complete, executing phase
-Last activity: 2026-02-18 — Plan 01-02 executed (Concrete Adapters)
+Phase: 1 of 6 (Foundation) -- COMPLETE
+Plan: 3 of 3 in current phase (all complete)
+Status: Phase 01 complete, ready for Phase 02
+Last activity: 2026-02-18 — Plan 01-03 executed (Service & Config)
 
-Progress: [██░░░░░░░░] 10%
+Progress: [██░░░░░░░░] 15%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 2.5min
-- Total execution time: 0.08 hours
+- Total plans completed: 3
+- Average duration: 2.7min
+- Total execution time: 0.13 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-foundation | 2 | 5min | 2.5min |
+| 01-foundation | 3 | 8min | 2.7min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (3min), 01-02 (2min)
-- Trend: Accelerating
+- Last 5 plans: 01-01 (3min), 01-02 (2min), 01-03 (3min)
+- Trend: Stable
 
 *Updated after each plan completion*
+| Phase 01 P03 | 3min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -54,6 +55,11 @@ Recent decisions affecting current work:
 - [01-02] batch_size=128 for SapBERT encode per model card recommendation
 - [01-02] 5000-doc chunk limit for ChromaDB batch operations
 - [01-02] Raw ChromaDB results from search; distance->similarity conversion in service layer
+- [01-03] Dependency injection: service accepts backend/embedder for testing, falls back to config factory
+- [01-03] Distance-to-similarity conversion with clamping: score = max(0.0, min(1.0, 1.0 - distance))
+- [01-03] MockEmbedder/MockVectorBackend pattern for testing without heavy deps
+- [01-03] __getattr__ lazy loading in __init__.py for all public classes
+- [Phase 01]: Dependency injection: service accepts backend/embedder for testing, falls back to config factory
 
 ### Pending Todos
 
@@ -65,6 +71,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-18 (Plan 01-02 execution)
-Stopped at: Completed 01-02-PLAN.md (Concrete Adapters)
-Resume file: .planning/phases/01-foundation/01-02-SUMMARY.md
+Last session: 2026-02-18 (Plan 01-03 execution)
+Stopped at: Completed 01-03-PLAN.md (Service & Config) -- Phase 01 complete
+Resume file: .planning/phases/01-foundation/01-03-SUMMARY.md
