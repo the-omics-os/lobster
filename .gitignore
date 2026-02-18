@@ -18,6 +18,9 @@ wiki/
 .playwright-mcp/
 
 # Private/internal files
+CLAUDE.md
+FINAL_TEST_BEFORE_LAUNCH.md
+SHOWCASE_TESTS.md
 GLOBAL_CREDENTIALS_IMPLEMENTATION.md
 TODO.md
 TODO_UI.md
