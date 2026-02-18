@@ -12,19 +12,19 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **INFRA-01**: VectorSearchService orchestrates two-stage search pipeline (embed -> search -> rerank -> return)
 - [ ] **INFRA-02**: VectorSearchConfig reads env vars and provides factory methods for backend, embeddings, and reranker
 - [x] **INFRA-03**: BaseVectorBackend ABC defines add_documents, search, delete, count interface
-- [ ] **INFRA-04**: ChromaDB backend implements BaseVectorBackend with PersistentClient and auto-download from S3
+- [x] **INFRA-04**: ChromaDB backend implements BaseVectorBackend with PersistentClient and auto-download from S3
 - [ ] **INFRA-05**: FAISS backend implements BaseVectorBackend with in-memory IndexFlatL2 and L2-normalized vectors
 - [ ] **INFRA-06**: pgvector backend stub raises NotImplementedError with helpful message
 - [ ] **INFRA-07**: Switching LOBSTER_VECTOR_BACKEND env var changes backend with zero code changes
-- [ ] **INFRA-08**: All optional deps (chromadb, sentence-transformers, faiss-cpu, obonet) are import-guarded with helpful install messages
+- [x] **INFRA-08**: All optional deps (chromadb, sentence-transformers, faiss-cpu, obonet) are import-guarded with helpful install messages
 
 ### Embeddings
 
 - [x] **EMBED-01**: BaseEmbeddingProvider ABC defines embed_text and embed_batch interface
-- [ ] **EMBED-02**: SapBERT provider loads cambridgeltl/SapBERT-from-PubMedBERT-fulltext (768d) with lazy singleton
+- [x] **EMBED-02**: SapBERT provider loads cambridgeltl/SapBERT-from-PubMedBERT-fulltext (768d) with lazy singleton
 - [ ] **EMBED-03**: SentenceTransformers provider loads all-MiniLM-L6-v2 (384d) as general fallback
 - [ ] **EMBED-04**: OpenAI provider uses text-embedding-3-small (1536d) with lazy client init
-- [ ] **EMBED-05**: No model downloads at import time — all loading happens on first use
+- [x] **EMBED-05**: No model downloads at import time — all loading happens on first use
 
 ### Reranking
 
@@ -142,16 +142,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-01 | Phase 1 | Pending |
 | INFRA-02 | Phase 1 | Pending |
 | INFRA-03 | Phase 1 | Complete |
-| INFRA-04 | Phase 1 | Pending |
+| INFRA-04 | Phase 1 | Complete |
 | INFRA-05 | Phase 5 | Pending |
 | INFRA-06 | Phase 5 | Pending |
 | INFRA-07 | Phase 5 | Pending |
-| INFRA-08 | Phase 1 | Pending |
+| INFRA-08 | Phase 1 | Complete |
 | EMBED-01 | Phase 1 | Complete |
-| EMBED-02 | Phase 1 | Pending |
+| EMBED-02 | Phase 1 | Complete |
 | EMBED-03 | Phase 6 | Pending |
 | EMBED-04 | Phase 6 | Pending |
-| EMBED-05 | Phase 1 | Pending |
+| EMBED-05 | Phase 1 | Complete |
 | RANK-01 | Phase 4 | Pending |
 | RANK-02 | Phase 4 | Pending |
 | RANK-03 | Phase 4 | Pending |
