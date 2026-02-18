@@ -1,7 +1,8 @@
 """
-Unit tests for VectorSearchConfig.
+Unit tests for VectorSearchConfig and ONTOLOGY_COLLECTIONS.
 
-Tests environment variable reading, factory methods, and default values.
+Tests environment variable reading, factory methods, default values,
+and ontology collection alias resolution.
 """
 
 import os
@@ -10,6 +11,7 @@ import pytest
 
 from lobster.core.schemas.search import EmbeddingProvider, SearchBackend
 from lobster.core.vector.config import VectorSearchConfig
+from lobster.core.vector.service import ONTOLOGY_COLLECTIONS
 
 
 class TestFromEnv:
@@ -117,3 +119,39 @@ class TestFactoryMethods:
         from lobster.core.vector.embeddings.sapbert import SapBERTEmbedder
 
         assert isinstance(embedder, SapBERTEmbedder)
+
+
+# ---------------------------------------------------------------------------
+# ONTOLOGY_COLLECTIONS tests (Phase 2 Plan 02)
+# ---------------------------------------------------------------------------
+
+
+class TestOntologyCollections:
+    """Tests for ONTOLOGY_COLLECTIONS constant (TEST-05)."""
+
+    def test_ontology_collections_has_six_entries(self):
+        """ONTOLOGY_COLLECTIONS should have exactly 6 entries (3 primary + 3 aliases)."""
+        assert len(ONTOLOGY_COLLECTIONS) == 6
+
+    def test_ontology_collections_aliases_resolve_correctly(self):
+        """Aliases should resolve to the same collection as primary names (TEST-05)."""
+        # Primary names
+        assert "mondo" in ONTOLOGY_COLLECTIONS
+        assert "uberon" in ONTOLOGY_COLLECTIONS
+        assert "cell_ontology" in ONTOLOGY_COLLECTIONS
+
+        # Aliases
+        assert "disease" in ONTOLOGY_COLLECTIONS
+        assert "tissue" in ONTOLOGY_COLLECTIONS
+        assert "cell_type" in ONTOLOGY_COLLECTIONS
+
+        # Alias resolution matches primary
+        assert ONTOLOGY_COLLECTIONS["disease"] == ONTOLOGY_COLLECTIONS["mondo"]
+        assert ONTOLOGY_COLLECTIONS["tissue"] == ONTOLOGY_COLLECTIONS["uberon"]
+        assert ONTOLOGY_COLLECTIONS["cell_type"] == ONTOLOGY_COLLECTIONS["cell_ontology"]
+
+    def test_ontology_collections_versioned_names(self):
+        """Collection names should be versioned (e.g., mondo_v2024_01)."""
+        assert ONTOLOGY_COLLECTIONS["mondo"] == "mondo_v2024_01"
+        assert ONTOLOGY_COLLECTIONS["uberon"] == "uberon_v2024_01"
+        assert ONTOLOGY_COLLECTIONS["cell_ontology"] == "cell_ontology_v2024_01"

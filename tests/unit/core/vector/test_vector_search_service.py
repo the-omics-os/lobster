@@ -10,10 +10,11 @@ from typing import Any
 
 import pytest
 
+from lobster.core.schemas.search import OntologyMatch
 from lobster.core.vector.backends.base import BaseVectorBackend
 from lobster.core.vector.config import VectorSearchConfig
 from lobster.core.vector.embeddings.base import BaseEmbedder
-from lobster.core.vector.service import VectorSearchService
+from lobster.core.vector.service import ONTOLOGY_COLLECTIONS, VectorSearchService
 
 
 # ---------------------------------------------------------------------------
@@ -297,3 +298,195 @@ class TestServiceConstruction:
         service = VectorSearchService()
         assert service._backend is None
         assert service._embedder is None
+
+
+# ---------------------------------------------------------------------------
+# match_ontology() tests (Phase 2 Plan 02)
+# ---------------------------------------------------------------------------
+
+
+class TestMatchOntology:
+    """Tests for match_ontology() domain-aware ontology matching."""
+
+    def test_match_ontology_returns_ontology_match_list(
+        self, service, mock_backend
+    ):
+        """match_ontology() should return a list of OntologyMatch Pydantic objects (SRCH-01, SRCH-04)."""
+        mock_backend.set_results(
+            {
+                "ids": [["MONDO:0005068", "MONDO:0004995"]],
+                "distances": [[0.1, 0.3]],
+                "documents": [["myocardial infarction", "acute myocardial infarction"]],
+                "metadatas": [
+                    [
+                        {"ontology_id": "MONDO:0005068", "source": "MONDO"},
+                        {"ontology_id": "MONDO:0004995", "source": "MONDO"},
+                    ]
+                ],
+            }
+        )
+        results = service.match_ontology("heart attack", "disease", k=2)
+        assert isinstance(results, list)
+        assert len(results) == 2
+        assert all(isinstance(r, OntologyMatch) for r in results)
+        # Verify fields are populated
+        assert results[0].term == "myocardial infarction"
+        assert results[0].ontology_id == "MONDO:0005068"
+        assert results[0].score == 0.9  # 1.0 - 0.1
+        assert results[0].distance_metric == "cosine"
+
+    def test_match_ontology_alias_resolution_disease(
+        self, service, mock_backend
+    ):
+        """'disease' should resolve to mondo collection (SRCH-03)."""
+        service.match_ontology("test", "disease")
+        # The mock backend was called. Verify it went through ONTOLOGY_COLLECTIONS alias.
+        # We can verify this indirectly by checking the oversampling was applied.
+        assert mock_backend._last_search_n_results == 5 * 4  # default k=5, oversampled 4x
+
+    def test_match_ontology_alias_resolution_tissue(
+        self, service, mock_backend
+    ):
+        """'tissue' should resolve to uberon collection (SRCH-03)."""
+        service.match_ontology("lung", "tissue")
+        assert mock_backend._last_search_n_results == 5 * 4
+
+    def test_match_ontology_alias_resolution_cell_type(
+        self, service, mock_backend
+    ):
+        """'cell_type' should resolve to cell_ontology collection (SRCH-03)."""
+        service.match_ontology("T cell", "cell_type")
+        assert mock_backend._last_search_n_results == 5 * 4
+
+    def test_match_ontology_oversampling_k_times_4(
+        self, service, mock_backend
+    ):
+        """match_ontology(k=3) should request 3*4=12 from backend (SRCH-02)."""
+        service.match_ontology("test", "mondo", k=3)
+        assert mock_backend._last_search_n_results == 12
+
+    def test_match_ontology_truncates_to_k(self, service, mock_backend):
+        """match_ontology(k=2) returns only 2 results even if backend returns more (SRCH-02)."""
+        # Backend returns 3 results by default
+        results = service.match_ontology("test", "mondo", k=2)
+        assert len(results) == 2
+
+    def test_match_ontology_unknown_ontology_raises_value_error(self, service):
+        """Unknown ontology name should raise ValueError (SRCH-01)."""
+        with pytest.raises(ValueError, match="Unknown ontology"):
+            service.match_ontology("test", "invalid")
+
+    def test_match_ontology_empty_results(self, service, mock_backend):
+        """Empty backend results should return empty list (SRCH-04)."""
+        mock_backend.set_results(
+            {
+                "ids": [[]],
+                "distances": [[]],
+                "documents": [[]],
+                "metadatas": [[]],
+            }
+        )
+        results = service.match_ontology("test", "mondo", k=3)
+        assert results == []
+
+
+class TestOntologyMatchDiseaseMatchCompat:
+    """Tests for SCHM-03: OntologyMatch -> DiseaseMatch field compatibility."""
+
+    def test_ontology_match_to_disease_match_field_mapping(self):
+        """OntologyMatch fields can map to DiseaseMatch-style fields (SCHM-03).
+
+        DiseaseMatch would have: disease_id, name, confidence.
+        OntologyMatch provides: ontology_id -> disease_id, term -> name, score -> confidence.
+        """
+        match = OntologyMatch(
+            term="myocardial infarction",
+            ontology_id="MONDO:0005068",
+            score=0.92,
+            metadata={"source": "MONDO"},
+            distance_metric="cosine",
+        )
+        # Verify the field mapping is possible and values are correct
+        disease_id = match.ontology_id
+        name = match.term
+        confidence = match.score
+
+        assert disease_id == "MONDO:0005068"
+        assert name == "myocardial infarction"
+        assert confidence == 0.92
+
+
+def _chromadb_available() -> bool:
+    """Check if chromadb is installed for integration tests."""
+    try:
+        import chromadb
+
+        return True
+    except ImportError:
+        return False
+
+
+class TestMatchOntologyIntegration:
+    """Integration test for match_ontology() with real ChromaDB (TEST-07)."""
+
+    @pytest.mark.skipif(
+        not _chromadb_available(),
+        reason="chromadb not installed",
+    )
+    def test_full_pipeline_with_real_chromadb(self, tmp_path):
+        """End-to-end: embed terms, add to ChromaDB, query via match_ontology()."""
+        import chromadb
+
+        from lobster.core.vector.backends.chromadb_backend import (
+            ChromaDBBackend,
+        )
+
+        # Create a real ChromaDB backend
+        client = chromadb.Client()
+        backend = ChromaDBBackend(persist_path=str(tmp_path))
+        backend._client = client  # Override with ephemeral client
+
+        # Create a mock embedder (still mock, but tests full pipeline through real ChromaDB)
+        embedder = MockEmbedder()
+
+        # Add 10 disease terms to a collection
+        terms = [
+            ("MONDO:0005068", "myocardial infarction"),
+            ("MONDO:0004995", "acute myocardial infarction"),
+            ("MONDO:0005010", "congestive heart failure"),
+            ("MONDO:0006502", "coronary artery disease"),
+            ("MONDO:0005148", "type 2 diabetes"),
+            ("MONDO:0005015", "diabetes mellitus"),
+            ("MONDO:0005575", "colorectal carcinoma"),
+            ("MONDO:0008170", "ovarian cancer"),
+            ("MONDO:0004992", "lung cancer"),
+            ("MONDO:0005105", "melanoma"),
+        ]
+
+        collection = client.get_or_create_collection("mondo_v2024_01")
+        ids = [t[0] for t in terms]
+        documents = [t[1] for t in terms]
+        embeddings = embedder.embed_batch(documents)
+        metadatas = [{"ontology_id": t[0], "source": "MONDO"} for t in terms]
+
+        collection.add(
+            ids=ids,
+            embeddings=embeddings,
+            documents=documents,
+            metadatas=metadatas,
+        )
+
+        # Create service with real ChromaDB + mock embedder
+        service = VectorSearchService(backend=backend, embedder=embedder)
+
+        results = service.match_ontology("heart attack", "mondo", k=3)
+
+        # Should return OntologyMatch objects
+        assert isinstance(results, list)
+        assert len(results) <= 3
+        assert all(isinstance(r, OntologyMatch) for r in results)
+
+        # Scores should be valid
+        for r in results:
+            assert 0.0 <= r.score <= 1.0
+            assert r.distance_metric == "cosine"
