@@ -47,9 +47,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Ontology Graph
 
-- [ ] **GRPH-01**: load_ontology_graph() parses OBO files via obonet into NetworkX MultiDiGraph with @lru_cache
-- [ ] **GRPH-02**: get_neighbors(graph, term_id, depth) returns parent/child/sibling terms
-- [ ] **GRPH-03**: OBO_URLS mapping covers MONDO, Uberon, and Cell Ontology
+- [x] **GRPH-01**: load_ontology_graph() parses OBO files via obonet into NetworkX MultiDiGraph with @lru_cache
+- [x] **GRPH-02**: get_neighbors(graph, term_id, depth) returns parent/child/sibling terms
+- [x] **GRPH-03**: OBO_URLS mapping covers MONDO, Uberon, and Cell Ontology
 
 ### Data Pipeline
 
@@ -162,9 +162,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SCHM-01 | Phase 1 | Complete |
 | SCHM-02 | Phase 1 | Complete |
 | SCHM-03 | Phase 2 | Pending |
-| GRPH-01 | Phase 2 | Pending |
-| GRPH-02 | Phase 2 | Pending |
-| GRPH-03 | Phase 2 | Pending |
+| GRPH-01 | Phase 2 | Complete |
+| GRPH-02 | Phase 2 | Complete |
+| GRPH-03 | Phase 2 | Complete |
 | DATA-01 | Phase 6 | Pending |
 | DATA-02 | Phase 6 | Pending |
 | DATA-03 | Phase 6 | Pending |
