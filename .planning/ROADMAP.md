@@ -96,10 +96,10 @@ Plans:
   3. pgvector backend stub raises NotImplementedError with helpful "Coming in v2.0" message
   4. Switching backends requires no changes to service layer (BaseVectorBackend abstraction works)
   5. Backend selection logic is testable with mocked backends
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 05-01: TBD
+- [ ] 05-01-PLAN.md -- FAISS backend, pgvector stub, factory wiring, and comprehensive backend unit tests
 
 ### Phase 6: Automation
 **Goal**: Offline data pipeline builds prebuilt embeddings and cloud deployment handoff spec complete
@@ -127,5 +127,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Service Integration | 0/? | Not started | - |
 | 3. Agent Tooling | 0/2 | Complete    | 2026-02-19 |
 | 4. Performance | 0/2 | Complete    | 2026-02-19 |
-| 5. Scalability | 0/? | Not started | - |
+| 5. Scalability | 0/1 | Planning complete | - |
 | 6. Automation | 0/? | Not started | - |
