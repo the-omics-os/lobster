@@ -1,16 +1,17 @@
 """
 Configuration for vector search infrastructure.
 
-VectorSearchConfig reads environment variables to determine which backend
-and embedding provider to use, and provides factory methods for creating
-configured instances. All imports of heavy dependencies (chromadb, torch,
-sentence-transformers) are lazy — they only happen when create_backend()
-or create_embedder() is called.
+VectorSearchConfig reads environment variables to determine which backend,
+embedding provider, and reranker to use, and provides factory methods for
+creating configured instances. All imports of heavy dependencies (chromadb,
+torch, sentence-transformers, cohere) are lazy -- they only happen when
+create_backend(), create_embedder(), or create_reranker() is called.
 
 Environment variables:
     LOBSTER_VECTOR_BACKEND: Backend name (default: "chromadb")
     LOBSTER_EMBEDDING_PROVIDER: Embedder name (default: "sapbert")
     LOBSTER_VECTOR_STORE_PATH: Persist directory (default: ~/.lobster/vector_store/)
+    LOBSTER_RERANKER: Reranker strategy (default: "none")
 """
 
 from __future__ import annotations
@@ -21,11 +22,16 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
-from lobster.core.schemas.search import EmbeddingProvider, SearchBackend
+from lobster.core.schemas.search import (
+    EmbeddingProvider,
+    RerankerType,
+    SearchBackend,
+)
 
 if TYPE_CHECKING:
     from lobster.core.vector.backends.base import BaseVectorBackend
     from lobster.core.vector.embeddings.base import BaseEmbedder
+    from lobster.core.vector.rerankers.base import BaseReranker
 
 
 class VectorSearchConfig(BaseModel):
@@ -52,6 +58,10 @@ class VectorSearchConfig(BaseModel):
         default=5,
         description="Default number of results to return per query",
     )
+    reranker: RerankerType = Field(
+        default=RerankerType.none,
+        description="Reranking strategy for search results",
+    )
 
     @classmethod
     def from_env(cls) -> VectorSearchConfig:
@@ -62,6 +72,7 @@ class VectorSearchConfig(BaseModel):
             LOBSTER_VECTOR_BACKEND -> backend (default "chromadb")
             LOBSTER_EMBEDDING_PROVIDER -> embedding_provider (default "sapbert")
             LOBSTER_VECTOR_STORE_PATH -> persist_path (default ~/.lobster/vector_store/)
+            LOBSTER_RERANKER -> reranker (default "none")
 
         Returns:
             VectorSearchConfig: Configuration instance.
@@ -72,11 +83,18 @@ class VectorSearchConfig(BaseModel):
             "LOBSTER_VECTOR_STORE_PATH",
             str(Path.home() / ".lobster" / "vector_store"),
         )
+        reranker_str = os.environ.get("LOBSTER_RERANKER", "none")
+
+        try:
+            reranker = RerankerType(reranker_str)
+        except ValueError:
+            reranker = RerankerType.none
 
         return cls(
             backend=SearchBackend(backend_str),
             embedding_provider=EmbeddingProvider(embedder_str),
             persist_path=persist_path,
+            reranker=reranker,
         )
 
     def create_backend(self) -> BaseVectorBackend:
@@ -124,4 +142,40 @@ class VectorSearchConfig(BaseModel):
         raise ValueError(
             f"Unsupported embedding provider: {self.embedding_provider}. "
             f"Available: sapbert"
+        )
+
+    def create_reranker(self) -> BaseReranker | None:
+        """
+        Create a configured reranker instance, or None if reranker=none.
+
+        Imports the reranker implementation lazily to avoid loading
+        heavy dependencies (torch, cohere) until they are actually needed.
+
+        Returns:
+            BaseReranker | None: Configured reranker instance, or None
+                if reranking is disabled (RerankerType.none).
+
+        Raises:
+            ValueError: If the configured reranker is not supported.
+        """
+        if self.reranker == RerankerType.none:
+            return None
+
+        if self.reranker == RerankerType.cross_encoder:
+            from lobster.core.vector.rerankers.cross_encoder_reranker import (
+                CrossEncoderReranker,
+            )
+
+            return CrossEncoderReranker()
+
+        if self.reranker == RerankerType.cohere:
+            from lobster.core.vector.rerankers.cohere_reranker import (
+                CohereReranker,
+            )
+
+            return CohereReranker()
+
+        raise ValueError(
+            f"Unsupported reranker: {self.reranker}. "
+            f"Available: none, cross_encoder, cohere"
         )

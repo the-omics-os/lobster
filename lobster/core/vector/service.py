@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from lobster.core.schemas.search import OntologyMatch
     from lobster.core.vector.backends.base import BaseVectorBackend
     from lobster.core.vector.embeddings.base import BaseEmbedder
+    from lobster.core.vector.rerankers.base import BaseReranker
 
 
 # ---------------------------------------------------------------------------
@@ -82,6 +83,7 @@ class VectorSearchService:
         config: Any | None = None,
         backend: BaseVectorBackend | None = None,
         embedder: BaseEmbedder | None = None,
+        reranker: BaseReranker | None = None,
     ) -> None:
         # Lazy import to avoid pulling in pydantic at module level
         if config is None:
@@ -92,6 +94,8 @@ class VectorSearchService:
         self._config = config
         self._backend = backend
         self._embedder = embedder
+        self._reranker = reranker
+        self._reranker_resolved: bool = reranker is not None
 
     def _get_backend(self) -> BaseVectorBackend:
         """Get or create the vector backend (lazy initialization)."""
@@ -104,6 +108,17 @@ class VectorSearchService:
         if self._embedder is None:
             self._embedder = self._config.create_embedder()
         return self._embedder
+
+    def _get_reranker(self) -> BaseReranker | None:
+        """Get or create the reranker (lazy initialization).
+
+        Returns None if reranking is disabled (RerankerType.none).
+        Uses a resolved flag to distinguish 'not checked' from 'checked and is None'.
+        """
+        if not self._reranker_resolved:
+            self._reranker = self._config.create_reranker()
+            self._reranker_resolved = True
+        return self._reranker
 
     def query(
         self,
@@ -223,14 +238,40 @@ class VectorSearchService:
                 f"Available options: {available}"
             )
 
-        # Oversample: request k*4 from backend (for future reranking)
+        # Oversample: request k*4 from backend (for reranking headroom)
         oversampled_k = k * 4
         raw_matches = self.query(term, collection, top_k=oversampled_k)
 
-        # Convert flat dicts to typed OntologyMatch Pydantic objects
-        results: list[OntologyMatch] = []
+        # Reranking step (between search and truncation)
+        reranker = self._get_reranker()
+        if reranker is not None and len(raw_matches) > 1:
+            from lobster.core.vector.rerankers.base import normalize_scores
+
+            documents = [m["term"] for m in raw_matches]
+            reranked = reranker.rerank(term, documents, top_k=k)
+
+            # Normalize scores to [0, 1] for OntologyMatch compatibility
+            reranked = normalize_scores(reranked)
+
+            # Rebuild OntologyMatch list in reranked order
+            results: list[OntologyMatch] = []
+            for entry in reranked:
+                original = raw_matches[entry["corpus_id"]]
+                results.append(
+                    _OntologyMatch(
+                        term=original["term"],
+                        ontology_id=original["ontology_id"],
+                        score=entry["score"],
+                        metadata=original["metadata"],
+                        distance_metric=original["distance_metric"],
+                    )
+                )
+            return results[:k]
+
+        # No reranker: convert flat dicts to typed OntologyMatch Pydantic objects
+        results_list: list[OntologyMatch] = []
         for match_dict in raw_matches:
-            results.append(
+            results_list.append(
                 _OntologyMatch(
                     term=match_dict["term"],
                     ontology_id=match_dict["ontology_id"],
@@ -241,7 +282,7 @@ class VectorSearchService:
             )
 
         # Truncate to requested k
-        return results[:k]
+        return results_list[:k]
 
     def _format_results(
         self, raw: dict[str, Any], query_text: str

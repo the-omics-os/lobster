@@ -24,9 +24,11 @@ if TYPE_CHECKING:
     from lobster.core.vector.backends.base import BaseVectorBackend
     from lobster.core.vector.config import VectorSearchConfig
     from lobster.core.vector.embeddings.base import BaseEmbedder
+    from lobster.core.vector.rerankers.base import BaseReranker
     from lobster.core.vector.service import VectorSearchService
 
 __all__ = [
+    "BaseReranker",
     "BaseVectorBackend",
     "BaseEmbedder",
     "ONTOLOGY_COLLECTIONS",
@@ -52,6 +54,10 @@ def __getattr__(name: str):
         from lobster.core.vector.embeddings.base import BaseEmbedder
 
         return BaseEmbedder
+    if name == "BaseReranker":
+        from lobster.core.vector.rerankers.base import BaseReranker
+
+        return BaseReranker
     if name == "ONTOLOGY_COLLECTIONS":
         from lobster.core.vector.service import ONTOLOGY_COLLECTIONS
 
