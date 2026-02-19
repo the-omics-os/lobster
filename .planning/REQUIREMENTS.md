@@ -74,9 +74,9 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **AGNT-01**: annotation_expert gains annotate_cell_types_semantic tool that queries Cell Ontology via VectorSearchService
 - [ ] **AGNT-02**: Semantic annotation uses marker gene signatures as query text ("Cluster 0: high CD3D, CD3E, CD8A")
 - [ ] **AGNT-03**: Existing annotate_cell_types tool remains unchanged (new tool augments, does not replace)
-- [ ] **AGNT-04**: metadata_assistant gains standardize_tissue_term tool using VectorSearchService.match_ontology("uberon")
-- [ ] **AGNT-05**: metadata_assistant gains standardize_disease_term tool using DiseaseOntologyService.match_disease()
-- [ ] **AGNT-06**: All new tools follow 3-tuple return pattern (result, stats, AnalysisStep) with ir mandatory
+- [x] **AGNT-04**: metadata_assistant gains standardize_tissue_term tool using VectorSearchService.match_ontology("uberon")
+- [x] **AGNT-05**: metadata_assistant gains standardize_disease_term tool using DiseaseOntologyService.match_disease()
+- [x] **AGNT-06**: All new tools follow 3-tuple return pattern (result, stats, AnalysisStep) with ir mandatory
 
 ### Cloud Handoff
 
@@ -92,7 +92,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **TEST-05**: Unit tests for config env var parsing and factory methods
 - [x] **TEST-06**: Unit tests for DiseaseOntologyService Phase 2 backend swap branching
 - [x] **TEST-07**: Integration test with small real ChromaDB (embed -> search -> rerank full pipeline)
-- [ ] **TEST-08**: All tests use @pytest.mark.skipif for optional deps
+- [x] **TEST-08**: All tests use @pytest.mark.skipif for optional deps
 
 ## v2 Requirements
 
@@ -180,9 +180,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AGNT-01 | Phase 3 | Pending |
 | AGNT-02 | Phase 3 | Pending |
 | AGNT-03 | Phase 3 | Pending |
-| AGNT-04 | Phase 3 | Pending |
-| AGNT-05 | Phase 3 | Pending |
-| AGNT-06 | Phase 3 | Pending |
+| AGNT-04 | Phase 3 | Complete |
+| AGNT-05 | Phase 3 | Complete |
+| AGNT-06 | Phase 3 | Complete |
 | CLOD-01 | Phase 6 | Pending |
 | CLOD-02 | Phase 6 | Pending |
 | TEST-01 | Phase 5 | Pending |
@@ -192,7 +192,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-05 | Phase 2 | Complete |
 | TEST-06 | Phase 2 | Complete |
 | TEST-07 | Phase 2 | Complete |
-| TEST-08 | Phase 3 | Pending |
+| TEST-08 | Phase 3 | Complete |
 
 **Coverage:**
 - v1 requirements: 54 total

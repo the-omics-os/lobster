@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-17)
 
 **Core value:** Agents can semantically match any biomedical term to the correct ontology concept with calibrated confidence scores, using zero configuration out of the box.
-**Current focus:** Phase 2 - Service Integration
+**Current focus:** Phase 3 - Agent Tooling (complete)
 
 ## Current Position
 
-Phase: 2 of 6 (Service Integration) -- COMPLETE
-Plan: 3 of 3 in current phase (02-03 complete, phase done)
-Status: Phase 02 complete, ready for Phase 03
-Last activity: 2026-02-18 — Plan 02-03 executed (DiseaseOntologyService migration)
+Phase: 3 of 6 (Agent Tooling) -- COMPLETE
+Plan: 2 of 2 in current phase (03-01 + 03-02 complete, phase done)
+Status: Phase 03 complete, ready for Phase 04
+Last activity: 2026-02-19 — Plan 03-01 executed (annotation_expert semantic tool)
 
-Progress: [█████░░░░░] 33%
+Progress: [████████░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 2.8min
-- Total execution time: 0.30 hours
+- Total plans completed: 8
+- Average duration: 2.9min
+- Total execution time: 0.38 hours
 
 **By Phase:**
 
@@ -29,13 +29,14 @@ Progress: [█████░░░░░] 33%
 |-------|-------|-------|----------|
 | 01-foundation | 3 | 8min | 2.7min |
 | 02-service-integration | 3 | 10min | 3.3min |
+| 03-agent-tooling | 2 | 4min | 2.0min |
 
 **Recent Trend:**
-- Last 5 plans: 01-03 (3min), 02-01 (2min), 02-02 (3min), 02-03 (5min)
+- Last 5 plans: 02-01 (2min), 02-02 (3min), 02-03 (5min), 03-02 (4min)
 - Trend: Stable
 
 *Updated after each plan completion*
-| Phase 02 P03 | 5min | 2 tasks | 4 files |
+| Phase 03 P02 | 4min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -70,6 +71,15 @@ Recent decisions affecting current work:
 - [02-03] Lazy import of VectorSearchService inside __init__ body to avoid pulling deps when backend=json
 - [02-03] Always build keyword index even with embeddings backend (needed for fallback and legacy APIs)
 - [02-03] builtins.__import__ patching for fallback tests since VectorSearchService is dynamically imported
+- [03-01] Lazy VectorSearchService closure in annotation_expert factory (nonlocal singleton for deferred init)
+- [03-01] Top-3 cell types by score, top-3 markers each, max 5 genes per query for semantic matching
+- [03-01] Direct modalities dict assignment for semantic tool save (not store_modality)
+- [03-01] OntologyMatch field access via .term/.ontology_id/.score (canonical field names)
+- [03-02] HAS_VECTOR_SEARCH guard at module level (same pattern as HAS_ONTOLOGY_SERVICE)
+- [03-02] Lazy _get_vector_service() closure inside factory (nonlocal singleton for deferred init)
+- [03-02] Tissue tool requires HAS_VECTOR_SEARCH; disease tool requires HAS_ONTOLOGY_SERVICE (independent conditionals)
+- [03-02] Disease tool routes through DiseaseOntologyService not VectorSearchService directly (Strangler Fig)
+- [03-02] AnalysisStep requires code_template, imports, parameter_schema as mandatory fields
 
 ### Pending Todos
 
@@ -81,6 +91,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-18 (Phase 03 context gathering)
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-agent-tooling/03-CONTEXT.md
+Last session: 2026-02-19 (Phase 03 plan 02 execution)
+Stopped at: Completed 03-02-PLAN.md
+Resume file: .planning/phases/03-agent-tooling/03-02-SUMMARY.md

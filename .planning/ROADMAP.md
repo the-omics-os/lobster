@@ -68,7 +68,7 @@ Plans:
 
 Plans:
 - [ ] 03-01-PLAN.md -- annotate_cell_types_semantic tool for annotation_expert (Cell Ontology via marker gene queries)
-- [ ] 03-02-PLAN.md -- standardize_tissue_term and standardize_disease_term tools for metadata_assistant
+- [x] 03-02-PLAN.md -- standardize_tissue_term and standardize_disease_term tools for metadata_assistant
 
 ### Phase 4: Performance
 **Goal**: Two-stage retrieval with cross-encoder reranking delivers 10-15% precision improvement
