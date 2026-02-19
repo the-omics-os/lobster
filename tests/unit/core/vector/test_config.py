@@ -79,11 +79,28 @@ class TestDefaults:
 class TestFactoryMethods:
     """Tests for create_backend() and create_embedder() factory methods."""
 
-    def test_create_backend_unsupported(self):
-        """Backend=faiss should raise ValueError (not yet implemented)."""
+    def test_create_backend_faiss(self):
+        """create_backend() with faiss returns FAISSBackend."""
+        try:
+            import faiss
+        except ImportError:
+            pytest.skip("faiss-cpu not installed")
+
         config = VectorSearchConfig(backend=SearchBackend.faiss)
-        with pytest.raises(ValueError, match="Unsupported backend"):
-            config.create_backend()
+        backend = config.create_backend()
+
+        from lobster.core.vector.backends.faiss_backend import FAISSBackend
+
+        assert isinstance(backend, FAISSBackend)
+
+    def test_create_backend_pgvector(self):
+        """create_backend() with pgvector returns PgVectorBackend."""
+        config = VectorSearchConfig(backend=SearchBackend.pgvector)
+        backend = config.create_backend()
+
+        from lobster.core.vector.backends.pgvector_backend import PgVectorBackend
+
+        assert isinstance(backend, PgVectorBackend)
 
     def test_create_embedder_unsupported(self):
         """Provider=minilm should raise ValueError (not yet implemented)."""
