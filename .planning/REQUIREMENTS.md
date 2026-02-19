@@ -57,8 +57,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **DATA-02**: Build script embeds definition + primary label per term (not synonyms separately) to avoid duplication
 - [x] **DATA-03**: Build script outputs ChromaDB collections with metadata (term_id, name, synonyms, namespace, is_obsolete)
 - [x] **DATA-04**: Build script produces tarballs for S3 upload (mondo_sapbert_768.tar.gz, uberon_sapbert_768.tar.gz, cell_ontology_sapbert_768.tar.gz)
-- [ ] **DATA-05**: ChromaDB backend auto-downloads tarballs from S3 on first use to ~/.lobster/ontology_cache/
-- [ ] **DATA-06**: Tarballs hosted on S3 at s3://lobster-ontology-data/v1/
+- [x] **DATA-05**: ChromaDB backend auto-downloads tarballs from S3 on first use to ~/.lobster/ontology_cache/
+- [x] **DATA-06**: Tarballs hosted on S3 at s3://lobster-ontology-data/v1/
 
 ### Disease Service Migration
 
@@ -169,8 +169,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DATA-02 | Phase 6 | Complete |
 | DATA-03 | Phase 6 | Complete |
 | DATA-04 | Phase 6 | Complete |
-| DATA-05 | Phase 6 | Pending |
-| DATA-06 | Phase 6 | Pending |
+| DATA-05 | Phase 6 | Complete |
+| DATA-06 | Phase 6 | Complete |
 | MIGR-01 | Phase 2 | Complete |
 | MIGR-02 | Phase 2 | Complete |
 | MIGR-03 | Phase 2 | Complete |

@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-17)
 ## Current Position
 
 Phase: 6 of 6 (Automation)
-Plan: 3 of 4 in current phase (06-01, 06-02, 06-04 complete; 06-03 pending)
-Status: Phase 06 in progress, plans 01, 02, 04 complete; plan 03 pending
-Last activity: 2026-02-19 — Plan 06-04 executed (cloud ChromaDB handoff spec)
+Plan: 4 of 4 in current phase (all complete)
+Status: Phase 06 COMPLETE — all 4 plans executed
+Last activity: 2026-02-19 — Plan 06-03 executed (ChromaDB S3 auto-download)
 
-Progress: [████████████████████████] 94%
+Progress: [█████████████████████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 14
-- Average duration: 3.4min
-- Total execution time: 0.80 hours
+- Total plans completed: 15
+- Average duration: 3.6min
+- Total execution time: 0.90 hours
 
 **By Phase:**
 
@@ -32,10 +32,10 @@ Progress: [███████████████████████
 | 03-agent-tooling | 2 | 10min | 5.0min |
 | 04-performance | 2 | 11min | 5.5min |
 | 05-scalability | 1 | 4min | 4.0min |
-| 06-automation | 3 | 10min | 3.3min |
+| 06-automation | 4 | 16min | 4.0min |
 
 **Recent Trend:**
-- Last 5 plans: 05-01 (4min), 06-01 (3min), 06-02 (3min), 06-04 (4min)
+- Last 5 plans: 05-01 (4min), 06-01 (3min), 06-02 (3min), 06-04 (4min), 06-03 (6min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -46,6 +46,7 @@ Progress: [███████████████████████
 | Phase 06 P01 | 3min | 2 tasks | 5 files |
 | Phase 06 P02 | 3min | 2 tasks | 1 files |
 | Phase 06 P04 | 4min | 1 tasks | 1 files |
+| Phase 06 P03 | 6min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -110,6 +111,10 @@ Recent decisions affecting current work:
 - [06-04] Single instance (not per-tenant) since ontology data is shared read-only
 - [06-04] Always-on (no scale-to-zero) to avoid cold start re-indexing
 - [06-04] HttpClient switching via LOBSTER_VECTOR_CLOUD_URL env var in ChromaDBBackend
+- [06-03] Direct client.get_collection() check in _ensure_ontology_data to avoid recursion
+- [06-03] Atomic download via .tmp file rename prevents partial corruption
+- [06-03] Separate PersistentClient for source tarball avoids SQLite locking
+- [06-03] Network/tarball errors degrade to empty collection (warning, not crash)
 
 ### Pending Todos
 
@@ -121,6 +126,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-19 (Phase 06 plan 04 execution)
-Stopped at: Completed 06-04-PLAN.md
-Resume file: .planning/phases/06-automation/06-04-SUMMARY.md
+Last session: 2026-02-19 (Phase 06 plan 03 execution)
+Stopped at: Completed 06-03-PLAN.md — Phase 06 COMPLETE (all 4 plans)
+Resume file: .planning/phases/06-automation/06-03-SUMMARY.md
