@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 1: Foundation** - Core vector search infrastructure with ChromaDB + SapBERT embeddings
 - [ ] **Phase 2: Service Integration** - SemanticSearchService with 3-tuple pattern, ontology graph, and DiseaseOntologyService migration
 - [x] **Phase 3: Agent Tooling** - Cell type, tissue, and disease standardization tools for annotation_expert and metadata_assistant (completed 2026-02-19)
-- [ ] **Phase 4: Performance** - Two-stage retrieval with cross-encoder reranking for 10-15% precision gain
+- [x] **Phase 4: Performance** - Two-stage retrieval with cross-encoder reranking for 10-15% precision gain (completed 2026-02-19)
 - [ ] **Phase 5: Scalability** - Alternative backends (FAISS, pgvector stub) and backend factory pattern
 - [ ] **Phase 6: Automation** - Data pipeline for prebuilt ontology embeddings and cloud handoff spec
 
@@ -126,6 +126,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Foundation | 0/3 | Planning complete | - |
 | 2. Service Integration | 0/? | Not started | - |
 | 3. Agent Tooling | 0/2 | Complete    | 2026-02-19 |
-| 4. Performance | 0/2 | Planning complete | - |
+| 4. Performance | 0/2 | Complete    | 2026-02-19 |
 | 5. Scalability | 0/? | Not started | - |
 | 6. Automation | 0/? | Not started | - |
