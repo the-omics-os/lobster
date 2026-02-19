@@ -86,8 +86,8 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Testing
 
 - [ ] **TEST-01**: Unit tests for backends (ChromaDB, FAISS, pgvector stub) with mocked deps
-- [ ] **TEST-02**: Unit tests for embedding providers (SapBERT, MiniLM, OpenAI) with mocked model loading
-- [ ] **TEST-03**: Unit tests for rerankers (cross-encoder, Cohere) with mocked clients
+- [x] **TEST-02**: Unit tests for embedding providers (SapBERT, MiniLM, OpenAI) with mocked model loading
+- [x] **TEST-03**: Unit tests for rerankers (cross-encoder, Cohere) with mocked clients
 - [x] **TEST-04**: Unit tests for VectorSearchService orchestration, caching, config-driven switching
 - [x] **TEST-05**: Unit tests for config env var parsing and factory methods
 - [x] **TEST-06**: Unit tests for DiseaseOntologyService Phase 2 backend swap branching
@@ -186,8 +186,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CLOD-01 | Phase 6 | Pending |
 | CLOD-02 | Phase 6 | Pending |
 | TEST-01 | Phase 5 | Pending |
-| TEST-02 | Phase 4 | Pending |
-| TEST-03 | Phase 4 | Pending |
+| TEST-02 | Phase 4 | Complete |
+| TEST-03 | Phase 4 | Complete |
 | TEST-04 | Phase 2 | Complete |
 | TEST-05 | Phase 2 | Complete |
 | TEST-06 | Phase 2 | Complete |

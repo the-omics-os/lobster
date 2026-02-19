@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-17)
 
 **Core value:** Agents can semantically match any biomedical term to the correct ontology concept with calibrated confidence scores, using zero configuration out of the box.
-**Current focus:** Phase 4 - Performance (reranking infrastructure)
+**Current focus:** Phase 4 - Performance (complete)
 
 ## Current Position
 
-Phase: 4 of 6 (Performance)
-Plan: 1 of 2 in current phase (04-01 complete)
-Status: Executing Phase 04
-Last activity: 2026-02-19 — Plan 04-01 executed (reranker infrastructure)
+Phase: 4 of 6 (Performance) -- COMPLETE
+Plan: 2 of 2 in current phase (04-02 complete)
+Status: Phase 04 complete, ready for Phase 05
+Last activity: 2026-02-19 — Plan 04-02 executed (embedder/reranker unit tests)
 
-Progress: [█████████░] 56%
+Progress: [██████████] 63%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: 3.1min
-- Total execution time: 0.47 hours
+- Total plans completed: 10
+- Average duration: 3.4min
+- Total execution time: 0.57 hours
 
 **By Phase:**
 
@@ -30,15 +30,16 @@ Progress: [█████████░] 56%
 | 01-foundation | 3 | 8min | 2.7min |
 | 02-service-integration | 3 | 10min | 3.3min |
 | 03-agent-tooling | 2 | 10min | 5.0min |
-| 04-performance | 1 | 5min | 5.0min |
+| 04-performance | 2 | 11min | 5.5min |
 
 **Recent Trend:**
-- Last 5 plans: 02-03 (5min), 03-01 (6min), 03-02 (4min), 04-01 (5min)
+- Last 5 plans: 03-01 (6min), 03-02 (4min), 04-01 (5min), 04-02 (6min)
 - Trend: Stable
 
 *Updated after each plan completion*
 | Phase 03 P01 | 6min | 2 tasks | 2 files |
 | Phase 04 P01 | 5min | 2 tasks | 7 files |
+| Phase 04 P02 | 6min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,8 @@ Recent decisions affecting current work:
 - [04-01] Reranking only in match_ontology(), not query() (keeps lower-level API predictable)
 - [04-01] COHERE_RERANK_MODEL env var override for model flexibility
 - [04-01] Edge case guard: skip reranking for single-document results (no model loaded)
+- [04-02] Local _LocalMockReranker in service tests instead of cross-file import to avoid test coupling
+- [04-02] sys.modules patching for sentence-transformers mocking (cleaner than builtins.__import__ for lazy imports)
 
 ### Pending Todos
 
@@ -98,6 +101,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-19 (Phase 04 plan 01 execution)
-Stopped at: Completed 04-01-PLAN.md
-Resume file: .planning/phases/04-performance/04-01-SUMMARY.md
+Last session: 2026-02-19 (Phase 04 plan 02 execution)
+Stopped at: Completed 04-02-PLAN.md
+Resume file: .planning/phases/04-performance/04-02-SUMMARY.md
