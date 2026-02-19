@@ -491,7 +491,13 @@ def create_bioinformatics_graph(
             factory_kwargs["workspace_path"] = workspace_path
 
         # Create agent ONCE (single pass)
-        created_agents[agent_name] = factory_function(**factory_kwargs)
+        # Apply recursion_limit to prevent sub-agents from hitting the default
+        # limit of 25. Sub-agents are invoked via agent.invoke() in tool functions,
+        # which creates a separate execution context (not a subgraph), so the
+        # parent graph's recursion_limit does NOT propagate.
+        created_agents[agent_name] = factory_function(**factory_kwargs).with_config(
+            {"recursion_limit": 50}
+        )
         logger.debug(
             f"Created agent: {agent_config.display_name} ({agent_name}) [single pass]"
         )
