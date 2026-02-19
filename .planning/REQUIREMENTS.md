@@ -71,9 +71,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Agent Integration
 
-- [ ] **AGNT-01**: annotation_expert gains annotate_cell_types_semantic tool that queries Cell Ontology via VectorSearchService
-- [ ] **AGNT-02**: Semantic annotation uses marker gene signatures as query text ("Cluster 0: high CD3D, CD3E, CD8A")
-- [ ] **AGNT-03**: Existing annotate_cell_types tool remains unchanged (new tool augments, does not replace)
+- [x] **AGNT-01**: annotation_expert gains annotate_cell_types_semantic tool that queries Cell Ontology via VectorSearchService
+- [x] **AGNT-02**: Semantic annotation uses marker gene signatures as query text ("Cluster 0: high CD3D, CD3E, CD8A")
+- [x] **AGNT-03**: Existing annotate_cell_types tool remains unchanged (new tool augments, does not replace)
 - [x] **AGNT-04**: metadata_assistant gains standardize_tissue_term tool using VectorSearchService.match_ontology("uberon")
 - [x] **AGNT-05**: metadata_assistant gains standardize_disease_term tool using DiseaseOntologyService.match_disease()
 - [x] **AGNT-06**: All new tools follow 3-tuple return pattern (result, stats, AnalysisStep) with ir mandatory
@@ -177,9 +177,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MIGR-04 | Phase 2 | Complete |
 | MIGR-05 | Phase 2 | Complete |
 | MIGR-06 | Phase 2 | Complete |
-| AGNT-01 | Phase 3 | Pending |
-| AGNT-02 | Phase 3 | Pending |
-| AGNT-03 | Phase 3 | Pending |
+| AGNT-01 | Phase 3 | Complete |
+| AGNT-02 | Phase 3 | Complete |
+| AGNT-03 | Phase 3 | Complete |
 | AGNT-04 | Phase 3 | Complete |
 | AGNT-05 | Phase 3 | Complete |
 | AGNT-06 | Phase 3 | Complete |
