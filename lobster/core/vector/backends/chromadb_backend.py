@@ -13,9 +13,16 @@ the first operation that requires a database connection. This keeps
 
 Batch operations automatically chunk at 5000 documents to stay within
 ChromaDB's recommended batch limits.
+
+Ontology collections (mondo, uberon, cell_ontology) are auto-downloaded
+from S3 as pre-built tarballs on first use, cached at
+``~/.lobster/ontology_cache/``. This eliminates the 10-15 minute
+cold-start embedding time for fresh installs.
 """
 
 import logging
+import tarfile
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +32,74 @@ logger = logging.getLogger(__name__)
 
 # ChromaDB recommended maximum batch size
 _BATCH_SIZE = 5000
+
+# S3 URLs for pre-built ontology embedding tarballs
+ONTOLOGY_TARBALLS: dict[str, str] = {
+    "mondo_v2024_01": "https://lobster-ontology-data.s3.amazonaws.com/v1/mondo_sapbert_768.tar.gz",
+    "uberon_v2024_01": "https://lobster-ontology-data.s3.amazonaws.com/v1/uberon_sapbert_768.tar.gz",
+    "cell_ontology_v2024_01": "https://lobster-ontology-data.s3.amazonaws.com/v1/cell_ontology_sapbert_768.tar.gz",
+}
+
+# Local cache directory for downloaded ontology tarballs
+ONTOLOGY_CACHE_DIR = Path.home() / ".lobster" / "ontology_cache"
+
+
+def _download_with_progress(url: str, dest: Path) -> None:
+    """
+    Download a file from *url* to *dest* with a Rich progress bar.
+
+    Uses a temporary file (``dest.with_suffix('.tmp')``) during download
+    and atomically renames to *dest* only on success.  The ``.tmp`` file
+    is cleaned up on any error to prevent partial-file corruption.
+
+    Args:
+        url: HTTP(S) URL to download.
+        dest: Local file path to write.
+
+    Raises:
+        requests.HTTPError: If the server returns a non-2xx status.
+        requests.ConnectionError: If a network error occurs.
+    """
+    import requests
+    from rich.progress import (
+        BarColumn,
+        DownloadColumn,
+        Progress,
+        TimeRemainingColumn,
+        TransferSpeedColumn,
+    )
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = dest.with_suffix(".tmp")
+
+    try:
+        response = requests.get(url, stream=True, timeout=120)
+        response.raise_for_status()
+        total = int(response.headers.get("content-length", 0))
+
+        with Progress(
+            "[progress.description]{task.description}",
+            BarColumn(),
+            DownloadColumn(),
+            TransferSpeedColumn(),
+            TimeRemainingColumn(),
+        ) as progress:
+            task = progress.add_task(
+                f"Downloading {dest.name}...",
+                total=total or None,
+            )
+            with open(tmp_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+                    progress.update(task, advance=len(chunk))
+
+        # Atomic rename on success
+        tmp_path.rename(dest)
+    except Exception:
+        # Clean up partial download
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise
 
 
 class ChromaDBBackend(BaseVectorBackend):
@@ -93,9 +168,157 @@ class ChromaDBBackend(BaseVectorBackend):
         logger.info("Initialized ChromaDB at %s", self._persist_path)
         return self._client
 
+    def _ensure_ontology_data(self, collection_name: str) -> bool:
+        """
+        Auto-download pre-built ontology data from S3 if needed.
+
+        Checks whether *collection_name* is a known ontology collection
+        and, if the local ChromaDB store does not yet contain data for it,
+        downloads the corresponding tarball from S3 (with Rich progress),
+        extracts it to a temporary directory, opens a **separate**
+        PersistentClient on the extracted data, and copies all documents
+        into this backend's own persist path.
+
+        The downloaded tarball is cached at ``~/.lobster/ontology_cache/``
+        so subsequent calls skip the download.
+
+        Args:
+            collection_name: The collection to check.
+
+        Returns:
+            True if ontology data is now available (either it was already
+            present or was successfully downloaded).  False if this is not
+            an ontology collection or if the download/extraction failed
+            (in which case a warning is logged and the caller should
+            proceed with an empty collection).
+        """
+        if collection_name not in ONTOLOGY_TARBALLS:
+            return False  # Not an ontology collection — nothing to do
+
+        # Already populated?
+        if self.collection_exists(collection_name):
+            try:
+                if self.count(collection_name) > 0:
+                    return True
+            except Exception:
+                pass  # Fall through to download
+
+        url = ONTOLOGY_TARBALLS[collection_name]
+        tarball_filename = url.rsplit("/", 1)[-1]  # e.g. mondo_sapbert_768.tar.gz
+        tarball_path = ONTOLOGY_CACHE_DIR / tarball_filename
+
+        # --- Step 1: Download tarball if not cached ---
+        if not tarball_path.exists():
+            logger.info(
+                "Downloading pre-built ontology data for '%s' from S3...",
+                collection_name,
+            )
+            try:
+                _download_with_progress(url, tarball_path)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to download ontology data for %s: %s. "
+                    "Falling back to empty collection.",
+                    collection_name,
+                    exc,
+                )
+                return False
+
+        # --- Step 2: Extract tarball to a temporary directory ---
+        temp_dir = None
+        try:
+            temp_dir = tempfile.mkdtemp(prefix="lobster_ontology_")
+            try:
+                with tarfile.open(tarball_path) as tar:
+                    tar.extractall(path=temp_dir, filter="data")
+            except (tarfile.ReadError, tarfile.CompressionError) as exc:
+                logger.warning(
+                    "Corrupt tarball for %s: %s. Removing from cache.",
+                    collection_name,
+                    exc,
+                )
+                if tarball_path.exists():
+                    tarball_path.unlink()
+                return False
+
+            # --- Step 3: Load extracted data into this backend's persist path ---
+            # The tarball contains a directory like mondo_sapbert_768/ which
+            # is a complete ChromaDB PersistentClient directory.
+            extracted_name = tarball_filename.replace(".tar.gz", "")
+            extracted_dir = Path(temp_dir) / extracted_name
+
+            if not extracted_dir.exists():
+                # Try finding the first directory in temp_dir
+                subdirs = [
+                    p for p in Path(temp_dir).iterdir() if p.is_dir()
+                ]
+                if subdirs:
+                    extracted_dir = subdirs[0]
+                else:
+                    logger.warning(
+                        "No extracted directory found for %s.", collection_name
+                    )
+                    return False
+
+            import chromadb
+
+            source_client = chromadb.PersistentClient(path=str(extracted_dir))
+            try:
+                source_coll = source_client.get_collection(collection_name)
+            except ValueError:
+                # Try listing available collections
+                available = [c.name for c in source_client.list_collections()]
+                logger.warning(
+                    "Collection '%s' not found in tarball. "
+                    "Available: %s",
+                    collection_name,
+                    available,
+                )
+                del source_client
+                return False
+
+            data = source_coll.get(
+                include=["embeddings", "documents", "metadatas"]
+            )
+
+            if data["ids"]:
+                self.add_documents(
+                    collection_name,
+                    ids=data["ids"],
+                    embeddings=data["embeddings"],
+                    documents=data["documents"],
+                    metadatas=data["metadatas"],
+                )
+                logger.info(
+                    "Loaded %d ontology terms into '%s' from pre-built data.",
+                    len(data["ids"]),
+                    collection_name,
+                )
+
+            del source_client
+            return True
+
+        except Exception as exc:
+            logger.warning(
+                "Failed to load ontology data for %s: %s. "
+                "Falling back to empty collection.",
+                collection_name,
+                exc,
+            )
+            return False
+        finally:
+            # Clean up temporary extraction directory
+            if temp_dir is not None:
+                import shutil
+
+                shutil.rmtree(temp_dir, ignore_errors=True)
+
     def _get_or_create_collection(self, name: str):
         """
         Get or create a collection with cosine HNSW space.
+
+        For ontology collections, auto-downloads pre-built data from S3
+        on first use so that fresh installs do not require local embedding.
 
         All collections use cosine distance (``hnsw:space = cosine``),
         which returns ``1 - cosine_similarity`` as the distance score.
@@ -106,6 +329,9 @@ class ChromaDBBackend(BaseVectorBackend):
         Returns:
             chromadb.Collection: The collection handle.
         """
+        # Auto-download ontology data if this is a known ontology collection
+        self._ensure_ontology_data(name)
+
         client = self._get_client()
         return client.get_or_create_collection(
             name=name, metadata={"hnsw:space": "cosine"}
