@@ -111,10 +111,13 @@ Plans:
   3. ChromaDB backend auto-downloads tarballs to ~/.lobster/ontology_cache/ on first use with progress bar
   4. First query after fresh install completes in <60s (download time) vs 10-15min (embedding time)
   5. Cloud-hosted ChromaDB handoff spec written for vector.omics-os.com deployment (architecture, auth, API design)
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 06-01: TBD
+- [ ] 06-01-PLAN.md -- MiniLM and OpenAI embedding providers with config factory wiring and tests
+- [ ] 06-02-PLAN.md -- Offline build script for OBO parsing, SapBERT embedding, ChromaDB storage, and tarball creation
+- [ ] 06-03-PLAN.md -- ChromaDB auto-download extension with S3 tarball fetching, cache management, and Rich progress bar
+- [ ] 06-04-PLAN.md -- Cloud-hosted ChromaDB handoff specification for vector.omics-os.com
 
 ## Progress
 
@@ -128,4 +131,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Agent Tooling | 0/2 | Complete    | 2026-02-19 |
 | 4. Performance | 0/2 | Complete    | 2026-02-19 |
 | 5. Scalability | 0/1 | Planning complete | - |
-| 6. Automation | 0/? | Not started | - |
+| 6. Automation | 0/4 | Planning complete | - |
