@@ -80,8 +80,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Cloud Handoff
 
-- [ ] **CLOD-01**: Cloud-hosted ChromaDB handoff spec written for vector.omics-os.com deployment
-- [ ] **CLOD-02**: Handoff spec includes architecture (ChromaDB server mode, auth, prewarmed indexes), API design, and deployment steps
+- [x] **CLOD-01**: Cloud-hosted ChromaDB handoff spec written for vector.omics-os.com deployment
+- [x] **CLOD-02**: Handoff spec includes architecture (ChromaDB server mode, auth, prewarmed indexes), API design, and deployment steps
 
 ### Testing
 
@@ -183,8 +183,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AGNT-04 | Phase 3 | Complete |
 | AGNT-05 | Phase 3 | Complete |
 | AGNT-06 | Phase 3 | Complete |
-| CLOD-01 | Phase 6 | Pending |
-| CLOD-02 | Phase 6 | Pending |
+| CLOD-01 | Phase 6 | Complete |
+| CLOD-02 | Phase 6 | Complete |
 | TEST-01 | Phase 5 | Complete |
 | TEST-02 | Phase 4 | Complete |
 | TEST-03 | Phase 4 | Complete |

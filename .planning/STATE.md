@@ -35,7 +35,7 @@ Progress: [███████████████████████
 | 06-automation | 3 | 10min | 3.3min |
 
 **Recent Trend:**
-- Last 5 plans: 04-02 (6min), 05-01 (4min), 06-01 (3min), 06-02 (3min)
+- Last 5 plans: 05-01 (4min), 06-01 (3min), 06-02 (3min), 06-04 (4min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -45,6 +45,7 @@ Progress: [███████████████████████
 | Phase 05 P01 | 4min | 2 tasks | 5 files |
 | Phase 06 P01 | 3min | 2 tasks | 5 files |
 | Phase 06 P02 | 3min | 2 tasks | 1 files |
+| Phase 06 P04 | 4min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -105,6 +106,10 @@ Recent decisions affecting current work:
 - [06-02] argparse over Typer for minimal deps in standalone dev tool
 - [06-02] Version-tag flag for future ontology releases without script modification
 - [06-02] Skip obsolete terms during extraction (don't embed stale ontology entries)
+- [06-04] ChromaDB server mode (not embedded) for multi-tenant cloud access
+- [06-04] Single instance (not per-tenant) since ontology data is shared read-only
+- [06-04] Always-on (no scale-to-zero) to avoid cold start re-indexing
+- [06-04] HttpClient switching via LOBSTER_VECTOR_CLOUD_URL env var in ChromaDBBackend
 
 ### Pending Todos
 
@@ -116,6 +121,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-19 (Phase 06 plan 02 execution)
-Stopped at: Completed 06-02-PLAN.md
-Resume file: .planning/phases/06-automation/06-02-SUMMARY.md
+Last session: 2026-02-19 (Phase 06 plan 04 execution)
+Stopped at: Completed 06-04-PLAN.md
+Resume file: .planning/phases/06-automation/06-04-SUMMARY.md
