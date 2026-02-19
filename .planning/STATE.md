@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-17)
 
 **Core value:** Agents can semantically match any biomedical term to the correct ontology concept with calibrated confidence scores, using zero configuration out of the box.
-**Current focus:** Phase 5 - Scalability (complete)
+**Current focus:** Phase 6 - Automation (in progress)
 
 ## Current Position
 
-Phase: 5 of 6 (Scalability) -- COMPLETE
-Plan: 1 of 1 in current phase (05-01 complete)
-Status: Phase 05 complete, ready for Phase 06
-Last activity: 2026-02-19 — Plan 05-01 executed (FAISS backend, pgvector stub, factory wiring)
+Phase: 6 of 6 (Automation)
+Plan: 2 of 4 in current phase (06-01, 06-02 complete)
+Status: Phase 06 in progress, plans 01-02 complete
+Last activity: 2026-02-19 — Plan 06-02 executed (ontology embedding build script)
 
-Progress: [████████████] 69%
+Progress: [██████████████████] 81%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
-- Average duration: 3.5min
-- Total execution time: 0.63 hours
+- Total plans completed: 13
+- Average duration: 3.4min
+- Total execution time: 0.73 hours
 
 **By Phase:**
 
@@ -32,9 +32,10 @@ Progress: [████████████] 69%
 | 03-agent-tooling | 2 | 10min | 5.0min |
 | 04-performance | 2 | 11min | 5.5min |
 | 05-scalability | 1 | 4min | 4.0min |
+| 06-automation | 2 | 6min | 3.0min |
 
 **Recent Trend:**
-- Last 5 plans: 03-02 (4min), 04-01 (5min), 04-02 (6min), 05-01 (4min)
+- Last 5 plans: 04-02 (6min), 05-01 (4min), 06-01 (3min), 06-02 (3min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -42,6 +43,8 @@ Progress: [████████████] 69%
 | Phase 04 P01 | 5min | 2 tasks | 7 files |
 | Phase 04 P02 | 6min | 2 tasks | 4 files |
 | Phase 05 P01 | 4min | 2 tasks | 5 files |
+| Phase 06 P01 | 3min | 2 tasks | 5 files |
+| Phase 06 P02 | 3min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -96,6 +99,12 @@ Recent decisions affecting current work:
 - [05-01] L2 normalization before add and search so squared L2 / 2.0 = cosine distance
 - [05-01] pgvector stub raises NotImplementedError with guidance to use chromadb or faiss
 - [05-01] Lazy faiss import inside _ensure_faiss() method (same pattern as ChromaDB._get_client())
+- [06-01] MiniLM uses SentenceTransformer(MODEL_NAME) directly for mean pooling (no custom Pooling module)
+- [06-01] OpenAI constructor accepts optional model override for text-embedding-3-large flexibility
+- [06-01] batch_size=128 convention maintained for MiniLM embed_batch() to match SapBERT pattern
+- [06-02] argparse over Typer for minimal deps in standalone dev tool
+- [06-02] Version-tag flag for future ontology releases without script modification
+- [06-02] Skip obsolete terms during extraction (don't embed stale ontology entries)
 
 ### Pending Todos
 
@@ -107,6 +116,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-19 (Phase 05 plan 01 execution)
-Stopped at: Completed 05-01-PLAN.md
-Resume file: .planning/phases/05-scalability/05-01-SUMMARY.md
+Last session: 2026-02-19 (Phase 06 plan 02 execution)
+Stopped at: Completed 06-02-PLAN.md
+Resume file: .planning/phases/06-automation/06-02-SUMMARY.md

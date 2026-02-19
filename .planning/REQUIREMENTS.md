@@ -22,8 +22,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [x] **EMBED-01**: BaseEmbeddingProvider ABC defines embed_text and embed_batch interface
 - [x] **EMBED-02**: SapBERT provider loads cambridgeltl/SapBERT-from-PubMedBERT-fulltext (768d) with lazy singleton
-- [ ] **EMBED-03**: SentenceTransformers provider loads all-MiniLM-L6-v2 (384d) as general fallback
-- [ ] **EMBED-04**: OpenAI provider uses text-embedding-3-small (1536d) with lazy client init
+- [x] **EMBED-03**: SentenceTransformers provider loads all-MiniLM-L6-v2 (384d) as general fallback
+- [x] **EMBED-04**: OpenAI provider uses text-embedding-3-small (1536d) with lazy client init
 - [x] **EMBED-05**: No model downloads at import time — all loading happens on first use
 
 ### Reranking
@@ -149,8 +149,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-08 | Phase 1 | Complete |
 | EMBED-01 | Phase 1 | Complete |
 | EMBED-02 | Phase 1 | Complete |
-| EMBED-03 | Phase 6 | Pending |
-| EMBED-04 | Phase 6 | Pending |
+| EMBED-03 | Phase 6 | Complete |
+| EMBED-04 | Phase 6 | Complete |
 | EMBED-05 | Phase 1 | Complete |
 | RANK-01 | Phase 4 | Complete |
 | RANK-02 | Phase 4 | Complete |
