@@ -13,9 +13,9 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **INFRA-02**: VectorSearchConfig reads env vars and provides factory methods for backend, embeddings, and reranker
 - [x] **INFRA-03**: BaseVectorBackend ABC defines add_documents, search, delete, count interface
 - [x] **INFRA-04**: ChromaDB backend implements BaseVectorBackend with PersistentClient and auto-download from S3
-- [ ] **INFRA-05**: FAISS backend implements BaseVectorBackend with in-memory IndexFlatL2 and L2-normalized vectors
-- [ ] **INFRA-06**: pgvector backend stub raises NotImplementedError with helpful message
-- [ ] **INFRA-07**: Switching LOBSTER_VECTOR_BACKEND env var changes backend with zero code changes
+- [x] **INFRA-05**: FAISS backend implements BaseVectorBackend with in-memory IndexFlatL2 and L2-normalized vectors
+- [x] **INFRA-06**: pgvector backend stub raises NotImplementedError with helpful message
+- [x] **INFRA-07**: Switching LOBSTER_VECTOR_BACKEND env var changes backend with zero code changes
 - [x] **INFRA-08**: All optional deps (chromadb, sentence-transformers, faiss-cpu, obonet) are import-guarded with helpful install messages
 
 ### Embeddings
@@ -85,7 +85,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Testing
 
-- [ ] **TEST-01**: Unit tests for backends (ChromaDB, FAISS, pgvector stub) with mocked deps
+- [x] **TEST-01**: Unit tests for backends (ChromaDB, FAISS, pgvector stub) with mocked deps
 - [x] **TEST-02**: Unit tests for embedding providers (SapBERT, MiniLM, OpenAI) with mocked model loading
 - [x] **TEST-03**: Unit tests for rerankers (cross-encoder, Cohere) with mocked clients
 - [x] **TEST-04**: Unit tests for VectorSearchService orchestration, caching, config-driven switching
@@ -143,9 +143,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-02 | Phase 1 | Complete |
 | INFRA-03 | Phase 1 | Complete |
 | INFRA-04 | Phase 1 | Complete |
-| INFRA-05 | Phase 5 | Pending |
-| INFRA-06 | Phase 5 | Pending |
-| INFRA-07 | Phase 5 | Pending |
+| INFRA-05 | Phase 5 | Complete |
+| INFRA-06 | Phase 5 | Complete |
+| INFRA-07 | Phase 5 | Complete |
 | INFRA-08 | Phase 1 | Complete |
 | EMBED-01 | Phase 1 | Complete |
 | EMBED-02 | Phase 1 | Complete |
@@ -185,7 +185,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AGNT-06 | Phase 3 | Complete |
 | CLOD-01 | Phase 6 | Pending |
 | CLOD-02 | Phase 6 | Pending |
-| TEST-01 | Phase 5 | Pending |
+| TEST-01 | Phase 5 | Complete |
 | TEST-02 | Phase 4 | Complete |
 | TEST-03 | Phase 4 | Complete |
 | TEST-04 | Phase 2 | Complete |

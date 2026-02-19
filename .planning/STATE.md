@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-17)
 
 **Core value:** Agents can semantically match any biomedical term to the correct ontology concept with calibrated confidence scores, using zero configuration out of the box.
-**Current focus:** Phase 4 - Performance (complete)
+**Current focus:** Phase 5 - Scalability (complete)
 
 ## Current Position
 
-Phase: 4 of 6 (Performance) -- COMPLETE
-Plan: 2 of 2 in current phase (04-02 complete)
-Status: Phase 04 complete, ready for Phase 05
-Last activity: 2026-02-19 — Plan 04-02 executed (embedder/reranker unit tests)
+Phase: 5 of 6 (Scalability) -- COMPLETE
+Plan: 1 of 1 in current phase (05-01 complete)
+Status: Phase 05 complete, ready for Phase 06
+Last activity: 2026-02-19 — Plan 05-01 executed (FAISS backend, pgvector stub, factory wiring)
 
-Progress: [██████████] 63%
+Progress: [████████████] 69%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
-- Average duration: 3.4min
-- Total execution time: 0.57 hours
+- Total plans completed: 11
+- Average duration: 3.5min
+- Total execution time: 0.63 hours
 
 **By Phase:**
 
@@ -31,15 +31,17 @@ Progress: [██████████] 63%
 | 02-service-integration | 3 | 10min | 3.3min |
 | 03-agent-tooling | 2 | 10min | 5.0min |
 | 04-performance | 2 | 11min | 5.5min |
+| 05-scalability | 1 | 4min | 4.0min |
 
 **Recent Trend:**
-- Last 5 plans: 03-01 (6min), 03-02 (4min), 04-01 (5min), 04-02 (6min)
+- Last 5 plans: 03-02 (4min), 04-01 (5min), 04-02 (6min), 05-01 (4min)
 - Trend: Stable
 
 *Updated after each plan completion*
 | Phase 03 P01 | 6min | 2 tasks | 2 files |
 | Phase 04 P01 | 5min | 2 tasks | 7 files |
 | Phase 04 P02 | 6min | 2 tasks | 4 files |
+| Phase 05 P01 | 4min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -90,6 +92,10 @@ Recent decisions affecting current work:
 - [04-01] Edge case guard: skip reranking for single-document results (no model loaded)
 - [04-02] Local _LocalMockReranker in service tests instead of cross-file import to avoid test coupling
 - [04-02] sys.modules patching for sentence-transformers mocking (cleaner than builtins.__import__ for lazy imports)
+- [05-01] IndexIDMap wrapping IndexFlatL2 for explicit integer ID assignment and single-vector deletion
+- [05-01] L2 normalization before add and search so squared L2 / 2.0 = cosine distance
+- [05-01] pgvector stub raises NotImplementedError with guidance to use chromadb or faiss
+- [05-01] Lazy faiss import inside _ensure_faiss() method (same pattern as ChromaDB._get_client())
 
 ### Pending Todos
 
@@ -101,6 +107,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-19 (Phase 04 plan 02 execution)
-Stopped at: Completed 04-02-PLAN.md
-Resume file: .planning/phases/04-performance/04-02-SUMMARY.md
+Last session: 2026-02-19 (Phase 05 plan 01 execution)
+Stopped at: Completed 05-01-PLAN.md
+Resume file: .planning/phases/05-scalability/05-01-SUMMARY.md
