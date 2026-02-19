@@ -117,8 +117,21 @@ class VectorSearchConfig(BaseModel):
 
             return ChromaDBBackend(persist_path=self.persist_path)
 
+        if self.backend == SearchBackend.faiss:
+            from lobster.core.vector.backends.faiss_backend import FAISSBackend
+
+            return FAISSBackend()
+
+        if self.backend == SearchBackend.pgvector:
+            from lobster.core.vector.backends.pgvector_backend import (
+                PgVectorBackend,
+            )
+
+            return PgVectorBackend()
+
         raise ValueError(
-            f"Unsupported backend: {self.backend}. Available: chromadb"
+            f"Unsupported backend: {self.backend}. "
+            f"Available: chromadb, faiss, pgvector"
         )
 
     def create_embedder(self) -> BaseEmbedder:
