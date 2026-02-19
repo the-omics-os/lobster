@@ -102,11 +102,40 @@ class TestFactoryMethods:
 
         assert isinstance(backend, PgVectorBackend)
 
-    def test_create_embedder_unsupported(self):
-        """Provider=minilm should raise ValueError (not yet implemented)."""
+    def test_create_embedder_minilm(self):
+        """create_embedder() with minilm returns MiniLMEmbedder.
+
+        Note: This only checks instantiation, not model loading.
+        MiniLMEmbedder uses lazy model loading so no torch is needed here.
+        """
         config = VectorSearchConfig(embedding_provider=EmbeddingProvider.minilm)
-        with pytest.raises(ValueError, match="Unsupported embedding provider"):
-            config.create_embedder()
+        embedder = config.create_embedder()
+
+        from lobster.core.vector.embeddings.minilm import MiniLMEmbedder
+
+        assert isinstance(embedder, MiniLMEmbedder)
+
+    def test_create_embedder_openai(self):
+        """create_embedder() with openai returns OpenAIEmbedder.
+
+        Note: This only checks instantiation, not client creation.
+        OpenAIEmbedder uses lazy client init so no openai package needed here.
+        """
+        config = VectorSearchConfig(embedding_provider=EmbeddingProvider.openai)
+        embedder = config.create_embedder()
+
+        from lobster.core.vector.embeddings.openai_embedder import OpenAIEmbedder
+
+        assert isinstance(embedder, OpenAIEmbedder)
+
+    def test_from_env_openai_embedder(self, monkeypatch):
+        """LOBSTER_EMBEDDING_PROVIDER=openai -> EmbeddingProvider.openai."""
+        monkeypatch.setenv("LOBSTER_EMBEDDING_PROVIDER", "openai")
+        monkeypatch.delenv("LOBSTER_VECTOR_BACKEND", raising=False)
+        monkeypatch.delenv("LOBSTER_VECTOR_STORE_PATH", raising=False)
+
+        config = VectorSearchConfig.from_env()
+        assert config.embedding_provider == EmbeddingProvider.openai
 
     def test_create_backend_chromadb(self, tmp_path):
         """create_backend() with chromadb returns ChromaDBBackend."""
