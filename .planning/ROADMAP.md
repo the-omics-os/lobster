@@ -80,10 +80,11 @@ Plans:
   3. Reranking can be disabled via config (rerank="none") without breaking search
   4. Query latency stays <2s for 60K term corpus with reranking enabled
   5. Cohere reranker gracefully degrades without API key (logs warning, returns original order)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: TBD
+- [ ] 04-01-PLAN.md -- Reranker infrastructure (BaseReranker ABC, CrossEncoder + Cohere implementations, config factory, service integration)
+- [ ] 04-02-PLAN.md -- Unit tests for embedding providers and rerankers with mocked dependencies
 
 ### Phase 5: Scalability
 **Goal**: Backend factory pattern enables swapping ChromaDB/FAISS/pgvector via environment variable
@@ -125,6 +126,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Foundation | 0/3 | Planning complete | - |
 | 2. Service Integration | 0/? | Not started | - |
 | 3. Agent Tooling | 0/2 | Complete    | 2026-02-19 |
-| 4. Performance | 0/? | Not started | - |
+| 4. Performance | 0/2 | Planning complete | - |
 | 5. Scalability | 0/? | Not started | - |
 | 6. Automation | 0/? | Not started | - |
