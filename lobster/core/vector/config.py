@@ -152,9 +152,21 @@ class VectorSearchConfig(BaseModel):
 
             return SapBERTEmbedder()
 
+        if self.embedding_provider == EmbeddingProvider.minilm:
+            from lobster.core.vector.embeddings.minilm import MiniLMEmbedder
+
+            return MiniLMEmbedder()
+
+        if self.embedding_provider == EmbeddingProvider.openai:
+            from lobster.core.vector.embeddings.openai_embedder import (
+                OpenAIEmbedder,
+            )
+
+            return OpenAIEmbedder()
+
         raise ValueError(
             f"Unsupported embedding provider: {self.embedding_provider}. "
-            f"Available: sapbert"
+            f"Available: sapbert, minilm, openai"
         )
 
     def create_reranker(self) -> BaseReranker | None:
