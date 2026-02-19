@@ -490,3 +490,177 @@ class TestMatchOntologyIntegration:
         for r in results:
             assert 0.0 <= r.score <= 1.0
             assert r.distance_metric == "cosine"
+
+
+# ---------------------------------------------------------------------------
+# match_ontology() reranking integration tests (Phase 4 Plan 02)
+# ---------------------------------------------------------------------------
+
+
+class _LocalMockReranker:
+    """Local mock reranker that reverses document order for testing.
+
+    Defined locally to avoid cross-test-file import issues. Implements
+    the same BaseReranker contract as the shared MockReranker.
+    """
+
+    def __init__(self, reverse: bool = True) -> None:
+        self._reverse = reverse
+        self._last_query: str | None = None
+        self._last_documents: list[str] | None = None
+
+    def rerank(self, query, documents, top_k=None):
+        self._last_query = query
+        self._last_documents = list(documents)
+
+        indices = list(range(len(documents)))
+        if self._reverse:
+            indices = indices[::-1]
+
+        results = []
+        for rank, idx in enumerate(indices):
+            score = max(0.0, 1.0 - rank * 0.1)
+            results.append(
+                {"corpus_id": idx, "score": score, "text": documents[idx]}
+            )
+
+        if top_k is not None:
+            results = results[:top_k]
+        return results
+
+    @property
+    def name(self):
+        return "LocalMockReranker"
+
+
+@pytest.fixture
+def service_with_reranker(config, mock_backend, mock_embedder):
+    """Service with MockReranker injected for reranking tests."""
+    return VectorSearchService(
+        config=config,
+        backend=mock_backend,
+        embedder=mock_embedder,
+        reranker=_LocalMockReranker(reverse=True),
+    )
+
+
+class TestMatchOntologyReranking:
+    """Tests for reranking integration in match_ontology() (Phase 4 Plan 02)."""
+
+    def test_match_ontology_with_reranker_changes_order(
+        self, mock_backend, service_with_reranker
+    ):
+        """With a reversing reranker, match_ontology results should be reordered."""
+        # Default backend returns: T cell, CD8+, CD4+
+        results = service_with_reranker.match_ontology("T cell", "cell_type", k=3)
+
+        assert len(results) == 3
+        # MockReranker reverses: CD4+, CD8+, T cell
+        assert results[0].term == "CD4-positive T cell"
+        assert results[1].term == "CD8-positive T cell"
+        assert results[2].term == "T cell"
+
+    def test_match_ontology_without_reranker_preserves_order(
+        self, service, mock_backend
+    ):
+        """Without reranker, match_ontology should return results in backend order."""
+        results = service.match_ontology("T cell", "cell_type", k=3)
+
+        assert len(results) == 3
+        # Backend order: T cell, CD8+, CD4+
+        assert results[0].term == "T cell"
+        assert results[1].term == "CD8-positive T cell"
+        assert results[2].term == "CD4-positive T cell"
+
+    def test_match_ontology_reranker_scores_normalized(
+        self, service_with_reranker
+    ):
+        """Reranked results should have scores in [0.0, 1.0] range."""
+        results = service_with_reranker.match_ontology("T cell", "cell_type", k=3)
+
+        for r in results:
+            assert 0.0 <= r.score <= 1.0
+
+    def test_match_ontology_reranker_truncates_to_k(
+        self, mock_backend, mock_embedder, config
+    ):
+        """With reranker, final results should be truncated to k."""
+        # Set up 5 results from backend
+        mock_backend.set_results(
+            {
+                "ids": [["id1", "id2", "id3", "id4", "id5"]],
+                "distances": [[0.1, 0.2, 0.3, 0.4, 0.5]],
+                "documents": [["a", "b", "c", "d", "e"]],
+                "metadatas": [
+                    [
+                        {"ontology_id": f"T:{i}", "source": "CL"}
+                        for i in range(5)
+                    ]
+                ],
+            }
+        )
+        service = VectorSearchService(
+            config=config,
+            backend=mock_backend,
+            embedder=mock_embedder,
+            reranker=_LocalMockReranker(reverse=True),
+        )
+        results = service.match_ontology("test", "mondo", k=2)
+        assert len(results) == 2
+
+    def test_match_ontology_single_result_skips_reranker(
+        self, mock_backend, mock_embedder, config
+    ):
+        """With only 1 backend result, reranker should NOT be called."""
+        mock_backend.set_results(
+            {
+                "ids": [["id1"]],
+                "distances": [[0.1]],
+                "documents": [["only_term"]],
+                "metadatas": [[{"ontology_id": "T:001", "source": "CL"}]],
+            }
+        )
+        mock_reranker = _LocalMockReranker(reverse=True)
+        service = VectorSearchService(
+            config=config,
+            backend=mock_backend,
+            embedder=mock_embedder,
+            reranker=mock_reranker,
+        )
+        results = service.match_ontology("test", "mondo", k=3)
+
+        # Reranker should NOT have been called (only 1 result)
+        assert mock_reranker._last_query is None
+        assert len(results) == 1
+
+    def test_match_ontology_reranker_receives_oversampled_candidates(
+        self, mock_backend, mock_embedder, config
+    ):
+        """With k=3, reranker should receive up to 3*4=12 oversampled candidates."""
+        # Set up 12 results to fill the oversampled request
+        ids = [f"id{i}" for i in range(12)]
+        distances = [0.1 + i * 0.05 for i in range(12)]
+        documents = [f"term_{i}" for i in range(12)]
+        metadatas = [{"ontology_id": f"T:{i:03d}", "source": "CL"} for i in range(12)]
+
+        mock_backend.set_results(
+            {
+                "ids": [ids],
+                "distances": [distances],
+                "documents": [documents],
+                "metadatas": [metadatas],
+            }
+        )
+        mock_reranker = _LocalMockReranker(reverse=True)
+        service = VectorSearchService(
+            config=config,
+            backend=mock_backend,
+            embedder=mock_embedder,
+            reranker=mock_reranker,
+        )
+        service.match_ontology("test", "mondo", k=3)
+
+        # Backend should have been asked for k*4=12
+        assert mock_backend._last_search_n_results == 12
+        # Reranker should have seen all 12 candidates
+        assert len(mock_reranker._last_documents) == 12
