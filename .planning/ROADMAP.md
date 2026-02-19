@@ -64,10 +64,11 @@ Plans:
   3. Existing annotate_cell_types tool remains unchanged (new tool augments, doesn't replace)
   4. All new agent tools return ir for provenance tracking
   5. Agent can query "CD3D+/CD8A+ cluster" and get "cytotoxic T cell (CL:0000084)" as top match
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: TBD
+- [ ] 03-01-PLAN.md -- annotate_cell_types_semantic tool for annotation_expert (Cell Ontology via marker gene queries)
+- [ ] 03-02-PLAN.md -- standardize_tissue_term and standardize_disease_term tools for metadata_assistant
 
 ### Phase 4: Performance
 **Goal**: Two-stage retrieval with cross-encoder reranking delivers 10-15% precision improvement
@@ -123,7 +124,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Foundation | 0/3 | Planning complete | - |
 | 2. Service Integration | 0/? | Not started | - |
-| 3. Agent Tooling | 0/? | Not started | - |
+| 3. Agent Tooling | 0/2 | Planning complete | - |
 | 4. Performance | 0/? | Not started | - |
 | 5. Scalability | 0/? | Not started | - |
 | 6. Automation | 0/? | Not started | - |

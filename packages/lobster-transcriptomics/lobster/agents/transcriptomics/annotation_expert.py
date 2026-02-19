@@ -57,6 +57,14 @@ from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Optional vector search for semantic annotation
+try:
+    from lobster.core.vector.service import VectorSearchService  # noqa: F401
+
+    HAS_VECTOR_SEARCH = True
+except ImportError:
+    HAS_VECTOR_SEARCH = False
+
 
 # Type alias for AnnotationExpertState - uses SingleCellExpertState for now
 # as annotations share the same state structure
@@ -1259,6 +1267,306 @@ Use this mapping to apply consistent annotations to similar datasets."""
             return f"Error importing annotation mapping: {str(e)}"
 
     # -------------------------
+    # SEMANTIC ANNOTATION (optional - requires vector-search deps)
+    # -------------------------
+
+    _vector_service = None
+
+    def _get_vector_service():
+        nonlocal _vector_service
+        if _vector_service is None:
+            from lobster.core.vector.service import VectorSearchService
+
+            _vector_service = VectorSearchService()
+        return _vector_service
+
+    @tool
+    def annotate_cell_types_semantic(
+        modality_name: str,
+        cluster_key: str = "leiden",
+        k: int = 5,
+        min_confidence: float = 0.5,
+        validate_graph: bool = False,
+        save_result: bool = True,
+    ) -> str:
+        """
+        Annotate single-cell clusters with cell types using semantic search against Cell Ontology.
+
+        Uses SapBERT embeddings to match marker gene signatures to Cell Ontology terms,
+        providing confidence-scored cell type assignments. Complements existing keyword-based
+        annotation with ontology-grounded semantic matching.
+
+        IMPORTANT: Requires clustered data with marker gene information. Run clustering
+        and marker gene detection first. Use check_data_status() to verify prerequisites.
+
+        Args:
+            modality_name: Name of the single-cell modality with clustering results
+            cluster_key: Column name in adata.obs containing cluster assignments
+            k: Number of candidate ontology matches per cluster (default 5)
+            min_confidence: Minimum similarity score threshold (0-1) for accepting a match
+            validate_graph: If True, validate top matches via ontology graph traversal
+            save_result: Whether to save annotated modality
+        """
+        from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+
+            # Validate cluster_key exists
+            if cluster_key not in adata.obs.columns:
+                available_cols = list(adata.obs.columns)
+                return (
+                    f"Cluster column '{cluster_key}' not found.\n\n"
+                    f"Available columns: {available_cols}\n\n"
+                    f"Use check_data_status() to identify the correct cluster column."
+                )
+
+            logger.info(
+                f"Semantic annotation of '{modality_name}': {adata.shape[0]} cells, "
+                f"cluster_key='{cluster_key}', k={k}, min_confidence={min_confidence}"
+            )
+
+            # Extract marker scores using the singlecell service
+            marker_scores = singlecell_service._calculate_marker_scores_from_adata(
+                adata, singlecell_service.cell_type_markers, cluster_key=cluster_key
+            )
+
+            # Build text queries from marker scores for each cluster
+            vs = _get_vector_service()
+            unique_clusters = sorted(adata.obs[cluster_key].astype(str).unique())
+            cluster_annotations = {}
+
+            for cluster_id in unique_clusters:
+                # Get top 3 cell types by score for this cluster
+                scores = marker_scores.get(cluster_id, {})
+                sorted_types = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:3]
+
+                # Collect top marker genes from those cell types (max 5 total)
+                query_genes = []
+                for cell_type_name, _ in sorted_types:
+                    markers_for_type = singlecell_service.cell_type_markers.get(
+                        cell_type_name, []
+                    )
+                    for gene in markers_for_type[:3]:
+                        if gene not in query_genes:
+                            query_genes.append(gene)
+                        if len(query_genes) >= 5:
+                            break
+                    if len(query_genes) >= 5:
+                        break
+
+                # Format query text
+                if query_genes:
+                    query_text = f"Cluster {cluster_id}: high {', '.join(query_genes)}"
+                else:
+                    query_text = f"Cluster {cluster_id}: unknown markers"
+
+                # Search Cell Ontology
+                matches = vs.match_ontology(query_text, "cell_ontology", k=k)
+
+                # Filter by min_confidence
+                valid_matches = [m for m in matches if m.score >= min_confidence]
+
+                if valid_matches:
+                    top_match = valid_matches[0]
+
+                    # Optional graph validation
+                    if validate_graph and top_match.ontology_id:
+                        try:
+                            from lobster.core.vector.ontology_graph import (
+                                get_neighbors,
+                                load_ontology_graph,
+                            )
+
+                            graph = load_ontology_graph("cell_ontology")
+                            neighbors = get_neighbors(graph, top_match.ontology_id)
+                            has_neighbors = bool(
+                                neighbors.get("parents") or neighbors.get("children")
+                            )
+                            if not has_neighbors:
+                                logger.warning(
+                                    f"Cluster {cluster_id}: top match '{top_match.term}' "
+                                    f"({top_match.ontology_id}) has no graph neighbors, "
+                                    f"skipping validation"
+                                )
+                        except Exception as e:
+                            logger.warning(
+                                f"Graph validation failed for cluster {cluster_id}: {e}"
+                            )
+
+                    cluster_annotations[cluster_id] = {
+                        "term": top_match.term,
+                        "ontology_id": top_match.ontology_id,
+                        "score": top_match.score,
+                    }
+                else:
+                    cluster_annotations[cluster_id] = None
+
+            # Apply annotations to adata copy
+            adata_annotated = adata.copy()
+            n_annotated = 0
+            n_unknown = 0
+            confidence_values = []
+
+            for cluster_id in unique_clusters:
+                mask = adata_annotated.obs[cluster_key].astype(str) == cluster_id
+                annotation = cluster_annotations.get(cluster_id)
+
+                if annotation is not None:
+                    adata_annotated.obs.loc[mask, "cell_type"] = annotation["term"]
+                    adata_annotated.obs.loc[mask, "cell_type_confidence"] = annotation[
+                        "score"
+                    ]
+                    n_annotated += 1
+                    confidence_values.append(annotation["score"])
+                else:
+                    adata_annotated.obs.loc[mask, "cell_type"] = "Unknown"
+                    adata_annotated.obs.loc[mask, "cell_type_confidence"] = 0.0
+                    n_unknown += 1
+
+            mean_confidence = (
+                round(sum(confidence_values) / len(confidence_values), 4)
+                if confidence_values
+                else 0.0
+            )
+
+            # Store annotated modality
+            if save_result:
+                annotated_modality_name = f"{modality_name}_semantic_annotated"
+                data_manager.modalities[annotated_modality_name] = adata_annotated
+
+            # Build stats dict
+            stats = {
+                "n_clusters_annotated": n_annotated,
+                "n_unknown": n_unknown,
+                "mean_confidence": mean_confidence,
+                "cluster_annotations": cluster_annotations,
+            }
+
+            # Build parameters dict
+            params = {
+                "modality_name": modality_name,
+                "cluster_key": cluster_key,
+                "k": k,
+                "min_confidence": min_confidence,
+                "validate_graph": validate_graph,
+                "save_result": save_result,
+            }
+
+            # Create AnalysisStep IR
+            ir = AnalysisStep(
+                operation="semantic_cell_type_annotation",
+                tool_name="annotate_cell_types_semantic",
+                description=(
+                    f"Semantic cell type annotation of {n_annotated} clusters "
+                    f"via Cell Ontology vector search (mean confidence: {mean_confidence})"
+                ),
+                library="lobster.core.vector",
+                code_template=(
+                    "from lobster.core.vector.service import VectorSearchService\n"
+                    "vs = VectorSearchService()\n"
+                    "# For each cluster, build query from marker genes and match to Cell Ontology\n"
+                    "matches = vs.match_ontology(\n"
+                    '    "{{ query_text }}", "cell_ontology", k={{ k }}\n'
+                    ")\n"
+                    "# Filter by min_confidence={{ min_confidence }}\n"
+                    '# Apply top match to adata.obs["cell_type"]'
+                ),
+                imports=[
+                    "from lobster.core.vector.service import VectorSearchService",
+                ],
+                parameters=params,
+                parameter_schema={
+                    "modality_name": ParameterSpec(
+                        param_type="str",
+                        papermill_injectable=True,
+                        default_value="",
+                        required=True,
+                        description="Name of single-cell modality",
+                    ),
+                    "cluster_key": ParameterSpec(
+                        param_type="str",
+                        papermill_injectable=True,
+                        default_value="leiden",
+                        required=False,
+                        description="Cluster assignment column in adata.obs",
+                    ),
+                    "k": ParameterSpec(
+                        param_type="int",
+                        papermill_injectable=True,
+                        default_value=5,
+                        required=False,
+                        description="Number of ontology candidates per cluster",
+                    ),
+                    "min_confidence": ParameterSpec(
+                        param_type="float",
+                        papermill_injectable=True,
+                        default_value=0.5,
+                        required=False,
+                        description="Minimum similarity score threshold",
+                    ),
+                },
+                input_entities=["adata"],
+                output_entities=["adata_annotated"],
+                execution_context={
+                    "ontology": "cell_ontology",
+                    "n_clusters": len(unique_clusters),
+                },
+            )
+
+            # Log with IR
+            data_manager.log_tool_usage(
+                "annotate_cell_types_semantic", params, stats, ir=ir
+            )
+
+            # Format response
+            response = (
+                f"Successfully annotated cell types in '{modality_name}' "
+                f"using semantic Cell Ontology matching!\n\n"
+                f"**Semantic Annotation Results:**\n"
+                f"- Clusters annotated: {n_annotated}\n"
+                f"- Unknown clusters: {n_unknown}\n"
+                f"- Mean confidence: {mean_confidence}\n\n"
+                f"**Cluster Annotations:**"
+            )
+
+            for cid in unique_clusters:
+                ann = cluster_annotations.get(cid)
+                if ann is not None:
+                    response += (
+                        f"\n- Cluster {cid}: {ann['term']} "
+                        f"({ann['ontology_id']}, score={ann['score']})"
+                    )
+                else:
+                    response += f"\n- Cluster {cid}: Unknown (below threshold)"
+
+            if save_result:
+                response += (
+                    f"\n\n**New modality created**: "
+                    f"'{modality_name}_semantic_annotated'"
+                )
+
+            response += "\n**Cell type annotations in**: adata.obs['cell_type']"
+            response += (
+                "\n**Confidence scores in**: adata.obs['cell_type_confidence']"
+            )
+
+            return response
+
+        except ModalityNotFoundError as e:
+            logger.error(f"Error in semantic cell type annotation: {e}")
+            return f"Error in semantic annotation: {str(e)}"
+        except Exception as e:
+            logger.error(f"Unexpected error in semantic cell type annotation: {e}")
+            return f"Unexpected error in semantic annotation: {str(e)}"
+
+    # -------------------------
     # TOOL REGISTRY
     # -------------------------
     base_tools = [
@@ -1276,6 +1584,10 @@ Use this mapping to apply consistent annotations to similar datasets."""
         export_annotation_mapping,
         import_annotation_mapping,
     ]
+
+    # Conditionally add semantic annotation tool when vector-search deps available
+    if HAS_VECTOR_SEARCH:
+        base_tools.append(annotate_cell_types_semantic)
 
     tools = base_tools + (delegation_tools or [])
 
