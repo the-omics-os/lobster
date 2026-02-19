@@ -195,13 +195,15 @@ class ChromaDBBackend(BaseVectorBackend):
         if collection_name not in ONTOLOGY_TARBALLS:
             return False  # Not an ontology collection — nothing to do
 
-        # Already populated?
-        if self.collection_exists(collection_name):
-            try:
-                if self.count(collection_name) > 0:
-                    return True
-            except Exception:
-                pass  # Fall through to download
+        # Already populated?  Check directly via the client to avoid
+        # recursion through _get_or_create_collection -> _ensure_ontology_data.
+        client = self._get_client()
+        try:
+            existing_coll = client.get_collection(collection_name)
+            if existing_coll.count() > 0:
+                return True
+        except (ValueError, Exception):
+            pass  # Collection doesn't exist yet — proceed to download
 
         url = ONTOLOGY_TARBALLS[collection_name]
         tarball_filename = url.rsplit("/", 1)[-1]  # e.g. mondo_sapbert_768.tar.gz
