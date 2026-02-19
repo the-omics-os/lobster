@@ -28,9 +28,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Reranking
 
-- [ ] **RANK-01**: CrossEncoderReranker uses cross-encoder/ms-marco-MiniLM-L-6-v2 with lazy loading
-- [ ] **RANK-02**: CohereReranker gracefully degrades without API key (logs warning, returns original order)
-- [ ] **RANK-03**: Reranker is optional — search works without reranking if reranker set to "none"
+- [x] **RANK-01**: CrossEncoderReranker uses cross-encoder/ms-marco-MiniLM-L-6-v2 with lazy loading
+- [x] **RANK-02**: CohereReranker gracefully degrades without API key (logs warning, returns original order)
+- [x] **RANK-03**: Reranker is optional — search works without reranking if reranker set to "none"
 
 ### Search
 
@@ -152,9 +152,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EMBED-03 | Phase 6 | Pending |
 | EMBED-04 | Phase 6 | Pending |
 | EMBED-05 | Phase 1 | Complete |
-| RANK-01 | Phase 4 | Pending |
-| RANK-02 | Phase 4 | Pending |
-| RANK-03 | Phase 4 | Pending |
+| RANK-01 | Phase 4 | Complete |
+| RANK-02 | Phase 4 | Complete |
+| RANK-03 | Phase 4 | Complete |
 | SRCH-01 | Phase 2 | Complete |
 | SRCH-02 | Phase 2 | Complete |
 | SRCH-03 | Phase 2 | Complete |

@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-17)
 
 **Core value:** Agents can semantically match any biomedical term to the correct ontology concept with calibrated confidence scores, using zero configuration out of the box.
-**Current focus:** Phase 3 - Agent Tooling (complete)
+**Current focus:** Phase 4 - Performance (reranking infrastructure)
 
 ## Current Position
 
-Phase: 3 of 6 (Agent Tooling) -- COMPLETE
-Plan: 2 of 2 in current phase (03-01 + 03-02 complete, phase done)
-Status: Phase 03 complete, ready for Phase 04
-Last activity: 2026-02-19 — Plan 03-01 executed (annotation_expert semantic tool)
+Phase: 4 of 6 (Performance)
+Plan: 1 of 2 in current phase (04-01 complete)
+Status: Executing Phase 04
+Last activity: 2026-02-19 — Plan 04-01 executed (reranker infrastructure)
 
-Progress: [████████░░] 50%
+Progress: [█████████░] 56%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Average duration: 2.9min
-- Total execution time: 0.38 hours
+- Total plans completed: 9
+- Average duration: 3.1min
+- Total execution time: 0.47 hours
 
 **By Phase:**
 
@@ -30,13 +30,15 @@ Progress: [████████░░] 50%
 | 01-foundation | 3 | 8min | 2.7min |
 | 02-service-integration | 3 | 10min | 3.3min |
 | 03-agent-tooling | 2 | 10min | 5.0min |
+| 04-performance | 1 | 5min | 5.0min |
 
 **Recent Trend:**
-- Last 5 plans: 02-02 (3min), 02-03 (5min), 03-01 (6min), 03-02 (4min)
+- Last 5 plans: 02-03 (5min), 03-01 (6min), 03-02 (4min), 04-01 (5min)
 - Trend: Stable
 
 *Updated after each plan completion*
 | Phase 03 P01 | 6min | 2 tasks | 2 files |
+| Phase 04 P01 | 5min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -80,6 +82,11 @@ Recent decisions affecting current work:
 - [03-02] Tissue tool requires HAS_VECTOR_SEARCH; disease tool requires HAS_ONTOLOGY_SERVICE (independent conditionals)
 - [03-02] Disease tool routes through DiseaseOntologyService not VectorSearchService directly (Strangler Fig)
 - [03-02] AnalysisStep requires code_template, imports, parameter_schema as mandatory fields
+- [04-01] Min-max normalization for cross-encoder scores (per-query relative, not cross-query comparable)
+- [04-01] Resolved-flag sentinel (_reranker_resolved) to distinguish "not checked" from "checked and None"
+- [04-01] Reranking only in match_ontology(), not query() (keeps lower-level API predictable)
+- [04-01] COHERE_RERANK_MODEL env var override for model flexibility
+- [04-01] Edge case guard: skip reranking for single-document results (no model loaded)
 
 ### Pending Todos
 
@@ -91,6 +98,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-19 (Phase 03 plan 01 execution)
-Stopped at: Completed 03-01-PLAN.md
-Resume file: .planning/phases/03-agent-tooling/03-01-SUMMARY.md
+Last session: 2026-02-19 (Phase 04 plan 01 execution)
+Stopped at: Completed 04-01-PLAN.md
+Resume file: .planning/phases/04-performance/04-01-SUMMARY.md
