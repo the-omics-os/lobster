@@ -18,7 +18,7 @@ vector-search extras are installed.
 
 import logging
 
-from lobster.core.vector.embeddings.base import BaseEmbedder
+from lobster.services.vector.embeddings.base import BaseEmbedder
 
 logger = logging.getLogger(__name__)
 

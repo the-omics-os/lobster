@@ -20,9 +20,9 @@ import pytest
 
 # Skip entire module if vector-search deps not installed
 try:
-    from lobster.core.vector.service import VectorSearchService
-    from lobster.core.vector.backends.base import BaseVectorBackend
-    from lobster.core.vector.embeddings.base import BaseEmbedder
+    from lobster.services.vector.service import VectorSearchService
+    from lobster.services.vector.backends.base import BaseVectorBackend
+    from lobster.services.vector.embeddings.base import BaseEmbedder
     from lobster.core.schemas.search import OntologyMatch
 
     HAS_VECTOR_SEARCH = True
@@ -192,7 +192,7 @@ def mock_singlecell_service():
 @pytest.fixture
 def mock_vector_service():
     """Create VectorSearchService with mock backend/embedder."""
-    from lobster.core.vector.config import VectorSearchConfig
+    from lobster.services.vector.config import VectorSearchConfig
 
     config = VectorSearchConfig()
     backend = MockVectorBackend()
@@ -221,7 +221,7 @@ def _get_semantic_tool(mock_data_manager, mock_singlecell_service, mock_vector_s
 
         # We need to patch VectorSearchService inside the factory closure
         with patch(
-            "lobster.core.vector.service.VectorSearchService",
+            "lobster.services.vector.service.VectorSearchService",
             return_value=vs,
         ):
             agent = annotation_expert(mock_data_manager)
@@ -297,7 +297,7 @@ class TestSemanticAnnotationBasic:
 
         # Invoke the tool
         with patch(
-            "lobster.core.vector.service.VectorSearchService",
+            "lobster.services.vector.service.VectorSearchService",
             return_value=vs,
         ):
             result = semantic_tool.invoke({
@@ -419,7 +419,7 @@ class TestSemanticToolDirect:
             kwargs.update(tool_kwargs)
 
         with patch(
-            "lobster.core.vector.service.VectorSearchService",
+            "lobster.services.vector.service.VectorSearchService",
             return_value=vs,
         ):
             result = semantic_tool.invoke(kwargs)

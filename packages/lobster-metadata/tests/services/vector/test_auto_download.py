@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lobster.core.vector.backends.chromadb_backend import (
+from lobster.services.vector.backends.chromadb_backend import (
     ONTOLOGY_CACHE_DIR,
     ONTOLOGY_TARBALLS,
     _download_with_progress,
@@ -40,16 +40,16 @@ class TestOntologyTarballs:
 
     def test_tarball_urls_use_correct_s3_bucket(self):
         """All URLs start with the lobster-ontology-data S3 bucket prefix."""
-        expected_prefix = "https://lobster-ontology-data.s3.amazonaws.com/v1/"
+        expected_prefix = "https://lobster-ontology-data.s3.amazonaws.com/v2/"
         for url in ONTOLOGY_TARBALLS.values():
             assert url.startswith(expected_prefix), f"URL does not match: {url}"
 
     def test_tarball_urls_use_correct_filenames(self):
         """URLs end with the expected tarball filenames."""
         expected_filenames = {
-            "mondo_v2024_01": "mondo_sapbert_768.tar.gz",
-            "uberon_v2024_01": "uberon_sapbert_768.tar.gz",
-            "cell_ontology_v2024_01": "cell_ontology_sapbert_768.tar.gz",
+            "mondo_v2024_01": "mondo_openai_1536.tar.gz",
+            "uberon_v2024_01": "uberon_openai_1536.tar.gz",
+            "cell_ontology_v2024_01": "cell_ontology_openai_1536.tar.gz",
         }
         for key, url in ONTOLOGY_TARBALLS.items():
             assert url.endswith(expected_filenames[key]), (
@@ -79,7 +79,7 @@ def _make_backend_with_mock_client(tmp_path, collection_count=0):
     Returns:
         tuple: (backend, mock_client, mock_collection)
     """
-    from lobster.core.vector.backends.chromadb_backend import ChromaDBBackend
+    from lobster.services.vector.backends.chromadb_backend import ChromaDBBackend
 
     persist = tmp_path / "vector_store"
     persist.mkdir(parents=True, exist_ok=True)
@@ -123,7 +123,7 @@ class TestEnsureOntologyData:
         )
 
         with patch(
-            "lobster.core.vector.backends.chromadb_backend._download_with_progress"
+            "lobster.services.vector.backends.chromadb_backend._download_with_progress"
         ) as mock_download:
             result = backend._ensure_ontology_data("mondo_v2024_01")
             assert result is True
@@ -136,11 +136,11 @@ class TestEnsureOntologyData:
 
         with (
             patch(
-                "lobster.core.vector.backends.chromadb_backend.ONTOLOGY_CACHE_DIR",
+                "lobster.services.vector.backends.chromadb_backend.ONTOLOGY_CACHE_DIR",
                 cache_dir,
             ),
             patch(
-                "lobster.core.vector.backends.chromadb_backend._download_with_progress"
+                "lobster.services.vector.backends.chromadb_backend._download_with_progress"
             ) as mock_download,
         ):
             # fake_download creates a file that will fail tarball extraction
@@ -163,17 +163,17 @@ class TestEnsureOntologyData:
         cache_dir = tmp_path / "ontology_cache"
         cache_dir.mkdir(parents=True)
 
-        # Create a fake cached tarball
-        tarball_path = cache_dir / "mondo_sapbert_768.tar.gz"
+        # Create a fake cached tarball (matches URL filename)
+        tarball_path = cache_dir / "mondo_openai_1536.tar.gz"
         tarball_path.write_bytes(b"fake tarball data")
 
         with (
             patch(
-                "lobster.core.vector.backends.chromadb_backend.ONTOLOGY_CACHE_DIR",
+                "lobster.services.vector.backends.chromadb_backend.ONTOLOGY_CACHE_DIR",
                 cache_dir,
             ),
             patch(
-                "lobster.core.vector.backends.chromadb_backend._download_with_progress"
+                "lobster.services.vector.backends.chromadb_backend._download_with_progress"
             ) as mock_download,
         ):
             # Will fail at extraction (corrupt data) but download must NOT be called
@@ -190,15 +190,15 @@ class TestEnsureOntologyData:
 
         with (
             patch(
-                "lobster.core.vector.backends.chromadb_backend.ONTOLOGY_CACHE_DIR",
+                "lobster.services.vector.backends.chromadb_backend.ONTOLOGY_CACHE_DIR",
                 cache_dir,
             ),
             patch(
-                "lobster.core.vector.backends.chromadb_backend._download_with_progress",
+                "lobster.services.vector.backends.chromadb_backend._download_with_progress",
                 side_effect=requests.ConnectionError("Network unreachable"),
             ),
             patch(
-                "lobster.core.vector.backends.chromadb_backend.logger"
+                "lobster.services.vector.backends.chromadb_backend.logger"
             ) as mock_logger,
         ):
             result = backend._ensure_ontology_data("mondo_v2024_01")
@@ -214,17 +214,17 @@ class TestEnsureOntologyData:
         cache_dir = tmp_path / "ontology_cache"
         cache_dir.mkdir(parents=True)
 
-        # Create a corrupt cached tarball
-        tarball_path = cache_dir / "mondo_sapbert_768.tar.gz"
+        # Create a corrupt cached tarball (matches URL filename)
+        tarball_path = cache_dir / "mondo_openai_1536.tar.gz"
         tarball_path.write_bytes(b"this is not a valid tarball")
 
         with (
             patch(
-                "lobster.core.vector.backends.chromadb_backend.ONTOLOGY_CACHE_DIR",
+                "lobster.services.vector.backends.chromadb_backend.ONTOLOGY_CACHE_DIR",
                 cache_dir,
             ),
             patch(
-                "lobster.core.vector.backends.chromadb_backend.logger"
+                "lobster.services.vector.backends.chromadb_backend.logger"
             ) as mock_logger,
         ):
             result = backend._ensure_ontology_data("mondo_v2024_01")

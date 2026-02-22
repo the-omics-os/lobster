@@ -2,7 +2,7 @@
 """
 Build pre-computed ontology embeddings for offline distribution.
 
-Parses OBO ontology files (MONDO, Uberon, Cell Ontology), generates SapBERT
+Parses OBO ontology files (MONDO, Uberon, Cell Ontology), generates
 embeddings for each term, stores them in ChromaDB collections with full
 metadata, and produces gzipped tarballs ready for S3 upload.
 
@@ -12,8 +12,11 @@ end users on first use.
 
 Usage::
 
-    # Build a single ontology
+    # Build a single ontology with OpenAI (default)
     python scripts/build_ontology_embeddings.py --ontology mondo
+
+    # Build with a specific embedder
+    python scripts/build_ontology_embeddings.py --ontology cell_ontology --embedder openai
 
     # Build all 3 ontologies
     python scripts/build_ontology_embeddings.py --all
@@ -25,12 +28,12 @@ Usage::
     python scripts/build_ontology_embeddings.py --dry-run --all
 
 Output format:
-    Each ontology produces a ``{ontology}_sapbert_768/`` ChromaDB persist
-    directory and a ``{ontology}_sapbert_768.tar.gz`` tarball containing it.
+    Each ontology produces a ``{ontology}_{embedder}_{dims}/`` ChromaDB persist
+    directory and a ``{ontology}_{embedder}_{dims}.tar.gz`` tarball containing it.
     The tarball can be extracted by a ``chromadb.PersistentClient`` pointed
     at the extracted directory.
 
-Requires: obonet, chromadb, sentence-transformers (torch)
+Requires: obonet, chromadb, and embedder-specific deps (openai or sentence-transformers)
 Install:  pip install 'lobster-ai[vector-search]' obonet
 """
 
@@ -54,6 +57,13 @@ logger = logging.getLogger(__name__)
 
 # Batch size for ChromaDB add operations (matches chromadb_backend.py)
 _BATCH_SIZE = 5000
+
+# Embedder name -> (dimension, module_path, class_name, install_hint)
+_EMBEDDER_INFO: dict[str, tuple[int, str, str, str]] = {
+    "openai": (1536, "lobster.services.vector.embeddings.openai_embedder", "OpenAIEmbedder", "pip install openai"),
+    "sapbert": (768, "lobster.services.vector.embeddings.sapbert", "SapBERTEmbedder", "pip install sentence-transformers torch"),
+    "minilm": (384, "lobster.services.vector.embeddings.minilm", "MiniLMEmbedder", "pip install sentence-transformers torch"),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +154,51 @@ def _extract_terms(graph: Any) -> list[dict[str, Any]]:
     return terms
 
 
+def _create_embedder(embedder_name: str) -> Any:
+    """Dynamically create an embedder instance by name.
+
+    Parameters
+    ----------
+    embedder_name : str
+        One of: openai, sapbert, minilm.
+
+    Returns
+    -------
+    BaseEmbedder instance.
+
+    Raises
+    ------
+    ImportError
+        If the required embedder dependencies are not installed.
+    ValueError
+        If embedder_name is not recognized.
+    """
+    if embedder_name not in _EMBEDDER_INFO:
+        raise ValueError(
+            f"Unknown embedder '{embedder_name}'. "
+            f"Available: {', '.join(_EMBEDDER_INFO)}"
+        )
+
+    dims, module_path, class_name, install_hint = _EMBEDDER_INFO[embedder_name]
+
+    import importlib
+    try:
+        mod = importlib.import_module(module_path)
+        cls = getattr(mod, class_name)
+        return cls()
+    except ImportError:
+        raise ImportError(
+            f"{class_name} requires additional dependencies. "
+            f"Install with: {install_hint}"
+        )
+
+
+def _dir_name(ontology_name: str, embedder_name: str) -> str:
+    """Build the directory/tarball base name: {ontology}_{embedder}_{dims}."""
+    dims = _EMBEDDER_INFO[embedder_name][0]
+    return f"{ontology_name}_{embedder_name}_{dims}"
+
+
 # ---------------------------------------------------------------------------
 # Main build function
 # ---------------------------------------------------------------------------
@@ -154,6 +209,7 @@ def build_ontology(
     obo_url: str,
     output_dir: Path,
     collection_name: str,
+    embedder_name: str = "openai",
 ) -> Path:
     """Build a ChromaDB collection and tarball for one ontology.
 
@@ -167,6 +223,8 @@ def build_ontology(
         Output directory for persist dirs and tarballs.
     collection_name : str
         Versioned collection name (e.g., "mondo_v2024_01").
+    embedder_name : str
+        Embedder to use (openai, sapbert, minilm). Default: openai.
 
     Returns
     -------
@@ -210,18 +268,10 @@ def build_ontology(
     logger.info("Extracted %d embeddable terms (skipped %d obsolete/unnamed)",
                 len(terms), total_nodes - len(terms))
 
-    # --- Step 3: Embed with SapBERT ---
-    try:
-        from lobster.core.vector.embeddings.sapbert import SapBERTEmbedder
-    except ImportError:
-        raise ImportError(
-            "SapBERT embeddings require sentence-transformers and PyTorch. "
-            "Install with: pip install 'lobster-ai[vector-search]'"
-        )
-
-    embedder = SapBERTEmbedder()
+    # --- Step 3: Embed with selected embedder ---
+    embedder = _create_embedder(embedder_name)
     texts = [t["text"] for t in terms]
-    logger.info("Embedding %d terms with SapBERT (batch_size=128)...", len(texts))
+    logger.info("Embedding %d terms with %s (batch_size=128)...", len(texts), embedder_name)
 
     # Embed in batches to show progress
     all_embeddings: list[list[float]] = []
@@ -247,7 +297,8 @@ def build_ontology(
             "Install with: pip install chromadb"
         )
 
-    persist_dir = output_dir / f"{ontology_name}_sapbert_768"
+    dir_base = _dir_name(ontology_name, embedder_name)
+    persist_dir = output_dir / dir_base
     if persist_dir.exists():
         logger.info("Removing existing persist directory: %s", persist_dir)
         shutil.rmtree(persist_dir)
@@ -294,7 +345,7 @@ def build_ontology(
     del client
 
     # --- Step 5: Create tarball ---
-    tarball_path = output_dir / f"{ontology_name}_sapbert_768.tar.gz"
+    tarball_path = output_dir / f"{dir_base}.tar.gz"
     logger.info("Creating tarball: %s", tarball_path)
 
     with tarfile.open(str(tarball_path), "w:gz") as tar:
@@ -306,9 +357,12 @@ def build_ontology(
     logger.info(
         "BUILD COMPLETE for '%s':\n"
         "  Collection: %s\n"
+        "  Embedder:   %s (dim=%d)\n"
         "  Terms:      %d\n"
         "  Tarball:    %s (%.1f MB)",
-        ontology_name, collection_name, final_count, tarball_path, tarball_size_mb,
+        ontology_name, collection_name, embedder_name,
+        _EMBEDDER_INFO[embedder_name][0],
+        final_count, tarball_path, tarball_size_mb,
     )
 
     return tarball_path
@@ -319,7 +373,12 @@ def build_ontology(
 # ---------------------------------------------------------------------------
 
 
-def dry_run(ontologies: dict[str, str], output_dir: Path, version_tag: str) -> None:
+def dry_run(
+    ontologies: dict[str, str],
+    output_dir: Path,
+    version_tag: str,
+    embedder_name: str,
+) -> None:
     """Validate the full pipeline without downloading or embedding.
 
     Checks all imports, output directory writability, and collection name
@@ -333,6 +392,8 @@ def dry_run(ontologies: dict[str, str], output_dir: Path, version_tag: str) -> N
         Target output directory.
     version_tag : str
         Version tag for collection naming.
+    embedder_name : str
+        Embedder to validate (openai, sapbert, minilm).
     """
     print("=" * 60)
     print("DRY RUN: Validating build pipeline")
@@ -353,12 +414,15 @@ def dry_run(ontologies: dict[str, str], output_dir: Path, version_tag: str) -> N
             print(f"  [MISSING] {dep_name} -- install with: {install_cmd}")
             all_ok = False
 
-    # Check SapBERTEmbedder import
+    # Check selected embedder import
+    dims, module_path, class_name, install_hint = _EMBEDDER_INFO[embedder_name]
     try:
-        from lobster.core.vector.embeddings.sapbert import SapBERTEmbedder  # noqa: F401
-        print("  [OK] SapBERTEmbedder importable")
+        import importlib
+        mod = importlib.import_module(module_path)
+        getattr(mod, class_name)
+        print(f"  [OK] {class_name} importable (dim={dims})")
     except ImportError as exc:
-        print(f"  [MISSING] SapBERTEmbedder -- {exc}")
+        print(f"  [MISSING] {class_name} -- {install_hint}")
         all_ok = False
 
     # Check output directory
@@ -374,7 +438,7 @@ def dry_run(ontologies: dict[str, str], output_dir: Path, version_tag: str) -> N
 
     # Check ONTOLOGY_COLLECTIONS consistency
     try:
-        from lobster.core.vector.service import ONTOLOGY_COLLECTIONS
+        from lobster.services.vector.service import ONTOLOGY_COLLECTIONS
         collections_available = True
     except ImportError:
         ONTOLOGY_COLLECTIONS = {}
@@ -387,11 +451,13 @@ def dry_run(ontologies: dict[str, str], output_dir: Path, version_tag: str) -> N
 
     for ont_name, obo_url in ontologies.items():
         collection_name = f"{ont_name}_{version_tag.replace('.', '_')}"
-        persist_dir = output_dir / f"{ont_name}_sapbert_768"
-        tarball_path = output_dir / f"{ont_name}_sapbert_768.tar.gz"
+        dir_base = _dir_name(ont_name, embedder_name)
+        persist_dir = output_dir / dir_base
+        tarball_path = output_dir / f"{dir_base}.tar.gz"
 
         print(f"\n  Ontology:    {ont_name}")
         print(f"  OBO URL:     {obo_url}")
+        print(f"  Embedder:    {embedder_name} (dim={dims})")
         print(f"  Collection:  {collection_name}")
         print(f"  Persist dir: {persist_dir}")
         print(f"  Tarball:     {tarball_path}")
@@ -424,7 +490,7 @@ def main() -> None:
     """CLI entry point for the ontology embedding build script."""
     parser = argparse.ArgumentParser(
         description=(
-            "Build pre-computed SapBERT ontology embeddings for offline distribution. "
+            "Build pre-computed ontology embeddings for offline distribution. "
             "Parses OBO files, generates embeddings, stores in ChromaDB, and produces "
             "gzipped tarballs for S3 upload."
         ),
@@ -432,7 +498,8 @@ def main() -> None:
         epilog=(
             "Examples:\n"
             "  %(prog)s --ontology mondo\n"
-            "  %(prog)s --all\n"
+            "  %(prog)s --ontology cell_ontology --embedder openai\n"
+            "  %(prog)s --all --embedder sapbert\n"
             "  %(prog)s --all --output-dir ./build_output\n"
             "  %(prog)s --dry-run --all\n"
         ),
@@ -448,6 +515,16 @@ def main() -> None:
         "--all",
         action="store_true",
         help="Build all 3 ontologies (mondo, uberon, cell_ontology)",
+    )
+
+    parser.add_argument(
+        "--embedder",
+        choices=list(_EMBEDDER_INFO.keys()),
+        default="openai",
+        help=(
+            "Embedding provider to use (default: openai). "
+            "openai=1536d, sapbert=768d, minilm=384d."
+        ),
     )
 
     parser.add_argument(
@@ -477,7 +554,7 @@ def main() -> None:
 
     # Import OBO_URLS for ontology URL resolution
     try:
-        from lobster.core.vector.ontology_graph import OBO_URLS
+        from lobster.services.vector.ontology_graph import OBO_URLS
     except ImportError:
         # Fallback if lobster isn't installed (shouldn't happen in dev)
         OBO_URLS = {
@@ -497,7 +574,7 @@ def main() -> None:
 
     # Dry-run mode
     if args.dry_run:
-        dry_run(ontologies, output_dir, args.version_tag)
+        dry_run(ontologies, output_dir, args.version_tag, args.embedder)
         return
 
     # Full build mode
@@ -510,7 +587,7 @@ def main() -> None:
 
         # Validate against ONTOLOGY_COLLECTIONS if default version tag
         try:
-            from lobster.core.vector.service import ONTOLOGY_COLLECTIONS
+            from lobster.services.vector.service import ONTOLOGY_COLLECTIONS
             expected = ONTOLOGY_COLLECTIONS.get(ont_name)
             if expected and collection_name != expected:
                 logger.warning(
@@ -521,7 +598,10 @@ def main() -> None:
         except ImportError:
             pass
 
-        tarball_path = build_ontology(ont_name, obo_url, output_dir, collection_name)
+        tarball_path = build_ontology(
+            ont_name, obo_url, output_dir, collection_name,
+            embedder_name=args.embedder,
+        )
         tarball_size_mb = tarball_path.stat().st_size / (1024 * 1024)
         tarballs.append((ont_name, tarball_path, tarball_size_mb))
 
@@ -530,6 +610,8 @@ def main() -> None:
     print("=" * 60)
     print("BUILD COMPLETE")
     print("=" * 60)
+    dims = _EMBEDDER_INFO[args.embedder][0]
+    print(f"  Embedder: {args.embedder} (dim={dims})")
     for ont_name, tarball_path, size_mb in tarballs:
         print(f"  {ont_name}: {tarball_path} ({size_mb:.1f} MB)")
     print()
@@ -537,8 +619,10 @@ def main() -> None:
     print(f"Output directory: {output_dir}")
     print()
     print("Next steps:")
-    print("  1. Upload tarballs to S3")
-    print("  2. Update download URLs in lobster/core/vector/config.py")
+    print("  1. Upload tarballs to S3:")
+    for _, tarball_path, _ in tarballs:
+        print(f"     aws s3 cp {tarball_path} s3://lobster-ontology-data/v2/")
+    print("  2. Verify URLs match ONTOLOGY_TARBALLS in chromadb_backend.py")
 
 
 if __name__ == "__main__":

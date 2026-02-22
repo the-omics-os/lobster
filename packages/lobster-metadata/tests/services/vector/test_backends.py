@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from lobster.core.vector.backends.base import BaseVectorBackend
-from lobster.core.vector.backends.pgvector_backend import PgVectorBackend
+from lobster.services.vector.backends.base import BaseVectorBackend
+from lobster.services.vector.backends.pgvector_backend import PgVectorBackend
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +50,7 @@ class TestFAISSBackend:
 
         with patch.dict("sys.modules", {"faiss": mock_faiss}):
             # Re-import to pick up the mocked faiss
-            from lobster.core.vector.backends.faiss_backend import FAISSBackend
+            from lobster.services.vector.backends.faiss_backend import FAISSBackend
 
             backend = FAISSBackend()
             # Force it to use our mock
@@ -325,7 +325,7 @@ class TestFAISSBackend:
     def test_import_error_has_helpful_message(self):
         """When faiss is not installed, ImportError message suggests pip install faiss-cpu."""
         with patch.dict("sys.modules", {"faiss": None}):
-            from lobster.core.vector.backends.faiss_backend import FAISSBackend
+            from lobster.services.vector.backends.faiss_backend import FAISSBackend
 
             backend = FAISSBackend()
             backend._faiss = None  # Force re-import attempt
@@ -400,7 +400,7 @@ class TestBaseVectorBackendContract:
         mock_faiss = MagicMock()
         mock_faiss.normalize_L2 = MagicMock()
         with patch.dict("sys.modules", {"faiss": mock_faiss}):
-            from lobster.core.vector.backends.faiss_backend import FAISSBackend
+            from lobster.services.vector.backends.faiss_backend import FAISSBackend
 
             backend = FAISSBackend()
             assert isinstance(backend, BaseVectorBackend)

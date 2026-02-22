@@ -22,7 +22,7 @@ from typing import Any
 
 import numpy as np
 
-from lobster.core.vector.backends.base import BaseVectorBackend
+from lobster.services.vector.backends.base import BaseVectorBackend
 
 logger = logging.getLogger(__name__)
 

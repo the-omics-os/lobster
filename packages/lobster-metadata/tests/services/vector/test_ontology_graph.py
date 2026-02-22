@@ -1,5 +1,5 @@
 """
-Unit tests for lobster.core.vector.ontology_graph module.
+Unit tests for lobster.services.vector.ontology_graph module.
 
 Tests cover:
 - OBO_URLS completeness and correctness (GRPH-03)
@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 import networkx as nx
 import pytest
 
-from lobster.core.vector.ontology_graph import (
+from lobster.services.vector.ontology_graph import (
     OBO_URLS,
     _format_term,
     get_neighbors,
@@ -127,7 +127,7 @@ class TestLoadOntologyGraph:
             with pytest.raises(ImportError, match="pip install"):
                 load_ontology_graph("mondo")
 
-    @patch("lobster.core.vector.ontology_graph.obonet", create=True)
+    @patch("lobster.services.vector.ontology_graph.obonet", create=True)
     def test_load_calls_obonet_read_obo(self, mock_obonet_module):
         """Verify obonet.read_obo is called with the correct URL."""
         mock_graph = MagicMock(spec=nx.MultiDiGraph)

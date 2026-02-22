@@ -59,7 +59,7 @@ logger = get_logger(__name__)
 
 # Optional vector search for semantic annotation
 try:
-    from lobster.core.vector.service import VectorSearchService  # noqa: F401
+    from lobster.services.vector.service import VectorSearchService  # noqa: F401
 
     HAS_VECTOR_SEARCH = True
 except ImportError:
@@ -1275,7 +1275,7 @@ Use this mapping to apply consistent annotations to similar datasets."""
     def _get_vector_service():
         nonlocal _vector_service
         if _vector_service is None:
-            from lobster.core.vector.service import VectorSearchService
+            from lobster.services.vector.service import VectorSearchService
 
             _vector_service = VectorSearchService()
         return _vector_service
@@ -1379,7 +1379,7 @@ Use this mapping to apply consistent annotations to similar datasets."""
                     # Optional graph validation
                     if validate_graph and top_match.ontology_id:
                         try:
-                            from lobster.core.vector.ontology_graph import (
+                            from lobster.services.vector.ontology_graph import (
                                 get_neighbors,
                                 load_ontology_graph,
                             )
@@ -1467,9 +1467,9 @@ Use this mapping to apply consistent annotations to similar datasets."""
                     f"Semantic cell type annotation of {n_annotated} clusters "
                     f"via Cell Ontology vector search (mean confidence: {mean_confidence})"
                 ),
-                library="lobster.core.vector",
+                library="lobster.services.vector",
                 code_template=(
-                    "from lobster.core.vector.service import VectorSearchService\n"
+                    "from lobster.services.vector.service import VectorSearchService\n"
                     "vs = VectorSearchService()\n"
                     "# For each cluster, build query from marker genes and match to Cell Ontology\n"
                     "matches = vs.match_ontology(\n"
@@ -1479,7 +1479,7 @@ Use this mapping to apply consistent annotations to similar datasets."""
                     '# Apply top match to adata.obs["cell_type"]'
                 ),
                 imports=[
-                    "from lobster.core.vector.service import VectorSearchService",
+                    "from lobster.services.vector.service import VectorSearchService",
                 ],
                 parameters=params,
                 parameter_schema={

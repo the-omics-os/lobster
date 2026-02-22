@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from lobster.core.vector.backends.base import BaseVectorBackend
+from lobster.services.vector.backends.base import BaseVectorBackend
 
 
 class PgVectorBackend(BaseVectorBackend):

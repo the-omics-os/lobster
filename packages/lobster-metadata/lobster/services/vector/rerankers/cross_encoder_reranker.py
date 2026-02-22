@@ -20,7 +20,7 @@ Requires ``sentence-transformers`` and ``torch``. Install with::
 import logging
 from typing import Any
 
-from lobster.core.vector.rerankers.base import BaseReranker
+from lobster.services.vector.rerankers.base import BaseReranker
 
 logger = logging.getLogger(__name__)
 

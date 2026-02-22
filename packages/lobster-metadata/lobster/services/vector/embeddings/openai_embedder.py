@@ -17,7 +17,7 @@ free, offline operation of SapBERT or MiniLM.
 
 import logging
 
-from lobster.core.vector.embeddings.base import BaseEmbedder
+from lobster.services.vector.embeddings.base import BaseEmbedder
 
 logger = logging.getLogger(__name__)
 

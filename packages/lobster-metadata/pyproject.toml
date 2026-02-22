@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lobster-metadata"
+version = "1.0.10"
+description = "Metadata assistant agent for Lobster AI - sample metadata and harmonization operations"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = "AGPL-3.0-or-later"
+authors = [
+    {name = "Omics-OS", email = "info@omics-os.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+keywords = ["bioinformatics", "metadata", "harmonization", "sample-mapping", "omics"]
+dependencies = [
+    "lobster-ai~=1.0.0",
+    "pandas>=1.5.0",
+    "pydantic>=2.0.0",
+    "rapidfuzz>=3.0.0",
+]
+
+[project.urls]
+"Homepage" = "https://www.omics-os.com"
+"Documentation" = "https://docs.omics-os.com"
+"Source Code" = "https://github.com/the-omics-os/lobster"
+
+[project.optional-dependencies]
+vector-search = [
+    "chromadb>=1.0.0",
+    "openai>=1.0.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+]
+
+[project.entry-points."lobster.agents"]
+metadata_assistant = "lobster.agents.metadata_assistant:AGENT_CONFIG"
+
+[tool.setuptools]
+packages.find = {where = ["."], include = ["lobster*"], namespaces = true}
+
+[tool.setuptools.package-data]
+"lobster.config" = ["*.json"]

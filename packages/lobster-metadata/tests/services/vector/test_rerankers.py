@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lobster.core.vector.rerankers.base import BaseReranker, normalize_scores
+from lobster.services.vector.rerankers.base import BaseReranker, normalize_scores
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +127,7 @@ class TestCrossEncoderReranker:
 
     def _make_reranker(self):
         """Create a CrossEncoderReranker instance (lazy import)."""
-        from lobster.core.vector.rerankers.cross_encoder_reranker import (
+        from lobster.services.vector.rerankers.cross_encoder_reranker import (
             CrossEncoderReranker,
         )
 
@@ -252,7 +252,7 @@ class TestCohereReranker:
 
     def _make_reranker(self):
         """Create a CohereReranker instance."""
-        from lobster.core.vector.rerankers.cohere_reranker import CohereReranker
+        from lobster.services.vector.rerankers.cohere_reranker import CohereReranker
 
         return CohereReranker()
 

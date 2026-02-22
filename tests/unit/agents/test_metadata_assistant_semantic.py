@@ -13,7 +13,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 try:
-    from lobster.core.vector.service import VectorSearchService
+    from lobster.services.vector.service import VectorSearchService
     from lobster.core.schemas.search import OntologyMatch
 
     HAS_VECTOR_SEARCH = True
@@ -142,10 +142,10 @@ def _build_tissue_tool(mock_data_manager, mock_vector_service_instance):
             ir = AnalysisStep(
                 operation="standardize_tissue_term",
                 tool_name="standardize_tissue_term",
-                library="lobster.core.vector",
+                library="lobster.services.vector",
                 description="Semantic tissue term standardization via Uberon ontology",
                 code_template='matches = service.match_ontology("{{ term }}", "uberon", k={{ k }})',
-                imports=["from lobster.core.vector.service import VectorSearchService"],
+                imports=["from lobster.services.vector.service import VectorSearchService"],
                 parameters={"term": term, "k": k, "min_confidence": min_confidence},
                 parameter_schema={},
             )
@@ -301,7 +301,7 @@ class TestStandardizeTissueTerm:
         assert isinstance(ir, AnalysisStep)
         assert ir.operation == "standardize_tissue_term"
         assert ir.tool_name == "standardize_tissue_term"
-        assert ir.library == "lobster.core.vector"
+        assert ir.library == "lobster.services.vector"
 
     def test_tissue_stats_content(self, mock_data_manager, mock_ontology_matches):
         """Verify stats dict has keys: term, n_matches, top_matches, best_match."""

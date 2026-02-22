@@ -10,22 +10,22 @@ import os
 import pytest
 
 from lobster.core.schemas.search import EmbeddingProvider, RerankerType, SearchBackend
-from lobster.core.vector.config import VectorSearchConfig
-from lobster.core.vector.service import ONTOLOGY_COLLECTIONS
+from lobster.services.vector.config import VectorSearchConfig
+from lobster.services.vector.service import ONTOLOGY_COLLECTIONS
 
 
 class TestFromEnv:
     """Tests for VectorSearchConfig.from_env()."""
 
     def test_from_env_defaults(self, monkeypatch):
-        """With no env vars, from_env() returns chromadb + sapbert defaults."""
+        """With no env vars, from_env() returns chromadb + openai defaults."""
         monkeypatch.delenv("LOBSTER_VECTOR_BACKEND", raising=False)
         monkeypatch.delenv("LOBSTER_EMBEDDING_PROVIDER", raising=False)
         monkeypatch.delenv("LOBSTER_VECTOR_STORE_PATH", raising=False)
 
         config = VectorSearchConfig.from_env()
         assert config.backend == SearchBackend.chromadb
-        assert config.embedding_provider == EmbeddingProvider.sapbert
+        assert config.embedding_provider == EmbeddingProvider.openai
         assert config.persist_path.endswith("vector_store")
         assert ".lobster" in config.persist_path
 
@@ -71,9 +71,9 @@ class TestDefaults:
         assert config.backend == SearchBackend.chromadb
 
     def test_default_embedder(self):
-        """Default embedding provider should be sapbert."""
+        """Default embedding provider should be openai."""
         config = VectorSearchConfig()
-        assert config.embedding_provider == EmbeddingProvider.sapbert
+        assert config.embedding_provider == EmbeddingProvider.openai
 
 
 class TestFactoryMethods:
@@ -89,7 +89,7 @@ class TestFactoryMethods:
         config = VectorSearchConfig(backend=SearchBackend.faiss)
         backend = config.create_backend()
 
-        from lobster.core.vector.backends.faiss_backend import FAISSBackend
+        from lobster.services.vector.backends.faiss_backend import FAISSBackend
 
         assert isinstance(backend, FAISSBackend)
 
@@ -98,7 +98,7 @@ class TestFactoryMethods:
         config = VectorSearchConfig(backend=SearchBackend.pgvector)
         backend = config.create_backend()
 
-        from lobster.core.vector.backends.pgvector_backend import PgVectorBackend
+        from lobster.services.vector.backends.pgvector_backend import PgVectorBackend
 
         assert isinstance(backend, PgVectorBackend)
 
@@ -111,7 +111,7 @@ class TestFactoryMethods:
         config = VectorSearchConfig(embedding_provider=EmbeddingProvider.minilm)
         embedder = config.create_embedder()
 
-        from lobster.core.vector.embeddings.minilm import MiniLMEmbedder
+        from lobster.services.vector.embeddings.minilm import MiniLMEmbedder
 
         assert isinstance(embedder, MiniLMEmbedder)
 
@@ -124,7 +124,7 @@ class TestFactoryMethods:
         config = VectorSearchConfig(embedding_provider=EmbeddingProvider.openai)
         embedder = config.create_embedder()
 
-        from lobster.core.vector.embeddings.openai_embedder import OpenAIEmbedder
+        from lobster.services.vector.embeddings.openai_embedder import OpenAIEmbedder
 
         assert isinstance(embedder, OpenAIEmbedder)
 
@@ -147,7 +147,7 @@ class TestFactoryMethods:
         config = VectorSearchConfig(persist_path=str(tmp_path / "vectors"))
         backend = config.create_backend()
 
-        from lobster.core.vector.backends.chromadb_backend import (
+        from lobster.services.vector.backends.chromadb_backend import (
             ChromaDBBackend,
         )
 
@@ -159,10 +159,10 @@ class TestFactoryMethods:
         Note: This only checks instantiation, not model loading.
         SapBERTEmbedder uses lazy model loading so no torch is needed here.
         """
-        config = VectorSearchConfig()
+        config = VectorSearchConfig(embedding_provider=EmbeddingProvider.sapbert)
         embedder = config.create_embedder()
 
-        from lobster.core.vector.embeddings.sapbert import SapBERTEmbedder
+        from lobster.services.vector.embeddings.sapbert import SapBERTEmbedder
 
         assert isinstance(embedder, SapBERTEmbedder)
 
@@ -201,6 +201,69 @@ class TestOntologyCollections:
         assert ONTOLOGY_COLLECTIONS["mondo"] == "mondo_v2024_01"
         assert ONTOLOGY_COLLECTIONS["uberon"] == "uberon_v2024_01"
         assert ONTOLOGY_COLLECTIONS["cell_ontology"] == "cell_ontology_v2024_01"
+
+
+# ---------------------------------------------------------------------------
+# Metadata key fallback chain tests
+# ---------------------------------------------------------------------------
+
+
+class TestMetadataFallback:
+    """Tests for metadata key fallback in VectorSearchService._format_results()."""
+
+    def _make_raw(self, metadatas):
+        """Helper to build raw ChromaDB-style results."""
+        return {
+            "ids": [["id_0"]],
+            "distances": [[0.1]],
+            "documents": [["some term"]],
+            "metadatas": [metadatas],
+        }
+
+    def test_ontology_id_key(self):
+        """Standard 'ontology_id' metadata key is preferred."""
+        from lobster.services.vector.service import VectorSearchService
+
+        service = VectorSearchService.__new__(VectorSearchService)
+        raw = self._make_raw([{"ontology_id": "MONDO:0005015"}])
+        results = service._format_results(raw, query_text="diabetes")
+        assert results[0]["ontology_id"] == "MONDO:0005015"
+
+    def test_id_key_fallback(self):
+        """SRAgent-style 'id' metadata key is used when 'ontology_id' is absent."""
+        from lobster.services.vector.service import VectorSearchService
+
+        service = VectorSearchService.__new__(VectorSearchService)
+        raw = self._make_raw([{"id": "MONDO:0005015"}])
+        results = service._format_results(raw, query_text="diabetes")
+        assert results[0]["ontology_id"] == "MONDO:0005015"
+
+    def test_term_id_key_fallback(self):
+        """Build-script-style 'term_id' metadata key is used as last named fallback."""
+        from lobster.services.vector.service import VectorSearchService
+
+        service = VectorSearchService.__new__(VectorSearchService)
+        raw = self._make_raw([{"term_id": "CL:0000084"}])
+        results = service._format_results(raw, query_text="T cell")
+        assert results[0]["ontology_id"] == "CL:0000084"
+
+    def test_doc_id_fallback(self):
+        """Falls back to document ID when no recognized metadata keys exist."""
+        from lobster.services.vector.service import VectorSearchService
+
+        service = VectorSearchService.__new__(VectorSearchService)
+        raw = self._make_raw([{"name": "some name"}])
+        results = service._format_results(raw, query_text="test")
+        assert results[0]["ontology_id"] == "id_0"
+
+    def test_none_metadata_fallback(self):
+        """Falls back to document ID when metadata is None."""
+        from lobster.services.vector.service import VectorSearchService
+
+        service = VectorSearchService.__new__(VectorSearchService)
+        raw = self._make_raw([None])
+        results = service._format_results(raw, query_text="test")
+        assert results[0]["ontology_id"] == "id_0"
 
 
 # ---------------------------------------------------------------------------
@@ -260,7 +323,7 @@ class TestRerankerConfig:
         config = VectorSearchConfig(reranker=RerankerType.cross_encoder)
         reranker = config.create_reranker()
 
-        from lobster.core.vector.rerankers.cross_encoder_reranker import (
+        from lobster.services.vector.rerankers.cross_encoder_reranker import (
             CrossEncoderReranker,
         )
 
@@ -275,6 +338,6 @@ class TestRerankerConfig:
         config = VectorSearchConfig(reranker=RerankerType.cohere)
         reranker = config.create_reranker()
 
-        from lobster.core.vector.rerankers.cohere_reranker import CohereReranker
+        from lobster.services.vector.rerankers.cohere_reranker import CohereReranker
 
         assert isinstance(reranker, CohereReranker)

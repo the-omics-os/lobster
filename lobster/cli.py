@@ -705,6 +705,7 @@ def extract_available_commands() -> Dict[str, str]:
         "/config model": "List available Ollama models",
         "/config model <name>": "Switch to specified Ollama model (runtime only)",
         "/config model <name> --save": "Switch Ollama model and persist to workspace",
+        "/vector-search": "Search all ontology collections (semantic vector similarity)",
         "/clear": "Clear screen",
         "/exit": "Exit the chat",
     }
@@ -3462,6 +3463,39 @@ def _display_status_info():
     console.print(pkg_table)
     console.print()
 
+    # Optional capabilities
+    console.print("[bold]Optional Capabilities:[/bold]")
+    capabilities = []
+    try:
+        import chromadb  # noqa: F401
+
+        capabilities.append(
+            ("[green]✓[/green]", "Semantic Search", "chromadb + sentence-transformers")
+        )
+    except ImportError:
+        capabilities.append(
+            ("[dim]○[/dim]", "Semantic Search", "pip install 'lobster-ai\\[vector-search]'")
+        )
+    try:
+        import docling  # noqa: F401
+
+        capabilities.append(
+            ("[green]✓[/green]", "Document Intelligence", "docling")
+        )
+    except ImportError:
+        capabilities.append(
+            ("[dim]○[/dim]", "Document Intelligence", "pip install 'lobster-ai\\[docling]'")
+        )
+
+    cap_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+    cap_table.add_column("Status", width=3)
+    cap_table.add_column("Capability", style="white")
+    cap_table.add_column("Details", style="dim")
+    for status, name, detail in capabilities:
+        cap_table.add_row(status, name, detail)
+    console.print(cap_table)
+    console.print()
+
     # Available agents
     if available:
         console.print(f"[bold]Available Agents ({len(available)}):[/bold]")
@@ -3595,9 +3629,18 @@ def _show_workspace_prompt(client):
         except Exception:
             disk_free_gb = "?"
 
+        # Check semantic search availability
+        try:
+            import chromadb  # noqa: F401
+
+            has_semantic = True
+        except ImportError:
+            has_semantic = False
+        semantic_badge = " [dim]│ semantic[/]" if has_semantic else ""
+
         # Line 1: Application status
         console.print(
-            f"  [{tier_color}]●[/] lobster v{__version__} [{tier_color}]{tier}[/] [dim]│[/] {agent_count} agents [dim]│ local │[/] [dim italic]/help[/]"
+            f"  [{tier_color}]●[/] lobster v{__version__} [{tier_color}]{tier}[/] [dim]│[/] {agent_count} agents{semantic_badge} [dim]│ local │[/] [dim italic]/help[/]"
         )
 
         # Line 2-4: System resources (stacked for clarity)
@@ -4492,6 +4535,7 @@ def _uv_tool_env_handoff(
     provider_name: str | None,
     selected_agents: list[str] | None,
     skip_extras: bool,
+    include_vector_search: bool = False,
 ) -> None:
     """In a uv tool env, build and optionally run the install command.
 
@@ -4525,6 +4569,13 @@ def _uv_tool_env_handoff(
             except ImportError:
                 # Provider package not installed — include as extra
                 extras.append(provider_name)
+
+    # Add vector-search extra if user opted in during init
+    if include_vector_search:
+        try:
+            importlib.import_module("chromadb")
+        except ImportError:
+            extras.append("vector-search")
 
     # Determine additional --with packages for agents
     agent_to_package = {
@@ -4670,6 +4721,168 @@ def _prompt_docling_install() -> None:
         console.print(
             "  [dim]Skipped. Install later: pip install 'lobster-ai[docling]'[/dim]"
         )
+
+
+def _download_ontology_databases() -> bool:
+    """Download pre-built ontology databases from S3.
+
+    Imports ChromaDBBackend and triggers auto-download for each ontology
+    collection defined in ONTOLOGY_TARBALLS. Graceful per-collection failure.
+
+    Returns:
+        True if at least one collection was downloaded successfully.
+    """
+    try:
+        from lobster.services.vector.backends.chromadb_backend import (
+            ChromaDBBackend,
+            ONTOLOGY_TARBALLS,
+        )
+    except ImportError:
+        console.print(
+            "  [yellow]⚠ ChromaDB not available. Skipping ontology download.[/yellow]"
+        )
+        return False
+
+    backend = ChromaDBBackend()
+    success_count = 0
+
+    for collection_name in ONTOLOGY_TARBALLS:
+        try:
+            result = backend._ensure_ontology_data(collection_name)
+            if result:
+                success_count += 1
+                console.print(f"  [green]✓[/green] {collection_name}")
+            else:
+                console.print(f"  [yellow]⚠[/yellow] {collection_name} (skipped)")
+        except Exception as exc:
+            console.print(f"  [yellow]⚠[/yellow] {collection_name}: {exc}")
+
+    return success_count > 0
+
+
+# Agents whose workflows benefit from Smart Standardization
+_SMART_STD_AGENTS = {
+    "metadata_assistant",
+    "transcriptomics_expert",
+    "annotation_expert",
+    "proteomics_expert",
+}
+
+
+def _prompt_smart_standardization(
+    selected_agents: list[str] | None = None,
+) -> list[str]:
+    """Prompt user to set up Smart Standardization (local-only for now).
+
+    Smart Standardization uses OpenAI embeddings + ChromaDB to match
+    biomedical terms to ontology concepts (diseases, tissues, cell types).
+
+    Args:
+        selected_agents: List of selected agent names from agent selection step.
+            Used to show context-aware messaging about which agents benefit.
+
+    Returns:
+        List of env lines to append (e.g., OPENAI_API_KEY=...,
+        LOBSTER_EMBEDDING_PROVIDER=openai). Empty list if skipped.
+    """
+    import os
+
+    # Check which selected agents benefit from this feature
+    benefiting = []
+    if selected_agents:
+        agent_display = {
+            "metadata_assistant": "Metadata Assistant",
+            "transcriptomics_expert": "Transcriptomics Expert",
+            "annotation_expert": "Annotation Expert",
+            "proteomics_expert": "Proteomics Expert",
+        }
+        benefiting = [
+            agent_display[a]
+            for a in selected_agents
+            if a in _SMART_STD_AGENTS
+        ]
+
+    console.print("\n[bold white]Smart Standardization (Optional)[/bold white]")
+    console.print(
+        "  [dim]Map biomedical terms to ontology concepts (diseases, tissues, cell types).[/dim]"
+    )
+    console.print(
+        "  [dim]Uses OpenAI text-embedding-3-small (~$0.002 per 1,000 queries).[/dim]"
+    )
+    if benefiting:
+        agents_str = ", ".join(benefiting)
+        console.print(
+            f"  [dim]Your selected agents that benefit: {agents_str}[/dim]"
+        )
+    console.print()
+    console.print("    [cyan]1[/cyan] - Yes, set up locally (OpenAI key + ChromaDB + ontology download)")
+    console.print("    [cyan]2[/cyan] - Skip for now")
+    console.print()
+
+    choice = Prompt.ask(
+        "  Enable Smart Standardization?",
+        choices=["1", "2"],
+        default="2",
+    )
+
+    if choice != "1":
+        console.print(
+            "  [dim]Skipped. Enable later: pip install 'lobster-ai[vector-search]' && lobster init --force[/dim]"
+        )
+        return []
+
+    env_lines: list[str] = []
+
+    # --- OpenAI API key ---
+    existing_key = os.environ.get("OPENAI_API_KEY", "")
+    if existing_key:
+        console.print(f"  [green]✓[/green] OPENAI_API_KEY detected (sk-...{existing_key[-4:]})")
+        env_lines.append(f"OPENAI_API_KEY={existing_key}")
+    else:
+        openai_key = Prompt.ask(
+            "  [bold white]Enter your OpenAI API key[/bold white]",
+            password=True,
+        )
+        openai_key = openai_key.strip()
+        if openai_key:
+            env_lines.append(f"OPENAI_API_KEY={openai_key}")
+            console.print("  [green]✓[/green] OpenAI API key configured")
+        else:
+            console.print(
+                "  [yellow]⚠ No API key provided. Smart Standardization requires an OpenAI key.[/yellow]"
+            )
+            return []
+
+    env_lines.append("LOBSTER_EMBEDDING_PROVIDER=openai")
+
+    # --- Install ChromaDB + OpenAI packages ---
+    console.print(
+        "\n  [dim]Installing Smart Standardization dependencies...[/dim]"
+    )
+    from lobster.cli_internal.commands.light.agent_commands import _uv_pip_install
+
+    s1, _ = _uv_pip_install("chromadb>=1.0.0")
+    s2, _ = _uv_pip_install("openai>=1.0.0")
+    if s1 and s2:
+        console.print("  [green]✓[/green] Dependencies installed")
+    else:
+        console.print(
+            "  [yellow]⚠ Install manually: pip install 'lobster-ai[vector-search]'[/yellow]"
+        )
+        return env_lines  # Return env lines even if install failed — user can retry
+
+    # --- Download ontology databases ---
+    console.print(
+        "\n  [dim]Downloading ontology databases (MONDO, UBERON, Cell Ontology)...[/dim]"
+    )
+    if _download_ontology_databases():
+        console.print("  [green]✓[/green] Ontology databases ready")
+    else:
+        console.print(
+            "  [yellow]⚠ Some databases failed to download. They will be auto-downloaded on first use.[/yellow]"
+        )
+
+    return env_lines
 
 
 def _install_extended_data() -> None:
@@ -4826,6 +5039,11 @@ def init(
         False,
         "--install-docling",
         help="Install docling for PDF intelligence (non-interactive mode)",
+    ),
+    install_vector_search: bool = typer.Option(
+        False,
+        "--install-vector-search",
+        help="Install semantic vector search deps (non-interactive mode)",
     ),
     skip_extras: bool = typer.Option(
         False,
@@ -5192,6 +5410,23 @@ def init(
                 else:
                     console.print(
                         "[yellow]⚠ Docling install failed. Run: pip install 'lobster-ai[docling]'[/yellow]"
+                    )
+
+            # Install vector search if requested (Smart Standardization — OpenAI)
+            if install_vector_search:
+                console.print("[dim]Installing Smart Standardization deps...[/dim]")
+                from lobster.cli_internal.commands.light.agent_commands import (
+                    _uv_pip_install,
+                )
+
+                s1, _ = _uv_pip_install("chromadb>=1.0.0")
+                s2, _ = _uv_pip_install("openai>=1.0.0")
+                if s1 and s2:
+                    console.print("[green]✓ Smart Standardization installed[/green]")
+                    env_lines.append("LOBSTER_EMBEDDING_PROVIDER=openai")
+                else:
+                    console.print(
+                        "[yellow]⚠ Install manually: pip install 'lobster-ai[vector-search]'[/yellow]"
                     )
 
             # Extended data + TUI (silent)
@@ -5864,17 +6099,23 @@ def init(
                     )
                     env_lines.append(f"LOBSTER_ENDPOINT={endpoint.strip()}")
 
-        # === OPTIONAL PACKAGE INSTALLATION (B2-B4) ===
+        # === OPTIONAL PACKAGE INSTALLATION (B2-B5) ===
         if not skip_extras and not _in_uv_tool:
             # Standard venv — install directly via pip/uv pip
             # B2: Document Intelligence (docling)
             if not skip_docling:
                 _prompt_docling_install()
 
-            # B3: Extended data access packages (silent, small)
+            # B3: Smart Standardization (replaces old vector search prompt)
+            smart_std_lines = _prompt_smart_standardization(
+                selected_agents=selected_agents,
+            )
+            env_lines.extend(smart_std_lines)
+
+            # B4: Extended data access packages (silent, small)
             _install_extended_data()
 
-            # B4: TUI support
+            # B5: TUI support
             _ensure_tui_installed()
         # === END OPTIONAL PACKAGE INSTALLATION ===
 
@@ -5976,10 +6217,24 @@ def init(
 
         # In uv tool env, offer to run `uv tool install` for new packages
         if _in_uv_tool:
+            # Check if user wants Smart Standardization (can't pip install in uv tool env)
+            _want_vector_search = False
+            if not skip_extras:
+                try:
+                    import chromadb  # noqa: F401
+                except ImportError:
+                    _vs_choice = Prompt.ask(
+                        "\n  Include Smart Standardization (ontology matching, OpenAI embeddings)?",
+                        choices=["y", "n"],
+                        default="n",
+                    )
+                    _want_vector_search = _vs_choice == "y"
+
             _uv_tool_env_handoff(
                 provider_name=provider_map.get(provider),
                 selected_agents=selected_agents,
                 skip_extras=skip_extras,
+                include_vector_search=_want_vector_search,
             )
 
     except KeyboardInterrupt:
@@ -6363,7 +6618,7 @@ def chat(
                     "[dim]◆ feedback: [link=https://forms.cloud.microsoft/e/AkNk8J8nE8]forms.cloud.microsoft/e/AkNk8J8nE8[/link][/dim]"
                 )
                 console.print(
-                    "[dim]◆ issues: [link=https://github.com/the-omics-os/lobster-local/issues]github.com/the-omics-os/lobster-local/issues[/link][/dim]"
+                    "[dim]◆ issues: [link=https://github.com/the-omics-os/lobster/issues]github.com/the-omics-os/lobster/issues[/link][/dim]"
                 )
 
                 # Display session token usage summary
@@ -7321,6 +7576,50 @@ when they are started by agents or analysis workflows.
             console.print("[cyan]Available: show, provider, model[/cyan]")
             return None
 
+    elif cmd.startswith("/vector-search"):
+        # Parse: /vector-search "query" [--top-k N]
+        raw_args = cmd[len("/vector-search"):].strip()
+        if not raw_args:
+            console.print("[cyan]Usage: /vector-search <query> [--top-k N][/cyan]")
+            console.print('[dim]Example: /vector-search "glioblastoma"[/dim]')
+            console.print("[dim]Example: /vector-search CD8+ T cell --top-k 10[/dim]")
+            return None
+
+        # Parse --top-k flag
+        vs_top_k = None
+        if "--top-k" in raw_args:
+            parts_vs = raw_args.split("--top-k")
+            raw_args = parts_vs[0].strip()
+            try:
+                vs_top_k = int(parts_vs[1].strip().split()[0])
+            except (ValueError, IndexError):
+                console.print("[yellow]Invalid --top-k value, using default (5)[/yellow]")
+
+        # Strip surrounding quotes from query
+        query_text = raw_args.strip().strip("\"'")
+        if not query_text:
+            console.print("[yellow]Please provide a search query.[/yellow]")
+            return None
+
+        try:
+            from lobster.cli_internal.commands import vector_search_all_collections
+
+            result = vector_search_all_collections(query_text, top_k=vs_top_k)
+            console.print()
+            console.print(
+                Syntax(json.dumps(result, indent=2), "json", theme="monokai", line_numbers=False)
+            )
+            console.print()
+            # Summary for conversation history
+            total = sum(len(v) for v in result["results"].values())
+            return f"Vector search for '{query_text}': {total} matches across 3 ontologies"
+        except ImportError as e:
+            console.print(f"[red]{e}[/red]")
+            return None
+        except Exception as e:
+            console.print(f"[red]Vector search error: {e}[/red]")
+            return None
+
     elif cmd == "/clear":
         console.clear()
 
@@ -7345,7 +7644,7 @@ when they are started by agents or analysis workflows.
                 "[dim]◆ feedback: [link=https://forms.cloud.microsoft/e/AkNk8J8nE8]forms.cloud.microsoft/e/AkNk8J8nE8[/link][/dim]"
             )
             console.print(
-                "[dim]◆ issues: [link=https://github.com/the-omics-os/lobster-local/issues]github.com/the-omics-os/lobster-local/issues[/link][/dim]"
+                "[dim]◆ issues: [link=https://github.com/the-omics-os/lobster/issues]github.com/the-omics-os/lobster/issues[/link][/dim]"
             )
 
             # Display session token usage summary
@@ -7786,6 +8085,7 @@ def _dispatch_command(cmd_str: str, client, output):
         queue_export,
         queue_list,
         show_queue_status,
+        vector_search_all_collections,
         workspace_info,
         workspace_list,
         workspace_load,
@@ -7982,6 +8282,44 @@ def _dispatch_command(cmd_str: str, client, output):
         else:
             return config_show(client, output)
 
+    # --- Vector search ---
+
+    elif base == "vector-search":
+        # Reassemble query from sub + args
+        query_text = ""
+        if sub:
+            query_text = sub
+            if args:
+                query_text = f"{sub} {args}"
+        query_text = query_text.strip().strip("\"'")
+        if not query_text:
+            output.print("Usage: vector-search <query> [--top-k N]", style="error")
+            return None
+
+        # Parse --top-k flag
+        vs_top_k = None
+        if "--top-k" in query_text:
+            tk_parts = query_text.split("--top-k")
+            query_text = tk_parts[0].strip()
+            try:
+                vs_top_k = int(tk_parts[1].strip().split()[0])
+            except (ValueError, IndexError):
+                pass
+
+        try:
+            result = vector_search_all_collections(query_text, top_k=vs_top_k)
+            import json as _json
+
+            output.print(_json.dumps(result, indent=2))
+            total = sum(len(v) for v in result["results"].values())
+            return f"Vector search for '{query_text}': {total} matches"
+        except ImportError as e:
+            output.print(str(e), style="error")
+            return None
+        except Exception as e:
+            output.print(f"Vector search error: {e}", style="error")
+            return None
+
     else:
         available = [
             "data",
@@ -7998,6 +8336,7 @@ def _dispatch_command(cmd_str: str, client, output):
             "restore [pattern]",
             "export [--no-png] [--force]",
             "config [provider list|model list]",
+            "vector-search <query>",
         ]
         output.print(f"Unknown command: {cmd_str}", style="error")
         output.print("Available commands: " + ", ".join(available), style="info")
@@ -8155,6 +8494,42 @@ def command_cmd(
             )
         else:
             console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command(name="vector-search")
+def vector_search_cmd(
+    query_text: str = typer.Argument(..., help="Biomedical term to search"),
+    top_k: Optional[int] = typer.Option(
+        None, "--top-k", "-k", help="Results per collection (default: 5)"
+    ),
+    pretty: bool = typer.Option(
+        True, "--pretty/--compact", help="Pretty-print or compact JSON"
+    ),
+):
+    """
+    Search all ontology collections via semantic vector similarity.
+
+    Queries MONDO (diseases), UBERON (tissues), and Cell Ontology (cell types)
+    and returns top N results per collection in JSON.
+
+    \b
+    Examples:
+      lobster vector-search "glioblastoma"
+      lobster vector-search "CD8+ T cell" --top-k 10
+      lobster vector-search "liver" --compact | jq '.results.uberon'
+    """
+    try:
+        from lobster.cli_internal.commands import vector_search_all_collections
+
+        result = vector_search_all_collections(query_text, top_k=top_k)
+        indent = 2 if pretty else None
+        print(json.dumps(result, indent=indent))
+    except ImportError as e:
+        console.print(f"[red]{e}[/red]", stderr=True)
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Vector search error: {e}[/red]", stderr=True)
         raise typer.Exit(1)
 
 

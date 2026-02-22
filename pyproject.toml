@@ -103,6 +103,13 @@ server = ["fastapi>=0.100.0", "uvicorn>=0.23.0", "python-multipart>=0.0.20"]
 tui = ["textual>=6.7.1"]
 
 # =============================================================================
+# Semantic Vector Search (optional, installed via `lobster init`)
+# =============================================================================
+vector-search = [
+    "lobster-metadata[vector-search]~=1.0.0",
+]
+
+# =============================================================================
 # Observability
 # =============================================================================
 observability = ["langfuse>=3.2.6", "redis>=6.4.0"]
@@ -179,7 +186,7 @@ recommended = ["lobster-ai[anthropic,transcriptomics,tui,extended-data]"]
 # Everything except docling and plink (which have platform constraints)
 full = [
     "lobster-ai[transcriptomics,genomics,proteomics,machine-learning]",
-    "lobster-ai[all-providers,tui,extended-data,hdf5,docling]",
+    "lobster-ai[all-providers,tui,extended-data,hdf5,docling,vector-search]",
 ]
 
 # =============================================================================
@@ -381,6 +388,9 @@ exclude = [
 
     # Research services
     "lobster.services.data_management.modality_detection_service",
+
+    # Vector search (moved to lobster-metadata)
+    "lobster.services.vector*",
 ]
 # Core keeps: supervisor, graph.py, state, services, tools, config, prompts
 
