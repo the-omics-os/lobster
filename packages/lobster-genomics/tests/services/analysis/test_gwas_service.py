@@ -10,6 +10,9 @@ This test suite covers:
 - 3-tuple return pattern validation
 - AnalysisStep IR generation
 - Scientific accuracy validation
+- LD pruning (ld_prune_variants)
+- Kinship computation (compute_kinship)
+- GWAS clumping (clump_gwas_results)
 """
 
 import numpy as np
@@ -689,3 +692,243 @@ class TestGWASServiceIntegration:
                 pytest.skip(f"SVD convergence issue (known Dask limitation): {e}")
             else:
                 raise
+
+
+# ===============================================================================
+# LD Pruning Tests
+# ===============================================================================
+
+
+@pytest.mark.unit
+class TestLDPruning:
+    """Test LD pruning functionality."""
+
+    def test_ld_prune_variants_basic(self, gwas_service, simple_gwas_adata):
+        """Test that LD pruning returns fewer variants than input."""
+        sg = pytest.importorskip("sgkit")
+
+        adata_pruned, stats, ir = gwas_service.ld_prune_variants(
+            simple_gwas_adata,
+            threshold=0.2,
+            window_size=500,
+        )
+
+        # Should return valid 3-tuple
+        assert isinstance(adata_pruned, AnnData)
+        assert isinstance(stats, dict)
+        assert isinstance(ir, AnalysisStep)
+
+        # Should have fewer or equal variants
+        assert adata_pruned.n_vars <= simple_gwas_adata.n_vars
+        assert adata_pruned.n_obs == simple_gwas_adata.n_obs
+
+        # Stats should be populated
+        assert stats["n_variants_before"] == simple_gwas_adata.n_vars
+        assert stats["n_variants_after"] == adata_pruned.n_vars
+        assert stats["n_variants_removed"] == stats["n_variants_before"] - stats["n_variants_after"]
+
+    def test_ld_prune_ir_structure(self, gwas_service, simple_gwas_adata):
+        """Test that LD prune IR has correct operation name."""
+        sg = pytest.importorskip("sgkit")
+
+        _, _, ir = gwas_service.ld_prune_variants(simple_gwas_adata)
+
+        assert ir.operation == "sgkit.ld_prune"
+        assert ir.library == "sgkit"
+        assert ir.tool_name == "ld_prune_variants"
+
+    def test_ld_prune_no_sgkit(self, gwas_service, simple_gwas_adata):
+        """Test that missing sgkit raises GWASError."""
+        from lobster.services.analysis.gwas_service import GWASError, SGKIT_AVAILABLE
+
+        if SGKIT_AVAILABLE:
+            pytest.skip("sgkit is installed, cannot test missing sgkit path")
+
+        with pytest.raises(GWASError, match="sgkit is required"):
+            gwas_service.ld_prune_variants(simple_gwas_adata)
+
+    def test_ld_prune_missing_genotype_layer(self, gwas_service, simple_gwas_adata):
+        """Test error when genotype layer doesn't exist."""
+        sg = pytest.importorskip("sgkit")
+        from lobster.services.analysis.gwas_service import GWASError
+
+        with pytest.raises(GWASError):
+            gwas_service.ld_prune_variants(
+                simple_gwas_adata, genotype_layer="nonexistent"
+            )
+
+
+# ===============================================================================
+# Kinship Tests
+# ===============================================================================
+
+
+@pytest.mark.unit
+class TestKinship:
+    """Test kinship computation functionality."""
+
+    def test_compute_kinship_basic(self, gwas_service, simple_gwas_adata):
+        """Test that kinship returns matrix in obsm and related pairs in uns."""
+        sg = pytest.importorskip("sgkit")
+
+        adata_kin, stats, ir = gwas_service.compute_kinship(
+            simple_gwas_adata,
+            kinship_threshold=0.125,
+        )
+
+        # Should return valid 3-tuple
+        assert isinstance(adata_kin, AnnData)
+        assert isinstance(stats, dict)
+        assert isinstance(ir, AnalysisStep)
+
+        # Kinship matrix should be in obsm
+        assert "kinship_matrix" in adata_kin.obsm
+        grm = adata_kin.obsm["kinship_matrix"]
+        assert grm.shape == (simple_gwas_adata.n_obs, simple_gwas_adata.n_obs)
+
+        # Related pairs should be in uns
+        assert "related_pairs" in adata_kin.uns
+        assert "kinship_threshold" in adata_kin.uns
+        assert isinstance(adata_kin.uns["related_pairs"], list)
+
+        # Stats should have expected keys
+        assert stats["n_samples"] == simple_gwas_adata.n_obs
+        assert stats["estimator"] == "VanRaden"
+        assert "mean_kinship" in stats
+        assert "max_kinship" in stats
+
+    def test_compute_kinship_ir_structure(self, gwas_service, simple_gwas_adata):
+        """Test that kinship IR has correct fields."""
+        sg = pytest.importorskip("sgkit")
+
+        _, _, ir = gwas_service.compute_kinship(simple_gwas_adata)
+
+        assert ir.operation == "sgkit.genomic_relationship"
+        assert ir.library == "sgkit"
+        assert ir.tool_name == "compute_kinship"
+
+
+# ===============================================================================
+# Clumping Tests
+# ===============================================================================
+
+
+@pytest.mark.unit
+class TestClumping:
+    """Test GWAS clumping functionality."""
+
+    @pytest.fixture
+    def gwas_adata_with_pvalues(self):
+        """Create AnnData with synthetic GWAS p-values for clumping tests."""
+        np.random.seed(42)
+        n_samples, n_variants = 50, 100
+
+        genotypes = np.random.choice([0, 1, 2], size=(n_samples, n_variants)).astype(float)
+        adata = AnnData(X=genotypes)
+
+        # Variant metadata with positions on two chromosomes
+        chroms = ["1"] * 50 + ["2"] * 50
+        positions = list(range(1000, 1000 + 50 * 100, 100)) + list(range(1000, 1000 + 50 * 100, 100))
+
+        adata.var = pd.DataFrame({
+            "CHROM": chroms,
+            "POS": positions,
+            "REF": ["A"] * n_variants,
+            "ALT": ["G"] * n_variants,
+        })
+
+        # Add synthetic p-values: some highly significant, most not
+        pvalues = np.random.uniform(0.01, 1.0, n_variants)
+        # Make a few variants very significant (within clumping distance)
+        pvalues[5] = 1e-10   # chr1, pos ~1500
+        pvalues[6] = 1e-9    # chr1, pos ~1600 (within 250kb)
+        pvalues[7] = 1e-8    # chr1, pos ~1700 (within 250kb)
+        pvalues[60] = 1e-12  # chr2, pos ~2000
+        adata.var["gwas_pvalue"] = pvalues
+        adata.layers["GT"] = genotypes.copy()
+        adata.uns["data_type"] = "genomics"
+
+        return adata
+
+    def test_clump_gwas_results_basic(self, gwas_service, gwas_adata_with_pvalues):
+        """Test that clumping assigns clump_id and creates clumps in uns."""
+        adata_clumped, stats, ir = gwas_service.clump_gwas_results(
+            gwas_adata_with_pvalues,
+            pvalue_threshold=5e-8,
+            clump_kb=250,
+        )
+
+        # Should return full adata (not subsetted)
+        assert adata_clumped.n_vars == gwas_adata_with_pvalues.n_vars
+
+        # clump_id should exist in var
+        assert "clump_id" in adata_clumped.var.columns
+
+        # gwas_clumps should exist in uns
+        assert "gwas_clumps" in adata_clumped.uns
+        clumps = adata_clumped.uns["gwas_clumps"]
+        assert isinstance(clumps, list)
+        assert len(clumps) > 0
+
+        # Stats should be populated
+        assert stats["n_significant"] > 0
+        assert stats["n_clumps"] > 0
+        assert stats["n_clumps"] <= stats["n_significant"]
+
+        # IR should be valid
+        assert ir.operation == "gwas_clumping"
+        assert ir.library == "lobster"
+
+    def test_clump_gwas_results_no_significant(self, gwas_service):
+        """Test clumping with no significant variants returns 0 clumps."""
+        np.random.seed(42)
+        n_samples, n_variants = 20, 30
+        genotypes = np.random.choice([0, 1, 2], size=(n_samples, n_variants)).astype(float)
+
+        adata = AnnData(X=genotypes)
+        adata.var = pd.DataFrame({
+            "CHROM": ["1"] * n_variants,
+            "POS": list(range(1000, 1000 + n_variants * 100, 100)),
+            "REF": ["A"] * n_variants,
+            "ALT": ["G"] * n_variants,
+            "gwas_pvalue": np.random.uniform(0.1, 1.0, n_variants),  # All non-significant
+        })
+        adata.layers["GT"] = genotypes.copy()
+
+        adata_clumped, stats, ir = gwas_service.clump_gwas_results(
+            adata,
+            pvalue_threshold=5e-8,
+        )
+
+        assert stats["n_significant"] == 0
+        assert stats["n_clumps"] == 0
+        assert adata_clumped.uns["gwas_clumps"] == []
+
+    def test_clump_gwas_results_missing_pvalue_col(self, gwas_service, simple_gwas_adata):
+        """Test error when pvalue column doesn't exist."""
+        from lobster.services.analysis.gwas_service import GWASError
+
+        with pytest.raises(GWASError, match="not found"):
+            gwas_service.clump_gwas_results(
+                simple_gwas_adata,
+                pvalue_col="nonexistent_column",
+            )
+
+    def test_clump_separate_chromosomes(self, gwas_service, gwas_adata_with_pvalues):
+        """Test that clumps do not span chromosomes."""
+        adata_clumped, stats, ir = gwas_service.clump_gwas_results(
+            gwas_adata_with_pvalues,
+            pvalue_threshold=5e-8,
+            clump_kb=250,
+        )
+
+        clumps = adata_clumped.uns["gwas_clumps"]
+
+        # Variants on chr1 and chr2 should be in separate clumps
+        for clump in clumps:
+            member_chroms = set()
+            for member_id in clump["member_ids"]:
+                member_chroms.add(str(adata_clumped.var.loc[member_id, "CHROM"]))
+            assert len(member_chroms) == 1, (
+                f"Clump spans multiple chromosomes: {member_chroms}"
+            )

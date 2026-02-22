@@ -1318,3 +1318,264 @@ print(f"Cumulative variance (top 5 PCs): {np.sum(variance_ratio[:5]):.1%}")
             validates_on_export=True,
             requires_validation=False,
         )
+
+    def _create_ld_prune_ir(
+        self,
+        threshold: float,
+        window_size: int,
+        genotype_layer: str,
+    ) -> AnalysisStep:
+        """Create AnalysisStep IR for LD pruning."""
+        parameter_schema = {
+            "threshold": ParameterSpec(
+                param_type="float",
+                papermill_injectable=True,
+                default_value=threshold,
+                required=False,
+                validation_rule="threshold > 0 and threshold < 1",
+                description="LD r^2 threshold for pruning",
+            ),
+            "window_size": ParameterSpec(
+                param_type="int",
+                papermill_injectable=True,
+                default_value=window_size,
+                required=False,
+                validation_rule="window_size > 0",
+                description="Number of variants per window",
+            ),
+            "genotype_layer": ParameterSpec(
+                param_type="str",
+                papermill_injectable=True,
+                default_value=genotype_layer,
+                required=False,
+                description="Layer containing genotype data",
+            ),
+        }
+
+        code_template = """# LD pruning to remove correlated variants
+import sgkit as sg
+import xarray as xr
+import numpy as np
+
+# Convert AnnData to sgkit Dataset and compute dosage
+# ... (genotype conversion as in GWAS code template)
+
+# Add variant_contig for windowing
+chroms = adata.var['CHROM'].astype(str).values
+unique_chroms = np.unique(chroms)
+chrom_to_idx = {c: i for i, c in enumerate(unique_chroms)}
+ds['variant_contig'] = ('variants', np.array([chrom_to_idx[c] for c in chroms], dtype=int))
+
+# Window then prune
+ds = sg.window_by_variant(ds, size={{ window_size }})
+ds_pruned = sg.ld_prune(ds, threshold={{ threshold }})
+
+# Subset AnnData to pruned variants
+pruned_ids = set(ds_pruned['variant_id'].values)
+keep_mask = np.isin(adata.var.index.values, list(pruned_ids))
+adata = adata[:, keep_mask].copy()
+
+print(f"LD pruning: {keep_mask.sum()}/{len(keep_mask)} variants retained")
+"""
+
+        return AnalysisStep(
+            operation="sgkit.ld_prune",
+            tool_name="ld_prune_variants",
+            description=f"LD pruning (r^2 threshold={threshold}, window={window_size})",
+            library="sgkit",
+            code_template=code_template,
+            imports=[
+                "import sgkit as sg",
+                "import xarray as xr",
+                "import numpy as np",
+            ],
+            parameters={
+                "threshold": threshold,
+                "window_size": window_size,
+                "genotype_layer": genotype_layer,
+            },
+            parameter_schema=parameter_schema,
+            input_entities=["adata"],
+            output_entities=["adata"],
+            execution_context={
+                "operation_type": "ld_pruning",
+                "threshold": threshold,
+            },
+            validates_on_export=True,
+            requires_validation=False,
+        )
+
+    def _create_kinship_ir(
+        self,
+        kinship_threshold: float,
+        genotype_layer: str,
+        estimator: str,
+    ) -> AnalysisStep:
+        """Create AnalysisStep IR for kinship computation."""
+        parameter_schema = {
+            "kinship_threshold": ParameterSpec(
+                param_type="float",
+                papermill_injectable=True,
+                default_value=kinship_threshold,
+                required=False,
+                description="Threshold for flagging related pairs",
+            ),
+            "estimator": ParameterSpec(
+                param_type="str",
+                papermill_injectable=True,
+                default_value=estimator,
+                required=False,
+                description="GRM estimator method",
+            ),
+            "genotype_layer": ParameterSpec(
+                param_type="str",
+                papermill_injectable=True,
+                default_value=genotype_layer,
+                required=False,
+                description="Layer containing genotype data",
+            ),
+        }
+
+        code_template = """# Compute kinship matrix (GRM)
+import sgkit as sg
+import numpy as np
+
+# Compute dosage and GRM
+ds['call_dosage'] = ds['call_genotype'].sum(dim='ploidy').transpose('variants', 'samples')
+ds = sg.genomic_relationship(ds, estimator={{ estimator | repr }})
+grm = ds['stat_genomic_relationship'].values
+
+# Store in AnnData
+adata.obsm['kinship_matrix'] = grm
+
+# Find related pairs
+related_pairs = []
+for i in range(grm.shape[0]):
+    for j in range(i + 1, grm.shape[1]):
+        if grm[i, j] > {{ kinship_threshold }}:
+            related_pairs.append((adata.obs.index[i], adata.obs.index[j], float(grm[i, j])))
+
+adata.uns['related_pairs'] = related_pairs
+adata.uns['kinship_threshold'] = {{ kinship_threshold }}
+print(f"Kinship: {len(related_pairs)} related pairs (threshold={{ kinship_threshold }})")
+"""
+
+        return AnalysisStep(
+            operation="sgkit.genomic_relationship",
+            tool_name="compute_kinship",
+            description=f"Kinship estimation ({estimator} GRM, threshold={kinship_threshold})",
+            library="sgkit",
+            code_template=code_template,
+            imports=[
+                "import sgkit as sg",
+                "import numpy as np",
+            ],
+            parameters={
+                "kinship_threshold": kinship_threshold,
+                "estimator": estimator,
+                "genotype_layer": genotype_layer,
+            },
+            parameter_schema=parameter_schema,
+            input_entities=["adata"],
+            output_entities=["adata"],
+            execution_context={
+                "operation_type": "kinship_estimation",
+                "estimator": estimator,
+            },
+            validates_on_export=True,
+            requires_validation=False,
+        )
+
+    def _create_clumping_ir(
+        self,
+        pvalue_threshold: float,
+        clump_kb: int,
+        pvalue_col: str,
+    ) -> AnalysisStep:
+        """Create AnalysisStep IR for GWAS clumping."""
+        parameter_schema = {
+            "pvalue_threshold": ParameterSpec(
+                param_type="float",
+                papermill_injectable=True,
+                default_value=pvalue_threshold,
+                required=False,
+                description="P-value threshold for significance",
+            ),
+            "clump_kb": ParameterSpec(
+                param_type="int",
+                papermill_injectable=True,
+                default_value=clump_kb,
+                required=False,
+                description="Clumping window size in kilobases",
+            ),
+            "pvalue_col": ParameterSpec(
+                param_type="str",
+                papermill_injectable=True,
+                default_value=pvalue_col,
+                required=False,
+                description="Column name with p-values",
+            ),
+        }
+
+        code_template = """# GWAS clumping - group significant variants into independent loci
+import numpy as np
+
+pvalue_col = {{ pvalue_col | repr }}
+pvalue_threshold = {{ pvalue_threshold }}
+clump_kb = {{ clump_kb }}
+clump_window_bp = clump_kb * 1000
+
+adata.var['clump_id'] = -1
+pvalues = adata.var[pvalue_col].values
+sig_mask = pvalues < pvalue_threshold
+sig_indices = np.where(sig_mask)[0]
+sorted_sig_indices = sig_indices[np.argsort(pvalues[sig_indices])]
+
+claimed = set()
+clumps = []
+clump_id = 0
+
+for idx_variant in sorted_sig_indices:
+    if idx_variant in claimed:
+        continue
+    idx_pos = int(adata.var['POS'].iloc[idx_variant])
+    idx_chrom = str(adata.var['CHROM'].iloc[idx_variant])
+    member_indices = [idx_variant]
+    for other_idx in sorted_sig_indices:
+        if other_idx == idx_variant or other_idx in claimed:
+            continue
+        if (str(adata.var['CHROM'].iloc[other_idx]) == idx_chrom and
+                abs(int(adata.var['POS'].iloc[other_idx]) - idx_pos) < clump_window_bp):
+            member_indices.append(other_idx)
+    for m in member_indices:
+        adata.var.iloc[m, adata.var.columns.get_loc('clump_id')] = clump_id
+        claimed.add(m)
+    clumps.append({'index_variant': adata.var.index[idx_variant], 'n_members': len(member_indices)})
+    clump_id += 1
+
+adata.uns['gwas_clumps'] = clumps
+print(f"Clumping: {len(clumps)} clumps from {sig_mask.sum()} significant variants")
+"""
+
+        return AnalysisStep(
+            operation="gwas_clumping",
+            tool_name="clump_gwas_results",
+            description=f"GWAS clumping (p < {pvalue_threshold}, window={clump_kb}kb)",
+            library="lobster",
+            code_template=code_template,
+            imports=["import numpy as np"],
+            parameters={
+                "pvalue_threshold": pvalue_threshold,
+                "clump_kb": clump_kb,
+                "pvalue_col": pvalue_col,
+            },
+            parameter_schema=parameter_schema,
+            input_entities=["adata"],
+            output_entities=["adata"],
+            execution_context={
+                "operation_type": "gwas_clumping",
+                "pvalue_threshold": pvalue_threshold,
+            },
+            validates_on_export=True,
+            requires_validation=False,
+        )
