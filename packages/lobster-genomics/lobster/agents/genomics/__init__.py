@@ -10,11 +10,16 @@ from lobster.agents.genomics.config import (
     SUPPORTED_FORMATS,
 )
 from lobster.agents.genomics.genomics_expert import genomics_expert
-from lobster.agents.genomics.prompts import create_genomics_expert_prompt
+from lobster.agents.genomics.prompts import (
+    create_genomics_expert_prompt,
+    create_variant_analysis_expert_prompt,
+)
+from lobster.agents.genomics.variant_analysis_expert import variant_analysis_expert
 
 __all__ = [
-    # Main agent
+    # Main agents
     "genomics_expert",
+    "variant_analysis_expert",
     # Configuration
     "AGENT_NAME",
     "AGENT_DISPLAY_NAME",
@@ -24,4 +29,5 @@ __all__ = [
     "SUPPORTED_FORMATS",
     # Prompts
     "create_genomics_expert_prompt",
+    "create_variant_analysis_expert_prompt",
 ]

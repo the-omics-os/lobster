@@ -43,6 +43,7 @@ Repository = "https://github.com/the-omics-os/lobster"
 
 [project.entry-points."lobster.agents"]
 genomics_expert = "lobster.agents.genomics.genomics_expert:AGENT_CONFIG"
+variant_analysis_expert = "lobster.agents.genomics.variant_analysis_expert:AGENT_CONFIG"
 
 [tool.setuptools.package-data]
 "*" = ["py.typed"]
