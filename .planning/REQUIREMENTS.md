@@ -17,14 +17,14 @@
 
 ### Genomics Child (variant_analysis_expert — NEW)
 
-- [ ] **GEN-08**: Create variant_analysis_expert child agent with modular folder structure
-- [ ] **GEN-09**: Implement `normalize_variants` tool — left-align indels, split multiallelic
-- [ ] **GEN-10**: Implement `predict_consequences` tool — VEP batch annotation with SIFT/PolyPhen/CADD
+- [x] **GEN-08**: Create variant_analysis_expert child agent with modular folder structure
+- [x] **GEN-09**: Implement `normalize_variants` tool — left-align indels, split multiallelic
+- [x] **GEN-10**: Implement `predict_consequences` tool — VEP batch annotation with SIFT/PolyPhen/CADD
 - [x] **GEN-11**: Implement `query_population_frequencies` tool — gnomAD allele frequency lookup
 - [x] **GEN-12**: Implement `query_clinical_databases` tool — ClinVar pathogenicity and disease associations
 - [x] **GEN-13**: Implement `prioritize_variants` tool — rank by consequence severity + frequency + pathogenicity
-- [ ] **GEN-14**: Implement `lookup_variant` tool — single-variant comprehensive lookup by rsID/coordinates
-- [ ] **GEN-15**: Implement `retrieve_sequence` tool — Ensembl sequence fetch (relocated from parent)
+- [x] **GEN-14**: Implement `lookup_variant` tool — single-variant comprehensive lookup by rsID/coordinates
+- [x] **GEN-15**: Implement `retrieve_sequence` tool — Ensembl sequence fetch (relocated from parent)
 - [x] **GEN-16**: Implement `summarize_modality` tool — shared with parent
 
 ### SC Transcriptomics Parent (transcriptomics_expert)
@@ -192,14 +192,14 @@
 | GEN-05 | Phase 1 | Complete |
 | GEN-06 | Phase 1 | Complete |
 | GEN-07 | Phase 1 | Complete |
-| GEN-08 | Phase 1 | Pending |
-| GEN-09 | Phase 1 | Pending |
-| GEN-10 | Phase 1 | Pending |
+| GEN-08 | Phase 1 | Complete |
+| GEN-09 | Phase 1 | Complete |
+| GEN-10 | Phase 1 | Complete |
 | GEN-11 | Phase 1 | Complete |
 | GEN-12 | Phase 1 | Complete |
 | GEN-13 | Phase 1 | Complete |
-| GEN-14 | Phase 1 | Pending |
-| GEN-15 | Phase 1 | Pending |
+| GEN-14 | Phase 1 | Complete |
+| GEN-15 | Phase 1 | Complete |
 | GEN-16 | Phase 1 | Complete |
 | SCT-01 | Phase 2 | Pending |
 | SCT-02 | Phase 2 | Pending |
