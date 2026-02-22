@@ -470,6 +470,128 @@ def create_sequence_retrieval_tool(data_manager: DataManagerV2):
 
 
 # =============================================================================
+# Tool 4: Summarize Modality (shared across agents)
+# =============================================================================
+
+
+def create_summarize_modality_tool(data_manager: DataManagerV2):
+    """
+    Factory for summarize_modality tool — merges list_modalities + get_modality_info.
+
+    This tool consolidates two previously separate tools into one, reducing
+    LLM confusion about which to call. If modality_name is given, returns
+    detailed info; if omitted, lists all loaded modalities.
+
+    Assigned to: genomics_expert (pilot), will expand to other agents.
+
+    Args:
+        data_manager: DataManagerV2 instance for modality access and logging
+
+    Returns:
+        LangChain tool for modality inspection
+    """
+
+    @tool
+    def summarize_modality(modality_name: Optional[str] = None) -> str:
+        """
+        List all loaded modalities or get detailed info about a specific one.
+
+        If modality_name is provided, returns detailed information (dimensions,
+        metadata, QC status, layers, columns). If omitted, lists all modalities
+        with basic info.
+
+        Args:
+            modality_name: Optional name of specific modality to inspect.
+                          If None, lists all loaded modalities.
+
+        Returns:
+            Modality summary or detailed information.
+        """
+        try:
+            if modality_name is None:
+                # List all modalities
+                all_modalities = data_manager.list_modalities()
+                if not all_modalities:
+                    return "No modalities loaded yet. Use data loading tools to load data."
+
+                lines = [f"**Loaded Modalities** ({len(all_modalities)} total):\n"]
+                for mod_name in all_modalities:
+                    try:
+                        adata = data_manager.get_modality(mod_name)
+                        data_type = adata.uns.get("data_type", "unknown")
+                        layers = list(adata.layers.keys()) if adata.layers else []
+                        lines.append(
+                            f"  - **{mod_name}** ({data_type}): "
+                            f"{adata.n_obs:,} obs x {adata.n_vars:,} vars"
+                            f"{f', layers: {layers}' if layers else ''}"
+                        )
+                    except Exception:
+                        lines.append(f"  - **{mod_name}**: (error reading)")
+
+                data_manager.log_tool_usage(
+                    tool_name="summarize_modality",
+                    parameters={"modality_name": None},
+                    description=f"Listed {len(all_modalities)} modalities",
+                )
+                return "\n".join(lines)
+
+            else:
+                # Detailed info for specific modality
+                all_modalities = data_manager.list_modalities()
+                if modality_name not in all_modalities:
+                    return (
+                        f"Modality '{modality_name}' not found. "
+                        f"Available: {all_modalities}"
+                    )
+
+                adata = data_manager.get_modality(modality_name)
+
+                data_type = adata.uns.get("data_type", "unknown")
+                modality_type = adata.uns.get("modality", "unknown")
+                source_file = adata.uns.get("source_file", "N/A")
+
+                has_qc = "call_rate" in adata.obs.columns or "qc_pass" in adata.var.columns
+
+                lines = [
+                    f"**Modality: '{modality_name}'**\n",
+                    f"**Dimensions:** {adata.n_obs:,} obs x {adata.n_vars:,} vars",
+                    f"**Data type:** {data_type}",
+                    f"**Modality:** {modality_type}",
+                    f"**Source file:** {source_file}",
+                    f"\n**obs columns ({len(adata.obs.columns)}):** {list(adata.obs.columns)}",
+                    f"**var columns ({len(adata.var.columns)}):** {list(adata.var.columns)}",
+                    f"**Layers:** {list(adata.layers.keys()) if adata.layers else 'None'}",
+                    f"**obsm keys:** {list(adata.obsm.keys()) if adata.obsm else 'None'}",
+                    f"**uns keys:** {list(adata.uns.keys()) if adata.uns else 'None'}",
+                    f"**QC metrics present:** {'Yes' if has_qc else 'No'}",
+                ]
+
+                if has_qc:
+                    if "call_rate" in adata.obs.columns:
+                        lines.append(
+                            f"  - Mean sample call rate: {adata.obs['call_rate'].mean():.4f}"
+                        )
+                    if "qc_pass" in adata.var.columns:
+                        n_pass = int(adata.var["qc_pass"].sum())
+                        lines.append(
+                            f"  - Variants passing QC: {n_pass:,}/{adata.n_vars:,}"
+                        )
+
+                data_manager.log_tool_usage(
+                    tool_name="summarize_modality",
+                    parameters={"modality_name": modality_name},
+                    description=f"Detailed info for modality '{modality_name}'",
+                )
+                return "\n".join(lines)
+
+        except Exception as e:
+            logger.error(f"Error in summarize_modality: {e}")
+            return f"Error: {str(e)}"
+
+    return summarize_modality
+
+
+# =============================================================================
 # Module Exports
 # =============================================================================
 
@@ -477,4 +599,5 @@ __all__ = [
     "create_cross_database_id_mapping_tool",
     "create_variant_consequence_tool",
     "create_sequence_retrieval_tool",
+    "create_summarize_modality_tool",
 ]

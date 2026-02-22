@@ -41,6 +41,7 @@ from lobster.services.analysis.gwas_service import GWASService
 from lobster.services.analysis.variant_annotation_service import (
     VariantAnnotationService,
 )
+from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.tools.knowledgebase_tools import (
     create_variant_consequence_tool,
     create_sequence_retrieval_tool,
@@ -173,7 +174,55 @@ def genomics_expert(
             # Get basic stats
             has_gt = "GT" in adata.layers
 
-            # Log operation (no IR for loading in Phase 1, will add in Phase 2)
+            # Create provenance IR for notebook export
+            ir = AnalysisStep(
+                operation="cyvcf2.VCF.load",
+                tool_name="load_vcf",
+                description=f"Load VCF file: {n_samples} samples x {n_variants} variants",
+                library="cyvcf2",
+                code_template="""# Load VCF file
+import cyvcf2
+import anndata as ad
+import numpy as np
+from lobster.core.adapters.genomics.vcf_adapter import VCFAdapter
+
+adapter = VCFAdapter(strict_validation=False)
+adata = adapter.from_source(
+    source={{ file_path | repr }},
+    region={{ region | repr }},
+    samples={{ samples | repr }},
+    filter_pass={{ filter_pass }},
+    max_variants={{ max_variants }},
+)""",
+                imports=["import cyvcf2", "import anndata as ad", "import numpy as np"],
+                parameters={
+                    "file_path": file_path,
+                    "region": region,
+                    "samples": sample_list,
+                    "filter_pass": filter_pass,
+                    "max_variants": max_variants,
+                },
+                parameter_schema={
+                    "file_path": ParameterSpec(
+                        param_type="str",
+                        papermill_injectable=True,
+                        default_value=file_path,
+                        required=True,
+                        description="Path to VCF file",
+                    ),
+                    "modality_name": ParameterSpec(
+                        param_type="str",
+                        papermill_injectable=True,
+                        default_value=modality_name,
+                        required=True,
+                        description="Modality name",
+                    ),
+                },
+                input_entities=[],
+                output_entities=["adata"],
+            )
+
+            # Log operation with IR
             data_manager.log_tool_usage(
                 tool_name="load_vcf",
                 parameters={
@@ -185,6 +234,7 @@ def genomics_expert(
                     "max_variants": max_variants,
                 },
                 description=f"Loaded VCF file: {n_samples} samples x {n_variants} variants",
+                ir=ir,
             )
 
             # Check if variants were truncated
@@ -268,7 +318,46 @@ def genomics_expert(
             if "maf" in adata.var.columns:
                 mean_maf = adata.var["maf"].mean()
 
-            # Log operation
+            # Create provenance IR for notebook export
+            ir = AnalysisStep(
+                operation="bed_reader.open_bed",
+                tool_name="load_plink",
+                description=f"Load PLINK file: {n_individuals} individuals x {n_snps} SNPs",
+                library="bed-reader",
+                code_template="""# Load PLINK file
+from lobster.core.adapters.genomics.plink_adapter import PLINKAdapter
+
+adapter = PLINKAdapter(strict_validation=False)
+adata = adapter.from_source(
+    source={{ file_path | repr }},
+    maf_min={{ maf_min | repr }},
+)""",
+                imports=["from lobster.core.adapters.genomics.plink_adapter import PLINKAdapter"],
+                parameters={
+                    "file_path": file_path,
+                    "maf_min": maf_min,
+                },
+                parameter_schema={
+                    "file_path": ParameterSpec(
+                        param_type="str",
+                        papermill_injectable=True,
+                        default_value=file_path,
+                        required=True,
+                        description="Path to PLINK .bed file",
+                    ),
+                    "modality_name": ParameterSpec(
+                        param_type="str",
+                        papermill_injectable=True,
+                        default_value=modality_name,
+                        required=True,
+                        description="Modality name",
+                    ),
+                },
+                input_entities=[],
+                output_entities=["adata"],
+            )
+
+            # Log operation with IR
             data_manager.log_tool_usage(
                 tool_name="load_plink",
                 parameters={
@@ -277,6 +366,7 @@ def genomics_expert(
                     "maf_min": maf_min,
                 },
                 description=f"Loaded PLINK file: {n_individuals} individuals x {n_snps} SNPs",
+                ir=ir,
             )
 
             response = f"""Successfully loaded PLINK file: '{modality_name}'
