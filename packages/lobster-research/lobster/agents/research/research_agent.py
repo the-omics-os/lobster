@@ -192,6 +192,29 @@ def research_agent(
             logger.debug("Lazy-loaded QueuePreparationService")
         return _queue_preparation_service
 
+    _uniprot_service = None
+    _ensembl_service = None
+
+    def _get_uniprot_service():
+        """Lazy loader for UniProtService."""
+        nonlocal _uniprot_service
+        if _uniprot_service is None:
+            from lobster.services.data_access.uniprot_service import UniProtService
+
+            _uniprot_service = UniProtService()
+            logger.debug("Lazy-loaded UniProtService")
+        return _uniprot_service
+
+    def _get_ensembl_service():
+        """Lazy loader for EnsemblService."""
+        nonlocal _ensembl_service
+        if _ensembl_service is None:
+            from lobster.services.data_access.ensembl_service import EnsemblService
+
+            _ensembl_service = EnsemblService()
+            logger.debug("Lazy-loaded EnsemblService")
+        return _ensembl_service
+
     # Premium feature - only instantiate if available
     publication_processing_service = None
     if HAS_PUBLICATION_PROCESSING:
@@ -367,6 +390,11 @@ def research_agent(
             )
 
             logger.debug(f"Dataset discovery completed for: {identifier}")
+            data_manager.log_tool_usage(
+                tool_name="find_related_entries",
+                parameters={"identifier": identifier, "dataset_types": dataset_types},
+                description=f"Found related entries for: {identifier}",
+            )
             return results
 
         except Exception as e:
@@ -510,11 +538,12 @@ def research_agent(
         explicitly specified via the database parameter.
 
         Args:
-            identifier: Publication identifier (DOI or PMID) or dataset accession (GSE, SRA, PXD, MSV)
+            identifier: Publication identifier (DOI or PMID), dataset accession (GSE, SRA, PXD, MSV),
+                       protein accession (UniProt e.g. P04637), or gene ID (Ensembl e.g. ENSG00000141510)
             source: Source hint for publications (default: "auto", options: "auto,pubmed,biorxiv,medrxiv")
-            database: Database hint for explicit routing (options: "geo", "sra", "pride", "massive", "pubmed").
-                     If None, auto-detects from identifier format. Use this to force interpretation
-                     when identifier format is ambiguous.
+            database: Database hint for explicit routing (options: "geo", "sra", "pride", "massive",
+                     "pubmed", "uniprot", "ensembl"). If None, auto-detects from identifier format.
+                     Use this to force interpretation when identifier format is ambiguous.
             level: Metadata verbosity level (default: "standard", options: "brief", "standard", "full").
                    Controls output length to prevent context overflow:
                    - "brief": Essential fields only (accession, title, status, pubmed_id, summary)
@@ -566,14 +595,173 @@ def research_agent(
                 ):
                     database = "pubmed"
                 else:
-                    # Default to publication metadata extraction
-                    database = "pubmed"
-                    logger.info(
-                        f"Auto-detected database type as publication for: {identifier}"
-                    )
+                    # Try knowledgebase identifiers (UniProt, Ensembl)
+                    from lobster.core.identifiers import get_accession_resolver
+
+                    _resolver = get_accession_resolver()
+                    if _resolver.is_uniprot_identifier(identifier):
+                        database = "uniprot"
+                    elif _resolver.is_ensembl_identifier(identifier):
+                        database = "ensembl"
+                    else:
+                        # Default to publication metadata extraction
+                        database = "pubmed"
+                        logger.info(
+                            f"Auto-detected database type as publication for: {identifier}"
+                        )
 
             # Route to appropriate metadata extraction based on database
-            if database.lower() in ["geo", "sra", "pride", "massive"]:
+            if database.lower() == "uniprot":
+                # UniProt protein metadata extraction
+                logger.info(f"Extracting UniProt protein metadata for: {identifier}")
+                try:
+                    service = _get_uniprot_service()
+                    protein = service.get_protein(identifier)
+
+                    formatted = f"## UniProt Protein Metadata for {identifier}\n\n"
+                    formatted += "**Database**: UniProt\n"
+                    formatted += f"**Accession**: {protein.get('primaryAccession', identifier)}\n"
+                    formatted += f"**Entry Name**: {protein.get('uniProtkbId', 'N/A')}\n"
+
+                    # Protein name
+                    prot_desc = protein.get("proteinDescription", {})
+                    rec_name = prot_desc.get("recommendedName", {})
+                    full_name = rec_name.get("fullName", {}).get("value", "")
+                    if full_name:
+                        formatted += f"**Protein Name**: {full_name}\n"
+
+                    # Gene name
+                    genes = protein.get("genes", [])
+                    if genes:
+                        gene_name = genes[0].get("geneName", {}).get("value", "")
+                        if gene_name:
+                            formatted += f"**Gene**: {gene_name}\n"
+                        synonyms = [
+                            s.get("value", "")
+                            for s in genes[0].get("synonyms", [])
+                        ]
+                        if synonyms:
+                            formatted += f"**Gene Synonyms**: {', '.join(synonyms)}\n"
+
+                    # Organism
+                    organism = protein.get("organism", {})
+                    sci_name = organism.get("scientificName", "")
+                    if sci_name:
+                        formatted += f"**Organism**: {sci_name}\n"
+                        tax_id = organism.get("taxonId", "")
+                        if tax_id:
+                            formatted += f"**Taxonomy ID**: {tax_id}\n"
+
+                    # Function
+                    comments = protein.get("comments", [])
+                    for comment in comments:
+                        if comment.get("commentType") == "FUNCTION":
+                            texts = comment.get("texts", [])
+                            if texts:
+                                func_text = texts[0].get("value", "")
+                                if func_text:
+                                    preview = func_text[:500] if level == "standard" else func_text
+                                    formatted += f"\n**Function**:\n{preview}{'...' if len(func_text) > 500 and level == 'standard' else ''}\n"
+                            break
+
+                    # Subcellular location
+                    for comment in comments:
+                        if comment.get("commentType") == "SUBCELLULAR LOCATION":
+                            locations = comment.get("subcellularLocations", [])
+                            loc_names = []
+                            for loc in locations:
+                                loc_val = loc.get("location", {}).get("value", "")
+                                if loc_val:
+                                    loc_names.append(loc_val)
+                            if loc_names:
+                                formatted += f"**Subcellular Location**: {', '.join(loc_names)}\n"
+                            break
+
+                    # Sequence length
+                    sequence = protein.get("sequence", {})
+                    seq_len = sequence.get("length", 0)
+                    if seq_len:
+                        formatted += f"**Sequence Length**: {seq_len} amino acids\n"
+                        formatted += f"**Molecular Weight**: {sequence.get('molWeight', 'N/A')} Da\n"
+
+                    # Keywords
+                    keywords = protein.get("keywords", [])
+                    if keywords and level in ["standard", "full"]:
+                        kw_names = [kw.get("name", "") for kw in keywords[:10]]
+                        formatted += f"**Keywords**: {', '.join(kw_names)}\n"
+
+                    logger.info(f"UniProt metadata extraction completed for: {identifier}")
+                    data_manager.log_tool_usage(
+                        tool_name="get_dataset_metadata",
+                        parameters={"identifier": identifier, "database": "uniprot"},
+                        description=f"UniProt metadata: {identifier}",
+                    )
+                    return formatted
+
+                except Exception as e:
+                    logger.error(f"Error fetching UniProt metadata: {e}")
+                    return f"Error fetching UniProt metadata for {identifier}: {str(e)}"
+
+            elif database.lower() == "ensembl":
+                # Ensembl gene/transcript metadata extraction
+                logger.info(f"Extracting Ensembl metadata for: {identifier}")
+                try:
+                    service = _get_ensembl_service()
+                    gene = service.lookup_gene(identifier, expand=(level == "full"))
+
+                    formatted = f"## Ensembl Metadata for {identifier}\n\n"
+                    formatted += "**Database**: Ensembl\n"
+                    formatted += f"**ID**: {gene.get('id', identifier)}\n"
+                    formatted += f"**Display Name**: {gene.get('display_name', 'N/A')}\n"
+
+                    description = gene.get("description", "")
+                    if description:
+                        formatted += f"**Description**: {description}\n"
+
+                    formatted += f"**Biotype**: {gene.get('biotype', 'N/A')}\n"
+                    formatted += f"**Species**: {gene.get('species', 'N/A')}\n"
+                    formatted += f"**Assembly**: {gene.get('assembly_name', 'N/A')}\n"
+
+                    # Genomic location
+                    seq_region = gene.get("seq_region_name", "")
+                    start = gene.get("start", "")
+                    end = gene.get("end", "")
+                    strand = gene.get("strand", "")
+                    if seq_region and start and end:
+                        strand_str = "+" if strand == 1 else "-" if strand == -1 else str(strand)
+                        formatted += f"**Location**: {seq_region}:{start}-{end} ({strand_str})\n"
+
+                    # Object type
+                    obj_type = gene.get("object_type", "")
+                    if obj_type:
+                        formatted += f"**Type**: {obj_type}\n"
+
+                    # Transcript list (in full/standard mode)
+                    transcripts = gene.get("Transcript", [])
+                    if transcripts and level in ["standard", "full"]:
+                        formatted += f"\n**Transcripts** ({len(transcripts)}):\n"
+                        for tx in transcripts[:5]:
+                            tx_id = tx.get("id", "?")
+                            tx_biotype = tx.get("biotype", "")
+                            is_canonical = tx.get("is_canonical", 0)
+                            canonical_str = " [canonical]" if is_canonical else ""
+                            formatted += f"  - {tx_id} ({tx_biotype}){canonical_str}\n"
+                        if len(transcripts) > 5:
+                            formatted += f"  ... and {len(transcripts) - 5} more\n"
+
+                    logger.info(f"Ensembl metadata extraction completed for: {identifier}")
+                    data_manager.log_tool_usage(
+                        tool_name="get_dataset_metadata",
+                        parameters={"identifier": identifier, "database": "ensembl"},
+                        description=f"Ensembl metadata: {identifier}",
+                    )
+                    return formatted
+
+                except Exception as e:
+                    logger.error(f"Error fetching Ensembl metadata: {e}")
+                    return f"Error fetching Ensembl metadata for {identifier}: {str(e)}"
+
+            elif database.lower() in ["geo", "sra", "pride", "massive"]:
                 # Dataset metadata extraction
                 logger.info(
                     f"Extracting {database.upper()} dataset metadata for: {identifier}"
@@ -649,6 +837,11 @@ def research_agent(
                         logger.info(
                             f"GEO metadata extraction completed for: {identifier}"
                         )
+                        data_manager.log_tool_usage(
+                            tool_name="get_dataset_metadata",
+                            parameters={"identifier": identifier, "database": "geo"},
+                            description=f"GEO metadata: {identifier}",
+                        )
                         return formatted
                     except Exception as e:
                         logger.error(f"Error fetching GEO metadata: {e}")
@@ -705,6 +898,11 @@ def research_agent(
 
                         logger.info(
                             f"PRIDE metadata extraction completed for: {identifier}"
+                        )
+                        data_manager.log_tool_usage(
+                            tool_name="get_dataset_metadata",
+                            parameters={"identifier": identifier, "database": "pride"},
+                            description=f"PRIDE metadata: {identifier}",
                         )
                         return formatted
 
@@ -766,6 +964,11 @@ def research_agent(
                         logger.info(
                             f"MassIVE metadata extraction completed for: {identifier}"
                         )
+                        data_manager.log_tool_usage(
+                            tool_name="get_dataset_metadata",
+                            parameters={"identifier": identifier, "database": "massive"},
+                            description=f"MassIVE metadata: {identifier}",
+                        )
                         return formatted
 
                     except Exception as e:
@@ -809,6 +1012,11 @@ def research_agent(
                     formatted += f"\n**Abstract**:\n{metadata.abstract[:1000]}{'...' if len(metadata.abstract) > 1000 else ''}\n"
 
                 logger.debug(f"Metadata extraction completed for: {identifier}")
+                data_manager.log_tool_usage(
+                    tool_name="get_dataset_metadata",
+                    parameters={"identifier": identifier, "database": "pubmed"},
+                    description=f"Publication metadata: {identifier}",
+                )
                 return formatted
 
         except Exception as e:
@@ -961,6 +1169,11 @@ def research_agent(
                             ]
                         )
 
+                data_manager.log_tool_usage(
+                    tool_name="validate_dataset_metadata",
+                    parameters={"identifier": identifier, "add_to_queue": add_to_queue},
+                    description=f"Metadata validation (cached): {identifier}",
+                )
                 return "\n".join(response_parts)
 
             # ------------------------------------------------
@@ -1063,6 +1276,11 @@ def research_agent(
                                 # Return validation result even if queue addition fails
                                 report += f"\n\n⚠️ Warning: Could not add to download queue: {str(e)}\n"
 
+                        data_manager.log_tool_usage(
+                            tool_name="validate_dataset_metadata",
+                            parameters={"identifier": identifier, "add_to_queue": add_to_queue},
+                            description=f"Metadata validation: {identifier}",
+                        )
                         return report
                     else:
                         return f"Error: Failed to validate metadata for {identifier}"
@@ -1183,6 +1401,11 @@ def research_agent(
                 f"(database={database})"
             )
 
+            data_manager.log_tool_usage(
+                tool_name="prepare_dataset_download",
+                parameters={"accession": accession, "priority": priority},
+                description=f"Download prepared: {accession}",
+            )
             return "\n".join(report_parts)
 
         except Exception as e:
@@ -1321,6 +1544,11 @@ def research_agent(
                 logger.info(
                     f"Batch processing complete: {len(batch_results)} papers processed"
                 )
+                data_manager.log_tool_usage(
+                    tool_name="extract_methods",
+                    parameters={"identifiers": ",".join(identifiers), "focus": focus, "batch_size": len(identifiers)},
+                    description=f"Batch method extraction: {len(batch_results)} papers",
+                )
                 return response
 
             else:
@@ -1375,6 +1603,11 @@ def research_agent(
                     f"Successfully extracted methods from paper: {identifier[:80]}..."
                 )
 
+                data_manager.log_tool_usage(
+                    tool_name="extract_methods",
+                    parameters={"identifier": identifier, "focus": focus},
+                    description=f"Method extraction: {identifier}",
+                )
                 return f"## Extracted Methods from Paper\n\n{formatted}\n\n**Source Type**: {content.get('source_type')}\n**Extraction Time**: {content.get('extraction_time', 0):.2f}s"
 
         except Exception as e:
@@ -1457,6 +1690,11 @@ def research_agent(
 
             logger.info(
                 f"Successfully retrieved abstract: {len(metadata.abstract)} chars"
+            )
+            data_manager.log_tool_usage(
+                tool_name="fast_abstract_search",
+                parameters={"identifier": identifier},
+                description=f"Abstract retrieval: {identifier}",
             )
             return response
 
@@ -1570,6 +1808,11 @@ Could not retrieve abstract for: {identifier}
                     logger.info(
                         f"Successfully extracted webpage: {len(markdown_content)} chars"
                     )
+                    data_manager.log_tool_usage(
+                        tool_name="read_full_publication",
+                        parameters={"identifier": identifier, "prefer_webpage": prefer_webpage},
+                        description=f"Publication read: {identifier} via webpage",
+                    )
                     return response
 
                 except Exception as webpage_error:
@@ -1615,6 +1858,11 @@ Could not retrieve abstract for: {identifier}
 
             logger.info(
                 f"Successfully extracted content via UnifiedContentService: {len(content)} chars"
+            )
+            data_manager.log_tool_usage(
+                tool_name="read_full_publication",
+                parameters={"identifier": identifier, "prefer_webpage": prefer_webpage},
+                description=f"Publication read: {identifier} via {tier_used}",
             )
             return response
 
@@ -1929,6 +2177,11 @@ Could not extract content for: {identifier}
         outcome = publication_processing_service.process_entry(
             entry_id=resolved_entry_id, extraction_tasks=extraction_tasks
         )
+        data_manager.log_tool_usage(
+            tool_name="process_publication_entry",
+            parameters={"entry_id": resolved_entry_id, "extraction_tasks": extraction_tasks},
+            description=f"Publication processed: {resolved_entry_id}",
+        )
         return outcome.response_markdown
 
     @tool
@@ -2029,16 +2282,27 @@ Could not extract content for: {identifier}
                 max_workers=parallel_workers,
                 show_progress=True,
             )
+            data_manager.log_tool_usage(
+                tool_name="process_publication_queue",
+                parameters={"status_filter": status_filter, "max_entries": max_entries},
+                description=f"Batch processing: {len(entry_ids)} entries (parallel)",
+            )
             return result.to_summary_string()
         else:
             # Sequential processing
             # Force reprocess mode: pass None to process all entries
             final_status_filter = None if force_reprocess else status_filter
-            return publication_processing_service.process_queue_entries(
+            result = publication_processing_service.process_queue_entries(
                 status_filter=final_status_filter,
                 max_entries=max_entries,
                 extraction_tasks=extraction_tasks,
             )
+            data_manager.log_tool_usage(
+                tool_name="process_publication_queue",
+                parameters={"status_filter": status_filter, "max_entries": max_entries},
+                description=f"Batch processing: sequential (status={final_status_filter})",
+            )
+            return result
 
     # ============================================================
     # Phase 4 TOOLS: Workspace Management (shared tools from workspace_tool.py)

@@ -8,7 +8,6 @@ by multiple agents (research_agent, data_expert, supervisor):
 """
 
 import json
-import re
 from difflib import get_close_matches
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypedDict
@@ -43,6 +42,9 @@ EXPORTS_DIR_NAME = "exports"  # Single location for all user-facing exports
 
 # Maximum items to display in list mode (prevents context overflow)
 MAX_LIST_ITEMS = 50
+
+# Maximum chars for single-item metadata retrieval (prevents context bombing)
+MAX_SINGLE_ITEM_LENGTH = 8000
 
 
 def _get_exports_directory(workspace_path: Path, create: bool = True) -> Path:
@@ -87,104 +89,62 @@ def _check_deprecated_export_location(workspace_path: Path) -> Optional[List[Pat
 
 
 # ===============================================================================
-# Docstring-Driven Error System (v2.6+)
+# Contextual Error System
 # ===============================================================================
 
-# Cache to store parsed docstrings. Key: id(docstring), Value: DocstringSectionParser
-_parser_cache: Dict[int, "DocstringSectionParser"] = {}
-
-
-class DocstringSectionParser:
-    """
-    Parses a docstring into sections based on '## Title' headers.
-
-    Cached for performance (<10ms requirement).
-    """
-
-    def __init__(self, docstring: str):
-        self.sections: Dict[str, str] = self._parse(docstring)
-
-    def _parse(self, docstring: str) -> Dict[str, str]:
-        """Extracts sections using regex for '## Title' headers."""
-        if not docstring:
-            return {}
-        # Regex to find '## Title' and content until next '##'
-        pattern = re.compile(
-            r"^##\s*(.*?)\s*\n(.*?)(?=\n##|\Z)", re.MULTILINE | re.DOTALL
-        )
-        sections = {
-            title.strip(): content.strip()
-            for title, content in pattern.findall(docstring)
-        }
-        return sections
-
-    def get_section(self, name: str) -> Optional[str]:
-        """Retrieves a parsed section by its title."""
-        return self.sections.get(name)
-
-    @staticmethod
-    def get_parser(docstring: str) -> "DocstringSectionParser":
-        """Cached factory for getting a parser for a docstring."""
-        doc_id = id(docstring)
-        if doc_id not in _parser_cache:
-            _parser_cache[doc_id] = DocstringSectionParser(docstring)
-        return _parser_cache[doc_id]
-
-
-def _extract_example(section_content: str) -> Optional[str]:
-    """Finds the first line starting with 'Example:'."""
-    for line in section_content.split("\n"):
-        if line.strip().lower().startswith("example:"):
-            return line.strip()
-    return None
+# Parameter examples for contextual errors (replaces DocstringSectionParser)
+_PARAM_EXAMPLES = {
+    "level": {
+        "Detail Levels": 'Example: get_content_from_workspace(identifier="GSE123", level="summary")',
+    },
+    "workspace": {
+        "Workspace Categories": 'Example: get_content_from_workspace(workspace="literature")',
+    },
+}
 
 
 def generate_contextual_error(
     invalid_value: str,
     valid_options: List[str],
-    docstring: str,
     section_title: str,
     param_name: str,
 ) -> str:
-    """
-    Generates a helpful, docstring-driven error message.
+    """Generate helpful error message with fuzzy-match suggestions."""
+    error_msg = f"Error: Invalid value '{invalid_value}' for parameter '{param_name}'\n\n"
 
-    Performance: <3ms with caching, meets <10ms requirement.
-
-    Args:
-        invalid_value: The invalid value provided
-        valid_options: List of valid options
-        docstring: Tool's docstring
-        section_title: Section name to extract (e.g., "Workspace Categories")
-        param_name: Parameter name for error message
-
-    Returns:
-        Formatted error message with suggestions and examples
-    """
-    # 1. Basic Error
-    error_msg = (
-        f"❌ Error: Invalid value '{invalid_value}' for parameter '{param_name}'\n\n"
-    )
-
-    # 2. Suggestion (Fuzzy Match)
     suggestion = get_close_matches(invalid_value, valid_options, n=1, cutoff=0.6)
     if suggestion:
-        error_msg += f"💡 Did you mean '{suggestion[0]}'?\n\n"
+        error_msg += f"Did you mean '{suggestion[0]}'?\n\n"
 
-    # 3. Valid Options (always show)
-    error_msg += f"✅ Valid options: {', '.join(valid_options)}\n"
+    error_msg += f"Valid options: {', '.join(valid_options)}\n"
 
-    # 4. Docstring Context
-    parser = DocstringSectionParser.get_parser(docstring)
-    section = parser.get_section(section_title)
-
-    if section:
-        # Extract example if available
-        example = _extract_example(section)
-        if example:
-            error_msg += f"\n📖 {example}\n"
+    example = _PARAM_EXAMPLES.get(param_name, {}).get(section_title)
+    if example:
+        error_msg += f"\n{example}\n"
 
     return error_msg.strip()
+
+
+# ===============================================================================
+# Truncation Helpers (context safety)
+# ===============================================================================
+
+
+def _build_truncated_summary(content: dict, identifier: str) -> str:
+    """Build truncated summary preserving key fields, capping long values."""
+    summary = {}
+    for key, value in content.items():
+        if isinstance(value, str) and len(value) > 300:
+            summary[key] = value[:300] + f"... [{len(value):,} chars total]"
+        elif isinstance(value, dict):
+            summary[key] = {k: "..." for k in list(value.keys())[:10]}
+            if len(value) > 10:
+                summary[key]["_remaining_keys"] = len(value) - 10
+        elif isinstance(value, list) and len(value) > 5:
+            summary[key] = value[:5] + [f"... and {len(value) - 5} more"]
+        else:
+            summary[key] = value
+    return f"```json\n{json.dumps(summary, indent=2, default=str)}\n```"
 
 
 # ===============================================================================
@@ -478,7 +438,6 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                 return generate_contextual_error(
                     invalid_value=level,
                     valid_options=valid,
-                    docstring=get_content_from_workspace.__doc__,
                     section_title="Detail Levels",
                     param_name="level",
                 )
@@ -489,7 +448,6 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                 return generate_contextual_error(
                     invalid_value=workspace,
                     valid_options=valid_ws,
-                    docstring=get_content_from_workspace.__doc__,
                     section_title="Workspace Categories",
                     param_name="workspace",
                 )
@@ -1118,7 +1076,14 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                 if level == "summary":
                     return _format_queue_entry_summary(entry)
                 elif level == "metadata":
-                    return json.dumps(entry, indent=2, default=str)
+                    full_json = json.dumps(entry, indent=2, default=str)
+                    if len(full_json) > MAX_SINGLE_ITEM_LENGTH:
+                        return (
+                            _format_queue_entry_full(entry)
+                            + f"\n\n**Note**: Full JSON ({len(full_json):,} chars) exceeds cap. "
+                            + "Use `execute_custom_code` for complete data."
+                        )
+                    return full_json
                 elif level == "validation":
                     if entry.get("validation_result"):
                         return json.dumps(entry["validation_result"], indent=2)
@@ -1138,7 +1103,14 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                 if level == "summary":
                     return _format_pub_queue_entry_summary(entry)
                 elif level == "metadata":
-                    return json.dumps(entry, indent=2, default=str)
+                    full_json = json.dumps(entry, indent=2, default=str)
+                    if len(full_json) > MAX_SINGLE_ITEM_LENGTH:
+                        return (
+                            _format_pub_queue_entry_full(entry)
+                            + f"\n\n**Note**: Full JSON ({len(full_json):,} chars) exceeds cap. "
+                            + "Use `execute_custom_code` for complete data."
+                        )
+                    return full_json
 
             # Retrieve mode: Handle "github" level specially (not in RetrievalLevel enum)
             if level == "github":
@@ -1287,8 +1259,20 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                     return f"No platform information found for '{identifier}'. This detail level is typically for datasets."
 
             elif level == "metadata":
-                # Service already filtered (full metadata)
-                return f"## Full Metadata for {identifier}\n\n```json\n{json.dumps(cached_content, indent=2)}\n```"
+                # Service already filtered (full metadata) — cap to prevent context overflow
+                full_json = json.dumps(cached_content, indent=2, default=str)
+                if len(full_json) <= MAX_SINGLE_ITEM_LENGTH:
+                    return f"## Full Metadata for {identifier}\n\n```json\n{full_json}\n```"
+
+                # Content exceeds cap — return summary + pointer
+                summary = _build_truncated_summary(cached_content, identifier)
+                return (
+                    f"## Metadata Summary for {identifier} (truncated)\n\n"
+                    f"**Full content**: {len(full_json):,} chars (exceeds {MAX_SINGLE_ITEM_LENGTH:,} cap)\n\n"
+                    f"{summary}\n\n"
+                    f"**To access full content**: Use `execute_custom_code` with "
+                    f"`load_workspace_files=True` to read the cached JSON directly."
+                )
 
             else:
                 return f"Unsupported detail level: {level}"
@@ -1969,243 +1953,6 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
             return f"Error caching content to workspace: {str(e)}"
 
     return write_to_workspace
-
-
-def create_export_publication_queue_tool(data_manager: DataManagerV2):
-    """
-    Factory function to create export_publication_queue_samples tool.
-
-    Enables aggregated export of samples from multiple publication queue entries
-    into a single CSV file with rich metadata format.
-
-    Args:
-        data_manager: DataManagerV2 instance for workspace access
-
-    Returns:
-        LangChain tool for exporting publication queue samples
-    """
-    from datetime import datetime
-
-    from lobster.services.data_access.workspace_content_service import (
-        WorkspaceContentService,
-    )
-
-    @tool
-    def export_publication_queue_samples(
-        entry_ids: str,
-        output_filename: str,
-        filter_criteria: str = None,
-        max_entries: int = 100,
-    ) -> str:
-        """
-        Export samples from multiple publication queue entries to a single aggregated CSV.
-
-        Combines samples from multiple publications with rich metadata format including
-        publication context (DOI, PMID, entry_id) for each sample. Ideal for downstream
-        analysis pipelines requiring samples from multiple studies.
-
-        Args:
-            entry_ids: Comma-separated list of entry IDs to export, OR "all" to export
-                      all entries with samples, OR "handoff_ready" to export only
-                      entries with HANDOFF_READY status
-            output_filename: Name for the output CSV file (without path, will be saved
-                           in exports/ directory)
-            filter_criteria: Optional filter string for sample selection (e.g., "16S human")
-                           Applied to organism_name, host, library_strategy fields
-            max_entries: Maximum number of entries to process for "all" or "handoff_ready"
-                        modes (default: 100). Use specific entry_ids for larger exports.
-
-        Returns:
-            Summary of export with file location and sample counts per publication
-        """
-        import pandas as pd
-
-        try:
-            workspace_service = WorkspaceContentService(data_manager=data_manager)
-            workspace_path = Path(data_manager.workspace_path)
-
-            # Use centralized exports directory (v1.0+)
-            exports_dir = _get_exports_directory(workspace_path, create=True)
-
-            # Check for deprecated location and warn user
-            _check_deprecated_export_location(workspace_path)
-
-            # Parse entry_ids with bounded iteration
-            truncated_warning = ""
-            if entry_ids.lower() == "all":
-                # Find all entries with samples in metadata_store (bounded)
-                all_sample_keys = [
-                    k
-                    for k in data_manager.metadata_store.keys()
-                    if k.endswith("_samples")
-                ]
-                total_available = len(all_sample_keys)
-
-                # Apply limit and sort by key (most recent first if keys have timestamps)
-                limited_keys = sorted(all_sample_keys, reverse=True)[:max_entries]
-                target_entries = [k.rsplit("_samples", 1)[0] for k in limited_keys]
-
-                if total_available > max_entries:
-                    truncated_warning = (
-                        f"\n**Note**: Limited to {max_entries} of {total_available} available entries. "
-                        f"Use specific entry_ids or increase max_entries for more."
-                    )
-
-            elif entry_ids.lower() == "handoff_ready":
-                # Find entries with HANDOFF_READY status (bounded)
-                all_handoff_entries = []
-                for k in data_manager.metadata_store.keys():
-                    if k.endswith("_samples"):
-                        entry_id = k.rsplit("_samples", 1)[0]
-                        # Check if entry has been processed (has samples)
-                        if data_manager.metadata_store.get(k, {}).get("samples"):
-                            all_handoff_entries.append(entry_id)
-
-                total_available = len(all_handoff_entries)
-                target_entries = sorted(all_handoff_entries, reverse=True)[:max_entries]
-
-                if total_available > max_entries:
-                    truncated_warning = (
-                        f"\n**Note**: Limited to {max_entries} of {total_available} handoff_ready entries. "
-                        f"Use specific entry_ids or increase max_entries for more."
-                    )
-            else:
-                # Parse comma-separated list (no limit for explicit IDs)
-                target_entries = [e.strip() for e in entry_ids.split(",") if e.strip()]
-
-            if not target_entries:
-                return "Error: No valid entry IDs found. Provide comma-separated IDs, 'all', or 'handoff_ready'."
-
-            # Collect samples from all entries
-            all_samples = []
-            entries_found = []
-            entries_missing = []
-            samples_per_entry = {}
-
-            for entry_id in target_entries:
-                samples_key = f"{entry_id}_samples"
-                if samples_key not in data_manager.metadata_store:
-                    entries_missing.append(entry_id)
-                    continue
-
-                entry_data = data_manager.metadata_store[samples_key]
-                samples = entry_data.get("samples", [])
-
-                if not samples:
-                    entries_missing.append(entry_id)
-                    continue
-
-                entries_found.append(entry_id)
-
-                # Get publication context
-                source_doi = entry_data.get("source_doi", "")
-                source_pmid = entry_data.get("source_pmid", "")
-
-                # Enrich each sample with publication context
-                for sample in samples:
-                    enriched = dict(sample)
-                    enriched["source_doi"] = source_doi
-                    enriched["source_pmid"] = source_pmid
-                    enriched["source_entry_id"] = entry_id
-                    all_samples.append(enriched)
-
-                samples_per_entry[entry_id] = len(samples)
-
-            if not all_samples:
-                return f"Error: No samples found. Missing entries: {entries_missing}"
-
-            # Apply filter criteria if provided
-            filtered_samples = all_samples
-            filter_applied = False
-            if filter_criteria:
-                filter_lower = filter_criteria.lower()
-                filtered_samples = []
-                for s in all_samples:
-                    # Check multiple fields
-                    fields_to_check = [
-                        str(s.get("organism_name", "")).lower(),
-                        str(s.get("host", "")).lower(),
-                        str(s.get("library_strategy", "")).lower(),
-                        str(s.get("isolation_source", "")).lower(),
-                    ]
-                    if any(filter_lower in f for f in fields_to_check):
-                        filtered_samples.append(s)
-                filter_applied = True
-
-            if not filtered_samples:
-                return (
-                    f"Error: No samples match filter '{filter_criteria}'. "
-                    f"Total samples before filter: {len(all_samples)}"
-                )
-
-            # Schema-driven column ordering (v1.2.0 - export_schemas.py)
-            # Infer data type from samples (auto-detects SRA/proteomics/metabolomics)
-            data_type = infer_data_type(filtered_samples)
-
-            # Get priority-ordered columns from schema
-            ordered_cols = get_ordered_export_columns(
-                samples=filtered_samples,
-                data_type=data_type,
-                include_extra=True,  # Include fields not in schema
-            )
-
-            # Create DataFrame with schema-ordered columns
-            df = pd.DataFrame(filtered_samples)
-
-            # Defensive deduplication: prevent duplicate columns
-            available_cols = []
-            seen = set()
-            for c in ordered_cols:
-                if c in df.columns and c not in seen:
-                    available_cols.append(c)
-                    seen.add(c)
-            df = df[available_cols]
-
-            # Sanitize output filename and add timestamp to prevent overwrites
-            safe_filename = workspace_service._sanitize_filename(output_filename)
-            # Remove .csv extension if present (we'll add it back with timestamp)
-            if safe_filename.endswith(".csv"):
-                safe_filename = safe_filename[:-4]
-
-            # Add timestamp: filename_2026-01-09_143052.csv
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-            final_filename = f"{safe_filename}_{timestamp}.csv"
-            output_path = exports_dir / final_filename
-
-            # Write CSV
-            df.to_csv(output_path, index=False, encoding="utf-8")
-
-            # Build response
-            response = f"""## Publication Queue Samples Exported
-
-**Output File**: {output_path}
-**Total Samples**: {len(filtered_samples)}
-**Publications**: {len(entries_found)}
-**Columns**: {len(df.columns)} (schema-driven format with publication context)
-
-**Samples per Publication**:
-"""
-            for entry_id, count in sorted(samples_per_entry.items()):
-                response += f"- {entry_id}: {count} samples\n"
-
-            if filter_applied:
-                response += f"\n**Filter Applied**: '{filter_criteria}'\n"
-                response += f"**Samples Before Filter**: {len(all_samples)}\n"
-
-            if entries_missing:
-                response += f"\n**Entries Without Samples**: {len(entries_missing)}\n"
-
-            # Add truncation warning if applicable
-            if truncated_warning:
-                response += truncated_warning
-
-            return response
-
-        except Exception as e:
-            logger.error(f"Error exporting publication queue samples: {e}")
-            return f"Error exporting samples: {str(e)}"
-
-    return export_publication_queue_samples
 
 
 def create_list_modalities_tool(data_manager: DataManagerV2):

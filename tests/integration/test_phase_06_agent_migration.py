@@ -250,21 +250,6 @@ class TestPromptInfrastructure:
             assert len(content) > 0, f"Shared section {section} should have content"
 
 
-class TestHandoffBuilder:
-    """Test handoff builder from 06-02."""
-
-    def test_build_handoff_tools_available(self):
-        """build_handoff_tools should be importable."""
-        from lobster.tools.handoff_builder import build_handoff_tools
-
-        assert callable(build_handoff_tools)
-
-    def test_get_unavailable_agents_available(self):
-        """get_unavailable_agents should be importable."""
-        from lobster.tools.handoff_builder import get_unavailable_agents
-
-        assert callable(get_unavailable_agents)
-
 
 class TestDynamicStateAggregation:
     """Test dynamic state aggregation from 06-02."""
@@ -307,13 +292,11 @@ class TestInstallationCombinations:
         from lobster.core.component_registry import ComponentRegistry
         from lobster.core.data_manager_v2 import DataManagerV2
         from lobster.prompts import PromptComposer
-        from lobster.tools.handoff_builder import build_handoff_tools
 
         # All core imports should succeed
         assert ComponentRegistry is not None
         assert DataManagerV2 is not None
         assert PromptComposer is not None
-        assert build_handoff_tools is not None
 
     def test_package_independence(self):
         """Each package should be independently importable."""
