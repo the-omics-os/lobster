@@ -10,9 +10,9 @@
 - [x] **GEN-01**: Add `ld_prune` tool — standalone LD pruning as prerequisite for PCA, GWAS, admixture
 - [x] **GEN-02**: Add `compute_kinship` tool — pairwise kinship matrix and related-pair flagging
 - [x] **GEN-03**: Add `clump_results` tool — LD-clump GWAS results into independent loci
-- [ ] **GEN-04**: Merge `list_modalities` + `get_modality_info` into `summarize_modality`
-- [ ] **GEN-05**: Move `predict_variant_consequences` from parent to variant_analysis_expert child
-- [ ] **GEN-06**: Move `get_ensembl_sequence` from parent to variant_analysis_expert child
+- [x] **GEN-04**: Merge `list_modalities` + `get_modality_info` into `summarize_modality`
+- [x] **GEN-05**: Move `predict_variant_consequences` from parent to variant_analysis_expert child
+- [x] **GEN-06**: Move `get_ensembl_sequence` from parent to variant_analysis_expert child
 - [x] **GEN-07**: Add IR (provenance) to `load_vcf` and `load_plink` (BUG-06 fix)
 
 ### Genomics Child (variant_analysis_expert — NEW)
@@ -135,7 +135,7 @@
 
 ### Prompts & Documentation
 
-- [ ] **DOC-01**: Update genomics_expert prompt for new tool inventory + variant_analysis handoff
+- [x] **DOC-01**: Update genomics_expert prompt for new tool inventory + variant_analysis handoff
 - [ ] **DOC-02**: Update transcriptomics_expert prompt for bulk-specific tool routing
 - [ ] **DOC-03**: Update proteomics_expert prompt for import tools + PTM + affinity tools
 - [ ] **DOC-04**: Update de_analysis_expert prompt for merged DE tools + bulk additions
@@ -188,9 +188,9 @@
 | GEN-01 | Phase 1 | Complete |
 | GEN-02 | Phase 1 | Complete |
 | GEN-03 | Phase 1 | Complete |
-| GEN-04 | Phase 1 | Pending |
-| GEN-05 | Phase 1 | Pending |
-| GEN-06 | Phase 1 | Pending |
+| GEN-04 | Phase 1 | Complete |
+| GEN-05 | Phase 1 | Complete |
+| GEN-06 | Phase 1 | Complete |
 | GEN-07 | Phase 1 | Complete |
 | GEN-08 | Phase 1 | Pending |
 | GEN-09 | Phase 1 | Pending |
@@ -273,7 +273,7 @@
 | MET-15 | Phase 6 | Pending |
 | MET-16 | Phase 6 | Pending |
 | MET-17 | Phase 6 | Pending |
-| DOC-01 | Phase 1 | Pending |
+| DOC-01 | Phase 1 | Complete |
 | DOC-02 | Phase 2 | Pending |
 | DOC-03 | Phase 4 | Pending |
 | DOC-04 | Phase 3 | Pending |
