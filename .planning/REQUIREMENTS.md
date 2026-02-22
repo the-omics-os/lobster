@@ -7,25 +7,25 @@
 
 ### Genomics Parent (genomics_expert)
 
-- [ ] **GEN-01**: Add `ld_prune` tool — standalone LD pruning as prerequisite for PCA, GWAS, admixture
-- [ ] **GEN-02**: Add `compute_kinship` tool — pairwise kinship matrix and related-pair flagging
-- [ ] **GEN-03**: Add `clump_results` tool — LD-clump GWAS results into independent loci
+- [x] **GEN-01**: Add `ld_prune` tool — standalone LD pruning as prerequisite for PCA, GWAS, admixture
+- [x] **GEN-02**: Add `compute_kinship` tool — pairwise kinship matrix and related-pair flagging
+- [x] **GEN-03**: Add `clump_results` tool — LD-clump GWAS results into independent loci
 - [ ] **GEN-04**: Merge `list_modalities` + `get_modality_info` into `summarize_modality`
 - [ ] **GEN-05**: Move `predict_variant_consequences` from parent to variant_analysis_expert child
 - [ ] **GEN-06**: Move `get_ensembl_sequence` from parent to variant_analysis_expert child
-- [ ] **GEN-07**: Add IR (provenance) to `load_vcf` and `load_plink` (BUG-06 fix)
+- [x] **GEN-07**: Add IR (provenance) to `load_vcf` and `load_plink` (BUG-06 fix)
 
 ### Genomics Child (variant_analysis_expert — NEW)
 
 - [ ] **GEN-08**: Create variant_analysis_expert child agent with modular folder structure
 - [ ] **GEN-09**: Implement `normalize_variants` tool — left-align indels, split multiallelic
 - [ ] **GEN-10**: Implement `predict_consequences` tool — VEP batch annotation with SIFT/PolyPhen/CADD
-- [ ] **GEN-11**: Implement `query_population_frequencies` tool — gnomAD allele frequency lookup
-- [ ] **GEN-12**: Implement `query_clinical_databases` tool — ClinVar pathogenicity and disease associations
-- [ ] **GEN-13**: Implement `prioritize_variants` tool — rank by consequence severity + frequency + pathogenicity
+- [x] **GEN-11**: Implement `query_population_frequencies` tool — gnomAD allele frequency lookup
+- [x] **GEN-12**: Implement `query_clinical_databases` tool — ClinVar pathogenicity and disease associations
+- [x] **GEN-13**: Implement `prioritize_variants` tool — rank by consequence severity + frequency + pathogenicity
 - [ ] **GEN-14**: Implement `lookup_variant` tool — single-variant comprehensive lookup by rsID/coordinates
 - [ ] **GEN-15**: Implement `retrieve_sequence` tool — Ensembl sequence fetch (relocated from parent)
-- [ ] **GEN-16**: Implement `summarize_modality` tool — shared with parent
+- [x] **GEN-16**: Implement `summarize_modality` tool — shared with parent
 
 ### SC Transcriptomics Parent (transcriptomics_expert)
 
@@ -185,22 +185,22 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GEN-01 | Phase 1 | Pending |
-| GEN-02 | Phase 1 | Pending |
-| GEN-03 | Phase 1 | Pending |
+| GEN-01 | Phase 1 | Complete |
+| GEN-02 | Phase 1 | Complete |
+| GEN-03 | Phase 1 | Complete |
 | GEN-04 | Phase 1 | Pending |
 | GEN-05 | Phase 1 | Pending |
 | GEN-06 | Phase 1 | Pending |
-| GEN-07 | Phase 1 | Pending |
+| GEN-07 | Phase 1 | Complete |
 | GEN-08 | Phase 1 | Pending |
 | GEN-09 | Phase 1 | Pending |
 | GEN-10 | Phase 1 | Pending |
-| GEN-11 | Phase 1 | Pending |
-| GEN-12 | Phase 1 | Pending |
-| GEN-13 | Phase 1 | Pending |
+| GEN-11 | Phase 1 | Complete |
+| GEN-12 | Phase 1 | Complete |
+| GEN-13 | Phase 1 | Complete |
 | GEN-14 | Phase 1 | Pending |
 | GEN-15 | Phase 1 | Pending |
-| GEN-16 | Phase 1 | Pending |
+| GEN-16 | Phase 1 | Complete |
 | SCT-01 | Phase 2 | Pending |
 | SCT-02 | Phase 2 | Pending |
 | SCT-03 | Phase 2 | Pending |
