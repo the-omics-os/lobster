@@ -2,7 +2,7 @@
   "mode": "yolo",
   "depth": "standard",
   "parallelization": true,
-  "commit_docs": true,
+  "commit_docs": false,
   "model_profile": "quality",
   "workflow": {
     "research": true,

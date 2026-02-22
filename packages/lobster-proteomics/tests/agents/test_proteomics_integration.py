@@ -27,7 +27,7 @@ class TestParentAgentConfig:
 
     def test_parent_has_child_agents(self):
         assert PARENT_CONFIG.child_agents == [
-            "de_analysis_expert",
+            "proteomics_de_analysis_expert",
             "biomarker_discovery_expert",
         ]
 
@@ -51,7 +51,7 @@ class TestDESubAgentConfig:
         assert DE_CONFIG.supervisor_accessible is False
 
     def test_de_name(self):
-        assert DE_CONFIG.name == "de_analysis_expert"
+        assert DE_CONFIG.name == "proteomics_de_analysis_expert"
 
     def test_de_no_handoff_tool(self):
         assert DE_CONFIG.handoff_tool_name is None
@@ -164,7 +164,7 @@ class TestPrompts:
 
     def test_parent_prompt_contains_delegation(self):
         prompt = create_proteomics_expert_prompt()
-        assert "handoff_to_de_analysis_expert" in prompt
+        assert "handoff_to_proteomics_de_analysis_expert" in prompt
         assert "handoff_to_biomarker_discovery_expert" in prompt
 
     def test_parent_prompt_contains_mandatory_protocol(self):

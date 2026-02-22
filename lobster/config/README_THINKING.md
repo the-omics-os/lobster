@@ -157,15 +157,12 @@ TESTING_PROFILES = {
     "my-custom-profile": {
         "assistant": "claude-3-5-sonnet-v2",
         "supervisor": "claude-3-7-sonnet",
-        "singlecell_expert": "claude-3-7-sonnet",
-        "bulk_rnaseq_expert": "claude-3-7-sonnet",
-        "method_agent": "claude-3-7-sonnet",
+        "transcriptomics_expert": "claude-3-7-sonnet",
         "data_expert": "claude-3-7-sonnet",
         "research_agent": "claude-3-7-sonnet",
         "thinking": {
             "supervisor": "extended",      # 5000 tokens
-            "singlecell_expert": "deep",   # 10000 tokens
-            "method_agent": "standard"     # 2000 tokens
+            "transcriptomics_expert": "deep",   # 10000 tokens
         }
     }
 }

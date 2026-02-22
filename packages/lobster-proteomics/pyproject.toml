@@ -44,7 +44,7 @@ Repository = "https://github.com/the-omics-os/lobster"
 
 [project.entry-points."lobster.agents"]
 proteomics_expert = "lobster.agents.proteomics.proteomics_expert:AGENT_CONFIG"
-de_analysis_expert = "lobster.agents.proteomics.de_analysis_expert:AGENT_CONFIG"
+proteomics_de_analysis_expert = "lobster.agents.proteomics.de_analysis_expert:AGENT_CONFIG"
 biomarker_discovery_expert = "lobster.agents.proteomics.biomarker_discovery_expert:AGENT_CONFIG"
 
 [project.entry-points."lobster.states"]

@@ -23,21 +23,22 @@ The system now uses a centralized agent registry (`lobster/config/agent_registry
 - **Dynamic Loading**: Agents are loaded dynamically from the registry
 - **Easy Maintenance**: Add new agents by updating only the registry
 
-### Current Registered Agents
+### Current Registered Agents (v1.0.0)
 
-| Agent Name | Display Name | Factory Function | Handoff Tool |
-|------------|--------------|------------------|--------------|
-| `data_expert_agent` | Data Expert | `lobster.agents.data_expert.data_expert` | `handoff_to_data_expert` |
-| `singlecell_expert_agent` | Single-Cell Expert | `lobster.agents.singlecell_expert.singlecell_expert` | `handoff_to_singlecell_expert` |
-| `bulk_rnaseq_expert_agent` | Bulk RNA-seq Expert | `lobster.agents.bulk_rnaseq_expert.bulk_rnaseq_expert` | `handoff_to_bulk_rnaseq_expert` |
-| ~~`method_expert_agent`~~ | ~~Method Expert~~ | ~~`lobster.agents.method_expert.method_expert`~~ | **DEPRECATED v2.2+** - merged into `research_agent` |
+| Agent Name | Display Name | Package | Handoff Tool |
+|------------|--------------|---------|--------------|
+| `research_agent` | Research Agent | lobster-research | `handoff_to_research_agent` |
+| `data_expert_agent` | Data Expert | lobster-research | `handoff_to_data_expert_agent` |
+| `transcriptomics_expert` | Transcriptomics Expert | lobster-transcriptomics | `handoff_to_transcriptomics_expert` |
+| `proteomics_expert` | Proteomics Expert | lobster-proteomics | `handoff_to_proteomics_expert` |
+| `genomics_expert` | Genomics Expert | lobster-genomics | `handoff_to_genomics_expert` |
+| `visualization_expert_agent` | Visualization Expert | lobster-visualization | `handoff_to_visualization_expert_agent` |
+| `metadata_assistant` | Metadata Assistant | lobster-metadata | `handoff_to_metadata_assistant` |
+| `machine_learning_expert` | ML Expert | lobster-ml | `handoff_to_machine_learning_expert` |
 
 ### System Agents
 These agents are tracked by the callback system but don't require factory functions:
-- `supervisor` - Main coordination agent
-- `transcriptomics_expert` - Legacy transcriptomics agent (if used)
-- `method_agent` - Alternative method agent name
-- `clarify_with_user` - User interaction agent
+- `supervisor` - Main coordination agent (routes to all specialist agents)
 
 ### Adding New Agents
 
@@ -82,8 +83,8 @@ Available profiles:
 ```bash
 # Use different models for different agents
 LOBSTER_SUPERVISOR_MODEL=claude-3-7-sonnet                 # Development model
-LOBSTER_SINGLECELL_EXPERT_AGENT_MODEL=claude-4-5-sonnet   # Maximum capability
-LOBSTER_METHOD_EXPERT_AGENT_MODEL=claude-4-sonnet         # Production model
+LOBSTER_TRANSCRIPTOMICS_EXPERT_MODEL=claude-4-5-sonnet    # Maximum capability
+LOBSTER_RESEARCH_AGENT_MODEL=claude-4-sonnet              # Production model
 ```
 
 ### 3. Global Override (Optional)
@@ -138,7 +139,7 @@ LOBSTER_CONFIG_FILE=config/custom_agent_config.json
 # Per-agent model overrides
 LOBSTER_SUPERVISOR_MODEL=claude-haiku
 LOBSTER_TRANSCRIPTOMICS_EXPERT_MODEL=claude-opus
-LOBSTER_METHOD_AGENT_MODEL=claude-sonnet
+LOBSTER_RESEARCH_AGENT_MODEL=claude-sonnet
 
 # Global model override (overrides all agents)
 LOBSTER_GLOBAL_MODEL=claude-sonnet
@@ -146,7 +147,7 @@ LOBSTER_GLOBAL_MODEL=claude-sonnet
 # Per-agent temperature overrides
 LOBSTER_SUPERVISOR_TEMPERATURE=0.5
 LOBSTER_TRANSCRIPTOMICS_EXPERT_TEMPERATURE=0.7
-LOBSTER_METHOD_AGENT_TEMPERATURE=0.3
+LOBSTER_RESEARCH_AGENT_TEMPERATURE=0.3
 ```
 
 ### Required API Keys (unchanged)
@@ -213,7 +214,7 @@ LOBSTER_PROFILE=godmode
 ```bash
 # In your .env file
 LOBSTER_PROFILE=production
-LOBSTER_SINGLECELL_EXPERT_AGENT_MODEL=claude-4-5-sonnet  # Override specific agent to godmode
+LOBSTER_TRANSCRIPTOMICS_EXPERT_MODEL=claude-4-5-sonnet  # Override specific agent to godmode
 ```
 
 ## Custom Configuration Files
@@ -251,10 +252,10 @@ Example custom configuration file:
         "region": "us-east-1"
       }
     },
-    "method_agent": {
+    "research_agent": {
       "model_config": {
         "provider": "bedrock_anthropic",
-        "model_id": "us.anthropic.claude-3-5-sonnet-20241022-v2:0", 
+        "model_id": "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
         "tier": "standard",
         "temperature": 0.3,
         "region": "us-east-1"
@@ -272,7 +273,7 @@ The new system is backward compatible. Your existing `.env` configuration will c
 ```bash
 LOBSTER_PROFILE=production
 LOBSTER_SUPERVISOR_MODEL=claude-haiku
-LOBSTER_TRANSCRIPTOMICS_EXPERT_MODEL=claude-opus
+LOBSTER_TRANSCRIPTOMICS_EXPERT_MODEL=claude-4-5-sonnet
 ```
 
 ## Troubleshooting

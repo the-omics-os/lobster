@@ -1,12 +1,12 @@
-# Vector Search for Lobster AI
+# Core Tools Refactor — Lobster AI
 
 ## What This Is
 
-Semantic vector search infrastructure for Lobster AI, replacing hardcoded keyword matching with biomedical embedding-based ontology matching. Enables agents to semantically match diseases (MONDO ~30K terms), tissues (Uberon ~30K terms), and cell types (Cell Ontology ~5K terms) using SapBERT embeddings and ChromaDB — turning "colon tumor" into a confident match for "colorectal cancer" and "CD3D+/CD8A+ cluster" into "cytotoxic T cell (CL:0000084)."
+A systematic redesign of domain-specific core tools for every omics agent in Lobster AI. Each agent currently has tools that grew organically — with redundancy, gaps, and wrong abstraction levels. This project replaces that with a principled, minimal core tool set per domain: the bioinformatics equivalent of "Read, Write, Edit, Search, Execute" for a code editor. The refactor also creates a new `lobster-metabolomics` package and a new `variant_analysis_expert` child agent for genomics.
 
 ## Core Value
 
-Agents can semantically match any biomedical term to the correct ontology concept with calibrated confidence scores, using zero configuration out of the box.
+Every agent has exactly the right tools — no overlap, no gaps, no wrong abstraction level — so the LLM picks the correct tool every time and produces reliable, reproducible science.
 
 ## Requirements
 
@@ -16,62 +16,77 @@ Agents can semantically match any biomedical term to the correct ontology concep
 
 ### Active
 
-- [ ] Backend-agnostic vector search service with ChromaDB default (env var switches backend)
-- [ ] SapBERT biomedical embeddings (768d) as default, MiniLM and OpenAI as alternatives
-- [ ] Two-stage retrieval pipeline: embedding search + cross-encoder reranking
-- [ ] DiseaseOntologyService backend swap from keyword to embedding (Strangler Fig completion)
-- [ ] Ontology data pipeline: OBO -> SapBERT embeddings -> ChromaDB tarballs -> S3 hosting
-- [ ] Auto-download ontology data on first use to ~/.lobster/ontology_cache/
-- [ ] annotation_expert gains semantic cell type annotation tool (augments existing tool, doesn't replace)
-- [ ] metadata_assistant gains tissue and disease standardization tools
-- [ ] NetworkX graph traversal for ontology parent/child/sibling relationships
-- [ ] All optional deps import-guarded with helpful install messages
-- [ ] Cloud-hosted ChromaDB service plan (vector.omics-os.com) — written as handoff spec for lobster-cloud
-- [ ] Fix silent fallback in DiseaseStandardizationService (add logger.warning)
-- [ ] Delete duplicate disease_ontology.json from core (canonical stays in lobster-metadata package)
-- [ ] Unit tests with mocked deps + integration tests with real small ChromaDB
-- [ ] Pydantic schemas for SearchResult, OntologyMatch, LiteratureMatch, SearchResponse
+- [ ] Redesign genomics_expert parent tools (12 tools, +3 new: ld_prune, compute_kinship, clump_results)
+- [ ] Create variant_analysis_expert child agent (9 tools for clinical/post-GWAS)
+- [ ] Redesign transcriptomics_expert parent tools (14 SC + 8 bulk-specific tools)
+- [ ] Enhance annotation_expert child tools (11 tools, +1 new: score_gene_set)
+- [ ] Consolidate de_analysis_expert child tools (11 tools, merge 3→2 DE runners, +3 bulk additions)
+- [ ] Redesign proteomics_expert parent tools (13 MS tools, +5 new including import and PTM)
+- [ ] Enhance proteomics_de_analysis_expert child tools (7 tools, +4 new including pathway enrichment)
+- [ ] Enhance biomarker_discovery_expert child tools (7 tools, +3 new including panel selection)
+- [ ] Add 4 affinity-specific tools to proteomics_expert (import, LOD, bridge normalization, cross-platform)
+- [ ] Create lobster-metabolomics package with metabolomics_expert agent (10 tools, structured for future children)
+- [ ] Fix all 17 bugs found during research (2 CRASH, 1 DATA CORRUPTION, 3 RULE VIOLATIONS, 3 DEAD CODE, 3 UX/LLM CONFUSION, 5 LOGIC ISSUES)
+- [ ] Deprecate interactive terminal tools (D6: manually_annotate_clusters_interactive, construct_de_formula_interactive)
+- [ ] Update all agent prompts to reflect new tool inventories
+- [ ] Implement D10 tool taxonomy decorator (@tool_meta) foundation
 
 ### Out of Scope
 
-- pgvector backend implementation — stub only, future work
-- Neptune Analytics / Neo4j graph database — future, INDRA integration path exists
-- Literature semantic search — schema defined, implementation deferred
-- Replacing existing `annotate_cell_types` tool — new tool augments, old stays
-- Editing pyproject.toml — dependency changes documented for human review
-- Cloud infrastructure deployment (lobster-cloud ECS/CDK) — handoff spec written here, executed separately
-- Mobile or web UI changes — backend-only
+- Raw data preprocessing (XCMS, STAR, MaxQuant) — Lobster receives processed feature tables
+- Cell-cell communication tools — advanced, not core
+- Fine-mapping/PRS tools — post-GWAS P3 future
+- NMR-specific processing — defer to post-MVP
+- Targeted metabolomics standard curves — defer to post-MVP
+- Separate affinity proteomics agent — D2 confirmed: stays within proteomics_expert
+- Separate population_genetics_expert — rejected in D1: too coupled with GWAS pipeline
 
 ## Context
 
-- **Strangler Fig migration**: DiseaseOntologyService was explicitly designed for this swap. Its API (`match_disease(query, k, min_confidence)`) is migration-stable. The `backend` field in config exists but was never wired up. This project completes that planned migration.
-- **PR #13 reference**: `feat/vector-search` branch has prior implementation (~51 tests, backends, embedding providers, reranker). Starting fresh on new branch but adapting patterns from PR #13.
-- **SRAgent reference**: Production ChromaDB patterns at `/Users/tyo/GITHUB/omics-os/tmp_folder/SRAgent/` — auto-download tarballs, OBO embedding build script, tissue ontology matching.
-- **Current state**: DiseaseOntologyService has 4 hardcoded diseases with keyword matching. Annotation expert has 10 hardcoded cell types with marker genes. Both work but can't scale.
-- **Brutalist review findings**: config stub never branched on, silent fallback, duplicate config files, O(N*K) scaling collapse.
+**Codebase state**: Lobster AI v1.0.x with 8 agent packages extracted (Kraken refactor 98% complete). 14 agents across 8 packages. ~82 domain-specific tools currently implemented.
+
+**Research basis**: 6 parallel AI domain specialists analyzed 425 bio-skills, mapped canonical workflows per domain, proposed ideal tool sets from scratch, then self-compared against current implementation. Research documents in `kevin_notes/refactor_core_tools/`.
+
+**Key numbers**:
+- Current: ~82 domain tools across all agents
+- Proposed: ~111 domain tools (+29 net new)
+- New agents: 1 (variant_analysis_expert) + 1 new package (lobster-metabolomics)
+- Bugs to fix: 17 (2 crash, 1 data corruption, 14 others)
+- Decisions validated: 10 (D1-D10)
+
+**Existing infrastructure for metabolomics**: MetabolomicsAdapter (complete), MetabolomicsSchema (complete), MetaboLightsProvider (complete), MetaboLightsDownloadService (complete), OmicsTypeRegistry entry (registered). Services and agent need to be built.
 
 ## Constraints
 
-- **No lobster/__init__.py**: PEP 420 namespace package. Hard requirement.
-- **No pyproject.toml edits**: Dependencies documented in REQUIREMENTS.md for human approval. All imports guarded.
-- **Lazy loading**: No model downloads at import time. No module-level component_registry calls.
-- **3-tuple return**: All service methods return `(result, stats, AnalysisStep)`.
-- **IR mandatory**: All `log_tool_usage()` calls must pass `ir=ir`.
-- **AGENT_CONFIG at module top**: Before heavy imports for <50ms entry point discovery.
-- **Backward compatibility**: Existing tools, APIs, and DiseaseStandardizationService fallback unchanged.
-- **Package location**: Core infrastructure in `lobster/services/search/` (cross-agent, not package-specific).
+- **Tool count**: 8-15 tools per agent — LLM performance degrades beyond ~15
+- **3-tuple pattern**: Every service returns `(AnnData, Dict, AnalysisStep)` — non-negotiable
+- **IR mandatory**: Every tool must pass `ir=` to `log_tool_usage()` — provenance tracking
+- **PEP 420**: No `lobster/__init__.py` — namespace package requirement
+- **AGENT_CONFIG first**: Define at module top before heavy imports — <50ms entry point discovery
+- **Backward compatibility**: Existing `lobster-custom-*` packages must continue working
+- **No pyproject.toml edits**: Dependency changes go through humans
+- **ComponentRegistry**: Agent/service discovery via entry points only — no hardcoded registries
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| ChromaDB as default backend | Small data (~60K vectors), zero cost, proven in SRAgent, local+cloud symmetry | — Pending |
-| SapBERT as default embedding | SOTA biomedical entity linking, 4M+ UMLS synonym pairs, 768d, free/local | — Pending |
-| Cross-encoder as default reranker | Zero API cost, offline, ~1-5s for 100 docs on CPU | — Pending |
-| New branch (not PR #13) | PR #13 has good patterns but needs clean rearchitecting per this spec | — Pending |
-| Cloud-hosted ChromaDB at vector.omics-os.com | Separate service, plan written here, deployment handed off to lobster-cloud | — Pending |
-| Core location (not package) | Vector search is cross-agent infrastructure used by annotation, metadata, research | — Pending |
-| Augment, don't replace | Existing annotate_cell_types tool stays; new semantic tool added alongside | — Pending |
+| D1: New variant_analysis_expert child agent | Clinical workflows need different knowledgebase lookups than population-scale GWAS | — Pending |
+| D2: No separate affinity proteomics agent | Downstream analysis identical for MS and affinity; PlatformConfig handles dual mode | — Pending |
+| D3: New lobster-metabolomics package | 10 tools, linear workflow, significant existing infrastructure | — Pending |
+| D4: Single transcriptomics parent for SC + bulk | Auto-detection works; shared DE child; 8 bulk-specific tools added | — Pending |
+| D5: Merge redundant DE tools (3→2) | Three DE runners confuses LLM; one simple + one formula-based is sufficient | — Pending |
+| D6: Deprecate interactive terminal tools | Rich UI doesn't work in cloud/API/LLM-agent context | — Pending |
+| D7: Merge list_modalities + get_modality_info | Reduces LLM tool selection confusion; pilot in genomics | — Pending |
+| D8: Create import_proteomics_data tool | Parsers exist (MaxQuant, DIA-NN, Spectronaut) but unreachable by LLM | — Pending |
+| D9: Add PTM analysis tools (3 across agents) | Phosphoproteomics >30% of published MS proteomics; currently zero capability | — Pending |
+| D10: Tool taxonomy decorator (@tool_meta) | Deferred to P3; apply incrementally to new/modified tools | — Pending |
+| Metabolomics: structure for future children | Plan package layout to support annotation_expert extraction later | — Pending |
+| Include all 17 bugs in project scope | Fix alongside tool refactoring in same phases | — Pending |
+
+| Docs with domain phases | Brutalist review: stale docs if deferred to Phase 7; moved DOC-01..06 into Phases 1-6 | — Pending |
+| Parallel phase execution | Brutalist review: domains are independent; Wave A (1‖2‖4‖6) → Wave B (3‖5) → Wave C (7) | — Pending |
+| integrate_batches returns quality metrics | Brutalist review: batch integration is iterative; tool must return LISI/silhouette for LLM re-invocation | — Pending |
 
 ---
-*Last updated: 2026-02-17 after initialization*
+*Last updated: 2026-02-22 after brutalist review adjustments*

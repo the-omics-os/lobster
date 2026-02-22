@@ -368,6 +368,405 @@ class GWASService:
             logger.exception(f"Error during PCA: {e}")
             raise GWASError(f"PCA failed: {str(e)}")
 
+    # =========================================================================
+    # LD Pruning, Kinship, and Clumping Methods
+    # =========================================================================
+
+    def ld_prune_variants(
+        self,
+        adata: anndata.AnnData,
+        threshold: float = 0.2,
+        window_size: int = 500,
+        genotype_layer: str = "GT",
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
+        """
+        Perform linkage disequilibrium (LD) pruning to remove correlated variants.
+
+        Removes variants in high LD (r^2 > threshold) to create an independent
+        variant set suitable for PCA, kinship estimation, and other analyses
+        that assume independence between markers.
+
+        Args:
+            adata: AnnData object with genotype data
+            threshold: LD r^2 threshold for pruning (default: 0.2)
+            window_size: Number of variants per window for LD computation (default: 500)
+            genotype_layer: Layer containing genotype data (default: "GT")
+
+        Returns:
+            Tuple[AnnData, Dict, AnalysisStep]: Pruned AnnData, stats, and IR
+
+        Raises:
+            GWASError: If sgkit not available or genotype layer missing
+        """
+        try:
+            if not SGKIT_AVAILABLE:
+                raise GWASError(
+                    "sgkit is required for LD pruning. Install with: pip install sgkit"
+                )
+
+            logger.info(
+                f"Starting LD pruning: threshold={threshold}, "
+                f"window_size={window_size}, n_variants={adata.n_vars}"
+            )
+
+            if genotype_layer not in adata.layers:
+                raise GWASError(
+                    f"Genotype layer '{genotype_layer}' not found in adata.layers. "
+                    f"Available layers: {list(adata.layers.keys())}"
+                )
+
+            # Convert AnnData to sgkit Dataset
+            ds = self._adata_to_sgkit(adata, None, None, genotype_layer)
+
+            # Compute dosage
+            ds["call_dosage"] = ds["call_genotype"].sum(dim="ploidy")
+
+            # Add variant_contig (REQUIRED for windowing)
+            if "CHROM" in adata.var.columns:
+                chroms = adata.var["CHROM"].astype(str).values
+                unique_chroms = np.unique(chroms)
+                chrom_to_idx = {c: i for i, c in enumerate(unique_chroms)}
+                variant_contig = np.array(
+                    [chrom_to_idx[c] for c in chroms], dtype=int
+                )
+            else:
+                # Single contig fallback
+                variant_contig = np.zeros(ds.sizes["variants"], dtype=int)
+            ds["variant_contig"] = ("variants", variant_contig)
+
+            # Window BEFORE pruning (required by sgkit)
+            ds = sg.window_by_variant(ds, size=window_size)
+
+            # Prune
+            ds_pruned = sg.ld_prune(ds, threshold=threshold)
+
+            # Get pruned variant IDs and subset AnnData
+            pruned_ids = set(ds_pruned["variant_id"].values)
+            keep_mask = np.isin(adata.var.index.values, list(pruned_ids))
+            adata_pruned = adata[:, keep_mask].copy()
+
+            n_before = adata.n_vars
+            n_after = adata_pruned.n_vars
+
+            # Build stats
+            stats = {
+                "analysis_type": "ld_pruning",
+                "n_variants_before": n_before,
+                "n_variants_after": n_after,
+                "n_variants_removed": n_before - n_after,
+                "threshold": threshold,
+                "window_size": window_size,
+            }
+
+            logger.info(
+                f"LD pruning completed: {n_before} -> {n_after} variants "
+                f"({n_before - n_after} removed)"
+            )
+
+            # Create IR
+            ir = self._create_ld_prune_ir(
+                threshold=threshold,
+                window_size=window_size,
+                genotype_layer=genotype_layer,
+            )
+
+            return adata_pruned, stats, ir
+
+        except Exception as e:
+            logger.exception(f"Error during LD pruning: {e}")
+            raise GWASError(f"LD pruning failed: {str(e)}")
+
+    def compute_kinship(
+        self,
+        adata: anndata.AnnData,
+        kinship_threshold: float = 0.125,
+        genotype_layer: str = "GT",
+        estimator: str = "VanRaden",
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
+        """
+        Compute pairwise kinship matrix using genomic relationship matrix (GRM).
+
+        Estimates relatedness between all pairs of samples. Uses VanRaden's
+        method by default (no PCA prerequisite, unlike pc_relate).
+
+        Args:
+            adata: AnnData object with genotype data
+            kinship_threshold: Threshold for flagging related pairs (default: 0.125 = 3rd degree)
+            genotype_layer: Layer containing genotype data (default: "GT")
+            estimator: GRM estimator method (default: "VanRaden")
+
+        Returns:
+            Tuple[AnnData, Dict, AnalysisStep]: AnnData with kinship in obsm, stats, and IR
+
+        Raises:
+            GWASError: If sgkit not available or genotype layer missing
+        """
+        try:
+            if not SGKIT_AVAILABLE:
+                raise GWASError(
+                    "sgkit is required for kinship computation. Install with: pip install sgkit"
+                )
+
+            logger.info(
+                f"Computing kinship matrix: estimator={estimator}, "
+                f"threshold={kinship_threshold}, n_samples={adata.n_obs}"
+            )
+
+            if genotype_layer not in adata.layers:
+                raise GWASError(
+                    f"Genotype layer '{genotype_layer}' not found in adata.layers. "
+                    f"Available layers: {list(adata.layers.keys())}"
+                )
+
+            # Create working copy
+            adata_kinship = adata.copy()
+
+            # Convert to sgkit Dataset
+            ds = self._adata_to_sgkit(adata_kinship, None, None, genotype_layer)
+
+            # Compute dosage with correct dimension ordering
+            call_dosage = ds["call_genotype"].sum(dim="ploidy")
+            # Ensure shape is (variants, samples) for genomic_relationship
+            if call_dosage.dims != ("variants", "samples"):
+                call_dosage = call_dosage.transpose("variants", "samples")
+            ds["call_dosage"] = call_dosage
+
+            # Compute GRM
+            ds = sg.genomic_relationship(ds, estimator=estimator)
+
+            # Extract GRM
+            grm = ds["stat_genomic_relationship"].values  # (n_samples, n_samples)
+
+            # Find related pairs above threshold
+            related_pairs = []
+            n_samples = grm.shape[0]
+            for i in range(n_samples):
+                for j in range(i + 1, n_samples):
+                    if grm[i, j] > kinship_threshold:
+                        related_pairs.append({
+                            "sample_i": str(adata_kinship.obs.index[i]),
+                            "sample_j": str(adata_kinship.obs.index[j]),
+                            "kinship_coeff": float(grm[i, j]),
+                        })
+
+            # Store in AnnData
+            adata_kinship.obsm["kinship_matrix"] = grm
+            adata_kinship.uns["related_pairs"] = related_pairs
+            adata_kinship.uns["kinship_threshold"] = kinship_threshold
+
+            # Compute stats
+            upper_triangle = grm[np.triu_indices(n_samples, k=1)]
+            stats = {
+                "analysis_type": "kinship",
+                "n_samples": n_samples,
+                "n_variants": adata_kinship.n_vars,
+                "n_related_pairs": len(related_pairs),
+                "kinship_threshold": kinship_threshold,
+                "estimator": estimator,
+                "mean_kinship": float(np.mean(upper_triangle)),
+                "max_kinship": float(np.max(upper_triangle)) if len(upper_triangle) > 0 else 0.0,
+            }
+
+            logger.info(
+                f"Kinship computation completed: {len(related_pairs)} related pairs "
+                f"(threshold={kinship_threshold})"
+            )
+
+            # Create IR
+            ir = self._create_kinship_ir(
+                kinship_threshold=kinship_threshold,
+                genotype_layer=genotype_layer,
+                estimator=estimator,
+            )
+
+            return adata_kinship, stats, ir
+
+        except Exception as e:
+            logger.exception(f"Error during kinship computation: {e}")
+            raise GWASError(f"Kinship computation failed: {str(e)}")
+
+    def clump_gwas_results(
+        self,
+        adata: anndata.AnnData,
+        pvalue_threshold: float = 5e-8,
+        clump_kb: int = 250,
+        pvalue_col: str = "gwas_pvalue",
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
+        """
+        Clump GWAS results into independent loci by position-based grouping.
+
+        Groups significant variants into clumps based on genomic proximity.
+        Each clump has an index variant (lowest p-value) and member variants
+        within the specified window on the same chromosome.
+
+        Args:
+            adata: AnnData object with GWAS results in var
+            pvalue_threshold: P-value threshold for significance (default: 5e-8)
+            clump_kb: Clumping window size in kilobases (default: 250)
+            pvalue_col: Column name in adata.var with p-values (default: "gwas_pvalue")
+
+        Returns:
+            Tuple[AnnData, Dict, AnalysisStep]: Full AnnData with clump annotations, stats, IR
+
+        Raises:
+            GWASError: If pvalue column missing
+        """
+        try:
+            logger.info(
+                f"Clumping GWAS results: pvalue_threshold={pvalue_threshold}, "
+                f"clump_kb={clump_kb}"
+            )
+
+            # Validate pvalue column exists
+            if pvalue_col not in adata.var.columns:
+                raise GWASError(
+                    f"P-value column '{pvalue_col}' not found in adata.var. "
+                    f"Available columns: {list(adata.var.columns)}"
+                )
+
+            # Create working copy
+            adata_clumped = adata.copy()
+
+            # Initialize clump_id column (-1 for non-significant)
+            adata_clumped.var["clump_id"] = -1
+
+            # Get significant variants
+            pvalues = adata_clumped.var[pvalue_col].values
+            sig_mask = pvalues < pvalue_threshold
+
+            n_significant = int(sig_mask.sum())
+
+            if n_significant == 0:
+                logger.info("No significant variants found for clumping")
+                adata_clumped.uns["gwas_clumps"] = []
+                stats = {
+                    "analysis_type": "gwas_clumping",
+                    "n_significant": 0,
+                    "n_clumps": 0,
+                    "n_singletons": 0,
+                    "largest_clump_size": 0,
+                    "pvalue_threshold": pvalue_threshold,
+                    "clump_kb": clump_kb,
+                    "clumps": [],
+                }
+                ir = self._create_clumping_ir(
+                    pvalue_threshold=pvalue_threshold,
+                    clump_kb=clump_kb,
+                    pvalue_col=pvalue_col,
+                )
+                return adata_clumped, stats, ir
+
+            # Get significant variant indices sorted by p-value ascending
+            sig_indices = np.where(sig_mask)[0]
+            sig_pvalues = pvalues[sig_indices]
+            sort_order = np.argsort(sig_pvalues)
+            sorted_sig_indices = sig_indices[sort_order]
+
+            # Check for position/chromosome columns
+            has_pos = "POS" in adata_clumped.var.columns
+            has_chrom = "CHROM" in adata_clumped.var.columns
+
+            # Greedy clumping
+            claimed = set()
+            clumps = []
+            clump_id = 0
+
+            clump_window_bp = clump_kb * 1000
+
+            for idx_variant in sorted_sig_indices:
+                if idx_variant in claimed:
+                    continue
+
+                # This variant becomes the index variant of a new clump
+                idx_pvalue = float(pvalues[idx_variant])
+                idx_var_name = adata_clumped.var.index[idx_variant]
+
+                if has_pos and has_chrom:
+                    idx_pos = int(adata_clumped.var["POS"].iloc[idx_variant])
+                    idx_chrom = str(adata_clumped.var["CHROM"].iloc[idx_variant])
+                else:
+                    idx_pos = idx_variant
+                    idx_chrom = "unknown"
+
+                # Find clump members: unclaimed significant variants on same chrom within window
+                member_indices = [idx_variant]
+
+                for other_idx in sorted_sig_indices:
+                    if other_idx == idx_variant or other_idx in claimed:
+                        continue
+
+                    if has_pos and has_chrom:
+                        other_chrom = str(adata_clumped.var["CHROM"].iloc[other_idx])
+                        other_pos = int(adata_clumped.var["POS"].iloc[other_idx])
+
+                        if other_chrom == idx_chrom and abs(other_pos - idx_pos) < clump_window_bp:
+                            member_indices.append(other_idx)
+
+                # Assign clump_id to all members
+                for member_idx in member_indices:
+                    adata_clumped.var.iloc[member_idx, adata_clumped.var.columns.get_loc("clump_id")] = clump_id
+                    claimed.add(member_idx)
+
+                # Record clump info
+                member_ids = [adata_clumped.var.index[m] for m in member_indices]
+                clump_info = {
+                    "index_variant": idx_var_name,
+                    "index_pvalue": idx_pvalue,
+                    "chrom": idx_chrom,
+                    "position": idx_pos,
+                    "n_members": len(member_indices),
+                    "member_ids": member_ids,
+                }
+                clumps.append(clump_info)
+                clump_id += 1
+
+            # Store clumps in uns
+            adata_clumped.uns["gwas_clumps"] = clumps
+
+            # Build stats
+            n_singletons = sum(1 for c in clumps if c["n_members"] == 1)
+            largest_clump = max((c["n_members"] for c in clumps), default=0)
+
+            # Top 10 clumps by p-value for stats
+            top_clumps = [
+                {
+                    "index_variant": c["index_variant"],
+                    "index_pvalue": c["index_pvalue"],
+                    "chrom": c["chrom"],
+                    "n_members": c["n_members"],
+                }
+                for c in clumps[:10]
+            ]
+
+            stats = {
+                "analysis_type": "gwas_clumping",
+                "n_significant": n_significant,
+                "n_clumps": len(clumps),
+                "n_singletons": n_singletons,
+                "largest_clump_size": largest_clump,
+                "pvalue_threshold": pvalue_threshold,
+                "clump_kb": clump_kb,
+                "clumps": top_clumps,
+            }
+
+            logger.info(
+                f"Clumping completed: {n_significant} significant variants -> "
+                f"{len(clumps)} clumps ({n_singletons} singletons)"
+            )
+
+            # Create IR
+            ir = self._create_clumping_ir(
+                pvalue_threshold=pvalue_threshold,
+                clump_kb=clump_kb,
+                pvalue_col=pvalue_col,
+            )
+
+            return adata_clumped, stats, ir
+
+        except Exception as e:
+            logger.exception(f"Error during GWAS clumping: {e}")
+            raise GWASError(f"GWAS clumping failed: {str(e)}")
+
     # Helper methods
 
     def _adata_to_sgkit(

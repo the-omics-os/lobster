@@ -142,7 +142,7 @@ Each domain has specialist agents in separate packages:
 | `lobster-transcriptomics` | transcriptomics_expert, annotation_expert, de_analysis_expert |
 | `lobster-research` | research_agent, data_expert_agent |
 | `lobster-visualization` | visualization_expert_agent |
-| `lobster-proteomics` | proteomics_expert [alpha] |
+| `lobster-proteomics` | proteomics_expert, proteomics_de_analysis_expert, biomarker_discovery_expert [alpha] |
 | `lobster-genomics` | genomics_expert [alpha] |
 | `lobster-ml` | machine_learning_expert [alpha] |
 

@@ -70,7 +70,7 @@ lobster/
 │   ├── lobster-metadata/        # metadata_assistant
 │   ├── lobster-structural-viz/  # protein_structure_visualization_expert
 │   ├── lobster-genomics/        # genomics_expert
-│   ├── lobster-proteomics/      # proteomics_expert
+│   ├── lobster-proteomics/      # proteomics_expert, proteomics_de_analysis_expert, biomarker_discovery_expert
 │   └── lobster-ml/              # machine_learning_expert
 └── lobster/                     # Core SDK
     ├── agents/supervisor.py     # Supervisor (stays in core)

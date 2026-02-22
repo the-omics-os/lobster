@@ -222,6 +222,11 @@ class AccessionResolver:
             "ega_analysis_accession": "EGA",
             "ega_policy_accession": "EGA",
             "ega_dac_accession": "EGA",
+            # Knowledgebase accessions (UniProt, Ensembl)
+            "uniprot_accession": "UniProt",
+            "ensembl_gene_accession": "Ensembl",
+            "ensembl_transcript_accession": "Ensembl",
+            "ensembl_protein_accession": "Ensembl",
         }
 
         results: Dict[str, Set[str]] = {}
@@ -379,6 +384,10 @@ class AccessionResolver:
             "EGAZ",
             "EGAP",
             "EGAC",
+            # Ensembl prefixes
+            "ENSG",
+            "ENST",
+            "ENSP",
         ]
 
         for prefix in prefixes:
@@ -420,6 +429,8 @@ class AccessionResolver:
             "MGnify",
             "EGA",
             "DOI",
+            "UniProt",
+            "Ensembl",
         ]
 
     def is_geo_identifier(self, identifier: str) -> bool:
@@ -443,6 +454,16 @@ class AccessionResolver:
         """Check if identifier is any EGA type (EGAS, EGAD, EGAN, etc.)."""
         db = self.detect_database(identifier)
         return db is not None and "Genome-phenome Archive" in db
+
+    def is_uniprot_identifier(self, identifier: str) -> bool:
+        """Check if identifier is a UniProt accession (e.g. P04637, Q9Y6K9, A0A0C5B5G6)."""
+        db = self.detect_database(identifier)
+        return db is not None and db == "UniProt"
+
+    def is_ensembl_identifier(self, identifier: str) -> bool:
+        """Check if identifier is any Ensembl stable ID (ENSG, ENST, ENSP)."""
+        db = self.detect_database(identifier)
+        return db is not None and db.startswith("Ensembl")
 
     def get_access_type(self, identifier: str) -> str:
         """

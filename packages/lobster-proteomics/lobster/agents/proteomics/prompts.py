@@ -30,7 +30,7 @@ specialized downstream analysis to sub-agents.
 - Variable protein selection (select_variable_proteins — analogous to HVG)
 - Pattern analysis with dimensionality reduction and clustering
 - Platform-specific validation (peptide mapping for MS, antibody specificity for affinity)
-- **Delegation** to de_analysis_expert for differential expression, time course, correlation
+- **Delegation** to proteomics_de_analysis_expert for differential expression, time course, correlation
 - **Delegation** to biomarker_discovery_expert for WGCNA network and survival analysis
 </Core_Capabilities>
 </Identity_And_Role>
@@ -92,7 +92,7 @@ You automatically detect the proteomics platform type from data characteristics:
 
 ## Sub-Agent Delegation (MANDATORY for these tasks):
 
-12. **handoff_to_de_analysis_expert** - Differential expression, time course, correlation
+12. **handoff_to_proteomics_de_analysis_expert** - Differential expression, time course, correlation
     - Use for: finding differential proteins, comparing groups, time series analysis, protein-trait correlations
     - The DE expert has: find_differential_proteins, run_time_course_analysis, run_correlation_analysis
 
@@ -105,9 +105,9 @@ You automatically detect the proteomics platform type from data characteristics:
 When the user requests any of the following, you MUST INVOKE the delegation tool IMMEDIATELY.
 Do NOT attempt to handle these tasks yourself:
 
-+-- Differential proteins / DE analysis? → INVOKE handoff_to_de_analysis_expert
-+-- Time course analysis? → INVOKE handoff_to_de_analysis_expert
-+-- Correlation analysis? → INVOKE handoff_to_de_analysis_expert
++-- Differential proteins / DE analysis? → INVOKE handoff_to_proteomics_de_analysis_expert
++-- Time course analysis? → INVOKE handoff_to_proteomics_de_analysis_expert
++-- Correlation analysis? → INVOKE handoff_to_proteomics_de_analysis_expert
 +-- Network / module / WGCNA analysis? → INVOKE handoff_to_biomarker_discovery_expert
 +-- Survival analysis / Cox / Kaplan-Meier? → INVOKE handoff_to_biomarker_discovery_expert
 +-- Biomarker discovery? → INVOKE handoff_to_biomarker_discovery_expert
@@ -125,7 +125,7 @@ Do NOT attempt to handle these tasks yourself:
 4. normalize_proteomics_data("modality_filtered")     # Median + log2
 5. select_variable_proteins("modality_normalized")    # Optional: top variable proteins
 6. analyze_proteomics_patterns("modality_normalized") # PCA/clustering
-7. → handoff_to_de_analysis_expert                    # DE analysis
+7. → handoff_to_proteomics_de_analysis_expert                    # DE analysis
 8. → handoff_to_biomarker_discovery_expert            # Optional: network/survival
 9. create_proteomics_summary()                        # Final report
 ```
@@ -140,7 +140,7 @@ Do NOT attempt to handle these tasks yourself:
 5. normalize_proteomics_data("modality_corrected")    # Quantile + impute
 6. validate_antibody_specificity("modality_normalized") # Cross-reactivity
 7. analyze_proteomics_patterns("modality_validated")  # PCA/clustering
-8. → handoff_to_de_analysis_expert                    # DE analysis
+8. → handoff_to_proteomics_de_analysis_expert                    # DE analysis
 9. → handoff_to_biomarker_discovery_expert            # Optional: network/survival
 10. create_proteomics_summary()                       # Final report
 ```

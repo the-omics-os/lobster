@@ -65,7 +65,7 @@ from lobster.core.schemas.publication_queue import HandoffStatus, PublicationSta
 from lobster.services.orchestration.publication_processing_service import (
     PublicationProcessingService,
 )
-from lobster.tools.workspace_tool import create_export_publication_queue_tool
+
 
 console = Console()
 
@@ -411,30 +411,6 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help="Maximum entries to process in Phase 2 (default: all READY_FOR_METADATA entries).",
-    )
-    # Phase 3: Export flags
-    parser.add_argument(
-        "--export-samples",
-        action="store_true",
-        help="Export publication queue samples to CSV using export_publication_queue_samples tool.",
-    )
-    parser.add_argument(
-        "--export-filename",
-        type=str,
-        default="publication_queue_export.csv",
-        help="Filename for exported samples CSV (default: publication_queue_export.csv).",
-    )
-    parser.add_argument(
-        "--export-filter",
-        type=str,
-        default=None,
-        help="Optional filter criteria for sample export (e.g., '16S human'). Applied to organism_name, host, library_strategy fields.",
-    )
-    parser.add_argument(
-        "--export-entry-ids",
-        type=str,
-        default="handoff_ready",
-        help="Entry IDs to export: 'all', 'handoff_ready', or comma-separated IDs (default: handoff_ready).",
     )
     return parser.parse_args()
 
@@ -1471,57 +1447,6 @@ def validate_csv_structure(csv_path: Path) -> Dict[str, Any]:
         }
 
 
-def export_publication_samples(
-    data_manager: DataManagerV2,
-    entry_ids: str,
-    output_filename: str,
-    filter_criteria: Optional[str] = None,
-) -> None:
-    """
-    Export publication queue samples using the export_publication_queue_samples tool.
-
-    Args:
-        data_manager: DataManagerV2 instance
-        entry_ids: Entry IDs to export ('all', 'handoff_ready', or comma-separated IDs)
-        output_filename: Output CSV filename
-        filter_criteria: Optional filter string for sample selection
-    """
-    console.print("\n" + "=" * 60)
-    console.print("[bold cyan]Phase 3: Publication Queue Sample Export[/bold cyan]")
-    console.print("=" * 60 + "\n")
-
-    # Create export tool
-    export_tool = create_export_publication_queue_tool(data_manager)
-
-    # Invoke tool
-    console.print(f"[yellow]Exporting samples...[/yellow]")
-    console.print(f"  Entry IDs: {entry_ids}")
-    console.print(f"  Output: {output_filename}")
-    if filter_criteria:
-        console.print(f"  Filter: {filter_criteria}")
-
-    try:
-        result = export_tool.invoke(
-            {
-                "entry_ids": entry_ids,
-                "output_filename": output_filename,
-                "filter_criteria": filter_criteria,
-            }
-        )
-
-        # Display result
-        console.print(
-            Panel(
-                result,
-                title="[bold green]Export Result[/bold green]",
-                border_style="green",
-            )
-        )
-
-    except Exception as e:
-        console.print(f"[bold red]Export failed: {e}[/bold red]")
-
-
 def main() -> None:
     start_time = time.time()
     args = parse_args()
@@ -1596,15 +1521,6 @@ def main() -> None:
             max_entries=args.handoff_max_entries,
         )
         render_handoff_summary(handoff_result)
-
-    # Phase 3: Export samples to CSV (conditional)
-    if args.export_samples:
-        export_publication_samples(
-            data_manager=data_manager,
-            entry_ids=args.export_entry_ids,
-            output_filename=args.export_filename,
-            filter_criteria=args.export_filter,
-        )
 
     # Display total execution time
     total_elapsed = time.time() - start_time

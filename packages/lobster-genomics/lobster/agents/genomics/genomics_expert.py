@@ -41,6 +41,10 @@ from lobster.services.analysis.gwas_service import GWASService
 from lobster.services.analysis.variant_annotation_service import (
     VariantAnnotationService,
 )
+from lobster.tools.knowledgebase_tools import (
+    create_variant_consequence_tool,
+    create_sequence_retrieval_tool,
+)
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -1052,6 +1056,10 @@ Use get_modality_info("modality_name") for detailed information.
     # COLLECT ALL TOOLS
     # =========================================================================
 
+    # Knowledgebase tools (VEP + sequence retrieval via Ensembl)
+    predict_variant_consequences = create_variant_consequence_tool(data_manager)
+    get_ensembl_sequence = create_sequence_retrieval_tool(data_manager)
+
     # Core genomics tools
     genomics_tools = [
         # Phase 1: Data loading & QC
@@ -1064,6 +1072,9 @@ Use get_modality_info("modality_name") for detailed information.
         run_gwas,
         calculate_pca,
         annotate_variants,
+        # Knowledgebase: variant consequences & sequences
+        predict_variant_consequences,
+        get_ensembl_sequence,
         # Helper tools
         list_modalities,
         get_modality_info,

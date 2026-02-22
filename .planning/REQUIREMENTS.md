@@ -1,204 +1,296 @@
-# Requirements: Vector Search for Lobster AI
+# Requirements: Core Tools Refactor
 
-**Defined:** 2026-02-17
-**Core Value:** Agents can semantically match any biomedical term to the correct ontology concept with calibrated confidence scores, using zero configuration out of the box.
+**Defined:** 2026-02-22
+**Core Value:** Every agent has exactly the right tools — no overlap, no gaps, no wrong abstraction level
 
 ## v1 Requirements
 
-Requirements for initial release. Each maps to roadmap phases.
+### Genomics Parent (genomics_expert)
+
+- [ ] **GEN-01**: Add `ld_prune` tool — standalone LD pruning as prerequisite for PCA, GWAS, admixture
+- [ ] **GEN-02**: Add `compute_kinship` tool — pairwise kinship matrix and related-pair flagging
+- [ ] **GEN-03**: Add `clump_results` tool — LD-clump GWAS results into independent loci
+- [ ] **GEN-04**: Merge `list_modalities` + `get_modality_info` into `summarize_modality`
+- [ ] **GEN-05**: Move `predict_variant_consequences` from parent to variant_analysis_expert child
+- [ ] **GEN-06**: Move `get_ensembl_sequence` from parent to variant_analysis_expert child
+- [ ] **GEN-07**: Add IR (provenance) to `load_vcf` and `load_plink` (BUG-06 fix)
+
+### Genomics Child (variant_analysis_expert — NEW)
+
+- [ ] **GEN-08**: Create variant_analysis_expert child agent with modular folder structure
+- [ ] **GEN-09**: Implement `normalize_variants` tool — left-align indels, split multiallelic
+- [ ] **GEN-10**: Implement `predict_consequences` tool — VEP batch annotation with SIFT/PolyPhen/CADD
+- [ ] **GEN-11**: Implement `query_population_frequencies` tool — gnomAD allele frequency lookup
+- [ ] **GEN-12**: Implement `query_clinical_databases` tool — ClinVar pathogenicity and disease associations
+- [ ] **GEN-13**: Implement `prioritize_variants` tool — rank by consequence severity + frequency + pathogenicity
+- [ ] **GEN-14**: Implement `lookup_variant` tool — single-variant comprehensive lookup by rsID/coordinates
+- [ ] **GEN-15**: Implement `retrieve_sequence` tool — Ensembl sequence fetch (relocated from parent)
+- [ ] **GEN-16**: Implement `summarize_modality` tool — shared with parent
+
+### SC Transcriptomics Parent (transcriptomics_expert)
+
+- [ ] **SCT-01**: Add `detect_doublets` tool — Scrublet doublet detection on raw counts
+- [ ] **SCT-02**: Add `integrate_batches` tool — Harmony/scVI batch integration for multi-sample. Must return integration quality metrics (LISI, silhouette) so LLM can re-invoke with different parameters for iterative refinement.
+- [ ] **SCT-03**: Add `compute_trajectory` tool — DPT/PAGA pseudotime trajectory inference
+- [ ] **SCT-04**: Rename `filter_and_normalize_modality` → `filter_and_normalize`
+- [ ] **SCT-05**: Rename `select_highly_variable_genes` → `select_variable_features`
+- [ ] **SCT-06**: Rename `cluster_modality` → `cluster_cells`
+- [ ] **SCT-07**: Rename `find_marker_genes_for_clusters` → `find_marker_genes`
+- [ ] **SCT-08**: Fix BUG-01: `subcluster_cells` TypeError on `len(None)`
+
+### Bulk Transcriptomics (on transcriptomics_expert parent)
+
+- [ ] **BLK-01**: Add `import_bulk_counts` tool — Salmon/kallisto/featureCounts import
+- [ ] **BLK-02**: Add `merge_sample_metadata` tool — join external metadata with count matrix
+- [ ] **BLK-03**: Add `assess_bulk_sample_quality` tool — PCA outlier detection, sample correlation, batch quantification
+- [ ] **BLK-04**: Add `filter_bulk_genes` tool — bulk-appropriate gene filtering (min counts in min samples)
+- [ ] **BLK-05**: Add `normalize_bulk_counts` tool — DESeq2 size factors, VST, CPM
+- [ ] **BLK-06**: Add `detect_batch_effects` tool — variance decomposition, correction recommendation
+- [ ] **BLK-07**: Add `convert_gene_identifiers` tool — Ensembl/Symbol/Entrez mapping
+- [ ] **BLK-08**: Add `prepare_bulk_for_de` tool — validation checkpoint before DE handoff
+
+### Annotation Expert Child (transcriptomics)
+
+- [ ] **ANN-01**: Add `score_gene_set` tool — gene set scoring via sc.tl.score_genes
+- [ ] **ANN-02**: Rename `annotate_cell_types` → `annotate_cell_types_auto`
+- [ ] **ANN-03**: Fix BUG-04: Replace try/except ImportError with component_registry for VectorSearchService
+- [ ] **ANN-04**: Fix BUG-05: Use data_manager.store_modality() instead of direct dict assignment
+
+### DE Analysis Expert Child (transcriptomics)
+
+- [ ] **DEA-01**: Merge 3 DE tools into 2: `run_differential_expression` (simple) + `run_de_with_formula` (advanced)
+- [ ] **DEA-02**: Merge `construct_de_formula_interactive` + `suggest_formula_for_design` → `suggest_de_formula`
+- [ ] **DEA-03**: Deprecate `manually_annotate_clusters_interactive` (BUG-11)
+- [ ] **DEA-04**: Deprecate `construct_de_formula_interactive` (BUG-12)
+- [ ] **DEA-05**: Add `filter_de_results` tool — standalone result filtering
+- [ ] **DEA-06**: Add `export_de_results` tool — publication-ready CSV/Excel export
+- [ ] **DEA-07**: Rename `prepare_differential_expression_design` → `prepare_de_design`
+- [ ] **DEA-08**: Rename `run_pathway_enrichment_analysis` → `run_pathway_enrichment`
+- [ ] **DEA-09**: Add `run_bulk_de_direct` tool — one-shot DE for simple bulk comparisons
+- [ ] **DEA-10**: Add `run_gsea_analysis` tool — ranked gene set enrichment
+- [ ] **DEA-11**: Add `extract_and_export_de_results` tool — publication-ready tables with LFC shrinkage
+
+### MS Proteomics Parent (proteomics_expert)
+
+- [ ] **MSP-01**: Add `import_proteomics_data` tool — wrap MaxQuantParser/DIANNParser/SpectronautParser (BUG-07 fix)
+- [ ] **MSP-02**: Add `import_ptm_sites` tool — phospho/acetyl/ubiquitin site-level import
+- [ ] **MSP-03**: Add `correct_batch_effects` tool — ComBat/median centering for MS batch correction
+- [ ] **MSP-04**: Add `summarize_peptide_to_protein` tool — peptide/PSM to protein rollup for TMT
+- [ ] **MSP-05**: Add `normalize_ptm_to_protein` tool — separate PTM regulation from protein abundance
+- [ ] **MSP-06**: Merge `add_peptide_mapping` into `import_proteomics_data`
+- [ ] **MSP-07**: Fix BUG-03: validate_antibody_specificity inflated correlations (use pairwise-complete)
+- [ ] **MSP-08**: Fix BUG-10: detect_platform_type silent default to mass_spec (return "unknown")
+- [ ] **MSP-09**: Fix BUG-08: filter_proteomics_data dead affinity branch
+- [ ] **MSP-10**: Fix BUG-09: remove unused cross_reactivity_threshold config
+
+### Proteomics DE Child (proteomics_de_analysis_expert)
+
+- [ ] **PDE-01**: Add `run_pathway_enrichment` tool — GO/Reactome/KEGG on DE results
+- [ ] **PDE-02**: Add `run_differential_ptm_analysis` tool — site-level DE with protein adjustment
+- [ ] **PDE-03**: Add `run_kinase_enrichment` tool — KSEA for phosphoproteomics
+- [ ] **PDE-04**: Add `run_string_network_analysis` tool — STRING PPI network queries
+- [ ] **PDE-05**: Fix BUG-02: UnboundLocalError on min_group in DE
+
+### Biomarker Discovery Child (biomarker_discovery_expert)
+
+- [ ] **BIO-01**: Add `select_biomarker_panel` tool — multi-method feature selection (LASSO, stability, Boruta)
+- [ ] **BIO-02**: Add `evaluate_biomarker_panel` tool — nested CV model evaluation with AUC
+- [ ] **BIO-03**: Add `extract_hub_proteins` tool — post-WGCNA hub protein extraction
+
+### Affinity Proteomics (on proteomics_expert parent)
+
+- [ ] **AFP-01**: Add `import_affinity_data` tool — Olink NPX/SomaScan ADAT/Luminex MFI parsing
+- [ ] **AFP-02**: Add `assess_lod_quality` tool — LOD-based quality assessment per platform
+- [ ] **AFP-03**: Add `normalize_bridge_samples` tool — inter-plate normalization via bridge samples
+- [ ] **AFP-04**: Add `assess_cross_platform_concordance` tool — cross-platform protein comparison
+- [ ] **AFP-05**: Enhance `assess_proteomics_quality` for affinity-specific LOD metrics
+- [ ] **AFP-06**: Enhance `check_proteomics_status` for affinity-specific metadata display
+
+### Metabolomics (NEW lobster-metabolomics package)
+
+- [ ] **MET-01**: Create `packages/lobster-metabolomics/` package structure (structured for future child agents)
+- [ ] **MET-02**: Create `MetabolomicsQualityService` — RSD, TIC, QC sample evaluation
+- [ ] **MET-03**: Create `MetabolomicsPreprocessingService` — filter, impute, normalize (PQN/TIC/IS), batch correct
+- [ ] **MET-04**: Create `MetabolomicsAnalysisService` — univariate stats, PLS-DA, fold change, pathway enrichment
+- [ ] **MET-05**: Create `MetabolomicsAnnotationService` — m/z matching to HMDB/KEGG, MSI levels
+- [ ] **MET-06**: Implement `assess_metabolomics_quality` tool
+- [ ] **MET-07**: Implement `filter_metabolomics_features` tool
+- [ ] **MET-08**: Implement `handle_missing_values` tool
+- [ ] **MET-09**: Implement `normalize_metabolomics` tool
+- [ ] **MET-10**: Implement `correct_batch_effects` tool
+- [ ] **MET-11**: Implement `run_metabolomics_statistics` tool
+- [ ] **MET-12**: Implement `run_multivariate_analysis` tool (PCA/PLS-DA/OPLS-DA)
+- [ ] **MET-13**: Implement `annotate_metabolites` tool
+- [ ] **MET-14**: Implement `analyze_lipid_classes` tool
+- [ ] **MET-15**: Implement `run_pathway_enrichment` tool
+- [ ] **MET-16**: Register metabolomics_expert via entry points in pyproject.toml
+- [ ] **MET-17**: Fix BUG-14: metabolomics schema sparse matrix zero-checking
+
+### Bug Fixes (Cross-Cutting)
+
+- [ ] **BUG-13**: Add post-correction validation to `correct_plate_effects`
+- [ ] **BUG-15**: Fix PCA defaults to no LD pruning in genomics (default recommend standalone tool)
+- [ ] **BUG-16**: Fix bulk data getting SC terminology in shared tools
+- [ ] **BUG-17**: Fix `list_modalities` loading all AnnData to check type
+
+### Prompts & Documentation
+
+- [ ] **DOC-01**: Update genomics_expert prompt for new tool inventory + variant_analysis handoff
+- [ ] **DOC-02**: Update transcriptomics_expert prompt for bulk-specific tool routing
+- [ ] **DOC-03**: Update proteomics_expert prompt for import tools + PTM + affinity tools
+- [ ] **DOC-04**: Update de_analysis_expert prompt for merged DE tools + bulk additions
+- [ ] **DOC-05**: Update biomarker_discovery_expert prompt for panel selection tools
+- [ ] **DOC-06**: Create metabolomics_expert prompt
+- [ ] **DOC-07**: Update skills/lobster-dev references for new architecture
 
 ### Infrastructure
 
-- [x] **INFRA-01**: VectorSearchService orchestrates two-stage search pipeline (embed -> search -> rerank -> return)
-- [x] **INFRA-02**: VectorSearchConfig reads env vars and provides factory methods for backend, embeddings, and reranker
-- [x] **INFRA-03**: BaseVectorBackend ABC defines add_documents, search, delete, count interface
-- [x] **INFRA-04**: ChromaDB backend implements BaseVectorBackend with PersistentClient and auto-download from S3
-- [x] **INFRA-05**: FAISS backend implements BaseVectorBackend with in-memory IndexFlatL2 and L2-normalized vectors
-- [x] **INFRA-06**: pgvector backend stub raises NotImplementedError with helpful message
-- [x] **INFRA-07**: Switching LOBSTER_VECTOR_BACKEND env var changes backend with zero code changes
-- [x] **INFRA-08**: All optional deps (chromadb, sentence-transformers, faiss-cpu, obonet) are import-guarded with helpful install messages
-
-### Embeddings
-
-- [x] **EMBED-01**: BaseEmbeddingProvider ABC defines embed_text and embed_batch interface
-- [x] **EMBED-02**: SapBERT provider loads cambridgeltl/SapBERT-from-PubMedBERT-fulltext (768d) with lazy singleton
-- [x] **EMBED-03**: SentenceTransformers provider loads all-MiniLM-L6-v2 (384d) as general fallback
-- [x] **EMBED-04**: OpenAI provider uses text-embedding-3-small (1536d) with lazy client init
-- [x] **EMBED-05**: No model downloads at import time — all loading happens on first use
-
-### Reranking
-
-- [x] **RANK-01**: CrossEncoderReranker uses cross-encoder/ms-marco-MiniLM-L-6-v2 with lazy loading
-- [x] **RANK-02**: CohereReranker gracefully degrades without API key (logs warning, returns original order)
-- [x] **RANK-03**: Reranker is optional — search works without reranking if reranker set to "none"
-
-### Search
-
-- [x] **SRCH-01**: VectorSearchService.match_ontology(term, ontology, k) returns List[OntologyMatch] with confidence scores
-- [x] **SRCH-02**: Two-stage pipeline: embed query -> search backend (oversample k*4) -> rerank -> return top-k
-- [x] **SRCH-03**: ONTOLOGY_COLLECTIONS mapping resolves aliases ("disease" -> "mondo", "tissue" -> "uberon", "cell_type" -> "cell_ontology")
-- [x] **SRCH-04**: Query results include ontology term IDs (MONDO:XXXX, UBERON:XXXX, CL:XXXX), names, and confidence scores
-
-### Schemas
-
-- [x] **SCHM-01**: SearchResult, OntologyMatch, LiteratureMatch, SearchResponse Pydantic models defined in lobster/core/schemas/search.py
-- [x] **SCHM-02**: SearchBackend, EmbeddingProvider, RerankerType enums defined
-- [x] **SCHM-03**: OntologyMatch is compatible with existing DiseaseMatch via helper converter
-
-### Ontology Graph
-
-- [x] **GRPH-01**: load_ontology_graph() parses OBO files via obonet into NetworkX MultiDiGraph with @lru_cache
-- [x] **GRPH-02**: get_neighbors(graph, term_id, depth) returns parent/child/sibling terms
-- [x] **GRPH-03**: OBO_URLS mapping covers MONDO, Uberon, and Cell Ontology
-
-### Data Pipeline
-
-- [x] **DATA-01**: Build script (scripts/build_ontology_embeddings.py) parses OBO files and generates SapBERT embeddings
-- [x] **DATA-02**: Build script embeds definition + primary label per term (not synonyms separately) to avoid duplication
-- [x] **DATA-03**: Build script outputs ChromaDB collections with metadata (term_id, name, synonyms, namespace, is_obsolete)
-- [x] **DATA-04**: Build script produces tarballs for S3 upload (mondo_sapbert_768.tar.gz, uberon_sapbert_768.tar.gz, cell_ontology_sapbert_768.tar.gz)
-- [x] **DATA-05**: ChromaDB backend auto-downloads tarballs from S3 on first use to ~/.lobster/ontology_cache/
-- [x] **DATA-06**: Tarballs hosted on S3 at s3://lobster-ontology-data/v1/
-
-### Disease Service Migration
-
-- [x] **MIGR-01**: DiseaseOntologyService branches on config.backend field ("json" = keyword, "embeddings" = vector search)
-- [x] **MIGR-02**: When backend="embeddings", match_disease() delegates to VectorSearchService.match_ontology("mondo")
-- [x] **MIGR-03**: _convert_ontology_match() maps OntologyMatch to existing DiseaseMatch schema
-- [x] **MIGR-04**: Keyword matching remains as fallback when vector deps not installed (with explicit logger.warning)
-- [x] **MIGR-05**: DiseaseStandardizationService silent fallback fixed with logger.warning on ImportError
-- [x] **MIGR-06**: Duplicate disease_ontology.json deleted from lobster/config/ (canonical stays in lobster-metadata package)
-
-### Agent Integration
-
-- [x] **AGNT-01**: annotation_expert gains annotate_cell_types_semantic tool that queries Cell Ontology via VectorSearchService
-- [x] **AGNT-02**: Semantic annotation uses marker gene signatures as query text ("Cluster 0: high CD3D, CD3E, CD8A")
-- [x] **AGNT-03**: Existing annotate_cell_types tool remains unchanged (new tool augments, does not replace)
-- [x] **AGNT-04**: metadata_assistant gains standardize_tissue_term tool using VectorSearchService.match_ontology("uberon")
-- [x] **AGNT-05**: metadata_assistant gains standardize_disease_term tool using DiseaseOntologyService.match_disease()
-- [x] **AGNT-06**: All new tools follow 3-tuple return pattern (result, stats, AnalysisStep) with ir mandatory
-
-### Cloud Handoff
-
-- [x] **CLOD-01**: Cloud-hosted ChromaDB handoff spec written for vector.omics-os.com deployment
-- [x] **CLOD-02**: Handoff spec includes architecture (ChromaDB server mode, auth, prewarmed indexes), API design, and deployment steps
-
-### Testing
-
-- [x] **TEST-01**: Unit tests for backends (ChromaDB, FAISS, pgvector stub) with mocked deps
-- [x] **TEST-02**: Unit tests for embedding providers (SapBERT, MiniLM, OpenAI) with mocked model loading
-- [x] **TEST-03**: Unit tests for rerankers (cross-encoder, Cohere) with mocked clients
-- [x] **TEST-04**: Unit tests for VectorSearchService orchestration, caching, config-driven switching
-- [x] **TEST-05**: Unit tests for config env var parsing and factory methods
-- [x] **TEST-06**: Unit tests for DiseaseOntologyService Phase 2 backend swap branching
-- [x] **TEST-07**: Integration test with small real ChromaDB (embed -> search -> rerank full pipeline)
-- [x] **TEST-08**: All tests use @pytest.mark.skipif for optional deps
+- [ ] **INF-01**: Implement @tool_meta decorator foundation (D10) — apply to new tools only
 
 ## v2 Requirements
 
-Deferred to future release. Tracked but not in current roadmap.
+### Future Genomics
+- **GEN-V2-01**: Fine-mapping tools (SuSiE wrapper)
+- **GEN-V2-02**: PRS calculation tools
+- **GEN-V2-03**: Selection statistics (Fst, Tajima's D) via scikit-allel
 
-### Search Enhancements
+### Future Metabolomics
+- **MET-V2-01**: Targeted metabolomics child agent (standard curves, absolute quantification)
+- **MET-V2-02**: Metabolomics annotation child agent (SIRIUS, MetFrag, in-silico fragmentation)
+- **MET-V2-03**: GC-MS specific tools (library matching, derivatization artifact removal)
+- **MET-V2-04**: Multi-platform integration workflow
 
-- **SRCH-V2-01**: Hybrid matching — boost exact keyword matches alongside embedding similarity
-- **SRCH-V2-02**: Confidence thresholds — auto-accept >=0.9, warn 0.7-0.9, manual review <0.7
-- **SRCH-V2-03**: Batch review workflow — CSV export for low-confidence matches with top-3 alternatives
-- **SRCH-V2-04**: Literature semantic search via FAISS (SearchResponse for publications)
+### Future Proteomics
+- **MSP-V2-01**: DIA-specific workflow tools (library-free mode, spectral library management)
+- **MSP-V2-02**: TMT-specific tools beyond peptide-to-protein rollup
 
-### Ontology Enhancements
-
-- **GRPH-V2-01**: Cross-ontology linking (MONDO disease -> affected Uberon tissues)
-- **GRPH-V2-02**: OLS API fallback for missing/stale terms
-- **GRPH-V2-03**: Automatic quarterly cache updates via CI/CD
-- **GRPH-V2-04**: Cross-references (UMLS, MeSH, ICD codes) in search metadata
-
-### Cloud
-
-- **CLOD-V2-01**: Deploy ChromaDB server at vector.omics-os.com
-- **CLOD-V2-02**: Cognito-authenticated API access for cloud users
-- **CLOD-V2-03**: Prewarmed indexes for all 3 ontologies
+### Future Cross-Domain
+- **INF-V2-01**: Full @tool_meta rollout to all existing tools
+- **INF-V2-02**: Automated tool redundancy detection via taxonomy
 
 ## Out of Scope
 
-Explicitly excluded. Documented to prevent scope creep.
-
 | Feature | Reason |
 |---------|--------|
-| Custom ontology upload UI | Scope creep — most users need standard 3 ontologies. CLI script documented for power users |
-| Multi-language support (XLM-RoBERTa) | Lobster is English-only. Defer to international market expansion |
-| Real-time OBO parsing at startup | Anti-pattern — 10-30s latency. Pre-build embeddings offline |
-| Bundled ontology data in PyPI package | Bloats package by 280MB. Use lazy download from S3 |
-| pgvector full implementation | ChromaDB sufficient for 60K vectors. Implement when PostgreSQL consolidation happens |
-| Editing pyproject.toml | Dependencies documented above for human review. Hard rule. |
-| Replacing existing annotate_cell_types | New tool augments, old stays for backward compatibility |
-| Biomedical cross-encoder fine-tuning | ms-marco sufficient for v1. Fine-tune if precision insufficient |
+| Raw data preprocessing (XCMS, STAR, MaxQuant) | Lobster receives processed feature tables, not raw instrument data |
+| Cell-cell communication (CellChat, LIANA) | Advanced analysis beyond core tool set; future expansion |
+| Separate affinity proteomics agent | D2: downstream analysis identical; PlatformConfig handles dual mode |
+| Separate population_genetics_expert | D1: PCA/kinship/LD pruning too coupled with GWAS pipeline |
+| NMR-specific processing | Defer to post-MVP metabolomics expansion |
+| Spatial transcriptomics | Different omics domain; separate project |
+| scATAC-seq tools | Different omics domain; separate project |
+| Perturb-seq / CRISPR screen tools | Specialized; separate project |
 
 ## Traceability
 
-Which phases cover which requirements. Updated during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | Phase 1 | Complete |
-| INFRA-02 | Phase 1 | Complete |
-| INFRA-03 | Phase 1 | Complete |
-| INFRA-04 | Phase 1 | Complete |
-| INFRA-05 | Phase 5 | Complete |
-| INFRA-06 | Phase 5 | Complete |
-| INFRA-07 | Phase 5 | Complete |
-| INFRA-08 | Phase 1 | Complete |
-| EMBED-01 | Phase 1 | Complete |
-| EMBED-02 | Phase 1 | Complete |
-| EMBED-03 | Phase 6 | Complete |
-| EMBED-04 | Phase 6 | Complete |
-| EMBED-05 | Phase 1 | Complete |
-| RANK-01 | Phase 4 | Complete |
-| RANK-02 | Phase 4 | Complete |
-| RANK-03 | Phase 4 | Complete |
-| SRCH-01 | Phase 2 | Complete |
-| SRCH-02 | Phase 2 | Complete |
-| SRCH-03 | Phase 2 | Complete |
-| SRCH-04 | Phase 2 | Complete |
-| SCHM-01 | Phase 1 | Complete |
-| SCHM-02 | Phase 1 | Complete |
-| SCHM-03 | Phase 2 | Complete |
-| GRPH-01 | Phase 2 | Complete |
-| GRPH-02 | Phase 2 | Complete |
-| GRPH-03 | Phase 2 | Complete |
-| DATA-01 | Phase 6 | Complete |
-| DATA-02 | Phase 6 | Complete |
-| DATA-03 | Phase 6 | Complete |
-| DATA-04 | Phase 6 | Complete |
-| DATA-05 | Phase 6 | Complete |
-| DATA-06 | Phase 6 | Complete |
-| MIGR-01 | Phase 2 | Complete |
-| MIGR-02 | Phase 2 | Complete |
-| MIGR-03 | Phase 2 | Complete |
-| MIGR-04 | Phase 2 | Complete |
-| MIGR-05 | Phase 2 | Complete |
-| MIGR-06 | Phase 2 | Complete |
-| AGNT-01 | Phase 3 | Complete |
-| AGNT-02 | Phase 3 | Complete |
-| AGNT-03 | Phase 3 | Complete |
-| AGNT-04 | Phase 3 | Complete |
-| AGNT-05 | Phase 3 | Complete |
-| AGNT-06 | Phase 3 | Complete |
-| CLOD-01 | Phase 6 | Complete |
-| CLOD-02 | Phase 6 | Complete |
-| TEST-01 | Phase 5 | Complete |
-| TEST-02 | Phase 4 | Complete |
-| TEST-03 | Phase 4 | Complete |
-| TEST-04 | Phase 2 | Complete |
-| TEST-05 | Phase 2 | Complete |
-| TEST-06 | Phase 2 | Complete |
-| TEST-07 | Phase 2 | Complete |
-| TEST-08 | Phase 3 | Complete |
+| GEN-01 | Phase 1 | Pending |
+| GEN-02 | Phase 1 | Pending |
+| GEN-03 | Phase 1 | Pending |
+| GEN-04 | Phase 1 | Pending |
+| GEN-05 | Phase 1 | Pending |
+| GEN-06 | Phase 1 | Pending |
+| GEN-07 | Phase 1 | Pending |
+| GEN-08 | Phase 1 | Pending |
+| GEN-09 | Phase 1 | Pending |
+| GEN-10 | Phase 1 | Pending |
+| GEN-11 | Phase 1 | Pending |
+| GEN-12 | Phase 1 | Pending |
+| GEN-13 | Phase 1 | Pending |
+| GEN-14 | Phase 1 | Pending |
+| GEN-15 | Phase 1 | Pending |
+| GEN-16 | Phase 1 | Pending |
+| SCT-01 | Phase 2 | Pending |
+| SCT-02 | Phase 2 | Pending |
+| SCT-03 | Phase 2 | Pending |
+| SCT-04 | Phase 2 | Pending |
+| SCT-05 | Phase 2 | Pending |
+| SCT-06 | Phase 2 | Pending |
+| SCT-07 | Phase 2 | Pending |
+| SCT-08 | Phase 2 | Pending |
+| BLK-01 | Phase 2 | Pending |
+| BLK-02 | Phase 2 | Pending |
+| BLK-03 | Phase 2 | Pending |
+| BLK-04 | Phase 2 | Pending |
+| BLK-05 | Phase 2 | Pending |
+| BLK-06 | Phase 2 | Pending |
+| BLK-07 | Phase 2 | Pending |
+| BLK-08 | Phase 2 | Pending |
+| ANN-01 | Phase 3 | Pending |
+| ANN-02 | Phase 3 | Pending |
+| ANN-03 | Phase 3 | Pending |
+| ANN-04 | Phase 3 | Pending |
+| DEA-01 | Phase 3 | Pending |
+| DEA-02 | Phase 3 | Pending |
+| DEA-03 | Phase 3 | Pending |
+| DEA-04 | Phase 3 | Pending |
+| DEA-05 | Phase 3 | Pending |
+| DEA-06 | Phase 3 | Pending |
+| DEA-07 | Phase 3 | Pending |
+| DEA-08 | Phase 3 | Pending |
+| DEA-09 | Phase 3 | Pending |
+| DEA-10 | Phase 3 | Pending |
+| DEA-11 | Phase 3 | Pending |
+| MSP-01 | Phase 4 | Pending |
+| MSP-02 | Phase 4 | Pending |
+| MSP-03 | Phase 4 | Pending |
+| MSP-04 | Phase 4 | Pending |
+| MSP-05 | Phase 4 | Pending |
+| MSP-06 | Phase 4 | Pending |
+| MSP-07 | Phase 4 | Pending |
+| MSP-08 | Phase 4 | Pending |
+| MSP-09 | Phase 4 | Pending |
+| MSP-10 | Phase 4 | Pending |
+| PDE-01 | Phase 5 | Pending |
+| PDE-02 | Phase 5 | Pending |
+| PDE-03 | Phase 5 | Pending |
+| PDE-04 | Phase 5 | Pending |
+| PDE-05 | Phase 5 | Pending |
+| BIO-01 | Phase 5 | Pending |
+| BIO-02 | Phase 5 | Pending |
+| BIO-03 | Phase 5 | Pending |
+| AFP-01 | Phase 5 | Pending |
+| AFP-02 | Phase 5 | Pending |
+| AFP-03 | Phase 5 | Pending |
+| AFP-04 | Phase 5 | Pending |
+| AFP-05 | Phase 5 | Pending |
+| AFP-06 | Phase 5 | Pending |
+| MET-01 | Phase 6 | Pending |
+| MET-02 | Phase 6 | Pending |
+| MET-03 | Phase 6 | Pending |
+| MET-04 | Phase 6 | Pending |
+| MET-05 | Phase 6 | Pending |
+| MET-06 | Phase 6 | Pending |
+| MET-07 | Phase 6 | Pending |
+| MET-08 | Phase 6 | Pending |
+| MET-09 | Phase 6 | Pending |
+| MET-10 | Phase 6 | Pending |
+| MET-11 | Phase 6 | Pending |
+| MET-12 | Phase 6 | Pending |
+| MET-13 | Phase 6 | Pending |
+| MET-14 | Phase 6 | Pending |
+| MET-15 | Phase 6 | Pending |
+| MET-16 | Phase 6 | Pending |
+| MET-17 | Phase 6 | Pending |
+| DOC-01 | Phase 1 | Pending |
+| DOC-02 | Phase 2 | Pending |
+| DOC-03 | Phase 4 | Pending |
+| DOC-04 | Phase 3 | Pending |
+| DOC-05 | Phase 5 | Pending |
+| DOC-06 | Phase 6 | Pending |
+| DOC-07 | Phase 7 | Pending |
+| INF-01 | Phase 7 | Pending |
+| BUG-13 | Phase 5 | Pending |
+| BUG-15 | Phase 7 | Pending |
+| BUG-16 | Phase 7 | Pending |
+| BUG-17 | Phase 7 | Pending |
 
 **Coverage:**
-- v1 requirements: 54 total
-- Mapped to phases: 54
+- v1 requirements: 76 total
+- Mapped to phases: 76
 - Unmapped: 0
 
 ---
-*Requirements defined: 2026-02-17*
-*Last updated: 2026-02-17 after roadmap creation with 100% coverage*
+*Requirements defined: 2026-02-22*
+*Last updated: 2026-02-22 after brutalist review adjustments (docs moved to domain phases, parallel execution enabled)*

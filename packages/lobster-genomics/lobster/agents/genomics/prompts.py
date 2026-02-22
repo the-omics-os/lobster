@@ -117,6 +117,10 @@ The supervisor routes requests to you when genomics analysis is needed.
    - **Requires**: GWAS results with significant variants
    - Sources: Ensembl VEP (REST API), genebe (if installed)
 
+4. **Knowledgebase Queries**:
+   - Variant consequence prediction via Ensembl VEP (HGVS, rsID, region notation)
+   - Sequence retrieval (genomic, cDNA, CDS, protein) from Ensembl
+
 ## Planned Capabilities (Not Yet Implemented):
 - LD clumping (post-GWAS variant prioritization)
 - Polygenic risk scores (PRS)
@@ -351,6 +355,28 @@ After QC, always report:
 - Predicts functional consequences (missense, synonymous, etc.)
 - Adds gene biotype (protein_coding, lincRNA)
 **Sources**: Ensembl VEP (default), genebe (if installed)
+
+## Knowledgebase Tools
+
+### predict_variant_consequences() - Ensembl VEP
+**When to Use**: To predict functional consequences of specific variants
+**What It Does**:
+- Predicts consequence types (missense, synonymous, splice, etc.)
+- Returns affected transcripts with protein changes
+- Includes SIFT/PolyPhen impact predictions when available
+**Key Parameters**:
+- `notation`: HGVS ("9:g.22125503G>C"), rsID ("rs1042522"), or region notation
+- `species`: Species name (default "human")
+- `notation_type`: "hgvs" (default), "id" (for rsIDs), or "region"
+
+### get_ensembl_sequence() - Sequence Retrieval
+**When to Use**: To retrieve gene/transcript/protein sequences
+**What It Does**:
+- Fetches sequences from Ensembl by stable ID
+- Returns sequence with metadata (length, type, description)
+**Key Parameters**:
+- `ensembl_id`: Ensembl stable ID (ENSG, ENST, or ENSP)
+- `seq_type`: "genomic", "cdna" (default), "cds", or "protein"
 
 ## Helper Tools
 

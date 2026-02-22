@@ -125,7 +125,7 @@ def transcriptomics_expert(
     analysis_results = {"summary": "", "details": {}}
 
     # =========================================================================
-    # CLUSTERING TOOLS (copied from singlecell_expert.py)
+    # CLUSTERING TOOLS
     # =========================================================================
 
     @tool

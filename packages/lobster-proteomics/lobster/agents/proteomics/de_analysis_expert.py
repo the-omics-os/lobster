@@ -15,8 +15,8 @@ Platform-aware behavior:
 from lobster.config.agent_registry import AgentRegistryConfig
 
 AGENT_CONFIG = AgentRegistryConfig(
-    name="de_analysis_expert",
-    display_name="DE Analysis Expert",
+    name="proteomics_de_analysis_expert",
+    display_name="Proteomics DE Analysis Expert",
     description="Proteomics differential expression: statistical testing, time course, correlation analysis",
     factory_function="lobster.agents.proteomics.de_analysis_expert.de_analysis_expert",
     handoff_tool_name=None,
@@ -61,7 +61,7 @@ class ModalityNotFoundError(DEAnalysisError):
 def de_analysis_expert(
     data_manager: DataManagerV2,
     callback_handler=None,
-    agent_name: str = "de_analysis_expert",
+    agent_name: str = "proteomics_de_analysis_expert",
     delegation_tools: list = None,
     workspace_path: Optional[Path] = None,
     provider_override: Optional[str] = None,
@@ -87,9 +87,9 @@ def de_analysis_expert(
         Configured ReAct agent with proteomics DE analysis capabilities
     """
     settings = get_settings()
-    model_params = settings.get_agent_llm_params("de_analysis_expert")
+    model_params = settings.get_agent_llm_params("proteomics_de_analysis_expert")
     llm = create_llm(
-        "de_analysis_expert",
+        "proteomics_de_analysis_expert",
         model_params,
         provider_override=provider_override,
         model_override=model_override,

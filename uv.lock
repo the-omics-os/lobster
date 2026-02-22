@@ -3154,6 +3154,7 @@ source = { editable = "." }
 dependencies = [
     { name = "anndata" },
     { name = "biopython" },
+    { name = "geoparse" },
     { name = "gseapy" },
     { name = "h5py" },
     { name = "httpx" },
@@ -3315,7 +3316,6 @@ doublet-detection = [
 ]
 extended-data = [
     { name = "cloudscraper" },
-    { name = "geoparse" },
     { name = "polars" },
     { name = "pysradb" },
     { name = "rispy" },
@@ -3331,7 +3331,6 @@ full = [
     { name = "cloudscraper" },
     { name = "docling" },
     { name = "docling-core" },
-    { name = "geoparse" },
     { name = "langchain-anthropic" },
     { name = "langchain-aws" },
     { name = "langchain-azure-ai" },
@@ -3389,7 +3388,6 @@ proteomics = [
 ]
 recommended = [
     { name = "cloudscraper" },
-    { name = "geoparse" },
     { name = "langchain-anthropic" },
     { name = "lobster-research" },
     { name = "lobster-transcriptomics" },
@@ -3450,7 +3448,7 @@ requires-dist = [
     { name = "flake8", marker = "extra == 'dev'", specifier = ">=6.0.0" },
     { name = "freezegun", marker = "extra == 'dev'", specifier = ">=1.2.0" },
     { name = "ftputil", marker = "extra == 'dev'", specifier = ">=5.0.4" },
-    { name = "geoparse", marker = "extra == 'extended-data'" },
+    { name = "geoparse" },
     { name = "gseapy", specifier = ">=1.1.0" },
     { name = "h5py", specifier = ">=3.9.0" },
     { name = "httpretty", marker = "extra == 'dev'", specifier = ">=1.1.4" },
@@ -3553,7 +3551,7 @@ dev = [
 
 [[package]]
 name = "lobster-genomics"
-version = "1.0.8"
+version = "1.0.10"
 source = { editable = "packages/lobster-genomics" }
 dependencies = [
     { name = "anndata" },
@@ -3592,7 +3590,7 @@ provides-extras = ["genebe"]
 
 [[package]]
 name = "lobster-metadata"
-version = "1.0.8"
+version = "1.0.10"
 source = { editable = "packages/lobster-metadata" }
 dependencies = [
     { name = "lobster-ai" },
@@ -3622,7 +3620,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "lobster-ml"
-version = "1.0.8"
+version = "1.0.10"
 source = { editable = "packages/lobster-ml" }
 dependencies = [
     { name = "anndata" },
@@ -3697,7 +3695,7 @@ provides-extras = ["xgboost", "multiomics", "ml", "survival", "interpretability"
 
 [[package]]
 name = "lobster-proteomics"
-version = "1.0.8"
+version = "1.0.10"
 source = { editable = "packages/lobster-proteomics" }
 dependencies = [
     { name = "anndata" },
@@ -3734,7 +3732,7 @@ provides-extras = ["network-analysis"]
 
 [[package]]
 name = "lobster-research"
-version = "1.0.8"
+version = "1.0.10"
 source = { editable = "packages/lobster-research" }
 dependencies = [
     { name = "lobster-ai" },
@@ -3751,7 +3749,7 @@ requires-dist = [
 
 [[package]]
 name = "lobster-structural-viz"
-version = "1.0.8"
+version = "1.0.10"
 source = { editable = "packages/lobster-structural-viz" }
 dependencies = [
     { name = "anndata" },
@@ -3771,7 +3769,7 @@ requires-dist = [
 
 [[package]]
 name = "lobster-transcriptomics"
-version = "1.0.8"
+version = "1.0.10"
 source = { editable = "packages/lobster-transcriptomics" }
 dependencies = [
     { name = "anndata" },
@@ -3814,7 +3812,7 @@ provides-extras = ["seurat-v3", "doublet-detection"]
 
 [[package]]
 name = "lobster-visualization"
-version = "1.0.8"
+version = "1.0.10"
 source = { editable = "packages/lobster-visualization" }
 dependencies = [
     { name = "lobster-ai" },

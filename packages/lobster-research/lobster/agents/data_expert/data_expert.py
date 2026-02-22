@@ -142,6 +142,7 @@ def data_expert(
         entry_id: str,
         concatenation_strategy: str = "auto",
         force_download: bool = False,
+        strategy_override: str = "",
     ) -> str:
         """
         Execute download from queue entry prepared by research_agent.
@@ -150,6 +151,8 @@ def data_expert(
         1. research_agent validates metadata and adds to queue (Task 2.2B)
         2. Supervisor queries queue and extracts entry_id
         3. data_expert downloads using queue entry metadata
+
+        Also used to retry FAILED downloads with a different strategy.
 
         Args:
             entry_id: Download queue entry ID (format: queue_GSE12345_abc123)
@@ -161,6 +164,13 @@ def data_expert(
                 - 'intersection': Keep only genes present in ALL samples (inner join)
                 - 'union': Include all genes from all samples (outer join with zero-filling)
             force_download: If True, proceed even if validation has warnings (default: False)
+            strategy_override: Override the download strategy. Empty string = use auto-detected
+                or recommended strategy. Common values:
+                - "MATRIX_FIRST": Try matrix format first
+                - "SUPPLEMENTARY_FIRST": Try supplementary files
+                - "H5_FIRST": Try H5 format if available
+                - "RAW_FIRST": Try raw data files
+                Useful when retrying a FAILED download with a different approach.
 
         Returns:
             Download report with modality name, status, and statistics
@@ -231,7 +241,7 @@ Dataset: {entry.dataset_id}
 
             # 2. BUILD STRATEGY OVERRIDE (if applicable)
             strategy_override_dict = None
-            if entry.recommended_strategy or concatenation_strategy != "auto":
+            if entry.recommended_strategy or concatenation_strategy != "auto" or strategy_override:
                 strategy_override_dict = {}
                 if entry.recommended_strategy:
                     strategy_override_dict["strategy_name"] = (
@@ -243,6 +253,9 @@ Dataset: {entry.dataset_id}
                     strategy_override_dict["strategy_params"] = {
                         "use_intersecting_genes_only": use_intersecting
                     }
+                # Explicit strategy_override takes precedence
+                if strategy_override:
+                    strategy_override_dict["strategy_name"] = strategy_override
 
             logger.debug(
                 f"Starting download for {entry.dataset_id} from queue entry {entry_id}"
@@ -357,252 +370,20 @@ You can now analyze this dataset using the appropriate analysis tools.
                 response += "\n**Troubleshooting**:\n"
                 response += f"1. Check dataset availability: {entry.dataset_id}\n"
                 response += "2. Verify URLs are accessible\n"
-                response += "3. Review error log in queue entry\n"
+                response += "3. Try a different download strategy:\n"
+                response += '   - strategy_override="MATRIX_FIRST"\n'
+                response += '   - strategy_override="SUPPLEMENTARY_FIRST"\n'
+                response += '   - strategy_override="H5_FIRST"\n'
+                response += "4. Try different concatenation mode:\n"
+                response += '   - concatenation_strategy="union" (preserves all genes)\n'
+                response += '   - concatenation_strategy="intersection" (only common genes)\n'
+                response += "5. Review error log: `get_queue_status(status_filter='FAILED')`\n"
 
                 return response
 
         except Exception as e:
             logger.error(f"Error in execute_download_from_queue: {e}")
             return f"Error processing queue entry '{entry_id}': {str(e)}"
-
-    @tool
-    def retry_failed_download(
-        entry_id: str,
-        strategy_override: Optional[str] = None,
-        use_intersecting_genes_only: Optional[bool] = None,
-    ) -> str:
-        """
-        Retry a failed download with optional strategy override.
-
-        This tool allows retrying downloads that previously failed, optionally
-        using a different download strategy or concatenation approach.
-
-        Args:
-            entry_id: Download queue entry ID (format: queue_GSE12345_abc123)
-            strategy_override: Optional strategy override (e.g., "MATRIX_FIRST", "SUPPLEMENTARY_FIRST")
-                              If not provided, uses original recommended strategy
-            use_intersecting_genes_only: Optional concatenation override:
-                                         - True: Keep only common genes (intersection)
-                                         - False: Include all genes (union with zero-fill)
-                                         - None: Use original recommended setting
-
-        Returns:
-            Retry report with status, modality name (if successful), or error details
-        """
-        try:
-            # 1. VALIDATE ENTRY EXISTS
-            all_entries = data_manager.download_queue.list_entries()
-            if entry_id not in [e.entry_id for e in all_entries]:
-                available = [e.entry_id for e in all_entries]
-                return f"Error: Queue entry '{entry_id}' not found. Available entries: {available}"
-
-            # 2. VALIDATE ENTRY STATUS
-            entry = data_manager.download_queue.get_entry(entry_id)
-
-            if entry.status == DownloadStatus.COMPLETED:
-                return f"Entry '{entry_id}' already completed as '{entry.modality_name}'. Cannot retry completed downloads."
-            elif entry.status == DownloadStatus.IN_PROGRESS:
-                return f"Entry '{entry_id}' is currently in progress. Cannot retry while downloading."
-            elif entry.status == DownloadStatus.PENDING:
-                return f"Entry '{entry_id}' is pending (not failed). Use execute_download_from_queue instead."
-
-            # 3. BUILD STRATEGY OVERRIDE DICT
-            strategy_override_dict = None
-            if strategy_override or use_intersecting_genes_only is not None:
-                strategy_override_dict = {}
-
-                if strategy_override:
-                    strategy_override_dict["strategy_name"] = strategy_override
-
-                if use_intersecting_genes_only is not None:
-                    strategy_override_dict["strategy_params"] = {
-                        "use_intersecting_genes_only": use_intersecting_genes_only
-                    }
-
-            # 4. INITIALIZE DOWNLOAD ORCHESTRATOR
-            # Auto-registers GEO, SRA, PRIDE, MassIVE services
-            orchestrator = DownloadOrchestrator(data_manager)
-
-            logger.info(
-                f"Retrying download for {entry.dataset_id} (entry: {entry_id})"
-                + (
-                    f" with strategy override: {strategy_override_dict}"
-                    if strategy_override_dict
-                    else ""
-                )
-            )
-
-            # 5. EXECUTE RETRY
-            try:
-                modality_name, stats = orchestrator.execute_download(
-                    entry_id, strategy_override_dict
-                )
-
-                # Success - format response
-                response = f"## Retry Successful: {entry.dataset_id}\n\n"
-                response += "✅ **Status**: Download completed on retry\n"
-                response += f"- **Modality name**: `{modality_name}`\n"
-                response += f"- **Samples**: {stats['shape']['n_obs']}\n"
-                response += f"- **Features**: {stats['shape']['n_vars']}\n"
-                if strategy_override:
-                    response += f"- **Strategy override used**: {strategy_override}\n"
-                if use_intersecting_genes_only is not None:
-                    concat_mode = (
-                        "intersection" if use_intersecting_genes_only else "union"
-                    )
-                    response += f"- **Concatenation override**: {concat_mode}\n"
-                response += f"\n**Available for analysis**: Use `get_modality_overview('{modality_name}')` to inspect\n"
-
-                # Log successful retry
-                data_manager.log_tool_usage(
-                    tool_name="retry_failed_download",
-                    parameters={
-                        "entry_id": entry_id,
-                        "dataset_id": entry.dataset_id,
-                        "strategy_override": strategy_override,
-                        "use_intersecting_genes_only": use_intersecting_genes_only,
-                        "retry_status": "success",
-                        "modality_name": modality_name,
-                    },
-                    description=f"Successfully retried download for {entry.dataset_id}",
-                )
-
-                return response
-
-            except Exception as download_error:
-                # Failure - provide troubleshooting guidance
-                error_msg = str(download_error)
-
-                response = f"## Retry Failed: {entry.dataset_id}\n\n"
-                response += "❌ **Status**: Retry attempt failed\n"
-                response += f"- **Error**: {error_msg}\n"
-                response += f"- **Queue entry**: `{entry_id}` (remains FAILED)\n"
-                response += "\n**Troubleshooting**:\n"
-                response += "1. Try different strategy:\n"
-                response += "   - MATRIX_FIRST: Try matrix format instead\n"
-                response += "   - SUPPLEMENTARY_FIRST: Try supplementary files\n"
-                response += "   - H5_FIRST: Try H5 format if available\n"
-                response += "2. Try different concatenation mode:\n"
-                response += "   - use_intersecting_genes_only=False (union - preserves all genes)\n"
-                response += "   - use_intersecting_genes_only=True (intersection - only common genes)\n"
-                response += "3. Check GEO dataset availability\n"
-                response += (
-                    "4. Review error log: `get_queue_status(status_filter='FAILED')`\n"
-                )
-
-                # Log failed retry
-                data_manager.log_tool_usage(
-                    tool_name="retry_failed_download",
-                    parameters={
-                        "entry_id": entry_id,
-                        "dataset_id": entry.dataset_id,
-                        "strategy_override": strategy_override,
-                        "use_intersecting_genes_only": use_intersecting_genes_only,
-                        "retry_status": "failed",
-                        "error": error_msg,
-                    },
-                    description=f"Failed retry for {entry.dataset_id}: {error_msg}",
-                )
-
-                return response
-
-        except Exception as e:
-            logger.error(f"Error in retry_failed_download: {e}")
-            return f"Error retrying download for '{entry_id}': {str(e)}"
-
-    @tool
-    def get_modality_overview(
-        modality_name: str = "",
-        detail_level: str = "summary",
-        include_provenance: bool = False,
-    ) -> str:
-        """
-        Get overview of available modalities with flexible detail levels.
-
-        Consolidates previous get_data_summary + list_available_modalities tools.
-
-        Args:
-            modality_name: Specific modality (empty string = all modalities)
-            detail_level: "summary" | "detailed"
-            include_provenance: Include W3C-PROV tracking info
-
-        Returns:
-            Formatted overview with modality statistics
-        """
-        try:
-            if modality_name == "" or modality_name.lower() == "all":
-                # List all modalities (summary mode)
-                modalities = data_manager.list_modalities()
-                if not modalities:
-                    return "No modalities currently loaded. Use download_geo_dataset to load data."
-
-                response = f"## Available Modalities ({len(modalities)})\n\n"
-                for mod_name in modalities:
-                    try:
-                        adata = data_manager.get_modality(mod_name)
-                        response += f"- **{mod_name}**: {adata.n_obs} samples × {adata.n_vars} features\n"
-                    except Exception as e:
-                        response += (
-                            f"- **{mod_name}**: Error retrieving info - {str(e)}\n"
-                        )
-
-                # Add workspace status
-                workspace_status = data_manager.get_workspace_status()
-                response += f"\n**Workspace**: {workspace_status['workspace_path']}\n"
-                response += f"**Available adapters**: {', '.join(workspace_status['registered_adapters'])}\n"
-
-                return response
-            else:
-                # Single modality (detailed mode)
-                if modality_name not in data_manager.list_modalities():
-                    available = data_manager.list_modalities()
-                    return f"Error: Modality '{modality_name}' not found. Available: {', '.join(available) if available else 'none'}"
-
-                adata = data_manager.get_modality(modality_name)
-                metrics = data_manager.get_quality_metrics(modality_name)
-
-                response = f"## Modality: {modality_name}\n\n"
-                response += (
-                    f"**Shape**: {adata.n_obs} samples × {adata.n_vars} features\n"
-                )
-                response += (
-                    f"**Obs Columns**: {', '.join(list(adata.obs.columns)[:5])}\n"
-                )
-                response += (
-                    f"**Var Columns**: {', '.join(list(adata.var.columns)[:5])}\n"
-                )
-
-                if "total_counts" in metrics:
-                    response += f"**Total counts**: {metrics['total_counts']:,.0f}\n"
-                if "mean_counts_per_obs" in metrics:
-                    response += f"**Mean counts per obs**: {metrics['mean_counts_per_obs']:.1f}\n"
-
-                if detail_level == "detailed":
-                    response += f"\n**Layers**: {list(adata.layers.keys())}\n"
-
-                    # Add obsm/varm/uns info
-                    if hasattr(adata, "obsm") and len(adata.obsm.keys()) > 0:
-                        response += f"**Obsm Keys**: {list(adata.obsm.keys())}\n"
-                    if hasattr(adata, "varm") and len(adata.varm.keys()) > 0:
-                        response += f"**Varm Keys**: {list(adata.varm.keys())}\n"
-                    if hasattr(adata, "uns") and len(adata.uns.keys()) > 0:
-                        response += f"**Uns Keys**: {list(adata.uns.keys())}\n"
-
-                if include_provenance:
-                    # Add W3C-PROV info from DataManagerV2
-                    try:
-                        prov_info = data_manager.get_provenance_summary(modality_name)
-                        if prov_info:
-                            response += f"\n**Provenance**: {prov_info}\n"
-                    except AttributeError:
-                        # Fallback if method doesn't exist
-                        response += "\n**Provenance**: Not available\n"
-
-                return response
-
-        except Exception as e:
-            logger.error(f"Error in get_modality_overview: {e}")
-            return f"Error retrieving modality overview: {str(e)}"
 
     # Use shared tool from workspace_tool.py (shared with supervisor)
     list_available_modalities = create_list_modalities_tool(data_manager)
@@ -862,10 +643,18 @@ The MuData object contains all selected modalities and is ready for cross-modal 
     @tool
     def get_adapter_info() -> str:
         """
-        Get information about available adapters and their capabilities.
+        Show all registered data adapters and the file formats they support.
+
+        Lists every adapter available for loading data (CSV, H5AD, 10X, VCF, PLINK, etc.)
+        with their supported file formats and target modality types.
+
+        Call this BEFORE load_modality() to determine:
+        - Which adapter to use for a given file format
+        - What modality types are available for loading
+        - Which file extensions are supported
 
         Returns:
-            str: Information about available adapters
+            Formatted list of adapters with supported formats and modality targets
         """
         try:
             adapter_info = data_manager.get_adapter_info()
@@ -1236,9 +1025,8 @@ To save, run again with save_to_file=True"""
     #         return f"❌ Unexpected error: {str(e)}"
 
     base_tools = [
-        # CORE (4 tools)
+        # CORE (3 tools)
         execute_download_from_queue,
-        retry_failed_download,
         concatenate_samples,
         get_queue_status,
         # MODALITY MANAGEMENT (ModalityManagementService)
@@ -1248,7 +1036,6 @@ To save, run again with save_to_file=True"""
         remove_modality,
         validate_modality_compatibility,
         # HELPER
-        get_modality_overview,
         get_adapter_info,
         # ADVANCED (Execution & Reasoning)
         execute_custom_code,

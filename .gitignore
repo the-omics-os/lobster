@@ -1,320 +1,262 @@
-# Agent/IDE skill directories (user-local)
-.claude/
-.agents/
-.codex/
-.opencode/
 
-# Private agent packages (not yet public)
-packages/lobster-metadata/
-packages/lobster-structural-viz/
-packages/lobster-ml/
-
-# Legacy wiki (docs live at docs.omics-os.com)
-wiki/
-
-# Internal planning and dev tools
-.planning/
-.firecrawl/
-.playwright-mcp/
-
-# Private/internal files
-/CLAUDE.md
-/FINAL_TEST_BEFORE_LAUNCH.md
-/SHOWCASE_TESTS.md
-GLOBAL_CREDENTIALS_IMPLEMENTATION.md
-TODO.md
-TODO_UI.md
-activate_claude_code*.sh
-docker-compose.yml
-lobster.code-workspace
-plan.md
-docs/commercial_licensing_faq.md
-
-#open deep research
-open_deep_research/*
-data/*
-.geo_cache/
-.geo_cache/*
-workspaces/
-workspaces/*
-cdk.out/
-cdk.out/*
-cache/
-cache/*
-.firecrawl/
-.firecrawl/*
-
-#tests
-results/
-results/*
-
-#kevin notes
-kevin_notes/*
-kevin_notes_completed/*
-
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-
-#pytorch lighning logs
-lightning_logs/
-lightning_logs/*
-*_scivi_model/
-*_scivi_model/*
-
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+!data/exports/.gitkeep
 !skills/**/MANIFEST
-
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-.python-version
-
-# pipenv
 #   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
 #   However, in case of collaboration, if having platform-specific dependencies or dependencies
 #   having no cross-platform support, pipenv may install dependencies that don't work, or not
 #   install all needed dependencies.
-#Pipfile.lock
-
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow
-__pypackages__/
-
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env
-.env*
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
-
-# Lobster AI specific
-.lobster/
-.lobster_workspace/
-data/exports/*
-!data/exports/.gitkeep
-
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+# ===================================
+# AWS credentials and configs
+# AWS/Cloud deployment files
+# Agent/IDE skill directories (user-local)
 # Bioinformatics data files
-*.h5ad
-*.h5
-*.gz
-*.tar
-*.zip
-geo_cache/
-*.soft
-*.txt.gz
-*.pt
-
+# Business/implementation details
+# Byte-compiled / optimized / DLL files
+# C extensions
+# Celery stuff
+# Cloud implementation (keep private)
+# Cloud test files
+# Cloud-specific documentation
+# Config files with secrets
+# Distribution / packaging
+# Django stuff:
+# Environments
+# Flask stuff:
 # IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
+# IPython
+# Installer logs
+# Internal planning and dev tools
+# Jupyter Notebook
+# LOBSTER AI PROPRIETARY COMPONENTS
+# LOBSTER UI (React/Node.js)
+# Langfuse
+# Large media (host externally)
+# Legacy wiki (docs live at docs.omics-os.com)
+# Lobster AI specific
+# Logs
+# Model cache
 # OS
+# PEP 582; used by e.g. github.com/David-OConnor/pyflow
+# Private agent packages (not yet public)
+# Private documentation
+# Private/internal files
+# PyBuilder
+# PyInstaller
+# Pyre type checker
+# Rope project settings
+# Ruff linter cache
+# SageMath parsed files
+# Scrapy stuff:
+# Sphinx documentation
+# Spyder project settings
+# Stress test and temporary directories
+# Temporary files
+# Test reports (generated)
+# Test run outputs
+# Translations
+# Unit test / coverage reports
+# Wheel distribution artifacts
+# mkdocs documentation
+# mypy
+# pipenv
+# pyenv
+#Pipfile.lock
+#kevin notes
+#open deep research
+#pytorch lighning logs
+#tests
+*$py.class
+*-cloud-*
+*.backup
+*.bak
+*.cover
+*.egg
+*.egg-info/
+*.gz
+*.h5
+*.h5ad
+*.key
+*.log
+*.manifest
+*.mo
+*.pem
+*.pot
+*.pt
+*.py,cover
+*.py[cod]
+*.sage.py
+*.so
+*.soft
+*.spec
+*.swo
+*.swp
+*.tar
+*.temp
+*.tfvars
+*.tmp
+*.txt.gz
+*.whl
+*.zip
+*_PRIVATE.md
+*_SUMMARY.md
+*_TEST_REPORT.md
+*_cloud_test.py
+*_scivi_model/
+*_scivi_model/*
+*cloud*config*
+*~
 .DS_Store
 .DS_Store?
-._*
+.Python
 .Spotlight-V100
 .Trashes
-ehthumbs.db
-Thumbs.db
-
-# Temporary files
-*.tmp
-*.temp
-*.bak
-*.backup
-
-# Logs
-*.log
-logs/
-
-# Config files with secrets
+._*
+.agents/
+.aws/
+.cache
+.cache/
+.claude/
+.codex/
+.coverage
+.coverage.*
+.dmypy.json
+.eggs/
+.env
+.env*
 .env.local
 .env.production
-config.local.*
-
-# Model cache
-models/
-.cache/
-
-# Langfuse
+.firecrawl/
+.firecrawl/*
+.geo_cache/
+.geo_cache/*
+.hypothesis/
+.idea/
+.installed.cfg
+.ipynb_checkpoints
 .langfuse/
-
-# ===================================
-# LOBSTER AI PROPRIETARY COMPONENTS
-# ===================================
-# Cloud implementation (keep private)
+.lobster/
+.lobster_workspace*/
+.lobster_workspace/
+.mypy_cache/
+.nox/
+.opencode/
+.planning/
+.playwright-mcp/
+.pyre/
+.pytest_cache/
+.python-version
+.ropeproject
+.ruff_cache/
+.scrapy
+.spyderproject
+.spyproject
+.tox/
+.venv
+.vscode/
+.webassets-cache
+/CLAUDE.md
+/FINAL_TEST_BEFORE_LAUNCH.md
+/SHOWCASE_TESTS.md
+/site
+BUSINESS_STRATEGY.md
+CLOUD_USAGE_GUIDE.md
+ENV/
+GLOBAL_CREDENTIALS_IMPLEMENTATION.md
+INTERNAL_*.md
+MANIFEST
+NEXT_AGENT_INSTRUCTIONS.md
+PRODUCTION_CLEANUP_PLAN.md
+STRESS_TEST_*.md
+TODO.md
+TODO_UI.md
+Thumbs.db
+__pycache__/
+__pypackages__/
+activate_claude_code*.sh
+aws-config/
+aws_setup_guide.md
+build/
+cache/
+cache/*
+cdk.out/
+cdk.out/*
+celerybeat-schedule
+celerybeat.pid
+config.local.*
+coverage.xml
+data/*
+data/exports/*
+db.sqlite3
+db.sqlite3-journal
+deploy_to_aws.sh
+deployment/
+develop-eggs/
+dist/
+dmypy.json
+docker-compose.yml
+docs/**/*.gif
+docs/**/*.mp4
+docs/_build/
+docs/commercial_licensing_faq.md
+docs_p/**/*.gif
+docs_p/**/*.mp4
+downloads/
+eggs/
+ehthumbs.db
+env.bak/
+env/
+geo_cache/
+htmlcov/
+implementation_plan.md
+infrastructure/
+instance/
+ipython_config.py
+kevin_notes/*
+kevin_notes_completed/*
+lib/
+lib64/
+lightning_logs/
+lightning_logs/*
 lobster-cloud/
 lobster-server/
-
-# AWS/Cloud deployment files
-aws_setup_guide.md
-deploy_to_aws.sh
-test_aws_deployment.py
-CLOUD_USAGE_GUIDE.md
-
-# Cloud-specific documentation
-*-cloud-*
-*cloud*config*
-deployment/
-infrastructure/
-
-# AWS credentials and configs
-*.pem
-*.key
-aws-config/
-.aws/
+lobster.code-workspace
+local_settings.py
+logs/
+models/
+nosetests.xml
+open_deep_research/*
+packages/lobster-metadata/
+packages/lobster-ml/
+packages/lobster-structural-viz/
+parts/
+pip-delete-this-directory.txt
+pip-log.txt
+pip-wheel-metadata/
+plan.md
+profile_default/
+results/
+results/*
+scripts/inspect_agent_graph.py
+sdist/
+share/python-wheels/
+target/
 terraform.tfstate*
-*.tfvars
-
-# Cloud test files
+test_aws_deployment.py
 test_cloud_*.py
-*_cloud_test.py
-
-# Business/implementation details
-implementation_plan.md
-NEXT_AGENT_INSTRUCTIONS.md
-BUSINESS_STRATEGY.md
-PRODUCTION_CLEANUP_PLAN.md
-
-# Private documentation
-*_PRIVATE.md
-INTERNAL_*.md
-
-# Stress test and temporary directories
-tmp/
-.lobster_workspace*/
-
-# Test run outputs
-test_data/test_results_*.txt
 test_data/real/
-
-# Test reports (generated)
-*_TEST_REPORT.md
-*_SUMMARY.md
-STRESS_TEST_*.md
-
-# ===================================
-# LOBSTER UI (React/Node.js)
-# ===================================
-ui/node_modules/
-ui/dist/
-ui/.cache/
+test_data/test_results_*.txt
+tmp/
 ui/*.local
-
-# Ruff linter cache
-.ruff_cache/
-
-# Wheel distribution artifacts
-*.whl
-
-# Large media (host externally)
-docs/**/*.mp4
-docs/**/*.gif
-docs_p/**/*.mp4
-docs_p/**/*.gif
+ui/.cache/
+ui/dist/
+ui/node_modules/
+var/
+venv.bak/
+venv/
+wheels/
+wiki/
+workspaces/
+workspaces/*
+ontology_build_output/

@@ -178,7 +178,7 @@ Content tools:
 -	fast_abstract_search: fast abstract retrieval for relevance screening.
 -	read_full_publication: deep full-text retrieval with fallback strategies (PMC XML, web, PDF) and caching.
 -	extract_methods: extract computational methods (software, parameters, statistics) from single or multiple publications.
--	get_dataset_metadata: retrieve metadata for publications or datasets (e.g. GSE, SRA, PRIDE), optionally routed by database.
+-	get_dataset_metadata: retrieve metadata for publications, datasets, proteins, or genes. Supports database="geo", "sra", "pride", "massive", "pubmed", "uniprot", "ensembl". Auto-detects from identifier format (UniProt accessions like P04637, Ensembl IDs like ENSG00000141510). Use database="uniprot" for protein annotations, database="ensembl" for gene/transcript annotations.
 
 Workspace tools:
 -	write_to_workspace: persist structured artifacts (publications, datasets, metadata tables, mapping reports) using consistent naming.

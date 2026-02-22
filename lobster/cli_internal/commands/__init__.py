@@ -59,6 +59,9 @@ from lobster.cli_internal.commands.light.queue_commands import (
     queue_load_file,
     show_queue_status,
 )
+from lobster.cli_internal.commands.light.vector_search_commands import (
+    vector_search_all_collections,
+)
 from lobster.cli_internal.commands.light.workspace_commands import (
     workspace_info,
     workspace_list,
@@ -209,4 +212,6 @@ __all__ = [
     "export_data",
     "plots_list",
     "plot_show",
+    # Vector search commands (light)
+    "vector_search_all_collections",
 ]

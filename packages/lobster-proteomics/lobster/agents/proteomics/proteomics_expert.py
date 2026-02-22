@@ -20,7 +20,7 @@ AGENT_CONFIG = AgentRegistryConfig(
     factory_function="lobster.agents.proteomics.proteomics_expert.proteomics_expert",
     handoff_tool_name="handoff_to_proteomics_expert",
     handoff_tool_description="Assign proteomics analysis tasks: MS/affinity QC, normalization, differential expression, network analysis, survival analysis",
-    child_agents=["de_analysis_expert", "biomarker_discovery_expert"],
+    child_agents=["proteomics_de_analysis_expert", "biomarker_discovery_expert"],
     supervisor_accessible=True,
     tier_requirement="free",  # All agents free — commercial value in Omics-OS Cloud
 )

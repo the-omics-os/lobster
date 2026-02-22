@@ -543,6 +543,57 @@ EGA_ACCESSIONS = {
 }
 
 # =============================================================================
+# Knowledgebase Accessions (UniProt, Ensembl)
+# =============================================================================
+
+KNOWLEDGEBASE_ACCESSIONS = {
+    "uniprot_accession": DatabaseAccession(
+        field_name="uniprot_accession",
+        database_name="UniProt",
+        database_url_template="https://www.uniprot.org/uniprotkb/{accession}",
+        prefix_pattern=r"[OPQ][0-9]|[A-NR-Z][0-9]",
+        full_pattern=r"^(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})$",
+        example="P04637",
+        description="UniProt protein accession for curated protein annotations",
+        modalities=["proteomics", "transcriptomics", "genomics"],
+        required=False,
+    ),
+    "ensembl_gene_accession": DatabaseAccession(
+        field_name="ensembl_gene_accession",
+        database_name="Ensembl Gene",
+        database_url_template="https://www.ensembl.org/id/{accession}",
+        prefix_pattern=r"ENSG",
+        full_pattern=r"^ENS[A-Z]{0,3}G\d{11}(?:\.\d+)?$",
+        example="ENSG00000141510",
+        description="Ensembl gene stable ID for genome annotations",
+        modalities=["transcriptomics", "genomics"],
+        required=False,
+    ),
+    "ensembl_transcript_accession": DatabaseAccession(
+        field_name="ensembl_transcript_accession",
+        database_name="Ensembl Transcript",
+        database_url_template="https://www.ensembl.org/id/{accession}",
+        prefix_pattern=r"ENST",
+        full_pattern=r"^ENS[A-Z]{0,3}T\d{11}(?:\.\d+)?$",
+        example="ENST00000269305",
+        description="Ensembl transcript stable ID",
+        modalities=["transcriptomics", "genomics"],
+        required=False,
+    ),
+    "ensembl_protein_accession": DatabaseAccession(
+        field_name="ensembl_protein_accession",
+        database_name="Ensembl Protein",
+        database_url_template="https://www.ensembl.org/id/{accession}",
+        prefix_pattern=r"ENSP",
+        full_pattern=r"^ENS[A-Z]{0,3}P\d{11}(?:\.\d+)?$",
+        example="ENSP00000269305",
+        description="Ensembl protein stable ID",
+        modalities=["proteomics", "genomics"],
+        required=False,
+    ),
+}
+
+# =============================================================================
 # Consolidated Database Mapping Registry
 # =============================================================================
 
@@ -557,6 +608,7 @@ DATABASE_ACCESSION_REGISTRY: Dict[str, DatabaseAccession] = {
     **METAGENOMICS_ACCESSIONS,
     **CROSS_PLATFORM_ACCESSIONS,
     **EGA_ACCESSIONS,
+    **KNOWLEDGEBASE_ACCESSIONS,
 }
 
 

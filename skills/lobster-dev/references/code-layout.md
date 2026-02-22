@@ -95,7 +95,7 @@ lobster-{domain}/
 | `lobster-visualization` | visualization_expert | 1 service |
 | `lobster-metadata` | metadata_assistant | 8 services |
 | `lobster-structural-viz` | protein_structure_visualization_expert | 4 services |
-| `lobster-proteomics` [alpha] | proteomics_expert | 11 services |
+| `lobster-proteomics` [alpha] | proteomics_expert, proteomics_de_analysis_expert, biomarker_discovery_expert | 11 services |
 | `lobster-genomics` [alpha] | genomics_expert | 3 services |
 | `lobster-ml` [alpha] | machine_learning_expert | 4 services |
 

@@ -2,51 +2,38 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-17)
+See: .planning/PROJECT.md (updated 2026-02-22)
 
-**Core value:** Agents can semantically match any biomedical term to the correct ontology concept with calibrated confidence scores, using zero configuration out of the box.
-**Current focus:** Phase 6 - Automation (in progress)
+**Core value:** Every agent has exactly the right tools — no overlap, no gaps, no wrong abstraction level — so the LLM picks the correct tool every time and produces reliable, reproducible science.
+**Current focus:** Phase 1 - Genomics Domain
 
 ## Current Position
 
-Phase: 6 of 6 (Automation)
-Plan: 4 of 4 in current phase (all complete)
-Status: Phase 06 COMPLETE — all 4 plans executed
-Last activity: 2026-02-19 — Plan 06-03 executed (ChromaDB S3 auto-download)
+Phase: 1 of 7 (Genomics Domain)
+Plan: Ready to plan (0 plans completed)
+Status: Ready to plan
+Last activity: 2026-02-22 — Roadmap adjusted post-brutalist review: docs moved to domain phases, parallel execution enabled, integrate_batches iteration requirement added
 
-Progress: [█████████████████████████] 100%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 15
-- Average duration: 3.6min
-- Total execution time: 0.90 hours
+- Total plans completed: 0
+- Average duration: N/A
+- Total execution time: 0 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-foundation | 3 | 8min | 2.7min |
-| 02-service-integration | 3 | 10min | 3.3min |
-| 03-agent-tooling | 2 | 10min | 5.0min |
-| 04-performance | 2 | 11min | 5.5min |
-| 05-scalability | 1 | 4min | 4.0min |
-| 06-automation | 4 | 16min | 4.0min |
+| - | - | - | - |
 
 **Recent Trend:**
-- Last 5 plans: 05-01 (4min), 06-01 (3min), 06-02 (3min), 06-04 (4min), 06-03 (6min)
-- Trend: Stable
+- Last 5 plans: None yet
+- Trend: N/A
 
 *Updated after each plan completion*
-| Phase 03 P01 | 6min | 2 tasks | 2 files |
-| Phase 04 P01 | 5min | 2 tasks | 7 files |
-| Phase 04 P02 | 6min | 2 tasks | 4 files |
-| Phase 05 P01 | 4min | 2 tasks | 5 files |
-| Phase 06 P01 | 3min | 2 tasks | 5 files |
-| Phase 06 P02 | 3min | 2 tasks | 1 files |
-| Phase 06 P04 | 4min | 1 tasks | 1 files |
-| Phase 06 P03 | 6min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -55,66 +42,16 @@ Progress: [███████████████████████
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- ChromaDB as default backend — Small data (~60K vectors), zero cost, proven in SRAgent, local+cloud symmetry
-- SapBERT as default embedding — SOTA biomedical entity linking, 4M+ UMLS synonym pairs, 768d, free/local
-- Cross-encoder as default reranker — Zero API cost, offline, ~1-5s for 100 docs on CPU
-- Core location (not package) — Vector search is cross-agent infrastructure used by annotation, metadata, research
-- Augment, don't replace — Existing annotate_cell_types tool stays; new semantic tool added alongside
-- [01-01] Score rounding via model_post_init to 4 decimal places for consistent display
-- [01-01] TYPE_CHECKING guard in vector/__init__.py for zero-cost imports
-- [01-01] Column-oriented search() return format matching ChromaDB convention
-- [01-02] CLS-token pooling for SapBERT (trained with CLS, not mean pooling)
-- [01-02] batch_size=128 for SapBERT encode per model card recommendation
-- [01-02] 5000-doc chunk limit for ChromaDB batch operations
-- [01-02] Raw ChromaDB results from search; distance->similarity conversion in service layer
-- [01-03] Dependency injection: service accepts backend/embedder for testing, falls back to config factory
-- [01-03] Distance-to-similarity conversion with clamping: score = max(0.0, min(1.0, 1.0 - distance))
-- [01-03] MockEmbedder/MockVectorBackend pattern for testing without heavy deps
-- [01-03] __getattr__ lazy loading in __init__.py for all public classes
-- [Phase 01]: Dependency injection: service accepts backend/embedder for testing, falls back to config factory
-- [02-01] Import-guarded obonet inside function body, not module level
-- [02-01] lru_cache(maxsize=3) for process-lifetime caching of parsed OBO graphs
-- [02-01] OBO edge direction convention: child -> parent (is_a), successors = parents
-- [02-02] ONTOLOGY_COLLECTIONS as module-level dict constant (not class attribute) for easy import
-- [02-02] 4x oversampling factor (k*4) for future reranking without over-fetching
-- [02-02] Lazy import of OntologyMatch inside match_ontology() to maintain zero-pydantic-at-module-level
-- [02-03] Lazy import of VectorSearchService inside __init__ body to avoid pulling deps when backend=json
-- [02-03] Always build keyword index even with embeddings backend (needed for fallback and legacy APIs)
-- [02-03] builtins.__import__ patching for fallback tests since VectorSearchService is dynamically imported
-- [03-01] Lazy VectorSearchService closure in annotation_expert factory (nonlocal singleton for deferred init)
-- [03-01] Top-3 cell types by score, top-3 markers each, max 5 genes per query for semantic matching
-- [03-01] Direct modalities dict assignment for semantic tool save (not store_modality)
-- [03-01] OntologyMatch field access via .term/.ontology_id/.score (canonical field names)
-- [03-02] HAS_VECTOR_SEARCH guard at module level (same pattern as HAS_ONTOLOGY_SERVICE)
-- [03-02] Lazy _get_vector_service() closure inside factory (nonlocal singleton for deferred init)
-- [03-02] Tissue tool requires HAS_VECTOR_SEARCH; disease tool requires HAS_ONTOLOGY_SERVICE (independent conditionals)
-- [03-02] Disease tool routes through DiseaseOntologyService not VectorSearchService directly (Strangler Fig)
-- [03-02] AnalysisStep requires code_template, imports, parameter_schema as mandatory fields
-- [04-01] Min-max normalization for cross-encoder scores (per-query relative, not cross-query comparable)
-- [04-01] Resolved-flag sentinel (_reranker_resolved) to distinguish "not checked" from "checked and None"
-- [04-01] Reranking only in match_ontology(), not query() (keeps lower-level API predictable)
-- [04-01] COHERE_RERANK_MODEL env var override for model flexibility
-- [04-01] Edge case guard: skip reranking for single-document results (no model loaded)
-- [04-02] Local _LocalMockReranker in service tests instead of cross-file import to avoid test coupling
-- [04-02] sys.modules patching for sentence-transformers mocking (cleaner than builtins.__import__ for lazy imports)
-- [05-01] IndexIDMap wrapping IndexFlatL2 for explicit integer ID assignment and single-vector deletion
-- [05-01] L2 normalization before add and search so squared L2 / 2.0 = cosine distance
-- [05-01] pgvector stub raises NotImplementedError with guidance to use chromadb or faiss
-- [05-01] Lazy faiss import inside _ensure_faiss() method (same pattern as ChromaDB._get_client())
-- [06-01] MiniLM uses SentenceTransformer(MODEL_NAME) directly for mean pooling (no custom Pooling module)
-- [06-01] OpenAI constructor accepts optional model override for text-embedding-3-large flexibility
-- [06-01] batch_size=128 convention maintained for MiniLM embed_batch() to match SapBERT pattern
-- [06-02] argparse over Typer for minimal deps in standalone dev tool
-- [06-02] Version-tag flag for future ontology releases without script modification
-- [06-02] Skip obsolete terms during extraction (don't embed stale ontology entries)
-- [06-04] ChromaDB server mode (not embedded) for multi-tenant cloud access
-- [06-04] Single instance (not per-tenant) since ontology data is shared read-only
-- [06-04] Always-on (no scale-to-zero) to avoid cold start re-indexing
-- [06-04] HttpClient switching via LOBSTER_VECTOR_CLOUD_URL env var in ChromaDBBackend
-- [06-03] Direct client.get_collection() check in _ensure_ontology_data to avoid recursion
-- [06-03] Atomic download via .tmp file rename prevents partial corruption
-- [06-03] Separate PersistentClient for source tarball avoids SQLite locking
-- [06-03] Network/tarball errors degrade to empty collection (warning, not crash)
+- D1: New variant_analysis_expert child agent for clinical workflows
+- D2: No separate affinity proteomics agent (PlatformConfig handles dual mode)
+- D3: New lobster-metabolomics package (10 tools, existing infrastructure)
+- D4: Single transcriptomics parent for SC + bulk (auto-detection + 8 bulk-specific tools)
+- D5: Merge redundant DE tools (3→2) to reduce LLM confusion
+- D6: Deprecate interactive terminal tools (cloud incompatible)
+- D7: Merge list_modalities + get_modality_info (pilot in genomics)
+- D8: Create import_proteomics_data tool (parsers exist but unreachable)
+- D9: Add PTM analysis tools (phosphoproteomics >30% of published MS)
+- D10: Tool taxonomy decorator (@tool_meta) deferred to P3, apply incrementally
 
 ### Pending Todos
 
@@ -126,6 +63,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-19 (Phase 06 plan 03 execution)
-Stopped at: Completed 06-03-PLAN.md — Phase 06 COMPLETE (all 4 plans)
-Resume file: .planning/phases/06-automation/06-03-SUMMARY.md
+Last session: 2026-02-22
+Stopped at: Roadmap creation complete
+Resume file: None
