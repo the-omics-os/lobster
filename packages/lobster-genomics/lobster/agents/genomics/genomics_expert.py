@@ -15,12 +15,13 @@ from lobster.config.agent_registry import AgentRegistryConfig
 AGENT_CONFIG = AgentRegistryConfig(
     name="genomics_expert",
     display_name="Genomics Expert",
-    description="WGS and SNP array analysis: VCF/PLINK loading, QC (call rate, MAF, HWE), GWAS, variant annotation",
+    description="WGS and SNP array analysis: VCF/PLINK loading, QC (call rate, MAF, HWE), GWAS, LD pruning, kinship, variant annotation",
     factory_function="lobster.agents.genomics.genomics_expert.genomics_expert",
     handoff_tool_name="handoff_to_genomics_expert",
-    handoff_tool_description="Assign genomics analysis tasks: WGS/SNP array QC, GWAS, variant annotation, genotype filtering",
+    handoff_tool_description="Assign genomics analysis tasks: WGS/SNP array QC, GWAS, LD pruning, kinship matrix, clumping, variant annotation. Can hand off to variant_analysis_expert for clinical interpretation.",
     supervisor_accessible=True,
     tier_requirement="free",  # All agents free — commercial value in Omics-OS Cloud
+    child_agents=["variant_analysis_expert"],  # Clinical variant interpretation child
 )
 
 # === Heavy imports below ===
@@ -43,8 +44,7 @@ from lobster.services.analysis.variant_annotation_service import (
 )
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.tools.knowledgebase_tools import (
-    create_variant_consequence_tool,
-    create_sequence_retrieval_tool,
+    create_summarize_modality_tool,
 )
 from lobster.utils.logger import get_logger
 
@@ -1028,146 +1028,331 @@ Lambda GC > 1.1 suggests uncorrected population structure.
             return f"Unexpected error: {str(e)}"
 
     # =========================================================================
-    # HELPER TOOLS
+    # GWAS PIPELINE TOOLS (NEW)
     # =========================================================================
 
     @tool
-    def list_modalities() -> str:
+    def ld_prune(
+        modality_name: str,
+        threshold: float = 0.2,
+        window_size: int = 500,
+        genotype_layer: str = "GT",
+    ) -> str:
         """
-        List all loaded genomics modalities.
+        LD-prune variants to remove redundant SNPs in linkage disequilibrium.
 
-        Returns:
-            str: List of modality names with data types
-        """
-        try:
-            all_modalities = data_manager.list_modalities()
-
-            if not all_modalities:
-                return "No modalities loaded yet. Use load_vcf() or load_plink() to load data."
-
-            # Filter for genomics modalities
-            genomics_modalities = []
-            for mod_name in all_modalities:
-                adata = data_manager.get_modality(mod_name)
-                if adata.uns.get("data_type") == "genomics":
-                    modality_type = adata.uns.get("modality", "unknown")
-                    n_obs = adata.n_obs
-                    n_vars = adata.n_vars
-                    genomics_modalities.append(
-                        f"  - {mod_name} ({modality_type}): {n_obs:,} samples x {n_vars:,} variants"
-                    )
-
-            if not genomics_modalities:
-                return f"No genomics modalities found. Total modalities: {len(all_modalities)}"
-
-            response = f"""**Loaded Genomics Modalities** ({len(genomics_modalities)} total):
-
-{chr(10).join(genomics_modalities)}
-
-Use get_modality_info("modality_name") for detailed information.
-"""
-            return response
-
-        except Exception as e:
-            logger.error(f"Error listing modalities: {e}")
-            return f"Error listing modalities: {str(e)}"
-
-    @tool
-    def get_modality_info(modality_name: str) -> str:
-        """
-        Get detailed information about a genomics modality.
+        Run BEFORE PCA or GWAS to ensure variants are approximately independent.
+        Removes highly correlated variants using an r-squared threshold within sliding windows.
 
         Args:
-            modality_name: Name of modality to inspect
+            modality_name: Name of QC-filtered modality
+            threshold: r-squared threshold — variant pairs above this are pruned (default 0.2)
+            window_size: Number of variants per window (default 500)
+            genotype_layer: Layer containing genotypes (default "GT")
 
         Returns:
-            str: Detailed modality information including dimensions, data type, and QC status
+            Summary with pruning statistics and new modality name
+
+        Example:
+            ld_prune("wgs_study1_filtered", threshold=0.2, window_size=500)
         """
         try:
             # Validate modality exists
             if modality_name not in data_manager.list_modalities():
-                return f"Modality '{modality_name}' not found. Use list_modalities() to see available modalities."
-
-            # Get modality
-            adata = data_manager.get_modality(modality_name)
-
-            # Extract metadata
-            n_obs = adata.n_obs
-            n_vars = adata.n_vars
-            data_type = adata.uns.get("data_type", "unknown")
-            modality = adata.uns.get("modality", "unknown")
-            source_file = adata.uns.get("source_file", "N/A")
-
-            # Check for QC columns
-            has_qc = "call_rate" in adata.obs.columns and "qc_pass" in adata.var.columns
-
-            # Format response
-            response = f"""**Modality Information: '{modality_name}'**
-
-**Basic Info:**
-- Data type: {data_type}
-- Modality: {modality}
-- Dimensions: {n_obs:,} samples x {n_vars:,} variants
-- Source file: {source_file}
-
-**Sample Metadata (adata.obs):**
-- Columns: {list(adata.obs.columns)}
-- Has QC metrics: {"Yes" if has_qc else "No"}
-
-**Variant Metadata (adata.var):**
-- Columns: {list(adata.var.columns)}
-- Has QC pass flag: {"Yes" if "qc_pass" in adata.var.columns else "No"}
-
-**Layers:**
-- Available: {list(adata.layers.keys()) if adata.layers else "None"}
-"""
-            # Add QC statistics if available
-            if has_qc:
-                mean_sample_call_rate = adata.obs["call_rate"].mean()
-                mean_variant_call_rate = adata.var["call_rate"].mean()
-                n_variants_pass = (
-                    adata.var["qc_pass"].sum() if "qc_pass" in adata.var.columns else 0
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. Available: {data_manager.list_modalities()}"
                 )
 
-                response += f"""
-**QC Statistics:**
-- Mean sample call rate: {mean_sample_call_rate:.4f}
-- Mean variant call rate: {mean_variant_call_rate:.4f}
-- Variants passing QC: {n_variants_pass:,}/{n_vars:,}
-"""
+            adata = data_manager.get_modality(modality_name)
+            logger.info(
+                f"LD pruning '{modality_name}': threshold={threshold}, window={window_size}"
+            )
 
+            # Run LD pruning
+            adata_pruned, stats, ir = gwas_service.ld_prune_variants(
+                adata=adata,
+                threshold=threshold,
+                window_size=window_size,
+                genotype_layer=genotype_layer,
+            )
+
+            # Save as new modality
+            pruned_modality_name = f"{modality_name}_ld_pruned"
+            data_manager.store_modality(
+                name=pruned_modality_name,
+                adata=adata_pruned,
+                parent_name=modality_name,
+                step_summary=f"LD pruned: {stats['n_variants_after']}/{stats['n_variants_before']} variants retained",
+            )
+
+            # Log operation with IR
+            data_manager.log_tool_usage(
+                tool_name="ld_prune",
+                parameters={
+                    "modality_name": modality_name,
+                    "threshold": threshold,
+                    "window_size": window_size,
+                    "genotype_layer": genotype_layer,
+                },
+                description=f"LD pruning: {stats['n_variants_after']}/{stats['n_variants_before']} variants retained (r²>{threshold})",
+                ir=ir,
+            )
+
+            response = f"""LD pruning completed: '{pruned_modality_name}'
+
+**Pruning Summary:**
+- Variants before: {stats['n_variants_before']:,}
+- Variants after: {stats['n_variants_after']:,}
+- Variants removed: {stats['n_variants_removed']:,}
+- Retention rate: {stats['n_variants_after'] / stats['n_variants_before']:.1%}
+
+**Parameters:**
+- r² threshold: {threshold}
+- Window size: {window_size} variants
+- Genotype layer: {genotype_layer}
+
+**New modality created**: '{pruned_modality_name}'
+**Next steps**: Use this LD-pruned data for PCA (calculate_pca) or kinship analysis (compute_kinship).
+"""
             return response
 
-        except Exception as e:
-            logger.error(f"Error getting modality info: {e}")
+        except ModalityNotFoundError as e:
+            logger.error(f"Error in LD pruning: {e}")
             return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Unexpected error in LD pruning: {e}")
+            return f"Unexpected error: {str(e)}"
+
+    @tool
+    def compute_kinship(
+        modality_name: str,
+        kinship_threshold: float = 0.125,
+        genotype_layer: str = "GT",
+    ) -> str:
+        """
+        Compute pairwise kinship matrix to detect related individuals.
+
+        Uses VanRaden's GRM (Genomic Relationship Matrix) method. Flags pairs
+        with kinship coefficient above threshold (0.125 = 3rd degree relatives).
+        Related individuals should be removed before GWAS to avoid inflated statistics.
+
+        Args:
+            modality_name: Name of QC-filtered modality
+            kinship_threshold: Kinship coefficient threshold for related pairs (default 0.125)
+            genotype_layer: Layer containing genotypes (default "GT")
+
+        Returns:
+            Summary with kinship statistics and related pair count
+        """
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+            logger.info(
+                f"Computing kinship for '{modality_name}': threshold={kinship_threshold}"
+            )
+
+            # Run kinship computation
+            adata_kinship, stats, ir = gwas_service.compute_kinship(
+                adata=adata,
+                kinship_threshold=kinship_threshold,
+                genotype_layer=genotype_layer,
+            )
+
+            # Save as new modality
+            kinship_modality_name = f"{modality_name}_kinship"
+            data_manager.store_modality(
+                name=kinship_modality_name,
+                adata=adata_kinship,
+                parent_name=modality_name,
+                step_summary=f"Kinship: {stats['n_related_pairs']} related pairs found",
+            )
+
+            # Log operation with IR
+            data_manager.log_tool_usage(
+                tool_name="compute_kinship",
+                parameters={
+                    "modality_name": modality_name,
+                    "kinship_threshold": kinship_threshold,
+                    "genotype_layer": genotype_layer,
+                },
+                description=f"Kinship analysis: {stats['n_related_pairs']} related pairs (threshold={kinship_threshold})",
+                ir=ir,
+            )
+
+            # Format related pairs info
+            related_info = ""
+            if stats.get("related_pairs") and len(stats["related_pairs"]) > 0:
+                related_info = "\n**Related Pairs (above threshold):**\n"
+                for i, pair in enumerate(stats["related_pairs"][:10], 1):
+                    related_info += f"  {i}. {pair['sample_1']} <-> {pair['sample_2']}: kinship={pair['kinship']:.4f}\n"
+                if len(stats["related_pairs"]) > 10:
+                    related_info += f"  ... and {len(stats['related_pairs']) - 10} more pairs\n"
+
+            response = f"""Kinship analysis completed: '{kinship_modality_name}'
+
+**Kinship Summary:**
+- Samples: {stats['n_samples']:,}
+- Sample pairs evaluated: {stats['n_pairs']:,}
+- Related pairs (kinship > {kinship_threshold}): {stats['n_related_pairs']:,}
+- Mean kinship: {stats['mean_kinship']:.4f}
+- Max kinship: {stats['max_kinship']:.4f}
+{related_info}
+**Kinship matrix stored in**: adata.obsm['kinship']
+**New modality created**: '{kinship_modality_name}'
+
+**Next steps**:
+- If related pairs found, consider removing one from each pair before GWAS
+- Proceed to GWAS: run_gwas("{modality_name}", "phenotype")
+"""
+            return response
+
+        except ModalityNotFoundError as e:
+            logger.error(f"Error in kinship computation: {e}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Unexpected error in kinship computation: {e}")
+            return f"Unexpected error: {str(e)}"
+
+    @tool
+    def clump_results(
+        modality_name: str,
+        pvalue_threshold: float = 5e-8,
+        clump_kb: int = 250,
+        pvalue_col: str = "gwas_pvalue",
+    ) -> str:
+        """
+        Clump GWAS results into independent genomic loci.
+
+        Groups significant GWAS variants into loci based on genomic proximity.
+        Each clump has an index variant (lowest p-value) and member variants within
+        the clumping window on the same chromosome. Run AFTER run_gwas().
+
+        Args:
+            modality_name: Name of modality with GWAS results (must have pvalue_col in var)
+            pvalue_threshold: Significance threshold for variants to include (default 5e-8)
+            clump_kb: Clumping window in kilobases (default 250)
+            pvalue_col: Column in adata.var containing GWAS p-values (default "gwas_pvalue")
+
+        Returns:
+            Summary of clumped loci with index variants
+
+        Example:
+            clump_results("wgs_filtered_gwas", pvalue_threshold=5e-8, clump_kb=250)
+        """
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+            logger.info(
+                f"Clumping GWAS results in '{modality_name}': p<{pvalue_threshold}, window={clump_kb}kb"
+            )
+
+            # Run clumping
+            adata_clumped, stats, ir = gwas_service.clump_gwas_results(
+                adata=adata,
+                pvalue_threshold=pvalue_threshold,
+                clump_kb=clump_kb,
+                pvalue_col=pvalue_col,
+            )
+
+            # Save as new modality
+            clumped_modality_name = f"{modality_name}_clumped"
+            data_manager.store_modality(
+                name=clumped_modality_name,
+                adata=adata_clumped,
+                parent_name=modality_name,
+                step_summary=f"Clumped: {stats['n_clumps']} independent loci from {stats['n_significant_variants']} significant variants",
+            )
+
+            # Log operation with IR
+            data_manager.log_tool_usage(
+                tool_name="clump_results",
+                parameters={
+                    "modality_name": modality_name,
+                    "pvalue_threshold": pvalue_threshold,
+                    "clump_kb": clump_kb,
+                    "pvalue_col": pvalue_col,
+                },
+                description=f"GWAS clumping: {stats['n_clumps']} loci from {stats['n_significant_variants']} significant variants",
+                ir=ir,
+            )
+
+            # Format top clumps
+            clump_info = ""
+            if stats.get("clumps") and len(stats["clumps"]) > 0:
+                clump_info = "\n**Top Clumped Loci (index variants):**\n"
+                for i, clump in enumerate(stats["clumps"][:10], 1):
+                    clump_info += (
+                        f"  {i}. {clump['index_variant']}: "
+                        f"p={clump['index_pvalue']:.2e}, "
+                        f"{clump['n_members']} member variant(s)\n"
+                    )
+                if len(stats["clumps"]) > 10:
+                    clump_info += f"  ... and {len(stats['clumps']) - 10} more loci\n"
+
+            # Suggest handoff for clinical interpretation
+            handoff_note = ""
+            if stats["n_clumps"] > 0:
+                handoff_note = """
+**Clinical Interpretation**: For clinical variant interpretation (VEP consequences,
+gnomAD population frequencies, ClinVar pathogenicity), consider handing off to
+variant_analysis_expert."""
+
+            response = f"""GWAS clumping completed: '{clumped_modality_name}'
+
+**Clumping Summary:**
+- Significant variants (p < {pvalue_threshold}): {stats['n_significant_variants']:,}
+- Independent loci (clumps): {stats['n_clumps']:,}
+- Clumping window: {clump_kb} kb
+- P-value column: {pvalue_col}
+{clump_info}
+**Clump assignments stored in**: adata.var['clump_id'], adata.var['is_index_variant']
+**New modality created**: '{clumped_modality_name}'
+{handoff_note}"""
+            return response
+
+        except ModalityNotFoundError as e:
+            logger.error(f"Error in clumping: {e}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Unexpected error in clumping: {e}")
+            return f"Unexpected error: {str(e)}"
 
     # =========================================================================
     # COLLECT ALL TOOLS
     # =========================================================================
 
-    # Knowledgebase tools (VEP + sequence retrieval via Ensembl)
-    predict_variant_consequences = create_variant_consequence_tool(data_manager)
-    get_ensembl_sequence = create_sequence_retrieval_tool(data_manager)
+    # Shared helper tool (merges list_modalities + get_modality_info)
+    summarize_modality = create_summarize_modality_tool(data_manager)
 
     # Core genomics tools
     genomics_tools = [
-        # Phase 1: Data loading & QC
+        # Data loading
         load_vcf,
         load_plink,
+        # Quality control
         assess_quality,
         filter_samples,
         filter_variants,
-        # Phase 2: GWAS & advanced analysis
+        # GWAS pipeline
+        ld_prune,
+        compute_kinship,
         run_gwas,
         calculate_pca,
+        clump_results,
+        # Annotation
         annotate_variants,
-        # Knowledgebase: variant consequences & sequences
-        predict_variant_consequences,
-        get_ensembl_sequence,
-        # Helper tools
-        list_modalities,
-        get_modality_info,
+        # Helpers
+        summarize_modality,
     ]
 
     # Add delegation tools if provided (not used in Phase 1)
