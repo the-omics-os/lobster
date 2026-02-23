@@ -31,6 +31,7 @@ AGENT_CONFIG = AgentRegistryConfig(
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
 import pandas as pd
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
@@ -2268,6 +2269,625 @@ def de_analysis_expert(
             return f"Unexpected error: {str(e)}"
 
     # -------------------------
+    # BULK DE PIPELINE TOOLS
+    # -------------------------
+    @tool
+    def run_bulk_de_direct(
+        modality_name: str,
+        group_key: str,
+        group1: str,
+        group2: str,
+        min_replicates: int = 3,
+        alpha: float = 0.05,
+        save_result: bool = True,
+    ) -> str:
+        """One-shot DE for simple bulk RNA-seq comparisons. Use when bulk data is already imported
+        and you want quick 2-group DE without pseudobulk aggregation or formula complexity.
+
+        Args:
+            modality_name: Name of bulk RNA-seq modality
+            group_key: Column in obs containing group labels (e.g., 'condition')
+            group1: First group (reference/control)
+            group2: Second group (treatment/case)
+            min_replicates: Minimum replicates per group (default: 3)
+            alpha: Significance threshold for adjusted p-values (default: 0.05)
+            save_result: Whether to save result modality
+        """
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+            logger.info(
+                f"Running bulk DE direct on '{modality_name}': "
+                f"{adata.n_obs} samples x {adata.n_vars} genes"
+            )
+
+            # Verify raw counts availability
+            has_counts = "counts" in adata.layers if adata.layers else False
+            has_raw = adata.raw is not None
+            count_warning = ""
+            if not has_counts and not has_raw:
+                count_warning = (
+                    "\n\n**WARNING**: No raw counts layer ('counts') or adata.raw found. "
+                    "DESeq2 requires raw integer counts for accurate results."
+                )
+
+            # Validate group_key exists
+            if group_key not in adata.obs.columns:
+                available_cols = [
+                    col for col in adata.obs.columns
+                    if not col.startswith("_")
+                ]
+                return f"Group key '{group_key}' not found in obs columns. Available: {available_cols}"
+
+            # Validate groups exist
+            available_groups = list(adata.obs[group_key].unique())
+            available_groups_str = [str(g) for g in available_groups]
+            group1 = str(group1)
+            group2 = str(group2)
+
+            if group1 not in available_groups_str:
+                return f"Group '{group1}' not found in '{group_key}'. Available: {available_groups}"
+            if group2 not in available_groups_str:
+                return f"Group '{group2}' not found in '{group_key}'. Available: {available_groups}"
+
+            # Ensure string type matching
+            if group1 not in available_groups:
+                adata.obs[group_key] = adata.obs[group_key].astype(str)
+
+            # Check replicate counts
+            replicate_validation = _validate_replicate_counts(
+                adata.obs, group_key, min_replicates=min_replicates
+            )
+
+            if not replicate_validation["valid"]:
+                error_msg = "; ".join(replicate_validation["errors"])
+                return (
+                    f"**Insufficient replicates**: {error_msg}\n\n"
+                    f"Minimum {min_replicates} replicates per group required."
+                )
+
+            group1_count = (adata.obs[group_key] == group1).sum()
+            group2_count = (adata.obs[group_key] == group2).sum()
+
+            # Run DE via BulkRNASeqService
+            adata_de, de_stats, ir_from_service = (
+                bulk_rnaseq_service.run_differential_expression_analysis(
+                    adata=adata,
+                    groupby=group_key,
+                    group1=group1,
+                    group2=group2,
+                    method="deseq2_like",
+                )
+            )
+
+            # Store result modality
+            de_modality_name = f"{modality_name}_de_{group1}_vs_{group2}"
+            data_manager.store_modality(
+                name=de_modality_name,
+                adata=adata_de,
+                parent_name=modality_name,
+                step_summary=f"Bulk DE: {group1} vs {group2}",
+            )
+
+            if save_result:
+                save_path = f"{de_modality_name}.h5ad"
+                data_manager.save_modality(de_modality_name, save_path)
+
+            # Create IR
+            from lobster.core.provenance import AnalysisStep as ProvAnalysisStep
+
+            ir = ProvAnalysisStep(
+                operation="pydeseq2.differential_expression",
+                tool_name="run_bulk_de_direct",
+                description=f"Direct bulk DE: {group2} vs {group1} in {group_key}",
+                library="pydeseq2",
+                parameters={
+                    "modality_name": modality_name,
+                    "group_key": group_key,
+                    "group1": group1,
+                    "group2": group2,
+                    "alpha": alpha,
+                },
+                code_template=(
+                    "from pydeseq2.dds import DeseqDataSet\n"
+                    "from pydeseq2.ds import DeseqStats\n"
+                    "dds = DeseqDataSet(adata=adata, design_factors='{{ group_key }}')\n"
+                    "dds.deseq2()\n"
+                    "stat_res = DeseqStats(dds, contrast=['{{ group_key }}', '{{ group2 }}', '{{ group1 }}'])\n"
+                    "stat_res.summary()\n"
+                    "results_df = stat_res.results_df"
+                ),
+                imports=["pydeseq2"],
+            )
+
+            data_manager.log_tool_usage(
+                tool_name="run_bulk_de_direct",
+                parameters={
+                    "modality_name": modality_name,
+                    "group_key": group_key,
+                    "group1": group1,
+                    "group2": group2,
+                    "alpha": alpha,
+                },
+                description=f"Bulk DE: {de_stats['n_significant_genes']} significant genes",
+                ir=ir,
+            )
+
+            # Get DEG counts at alpha threshold
+            n_sig = de_stats.get("n_significant_genes", 0)
+            n_up = de_stats.get("n_upregulated", 0)
+            n_down = de_stats.get("n_downregulated", 0)
+            top_up = de_stats.get("top_upregulated", [])[:10]
+            top_down = de_stats.get("top_downregulated", [])[:10]
+
+            response = f"""## Bulk DE Analysis Complete for '{modality_name}'
+
+**Comparison:** {group2} ({group2_count} samples) vs {group1} ({group1_count} samples) in {group_key}
+**Method:** DESeq2-like bulk differential expression
+
+**Results:**
+- Genes tested: {de_stats.get('n_genes_tested', 'N/A'):,}
+- Significant genes (padj < {alpha}): {n_sig:,}
+- Upregulated in {group2}: {n_up:,}
+- Downregulated in {group2}: {n_down:,}
+
+**Top 10 Upregulated Genes ({group2} > {group1}):**
+{chr(10).join([f"- {gene}" for gene in top_up]) if top_up else "- None found"}
+
+**Top 10 Downregulated Genes ({group2} < {group1}):**
+{chr(10).join([f"- {gene}" for gene in top_down]) if top_down else "- None found"}
+
+**New modality created**: '{de_modality_name}'{count_warning}"""
+
+            if save_result:
+                response += f"\n**Saved to**: {save_path}"
+
+            # Add replicate warnings
+            if replicate_validation["warnings"]:
+                response += "\n\n**Statistical Power Warnings:**"
+                for warning in replicate_validation["warnings"]:
+                    response += f"\n- {warning}"
+
+            response += "\n\n**Next steps**: filter_de_results, run_gsea_analysis, or extract_and_export_de_results"
+
+            return response
+
+        except (BulkRNASeqError, ModalityNotFoundError) as e:
+            logger.error(f"Error in bulk DE direct: {e}")
+            return f"Error in bulk DE analysis: {str(e)}"
+        except Exception as e:
+            logger.error(f"Unexpected error in bulk DE direct: {e}")
+            return f"Unexpected error: {str(e)}"
+
+    # -------------------------
+    # GSEA TOOL
+    # -------------------------
+    @tool
+    def run_gsea_analysis(
+        modality_name: str,
+        de_results_key: str = None,
+        ranking_metric: str = "log2fc",
+        databases: list = None,
+        organism: str = "human",
+        min_size: int = 15,
+        max_size: int = 500,
+        save_result: bool = True,
+    ) -> str:
+        """Run Gene Set Enrichment Analysis on DE results using ranked gene lists.
+
+        Extracts ranked genes from differential expression results and runs GSEA
+        via PathwayEnrichmentService. Supports ranking by log2 fold change or
+        signed p-value metric.
+
+        Args:
+            modality_name: Name of modality containing DE results
+            de_results_key: Specific DE results key in adata.uns (auto-detected if None)
+            ranking_metric: Ranking method - 'log2fc' or 'signed_pvalue' (default: 'log2fc')
+            databases: List of gene set databases (default: GO_Biological_Process_2023, KEGG_2021_Human)
+            organism: Organism for pathway mapping (default: 'human')
+            min_size: Minimum gene set size (default: 15)
+            max_size: Maximum gene set size (default: 500)
+            save_result: Whether to store GSEA results as new modality
+        """
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+
+            # Find DE results key
+            if de_results_key is None:
+                de_keys = [
+                    key for key in adata.uns.keys()
+                    if key.startswith("de_results")
+                ]
+                if not de_keys:
+                    return "No DE results found in adata.uns. Run differential expression analysis first."
+                de_results_key = de_keys[-1]  # Use most recent
+
+            if de_results_key not in adata.uns:
+                return f"DE results key '{de_results_key}' not found. Available: {[k for k in adata.uns.keys() if k.startswith('de_results')]}"
+
+            de_data = adata.uns[de_results_key]
+            if not isinstance(de_data, dict) or "results_df" not in de_data:
+                return f"Invalid DE results format at '{de_results_key}'. Expected dict with 'results_df'."
+
+            results_df = de_data["results_df"]
+
+            # Identify fold change column
+            lfc_col = None
+            for col_name in ["log2FoldChange", "logFC", "mean_log2FC", "log2FC", "lfc"]:
+                if col_name in results_df.columns:
+                    lfc_col = col_name
+                    break
+
+            if lfc_col is None:
+                return f"No log fold change column found in DE results. Available columns: {list(results_df.columns)}"
+
+            # Identify p-value column
+            pval_col = None
+            for col_name in ["padj", "pvalue_adj", "FDR", "pvalue", "p_adj"]:
+                if col_name in results_df.columns:
+                    pval_col = col_name
+                    break
+
+            # Build ranked gene DataFrame with columns ['gene', 'score']
+            if ranking_metric == "signed_pvalue" and pval_col is not None:
+                # score = -log10(pvalue) * sign(log2FoldChange)
+                pvals = results_df[pval_col].fillna(1.0).clip(lower=1e-300)
+                scores = -np.log10(pvals) * np.sign(results_df[lfc_col].fillna(0))
+            else:
+                # Default: score = log2FoldChange
+                scores = results_df[lfc_col].fillna(0)
+
+            ranked_df = pd.DataFrame({
+                "gene": results_df.index.tolist(),
+                "score": scores.values,
+            })
+
+            # Drop NaN scores and sort descending
+            ranked_df = ranked_df.dropna(subset=["score"])
+            ranked_df = ranked_df.sort_values("score", ascending=False).reset_index(drop=True)
+
+            if len(ranked_df) < 15:
+                return f"Only {len(ranked_df)} ranked genes available. GSEA requires at least {min_size} genes per set."
+
+            logger.info(
+                f"Running GSEA on {len(ranked_df)} ranked genes from '{de_results_key}' "
+                f"using {ranking_metric} ranking"
+            )
+
+            # Initialize PathwayEnrichmentService
+            from lobster.services.analysis.pathway_enrichment_service import PathwayEnrichmentService
+
+            pathway_service = PathwayEnrichmentService()
+
+            # Run GSEA
+            db_list = databases or ["GO_Biological_Process_2023", "KEGG_2021_Human"]
+            adata_gsea, gsea_stats, ir_from_service = pathway_service.gene_set_enrichment_analysis(
+                adata=adata,
+                ranked_genes=ranked_df,
+                databases=db_list,
+                organism=organism,
+                min_size=min_size,
+                max_size=max_size,
+            )
+
+            # Store GSEA result as new modality if requested
+            if save_result:
+                gsea_modality_name = f"{modality_name}_gsea"
+                data_manager.store_modality(
+                    name=gsea_modality_name,
+                    adata=adata_gsea,
+                    parent_name=modality_name,
+                    step_summary=f"GSEA: {gsea_stats.get('n_significant_gene_sets', 0)} significant gene sets",
+                )
+
+            # Log tool usage with IR from service
+            data_manager.log_tool_usage(
+                tool_name="run_gsea_analysis",
+                parameters={
+                    "modality_name": modality_name,
+                    "de_results_key": de_results_key,
+                    "ranking_metric": ranking_metric,
+                    "databases": db_list,
+                    "organism": organism,
+                    "min_size": min_size,
+                    "max_size": max_size,
+                },
+                description=f"GSEA: {gsea_stats.get('n_significant_gene_sets', 0)} significant gene sets",
+                ir=ir_from_service,
+            )
+
+            # Parse results for response
+            n_total = gsea_stats.get("n_gene_sets_tested", 0)
+            n_sig = gsea_stats.get("n_significant_gene_sets", 0)
+
+            # Get top enriched pathways from adata.uns
+            gsea_results = adata_gsea.uns.get("gsea_results", {})
+            results_list = gsea_results.get("results", [])
+
+            top_up = []
+            top_down = []
+            for r in results_list[:20]:
+                nes = r.get("NES", r.get("nes", 0))
+                term = r.get("Term", r.get("term", "Unknown"))
+                fdr = r.get("FDR q-val", r.get("fdr", 1.0))
+                if isinstance(fdr, (int, float)) and fdr < 0.25:
+                    if isinstance(nes, (int, float)):
+                        if nes > 0:
+                            top_up.append(f"{term} (NES={nes:.2f}, FDR={fdr:.3f})")
+                        else:
+                            top_down.append(f"{term} (NES={nes:.2f}, FDR={fdr:.3f})")
+
+            response = f"""## GSEA Results for '{modality_name}'
+
+**Analysis Parameters:**
+- DE results: {de_results_key}
+- Ranking metric: {ranking_metric}
+- Genes ranked: {len(ranked_df):,}
+- Databases: {', '.join(db_list)}
+- Organism: {organism}
+
+**Results:**
+- Gene sets tested: {n_total}
+- Significant gene sets (FDR < 0.25): {n_sig}
+
+**Top Enriched (NES > 0, upregulated):**
+{chr(10).join([f"- {p}" for p in top_up[:5]]) if top_up else "- None found at FDR < 0.25"}
+
+**Top Enriched (NES < 0, downregulated):**
+{chr(10).join([f"- {p}" for p in top_down[:5]]) if top_down else "- None found at FDR < 0.25"}
+
+**GSEA results stored in**: adata.uns['gsea_results']"""
+
+            if save_result:
+                response += f"\n**New modality created**: '{gsea_modality_name}'"
+
+            response += "\n\n**Next steps**: extract_and_export_de_results for publication tables, or visualize with the visualization expert."
+
+            return response
+
+        except ModalityNotFoundError as e:
+            logger.error(f"Error in GSEA: {e}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Unexpected error in GSEA: {e}")
+            return f"Unexpected error in GSEA: {str(e)}"
+
+    # -------------------------
+    # PUBLICATION EXPORT TOOL
+    # -------------------------
+    @tool
+    def extract_and_export_de_results(
+        modality_name: str,
+        de_results_key: str = None,
+        shrink_lfc: bool = True,
+        output_format: str = "csv",
+        output_path: str = None,
+        padj_threshold: float = 0.05,
+        lfc_threshold: float = 0.0,
+    ) -> str:
+        """Extract DE results with optional LFC shrinkage and export publication-ready tables.
+
+        Combines result extraction, shrinkage, filtering, and export in one operation.
+        For simple export without shrinkage, use export_de_results instead.
+
+        Args:
+            modality_name: Name of modality containing DE results
+            de_results_key: Specific DE results key in adata.uns (auto-detected if None)
+            shrink_lfc: Whether to apply LFC shrinkage (requires DeseqDataSet, default: True)
+            output_format: Export format - 'csv' or 'xlsx' (default: 'csv')
+            output_path: Custom output path (auto-generated if None)
+            padj_threshold: Maximum adjusted p-value for filtering (default: 0.05)
+            lfc_threshold: Minimum absolute log2 fold change for filtering (default: 0.0)
+        """
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+
+            # Find DE results key
+            if de_results_key is None:
+                de_keys = [
+                    key for key in adata.uns.keys()
+                    if key.startswith("de_results")
+                ]
+                if not de_keys:
+                    return "No DE results found in adata.uns. Run differential expression analysis first."
+                de_results_key = de_keys[-1]
+
+            if de_results_key not in adata.uns:
+                return f"DE results key '{de_results_key}' not found. Available: {[k for k in adata.uns.keys() if k.startswith('de_results')]}"
+
+            de_data = adata.uns[de_results_key]
+            if not isinstance(de_data, dict) or "results_df" not in de_data:
+                return f"Invalid DE results format at '{de_results_key}'."
+
+            results_df = de_data["results_df"].copy()
+
+            # Attempt LFC shrinkage if requested
+            shrinkage_applied = False
+            shrinkage_note = ""
+            if shrink_lfc:
+                # Check if a DeseqDataSet is stored (required for pyDESeq2 shrinkage)
+                dds_stored = de_data.get("parameters", {}).get("method", "") in ["pydeseq2", "deseq2"]
+                if dds_stored and "log2FoldChange" in results_df.columns:
+                    # pyDESeq2 shrinkage is typically applied during the DE step.
+                    # Check if shrinkage was already applied
+                    already_shrunk = de_data.get("parameters", {}).get("shrink_lfc", False)
+                    if already_shrunk:
+                        shrinkage_applied = True
+                        shrinkage_note = "LFC shrinkage was already applied during DE analysis."
+                    else:
+                        # Try to apply shrinkage via BulkRNASeqService if possible
+                        # Note: pyDESeq2 shrinkage requires the DeseqDataSet object which
+                        # may not be serializable in adata.uns. Warn if unavailable.
+                        shrinkage_note = (
+                            "LFC shrinkage requested but DeseqDataSet object not available "
+                            "in stored results. Exporting unshrunk results. "
+                            "To get shrinkage, re-run DE with shrink_lfc=True in run_differential_expression."
+                        )
+                        logger.warning(shrinkage_note)
+                else:
+                    shrinkage_note = (
+                        "LFC shrinkage not applicable for this DE method. "
+                        "Shrinkage requires pyDESeq2-based analysis."
+                    )
+
+            # Standardize columns for publication format
+            column_renames = {
+                "logFC": "log2FoldChange",
+                "mean_log2FC": "log2FoldChange",
+                "pvalue_adj": "padj",
+                "FDR": "padj",
+                "p_adj": "padj",
+                "base_mean": "baseMean",
+                "AveExpr": "baseMean",
+            }
+
+            for old_name, new_name in column_renames.items():
+                if old_name in results_df.columns and old_name != new_name:
+                    results_df = results_df.rename(columns={old_name: new_name})
+
+            # Apply optional filtering
+            total_genes = len(results_df)
+            if padj_threshold < 1.0 and "padj" in results_df.columns:
+                results_df = results_df[results_df["padj"] <= padj_threshold]
+            if lfc_threshold > 0 and "log2FoldChange" in results_df.columns:
+                results_df = results_df[abs(results_df["log2FoldChange"]) >= lfc_threshold]
+
+            sig_genes = len(results_df)
+
+            # Sort by padj ascending
+            if "padj" in results_df.columns:
+                results_df = results_df.sort_values("padj")
+
+            # Ensure gene names are the index
+            if results_df.index.name is None:
+                results_df.index.name = "gene"
+
+            # Select publication columns (in standard order)
+            pub_cols = []
+            for col in ["baseMean", "log2FoldChange", "lfcSE", "stat", "pvalue", "padj"]:
+                if col in results_df.columns:
+                    pub_cols.append(col)
+            # Include any remaining columns
+            extra_cols = [c for c in results_df.columns if c not in pub_cols]
+            results_df = results_df[pub_cols + extra_cols]
+
+            # Determine output path
+            if output_path is None:
+                export_dir = Path(data_manager.workspace) / "exports" if hasattr(data_manager, "workspace") else Path("exports")
+                export_dir.mkdir(parents=True, exist_ok=True)
+
+                clean_key = de_results_key.replace("de_results_", "")
+                output_path = str(export_dir / f"de_publication_{clean_key}.{output_format}")
+
+            # Export
+            output_path_obj = Path(output_path)
+            output_path_obj.parent.mkdir(parents=True, exist_ok=True)
+
+            if output_format == "xlsx":
+                try:
+                    results_df.to_excel(output_path, index=True)
+                except ImportError:
+                    output_format = "csv"
+                    output_path = output_path.replace(".xlsx", ".csv")
+                    results_df.to_csv(output_path, index=True)
+                    logger.warning("openpyxl not available, falling back to CSV.")
+            else:
+                results_df.to_csv(output_path, index=True)
+
+            # Create IR
+            from lobster.core.provenance import AnalysisStep as ProvAnalysisStep
+
+            ir = ProvAnalysisStep(
+                operation="de_results.extract_and_export",
+                tool_name="extract_and_export_de_results",
+                description=f"Extracted and exported {sig_genes} DE results with publication formatting",
+                library="pandas",
+                parameters={
+                    "modality_name": modality_name,
+                    "de_results_key": de_results_key,
+                    "shrink_lfc": shrink_lfc,
+                    "shrinkage_applied": shrinkage_applied,
+                    "output_format": output_format,
+                    "output_path": output_path,
+                    "padj_threshold": padj_threshold,
+                    "lfc_threshold": lfc_threshold,
+                },
+                code_template=(
+                    "# Extract and export DE results\n"
+                    "results_df = adata.uns['{{ de_results_key }}']['results_df'].copy()\n"
+                    "{% if padj_threshold < 1.0 %}results_df = results_df[results_df['padj'] <= {{ padj_threshold }}]\n{% endif %}"
+                    "{% if lfc_threshold > 0 %}results_df = results_df[abs(results_df['log2FoldChange']) >= {{ lfc_threshold }}]\n{% endif %}"
+                    "results_df = results_df.sort_values('padj')\n"
+                    "results_df.to_{{ output_format }}('{{ output_path }}', index=True)"
+                ),
+                imports=["pandas"],
+            )
+
+            data_manager.log_tool_usage(
+                tool_name="extract_and_export_de_results",
+                parameters={
+                    "modality_name": modality_name,
+                    "de_results_key": de_results_key,
+                    "shrink_lfc": shrink_lfc,
+                    "output_format": output_format,
+                    "output_path": output_path,
+                    "padj_threshold": padj_threshold,
+                    "lfc_threshold": lfc_threshold,
+                },
+                description=f"Exported {sig_genes} DE results as publication table",
+                ir=ir,
+            )
+
+            response = f"""## Publication DE Results Exported
+
+**Source:** {de_results_key}
+**Modality:** {modality_name}
+
+**Export Details:**
+- Total genes in DE results: {total_genes:,}
+- Genes after filtering: {sig_genes:,}
+- padj threshold: {padj_threshold}
+- |LFC| threshold: {lfc_threshold}
+- Format: {output_format.upper()}
+- Output: {output_path}
+
+**LFC Shrinkage:** {'Applied' if shrinkage_applied else 'Not applied'}
+{f'- Note: {shrinkage_note}' if shrinkage_note else ''}
+
+**Publication Columns:** {', '.join(pub_cols)}
+
+**File ready for publication supplementary tables.**"""
+
+            return response
+
+        except ModalityNotFoundError as e:
+            logger.error(f"Error in extract_and_export_de_results: {e}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Unexpected error in extract_and_export_de_results: {e}")
+            return f"Unexpected error: {str(e)}"
+
+    # -------------------------
     # TOOL REGISTRY
     # -------------------------
     base_tools = [
@@ -2281,13 +2901,19 @@ def de_analysis_expert(
         # DE analysis (2 clear tools)
         run_differential_expression,
         run_de_with_formula,
+        # Bulk DE pipeline
+        run_bulk_de_direct,
         # Result tools
         filter_de_results,
         export_de_results,
+        # GSEA
+        run_gsea_analysis,
+        # Publication export
+        extract_and_export_de_results,
         # Iteration tools
         iterate_de_analysis,
         compare_de_iterations,
-        # Pathway analysis
+        # Pathway analysis (ORA)
         run_pathway_enrichment,
     ]
 
