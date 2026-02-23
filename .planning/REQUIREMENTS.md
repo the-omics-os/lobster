@@ -99,12 +99,12 @@
 
 ### Affinity Proteomics (on proteomics_expert parent)
 
-- [ ] **AFP-01**: Add `import_affinity_data` tool — Olink NPX/SomaScan ADAT/Luminex MFI parsing
-- [ ] **AFP-02**: Add `assess_lod_quality` tool — LOD-based quality assessment per platform
-- [ ] **AFP-03**: Add `normalize_bridge_samples` tool — inter-plate normalization via bridge samples
-- [ ] **AFP-04**: Add `assess_cross_platform_concordance` tool — cross-platform protein comparison
-- [ ] **AFP-05**: Enhance `assess_proteomics_quality` for affinity-specific LOD metrics
-- [ ] **AFP-06**: Enhance `check_proteomics_status` for affinity-specific metadata display
+- [x] **AFP-01**: Add `import_affinity_data` tool — Olink NPX/SomaScan ADAT/Luminex MFI parsing
+- [x] **AFP-02**: Add `assess_lod_quality` tool — LOD-based quality assessment per platform
+- [x] **AFP-03**: Add `normalize_bridge_samples` tool — inter-plate normalization via bridge samples
+- [x] **AFP-04**: Add `assess_cross_platform_concordance` tool — cross-platform protein comparison
+- [x] **AFP-05**: Enhance `assess_proteomics_quality` for affinity-specific LOD metrics
+- [x] **AFP-06**: Enhance `check_proteomics_status` for affinity-specific metadata display
 
 ### Metabolomics (NEW lobster-metabolomics package)
 
@@ -128,7 +128,7 @@
 
 ### Bug Fixes (Cross-Cutting)
 
-- [ ] **BUG-13**: Add post-correction validation to `correct_plate_effects`
+- [x] **BUG-13**: Add post-correction validation to `correct_plate_effects`
 - [ ] **BUG-15**: Fix PCA defaults to no LD pruning in genomics (default recommend standalone tool)
 - [ ] **BUG-16**: Fix bulk data getting SC terminology in shared tools
 - [ ] **BUG-17**: Fix `list_modalities` loading all AnnData to check type
@@ -250,12 +250,12 @@
 | BIO-01 | Phase 5 | Complete |
 | BIO-02 | Phase 5 | Complete |
 | BIO-03 | Phase 5 | Complete |
-| AFP-01 | Phase 5 | Pending |
-| AFP-02 | Phase 5 | Pending |
-| AFP-03 | Phase 5 | Pending |
-| AFP-04 | Phase 5 | Pending |
-| AFP-05 | Phase 5 | Pending |
-| AFP-06 | Phase 5 | Pending |
+| AFP-01 | Phase 5 | Complete |
+| AFP-02 | Phase 5 | Complete |
+| AFP-03 | Phase 5 | Complete |
+| AFP-04 | Phase 5 | Complete |
+| AFP-05 | Phase 5 | Complete |
+| AFP-06 | Phase 5 | Complete |
 | MET-01 | Phase 6 | Pending |
 | MET-02 | Phase 6 | Pending |
 | MET-03 | Phase 6 | Pending |
@@ -281,7 +281,7 @@
 | DOC-06 | Phase 6 | Pending |
 | DOC-07 | Phase 7 | Pending |
 | INF-01 | Phase 7 | Pending |
-| BUG-13 | Phase 5 | Pending |
+| BUG-13 | Phase 5 | Complete |
 | BUG-15 | Phase 7 | Pending |
 | BUG-16 | Phase 7 | Pending |
 | BUG-17 | Phase 7 | Pending |
