@@ -113,17 +113,17 @@
 - [x] **MET-03**: Create `MetabolomicsPreprocessingService` — filter, impute, normalize (PQN/TIC/IS), batch correct
 - [x] **MET-04**: Create `MetabolomicsAnalysisService` — univariate stats, PLS-DA, fold change, pathway enrichment
 - [x] **MET-05**: Create `MetabolomicsAnnotationService` — m/z matching to HMDB/KEGG, MSI levels
-- [ ] **MET-06**: Implement `assess_metabolomics_quality` tool
-- [ ] **MET-07**: Implement `filter_metabolomics_features` tool
-- [ ] **MET-08**: Implement `handle_missing_values` tool
-- [ ] **MET-09**: Implement `normalize_metabolomics` tool
-- [ ] **MET-10**: Implement `correct_batch_effects` tool
-- [ ] **MET-11**: Implement `run_metabolomics_statistics` tool
-- [ ] **MET-12**: Implement `run_multivariate_analysis` tool (PCA/PLS-DA/OPLS-DA)
-- [ ] **MET-13**: Implement `annotate_metabolites` tool
-- [ ] **MET-14**: Implement `analyze_lipid_classes` tool
-- [ ] **MET-15**: Implement `run_pathway_enrichment` tool
-- [ ] **MET-16**: Register metabolomics_expert via entry points in pyproject.toml
+- [x] **MET-06**: Implement `assess_metabolomics_quality` tool
+- [x] **MET-07**: Implement `filter_metabolomics_features` tool
+- [x] **MET-08**: Implement `handle_missing_values` tool
+- [x] **MET-09**: Implement `normalize_metabolomics` tool
+- [x] **MET-10**: Implement `correct_batch_effects` tool
+- [x] **MET-11**: Implement `run_metabolomics_statistics` tool
+- [x] **MET-12**: Implement `run_multivariate_analysis` tool (PCA/PLS-DA/OPLS-DA)
+- [x] **MET-13**: Implement `annotate_metabolites` tool
+- [x] **MET-14**: Implement `analyze_lipid_classes` tool
+- [x] **MET-15**: Implement `run_pathway_enrichment` tool
+- [x] **MET-16**: Register metabolomics_expert via entry points in pyproject.toml
 - [x] **MET-17**: Fix BUG-14: metabolomics schema sparse matrix zero-checking
 
 ### Bug Fixes (Cross-Cutting)
@@ -261,17 +261,17 @@
 | MET-03 | Phase 6 | Complete |
 | MET-04 | Phase 6 | Complete |
 | MET-05 | Phase 6 | Complete |
-| MET-06 | Phase 6 | Pending |
-| MET-07 | Phase 6 | Pending |
-| MET-08 | Phase 6 | Pending |
-| MET-09 | Phase 6 | Pending |
-| MET-10 | Phase 6 | Pending |
-| MET-11 | Phase 6 | Pending |
-| MET-12 | Phase 6 | Pending |
-| MET-13 | Phase 6 | Pending |
-| MET-14 | Phase 6 | Pending |
-| MET-15 | Phase 6 | Pending |
-| MET-16 | Phase 6 | Pending |
+| MET-06 | Phase 6 | Complete |
+| MET-07 | Phase 6 | Complete |
+| MET-08 | Phase 6 | Complete |
+| MET-09 | Phase 6 | Complete |
+| MET-10 | Phase 6 | Complete |
+| MET-11 | Phase 6 | Complete |
+| MET-12 | Phase 6 | Complete |
+| MET-13 | Phase 6 | Complete |
+| MET-14 | Phase 6 | Complete |
+| MET-15 | Phase 6 | Complete |
+| MET-16 | Phase 6 | Complete |
 | MET-17 | Phase 6 | Complete |
 | DOC-01 | Phase 1 | Complete |
 | DOC-02 | Phase 2 | Complete |
