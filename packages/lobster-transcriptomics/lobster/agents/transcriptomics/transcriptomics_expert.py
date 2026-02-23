@@ -930,8 +930,336 @@ Please check:
             return f"Unexpected error: {str(e)}"
 
     # =========================================================================
+    # SC ANALYSIS TOOLS
+    # =========================================================================
+
+    @tool
+    def detect_doublets(
+        modality_name: str,
+        expected_doublet_rate: float = 0.025,
+        threshold: Optional[float] = None,
+    ) -> str:
+        """
+        Detect doublets using Scrublet on raw counts. Run BEFORE filtering/normalization.
+
+        Doublets are artifactual cell barcodes from two cells captured together.
+        Removing them before downstream analysis prevents spurious clusters and
+        incorrect cell type assignments.
+
+        Args:
+            modality_name: Name of the modality to process (must contain raw counts)
+            expected_doublet_rate: Expected fraction of doublets (default: 0.025 = 2.5%).
+                                  Typical range: 0.01 (low loading) to 0.08 (high loading).
+                                  Higher loading densities produce more doublets.
+            threshold: Custom threshold for doublet calling. If None, Scrublet
+                      auto-selects using bimodal distribution detection.
+
+        Returns:
+            Report with doublet count, rate, and recommendation to filter
+        """
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+            logger.info(
+                f"Detecting doublets in '{modality_name}': "
+                f"{adata.shape[0]} cells x {adata.shape[1]} genes"
+            )
+
+            # Call service
+            result, stats, ir = enhanced_service.detect_doublets(
+                adata,
+                expected_doublet_rate=expected_doublet_rate,
+                threshold=threshold,
+            )
+
+            # Store result
+            new_name = f"{modality_name}_doublets_detected"
+            data_manager.store_modality(
+                name=new_name,
+                adata=result,
+                parent_name=modality_name,
+                step_summary=f"Doublet detection: {stats.get('n_doublets', 0)} doublets found ({stats.get('doublet_rate', 0)*100:.1f}%)",
+            )
+
+            # Log with IR
+            data_manager.log_tool_usage(
+                tool_name="detect_doublets",
+                parameters={
+                    "modality_name": modality_name,
+                    "expected_doublet_rate": expected_doublet_rate,
+                    "threshold": threshold,
+                },
+                description=f"Detected {stats.get('n_doublets', 0)} doublets in {modality_name}",
+                ir=ir,
+            )
+
+            # Format response
+            n_doublets = stats.get("n_doublets", 0)
+            doublet_rate = stats.get("doublet_rate", 0)
+            method = stats.get("method", "scrublet")
+            threshold_used = stats.get("threshold", "auto")
+
+            response = f"""Doublet detection complete for '{modality_name}'!
+
+**Method**: {method}
+**Doublets detected**: {n_doublets} / {adata.shape[0]} cells ({doublet_rate*100:.1f}%)
+**Threshold**: {threshold_used}
+**Expected rate**: {expected_doublet_rate*100:.1f}%
+
+**New modality created**: '{new_name}'"""
+
+            if doublet_rate > 0.10:
+                response += "\n\n**WARNING**: Doublet rate >10% is unusually high. Check loading density or consider adjusting threshold."
+            elif doublet_rate > 0.05:
+                response += "\n\n**Note**: Doublet rate is moderate. This is within normal range for high-density loading."
+
+            response += "\n\n**Recommendation**: Filter doublets before downstream analysis using filter_and_normalize()."
+
+            analysis_results["details"]["doublet_detection"] = response
+            return response
+
+        except (ServiceSingleCellError, ModalityNotFoundError) as e:
+            logger.error(f"Error in doublet detection: {e}")
+            return f"Error detecting doublets: {str(e)}"
+        except Exception as e:
+            logger.error(f"Unexpected error in doublet detection: {e}")
+            return f"Unexpected error: {str(e)}"
+
+    @tool
+    def integrate_batches(
+        modality_name: str,
+        batch_key: str,
+        method: str = "harmony",
+        n_pcs: int = 30,
+    ) -> str:
+        """
+        Integrate multi-sample batches using Harmony or ComBat. Returns quality
+        metrics (LISI, silhouette) for iterative refinement -- re-invoke with
+        different parameters if metrics are poor.
+
+        Args:
+            modality_name: Name of the modality to integrate
+            batch_key: Column in adata.obs containing batch labels (e.g., 'batch', 'sample')
+            method: Integration method ('harmony' or 'combat', default: 'harmony').
+                   Harmony: Fast, works in PCA space, good for most cases.
+                   ComBat: Statistical, works on expression matrix, better for small batches.
+            n_pcs: Number of principal components for PCA (default: 30)
+
+        Returns:
+            Report with method, batch count, silhouette score, LISI, and quality guidance
+        """
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+            logger.info(
+                f"Integrating batches in '{modality_name}' using {method}: "
+                f"{adata.shape[0]} cells x {adata.shape[1]} genes"
+            )
+
+            # Call service
+            result, stats, ir = enhanced_service.integrate_batches(
+                adata,
+                batch_key=batch_key,
+                method=method,
+                n_pcs=n_pcs,
+            )
+
+            # Store result
+            new_name = f"{modality_name}_integrated"
+            data_manager.store_modality(
+                name=new_name,
+                adata=result,
+                parent_name=modality_name,
+                step_summary=f"Batch integration ({method}): {stats.get('n_batches', 0)} batches, silhouette={stats.get('batch_silhouette', 0):.3f}",
+            )
+
+            # Log with IR
+            data_manager.log_tool_usage(
+                tool_name="integrate_batches",
+                parameters={
+                    "modality_name": modality_name,
+                    "batch_key": batch_key,
+                    "method": method,
+                    "n_pcs": n_pcs,
+                },
+                description=f"Integrated {stats.get('n_batches', 0)} batches in {modality_name} using {method}",
+                ir=ir,
+            )
+
+            # Format response with quality metrics
+            n_batches = stats.get("n_batches", 0)
+            batch_silhouette = stats.get("batch_silhouette", 0)
+            median_lisi = stats.get("median_lisi", 0)
+            integrated_key = stats.get("integrated_key", "X_pca_harmony")
+
+            response = f"""Batch integration complete for '{modality_name}'!
+
+**Method**: {method}
+**Batches integrated**: {n_batches}
+**Integrated representation**: '{integrated_key}' (use for downstream clustering)
+
+**Quality Metrics:**
+- **Batch silhouette score**: {batch_silhouette:.3f} (closer to 0 = better batch mixing; >0.3 suggests residual batch effects)
+- **Median LISI**: {median_lisi:.2f} (closer to {n_batches} = better mixing; <1.5 suggests poor integration)
+
+**New modality created**: '{new_name}'"""
+
+            # Add quality guidance for iterative refinement
+            if batch_silhouette > 0.3 or median_lisi < 1.5:
+                response += f"""
+
+**Quality concerns detected:**
+- {"Batch silhouette > 0.3: significant batch effects remain." if batch_silhouette > 0.3 else ""}
+- {"Median LISI < 1.5: batches are not well mixed." if median_lisi < 1.5 else ""}
+
+**Suggestions**: Re-run with different parameters:
+- Try method='{"combat" if method == "harmony" else "harmony"}'
+- Increase n_pcs (e.g., 50) for more information
+- Check if batch_key is the correct batch variable"""
+            else:
+                response += "\n\n**Integration quality**: Good. Proceed with clustering using the integrated representation."
+
+            analysis_results["details"]["batch_integration"] = response
+            return response
+
+        except (ServiceSingleCellError, ModalityNotFoundError) as e:
+            logger.error(f"Error in batch integration: {e}")
+            return f"Error integrating batches: {str(e)}"
+        except Exception as e:
+            logger.error(f"Unexpected error in batch integration: {e}")
+            return f"Unexpected error: {str(e)}"
+
+    @tool
+    def compute_trajectory(
+        modality_name: str,
+        root_cell: Optional[int] = None,
+        root_group: Optional[str] = None,
+        cluster_key: str = "leiden",
+        n_dcs: int = 15,
+    ) -> str:
+        """
+        Compute DPT pseudotime and PAGA trajectory. Requires clustered data
+        with neighbors computed.
+
+        Trajectory inference reveals temporal ordering of cells along
+        differentiation or activation paths. DPT (Diffusion Pseudotime) computes
+        a pseudotime value for each cell, while PAGA (Partition-based Graph
+        Abstraction) reveals connectivity between clusters.
+
+        Args:
+            modality_name: Name of the modality to process (must have neighbors computed)
+            root_cell: Explicit root cell index (highest priority). If None,
+                      auto-selects using diffusion component minimum.
+            root_group: Cluster name to use as root (e.g., 'stem_cells', '0').
+                       Used only when root_cell is None.
+            cluster_key: Key in adata.obs for cluster assignments (default: 'leiden')
+            n_dcs: Number of diffusion components (default: 15)
+
+        Returns:
+            Report with root cell, pseudotime range, PAGA status, and interpretation guidance
+        """
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+            logger.info(
+                f"Computing trajectory for '{modality_name}': "
+                f"{adata.shape[0]} cells x {adata.shape[1]} genes"
+            )
+
+            # Call service
+            result, stats, ir = enhanced_service.compute_trajectory(
+                adata,
+                root_cell=root_cell,
+                root_group=root_group,
+                cluster_key=cluster_key,
+                n_dcs=n_dcs,
+            )
+
+            # Store result
+            new_name = f"{modality_name}_trajectory"
+            data_manager.store_modality(
+                name=new_name,
+                adata=result,
+                parent_name=modality_name,
+                step_summary=f"Trajectory: pseudotime [{stats.get('pseudotime_min', 0):.2f}, {stats.get('pseudotime_max', 0):.2f}]",
+            )
+
+            # Log with IR
+            data_manager.log_tool_usage(
+                tool_name="compute_trajectory",
+                parameters={
+                    "modality_name": modality_name,
+                    "root_cell": root_cell,
+                    "root_group": root_group,
+                    "cluster_key": cluster_key,
+                    "n_dcs": n_dcs,
+                },
+                description=f"Computed DPT trajectory for {modality_name}",
+                ir=ir,
+            )
+
+            # Format response
+            root_idx = stats.get("root_cell", "auto")
+            pt_min = stats.get("pseudotime_min", 0)
+            pt_max = stats.get("pseudotime_max", 0)
+            has_paga = stats.get("has_paga", False)
+            root_method = stats.get("root_selection_method", "auto")
+
+            response = f"""Trajectory inference complete for '{modality_name}'!
+
+**Root cell**: index {root_idx} (selected via: {root_method})
+**Pseudotime range**: [{pt_min:.3f}, {pt_max:.3f}]
+**PAGA computed**: {'Yes' if has_paga else 'No'}
+**Diffusion components**: {n_dcs}
+
+**New modality created**: '{new_name}'
+
+**Interpreting pseudotime:**
+- Values closer to 0 = earlier in trajectory (near root)
+- Values closer to {pt_max:.3f} = later in trajectory (terminal states)
+- Pseudotime is stored in adata.obs['dpt_pseudotime']
+- PAGA connectivity is stored in adata.uns['paga']
+
+**Next steps**: Visualize trajectory on UMAP colored by dpt_pseudotime, or identify genes that change along the trajectory."""
+
+            analysis_results["details"]["trajectory"] = response
+            return response
+
+        except (ServiceSingleCellError, ModalityNotFoundError) as e:
+            logger.error(f"Error in trajectory computation: {e}")
+            return f"Error computing trajectory: {str(e)}"
+        except Exception as e:
+            logger.error(f"Unexpected error in trajectory computation: {e}")
+            return f"Unexpected error: {str(e)}"
+
+    # =========================================================================
     # COLLECT ALL TOOLS
     # =========================================================================
+
+    # SC analysis tools
+    sc_analysis_tools = [
+        detect_doublets,
+        integrate_batches,
+        compute_trajectory,
+    ]
 
     # Clustering tools (single-cell specific)
     clustering_tools = [
@@ -942,7 +1270,7 @@ Please check:
     ]
 
     # Combine all direct tools
-    direct_tools = shared_tools + clustering_tools
+    direct_tools = shared_tools + clustering_tools + sc_analysis_tools
 
     # Add delegation tools if provided (annotation_expert, de_analysis_expert)
     tools = direct_tools
