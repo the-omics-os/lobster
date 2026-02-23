@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Transcriptomics Children** - Annotation expert + DE analysis expert enhancements + prompt updates (completed 2026-02-23)
 - [ ] **Phase 4: MS Proteomics Core** - Parent improvements, import tools, PTM basics, batch correction + prompt update
 - [x] **Phase 5: Proteomics Children & Affinity** - DE child, biomarker child, affinity-specific tools + prompt update (completed 2026-02-23)
-- [ ] **Phase 6: Metabolomics Package** - New lobster-metabolomics package with 10 core tools + prompt creation
+- [x] **Phase 6: Metabolomics Package** - New lobster-metabolomics package with 10 core tools + prompt creation
 - [ ] **Phase 7: Cross-Cutting Infrastructure** - Skills docs, @tool_meta foundation, remaining cross-cutting bug fixes
 
 ## Dependency Graph & Execution Waves
@@ -146,9 +146,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 06-01-PLAN.md — Package scaffold + 4 services (quality, preprocessing, analysis, annotation) + PlatformConfig + BUG-14 fix
-- [ ] 06-02-PLAN.md — 10 tools in shared_tools.py + metabolomics_expert agent factory + state + entry point registration
-- [ ] 06-03-PLAN.md — Metabolomics expert prompt with tool inventory, platform workflows, tool selection guide
+- [x] 06-01-PLAN.md — Package scaffold + 4 services (quality, preprocessing, analysis, annotation) + PlatformConfig + BUG-14 fix
+- [x] 06-02-PLAN.md — 10 tools in shared_tools.py + metabolomics_expert agent factory + state + entry point registration
+- [x] 06-03-PLAN.md — Metabolomics expert prompt with tool inventory, platform workflows, tool selection guide
 
 ### Phase 7: Cross-Cutting Infrastructure
 **Goal**: Skills docs updated, @tool_meta foundation in place, remaining cross-cutting bugs fixed

@@ -140,7 +140,7 @@
 - [x] **DOC-03**: Update proteomics_expert prompt for import tools + PTM + affinity tools
 - [x] **DOC-04**: Update de_analysis_expert prompt for merged DE tools + bulk additions
 - [x] **DOC-05**: Update biomarker_discovery_expert prompt for panel selection tools
-- [ ] **DOC-06**: Create metabolomics_expert prompt
+- [x] **DOC-06**: Create metabolomics_expert prompt
 - [ ] **DOC-07**: Update skills/lobster-dev references for new architecture
 
 ### Infrastructure
@@ -278,7 +278,7 @@
 | DOC-03 | Phase 4 | Complete |
 | DOC-04 | Phase 3 | Complete |
 | DOC-05 | Phase 5 | Complete |
-| DOC-06 | Phase 6 | Pending |
+| DOC-06 | Phase 6 | Complete |
 | DOC-07 | Phase 7 | Pending |
 | INF-01 | Phase 7 | Pending |
 | BUG-13 | Phase 5 | Complete |
