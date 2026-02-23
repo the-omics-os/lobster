@@ -91,11 +91,12 @@ Plans:
   3. User can run complete bulk DE pipeline: prepare design → DE → filter → GSEA → export publication tables
   4. Interactive terminal tools (manually_annotate_clusters_interactive, construct_de_formula_interactive) are deprecated (cloud-compatible)
   5. BUG-04 and BUG-05 fixed; de_analysis_expert prompt updated for merged DE tools + bulk additions
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
+- [ ] 03-01-PLAN.md — Annotation expert: score_gene_set tool, rename annotate_cell_types_auto, deprecate interactive, BUG-04 + BUG-05 fixes, annotation prompt update
+- [ ] 03-02-PLAN.md — DE expert refactoring: merge 3 DE tools into 2, merge formula tools, deprecate interactive, add filter + export tools, rename 2 tools
+- [ ] 03-03-PLAN.md — DE bulk additions + prompt: run_bulk_de_direct, run_gsea_analysis, extract_and_export_de_results, DE prompt rewrite
 
 ### Phase 4: MS Proteomics Core
 **Goal**: Proteomics parent can import MS data, handle PTMs, and batch-correct

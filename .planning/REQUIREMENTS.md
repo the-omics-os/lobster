@@ -51,16 +51,16 @@
 
 ### Annotation Expert Child (transcriptomics)
 
-- [ ] **ANN-01**: Add `score_gene_set` tool — gene set scoring via sc.tl.score_genes
-- [ ] **ANN-02**: Rename `annotate_cell_types` → `annotate_cell_types_auto`
-- [ ] **ANN-03**: Fix BUG-04: Replace try/except ImportError with component_registry for VectorSearchService
-- [ ] **ANN-04**: Fix BUG-05: Use data_manager.store_modality() instead of direct dict assignment
+- [x] **ANN-01**: Add `score_gene_set` tool — gene set scoring via sc.tl.score_genes
+- [x] **ANN-02**: Rename `annotate_cell_types` → `annotate_cell_types_auto`
+- [x] **ANN-03**: Fix BUG-04: Replace try/except ImportError with component_registry for VectorSearchService
+- [x] **ANN-04**: Fix BUG-05: Use data_manager.store_modality() instead of direct dict assignment
 
 ### DE Analysis Expert Child (transcriptomics)
 
 - [ ] **DEA-01**: Merge 3 DE tools into 2: `run_differential_expression` (simple) + `run_de_with_formula` (advanced)
 - [ ] **DEA-02**: Merge `construct_de_formula_interactive` + `suggest_formula_for_design` → `suggest_de_formula`
-- [ ] **DEA-03**: Deprecate `manually_annotate_clusters_interactive` (BUG-11)
+- [x] **DEA-03**: Deprecate `manually_annotate_clusters_interactive` (BUG-11)
 - [ ] **DEA-04**: Deprecate `construct_de_formula_interactive` (BUG-12)
 - [ ] **DEA-05**: Add `filter_de_results` tool — standalone result filtering
 - [ ] **DEA-06**: Add `export_de_results` tool — publication-ready CSV/Excel export
@@ -217,13 +217,13 @@
 | BLK-06 | Phase 2 | Complete |
 | BLK-07 | Phase 2 | Complete |
 | BLK-08 | Phase 2 | Complete |
-| ANN-01 | Phase 3 | Pending |
-| ANN-02 | Phase 3 | Pending |
-| ANN-03 | Phase 3 | Pending |
-| ANN-04 | Phase 3 | Pending |
+| ANN-01 | Phase 3 | Complete |
+| ANN-02 | Phase 3 | Complete |
+| ANN-03 | Phase 3 | Complete |
+| ANN-04 | Phase 3 | Complete |
 | DEA-01 | Phase 3 | Pending |
 | DEA-02 | Phase 3 | Pending |
-| DEA-03 | Phase 3 | Pending |
+| DEA-03 | Phase 3 | Complete |
 | DEA-04 | Phase 3 | Pending |
 | DEA-05 | Phase 3 | Pending |
 | DEA-06 | Phase 3 | Pending |
