@@ -21,6 +21,7 @@ warnings.filterwarnings("ignore", category=FutureWarning, module="anndata")
 warnings.filterwarnings("ignore", category=FutureWarning, module="scanpy")
 
 from lobster.services.analysis.enhanced_singlecell_service import (
+    HARMONY_AVAILABLE,
     SCRUBLET_AVAILABLE,
     EnhancedSingleCellService,
     SingleCellError,
@@ -1133,6 +1134,259 @@ def test_annotation_reproducibility(service, clustered_adata):
         result2_adata.obs["cell_type"],
         check_names=False,
     )
+
+
+# ===============================================================================
+# Test Batch Integration (SCT-02)
+# ===============================================================================
+
+
+@pytest.fixture
+def batched_adata():
+    """Create AnnData with batch information for integration testing."""
+    np.random.seed(42)
+    n_obs = 200
+    n_vars = 100
+
+    X = np.random.negative_binomial(n=5, p=0.3, size=(n_obs, n_vars)).astype(np.float32)
+
+    adata = ad.AnnData(
+        X=X,
+        obs=pd.DataFrame(index=[f"Cell_{i}" for i in range(n_obs)]),
+        var=pd.DataFrame(index=[f"Gene_{i}" for i in range(n_vars)]),
+    )
+
+    # Add batch labels — 3 batches with at least 40 cells each
+    adata.obs["batch"] = np.array(
+        ["batch_A"] * 70 + ["batch_B"] * 70 + ["batch_C"] * 60
+    )
+
+    # Add a small batch effect to make integration meaningful
+    batch_b_mask = adata.obs["batch"] == "batch_B"
+    adata.X[batch_b_mask.values, :50] += 5
+
+    return adata
+
+
+@pytest.fixture
+def trajectory_adata():
+    """Create AnnData with PCA + neighbors for trajectory testing."""
+    np.random.seed(42)
+    n_obs = 150
+    n_vars = 80
+
+    X = np.random.negative_binomial(n=5, p=0.3, size=(n_obs, n_vars)).astype(np.float32)
+
+    adata = ad.AnnData(
+        X=X,
+        obs=pd.DataFrame(index=[f"Cell_{i}" for i in range(n_obs)]),
+        var=pd.DataFrame(index=[f"Gene_{i}" for i in range(n_vars)]),
+    )
+
+    # Add clustering
+    adata.obs["leiden"] = np.random.choice(["0", "1", "2"], size=n_obs)
+
+    # Preprocess: normalize, log1p, PCA, neighbors
+    import scanpy as sc
+
+    sc.pp.normalize_total(adata, target_sum=1e4)
+    sc.pp.log1p(adata)
+    sc.tl.pca(adata)
+    sc.pp.neighbors(adata)
+
+    return adata
+
+
+@pytest.mark.skipif(not HARMONY_AVAILABLE, reason="harmonypy not installed")
+def test_integrate_batches_harmony(service, batched_adata):
+    """Test Harmony batch integration with quality metrics."""
+    result_adata, stats, ir = service.integrate_batches(
+        batched_adata, batch_key="batch", method="harmony"
+    )
+
+    # Verify 3-tuple return
+    assert isinstance(result_adata, ad.AnnData)
+    assert isinstance(stats, dict)
+    assert hasattr(ir, "operation")
+
+    # Verify integrated embedding
+    assert "X_pca_harmony" in result_adata.obsm
+    assert result_adata.obsm["X_pca_harmony"].shape[0] == batched_adata.n_obs
+
+    # Verify stats keys
+    assert stats["method"] == "harmony"
+    assert stats["batch_key"] == "batch"
+    assert stats["n_batches"] == 3
+    assert "batch_silhouette" in stats
+    assert "median_lisi" in stats
+    assert stats["integrated_key"] == "X_pca_harmony"
+    assert isinstance(stats["batch_silhouette"], float)
+    assert isinstance(stats["median_lisi"], float)
+
+
+def test_integrate_batches_combat(service, batched_adata):
+    """Test ComBat batch integration returns proper 3-tuple."""
+    result_adata, stats, ir = service.integrate_batches(
+        batched_adata, batch_key="batch", method="combat"
+    )
+
+    assert isinstance(result_adata, ad.AnnData)
+    assert isinstance(stats, dict)
+    assert hasattr(ir, "operation")
+
+    assert stats["method"] == "combat"
+    assert stats["integrated_key"] == "X_pca"
+    assert "batch_silhouette" in stats
+    assert "median_lisi" in stats
+    assert "X_pca" in result_adata.obsm
+
+
+def test_integrate_batches_no_harmony(service, batched_adata):
+    """Test clear error when harmony is not available."""
+    with patch(
+        "lobster.services.analysis.enhanced_singlecell_service.HARMONY_AVAILABLE",
+        False,
+    ):
+        with pytest.raises(SingleCellError, match="harmonypy"):
+            service.integrate_batches(
+                batched_adata, batch_key="batch", method="harmony"
+            )
+
+
+def test_integrate_batches_invalid_batch_key(service, batched_adata):
+    """Test error on invalid batch key."""
+    with pytest.raises(SingleCellError, match="not found"):
+        service.integrate_batches(
+            batched_adata, batch_key="nonexistent", method="combat"
+        )
+
+
+def test_integrate_batches_invalid_method(service, batched_adata):
+    """Test error on invalid integration method."""
+    with pytest.raises(SingleCellError, match="Unknown integration method"):
+        service.integrate_batches(
+            batched_adata, batch_key="batch", method="invalid_method"
+        )
+
+
+# ===============================================================================
+# Test Trajectory Inference (SCT-03)
+# ===============================================================================
+
+
+def test_compute_trajectory(service, trajectory_adata):
+    """Test DPT trajectory inference with auto root selection."""
+    result_adata, stats, ir = service.compute_trajectory(trajectory_adata)
+
+    # Verify 3-tuple return
+    assert isinstance(result_adata, ad.AnnData)
+    assert isinstance(stats, dict)
+    assert hasattr(ir, "operation")
+
+    # Verify pseudotime
+    assert "dpt_pseudotime" in result_adata.obs.columns
+    assert not result_adata.obs["dpt_pseudotime"].isna().all()
+
+    # Verify PAGA
+    assert "paga" in result_adata.uns
+    assert stats["has_paga"] is True
+
+    # Verify stats
+    assert stats["method"] == "dpt"
+    assert "root_cell_index" in stats
+    assert "pseudotime_range" in stats
+    assert len(stats["pseudotime_range"]) == 2
+    assert stats["pseudotime_range"][0] <= stats["pseudotime_range"][1]
+
+
+def test_compute_trajectory_root_group(service, trajectory_adata):
+    """Test trajectory with root_group selection logic."""
+    result_adata, stats, ir = service.compute_trajectory(
+        trajectory_adata, root_group="0", cluster_key="leiden"
+    )
+
+    assert "dpt_pseudotime" in result_adata.obs.columns
+    assert stats["root_cell_index"] >= 0
+
+    # Root cell should be in group "0"
+    root_idx = stats["root_cell_index"]
+    assert str(trajectory_adata.obs["leiden"].iloc[root_idx]) == "0"
+
+
+def test_compute_trajectory_explicit_root(service, trajectory_adata):
+    """Test trajectory with explicit root cell index."""
+    result_adata, stats, ir = service.compute_trajectory(
+        trajectory_adata, root_cell=5
+    )
+
+    assert stats["root_cell_index"] == 5
+    assert "dpt_pseudotime" in result_adata.obs.columns
+
+
+def test_compute_trajectory_invalid_root_group(service, trajectory_adata):
+    """Test trajectory fails with nonexistent root group."""
+    with pytest.raises(SingleCellError, match="not found"):
+        service.compute_trajectory(
+            trajectory_adata, root_group="nonexistent_group"
+        )
+
+
+def test_compute_trajectory_no_neighbors(service):
+    """Test trajectory computes neighbors if missing."""
+    np.random.seed(42)
+    n_obs = 100
+    n_vars = 50
+
+    X = np.random.negative_binomial(n=5, p=0.3, size=(n_obs, n_vars)).astype(np.float32)
+
+    adata = ad.AnnData(
+        X=X,
+        obs=pd.DataFrame(index=[f"Cell_{i}" for i in range(n_obs)]),
+        var=pd.DataFrame(index=[f"Gene_{i}" for i in range(n_vars)]),
+    )
+    adata.obs["leiden"] = np.random.choice(["0", "1"], size=n_obs)
+
+    import scanpy as sc
+
+    sc.pp.normalize_total(adata, target_sum=1e4)
+    sc.pp.log1p(adata)
+    sc.tl.pca(adata)
+
+    # No neighbors computed — service should handle it
+    result_adata, stats, ir = service.compute_trajectory(adata)
+    assert "dpt_pseudotime" in result_adata.obs.columns
+
+
+# ===============================================================================
+# Test LISI Computation
+# ===============================================================================
+
+
+def test_compute_lisi_basic(service):
+    """Test LISI computation returns valid scores."""
+    np.random.seed(42)
+    n = 100
+    X = np.random.randn(n, 10)
+    labels = np.array(["A"] * 50 + ["B"] * 50)
+
+    lisi_scores = service._compute_lisi(X, labels, k=20)
+
+    assert len(lisi_scores) == n
+    assert all(s >= 1.0 for s in lisi_scores)  # LISI >= 1 always
+    assert all(s <= 2.0 for s in lisi_scores)  # Max 2 for 2 batches
+
+
+def test_compute_lisi_small_batch(service):
+    """Test LISI handles small batches by reducing k."""
+    np.random.seed(42)
+    # One batch has only 5 cells
+    X = np.random.randn(55, 10)
+    labels = np.array(["A"] * 50 + ["B"] * 5)
+
+    # k=30 > batch B size, should auto-reduce
+    lisi_scores = service._compute_lisi(X, labels, k=30)
+    assert len(lisi_scores) == 55
+    assert all(s >= 1.0 for s in lisi_scores)
 
 
 # ===============================================================================

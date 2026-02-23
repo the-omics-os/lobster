@@ -44,6 +44,13 @@ except ImportError:
     SCRUBLET_AVAILABLE = False
     scr = None
 
+try:
+    import harmonypy  # noqa: F401 — presence check for scanpy.external.pp.harmony_integrate
+
+    HARMONY_AVAILABLE = True
+except ImportError:
+    HARMONY_AVAILABLE = False
+
 # Future CellTypist integration (scheduled Q2 2025)
 # import celltypist
 # from celltypist import models
@@ -330,6 +337,480 @@ adata.obs['predicted_doublet'] = predicted_doublets
             input_entities=["adata"],
             output_entities=["adata_doublets"],
         )
+
+    # =========================================================================
+    # Batch Integration (SCT-02)
+    # =========================================================================
+
+    def integrate_batches(
+        self,
+        adata: anndata.AnnData,
+        batch_key: str,
+        method: str = "harmony",
+        n_pcs: int = 30,
+        max_iter: int = 20,
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
+        """
+        Integrate batches using Harmony or ComBat with quality metrics.
+
+        Args:
+            adata: AnnData object with batch information in .obs
+            batch_key: Column in .obs containing batch labels
+            method: Integration method - "harmony" or "combat"
+            n_pcs: Number of principal components for PCA
+            max_iter: Maximum iterations for Harmony convergence
+
+        Returns:
+            Tuple of (integrated AnnData, stats dict, AnalysisStep IR)
+
+        Raises:
+            SingleCellError: If integration fails or harmony not available
+        """
+        from sklearn.metrics import silhouette_score
+
+        try:
+            logger.info(
+                f"Starting batch integration with method={method}, batch_key={batch_key}"
+            )
+
+            # Validate batch_key exists
+            if batch_key not in adata.obs.columns:
+                raise SingleCellError(
+                    f"Batch column '{batch_key}' not found in adata.obs. "
+                    f"Available columns: {list(adata.obs.columns)}"
+                )
+
+            adata = adata.copy()
+
+            # Ensure PCA is computed
+            if "X_pca" not in adata.obsm:
+                logger.info(f"Computing PCA with n_comps={n_pcs}")
+                sc.tl.pca(adata, n_comps=n_pcs)
+
+            batch_labels = adata.obs[batch_key].values
+            n_batches = len(np.unique(batch_labels))
+
+            if method == "harmony":
+                if not HARMONY_AVAILABLE:
+                    raise SingleCellError(
+                        "Harmony batch integration requires the harmonypy package.\n"
+                        "Install with: pip install 'lobster-transcriptomics[batch-integration]'\n"
+                        "Or directly: pip install harmonypy"
+                    )
+                sc.external.pp.harmony_integrate(
+                    adata,
+                    key=batch_key,
+                    basis="X_pca",
+                    adjusted_basis="X_pca_harmony",
+                    max_iter_harmony=max_iter,
+                )
+                integrated_key = "X_pca_harmony"
+            elif method == "combat":
+                sc.pp.combat(adata, key=batch_key)
+                sc.tl.pca(adata, n_comps=n_pcs)
+                integrated_key = "X_pca"
+            else:
+                raise SingleCellError(
+                    f"Unknown integration method '{method}'. Use 'harmony' or 'combat'."
+                )
+
+            # Compute integration quality metrics
+            X_integrated = adata.obsm[integrated_key][:, :n_pcs]
+
+            # 1. Batch silhouette score (lower = better mixing, ~0 = well-mixed)
+            if n_batches > 1:
+                batch_sil = float(silhouette_score(X_integrated, batch_labels))
+            else:
+                batch_sil = 0.0
+
+            # 2. LISI (Local Inverse Simpson Index)
+            lisi_scores = self._compute_lisi(X_integrated, batch_labels, k=30)
+            median_lisi = float(np.median(lisi_scores))
+
+            stats = {
+                "analysis_type": "batch_integration",
+                "method": method,
+                "batch_key": batch_key,
+                "n_batches": n_batches,
+                "batch_silhouette": batch_sil,
+                "median_lisi": median_lisi,
+                "integrated_key": integrated_key,
+            }
+
+            logger.info(
+                f"Batch integration complete: method={method}, "
+                f"n_batches={n_batches}, silhouette={batch_sil:.3f}, "
+                f"median_lisi={median_lisi:.3f}"
+            )
+
+            ir = self._create_integrate_batches_ir(
+                batch_key=batch_key,
+                method=method,
+                n_pcs=n_pcs,
+                max_iter=max_iter,
+            )
+
+            return adata, stats, ir
+
+        except SingleCellError:
+            raise
+        except Exception as e:
+            logger.exception(f"Error in batch integration: {e}")
+            raise SingleCellError(f"Batch integration failed: {str(e)}")
+
+    def _compute_lisi(
+        self,
+        X: np.ndarray,
+        labels: np.ndarray,
+        k: int = 30,
+    ) -> np.ndarray:
+        """
+        Compute LISI (Local Inverse Simpson Index) for integration quality.
+
+        Higher LISI (approaching n_batches) means better batch mixing.
+        LISI = 1 means no mixing at all.
+
+        Args:
+            X: Embedding matrix (n_cells x n_dims)
+            labels: Batch labels array
+            k: Number of nearest neighbors
+
+        Returns:
+            Array of per-cell LISI scores
+        """
+        from sklearn.neighbors import NearestNeighbors
+
+        # Validate smallest batch has enough cells
+        unique_labels, label_counts = np.unique(labels, return_counts=True)
+        min_batch_size = int(np.min(label_counts))
+        if min_batch_size < k + 1:
+            k = max(1, min_batch_size - 1)
+            logger.warning(
+                f"Smallest batch has {min_batch_size} cells, reducing LISI k to {k}"
+            )
+
+        nn = NearestNeighbors(n_neighbors=k, algorithm="ball_tree")
+        nn.fit(X)
+        _, indices = nn.kneighbors(X)
+
+        lisi_scores = np.zeros(len(labels))
+        for i in range(len(labels)):
+            neighbor_labels = labels[indices[i]]
+            unique, counts = np.unique(neighbor_labels, return_counts=True)
+            freqs = counts / k
+            simpson = np.sum(freqs**2)
+            lisi_scores[i] = 1.0 / simpson  # Inverse Simpson
+
+        return lisi_scores
+
+    def _create_integrate_batches_ir(
+        self,
+        batch_key: str,
+        method: str,
+        n_pcs: int,
+        max_iter: int,
+    ) -> AnalysisStep:
+        """Create AnalysisStep IR for batch integration."""
+
+        code_template = """
+# Batch integration with quality metrics
+import scanpy as sc
+import numpy as np
+from sklearn.metrics import silhouette_score
+from sklearn.neighbors import NearestNeighbors
+
+# Ensure PCA is computed
+if "X_pca" not in adata.obsm:
+    sc.tl.pca(adata, n_comps={{ n_pcs }})
+
+{% if method == "harmony" %}
+# Harmony integration
+sc.external.pp.harmony_integrate(
+    adata,
+    key='{{ batch_key }}',
+    basis='X_pca',
+    adjusted_basis='X_pca_harmony',
+    max_iter_harmony={{ max_iter }},
+)
+integrated_key = 'X_pca_harmony'
+{% else %}
+# ComBat batch correction
+sc.pp.combat(adata, key='{{ batch_key }}')
+sc.tl.pca(adata, n_comps={{ n_pcs }})
+integrated_key = 'X_pca'
+{% endif %}
+
+# Compute batch silhouette score (lower = better mixing)
+X_int = adata.obsm[integrated_key][:, :{{ n_pcs }}]
+batch_labels = adata.obs['{{ batch_key }}'].values
+sil = silhouette_score(X_int, batch_labels)
+print(f"Batch silhouette: {sil:.3f}")
+
+# Results stored in:
+# - adata.obsm[integrated_key]: Integrated embedding
+# - Batch silhouette: ~0 = well-mixed, 1 = separated
+"""
+
+        return AnalysisStep(
+            operation="integrate_batches",
+            tool_name="EnhancedSingleCellService.integrate_batches",
+            description=f"Batch integration using {method} with quality metrics",
+            library="scanpy" if method == "harmony" else "scanpy",
+            code_template=code_template,
+            imports=[
+                "import scanpy as sc",
+                "import numpy as np",
+                "from sklearn.metrics import silhouette_score",
+            ],
+            parameters={
+                "batch_key": batch_key,
+                "method": method,
+                "n_pcs": n_pcs,
+                "max_iter": max_iter,
+            },
+            parameter_schema={
+                "batch_key": {
+                    "type": "string",
+                    "description": "Column in .obs containing batch labels",
+                },
+                "method": {
+                    "type": "string",
+                    "description": "Integration method",
+                    "default": "harmony",
+                    "enum": ["harmony", "combat"],
+                },
+                "n_pcs": {
+                    "type": "integer",
+                    "description": "Number of principal components",
+                    "default": 30,
+                },
+                "max_iter": {
+                    "type": "integer",
+                    "description": "Maximum iterations for Harmony",
+                    "default": 20,
+                },
+            },
+            input_entities=["adata"],
+            output_entities=["adata_integrated"],
+        )
+
+    # =========================================================================
+    # Trajectory Inference (SCT-03)
+    # =========================================================================
+
+    def compute_trajectory(
+        self,
+        adata: anndata.AnnData,
+        root_cell: Optional[int] = None,
+        root_group: Optional[str] = None,
+        cluster_key: str = "leiden",
+        n_dcs: int = 15,
+        method: str = "dpt",
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
+        """
+        Compute trajectory inference using DPT pseudotime and PAGA graph.
+
+        Args:
+            adata: AnnData object with neighbors computed
+            root_cell: Explicit root cell index (highest priority)
+            root_group: Cluster name to use as root (selects cell at DC1 extreme)
+            cluster_key: Column in .obs with cluster labels (for PAGA and root_group)
+            n_dcs: Number of diffusion components
+            method: Trajectory method - "dpt" (always computes PAGA too)
+
+        Returns:
+            Tuple of (AnnData with pseudotime, stats dict, AnalysisStep IR)
+
+        Raises:
+            SingleCellError: If trajectory computation fails
+        """
+        try:
+            logger.info(
+                f"Starting trajectory inference: method={method}, n_dcs={n_dcs}"
+            )
+
+            adata = adata.copy()
+
+            # Ensure neighbors are computed
+            if "neighbors" not in adata.uns:
+                logger.info("Computing neighbors graph")
+                sc.pp.neighbors(adata)
+
+            # Compute diffusion map
+            sc.tl.diffmap(adata, n_comps=n_dcs)
+
+            # Set root cell
+            if root_cell is not None:
+                adata.uns["iroot"] = root_cell
+                logger.info(f"Using explicit root cell: {root_cell}")
+            elif root_group is not None:
+                # Find cell in specified group closest to DC1 extreme
+                if cluster_key not in adata.obs.columns:
+                    raise SingleCellError(
+                        f"Cluster column '{cluster_key}' not found in adata.obs"
+                    )
+                group_mask = adata.obs[cluster_key].astype(str) == str(root_group)
+                if not group_mask.any():
+                    raise SingleCellError(
+                        f"Root group '{root_group}' not found in '{cluster_key}'"
+                    )
+                group_indices = np.where(group_mask)[0]
+                dc1_values = adata.obsm["X_diffmap"][group_indices, 0]
+                adata.uns["iroot"] = int(group_indices[np.argmin(dc1_values)])
+                logger.info(
+                    f"Selected root cell {adata.uns['iroot']} from group '{root_group}'"
+                )
+            else:
+                # Auto-select: cell at minimum of first diffusion component
+                adata.uns["iroot"] = int(np.argmin(adata.obsm["X_diffmap"][:, 0]))
+                logger.info(
+                    f"Auto-selected root cell: {adata.uns['iroot']} (DC1 minimum)"
+                )
+
+            # Compute DPT pseudotime
+            sc.tl.dpt(adata)
+
+            # Always compute PAGA for connectivity information
+            if cluster_key in adata.obs.columns:
+                sc.tl.paga(adata, groups=cluster_key)
+                has_paga = True
+            else:
+                has_paga = False
+                logger.warning(
+                    f"Skipping PAGA: cluster_key '{cluster_key}' not in adata.obs"
+                )
+
+            pseudotime = adata.obs["dpt_pseudotime"]
+            stats = {
+                "analysis_type": "trajectory_inference",
+                "method": method,
+                "n_dcs": n_dcs,
+                "root_cell_index": int(adata.uns["iroot"]),
+                "pseudotime_range": [
+                    float(pseudotime.min()),
+                    float(pseudotime.max()),
+                ],
+                "has_paga": has_paga,
+            }
+
+            logger.info(
+                f"Trajectory inference complete: root={adata.uns['iroot']}, "
+                f"pseudotime range=[{pseudotime.min():.3f}, {pseudotime.max():.3f}]"
+            )
+
+            ir = self._create_trajectory_ir(
+                root_cell=root_cell,
+                root_group=root_group,
+                cluster_key=cluster_key,
+                n_dcs=n_dcs,
+                method=method,
+            )
+
+            return adata, stats, ir
+
+        except SingleCellError:
+            raise
+        except Exception as e:
+            logger.exception(f"Error in trajectory inference: {e}")
+            raise SingleCellError(f"Trajectory inference failed: {str(e)}")
+
+    def _create_trajectory_ir(
+        self,
+        root_cell: Optional[int],
+        root_group: Optional[str],
+        cluster_key: str,
+        n_dcs: int,
+        method: str,
+    ) -> AnalysisStep:
+        """Create AnalysisStep IR for trajectory inference."""
+
+        code_template = """
+# Trajectory inference with DPT pseudotime and PAGA
+import scanpy as sc
+import numpy as np
+
+# Ensure neighbors are computed
+if "neighbors" not in adata.uns:
+    sc.pp.neighbors(adata)
+
+# Compute diffusion map
+sc.tl.diffmap(adata, n_comps={{ n_dcs }})
+
+# Set root cell
+{% if root_cell is not none %}
+adata.uns['iroot'] = {{ root_cell }}
+{% elif root_group is not none %}
+group_mask = adata.obs['{{ cluster_key }}'].astype(str) == '{{ root_group }}'
+group_indices = np.where(group_mask)[0]
+dc1_values = adata.obsm['X_diffmap'][group_indices, 0]
+adata.uns['iroot'] = int(group_indices[np.argmin(dc1_values)])
+{% else %}
+adata.uns['iroot'] = int(np.argmin(adata.obsm['X_diffmap'][:, 0]))
+{% endif %}
+
+# Compute DPT pseudotime
+sc.tl.dpt(adata)
+
+# Compute PAGA graph
+sc.tl.paga(adata, groups='{{ cluster_key }}')
+
+# Results stored in:
+# - adata.obs['dpt_pseudotime']: Pseudotime values
+# - adata.uns['paga']: PAGA connectivity graph
+# - adata.obsm['X_diffmap']: Diffusion map embedding
+"""
+
+        return AnalysisStep(
+            operation="compute_trajectory",
+            tool_name="EnhancedSingleCellService.compute_trajectory",
+            description=f"Trajectory inference using {method} with PAGA connectivity",
+            library="scanpy",
+            code_template=code_template,
+            imports=[
+                "import scanpy as sc",
+                "import numpy as np",
+            ],
+            parameters={
+                "root_cell": root_cell,
+                "root_group": root_group,
+                "cluster_key": cluster_key,
+                "n_dcs": n_dcs,
+                "method": method,
+            },
+            parameter_schema={
+                "root_cell": {
+                    "type": "integer",
+                    "description": "Explicit root cell index",
+                    "required": False,
+                },
+                "root_group": {
+                    "type": "string",
+                    "description": "Cluster name to use as root",
+                    "required": False,
+                },
+                "cluster_key": {
+                    "type": "string",
+                    "description": "Column in .obs with cluster labels",
+                    "default": "leiden",
+                },
+                "n_dcs": {
+                    "type": "integer",
+                    "description": "Number of diffusion components",
+                    "default": 15,
+                },
+                "method": {
+                    "type": "string",
+                    "description": "Trajectory method",
+                    "default": "dpt",
+                },
+            },
+            input_entities=["adata"],
+            output_entities=["adata_trajectory"],
+        )
+
+    # =========================================================================
+    # Cell Type Annotation
+    # =========================================================================
 
     def annotate_cell_types(
         self,
