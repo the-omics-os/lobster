@@ -73,6 +73,9 @@ def create_shared_tools(
         try:
             adata = data_manager.get_modality(modality_name)
             detected_type = detect_platform_type(adata)
+            if detected_type == "unknown":
+                logger.warning(f"Platform type ambiguous for '{modality_name}'. Defaulting to mass_spec. Use platform_type parameter to override.")
+                return get_platform_config("mass_spec")
             return get_platform_config(detected_type)
         except ValueError:
             # Default to mass_spec if modality not found
@@ -439,12 +442,12 @@ def create_shared_tools(
                             :, ~adata_filtered.var["is_reverse"]
                         ].copy()
             else:
-                # Affinity: Filter by CV
+                # Affinity: Filter by CV (column added by external Olink/SomaScan metadata, not by Lobster tools)
                 if "cv" in adata_filtered.var.columns:
                     cv_filter = adata_filtered.var["cv"] <= platform_config.cv_threshold
                     adata_filtered = adata_filtered[:, cv_filter].copy()
 
-                # Affinity: Remove failed antibodies
+                # Affinity: Remove failed antibodies (column from assay QC metadata)
                 if "antibody_quality" in adata_filtered.var.columns:
                     quality_filter = adata_filtered.var["antibody_quality"] != "failed"
                     adata_filtered = adata_filtered[:, quality_filter].copy()

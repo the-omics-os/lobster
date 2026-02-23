@@ -162,103 +162,11 @@ def proteomics_expert(
         Returns:
             str: Peptide mapping results
         """
-        try:
-            adata = data_manager.get_modality(modality_name)
-        except ValueError:
-            return f"Modality '{modality_name}' not found. Available: {data_manager.list_modalities()}"
-
-        try:
-            # Get proteomics adapter
-            adapter_instance = None
-            for adapter_name, adapter in data_manager.adapters.items():
-                if "proteomics" in adapter_name:
-                    adapter_instance = adapter
-                    break
-
-            if not adapter_instance:
-                return "No proteomics adapter available for peptide mapping"
-
-            # Add peptide mapping
-            adata_with_peptides = adapter_instance.add_peptide_mapping(
-                adata, peptide_file_path
-            )
-
-            # Update modality
-            peptide_name = f"{modality_name}_with_peptides"
-            data_manager.store_modality(
-                name=peptide_name,
-                adata=adata_with_peptides,
-                parent_name=modality_name,
-                step_summary="Added peptide mapping",
-            )
-
-            if save_result:
-                save_path = f"{modality_name}_with_peptides.h5ad"
-                data_manager.save_modality(peptide_name, save_path)
-
-            peptide_info = adata_with_peptides.uns.get("peptide_to_protein", {})
-
-            ir = AnalysisStep(
-                operation="proteomics.ms.add_peptide_mapping",
-                tool_name="add_peptide_mapping",
-                description="Add peptide-to-protein mapping for MS proteomics",
-                library="lobster.agents.proteomics.proteomics_expert",
-                code_template="""# Peptide mapping (MS-specific)
-import pandas as pd
-
-peptide_df = pd.read_csv({{ peptide_file_path | tojson }})
-peptide_counts = peptide_df.groupby('protein_id').size().to_dict()
-adata.var['n_peptides'] = [peptide_counts.get(p, 0) for p in adata.var_names]
-adata.uns['peptide_to_protein'] = peptide_df.to_dict('records')""",
-                imports=["import pandas as pd"],
-                parameters={
-                    "peptide_file_path": peptide_file_path,
-                    "n_peptides_mapped": peptide_info.get("n_peptides", 0),
-                    "n_proteins_with_peptides": peptide_info.get("n_proteins", 0),
-                },
-                parameter_schema={
-                    "peptide_file_path": ParameterSpec(
-                        param_type="str",
-                        papermill_injectable=True,
-                        default_value="",
-                        required=True,
-                        description="Path to CSV file with peptide-protein mapping",
-                    ),
-                },
-                input_entities=["adata", "peptide_file"],
-                output_entities=["adata_with_peptides"],
-            )
-
-            data_manager.log_tool_usage(
-                tool_name="add_peptide_mapping",
-                parameters={
-                    "modality_name": modality_name,
-                    "peptide_file_path": peptide_file_path,
-                },
-                description="Added peptide-to-protein mapping for MS data",
-                ir=ir,
-            )
-
-            response = f"Successfully added peptide mapping to MS modality '{modality_name}'!\n\n"
-            response += "**Peptide Mapping Results:**\n"
-            response += f"- Peptides mapped: {peptide_info.get('n_peptides', 'Unknown')}\n"
-            response += f"- Proteins with peptides: {peptide_info.get('n_proteins', 'Unknown')}\n"
-            response += f"- Mapping file: {peptide_file_path}\n\n"
-            response += "**Updated Protein Metadata:**\n"
-            response += "- Added: n_peptides, n_unique_peptides, sequence_coverage\n"
-            response += "- Full mapping stored in: uns['peptide_to_protein']\n"
-            response += f"\n**New modality created**: '{peptide_name}'"
-            if save_result:
-                response += f"\n**Saved to**: {save_path}"
-            response += "\n\n**MS-Specific Notes:**"
-            response += "\n- Use peptide counts for protein filtering (recommend >= 2)"
-            response += "\n- Unique peptides provide more reliable quantification"
-
-            return response
-
-        except Exception as e:
-            logger.error(f"Error adding peptide mapping: {e}")
-            return f"Error adding peptide mapping: {str(e)}"
+        # DEPRECATED: Merged into import_proteomics_data (shared_tools.py)
+        logger.warning("add_peptide_mapping is deprecated. Use import_proteomics_data which automatically extracts peptide mapping from parser output.")
+        return "DEPRECATED: add_peptide_mapping has been merged into import_proteomics_data. " \
+               "MaxQuant/DIA-NN/Spectronaut parsers automatically extract peptide counts, " \
+               "unique peptides, and sequence coverage during import."
 
     @tool
     def validate_antibody_specificity(
@@ -293,11 +201,13 @@ adata.uns['peptide_to_protein'] = peptide_df.to_dict('records')""",
                 else adata_validated.X
             )
 
-            X_filled = np.nan_to_num(X, nan=np.nanmean(X))
+            import pandas as pd
+
             cross_reactive_pairs = []
 
             if adata_validated.n_vars > 1:
-                correlation_matrix = np.corrcoef(X_filled.T)
+                df = pd.DataFrame(X, columns=adata_validated.var_names)
+                correlation_matrix = df.corr(method='pearson', min_periods=3).fillna(0).values
 
                 for i in range(len(correlation_matrix)):
                     for j in range(i + 1, len(correlation_matrix)):
@@ -335,10 +245,11 @@ adata.uns['peptide_to_protein'] = peptide_df.to_dict('records')""",
                 library="lobster.agents.proteomics.proteomics_expert",
                 code_template="""# Antibody cross-reactivity check (Affinity-specific)
 import numpy as np
+import pandas as pd
 
 X = adata.X.toarray() if hasattr(adata.X, 'toarray') else adata.X
-X_filled = np.nan_to_num(X, nan=np.nanmean(X))
-correlation_matrix = np.corrcoef(X_filled.T)
+df = pd.DataFrame(X, columns=adata.var_names)
+correlation_matrix = df.corr(method='pearson', min_periods=3).fillna(0).values
 
 cross_reactive_pairs = []
 for i in range(len(correlation_matrix)):
@@ -350,7 +261,7 @@ adata.var['cross_reactive'] = False
 for i, j, _ in cross_reactive_pairs:
     adata.var.iloc[i, adata.var.columns.get_loc('cross_reactive')] = True
     adata.var.iloc[j, adata.var.columns.get_loc('cross_reactive')] = True""",
-                imports=["import numpy as np"],
+                imports=["import numpy as np", "import pandas as pd"],
                 parameters={
                     "cross_reactivity_threshold": cross_reactivity_threshold,
                     "n_cross_reactive_pairs": len(cross_reactive_pairs),
@@ -496,9 +407,8 @@ for i, j, _ in cross_reactive_pairs:
     # COLLECT ALL TOOLS
     # =========================================================================
 
-    # Platform-specific tools (kept inline)
+    # Platform-specific tools (kept inline; add_peptide_mapping deprecated — use import_proteomics_data)
     platform_tools = [
-        add_peptide_mapping,          # MS-specific
         validate_antibody_specificity, # Affinity-specific
         correct_plate_effects,         # Affinity-specific
     ]

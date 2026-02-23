@@ -121,7 +121,6 @@ PLATFORM_CONFIGS: Dict[str, PlatformConfig] = {
         platform_specific={
             "correct_plate_effects": True,
             "check_antibody_specificity": True,
-            "cross_reactivity_threshold": 0.1,
             "typical_panel_size_range": (50, 5000),
         },
     ),
@@ -146,7 +145,7 @@ def detect_platform_type(
         force_type: Override detection with specific type ("mass_spec" or "affinity")
 
     Returns:
-        str: "mass_spec" or "affinity"
+        str: "mass_spec", "affinity", or "unknown" (if scores are tied or both zero)
     """
     if force_type:
         if force_type not in PLATFORM_CONFIGS:
@@ -230,11 +229,13 @@ def detect_platform_type(
         ):
             detection_scores["affinity"] += 5
 
-    # Return platform with higher score, default to mass_spec if tied
+    # Return platform with higher score, or "unknown" if tied/zero
     if detection_scores["affinity"] > detection_scores["mass_spec"]:
         return "affinity"
-    else:
+    elif detection_scores["mass_spec"] > detection_scores["affinity"]:
         return "mass_spec"
+    else:
+        return "unknown"
 
 
 def get_platform_config(platform_type: str) -> PlatformConfig:
